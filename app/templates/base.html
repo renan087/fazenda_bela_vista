@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ title or "Fazenda Bela Vista" }}</title>
+    <link rel="stylesheet" href="{{ url_for('static', path='css/styles.css') }}">
+</head>
+<body>
+    <div class="page-shell">
+        <aside class="sidebar">
+            <div>
+                <p class="eyebrow">Gestao Agricola</p>
+                <h1>Fazenda de Cafe</h1>
+                <p class="muted">Controle de talhoes, tratos e colheita em um painel unico.</p>
+            </div>
+            {% if request.session.get("user_email") %}
+            <nav class="nav">
+                <a href="/dashboard">Dashboard</a>
+                <a href="/talhoes">Talhoes</a>
+                <a href="/variedades">Variedades</a>
+                <a href="/operacoes">Operacoes</a>
+                <a href="/docs" target="_blank">API Docs</a>
+                <a href="/logout">Sair</a>
+            </nav>
+            {% endif %}
+        </aside>
+        <main class="content">
+            {% block content %}{% endblock %}
+        </main>
+    </div>
+</body>
+</html>

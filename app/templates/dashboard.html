@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="hero-card">
+    <div>
+        <p class="eyebrow">Visao geral</p>
+        <h2>Ola, {{ user.name }}</h2>
+        <p class="muted">Acompanhe os principais indicadores da fazenda em tempo real.</p>
+    </div>
+    <div class="stats-grid">
+        <article class="stat-card">
+            <strong>{{ plot_count }}</strong>
+            <span>Talhoes cadastrados</span>
+        </article>
+        <article class="stat-card">
+            <strong>{{ variety_count }}</strong>
+            <span>Variedades de cafe</span>
+        </article>
+        <article class="stat-card">
+            <strong>{{ total_area }} ha</strong>
+            <span>Area total plantada</span>
+        </article>
+        <article class="stat-card">
+            <strong>{{ total_sacks }}</strong>
+            <span>Sacas registradas</span>
+        </article>
+    </div>
+</section>
+
+<section class="panel">
+    <div class="section-header">
+        <div>
+            <p class="eyebrow">Ultimos registros</p>
+            <h3>Colheitas recentes</h3>
+        </div>
+    </div>
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>Talhao</th>
+                    <th>Data</th>
+                    <th>Sacas</th>
+                    <th>Observacoes</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for harvest in recent_harvests %}
+                <tr>
+                    <td>{{ harvest.plot.name }}</td>
+                    <td>{{ harvest.harvest_date }}</td>
+                    <td>{{ harvest.sacks_produced }}</td>
+                    <td>{{ harvest.notes or "-" }}</td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="4">Nenhuma colheita registrada ainda.</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</section>
+{% endblock %}

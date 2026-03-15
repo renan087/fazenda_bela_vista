@@ -1,0 +1,28 @@
+services:
+  - type: web
+    name: fazenda-bela-vista-web
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.8
+      - key: ENVIRONMENT
+        value: production
+      - key: SECRET_KEY
+        generateValue: true
+      - key: ACCESS_TOKEN_EXPIRE_MINUTES
+        value: 60
+      - key: ADMIN_EMAIL
+        value: admin@fazenda.local
+      - key: ADMIN_PASSWORD
+        value: admin123
+      - key: DATABASE_URL_OVERRIDE
+        fromDatabase:
+          name: fazenda-bela-vista-db
+          property: connectionString
+
+databases:
+  - name: fazenda-bela-vista-db
+    plan: free

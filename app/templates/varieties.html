@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="panel split-panel">
+    <div>
+        <p class="eyebrow">Cadastro</p>
+        <h2>Nova variedade</h2>
+        <form method="post" action="/variedades" class="form-grid">
+            <label><span>Nome</span><input type="text" name="name" required></label>
+            <label><span>Especie</span><input type="text" name="species" placeholder="Arabica" required></label>
+            <label><span>Ciclo de maturacao</span><input type="text" name="maturation_cycle" placeholder="Precoce" required></label>
+            <label class="full"><span>Observacoes</span><textarea name="notes" rows="3"></textarea></label>
+            <button type="submit">Salvar variedade</button>
+        </form>
+    </div>
+    <div>
+        <p class="eyebrow">Consulta</p>
+        <h2>Variedades cadastradas</h2>
+        <div class="cards-list">
+            {% for variety in varieties %}
+            <article class="record-card">
+                <strong>{{ variety.name }}</strong>
+                <span>{{ variety.species }}</span>
+                <span>Ciclo: {{ variety.maturation_cycle }}</span>
+                <span>{{ variety.notes or "Sem observacoes" }}</span>
+            </article>
+            {% else %}
+            <p class="muted">Nenhuma variedade cadastrada.</p>
+            {% endfor %}
+        </div>
+    </div>
+</section>
+{% endblock %}

@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="hero-card auth-card">
+    <div>
+        <p class="eyebrow">Acesso seguro</p>
+        <h2>Entrar no sistema</h2>
+        <p class="muted">Use o usuario administrador inicial ou cadastre novos usuarios no backend futuramente.</p>
+    </div>
+    <form method="post" action="/login" class="form-grid">
+        {% if error %}
+        <div class="alert">{{ error }}</div>
+        {% endif %}
+        <label>
+            <span>Email</span>
+            <input type="email" name="email" placeholder="admin@fazenda.local" required>
+        </label>
+        <label>
+            <span>Senha</span>
+            <input type="password" name="password" placeholder="********" required>
+        </label>
+        <button type="submit">Entrar</button>
+    </form>
+</section>
+{% endblock %}

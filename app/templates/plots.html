@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="panel split-panel">
+    <div>
+        <p class="eyebrow">Cadastro</p>
+        <h2>Novo talhao</h2>
+        <form method="post" action="/talhoes" class="form-grid">
+            <label><span>Nome</span><input type="text" name="name" required></label>
+            <label><span>Area (ha)</span><input type="number" step="0.01" name="area_hectares" required></label>
+            <label><span>Localizacao</span><input type="text" name="location" required></label>
+            <label><span>Numero de plantas</span><input type="number" name="plant_count" required></label>
+            <label>
+                <span>Variedade</span>
+                <select name="variety_id">
+                    <option value="">Selecione</option>
+                    {% for variety in varieties %}
+                    <option value="{{ variety.id }}">{{ variety.name }}</option>
+                    {% endfor %}
+                </select>
+            </label>
+            <label class="full"><span>Observacoes</span><textarea name="notes" rows="3"></textarea></label>
+            <button type="submit">Salvar talhao</button>
+        </form>
+    </div>
+    <div>
+        <p class="eyebrow">Consulta</p>
+        <h2>Talhoes cadastrados</h2>
+        <div class="cards-list">
+            {% for plot in plots %}
+            <article class="record-card">
+                <strong>{{ plot.name }}</strong>
+                <span>{{ plot.location }} • {{ plot.area_hectares }} ha</span>
+                <span>{{ plot.plant_count }} plantas</span>
+                <span>Variedade: {{ plot.variety.name if plot.variety else "Nao definida" }}</span>
+            </article>
+            {% else %}
+            <p class="muted">Nenhum talhao cadastrado.</p>
+            {% endfor %}
+        </div>
+    </div>
+</section>
+{% endblock %}
