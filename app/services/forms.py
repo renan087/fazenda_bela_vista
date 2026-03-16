@@ -216,5 +216,8 @@ def normalize_geojson(raw_text: str | None) -> str | None:
     normalized = raw_text.strip()
     if not normalized:
         return None
-    parsed = json.loads(normalized)
+    try:
+        parsed = json.loads(normalized)
+    except json.JSONDecodeError:
+        return None
     return json.dumps(parsed)

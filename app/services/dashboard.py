@@ -28,6 +28,7 @@ def calculate_forecast(repository: FarmRepository) -> dict:
         projection_total += projected_sacks
         plot_forecasts.append(
             {
+                "plot_id": plot.id,
                 "plot": plot.name,
                 "projected_sacks": round(projected_sacks, 2),
                 "productivity": round(average_productivity, 2),
