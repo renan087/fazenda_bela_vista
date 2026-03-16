@@ -1,3 +1,5 @@
+from typing import Optional
+
 from sqlalchemy import ForeignKey, Numeric, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -12,8 +14,8 @@ class Plot(Base):
     area_hectares: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False)
     location: Mapped[str] = mapped_column(String(120), nullable=False)
     plant_count: Mapped[int] = mapped_column(nullable=False)
-    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
-    variety_id: Mapped[int | None] = mapped_column(ForeignKey("coffee_varieties.id"), nullable=True)
+    notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    variety_id: Mapped[Optional[int]] = mapped_column(ForeignKey("coffee_varieties.id"), nullable=True)
 
     variety = relationship("CoffeeVariety", back_populates="plots")
     irrigations = relationship("IrrigationRecord", back_populates="plot", cascade="all, delete-orphan")
