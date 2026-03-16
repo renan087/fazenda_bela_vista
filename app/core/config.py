@@ -27,7 +27,11 @@ class Settings(BaseSettings):
     @property
     def database_url(self) -> str:
         if self.database_url_override:
-            return self.database_url_override.replace("postgres://", "postgresql+psycopg://", 1)
+            if self.database_url_override.startswith("postgresql://"):
+                return self.database_url_override.replace("postgresql://", "postgresql+psycopg://", 1)
+            if self.database_url_override.startswith("postgres://"):
+                return self.database_url_override.replace("postgres://", "postgresql+psycopg://", 1)
+            return self.database_url_override
         return (
             f"postgresql+psycopg://{self.postgres_user}:{self.postgres_password}"
             f"@{self.postgres_server}:{self.postgres_port}/{self.postgres_db}"
