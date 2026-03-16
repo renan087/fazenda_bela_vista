@@ -1,5 +1,3 @@
-from typing import Optional
-
 from sqlalchemy import String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -13,6 +11,6 @@ class CoffeeVariety(Base):
     name: Mapped[str] = mapped_column(String(120), unique=True, nullable=False)
     species: Mapped[str] = mapped_column(String(80), nullable=False)
     maturation_cycle: Mapped[str] = mapped_column(String(80), nullable=False)
-    notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    notes: Mapped[str] = mapped_column(Text, nullable=True)
 
     plots = relationship("Plot", back_populates="variety")

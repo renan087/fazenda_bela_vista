@@ -1,5 +1,4 @@
 from datetime import date
-from typing import Optional
 
 from sqlalchemy import Date, ForeignKey, Numeric, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -16,6 +15,6 @@ class FertilizationRecord(Base):
     product: Mapped[str] = mapped_column(String(120), nullable=False)
     dose: Mapped[str] = mapped_column(String(80), nullable=False)
     cost: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False)
-    notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    notes: Mapped[str] = mapped_column(Text, nullable=True)
 
     plot = relationship("Plot", back_populates="fertilizations")

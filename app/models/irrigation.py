@@ -1,5 +1,4 @@
 from datetime import date
-from typing import Optional
 
 from sqlalchemy import Date, ForeignKey, Numeric, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -15,6 +14,6 @@ class IrrigationRecord(Base):
     irrigation_date: Mapped[date] = mapped_column(Date, nullable=False)
     water_volume_mm: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False)
     method: Mapped[str] = mapped_column(String(80), nullable=False)
-    notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    notes: Mapped[str] = mapped_column(Text, nullable=True)
 
     plot = relationship("Plot", back_populates="irrigations")
