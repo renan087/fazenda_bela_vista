@@ -4,7 +4,7 @@ from app.models import (
     FertilizationRecord,
     HarvestRecord,
     IrrigationRecord,
-    PesticideApplication,
+    PestIncident,
     Plot,
 )
 
@@ -12,5 +12,5 @@ plots = CRUDBase(Plot)
 varieties = CRUDBase(CoffeeVariety)
 irrigations = CRUDBase(IrrigationRecord)
 fertilizations = CRUDBase(FertilizationRecord)
-pesticides = CRUDBase(PesticideApplication)
+pesticides = CRUDBase(PestIncident)
 harvests = CRUDBase(HarvestRecord)

@@ -1,42 +1,61 @@
 {% extends "base.html" %}
 {% block content %}
-<section class="panel split-panel">
-    <div>
-        <p class="eyebrow">Cadastro</p>
-        <h2>Novo talhao</h2>
-        <form method="post" action="/talhoes" class="form-grid">
-            <label><span>Nome</span><input type="text" name="name" required></label>
-            <label><span>Area (ha)</span><input type="number" step="0.01" name="area_hectares" required></label>
-            <label><span>Localizacao</span><input type="text" name="location" required></label>
-            <label><span>Numero de plantas</span><input type="number" name="plant_count" required></label>
-            <label>
-                <span>Variedade</span>
-                <select name="variety_id">
+<div class="grid gap-6 xl:grid-cols-[0.95fr_1.05fr]">
+    <section class="rounded-[2rem] bg-white p-6 shadow-panel">
+        <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Cadastro de Talhoes</p>
+        <h3 class="mt-2 text-2xl font-semibold">Estrutura produtiva da fazenda</h3>
+        <form method="post" action="/talhoes" class="mt-6 grid gap-4 md:grid-cols-2">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <label class="block md:col-span-2"><span class="mb-2 block text-sm font-medium">Nome</span><input name="name" class="w-full rounded-2xl border-slate-200 bg-slate-50" required></label>
+            <label><span class="mb-2 block text-sm font-medium">Area (ha)</span><input type="number" step="0.01" name="area_hectares" class="w-full rounded-2xl border-slate-200 bg-slate-50" required></label>
+            <label><span class="mb-2 block text-sm font-medium">Localizacao</span><input name="location" class="w-full rounded-2xl border-slate-200 bg-slate-50" required></label>
+            <label><span class="mb-2 block text-sm font-medium">Ano de plantio</span><input type="number" name="planting_year" class="w-full rounded-2xl border-slate-200 bg-slate-50"></label>
+            <label><span class="mb-2 block text-sm font-medium">Numero de plantas</span><input type="number" name="plant_count" class="w-full rounded-2xl border-slate-200 bg-slate-50" required></label>
+            <label><span class="mb-2 block text-sm font-medium">Espacamento entre linhas (m)</span><input type="number" step="0.01" name="spacing_row_meters" class="w-full rounded-2xl border-slate-200 bg-slate-50"></label>
+            <label><span class="mb-2 block text-sm font-medium">Espacamento entre plantas (m)</span><input type="number" step="0.01" name="spacing_plant_meters" class="w-full rounded-2xl border-slate-200 bg-slate-50"></label>
+            <label><span class="mb-2 block text-sm font-medium">Producao estimada (sacas)</span><input type="number" step="0.01" name="estimated_yield_sacks" class="w-full rounded-2xl border-slate-200 bg-slate-50"></label>
+            <label><span class="mb-2 block text-sm font-medium">Variedade</span>
+                <select name="variety_id" class="w-full rounded-2xl border-slate-200 bg-slate-50">
                     <option value="">Selecione</option>
                     {% for variety in varieties %}
                     <option value="{{ variety.id }}">{{ variety.name }}</option>
                     {% endfor %}
                 </select>
             </label>
-            <label class="full"><span>Observacoes</span><textarea name="notes" rows="3"></textarea></label>
-            <button type="submit">Salvar talhao</button>
+            <label><span class="mb-2 block text-sm font-medium">Latitude</span><input type="number" step="0.000001" name="centroid_lat" class="w-full rounded-2xl border-slate-200 bg-slate-50"></label>
+            <label><span class="mb-2 block text-sm font-medium">Longitude</span><input type="number" step="0.000001" name="centroid_lng" class="w-full rounded-2xl border-slate-200 bg-slate-50"></label>
+            <label class="md:col-span-2"><span class="mb-2 block text-sm font-medium">GeoJSON do talhao</span><textarea name="boundary_geojson" rows="4" class="w-full rounded-2xl border-slate-200 bg-slate-50" placeholder='{"type":"Polygon","coordinates":[...]}'></textarea></label>
+            <label class="md:col-span-2"><span class="mb-2 block text-sm font-medium">Observacoes</span><textarea name="notes" rows="3" class="w-full rounded-2xl border-slate-200 bg-slate-50"></textarea></label>
+            <button class="md:col-span-2 rounded-2xl bg-brand-500 px-4 py-3 font-semibold text-white hover:bg-brand-700">Salvar talhao</button>
         </form>
-    </div>
-    <div>
-        <p class="eyebrow">Consulta</p>
-        <h2>Talhoes cadastrados</h2>
-        <div class="cards-list">
+    </section>
+    <section class="rounded-[2rem] bg-white p-6 shadow-panel">
+        <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Portifolio Agricola</p>
+        <h3 class="mt-2 text-2xl font-semibold">Talhoes cadastrados</h3>
+        <div class="mt-6 space-y-4">
             {% for plot in plots %}
-            <article class="record-card">
-                <strong>{{ plot.name }}</strong>
-                <span>{{ plot.location }} • {{ plot.area_hectares }} ha</span>
-                <span>{{ plot.plant_count }} plantas</span>
-                <span>Variedade: {{ plot.variety.name if plot.variety else "Nao definida" }}</span>
+            <article class="rounded-[1.5rem] border border-slate-100 bg-slate-50 p-5">
+                <div class="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                        <h4 class="text-lg font-semibold">{{ plot.name }}</h4>
+                        <p class="mt-1 text-sm text-slate-500">{{ plot.location }} • {{ plot.area_hectares }} ha</p>
+                    </div>
+                    <span class="rounded-full bg-brand-50 px-3 py-1 text-sm font-semibold text-brand-700">{{ plot.variety.name if plot.variety else "Sem variedade" }}</span>
+                </div>
+                <div class="mt-4 grid gap-3 text-sm text-slate-600 sm:grid-cols-2">
+                    <p>Ano de plantio: <strong>{{ plot.planting_year or "-" }}</strong></p>
+                    <p>Plantas: <strong>{{ plot.plant_count }}</strong></p>
+                    <p>Espacamento: <strong>{{ plot.spacing_row_meters or "-" }} x {{ plot.spacing_plant_meters or "-" }} m</strong></p>
+                    <p>Estimativa: <strong>{{ plot.estimated_yield_sacks or "-" }} sacas</strong></p>
+                </div>
+                {% if plot.notes %}
+                <p class="mt-4 text-sm text-slate-500">{{ plot.notes }}</p>
+                {% endif %}
             </article>
             {% else %}
-            <p class="muted">Nenhum talhao cadastrado.</p>
+            <p class="text-sm text-slate-500">Nenhum talhao cadastrado.</p>
             {% endfor %}
         </div>
-    </div>
-</section>
+    </section>
+</div>
 {% endblock %}

@@ -13,6 +13,7 @@ class HarvestRecord(Base):
     plot_id: Mapped[int] = mapped_column(ForeignKey("plots.id"), nullable=False)
     harvest_date: Mapped[date] = mapped_column(Date, nullable=False)
     sacks_produced: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False)
+    productivity_per_hectare: Mapped[float] = mapped_column(Numeric(10, 2), nullable=True)
     notes: Mapped[str] = mapped_column(Text, nullable=True)
 
     plot = relationship("Plot", back_populates="harvests")

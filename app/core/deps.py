@@ -2,6 +2,7 @@ from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
 
+from app.core.csrf import ensure_csrf_token
 from app.core.security import decode_token
 from app.db.session import get_db
 from app.models.user import User
@@ -40,3 +41,7 @@ def get_current_user_web(
     if not user:
         raise HTTPException(status_code=status.HTTP_303_SEE_OTHER, headers={"Location": "/login"})
     return user
+
+
+def get_csrf_token(request: Request) -> str:
+    return ensure_csrf_token(request)

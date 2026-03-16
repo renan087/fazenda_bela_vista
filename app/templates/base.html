@@ -3,31 +3,94 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{{ title or "Fazenda Bela Vista" }}</title>
+    <title>{{ title or "Agro ERP Cafe" }}</title>
+    <script src="https://cdn.tailwindcss.com?plugins=forms"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: "#eef7ed",
+                            100: "#d9ecd4",
+                            500: "#446a36",
+                            700: "#294127",
+                            900: "#162115"
+                        },
+                        ink: "#0f172a",
+                        mist: "#eef3f1"
+                    },
+                    boxShadow: {
+                        panel: "0 18px 45px rgba(15, 23, 42, 0.08)"
+                    }
+                }
+            }
+        }
+    </script>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
     <link rel="stylesheet" href="{{ url_for('static', path='css/styles.css') }}">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 </head>
-<body>
-    <div class="page-shell">
-        <aside class="sidebar">
-            <div>
-                <p class="eyebrow">Gestao Agricola</p>
-                <h1>Fazenda de Cafe</h1>
-                <p class="muted">Controle de talhoes, tratos e colheita em um painel unico.</p>
+<body class="bg-slate-100 text-slate-800">
+    {% if user %}
+    <div class="min-h-screen lg:flex">
+        <aside class="erp-sidebar bg-slate-950 text-slate-100 lg:fixed lg:inset-y-0 lg:w-72">
+            <div class="flex h-full flex-col">
+                <div class="border-b border-slate-800 px-6 py-6">
+                    <p class="text-xs uppercase tracking-[0.3em] text-brand-100/70">Agro ERP</p>
+                    <h1 class="mt-2 text-2xl font-semibold">Fazenda de Cafe</h1>
+                    <p class="mt-3 text-sm text-slate-400">Gestao operacional, analitica e de campo em uma unica plataforma.</p>
+                </div>
+                <nav class="flex-1 space-y-1 px-4 py-6 text-sm">
+                    {% set nav = [
+                        ('dashboard', '/dashboard', 'Dashboard'),
+                        ('plots', '/talhoes', 'Talhoes'),
+                        ('varieties', '/variedades', 'Variedades'),
+                        ('irrigation', '/irrigacao', 'Irrigacao'),
+                        ('fertilization', '/fertilizacao', 'Fertilizacao'),
+                        ('production', '/producao', 'Producao'),
+                        ('pests', '/pragas', 'Pragas e Doencas'),
+                        ('map', '/mapa', 'Mapa da Fazenda'),
+                        ('mobile', '/mobile', 'Campo Mobile')
+                    ] %}
+                    {% for key, href, label in nav %}
+                    <a href="{{ href }}" class="flex items-center rounded-2xl px-4 py-3 transition {% if page == key %}bg-brand-500 text-white shadow-lg{% else %}text-slate-300 hover:bg-slate-900 hover:text-white{% endif %}">
+                        <span>{{ label }}</span>
+                    </a>
+                    {% endfor %}
+                    <a href="/docs" target="_blank" class="flex items-center rounded-2xl px-4 py-3 text-slate-300 transition hover:bg-slate-900 hover:text-white">API / Docs</a>
+                </nav>
+                <div class="border-t border-slate-800 px-6 py-5">
+                    <div class="rounded-2xl bg-slate-900 px-4 py-4">
+                        <p class="text-xs uppercase tracking-[0.3em] text-slate-500">Sessao</p>
+                        <p class="mt-2 font-medium">{{ user.name }}</p>
+                        <p class="text-sm text-slate-400">{{ user.email }}</p>
+                        <a href="/logout" class="mt-4 inline-flex rounded-xl bg-white/10 px-3 py-2 text-sm hover:bg-white/20">Sair</a>
+                    </div>
+                </div>
             </div>
-            {% if request.session.get("user_email") %}
-            <nav class="nav">
-                <a href="/dashboard">Dashboard</a>
-                <a href="/talhoes">Talhoes</a>
-                <a href="/variedades">Variedades</a>
-                <a href="/operacoes">Operacoes</a>
-                <a href="/docs" target="_blank">API Docs</a>
-                <a href="/logout">Sair</a>
-            </nav>
-            {% endif %}
         </aside>
-        <main class="content">
-            {% block content %}{% endblock %}
+        <main class="flex-1 lg:ml-72">
+            <div class="border-b border-slate-200 bg-white/80 backdrop-blur">
+                <div class="mx-auto flex max-w-7xl items-center justify-between px-6 py-5">
+                    <div>
+                        <p class="text-xs uppercase tracking-[0.3em] text-slate-400">Plataforma profissional</p>
+                        <h2 class="text-2xl font-semibold">{{ title or "Painel da Fazenda" }}</h2>
+                    </div>
+                    <div class="hidden rounded-2xl bg-mist px-4 py-3 text-right md:block">
+                        <p class="text-xs uppercase tracking-[0.25em] text-slate-400">Safra</p>
+                        <p class="font-semibold text-slate-700">Cafe Especial 2026</p>
+                    </div>
+                </div>
+            </div>
+            <div class="mx-auto max-w-7xl px-6 py-8">
+                {% block content %}{% endblock %}
+            </div>
         </main>
     </div>
+    {% else %}
+        {% block auth_content %}{% endblock %}
+    {% endif %}
 </body>
 </html>

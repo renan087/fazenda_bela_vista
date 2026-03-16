@@ -1,22 +1,39 @@
+from datetime import date
+
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.core.security import get_password_hash
 from app.db.base import Base
 from app.db.session import engine
-from app.models import (
-    CoffeeVariety,
-    FertilizationRecord,
-    HarvestRecord,
-    IrrigationRecord,
-    Plot,
-    PesticideApplication,
-    User,
-)
+from app.models import CoffeeVariety, FertilizationRecord, HarvestRecord, IrrigationRecord, PestIncident, Plot, User
 
 
 def create_tables() -> None:
     Base.metadata.create_all(bind=engine)
+    _sync_schema()
+
+
+def _sync_schema() -> None:
+    # Lightweight Postgres-friendly sync for new nullable columns added after first deploy.
+    statements = [
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW()",
+        "ALTER TABLE coffee_varieties ADD COLUMN IF NOT EXISTS flavor_profile VARCHAR(180)",
+        "ALTER TABLE plots ADD COLUMN IF NOT EXISTS planting_year INTEGER",
+        "ALTER TABLE plots ADD COLUMN IF NOT EXISTS spacing_row_meters NUMERIC(8,2)",
+        "ALTER TABLE plots ADD COLUMN IF NOT EXISTS spacing_plant_meters NUMERIC(8,2)",
+        "ALTER TABLE plots ADD COLUMN IF NOT EXISTS estimated_yield_sacks NUMERIC(10,2)",
+        "ALTER TABLE plots ADD COLUMN IF NOT EXISTS centroid_lat NUMERIC(10,6)",
+        "ALTER TABLE plots ADD COLUMN IF NOT EXISTS centroid_lng NUMERIC(10,6)",
+        "ALTER TABLE plots ADD COLUMN IF NOT EXISTS boundary_geojson TEXT",
+        "ALTER TABLE irrigation_records ADD COLUMN IF NOT EXISTS volume_liters NUMERIC(12,2)",
+        "ALTER TABLE irrigation_records ADD COLUMN IF NOT EXISTS duration_minutes INTEGER",
+        "ALTER TABLE harvest_records ADD COLUMN IF NOT EXISTS productivity_per_hectare NUMERIC(10,2)",
+    ]
+    with engine.begin() as connection:
+        for statement in statements:
+            connection.execute(text(statement))
 
 
 def seed_admin(db: Session) -> None:
@@ -32,4 +49,74 @@ def seed_admin(db: Session) -> None:
         is_active=True,
     )
     db.add(admin)
+    db.commit()
+
+
+def seed_demo_data(db: Session) -> None:
+    if db.query(CoffeeVariety).count():
+        return
+
+    catuai = CoffeeVariety(
+        name="Catuai 144",
+        species="Arabica",
+        maturation_cycle="Media",
+        flavor_profile="Doce, caramelo e frutas amarelas",
+        notes="Alta adaptacao em cafeicultura de montanha.",
+    )
+    mundo_novo = CoffeeVariety(
+        name="Mundo Novo",
+        species="Arabica",
+        maturation_cycle="Tardia",
+        flavor_profile="Chocolate e castanhas",
+        notes="Boa produtividade e vigor.",
+    )
+    db.add_all([catuai, mundo_novo])
+    db.flush()
+
+    plot_alpha = Plot(
+        name="Talhao Alpha",
+        area_hectares=12.5,
+        location="Setor Norte",
+        planting_year=2019,
+        plant_count=42000,
+        spacing_row_meters=3.5,
+        spacing_plant_meters=0.6,
+        estimated_yield_sacks=420,
+        centroid_lat=-20.743218,
+        centroid_lng=-42.874221,
+        boundary_geojson='{"type":"Polygon","coordinates":[[[-42.8758,-20.7428],[-42.8736,-20.7428],[-42.8736,-20.7442],[-42.8758,-20.7442],[-42.8758,-20.7428]]]}',
+        notes="Talhao com maior vigor vegetativo.",
+        variety_id=catuai.id,
+    )
+    plot_beta = Plot(
+        name="Talhao Beta",
+        area_hectares=8.2,
+        location="Setor Leste",
+        planting_year=2017,
+        plant_count=25500,
+        spacing_row_meters=3.4,
+        spacing_plant_meters=0.7,
+        estimated_yield_sacks=255,
+        centroid_lat=-20.745418,
+        centroid_lng=-42.870411,
+        boundary_geojson='{"type":"Polygon","coordinates":[[[-42.8717,-20.7447],[-42.8694,-20.7447],[-42.8694,-20.7461],[-42.8717,-20.7461],[-42.8717,-20.7447]]]}',
+        notes="Area com foco em qualidade de bebida.",
+        variety_id=mundo_novo.id,
+    )
+    db.add_all([plot_alpha, plot_beta])
+    db.flush()
+
+    db.add_all(
+        [
+            IrrigationRecord(plot_id=plot_alpha.id, irrigation_date=date.fromisoformat("2026-03-10"), volume_liters=18000, duration_minutes=90, notes="Irrigacao preventiva."),
+            IrrigationRecord(plot_id=plot_beta.id, irrigation_date=date.fromisoformat("2026-03-12"), volume_liters=12500, duration_minutes=70, notes="Complemento apos estiagem."),
+            FertilizationRecord(plot_id=plot_alpha.id, application_date=date.fromisoformat("2026-02-05"), product="NPK 20-05-20", dose="320 kg/ha", cost=4850, notes="Cobertura 1."),
+            FertilizationRecord(plot_id=plot_beta.id, application_date=date.fromisoformat("2026-02-18"), product="Organomineral 16-06-16", dose="280 kg/ha", cost=3620, notes="Aplicacao em sulco."),
+            HarvestRecord(plot_id=plot_alpha.id, harvest_date=date.fromisoformat("2024-07-14"), sacks_produced=395, productivity_per_hectare=31.6, notes="Safra forte."),
+            HarvestRecord(plot_id=plot_alpha.id, harvest_date=date.fromisoformat("2025-07-18"), sacks_produced=408, productivity_per_hectare=32.6, notes="Boa uniformidade."),
+            HarvestRecord(plot_id=plot_beta.id, harvest_date=date.fromisoformat("2024-07-22"), sacks_produced=228, productivity_per_hectare=27.8, notes="Oscilacao por estiagem."),
+            HarvestRecord(plot_id=plot_beta.id, harvest_date=date.fromisoformat("2025-07-20"), sacks_produced=241, productivity_per_hectare=29.4, notes="Recuperacao nutricional."),
+            PestIncident(plot_id=plot_alpha.id, occurrence_date=date.fromisoformat("2026-03-08"), category="Praga", name="Bicho-mineiro", severity=2, treatment="Aplicacao seletiva", notes="Monitoramento em andamento."),
+        ]
+    )
     db.commit()

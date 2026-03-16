@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="rounded-[2rem] bg-white p-6 shadow-panel">
+    <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Interface Mobile</p>
+    <h3 class="mt-2 text-2xl font-semibold">Registro rapido para operacoes em campo</h3>
+    <p class="mt-2 max-w-3xl text-sm text-slate-500">Tela pensada para celular, com acessos rapidos aos principais apontamentos da lavoura. Use no campo para registrar irrigacao, ocorrencias fitossanitarias e acompanhamentos operacionais.</p>
+    <div class="mt-6 grid gap-4 md:grid-cols-3">
+        <a href="/irrigacao" class="rounded-[1.5rem] bg-brand-500 p-5 text-white shadow-lg">
+            <p class="text-sm uppercase tracking-[0.25em] text-brand-100/70">Acao rapida</p>
+            <h4 class="mt-3 text-xl font-semibold">Nova irrigacao</h4>
+            <p class="mt-2 text-sm text-brand-50/80">Registrar volume e duracao direto do campo.</p>
+        </a>
+        <a href="/pragas" class="rounded-[1.5rem] bg-slate-900 p-5 text-white shadow-lg">
+            <p class="text-sm uppercase tracking-[0.25em] text-slate-400">Acao rapida</p>
+            <h4 class="mt-3 text-xl font-semibold">Nova ocorrencia</h4>
+            <p class="mt-2 text-sm text-slate-300">Apontar pragas e doencas com severidade.</p>
+        </a>
+        <a href="/producao" class="rounded-[1.5rem] bg-white p-5 shadow-lg ring-1 ring-slate-200">
+            <p class="text-sm uppercase tracking-[0.25em] text-slate-400">Acao rapida</p>
+            <h4 class="mt-3 text-xl font-semibold">Nova colheita</h4>
+            <p class="mt-2 text-sm text-slate-500">Registrar producao por talhao no fechamento da operacao.</p>
+        </a>
+    </div>
+    <div class="mt-8 grid gap-6 lg:grid-cols-2">
+        <div class="rounded-[1.5rem] bg-slate-50 p-5">
+            <h4 class="text-lg font-semibold">Ultimas irrigacoes</h4>
+            <div class="mt-4 space-y-3">
+                {% for item in quick_irrigations %}
+                <div class="rounded-2xl bg-white p-4">
+                    <p class="font-medium">{{ item.plot.name }}</p>
+                    <p class="text-sm text-slate-500">{{ item.irrigation_date }} • {{ item.volume_liters }} L</p>
+                </div>
+                {% else %}
+                <p class="text-sm text-slate-500">Sem registros.</p>
+                {% endfor %}
+            </div>
+        </div>
+        <div class="rounded-[1.5rem] bg-slate-50 p-5">
+            <h4 class="text-lg font-semibold">Ultimas ocorrencias</h4>
+            <div class="mt-4 space-y-3">
+                {% for item in quick_incidents %}
+                <div class="rounded-2xl bg-white p-4">
+                    <p class="font-medium">{{ item.name }}</p>
+                    <p class="text-sm text-slate-500">{{ item.plot.name }} • {{ item.occurrence_date }}</p>
+                </div>
+                {% else %}
+                <p class="text-sm text-slate-500">Sem registros.</p>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+</section>
+{% endblock %}

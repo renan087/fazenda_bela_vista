@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="grid gap-6 xl:grid-cols-[0.85fr_1.15fr]">
+    <section class="rounded-[2rem] bg-white p-6 shadow-panel">
+        <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Producao</p>
+        <h3 class="mt-2 text-2xl font-semibold">Registrar colheita</h3>
+        <form method="post" action="/producao" class="mt-6 grid gap-4">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <label><span class="mb-2 block text-sm font-medium">Talhao</span><select name="plot_id" class="w-full rounded-2xl border-slate-200 bg-slate-50" required>{% for plot in plots %}<option value="{{ plot.id }}">{{ plot.name }}</option>{% endfor %}</select></label>
+            <label><span class="mb-2 block text-sm font-medium">Data da colheita</span><input type="date" name="harvest_date" class="w-full rounded-2xl border-slate-200 bg-slate-50" required></label>
+            <label><span class="mb-2 block text-sm font-medium">Sacas produzidas</span><input type="number" step="0.01" name="sacks_produced" class="w-full rounded-2xl border-slate-200 bg-slate-50" required></label>
+            <label><span class="mb-2 block text-sm font-medium">Observacoes</span><textarea name="notes" rows="4" class="w-full rounded-2xl border-slate-200 bg-slate-50"></textarea></label>
+            <button class="rounded-2xl bg-brand-500 px-4 py-3 font-semibold text-white hover:bg-brand-700">Salvar colheita</button>
+        </form>
+    </section>
+    <section class="rounded-[2rem] bg-white p-6 shadow-panel">
+        <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Historico produtivo</p>
+        <h3 class="mt-2 text-2xl font-semibold">Colheitas registradas</h3>
+        <div class="mt-6 overflow-hidden rounded-[1.5rem] border border-slate-100">
+            <table class="min-w-full divide-y divide-slate-100 text-sm">
+                <thead class="bg-slate-50 text-left text-slate-500"><tr><th class="px-4 py-3">Talhao</th><th class="px-4 py-3">Data</th><th class="px-4 py-3">Sacas</th><th class="px-4 py-3">Produtividade</th></tr></thead>
+                <tbody class="divide-y divide-slate-100 bg-white">
+                    {% for item in harvests %}
+                    <tr>
+                        <td class="px-4 py-3 font-medium">{{ item.plot.name }}</td>
+                        <td class="px-4 py-3">{{ item.harvest_date }}</td>
+                        <td class="px-4 py-3">{{ item.sacks_produced }}</td>
+                        <td class="px-4 py-3">{{ item.productivity_per_hectare or 0 }} sc/ha</td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="4" class="px-4 py-6 text-center text-slate-500">Sem registros.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </section>
+</div>
+{% endblock %}

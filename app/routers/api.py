@@ -2,128 +2,126 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
 from app.core.deps import get_current_user_api
-from app.crud.resources import fertilizations, harvests, irrigations, pesticides, plots, varieties
 from app.db.session import get_db
-from app.models.user import User
-from app.schemas.coffee_variety import CoffeeVarietyCreate, CoffeeVarietyRead
-from app.schemas.fertilization import FertilizationCreate, FertilizationRead
-from app.schemas.harvest import HarvestCreate, HarvestRead
-from app.schemas.irrigation import IrrigationCreate, IrrigationRead
-from app.schemas.pesticide import PesticideCreate, PesticideRead
-from app.schemas.plot import PlotCreate, PlotRead
+from app.models import User
+from app.repositories.farm import FarmRepository
+from app.services.dashboard import build_dashboard_context
 
-router = APIRouter(prefix="/api/v1", tags=["resources"])
+router = APIRouter(prefix="/api/v1", tags=["farm"])
 
 
-@router.get("/plots", response_model=list[PlotRead])
+def _repo(db: Session) -> FarmRepository:
+    return FarmRepository(db)
+
+
+@router.get("/dashboard")
+def dashboard_summary(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user_api),
+):
+    del current_user
+    data = build_dashboard_context(_repo(db))
+    return {
+        "kpis": data["kpis"],
+        "forecast": data["forecast_plots"],
+    }
+
+
+@router.get("/plots")
 def list_plots(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user_api),
 ):
     del current_user
-    return plots.get_multi(db)
+    plots = _repo(db).list_plots()
+    return [
+        {
+            "id": plot.id,
+            "name": plot.name,
+            "area_hectares": float(plot.area_hectares),
+            "location": plot.location,
+            "planting_year": plot.planting_year,
+            "plant_count": plot.plant_count,
+            "spacing_row_meters": float(plot.spacing_row_meters or 0),
+            "spacing_plant_meters": float(plot.spacing_plant_meters or 0),
+            "estimated_yield_sacks": float(plot.estimated_yield_sacks or 0),
+            "variety": plot.variety.name if plot.variety else None,
+        }
+        for plot in plots
+    ]
 
 
-@router.post("/plots", response_model=PlotRead)
-def create_plot(
-    payload: PlotCreate,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user_api),
-):
-    del current_user
-    return plots.create(db, payload.model_dump())
-
-
-@router.get("/varieties", response_model=list[CoffeeVarietyRead])
-def list_varieties(
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user_api),
-):
-    del current_user
-    return varieties.get_multi(db)
-
-
-@router.post("/varieties", response_model=CoffeeVarietyRead)
-def create_variety(
-    payload: CoffeeVarietyCreate,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user_api),
-):
-    del current_user
-    return varieties.create(db, payload.model_dump())
-
-
-@router.get("/irrigations", response_model=list[IrrigationRead])
+@router.get("/irrigations")
 def list_irrigations(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user_api),
 ):
     del current_user
-    return irrigations.get_multi(db)
+    return [
+        {
+            "id": item.id,
+            "plot": item.plot.name if item.plot else item.plot_id,
+            "date": item.irrigation_date.isoformat(),
+            "volume_liters": float(item.volume_liters),
+            "duration_minutes": item.duration_minutes,
+            "notes": item.notes,
+        }
+        for item in _repo(db).list_irrigations()
+    ]
 
 
-@router.post("/irrigations", response_model=IrrigationRead)
-def create_irrigation(
-    payload: IrrigationCreate,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user_api),
-):
-    del current_user
-    return irrigations.create(db, payload.model_dump())
-
-
-@router.get("/fertilizations", response_model=list[FertilizationRead])
+@router.get("/fertilizations")
 def list_fertilizations(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user_api),
 ):
     del current_user
-    return fertilizations.get_multi(db)
+    return [
+        {
+            "id": item.id,
+            "plot": item.plot.name if item.plot else item.plot_id,
+            "date": item.application_date.isoformat(),
+            "product": item.product,
+            "dose": item.dose,
+            "cost": float(item.cost),
+        }
+        for item in _repo(db).list_fertilizations()
+    ]
 
 
-@router.post("/fertilizations", response_model=FertilizationRead)
-def create_fertilization(
-    payload: FertilizationCreate,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user_api),
-):
-    del current_user
-    return fertilizations.create(db, payload.model_dump())
-
-
-@router.get("/pesticides", response_model=list[PesticideRead])
-def list_pesticides(
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user_api),
-):
-    del current_user
-    return pesticides.get_multi(db)
-
-
-@router.post("/pesticides", response_model=PesticideRead)
-def create_pesticide(
-    payload: PesticideCreate,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user_api),
-):
-    del current_user
-    return pesticides.create(db, payload.model_dump())
-
-
-@router.get("/harvests", response_model=list[HarvestRead])
+@router.get("/harvests")
 def list_harvests(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user_api),
 ):
     del current_user
-    return harvests.get_multi(db)
+    return [
+        {
+            "id": item.id,
+            "plot": item.plot.name if item.plot else item.plot_id,
+            "date": item.harvest_date.isoformat(),
+            "sacks_produced": float(item.sacks_produced),
+            "productivity_per_hectare": float(item.productivity_per_hectare or 0),
+        }
+        for item in _repo(db).list_harvests()
+    ]
 
 
-@router.post("/harvests", response_model=HarvestRead)
-def create_harvest(
-    payload: HarvestCreate,
+@router.get("/pest-incidents")
+def list_pest_incidents(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user_api),
 ):
     del current_user
-    return harvests.create(db, payload.model_dump())
+    return [
+        {
+            "id": item.id,
+            "plot": item.plot.name if item.plot else item.plot_id,
+            "date": item.occurrence_date.isoformat(),
+            "category": item.category,
+            "name": item.name,
+            "severity": item.severity,
+            "treatment": item.treatment,
+        }
+        for item in _repo(db).list_pest_incidents()
+    ]

@@ -9,6 +9,7 @@ class Settings(BaseSettings):
     access_token_expire_minutes: int = 60
     environment: str = "development"
     port: int = 8000
+    session_cookie_name: str = "fazenda_session"
     database_url_override: str | None = None
     postgres_server: str = "localhost"
     postgres_port: int = 5432
@@ -17,6 +18,10 @@ class Settings(BaseSettings):
     postgres_password: str = "postgres"
     admin_email: str = "admin@fazenda.local"
     admin_password: str = "admin123"
+
+    @property
+    def is_production(self) -> bool:
+        return self.environment.lower() == "production"
 
     model_config = SettingsConfigDict(
         env_file=".env",

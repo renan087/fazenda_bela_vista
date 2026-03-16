@@ -4,9 +4,10 @@ from fastapi.security import OAuth2PasswordRequestForm
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 
-from app.core.security import create_access_token, verify_password
+from app.core.csrf import ensure_csrf_token, validate_csrf
+from app.core.security import authenticate_user, create_access_token
 from app.db.session import get_db
-from app.models.user import User
+from app.models import User
 from app.schemas.auth import Token
 
 templates = Jinja2Templates(directory="app/templates")
@@ -18,7 +19,15 @@ api_router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
 def login_page(request: Request):
     if request.session.get("user_email"):
         return RedirectResponse(url="/dashboard", status_code=status.HTTP_303_SEE_OTHER)
-    return templates.TemplateResponse("login.html", {"request": request, "error": None})
+    return templates.TemplateResponse(
+        "login.html",
+        {
+            "request": request,
+            "error": None,
+            "csrf_token": ensure_csrf_token(request),
+            "page": "login",
+        },
+    )
 
 
 @router.post("/login")
@@ -26,13 +35,20 @@ def login_web(
     request: Request,
     email: str = Form(...),
     password: str = Form(...),
+    csrf_token: str = Form(...),
     db: Session = Depends(get_db),
 ):
+    validate_csrf(request, csrf_token)
     user = db.query(User).filter(User.email == email).first()
-    if not user or not verify_password(password, user.hashed_password):
+    if not authenticate_user(user, password):
         return templates.TemplateResponse(
             "login.html",
-            {"request": request, "error": "Credenciais invalidas."},
+            {
+                "request": request,
+                "error": "Credenciais invalidas.",
+                "csrf_token": ensure_csrf_token(request),
+                "page": "login",
+            },
             status_code=status.HTTP_400_BAD_REQUEST,
         )
 
@@ -52,7 +68,7 @@ def login_api(
     db: Session = Depends(get_db),
 ):
     user = db.query(User).filter(User.email == form_data.username).first()
-    if not user or not verify_password(form_data.password, user.hashed_password):
+    if not authenticate_user(user, form_data.password):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Credenciais invalidas")
 
     return Token(access_token=create_access_token(user.email))

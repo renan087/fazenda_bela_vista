@@ -2,7 +2,7 @@ from app.models.coffee_variety import CoffeeVariety
 from app.models.fertilization import FertilizationRecord
 from app.models.harvest import HarvestRecord
 from app.models.irrigation import IrrigationRecord
-from app.models.pesticide import PesticideApplication
+from app.models.pesticide import PestIncident
 from app.models.plot import Plot
 from app.models.user import User
 
@@ -11,7 +11,7 @@ __all__ = [
     "FertilizationRecord",
     "HarvestRecord",
     "IrrigationRecord",
-    "PesticideApplication",
+    "PestIncident",
     "Plot",
     "User",
 ]

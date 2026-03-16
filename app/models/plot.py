@@ -1,4 +1,4 @@
-from sqlalchemy import ForeignKey, Numeric, String, Text
+from sqlalchemy import ForeignKey, Integer, Numeric, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -11,20 +11,19 @@ class Plot(Base):
     name: Mapped[str] = mapped_column(String(120), unique=True, nullable=False)
     area_hectares: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False)
     location: Mapped[str] = mapped_column(String(120), nullable=False)
+    planting_year: Mapped[int] = mapped_column(Integer, nullable=True)
     plant_count: Mapped[int] = mapped_column(nullable=False)
+    spacing_row_meters: Mapped[float] = mapped_column(Numeric(8, 2), nullable=True)
+    spacing_plant_meters: Mapped[float] = mapped_column(Numeric(8, 2), nullable=True)
+    estimated_yield_sacks: Mapped[float] = mapped_column(Numeric(10, 2), nullable=True)
+    centroid_lat: Mapped[float] = mapped_column(Numeric(10, 6), nullable=True)
+    centroid_lng: Mapped[float] = mapped_column(Numeric(10, 6), nullable=True)
+    boundary_geojson: Mapped[str] = mapped_column(Text, nullable=True)
     notes: Mapped[str] = mapped_column(Text, nullable=True)
     variety_id: Mapped[int] = mapped_column(ForeignKey("coffee_varieties.id"), nullable=True)
 
     variety = relationship("CoffeeVariety", back_populates="plots")
     irrigations = relationship("IrrigationRecord", back_populates="plot", cascade="all, delete-orphan")
-    fertilizations = relationship(
-        "FertilizationRecord",
-        back_populates="plot",
-        cascade="all, delete-orphan",
-    )
-    pesticide_applications = relationship(
-        "PesticideApplication",
-        back_populates="plot",
-        cascade="all, delete-orphan",
-    )
+    fertilizations = relationship("FertilizationRecord", back_populates="plot", cascade="all, delete-orphan")
     harvests = relationship("HarvestRecord", back_populates="plot", cascade="all, delete-orphan")
+    pest_incidents = relationship("PestIncident", back_populates="plot", cascade="all, delete-orphan")

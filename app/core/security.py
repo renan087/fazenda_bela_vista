@@ -4,6 +4,7 @@ from jose import JWTError, jwt
 from passlib.context import CryptContext
 
 from app.core.config import get_settings
+from app.models.user import User
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 ALGORITHM = "HS256"
@@ -15,6 +16,12 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
 
 def get_password_hash(password: str) -> str:
     return pwd_context.hash(password)
+
+
+def authenticate_user(user: User | None, password: str) -> bool:
+    if not user or not user.is_active:
+        return False
+    return verify_password(password, user.hashed_password)
 
 
 def create_access_token(subject: str, expires_delta: timedelta | None = None) -> str:
