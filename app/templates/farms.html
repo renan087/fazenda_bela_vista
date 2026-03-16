@@ -4,11 +4,15 @@
     <section class="rounded-[2rem] bg-white p-6 shadow-panel">
         <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Fazendas</p>
         <h3 class="mt-2 text-2xl font-semibold">{% if edit_farm %}Editar fazenda{% else %}Cadastrar fazenda{% endif %}</h3>
-        <form method="post" action="{% if edit_farm %}/fazendas/{{ edit_farm.id }}/editar{% else %}/fazendas{% endif %}" class="mt-6 grid gap-4">
+        <form method="post" enctype="multipart/form-data" action="{% if edit_farm %}/fazendas/{{ edit_farm.id }}/editar{% else %}/fazendas{% endif %}" class="mt-6 grid gap-4">
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
             <label><span class="mb-2 block text-sm font-medium">Nome</span><input name="name" value="{{ edit_farm.name if edit_farm else '' }}" class="w-full rounded-2xl border-slate-200 bg-slate-50" required></label>
             <label><span class="mb-2 block text-sm font-medium">Localizacao</span><input name="location" value="{{ edit_farm.location if edit_farm else '' }}" class="w-full rounded-2xl border-slate-200 bg-slate-50" required></label>
             <label><span class="mb-2 block text-sm font-medium">Area total (ha)</span><input type="number" step="0.01" name="total_area" value="{{ edit_farm.total_area if edit_farm else '' }}" class="w-full rounded-2xl border-slate-200 bg-slate-50" required></label>
+            <label><span class="mb-2 block text-sm font-medium">GeoJSON da fazenda (.json)</span><input type="file" name="boundary_geojson_file" accept=".json,.geojson,application/json" class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm"></label>
+            {% if edit_farm and edit_farm.boundary_geojson %}
+            <p class="-mt-2 text-sm text-slate-500">Esta fazenda ja possui geometria salva. Envie um novo arquivo apenas se quiser substituir.</p>
+            {% endif %}
             <label><span class="mb-2 block text-sm font-medium">Observacoes</span><textarea name="notes" rows="4" class="w-full rounded-2xl border-slate-200 bg-slate-50">{{ edit_farm.notes if edit_farm else '' }}</textarea></label>
             <div class="flex gap-3">
                 <button class="rounded-2xl bg-brand-500 px-4 py-3 font-semibold text-white hover:bg-brand-700">{% if edit_farm %}Salvar alteracoes{% else %}Salvar fazenda{% endif %}</button>
@@ -29,6 +33,7 @@
                         <h4 class="text-lg font-semibold">{{ farm.name }}</h4>
                         <p class="mt-1 text-sm text-slate-500">{{ farm.location }}</p>
                         <p class="mt-2 text-sm text-slate-600">Area total: <strong>{{ farm.total_area }} ha</strong></p>
+                        <p class="mt-1 text-sm text-slate-500">{% if farm.boundary_geojson %}Area georreferenciada pronta para o mapa{% else %}Sem geometria enviada{% endif %}</p>
                     </div>
                     <div class="flex gap-2">
                         <a href="/fazendas?edit_id={{ farm.id }}" class="rounded-xl bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-700">Editar</a>

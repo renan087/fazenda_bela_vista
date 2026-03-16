@@ -2,8 +2,8 @@
 {% block content %}
 <section class="rounded-[2rem] bg-white p-6 shadow-panel">
     <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Mapa da Fazenda</p>
-    <h3 class="mt-2 text-2xl font-semibold">Talhoes georreferenciados</h3>
-    <p class="mt-2 text-sm text-slate-500">Visualizacao operacional com base em OpenStreetMap e geometrias em GeoJSON.</p>
+    <h3 class="mt-2 text-2xl font-semibold">Fazendas e setores georreferenciados</h3>
+    <p class="mt-2 text-sm text-slate-500">Visualizacao operacional com base em OpenStreetMap e geometrias em GeoJSON enviadas no cadastro.</p>
     <div id="farmMap" class="mt-6 h-[620px] overflow-hidden rounded-[1.5rem]"></div>
 </section>
 
@@ -12,9 +12,15 @@
     const farmMap = L.map('farmMap').setView([-20.7442, -42.8721], 14);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '&copy; OpenStreetMap' }).addTo(farmMap);
     const geoLayer = L.geoJSON(mapData, {
-        style: feature => ({ color: '#365a29', weight: 2, fillColor: '#5f8a4c', fillOpacity: 0.4 }),
+        style: (feature) => feature.properties.feature_type === 'farm'
+            ? { color: '#0f172a', weight: 2, fillColor: '#94a3b8', fillOpacity: 0.12, dashArray: '6 6' }
+            : { color: '#365a29', weight: 2, fillColor: '#5f8a4c', fillOpacity: 0.35 },
         onEachFeature: (feature, layer) => {
-            layer.bindPopup(`<div style="min-width: 180px"><strong>${feature.properties.name}</strong><br>${feature.properties.variety}<br>Area: ${feature.properties.area} ha<br>Estimativa: ${feature.properties.estimated} sacas</div>`);
+            if (feature.properties.feature_type === 'farm') {
+                layer.bindPopup(`<div style="min-width: 180px"><strong>${feature.properties.name}</strong><br>${feature.properties.location}<br>Area total: ${feature.properties.area} ha</div>`);
+                return;
+            }
+            layer.bindPopup(`<div style="min-width: 180px"><strong>${feature.properties.name}</strong><br>${feature.properties.farm}<br>${feature.properties.variety}<br>Area: ${feature.properties.area} ha<br>Estimativa: ${feature.properties.estimated} sacas</div>`);
         }
     }).addTo(farmMap);
     if (geoLayer.getBounds().isValid()) {

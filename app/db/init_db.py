@@ -24,6 +24,7 @@ def _sync_schema() -> None:
             name VARCHAR(160) UNIQUE NOT NULL,
             location VARCHAR(180) NOT NULL,
             total_area NUMERIC(12,2) NOT NULL,
+            boundary_geojson TEXT,
             notes TEXT
         )
         """,
@@ -37,6 +38,14 @@ def _sync_schema() -> None:
         "ALTER TABLE plots ADD COLUMN IF NOT EXISTS centroid_lat NUMERIC(10,6)",
         "ALTER TABLE plots ADD COLUMN IF NOT EXISTS centroid_lng NUMERIC(10,6)",
         "ALTER TABLE plots ADD COLUMN IF NOT EXISTS boundary_geojson TEXT",
+        "ALTER TABLE farms ADD COLUMN IF NOT EXISTS boundary_geojson TEXT",
+        "ALTER TABLE plots ADD COLUMN IF NOT EXISTS irrigation_type VARCHAR(40) DEFAULT 'none'",
+        "ALTER TABLE plots ADD COLUMN IF NOT EXISTS irrigation_line_count INTEGER",
+        "ALTER TABLE plots ADD COLUMN IF NOT EXISTS irrigation_line_length_meters NUMERIC(10,2)",
+        "ALTER TABLE plots ADD COLUMN IF NOT EXISTS drip_spacing_meters NUMERIC(8,3)",
+        "ALTER TABLE plots ADD COLUMN IF NOT EXISTS drip_liters_per_hour NUMERIC(10,2)",
+        "ALTER TABLE plots ADD COLUMN IF NOT EXISTS sprinkler_count INTEGER",
+        "ALTER TABLE plots ADD COLUMN IF NOT EXISTS sprinkler_liters_per_hour NUMERIC(10,2)",
         "ALTER TABLE plots ALTER COLUMN location DROP NOT NULL",
         "ALTER TABLE irrigation_records ADD COLUMN IF NOT EXISTS water_volume_mm NUMERIC(10,2)",
         "ALTER TABLE irrigation_records ADD COLUMN IF NOT EXISTS method VARCHAR(80)",
@@ -49,6 +58,8 @@ def _sync_schema() -> None:
             connection.execute(text(statement))
         connection.execute(text("ALTER TABLE irrigation_records ALTER COLUMN water_volume_mm DROP NOT NULL"))
         connection.execute(text("ALTER TABLE irrigation_records ALTER COLUMN method DROP NOT NULL"))
+        connection.execute(text("UPDATE plots SET irrigation_type = 'none' WHERE irrigation_type IS NULL"))
+        connection.execute(text("ALTER TABLE plots ALTER COLUMN irrigation_type SET DEFAULT 'none'"))
         connection.execute(
             text(
                 """
@@ -117,6 +128,7 @@ def seed_demo_data(db: Session) -> None:
         name="Fazenda Bela Vista",
         location="Manhuacu - MG",
         total_area=28.5,
+        boundary_geojson='{"type":"Polygon","coordinates":[[[-42.8784,-20.7415],[-42.8686,-20.7415],[-42.8686,-20.7472],[-42.8784,-20.7472],[-42.8784,-20.7415]]]}',
         notes="Unidade principal com foco em cafe especial.",
     )
     db.add(farm)
@@ -134,6 +146,11 @@ def seed_demo_data(db: Session) -> None:
         centroid_lat=-20.743218,
         centroid_lng=-42.874221,
         boundary_geojson='{"type":"Polygon","coordinates":[[[-42.8758,-20.7428],[-42.8736,-20.7428],[-42.8736,-20.7442],[-42.8758,-20.7442],[-42.8758,-20.7428]]]}',
+        irrigation_type="gotejo",
+        irrigation_line_count=12,
+        irrigation_line_length_meters=90,
+        drip_spacing_meters=0.3,
+        drip_liters_per_hour=1.6,
         notes="Talhao com maior vigor vegetativo.",
         farm_id=farm.id,
         variety_id=catuai.id,
@@ -150,6 +167,9 @@ def seed_demo_data(db: Session) -> None:
         centroid_lat=-20.745418,
         centroid_lng=-42.870411,
         boundary_geojson='{"type":"Polygon","coordinates":[[[-42.8717,-20.7447],[-42.8694,-20.7447],[-42.8694,-20.7461],[-42.8717,-20.7461],[-42.8717,-20.7447]]]}',
+        irrigation_type="aspersor",
+        sprinkler_count=24,
+        sprinkler_liters_per_hour=480,
         notes="Area com foco em qualidade de bebida.",
         farm_id=farm.id,
         variety_id=mundo_novo.id,

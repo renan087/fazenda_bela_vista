@@ -1,4 +1,4 @@
-from sqlalchemy import func
+from sqlalchemy import distinct, func
 from sqlalchemy.orm import Session, joinedload
 
 from app.models import CoffeeVariety, Farm, FertilizationRecord, HarvestRecord, IrrigationRecord, PestIncident, Plot
@@ -17,17 +17,17 @@ class FarmRepository:
     def list_plots(
         self,
         search: str | None = None,
-        farm_id: int | None = None,
-        variety_id: int | None = None,
+        farm_ids: list[int] | None = None,
+        variety_ids: list[int] | None = None,
         sort: str = "name",
     ) -> list[Plot]:
         query = self.db.query(Plot).options(joinedload(Plot.variety), joinedload(Plot.farm))
         if search:
             query = query.filter(Plot.name.ilike(f"%{search}%"))
-        if farm_id:
-            query = query.filter(Plot.farm_id == farm_id)
-        if variety_id:
-            query = query.filter(Plot.variety_id == variety_id)
+        if farm_ids:
+            query = query.filter(Plot.farm_id.in_(farm_ids))
+        if variety_ids:
+            query = query.filter(Plot.variety_id.in_(variety_ids))
         order_map = {
             "name": Plot.name.asc(),
             "area_desc": Plot.area_hectares.desc(),
@@ -37,6 +37,32 @@ class FarmRepository:
         }
         query = query.order_by(order_map.get(sort, Plot.name.asc()))
         return query.all()
+
+    def list_plot_filter_options(
+        self,
+        selected_farm_ids: list[int] | None = None,
+        selected_variety_ids: list[int] | None = None,
+    ) -> tuple[list[Farm], list[CoffeeVariety]]:
+        farm_query = self.db.query(Farm).order_by(Farm.name.asc())
+        variety_query = self.db.query(CoffeeVariety).order_by(CoffeeVariety.name.asc())
+
+        if selected_variety_ids:
+            farm_ids = (
+                self.db.query(distinct(Plot.farm_id))
+                .filter(Plot.farm_id.isnot(None), Plot.variety_id.in_(selected_variety_ids))
+                .all()
+            )
+            farm_query = farm_query.filter(Farm.id.in_([row[0] for row in farm_ids] or [-1]))
+
+        if selected_farm_ids:
+            variety_ids = (
+                self.db.query(distinct(Plot.variety_id))
+                .filter(Plot.variety_id.isnot(None), Plot.farm_id.in_(selected_farm_ids))
+                .all()
+            )
+            variety_query = variety_query.filter(CoffeeVariety.id.in_([row[0] for row in variety_ids] or [-1]))
+
+        return farm_query.all(), variety_query.all()
 
     def get_plot(self, plot_id: int) -> Plot | None:
         return (

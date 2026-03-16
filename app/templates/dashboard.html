@@ -95,7 +95,7 @@
     </article>
     <article class="rounded-[2rem] bg-white p-6 shadow-panel">
         <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Mapa</p>
-        <h3 class="mt-2 text-xl font-semibold">Setores desenhados</h3>
+        <h3 class="mt-2 text-xl font-semibold">Fazendas e setores desenhados</h3>
         <div id="dashboardMap" class="mt-6 h-72 overflow-hidden rounded-2xl"></div>
     </article>
 </section>
@@ -191,9 +191,15 @@
         attribution: '&copy; OpenStreetMap'
     }).addTo(map);
     const layer = L.geoJSON(mapData, {
-        style: () => ({ color: '#446a36', weight: 2, fillOpacity: 0.35 }),
+        style: (feature) => feature.properties.feature_type === 'farm'
+            ? ({ color: '#0f172a', weight: 2, fillOpacity: 0.08, dashArray: '6 6' })
+            : ({ color: '#446a36', weight: 2, fillOpacity: 0.35 }),
         onEachFeature: (feature, leafletLayer) => {
-            leafletLayer.bindPopup(`<strong>${feature.properties.name}</strong><br>${feature.properties.variety}<br>${feature.properties.area} ha`);
+            if (feature.properties.feature_type === 'farm') {
+                leafletLayer.bindPopup(`<strong>${feature.properties.name}</strong><br>${feature.properties.location}<br>${feature.properties.area} ha`);
+                return;
+            }
+            leafletLayer.bindPopup(`<strong>${feature.properties.name}</strong><br>${feature.properties.farm}<br>${feature.properties.variety}<br>${feature.properties.area} ha`);
         }
     }).addTo(map);
     if (layer.getBounds().isValid()) {

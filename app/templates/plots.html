@@ -4,16 +4,14 @@
     <section class="rounded-[2rem] bg-white p-6 shadow-panel">
         <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Cadastro de Setores</p>
         <h3 class="mt-2 text-2xl font-semibold">{% if edit_plot %}Editar setor{% else %}Estrutura produtiva da fazenda{% endif %}</h3>
-        <form method="post" action="{% if edit_plot %}/setores/{{ edit_plot.id }}/editar{% else %}/setores{% endif %}" class="mt-6 grid gap-4 md:grid-cols-2">
+        <form method="post" enctype="multipart/form-data" action="{% if edit_plot %}/setores/{{ edit_plot.id }}/editar{% else %}/setores{% endif %}" class="mt-6 grid gap-4 md:grid-cols-2">
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
             <label class="block md:col-span-2"><span class="mb-2 block text-sm font-medium">Nome do setor</span><input name="name" value="{{ edit_plot.name if edit_plot else '' }}" class="w-full rounded-2xl border-slate-200 bg-slate-50" required></label>
             <label><span class="mb-2 block text-sm font-medium">Area (ha)</span><input type="number" step="0.01" name="area_hectares" value="{{ edit_plot.area_hectares if edit_plot else '' }}" class="w-full rounded-2xl border-slate-200 bg-slate-50" required></label>
             <div>
                 <div class="mb-2 flex items-center justify-between gap-3">
                     <span class="block text-sm font-medium">Fazenda</span>
-                    {% if not edit_plot %}
-                    <button type="button" data-open-farm-modal class="text-sm font-semibold text-brand-700 hover:text-brand-500">Criar nova fazenda</button>
-                    {% endif %}
+                    <button type="button" data-open-farm-modal class="text-sm font-semibold text-brand-700 hover:text-brand-500">Nova fazenda</button>
                 </div>
                 <select name="farm_id" class="w-full rounded-2xl border-slate-200 bg-slate-50" required>
                     <option value="">Selecione</option>
@@ -37,7 +35,35 @@
             </label>
             <label><span class="mb-2 block text-sm font-medium">Latitude</span><input type="number" step="0.000001" name="centroid_lat" value="{{ edit_plot.centroid_lat if edit_plot else '' }}" class="w-full rounded-2xl border-slate-200 bg-slate-50" placeholder="Opcional"></label>
             <label><span class="mb-2 block text-sm font-medium">Longitude</span><input type="number" step="0.000001" name="centroid_lng" value="{{ edit_plot.centroid_lng if edit_plot else '' }}" class="w-full rounded-2xl border-slate-200 bg-slate-50" placeholder="Opcional"></label>
-            <label class="md:col-span-2"><span class="mb-2 block text-sm font-medium">GeoJSON do setor</span><textarea name="boundary_geojson" rows="4" class="w-full rounded-2xl border-slate-200 bg-slate-50" placeholder='{"type":"Polygon","coordinates":[...]}'>{{ edit_plot.boundary_geojson if edit_plot else '' }}</textarea></label>
+            <label class="md:col-span-2"><span class="mb-2 block text-sm font-medium">GeoJSON do setor (.json)</span><input type="file" name="boundary_geojson_file" accept=".json,.geojson,application/json" class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm"></label>
+            {% if edit_plot and edit_plot.boundary_geojson %}
+            <p class="md:col-span-2 -mt-2 text-sm text-slate-500">Este setor ja possui geometria salva no mapa. Envie um novo arquivo apenas se quiser substituir.</p>
+            {% endif %}
+
+            <div class="md:col-span-2 rounded-[1.5rem] border border-slate-200 bg-slate-50 p-4">
+                <p class="text-xs uppercase tracking-[0.3em] text-slate-400">Configuracao de Irrigacao</p>
+                <div class="mt-4 grid gap-4 md:grid-cols-2">
+                    <label><span class="mb-2 block text-sm font-medium">Tipo de irrigacao</span>
+                        <select name="irrigation_type" data-irrigation-type class="w-full rounded-2xl border-slate-200 bg-white">
+                            <option value="none" {% if not edit_plot or edit_plot.irrigation_type == 'none' %}selected{% endif %}>Nenhum</option>
+                            <option value="gotejo" {% if edit_plot and edit_plot.irrigation_type == 'gotejo' %}selected{% endif %}>Gotejo</option>
+                            <option value="aspersor" {% if edit_plot and edit_plot.irrigation_type == 'aspersor' %}selected{% endif %}>Aspersor</option>
+                        </select>
+                    </label>
+                    <label><span class="mb-2 block text-sm font-medium">Quantidade de linhas de irrigacao</span><input type="number" name="irrigation_line_count" value="{{ edit_plot.irrigation_line_count if edit_plot and edit_plot.irrigation_line_count is not none else '' }}" class="w-full rounded-2xl border-slate-200 bg-white" placeholder="Opcional"></label>
+                </div>
+                <div data-irrigation-group="gotejo" class="mt-4 grid gap-4 md:grid-cols-3">
+                    <label><span class="mb-2 block text-sm font-medium">Comprimento das linhas (m)</span><input type="number" step="0.01" name="irrigation_line_length_meters" value="{{ edit_plot.irrigation_line_length_meters if edit_plot and edit_plot.irrigation_line_length_meters is not none else '' }}" class="w-full rounded-2xl border-slate-200 bg-white" placeholder="Ex.: 90"></label>
+                    <label><span class="mb-2 block text-sm font-medium">Espacamento entre gotejos (cm)</span><input type="number" step="0.01" name="drip_spacing_centimeters" value="{{ ((edit_plot.drip_spacing_meters * 100) if edit_plot and edit_plot.drip_spacing_meters is not none else '') }}" class="w-full rounded-2xl border-slate-200 bg-white" placeholder="Ex.: 30"></label>
+                    <label><span class="mb-2 block text-sm font-medium">Litros por gotejo / hora</span><input type="number" step="0.01" name="drip_liters_per_hour" value="{{ edit_plot.drip_liters_per_hour if edit_plot and edit_plot.drip_liters_per_hour is not none else '' }}" class="w-full rounded-2xl border-slate-200 bg-white" placeholder="Ex.: 1.6"></label>
+                </div>
+                <div data-irrigation-group="aspersor" class="mt-4 grid gap-4 md:grid-cols-2">
+                    <label><span class="mb-2 block text-sm font-medium">Quantidade de aspersores</span><input type="number" name="sprinkler_count" value="{{ edit_plot.sprinkler_count if edit_plot and edit_plot.sprinkler_count is not none else '' }}" class="w-full rounded-2xl border-slate-200 bg-white"></label>
+                    <label><span class="mb-2 block text-sm font-medium">Litros por aspersor / hora</span><input type="number" step="0.01" name="sprinkler_liters_per_hour" value="{{ edit_plot.sprinkler_liters_per_hour if edit_plot and edit_plot.sprinkler_liters_per_hour is not none else '' }}" class="w-full rounded-2xl border-slate-200 bg-white"></label>
+                </div>
+                <p class="mt-4 text-sm text-slate-500">Quando os dados de irrigacao estiverem preenchidos, o sistema calcula automaticamente o volume em litros no lancamento da irrigacao.</p>
+            </div>
+
             <label class="md:col-span-2"><span class="mb-2 block text-sm font-medium">Observacoes</span><textarea name="notes" rows="3" class="w-full rounded-2xl border-slate-200 bg-slate-50">{{ edit_plot.notes if edit_plot else '' }}</textarea></label>
             <div class="md:col-span-2 flex gap-3">
                 <button class="rounded-2xl bg-brand-500 px-4 py-3 font-semibold text-white hover:bg-brand-700">{% if edit_plot %}Salvar alteracoes{% else %}Salvar setor{% endif %}</button>
@@ -52,10 +78,14 @@
         <h3 class="mt-2 text-2xl font-semibold">Setores cadastrados</h3>
         <form method="get" action="/setores" class="mt-6 grid gap-3 rounded-[1.5rem] bg-slate-50 p-4 md:grid-cols-4">
             <label><span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Buscar</span><input name="q" value="{{ filters.q }}" class="w-full rounded-xl border-slate-200 bg-white" placeholder="Nome do setor"></label>
-            <label><span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Fazenda</span><select name="farm_id" class="w-full rounded-xl border-slate-200 bg-white"><option value="">Todas</option>{% for farm in farms %}<option value="{{ farm.id }}" {% if filters.farm_id == farm.id %}selected{% endif %}>{{ farm.name }}</option>{% endfor %}</select></label>
-            <label><span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Variedade</span><select name="variety_id" class="w-full rounded-xl border-slate-200 bg-white"><option value="">Todas</option>{% for variety in varieties %}<option value="{{ variety.id }}" {% if filters.variety_id == variety.id %}selected{% endif %}>{{ variety.name }}</option>{% endfor %}</select></label>
+            <label class="md:col-span-1"><span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Fazenda</span><select name="farm_id" multiple size="4" data-filter-farms class="w-full rounded-xl border-slate-200 bg-white">{% for farm in farms %}<option value="{{ farm.id }}" {% if farm.id in filters.farm_ids %}selected{% endif %}>{{ farm.name }}</option>{% endfor %}</select></label>
+            <label class="md:col-span-1"><span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Variedade</span><select name="variety_id" multiple size="4" data-filter-varieties class="w-full rounded-xl border-slate-200 bg-white">{% for variety in varieties %}<option value="{{ variety.id }}" {% if variety.id in filters.variety_ids %}selected{% endif %}>{{ variety.name }}</option>{% endfor %}</select></label>
             <label><span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Ordenar</span><select name="sort" class="w-full rounded-xl border-slate-200 bg-white"><option value="name" {% if filters.sort == 'name' %}selected{% endif %}>Nome</option><option value="area_desc" {% if filters.sort == 'area_desc' %}selected{% endif %}>Maior area</option><option value="area_asc" {% if filters.sort == 'area_asc' %}selected{% endif %}>Menor area</option><option value="planting_desc" {% if filters.sort == 'planting_desc' %}selected{% endif %}>Plantio recente</option><option value="planting_asc" {% if filters.sort == 'planting_asc' %}selected{% endif %}>Plantio antigo</option></select></label>
-            <div class="md:col-span-4 flex gap-3"><button class="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white">Filtrar</button><a href="/setores" class="rounded-xl bg-white px-4 py-2 text-sm font-semibold text-slate-700 ring-1 ring-slate-200">Limpar</a></div>
+            <div class="md:col-span-4 flex flex-wrap gap-3">
+                <button class="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white">Filtrar</button>
+                <a href="/setores" class="rounded-xl bg-white px-4 py-2 text-sm font-semibold text-slate-700 ring-1 ring-slate-200">Limpar</a>
+                <p class="self-center text-xs text-slate-500">Voce pode selecionar uma ou varias fazendas e variedades.</p>
+            </div>
         </form>
         <div class="mt-6 space-y-4">
             {% for plot in plots %}
@@ -79,6 +109,8 @@
                     <p>Plantas: <strong>{{ plot.plant_count }}</strong></p>
                     <p>Espacamento: <strong>{{ plot.spacing_row_meters or "-" }} m x {{ ((plot.spacing_plant_meters * 100) if plot.spacing_plant_meters is not none else "-") }} cm</strong></p>
                     <p>Estimativa: <strong>{{ plot.estimated_yield_sacks or "-" }} sacas</strong></p>
+                    <p>Tipo de irrigacao: <strong>{% if plot.irrigation_type == 'gotejo' %}Gotejo{% elif plot.irrigation_type == 'aspersor' %}Aspersor{% else %}Nenhum{% endif %}</strong></p>
+                    <p>Linhas de irrigacao: <strong>{{ plot.irrigation_line_count or "-" }}</strong></p>
                 </div>
                 {% if plot.notes %}
                 <p class="mt-4 text-sm text-slate-500">{{ plot.notes }}</p>
@@ -90,7 +122,7 @@
         </div>
     </section>
 </div>
-{% if not edit_plot %}
+
 <dialog id="farm-modal" class="backdrop:bg-slate-950/40 rounded-[2rem] p-0 shadow-2xl">
     <div class="w-full max-w-2xl rounded-[2rem] bg-white p-6">
         <div class="flex items-start justify-between gap-4">
@@ -100,13 +132,14 @@
             </div>
             <button type="button" data-close-farm-modal class="rounded-xl bg-slate-100 px-3 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-200">Fechar</button>
         </div>
-        <form method="post" action="/fazendas" class="mt-6 grid gap-4 md:grid-cols-2">
+        <form method="post" enctype="multipart/form-data" action="/fazendas" class="mt-6 grid gap-4 md:grid-cols-2">
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
             <input type="hidden" name="redirect_to" value="/setores">
             <label><span class="mb-2 block text-sm font-medium">Nome da fazenda</span><input name="name" class="w-full rounded-2xl border-slate-200 bg-slate-50" required></label>
             <label><span class="mb-2 block text-sm font-medium">Localizacao</span><input name="location" class="w-full rounded-2xl border-slate-200 bg-slate-50" required></label>
             <label><span class="mb-2 block text-sm font-medium">Area total (ha)</span><input type="number" step="0.01" name="total_area" class="w-full rounded-2xl border-slate-200 bg-slate-50" required></label>
-            <label><span class="mb-2 block text-sm font-medium">Observacoes</span><input name="notes" class="w-full rounded-2xl border-slate-200 bg-slate-50"></label>
+            <label><span class="mb-2 block text-sm font-medium">GeoJSON da fazenda (.json)</span><input type="file" name="boundary_geojson_file" accept=".json,.geojson,application/json" class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm"></label>
+            <label class="md:col-span-2"><span class="mb-2 block text-sm font-medium">Observacoes</span><input name="notes" class="w-full rounded-2xl border-slate-200 bg-slate-50"></label>
             <div class="md:col-span-2 flex gap-3">
                 <button class="rounded-2xl bg-brand-500 px-4 py-3 font-semibold text-white hover:bg-brand-700">Salvar fazenda</button>
                 <button type="button" data-close-farm-modal class="rounded-2xl bg-slate-100 px-4 py-3 font-semibold text-slate-700 hover:bg-slate-200">Cancelar</button>
@@ -114,20 +147,68 @@
         </form>
     </div>
 </dialog>
+
 <script>
     (() => {
         const dialog = document.getElementById('farm-modal');
-        if (!dialog) return;
-        document.querySelectorAll('[data-open-farm-modal]').forEach((button) => {
-            button.addEventListener('click', () => dialog.showModal());
-        });
-        document.querySelectorAll('[data-close-farm-modal]').forEach((button) => {
-            button.addEventListener('click', () => dialog.close());
-        });
-        {% if open_farm_modal %}
-        dialog.showModal();
-        {% endif %}
+        if (dialog) {
+            document.querySelectorAll('[data-open-farm-modal]').forEach((button) => {
+                button.addEventListener('click', () => dialog.showModal());
+            });
+            document.querySelectorAll('[data-close-farm-modal]').forEach((button) => {
+                button.addEventListener('click', () => dialog.close());
+            });
+            {% if open_farm_modal %}
+            dialog.showModal();
+            {% endif %}
+        }
+
+        const irrigationType = document.querySelector('[data-irrigation-type]');
+        const irrigationGroups = document.querySelectorAll('[data-irrigation-group]');
+        const syncIrrigationGroups = () => {
+            const selected = irrigationType ? irrigationType.value : 'none';
+            irrigationGroups.forEach((group) => {
+                group.classList.toggle('hidden', group.dataset.irrigationGroup !== selected);
+            });
+        };
+        if (irrigationType) {
+            irrigationType.addEventListener('change', syncIrrigationGroups);
+            syncIrrigationGroups();
+        }
+
+        const links = {{ filter_links|tojson }};
+        const farmSelect = document.querySelector('[data-filter-farms]');
+        const varietySelect = document.querySelector('[data-filter-varieties]');
+        const uniqueValues = (items) => [...new Set(items.filter((item) => item !== null && item !== undefined))];
+        const selectedValues = (select) => Array.from(select?.selectedOptions || []).map((option) => Number(option.value));
+        const toggleOptions = (select, allowed) => {
+            if (!select) return;
+            Array.from(select.options).forEach((option) => {
+                const enabled = !allowed.length || allowed.includes(Number(option.value));
+                option.hidden = !enabled;
+            });
+        };
+        const syncCascade = () => {
+            const selectedFarms = selectedValues(farmSelect);
+            const selectedVarieties = selectedValues(varietySelect);
+            const allowedVarieties = uniqueValues(
+                links
+                    .filter((item) => !selectedFarms.length || selectedFarms.includes(item.farm_id))
+                    .map((item) => item.variety_id)
+            );
+            const allowedFarms = uniqueValues(
+                links
+                    .filter((item) => !selectedVarieties.length || selectedVarieties.includes(item.variety_id))
+                    .map((item) => item.farm_id)
+            );
+            toggleOptions(varietySelect, allowedVarieties);
+            toggleOptions(farmSelect, allowedFarms);
+        };
+        if (farmSelect && varietySelect) {
+            farmSelect.addEventListener('change', syncCascade);
+            varietySelect.addEventListener('change', syncCascade);
+            syncCascade();
+        }
     })();
 </script>
-{% endif %}
 {% endblock %}

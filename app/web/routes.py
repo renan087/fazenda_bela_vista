@@ -1,7 +1,7 @@
 from datetime import datetime
 from urllib.parse import urlencode
 
-from fastapi import APIRouter, Depends, Form, Request, status
+from fastapi import APIRouter, Depends, File, Form, Request, UploadFile, status
 from fastapi.responses import RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
@@ -13,6 +13,7 @@ from app.models import CoffeeVariety, Farm, FertilizationRecord, HarvestRecord, 
 from app.repositories.farm import FarmRepository
 from app.services.dashboard import build_dashboard_context
 from app.services.forms import (
+    calculate_irrigation_volume,
     create_farm,
     create_fertilization,
     create_harvest,
@@ -20,6 +21,8 @@ from app.services.forms import (
     create_pest_incident,
     create_plot,
     create_variety,
+    estimate_geojson_centroid,
+    extract_geojson_file,
     normalize_geojson,
     update_farm,
     update_fertilization,
@@ -39,8 +42,16 @@ def _redirect(url: str) -> RedirectResponse:
 
 
 def _redirect_with_query(path: str, **params) -> RedirectResponse:
-    filtered = {key: value for key, value in params.items() if value not in (None, "", False)}
-    return _redirect(f"{path}?{urlencode(filtered)}" if filtered else path)
+    filtered = {}
+    for key, value in params.items():
+        if value in (None, "", False):
+            continue
+        if isinstance(value, (list, tuple)):
+            if value:
+                filtered[key] = value
+            continue
+        filtered[key] = value
+    return _redirect(f"{path}?{urlencode(filtered, doseq=True)}" if filtered else path)
 
 
 def _base_context(request: Request, user: User, csrf_token: str, page: str, **kwargs):
@@ -72,9 +83,93 @@ def _int_or_none(value: str | None):
     return int(value) if value not in (None, "") else None
 
 
+def _int_list(values: list[str]) -> list[int]:
+    parsed: list[int] = []
+    for value in values:
+        if value in (None, ""):
+            continue
+        parsed.append(int(value))
+    return parsed
+
+
 def _meters_from_cm(value: str | None):
     centimeters = _float_or_none(value)
     return round(centimeters / 100, 4) if centimeters is not None else None
+
+
+def _normalize_irrigation_type(value: str | None) -> str:
+    normalized = (value or "none").strip().lower()
+    return normalized if normalized in {"none", "gotejo", "aspersor"} else "none"
+
+
+def _resolve_geojson(upload: UploadFile | None, fallback_text: str | None, current_value: str | None = None) -> tuple[str | None, bool]:
+    if upload and upload.filename:
+        raw_bytes = upload.file.read()
+        parsed = extract_geojson_file(raw_bytes)
+        return parsed, parsed is not None
+    normalized = normalize_geojson(fallback_text)
+    if normalized is not None:
+        return normalized, True
+    return current_value, False
+
+
+def _build_plot_payload(
+    farm: Farm,
+    name: str,
+    area_hectares: float,
+    planting_date: str | None,
+    plant_count: int,
+    spacing_row_meters: str | None,
+    spacing_plant_centimeters: str | None,
+    estimated_yield_sacks: str | None,
+    variety_id: str | None,
+    centroid_lat: str | None,
+    centroid_lng: str | None,
+    boundary_geojson: str | None,
+    notes: str | None,
+    irrigation_type: str,
+    irrigation_line_count: str | None,
+    irrigation_line_length_meters: str | None,
+    drip_spacing_centimeters: str | None,
+    drip_liters_per_hour: str | None,
+    sprinkler_count: str | None,
+    sprinkler_liters_per_hour: str | None,
+) -> dict:
+    auto_lat, auto_lng = estimate_geojson_centroid(boundary_geojson)
+    normalized_irrigation_type = _normalize_irrigation_type(irrigation_type)
+    payload = {
+        "name": name,
+        "area_hectares": area_hectares,
+        "location": farm.location,
+        "planting_date": planting_date,
+        "plant_count": plant_count,
+        "spacing_row_meters": _float_or_none(spacing_row_meters),
+        "spacing_plant_meters": _meters_from_cm(spacing_plant_centimeters),
+        "estimated_yield_sacks": _float_or_none(estimated_yield_sacks),
+        "variety_id": _int_or_none(variety_id),
+        "centroid_lat": _float_or_none(centroid_lat) if centroid_lat not in (None, "") else auto_lat,
+        "centroid_lng": _float_or_none(centroid_lng) if centroid_lng not in (None, "") else auto_lng,
+        "boundary_geojson": boundary_geojson,
+        "notes": notes,
+        "farm_id": farm.id,
+        "irrigation_type": normalized_irrigation_type,
+        "irrigation_line_count": _int_or_none(irrigation_line_count),
+        "irrigation_line_length_meters": _float_or_none(irrigation_line_length_meters),
+        "drip_spacing_meters": _meters_from_cm(drip_spacing_centimeters),
+        "drip_liters_per_hour": _float_or_none(drip_liters_per_hour),
+        "sprinkler_count": _int_or_none(sprinkler_count),
+        "sprinkler_liters_per_hour": _float_or_none(sprinkler_liters_per_hour),
+    }
+    if normalized_irrigation_type != "gotejo":
+        payload["irrigation_line_length_meters"] = None
+        payload["drip_spacing_meters"] = None
+        payload["drip_liters_per_hour"] = None
+    if normalized_irrigation_type != "aspersor":
+        payload["sprinkler_count"] = None
+        payload["sprinkler_liters_per_hour"] = None
+    if normalized_irrigation_type == "none":
+        payload["irrigation_line_count"] = None
+    return payload
 
 
 @router.get("/")
@@ -101,8 +196,6 @@ def dashboard(
 def plots_page(
     request: Request,
     q: str | None = None,
-    farm_id: int | None = None,
-    variety_id: int | None = None,
     sort: str = "name",
     edit_id: int | None = None,
     selected_farm_id: int | None = None,
@@ -112,6 +205,8 @@ def plots_page(
     csrf_token: str = Depends(get_csrf_token),
 ):
     repo = _repository(db)
+    farm_ids = _int_list(request.query_params.getlist("farm_id"))
+    variety_ids = _int_list(request.query_params.getlist("variety_id"))
     edit_plot = repo.get_plot(edit_id) if edit_id else None
     return templates.TemplateResponse(
         "plots.html",
@@ -120,13 +215,18 @@ def plots_page(
             user,
             csrf_token,
             "plots",
-            plots=repo.list_plots(search=q, farm_id=farm_id, variety_id=variety_id, sort=sort),
+            plots=repo.list_plots(search=q, farm_ids=farm_ids, variety_ids=variety_ids, sort=sort),
             farms=repo.list_farms(),
             varieties=repo.list_varieties(),
-            filters={"q": q or "", "farm_id": farm_id, "variety_id": variety_id, "sort": sort},
+            filters={"q": q or "", "farm_ids": farm_ids, "variety_ids": variety_ids, "sort": sort},
             edit_plot=edit_plot,
             selected_farm_id=selected_farm_id,
             open_farm_modal=bool(open_farm_modal),
+            filter_links=[
+                {"farm_id": plot.farm_id, "variety_id": plot.variety_id}
+                for plot in repo.list_plots()
+                if plot.farm_id or plot.variety_id
+            ],
         ),
     )
 
@@ -148,6 +248,14 @@ def create_plot_action(
     centroid_lat: str | None = Form(None),
     centroid_lng: str | None = Form(None),
     boundary_geojson: str | None = Form(None),
+    boundary_geojson_file: UploadFile | None = File(None),
+    irrigation_type: str | None = Form("none"),
+    irrigation_line_count: str | None = Form(None),
+    irrigation_line_length_meters: str | None = Form(None),
+    drip_spacing_centimeters: str | None = Form(None),
+    drip_liters_per_hour: str | None = Form(None),
+    sprinkler_count: str | None = Form(None),
+    sprinkler_liters_per_hour: str | None = Form(None),
     notes: str | None = Form(None),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user_web),
@@ -163,24 +271,34 @@ def create_plot_action(
     if not farm:
         _flash(request, "error", "A fazenda selecionada nao foi encontrada.")
         return _redirect("/setores")
+    geometry, geometry_ok = _resolve_geojson(boundary_geojson_file, boundary_geojson)
+    if boundary_geojson_file and boundary_geojson_file.filename and not geometry_ok:
+        _flash(request, "error", "O arquivo GeoJSON do setor nao e valido.")
+        return _redirect_with_query("/setores", selected_farm_id=selected_farm_id)
     create_plot(
         repo,
-        {
-            "name": name,
-            "area_hectares": area_hectares,
-            "location": farm.location,
-            "planting_date": planting_date,
-            "plant_count": plant_count,
-            "spacing_row_meters": _float_or_none(spacing_row_meters),
-            "spacing_plant_meters": _meters_from_cm(spacing_plant_centimeters),
-            "estimated_yield_sacks": _float_or_none(estimated_yield_sacks),
-            "variety_id": _int_or_none(variety_id),
-            "centroid_lat": _float_or_none(centroid_lat),
-            "centroid_lng": _float_or_none(centroid_lng),
-            "boundary_geojson": normalize_geojson(boundary_geojson),
-            "notes": notes,
-            "farm_id": selected_farm_id,
-        },
+        _build_plot_payload(
+            farm=farm,
+            name=name,
+            area_hectares=area_hectares,
+            planting_date=planting_date,
+            plant_count=plant_count,
+            spacing_row_meters=spacing_row_meters,
+            spacing_plant_centimeters=spacing_plant_centimeters,
+            estimated_yield_sacks=estimated_yield_sacks,
+            variety_id=variety_id,
+            centroid_lat=centroid_lat,
+            centroid_lng=centroid_lng,
+            boundary_geojson=geometry,
+            notes=notes,
+            irrigation_type=irrigation_type,
+            irrigation_line_count=irrigation_line_count,
+            irrigation_line_length_meters=irrigation_line_length_meters,
+            drip_spacing_centimeters=drip_spacing_centimeters,
+            drip_liters_per_hour=drip_liters_per_hour,
+            sprinkler_count=sprinkler_count,
+            sprinkler_liters_per_hour=sprinkler_liters_per_hour,
+        ),
     )
     _flash(request, "success", "Setor salvo com sucesso.")
     return _redirect("/setores")
@@ -204,6 +322,14 @@ def update_plot_action(
     centroid_lat: str | None = Form(None),
     centroid_lng: str | None = Form(None),
     boundary_geojson: str | None = Form(None),
+    boundary_geojson_file: UploadFile | None = File(None),
+    irrigation_type: str | None = Form("none"),
+    irrigation_line_count: str | None = Form(None),
+    irrigation_line_length_meters: str | None = Form(None),
+    drip_spacing_centimeters: str | None = Form(None),
+    drip_liters_per_hour: str | None = Form(None),
+    sprinkler_count: str | None = Form(None),
+    sprinkler_liters_per_hour: str | None = Form(None),
     notes: str | None = Form(None),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user_web),
@@ -219,25 +345,35 @@ def update_plot_action(
     if not farm:
         _flash(request, "error", "A fazenda selecionada nao foi encontrada.")
         return _redirect("/setores")
+    geometry, geometry_ok = _resolve_geojson(boundary_geojson_file, boundary_geojson, plot.boundary_geojson)
+    if boundary_geojson_file and boundary_geojson_file.filename and not geometry_ok:
+        _flash(request, "error", "O arquivo GeoJSON do setor nao e valido.")
+        return _redirect_with_query("/setores", edit_id=plot_id)
     update_plot(
         repo,
         plot,
-        {
-            "name": name,
-            "area_hectares": area_hectares,
-            "location": farm.location if farm else None,
-            "planting_date": planting_date,
-            "plant_count": plant_count,
-            "spacing_row_meters": _float_or_none(spacing_row_meters),
-            "spacing_plant_meters": _meters_from_cm(spacing_plant_centimeters),
-            "estimated_yield_sacks": _float_or_none(estimated_yield_sacks),
-            "variety_id": _int_or_none(variety_id),
-            "centroid_lat": _float_or_none(centroid_lat),
-            "centroid_lng": _float_or_none(centroid_lng),
-            "boundary_geojson": normalize_geojson(boundary_geojson),
-            "notes": notes,
-            "farm_id": farm_id,
-        },
+        _build_plot_payload(
+            farm=farm,
+            name=name,
+            area_hectares=area_hectares,
+            planting_date=planting_date,
+            plant_count=plant_count,
+            spacing_row_meters=spacing_row_meters,
+            spacing_plant_centimeters=spacing_plant_centimeters,
+            estimated_yield_sacks=estimated_yield_sacks,
+            variety_id=variety_id,
+            centroid_lat=centroid_lat,
+            centroid_lng=centroid_lng,
+            boundary_geojson=geometry,
+            notes=notes,
+            irrigation_type=irrigation_type,
+            irrigation_line_count=irrigation_line_count,
+            irrigation_line_length_meters=irrigation_line_length_meters,
+            drip_spacing_centimeters=drip_spacing_centimeters,
+            drip_liters_per_hour=drip_liters_per_hour,
+            sprinkler_count=sprinkler_count,
+            sprinkler_liters_per_hour=sprinkler_liters_per_hour,
+        ),
     )
     _flash(request, "success", "Setor atualizado com sucesso.")
     return _redirect("/setores")
@@ -294,6 +430,8 @@ def create_farm_action(
     name: str = Form(...),
     location: str = Form(...),
     total_area: float = Form(...),
+    boundary_geojson: str | None = Form(None),
+    boundary_geojson_file: UploadFile | None = File(None),
     notes: str | None = Form(None),
     redirect_to: str | None = Form(None),
     db: Session = Depends(get_db),
@@ -301,7 +439,20 @@ def create_farm_action(
 ):
     del user
     validate_csrf(request, csrf_token)
-    farm = create_farm(_repository(db), {"name": name, "location": location, "total_area": total_area, "notes": notes})
+    geometry, geometry_ok = _resolve_geojson(boundary_geojson_file, boundary_geojson)
+    if boundary_geojson_file and boundary_geojson_file.filename and not geometry_ok:
+        _flash(request, "error", "O arquivo GeoJSON da fazenda nao e valido.")
+        return _redirect_with_query("/setores", open_farm_modal=1) if redirect_to == "/setores" else _redirect("/fazendas")
+    farm = create_farm(
+        _repository(db),
+        {
+            "name": name,
+            "location": location,
+            "total_area": total_area,
+            "boundary_geojson": geometry,
+            "notes": notes,
+        },
+    )
     _flash(request, "success", "Fazenda cadastrada com sucesso.")
     if redirect_to == "/setores":
         return _redirect_with_query("/setores", selected_farm_id=farm.id)
@@ -316,6 +467,8 @@ def update_farm_action(
     name: str = Form(...),
     location: str = Form(...),
     total_area: float = Form(...),
+    boundary_geojson: str | None = Form(None),
+    boundary_geojson_file: UploadFile | None = File(None),
     notes: str | None = Form(None),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user_web),
@@ -327,7 +480,15 @@ def update_farm_action(
     if not farm:
         _flash(request, "error", "Fazenda nao encontrada.")
         return _redirect("/fazendas")
-    update_farm(repo, farm, {"name": name, "location": location, "total_area": total_area, "notes": notes})
+    geometry, geometry_ok = _resolve_geojson(boundary_geojson_file, boundary_geojson, farm.boundary_geojson)
+    if boundary_geojson_file and boundary_geojson_file.filename and not geometry_ok:
+        _flash(request, "error", "O arquivo GeoJSON da fazenda nao e valido.")
+        return _redirect_with_query("/fazendas", edit_id=farm_id)
+    update_farm(
+        repo,
+        farm,
+        {"name": name, "location": location, "total_area": total_area, "boundary_geojson": geometry, "notes": notes},
+    )
     _flash(request, "success", "Fazenda atualizada com sucesso.")
     return _redirect("/fazendas")
 
@@ -482,6 +643,20 @@ def irrigation_page(
             plots=repo.list_plots(),
             irrigations=repo.list_irrigations(),
             edit_irrigation=repo.get_irrigation(edit_id) if edit_id else None,
+            plot_irrigation_configs=[
+                {
+                    "id": plot.id,
+                    "name": plot.name,
+                    "type": plot.irrigation_type,
+                    "line_count": plot.irrigation_line_count,
+                    "line_length": float(plot.irrigation_line_length_meters) if plot.irrigation_line_length_meters is not None else None,
+                    "drip_spacing_cm": round(float(plot.drip_spacing_meters) * 100, 2) if plot.drip_spacing_meters is not None else None,
+                    "drip_lph": float(plot.drip_liters_per_hour) if plot.drip_liters_per_hour is not None else None,
+                    "sprinkler_count": plot.sprinkler_count,
+                    "sprinkler_lph": float(plot.sprinkler_liters_per_hour) if plot.sprinkler_liters_per_hour is not None else None,
+                }
+                for plot in repo.list_plots()
+            ],
         ),
     )
 
@@ -492,7 +667,7 @@ def create_irrigation_action(
     csrf_token: str = Form(...),
     plot_id: int = Form(...),
     irrigation_date: str = Form(...),
-    volume_liters: float = Form(...),
+    volume_liters: str | None = Form(None),
     duration_minutes: int = Form(...),
     notes: str | None = Form(None),
     db: Session = Depends(get_db),
@@ -500,12 +675,22 @@ def create_irrigation_action(
 ):
     del user
     validate_csrf(request, csrf_token)
+    repo = _repository(db)
+    plot = repo.get_plot(plot_id)
+    if not plot:
+        _flash(request, "error", "Setor nao encontrado para registrar irrigacao.")
+        return _redirect("/irrigacao")
+    calculated_volume = calculate_irrigation_volume(plot, duration_minutes)
+    manual_volume = _float_or_none(volume_liters)
+    if calculated_volume is None and manual_volume is None:
+        _flash(request, "error", "Informe o volume manual em litros ou cadastre os dados de irrigacao no setor.")
+        return _redirect("/irrigacao")
     create_irrigation(
-        _repository(db),
+        repo,
         {
             "plot_id": plot_id,
             "irrigation_date": irrigation_date,
-            "volume_liters": volume_liters,
+            "volume_liters": calculated_volume if calculated_volume is not None else manual_volume,
             "duration_minutes": duration_minutes,
             "notes": notes,
         },
@@ -521,7 +706,7 @@ def update_irrigation_action(
     csrf_token: str = Form(...),
     plot_id: int = Form(...),
     irrigation_date: str = Form(...),
-    volume_liters: float = Form(...),
+    volume_liters: str | None = Form(None),
     duration_minutes: int = Form(...),
     notes: str | None = Form(None),
     db: Session = Depends(get_db),
@@ -534,13 +719,22 @@ def update_irrigation_action(
     if not irrigation:
         _flash(request, "error", "Registro de irrigacao nao encontrado.")
         return _redirect("/irrigacao")
+    plot = repo.get_plot(plot_id)
+    if not plot:
+        _flash(request, "error", "Setor nao encontrado para atualizar irrigacao.")
+        return _redirect("/irrigacao")
+    calculated_volume = calculate_irrigation_volume(plot, duration_minutes)
+    manual_volume = _float_or_none(volume_liters)
+    if calculated_volume is None and manual_volume is None:
+        _flash(request, "error", "Informe o volume manual em litros ou cadastre os dados de irrigacao no setor.")
+        return _redirect_with_query("/irrigacao", edit_id=record_id)
     update_irrigation(
         repo,
         irrigation,
         {
             "plot_id": plot_id,
             "irrigation_date": irrigation_date,
-            "volume_liters": volume_liters,
+            "volume_liters": calculated_volume if calculated_volume is not None else manual_volume,
             "duration_minutes": duration_minutes,
             "notes": notes,
         },

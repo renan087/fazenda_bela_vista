@@ -68,6 +68,28 @@ def build_dashboard_context(repository: FarmRepository) -> dict:
     ]
 
     map_features = []
+    for farm in farms:
+        if farm.boundary_geojson:
+            try:
+                geometry = json.loads(farm.boundary_geojson)
+            except json.JSONDecodeError:
+                geometry = None
+        else:
+            geometry = None
+        if geometry:
+            map_features.append(
+                {
+                    "type": "Feature",
+                    "properties": {
+                        "feature_type": "farm",
+                        "name": farm.name,
+                        "location": farm.location,
+                        "area": _float(farm.total_area),
+                    },
+                    "geometry": geometry,
+                }
+            )
+
     for plot in plots:
         if plot.boundary_geojson:
             try:
@@ -81,7 +103,9 @@ def build_dashboard_context(repository: FarmRepository) -> dict:
                 {
                     "type": "Feature",
                     "properties": {
+                        "feature_type": "plot",
                         "name": plot.name,
+                        "farm": plot.farm.name if plot.farm else "Sem fazenda",
                         "variety": plot.variety.name if plot.variety else "Sem variedade",
                         "area": _float(plot.area_hectares),
                         "estimated": _float(plot.estimated_yield_sacks),

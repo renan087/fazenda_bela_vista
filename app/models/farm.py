@@ -11,6 +11,7 @@ class Farm(Base):
     name: Mapped[str] = mapped_column(String(160), unique=True, nullable=False)
     location: Mapped[str] = mapped_column(String(180), nullable=False)
     total_area: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False)
+    boundary_geojson: Mapped[str] = mapped_column(Text, nullable=True)
     notes: Mapped[str] = mapped_column(Text, nullable=True)
 
     plots = relationship("Plot", back_populates="farm")

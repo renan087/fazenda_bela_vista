@@ -1,6 +1,6 @@
 from datetime import date
 
-from sqlalchemy import Date, ForeignKey, Numeric, String, Text
+from sqlalchemy import Date, ForeignKey, Integer, Numeric, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -21,6 +21,13 @@ class Plot(Base):
     centroid_lat: Mapped[float] = mapped_column(Numeric(10, 6), nullable=True)
     centroid_lng: Mapped[float] = mapped_column(Numeric(10, 6), nullable=True)
     boundary_geojson: Mapped[str] = mapped_column(Text, nullable=True)
+    irrigation_type: Mapped[str] = mapped_column(String(40), nullable=False, default="none")
+    irrigation_line_count: Mapped[int] = mapped_column(Integer, nullable=True)
+    irrigation_line_length_meters: Mapped[float] = mapped_column(Numeric(10, 2), nullable=True)
+    drip_spacing_meters: Mapped[float] = mapped_column(Numeric(8, 3), nullable=True)
+    drip_liters_per_hour: Mapped[float] = mapped_column(Numeric(10, 2), nullable=True)
+    sprinkler_count: Mapped[int] = mapped_column(Integer, nullable=True)
+    sprinkler_liters_per_hour: Mapped[float] = mapped_column(Numeric(10, 2), nullable=True)
     notes: Mapped[str] = mapped_column(Text, nullable=True)
     farm_id: Mapped[int] = mapped_column(ForeignKey("farms.id"), nullable=True)
     variety_id: Mapped[int] = mapped_column(ForeignKey("coffee_varieties.id"), nullable=True)

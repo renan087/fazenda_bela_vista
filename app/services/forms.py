@@ -11,6 +11,7 @@ def create_farm(repository: FarmRepository, form: dict) -> Farm:
             name=form["name"],
             location=form["location"],
             total_area=form["total_area"],
+            boundary_geojson=form.get("boundary_geojson"),
             notes=form.get("notes"),
         )
     )
@@ -29,6 +30,13 @@ def create_plot(repository: FarmRepository, form: dict) -> Plot:
         centroid_lat=form.get("centroid_lat"),
         centroid_lng=form.get("centroid_lng"),
         boundary_geojson=form.get("boundary_geojson"),
+        irrigation_type=form.get("irrigation_type") or "none",
+        irrigation_line_count=form.get("irrigation_line_count"),
+        irrigation_line_length_meters=form.get("irrigation_line_length_meters"),
+        drip_spacing_meters=form.get("drip_spacing_meters"),
+        drip_liters_per_hour=form.get("drip_liters_per_hour"),
+        sprinkler_count=form.get("sprinkler_count"),
+        sprinkler_liters_per_hour=form.get("sprinkler_liters_per_hour"),
         notes=form.get("notes"),
         farm_id=form.get("farm_id"),
         variety_id=form.get("variety_id"),
@@ -51,6 +59,13 @@ def update_plot(repository: FarmRepository, plot: Plot, form: dict) -> Plot:
             "centroid_lat": form.get("centroid_lat"),
             "centroid_lng": form.get("centroid_lng"),
             "boundary_geojson": form.get("boundary_geojson"),
+            "irrigation_type": form.get("irrigation_type") or "none",
+            "irrigation_line_count": form.get("irrigation_line_count"),
+            "irrigation_line_length_meters": form.get("irrigation_line_length_meters"),
+            "drip_spacing_meters": form.get("drip_spacing_meters"),
+            "drip_liters_per_hour": form.get("drip_liters_per_hour"),
+            "sprinkler_count": form.get("sprinkler_count"),
+            "sprinkler_liters_per_hour": form.get("sprinkler_liters_per_hour"),
             "notes": form.get("notes"),
             "farm_id": form.get("farm_id"),
             "variety_id": form.get("variety_id"),
@@ -65,6 +80,7 @@ def update_farm(repository: FarmRepository, farm: Farm, form: dict) -> Farm:
             "name": form["name"],
             "location": form["location"],
             "total_area": form["total_area"],
+            "boundary_geojson": form.get("boundary_geojson"),
             "notes": form.get("notes"),
         },
     )
@@ -220,4 +236,80 @@ def normalize_geojson(raw_text: str | None) -> str | None:
         parsed = json.loads(normalized)
     except json.JSONDecodeError:
         return None
+    if isinstance(parsed, dict) and parsed.get("type") == "FeatureCollection":
+        features = parsed.get("features") or []
+        if not features:
+            return None
+        first_feature = features[0]
+        if isinstance(first_feature, dict):
+            geometry = first_feature.get("geometry")
+            return json.dumps(geometry) if geometry else None
+        return None
+    if isinstance(parsed, dict) and parsed.get("type") == "Feature":
+        geometry = parsed.get("geometry")
+        return json.dumps(geometry) if geometry else None
     return json.dumps(parsed)
+
+
+def extract_geojson_file(raw_bytes: bytes | None) -> str | None:
+    if not raw_bytes:
+        return None
+    try:
+        decoded = raw_bytes.decode("utf-8")
+    except UnicodeDecodeError:
+        decoded = raw_bytes.decode("latin-1")
+    return normalize_geojson(decoded)
+
+
+def estimate_geojson_centroid(geojson_text: str | None) -> tuple[float | None, float | None]:
+    if not geojson_text:
+        return None, None
+    try:
+        geometry = json.loads(geojson_text)
+    except json.JSONDecodeError:
+        return None, None
+
+    coordinates = _flatten_coordinates(geometry.get("coordinates"))
+    if not coordinates:
+        return None, None
+
+    longitudes = [point[0] for point in coordinates]
+    latitudes = [point[1] for point in coordinates]
+    return round(sum(latitudes) / len(latitudes), 6), round(sum(longitudes) / len(longitudes), 6)
+
+
+def calculate_irrigation_volume(plot: Plot, duration_minutes: int) -> float | None:
+    if not plot or not duration_minutes:
+        return None
+    hours = duration_minutes / 60
+
+    if plot.irrigation_type == "gotejo":
+        if not (
+            plot.irrigation_line_count
+            and plot.irrigation_line_length_meters
+            and plot.drip_spacing_meters
+            and plot.drip_liters_per_hour
+        ):
+            return None
+        emitters_per_line = float(plot.irrigation_line_length_meters) / float(plot.drip_spacing_meters)
+        total_emitters = float(plot.irrigation_line_count) * emitters_per_line
+        return round(total_emitters * float(plot.drip_liters_per_hour) * hours, 2)
+
+    if plot.irrigation_type == "aspersor":
+        if not (plot.sprinkler_count and plot.sprinkler_liters_per_hour):
+            return None
+        return round(float(plot.sprinkler_count) * float(plot.sprinkler_liters_per_hour) * hours, 2)
+
+    return None
+
+
+def _flatten_coordinates(value) -> list[tuple[float, float]]:
+    if not isinstance(value, list):
+        return []
+    if len(value) >= 2 and all(isinstance(item, (int, float)) for item in value[:2]):
+        return [(float(value[0]), float(value[1]))]
+
+    coordinates: list[tuple[float, float]] = []
+    for item in value:
+        coordinates.extend(_flatten_coordinates(item))
+    return coordinates
