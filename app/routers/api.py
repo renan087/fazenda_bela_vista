@@ -40,7 +40,7 @@ def list_plots(
             "name": plot.name,
             "area_hectares": float(plot.area_hectares),
             "location": plot.location,
-            "planting_year": plot.planting_year,
+            "planting_date": plot.planting_date.isoformat() if plot.planting_date else None,
             "plant_count": plot.plant_count,
             "spacing_row_meters": float(plot.spacing_row_meters or 0),
             "spacing_plant_meters": float(plot.spacing_plant_meters or 0),

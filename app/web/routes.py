@@ -1,7 +1,9 @@
 from datetime import datetime
 from urllib.parse import urlencode
 
-from fastapi import APIRouter, Depends, File, Form, Request, UploadFile, status
+import json
+
+from fastapi import APIRouter, Depends, File, Form, Request, Response, UploadFile, status
 from fastapi.responses import RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
@@ -9,29 +11,46 @@ from sqlalchemy.orm import Session
 from app.core.csrf import validate_csrf
 from app.core.deps import get_csrf_token, get_current_user_web
 from app.db.session import get_db
-from app.models import CoffeeVariety, Farm, FertilizationRecord, HarvestRecord, IrrigationRecord, PestIncident, Plot, User
+from app.models import (
+    AgronomicProfile,
+    CoffeeVariety,
+    Farm,
+    FertilizationRecord,
+    HarvestRecord,
+    IrrigationRecord,
+    PestIncident,
+    Plot,
+    SoilAnalysis,
+    User,
+)
 from app.repositories.farm import FarmRepository
 from app.services.dashboard import build_dashboard_context
 from app.services.forms import (
     calculate_irrigation_volume,
+    calculate_soil_recommendations,
+    create_agronomic_profile,
     create_farm,
     create_fertilization,
     create_harvest,
     create_irrigation,
     create_pest_incident,
     create_plot,
+    create_soil_analysis,
     create_variety,
     estimate_geojson_centroid,
     extract_geojson_file,
     normalize_geojson,
+    update_agronomic_profile,
     update_farm,
     update_fertilization,
     update_harvest,
     update_irrigation,
     update_pest_incident,
     update_plot,
+    update_soil_analysis,
     update_variety,
 )
+from app.services.openai_service import gerar_recomendacao_adubacao
 
 router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")
@@ -170,6 +189,90 @@ def _build_plot_payload(
     if normalized_irrigation_type == "none":
         payload["irrigation_line_count"] = None
     return payload
+
+
+def _read_upload(upload: UploadFile | None) -> tuple[str | None, str | None, bytes | None]:
+    if not upload or not upload.filename:
+        return None, None, None
+    payload = upload.file.read()
+    if not payload:
+        return None, None, None
+    return upload.filename, upload.content_type or "application/octet-stream", payload
+
+
+def _soil_payload(
+    farm_id: int,
+    plot_id: int,
+    analysis_date: str,
+    laboratory: str,
+    ph: str | None,
+    organic_matter: str | None,
+    phosphorus: str | None,
+    potassium: str | None,
+    calcium: str | None,
+    magnesium: str | None,
+    aluminum: str | None,
+    h_al: str | None,
+    ctc: str | None,
+    base_saturation: str | None,
+    observations: str | None,
+    pdf_filename: str | None,
+    pdf_content_type: str | None,
+    pdf_data: bytes | None,
+    current_analysis: SoilAnalysis | None = None,
+) -> dict:
+    payload = {
+        "farm_id": farm_id,
+        "plot_id": plot_id,
+        "analysis_date": analysis_date,
+        "laboratory": laboratory,
+        "ph": _float_or_none(ph),
+        "organic_matter": _float_or_none(organic_matter),
+        "phosphorus": _float_or_none(phosphorus),
+        "potassium": _float_or_none(potassium),
+        "calcium": _float_or_none(calcium),
+        "magnesium": _float_or_none(magnesium),
+        "aluminum": _float_or_none(aluminum),
+        "h_al": _float_or_none(h_al),
+        "ctc": _float_or_none(ctc),
+        "base_saturation": _float_or_none(base_saturation),
+        "observations": observations,
+        "pdf_filename": pdf_filename if pdf_filename is not None else (current_analysis.pdf_filename if current_analysis else None),
+        "pdf_content_type": pdf_content_type if pdf_content_type is not None else (current_analysis.pdf_content_type if current_analysis else None),
+        "pdf_data": pdf_data if pdf_data is not None else (current_analysis.pdf_data if current_analysis else None),
+    }
+    payload.update(calculate_soil_recommendations(payload))
+    return payload
+
+
+def _apply_soil_ai_recommendation(repo: FarmRepository, analysis: SoilAnalysis) -> SoilAnalysis:
+    refreshed = repo.get_soil_analysis(analysis.id) or analysis
+    ai_result = gerar_recomendacao_adubacao(refreshed)
+    return repo.update(
+        refreshed,
+        {
+            "ai_recommendation": ai_result["recommendation"],
+            "ai_status": ai_result["status"],
+            "ai_model": ai_result["model"],
+            "ai_error": ai_result["error"],
+            "ai_generated_at": ai_result["generated_at"],
+        },
+    )
+
+
+def _soil_history_chart(analyses: list[SoilAnalysis]) -> str:
+    ordered = list(reversed(sorted(analyses, key=lambda item: (item.analysis_date, item.id))))
+    return json.dumps(
+        {
+            "labels": [item.analysis_date.isoformat() for item in ordered],
+            "ph": [float(item.ph or 0) for item in ordered],
+            "phosphorus": [float(item.phosphorus or 0) for item in ordered],
+            "potassium": [float(item.potassium or 0) for item in ordered],
+            "calcium": [float(item.calcium or 0) for item in ordered],
+            "magnesium": [float(item.magnesium or 0) for item in ordered],
+            "base_saturation": [float(item.base_saturation or 0) for item in ordered],
+        }
+    )
 
 
 @router.get("/")
@@ -1093,6 +1196,318 @@ def delete_pest_action(
     repo.delete(incident)
     _flash(request, "success", "Ocorrencia excluida com sucesso.")
     return _redirect("/pragas")
+
+
+@router.get("/perfil-agronomico")
+def agronomic_profiles_page(
+    request: Request,
+    edit_farm_id: int | None = None,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+    csrf_token: str = Depends(get_csrf_token),
+):
+    repo = _repository(db)
+    selected_farm = repo.get_farm(edit_farm_id) if edit_farm_id else None
+    return templates.TemplateResponse(
+        "agronomic_profiles.html",
+        _base_context(
+            request,
+            user,
+            csrf_token,
+            "agronomic_profiles",
+            title="Perfil Agronomico",
+            farms=repo.list_farms(),
+            profiles=repo.list_agronomic_profiles(),
+            edit_farm=selected_farm,
+            edit_profile=repo.get_agronomic_profile_by_farm(edit_farm_id) if edit_farm_id else None,
+        ),
+    )
+
+
+@router.post("/perfil-agronomico")
+def save_agronomic_profile_action(
+    request: Request,
+    csrf_token: str = Form(...),
+    farm_id: int = Form(...),
+    culture: str = Form(...),
+    region: str = Form(...),
+    climate: str | None = Form(None),
+    soil_type: str | None = Form(None),
+    irrigation_system: str | None = Form(None),
+    plant_spacing: str | None = Form(None),
+    drip_spacing: str | None = Form(None),
+    fertilizers_used: str | None = Form(None),
+    crop_stage: str | None = Form(None),
+    common_pests: str | None = Form(None),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    del user
+    validate_csrf(request, csrf_token)
+    repo = _repository(db)
+    existing = repo.get_agronomic_profile_by_farm(farm_id)
+    payload = {
+        "farm_id": farm_id,
+        "culture": culture,
+        "region": region,
+        "climate": climate,
+        "soil_type": soil_type,
+        "irrigation_system": irrigation_system,
+        "plant_spacing": plant_spacing,
+        "drip_spacing": drip_spacing,
+        "fertilizers_used": fertilizers_used,
+        "crop_stage": crop_stage,
+        "common_pests": common_pests,
+    }
+    if existing:
+        update_agronomic_profile(repo, existing, payload)
+        _flash(request, "success", "Perfil agronomico atualizado com sucesso.")
+    else:
+        create_agronomic_profile(repo, payload)
+        _flash(request, "success", "Perfil agronomico salvo com sucesso.")
+    return _redirect_with_query("/perfil-agronomico", edit_farm_id=farm_id)
+
+
+@router.post("/perfil-agronomico/{farm_id}/excluir")
+def delete_agronomic_profile_action(
+    farm_id: int,
+    request: Request,
+    csrf_token: str = Form(...),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    del user
+    validate_csrf(request, csrf_token)
+    repo = _repository(db)
+    profile = repo.get_agronomic_profile_by_farm(farm_id)
+    if not profile:
+        _flash(request, "error", "Perfil agronomico nao encontrado.")
+        return _redirect("/perfil-agronomico")
+    repo.delete(profile)
+    _flash(request, "success", "Perfil agronomico removido com sucesso.")
+    return _redirect("/perfil-agronomico")
+
+
+@router.get("/analise-solo")
+def soil_analysis_page(
+    request: Request,
+    farm_id: int | None = None,
+    plot_id: int | None = None,
+    edit_id: int | None = None,
+    compare_plot_id: int | None = None,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+    csrf_token: str = Depends(get_csrf_token),
+):
+    repo = _repository(db)
+    analyses = repo.list_soil_analyses(farm_id=farm_id, plot_id=plot_id)
+    compare_target = compare_plot_id or plot_id
+    compare_analyses = repo.list_soil_analyses(plot_id=compare_target) if compare_target else analyses[:6]
+    return templates.TemplateResponse(
+        "soil_analyses.html",
+        _base_context(
+            request,
+            user,
+            csrf_token,
+            "soil_analyses",
+            title="Analise de Solo",
+            farms=repo.list_farms(),
+            plots=repo.list_plots(),
+            analyses=analyses,
+            edit_analysis=repo.get_soil_analysis(edit_id) if edit_id else None,
+            filters={"farm_id": farm_id, "plot_id": plot_id, "compare_plot_id": compare_target},
+            compare_chart=_soil_history_chart(compare_analyses),
+            compare_analyses=compare_analyses,
+            latest_recommendations=[item for item in analyses if item.ai_recommendation][:4],
+        ),
+    )
+
+
+@router.post("/analise-solo")
+def create_soil_analysis_action(
+    request: Request,
+    csrf_token: str = Form(...),
+    farm_id: int = Form(...),
+    plot_id: int = Form(...),
+    analysis_date: str = Form(...),
+    laboratory: str = Form(...),
+    ph: str | None = Form(None),
+    organic_matter: str | None = Form(None),
+    phosphorus: str | None = Form(None),
+    potassium: str | None = Form(None),
+    calcium: str | None = Form(None),
+    magnesium: str | None = Form(None),
+    aluminum: str | None = Form(None),
+    h_al: str | None = Form(None),
+    ctc: str | None = Form(None),
+    base_saturation: str | None = Form(None),
+    observations: str | None = Form(None),
+    analysis_pdf: UploadFile | None = File(None),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    del user
+    validate_csrf(request, csrf_token)
+    repo = _repository(db)
+    pdf_filename, pdf_content_type, pdf_data = _read_upload(analysis_pdf)
+    analysis = create_soil_analysis(
+        repo,
+        _soil_payload(
+            farm_id=farm_id,
+            plot_id=plot_id,
+            analysis_date=analysis_date,
+            laboratory=laboratory,
+            ph=ph,
+            organic_matter=organic_matter,
+            phosphorus=phosphorus,
+            potassium=potassium,
+            calcium=calcium,
+            magnesium=magnesium,
+            aluminum=aluminum,
+            h_al=h_al,
+            ctc=ctc,
+            base_saturation=base_saturation,
+            observations=observations,
+            pdf_filename=pdf_filename,
+            pdf_content_type=pdf_content_type,
+            pdf_data=pdf_data,
+        ),
+    )
+    analysis = _apply_soil_ai_recommendation(repo, analysis)
+    if analysis.ai_status == "generated":
+        _flash(request, "success", "Analise de solo salva e recomendacao da IA gerada com sucesso.")
+    elif analysis.ai_status == "skipped":
+        _flash(request, "success", "Analise de solo salva. Configure a OPENAI_API_KEY para gerar recomendacoes personalizadas.")
+    else:
+        _flash(request, "error", "Analise de solo salva, mas a recomendacao da IA falhou nesta tentativa.")
+    return _redirect_with_query("/analise-solo", plot_id=plot_id, compare_plot_id=plot_id)
+
+
+@router.post("/analise-solo/{analysis_id}/editar")
+def update_soil_analysis_action(
+    analysis_id: int,
+    request: Request,
+    csrf_token: str = Form(...),
+    farm_id: int = Form(...),
+    plot_id: int = Form(...),
+    analysis_date: str = Form(...),
+    laboratory: str = Form(...),
+    ph: str | None = Form(None),
+    organic_matter: str | None = Form(None),
+    phosphorus: str | None = Form(None),
+    potassium: str | None = Form(None),
+    calcium: str | None = Form(None),
+    magnesium: str | None = Form(None),
+    aluminum: str | None = Form(None),
+    h_al: str | None = Form(None),
+    ctc: str | None = Form(None),
+    base_saturation: str | None = Form(None),
+    observations: str | None = Form(None),
+    analysis_pdf: UploadFile | None = File(None),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    del user
+    validate_csrf(request, csrf_token)
+    repo = _repository(db)
+    analysis = repo.get_soil_analysis(analysis_id)
+    if not analysis:
+        _flash(request, "error", "Analise de solo nao encontrada.")
+        return _redirect("/analise-solo")
+    pdf_filename, pdf_content_type, pdf_data = _read_upload(analysis_pdf)
+    updated = update_soil_analysis(
+        repo,
+        analysis,
+        _soil_payload(
+            farm_id=farm_id,
+            plot_id=plot_id,
+            analysis_date=analysis_date,
+            laboratory=laboratory,
+            ph=ph,
+            organic_matter=organic_matter,
+            phosphorus=phosphorus,
+            potassium=potassium,
+            calcium=calcium,
+            magnesium=magnesium,
+            aluminum=aluminum,
+            h_al=h_al,
+            ctc=ctc,
+            base_saturation=base_saturation,
+            observations=observations,
+            pdf_filename=pdf_filename,
+            pdf_content_type=pdf_content_type,
+            pdf_data=pdf_data,
+            current_analysis=analysis,
+        ),
+    )
+    updated = _apply_soil_ai_recommendation(repo, updated)
+    if updated.ai_status == "generated":
+        _flash(request, "success", "Analise de solo atualizada e recomendacao regenerada.")
+    elif updated.ai_status == "skipped":
+        _flash(request, "success", "Analise de solo atualizada. Configure a OPENAI_API_KEY para gerar recomendacoes personalizadas.")
+    else:
+        _flash(request, "error", "Analise de solo atualizada, mas a recomendacao da IA falhou nesta tentativa.")
+    return _redirect_with_query("/analise-solo", plot_id=plot_id, compare_plot_id=plot_id)
+
+
+@router.post("/analise-solo/{analysis_id}/regenerar")
+def regenerate_soil_recommendation_action(
+    analysis_id: int,
+    request: Request,
+    csrf_token: str = Form(...),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    del user
+    validate_csrf(request, csrf_token)
+    repo = _repository(db)
+    analysis = repo.get_soil_analysis(analysis_id)
+    if not analysis:
+        _flash(request, "error", "Analise de solo nao encontrada.")
+        return _redirect("/analise-solo")
+    updated = _apply_soil_ai_recommendation(repo, analysis)
+    if updated.ai_status == "generated":
+        _flash(request, "success", "Recomendacao agronomica regenerada com sucesso.")
+    elif updated.ai_status == "skipped":
+        _flash(request, "error", "OPENAI_API_KEY nao configurada para gerar a recomendacao.")
+    else:
+        _flash(request, "error", "Nao foi possivel gerar a recomendacao agronomica nesta tentativa.")
+    return _redirect_with_query("/analise-solo", edit_id=analysis_id, plot_id=analysis.plot_id, compare_plot_id=analysis.plot_id)
+
+
+@router.post("/analise-solo/{analysis_id}/excluir")
+def delete_soil_analysis_action(
+    analysis_id: int,
+    request: Request,
+    csrf_token: str = Form(...),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    del user
+    validate_csrf(request, csrf_token)
+    repo = _repository(db)
+    analysis = repo.get_soil_analysis(analysis_id)
+    if not analysis:
+        _flash(request, "error", "Analise de solo nao encontrada.")
+        return _redirect("/analise-solo")
+    plot_id = analysis.plot_id
+    repo.delete(analysis)
+    _flash(request, "success", "Analise de solo excluida com sucesso.")
+    return _redirect_with_query("/analise-solo", compare_plot_id=plot_id)
+
+
+@router.get("/analise-solo/{analysis_id}/pdf")
+def soil_analysis_pdf_download(
+    analysis_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    del user
+    analysis = _repository(db).get_soil_analysis(analysis_id)
+    if not analysis or not analysis.pdf_data:
+        return Response(status_code=status.HTTP_404_NOT_FOUND)
+    headers = {"Content-Disposition": f'inline; filename="{analysis.pdf_filename or "analise-solo.pdf"}"'}
+    return Response(content=analysis.pdf_data, media_type=analysis.pdf_content_type or "application/pdf", headers=headers)
 
 
 @router.get("/mapa")

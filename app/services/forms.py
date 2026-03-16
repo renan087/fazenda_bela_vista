@@ -2,6 +2,7 @@ import json
 from datetime import date
 
 from app.models import CoffeeVariety, Farm, FertilizationRecord, HarvestRecord, IrrigationRecord, PestIncident, Plot
+from app.models import AgronomicProfile, SoilAnalysis
 from app.repositories.farm import FarmRepository
 
 
@@ -226,6 +227,110 @@ def update_pest_incident(repository: FarmRepository, incident: PestIncident, for
     )
 
 
+def create_agronomic_profile(repository: FarmRepository, form: dict) -> AgronomicProfile:
+    return repository.create(
+        AgronomicProfile(
+            farm_id=form["farm_id"],
+            culture=form["culture"],
+            region=form["region"],
+            climate=form.get("climate"),
+            soil_type=form.get("soil_type"),
+            irrigation_system=form.get("irrigation_system"),
+            plant_spacing=form.get("plant_spacing"),
+            drip_spacing=form.get("drip_spacing"),
+            fertilizers_used=form.get("fertilizers_used"),
+            crop_stage=form.get("crop_stage"),
+            common_pests=form.get("common_pests"),
+        )
+    )
+
+
+def update_agronomic_profile(repository: FarmRepository, profile: AgronomicProfile, form: dict) -> AgronomicProfile:
+    return repository.update(
+        profile,
+        {
+            "farm_id": form["farm_id"],
+            "culture": form["culture"],
+            "region": form["region"],
+            "climate": form.get("climate"),
+            "soil_type": form.get("soil_type"),
+            "irrigation_system": form.get("irrigation_system"),
+            "plant_spacing": form.get("plant_spacing"),
+            "drip_spacing": form.get("drip_spacing"),
+            "fertilizers_used": form.get("fertilizers_used"),
+            "crop_stage": form.get("crop_stage"),
+            "common_pests": form.get("common_pests"),
+        },
+    )
+
+
+def create_soil_analysis(repository: FarmRepository, form: dict) -> SoilAnalysis:
+    return repository.create(
+        SoilAnalysis(
+            farm_id=form["farm_id"],
+            plot_id=form["plot_id"],
+            analysis_date=date.fromisoformat(form["analysis_date"]),
+            laboratory=form["laboratory"],
+            ph=form.get("ph"),
+            organic_matter=form.get("organic_matter"),
+            phosphorus=form.get("phosphorus"),
+            potassium=form.get("potassium"),
+            calcium=form.get("calcium"),
+            magnesium=form.get("magnesium"),
+            aluminum=form.get("aluminum"),
+            h_al=form.get("h_al"),
+            ctc=form.get("ctc"),
+            base_saturation=form.get("base_saturation"),
+            observations=form.get("observations"),
+            pdf_filename=form.get("pdf_filename"),
+            pdf_content_type=form.get("pdf_content_type"),
+            pdf_data=form.get("pdf_data"),
+            liming_need_t_ha=form.get("liming_need_t_ha"),
+            npk_recommendation=form.get("npk_recommendation"),
+            micronutrient_recommendation=form.get("micronutrient_recommendation"),
+            ai_recommendation=form.get("ai_recommendation"),
+            ai_status=form.get("ai_status"),
+            ai_model=form.get("ai_model"),
+            ai_error=form.get("ai_error"),
+            ai_generated_at=form.get("ai_generated_at"),
+        )
+    )
+
+
+def update_soil_analysis(repository: FarmRepository, analysis: SoilAnalysis, form: dict) -> SoilAnalysis:
+    return repository.update(
+        analysis,
+        {
+            "farm_id": form["farm_id"],
+            "plot_id": form["plot_id"],
+            "analysis_date": date.fromisoformat(form["analysis_date"]),
+            "laboratory": form["laboratory"],
+            "ph": form.get("ph"),
+            "organic_matter": form.get("organic_matter"),
+            "phosphorus": form.get("phosphorus"),
+            "potassium": form.get("potassium"),
+            "calcium": form.get("calcium"),
+            "magnesium": form.get("magnesium"),
+            "aluminum": form.get("aluminum"),
+            "h_al": form.get("h_al"),
+            "ctc": form.get("ctc"),
+            "base_saturation": form.get("base_saturation"),
+            "observations": form.get("observations"),
+            "pdf_filename": form.get("pdf_filename"),
+            "pdf_content_type": form.get("pdf_content_type"),
+            "pdf_data": form.get("pdf_data"),
+            "liming_need_t_ha": form.get("liming_need_t_ha"),
+            "npk_recommendation": form.get("npk_recommendation"),
+            "micronutrient_recommendation": form.get("micronutrient_recommendation"),
+            "ai_recommendation": form.get("ai_recommendation"),
+            "ai_status": form.get("ai_status"),
+            "ai_model": form.get("ai_model"),
+            "ai_error": form.get("ai_error"),
+            "ai_generated_at": form.get("ai_generated_at"),
+        },
+    )
+
+
 def normalize_geojson(raw_text: str | None) -> str | None:
     if not raw_text:
         return None
@@ -303,6 +408,58 @@ def calculate_irrigation_volume(plot: Plot, duration_minutes: int) -> float | No
     return None
 
 
+def calculate_soil_recommendations(form: dict) -> dict:
+    ph = _float(form.get("ph"))
+    phosphorus = _float(form.get("phosphorus"))
+    potassium = _float(form.get("potassium"))
+    organic_matter = _float(form.get("organic_matter"))
+    ctc = _float(form.get("ctc"))
+    base_saturation = _float(form.get("base_saturation"))
+
+    liming_need = None
+    if ctc is not None and base_saturation is not None:
+        liming_need = max(0.0, ((60 - base_saturation) / 100) * ctc * 2)
+    elif ph is not None and ph < 5.5:
+        liming_need = round((5.5 - ph) * 1.6, 2)
+
+    npk_parts = []
+    if phosphorus is not None:
+        if phosphorus < 12:
+            npk_parts.append("Elevar fosforo com formulacao rica em P, priorizando MAP ou fosfatado de alta solubilidade.")
+        elif phosphorus < 20:
+            npk_parts.append("Manutencao moderada de fosforo, ajustando pela meta produtiva do setor.")
+        else:
+            npk_parts.append("Fosforo em faixa satisfatoria para manutencao.")
+    if potassium is not None:
+        if potassium < 120:
+            npk_parts.append("Reforcar potassio com NPK de cobertura ou fertirrigacao potassica.")
+        elif potassium < 180:
+            npk_parts.append("Potassio em faixa intermediaria, manter reposicao parcelada.")
+        else:
+            npk_parts.append("Potassio adequado para manutencao.")
+    if organic_matter is not None:
+        if organic_matter < 2.5:
+            npk_parts.append("Associar materia organica e nitrogenio de arranque para estimular raiz e brotacao.")
+        else:
+            npk_parts.append("Materia organica favorece resposta a adubacao nitrogenada parcelada.")
+
+    micronutrients = []
+    if ph is not None and ph < 5.3:
+        micronutrients.append("Monitorar Boro e Zinco apos correcao de acidez.")
+    if ph is not None and ph > 6.4:
+        micronutrients.append("Atencao a possiveis limitacoes de Zinco, Boro e Manganes em pH mais alto.")
+    if organic_matter is not None and organic_matter < 2.0:
+        micronutrients.append("Considerar programa com micronutrientes foliares e fontes organicas.")
+    if not micronutrients:
+        micronutrients.append("Micronutrientes em manutencao, com foco em Boro e Zinco conforme diagnostico foliar.")
+
+    return {
+        "liming_need_t_ha": round(liming_need, 2) if liming_need is not None else None,
+        "npk_recommendation": " ".join(npk_parts) if npk_parts else "Definir NPK conforme produtividade alvo e historico do setor.",
+        "micronutrient_recommendation": " ".join(micronutrients),
+    }
+
+
 def _flatten_coordinates(value) -> list[tuple[float, float]]:
     if not isinstance(value, list):
         return []
@@ -313,3 +470,7 @@ def _flatten_coordinates(value) -> list[tuple[float, float]]:
     for item in value:
         coordinates.extend(_flatten_coordinates(item))
     return coordinates
+
+
+def _float(value):
+    return float(value) if value is not None else None

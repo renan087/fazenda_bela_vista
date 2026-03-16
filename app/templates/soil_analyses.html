@@ -1,0 +1,135 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="grid gap-6 xl:grid-cols-[0.95fr_1.05fr]">
+    <section class="rounded-[2rem] bg-white p-6 shadow-panel">
+        <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Analise de Solo</p>
+        <h3 class="mt-2 text-2xl font-semibold">{% if edit_analysis %}Editar analise{% else %}Cadastrar analise de solo{% endif %}</h3>
+        <form method="post" enctype="multipart/form-data" action="{% if edit_analysis %}/analise-solo/{{ edit_analysis.id }}/editar{% else %}/analise-solo{% endif %}" class="mt-6 grid gap-4 md:grid-cols-2">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <label><span class="mb-2 block text-sm font-medium">Fazenda</span><select name="farm_id" class="w-full rounded-2xl border-slate-200 bg-slate-50" required>{% for farm in farms %}<option value="{{ farm.id }}" {% if edit_analysis and edit_analysis.farm_id == farm.id %}selected{% endif %}>{{ farm.name }}</option>{% endfor %}</select></label>
+            <label><span class="mb-2 block text-sm font-medium">Setor</span><select name="plot_id" class="w-full rounded-2xl border-slate-200 bg-slate-50" required>{% for plot in plots %}<option value="{{ plot.id }}" {% if edit_analysis and edit_analysis.plot_id == plot.id %}selected{% elif filters.plot_id == plot.id %}selected{% endif %}>{{ plot.name }}</option>{% endfor %}</select></label>
+            <label><span class="mb-2 block text-sm font-medium">Data da analise</span><input type="date" name="analysis_date" value="{{ edit_analysis.analysis_date.isoformat() if edit_analysis else '' }}" class="w-full rounded-2xl border-slate-200 bg-slate-50" required></label>
+            <label><span class="mb-2 block text-sm font-medium">Laboratorio</span><input name="laboratory" value="{{ edit_analysis.laboratory if edit_analysis else '' }}" class="w-full rounded-2xl border-slate-200 bg-slate-50" required></label>
+            <label><span class="mb-2 block text-sm font-medium">pH</span><input type="number" step="0.01" name="ph" value="{{ edit_analysis.ph if edit_analysis else '' }}" class="w-full rounded-2xl border-slate-200 bg-slate-50"></label>
+            <label><span class="mb-2 block text-sm font-medium">Materia organica</span><input type="number" step="0.01" name="organic_matter" value="{{ edit_analysis.organic_matter if edit_analysis else '' }}" class="w-full rounded-2xl border-slate-200 bg-slate-50"></label>
+            <label><span class="mb-2 block text-sm font-medium">Fosforo</span><input type="number" step="0.01" name="phosphorus" value="{{ edit_analysis.phosphorus if edit_analysis else '' }}" class="w-full rounded-2xl border-slate-200 bg-slate-50"></label>
+            <label><span class="mb-2 block text-sm font-medium">Potassio</span><input type="number" step="0.01" name="potassium" value="{{ edit_analysis.potassium if edit_analysis else '' }}" class="w-full rounded-2xl border-slate-200 bg-slate-50"></label>
+            <label><span class="mb-2 block text-sm font-medium">Calcio</span><input type="number" step="0.01" name="calcium" value="{{ edit_analysis.calcium if edit_analysis else '' }}" class="w-full rounded-2xl border-slate-200 bg-slate-50"></label>
+            <label><span class="mb-2 block text-sm font-medium">Magnesio</span><input type="number" step="0.01" name="magnesium" value="{{ edit_analysis.magnesium if edit_analysis else '' }}" class="w-full rounded-2xl border-slate-200 bg-slate-50"></label>
+            <label><span class="mb-2 block text-sm font-medium">Aluminio</span><input type="number" step="0.01" name="aluminum" value="{{ edit_analysis.aluminum if edit_analysis else '' }}" class="w-full rounded-2xl border-slate-200 bg-slate-50"></label>
+            <label><span class="mb-2 block text-sm font-medium">H + Al</span><input type="number" step="0.01" name="h_al" value="{{ edit_analysis.h_al if edit_analysis else '' }}" class="w-full rounded-2xl border-slate-200 bg-slate-50"></label>
+            <label><span class="mb-2 block text-sm font-medium">CTC</span><input type="number" step="0.01" name="ctc" value="{{ edit_analysis.ctc if edit_analysis else '' }}" class="w-full rounded-2xl border-slate-200 bg-slate-50"></label>
+            <label><span class="mb-2 block text-sm font-medium">Saturacao por bases (%)</span><input type="number" step="0.01" name="base_saturation" value="{{ edit_analysis.base_saturation if edit_analysis else '' }}" class="w-full rounded-2xl border-slate-200 bg-slate-50"></label>
+            <label class="md:col-span-2"><span class="mb-2 block text-sm font-medium">PDF da analise</span><input type="file" name="analysis_pdf" accept="application/pdf" class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm"></label>
+            {% if edit_analysis and edit_analysis.pdf_data %}
+            <p class="md:col-span-2 -mt-2 text-sm text-slate-500">PDF atual salvo. <a href="/analise-solo/{{ edit_analysis.id }}/pdf" target="_blank" class="font-semibold text-brand-700 hover:text-brand-500">Abrir anexo</a></p>
+            {% endif %}
+            <label class="md:col-span-2"><span class="mb-2 block text-sm font-medium">Observacoes</span><textarea name="observations" rows="4" class="w-full rounded-2xl border-slate-200 bg-slate-50">{{ edit_analysis.observations if edit_analysis else '' }}</textarea></label>
+            <div class="md:col-span-2 flex gap-3">
+                <button class="rounded-2xl bg-brand-500 px-4 py-3 font-semibold text-white hover:bg-brand-700">{% if edit_analysis %}Salvar alteracoes{% else %}Salvar analise{% endif %}</button>
+                {% if edit_analysis %}
+                <a href="/analise-solo" class="rounded-2xl bg-slate-100 px-4 py-3 font-semibold text-slate-700 hover:bg-slate-200">Cancelar</a>
+                {% endif %}
+            </div>
+        </form>
+    </section>
+    <section class="space-y-6">
+        <section class="rounded-[2rem] bg-white p-6 shadow-panel">
+            <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Historico</p>
+            <h3 class="mt-2 text-2xl font-semibold">Analises registradas</h3>
+            <form method="get" action="/analise-solo" class="mt-6 grid gap-3 md:grid-cols-4">
+                <label><span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Fazenda</span><select name="farm_id" class="w-full rounded-xl border-slate-200 bg-slate-50"><option value="">Todas</option>{% for farm in farms %}<option value="{{ farm.id }}" {% if filters.farm_id == farm.id %}selected{% endif %}>{{ farm.name }}</option>{% endfor %}</select></label>
+                <label><span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Setor</span><select name="plot_id" class="w-full rounded-xl border-slate-200 bg-slate-50"><option value="">Todos</option>{% for plot in plots %}<option value="{{ plot.id }}" {% if filters.plot_id == plot.id %}selected{% endif %}>{{ plot.name }}</option>{% endfor %}</select></label>
+                <label><span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Comparar setor</span><select name="compare_plot_id" class="w-full rounded-xl border-slate-200 bg-slate-50"><option value="">Usar filtro atual</option>{% for plot in plots %}<option value="{{ plot.id }}" {% if filters.compare_plot_id == plot.id %}selected{% endif %}>{{ plot.name }}</option>{% endfor %}</select></label>
+                <div class="flex items-end gap-3"><button class="rounded-xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white">Aplicar</button><a href="/analise-solo" class="rounded-xl bg-slate-100 px-4 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-200">Limpar</a></div>
+            </form>
+            <div class="mt-6 space-y-4">
+                {% for item in analyses %}
+                <article class="rounded-[1.5rem] border border-slate-100 bg-slate-50 p-5">
+                    <div class="flex flex-wrap items-start justify-between gap-4">
+                        <div>
+                            <h4 class="text-lg font-semibold">{{ item.plot.name if item.plot else "Setor removido" }}</h4>
+                            <p class="mt-1 text-sm text-slate-500">{{ item.analysis_date }} • {{ item.laboratory }}</p>
+                        </div>
+                        <div class="flex flex-wrap gap-2">
+                            <a href="/analise-solo?edit_id={{ item.id }}&plot_id={{ item.plot_id }}&compare_plot_id={{ item.plot_id }}" class="rounded-xl bg-slate-900 px-3 py-2 text-xs font-medium text-white hover:bg-slate-700">Editar</a>
+                            {% if item.pdf_data %}
+                            <a href="/analise-solo/{{ item.id }}/pdf" target="_blank" class="rounded-xl bg-white px-3 py-2 text-xs font-medium text-slate-700 ring-1 ring-slate-200 hover:bg-slate-100">PDF</a>
+                            {% endif %}
+                            <form method="post" action="/analise-solo/{{ item.id }}/regenerar">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                                <button class="rounded-xl bg-brand-500 px-3 py-2 text-xs font-medium text-white hover:bg-brand-700">Gerar IA</button>
+                            </form>
+                            <form method="post" action="/analise-solo/{{ item.id }}/excluir" onsubmit="return confirm('Excluir esta analise de solo?');">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                                <button class="rounded-xl bg-rose-600 px-3 py-2 text-xs font-medium text-white hover:bg-rose-700">Excluir</button>
+                            </form>
+                        </div>
+                    </div>
+                    <div class="mt-4 grid gap-3 text-sm text-slate-600 sm:grid-cols-3">
+                        <p>pH: <strong>{{ item.ph or "-" }}</strong></p>
+                        <p>Fosforo: <strong>{{ item.phosphorus or "-" }}</strong></p>
+                        <p>Potassio: <strong>{{ item.potassium or "-" }}</strong></p>
+                        <p>Calcio: <strong>{{ item.calcium or "-" }}</strong></p>
+                        <p>Magnesio: <strong>{{ item.magnesium or "-" }}</strong></p>
+                        <p>V%: <strong>{{ item.base_saturation or "-" }}</strong></p>
+                    </div>
+                    <div class="mt-4 rounded-2xl bg-white p-4">
+                        <p class="text-sm font-semibold text-slate-900">Recomendacao base</p>
+                        <p class="mt-2 text-sm text-slate-600">Calcario: {{ item.liming_need_t_ha or 0 }} t/ha</p>
+                        <p class="mt-2 text-sm text-slate-600">{{ item.npk_recommendation or "Sem recomendacao calculada." }}</p>
+                        <p class="mt-2 text-sm text-slate-500">{{ item.micronutrient_recommendation or "" }}</p>
+                        <p class="mt-3 text-xs uppercase tracking-[0.25em] text-slate-400">IA</p>
+                        <p class="mt-2 text-sm text-slate-600">{{ item.ai_recommendation or item.ai_error or "Sem recomendacao da IA ainda." }}</p>
+                    </div>
+                </article>
+                {% else %}
+                <p class="text-sm text-slate-500">Nenhuma analise de solo registrada.</p>
+                {% endfor %}
+            </div>
+        </section>
+
+        <section class="rounded-[2rem] bg-white p-6 shadow-panel">
+            <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Comparativo</p>
+            <h3 class="mt-2 text-2xl font-semibold">Evolucao da fertilidade</h3>
+            <div class="mt-6 h-80">
+                <canvas id="soilHistoryChart"></canvas>
+            </div>
+        </section>
+
+        <section class="rounded-[2rem] bg-white p-6 shadow-panel">
+            <p class="text-xs uppercase tracking-[0.35em] text-slate-400">IA Agronomica</p>
+            <h3 class="mt-2 text-2xl font-semibold">Historico de recomendacoes</h3>
+            <div class="mt-6 space-y-4">
+                {% for item in latest_recommendations %}
+                <article class="rounded-[1.5rem] bg-slate-50 p-4">
+                    <p class="font-medium">{{ item.plot.name if item.plot else "Setor removido" }} • {{ item.analysis_date }}</p>
+                    <p class="mt-2 text-sm text-slate-600">{{ item.ai_recommendation }}</p>
+                </article>
+                {% else %}
+                <p class="text-sm text-slate-500">Sem recomendacoes agronomicas geradas.</p>
+                {% endfor %}
+            </div>
+        </section>
+    </section>
+</div>
+
+<script>
+    const soilHistory = {{ compare_chart|safe }};
+    new Chart(document.getElementById('soilHistoryChart'), {
+        type: 'line',
+        data: {
+            labels: soilHistory.labels,
+            datasets: [
+                { label: 'pH', data: soilHistory.ph, borderColor: '#1d4ed8', backgroundColor: 'rgba(29,78,216,0.08)', tension: 0.3 },
+                { label: 'P', data: soilHistory.phosphorus, borderColor: '#446a36', backgroundColor: 'rgba(68,106,54,0.08)', tension: 0.3 },
+                { label: 'K', data: soilHistory.potassium, borderColor: '#b45309', backgroundColor: 'rgba(180,83,9,0.08)', tension: 0.3 },
+                { label: 'Ca', data: soilHistory.calcium, borderColor: '#7c3aed', backgroundColor: 'rgba(124,58,237,0.08)', tension: 0.3 },
+                { label: 'Mg', data: soilHistory.magnesium, borderColor: '#0f766e', backgroundColor: 'rgba(15,118,110,0.08)', tension: 0.3 },
+                { label: 'V%', data: soilHistory.base_saturation, borderColor: '#dc2626', backgroundColor: 'rgba(220,38,38,0.08)', tension: 0.3 }
+            ]
+        },
+        options: { responsive: true, maintainAspectRatio: false }
+    });
+</script>
+{% endblock %}

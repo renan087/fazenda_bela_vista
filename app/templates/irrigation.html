@@ -6,10 +6,10 @@
         <h3 class="mt-2 text-2xl font-semibold">{% if edit_irrigation %}Editar irrigacao{% else %}Registrar irrigacao{% endif %}</h3>
         <form method="post" action="{% if edit_irrigation %}/irrigacao/{{ edit_irrigation.id }}/editar{% else %}/irrigacao{% endif %}" class="mt-6 grid gap-4">
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-            <label><span class="mb-2 block text-sm font-medium">Setor</span><select name="plot_id" class="w-full rounded-2xl border-slate-200 bg-slate-50" required>{% for plot in plots %}<option value="{{ plot.id }}" {% if edit_irrigation and edit_irrigation.plot_id == plot.id %}selected{% endif %}>{{ plot.name }}</option>{% endfor %}</select></label>
+            <label><span class="mb-2 block text-sm font-medium">Setor</span><select name="plot_id" data-irrigation-plot class="w-full rounded-2xl border-slate-200 bg-slate-50" required>{% for plot in plots %}<option value="{{ plot.id }}" {% if edit_irrigation and edit_irrigation.plot_id == plot.id %}selected{% endif %}>{{ plot.name }}</option>{% endfor %}</select></label>
             <label><span class="mb-2 block text-sm font-medium">Data</span><input type="date" name="irrigation_date" value="{{ edit_irrigation.irrigation_date.isoformat() if edit_irrigation else '' }}" class="w-full rounded-2xl border-slate-200 bg-slate-50" required></label>
-            <label><span class="mb-2 block text-sm font-medium">Duracao (minutos)</span><input type="number" name="duration_minutes" value="{{ edit_irrigation.duration_minutes if edit_irrigation else '' }}" class="w-full rounded-2xl border-slate-200 bg-slate-50" required></label>
-            <label><span class="mb-2 block text-sm font-medium">Volume manual (litros)</span><input type="number" step="0.01" name="volume_liters" value="{{ edit_irrigation.volume_liters if edit_irrigation else '' }}" class="w-full rounded-2xl border-slate-200 bg-slate-50" placeholder="Preencha apenas se o setor nao calcular automaticamente"></label>
+            <label><span class="mb-2 block text-sm font-medium">Duracao (minutos)</span><input type="number" name="duration_minutes" data-irrigation-duration value="{{ edit_irrigation.duration_minutes if edit_irrigation else '' }}" class="w-full rounded-2xl border-slate-200 bg-slate-50" required></label>
+            <label><span class="mb-2 block text-sm font-medium">Volume (litros)</span><input type="number" step="0.01" name="volume_liters" data-irrigation-volume value="{{ edit_irrigation.volume_liters if edit_irrigation else '' }}" class="w-full rounded-2xl border-slate-200 bg-slate-50" placeholder="Preenchimento manual quando nao houver calculo automatico"></label>
             <div class="rounded-[1.5rem] border border-brand-100 bg-brand-50/50 p-4 text-sm text-slate-600 md:col-span-1">
                 <p class="font-semibold text-slate-900">Calculo automatico</p>
                 <p class="mt-2" data-irrigation-help>Selecione um setor com configuracao de irrigacao para calcular o volume automaticamente.</p>
@@ -56,25 +56,51 @@
 </div>
 <script>
     (() => {
-        const plotSelect = document.querySelector('select[name="plot_id"]');
+        const plotSelect = document.querySelector('[data-irrigation-plot]');
         const help = document.querySelector('[data-irrigation-help]');
+        const durationField = document.querySelector('[data-irrigation-duration]');
+        const volumeField = document.querySelector('[data-irrigation-volume]');
         const configs = {{ plot_irrigation_configs|tojson }};
+        const computeVolume = (config, minutes) => {
+            const duration = Number(minutes || 0);
+            if (!duration || !config) return null;
+            const hours = duration / 60;
+            if (config.type === 'gotejo' && config.line_count && config.line_length && config.drip_spacing_cm && config.drip_lph) {
+                return (((config.line_count * (config.line_length / (config.drip_spacing_cm / 100))) * config.drip_lph) * hours).toFixed(2);
+            }
+            if (config.type === 'aspersor' && config.sprinkler_count && config.sprinkler_lph) {
+                return ((config.sprinkler_count * config.sprinkler_lph) * hours).toFixed(2);
+            }
+            return null;
+        };
         const updateHelp = () => {
             const selectedId = Number(plotSelect?.value || 0);
             const config = configs.find((item) => item.id === selectedId);
             if (!help || !config) return;
             if (config.type === 'gotejo') {
                 help.textContent = `Calculo automatico ativo: ${config.line_count || 0} linhas de ${config.line_length || 0} m, espacamento ${config.drip_spacing_cm || 0} cm e ${config.drip_lph || 0} L/h por gotejo.`;
-                return;
-            }
-            if (config.type === 'aspersor') {
+            } else if (config.type === 'aspersor') {
                 help.textContent = `Calculo automatico ativo: ${config.sprinkler_count || 0} aspersores com ${config.sprinkler_lph || 0} L/h por aspersor.`;
-                return;
+            } else {
+                help.textContent = 'Este setor nao possui configuracao de irrigacao automatica. Nesse caso, informe o volume manual em litros.';
             }
-            help.textContent = 'Este setor nao possui configuracao de irrigacao automatica. Nesse caso, informe o volume manual em litros.';
+            const automaticVolume = computeVolume(config, durationField?.value);
+            const hasAutomatic = automaticVolume !== null;
+            if (volumeField) {
+                volumeField.readOnly = hasAutomatic;
+                volumeField.classList.toggle('bg-slate-200', hasAutomatic);
+                volumeField.classList.toggle('text-slate-500', hasAutomatic);
+                if (hasAutomatic) {
+                    volumeField.value = automaticVolume;
+                } else if (volumeField.dataset.auto === '1') {
+                    volumeField.value = '';
+                }
+                volumeField.dataset.auto = hasAutomatic ? '1' : '0';
+            }
         };
-        if (plotSelect) {
+        if (plotSelect && durationField) {
             plotSelect.addEventListener('change', updateHelp);
+            durationField.addEventListener('input', updateHelp);
             updateHelp();
         }
     })();

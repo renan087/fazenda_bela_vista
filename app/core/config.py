@@ -18,6 +18,9 @@ class Settings(BaseSettings):
     postgres_password: str = "postgres"
     admin_email: str = "admin@fazenda.local"
     admin_password: str = "admin123"
+    openai_api_key: str | None = None
+    openai_recommendation_model: str = "gpt-5-mini"
+    openai_timeout_seconds: float = 25.0
 
     @property
     def is_production(self) -> bool:

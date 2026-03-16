@@ -48,6 +48,7 @@ def build_dashboard_context(repository: FarmRepository) -> dict:
     irrigations = repository.list_irrigations(limit=6)
     fertilizations = repository.list_fertilizations(limit=6)
     incidents = repository.list_pest_incidents(limit=6)
+    soil_analyses = repository.list_soil_analyses()[:6]
     forecast = calculate_forecast(repository)
 
     total_area = sum(_float(plot.area_hectares) for plot in plots)
@@ -127,6 +128,7 @@ def build_dashboard_context(repository: FarmRepository) -> dict:
         "recent_fertilizations": fertilizations,
         "recent_incidents": incidents,
         "recent_harvests": harvests[:8],
+        "recent_soil_analyses": soil_analyses,
         "forecast_plots": forecast["plots"],
         "production_chart": json.dumps(
             {

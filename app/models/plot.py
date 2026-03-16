@@ -38,3 +38,4 @@ class Plot(Base):
     fertilizations = relationship("FertilizationRecord", back_populates="plot", cascade="all, delete-orphan")
     harvests = relationship("HarvestRecord", back_populates="plot", cascade="all, delete-orphan")
     pest_incidents = relationship("PestIncident", back_populates="plot", cascade="all, delete-orphan")
+    soil_analyses = relationship("SoilAnalysis", back_populates="plot", cascade="all, delete-orphan")

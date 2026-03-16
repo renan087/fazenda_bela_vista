@@ -1,7 +1,17 @@
 from sqlalchemy import distinct, func
 from sqlalchemy.orm import Session, joinedload
 
-from app.models import CoffeeVariety, Farm, FertilizationRecord, HarvestRecord, IrrigationRecord, PestIncident, Plot
+from app.models import (
+    AgronomicProfile,
+    CoffeeVariety,
+    Farm,
+    FertilizationRecord,
+    HarvestRecord,
+    IrrigationRecord,
+    PestIncident,
+    Plot,
+    SoilAnalysis,
+)
 
 
 class FarmRepository:
@@ -13,6 +23,12 @@ class FarmRepository:
 
     def get_farm(self, farm_id: int) -> Farm | None:
         return self.db.query(Farm).filter(Farm.id == farm_id).first()
+
+    def get_agronomic_profile_by_farm(self, farm_id: int) -> AgronomicProfile | None:
+        return self.db.query(AgronomicProfile).filter(AgronomicProfile.farm_id == farm_id).first()
+
+    def list_agronomic_profiles(self) -> list[AgronomicProfile]:
+        return self.db.query(AgronomicProfile).options(joinedload(AgronomicProfile.farm)).order_by(AgronomicProfile.id.desc()).all()
 
     def list_plots(
         self,
@@ -69,6 +85,29 @@ class FarmRepository:
             self.db.query(Plot)
             .options(joinedload(Plot.variety), joinedload(Plot.farm))
             .filter(Plot.id == plot_id)
+            .first()
+        )
+
+    def list_soil_analyses(self, farm_id: int | None = None, plot_id: int | None = None) -> list[SoilAnalysis]:
+        query = (
+            self.db.query(SoilAnalysis)
+            .options(joinedload(SoilAnalysis.farm), joinedload(SoilAnalysis.plot))
+            .order_by(SoilAnalysis.analysis_date.desc(), SoilAnalysis.id.desc())
+        )
+        if farm_id:
+            query = query.filter(SoilAnalysis.farm_id == farm_id)
+        if plot_id:
+            query = query.filter(SoilAnalysis.plot_id == plot_id)
+        return query.all()
+
+    def get_soil_analysis(self, analysis_id: int) -> SoilAnalysis | None:
+        return (
+            self.db.query(SoilAnalysis)
+            .options(
+                joinedload(SoilAnalysis.farm).joinedload(Farm.agronomic_profile),
+                joinedload(SoilAnalysis.plot),
+            )
+            .filter(SoilAnalysis.id == analysis_id)
             .first()
         )
 

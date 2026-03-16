@@ -78,8 +78,38 @@
         <h3 class="mt-2 text-2xl font-semibold">Setores cadastrados</h3>
         <form method="get" action="/setores" class="mt-6 grid gap-3 rounded-[1.5rem] bg-slate-50 p-4 md:grid-cols-4">
             <label><span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Buscar</span><input name="q" value="{{ filters.q }}" class="w-full rounded-xl border-slate-200 bg-white" placeholder="Nome do setor"></label>
-            <label class="md:col-span-1"><span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Fazenda</span><select name="farm_id" multiple size="4" data-filter-farms class="w-full rounded-xl border-slate-200 bg-white">{% for farm in farms %}<option value="{{ farm.id }}" {% if farm.id in filters.farm_ids %}selected{% endif %}>{{ farm.name }}</option>{% endfor %}</select></label>
-            <label class="md:col-span-1"><span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Variedade</span><select name="variety_id" multiple size="4" data-filter-varieties class="w-full rounded-xl border-slate-200 bg-white">{% for variety in varieties %}<option value="{{ variety.id }}" {% if variety.id in filters.variety_ids %}selected{% endif %}>{{ variety.name }}</option>{% endfor %}</select></label>
+            <div class="md:col-span-1">
+                <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Fazenda</span>
+                <details class="relative" data-floating-filter>
+                    <summary class="flex cursor-pointer list-none items-center justify-between rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700">
+                        <span>{% if filters.farm_ids %}{{ filters.farm_ids|length }} selecionada(s){% else %}Todas{% endif %}</span>
+                        <span class="text-slate-400">Selecionar</span>
+                    </summary>
+                    <div class="absolute z-20 mt-2 w-full rounded-2xl border border-slate-200 bg-white p-3 shadow-xl">
+                        <div class="max-h-60 space-y-2 overflow-y-auto">
+                            {% for farm in farms %}
+                            <label class="flex items-center gap-3 rounded-xl px-2 py-2 hover:bg-slate-50"><input type="checkbox" name="farm_id" value="{{ farm.id }}" data-filter-farms {% if farm.id in filters.farm_ids %}checked{% endif %} class="rounded border-slate-300 text-brand-600"> <span class="text-sm">{{ farm.name }}</span></label>
+                            {% endfor %}
+                        </div>
+                    </div>
+                </details>
+            </div>
+            <div class="md:col-span-1">
+                <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Variedade</span>
+                <details class="relative" data-floating-filter>
+                    <summary class="flex cursor-pointer list-none items-center justify-between rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700">
+                        <span>{% if filters.variety_ids %}{{ filters.variety_ids|length }} selecionada(s){% else %}Todas{% endif %}</span>
+                        <span class="text-slate-400">Selecionar</span>
+                    </summary>
+                    <div class="absolute z-20 mt-2 w-full rounded-2xl border border-slate-200 bg-white p-3 shadow-xl">
+                        <div class="max-h-60 space-y-2 overflow-y-auto">
+                            {% for variety in varieties %}
+                            <label class="flex items-center gap-3 rounded-xl px-2 py-2 hover:bg-slate-50"><input type="checkbox" name="variety_id" value="{{ variety.id }}" data-filter-varieties {% if variety.id in filters.variety_ids %}checked{% endif %} class="rounded border-slate-300 text-brand-600"> <span class="text-sm">{{ variety.name }}</span></label>
+                            {% endfor %}
+                        </div>
+                    </div>
+                </details>
+            </div>
             <label><span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Ordenar</span><select name="sort" class="w-full rounded-xl border-slate-200 bg-white"><option value="name" {% if filters.sort == 'name' %}selected{% endif %}>Nome</option><option value="area_desc" {% if filters.sort == 'area_desc' %}selected{% endif %}>Maior area</option><option value="area_asc" {% if filters.sort == 'area_asc' %}selected{% endif %}>Menor area</option><option value="planting_desc" {% if filters.sort == 'planting_desc' %}selected{% endif %}>Plantio recente</option><option value="planting_asc" {% if filters.sort == 'planting_asc' %}selected{% endif %}>Plantio antigo</option></select></label>
             <div class="md:col-span-4 flex flex-wrap gap-3">
                 <button class="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white">Filtrar</button>
@@ -177,20 +207,19 @@
         }
 
         const links = {{ filter_links|tojson }};
-        const farmSelect = document.querySelector('[data-filter-farms]');
-        const varietySelect = document.querySelector('[data-filter-varieties]');
+        const farmChecks = Array.from(document.querySelectorAll('[data-filter-farms]'));
+        const varietyChecks = Array.from(document.querySelectorAll('[data-filter-varieties]'));
         const uniqueValues = (items) => [...new Set(items.filter((item) => item !== null && item !== undefined))];
-        const selectedValues = (select) => Array.from(select?.selectedOptions || []).map((option) => Number(option.value));
-        const toggleOptions = (select, allowed) => {
-            if (!select) return;
-            Array.from(select.options).forEach((option) => {
-                const enabled = !allowed.length || allowed.includes(Number(option.value));
-                option.hidden = !enabled;
+        const selectedValues = (items) => items.filter((item) => item.checked).map((item) => Number(item.value));
+        const toggleOptions = (items, allowed) => {
+            items.forEach((item) => {
+                const enabled = !allowed.length || allowed.includes(Number(item.value));
+                item.closest('label')?.classList.toggle('hidden', !enabled);
             });
         };
         const syncCascade = () => {
-            const selectedFarms = selectedValues(farmSelect);
-            const selectedVarieties = selectedValues(varietySelect);
+            const selectedFarms = selectedValues(farmChecks);
+            const selectedVarieties = selectedValues(varietyChecks);
             const allowedVarieties = uniqueValues(
                 links
                     .filter((item) => !selectedFarms.length || selectedFarms.includes(item.farm_id))
@@ -201,14 +230,22 @@
                     .filter((item) => !selectedVarieties.length || selectedVarieties.includes(item.variety_id))
                     .map((item) => item.farm_id)
             );
-            toggleOptions(varietySelect, allowedVarieties);
-            toggleOptions(farmSelect, allowedFarms);
+            toggleOptions(varietyChecks, allowedVarieties);
+            toggleOptions(farmChecks, allowedFarms);
         };
-        if (farmSelect && varietySelect) {
-            farmSelect.addEventListener('change', syncCascade);
-            varietySelect.addEventListener('change', syncCascade);
+        if (farmChecks.length && varietyChecks.length) {
+            farmChecks.forEach((item) => item.addEventListener('change', syncCascade));
+            varietyChecks.forEach((item) => item.addEventListener('change', syncCascade));
             syncCascade();
         }
+        document.querySelectorAll('[data-floating-filter]').forEach((details) => {
+            details.addEventListener('toggle', () => {
+                if (!details.open) return;
+                document.querySelectorAll('[data-floating-filter]').forEach((other) => {
+                    if (other !== details) other.removeAttribute('open');
+                });
+            });
+        });
     })();
 </script>
 {% endblock %}

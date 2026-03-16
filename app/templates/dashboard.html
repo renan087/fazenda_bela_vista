@@ -54,7 +54,7 @@
     </div>
 </section>
 
-<section class="mt-6 grid gap-6 xl:grid-cols-3">
+<section class="mt-6 grid gap-6 xl:grid-cols-4">
     <article class="rounded-[2rem] bg-white p-6 shadow-panel xl:col-span-2">
         <div class="flex items-center justify-between">
             <div>
@@ -146,6 +146,21 @@
             </a>
             {% else %}
             <p class="text-sm text-slate-500">Sem colheitas registradas.</p>
+            {% endfor %}
+        </div>
+    </article>
+    <article class="rounded-[2rem] bg-white p-6 shadow-panel">
+        <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Analise de Solo</p>
+        <h3 class="mt-2 text-xl font-semibold">Recomendacoes recentes</h3>
+        <div class="mt-6 space-y-4">
+            {% for item in recent_soil_analyses %}
+            <a href="/analise-solo?edit_id={{ item.id }}&plot_id={{ item.plot_id }}&compare_plot_id={{ item.plot_id }}" class="block rounded-2xl bg-slate-50 p-4 transition hover:bg-brand-50/40">
+                <p class="font-medium">{{ item.plot.name if item.plot else "Setor removido" }}</p>
+                <p class="mt-1 text-sm text-slate-500">{{ item.analysis_date }} • {{ item.laboratory }}</p>
+                <p class="mt-2 text-sm text-slate-600">{% if item.ai_recommendation %}IA: {{ item.ai_status }}{% else %}Recomendacao base calculada{% endif %}</p>
+            </a>
+            {% else %}
+            <p class="text-sm text-slate-500">Sem analises registradas.</p>
             {% endfor %}
         </div>
     </article>
