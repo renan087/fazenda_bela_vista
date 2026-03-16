@@ -81,10 +81,12 @@ def seed_admin(db: Session) -> None:
 
 
 def seed_demo_data(db: Session) -> None:
-    if db.query(Farm).count() and db.query(Plot).count():
+    # Never inject demo data into an environment that already has operational records.
+    if db.query(Farm).count() or db.query(Plot).count():
         return
 
-    if not db.query(CoffeeVariety).count():
+    catuai = db.query(CoffeeVariety).filter(CoffeeVariety.name == "Catuai 144").first()
+    if not catuai:
         catuai = CoffeeVariety(
             name="Catuai 144",
             species="Arabica",
@@ -92,6 +94,11 @@ def seed_demo_data(db: Session) -> None:
             flavor_profile="Doce, caramelo e frutas amarelas",
             notes="Alta adaptacao em cafeicultura de montanha.",
         )
+        db.add(catuai)
+        db.flush()
+
+    mundo_novo = db.query(CoffeeVariety).filter(CoffeeVariety.name == "Mundo Novo").first()
+    if not mundo_novo:
         mundo_novo = CoffeeVariety(
             name="Mundo Novo",
             species="Arabica",
@@ -99,11 +106,8 @@ def seed_demo_data(db: Session) -> None:
             flavor_profile="Chocolate e castanhas",
             notes="Boa produtividade e vigor.",
         )
-        db.add_all([catuai, mundo_novo])
+        db.add(mundo_novo)
         db.flush()
-    else:
-        catuai = db.query(CoffeeVariety).filter(CoffeeVariety.name == "Catuai 144").first()
-        mundo_novo = db.query(CoffeeVariety).filter(CoffeeVariety.name == "Mundo Novo").first()
 
     farm = Farm(
         name="Fazenda Bela Vista",
