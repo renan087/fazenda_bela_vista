@@ -6,30 +6,30 @@
         <h3 class="mt-4 text-3xl font-semibold">Visao integrada da operacao cafeeira</h3>
         <p class="mt-3 max-w-2xl text-sm text-brand-50/80">Acompanhe area plantada, rendimento, previsao da safra, irrigacao recente e sanidade da lavoura em um painel unico.</p>
         <div class="mt-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-            <div class="rounded-2xl bg-white/10 p-5">
+            <a href="/setores" class="block rounded-2xl bg-white/10 p-5 transition hover:bg-white/15">
                 <p class="text-sm text-brand-50/75">Area total plantada</p>
                 <p class="mt-3 text-3xl font-semibold">{{ kpis.area_total }} ha</p>
-            </div>
-            <div class="rounded-2xl bg-white/10 p-5">
+            </a>
+            <a href="/setores" class="block rounded-2xl bg-white/10 p-5 transition hover:bg-white/15">
                 <p class="text-sm text-brand-50/75">Numero de setores</p>
                 <p class="mt-3 text-3xl font-semibold">{{ kpis.plot_count }}</p>
-            </div>
-            <div class="rounded-2xl bg-white/10 p-5">
+            </a>
+            <a href="/producao" class="block rounded-2xl bg-white/10 p-5 transition hover:bg-white/15">
                 <p class="text-sm text-brand-50/75">Producao estimada</p>
                 <p class="mt-3 text-3xl font-semibold">{{ kpis.estimated_production }} sacas</p>
-            </div>
-            <div class="rounded-2xl bg-white/10 p-5">
+            </a>
+            <a href="/producao" class="block rounded-2xl bg-white/10 p-5 transition hover:bg-white/15">
                 <p class="text-sm text-brand-50/75">Producao total</p>
                 <p class="mt-3 text-3xl font-semibold">{{ kpis.total_production }} sacas</p>
-            </div>
-            <div class="rounded-2xl bg-white/10 p-5">
+            </a>
+            <a href="/producao" class="block rounded-2xl bg-white/10 p-5 transition hover:bg-white/15">
                 <p class="text-sm text-brand-50/75">Produtividade media</p>
                 <p class="mt-3 text-3xl font-semibold">{{ kpis.productivity_per_hectare }} sc/ha</p>
-            </div>
-            <div class="rounded-2xl bg-white/10 p-5">
+            </a>
+            <a href="/producao" class="block rounded-2xl bg-white/10 p-5 transition hover:bg-white/15">
                 <p class="text-sm text-brand-50/75">Previsao pelo historico</p>
                 <p class="mt-3 text-3xl font-semibold">{{ kpis.forecast_production }} sacas</p>
-            </div>
+            </a>
         </div>
     </div>
     <div class="rounded-[2rem] bg-white p-6 shadow-panel">

@@ -38,6 +38,8 @@ def _sync_schema() -> None:
         "ALTER TABLE plots ADD COLUMN IF NOT EXISTS centroid_lng NUMERIC(10,6)",
         "ALTER TABLE plots ADD COLUMN IF NOT EXISTS boundary_geojson TEXT",
         "ALTER TABLE plots ALTER COLUMN location DROP NOT NULL",
+        "ALTER TABLE irrigation_records ADD COLUMN IF NOT EXISTS water_volume_mm NUMERIC(10,2)",
+        "ALTER TABLE irrigation_records ADD COLUMN IF NOT EXISTS method VARCHAR(80)",
         "ALTER TABLE irrigation_records ADD COLUMN IF NOT EXISTS volume_liters NUMERIC(12,2)",
         "ALTER TABLE irrigation_records ADD COLUMN IF NOT EXISTS duration_minutes INTEGER",
         "ALTER TABLE harvest_records ADD COLUMN IF NOT EXISTS productivity_per_hectare NUMERIC(10,2)",
@@ -45,6 +47,8 @@ def _sync_schema() -> None:
     with engine.begin() as connection:
         for statement in statements:
             connection.execute(text(statement))
+        connection.execute(text("ALTER TABLE irrigation_records ALTER COLUMN water_volume_mm DROP NOT NULL"))
+        connection.execute(text("ALTER TABLE irrigation_records ALTER COLUMN method DROP NOT NULL"))
         connection.execute(
             text(
                 """

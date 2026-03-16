@@ -213,5 +213,8 @@ def update_pest_incident(repository: FarmRepository, incident: PestIncident, for
 def normalize_geojson(raw_text: str | None) -> str | None:
     if not raw_text:
         return None
-    parsed = json.loads(raw_text)
+    normalized = raw_text.strip()
+    if not normalized:
+        return None
+    parsed = json.loads(normalized)
     return json.dumps(parsed)
