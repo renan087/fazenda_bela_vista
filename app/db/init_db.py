@@ -7,7 +7,7 @@ from app.core.config import get_settings
 from app.core.security import get_password_hash
 from app.db.base import Base
 from app.db.session import engine
-from app.models import CoffeeVariety, FertilizationRecord, HarvestRecord, IrrigationRecord, PestIncident, Plot, User
+from app.models import CoffeeVariety, Farm, FertilizationRecord, HarvestRecord, IrrigationRecord, PestIncident, Plot, User
 
 
 def create_tables() -> None:
@@ -18,15 +18,26 @@ def create_tables() -> None:
 def _sync_schema() -> None:
     # Lightweight Postgres-friendly sync for new nullable columns added after first deploy.
     statements = [
+        """
+        CREATE TABLE IF NOT EXISTS farms (
+            id SERIAL PRIMARY KEY,
+            name VARCHAR(160) UNIQUE NOT NULL,
+            location VARCHAR(180) NOT NULL,
+            total_area NUMERIC(12,2) NOT NULL,
+            notes TEXT
+        )
+        """,
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW()",
         "ALTER TABLE coffee_varieties ADD COLUMN IF NOT EXISTS flavor_profile VARCHAR(180)",
-        "ALTER TABLE plots ADD COLUMN IF NOT EXISTS planting_year INTEGER",
+        "ALTER TABLE plots ADD COLUMN IF NOT EXISTS planting_date DATE",
+        "ALTER TABLE plots ADD COLUMN IF NOT EXISTS farm_id INTEGER",
         "ALTER TABLE plots ADD COLUMN IF NOT EXISTS spacing_row_meters NUMERIC(8,2)",
         "ALTER TABLE plots ADD COLUMN IF NOT EXISTS spacing_plant_meters NUMERIC(8,2)",
         "ALTER TABLE plots ADD COLUMN IF NOT EXISTS estimated_yield_sacks NUMERIC(10,2)",
         "ALTER TABLE plots ADD COLUMN IF NOT EXISTS centroid_lat NUMERIC(10,6)",
         "ALTER TABLE plots ADD COLUMN IF NOT EXISTS centroid_lng NUMERIC(10,6)",
         "ALTER TABLE plots ADD COLUMN IF NOT EXISTS boundary_geojson TEXT",
+        "ALTER TABLE plots ALTER COLUMN location DROP NOT NULL",
         "ALTER TABLE irrigation_records ADD COLUMN IF NOT EXISTS volume_liters NUMERIC(12,2)",
         "ALTER TABLE irrigation_records ADD COLUMN IF NOT EXISTS duration_minutes INTEGER",
         "ALTER TABLE harvest_records ADD COLUMN IF NOT EXISTS productivity_per_hectare NUMERIC(10,2)",
@@ -34,6 +45,23 @@ def _sync_schema() -> None:
     with engine.begin() as connection:
         for statement in statements:
             connection.execute(text(statement))
+        connection.execute(
+            text(
+                """
+                DO $$
+                BEGIN
+                    IF NOT EXISTS (
+                        SELECT 1 FROM information_schema.table_constraints
+                        WHERE constraint_name = 'plots_farm_id_fkey'
+                    ) THEN
+                        ALTER TABLE plots
+                        ADD CONSTRAINT plots_farm_id_fkey
+                        FOREIGN KEY (farm_id) REFERENCES farms(id);
+                    END IF;
+                END $$;
+                """
+            )
+        )
 
 
 def seed_admin(db: Session) -> None:
@@ -53,31 +81,44 @@ def seed_admin(db: Session) -> None:
 
 
 def seed_demo_data(db: Session) -> None:
-    if db.query(CoffeeVariety).count():
+    if db.query(Farm).count() and db.query(Plot).count():
         return
 
-    catuai = CoffeeVariety(
-        name="Catuai 144",
-        species="Arabica",
-        maturation_cycle="Media",
-        flavor_profile="Doce, caramelo e frutas amarelas",
-        notes="Alta adaptacao em cafeicultura de montanha.",
+    if not db.query(CoffeeVariety).count():
+        catuai = CoffeeVariety(
+            name="Catuai 144",
+            species="Arabica",
+            maturation_cycle="Media",
+            flavor_profile="Doce, caramelo e frutas amarelas",
+            notes="Alta adaptacao em cafeicultura de montanha.",
+        )
+        mundo_novo = CoffeeVariety(
+            name="Mundo Novo",
+            species="Arabica",
+            maturation_cycle="Tardia",
+            flavor_profile="Chocolate e castanhas",
+            notes="Boa produtividade e vigor.",
+        )
+        db.add_all([catuai, mundo_novo])
+        db.flush()
+    else:
+        catuai = db.query(CoffeeVariety).filter(CoffeeVariety.name == "Catuai 144").first()
+        mundo_novo = db.query(CoffeeVariety).filter(CoffeeVariety.name == "Mundo Novo").first()
+
+    farm = Farm(
+        name="Fazenda Bela Vista",
+        location="Manhuacu - MG",
+        total_area=28.5,
+        notes="Unidade principal com foco em cafe especial.",
     )
-    mundo_novo = CoffeeVariety(
-        name="Mundo Novo",
-        species="Arabica",
-        maturation_cycle="Tardia",
-        flavor_profile="Chocolate e castanhas",
-        notes="Boa produtividade e vigor.",
-    )
-    db.add_all([catuai, mundo_novo])
+    db.add(farm)
     db.flush()
 
     plot_alpha = Plot(
-        name="Talhao Alpha",
+        name="Setor Alpha",
         area_hectares=12.5,
-        location="Setor Norte",
-        planting_year=2019,
+        location=farm.location,
+        planting_date=date.fromisoformat("2019-10-12"),
         plant_count=42000,
         spacing_row_meters=3.5,
         spacing_plant_meters=0.6,
@@ -86,13 +127,14 @@ def seed_demo_data(db: Session) -> None:
         centroid_lng=-42.874221,
         boundary_geojson='{"type":"Polygon","coordinates":[[[-42.8758,-20.7428],[-42.8736,-20.7428],[-42.8736,-20.7442],[-42.8758,-20.7442],[-42.8758,-20.7428]]]}',
         notes="Talhao com maior vigor vegetativo.",
+        farm_id=farm.id,
         variety_id=catuai.id,
     )
     plot_beta = Plot(
-        name="Talhao Beta",
+        name="Setor Beta",
         area_hectares=8.2,
-        location="Setor Leste",
-        planting_year=2017,
+        location=farm.location,
+        planting_date=date.fromisoformat("2017-11-05"),
         plant_count=25500,
         spacing_row_meters=3.4,
         spacing_plant_meters=0.7,
@@ -101,6 +143,7 @@ def seed_demo_data(db: Session) -> None:
         centroid_lng=-42.870411,
         boundary_geojson='{"type":"Polygon","coordinates":[[[-42.8717,-20.7447],[-42.8694,-20.7447],[-42.8694,-20.7461],[-42.8717,-20.7461],[-42.8717,-20.7447]]]}',
         notes="Area com foco em qualidade de bebida.",
+        farm_id=farm.id,
         variety_id=mundo_novo.id,
     )
     db.add_all([plot_alpha, plot_beta])

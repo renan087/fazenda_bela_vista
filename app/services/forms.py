@@ -1,16 +1,27 @@
 import json
 from datetime import date
 
-from app.models import CoffeeVariety, FertilizationRecord, HarvestRecord, IrrigationRecord, PestIncident, Plot
+from app.models import CoffeeVariety, Farm, FertilizationRecord, HarvestRecord, IrrigationRecord, PestIncident, Plot
 from app.repositories.farm import FarmRepository
+
+
+def create_farm(repository: FarmRepository, form: dict) -> Farm:
+    return repository.create(
+        Farm(
+            name=form["name"],
+            location=form["location"],
+            total_area=form["total_area"],
+            notes=form.get("notes"),
+        )
+    )
 
 
 def create_plot(repository: FarmRepository, form: dict) -> Plot:
     plot = Plot(
         name=form["name"],
         area_hectares=form["area_hectares"],
-        location=form["location"],
-        planting_year=form.get("planting_year"),
+        location=form.get("location"),
+        planting_date=date.fromisoformat(form["planting_date"]) if form.get("planting_date") else None,
         plant_count=form["plant_count"],
         spacing_row_meters=form.get("spacing_row_meters"),
         spacing_plant_meters=form.get("spacing_plant_meters"),
@@ -19,9 +30,44 @@ def create_plot(repository: FarmRepository, form: dict) -> Plot:
         centroid_lng=form.get("centroid_lng"),
         boundary_geojson=form.get("boundary_geojson"),
         notes=form.get("notes"),
+        farm_id=form.get("farm_id"),
         variety_id=form.get("variety_id"),
     )
     return repository.create(plot)
+
+
+def update_plot(repository: FarmRepository, plot: Plot, form: dict) -> Plot:
+    return repository.update(
+        plot,
+        {
+            "name": form["name"],
+            "area_hectares": form["area_hectares"],
+            "location": form.get("location"),
+            "planting_date": date.fromisoformat(form["planting_date"]) if form.get("planting_date") else None,
+            "plant_count": form["plant_count"],
+            "spacing_row_meters": form.get("spacing_row_meters"),
+            "spacing_plant_meters": form.get("spacing_plant_meters"),
+            "estimated_yield_sacks": form.get("estimated_yield_sacks"),
+            "centroid_lat": form.get("centroid_lat"),
+            "centroid_lng": form.get("centroid_lng"),
+            "boundary_geojson": form.get("boundary_geojson"),
+            "notes": form.get("notes"),
+            "farm_id": form.get("farm_id"),
+            "variety_id": form.get("variety_id"),
+        },
+    )
+
+
+def update_farm(repository: FarmRepository, farm: Farm, form: dict) -> Farm:
+    return repository.update(
+        farm,
+        {
+            "name": form["name"],
+            "location": form["location"],
+            "total_area": form["total_area"],
+            "notes": form.get("notes"),
+        },
+    )
 
 
 def create_variety(repository: FarmRepository, form: dict) -> CoffeeVariety:

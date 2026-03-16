@@ -45,7 +45,8 @@
                 <nav class="flex-1 space-y-1 px-4 py-6 text-sm">
                     {% set nav = [
                         ('dashboard', '/dashboard', 'Dashboard'),
-                        ('plots', '/talhoes', 'Talhoes'),
+                        ('farms', '/fazendas', 'Fazendas'),
+                        ('plots', '/setores', 'Setores'),
                         ('varieties', '/variedades', 'Variedades'),
                         ('irrigation', '/irrigacao', 'Irrigacao'),
                         ('fertilization', '/fertilizacao', 'Fertilizacao'),
@@ -85,6 +86,11 @@
                 </div>
             </div>
             <div class="mx-auto max-w-7xl px-6 py-8">
+                {% if flash %}
+                <div class="mb-6 rounded-2xl px-4 py-3 text-sm font-medium {% if flash.kind == 'success' %}border border-emerald-200 bg-emerald-50 text-emerald-700{% else %}border border-rose-200 bg-rose-50 text-rose-700{% endif %}">
+                    {{ flash.message }}
+                </div>
+                {% endif %}
                 {% block content %}{% endblock %}
             </div>
         </main>

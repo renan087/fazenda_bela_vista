@@ -6,7 +6,7 @@
         <h3 class="mt-2 text-2xl font-semibold">Registrar irrigacao</h3>
         <form method="post" action="/irrigacao" class="mt-6 grid gap-4">
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-            <label><span class="mb-2 block text-sm font-medium">Talhao</span><select name="plot_id" class="w-full rounded-2xl border-slate-200 bg-slate-50" required>{% for plot in plots %}<option value="{{ plot.id }}">{{ plot.name }}</option>{% endfor %}</select></label>
+            <label><span class="mb-2 block text-sm font-medium">Setor</span><select name="plot_id" class="w-full rounded-2xl border-slate-200 bg-slate-50" required>{% for plot in plots %}<option value="{{ plot.id }}">{{ plot.name }}</option>{% endfor %}</select></label>
             <label><span class="mb-2 block text-sm font-medium">Data</span><input type="date" name="irrigation_date" class="w-full rounded-2xl border-slate-200 bg-slate-50" required></label>
             <label><span class="mb-2 block text-sm font-medium">Volume (litros)</span><input type="number" step="0.01" name="volume_liters" class="w-full rounded-2xl border-slate-200 bg-slate-50" required></label>
             <label><span class="mb-2 block text-sm font-medium">Duracao (minutos)</span><input type="number" name="duration_minutes" class="w-full rounded-2xl border-slate-200 bg-slate-50" required></label>
@@ -19,7 +19,7 @@
         <h3 class="mt-2 text-2xl font-semibold">Ultimas irrigacoes</h3>
         <div class="mt-6 overflow-hidden rounded-[1.5rem] border border-slate-100">
             <table class="min-w-full divide-y divide-slate-100 text-sm">
-                <thead class="bg-slate-50 text-left text-slate-500"><tr><th class="px-4 py-3">Talhao</th><th class="px-4 py-3">Data</th><th class="px-4 py-3">Volume</th><th class="px-4 py-3">Duracao</th></tr></thead>
+                <thead class="bg-slate-50 text-left text-slate-500"><tr><th class="px-4 py-3">Setor</th><th class="px-4 py-3">Data</th><th class="px-4 py-3">Volume</th><th class="px-4 py-3">Duracao</th></tr></thead>
                 <tbody class="divide-y divide-slate-100 bg-white">
                     {% for item in irrigations %}
                     <tr>

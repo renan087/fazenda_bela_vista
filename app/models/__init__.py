@@ -1,4 +1,5 @@
 from app.models.coffee_variety import CoffeeVariety
+from app.models.farm import Farm
 from app.models.fertilization import FertilizationRecord
 from app.models.harvest import HarvestRecord
 from app.models.irrigation import IrrigationRecord
@@ -8,6 +9,7 @@ from app.models.user import User
 
 __all__ = [
     "CoffeeVariety",
+    "Farm",
     "FertilizationRecord",
     "HarvestRecord",
     "IrrigationRecord",

@@ -6,7 +6,7 @@
         <h3 class="mt-2 text-2xl font-semibold">Registrar ocorrencia fitossanitaria</h3>
         <form method="post" action="/pragas" class="mt-6 grid gap-4">
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-            <label><span class="mb-2 block text-sm font-medium">Talhao</span><select name="plot_id" class="w-full rounded-2xl border-slate-200 bg-slate-50" required>{% for plot in plots %}<option value="{{ plot.id }}">{{ plot.name }}</option>{% endfor %}</select></label>
+            <label><span class="mb-2 block text-sm font-medium">Setor</span><select name="plot_id" class="w-full rounded-2xl border-slate-200 bg-slate-50" required>{% for plot in plots %}<option value="{{ plot.id }}">{{ plot.name }}</option>{% endfor %}</select></label>
             <label><span class="mb-2 block text-sm font-medium">Data</span><input type="date" name="occurrence_date" class="w-full rounded-2xl border-slate-200 bg-slate-50" required></label>
             <label><span class="mb-2 block text-sm font-medium">Categoria</span><select name="category" class="w-full rounded-2xl border-slate-200 bg-slate-50"><option>Praga</option><option>Doenca</option></select></label>
             <label><span class="mb-2 block text-sm font-medium">Nome</span><input name="name" class="w-full rounded-2xl border-slate-200 bg-slate-50" required></label>

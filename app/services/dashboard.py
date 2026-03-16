@@ -42,6 +42,7 @@ def calculate_forecast(repository: FarmRepository) -> dict:
 
 def build_dashboard_context(repository: FarmRepository) -> dict:
     plots = repository.list_plots()
+    farms = repository.list_farms()
     harvests = repository.list_harvests()
     irrigations = repository.list_irrigations(limit=6)
     fertilizations = repository.list_fertilizations(limit=6)
@@ -56,7 +57,7 @@ def build_dashboard_context(repository: FarmRepository) -> dict:
     production_by_plot = defaultdict(float)
     harvest_timeline = defaultdict(float)
     for harvest in harvests:
-        plot_name = harvest.plot.name if harvest.plot else f"Talhao {harvest.plot_id}"
+        plot_name = harvest.plot.name if harvest.plot else f"Setor {harvest.plot_id}"
         production_by_plot[plot_name] += _float(harvest.sacks_produced)
         harvest_timeline[str(harvest.harvest_date)] += _float(harvest.sacks_produced)
 
@@ -121,4 +122,5 @@ def build_dashboard_context(repository: FarmRepository) -> dict:
             }
         ),
         "map_geojson": json.dumps({"type": "FeatureCollection", "features": map_features}),
+        "farms": farms,
     }

@@ -1,4 +1,5 @@
 import json
+from datetime import datetime
 
 from fastapi import APIRouter, Depends, Form, Request, status
 from fastapi.responses import RedirectResponse
@@ -8,10 +9,11 @@ from sqlalchemy.orm import Session
 from app.core.csrf import validate_csrf
 from app.core.deps import get_csrf_token, get_current_user_web
 from app.db.session import get_db
-from app.models import Plot, User
+from app.models import Farm, Plot, User
 from app.repositories.farm import FarmRepository
 from app.services.dashboard import build_dashboard_context
 from app.services.forms import (
+    create_farm,
     create_fertilization,
     create_harvest,
     create_irrigation,
@@ -19,6 +21,8 @@ from app.services.forms import (
     create_plot,
     create_variety,
     normalize_geojson,
+    update_farm,
+    update_plot,
 )
 
 router = APIRouter()
@@ -30,11 +34,13 @@ def _redirect(url: str) -> RedirectResponse:
 
 
 def _base_context(request: Request, user: User, csrf_token: str, page: str, **kwargs):
+    flash = request.session.pop("flash", None)
     context = {
         "request": request,
         "user": user,
         "csrf_token": csrf_token,
         "page": page,
+        "flash": flash,
     }
     context.update(kwargs)
     return context
@@ -42,6 +48,18 @@ def _base_context(request: Request, user: User, csrf_token: str, page: str, **kw
 
 def _repository(db: Session) -> FarmRepository:
     return FarmRepository(db)
+
+
+def _flash(request: Request, kind: str, message: str) -> None:
+    request.session["flash"] = {"kind": kind, "message": message}
+
+
+def _float_or_none(value: str | None):
+    return float(value) if value not in (None, "") else None
+
+
+def _int_or_none(value: str | None):
+    return int(value) if value not in (None, "") else None
 
 
 @router.get("/")
@@ -63,14 +81,21 @@ def dashboard(
     )
 
 
-@router.get("/talhoes")
+@router.get("/talhoes", include_in_schema=False)
+@router.get("/setores")
 def plots_page(
     request: Request,
+    q: str | None = None,
+    farm_id: int | None = None,
+    variety_id: int | None = None,
+    sort: str = "name",
+    edit_id: int | None = None,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user_web),
     csrf_token: str = Depends(get_csrf_token),
 ):
     repo = _repository(db)
+    edit_plot = repo.get_plot(edit_id) if edit_id else None
     return templates.TemplateResponse(
         "plots.html",
         _base_context(
@@ -78,27 +103,35 @@ def plots_page(
             user,
             csrf_token,
             "plots",
-            plots=repo.list_plots(),
+            plots=repo.list_plots(search=q, farm_id=farm_id, variety_id=variety_id, sort=sort),
+            farms=repo.list_farms(),
             varieties=repo.list_varieties(),
+            filters={"q": q or "", "farm_id": farm_id, "variety_id": variety_id, "sort": sort},
+            edit_plot=edit_plot,
         ),
     )
 
 
-@router.post("/talhoes")
+@router.post("/talhoes", include_in_schema=False)
+@router.post("/setores")
 def create_plot_action(
     request: Request,
     csrf_token: str = Form(...),
     name: str = Form(...),
     area_hectares: float = Form(...),
-    location: str = Form(...),
-    planting_year: int | None = Form(None),
+    farm_id: str | None = Form(None),
+    new_farm_name: str | None = Form(None),
+    new_farm_location: str | None = Form(None),
+    new_farm_total_area: str | None = Form(None),
+    new_farm_notes: str | None = Form(None),
+    planting_date: str | None = Form(None),
     plant_count: int = Form(...),
-    spacing_row_meters: float | None = Form(None),
-    spacing_plant_meters: float | None = Form(None),
-    estimated_yield_sacks: float | None = Form(None),
-    variety_id: int | None = Form(None),
-    centroid_lat: float | None = Form(None),
-    centroid_lng: float | None = Form(None),
+    spacing_row_meters: str | None = Form(None),
+    spacing_plant_meters: str | None = Form(None),
+    estimated_yield_sacks: str | None = Form(None),
+    variety_id: str | None = Form(None),
+    centroid_lat: str | None = Form(None),
+    centroid_lng: str | None = Form(None),
     boundary_geojson: str | None = Form(None),
     notes: str | None = Form(None),
     db: Session = Depends(get_db),
@@ -106,25 +139,216 @@ def create_plot_action(
 ):
     del user
     validate_csrf(request, csrf_token)
+    repo = _repository(db)
+    selected_farm_id = _int_or_none(farm_id)
+    if not selected_farm_id and new_farm_name:
+        if not new_farm_location or not new_farm_total_area:
+            _flash(request, "error", "Informe localizacao e area total para cadastrar a fazenda.")
+            return _redirect("/setores")
+        farm = create_farm(
+            repo,
+            {
+                "name": new_farm_name,
+                "location": new_farm_location,
+                "total_area": float(new_farm_total_area),
+                "notes": new_farm_notes,
+            },
+        )
+        selected_farm_id = farm.id
+    if not selected_farm_id:
+        _flash(request, "error", "Selecione uma fazenda ou cadastre uma nova antes de salvar o setor.")
+        return _redirect("/setores")
+    farm = repo.get_farm(selected_farm_id)
+    if not farm:
+        _flash(request, "error", "A fazenda selecionada nao foi encontrada.")
+        return _redirect("/setores")
     create_plot(
-        _repository(db),
+        repo,
         {
             "name": name,
             "area_hectares": area_hectares,
-            "location": location,
-            "planting_year": planting_year,
+            "location": farm.location,
+            "planting_date": planting_date,
             "plant_count": plant_count,
-            "spacing_row_meters": spacing_row_meters,
-            "spacing_plant_meters": spacing_plant_meters,
-            "estimated_yield_sacks": estimated_yield_sacks,
-            "variety_id": variety_id,
-            "centroid_lat": centroid_lat,
-            "centroid_lng": centroid_lng,
+            "spacing_row_meters": _float_or_none(spacing_row_meters),
+            "spacing_plant_meters": _float_or_none(spacing_plant_meters),
+            "estimated_yield_sacks": _float_or_none(estimated_yield_sacks),
+            "variety_id": _int_or_none(variety_id),
+            "centroid_lat": _float_or_none(centroid_lat),
+            "centroid_lng": _float_or_none(centroid_lng),
             "boundary_geojson": normalize_geojson(boundary_geojson),
             "notes": notes,
+            "farm_id": selected_farm_id,
         },
     )
-    return _redirect("/talhoes")
+    _flash(request, "success", "Setor salvo com sucesso.")
+    return _redirect("/setores")
+
+
+@router.post("/talhoes/{plot_id}/editar", include_in_schema=False)
+@router.post("/setores/{plot_id}/editar")
+def update_plot_action(
+    plot_id: int,
+    request: Request,
+    csrf_token: str = Form(...),
+    name: str = Form(...),
+    area_hectares: float = Form(...),
+    farm_id: int = Form(...),
+    planting_date: str | None = Form(None),
+    plant_count: int = Form(...),
+    spacing_row_meters: str | None = Form(None),
+    spacing_plant_meters: str | None = Form(None),
+    estimated_yield_sacks: str | None = Form(None),
+    variety_id: str | None = Form(None),
+    centroid_lat: str | None = Form(None),
+    centroid_lng: str | None = Form(None),
+    boundary_geojson: str | None = Form(None),
+    notes: str | None = Form(None),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    del user
+    validate_csrf(request, csrf_token)
+    repo = _repository(db)
+    plot = repo.get_plot(plot_id)
+    if not plot:
+        _flash(request, "error", "Setor nao encontrado.")
+        return _redirect("/setores")
+    farm = repo.get_farm(farm_id)
+    if not farm:
+        _flash(request, "error", "A fazenda selecionada nao foi encontrada.")
+        return _redirect("/setores")
+    update_plot(
+        repo,
+        plot,
+        {
+            "name": name,
+            "area_hectares": area_hectares,
+            "location": farm.location if farm else None,
+            "planting_date": planting_date,
+            "plant_count": plant_count,
+            "spacing_row_meters": _float_or_none(spacing_row_meters),
+            "spacing_plant_meters": _float_or_none(spacing_plant_meters),
+            "estimated_yield_sacks": _float_or_none(estimated_yield_sacks),
+            "variety_id": _int_or_none(variety_id),
+            "centroid_lat": _float_or_none(centroid_lat),
+            "centroid_lng": _float_or_none(centroid_lng),
+            "boundary_geojson": normalize_geojson(boundary_geojson),
+            "notes": notes,
+            "farm_id": farm_id,
+        },
+    )
+    _flash(request, "success", "Setor atualizado com sucesso.")
+    return _redirect("/setores")
+
+
+@router.post("/talhoes/{plot_id}/excluir", include_in_schema=False)
+@router.post("/setores/{plot_id}/excluir")
+def delete_plot_action(
+    plot_id: int,
+    request: Request,
+    csrf_token: str = Form(...),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    del user
+    validate_csrf(request, csrf_token)
+    repo = _repository(db)
+    plot = repo.get_plot(plot_id)
+    if not plot:
+        _flash(request, "error", "Setor nao encontrado.")
+        return _redirect("/setores")
+    repo.delete(plot)
+    _flash(request, "success", "Setor excluido com sucesso.")
+    return _redirect("/setores")
+
+
+@router.get("/fazendas")
+def farms_page(
+    request: Request,
+    edit_id: int | None = None,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+    csrf_token: str = Depends(get_csrf_token),
+):
+    repo = _repository(db)
+    edit_farm = repo.get_farm(edit_id) if edit_id else None
+    return templates.TemplateResponse(
+        "farms.html",
+        _base_context(
+            request,
+            user,
+            csrf_token,
+            "farms",
+            farms=repo.list_farms(),
+            edit_farm=edit_farm,
+        ),
+    )
+
+
+@router.post("/fazendas")
+def create_farm_action(
+    request: Request,
+    csrf_token: str = Form(...),
+    name: str = Form(...),
+    location: str = Form(...),
+    total_area: float = Form(...),
+    notes: str | None = Form(None),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    del user
+    validate_csrf(request, csrf_token)
+    create_farm(_repository(db), {"name": name, "location": location, "total_area": total_area, "notes": notes})
+    _flash(request, "success", "Fazenda cadastrada com sucesso.")
+    return _redirect("/fazendas")
+
+
+@router.post("/fazendas/{farm_id}/editar")
+def update_farm_action(
+    farm_id: int,
+    request: Request,
+    csrf_token: str = Form(...),
+    name: str = Form(...),
+    location: str = Form(...),
+    total_area: float = Form(...),
+    notes: str | None = Form(None),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    del user
+    validate_csrf(request, csrf_token)
+    repo = _repository(db)
+    farm = repo.get_farm(farm_id)
+    if not farm:
+        _flash(request, "error", "Fazenda nao encontrada.")
+        return _redirect("/fazendas")
+    update_farm(repo, farm, {"name": name, "location": location, "total_area": total_area, "notes": notes})
+    _flash(request, "success", "Fazenda atualizada com sucesso.")
+    return _redirect("/fazendas")
+
+
+@router.post("/fazendas/{farm_id}/excluir")
+def delete_farm_action(
+    farm_id: int,
+    request: Request,
+    csrf_token: str = Form(...),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    del user
+    validate_csrf(request, csrf_token)
+    repo = _repository(db)
+    farm = repo.get_farm(farm_id)
+    if not farm:
+        _flash(request, "error", "Fazenda nao encontrada.")
+        return _redirect("/fazendas")
+    if farm.plots:
+        _flash(request, "error", "Nao e possivel excluir a fazenda enquanto houver setores vinculados.")
+        return _redirect("/fazendas")
+    repo.delete(farm)
+    _flash(request, "success", "Fazenda excluida com sucesso.")
+    return _redirect("/fazendas")
 
 
 @router.get("/variedades")
