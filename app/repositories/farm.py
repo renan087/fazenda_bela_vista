@@ -49,6 +49,9 @@ class FarmRepository:
     def list_varieties(self) -> list[CoffeeVariety]:
         return self.db.query(CoffeeVariety).order_by(CoffeeVariety.name.asc()).all()
 
+    def get_variety(self, variety_id: int) -> CoffeeVariety | None:
+        return self.db.query(CoffeeVariety).filter(CoffeeVariety.id == variety_id).first()
+
     def list_irrigations(self, limit: int | None = None) -> list[IrrigationRecord]:
         query = (
             self.db.query(IrrigationRecord)
@@ -56,6 +59,14 @@ class FarmRepository:
             .order_by(IrrigationRecord.irrigation_date.desc(), IrrigationRecord.id.desc())
         )
         return query.limit(limit).all() if limit else query.all()
+
+    def get_irrigation(self, record_id: int) -> IrrigationRecord | None:
+        return (
+            self.db.query(IrrigationRecord)
+            .options(joinedload(IrrigationRecord.plot))
+            .filter(IrrigationRecord.id == record_id)
+            .first()
+        )
 
     def list_fertilizations(self, limit: int | None = None) -> list[FertilizationRecord]:
         query = (
@@ -65,6 +76,14 @@ class FarmRepository:
         )
         return query.limit(limit).all() if limit else query.all()
 
+    def get_fertilization(self, record_id: int) -> FertilizationRecord | None:
+        return (
+            self.db.query(FertilizationRecord)
+            .options(joinedload(FertilizationRecord.plot))
+            .filter(FertilizationRecord.id == record_id)
+            .first()
+        )
+
     def list_harvests(self, limit: int | None = None) -> list[HarvestRecord]:
         query = (
             self.db.query(HarvestRecord)
@@ -73,6 +92,14 @@ class FarmRepository:
         )
         return query.limit(limit).all() if limit else query.all()
 
+    def get_harvest(self, record_id: int) -> HarvestRecord | None:
+        return (
+            self.db.query(HarvestRecord)
+            .options(joinedload(HarvestRecord.plot))
+            .filter(HarvestRecord.id == record_id)
+            .first()
+        )
+
     def list_pest_incidents(self, limit: int | None = None) -> list[PestIncident]:
         query = (
             self.db.query(PestIncident)
@@ -80,6 +107,14 @@ class FarmRepository:
             .order_by(PestIncident.occurrence_date.desc(), PestIncident.id.desc())
         )
         return query.limit(limit).all() if limit else query.all()
+
+    def get_pest_incident(self, record_id: int) -> PestIncident | None:
+        return (
+            self.db.query(PestIncident)
+            .options(joinedload(PestIncident.plot))
+            .filter(PestIncident.id == record_id)
+            .first()
+        )
 
     def create(self, instance):
         self.db.add(instance)

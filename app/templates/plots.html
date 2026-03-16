@@ -8,30 +8,24 @@
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
             <label class="block md:col-span-2"><span class="mb-2 block text-sm font-medium">Nome do setor</span><input name="name" value="{{ edit_plot.name if edit_plot else '' }}" class="w-full rounded-2xl border-slate-200 bg-slate-50" required></label>
             <label><span class="mb-2 block text-sm font-medium">Area (ha)</span><input type="number" step="0.01" name="area_hectares" value="{{ edit_plot.area_hectares if edit_plot else '' }}" class="w-full rounded-2xl border-slate-200 bg-slate-50" required></label>
-            <label><span class="mb-2 block text-sm font-medium">Fazenda</span>
-                <select name="farm_id" class="w-full rounded-2xl border-slate-200 bg-slate-50" {% if edit_plot %}required{% endif %}>
+            <div>
+                <div class="mb-2 flex items-center justify-between gap-3">
+                    <span class="block text-sm font-medium">Fazenda</span>
+                    {% if not edit_plot %}
+                    <button type="button" data-open-farm-modal class="text-sm font-semibold text-brand-700 hover:text-brand-500">Criar nova fazenda</button>
+                    {% endif %}
+                </div>
+                <select name="farm_id" class="w-full rounded-2xl border-slate-200 bg-slate-50" required>
                     <option value="">Selecione</option>
                     {% for farm in farms %}
-                    <option value="{{ farm.id }}" {% if edit_plot and edit_plot.farm_id == farm.id %}selected{% elif filters.farm_id == farm.id %}selected{% endif %}>{{ farm.name }}</option>
+                    <option value="{{ farm.id }}" {% if edit_plot and edit_plot.farm_id == farm.id %}selected{% elif selected_farm_id == farm.id %}selected{% endif %}>{{ farm.name }}</option>
                     {% endfor %}
                 </select>
-            </label>
-            {% if not edit_plot %}
-            <div class="md:col-span-2 rounded-[1.5rem] border border-dashed border-slate-200 bg-slate-50 p-4">
-                <p class="text-sm font-semibold text-slate-700">Criar nova fazenda</p>
-                <p class="mt-1 text-xs text-slate-500">Se ainda nao houver fazenda cadastrada, preencha os campos abaixo e o setor sera vinculado automaticamente.</p>
-                <div class="mt-4 grid gap-4 md:grid-cols-2">
-                    <label><span class="mb-2 block text-sm font-medium">Nome da fazenda</span><input name="new_farm_name" class="w-full rounded-2xl border-slate-200 bg-white"></label>
-                    <label><span class="mb-2 block text-sm font-medium">Localizacao da fazenda</span><input name="new_farm_location" class="w-full rounded-2xl border-slate-200 bg-white"></label>
-                    <label><span class="mb-2 block text-sm font-medium">Area total da fazenda (ha)</span><input type="number" step="0.01" name="new_farm_total_area" class="w-full rounded-2xl border-slate-200 bg-white"></label>
-                    <label><span class="mb-2 block text-sm font-medium">Observacoes da fazenda</span><input name="new_farm_notes" class="w-full rounded-2xl border-slate-200 bg-white"></label>
-                </div>
             </div>
-            {% endif %}
             <label><span class="mb-2 block text-sm font-medium">Data de plantio</span><input type="date" name="planting_date" value="{{ edit_plot.planting_date.isoformat() if edit_plot and edit_plot.planting_date else '' }}" class="w-full rounded-2xl border-slate-200 bg-slate-50"></label>
             <label><span class="mb-2 block text-sm font-medium">Numero de plantas</span><input type="number" name="plant_count" value="{{ edit_plot.plant_count if edit_plot else '' }}" class="w-full rounded-2xl border-slate-200 bg-slate-50" required></label>
             <label><span class="mb-2 block text-sm font-medium">Espacamento entre linhas (m)</span><input type="number" step="0.01" name="spacing_row_meters" value="{{ edit_plot.spacing_row_meters if edit_plot else '' }}" class="w-full rounded-2xl border-slate-200 bg-slate-50"></label>
-            <label><span class="mb-2 block text-sm font-medium">Espacamento entre plantas (m)</span><input type="number" step="0.01" name="spacing_plant_meters" value="{{ edit_plot.spacing_plant_meters if edit_plot else '' }}" class="w-full rounded-2xl border-slate-200 bg-slate-50"></label>
+            <label><span class="mb-2 block text-sm font-medium">Espacamento entre plantas (cm)</span><input type="number" step="0.01" name="spacing_plant_centimeters" value="{{ ((edit_plot.spacing_plant_meters * 100) if edit_plot and edit_plot.spacing_plant_meters is not none else '') }}" class="w-full rounded-2xl border-slate-200 bg-slate-50"></label>
             <label><span class="mb-2 block text-sm font-medium">Producao estimada (sacas)</span><input type="number" step="0.01" name="estimated_yield_sacks" value="{{ edit_plot.estimated_yield_sacks if edit_plot else '' }}" class="w-full rounded-2xl border-slate-200 bg-slate-50"></label>
             <label><span class="mb-2 block text-sm font-medium">Variedade</span>
                 <select name="variety_id" class="w-full rounded-2xl border-slate-200 bg-slate-50">
@@ -83,7 +77,7 @@
                 <div class="mt-4 grid gap-3 text-sm text-slate-600 sm:grid-cols-2">
                     <p>Data de plantio: <strong>{{ plot.planting_date or "-" }}</strong></p>
                     <p>Plantas: <strong>{{ plot.plant_count }}</strong></p>
-                    <p>Espacamento: <strong>{{ plot.spacing_row_meters or "-" }} x {{ plot.spacing_plant_meters or "-" }} m</strong></p>
+                    <p>Espacamento: <strong>{{ plot.spacing_row_meters or "-" }} m x {{ ((plot.spacing_plant_meters * 100) if plot.spacing_plant_meters is not none else "-") }} cm</strong></p>
                     <p>Estimativa: <strong>{{ plot.estimated_yield_sacks or "-" }} sacas</strong></p>
                 </div>
                 {% if plot.notes %}
@@ -96,4 +90,44 @@
         </div>
     </section>
 </div>
+{% if not edit_plot %}
+<dialog id="farm-modal" class="backdrop:bg-slate-950/40 rounded-[2rem] p-0 shadow-2xl">
+    <div class="w-full max-w-2xl rounded-[2rem] bg-white p-6">
+        <div class="flex items-start justify-between gap-4">
+            <div>
+                <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Nova Fazenda</p>
+                <h3 class="mt-2 text-2xl font-semibold">Cadastrar fazenda sem sair da tela</h3>
+            </div>
+            <button type="button" data-close-farm-modal class="rounded-xl bg-slate-100 px-3 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-200">Fechar</button>
+        </div>
+        <form method="post" action="/fazendas" class="mt-6 grid gap-4 md:grid-cols-2">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <input type="hidden" name="redirect_to" value="/setores">
+            <label><span class="mb-2 block text-sm font-medium">Nome da fazenda</span><input name="name" class="w-full rounded-2xl border-slate-200 bg-slate-50" required></label>
+            <label><span class="mb-2 block text-sm font-medium">Localizacao</span><input name="location" class="w-full rounded-2xl border-slate-200 bg-slate-50" required></label>
+            <label><span class="mb-2 block text-sm font-medium">Area total (ha)</span><input type="number" step="0.01" name="total_area" class="w-full rounded-2xl border-slate-200 bg-slate-50" required></label>
+            <label><span class="mb-2 block text-sm font-medium">Observacoes</span><input name="notes" class="w-full rounded-2xl border-slate-200 bg-slate-50"></label>
+            <div class="md:col-span-2 flex gap-3">
+                <button class="rounded-2xl bg-brand-500 px-4 py-3 font-semibold text-white hover:bg-brand-700">Salvar fazenda</button>
+                <button type="button" data-close-farm-modal class="rounded-2xl bg-slate-100 px-4 py-3 font-semibold text-slate-700 hover:bg-slate-200">Cancelar</button>
+            </div>
+        </form>
+    </div>
+</dialog>
+<script>
+    (() => {
+        const dialog = document.getElementById('farm-modal');
+        if (!dialog) return;
+        document.querySelectorAll('[data-open-farm-modal]').forEach((button) => {
+            button.addEventListener('click', () => dialog.showModal());
+        });
+        document.querySelectorAll('[data-close-farm-modal]').forEach((button) => {
+            button.addEventListener('click', () => dialog.close());
+        });
+        {% if open_farm_modal %}
+        dialog.showModal();
+        {% endif %}
+    })();
+</script>
+{% endif %}
 {% endblock %}

@@ -3,14 +3,19 @@
 <div class="grid gap-6 xl:grid-cols-[0.85fr_1.15fr]">
     <section class="rounded-[2rem] bg-white p-6 shadow-panel">
         <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Producao</p>
-        <h3 class="mt-2 text-2xl font-semibold">Registrar colheita</h3>
-        <form method="post" action="/producao" class="mt-6 grid gap-4">
+        <h3 class="mt-2 text-2xl font-semibold">{% if edit_harvest %}Editar colheita{% else %}Registrar colheita{% endif %}</h3>
+        <form method="post" action="{% if edit_harvest %}/producao/{{ edit_harvest.id }}/editar{% else %}/producao{% endif %}" class="mt-6 grid gap-4">
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-            <label><span class="mb-2 block text-sm font-medium">Setor</span><select name="plot_id" class="w-full rounded-2xl border-slate-200 bg-slate-50" required>{% for plot in plots %}<option value="{{ plot.id }}">{{ plot.name }}</option>{% endfor %}</select></label>
-            <label><span class="mb-2 block text-sm font-medium">Data da colheita</span><input type="date" name="harvest_date" class="w-full rounded-2xl border-slate-200 bg-slate-50" required></label>
-            <label><span class="mb-2 block text-sm font-medium">Sacas produzidas</span><input type="number" step="0.01" name="sacks_produced" class="w-full rounded-2xl border-slate-200 bg-slate-50" required></label>
-            <label><span class="mb-2 block text-sm font-medium">Observacoes</span><textarea name="notes" rows="4" class="w-full rounded-2xl border-slate-200 bg-slate-50"></textarea></label>
-            <button class="rounded-2xl bg-brand-500 px-4 py-3 font-semibold text-white hover:bg-brand-700">Salvar colheita</button>
+            <label><span class="mb-2 block text-sm font-medium">Setor</span><select name="plot_id" class="w-full rounded-2xl border-slate-200 bg-slate-50" required>{% for plot in plots %}<option value="{{ plot.id }}" {% if edit_harvest and edit_harvest.plot_id == plot.id %}selected{% endif %}>{{ plot.name }}</option>{% endfor %}</select></label>
+            <label><span class="mb-2 block text-sm font-medium">Data da colheita</span><input type="date" name="harvest_date" value="{{ edit_harvest.harvest_date.isoformat() if edit_harvest else '' }}" class="w-full rounded-2xl border-slate-200 bg-slate-50" required></label>
+            <label><span class="mb-2 block text-sm font-medium">Sacas produzidas</span><input type="number" step="0.01" name="sacks_produced" value="{{ edit_harvest.sacks_produced if edit_harvest else '' }}" class="w-full rounded-2xl border-slate-200 bg-slate-50" required></label>
+            <label><span class="mb-2 block text-sm font-medium">Observacoes</span><textarea name="notes" rows="4" class="w-full rounded-2xl border-slate-200 bg-slate-50">{{ edit_harvest.notes if edit_harvest else '' }}</textarea></label>
+            <div class="flex gap-3">
+                <button class="rounded-2xl bg-brand-500 px-4 py-3 font-semibold text-white hover:bg-brand-700">{% if edit_harvest %}Salvar alteracoes{% else %}Salvar colheita{% endif %}</button>
+                {% if edit_harvest %}
+                <a href="/producao" class="rounded-2xl bg-slate-100 px-4 py-3 font-semibold text-slate-700 hover:bg-slate-200">Cancelar</a>
+                {% endif %}
+            </div>
         </form>
     </section>
     <section class="rounded-[2rem] bg-white p-6 shadow-panel">
@@ -18,17 +23,26 @@
         <h3 class="mt-2 text-2xl font-semibold">Colheitas registradas</h3>
         <div class="mt-6 overflow-hidden rounded-[1.5rem] border border-slate-100">
             <table class="min-w-full divide-y divide-slate-100 text-sm">
-                <thead class="bg-slate-50 text-left text-slate-500"><tr><th class="px-4 py-3">Setor</th><th class="px-4 py-3">Data</th><th class="px-4 py-3">Sacas</th><th class="px-4 py-3">Produtividade</th></tr></thead>
+                <thead class="bg-slate-50 text-left text-slate-500"><tr><th class="px-4 py-3">Setor</th><th class="px-4 py-3">Data</th><th class="px-4 py-3">Sacas</th><th class="px-4 py-3">Produtividade</th><th class="px-4 py-3">Acoes</th></tr></thead>
                 <tbody class="divide-y divide-slate-100 bg-white">
                     {% for item in harvests %}
                     <tr>
-                        <td class="px-4 py-3 font-medium">{{ item.plot.name }}</td>
+                        <td class="px-4 py-3 font-medium">{{ item.plot.name if item.plot else "Setor removido" }}</td>
                         <td class="px-4 py-3">{{ item.harvest_date }}</td>
                         <td class="px-4 py-3">{{ item.sacks_produced }}</td>
                         <td class="px-4 py-3">{{ item.productivity_per_hectare or 0 }} sc/ha</td>
+                        <td class="px-4 py-3">
+                            <div class="flex gap-2">
+                                <a href="/producao?edit_id={{ item.id }}" class="rounded-xl bg-slate-900 px-3 py-2 text-xs font-medium text-white hover:bg-slate-700">Editar</a>
+                                <form method="post" action="/producao/{{ item.id }}/excluir" onsubmit="return confirm('Excluir este registro de producao?');">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                                    <button class="rounded-xl bg-rose-600 px-3 py-2 text-xs font-medium text-white hover:bg-rose-700">Excluir</button>
+                                </form>
+                            </div>
+                        </td>
                     </tr>
                     {% else %}
-                    <tr><td colspan="4" class="px-4 py-6 text-center text-slate-500">Sem registros.</td></tr>
+                    <tr><td colspan="5" class="px-4 py-6 text-center text-slate-500">Sem registros.</td></tr>
                     {% endfor %}
                 </tbody>
             </table>
