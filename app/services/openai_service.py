@@ -1,36 +1,50 @@
 import json
 from datetime import datetime, timezone
+import os
 
 from app.core.config import get_settings
 from app.models import AgronomicProfile, Farm, Plot, SoilAnalysis
 
-
 def gerar_recomendacao_adubacao(analise_solo: SoilAnalysis) -> dict:
     settings = get_settings()
-    if not settings.openai_api_key:
+    
+    # Puxa a chave e as configurações que você colocou no Render
+    api_key = os.getenv("OPENAI_API_KEY") or settings.openai_api_key
+    model = os.getenv("OPENAI_RECOMMENDATION_MODEL") or "gpt-4o-mini"
+    # Aumentamos o tempo de espera para 60 segundos para evitar o "Timeout"
+    timeout = 60 
+
+    if not api_key:
         return {
-            "status": "skipped",
+            "status": "error",
             "recommendation": None,
             "model": None,
             "generated_at": None,
-            "error": "OPENAI_API_KEY nao configurada.",
+            "error": "OPENAI_API_KEY nao configurada no Render.",
         }
 
     from openai import OpenAI
-
-    client = OpenAI(api_key=settings.openai_api_key, timeout=settings.openai_timeout_seconds)
+    client = OpenAI(api_key=api_key)
     prompt = _build_prompt(analise_solo)
+
     try:
-        response = client.responses.create(
-            model=settings.openai_recommendation_model,
-            input=prompt,
+        # TROCA DO COMANDO: Usando o comando oficial e mais estável da OpenAI
+        response = client.chat.completions.create(
+            model=model,
+            messages=[
+                {"role": "system", "content": "Você é um engenheiro agrônomo especialista em café."},
+                {"role": "user", "content": prompt}
+            ],
+            timeout=timeout
         )
-        recommendation = getattr(response, "output_text", None) or ""
-        recommendation = recommendation.strip() or "A IA nao retornou recomendacao textual."
+        
+        # Pega o texto da resposta da IA
+        recommendation = response.choices[0].message.content.strip()
+        
         return {
             "status": "generated",
             "recommendation": recommendation,
-            "model": settings.openai_recommendation_model,
+            "model": model,
             "generated_at": datetime.now(timezone.utc),
             "error": None,
         }
@@ -38,11 +52,10 @@ def gerar_recomendacao_adubacao(analise_solo: SoilAnalysis) -> dict:
         return {
             "status": "error",
             "recommendation": None,
-            "model": settings.openai_recommendation_model,
+            "model": model,
             "generated_at": None,
-            "error": str(exc),
+            "error": f"Erro na conexão: {str(exc)}",
         }
-
 
 def _build_prompt(analise_solo: SoilAnalysis) -> str:
     farm: Farm | None = analise_solo.farm
@@ -58,9 +71,6 @@ def _build_prompt(analise_solo: SoilAnalysis) -> str:
         "sistema_irrigacao": profile.irrigation_system if profile else None,
         "espacamento_plantas": profile.plant_spacing if profile else None,
         "espacamento_gotejo": profile.drip_spacing if profile else None,
-        "fertilizantes_utilizados": _split_multiline(profile.fertilizers_used if profile else None),
-        "fase_lavoura": _split_multiline(profile.crop_stage if profile else None),
-        "pragas_comuns": _split_multiline(profile.common_pests if profile else None),
         "setor": plot.name if plot else None,
         "area_setor_ha": float(plot.area_hectares) if plot and plot.area_hectares is not None else None,
     }
@@ -78,7 +88,6 @@ def _build_prompt(analise_solo: SoilAnalysis) -> str:
         "h_al": _float(analise_solo.h_al),
         "ctc": _float(analise_solo.ctc),
         "saturacao_bases": _float(analise_solo.base_saturation),
-        "observacoes": analise_solo.observations,
         "recomendacao_base_calculada": {
             "necessidade_calcario_t_ha": _float(analise_solo.liming_need_t_ha),
             "npk": analise_solo.npk_recommendation,
@@ -87,20 +96,16 @@ def _build_prompt(analise_solo: SoilAnalysis) -> str:
     }
 
     return (
-        "Voce e um engenheiro agronomo especialista em cafe.\n"
-        "Com base na analise de solo, gere recomendacao de adubacao.\n"
-        "Considere o perfil agronomico da fazenda e devolva uma resposta objetiva em portugues, "
-        "com secoes: Diagnostico, Calagem, Adubacao NPK, Micronutrientes, Manejo via fertirrigacao, Alertas.\n\n"
-        f"Perfil agronomico da fazenda:\n{json.dumps(profile_data, ensure_ascii=True, indent=2)}\n\n"
-        f"Analise de solo:\n{json.dumps(analysis_data, ensure_ascii=True, indent=2)}"
+        "Com base na analise de solo abaixo, gere uma recomendação de adubação detalhada.\n"
+        "Devolva a resposta em português, com as seções: Diagnóstico, Calagem, Adubação NPK, "
+        "Micronutrientes, Manejo via fertirrigação e Alertas.\n\n"
+        f"Perfil agronômico:\n{json.dumps(profile_data, indent=2)}\n\n"
+        f"Análise de solo:\n{json.dumps(analysis_data, indent=2)}"
     )
 
-
 def _split_multiline(value: str | None) -> list[str]:
-    if not value:
-        return []
+    if not value: return []
     return [item.strip() for item in value.replace(",", "\n").splitlines() if item.strip()]
-
 
 def _float(value):
     return float(value) if value is not None else None
