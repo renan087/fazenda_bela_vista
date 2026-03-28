@@ -11,6 +11,7 @@ from app.models import (
     AgronomicProfile,
     CoffeeVariety,
     Farm,
+    FertilizationItem,
     FertilizationRecord,
     HarvestRecord,
     IrrigationRecord,
@@ -53,6 +54,16 @@ def _sync_schema() -> None:
             fertilizers_used TEXT,
             crop_stage TEXT,
             common_pests TEXT
+        )
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS fertilization_items (
+            id SERIAL PRIMARY KEY,
+            fertilization_record_id INTEGER NOT NULL REFERENCES fertilization_records(id) ON DELETE CASCADE,
+            name VARCHAR(120) NOT NULL,
+            unit VARCHAR(40) NOT NULL,
+            quantity_per_hectare NUMERIC(10,2) NOT NULL,
+            total_quantity NUMERIC(10,2) NOT NULL
         )
         """,
         """
@@ -286,4 +297,24 @@ def seed_demo_data(db: Session) -> None:
             ),
         ]
     )
+    db.flush()
+
+    for record in db.query(FertilizationRecord).all():
+        if record.items:
+            continue
+        quantity_text = (record.dose or "0").split(" ")[0].replace(",", ".")
+        try:
+            quantity_value = float(quantity_text)
+        except ValueError:
+            quantity_value = 0
+        area = float(record.plot.area_hectares) if record.plot and record.plot.area_hectares else 0
+        db.add(
+            FertilizationItem(
+                fertilization_record_id=record.id,
+                name=record.product,
+                unit="kg",
+                quantity_per_hectare=quantity_value,
+                total_quantity=round(quantity_value * area, 2),
+            )
+        )
     db.commit()

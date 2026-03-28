@@ -1,16 +1,51 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="grid gap-6 xl:grid-cols-[0.85fr_1.15fr]">
+<div class="grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
     <section class="rounded-[2rem] bg-white p-6 shadow-panel">
         <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Fertilizacao</p>
         <h3 class="mt-2 text-2xl font-semibold">{% if edit_fertilization %}Editar adubacao{% else %}Registrar adubacao{% endif %}</h3>
-        <form method="post" action="{% if edit_fertilization %}/fertilizacao/{{ edit_fertilization.id }}/editar{% else %}/fertilizacao{% endif %}" class="mt-6 grid gap-4">
+        <form method="post" action="{% if edit_fertilization %}/fertilizacao/{{ edit_fertilization.id }}/editar{% else %}/fertilizacao{% endif %}" class="mt-6 grid gap-4" data-fertilization-form>
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-            <label><span class="mb-2 block text-sm font-medium">Setor</span><select name="plot_id" class="w-full rounded-2xl border-slate-200 bg-slate-50" required>{% for plot in plots %}<option value="{{ plot.id }}" {% if edit_fertilization and edit_fertilization.plot_id == plot.id %}selected{% endif %}>{{ plot.name }}</option>{% endfor %}</select></label>
+            <label>
+                <span class="mb-2 block text-sm font-medium">Setor</span>
+                <select name="plot_id" class="w-full rounded-2xl border-slate-200 bg-slate-50" data-plot-select required>
+                    {% for plot in plots %}
+                    <option value="{{ plot.id }}" {% if edit_fertilization and edit_fertilization.plot_id == plot.id %}selected{% endif %}>{{ plot.name }}</option>
+                    {% endfor %}
+                </select>
+            </label>
             <label><span class="mb-2 block text-sm font-medium">Data</span><input type="date" name="application_date" value="{{ edit_fertilization.application_date.isoformat() if edit_fertilization else '' }}" class="w-full rounded-2xl border-slate-200 bg-slate-50" required></label>
-            <label><span class="mb-2 block text-sm font-medium">Produto</span><input name="product" value="{{ edit_fertilization.product if edit_fertilization else '' }}" class="w-full rounded-2xl border-slate-200 bg-slate-50" required></label>
-            <label><span class="mb-2 block text-sm font-medium">Dose</span><input name="dose" value="{{ edit_fertilization.dose if edit_fertilization else '' }}" class="w-full rounded-2xl border-slate-200 bg-slate-50" placeholder="320 kg/ha" required></label>
-            <label><span class="mb-2 block text-sm font-medium">Custo (R$)</span><input type="number" step="0.01" name="cost" value="{{ edit_fertilization.cost if edit_fertilization else '' }}" class="w-full rounded-2xl border-slate-200 bg-slate-50" required></label>
+
+            <div class="rounded-[1.5rem] border border-slate-200 bg-slate-50 p-4">
+                <div class="flex items-center justify-between gap-3">
+                    <div>
+                        <p class="text-xs uppercase tracking-[0.3em] text-slate-400">Insumos da atividade</p>
+                        <p class="mt-1 text-sm text-slate-600">Cada item calcula automaticamente a quantidade total com base na area do setor.</p>
+                    </div>
+                    <button type="button" class="rounded-xl bg-brand-500 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700" data-add-item>Adicionar insumo</button>
+                </div>
+                <div class="mt-4 space-y-4" data-items-wrapper>
+                    {% for item in edit_fertilization_items %}
+                    <div class="grid gap-3 rounded-[1.25rem] border border-slate-200 bg-white p-4 md:grid-cols-[1.2fr_0.8fr_0.8fr_0.8fr_auto]" data-item-row>
+                        <label><span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Nome do insumo</span><input name="item_name" value="{{ item.name }}" class="w-full rounded-xl border-slate-200 bg-slate-50" required></label>
+                        <label><span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Unidade</span>
+                            <select name="item_unit" class="w-full rounded-xl border-slate-200 bg-slate-50">
+                                {% for unit in ['kg', 'g', 'L', 'ml', 'sacas', 'un'] %}
+                                <option value="{{ unit }}" {% if item.unit == unit %}selected{% endif %}>{{ unit }}</option>
+                                {% endfor %}
+                            </select>
+                        </label>
+                        <label><span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Qtde/ha</span><input type="number" step="0.01" min="0" name="item_quantity_per_hectare" value="{{ item.quantity_per_hectare }}" class="w-full rounded-xl border-slate-200 bg-slate-50" required></label>
+                        <label><span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Qtde total</span><input type="number" step="0.01" value="{{ item.total_quantity }}" class="w-full rounded-xl border-slate-200 bg-slate-200 text-slate-500" readonly data-item-total></label>
+                        <div class="flex items-end">
+                            <button type="button" class="rounded-xl bg-rose-600 px-3 py-3 text-xs font-medium text-white hover:bg-rose-700" data-remove-item>Remover</button>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+
+            <label><span class="mb-2 block text-sm font-medium">Custo total da aplicacao (R$)</span><input type="number" step="0.01" name="cost" value="{{ edit_fertilization.cost if edit_fertilization else '' }}" class="w-full rounded-2xl border-slate-200 bg-slate-50" required></label>
             <label><span class="mb-2 block text-sm font-medium">Observacoes</span><textarea name="notes" rows="4" class="w-full rounded-2xl border-slate-200 bg-slate-50">{{ edit_fertilization.notes if edit_fertilization else '' }}</textarea></label>
             <div class="flex gap-3">
                 <button class="rounded-2xl bg-brand-500 px-4 py-3 font-semibold text-white hover:bg-brand-700">{% if edit_fertilization %}Salvar alteracoes{% else %}Salvar fertilizacao{% endif %}</button>
@@ -28,8 +63,8 @@
             <div class="rounded-[1.5rem] border border-slate-100 bg-slate-50 p-5">
                 <div class="flex items-start justify-between gap-4">
                     <div>
-                        <p class="font-semibold">{{ item.product }}</p>
-                        <p class="mt-1 text-sm text-slate-500">{{ item.plot.name if item.plot else "Setor removido" }} • {{ item.application_date }}</p>
+                        <p class="font-semibold">{{ item.plot.name if item.plot else "Setor removido" }}</p>
+                        <p class="mt-1 text-sm text-slate-500">{{ item.application_date }} • {{ item.product }}</p>
                     </div>
                     <div class="flex items-center gap-2">
                         <span class="rounded-full bg-brand-50 px-3 py-1 text-sm font-semibold text-brand-700">R$ {{ item.cost }}</span>
@@ -40,8 +75,18 @@
                         </form>
                     </div>
                 </div>
-                <p class="mt-3 text-sm text-slate-600">Dose: {{ item.dose }}</p>
-                <p class="mt-2 text-sm text-slate-500">{{ item.notes or "Sem observacoes." }}</p>
+                <div class="mt-4 space-y-2">
+                    {% for detail in item.items %}
+                    <div class="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-white px-3 py-2 text-sm text-slate-600">
+                        <span class="font-medium text-slate-800">{{ detail.name }}</span>
+                        <span>{{ detail.quantity_per_hectare }} {{ detail.unit }}/ha</span>
+                        <span>Total: {{ detail.total_quantity }} {{ detail.unit }}</span>
+                    </div>
+                    {% else %}
+                    <p class="text-sm text-slate-600">Dose: {{ item.dose }}</p>
+                    {% endfor %}
+                </div>
+                <p class="mt-3 text-sm text-slate-500">{{ item.notes or "Sem observacoes." }}</p>
             </div>
             {% else %}
             <p class="text-sm text-slate-500">Sem registros.</p>
@@ -49,4 +94,56 @@
         </div>
     </section>
 </div>
+
+<template id="fertilization-item-template">
+    <div class="grid gap-3 rounded-[1.25rem] border border-slate-200 bg-white p-4 md:grid-cols-[1.2fr_0.8fr_0.8fr_0.8fr_auto]" data-item-row>
+        <label><span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Nome do insumo</span><input name="item_name" class="w-full rounded-xl border-slate-200 bg-slate-50" required></label>
+        <label><span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Unidade</span><select name="item_unit" class="w-full rounded-xl border-slate-200 bg-slate-50"><option value="kg">kg</option><option value="g">g</option><option value="L">L</option><option value="ml">ml</option><option value="sacas">sacas</option><option value="un">un</option></select></label>
+        <label><span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Qtde/ha</span><input type="number" step="0.01" min="0" name="item_quantity_per_hectare" class="w-full rounded-xl border-slate-200 bg-slate-50" required></label>
+        <label><span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Qtde total</span><input type="number" step="0.01" class="w-full rounded-xl border-slate-200 bg-slate-200 text-slate-500" readonly data-item-total></label>
+        <div class="flex items-end"><button type="button" class="rounded-xl bg-rose-600 px-3 py-3 text-xs font-medium text-white hover:bg-rose-700" data-remove-item>Remover</button></div>
+    </div>
+</template>
+
+<script>
+    (() => {
+        const form = document.querySelector('[data-fertilization-form]');
+        if (!form) return;
+        const plotAreas = {{ plot_areas|tojson }};
+        const plotSelect = form.querySelector('[data-plot-select]');
+        const wrapper = form.querySelector('[data-items-wrapper]');
+        const template = document.getElementById('fertilization-item-template');
+        const addButton = form.querySelector('[data-add-item]');
+
+        const currentArea = () => Number(plotAreas[plotSelect?.value] || 0);
+        const syncRow = (row) => {
+            const quantityField = row.querySelector('[name="item_quantity_per_hectare"]');
+            const totalField = row.querySelector('[data-item-total]');
+            if (!quantityField || !totalField) return;
+            const total = Number(quantityField.value || 0) * currentArea();
+            totalField.value = total ? total.toFixed(2) : '';
+        };
+        const bindRow = (row) => {
+            row.querySelector('[name="item_quantity_per_hectare"]')?.addEventListener('input', () => syncRow(row));
+            row.querySelector('[data-remove-item]')?.addEventListener('click', () => {
+                if (wrapper.querySelectorAll('[data-item-row]').length === 1) {
+                    row.querySelectorAll('input').forEach((input) => input.value = '');
+                    row.querySelector('[name="item_unit"]').value = 'kg';
+                    syncRow(row);
+                    return;
+                }
+                row.remove();
+            });
+            syncRow(row);
+        };
+        wrapper.querySelectorAll('[data-item-row]').forEach(bindRow);
+        addButton?.addEventListener('click', () => {
+            const fragment = template.content.cloneNode(true);
+            const row = fragment.querySelector('[data-item-row]');
+            wrapper.appendChild(fragment);
+            bindRow(wrapper.lastElementChild);
+        });
+        plotSelect?.addEventListener('change', () => wrapper.querySelectorAll('[data-item-row]').forEach(syncRow));
+    })();
+</script>
 {% endblock %}

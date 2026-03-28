@@ -55,13 +55,24 @@ def build_dashboard_context(repository: FarmRepository) -> dict:
     total_production = sum(_float(item.sacks_produced) for item in harvests)
     productivity_per_hectare = total_production / total_area if total_area else 0
     estimated_production = sum(_float(plot.estimated_yield_sacks) for plot in plots)
+    total_cost = sum(_float(item.cost) for item in fertilizations)
+    cost_per_hectare = total_cost / total_area if total_area else 0
 
     production_by_plot = defaultdict(float)
+    productivity_by_plot = {}
     harvest_timeline = defaultdict(float)
     for harvest in harvests:
         plot_name = harvest.plot.name if harvest.plot else f"Setor {harvest.plot_id}"
         production_by_plot[plot_name] += _float(harvest.sacks_produced)
         harvest_timeline[str(harvest.harvest_date)] += _float(harvest.sacks_produced)
+        if harvest.plot and harvest.productivity_per_hectare is not None:
+            productivity_by_plot[plot_name] = _float(harvest.productivity_per_hectare)
+
+    for plot in plots:
+        plot_name = plot.name
+        if plot_name not in productivity_by_plot:
+            estimated = _float(plot.estimated_yield_sacks)
+            productivity_by_plot[plot_name] = round((estimated / _float(plot.area_hectares)) if estimated and _float(plot.area_hectares) else 0, 2)
 
     irrigation_chart = [
         {"label": item.irrigation_date.isoformat(), "value": _float(item.volume_liters)}
@@ -115,6 +126,53 @@ def build_dashboard_context(repository: FarmRepository) -> dict:
                 }
             )
 
+    activity_timeline = []
+    for irrigation in irrigations:
+        activity_timeline.append(
+            {
+                "date": irrigation.irrigation_date.isoformat(),
+                "title": "Irrigacao registrada",
+                "subtitle": irrigation.plot.name if irrigation.plot else "Setor removido",
+                "detail": f"{_float(irrigation.volume_liters):.2f} L em {irrigation.duration_minutes} min",
+                "link": f"/irrigacao?edit_id={irrigation.id}",
+                "kind": "irrigacao",
+            }
+        )
+    for fertilization in fertilizations:
+        activity_timeline.append(
+            {
+                "date": fertilization.application_date.isoformat(),
+                "title": "Fertilizacao registrada",
+                "subtitle": fertilization.plot.name if fertilization.plot else "Setor removido",
+                "detail": f"{len(fertilization.items) or 1} insumo(s) • R$ {_float(fertilization.cost):.2f}",
+                "link": f"/fertilizacao?edit_id={fertilization.id}",
+                "kind": "fertilizacao",
+            }
+        )
+    for harvest in harvests[:6]:
+        activity_timeline.append(
+            {
+                "date": harvest.harvest_date.isoformat(),
+                "title": "Colheita registrada",
+                "subtitle": harvest.plot.name if harvest.plot else "Setor removido",
+                "detail": f"{_float(harvest.sacks_produced):.2f} sacas • {_float(harvest.productivity_per_hectare):.2f} sc/ha",
+                "link": f"/producao?edit_id={harvest.id}",
+                "kind": "producao",
+            }
+        )
+    for incident in incidents:
+        activity_timeline.append(
+            {
+                "date": incident.occurrence_date.isoformat(),
+                "title": f"{incident.category} registrada",
+                "subtitle": incident.plot.name if incident.plot else "Setor removido",
+                "detail": incident.name,
+                "link": f"/pragas?edit_id={incident.id}",
+                "kind": "sanidade",
+            }
+        )
+    activity_timeline.sort(key=lambda item: item["date"], reverse=True)
+
     return {
         "kpis": {
             "area_total": round(total_area, 2),
@@ -123,6 +181,7 @@ def build_dashboard_context(repository: FarmRepository) -> dict:
             "total_production": round(total_production, 2),
             "productivity_per_hectare": round(productivity_per_hectare, 2),
             "forecast_production": forecast["total_projection"],
+            "cost_per_hectare": round(cost_per_hectare, 2),
         },
         "recent_irrigations": irrigations,
         "recent_fertilizations": fertilizations,
@@ -142,6 +201,12 @@ def build_dashboard_context(repository: FarmRepository) -> dict:
                 "values": [round(value, 2) for value in harvest_timeline.values()],
             }
         ),
+        "productivity_chart": json.dumps(
+            {
+                "labels": list(productivity_by_plot.keys()),
+                "values": [round(value, 2) for value in productivity_by_plot.values()],
+            }
+        ),
         "irrigation_chart": json.dumps(
             {
                 "labels": [item["label"] for item in irrigation_chart],
@@ -150,4 +215,5 @@ def build_dashboard_context(repository: FarmRepository) -> dict:
         ),
         "map_geojson": json.dumps({"type": "FeatureCollection", "features": map_features}),
         "farms": farms,
+        "activity_timeline": activity_timeline[:12],
     }

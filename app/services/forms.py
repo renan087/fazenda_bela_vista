@@ -1,7 +1,8 @@
 import json
+import math
 from datetime import date
 
-from app.models import CoffeeVariety, Farm, FertilizationRecord, HarvestRecord, IrrigationRecord, PestIncident, Plot
+from app.models import CoffeeVariety, Farm, FertilizationItem, FertilizationRecord, HarvestRecord, IrrigationRecord, PestIncident, Plot
 from app.models import AgronomicProfile, SoilAnalysis
 from app.repositories.farm import FarmRepository
 
@@ -138,30 +139,57 @@ def update_irrigation(repository: FarmRepository, irrigation: IrrigationRecord, 
 
 
 def create_fertilization(repository: FarmRepository, form: dict) -> FertilizationRecord:
-    return repository.create(
-        FertilizationRecord(
-            plot_id=form["plot_id"],
-            application_date=date.fromisoformat(form["application_date"]),
-            product=form["product"],
-            dose=form["dose"],
-            cost=form["cost"],
-            notes=form.get("notes"),
-        )
+    items = _normalize_fertilization_items(form.get("items"), form.get("area_hectares"))
+    product, dose = _fertilization_summary(items)
+    record = FertilizationRecord(
+        plot_id=form["plot_id"],
+        application_date=date.fromisoformat(form["application_date"]),
+        product=product,
+        dose=dose,
+        cost=form["cost"],
+        notes=form.get("notes"),
     )
+    repository.db.add(record)
+    repository.db.flush()
+    for item in items:
+        repository.db.add(
+            FertilizationItem(
+                fertilization_record_id=record.id,
+                name=item["name"],
+                unit=item["unit"],
+                quantity_per_hectare=item["quantity_per_hectare"],
+                total_quantity=item["total_quantity"],
+            )
+        )
+    repository.db.commit()
+    repository.db.refresh(record)
+    return record
 
 
 def update_fertilization(repository: FarmRepository, fertilization: FertilizationRecord, form: dict) -> FertilizationRecord:
-    return repository.update(
-        fertilization,
-        {
-            "plot_id": form["plot_id"],
-            "application_date": date.fromisoformat(form["application_date"]),
-            "product": form["product"],
-            "dose": form["dose"],
-            "cost": form["cost"],
-            "notes": form.get("notes"),
-        },
-    )
+    items = _normalize_fertilization_items(form.get("items"), form.get("area_hectares"))
+    product, dose = _fertilization_summary(items)
+    fertilization.plot_id = form["plot_id"]
+    fertilization.application_date = date.fromisoformat(form["application_date"])
+    fertilization.product = product
+    fertilization.dose = dose
+    fertilization.cost = form["cost"]
+    fertilization.notes = form.get("notes")
+    fertilization.items.clear()
+    repository.db.flush()
+    for item in items:
+        fertilization.items.append(
+            FertilizationItem(
+                name=item["name"],
+                unit=item["unit"],
+                quantity_per_hectare=item["quantity_per_hectare"],
+                total_quantity=item["total_quantity"],
+            )
+        )
+    repository.db.add(fertilization)
+    repository.db.commit()
+    repository.db.refresh(fertilization)
+    return fertilization
 
 
 def create_harvest(repository: FarmRepository, form: dict, area_hectares: float) -> HarvestRecord:
@@ -383,6 +411,30 @@ def estimate_geojson_centroid(geojson_text: str | None) -> tuple[float | None, f
     return round(sum(latitudes) / len(latitudes), 6), round(sum(longitudes) / len(longitudes), 6)
 
 
+def calculate_geojson_area_hectares(geojson_text: str | None) -> float | None:
+    if not geojson_text:
+        return None
+    try:
+        geometry = json.loads(geojson_text)
+    except json.JSONDecodeError:
+        return None
+
+    geometry_type = geometry.get("type")
+    coordinates = geometry.get("coordinates") or []
+    rings: list[list[tuple[float, float]]] = []
+    if geometry_type == "Polygon":
+        if coordinates:
+            rings.append(_flatten_coordinates(coordinates[0]))
+    elif geometry_type == "MultiPolygon":
+        for polygon in coordinates:
+            if polygon:
+                rings.append(_flatten_coordinates(polygon[0]))
+
+    areas = [_polygon_area_hectares(ring) for ring in rings if len(ring) >= 3]
+    valid_areas = [area for area in areas if area > 0]
+    return round(sum(valid_areas), 4) if valid_areas else None
+
+
 def calculate_irrigation_volume(plot: Plot, duration_minutes: int) -> float | None:
     if not plot or not duration_minutes:
         return None
@@ -474,3 +526,49 @@ def _flatten_coordinates(value) -> list[tuple[float, float]]:
 
 def _float(value):
     return float(value) if value is not None else None
+
+
+def _normalize_fertilization_items(items: list[dict] | None, area_hectares: float | None) -> list[dict]:
+    normalized: list[dict] = []
+    area = float(area_hectares or 0)
+    for item in items or []:
+        name = (item.get("name") or "").strip()
+        unit = (item.get("unit") or "").strip()
+        quantity = item.get("quantity_per_hectare")
+        if not name or not unit or quantity in (None, ""):
+            continue
+        quantity_value = round(float(quantity), 2)
+        normalized.append(
+            {
+                "name": name,
+                "unit": unit,
+                "quantity_per_hectare": quantity_value,
+                "total_quantity": round(quantity_value * area, 2),
+            }
+        )
+    return normalized
+
+
+def _fertilization_summary(items: list[dict]) -> tuple[str, str]:
+    if not items:
+        return "Aplicacao sem itens", "-"
+    first = items[0]
+    if len(items) == 1:
+        return first["name"], f'{first["quantity_per_hectare"]:.2f} {first["unit"]}/ha'
+    return f'{len(items)} insumos aplicados', f'{first["quantity_per_hectare"]:.2f} {first["unit"]}/ha + {len(items) - 1} item(ns)'
+
+
+def _polygon_area_hectares(points: list[tuple[float, float]]) -> float:
+    if len(points) < 3:
+        return 0.0
+    if points[0] == points[-1]:
+        points = points[:-1]
+    avg_lat = sum(lat for _, lat in points) / len(points)
+    meters_per_degree_lat = 111_320
+    meters_per_degree_lng = 111_320 * math.cos(math.radians(avg_lat))
+    projected = [(lng * meters_per_degree_lng, lat * meters_per_degree_lat) for lng, lat in points]
+    area = 0.0
+    for index, (x1, y1) in enumerate(projected):
+        x2, y2 = projected[(index + 1) % len(projected)]
+        area += (x1 * y2) - (x2 * y1)
+    return abs(area) / 2 / 10_000

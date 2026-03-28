@@ -26,6 +26,7 @@ from app.models import (
 from app.repositories.farm import FarmRepository
 from app.services.dashboard import build_dashboard_context
 from app.services.forms import (
+    calculate_geojson_area_hectares,
     calculate_irrigation_volume,
     calculate_soil_recommendations,
     create_agronomic_profile,
@@ -130,6 +131,55 @@ def _resolve_geojson(upload: UploadFile | None, fallback_text: str | None, curre
     if normalized is not None:
         return normalized, True
     return current_value, False
+
+
+def _parse_fertilization_items(values) -> list[dict]:
+    names = values.getlist("item_name")
+    units = values.getlist("item_unit")
+    quantities = values.getlist("item_quantity_per_hectare")
+    items: list[dict] = []
+    for index, name in enumerate(names):
+        unit = units[index] if index < len(units) else ""
+        quantity = quantities[index] if index < len(quantities) else ""
+        if not (name or "").strip():
+            continue
+        items.append(
+            {
+                "name": name,
+                "unit": unit,
+                "quantity_per_hectare": quantity,
+            }
+        )
+    return items
+
+
+def _legacy_fertilization_items(record: FertilizationRecord | None, plot_area: float | None) -> list[dict]:
+    if not record:
+        return [{"name": "", "unit": "kg", "quantity_per_hectare": "", "total_quantity": ""}]
+    if record.items:
+        return [
+            {
+                "name": item.name,
+                "unit": item.unit,
+                "quantity_per_hectare": float(item.quantity_per_hectare),
+                "total_quantity": float(item.total_quantity),
+            }
+            for item in record.items
+        ]
+    quantity = ""
+    if record.dose:
+        quantity = record.dose.split(" ")[0].replace(",", ".")
+    quantity_value = _float_or_none(quantity)
+    area = float(plot_area or 0)
+    total_quantity = round(quantity_value * area, 2) if quantity_value is not None and area else ""
+    return [
+        {
+            "name": record.product,
+            "unit": "kg",
+            "quantity_per_hectare": quantity_value if quantity_value is not None else "",
+            "total_quantity": total_quantity,
+        }
+    ]
 
 
 def _build_plot_payload(
@@ -875,6 +925,7 @@ def fertilization_page(
     csrf_token: str = Depends(get_csrf_token),
 ):
     repo = _repository(db)
+    edit_fertilization = repo.get_fertilization(edit_id) if edit_id else None
     return templates.TemplateResponse(
         "fertilization.html",
         _base_context(
@@ -884,35 +935,45 @@ def fertilization_page(
             "fertilization",
             plots=repo.list_plots(),
             fertilizations=repo.list_fertilizations(),
-            edit_fertilization=repo.get_fertilization(edit_id) if edit_id else None,
+            edit_fertilization=edit_fertilization,
+            plot_areas={plot.id: float(plot.area_hectares or 0) for plot in repo.list_plots()},
+            edit_fertilization_items=_legacy_fertilization_items(
+                edit_fertilization,
+                float(edit_fertilization.plot.area_hectares) if edit_fertilization and edit_fertilization.plot else None,
+            ),
         ),
     )
 
 
 @router.post("/fertilizacao")
-def create_fertilization_action(
+async def create_fertilization_action(
     request: Request,
-    csrf_token: str = Form(...),
-    plot_id: int = Form(...),
-    application_date: str = Form(...),
-    product: str = Form(...),
-    dose: str = Form(...),
-    cost: float = Form(...),
-    notes: str | None = Form(None),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user_web),
 ):
     del user
+    form = await request.form()
+    csrf_token = str(form.get("csrf_token") or "")
     validate_csrf(request, csrf_token)
+    plot_id = int(form.get("plot_id") or 0)
+    repo = _repository(db)
+    plot = repo.get_plot(plot_id)
+    if not plot:
+        _flash(request, "error", "Setor nao encontrado para registrar a fertilizacao.")
+        return _redirect("/fertilizacao")
+    items = _parse_fertilization_items(form)
+    if not items:
+        _flash(request, "error", "Adicione ao menos um insumo na atividade.")
+        return _redirect("/fertilizacao")
     create_fertilization(
-        _repository(db),
+        repo,
         {
             "plot_id": plot_id,
-            "application_date": application_date,
-            "product": product,
-            "dose": dose,
-            "cost": cost,
-            "notes": notes,
+            "application_date": str(form.get("application_date") or ""),
+            "cost": float(form.get("cost") or 0),
+            "notes": str(form.get("notes") or "") or None,
+            "area_hectares": float(plot.area_hectares or 0),
+            "items": items,
         },
     )
     _flash(request, "success", "Fertilizacao registrada com sucesso.")
@@ -920,36 +981,40 @@ def create_fertilization_action(
 
 
 @router.post("/fertilizacao/{record_id}/editar")
-def update_fertilization_action(
+async def update_fertilization_action(
     record_id: int,
     request: Request,
-    csrf_token: str = Form(...),
-    plot_id: int = Form(...),
-    application_date: str = Form(...),
-    product: str = Form(...),
-    dose: str = Form(...),
-    cost: float = Form(...),
-    notes: str | None = Form(None),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user_web),
 ):
     del user
+    form = await request.form()
+    csrf_token = str(form.get("csrf_token") or "")
     validate_csrf(request, csrf_token)
     repo = _repository(db)
     fertilization = repo.get_fertilization(record_id)
     if not fertilization:
         _flash(request, "error", "Registro de fertilizacao nao encontrado.")
         return _redirect("/fertilizacao")
+    plot_id = int(form.get("plot_id") or 0)
+    plot = repo.get_plot(plot_id)
+    if not plot:
+        _flash(request, "error", "Setor nao encontrado para atualizar a fertilizacao.")
+        return _redirect_with_query("/fertilizacao", edit_id=record_id)
+    items = _parse_fertilization_items(form)
+    if not items:
+        _flash(request, "error", "Adicione ao menos um insumo na atividade.")
+        return _redirect_with_query("/fertilizacao", edit_id=record_id)
     update_fertilization(
         repo,
         fertilization,
         {
             "plot_id": plot_id,
-            "application_date": application_date,
-            "product": product,
-            "dose": dose,
-            "cost": cost,
-            "notes": notes,
+            "application_date": str(form.get("application_date") or ""),
+            "cost": float(form.get("cost") or 0),
+            "notes": str(form.get("notes") or "") or None,
+            "area_hectares": float(plot.area_hectares or 0),
+            "items": items,
         },
     )
     _flash(request, "success", "Fertilizacao atualizada com sucesso.")
@@ -1513,15 +1578,62 @@ def soil_analysis_pdf_download(
 @router.get("/mapa")
 def map_page(
     request: Request,
+    edit_plot_id: int | None = None,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user_web),
     csrf_token: str = Depends(get_csrf_token),
 ):
-    geojson = build_dashboard_context(_repository(db))["map_geojson"]
+    repo = _repository(db)
+    geojson = build_dashboard_context(repo)["map_geojson"]
+    edit_plot = repo.get_plot(edit_plot_id) if edit_plot_id else None
     return templates.TemplateResponse(
         "map.html",
-        _base_context(request, user, csrf_token, "map", map_geojson=geojson),
+        _base_context(
+            request,
+            user,
+            csrf_token,
+            "map",
+            map_geojson=geojson,
+            plots=repo.list_plots(),
+            edit_plot=edit_plot,
+            edit_plot_geometry=edit_plot.boundary_geojson if edit_plot and edit_plot.boundary_geojson else None,
+        ),
     )
+
+
+@router.post("/mapa/setores/{plot_id}/salvar")
+def save_plot_map_geometry(
+    plot_id: int,
+    request: Request,
+    csrf_token: str = Form(...),
+    boundary_geojson: str = Form(...),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    del user
+    validate_csrf(request, csrf_token)
+    repo = _repository(db)
+    plot = repo.get_plot(plot_id)
+    if not plot:
+        _flash(request, "error", "Setor nao encontrado para salvar a edicao no mapa.")
+        return _redirect("/mapa")
+    normalized = normalize_geojson(boundary_geojson)
+    if not normalized:
+        _flash(request, "error", "A geometria enviada nao e valida.")
+        return _redirect_with_query("/mapa", edit_plot_id=plot_id)
+    area_hectares = calculate_geojson_area_hectares(normalized)
+    centroid_lat, centroid_lng = estimate_geojson_centroid(normalized)
+    repo.update(
+        plot,
+        {
+            "boundary_geojson": normalized,
+            "area_hectares": area_hectares if area_hectares is not None else plot.area_hectares,
+            "centroid_lat": centroid_lat if centroid_lat is not None else plot.centroid_lat,
+            "centroid_lng": centroid_lng if centroid_lng is not None else plot.centroid_lng,
+        },
+    )
+    _flash(request, "success", "Poligono do setor atualizado com sucesso no mapa.")
+    return _redirect_with_query("/mapa", edit_plot_id=plot_id)
 
 
 @router.get("/mobile")

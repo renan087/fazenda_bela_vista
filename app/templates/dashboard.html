@@ -26,9 +26,17 @@
                 <p class="text-sm text-brand-50/75">Produtividade media</p>
                 <p class="mt-3 text-3xl font-semibold">{{ kpis.productivity_per_hectare }} sc/ha</p>
             </a>
+            <a href="#produtividade-area" class="block rounded-2xl bg-white/10 p-5 transition hover:bg-white/15">
+                <p class="text-sm text-brand-50/75">Produtividade por area</p>
+                <p class="mt-3 text-3xl font-semibold">{{ kpis.productivity_per_hectare }} sc/ha</p>
+            </a>
             <a href="/producao" class="block rounded-2xl bg-white/10 p-5 transition hover:bg-white/15">
                 <p class="text-sm text-brand-50/75">Previsao pelo historico</p>
                 <p class="mt-3 text-3xl font-semibold">{{ kpis.forecast_production }} sacas</p>
+            </a>
+            <a href="/fertilizacao" class="block rounded-2xl bg-white/10 p-5 transition hover:bg-white/15">
+                <p class="text-sm text-brand-50/75">Custo por hectare</p>
+                <p class="mt-3 text-3xl font-semibold">R$ {{ kpis.cost_per_hectare }}</p>
             </a>
         </div>
     </div>
@@ -66,6 +74,13 @@
             <canvas id="productionChart"></canvas>
         </div>
     </article>
+    <article id="produtividade-area" class="rounded-[2rem] bg-white p-6 shadow-panel">
+        <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Indicador</p>
+        <h3 class="mt-2 text-xl font-semibold">Produtividade por area</h3>
+        <div class="mt-6 h-80">
+            <canvas id="productivityChart"></canvas>
+        </div>
+    </article>
     <article class="rounded-[2rem] bg-white p-6 shadow-panel">
         <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Forecast</p>
         <h3 class="mt-2 text-xl font-semibold">Previsao por historico</h3>
@@ -97,6 +112,48 @@
         <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Mapa</p>
         <h3 class="mt-2 text-xl font-semibold">Fazendas e setores desenhados</h3>
         <div id="dashboardMap" class="mt-6 h-72 overflow-hidden rounded-2xl"></div>
+    </article>
+</section>
+
+<section class="mt-6 grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
+    <article class="rounded-[2rem] bg-white p-6 shadow-panel">
+        <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Timeline</p>
+        <h3 class="mt-2 text-xl font-semibold">Atividades recentes</h3>
+        <div class="mt-6 space-y-4">
+            {% for item in activity_timeline %}
+            <a href="{{ item.link }}" class="block rounded-2xl border border-slate-100 bg-slate-50 p-4 transition hover:border-brand-200 hover:bg-brand-50/40">
+                <div class="flex items-center justify-between gap-4">
+                    <div>
+                        <p class="font-medium text-slate-900">{{ item.title }}</p>
+                        <p class="mt-1 text-sm text-slate-500">{{ item.subtitle }}</p>
+                    </div>
+                    <span class="rounded-full bg-slate-900 px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em] text-white">{{ item.kind }}</span>
+                </div>
+                <p class="mt-3 text-sm text-slate-600">{{ item.detail }}</p>
+                <p class="mt-2 text-xs uppercase tracking-[0.25em] text-slate-400">{{ item.date }}</p>
+            </a>
+            {% else %}
+            <p class="text-sm text-slate-500">Sem atividades recentes.</p>
+            {% endfor %}
+        </div>
+    </article>
+    <article class="rounded-[2rem] bg-white p-6 shadow-panel">
+        <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Indicadores</p>
+        <h3 class="mt-2 text-xl font-semibold">Evolucao dos custos e producao</h3>
+        <div class="mt-6 grid gap-4 sm:grid-cols-3">
+            <div class="rounded-2xl bg-slate-50 p-4">
+                <p class="text-sm text-slate-500">Producao estimada</p>
+                <p class="mt-2 text-2xl font-semibold text-slate-900">{{ kpis.estimated_production }} sacas</p>
+            </div>
+            <div class="rounded-2xl bg-slate-50 p-4">
+                <p class="text-sm text-slate-500">Producao total</p>
+                <p class="mt-2 text-2xl font-semibold text-slate-900">{{ kpis.total_production }} sacas</p>
+            </div>
+            <div class="rounded-2xl bg-slate-50 p-4">
+                <p class="text-sm text-slate-500">Custo por hectare</p>
+                <p class="mt-2 text-2xl font-semibold text-slate-900">R$ {{ kpis.cost_per_hectare }}</p>
+            </div>
+        </div>
     </article>
 </section>
 
@@ -168,6 +225,7 @@
 
 <script>
     const production = {{ production_chart|safe }};
+    const productivity = {{ productivity_chart|safe }};
     const timeline = {{ timeline_chart|safe }};
     const mapData = {{ map_geojson|safe }};
 
@@ -199,6 +257,20 @@
             }]
         },
         options: { responsive: true, maintainAspectRatio: false }
+    });
+
+    new Chart(document.getElementById('productivityChart'), {
+        type: 'bar',
+        data: {
+            labels: productivity.labels,
+            datasets: [{
+                label: 'sc/ha',
+                data: productivity.values,
+                borderRadius: 12,
+                backgroundColor: '#7b9e6c'
+            }]
+        },
+        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
     });
 
     const map = L.map('dashboardMap').setView([-20.7442, -42.8721], 14);

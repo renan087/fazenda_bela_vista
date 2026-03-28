@@ -127,6 +127,7 @@
                     </div>
                     <div class="flex items-center gap-2">
                         <span class="rounded-full bg-brand-50 px-3 py-1 text-sm font-semibold text-brand-700">{{ plot.variety.name if plot.variety else "Sem variedade" }}</span>
+                        <a href="/mapa?edit_plot_id={{ plot.id }}" class="rounded-xl bg-brand-600 px-3 py-2 text-sm font-medium text-white hover:bg-brand-700">Mapa</a>
                         <a href="/setores?edit_id={{ plot.id }}" class="rounded-xl bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-700">Editar</a>
                         <form method="post" action="/setores/{{ plot.id }}/excluir" onsubmit="return confirm('Excluir o setor {{ plot.name }}?');">
                             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">

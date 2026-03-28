@@ -136,7 +136,7 @@ class FarmRepository:
     def list_fertilizations(self, limit: int | None = None) -> list[FertilizationRecord]:
         query = (
             self.db.query(FertilizationRecord)
-            .options(joinedload(FertilizationRecord.plot))
+            .options(joinedload(FertilizationRecord.plot), joinedload(FertilizationRecord.items))
             .order_by(FertilizationRecord.application_date.desc(), FertilizationRecord.id.desc())
         )
         return query.limit(limit).all() if limit else query.all()
@@ -144,7 +144,7 @@ class FarmRepository:
     def get_fertilization(self, record_id: int) -> FertilizationRecord | None:
         return (
             self.db.query(FertilizationRecord)
-            .options(joinedload(FertilizationRecord.plot))
+            .options(joinedload(FertilizationRecord.plot), joinedload(FertilizationRecord.items))
             .filter(FertilizationRecord.id == record_id)
             .first()
         )

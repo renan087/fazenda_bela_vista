@@ -18,3 +18,4 @@ class FertilizationRecord(Base):
     notes: Mapped[str] = mapped_column(Text, nullable=True)
 
     plot = relationship("Plot", back_populates="fertilizations")
+    items = relationship("FertilizationItem", back_populates="fertilization", cascade="all, delete-orphan")

@@ -1,30 +1,191 @@
 {% extends "base.html" %}
 {% block content %}
-<section class="rounded-[2rem] bg-white p-6 shadow-panel">
-    <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Mapa da Fazenda</p>
-    <h3 class="mt-2 text-2xl font-semibold">Fazendas e setores georreferenciados</h3>
-    <p class="mt-2 text-sm text-slate-500">Visualizacao operacional com base em OpenStreetMap e geometrias em GeoJSON enviadas no cadastro.</p>
-    <div id="farmMap" class="mt-6 h-[620px] overflow-hidden rounded-[1.5rem]"></div>
-</section>
+<div class="grid gap-6 xl:grid-cols-[0.85fr_1.15fr]">
+    <section class="rounded-[2rem] bg-white p-6 shadow-panel">
+        <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Mapa da Fazenda</p>
+        <h3 class="mt-2 text-2xl font-semibold">Fazendas e setores georreferenciados</h3>
+        <p class="mt-2 text-sm text-slate-500">Visualizacao operacional com base em OpenStreetMap e geometrias em GeoJSON enviadas no cadastro.</p>
+
+        <div class="mt-6 space-y-3">
+            {% for plot in plots %}
+            <a href="/mapa?edit_plot_id={{ plot.id }}" class="flex items-center justify-between rounded-2xl border px-4 py-3 transition {% if edit_plot and edit_plot.id == plot.id %}border-brand-300 bg-brand-50{% else %}border-slate-200 bg-slate-50 hover:border-brand-200 hover:bg-brand-50/40{% endif %}">
+                <div>
+                    <p class="font-medium text-slate-900">{{ plot.name }}</p>
+                    <p class="text-sm text-slate-500">{{ plot.farm.name if plot.farm else "Sem fazenda" }} • {{ plot.area_hectares }} ha</p>
+                </div>
+                <span class="text-sm font-semibold text-brand-700">{% if edit_plot and edit_plot.id == plot.id %}Editando{% else %}Editar no mapa{% endif %}</span>
+            </a>
+            {% else %}
+            <p class="text-sm text-slate-500">Sem setores com geometria cadastrada.</p>
+            {% endfor %}
+        </div>
+
+        {% if edit_plot %}
+        <div class="mt-6 rounded-[1.5rem] border border-brand-100 bg-brand-50/40 p-5">
+            <div class="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                    <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Edicao de poligono</p>
+                    <h4 class="mt-2 text-xl font-semibold">{{ edit_plot.name }}</h4>
+                    <p class="mt-2 text-sm text-slate-600">Arraste os pontos para editar, clique no mapa para adicionar novos vertices e use o botao abaixo para remover o ponto selecionado.</p>
+                </div>
+                <a href="/setores?edit_id={{ edit_plot.id }}" class="rounded-xl bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-700">Abrir setor</a>
+            </div>
+            <div class="mt-4 grid gap-3 md:grid-cols-3">
+                <div class="rounded-2xl bg-white p-4">
+                    <p class="text-xs uppercase tracking-[0.25em] text-slate-400">Area recalculada</p>
+                    <p class="mt-2 text-2xl font-semibold text-slate-900"><span data-area-hectares>{{ edit_plot.area_hectares }}</span> ha</p>
+                </div>
+                <div class="rounded-2xl bg-white p-4">
+                    <p class="text-xs uppercase tracking-[0.25em] text-slate-400">Vertices</p>
+                    <p class="mt-2 text-2xl font-semibold text-slate-900" data-point-count>0</p>
+                </div>
+                <div class="rounded-2xl bg-white p-4">
+                    <p class="text-xs uppercase tracking-[0.25em] text-slate-400">Ponto selecionado</p>
+                    <p class="mt-2 text-2xl font-semibold text-slate-900" data-selected-point>Nenhum</p>
+                </div>
+            </div>
+            <form method="post" action="/mapa/setores/{{ edit_plot.id }}/salvar" class="mt-4 flex flex-wrap gap-3" id="map-editor-form">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <input type="hidden" name="boundary_geojson" data-boundary-input>
+                <button class="rounded-2xl bg-brand-500 px-4 py-3 font-semibold text-white hover:bg-brand-700">Salvar edicao</button>
+                <a href="/mapa" class="rounded-2xl bg-slate-100 px-4 py-3 font-semibold text-slate-700 hover:bg-slate-200">Cancelar edicao</a>
+                <button type="button" class="rounded-2xl bg-rose-600 px-4 py-3 font-semibold text-white hover:bg-rose-700" data-remove-point>Remover ponto</button>
+            </form>
+        </div>
+        {% endif %}
+    </section>
+
+    <section class="rounded-[2rem] bg-white p-6 shadow-panel">
+        <div id="farmMap" class="h-[720px] overflow-hidden rounded-[1.5rem]"></div>
+    </section>
+</div>
 
 <script>
-    const mapData = {{ map_geojson|safe }};
-    const farmMap = L.map('farmMap').setView([-20.7442, -42.8721], 14);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '&copy; OpenStreetMap' }).addTo(farmMap);
-    const geoLayer = L.geoJSON(mapData, {
-        style: (feature) => feature.properties.feature_type === 'farm'
-            ? { color: '#0f172a', weight: 2, fillColor: '#94a3b8', fillOpacity: 0.12, dashArray: '6 6' }
-            : { color: '#365a29', weight: 2, fillColor: '#5f8a4c', fillOpacity: 0.35 },
-        onEachFeature: (feature, layer) => {
-            if (feature.properties.feature_type === 'farm') {
-                layer.bindPopup(`<div style="min-width: 180px"><strong>${feature.properties.name}</strong><br>${feature.properties.location}<br>Area total: ${feature.properties.area} ha</div>`);
+    (() => {
+        const mapData = {{ map_geojson|safe }};
+        const editPlot = {{ edit_plot_geometry|safe if edit_plot_geometry else 'null' }};
+        const farmMap = L.map('farmMap').setView([-20.7442, -42.8721], 14);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '&copy; OpenStreetMap' }).addTo(farmMap);
+
+        const baseLayer = L.geoJSON(mapData, {
+            style: (feature) => feature.properties.feature_type === 'farm'
+                ? { color: '#0f172a', weight: 2, fillColor: '#94a3b8', fillOpacity: 0.12, dashArray: '6 6' }
+                : { color: '#365a29', weight: 2, fillColor: '#5f8a4c', fillOpacity: 0.25 },
+            onEachFeature: (feature, layer) => {
+                if (feature.properties.feature_type === 'farm') {
+                    layer.bindPopup(`<div style="min-width: 180px"><strong>${feature.properties.name}</strong><br>${feature.properties.location}<br>Area total: ${feature.properties.area} ha</div>`);
+                    return;
+                }
+                layer.bindPopup(`<div style="min-width: 180px"><strong>${feature.properties.name}</strong><br>${feature.properties.farm}<br>${feature.properties.variety}<br>Area: ${feature.properties.area} ha<br>Estimativa: ${feature.properties.estimated} sacas</div>`);
+            }
+        }).addTo(farmMap);
+        if (baseLayer.getBounds().isValid()) {
+            farmMap.fitBounds(baseLayer.getBounds(), { padding: [30, 30] });
+        }
+
+        if (!editPlot) return;
+
+        const areaNode = document.querySelector('[data-area-hectares]');
+        const pointCountNode = document.querySelector('[data-point-count]');
+        const selectedPointNode = document.querySelector('[data-selected-point]');
+        const boundaryInput = document.querySelector('[data-boundary-input]');
+        const removeButton = document.querySelector('[data-remove-point]');
+        let selectedIndex = null;
+        let editLayer = null;
+        let markerLayer = L.layerGroup().addTo(farmMap);
+        let points = [];
+
+        const extractPoints = (geometry) => {
+            if (!geometry || geometry.type !== 'Polygon' || !geometry.coordinates?.length) return [];
+            const ring = geometry.coordinates[0] || [];
+            return ring
+                .slice(0, -1)
+                .map((coordinate) => ({ lat: coordinate[1], lng: coordinate[0] }));
+        };
+
+        const calculateArea = (coords) => {
+            if (coords.length < 3) return 0;
+            const avgLat = coords.reduce((sum, item) => sum + item.lat, 0) / coords.length;
+            const metersPerLat = 111320;
+            const metersPerLng = 111320 * Math.cos(avgLat * Math.PI / 180);
+            const projected = coords.map((item) => ({ x: item.lng * metersPerLng, y: item.lat * metersPerLat }));
+            let area = 0;
+            projected.forEach((point, index) => {
+                const next = projected[(index + 1) % projected.length];
+                area += (point.x * next.y) - (next.x * point.y);
+            });
+            return Math.abs(area) / 2 / 10000;
+        };
+
+        const buildGeometry = () => ({
+            type: 'Polygon',
+            coordinates: [[...points.map((point) => [point.lng, point.lat]), [points[0].lng, points[0].lat]]]
+        });
+
+        const markerIcon = (active) => L.divIcon({
+            className: '',
+            html: `<div style="width: 16px; height: 16px; border-radius: 9999px; background: ${active ? '#e11d48' : '#446a36'}; border: 3px solid white; box-shadow: 0 4px 12px rgba(15,23,42,.2);"></div>`,
+            iconSize: [16, 16],
+            iconAnchor: [8, 8]
+        });
+
+        const syncForm = () => {
+            if (points.length < 3) {
+                boundaryInput.value = '';
+                if (areaNode) areaNode.textContent = '0.00';
+                if (pointCountNode) pointCountNode.textContent = String(points.length);
+                if (selectedPointNode) selectedPointNode.textContent = selectedIndex === null ? 'Nenhum' : String(selectedIndex + 1);
                 return;
             }
-            layer.bindPopup(`<div style="min-width: 180px"><strong>${feature.properties.name}</strong><br>${feature.properties.farm}<br>${feature.properties.variety}<br>Area: ${feature.properties.area} ha<br>Estimativa: ${feature.properties.estimated} sacas</div>`);
+            const area = calculateArea(points);
+            boundaryInput.value = JSON.stringify(buildGeometry());
+            if (areaNode) areaNode.textContent = area.toFixed(4);
+            if (pointCountNode) pointCountNode.textContent = String(points.length);
+            if (selectedPointNode) selectedPointNode.textContent = selectedIndex === null ? 'Nenhum' : String(selectedIndex + 1);
+        };
+
+        const renderEditor = () => {
+            if (editLayer) farmMap.removeLayer(editLayer);
+            markerLayer.clearLayers();
+            if (points.length >= 2) {
+                editLayer = L.polygon(points, { color: '#e11d48', weight: 3, fillColor: '#fb7185', fillOpacity: 0.18 }).addTo(farmMap);
+            }
+            points.forEach((point, index) => {
+                const marker = L.marker(point, { draggable: true, icon: markerIcon(index === selectedIndex) }).addTo(markerLayer);
+                marker.on('click', () => {
+                    selectedIndex = index;
+                    renderEditor();
+                });
+                marker.on('drag', (event) => {
+                    points[index] = event.target.getLatLng();
+                    syncForm();
+                    if (editLayer) editLayer.setLatLngs(points);
+                });
+                marker.on('dragend', () => renderEditor());
+            });
+            syncForm();
+        };
+
+        points = extractPoints(editPlot);
+        renderEditor();
+
+        if (points.length) {
+            const bounds = L.latLngBounds(points);
+            if (bounds.isValid()) farmMap.fitBounds(bounds.pad(0.3));
         }
-    }).addTo(farmMap);
-    if (geoLayer.getBounds().isValid()) {
-        farmMap.fitBounds(geoLayer.getBounds(), { padding: [30, 30] });
-    }
+
+        farmMap.on('click', (event) => {
+            points.push(event.latlng);
+            selectedIndex = points.length - 1;
+            renderEditor();
+        });
+
+        removeButton?.addEventListener('click', () => {
+            if (selectedIndex === null || points.length <= 3) return;
+            points.splice(selectedIndex, 1);
+            selectedIndex = null;
+            renderEditor();
+        });
+    })();
 </script>
 {% endblock %}
