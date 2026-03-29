@@ -1,25 +1,9 @@
 {% extends "base.html" %}
 {% block content %}
-{% macro pager(section, meta) -%}
-{% if meta.pages > 1 %}
-<div class="mt-4 border-t border-slate-100 pt-4 text-sm text-slate-500">
-    <div class="flex items-center justify-between gap-3">
-        <span>Pagina {{ meta.page }} de {{ meta.pages }}</span>
-        <div class="flex items-center justify-center gap-2">
-            {% for item in dashboard_page_series[section] %}
-            <form method="get" action="/dashboard">
-                <input type="hidden" name="rain_start_date" value="{{ rain_filters.start_date }}">
-                <input type="hidden" name="rain_end_date" value="{{ rain_filters.end_date }}">
-                {% for name, value in dashboard_page_values.items() %}
-                <input type="hidden" name="{{ name }}" value="{% if name == section ~ '_page' %}{{ item.page }}{% else %}{{ value }}{% endif %}">
-                {% endfor %}
-                <button type="submit" class="h-2.5 w-2.5 rounded-full transition {% if item.active %}bg-brand-500{% else %}bg-slate-300 hover:bg-slate-400{% endif %}" aria-label="Ir para pagina {{ item.page }}"></button>
-            </form>
-            {% endfor %}
-        </div>
-    </div>
+{% macro pager(section) -%}
+<div class="mt-4 border-t border-slate-100 pt-4">
+    <div class="flex items-center justify-center gap-2" data-dashboard-dots="{{ section }}"></div>
 </div>
-{% endif %}
 {%- endmacro %}
 
 <section class="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
@@ -66,13 +50,13 @@
             </a>
         </div>
     </div>
-    <div class="overflow-hidden rounded-[2rem] bg-white p-6 shadow-panel">
+    <div class="overflow-hidden rounded-[2rem] bg-white p-6 shadow-panel" data-dashboard-card="irrigations">
         <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Irrigacao recente</p>
         <h3 class="mt-3 text-xl font-semibold">Ultimos manejos</h3>
         <div class="mt-6 flex h-[30rem] min-h-0 flex-col overflow-hidden">
-            <div class="min-h-0 flex-1 space-y-4 overflow-y-auto pr-2">
+            <div class="min-h-0 flex-1 space-y-4 overflow-y-auto pr-2" data-dashboard-list>
                 {% for item in recent_irrigations %}
-                <a href="/irrigacao?edit_id={{ item.id }}" class="block rounded-2xl border border-slate-100 bg-slate-50 p-4 transition hover:border-brand-200 hover:bg-brand-50/40">
+                <a href="/irrigacao?edit_id={{ item.id }}" class="block rounded-2xl border border-slate-100 bg-slate-50 p-4 transition hover:border-brand-200 hover:bg-brand-50/40" data-dashboard-item>
                     <div class="flex items-start justify-between gap-4">
                         <div>
                             <p class="font-medium text-slate-900">{{ item.plot.name if item.plot else "Setor removido" }}</p>
@@ -86,7 +70,7 @@
                 <p class="text-sm text-slate-500">Sem irrigacoes registradas.</p>
                 {% endfor %}
             </div>
-            {{ pager('irrigations', dashboard_pages.irrigations) }}
+            {{ pager('irrigations') }}
         </div>
     </div>
 </section>
@@ -110,13 +94,13 @@
             <canvas id="productivityChart"></canvas>
         </div>
     </article>
-    <article class="overflow-hidden rounded-[2rem] bg-white p-6 shadow-panel">
+    <article class="overflow-hidden rounded-[2rem] bg-white p-6 shadow-panel" data-dashboard-card="forecast">
         <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Forecast</p>
         <h3 class="mt-2 text-xl font-semibold">Previsao por historico</h3>
         <div class="mt-6 flex h-80 min-h-0 flex-col overflow-hidden">
-            <div class="min-h-0 flex-1 space-y-4 overflow-y-auto pr-2">
+            <div class="min-h-0 flex-1 space-y-4 overflow-y-auto pr-2" data-dashboard-list>
                 {% for item in forecast_plots %}
-                <a href="/setores?edit_id={{ item.plot_id }}" class="block rounded-2xl bg-slate-50 p-4 transition hover:bg-brand-50/40">
+                <a href="/setores?edit_id={{ item.plot_id }}" class="block rounded-2xl bg-slate-50 p-4 transition hover:bg-brand-50/40" data-dashboard-item>
                     <div class="flex items-center justify-between">
                         <p class="font-medium">{{ item.plot }}</p>
                         <span class="text-sm font-semibold text-brand-700">{{ item.projected_sacks }} sc</span>
@@ -127,7 +111,7 @@
                 <p class="text-sm text-slate-500">Sem dados suficientes para previsao.</p>
                 {% endfor %}
             </div>
-            {{ pager('forecast', dashboard_pages.forecast) }}
+            {{ pager('forecast') }}
         </div>
     </article>
 </section>
@@ -169,7 +153,7 @@
 </section>
 
 <section class="mt-6 grid gap-6 xl:grid-cols-2">
-    <article class="rounded-[2rem] bg-white p-6 shadow-panel">
+    <article class="rounded-[2rem] bg-white p-6 shadow-panel" data-dashboard-card="rainfalls">
         <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Mapa</p>
         <h3 class="mt-2 text-xl font-semibold">Fazendas e setores desenhados</h3>
         <div id="dashboardMap" class="mt-6 h-72 overflow-hidden rounded-2xl"></div>
@@ -178,9 +162,9 @@
         <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Pluviometria</p>
         <h3 class="mt-2 text-xl font-semibold">Lancamentos recentes</h3>
         <div class="mt-6 flex h-[26rem] min-h-0 flex-col overflow-hidden">
-            <div class="min-h-0 flex-1 space-y-4 overflow-y-auto pr-2">
+            <div class="min-h-0 flex-1 space-y-4 overflow-y-auto pr-2" data-dashboard-list>
                 {% for item in recent_rainfalls %}
-                <a href="/pluviometria?edit_id={{ item.id }}" class="block rounded-2xl bg-slate-50 p-4 transition hover:bg-brand-50/40">
+                <a href="/pluviometria?edit_id={{ item.id }}" class="block rounded-2xl bg-slate-50 p-4 transition hover:bg-brand-50/40" data-dashboard-item>
                     <div class="flex items-center justify-between gap-4">
                         <div>
                             <p class="font-medium text-slate-900">{{ item.farm.name if item.farm else "Fazenda removida" }}</p>
@@ -194,19 +178,19 @@
                 <p class="text-sm text-slate-500">Sem registros de chuva.</p>
                 {% endfor %}
             </div>
-            {{ pager('rainfalls', dashboard_pages.rainfalls) }}
+            {{ pager('rainfalls') }}
         </div>
     </article>
 </section>
 
 <section class="mt-6 grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
-    <article class="overflow-hidden rounded-[2rem] bg-white p-6 shadow-panel">
+    <article class="overflow-hidden rounded-[2rem] bg-white p-6 shadow-panel" data-dashboard-card="timeline">
         <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Timeline</p>
         <h3 class="mt-2 text-xl font-semibold">Atividades recentes</h3>
         <div class="mt-6 flex h-[36rem] min-h-0 flex-col overflow-hidden">
-            <div class="min-h-0 flex-1 space-y-4 overflow-y-auto pr-2">
+            <div class="min-h-0 flex-1 space-y-4 overflow-y-auto pr-2" data-dashboard-list>
                 {% for item in activity_timeline %}
-                <a href="{{ item.link }}" class="block rounded-2xl border border-slate-100 bg-slate-50 p-4 transition hover:border-brand-200 hover:bg-brand-50/40">
+                <a href="{{ item.link }}" class="block rounded-2xl border border-slate-100 bg-slate-50 p-4 transition hover:border-brand-200 hover:bg-brand-50/40" data-dashboard-item>
                     <div class="flex items-center justify-between gap-4">
                         <div>
                             <p class="font-medium text-slate-900">{{ item.title }}</p>
@@ -221,10 +205,10 @@
                 <p class="text-sm text-slate-500">Sem atividades recentes.</p>
                 {% endfor %}
             </div>
-            {{ pager('timeline', dashboard_pages.timeline) }}
+            {{ pager('timeline') }}
         </div>
     </article>
-    <article class="overflow-hidden rounded-[2rem] bg-white p-6 shadow-panel">
+    <article class="overflow-hidden rounded-[2rem] bg-white p-6 shadow-panel" data-dashboard-card="fertilizations">
         <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Indicadores</p>
         <h3 class="mt-2 text-xl font-semibold">Evolucao dos custos e producao</h3>
         <div class="mt-6 grid gap-4 sm:grid-cols-3">
@@ -249,9 +233,9 @@
         <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Fertilizacao</p>
         <h3 class="mt-2 text-xl font-semibold">Aplicacoes recentes</h3>
         <div class="mt-6 flex h-[28rem] min-h-0 flex-col overflow-hidden">
-            <div class="min-h-0 flex-1 space-y-4 overflow-y-auto pr-2">
+            <div class="min-h-0 flex-1 space-y-4 overflow-y-auto pr-2" data-dashboard-list>
                 {% for item in recent_fertilizations %}
-                <a href="/fertilizacao?edit_id={{ item.id }}" class="block rounded-2xl bg-slate-50 p-4 transition hover:bg-brand-50/40">
+                <a href="/fertilizacao?edit_id={{ item.id }}" class="block rounded-2xl bg-slate-50 p-4 transition hover:bg-brand-50/40" data-dashboard-item>
                     <p class="font-medium">{{ item.product }}</p>
                     <p class="mt-1 text-sm text-slate-500">{{ item.plot.name if item.plot else "Setor removido" }} • {{ item.application_date }}</p>
                     <p class="mt-2 text-sm text-slate-600">Dose: {{ item.dose }} • Custo: R$ {{ item.cost }}</p>
@@ -260,16 +244,16 @@
                 <p class="text-sm text-slate-500">Sem registros.</p>
                 {% endfor %}
             </div>
-            {{ pager('fertilizations', dashboard_pages.fertilizations) }}
+            {{ pager('fertilizations') }}
         </div>
     </article>
-    <article class="overflow-hidden rounded-[2rem] bg-white p-6 shadow-panel">
+    <article class="overflow-hidden rounded-[2rem] bg-white p-6 shadow-panel" data-dashboard-card="incidents">
         <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Sanidade</p>
         <h3 class="mt-2 text-xl font-semibold">Pragas e doencas</h3>
         <div class="mt-6 flex h-[28rem] min-h-0 flex-col overflow-hidden">
-            <div class="min-h-0 flex-1 space-y-4 overflow-y-auto pr-2">
+            <div class="min-h-0 flex-1 space-y-4 overflow-y-auto pr-2" data-dashboard-list>
                 {% for item in recent_incidents %}
-                <a href="/pragas?edit_id={{ item.id }}" class="block rounded-2xl bg-slate-50 p-4 transition hover:bg-brand-50/40">
+                <a href="/pragas?edit_id={{ item.id }}" class="block rounded-2xl bg-slate-50 p-4 transition hover:bg-brand-50/40" data-dashboard-item>
                     <div class="flex items-center justify-between">
                         <p class="font-medium">{{ item.name }}</p>
                         <span class="rounded-full bg-amber-100 px-2 py-1 text-xs font-semibold text-amber-700">Nivel {{ item.severity }}</span>
@@ -281,16 +265,16 @@
                 <p class="text-sm text-slate-500">Sem ocorrencias recentes.</p>
                 {% endfor %}
             </div>
-            {{ pager('incidents', dashboard_pages.incidents) }}
+            {{ pager('incidents') }}
         </div>
     </article>
-    <article class="overflow-hidden rounded-[2rem] bg-white p-6 shadow-panel">
+    <article class="overflow-hidden rounded-[2rem] bg-white p-6 shadow-panel" data-dashboard-card="harvests">
         <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Colheitas</p>
         <h3 class="mt-2 text-xl font-semibold">Registros recentes</h3>
         <div class="mt-6 flex h-[28rem] min-h-0 flex-col overflow-hidden">
-            <div class="min-h-0 flex-1 space-y-4 overflow-y-auto pr-2">
+            <div class="min-h-0 flex-1 space-y-4 overflow-y-auto pr-2" data-dashboard-list>
                 {% for item in recent_harvests %}
-                <a href="/producao?edit_id={{ item.id }}" class="block rounded-2xl bg-slate-50 p-4 transition hover:bg-brand-50/40">
+                <a href="/producao?edit_id={{ item.id }}" class="block rounded-2xl bg-slate-50 p-4 transition hover:bg-brand-50/40" data-dashboard-item>
                     <p class="font-medium">{{ item.plot.name if item.plot else "Setor removido" }}</p>
                     <p class="mt-1 text-sm text-slate-500">{{ item.harvest_date }}</p>
                     <p class="mt-2 text-sm text-slate-600">{{ item.sacks_produced }} sacas • {{ item.productivity_per_hectare or 0 }} sc/ha</p>
@@ -299,15 +283,15 @@
                 <p class="text-sm text-slate-500">Sem colheitas registradas.</p>
                 {% endfor %}
             </div>
-            {{ pager('harvests', dashboard_pages.harvests) }}
+            {{ pager('harvests') }}
         </div>
     </article>
-    <article class="rounded-[2rem] bg-white p-6 shadow-panel">
+    <article class="rounded-[2rem] bg-white p-6 shadow-panel" data-dashboard-card="soil_analyses">
         <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Analise de Solo</p>
         <h3 class="mt-2 text-xl font-semibold">Recomendacoes recentes</h3>
-        <div class="mt-6 max-h-[28rem] space-y-4 overflow-y-auto pr-2">
+        <div class="mt-6 max-h-[28rem] space-y-4 overflow-y-auto pr-2" data-dashboard-list>
             {% for item in recent_soil_analyses %}
-            <a href="/analise-solo?edit_id={{ item.id }}&plot_id={{ item.plot_id }}&compare_plot_id={{ item.plot_id }}" class="block rounded-2xl bg-slate-50 p-4 transition hover:bg-brand-50/40">
+            <a href="/analise-solo?edit_id={{ item.id }}&plot_id={{ item.plot_id }}&compare_plot_id={{ item.plot_id }}" class="block rounded-2xl bg-slate-50 p-4 transition hover:bg-brand-50/40" data-dashboard-item>
                 <p class="font-medium">{{ item.plot.name if item.plot else "Setor removido" }}</p>
                 <p class="mt-1 text-sm text-slate-500">{{ item.analysis_date }} • {{ item.laboratory }}</p>
                 <p class="mt-2 text-sm text-slate-600">{% if item.ai_recommendation %}IA: {{ item.ai_status }}{% else %}Recomendacao base calculada{% endif %}</p>
@@ -316,6 +300,7 @@
             <p class="text-sm text-slate-500">Sem analises registradas.</p>
             {% endfor %}
         </div>
+        {{ pager('soil_analyses') }}
     </article>
 </section>
 
@@ -405,5 +390,44 @@
     if (layer.getBounds().isValid()) {
         map.fitBounds(layer.getBounds(), { padding: [20, 20] });
     }
+
+    document.querySelectorAll('[data-dashboard-card]').forEach((card) => {
+        const items = Array.from(card.querySelectorAll('[data-dashboard-item]'));
+        const dotsContainer = card.querySelector('[data-dashboard-dots]');
+        const perPage = 4;
+        if (!dotsContainer || items.length <= perPage) {
+            items.forEach((item) => item.classList.remove('hidden'));
+            return;
+        }
+
+        let currentPage = 1;
+        const totalPages = Math.ceil(items.length / perPage);
+
+        const renderPage = () => {
+            const start = (currentPage - 1) * perPage;
+            const end = start + perPage;
+            items.forEach((item, index) => {
+                item.classList.toggle('hidden', index < start || index >= end);
+            });
+            Array.from(dotsContainer.children).forEach((dot, index) => {
+                dot.classList.toggle('bg-brand-500', index + 1 === currentPage);
+                dot.classList.toggle('bg-slate-300', index + 1 !== currentPage);
+            });
+        };
+
+        for (let page = 1; page <= totalPages; page += 1) {
+            const dot = document.createElement('button');
+            dot.type = 'button';
+            dot.className = 'h-2.5 w-2.5 rounded-full bg-slate-300 transition hover:bg-slate-400';
+            dot.setAttribute('aria-label', `Ir para pagina ${page}`);
+            dot.addEventListener('click', () => {
+                currentPage = page;
+                renderPage();
+            });
+            dotsContainer.appendChild(dot);
+        }
+
+        renderPage();
+    });
 </script>
 {% endblock %}

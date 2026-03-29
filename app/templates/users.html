@@ -4,7 +4,7 @@
     <section class="rounded-[2rem] bg-white p-6 shadow-panel">
         <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Usuarios</p>
         <h3 class="mt-2 text-2xl font-semibold">{% if edit_user %}Editar usuario{% else %}Administrador de usuarios{% endif %}</h3>
-        <form method="post" action="{% if edit_user %}/usuarios/{{ edit_user.id }}/editar{% else %}/usuarios{% endif %}" class="mt-6 grid gap-4">
+        <form method="post" action="{% if edit_user %}/usuarios/{{ edit_user.id }}/editar{% else %}/usuarios{% endif %}" class="mt-6 grid gap-4" data-user-form>
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
             <label><span class="mb-2 block text-sm font-medium">Nome</span><input name="name" value="{{ edit_user.name if edit_user else '' }}" class="w-full rounded-2xl border-slate-200 bg-slate-50" required></label>
             <label><span class="mb-2 block text-sm font-medium">Email</span><input type="email" name="email" value="{{ edit_user.email if edit_user else '' }}" class="w-full rounded-2xl border-slate-200 bg-slate-50" required></label>
@@ -55,4 +55,16 @@
         </div>
     </section>
 </div>
+<script>
+    (() => {
+        const form = document.querySelector('[data-user-form]');
+        if (!form) return;
+        form.addEventListener('submit', () => {
+            const button = form.querySelector('button[type="submit"], button:not([type])');
+            if (!button) return;
+            button.disabled = true;
+            button.classList.add('opacity-70', 'cursor-not-allowed');
+        });
+    })();
+</script>
 {% endblock %}

@@ -27,11 +27,6 @@ def _paginate(items: list, page: int, per_page: int = 4) -> dict:
     }
 
 
-def _page_series(items: list[dict], page: int) -> list[dict]:
-    meta = _paginate(items, page)
-    return [{"page": index, "active": index == meta["page"]} for index in range(1, meta["pages"] + 1)]
-
-
 def calculate_forecast(repository: FarmRepository) -> dict:
     harvests = repository.list_harvests()
     grouped: dict[int, list[float]] = defaultdict(list)
@@ -226,14 +221,6 @@ def build_dashboard_context(
         )
     activity_timeline.sort(key=lambda item: item["date"], reverse=True)
 
-    irrigations_page = _paginate(irrigations, pages.get("irrigations", 1))
-    rainfalls_page = _paginate(rainfalls, pages.get("rainfalls", 1))
-    fertilizations_page = _paginate(fertilizations, pages.get("fertilizations", 1))
-    incidents_page = _paginate(incidents, pages.get("incidents", 1))
-    harvests_page = _paginate(harvests, pages.get("harvests", 1))
-    forecast_page = _paginate(forecast["plots"], pages.get("forecast", 1))
-    timeline_page = _paginate(activity_timeline, pages.get("timeline", 1))
-
     return {
         "kpis": {
             "area_total": round(total_area, 2),
@@ -246,13 +233,13 @@ def build_dashboard_context(
             "monthly_rainfall": round(monthly_rainfall, 2),
             "rainfall_period_total": round(rainfall_period_total, 2),
         },
-        "recent_irrigations": irrigations_page["items"],
-        "recent_rainfalls": rainfalls_page["items"],
-        "recent_fertilizations": fertilizations_page["items"],
-        "recent_incidents": incidents_page["items"],
-        "recent_harvests": harvests_page["items"],
+        "recent_irrigations": irrigations,
+        "recent_rainfalls": rainfalls,
+        "recent_fertilizations": fertilizations,
+        "recent_incidents": incidents,
+        "recent_harvests": harvests,
         "recent_soil_analyses": soil_analyses,
-        "forecast_plots": forecast_page["items"],
+        "forecast_plots": forecast["plots"],
         "production_chart": json.dumps(
             {
                 "labels": list(production_by_plot.keys()),
@@ -285,23 +272,5 @@ def build_dashboard_context(
         ),
         "map_geojson": json.dumps({"type": "FeatureCollection", "features": map_features}),
         "farms": farms,
-        "activity_timeline": timeline_page["items"],
-        "dashboard_pages": {
-            "irrigations": irrigations_page,
-            "rainfalls": rainfalls_page,
-            "fertilizations": fertilizations_page,
-            "incidents": incidents_page,
-            "harvests": harvests_page,
-            "forecast": forecast_page,
-            "timeline": timeline_page,
-        },
-        "dashboard_page_series": {
-            "irrigations": _page_series(irrigations, pages.get("irrigations", 1)),
-            "rainfalls": _page_series(rainfalls, pages.get("rainfalls", 1)),
-            "fertilizations": _page_series(fertilizations, pages.get("fertilizations", 1)),
-            "incidents": _page_series(incidents, pages.get("incidents", 1)),
-            "harvests": _page_series(harvests, pages.get("harvests", 1)),
-            "forecast": _page_series(forecast["plots"], pages.get("forecast", 1)),
-            "timeline": _page_series(activity_timeline, pages.get("timeline", 1)),
-        },
+        "activity_timeline": activity_timeline,
     }

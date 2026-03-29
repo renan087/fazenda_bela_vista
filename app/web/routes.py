@@ -839,29 +839,49 @@ def update_user_action(
     denied = _require_admin(request, user)
     if denied:
         return denied
-    validate_csrf(request, csrf_token)
-    repo = _repository(db)
-    target_user = repo.get_user(user_id)
-    if not target_user:
-        _flash(request, "error", "Usuario nao encontrado.")
+    try:
+        validate_csrf(request, csrf_token)
+        normalized_name = (name or "").strip()
+        normalized_email = (email or "").strip().lower()
+        if not normalized_name or not normalized_email:
+            _flash(request, "error", "Nome e email sao obrigatorios para atualizar o usuario.")
+            return _redirect_with_query("/usuarios", edit_id=user_id)
+
+        repo = _repository(db)
+        target_user = repo.get_user(user_id)
+        if not target_user:
+            _flash(request, "error", "Usuario nao encontrado.")
+            return _redirect("/usuarios")
+
+        existing = db.query(User).filter(User.email == normalized_email, User.id != user_id).first()
+        if existing:
+            _flash(request, "error", "Ja existe outro usuario com este email.")
+            return _redirect_with_query("/usuarios", edit_id=user_id)
+
+        updated_user = update_user(
+            repo,
+            target_user,
+            {
+                "name": normalized_name,
+                "email": normalized_email,
+                "password": password,
+                "is_active": _bool_from_form(is_active),
+                "is_admin": _bool_from_form(is_admin),
+            },
+        )
+
+        if updated_user.id == user.id:
+            request.session["user_email"] = updated_user.email
+            if not updated_user.is_admin:
+                _flash(request, "success", "Usuario atualizado com sucesso.")
+                return _redirect("/dashboard")
+
+        _flash(request, "success", "Usuario atualizado com sucesso.")
         return _redirect("/usuarios")
-    existing = db.query(User).filter(User.email == email.strip().lower(), User.id != user_id).first()
-    if existing:
-        _flash(request, "error", "Ja existe outro usuario com este email.")
+    except Exception:
+        db.rollback()
+        _flash(request, "error", "Nao foi possivel atualizar o usuario agora. Revise os dados e tente novamente.")
         return _redirect_with_query("/usuarios", edit_id=user_id)
-    update_user(
-        repo,
-        target_user,
-        {
-            "name": name,
-            "email": email,
-            "password": password,
-            "is_active": _bool_from_form(is_active),
-            "is_admin": _bool_from_form(is_admin),
-        },
-    )
-    _flash(request, "success", "Usuario atualizado com sucesso.")
-    return _redirect("/usuarios")
 
 
 @router.post("/usuarios/{user_id}/excluir")
