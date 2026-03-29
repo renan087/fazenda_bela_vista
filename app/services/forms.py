@@ -665,11 +665,10 @@ def _float(value):
 
 def _normalize_fertilization_items(items: list[dict] | None, area_hectares: float | None) -> list[dict]:
     normalized: list[dict] = []
-    area = float(area_hectares or 0)
     for item in items or []:
         name = (item.get("name") or "").strip()
         unit = (item.get("unit") or "").strip()
-        quantity = item.get("quantity_per_hectare")
+        quantity = item.get("quantity")
         if not name or not unit or quantity in (None, ""):
             continue
         quantity_value = round(float(quantity), 2)
@@ -678,7 +677,7 @@ def _normalize_fertilization_items(items: list[dict] | None, area_hectares: floa
                 "name": name,
                 "unit": unit,
                 "quantity_per_hectare": quantity_value,
-                "total_quantity": round(quantity_value * area, 2),
+                "total_quantity": quantity_value,
             }
         )
     return normalized
@@ -689,8 +688,8 @@ def _fertilization_summary(items: list[dict]) -> tuple[str, str]:
         return "Aplicacao sem itens", "-"
     first = items[0]
     if len(items) == 1:
-        return first["name"], f'{first["quantity_per_hectare"]:.2f} {first["unit"]}/ha'
-    return f'{len(items)} insumos aplicados', f'{first["quantity_per_hectare"]:.2f} {first["unit"]}/ha + {len(items) - 1} item(ns)'
+        return first["name"], f'{first["quantity_per_hectare"]:.2f} {first["unit"]}'
+    return f'{len(items)} insumos aplicados', f'{first["quantity_per_hectare"]:.2f} {first["unit"]} + {len(items) - 1} item(ns)'
 
 
 def _polygon_area_hectares(points: list[tuple[float, float]]) -> float:

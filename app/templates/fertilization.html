@@ -29,7 +29,7 @@
                 <div class="flex items-center justify-between gap-3">
                     <div>
                         <p class="text-xs uppercase tracking-[0.3em] text-slate-400">Insumos da atividade</p>
-                        <p class="mt-1 text-sm text-slate-600">Cada item calcula automaticamente a quantidade total com base na area do setor.</p>
+                        <p class="mt-1 text-sm text-slate-600">Cada item usa a quantidade direta definida para esta aplicacao no setor.</p>
                     </div>
                     <button type="button" class="rounded-xl bg-brand-500 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700" data-add-item>Adicionar insumo</button>
                 </div>
@@ -44,8 +44,8 @@
                                 {% endfor %}
                             </select>
                         </label>
-                        <label><span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Qtde/ha</span><input type="number" step="0.01" min="0" name="item_quantity_per_hectare" value="{{ item.quantity_per_hectare }}" class="w-full rounded-xl border-slate-200 bg-slate-50" required></label>
-                        <label><span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Qtde total</span><input type="number" step="0.01" value="{{ item.total_quantity }}" class="w-full rounded-xl border-slate-200 bg-slate-200 text-slate-500" readonly data-item-total></label>
+                        <label><span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Quantidade</span><input type="number" step="0.01" min="0" name="item_quantity" value="{{ item.quantity }}" class="w-full rounded-xl border-slate-200 bg-slate-50" required></label>
+                        <label><span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Quantidade total</span><input type="number" step="0.01" value="{{ item.total_quantity }}" class="w-full rounded-xl border-slate-200 bg-slate-200 text-slate-500" readonly data-item-total></label>
                         <div class="flex items-end">
                             <button type="button" class="rounded-xl bg-rose-600 px-3 py-3 text-xs font-medium text-white hover:bg-rose-700" data-remove-item>Remover</button>
                         </div>
@@ -88,7 +88,7 @@
                     {% for detail in item.items %}
                     <div class="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-white px-3 py-2 text-sm text-slate-600">
                         <span class="font-medium text-slate-800">{{ detail.name }}</span>
-                        <span>{{ detail.quantity_per_hectare }} {{ detail.unit }}/ha</span>
+                        <span>{{ detail.quantity_per_hectare }} {{ detail.unit }}</span>
                         <span>Total: {{ detail.total_quantity }} {{ detail.unit }}</span>
                     </div>
                     {% else %}
@@ -108,8 +108,8 @@
     <div class="grid gap-3 rounded-[1.25rem] border border-slate-200 bg-white p-4 md:grid-cols-[1.2fr_0.8fr_0.8fr_0.8fr_auto]" data-item-row>
         <label><span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Nome do insumo</span><input name="item_name" class="w-full rounded-xl border-slate-200 bg-slate-50" required></label>
         <label><span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Unidade</span><select name="item_unit" class="w-full rounded-xl border-slate-200 bg-slate-50"><option value="kg">kg</option><option value="g">g</option><option value="L">L</option><option value="ml">ml</option><option value="sacas">sacas</option><option value="un">un</option></select></label>
-        <label><span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Qtde/ha</span><input type="number" step="0.01" min="0" name="item_quantity_per_hectare" class="w-full rounded-xl border-slate-200 bg-slate-50" required></label>
-        <label><span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Qtde total</span><input type="number" step="0.01" class="w-full rounded-xl border-slate-200 bg-slate-200 text-slate-500" readonly data-item-total></label>
+        <label><span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Quantidade</span><input type="number" step="0.01" min="0" name="item_quantity" class="w-full rounded-xl border-slate-200 bg-slate-50" required></label>
+        <label><span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Quantidade total</span><input type="number" step="0.01" class="w-full rounded-xl border-slate-200 bg-slate-200 text-slate-500" readonly data-item-total></label>
         <div class="flex items-end"><button type="button" class="rounded-xl bg-rose-600 px-3 py-3 text-xs font-medium text-white hover:bg-rose-700" data-remove-item>Remover</button></div>
     </div>
 </template>
@@ -118,24 +118,21 @@
     (() => {
         const form = document.querySelector('[data-fertilization-form]');
         if (!form) return;
-        const plotAreas = {{ plot_areas|tojson }};
-        const plotSelect = form.querySelector('[data-plot-select]');
         const wrapper = form.querySelector('[data-items-wrapper]');
         const template = document.getElementById('fertilization-item-template');
         const addButton = form.querySelector('[data-add-item]');
         const recommendationSelect = form.querySelector('[data-recommendation-select]');
         const recommendationGroups = {{ recommendation_groups|tojson }};
 
-        const currentArea = () => Number(plotAreas[plotSelect?.value] || 0);
         const syncRow = (row) => {
-            const quantityField = row.querySelector('[name="item_quantity_per_hectare"]');
+            const quantityField = row.querySelector('[name="item_quantity"]');
             const totalField = row.querySelector('[data-item-total]');
             if (!quantityField || !totalField) return;
-            const total = Number(quantityField.value || 0) * currentArea();
+            const total = Number(quantityField.value || 0);
             totalField.value = total ? total.toFixed(2) : '';
         };
         const bindRow = (row) => {
-            row.querySelector('[name="item_quantity_per_hectare"]')?.addEventListener('input', () => syncRow(row));
+            row.querySelector('[name="item_quantity"]')?.addEventListener('input', () => syncRow(row));
             row.querySelector('[data-remove-item]')?.addEventListener('click', () => {
                 if (wrapper.querySelectorAll('[data-item-row]').length === 1) {
                     row.querySelectorAll('input').forEach((input) => input.value = '');
@@ -154,7 +151,6 @@
             wrapper.appendChild(fragment);
             bindRow(wrapper.lastElementChild);
         });
-        plotSelect?.addEventListener('change', () => wrapper.querySelectorAll('[data-item-row]').forEach(syncRow));
         recommendationSelect?.addEventListener('change', () => {
             const selected = recommendationSelect.value;
             if (!selected || !recommendationGroups[selected]?.length) return;
@@ -164,7 +160,7 @@
                 const row = fragment.querySelector('[data-item-row]');
                 row.querySelector('[name="item_name"]').value = item.name || '';
                 row.querySelector('[name="item_unit"]').value = item.unit || 'kg';
-                row.querySelector('[name="item_quantity_per_hectare"]').value = item.quantity_per_hectare || '';
+                row.querySelector('[name="item_quantity"]').value = item.quantity || '';
                 wrapper.appendChild(fragment);
                 bindRow(wrapper.lastElementChild);
             });

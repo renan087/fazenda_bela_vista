@@ -163,7 +163,7 @@ def _resolve_geojson(upload: UploadFile | None, fallback_text: str | None, curre
 def _parse_fertilization_items(values) -> list[dict]:
     names = values.getlist("item_name")
     units = values.getlist("item_unit")
-    quantities = values.getlist("item_quantity_per_hectare")
+    quantities = values.getlist("item_quantity")
     items: list[dict] = []
     for index, name in enumerate(names):
         unit = units[index] if index < len(units) else ""
@@ -174,7 +174,7 @@ def _parse_fertilization_items(values) -> list[dict]:
             {
                 "name": name,
                 "unit": unit,
-                "quantity_per_hectare": quantity,
+                "quantity": quantity,
             }
         )
     return items
@@ -182,13 +182,13 @@ def _parse_fertilization_items(values) -> list[dict]:
 
 def _legacy_fertilization_items(record: FertilizationRecord | None, plot_area: float | None) -> list[dict]:
     if not record:
-        return [{"name": "", "unit": "kg", "quantity_per_hectare": "", "total_quantity": ""}]
+        return [{"name": "", "unit": "kg", "quantity": "", "total_quantity": ""}]
     if record.items:
         return [
             {
                 "name": item.name,
                 "unit": item.unit,
-                "quantity_per_hectare": float(item.quantity_per_hectare),
+                "quantity": float(item.quantity_per_hectare),
                 "total_quantity": float(item.total_quantity),
             }
             for item in record.items
@@ -197,16 +197,34 @@ def _legacy_fertilization_items(record: FertilizationRecord | None, plot_area: f
     if record.dose:
         quantity = record.dose.split(" ")[0].replace(",", ".")
     quantity_value = _float_or_none(quantity)
-    area = float(plot_area or 0)
-    total_quantity = round(quantity_value * area, 2) if quantity_value is not None and area else ""
     return [
         {
             "name": record.product,
             "unit": "kg",
-            "quantity_per_hectare": quantity_value if quantity_value is not None else "",
-            "total_quantity": total_quantity,
+            "quantity": quantity_value if quantity_value is not None else "",
+            "total_quantity": quantity_value if quantity_value is not None else "",
         }
     ]
+
+
+def _parse_recommendation_items(values) -> list[dict]:
+    input_ids = values.getlist("purchased_input_id")
+    units = values.getlist("unit")
+    quantities = values.getlist("quantity")
+    items: list[dict] = []
+    for index, input_id in enumerate(input_ids):
+        quantity = quantities[index] if index < len(quantities) else ""
+        unit = units[index] if index < len(units) else ""
+        if input_id in ("", None) or quantity in ("", None):
+            continue
+        items.append(
+            {
+                "purchased_input_id": int(input_id),
+                "unit": unit,
+                "quantity_per_hectare": float(quantity),
+            }
+        )
+    return items
 
 
 def _build_plot_payload(
@@ -404,6 +422,15 @@ def dashboard(
             rain_filters={
                 "start_date": rain_start_date or "",
                 "end_date": rain_end_date or "",
+            },
+            dashboard_page_values={
+                "irrigations_page": _page_number(irrigations_page),
+                "rainfalls_page": _page_number(rainfalls_page),
+                "fertilizations_page": _page_number(fertilizations_page),
+                "incidents_page": _page_number(incidents_page),
+                "harvests_page": _page_number(harvests_page),
+                "forecast_page": _page_number(forecast_page),
+                "timeline_page": _page_number(timeline_page),
             },
             **data,
         ),
@@ -1006,31 +1033,34 @@ def input_recommendations_page(
 
 
 @router.post("/insumos/recomendacao")
-def create_input_recommendation_action(
+async def create_input_recommendation_action(
     request: Request,
-    csrf_token: str = Form(...),
-    farm_id: str | None = Form(None),
-    application_name: str = Form(...),
-    purchased_input_id: int = Form(...),
-    unit: str | None = Form(None),
-    quantity_per_hectare: float = Form(...),
-    notes: str | None = Form(None),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user_web),
 ):
     del user
-    validate_csrf(request, csrf_token)
-    create_input_recommendation(
-        _repository(db),
-        {
-            "farm_id": _int_or_none(farm_id),
-            "application_name": application_name,
-            "purchased_input_id": purchased_input_id,
-            "unit": unit,
-            "quantity_per_hectare": quantity_per_hectare,
-            "notes": notes,
-        },
-    )
+    form = await request.form()
+    validate_csrf(request, str(form.get("csrf_token") or ""))
+    application_name = str(form.get("application_name") or "").strip()
+    items = _parse_recommendation_items(form)
+    if not application_name or not items:
+        _flash(request, "error", "Informe a aplicacao e adicione ao menos um insumo.")
+        return _redirect("/insumos/recomendacao")
+    repo = _repository(db)
+    farm_id = _int_or_none(form.get("farm_id"))
+    notes = str(form.get("notes") or "") or None
+    for item in items:
+        create_input_recommendation(
+            repo,
+            {
+                "farm_id": farm_id,
+                "application_name": application_name,
+                "purchased_input_id": item["purchased_input_id"],
+                "unit": item["unit"],
+                "quantity_per_hectare": item["quantity_per_hectare"],
+                "notes": notes,
+            },
+        )
     _flash(request, "success", "Recomendacao cadastrada com sucesso.")
     return _redirect("/insumos/recomendacao")
 
@@ -1044,7 +1074,7 @@ def update_input_recommendation_action(
     application_name: str = Form(...),
     purchased_input_id: int = Form(...),
     unit: str | None = Form(None),
-    quantity_per_hectare: float = Form(...),
+    quantity: float = Form(...),
     notes: str | None = Form(None),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user_web),
@@ -1064,7 +1094,7 @@ def update_input_recommendation_action(
             "application_name": application_name,
             "purchased_input_id": purchased_input_id,
             "unit": unit,
-            "quantity_per_hectare": quantity_per_hectare,
+            "quantity_per_hectare": quantity,
             "notes": notes,
         },
     )
@@ -1482,7 +1512,7 @@ def fertilization_page(
             {
                 "name": recommendation.purchased_input.name if recommendation.purchased_input else "Insumo removido",
                 "unit": recommendation.unit,
-                "quantity_per_hectare": float(recommendation.quantity_per_hectare or 0),
+                "quantity": float(recommendation.quantity_per_hectare or 0),
             }
         )
     return templates.TemplateResponse(
@@ -1496,7 +1526,6 @@ def fertilization_page(
             fertilizations=repo.list_fertilizations(),
             recommendation_groups=recommendation_groups,
             edit_fertilization=edit_fertilization,
-            plot_areas={plot.id: float(plot.area_hectares or 0) for plot in repo.list_plots()},
             edit_fertilization_items=_legacy_fertilization_items(
                 edit_fertilization,
                 float(edit_fertilization.plot.area_hectares) if edit_fertilization and edit_fertilization.plot else None,
@@ -1532,7 +1561,6 @@ async def create_fertilization_action(
             "application_date": str(form.get("application_date") or ""),
             "cost": float(form.get("cost") or 0),
             "notes": str(form.get("notes") or "") or None,
-            "area_hectares": float(plot.area_hectares or 0),
             "items": items,
         },
     )
@@ -1573,7 +1601,6 @@ async def update_fertilization_action(
             "application_date": str(form.get("application_date") or ""),
             "cost": float(form.get("cost") or 0),
             "notes": str(form.get("notes") or "") or None,
-            "area_hectares": float(plot.area_hectares or 0),
             "items": items,
         },
     )

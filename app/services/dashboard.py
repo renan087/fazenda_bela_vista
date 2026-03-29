@@ -27,6 +27,11 @@ def _paginate(items: list, page: int, per_page: int = 4) -> dict:
     }
 
 
+def _page_series(items: list[dict], page: int) -> list[dict]:
+    meta = _paginate(items, page)
+    return [{"page": index, "active": index == meta["page"]} for index in range(1, meta["pages"] + 1)]
+
+
 def calculate_forecast(repository: FarmRepository) -> dict:
     harvests = repository.list_harvests()
     grouped: dict[int, list[float]] = defaultdict(list)
@@ -98,7 +103,7 @@ def build_dashboard_context(
     production_by_plot = defaultdict(float)
     productivity_by_plot = {}
     harvest_timeline = defaultdict(float)
-    rainfall_timeline = defaultdict(float)
+    rainfall_timeline = []
     for harvest in harvests:
         plot_name = harvest.plot.name if harvest.plot else f"Setor {harvest.plot_id}"
         production_by_plot[plot_name] += _float(harvest.sacks_produced)
@@ -116,8 +121,16 @@ def build_dashboard_context(
         {"label": item.irrigation_date.isoformat(), "value": _float(item.volume_liters)}
         for item in reversed(irrigations)
     ]
-    for rainfall in reversed(rainfalls):
-        rainfall_timeline[rainfall.rainfall_date.isoformat()] += _float(rainfall.millimeters)
+    for index, rainfall in enumerate(sorted(rainfalls, key=lambda item: (item.rainfall_date, item.id))):
+        label = rainfall.rainfall_date.isoformat()
+        if sum(1 for item in rainfalls if item.rainfall_date == rainfall.rainfall_date) > 1:
+            label = f"{label} #{index + 1}"
+        rainfall_timeline.append(
+            {
+                "label": label,
+                "value": round(_float(rainfall.millimeters), 2),
+            }
+        )
 
     map_features = []
     for farm in farms:
@@ -214,7 +227,7 @@ def build_dashboard_context(
     activity_timeline.sort(key=lambda item: item["date"], reverse=True)
 
     irrigations_page = _paginate(irrigations, pages.get("irrigations", 1))
-    rainfalls_page = _paginate(repository.list_rainfalls(), pages.get("rainfalls", 1))
+    rainfalls_page = _paginate(rainfalls, pages.get("rainfalls", 1))
     fertilizations_page = _paginate(fertilizations, pages.get("fertilizations", 1))
     incidents_page = _paginate(incidents, pages.get("incidents", 1))
     harvests_page = _paginate(harvests, pages.get("harvests", 1))
@@ -266,8 +279,8 @@ def build_dashboard_context(
         ),
         "rainfall_chart": json.dumps(
             {
-                "labels": list(rainfall_timeline.keys()),
-                "values": [round(value, 2) for value in rainfall_timeline.values()],
+                "labels": [item["label"] for item in rainfall_timeline],
+                "values": [item["value"] for item in rainfall_timeline],
             }
         ),
         "map_geojson": json.dumps({"type": "FeatureCollection", "features": map_features}),
@@ -281,5 +294,14 @@ def build_dashboard_context(
             "harvests": harvests_page,
             "forecast": forecast_page,
             "timeline": timeline_page,
+        },
+        "dashboard_page_series": {
+            "irrigations": _page_series(irrigations, pages.get("irrigations", 1)),
+            "rainfalls": _page_series(rainfalls, pages.get("rainfalls", 1)),
+            "fertilizations": _page_series(fertilizations, pages.get("fertilizations", 1)),
+            "incidents": _page_series(incidents, pages.get("incidents", 1)),
+            "harvests": _page_series(harvests, pages.get("harvests", 1)),
+            "forecast": _page_series(forecast["plots"], pages.get("forecast", 1)),
+            "timeline": _page_series(activity_timeline, pages.get("timeline", 1)),
         },
     }
