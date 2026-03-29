@@ -12,9 +12,13 @@ from app.models import (
     CoffeeVariety,
     Farm,
     FertilizationItem,
+    FertilizationSchedule,
+    FertilizationScheduleItem,
+    FertilizationStockAllocation,
     FertilizationRecord,
     HarvestRecord,
     InputRecommendation,
+    InputRecommendationItem,
     IrrigationRecord,
     PestIncident,
     Plot,
@@ -88,8 +92,11 @@ def _sync_schema() -> None:
             package_size NUMERIC(10,2) NOT NULL,
             package_unit VARCHAR(20) NOT NULL,
             unit_price NUMERIC(10,2) NOT NULL,
+            purchase_date DATE,
             total_quantity NUMERIC(12,2) NOT NULL,
+            available_quantity NUMERIC(12,2),
             total_cost NUMERIC(12,2) NOT NULL,
+            low_stock_threshold NUMERIC(10,2),
             notes TEXT
         )
         """,
@@ -97,11 +104,51 @@ def _sync_schema() -> None:
         CREATE TABLE IF NOT EXISTS input_recommendations (
             id SERIAL PRIMARY KEY,
             farm_id INTEGER REFERENCES farms(id) ON DELETE SET NULL,
+            plot_id INTEGER REFERENCES plots(id) ON DELETE SET NULL,
             application_name VARCHAR(160) NOT NULL,
+            purchased_input_id INTEGER REFERENCES purchased_inputs(id) ON DELETE CASCADE,
+            unit VARCHAR(20),
+            quantity_per_hectare NUMERIC(10,2),
+            notes TEXT
+        )
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS input_recommendation_items (
+            id SERIAL PRIMARY KEY,
+            recommendation_id INTEGER NOT NULL REFERENCES input_recommendations(id) ON DELETE CASCADE,
             purchased_input_id INTEGER NOT NULL REFERENCES purchased_inputs(id) ON DELETE CASCADE,
             unit VARCHAR(20) NOT NULL,
-            quantity_per_hectare NUMERIC(10,2) NOT NULL,
-            notes TEXT
+            quantity NUMERIC(10,2) NOT NULL
+        )
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS fertilization_schedules (
+            id SERIAL PRIMARY KEY,
+            plot_id INTEGER NOT NULL REFERENCES plots(id) ON DELETE CASCADE,
+            scheduled_date DATE NOT NULL,
+            status VARCHAR(20) NOT NULL DEFAULT 'scheduled',
+            notes TEXT,
+            fertilization_record_id INTEGER REFERENCES fertilization_records(id) ON DELETE SET NULL
+        )
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS fertilization_schedule_items (
+            id SERIAL PRIMARY KEY,
+            schedule_id INTEGER NOT NULL REFERENCES fertilization_schedules(id) ON DELETE CASCADE,
+            purchased_input_id INTEGER NOT NULL REFERENCES purchased_inputs(id) ON DELETE CASCADE,
+            name VARCHAR(160) NOT NULL,
+            unit VARCHAR(20) NOT NULL,
+            quantity NUMERIC(10,2) NOT NULL
+        )
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS fertilization_stock_allocations (
+            id SERIAL PRIMARY KEY,
+            fertilization_item_id INTEGER NOT NULL REFERENCES fertilization_items(id) ON DELETE CASCADE,
+            purchased_input_id INTEGER NOT NULL REFERENCES purchased_inputs(id) ON DELETE CASCADE,
+            quantity_used NUMERIC(10,2) NOT NULL,
+            unit_cost NUMERIC(10,4) NOT NULL,
+            total_cost NUMERIC(12,2) NOT NULL
         )
         """,
         """
@@ -161,14 +208,41 @@ def _sync_schema() -> None:
         "ALTER TABLE irrigation_records ADD COLUMN IF NOT EXISTS volume_liters NUMERIC(12,2)",
         "ALTER TABLE irrigation_records ADD COLUMN IF NOT EXISTS duration_minutes INTEGER",
         "ALTER TABLE harvest_records ADD COLUMN IF NOT EXISTS productivity_per_hectare NUMERIC(10,2)",
+        "ALTER TABLE purchased_inputs ADD COLUMN IF NOT EXISTS purchase_date DATE",
+        "ALTER TABLE purchased_inputs ADD COLUMN IF NOT EXISTS available_quantity NUMERIC(12,2)",
+        "ALTER TABLE purchased_inputs ADD COLUMN IF NOT EXISTS low_stock_threshold NUMERIC(10,2)",
+        "ALTER TABLE input_recommendations ADD COLUMN IF NOT EXISTS plot_id INTEGER",
+        "ALTER TABLE fertilization_items ADD COLUMN IF NOT EXISTS purchased_input_id INTEGER",
+        "ALTER TABLE fertilization_items ADD COLUMN IF NOT EXISTS unit_cost NUMERIC(10,4)",
+        "ALTER TABLE fertilization_items ADD COLUMN IF NOT EXISTS total_cost NUMERIC(12,2)",
     ]
     with engine.begin() as connection:
         for statement in statements:
             connection.execute(text(statement))
         connection.execute(text("ALTER TABLE irrigation_records ALTER COLUMN water_volume_mm DROP NOT NULL"))
         connection.execute(text("ALTER TABLE irrigation_records ALTER COLUMN method DROP NOT NULL"))
+        connection.execute(text("ALTER TABLE input_recommendations ALTER COLUMN purchased_input_id DROP NOT NULL"))
+        connection.execute(text("ALTER TABLE input_recommendations ALTER COLUMN unit DROP NOT NULL"))
+        connection.execute(text("ALTER TABLE input_recommendations ALTER COLUMN quantity_per_hectare DROP NOT NULL"))
         connection.execute(text("UPDATE plots SET irrigation_type = 'none' WHERE irrigation_type IS NULL"))
         connection.execute(text("ALTER TABLE plots ALTER COLUMN irrigation_type SET DEFAULT 'none'"))
+        connection.execute(text("UPDATE purchased_inputs SET purchase_date = CURRENT_DATE WHERE purchase_date IS NULL"))
+        connection.execute(text("UPDATE purchased_inputs SET available_quantity = total_quantity WHERE available_quantity IS NULL"))
+        connection.execute(text("UPDATE purchased_inputs SET low_stock_threshold = 0 WHERE low_stock_threshold IS NULL"))
+        connection.execute(
+            text(
+                """
+                INSERT INTO input_recommendation_items (recommendation_id, purchased_input_id, unit, quantity)
+                SELECT id, purchased_input_id, COALESCE(unit, 'kg'), COALESCE(quantity_per_hectare, 0)
+                FROM input_recommendations recommendation
+                WHERE recommendation.purchased_input_id IS NOT NULL
+                  AND NOT EXISTS (
+                    SELECT 1 FROM input_recommendation_items item
+                    WHERE item.recommendation_id = recommendation.id
+                  )
+                """
+            )
+        )
         connection.execute(
             text(
                 """

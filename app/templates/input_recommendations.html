@@ -6,52 +6,62 @@
         <h3 class="mt-2 text-2xl font-semibold">{% if edit_recommendation %}Editar recomendacao{% else %}Recomendacao de aplicacao{% endif %}</h3>
         <form method="post" action="{% if edit_recommendation %}/insumos/recomendacao/{{ edit_recommendation.id }}/editar{% else %}/insumos/recomendacao{% endif %}" class="mt-6 grid gap-4">
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <div class="grid gap-4 md:grid-cols-2">
             <label>
                 <span class="mb-2 block text-sm font-medium">Fazenda</span>
-                <select name="farm_id" class="w-full rounded-2xl border-slate-200 bg-slate-50">
+                <select name="farm_id" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50">
                     <option value="">Sem vinculo especifico</option>
                     {% for farm in farms %}
                     <option value="{{ farm.id }}" {% if edit_recommendation and edit_recommendation.farm_id == farm.id %}selected{% endif %}>{{ farm.name }}</option>
                     {% endfor %}
                 </select>
             </label>
-            <label><span class="mb-2 block text-sm font-medium">Nome da aplicacao</span><input name="application_name" value="{{ edit_recommendation.application_name if edit_recommendation else '' }}" class="w-full rounded-2xl border-slate-200 bg-slate-50" placeholder="Ex.: Fertilizacao de Base" required></label>
+            <label>
+                <span class="mb-2 block text-sm font-medium">Setor</span>
+                <select name="plot_id" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50">
+                    <option value="">Sem setor especifico</option>
+                    {% for plot in plots %}
+                    <option value="{{ plot.id }}" {% if edit_recommendation and edit_recommendation.plot_id == plot.id %}selected{% endif %}>{{ plot.name }}{% if plot.farm %} • {{ plot.farm.name }}{% endif %}</option>
+                    {% endfor %}
+                </select>
+            </label>
+            </div>
+            <label><span class="mb-2 block text-sm font-medium">Nome da aplicacao</span><input name="application_name" value="{{ edit_recommendation.application_name if edit_recommendation else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" placeholder="Ex.: Fertilizacao de Base" required></label>
             <div class="rounded-[1.5rem] border border-slate-200 bg-slate-50 p-4">
                 <div class="flex items-center justify-between gap-3">
                     <div>
                         <p class="text-xs uppercase tracking-[0.3em] text-slate-400">Insumos da recomendacao</p>
                         <p class="mt-1 text-sm text-slate-600">Monte a recomendacao por setor, sem divisao automatica por area.</p>
                     </div>
-                    {% if not edit_recommendation %}
                     <button type="button" class="rounded-xl bg-brand-500 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700" data-add-recommendation-item>Adicionar insumo</button>
-                    {% endif %}
                 </div>
                 <div class="mt-4 space-y-4" data-recommendation-items>
-                    <div class="grid gap-3 rounded-[1.25rem] border border-slate-200 bg-white p-4 md:grid-cols-[1.2fr_0.8fr_0.8fr_auto]" data-recommendation-item>
+                    {% set initial_items = edit_recommendation.items if edit_recommendation and edit_recommendation.items else [None] %}
+                    {% for recommendation_item in initial_items %}
+                    <div class="grid gap-3 rounded-[1.25rem] border border-slate-200 bg-white p-4 md:grid-cols-[1.3fr_0.8fr_0.8fr_auto]" data-recommendation-item>
                         <label>
                             <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Insumo comprado</span>
-                            <select name="purchased_input_id" class="w-full rounded-xl border-slate-200 bg-slate-50" required>
+                            <select name="purchased_input_id" class="min-h-[3rem] w-full rounded-xl border-slate-200 bg-slate-50" required>
                                 <option value="">Selecione</option>
                                 {% for item in purchased_inputs %}
-                                <option value="{{ item.id }}" {% if edit_recommendation and edit_recommendation.purchased_input_id == item.id %}selected{% endif %}>{{ item.name }}{% if item.farm %} • {{ item.farm.name }}{% endif %}</option>
+                                <option value="{{ item.id }}" {% if recommendation_item and recommendation_item.purchased_input_id == item.id %}selected{% endif %}>{{ item.name }}{% if item.farm %} • {{ item.farm.name }}{% endif %}</option>
                                 {% endfor %}
                             </select>
                         </label>
                         <label>
                             <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Unidade</span>
-                            <select name="unit" class="w-full rounded-xl border-slate-200 bg-slate-50">
+                            <select name="unit" class="min-h-[3rem] w-full rounded-xl border-slate-200 bg-slate-50">
                                 {% for unit in ['kg', 'g', 'L', 'ml', 'sacas', 'un'] %}
-                                <option value="{{ unit }}" {% if edit_recommendation and edit_recommendation.unit == unit %}selected{% endif %}>{{ unit }}</option>
+                                <option value="{{ unit }}" {% if recommendation_item and recommendation_item.unit == unit %}selected{% endif %}>{{ unit }}</option>
                                 {% endfor %}
                             </select>
                         </label>
-                        <label><span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Quantidade</span><input type="number" step="0.01" min="0" name="quantity" value="{{ edit_recommendation.quantity_per_hectare if edit_recommendation else '' }}" class="w-full rounded-xl border-slate-200 bg-slate-50" required></label>
+                        <label><span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Quantidade</span><input type="number" step="0.01" min="0" name="quantity" value="{{ recommendation_item.quantity if recommendation_item else '' }}" class="min-h-[3rem] w-full rounded-xl border-slate-200 bg-slate-50" required></label>
                         <div class="flex items-end">
-                            {% if not edit_recommendation %}
                             <button type="button" class="rounded-xl bg-rose-600 px-3 py-3 text-xs font-medium text-white hover:bg-rose-700" data-remove-recommendation-item>Remover</button>
-                            {% endif %}
                         </div>
                     </div>
+                    {% endfor %}
                 </div>
             </div>
             <label><span class="mb-2 block text-sm font-medium">Observacoes</span><textarea name="notes" rows="4" class="w-full rounded-2xl border-slate-200 bg-slate-50">{{ edit_recommendation.notes if edit_recommendation else '' }}</textarea></label>
@@ -70,8 +80,7 @@
                 <div class="flex flex-wrap items-start justify-between gap-4">
                     <div>
                         <p class="text-lg font-semibold">{{ item.application_name }}</p>
-                        <p class="mt-1 text-sm text-slate-500">{{ item.farm.name if item.farm else "Sem fazenda vinculada" }}</p>
-                        <p class="mt-2 text-sm text-slate-600">{{ item.purchased_input.name if item.purchased_input else "Insumo removido" }} • {{ item.quantity_per_hectare }} {{ item.unit }}</p>
+                        <p class="mt-1 text-sm text-slate-500">{{ item.farm.name if item.farm else "Sem fazenda vinculada" }}{% if item.plot %} • {{ item.plot.name }}{% endif %}</p>
                     </div>
                     <div class="flex gap-2">
                         <a href="/insumos/recomendacao?edit_id={{ item.id }}" class="rounded-xl bg-slate-900 px-3 py-2 text-xs font-medium text-white hover:bg-slate-700">Editar</a>
@@ -80,6 +89,14 @@
                             <button class="rounded-xl bg-rose-600 px-3 py-2 text-xs font-medium text-white hover:bg-rose-700">Excluir</button>
                         </form>
                     </div>
+                </div>
+                <div class="mt-4 space-y-2">
+                    {% for recommendation_item in item.items %}
+                    <div class="rounded-2xl bg-white px-4 py-3 text-sm text-slate-700">
+                        <span class="font-medium">{{ recommendation_item.purchased_input.name if recommendation_item.purchased_input else "Insumo removido" }}</span>
+                        <span class="text-slate-500"> • {{ recommendation_item.quantity }} {{ recommendation_item.unit }}</span>
+                    </div>
+                    {% endfor %}
                 </div>
                 {% if item.notes %}
                 <p class="mt-4 text-sm text-slate-500">{{ item.notes }}</p>
@@ -95,7 +112,7 @@
     <div class="grid gap-3 rounded-[1.25rem] border border-slate-200 bg-white p-4 md:grid-cols-[1.2fr_0.8fr_0.8fr_auto]" data-recommendation-item>
         <label>
             <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Insumo comprado</span>
-            <select name="purchased_input_id" class="w-full rounded-xl border-slate-200 bg-slate-50" required>
+            <select name="purchased_input_id" class="min-h-[3rem] w-full rounded-xl border-slate-200 bg-slate-50" required>
                 <option value="">Selecione</option>
                 {% for item in purchased_inputs %}
                 <option value="{{ item.id }}">{{ item.name }}{% if item.farm %} • {{ item.farm.name }}{% endif %}</option>
@@ -104,13 +121,13 @@
         </label>
         <label>
             <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Unidade</span>
-            <select name="unit" class="w-full rounded-xl border-slate-200 bg-slate-50">
+            <select name="unit" class="min-h-[3rem] w-full rounded-xl border-slate-200 bg-slate-50">
                 {% for unit in ['kg', 'g', 'L', 'ml', 'sacas', 'un'] %}
                 <option value="{{ unit }}">{{ unit }}</option>
                 {% endfor %}
             </select>
         </label>
-        <label><span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Quantidade</span><input type="number" step="0.01" min="0" name="quantity" class="w-full rounded-xl border-slate-200 bg-slate-50" required></label>
+        <label><span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Quantidade</span><input type="number" step="0.01" min="0" name="quantity" class="min-h-[3rem] w-full rounded-xl border-slate-200 bg-slate-50" required></label>
         <div class="flex items-end"><button type="button" class="rounded-xl bg-rose-600 px-3 py-3 text-xs font-medium text-white hover:bg-rose-700" data-remove-recommendation-item>Remover</button></div>
     </div>
 </template>

@@ -1,23 +1,29 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
+<div class="grid gap-6 xl:grid-cols-[0.95fr_1.05fr]">
     <section class="rounded-[2rem] bg-white p-6 shadow-panel">
         <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Fertilizacao</p>
-        <h3 class="mt-2 text-2xl font-semibold">{% if edit_fertilization %}Editar adubacao{% else %}Registrar adubacao{% endif %}</h3>
+        <h3 class="mt-2 text-2xl font-semibold">{% if edit_fertilization %}Editar aplicacao{% else %}Registrar aplicacao{% endif %}</h3>
         <form method="post" action="{% if edit_fertilization %}/fertilizacao/{{ edit_fertilization.id }}/editar{% else %}/fertilizacao{% endif %}" class="mt-6 grid gap-4" data-fertilization-form>
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-            <label>
-                <span class="mb-2 block text-sm font-medium">Setor</span>
-                <select name="plot_id" class="w-full rounded-2xl border-slate-200 bg-slate-50" data-plot-select required>
-                    {% for plot in plots %}
-                    <option value="{{ plot.id }}" {% if edit_fertilization and edit_fertilization.plot_id == plot.id %}selected{% endif %}>{{ plot.name }}</option>
-                    {% endfor %}
-                </select>
-            </label>
-            <label><span class="mb-2 block text-sm font-medium">Data</span><input type="date" name="application_date" value="{{ edit_fertilization.application_date.isoformat() if edit_fertilization else '' }}" class="w-full rounded-2xl border-slate-200 bg-slate-50" required></label>
+            <div class="grid gap-4 md:grid-cols-2">
+                <label>
+                    <span class="mb-2 block text-sm font-medium">Setor</span>
+                    <select name="plot_id" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required>
+                        {% for plot in plots %}
+                        <option value="{{ plot.id }}" {% if edit_fertilization and edit_fertilization.plot_id == plot.id %}selected{% endif %}>{{ plot.name }}{% if plot.farm %} • {{ plot.farm.name }}{% endif %}</option>
+                        {% endfor %}
+                    </select>
+                </label>
+                <label>
+                    <span class="mb-2 block text-sm font-medium">Data</span>
+                    <input type="date" name="application_date" value="{{ edit_fertilization.application_date.isoformat() if edit_fertilization else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required>
+                </label>
+            </div>
+
             <label>
                 <span class="mb-2 block text-sm font-medium">Recomendacao pronta</span>
-                <select class="w-full rounded-2xl border-slate-200 bg-slate-50" data-recommendation-select>
+                <select class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" data-recommendation-select>
                     <option value="">Montar aplicacao manualmente</option>
                     {% for application_name in recommendation_groups.keys()|sort %}
                     <option value="{{ application_name }}">{{ application_name }}</option>
@@ -28,24 +34,40 @@
             <div class="rounded-[1.5rem] border border-slate-200 bg-slate-50 p-4">
                 <div class="flex items-center justify-between gap-3">
                     <div>
-                        <p class="text-xs uppercase tracking-[0.3em] text-slate-400">Insumos da atividade</p>
-                        <p class="mt-1 text-sm text-slate-600">Cada item usa a quantidade direta definida para esta aplicacao no setor.</p>
+                        <p class="text-xs uppercase tracking-[0.3em] text-slate-400">Insumos da aplicacao</p>
+                        <p class="mt-1 text-sm text-slate-600">A baixa de estoque e o custo medio sao calculados automaticamente ao salvar.</p>
                     </div>
                     <button type="button" class="rounded-xl bg-brand-500 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700" data-add-item>Adicionar insumo</button>
                 </div>
                 <div class="mt-4 space-y-4" data-items-wrapper>
                     {% for item in edit_fertilization_items %}
-                    <div class="grid gap-3 rounded-[1.25rem] border border-slate-200 bg-white p-4 md:grid-cols-[1.2fr_0.8fr_0.8fr_0.8fr_auto]" data-item-row>
-                        <label><span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Nome do insumo</span><input name="item_name" value="{{ item.name }}" class="w-full rounded-xl border-slate-200 bg-slate-50" required></label>
-                        <label><span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Unidade</span>
-                            <select name="item_unit" class="w-full rounded-xl border-slate-200 bg-slate-50">
+                    <div class="grid gap-3 rounded-[1.25rem] border border-slate-200 bg-white p-4 md:grid-cols-[1.3fr_0.7fr_0.7fr_0.8fr_auto]" data-item-row>
+                        <label>
+                            <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Insumo comprado</span>
+                            <select name="purchased_input_id" class="min-h-[3rem] w-full rounded-xl border-slate-200 bg-slate-50" data-input-select required>
+                                <option value="">Selecione</option>
+                                {% for purchased_input in purchased_inputs %}
+                                <option value="{{ purchased_input.id }}" {% if item.purchased_input_id == purchased_input.id %}selected{% endif %}>{{ purchased_input.name }} • {{ purchased_input.available_quantity }} {{ purchased_input.package_unit }}</option>
+                                {% endfor %}
+                            </select>
+                            <input type="hidden" name="item_name" value="{{ item.name }}" data-item-name>
+                        </label>
+                        <label>
+                            <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Unidade</span>
+                            <select name="item_unit" class="min-h-[3rem] w-full rounded-xl border-slate-200 bg-slate-50" data-item-unit>
                                 {% for unit in ['kg', 'g', 'L', 'ml', 'sacas', 'un'] %}
                                 <option value="{{ unit }}" {% if item.unit == unit %}selected{% endif %}>{{ unit }}</option>
                                 {% endfor %}
                             </select>
                         </label>
-                        <label><span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Quantidade</span><input type="number" step="0.01" min="0" name="item_quantity" value="{{ item.quantity }}" class="w-full rounded-xl border-slate-200 bg-slate-50" required></label>
-                        <label><span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Quantidade total</span><input type="number" step="0.01" value="{{ item.total_quantity }}" class="w-full rounded-xl border-slate-200 bg-slate-200 text-slate-500" readonly data-item-total></label>
+                        <label>
+                            <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Quantidade</span>
+                            <input type="number" step="0.01" min="0" name="item_quantity" value="{{ item.quantity }}" class="min-h-[3rem] w-full rounded-xl border-slate-200 bg-slate-50" required>
+                        </label>
+                        <label>
+                            <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Disponivel</span>
+                            <input type="text" value="{{ item.available }} {{ item.unit if item.available != '' else '' }}" class="min-h-[3rem] w-full rounded-xl border-slate-200 bg-slate-200 text-slate-500" readonly data-item-available>
+                        </label>
                         <div class="flex items-end">
                             <button type="button" class="rounded-xl bg-rose-600 px-3 py-3 text-xs font-medium text-white hover:bg-rose-700" data-remove-item>Remover</button>
                         </div>
@@ -54,16 +76,16 @@
                 </div>
             </div>
 
-            <label><span class="mb-2 block text-sm font-medium">Custo total da aplicacao (R$)</span><input type="number" step="0.01" name="cost" value="{{ edit_fertilization.cost if edit_fertilization else '' }}" class="w-full rounded-2xl border-slate-200 bg-slate-50" required></label>
             <label><span class="mb-2 block text-sm font-medium">Observacoes</span><textarea name="notes" rows="4" class="w-full rounded-2xl border-slate-200 bg-slate-50">{{ edit_fertilization.notes if edit_fertilization else '' }}</textarea></label>
             <div class="flex gap-3">
-                <button class="rounded-2xl bg-brand-500 px-4 py-3 font-semibold text-white hover:bg-brand-700">{% if edit_fertilization %}Salvar alteracoes{% else %}Salvar fertilizacao{% endif %}</button>
+                <button class="rounded-2xl bg-brand-500 px-4 py-3 font-semibold text-white hover:bg-brand-700">{% if edit_fertilization %}Salvar alteracoes{% else %}Salvar aplicacao{% endif %}</button>
                 {% if edit_fertilization %}
                 <a href="/fertilizacao" class="rounded-2xl bg-slate-100 px-4 py-3 font-semibold text-slate-700 hover:bg-slate-200">Cancelar</a>
                 {% endif %}
             </div>
         </form>
     </section>
+
     <section class="rounded-[2rem] bg-white p-6 shadow-panel">
         <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Historico</p>
         <h3 class="mt-2 text-2xl font-semibold">Aplicacoes registradas</h3>
@@ -86,10 +108,12 @@
                 </div>
                 <div class="mt-4 space-y-2">
                     {% for detail in item.items %}
-                    <div class="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-white px-3 py-2 text-sm text-slate-600">
-                        <span class="font-medium text-slate-800">{{ detail.name }}</span>
-                        <span>{{ detail.quantity_per_hectare }} {{ detail.unit }}</span>
-                        <span>Total: {{ detail.total_quantity }} {{ detail.unit }}</span>
+                    <div class="rounded-xl bg-white px-3 py-3 text-sm text-slate-600">
+                        <div class="flex flex-wrap items-center justify-between gap-2">
+                            <span class="font-medium text-slate-800">{{ detail.name }}</span>
+                            <span>{{ detail.total_quantity }} {{ detail.unit }}</span>
+                        </div>
+                        <p class="mt-1 text-xs text-slate-500">Custo historico: R$ {{ detail.total_cost or 0 }}</p>
                     </div>
                     {% else %}
                     <p class="text-sm text-slate-600">Dose: {{ item.dose }}</p>
@@ -105,11 +129,27 @@
 </div>
 
 <template id="fertilization-item-template">
-    <div class="grid gap-3 rounded-[1.25rem] border border-slate-200 bg-white p-4 md:grid-cols-[1.2fr_0.8fr_0.8fr_0.8fr_auto]" data-item-row>
-        <label><span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Nome do insumo</span><input name="item_name" class="w-full rounded-xl border-slate-200 bg-slate-50" required></label>
-        <label><span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Unidade</span><select name="item_unit" class="w-full rounded-xl border-slate-200 bg-slate-50"><option value="kg">kg</option><option value="g">g</option><option value="L">L</option><option value="ml">ml</option><option value="sacas">sacas</option><option value="un">un</option></select></label>
-        <label><span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Quantidade</span><input type="number" step="0.01" min="0" name="item_quantity" class="w-full rounded-xl border-slate-200 bg-slate-50" required></label>
-        <label><span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Quantidade total</span><input type="number" step="0.01" class="w-full rounded-xl border-slate-200 bg-slate-200 text-slate-500" readonly data-item-total></label>
+    <div class="grid gap-3 rounded-[1.25rem] border border-slate-200 bg-white p-4 md:grid-cols-[1.3fr_0.7fr_0.7fr_0.8fr_auto]" data-item-row>
+        <label>
+            <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Insumo comprado</span>
+            <select name="purchased_input_id" class="min-h-[3rem] w-full rounded-xl border-slate-200 bg-slate-50" data-input-select required>
+                <option value="">Selecione</option>
+                {% for purchased_input in purchased_inputs %}
+                <option value="{{ purchased_input.id }}">{{ purchased_input.name }} • {{ purchased_input.available_quantity }} {{ purchased_input.package_unit }}</option>
+                {% endfor %}
+            </select>
+            <input type="hidden" name="item_name" value="" data-item-name>
+        </label>
+        <label>
+            <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Unidade</span>
+            <select name="item_unit" class="min-h-[3rem] w-full rounded-xl border-slate-200 bg-slate-50" data-item-unit>
+                {% for unit in ['kg', 'g', 'L', 'ml', 'sacas', 'un'] %}
+                <option value="{{ unit }}">{{ unit }}</option>
+                {% endfor %}
+            </select>
+        </label>
+        <label><span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Quantidade</span><input type="number" step="0.01" min="0" name="item_quantity" class="min-h-[3rem] w-full rounded-xl border-slate-200 bg-slate-50" required></label>
+        <label><span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Disponivel</span><input type="text" class="min-h-[3rem] w-full rounded-xl border-slate-200 bg-slate-200 text-slate-500" readonly data-item-available></label>
         <div class="flex items-end"><button type="button" class="rounded-xl bg-rose-600 px-3 py-3 text-xs font-medium text-white hover:bg-rose-700" data-remove-item>Remover</button></div>
     </div>
 </template>
@@ -123,32 +163,49 @@
         const addButton = form.querySelector('[data-add-item]');
         const recommendationSelect = form.querySelector('[data-recommendation-select]');
         const recommendationGroups = {{ recommendation_groups|tojson }};
+        const purchasedLookup = {
+            {% for purchased_input in purchased_inputs %}
+            "{{ purchased_input.id }}": {
+                name: {{ purchased_input.name|tojson }},
+                unit: {{ purchased_input.package_unit|tojson }},
+                available: "{{ purchased_input.available_quantity }} {{ purchased_input.package_unit }}"
+            },
+            {% endfor %}
+        };
 
         const syncRow = (row) => {
-            const quantityField = row.querySelector('[name="item_quantity"]');
-            const totalField = row.querySelector('[data-item-total]');
-            if (!quantityField || !totalField) return;
-            const total = Number(quantityField.value || 0);
-            totalField.value = total ? total.toFixed(2) : '';
+            const select = row.querySelector('[data-input-select]');
+            const hiddenName = row.querySelector('[data-item-name]');
+            const unitField = row.querySelector('[data-item-unit]');
+            const availableField = row.querySelector('[data-item-available]');
+            const selected = purchasedLookup[select.value];
+            hiddenName.value = selected?.name || '';
+            if (selected) {
+                unitField.value = selected.unit || 'kg';
+                availableField.value = selected.available || '';
+            } else {
+                availableField.value = '';
+            }
         };
+
         const bindRow = (row) => {
-            row.querySelector('[name="item_quantity"]')?.addEventListener('input', () => syncRow(row));
+            row.querySelector('[data-input-select]')?.addEventListener('change', () => syncRow(row));
             row.querySelector('[data-remove-item]')?.addEventListener('click', () => {
                 if (wrapper.querySelectorAll('[data-item-row]').length === 1) {
-                    row.querySelectorAll('input').forEach((input) => input.value = '');
-                    row.querySelector('[name="item_unit"]').value = 'kg';
-                    syncRow(row);
+                    row.querySelectorAll('input').forEach((input) => { if (input.type !== 'hidden') input.value = ''; });
+                    row.querySelector('[data-input-select]').selectedIndex = 0;
+                    row.querySelector('[data-item-unit]').value = 'kg';
+                    row.querySelector('[data-item-name]').value = '';
                     return;
                 }
                 row.remove();
             });
             syncRow(row);
         };
+
         wrapper.querySelectorAll('[data-item-row]').forEach(bindRow);
         addButton?.addEventListener('click', () => {
-            const fragment = template.content.cloneNode(true);
-            const row = fragment.querySelector('[data-item-row]');
-            wrapper.appendChild(fragment);
+            wrapper.appendChild(template.content.cloneNode(true));
             bindRow(wrapper.lastElementChild);
         });
         recommendationSelect?.addEventListener('change', () => {
@@ -156,13 +213,12 @@
             if (!selected || !recommendationGroups[selected]?.length) return;
             wrapper.innerHTML = '';
             recommendationGroups[selected].forEach((item) => {
-                const fragment = template.content.cloneNode(true);
-                const row = fragment.querySelector('[data-item-row]');
-                row.querySelector('[name="item_name"]').value = item.name || '';
-                row.querySelector('[name="item_unit"]').value = item.unit || 'kg';
+                wrapper.appendChild(template.content.cloneNode(true));
+                const row = wrapper.lastElementChild;
+                row.querySelector('[data-input-select]').value = String(item.purchased_input_id || '');
+                row.querySelector('[data-item-unit]').value = item.unit || 'kg';
                 row.querySelector('[name="item_quantity"]').value = item.quantity || '';
-                wrapper.appendChild(fragment);
-                bindRow(wrapper.lastElementChild);
+                bindRow(row);
             });
         });
     })();

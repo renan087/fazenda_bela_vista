@@ -6,34 +6,38 @@
         <h3 class="mt-2 text-2xl font-semibold">{% if edit_input %}Editar insumo comprado{% else %}Insumos comprados{% endif %}</h3>
         <form method="post" action="{% if edit_input %}/insumos/comprados/{{ edit_input.id }}/editar{% else %}/insumos/comprados{% endif %}" class="mt-6 grid gap-4" data-purchased-input-form>
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <div class="grid gap-4 md:grid-cols-2">
             <label>
                 <span class="mb-2 block text-sm font-medium">Fazenda</span>
-                <select name="farm_id" class="w-full rounded-2xl border-slate-200 bg-slate-50">
+                <select name="farm_id" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50">
                     <option value="">Sem vinculo especifico</option>
                     {% for farm in farms %}
                     <option value="{{ farm.id }}" {% if edit_input and edit_input.farm_id == farm.id %}selected{% endif %}>{{ farm.name }}</option>
                     {% endfor %}
                 </select>
             </label>
-            <label><span class="mb-2 block text-sm font-medium">Nome do insumo</span><input name="name" value="{{ edit_input.name if edit_input else '' }}" class="w-full rounded-2xl border-slate-200 bg-slate-50" required></label>
+            <label><span class="mb-2 block text-sm font-medium">Data da compra</span><input type="date" name="purchase_date" value="{{ edit_input.purchase_date.isoformat() if edit_input and edit_input.purchase_date else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50"></label>
+            </div>
+            <label><span class="mb-2 block text-sm font-medium">Nome do insumo</span><input name="name" value="{{ edit_input.name if edit_input else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required></label>
             <div class="grid gap-4 md:grid-cols-2">
-                <label><span class="mb-2 block text-sm font-medium">Quantidade comprada</span><input type="number" step="0.01" min="0" name="quantity_purchased" value="{{ edit_input.quantity_purchased if edit_input else '' }}" class="w-full rounded-2xl border-slate-200 bg-slate-50" required data-quantity-purchased></label>
-                <label><span class="mb-2 block text-sm font-medium">Tamanho do saco / embalagem</span><input type="number" step="0.01" min="0" name="package_size" value="{{ edit_input.package_size if edit_input else '' }}" class="w-full rounded-2xl border-slate-200 bg-slate-50" required data-package-size></label>
+                <label><span class="mb-2 block text-sm font-medium">Quantidade comprada</span><input type="number" step="0.01" min="0" name="quantity_purchased" value="{{ edit_input.quantity_purchased if edit_input else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required data-quantity-purchased></label>
+                <label><span class="mb-2 block text-sm font-medium">Tamanho do saco / embalagem</span><input type="number" step="0.01" min="0" name="package_size" value="{{ edit_input.package_size if edit_input else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required data-package-size></label>
             </div>
             <div class="grid gap-4 md:grid-cols-2">
                 <label>
                     <span class="mb-2 block text-sm font-medium">Unidade da embalagem</span>
-                    <select name="package_unit" class="w-full rounded-2xl border-slate-200 bg-slate-50">
+                    <select name="package_unit" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50">
                         {% for unit in ['kg', 'g', 'L', 'ml', 'sacas', 'un'] %}
                         <option value="{{ unit }}" {% if edit_input and edit_input.package_unit == unit %}selected{% endif %}>{{ unit }}</option>
                         {% endfor %}
                     </select>
                 </label>
-                <label><span class="mb-2 block text-sm font-medium">Valor por saco / embalagem (R$)</span><input type="number" step="0.01" min="0" name="unit_price" value="{{ edit_input.unit_price if edit_input else '' }}" class="w-full rounded-2xl border-slate-200 bg-slate-50" required data-unit-price></label>
+                <label><span class="mb-2 block text-sm font-medium">Valor por saco / embalagem (R$)</span><input type="number" step="0.01" min="0" name="unit_price" value="{{ edit_input.unit_price if edit_input else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required data-unit-price></label>
             </div>
-            <div class="grid gap-4 md:grid-cols-2">
-                <label><span class="mb-2 block text-sm font-medium">Quantidade total calculada</span><input type="number" step="0.01" value="{{ edit_input.total_quantity if edit_input else '' }}" class="w-full rounded-2xl border-slate-200 bg-slate-200 text-slate-500" readonly data-total-quantity></label>
-                <label><span class="mb-2 block text-sm font-medium">Valor total calculado (R$)</span><input type="number" step="0.01" value="{{ edit_input.total_cost if edit_input else '' }}" class="w-full rounded-2xl border-slate-200 bg-slate-200 text-slate-500" readonly data-total-cost></label>
+            <div class="grid gap-4 md:grid-cols-3">
+                <label><span class="mb-2 block text-sm font-medium">Quantidade total calculada</span><input type="number" step="0.01" value="{{ edit_input.total_quantity if edit_input else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-200 text-slate-500" readonly data-total-quantity></label>
+                <label><span class="mb-2 block text-sm font-medium">Valor total calculado (R$)</span><input type="number" step="0.01" value="{{ edit_input.total_cost if edit_input else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-200 text-slate-500" readonly data-total-cost></label>
+                <label><span class="mb-2 block text-sm font-medium">Alerta de estoque baixo</span><input type="number" step="0.01" min="0" name="low_stock_threshold" value="{{ edit_input.low_stock_threshold if edit_input and edit_input.low_stock_threshold is not none else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50"></label>
             </div>
             <label><span class="mb-2 block text-sm font-medium">Observacoes</span><textarea name="notes" rows="4" class="w-full rounded-2xl border-slate-200 bg-slate-50">{{ edit_input.notes if edit_input else '' }}</textarea></label>
             <div class="flex gap-3">
@@ -55,9 +59,13 @@
                         <p class="text-lg font-semibold">{{ item.name }}</p>
                         <p class="mt-1 text-sm text-slate-500">{{ item.farm.name if item.farm else "Sem fazenda vinculada" }}</p>
                         <p class="mt-2 text-sm text-slate-600">{{ item.quantity_purchased }} volumes x {{ item.package_size }} {{ item.package_unit }}</p>
-                        <p class="mt-1 text-sm text-slate-600">Total: <strong>{{ item.total_quantity }} {{ item.package_unit }}</strong> • Valor total: <strong>R$ {{ item.total_cost }}</strong></p>
+                        <p class="mt-1 text-sm text-slate-600">Total: <strong>{{ item.total_quantity }} {{ item.package_unit }}</strong> • Disponivel: <strong>{{ item.available_quantity }} {{ item.package_unit }}</strong></p>
+                        <p class="mt-1 text-sm text-slate-600">Valor total: <strong>R$ {{ item.total_cost }}</strong>{% if item.purchase_date %} • Compra: <strong>{{ item.purchase_date }}</strong>{% endif %}</p>
                     </div>
                     <div class="flex gap-2">
+                        {% if item.low_stock_threshold and item.available_quantity <= item.low_stock_threshold %}
+                        <span class="rounded-xl bg-amber-100 px-3 py-2 text-xs font-semibold text-amber-700">Estoque baixo</span>
+                        {% endif %}
                         <a href="/insumos/comprados?edit_id={{ item.id }}" class="rounded-xl bg-slate-900 px-3 py-2 text-xs font-medium text-white hover:bg-slate-700">Editar</a>
                         <form method="post" action="/insumos/comprados/{{ item.id }}/excluir" onsubmit="return confirm('Excluir o insumo {{ item.name }}?');">
                             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">

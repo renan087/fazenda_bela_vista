@@ -1,16 +1,21 @@
 import json
 import math
 from datetime import date
+from decimal import Decimal
 
 from app.core.security import get_password_hash
 from app.models import (
     AgronomicProfile,
     CoffeeVariety,
     Farm,
+    FertilizationSchedule,
+    FertilizationScheduleItem,
+    FertilizationStockAllocation,
     FertilizationItem,
     FertilizationRecord,
     HarvestRecord,
     InputRecommendation,
+    InputRecommendationItem,
     IrrigationRecord,
     PestIncident,
     Plot,
@@ -178,34 +183,6 @@ def update_rainfall(repository: FarmRepository, rainfall: RainfallRecord, form: 
     )
 
 
-def create_fertilization(repository: FarmRepository, form: dict) -> FertilizationRecord:
-    items = _normalize_fertilization_items(form.get("items"), form.get("area_hectares"))
-    product, dose = _fertilization_summary(items)
-    record = FertilizationRecord(
-        plot_id=form["plot_id"],
-        application_date=date.fromisoformat(form["application_date"]),
-        product=product,
-        dose=dose,
-        cost=form["cost"],
-        notes=form.get("notes"),
-    )
-    repository.db.add(record)
-    repository.db.flush()
-    for item in items:
-        repository.db.add(
-            FertilizationItem(
-                fertilization_record_id=record.id,
-                name=item["name"],
-                unit=item["unit"],
-                quantity_per_hectare=item["quantity_per_hectare"],
-                total_quantity=item["total_quantity"],
-            )
-        )
-    repository.db.commit()
-    repository.db.refresh(record)
-    return record
-
-
 def create_user(repository: FarmRepository, form: dict) -> User:
     return repository.create(
         User(
@@ -235,6 +212,7 @@ def create_purchased_input(repository: FarmRepository, form: dict) -> PurchasedI
     quantity_purchased = float(form["quantity_purchased"])
     package_size = float(form["package_size"])
     unit_price = float(form["unit_price"])
+    total_quantity = round(quantity_purchased * package_size, 2)
     return repository.create(
         PurchasedInput(
             farm_id=form.get("farm_id"),
@@ -243,8 +221,11 @@ def create_purchased_input(repository: FarmRepository, form: dict) -> PurchasedI
             package_size=package_size,
             package_unit=form["package_unit"],
             unit_price=unit_price,
-            total_quantity=round(quantity_purchased * package_size, 2),
+            purchase_date=date.fromisoformat(form["purchase_date"]) if form.get("purchase_date") else date.today(),
+            total_quantity=total_quantity,
+            available_quantity=total_quantity,
             total_cost=round(quantity_purchased * unit_price, 2),
+            low_stock_threshold=float(form.get("low_stock_threshold") or 0),
             notes=form.get("notes"),
         )
     )
@@ -254,6 +235,9 @@ def update_purchased_input(repository: FarmRepository, item: PurchasedInput, for
     quantity_purchased = float(form["quantity_purchased"])
     package_size = float(form["package_size"])
     unit_price = float(form["unit_price"])
+    total_quantity = round(quantity_purchased * package_size, 2)
+    consumed_quantity = max(float(item.total_quantity or 0) - float(item.available_quantity or 0), 0)
+    available_quantity = max(round(total_quantity - consumed_quantity, 2), 0)
     return repository.update(
         item,
         {
@@ -263,68 +247,187 @@ def update_purchased_input(repository: FarmRepository, item: PurchasedInput, for
             "package_size": package_size,
             "package_unit": form["package_unit"],
             "unit_price": unit_price,
-            "total_quantity": round(quantity_purchased * package_size, 2),
+            "purchase_date": date.fromisoformat(form["purchase_date"]) if form.get("purchase_date") else item.purchase_date,
+            "total_quantity": total_quantity,
+            "available_quantity": available_quantity,
             "total_cost": round(quantity_purchased * unit_price, 2),
+            "low_stock_threshold": float(form.get("low_stock_threshold") or 0),
             "notes": form.get("notes"),
         },
     )
 
 
 def create_input_recommendation(repository: FarmRepository, form: dict) -> InputRecommendation:
-    purchased_input = repository.get_purchased_input(form["purchased_input_id"])
-    unit = form.get("unit") or (purchased_input.package_unit if purchased_input else "kg")
-    return repository.create(
-        InputRecommendation(
-            farm_id=form.get("farm_id"),
-            application_name=form["application_name"],
-            purchased_input_id=form["purchased_input_id"],
-            unit=unit,
-            quantity_per_hectare=form["quantity_per_hectare"],
-            notes=form.get("notes"),
-        )
+    recommendation = InputRecommendation(
+        farm_id=form.get("farm_id"),
+        plot_id=form.get("plot_id"),
+        application_name=form["application_name"],
+        notes=form.get("notes"),
     )
+    repository.db.add(recommendation)
+    repository.db.flush()
+    for item in form.get("items", []):
+        purchased_input = repository.get_purchased_input(item["purchased_input_id"])
+        if not purchased_input:
+            continue
+        recommendation.items.append(
+            InputRecommendationItem(
+                purchased_input_id=purchased_input.id,
+                unit=item.get("unit") or purchased_input.package_unit,
+                quantity=item["quantity"],
+            )
+        )
+    if recommendation.items:
+        first_item = recommendation.items[0]
+        recommendation.purchased_input_id = first_item.purchased_input_id
+        recommendation.unit = first_item.unit
+        recommendation.quantity_per_hectare = first_item.quantity
+    repository.db.add(recommendation)
+    repository.db.commit()
+    repository.db.refresh(recommendation)
+    return recommendation
 
 
 def update_input_recommendation(repository: FarmRepository, recommendation: InputRecommendation, form: dict) -> InputRecommendation:
-    purchased_input = repository.get_purchased_input(form["purchased_input_id"])
-    unit = form.get("unit") or (purchased_input.package_unit if purchased_input else "kg")
-    return repository.update(
-        recommendation,
-        {
-            "farm_id": form.get("farm_id"),
-            "application_name": form["application_name"],
-            "purchased_input_id": form["purchased_input_id"],
-            "unit": unit,
-            "quantity_per_hectare": form["quantity_per_hectare"],
-            "notes": form.get("notes"),
-        },
-    )
+    recommendation.farm_id = form.get("farm_id")
+    recommendation.plot_id = form.get("plot_id")
+    recommendation.application_name = form["application_name"]
+    recommendation.notes = form.get("notes")
+    recommendation.items.clear()
+    repository.db.flush()
+    for item in form.get("items", []):
+        purchased_input = repository.get_purchased_input(item["purchased_input_id"])
+        if not purchased_input:
+            continue
+        recommendation.items.append(
+            InputRecommendationItem(
+                purchased_input_id=purchased_input.id,
+                unit=item.get("unit") or purchased_input.package_unit,
+                quantity=item["quantity"],
+            )
+        )
+    first_item = recommendation.items[0] if recommendation.items else None
+    recommendation.purchased_input_id = first_item.purchased_input_id if first_item else None
+    recommendation.unit = first_item.unit if first_item else None
+    recommendation.quantity_per_hectare = first_item.quantity if first_item else None
+    repository.db.add(recommendation)
+    repository.db.commit()
+    repository.db.refresh(recommendation)
+    return recommendation
 
 
 def update_fertilization(repository: FarmRepository, fertilization: FertilizationRecord, form: dict) -> FertilizationRecord:
-    items = _normalize_fertilization_items(form.get("items"), form.get("area_hectares"))
-    product, dose = _fertilization_summary(items)
-    fertilization.plot_id = form["plot_id"]
-    fertilization.application_date = date.fromisoformat(form["application_date"])
-    fertilization.product = product
-    fertilization.dose = dose
-    fertilization.cost = form["cost"]
-    fertilization.notes = form.get("notes")
-    fertilization.items.clear()
+    _restore_fertilization_stock(fertilization)
     repository.db.flush()
-    for item in items:
-        fertilization.items.append(
-            FertilizationItem(
-                name=item["name"],
-                unit=item["unit"],
-                quantity_per_hectare=item["quantity_per_hectare"],
-                total_quantity=item["total_quantity"],
+    return _save_fertilization(repository, fertilization, form)
+
+
+def create_fertilization_schedule(repository: FarmRepository, form: dict) -> FertilizationSchedule:
+    schedule = FertilizationSchedule(
+        plot_id=form["plot_id"],
+        scheduled_date=date.fromisoformat(form["scheduled_date"]),
+        status=form.get("status") or "scheduled",
+        notes=form.get("notes"),
+    )
+    repository.db.add(schedule)
+    repository.db.flush()
+    for item in form.get("items", []):
+        purchased_input = repository.get_purchased_input(item["purchased_input_id"])
+        if not purchased_input:
+            continue
+        schedule.items.append(
+            FertilizationScheduleItem(
+                purchased_input_id=purchased_input.id,
+                name=purchased_input.name,
+                unit=item.get("unit") or purchased_input.package_unit,
+                quantity=item["quantity"],
             )
         )
-    repository.db.add(fertilization)
+    repository.db.add(schedule)
     repository.db.commit()
-    repository.db.refresh(fertilization)
-    return fertilization
+    repository.db.refresh(schedule)
+    return schedule
+
+
+def update_fertilization_schedule(repository: FarmRepository, schedule: FertilizationSchedule, form: dict) -> FertilizationSchedule:
+    schedule.plot_id = form["plot_id"]
+    schedule.scheduled_date = date.fromisoformat(form["scheduled_date"])
+    schedule.status = form.get("status") or schedule.status
+    schedule.notes = form.get("notes")
+    schedule.items.clear()
+    repository.db.flush()
+    for item in form.get("items", []):
+        purchased_input = repository.get_purchased_input(item["purchased_input_id"])
+        if not purchased_input:
+            continue
+        schedule.items.append(
+            FertilizationScheduleItem(
+                purchased_input_id=purchased_input.id,
+                name=purchased_input.name,
+                unit=item.get("unit") or purchased_input.package_unit,
+                quantity=item["quantity"],
+            )
+        )
+    repository.db.add(schedule)
+    repository.db.commit()
+    repository.db.refresh(schedule)
+    return schedule
+
+
+def validate_schedule_stock(repository: FarmRepository, schedule: FertilizationSchedule) -> dict:
+    shortages = []
+    for item in schedule.items:
+        available = _available_stock_for_input(item.purchased_input)
+        required = float(item.quantity or 0)
+        if required > available:
+            shortages.append(
+                {
+                    "name": item.name,
+                    "required": round(required, 2),
+                    "available": round(available, 2),
+                    "missing": round(required - available, 2),
+                    "unit": item.unit,
+                }
+            )
+    return {"ok": not shortages, "shortages": shortages}
+
+
+def conclude_fertilization_schedule(repository: FarmRepository, schedule: FertilizationSchedule, application_date: str | None = None) -> FertilizationRecord:
+    if not schedule.items:
+        raise ValueError("Adicione ao menos um insumo no agendamento.")
+    record = create_fertilization(
+        repository,
+        {
+            "plot_id": schedule.plot_id,
+            "application_date": application_date or schedule.scheduled_date.isoformat(),
+            "notes": schedule.notes,
+            "items": [
+                {
+                    "purchased_input_id": item.purchased_input_id,
+                    "unit": item.unit,
+                    "quantity": float(item.quantity or 0),
+                }
+                for item in schedule.items
+            ],
+        },
+    )
+    schedule.status = "completed"
+    schedule.fertilization_record_id = record.id
+    repository.db.add(schedule)
+    repository.db.commit()
+    repository.db.refresh(schedule)
+    return record
+
+
+def delete_fertilization(repository: FarmRepository, fertilization: FertilizationRecord) -> None:
+    _restore_fertilization_stock(fertilization)
+    repository.db.delete(fertilization)
+    repository.db.commit()
+
+
+def delete_fertilization_schedule(repository: FarmRepository, schedule: FertilizationSchedule) -> None:
+    repository.db.delete(schedule)
+    repository.db.commit()
 
 
 def create_harvest(repository: FarmRepository, form: dict, area_hectares: float) -> HarvestRecord:
@@ -425,6 +528,136 @@ def update_agronomic_profile(repository: FarmRepository, profile: AgronomicProfi
             "common_pests": form.get("common_pests"),
         },
     )
+
+
+def _available_stock_for_input(purchased_input: PurchasedInput | None) -> float:
+    return float(purchased_input.available_quantity if purchased_input and purchased_input.available_quantity is not None else 0)
+
+
+def _current_average_cost(repository: FarmRepository, farm_id: int | None, input_name: str, unit: str) -> float:
+    lots = [
+        item for item in repository.list_purchased_inputs()
+        if item.name == input_name and item.package_unit == unit and (farm_id is None or item.farm_id == farm_id) and _available_stock_for_input(item) > 0
+    ]
+    total_quantity = sum(_available_stock_for_input(item) for item in lots)
+    total_value = sum(_available_stock_for_input(item) * (float(item.total_cost or 0) / max(float(item.total_quantity or 0), 1)) for item in lots)
+    return round(total_value / total_quantity, 4) if total_quantity else 0
+
+
+def _find_candidate_lots(repository: FarmRepository, purchased_input_id: int | None, name: str | None, unit: str, farm_id: int | None) -> list[PurchasedInput]:
+    purchased_inputs = repository.list_purchased_inputs()
+    if purchased_input_id:
+        direct = [item for item in purchased_inputs if item.id == purchased_input_id]
+        if direct:
+            target = direct[0]
+            return [
+                item for item in purchased_inputs
+                if item.name == target.name and item.package_unit == target.package_unit and (farm_id is None or item.farm_id == farm_id) and _available_stock_for_input(item) > 0
+            ]
+    return [
+        item for item in purchased_inputs
+        if item.name == name and item.package_unit == unit and (farm_id is None or item.farm_id == farm_id) and _available_stock_for_input(item) > 0
+    ]
+
+
+def _deduct_stock(repository: FarmRepository, fertilization_item: FertilizationItem, farm_id: int | None, requested_quantity: float) -> tuple[float, float]:
+    candidate_lots = _find_candidate_lots(
+        repository,
+        fertilization_item.purchased_input_id,
+        fertilization_item.name,
+        fertilization_item.unit,
+        farm_id,
+    )
+    candidate_lots = sorted(candidate_lots, key=lambda item: (item.purchase_date or date.today(), item.id))
+    total_available = sum(_available_stock_for_input(item) for item in candidate_lots)
+    if requested_quantity > total_available:
+        missing = round(requested_quantity - total_available, 2)
+        raise ValueError(f"Estoque insuficiente para {fertilization_item.name}. Necessario comprar {missing} {fertilization_item.unit}.")
+
+    average_cost = _current_average_cost(repository, farm_id, fertilization_item.name, fertilization_item.unit)
+    remaining = requested_quantity
+    for lot in candidate_lots:
+        if remaining <= 0:
+            break
+        lot_available = _available_stock_for_input(lot)
+        consumed = min(lot_available, remaining)
+        unit_cost = float(lot.total_cost or 0) / max(float(lot.total_quantity or 0), 1)
+        lot.available_quantity = round(lot_available - consumed, 2)
+        fertilization_item.stock_allocations.append(
+            FertilizationStockAllocation(
+                purchased_input_id=lot.id,
+                quantity_used=consumed,
+                unit_cost=round(unit_cost, 4),
+                total_cost=round(consumed * unit_cost, 2),
+            )
+        )
+        remaining = round(remaining - consumed, 2)
+        if fertilization_item.purchased_input_id is None:
+            fertilization_item.purchased_input_id = lot.id
+
+    return round(average_cost, 4), round(requested_quantity * average_cost, 2)
+
+
+def _restore_fertilization_stock(fertilization: FertilizationRecord) -> None:
+    for item in fertilization.items:
+        for allocation in item.stock_allocations:
+            if allocation.purchased_input:
+                current_available = float(allocation.purchased_input.available_quantity or 0)
+                allocation.purchased_input.available_quantity = round(current_available + float(allocation.quantity_used or 0), 2)
+        item.stock_allocations.clear()
+
+
+def _save_fertilization(repository: FarmRepository, fertilization: FertilizationRecord | None, form: dict) -> FertilizationRecord:
+    items = _normalize_fertilization_items(form.get("items"), form.get("area_hectares"))
+    plot = repository.get_plot(form["plot_id"])
+    if not plot:
+        raise ValueError("Setor nao encontrado para fertilizacao.")
+    product, dose = _fertilization_summary(items)
+    record = fertilization or FertilizationRecord(
+        plot_id=form["plot_id"],
+        application_date=date.fromisoformat(form["application_date"]),
+        product=product,
+        dose=dose,
+        cost=0,
+        notes=form.get("notes"),
+    )
+    record.plot_id = form["plot_id"]
+    record.application_date = date.fromisoformat(form["application_date"])
+    record.product = product
+    record.dose = dose
+    record.notes = form.get("notes")
+    if fertilization:
+        record.items.clear()
+        repository.db.flush()
+    repository.db.add(record)
+    repository.db.flush()
+
+    total_cost = Decimal("0")
+    for item in items:
+        fertilization_item = FertilizationItem(
+            fertilization_record_id=record.id,
+            purchased_input_id=item.get("purchased_input_id"),
+            name=item["name"],
+            unit=item["unit"],
+            quantity_per_hectare=item["quantity_per_hectare"],
+            total_quantity=item["total_quantity"],
+        )
+        repository.db.add(fertilization_item)
+        repository.db.flush()
+        unit_cost, item_total_cost = _deduct_stock(repository, fertilization_item, plot.farm_id, float(item["total_quantity"]))
+        fertilization_item.unit_cost = unit_cost
+        fertilization_item.total_cost = item_total_cost
+        total_cost += Decimal(str(item_total_cost))
+
+    record.cost = round(float(total_cost), 2)
+    repository.db.add(record)
+    repository.db.commit()
+    repository.db.refresh(record)
+    return record
+
+
+def create_fertilization(repository: FarmRepository, form: dict) -> FertilizationRecord:
+    return _save_fertilization(repository, None, form)
 
 
 def create_soil_analysis(repository: FarmRepository, form: dict) -> SoilAnalysis:
@@ -674,6 +907,7 @@ def _normalize_fertilization_items(items: list[dict] | None, area_hectares: floa
         quantity_value = round(float(quantity), 2)
         normalized.append(
             {
+                "purchased_input_id": item.get("purchased_input_id"),
                 "name": name,
                 "unit": unit,
                 "quantity_per_hectare": quantity_value,

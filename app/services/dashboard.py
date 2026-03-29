@@ -72,6 +72,8 @@ def build_dashboard_context(
     harvests = repository.list_harvests()
     irrigations = repository.list_irrigations()
     fertilizations = repository.list_fertilizations()
+    schedules = repository.list_fertilization_schedules()
+    purchased_inputs = repository.list_purchased_inputs()
     incidents = repository.list_pest_incidents()
     soil_analyses = repository.list_soil_analyses()[:6]
     today = date.today()
@@ -94,6 +96,46 @@ def build_dashboard_context(
     cost_per_hectare = total_cost / total_area if total_area else 0
     monthly_rainfall = sum(_float(item.millimeters) for item in month_rainfalls)
     rainfall_period_total = sum(_float(item.millimeters) for item in rainfalls)
+    low_stock_items = [
+        item for item in purchased_inputs
+        if _float(item.low_stock_threshold) > 0 and _float(item.available_quantity) <= _float(item.low_stock_threshold)
+    ]
+    schedule_alerts = []
+    for schedule in schedules:
+        status = schedule.status
+        if status == "completed":
+            continue
+        validation = {
+            "ok": True,
+            "shortages": [],
+        }
+        for item in schedule.items:
+            available = _float(item.purchased_input.available_quantity if item.purchased_input else 0)
+            required = _float(item.quantity)
+            if required > available:
+                validation["ok"] = False
+                validation["shortages"].append(
+                    {
+                        "name": item.name,
+                        "missing": round(required - available, 2),
+                        "unit": item.unit,
+                    }
+                )
+        schedule_alerts.append(
+            {
+                "id": schedule.id,
+                "plot": schedule.plot.name if schedule.plot else "Setor removido",
+                "date": schedule.scheduled_date.isoformat(),
+                "status": "late" if schedule.scheduled_date < today else "scheduled",
+                "stock_ok": validation["ok"],
+                "shortages": validation["shortages"],
+                "link": f"/fertilizacao/agendamentos?edit_id={schedule.id}",
+            }
+        )
+    cost_by_plot = defaultdict(float)
+    for fertilization in fertilizations:
+        plot_name = fertilization.plot.name if fertilization.plot else f"Setor {fertilization.plot_id}"
+        cost_by_plot[plot_name] += _float(fertilization.cost)
 
     production_by_plot = defaultdict(float)
     productivity_by_plot = {}
@@ -232,6 +274,8 @@ def build_dashboard_context(
             "cost_per_hectare": round(cost_per_hectare, 2),
             "monthly_rainfall": round(monthly_rainfall, 2),
             "rainfall_period_total": round(rainfall_period_total, 2),
+            "low_stock_count": len(low_stock_items),
+            "late_schedule_count": sum(1 for item in schedule_alerts if item["status"] == "late"),
         },
         "recent_irrigations": irrigations,
         "recent_rainfalls": rainfalls,
@@ -239,6 +283,8 @@ def build_dashboard_context(
         "recent_incidents": incidents,
         "recent_harvests": harvests,
         "recent_soil_analyses": soil_analyses,
+        "low_stock_items": low_stock_items,
+        "schedule_alerts": schedule_alerts,
         "forecast_plots": forecast["plots"],
         "production_chart": json.dumps(
             {
@@ -268,6 +314,12 @@ def build_dashboard_context(
             {
                 "labels": [item["label"] for item in rainfall_timeline],
                 "values": [item["value"] for item in rainfall_timeline],
+            }
+        ),
+        "cost_by_plot_chart": json.dumps(
+            {
+                "labels": list(cost_by_plot.keys()),
+                "values": [round(value, 2) for value in cost_by_plot.values()],
             }
         ),
         "map_geojson": json.dumps({"type": "FeatureCollection", "features": map_features}),

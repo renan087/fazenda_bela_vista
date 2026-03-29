@@ -2,9 +2,13 @@ from app.models.agronomic_profile import AgronomicProfile
 from app.models.coffee_variety import CoffeeVariety
 from app.models.farm import Farm
 from app.models.fertilization_item import FertilizationItem
+from app.models.fertilization_schedule import FertilizationSchedule
+from app.models.fertilization_schedule_item import FertilizationScheduleItem
+from app.models.fertilization_stock_allocation import FertilizationStockAllocation
 from app.models.fertilization import FertilizationRecord
 from app.models.harvest import HarvestRecord
 from app.models.input_recommendation import InputRecommendation
+from app.models.input_recommendation_item import InputRecommendationItem
 from app.models.irrigation import IrrigationRecord
 from app.models.pesticide import PestIncident
 from app.models.plot import Plot
@@ -18,9 +22,13 @@ __all__ = [
     "CoffeeVariety",
     "Farm",
     "FertilizationItem",
+    "FertilizationSchedule",
+    "FertilizationScheduleItem",
+    "FertilizationStockAllocation",
     "FertilizationRecord",
     "HarvestRecord",
     "InputRecommendation",
+    "InputRecommendationItem",
     "IrrigationRecord",
     "PestIncident",
     "Plot",

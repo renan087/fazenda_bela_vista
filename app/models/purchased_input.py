@@ -1,4 +1,6 @@
-from sqlalchemy import ForeignKey, Numeric, String, Text
+from datetime import date
+
+from sqlalchemy import Date, ForeignKey, Numeric, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -14,9 +16,15 @@ class PurchasedInput(Base):
     package_size: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False)
     package_unit: Mapped[str] = mapped_column(String(20), nullable=False)
     unit_price: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False)
+    purchase_date: Mapped[date] = mapped_column(Date, nullable=True)
     total_quantity: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False)
+    available_quantity: Mapped[float] = mapped_column(Numeric(12, 2), nullable=True)
     total_cost: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False)
+    low_stock_threshold: Mapped[float] = mapped_column(Numeric(10, 2), nullable=True)
     notes: Mapped[str] = mapped_column(Text, nullable=True)
 
     farm = relationship("Farm", back_populates="purchased_inputs")
     recommendations = relationship("InputRecommendation", back_populates="purchased_input")
+    recommendation_items = relationship("InputRecommendationItem", back_populates="purchased_input")
+    schedule_items = relationship("FertilizationScheduleItem", back_populates="purchased_input")
+    stock_allocations = relationship("FertilizationStockAllocation", back_populates="purchased_input")

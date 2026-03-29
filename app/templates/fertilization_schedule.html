@@ -1,0 +1,204 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="grid gap-6 xl:grid-cols-[0.92fr_1.08fr]">
+    <section class="rounded-[2rem] bg-white p-6 shadow-panel">
+        <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Agendamento</p>
+        <h3 class="mt-2 text-2xl font-semibold">{% if edit_schedule %}Editar fertilizacao programada{% else %}Agendar fertilizacao{% endif %}</h3>
+        <form method="post" action="{% if edit_schedule %}/fertilizacao/agendamentos/{{ edit_schedule.id }}/editar{% else %}/fertilizacao/agendamentos{% endif %}" class="mt-6 grid gap-4" data-schedule-form>
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <div class="grid gap-4 md:grid-cols-2">
+                <label>
+                    <span class="mb-2 block text-sm font-medium">Setor</span>
+                    <select name="plot_id" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required>
+                        {% for plot in plots %}
+                        <option value="{{ plot.id }}" {% if edit_schedule and edit_schedule.plot_id == plot.id %}selected{% endif %}>{{ plot.name }}{% if plot.farm %} • {{ plot.farm.name }}{% endif %}</option>
+                        {% endfor %}
+                    </select>
+                </label>
+                <label>
+                    <span class="mb-2 block text-sm font-medium">Data prevista</span>
+                    <input type="date" name="scheduled_date" value="{{ edit_schedule.scheduled_date.isoformat() if edit_schedule else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required>
+                </label>
+            </div>
+            <label>
+                <span class="mb-2 block text-sm font-medium">Status</span>
+                <select name="status" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50">
+                    <option value="scheduled" {% if not edit_schedule or edit_schedule.status == 'scheduled' %}selected{% endif %}>Programado</option>
+                    <option value="completed" {% if edit_schedule and edit_schedule.status == 'completed' %}selected{% endif %}>Concluido</option>
+                </select>
+            </label>
+
+            <div class="rounded-[1.5rem] border border-slate-200 bg-slate-50 p-4">
+                <div class="flex items-center justify-between gap-3">
+                    <div>
+                        <p class="text-xs uppercase tracking-[0.3em] text-slate-400">Lista de insumos</p>
+                        <p class="mt-1 text-sm text-slate-600">Monte a aplicacao prevista e deixe o sistema validar o estoque antes da conclusao.</p>
+                    </div>
+                    <button type="button" class="rounded-xl bg-brand-500 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700" data-add-schedule-item>Adicionar insumo</button>
+                </div>
+                <div class="mt-4 space-y-4" data-schedule-items>
+                    {% for item in edit_schedule_items %}
+                    <div class="grid gap-3 rounded-[1.25rem] border border-slate-200 bg-white p-4 md:grid-cols-[1.3fr_0.8fr_0.8fr_auto]" data-schedule-item>
+                        <label>
+                            <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Insumo comprado</span>
+                            <select name="purchased_input_id" class="min-h-[3rem] w-full rounded-xl border-slate-200 bg-slate-50" required>
+                                <option value="">Selecione</option>
+                                {% for purchased_input in purchased_inputs %}
+                                <option value="{{ purchased_input.id }}" {% if item.purchased_input_id|string == purchased_input.id|string %}selected{% endif %}>{{ purchased_input.name }} • {{ purchased_input.available_quantity }} {{ purchased_input.package_unit }}</option>
+                                {% endfor %}
+                            </select>
+                        </label>
+                        <label>
+                            <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Unidade</span>
+                            <select name="unit" class="min-h-[3rem] w-full rounded-xl border-slate-200 bg-slate-50">
+                                {% for unit in ['kg', 'g', 'L', 'ml', 'sacas', 'un'] %}
+                                <option value="{{ unit }}" {% if item.unit == unit %}selected{% endif %}>{{ unit }}</option>
+                                {% endfor %}
+                            </select>
+                        </label>
+                        <label>
+                            <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Quantidade</span>
+                            <input type="number" step="0.01" min="0" name="quantity" value="{{ item.quantity }}" class="min-h-[3rem] w-full rounded-xl border-slate-200 bg-slate-50" required>
+                        </label>
+                        <div class="flex items-end">
+                            <button type="button" class="rounded-xl bg-rose-600 px-3 py-3 text-xs font-medium text-white hover:bg-rose-700" data-remove-schedule-item>Remover</button>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+
+            <label>
+                <span class="mb-2 block text-sm font-medium">Observacoes</span>
+                <textarea name="notes" rows="4" class="w-full rounded-2xl border-slate-200 bg-slate-50">{{ edit_schedule.notes if edit_schedule else '' }}</textarea>
+            </label>
+            <div class="flex gap-3">
+                <button class="rounded-2xl bg-brand-500 px-4 py-3 font-semibold text-white hover:bg-brand-700">{% if edit_schedule %}Salvar alteracoes{% else %}Salvar agendamento{% endif %}</button>
+                <a href="/fertilizacao/agendamentos" class="rounded-2xl bg-slate-100 px-4 py-3 font-semibold text-slate-700 hover:bg-slate-200">Cancelar</a>
+            </div>
+        </form>
+    </section>
+
+    <section class="rounded-[2rem] bg-white p-6 shadow-panel">
+        <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Planejamento</p>
+        <h3 class="mt-2 text-2xl font-semibold">Proximas aplicacoes</h3>
+        <div class="mt-6 space-y-4">
+            {% for schedule in schedules %}
+            {% set validation = schedule_validations.get(schedule.id, {'ok': True, 'shortages': []}) %}
+            {% set is_late = schedule.status != 'completed' and schedule.scheduled_date < today %}
+            <article class="rounded-[1.5rem] border border-slate-100 bg-slate-50 p-5">
+                <div class="flex flex-wrap items-start justify-between gap-4">
+                    <div>
+                        <div class="flex flex-wrap items-center gap-2">
+                            <p class="text-lg font-semibold">{{ schedule.plot.name if schedule.plot else "Setor removido" }}</p>
+                            {% if schedule.status == 'completed' %}
+                            <span class="rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-700">Concluido</span>
+                            {% elif is_late %}
+                            <span class="rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-700">Atrasado</span>
+                            {% else %}
+                            <span class="rounded-full bg-sky-100 px-3 py-1 text-xs font-semibold text-sky-700">Programado</span>
+                            {% endif %}
+                            {% if not validation.ok %}
+                            <span class="rounded-full bg-rose-100 px-3 py-1 text-xs font-semibold text-rose-700">Estoque insuficiente</span>
+                            {% endif %}
+                        </div>
+                        <p class="mt-2 text-sm text-slate-500">Prevista para {{ schedule.scheduled_date }}</p>
+                    </div>
+                    <div class="flex flex-wrap gap-2">
+                        <a href="/fertilizacao/agendamentos?edit_id={{ schedule.id }}" class="rounded-xl bg-slate-900 px-3 py-2 text-xs font-medium text-white hover:bg-slate-700">Editar</a>
+                        {% if schedule.status != 'completed' %}
+                        <form method="post" action="/fertilizacao/agendamentos/{{ schedule.id }}/concluir">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                            <button class="rounded-xl bg-brand-500 px-3 py-2 text-xs font-medium text-white hover:bg-brand-700">Concluir</button>
+                        </form>
+                        {% endif %}
+                        <form method="post" action="/fertilizacao/agendamentos/{{ schedule.id }}/excluir" onsubmit="return confirm('Excluir este agendamento?');">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                            <button class="rounded-xl bg-rose-600 px-3 py-2 text-xs font-medium text-white hover:bg-rose-700">Excluir</button>
+                        </form>
+                    </div>
+                </div>
+                <div class="mt-4 space-y-2">
+                    {% for item in schedule.items %}
+                    <div class="rounded-2xl bg-white px-4 py-3 text-sm text-slate-700">
+                        <span class="font-medium">{{ item.name }}</span>
+                        <span class="text-slate-500"> • {{ item.quantity }} {{ item.unit }}</span>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% if not validation.ok %}
+                <div class="mt-4 rounded-2xl bg-rose-50 px-4 py-3 text-sm text-rose-700">
+                    {% for shortage in validation.shortages %}
+                    <p>Necessario comprar {{ shortage.missing }} {{ shortage.unit }} de {{ shortage.name }}.</p>
+                    {% endfor %}
+                </div>
+                {% endif %}
+                <p class="mt-4 text-sm text-slate-500">{{ schedule.notes or "Sem observacoes." }}</p>
+            </article>
+            {% else %}
+            <p class="text-sm text-slate-500">Nenhum agendamento cadastrado.</p>
+            {% endfor %}
+        </div>
+    </section>
+</div>
+
+<template id="schedule-item-template">
+    <div class="grid gap-3 rounded-[1.25rem] border border-slate-200 bg-white p-4 md:grid-cols-[1.3fr_0.8fr_0.8fr_auto]" data-schedule-item>
+        <label>
+            <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Insumo comprado</span>
+            <select name="purchased_input_id" class="min-h-[3rem] w-full rounded-xl border-slate-200 bg-slate-50" required>
+                <option value="">Selecione</option>
+                {% for purchased_input in purchased_inputs %}
+                <option value="{{ purchased_input.id }}">{{ purchased_input.name }} • {{ purchased_input.available_quantity }} {{ purchased_input.package_unit }}</option>
+                {% endfor %}
+            </select>
+        </label>
+        <label>
+            <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Unidade</span>
+            <select name="unit" class="min-h-[3rem] w-full rounded-xl border-slate-200 bg-slate-50">
+                {% for unit in ['kg', 'g', 'L', 'ml', 'sacas', 'un'] %}
+                <option value="{{ unit }}">{{ unit }}</option>
+                {% endfor %}
+            </select>
+        </label>
+        <label>
+            <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Quantidade</span>
+            <input type="number" step="0.01" min="0" name="quantity" class="min-h-[3rem] w-full rounded-xl border-slate-200 bg-slate-50" required>
+        </label>
+        <div class="flex items-end">
+            <button type="button" class="rounded-xl bg-rose-600 px-3 py-3 text-xs font-medium text-white hover:bg-rose-700" data-remove-schedule-item>Remover</button>
+        </div>
+    </div>
+</template>
+
+<script>
+    (() => {
+        const wrapper = document.querySelector('[data-schedule-items]');
+        const addButton = document.querySelector('[data-add-schedule-item]');
+        const template = document.getElementById('schedule-item-template');
+        if (!wrapper || !addButton || !template) return;
+
+        const bindRemove = (row) => {
+            row.querySelector('[data-remove-schedule-item]')?.addEventListener('click', () => {
+                if (wrapper.querySelectorAll('[data-schedule-item]').length === 1) {
+                    row.querySelectorAll('input, select').forEach((field) => {
+                        if (field.tagName === 'SELECT') {
+                            field.selectedIndex = 0;
+                        } else {
+                            field.value = '';
+                        }
+                    });
+                    return;
+                }
+                row.remove();
+            });
+        };
+
+        wrapper.querySelectorAll('[data-schedule-item]').forEach(bindRemove);
+        addButton.addEventListener('click', () => {
+            wrapper.appendChild(template.content.cloneNode(true));
+            bindRemove(wrapper.lastElementChild);
+        });
+    })();
+</script>
+{% endblock %}

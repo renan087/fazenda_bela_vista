@@ -19,3 +19,4 @@ class FertilizationRecord(Base):
 
     plot = relationship("Plot", back_populates="fertilizations")
     items = relationship("FertilizationItem", back_populates="fertilization", cascade="all, delete-orphan")
+    schedule = relationship("FertilizationSchedule", back_populates="fertilization_record", uselist=False)

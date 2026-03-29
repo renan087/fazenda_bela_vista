@@ -16,6 +16,7 @@ from app.models import (
     AgronomicProfile,
     CoffeeVariety,
     Farm,
+    FertilizationSchedule,
     FertilizationRecord,
     HarvestRecord,
     InputRecommendation,
@@ -36,6 +37,7 @@ from app.services.forms import (
     create_agronomic_profile,
     create_farm,
     create_fertilization,
+    create_fertilization_schedule,
     create_harvest,
     create_input_recommendation,
     create_irrigation,
@@ -52,6 +54,7 @@ from app.services.forms import (
     update_agronomic_profile,
     update_farm,
     update_fertilization,
+    update_fertilization_schedule,
     update_harvest,
     update_input_recommendation,
     update_irrigation,
@@ -62,6 +65,10 @@ from app.services.forms import (
     update_soil_analysis,
     update_user,
     update_variety,
+    conclude_fertilization_schedule,
+    delete_fertilization,
+    delete_fertilization_schedule,
+    validate_schedule_stock,
 )
 from app.services.openai_service import gerar_recomendacao_adubacao
 
@@ -161,17 +168,20 @@ def _resolve_geojson(upload: UploadFile | None, fallback_text: str | None, curre
 
 
 def _parse_fertilization_items(values) -> list[dict]:
+    input_ids = values.getlist("purchased_input_id")
     names = values.getlist("item_name")
     units = values.getlist("item_unit")
     quantities = values.getlist("item_quantity")
     items: list[dict] = []
     for index, name in enumerate(names):
+        input_id = input_ids[index] if index < len(input_ids) else ""
         unit = units[index] if index < len(units) else ""
         quantity = quantities[index] if index < len(quantities) else ""
         if not (name or "").strip():
             continue
         items.append(
             {
+                "purchased_input_id": _int_or_none(input_id),
                 "name": name,
                 "unit": unit,
                 "quantity": quantity,
@@ -182,14 +192,16 @@ def _parse_fertilization_items(values) -> list[dict]:
 
 def _legacy_fertilization_items(record: FertilizationRecord | None, plot_area: float | None) -> list[dict]:
     if not record:
-        return [{"name": "", "unit": "kg", "quantity": "", "total_quantity": ""}]
+        return [{"purchased_input_id": "", "name": "", "unit": "kg", "quantity": "", "total_quantity": "", "available": ""}]
     if record.items:
         return [
             {
+                "purchased_input_id": item.purchased_input_id or "",
                 "name": item.name,
                 "unit": item.unit,
                 "quantity": float(item.quantity_per_hectare),
                 "total_quantity": float(item.total_quantity),
+                "available": float(item.purchased_input.available_quantity) if item.purchased_input and item.purchased_input.available_quantity is not None else "",
             }
             for item in record.items
         ]
@@ -199,10 +211,12 @@ def _legacy_fertilization_items(record: FertilizationRecord | None, plot_area: f
     quantity_value = _float_or_none(quantity)
     return [
         {
+            "purchased_input_id": "",
             "name": record.product,
             "unit": "kg",
             "quantity": quantity_value if quantity_value is not None else "",
             "total_quantity": quantity_value if quantity_value is not None else "",
+            "available": "",
         }
     ]
 
@@ -221,7 +235,7 @@ def _parse_recommendation_items(values) -> list[dict]:
             {
                 "purchased_input_id": int(input_id),
                 "unit": unit,
-                "quantity_per_hectare": float(quantity),
+                "quantity": float(quantity),
             }
         )
     return items
@@ -943,6 +957,8 @@ def create_purchased_input_action(
     package_size: float = Form(...),
     package_unit: str = Form(...),
     unit_price: float = Form(...),
+    purchase_date: str | None = Form(None),
+    low_stock_threshold: str | None = Form(None),
     notes: str | None = Form(None),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user_web),
@@ -958,6 +974,8 @@ def create_purchased_input_action(
             "package_size": package_size,
             "package_unit": package_unit,
             "unit_price": unit_price,
+            "purchase_date": purchase_date,
+            "low_stock_threshold": low_stock_threshold,
             "notes": notes,
         },
     )
@@ -976,6 +994,8 @@ def update_purchased_input_action(
     package_size: float = Form(...),
     package_unit: str = Form(...),
     unit_price: float = Form(...),
+    purchase_date: str | None = Form(None),
+    low_stock_threshold: str | None = Form(None),
     notes: str | None = Form(None),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user_web),
@@ -997,6 +1017,8 @@ def update_purchased_input_action(
             "package_size": package_size,
             "package_unit": package_unit,
             "unit_price": unit_price,
+            "purchase_date": purchase_date,
+            "low_stock_threshold": low_stock_threshold,
             "notes": notes,
         },
     )
@@ -1022,6 +1044,9 @@ def delete_purchased_input_action(
     if item.recommendations:
         _flash(request, "error", "Nao e possivel excluir o insumo enquanto houver recomendacoes vinculadas.")
         return _redirect("/insumos/comprados")
+    if item.recommendation_items or item.schedule_items or item.stock_allocations:
+        _flash(request, "error", "Nao e possivel excluir o insumo enquanto houver recomendacoes, agendamentos ou aplicacoes vinculadas.")
+        return _redirect("/insumos/comprados")
     repo.delete(item)
     _flash(request, "success", "Insumo comprado excluido com sucesso.")
     return _redirect("/insumos/comprados")
@@ -1045,6 +1070,7 @@ def input_recommendations_page(
             "input_recommendations",
             title="Recomendacao de Insumos",
             farms=repo.list_farms(),
+            plots=repo.list_plots(),
             purchased_inputs=repo.list_purchased_inputs(),
             recommendations=repo.list_input_recommendations(),
             edit_recommendation=repo.get_input_recommendation(edit_id) if edit_id else None,
@@ -1068,54 +1094,51 @@ async def create_input_recommendation_action(
         return _redirect("/insumos/recomendacao")
     repo = _repository(db)
     farm_id = _int_or_none(form.get("farm_id"))
+    plot_id = _int_or_none(form.get("plot_id"))
     notes = str(form.get("notes") or "") or None
-    for item in items:
-        create_input_recommendation(
-            repo,
-            {
-                "farm_id": farm_id,
-                "application_name": application_name,
-                "purchased_input_id": item["purchased_input_id"],
-                "unit": item["unit"],
-                "quantity_per_hectare": item["quantity_per_hectare"],
-                "notes": notes,
-            },
-        )
+    create_input_recommendation(
+        repo,
+        {
+            "farm_id": farm_id,
+            "plot_id": plot_id,
+            "application_name": application_name,
+            "items": items,
+            "notes": notes,
+        },
+    )
     _flash(request, "success", "Recomendacao cadastrada com sucesso.")
     return _redirect("/insumos/recomendacao")
 
 
 @router.post("/insumos/recomendacao/{recommendation_id}/editar")
-def update_input_recommendation_action(
+async def update_input_recommendation_action(
     recommendation_id: int,
     request: Request,
-    csrf_token: str = Form(...),
-    farm_id: str | None = Form(None),
-    application_name: str = Form(...),
-    purchased_input_id: int = Form(...),
-    unit: str | None = Form(None),
-    quantity: float = Form(...),
-    notes: str | None = Form(None),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user_web),
 ):
     del user
-    validate_csrf(request, csrf_token)
+    form = await request.form()
+    validate_csrf(request, str(form.get("csrf_token") or ""))
     repo = _repository(db)
     recommendation = repo.get_input_recommendation(recommendation_id)
     if not recommendation:
         _flash(request, "error", "Recomendacao nao encontrada.")
         return _redirect("/insumos/recomendacao")
+    application_name = str(form.get("application_name") or "").strip()
+    items = _parse_recommendation_items(form)
+    if not application_name or not items:
+        _flash(request, "error", "Informe a aplicacao e adicione ao menos um insumo.")
+        return _redirect_with_query("/insumos/recomendacao", edit_id=recommendation_id)
     update_input_recommendation(
         repo,
         recommendation,
         {
-            "farm_id": _int_or_none(farm_id),
+            "farm_id": _int_or_none(form.get("farm_id")),
+            "plot_id": _int_or_none(form.get("plot_id")),
             "application_name": application_name,
-            "purchased_input_id": purchased_input_id,
-            "unit": unit,
-            "quantity_per_hectare": quantity,
-            "notes": notes,
+            "items": items,
+            "notes": str(form.get("notes") or "") or None,
         },
     )
     _flash(request, "success", "Recomendacao atualizada com sucesso.")
@@ -1528,13 +1551,17 @@ def fertilization_page(
     edit_fertilization = repo.get_fertilization(edit_id) if edit_id else None
     recommendation_groups: dict[str, list[dict]] = {}
     for recommendation in repo.list_input_recommendations():
-        recommendation_groups.setdefault(recommendation.application_name, []).append(
-            {
-                "name": recommendation.purchased_input.name if recommendation.purchased_input else "Insumo removido",
-                "unit": recommendation.unit,
-                "quantity": float(recommendation.quantity_per_hectare or 0),
-            }
-        )
+        bucket = recommendation_groups.setdefault(recommendation.application_name, [])
+        for item in recommendation.items:
+            bucket.append(
+                {
+                    "purchased_input_id": item.purchased_input_id,
+                    "name": item.purchased_input.name if item.purchased_input else "Insumo removido",
+                    "unit": item.unit,
+                    "quantity": float(item.quantity or 0),
+                    "available": float(item.purchased_input.available_quantity) if item.purchased_input and item.purchased_input.available_quantity is not None else 0,
+                }
+            )
     return templates.TemplateResponse(
         "fertilization.html",
         _base_context(
@@ -1543,7 +1570,9 @@ def fertilization_page(
             csrf_token,
             "fertilization",
             plots=repo.list_plots(),
+            purchased_inputs=repo.list_purchased_inputs(),
             fertilizations=repo.list_fertilizations(),
+            schedules=repo.list_fertilization_schedules(),
             recommendation_groups=recommendation_groups,
             edit_fertilization=edit_fertilization,
             edit_fertilization_items=_legacy_fertilization_items(
@@ -1574,16 +1603,19 @@ async def create_fertilization_action(
     if not items:
         _flash(request, "error", "Adicione ao menos um insumo na atividade.")
         return _redirect("/fertilizacao")
-    create_fertilization(
-        repo,
-        {
-            "plot_id": plot_id,
-            "application_date": str(form.get("application_date") or ""),
-            "cost": float(form.get("cost") or 0),
-            "notes": str(form.get("notes") or "") or None,
-            "items": items,
-        },
-    )
+    try:
+        create_fertilization(
+            repo,
+            {
+                "plot_id": plot_id,
+                "application_date": str(form.get("application_date") or ""),
+                "notes": str(form.get("notes") or "") or None,
+                "items": items,
+            },
+        )
+    except ValueError as exc:
+        _flash(request, "error", str(exc))
+        return _redirect("/fertilizacao")
     _flash(request, "success", "Fertilizacao registrada com sucesso.")
     return _redirect("/fertilizacao")
 
@@ -1613,17 +1645,20 @@ async def update_fertilization_action(
     if not items:
         _flash(request, "error", "Adicione ao menos um insumo na atividade.")
         return _redirect_with_query("/fertilizacao", edit_id=record_id)
-    update_fertilization(
-        repo,
-        fertilization,
-        {
-            "plot_id": plot_id,
-            "application_date": str(form.get("application_date") or ""),
-            "cost": float(form.get("cost") or 0),
-            "notes": str(form.get("notes") or "") or None,
-            "items": items,
-        },
-    )
+    try:
+        update_fertilization(
+            repo,
+            fertilization,
+            {
+                "plot_id": plot_id,
+                "application_date": str(form.get("application_date") or ""),
+                "notes": str(form.get("notes") or "") or None,
+                "items": items,
+            },
+        )
+    except ValueError as exc:
+        _flash(request, "error", str(exc))
+        return _redirect_with_query("/fertilizacao", edit_id=record_id)
     _flash(request, "success", "Fertilizacao atualizada com sucesso.")
     return _redirect("/fertilizacao")
 
@@ -1643,9 +1678,164 @@ def delete_fertilization_action(
     if not fertilization:
         _flash(request, "error", "Registro de fertilizacao nao encontrado.")
         return _redirect("/fertilizacao")
-    repo.delete(fertilization)
+    delete_fertilization(repo, fertilization)
     _flash(request, "success", "Fertilizacao excluida com sucesso.")
     return _redirect("/fertilizacao")
+
+
+@router.get("/fertilizacao/agendamentos")
+def fertilization_schedules_page(
+    request: Request,
+    edit_id: int | None = None,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+    csrf_token: str = Depends(get_csrf_token),
+):
+    repo = _repository(db)
+    edit_schedule = repo.get_fertilization_schedule(edit_id) if edit_id else None
+    schedules = repo.list_fertilization_schedules()
+    schedule_validations = {schedule.id: validate_schedule_stock(repo, schedule) for schedule in schedules}
+    edit_schedule_items = (
+        [
+            {
+                "purchased_input_id": item.purchased_input_id,
+                "unit": item.unit,
+                "quantity": float(item.quantity or 0),
+            }
+            for item in edit_schedule.items
+        ]
+        if edit_schedule and edit_schedule.items
+        else [{"purchased_input_id": "", "unit": "kg", "quantity": ""}]
+    )
+    return templates.TemplateResponse(
+        "fertilization_schedule.html",
+        _base_context(
+            request,
+            user,
+            csrf_token,
+            "fertilization_schedules",
+            title="Agendamento de Fertilizacao",
+            plots=repo.list_plots(),
+            purchased_inputs=repo.list_purchased_inputs(),
+            schedules=schedules,
+            schedule_validations=schedule_validations,
+            edit_schedule=edit_schedule,
+            edit_schedule_items=edit_schedule_items,
+            today=date.today(),
+        ),
+    )
+
+
+@router.post("/fertilizacao/agendamentos")
+async def create_fertilization_schedule_action(
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    del user
+    form = await request.form()
+    validate_csrf(request, str(form.get("csrf_token") or ""))
+    plot_id = int(form.get("plot_id") or 0)
+    items = _parse_recommendation_items(form)
+    if not plot_id or not items:
+        _flash(request, "error", "Selecione o setor e adicione ao menos um insumo.")
+        return _redirect("/fertilizacao/agendamentos")
+    create_fertilization_schedule(
+        _repository(db),
+        {
+            "plot_id": plot_id,
+            "scheduled_date": str(form.get("scheduled_date") or ""),
+            "status": str(form.get("status") or "scheduled"),
+            "notes": str(form.get("notes") or "") or None,
+            "items": items,
+        },
+    )
+    _flash(request, "success", "Agendamento salvo com sucesso.")
+    return _redirect("/fertilizacao/agendamentos")
+
+
+@router.post("/fertilizacao/agendamentos/{schedule_id}/editar")
+async def update_fertilization_schedule_action(
+    schedule_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    del user
+    form = await request.form()
+    validate_csrf(request, str(form.get("csrf_token") or ""))
+    repo = _repository(db)
+    schedule = repo.get_fertilization_schedule(schedule_id)
+    if not schedule:
+        _flash(request, "error", "Agendamento nao encontrado.")
+        return _redirect("/fertilizacao/agendamentos")
+    items = _parse_recommendation_items(form)
+    if not items:
+        _flash(request, "error", "Adicione ao menos um insumo ao agendamento.")
+        return _redirect_with_query("/fertilizacao/agendamentos", edit_id=schedule_id)
+    update_fertilization_schedule(
+        repo,
+        schedule,
+        {
+            "plot_id": int(form.get("plot_id") or 0),
+            "scheduled_date": str(form.get("scheduled_date") or ""),
+            "status": str(form.get("status") or schedule.status),
+            "notes": str(form.get("notes") or "") or None,
+            "items": items,
+        },
+    )
+    _flash(request, "success", "Agendamento atualizado com sucesso.")
+    return _redirect("/fertilizacao/agendamentos")
+
+
+@router.post("/fertilizacao/agendamentos/{schedule_id}/concluir")
+def conclude_fertilization_schedule_action(
+    schedule_id: int,
+    request: Request,
+    csrf_token: str = Form(...),
+    application_date: str | None = Form(None),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    del user
+    validate_csrf(request, csrf_token)
+    repo = _repository(db)
+    schedule = repo.get_fertilization_schedule(schedule_id)
+    if not schedule:
+        _flash(request, "error", "Agendamento nao encontrado.")
+        return _redirect("/fertilizacao/agendamentos")
+    validation = validate_schedule_stock(repo, schedule)
+    if not validation["ok"]:
+        first = validation["shortages"][0]
+        _flash(request, "error", f"Estoque insuficiente. Necessario comprar {first['missing']} {first['unit']} de {first['name']}.")
+        return _redirect("/fertilizacao/agendamentos")
+    try:
+        conclude_fertilization_schedule(repo, schedule, application_date)
+    except ValueError as exc:
+        _flash(request, "error", str(exc))
+        return _redirect("/fertilizacao/agendamentos")
+    _flash(request, "success", "Agendamento concluido e aplicacao registrada.")
+    return _redirect("/fertilizacao/agendamentos")
+
+
+@router.post("/fertilizacao/agendamentos/{schedule_id}/excluir")
+def delete_fertilization_schedule_action(
+    schedule_id: int,
+    request: Request,
+    csrf_token: str = Form(...),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    del user
+    validate_csrf(request, csrf_token)
+    repo = _repository(db)
+    schedule = repo.get_fertilization_schedule(schedule_id)
+    if not schedule:
+        _flash(request, "error", "Agendamento nao encontrado.")
+        return _redirect("/fertilizacao/agendamentos")
+    delete_fertilization_schedule(repo, schedule)
+    _flash(request, "success", "Agendamento excluido com sucesso.")
+    return _redirect("/fertilizacao/agendamentos")
 
 
 @router.get("/producao")

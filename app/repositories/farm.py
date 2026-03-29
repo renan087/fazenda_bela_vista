@@ -5,9 +5,14 @@ from app.models import (
     AgronomicProfile,
     CoffeeVariety,
     Farm,
+    FertilizationItem,
+    FertilizationSchedule,
+    FertilizationScheduleItem,
+    FertilizationStockAllocation,
     FertilizationRecord,
     HarvestRecord,
     InputRecommendation,
+    InputRecommendationItem,
     IrrigationRecord,
     PestIncident,
     Plot,
@@ -174,7 +179,12 @@ class FarmRepository:
     def list_fertilizations(self, limit: int | None = None) -> list[FertilizationRecord]:
         query = (
             self.db.query(FertilizationRecord)
-            .options(joinedload(FertilizationRecord.plot), joinedload(FertilizationRecord.items))
+            .options(
+                joinedload(FertilizationRecord.plot),
+                joinedload(FertilizationRecord.items).joinedload(FertilizationItem.purchased_input),
+                joinedload(FertilizationRecord.items).joinedload(FertilizationItem.stock_allocations).joinedload(FertilizationStockAllocation.purchased_input),
+                joinedload(FertilizationRecord.schedule),
+            )
             .order_by(FertilizationRecord.application_date.desc(), FertilizationRecord.id.desc())
         )
         return query.limit(limit).all() if limit else query.all()
@@ -182,15 +192,20 @@ class FarmRepository:
     def list_purchased_inputs(self) -> list[PurchasedInput]:
         return (
             self.db.query(PurchasedInput)
-            .options(joinedload(PurchasedInput.farm))
-            .order_by(PurchasedInput.name.asc(), PurchasedInput.id.desc())
+            .options(joinedload(PurchasedInput.farm), joinedload(PurchasedInput.stock_allocations))
+            .order_by(PurchasedInput.name.asc(), PurchasedInput.purchase_date.desc(), PurchasedInput.id.desc())
             .all()
         )
 
     def get_purchased_input(self, input_id: int) -> PurchasedInput | None:
         return (
             self.db.query(PurchasedInput)
-            .options(joinedload(PurchasedInput.farm))
+            .options(
+                joinedload(PurchasedInput.farm),
+                joinedload(PurchasedInput.stock_allocations),
+                joinedload(PurchasedInput.recommendation_items),
+                joinedload(PurchasedInput.schedule_items),
+            )
             .filter(PurchasedInput.id == input_id)
             .first()
         )
@@ -198,7 +213,11 @@ class FarmRepository:
     def list_input_recommendations(self) -> list[InputRecommendation]:
         return (
             self.db.query(InputRecommendation)
-            .options(joinedload(InputRecommendation.farm), joinedload(InputRecommendation.purchased_input))
+            .options(
+                joinedload(InputRecommendation.farm),
+                joinedload(InputRecommendation.plot),
+                joinedload(InputRecommendation.items).joinedload(InputRecommendationItem.purchased_input),
+            )
             .order_by(InputRecommendation.application_name.asc(), InputRecommendation.id.desc())
             .all()
         )
@@ -206,7 +225,11 @@ class FarmRepository:
     def get_input_recommendation(self, recommendation_id: int) -> InputRecommendation | None:
         return (
             self.db.query(InputRecommendation)
-            .options(joinedload(InputRecommendation.farm), joinedload(InputRecommendation.purchased_input))
+            .options(
+                joinedload(InputRecommendation.farm),
+                joinedload(InputRecommendation.plot),
+                joinedload(InputRecommendation.items).joinedload(InputRecommendationItem.purchased_input),
+            )
             .filter(InputRecommendation.id == recommendation_id)
             .first()
         )
@@ -214,8 +237,37 @@ class FarmRepository:
     def get_fertilization(self, record_id: int) -> FertilizationRecord | None:
         return (
             self.db.query(FertilizationRecord)
-            .options(joinedload(FertilizationRecord.plot), joinedload(FertilizationRecord.items))
+            .options(
+                joinedload(FertilizationRecord.plot),
+                joinedload(FertilizationRecord.items).joinedload(FertilizationItem.purchased_input),
+                joinedload(FertilizationRecord.items).joinedload(FertilizationItem.stock_allocations).joinedload(FertilizationStockAllocation.purchased_input),
+                joinedload(FertilizationRecord.schedule),
+            )
             .filter(FertilizationRecord.id == record_id)
+            .first()
+        )
+
+    def list_fertilization_schedules(self) -> list[FertilizationSchedule]:
+        return (
+            self.db.query(FertilizationSchedule)
+            .options(
+                joinedload(FertilizationSchedule.plot).joinedload(Plot.farm),
+                joinedload(FertilizationSchedule.items).joinedload(FertilizationScheduleItem.purchased_input),
+                joinedload(FertilizationSchedule.fertilization_record),
+            )
+            .order_by(FertilizationSchedule.scheduled_date.asc(), FertilizationSchedule.id.desc())
+            .all()
+        )
+
+    def get_fertilization_schedule(self, schedule_id: int) -> FertilizationSchedule | None:
+        return (
+            self.db.query(FertilizationSchedule)
+            .options(
+                joinedload(FertilizationSchedule.plot).joinedload(Plot.farm),
+                joinedload(FertilizationSchedule.items).joinedload(FertilizationScheduleItem.purchased_input),
+                joinedload(FertilizationSchedule.fertilization_record),
+            )
+            .filter(FertilizationSchedule.id == schedule_id)
             .first()
         )
 
