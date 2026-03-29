@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 from urllib.parse import urlencode
 
 import json
@@ -20,6 +20,7 @@ from app.models import (
     IrrigationRecord,
     PestIncident,
     Plot,
+    RainfallRecord,
     SoilAnalysis,
     User,
 )
@@ -36,6 +37,7 @@ from app.services.forms import (
     create_irrigation,
     create_pest_incident,
     create_plot,
+    create_rainfall,
     create_soil_analysis,
     create_variety,
     estimate_geojson_centroid,
@@ -48,6 +50,7 @@ from app.services.forms import (
     update_irrigation,
     update_pest_incident,
     update_plot,
+    update_rainfall,
     update_soil_analysis,
     update_variety,
 )
@@ -110,6 +113,10 @@ def _int_list(values: list[str]) -> list[int]:
             continue
         parsed.append(int(value))
     return parsed
+
+
+def _date_or_none(value: str | None):
+    return date.fromisoformat(value) if value not in (None, "") else None
 
 
 def _meters_from_cm(value: str | None):
@@ -333,14 +340,30 @@ def home():
 @router.get("/dashboard")
 def dashboard(
     request: Request,
+    rain_start_date: str | None = None,
+    rain_end_date: str | None = None,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user_web),
     csrf_token: str = Depends(get_csrf_token),
 ):
-    data = build_dashboard_context(_repository(db))
+    data = build_dashboard_context(
+        _repository(db),
+        rain_start_date=_date_or_none(rain_start_date),
+        rain_end_date=_date_or_none(rain_end_date),
+    )
     return templates.TemplateResponse(
         "dashboard.html",
-        _base_context(request, user, csrf_token, "dashboard", **data),
+        _base_context(
+            request,
+            user,
+            csrf_token,
+            "dashboard",
+            rain_filters={
+                "start_date": rain_start_date or "",
+                "end_date": rain_end_date or "",
+            },
+            **data,
+        ),
     )
 
 
@@ -914,6 +937,133 @@ def delete_irrigation_action(
     repo.delete(irrigation)
     _flash(request, "success", "Irrigacao excluida com sucesso.")
     return _redirect("/irrigacao")
+
+
+@router.get("/pluviometria")
+def rainfall_page(
+    request: Request,
+    farm_id: int | None = None,
+    start_date: str | None = None,
+    end_date: str | None = None,
+    edit_id: int | None = None,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+    csrf_token: str = Depends(get_csrf_token),
+):
+    repo = _repository(db)
+    return templates.TemplateResponse(
+        "rainfall.html",
+        _base_context(
+            request,
+            user,
+            csrf_token,
+            "rainfall",
+            farms=repo.list_farms(),
+            rainfalls=repo.list_rainfalls(
+                farm_id=farm_id,
+                start_date=_date_or_none(start_date),
+                end_date=_date_or_none(end_date),
+            ),
+            edit_rainfall=repo.get_rainfall(edit_id) if edit_id else None,
+            filters={
+                "farm_id": farm_id,
+                "start_date": start_date or "",
+                "end_date": end_date or "",
+            },
+        ),
+    )
+
+
+@router.post("/pluviometria")
+def create_rainfall_action(
+    request: Request,
+    csrf_token: str = Form(...),
+    farm_id: int = Form(...),
+    rainfall_date: str = Form(...),
+    millimeters: float = Form(...),
+    source: str | None = Form(None),
+    notes: str | None = Form(None),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    del user
+    validate_csrf(request, csrf_token)
+    repo = _repository(db)
+    farm = repo.get_farm(farm_id)
+    if not farm:
+        _flash(request, "error", "Fazenda nao encontrada para registrar a pluviometria.")
+        return _redirect("/pluviometria")
+    create_rainfall(
+        repo,
+        {
+            "farm_id": farm_id,
+            "rainfall_date": rainfall_date,
+            "millimeters": millimeters,
+            "source": source,
+            "notes": notes,
+        },
+    )
+    _flash(request, "success", "Pluviometria registrada com sucesso.")
+    return _redirect("/pluviometria")
+
+
+@router.post("/pluviometria/{record_id}/editar")
+def update_rainfall_action(
+    record_id: int,
+    request: Request,
+    csrf_token: str = Form(...),
+    farm_id: int = Form(...),
+    rainfall_date: str = Form(...),
+    millimeters: float = Form(...),
+    source: str | None = Form(None),
+    notes: str | None = Form(None),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    del user
+    validate_csrf(request, csrf_token)
+    repo = _repository(db)
+    rainfall = repo.get_rainfall(record_id)
+    if not rainfall:
+        _flash(request, "error", "Registro de pluviometria nao encontrado.")
+        return _redirect("/pluviometria")
+    farm = repo.get_farm(farm_id)
+    if not farm:
+        _flash(request, "error", "Fazenda nao encontrada para atualizar a pluviometria.")
+        return _redirect("/pluviometria")
+    update_rainfall(
+        repo,
+        rainfall,
+        {
+            "farm_id": farm_id,
+            "rainfall_date": rainfall_date,
+            "millimeters": millimeters,
+            "source": source,
+            "notes": notes,
+        },
+    )
+    _flash(request, "success", "Pluviometria atualizada com sucesso.")
+    return _redirect("/pluviometria")
+
+
+@router.post("/pluviometria/{record_id}/excluir")
+def delete_rainfall_action(
+    record_id: int,
+    request: Request,
+    csrf_token: str = Form(...),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    del user
+    validate_csrf(request, csrf_token)
+    repo = _repository(db)
+    rainfall = repo.get_rainfall(record_id)
+    if not rainfall:
+        _flash(request, "error", "Registro de pluviometria nao encontrado.")
+        return _redirect("/pluviometria")
+    repo.delete(rainfall)
+    _flash(request, "success", "Pluviometria excluida com sucesso.")
+    return _redirect("/pluviometria")
 
 
 @router.get("/fertilizacao")

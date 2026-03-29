@@ -17,3 +17,4 @@ class Farm(Base):
     plots = relationship("Plot", back_populates="farm")
     agronomic_profile = relationship("AgronomicProfile", back_populates="farm", uselist=False, cascade="all, delete-orphan")
     soil_analyses = relationship("SoilAnalysis", back_populates="farm", cascade="all, delete-orphan")
+    rainfalls = relationship("RainfallRecord", back_populates="farm", cascade="all, delete-orphan")

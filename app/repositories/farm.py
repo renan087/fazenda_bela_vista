@@ -10,6 +10,7 @@ from app.models import (
     IrrigationRecord,
     PestIncident,
     Plot,
+    RainfallRecord,
     SoilAnalysis,
 )
 
@@ -130,6 +131,34 @@ class FarmRepository:
             self.db.query(IrrigationRecord)
             .options(joinedload(IrrigationRecord.plot))
             .filter(IrrigationRecord.id == record_id)
+            .first()
+        )
+
+    def list_rainfalls(
+        self,
+        farm_id: int | None = None,
+        start_date=None,
+        end_date=None,
+        limit: int | None = None,
+    ) -> list[RainfallRecord]:
+        query = (
+            self.db.query(RainfallRecord)
+            .options(joinedload(RainfallRecord.farm))
+            .order_by(RainfallRecord.rainfall_date.desc(), RainfallRecord.id.desc())
+        )
+        if farm_id:
+            query = query.filter(RainfallRecord.farm_id == farm_id)
+        if start_date:
+            query = query.filter(RainfallRecord.rainfall_date >= start_date)
+        if end_date:
+            query = query.filter(RainfallRecord.rainfall_date <= end_date)
+        return query.limit(limit).all() if limit else query.all()
+
+    def get_rainfall(self, record_id: int) -> RainfallRecord | None:
+        return (
+            self.db.query(RainfallRecord)
+            .options(joinedload(RainfallRecord.farm))
+            .filter(RainfallRecord.id == record_id)
             .first()
         )
 

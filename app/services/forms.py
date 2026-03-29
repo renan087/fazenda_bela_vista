@@ -2,7 +2,7 @@ import json
 import math
 from datetime import date
 
-from app.models import CoffeeVariety, Farm, FertilizationItem, FertilizationRecord, HarvestRecord, IrrigationRecord, PestIncident, Plot
+from app.models import CoffeeVariety, Farm, FertilizationItem, FertilizationRecord, HarvestRecord, IrrigationRecord, PestIncident, Plot, RainfallRecord
 from app.models import AgronomicProfile, SoilAnalysis
 from app.repositories.farm import FarmRepository
 
@@ -133,6 +133,31 @@ def update_irrigation(repository: FarmRepository, irrigation: IrrigationRecord, 
             "irrigation_date": date.fromisoformat(form["irrigation_date"]),
             "volume_liters": form["volume_liters"],
             "duration_minutes": form["duration_minutes"],
+            "notes": form.get("notes"),
+        },
+    )
+
+
+def create_rainfall(repository: FarmRepository, form: dict) -> RainfallRecord:
+    return repository.create(
+        RainfallRecord(
+            farm_id=form["farm_id"],
+            rainfall_date=date.fromisoformat(form["rainfall_date"]),
+            millimeters=form["millimeters"],
+            source=form.get("source"),
+            notes=form.get("notes"),
+        )
+    )
+
+
+def update_rainfall(repository: FarmRepository, rainfall: RainfallRecord, form: dict) -> RainfallRecord:
+    return repository.update(
+        rainfall,
+        {
+            "farm_id": form["farm_id"],
+            "rainfall_date": date.fromisoformat(form["rainfall_date"]),
+            "millimeters": form["millimeters"],
+            "source": form.get("source"),
             "notes": form.get("notes"),
         },
     )

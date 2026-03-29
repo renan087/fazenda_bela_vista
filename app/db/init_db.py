@@ -17,6 +17,7 @@ from app.models import (
     IrrigationRecord,
     PestIncident,
     Plot,
+    RainfallRecord,
     SoilAnalysis,
     User,
 )
@@ -64,6 +65,16 @@ def _sync_schema() -> None:
             unit VARCHAR(40) NOT NULL,
             quantity_per_hectare NUMERIC(10,2) NOT NULL,
             total_quantity NUMERIC(10,2) NOT NULL
+        )
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS rainfall_records (
+            id SERIAL PRIMARY KEY,
+            farm_id INTEGER NOT NULL REFERENCES farms(id) ON DELETE CASCADE,
+            rainfall_date DATE NOT NULL,
+            millimeters NUMERIC(10,2) NOT NULL,
+            source VARCHAR(120),
+            notes TEXT
         )
         """,
         """
@@ -295,6 +306,9 @@ def seed_demo_data(db: Session) -> None:
                 micronutrient_recommendation="Monitorar Boro e Zinco.",
                 ai_status="seeded",
             ),
+            RainfallRecord(farm_id=farm.id, rainfall_date=date.fromisoformat("2026-03-02"), millimeters=18.5, source="Pluviometro", notes="Chuva isolada no inicio do mes."),
+            RainfallRecord(farm_id=farm.id, rainfall_date=date.fromisoformat("2026-03-09"), millimeters=7.2, source="Pluviometro", notes="Precipitacao leve no fim da tarde."),
+            RainfallRecord(farm_id=farm.id, rainfall_date=date.fromisoformat("2026-03-18"), millimeters=24.0, source="Pluviometro", notes="Evento mais intenso da quinzena."),
         ]
     )
     db.flush()

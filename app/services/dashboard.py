@@ -1,5 +1,6 @@
 import json
 from collections import defaultdict
+from datetime import date
 
 from app.repositories.farm import FarmRepository
 
@@ -41,7 +42,11 @@ def calculate_forecast(repository: FarmRepository) -> dict:
     }
 
 
-def build_dashboard_context(repository: FarmRepository) -> dict:
+def build_dashboard_context(
+    repository: FarmRepository,
+    rain_start_date: date | None = None,
+    rain_end_date: date | None = None,
+) -> dict:
     plots = repository.list_plots()
     farms = repository.list_farms()
     harvests = repository.list_harvests()
@@ -49,6 +54,16 @@ def build_dashboard_context(repository: FarmRepository) -> dict:
     fertilizations = repository.list_fertilizations(limit=6)
     incidents = repository.list_pest_incidents(limit=6)
     soil_analyses = repository.list_soil_analyses()[:6]
+    today = date.today()
+    month_start = today.replace(day=1)
+    rainfalls = repository.list_rainfalls(
+        start_date=rain_start_date,
+        end_date=rain_end_date,
+    )
+    month_rainfalls = repository.list_rainfalls(
+        start_date=month_start,
+        end_date=today,
+    )
     forecast = calculate_forecast(repository)
 
     total_area = sum(_float(plot.area_hectares) for plot in plots)
@@ -57,10 +72,13 @@ def build_dashboard_context(repository: FarmRepository) -> dict:
     estimated_production = sum(_float(plot.estimated_yield_sacks) for plot in plots)
     total_cost = sum(_float(item.cost) for item in fertilizations)
     cost_per_hectare = total_cost / total_area if total_area else 0
+    monthly_rainfall = sum(_float(item.millimeters) for item in month_rainfalls)
+    rainfall_period_total = sum(_float(item.millimeters) for item in rainfalls)
 
     production_by_plot = defaultdict(float)
     productivity_by_plot = {}
     harvest_timeline = defaultdict(float)
+    rainfall_timeline = defaultdict(float)
     for harvest in harvests:
         plot_name = harvest.plot.name if harvest.plot else f"Setor {harvest.plot_id}"
         production_by_plot[plot_name] += _float(harvest.sacks_produced)
@@ -78,6 +96,8 @@ def build_dashboard_context(repository: FarmRepository) -> dict:
         {"label": item.irrigation_date.isoformat(), "value": _float(item.volume_liters)}
         for item in reversed(irrigations)
     ]
+    for rainfall in reversed(rainfalls):
+        rainfall_timeline[rainfall.rainfall_date.isoformat()] += _float(rainfall.millimeters)
 
     map_features = []
     for farm in farms:
@@ -182,8 +202,11 @@ def build_dashboard_context(repository: FarmRepository) -> dict:
             "productivity_per_hectare": round(productivity_per_hectare, 2),
             "forecast_production": forecast["total_projection"],
             "cost_per_hectare": round(cost_per_hectare, 2),
+            "monthly_rainfall": round(monthly_rainfall, 2),
+            "rainfall_period_total": round(rainfall_period_total, 2),
         },
         "recent_irrigations": irrigations,
+        "recent_rainfalls": repository.list_rainfalls(limit=8),
         "recent_fertilizations": fertilizations,
         "recent_incidents": incidents,
         "recent_harvests": harvests[:8],
@@ -211,6 +234,12 @@ def build_dashboard_context(repository: FarmRepository) -> dict:
             {
                 "labels": [item["label"] for item in irrigation_chart],
                 "values": [item["value"] for item in irrigation_chart],
+            }
+        ),
+        "rainfall_chart": json.dumps(
+            {
+                "labels": list(rainfall_timeline.keys()),
+                "values": [round(value, 2) for value in rainfall_timeline.values()],
             }
         ),
         "map_geojson": json.dumps({"type": "FeatureCollection", "features": map_features}),
