@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
+    <section class="rounded-[2rem] bg-white p-6 shadow-panel">
+        <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Insumos</p>
+        <h3 class="mt-2 text-2xl font-semibold">{% if edit_recommendation %}Editar recomendacao{% else %}Recomendacao de aplicacao{% endif %}</h3>
+        <form method="post" action="{% if edit_recommendation %}/insumos/recomendacao/{{ edit_recommendation.id }}/editar{% else %}/insumos/recomendacao{% endif %}" class="mt-6 grid gap-4">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <label>
+                <span class="mb-2 block text-sm font-medium">Fazenda</span>
+                <select name="farm_id" class="w-full rounded-2xl border-slate-200 bg-slate-50">
+                    <option value="">Sem vinculo especifico</option>
+                    {% for farm in farms %}
+                    <option value="{{ farm.id }}" {% if edit_recommendation and edit_recommendation.farm_id == farm.id %}selected{% endif %}>{{ farm.name }}</option>
+                    {% endfor %}
+                </select>
+            </label>
+            <label><span class="mb-2 block text-sm font-medium">Nome da aplicacao</span><input name="application_name" value="{{ edit_recommendation.application_name if edit_recommendation else '' }}" class="w-full rounded-2xl border-slate-200 bg-slate-50" placeholder="Ex.: Fertilizacao de Base" required></label>
+            <label>
+                <span class="mb-2 block text-sm font-medium">Insumo comprado</span>
+                <select name="purchased_input_id" class="w-full rounded-2xl border-slate-200 bg-slate-50" required>
+                    <option value="">Selecione</option>
+                    {% for item in purchased_inputs %}
+                    <option value="{{ item.id }}" {% if edit_recommendation and edit_recommendation.purchased_input_id == item.id %}selected{% endif %}>{{ item.name }}{% if item.farm %} • {{ item.farm.name }}{% endif %}</option>
+                    {% endfor %}
+                </select>
+            </label>
+            <div class="grid gap-4 md:grid-cols-2">
+                <label>
+                    <span class="mb-2 block text-sm font-medium">Unidade</span>
+                    <select name="unit" class="w-full rounded-2xl border-slate-200 bg-slate-50">
+                        {% for unit in ['kg', 'g', 'L', 'ml', 'sacas', 'un'] %}
+                        <option value="{{ unit }}" {% if edit_recommendation and edit_recommendation.unit == unit %}selected{% endif %}>{{ unit }}</option>
+                        {% endfor %}
+                    </select>
+                </label>
+                <label><span class="mb-2 block text-sm font-medium">Quantidade por hectare</span><input type="number" step="0.01" min="0" name="quantity_per_hectare" value="{{ edit_recommendation.quantity_per_hectare if edit_recommendation else '' }}" class="w-full rounded-2xl border-slate-200 bg-slate-50" required></label>
+            </div>
+            <label><span class="mb-2 block text-sm font-medium">Observacoes</span><textarea name="notes" rows="4" class="w-full rounded-2xl border-slate-200 bg-slate-50">{{ edit_recommendation.notes if edit_recommendation else '' }}</textarea></label>
+            <div class="flex gap-3">
+                <button class="rounded-2xl bg-brand-500 px-4 py-3 font-semibold text-white hover:bg-brand-700">{% if edit_recommendation %}Salvar alteracoes{% else %}Salvar recomendacao{% endif %}</button>
+                {% if edit_recommendation %}
+                <a href="/insumos/recomendacao" class="rounded-2xl bg-slate-100 px-4 py-3 font-semibold text-slate-700 hover:bg-slate-200">Cancelar</a>
+                {% endif %}
+            </div>
+        </form>
+    </section>
+    <section class="rounded-[2rem] bg-white p-6 shadow-panel">
+        <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Aplicacoes</p>
+        <h3 class="mt-2 text-2xl font-semibold">Recomendacoes cadastradas</h3>
+        <div class="mt-6 space-y-4">
+            {% for item in recommendations %}
+            <article class="rounded-[1.5rem] border border-slate-100 bg-slate-50 p-5">
+                <div class="flex flex-wrap items-start justify-between gap-4">
+                    <div>
+                        <p class="text-lg font-semibold">{{ item.application_name }}</p>
+                        <p class="mt-1 text-sm text-slate-500">{{ item.farm.name if item.farm else "Sem fazenda vinculada" }}</p>
+                        <p class="mt-2 text-sm text-slate-600">{{ item.purchased_input.name if item.purchased_input else "Insumo removido" }} • {{ item.quantity_per_hectare }} {{ item.unit }}/ha</p>
+                    </div>
+                    <div class="flex gap-2">
+                        <a href="/insumos/recomendacao?edit_id={{ item.id }}" class="rounded-xl bg-slate-900 px-3 py-2 text-xs font-medium text-white hover:bg-slate-700">Editar</a>
+                        <form method="post" action="/insumos/recomendacao/{{ item.id }}/excluir" onsubmit="return confirm('Excluir esta recomendacao?');">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                            <button class="rounded-xl bg-rose-600 px-3 py-2 text-xs font-medium text-white hover:bg-rose-700">Excluir</button>
+                        </form>
+                    </div>
+                </div>
+                {% if item.notes %}
+                <p class="mt-4 text-sm text-slate-500">{{ item.notes }}</p>
+                {% endif %}
+            </article>
+            {% else %}
+            <p class="text-sm text-slate-500">Nenhuma recomendacao cadastrada.</p>
+            {% endfor %}
+        </div>
+    </section>
+</div>
+{% endblock %}

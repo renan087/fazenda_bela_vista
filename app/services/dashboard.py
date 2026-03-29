@@ -9,6 +9,24 @@ def _float(value) -> float:
     return float(value or 0)
 
 
+def _paginate(items: list, page: int, per_page: int = 4) -> dict:
+    total = len(items)
+    pages = max(1, (total + per_page - 1) // per_page)
+    current_page = min(max(page, 1), pages)
+    start = (current_page - 1) * per_page
+    end = start + per_page
+    return {
+        "items": items[start:end],
+        "page": current_page,
+        "pages": pages,
+        "has_prev": current_page > 1,
+        "has_next": current_page < pages,
+        "prev_page": current_page - 1,
+        "next_page": current_page + 1,
+        "total": total,
+    }
+
+
 def calculate_forecast(repository: FarmRepository) -> dict:
     harvests = repository.list_harvests()
     grouped: dict[int, list[float]] = defaultdict(list)
@@ -46,13 +64,15 @@ def build_dashboard_context(
     repository: FarmRepository,
     rain_start_date: date | None = None,
     rain_end_date: date | None = None,
+    pages: dict | None = None,
 ) -> dict:
+    pages = pages or {}
     plots = repository.list_plots()
     farms = repository.list_farms()
     harvests = repository.list_harvests()
-    irrigations = repository.list_irrigations(limit=6)
-    fertilizations = repository.list_fertilizations(limit=6)
-    incidents = repository.list_pest_incidents(limit=6)
+    irrigations = repository.list_irrigations()
+    fertilizations = repository.list_fertilizations()
+    incidents = repository.list_pest_incidents()
     soil_analyses = repository.list_soil_analyses()[:6]
     today = date.today()
     month_start = today.replace(day=1)
@@ -169,7 +189,7 @@ def build_dashboard_context(
                 "kind": "fertilizacao",
             }
         )
-    for harvest in harvests[:6]:
+    for harvest in harvests:
         activity_timeline.append(
             {
                 "date": harvest.harvest_date.isoformat(),
@@ -193,6 +213,14 @@ def build_dashboard_context(
         )
     activity_timeline.sort(key=lambda item: item["date"], reverse=True)
 
+    irrigations_page = _paginate(irrigations, pages.get("irrigations", 1))
+    rainfalls_page = _paginate(repository.list_rainfalls(), pages.get("rainfalls", 1))
+    fertilizations_page = _paginate(fertilizations, pages.get("fertilizations", 1))
+    incidents_page = _paginate(incidents, pages.get("incidents", 1))
+    harvests_page = _paginate(harvests, pages.get("harvests", 1))
+    forecast_page = _paginate(forecast["plots"], pages.get("forecast", 1))
+    timeline_page = _paginate(activity_timeline, pages.get("timeline", 1))
+
     return {
         "kpis": {
             "area_total": round(total_area, 2),
@@ -205,13 +233,13 @@ def build_dashboard_context(
             "monthly_rainfall": round(monthly_rainfall, 2),
             "rainfall_period_total": round(rainfall_period_total, 2),
         },
-        "recent_irrigations": irrigations,
-        "recent_rainfalls": repository.list_rainfalls(limit=8),
-        "recent_fertilizations": fertilizations,
-        "recent_incidents": incidents,
-        "recent_harvests": harvests[:8],
+        "recent_irrigations": irrigations_page["items"],
+        "recent_rainfalls": rainfalls_page["items"],
+        "recent_fertilizations": fertilizations_page["items"],
+        "recent_incidents": incidents_page["items"],
+        "recent_harvests": harvests_page["items"],
         "recent_soil_analyses": soil_analyses,
-        "forecast_plots": forecast["plots"],
+        "forecast_plots": forecast_page["items"],
         "production_chart": json.dumps(
             {
                 "labels": list(production_by_plot.keys()),
@@ -244,5 +272,14 @@ def build_dashboard_context(
         ),
         "map_geojson": json.dumps({"type": "FeatureCollection", "features": map_features}),
         "farms": farms,
-        "activity_timeline": activity_timeline[:12],
+        "activity_timeline": timeline_page["items"],
+        "dashboard_pages": {
+            "irrigations": irrigations_page,
+            "rainfalls": rainfalls_page,
+            "fertilizations": fertilizations_page,
+            "incidents": incidents_page,
+            "harvests": harvests_page,
+            "forecast": forecast_page,
+            "timeline": timeline_page,
+        },
     }

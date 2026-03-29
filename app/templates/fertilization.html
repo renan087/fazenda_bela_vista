@@ -15,6 +15,15 @@
                 </select>
             </label>
             <label><span class="mb-2 block text-sm font-medium">Data</span><input type="date" name="application_date" value="{{ edit_fertilization.application_date.isoformat() if edit_fertilization else '' }}" class="w-full rounded-2xl border-slate-200 bg-slate-50" required></label>
+            <label>
+                <span class="mb-2 block text-sm font-medium">Recomendacao pronta</span>
+                <select class="w-full rounded-2xl border-slate-200 bg-slate-50" data-recommendation-select>
+                    <option value="">Montar aplicacao manualmente</option>
+                    {% for application_name in recommendation_groups.keys()|sort %}
+                    <option value="{{ application_name }}">{{ application_name }}</option>
+                    {% endfor %}
+                </select>
+            </label>
 
             <div class="rounded-[1.5rem] border border-slate-200 bg-slate-50 p-4">
                 <div class="flex items-center justify-between gap-3">
@@ -114,6 +123,8 @@
         const wrapper = form.querySelector('[data-items-wrapper]');
         const template = document.getElementById('fertilization-item-template');
         const addButton = form.querySelector('[data-add-item]');
+        const recommendationSelect = form.querySelector('[data-recommendation-select]');
+        const recommendationGroups = {{ recommendation_groups|tojson }};
 
         const currentArea = () => Number(plotAreas[plotSelect?.value] || 0);
         const syncRow = (row) => {
@@ -144,6 +155,20 @@
             bindRow(wrapper.lastElementChild);
         });
         plotSelect?.addEventListener('change', () => wrapper.querySelectorAll('[data-item-row]').forEach(syncRow));
+        recommendationSelect?.addEventListener('change', () => {
+            const selected = recommendationSelect.value;
+            if (!selected || !recommendationGroups[selected]?.length) return;
+            wrapper.innerHTML = '';
+            recommendationGroups[selected].forEach((item) => {
+                const fragment = template.content.cloneNode(true);
+                const row = fragment.querySelector('[data-item-row]');
+                row.querySelector('[name="item_name"]').value = item.name || '';
+                row.querySelector('[name="item_unit"]').value = item.unit || 'kg';
+                row.querySelector('[name="item_quantity_per_hectare"]').value = item.quantity_per_hectare || '';
+                wrapper.appendChild(fragment);
+                bindRow(wrapper.lastElementChild);
+            });
+        });
     })();
 </script>
 {% endblock %}

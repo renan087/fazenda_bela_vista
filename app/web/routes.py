@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.core.csrf import validate_csrf
 from app.core.deps import get_csrf_token, get_current_user_web
+from app.core.security import get_password_hash
 from app.db.session import get_db
 from app.models import (
     AgronomicProfile,
@@ -17,9 +18,11 @@ from app.models import (
     Farm,
     FertilizationRecord,
     HarvestRecord,
+    InputRecommendation,
     IrrigationRecord,
     PestIncident,
     Plot,
+    PurchasedInput,
     RainfallRecord,
     SoilAnalysis,
     User,
@@ -34,11 +37,14 @@ from app.services.forms import (
     create_farm,
     create_fertilization,
     create_harvest,
+    create_input_recommendation,
     create_irrigation,
     create_pest_incident,
     create_plot,
+    create_purchased_input,
     create_rainfall,
     create_soil_analysis,
+    create_user,
     create_variety,
     estimate_geojson_centroid,
     extract_geojson_file,
@@ -47,11 +53,14 @@ from app.services.forms import (
     update_farm,
     update_fertilization,
     update_harvest,
+    update_input_recommendation,
     update_irrigation,
     update_pest_incident,
     update_plot,
+    update_purchased_input,
     update_rainfall,
     update_soil_analysis,
+    update_user,
     update_variety,
 )
 from app.services.openai_service import gerar_recomendacao_adubacao
@@ -117,6 +126,17 @@ def _int_list(values: list[str]) -> list[int]:
 
 def _date_or_none(value: str | None):
     return date.fromisoformat(value) if value not in (None, "") else None
+
+
+def _page_number(value: str | int | None, default: int = 1) -> int:
+    try:
+        return max(int(value or default), 1)
+    except (TypeError, ValueError):
+        return default
+
+
+def _bool_from_form(value) -> bool:
+    return str(value or "").lower() in {"1", "true", "on", "yes"}
 
 
 def _meters_from_cm(value: str | None):
@@ -257,6 +277,13 @@ def _read_upload(upload: UploadFile | None) -> tuple[str | None, str | None, byt
     return upload.filename, upload.content_type or "application/octet-stream", payload
 
 
+def _require_admin(request: Request, user: User) -> RedirectResponse | None:
+    if user.is_admin:
+        return None
+    _flash(request, "error", "Apenas administradores podem acessar este modulo.")
+    return _redirect("/dashboard")
+
+
 def _soil_payload(
     farm_id: int,
     plot_id: int,
@@ -342,6 +369,13 @@ def dashboard(
     request: Request,
     rain_start_date: str | None = None,
     rain_end_date: str | None = None,
+    irrigations_page: int = 1,
+    rainfalls_page: int = 1,
+    fertilizations_page: int = 1,
+    incidents_page: int = 1,
+    harvests_page: int = 1,
+    forecast_page: int = 1,
+    timeline_page: int = 1,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user_web),
     csrf_token: str = Depends(get_csrf_token),
@@ -350,6 +384,15 @@ def dashboard(
         _repository(db),
         rain_start_date=_date_or_none(rain_start_date),
         rain_end_date=_date_or_none(rain_end_date),
+        pages={
+            "irrigations": _page_number(irrigations_page),
+            "rainfalls": _page_number(rainfalls_page),
+            "fertilizations": _page_number(fertilizations_page),
+            "incidents": _page_number(incidents_page),
+            "harvests": _page_number(harvests_page),
+            "forecast": _page_number(forecast_page),
+            "timeline": _page_number(timeline_page),
+        },
     )
     return templates.TemplateResponse(
         "dashboard.html",
@@ -690,6 +733,363 @@ def delete_farm_action(
     repo.delete(farm)
     _flash(request, "success", "Fazenda excluida com sucesso.")
     return _redirect("/fazendas")
+
+
+@router.get("/usuarios")
+def users_page(
+    request: Request,
+    edit_id: int | None = None,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+    csrf_token: str = Depends(get_csrf_token),
+):
+    denied = _require_admin(request, user)
+    if denied:
+        return denied
+    repo = _repository(db)
+    return templates.TemplateResponse(
+        "users.html",
+        _base_context(
+            request,
+            user,
+            csrf_token,
+            "users",
+            title="Administracao de Usuarios",
+            users=repo.list_users(),
+            edit_user=repo.get_user(edit_id) if edit_id else None,
+        ),
+    )
+
+
+@router.post("/usuarios")
+def create_user_action(
+    request: Request,
+    csrf_token: str = Form(...),
+    name: str = Form(...),
+    email: str = Form(...),
+    password: str = Form(...),
+    is_active: str | None = Form(None),
+    is_admin: str | None = Form(None),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    denied = _require_admin(request, user)
+    if denied:
+        return denied
+    validate_csrf(request, csrf_token)
+    repo = _repository(db)
+    existing = db.query(User).filter(User.email == email.strip().lower()).first()
+    if existing:
+        _flash(request, "error", "Ja existe um usuario com este email.")
+        return _redirect("/usuarios")
+    create_user(
+        repo,
+        {
+            "name": name,
+            "email": email,
+            "password": password,
+            "is_active": _bool_from_form(is_active),
+            "is_admin": _bool_from_form(is_admin),
+        },
+    )
+    _flash(request, "success", "Usuario criado com sucesso.")
+    return _redirect("/usuarios")
+
+
+@router.post("/usuarios/{user_id}/editar")
+def update_user_action(
+    user_id: int,
+    request: Request,
+    csrf_token: str = Form(...),
+    name: str = Form(...),
+    email: str = Form(...),
+    password: str | None = Form(None),
+    is_active: str | None = Form(None),
+    is_admin: str | None = Form(None),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    denied = _require_admin(request, user)
+    if denied:
+        return denied
+    validate_csrf(request, csrf_token)
+    repo = _repository(db)
+    target_user = repo.get_user(user_id)
+    if not target_user:
+        _flash(request, "error", "Usuario nao encontrado.")
+        return _redirect("/usuarios")
+    existing = db.query(User).filter(User.email == email.strip().lower(), User.id != user_id).first()
+    if existing:
+        _flash(request, "error", "Ja existe outro usuario com este email.")
+        return _redirect_with_query("/usuarios", edit_id=user_id)
+    update_user(
+        repo,
+        target_user,
+        {
+            "name": name,
+            "email": email,
+            "password": password,
+            "is_active": _bool_from_form(is_active),
+            "is_admin": _bool_from_form(is_admin),
+        },
+    )
+    _flash(request, "success", "Usuario atualizado com sucesso.")
+    return _redirect("/usuarios")
+
+
+@router.post("/usuarios/{user_id}/excluir")
+def delete_user_action(
+    user_id: int,
+    request: Request,
+    csrf_token: str = Form(...),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    denied = _require_admin(request, user)
+    if denied:
+        return denied
+    validate_csrf(request, csrf_token)
+    repo = _repository(db)
+    target_user = repo.get_user(user_id)
+    if not target_user:
+        _flash(request, "error", "Usuario nao encontrado.")
+        return _redirect("/usuarios")
+    if target_user.id == user.id:
+        _flash(request, "error", "Nao e permitido excluir o usuario atualmente logado.")
+        return _redirect("/usuarios")
+    repo.delete(target_user)
+    _flash(request, "success", "Usuario excluido com sucesso.")
+    return _redirect("/usuarios")
+
+
+@router.get("/insumos/comprados")
+def purchased_inputs_page(
+    request: Request,
+    edit_id: int | None = None,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+    csrf_token: str = Depends(get_csrf_token),
+):
+    repo = _repository(db)
+    return templates.TemplateResponse(
+        "purchased_inputs.html",
+        _base_context(
+            request,
+            user,
+            csrf_token,
+            "purchased_inputs",
+            title="Insumos Comprados",
+            farms=repo.list_farms(),
+            inputs=repo.list_purchased_inputs(),
+            edit_input=repo.get_purchased_input(edit_id) if edit_id else None,
+        ),
+    )
+
+
+@router.post("/insumos/comprados")
+def create_purchased_input_action(
+    request: Request,
+    csrf_token: str = Form(...),
+    farm_id: str | None = Form(None),
+    name: str = Form(...),
+    quantity_purchased: float = Form(...),
+    package_size: float = Form(...),
+    package_unit: str = Form(...),
+    unit_price: float = Form(...),
+    notes: str | None = Form(None),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    del user
+    validate_csrf(request, csrf_token)
+    create_purchased_input(
+        _repository(db),
+        {
+            "farm_id": _int_or_none(farm_id),
+            "name": name,
+            "quantity_purchased": quantity_purchased,
+            "package_size": package_size,
+            "package_unit": package_unit,
+            "unit_price": unit_price,
+            "notes": notes,
+        },
+    )
+    _flash(request, "success", "Insumo comprado cadastrado com sucesso.")
+    return _redirect("/insumos/comprados")
+
+
+@router.post("/insumos/comprados/{input_id}/editar")
+def update_purchased_input_action(
+    input_id: int,
+    request: Request,
+    csrf_token: str = Form(...),
+    farm_id: str | None = Form(None),
+    name: str = Form(...),
+    quantity_purchased: float = Form(...),
+    package_size: float = Form(...),
+    package_unit: str = Form(...),
+    unit_price: float = Form(...),
+    notes: str | None = Form(None),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    del user
+    validate_csrf(request, csrf_token)
+    repo = _repository(db)
+    item = repo.get_purchased_input(input_id)
+    if not item:
+        _flash(request, "error", "Insumo comprado nao encontrado.")
+        return _redirect("/insumos/comprados")
+    update_purchased_input(
+        repo,
+        item,
+        {
+            "farm_id": _int_or_none(farm_id),
+            "name": name,
+            "quantity_purchased": quantity_purchased,
+            "package_size": package_size,
+            "package_unit": package_unit,
+            "unit_price": unit_price,
+            "notes": notes,
+        },
+    )
+    _flash(request, "success", "Insumo comprado atualizado com sucesso.")
+    return _redirect("/insumos/comprados")
+
+
+@router.post("/insumos/comprados/{input_id}/excluir")
+def delete_purchased_input_action(
+    input_id: int,
+    request: Request,
+    csrf_token: str = Form(...),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    del user
+    validate_csrf(request, csrf_token)
+    repo = _repository(db)
+    item = repo.get_purchased_input(input_id)
+    if not item:
+        _flash(request, "error", "Insumo comprado nao encontrado.")
+        return _redirect("/insumos/comprados")
+    if item.recommendations:
+        _flash(request, "error", "Nao e possivel excluir o insumo enquanto houver recomendacoes vinculadas.")
+        return _redirect("/insumos/comprados")
+    repo.delete(item)
+    _flash(request, "success", "Insumo comprado excluido com sucesso.")
+    return _redirect("/insumos/comprados")
+
+
+@router.get("/insumos/recomendacao")
+def input_recommendations_page(
+    request: Request,
+    edit_id: int | None = None,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+    csrf_token: str = Depends(get_csrf_token),
+):
+    repo = _repository(db)
+    return templates.TemplateResponse(
+        "input_recommendations.html",
+        _base_context(
+            request,
+            user,
+            csrf_token,
+            "input_recommendations",
+            title="Recomendacao de Insumos",
+            farms=repo.list_farms(),
+            purchased_inputs=repo.list_purchased_inputs(),
+            recommendations=repo.list_input_recommendations(),
+            edit_recommendation=repo.get_input_recommendation(edit_id) if edit_id else None,
+        ),
+    )
+
+
+@router.post("/insumos/recomendacao")
+def create_input_recommendation_action(
+    request: Request,
+    csrf_token: str = Form(...),
+    farm_id: str | None = Form(None),
+    application_name: str = Form(...),
+    purchased_input_id: int = Form(...),
+    unit: str | None = Form(None),
+    quantity_per_hectare: float = Form(...),
+    notes: str | None = Form(None),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    del user
+    validate_csrf(request, csrf_token)
+    create_input_recommendation(
+        _repository(db),
+        {
+            "farm_id": _int_or_none(farm_id),
+            "application_name": application_name,
+            "purchased_input_id": purchased_input_id,
+            "unit": unit,
+            "quantity_per_hectare": quantity_per_hectare,
+            "notes": notes,
+        },
+    )
+    _flash(request, "success", "Recomendacao cadastrada com sucesso.")
+    return _redirect("/insumos/recomendacao")
+
+
+@router.post("/insumos/recomendacao/{recommendation_id}/editar")
+def update_input_recommendation_action(
+    recommendation_id: int,
+    request: Request,
+    csrf_token: str = Form(...),
+    farm_id: str | None = Form(None),
+    application_name: str = Form(...),
+    purchased_input_id: int = Form(...),
+    unit: str | None = Form(None),
+    quantity_per_hectare: float = Form(...),
+    notes: str | None = Form(None),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    del user
+    validate_csrf(request, csrf_token)
+    repo = _repository(db)
+    recommendation = repo.get_input_recommendation(recommendation_id)
+    if not recommendation:
+        _flash(request, "error", "Recomendacao nao encontrada.")
+        return _redirect("/insumos/recomendacao")
+    update_input_recommendation(
+        repo,
+        recommendation,
+        {
+            "farm_id": _int_or_none(farm_id),
+            "application_name": application_name,
+            "purchased_input_id": purchased_input_id,
+            "unit": unit,
+            "quantity_per_hectare": quantity_per_hectare,
+            "notes": notes,
+        },
+    )
+    _flash(request, "success", "Recomendacao atualizada com sucesso.")
+    return _redirect("/insumos/recomendacao")
+
+
+@router.post("/insumos/recomendacao/{recommendation_id}/excluir")
+def delete_input_recommendation_action(
+    recommendation_id: int,
+    request: Request,
+    csrf_token: str = Form(...),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    del user
+    validate_csrf(request, csrf_token)
+    repo = _repository(db)
+    recommendation = repo.get_input_recommendation(recommendation_id)
+    if not recommendation:
+        _flash(request, "error", "Recomendacao nao encontrada.")
+        return _redirect("/insumos/recomendacao")
+    repo.delete(recommendation)
+    _flash(request, "success", "Recomendacao excluida com sucesso.")
+    return _redirect("/insumos/recomendacao")
 
 
 @router.get("/variedades")
@@ -1076,6 +1476,15 @@ def fertilization_page(
 ):
     repo = _repository(db)
     edit_fertilization = repo.get_fertilization(edit_id) if edit_id else None
+    recommendation_groups: dict[str, list[dict]] = {}
+    for recommendation in repo.list_input_recommendations():
+        recommendation_groups.setdefault(recommendation.application_name, []).append(
+            {
+                "name": recommendation.purchased_input.name if recommendation.purchased_input else "Insumo removido",
+                "unit": recommendation.unit,
+                "quantity_per_hectare": float(recommendation.quantity_per_hectare or 0),
+            }
+        )
     return templates.TemplateResponse(
         "fertilization.html",
         _base_context(
@@ -1085,6 +1494,7 @@ def fertilization_page(
             "fertilization",
             plots=repo.list_plots(),
             fertilizations=repo.list_fertilizations(),
+            recommendation_groups=recommendation_groups,
             edit_fertilization=edit_fertilization,
             plot_areas={plot.id: float(plot.area_hectares or 0) for plot in repo.list_plots()},
             edit_fertilization_items=_legacy_fertilization_items(

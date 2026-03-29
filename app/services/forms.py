@@ -2,8 +2,23 @@ import json
 import math
 from datetime import date
 
-from app.models import CoffeeVariety, Farm, FertilizationItem, FertilizationRecord, HarvestRecord, IrrigationRecord, PestIncident, Plot, RainfallRecord
-from app.models import AgronomicProfile, SoilAnalysis
+from app.core.security import get_password_hash
+from app.models import (
+    AgronomicProfile,
+    CoffeeVariety,
+    Farm,
+    FertilizationItem,
+    FertilizationRecord,
+    HarvestRecord,
+    InputRecommendation,
+    IrrigationRecord,
+    PestIncident,
+    Plot,
+    PurchasedInput,
+    RainfallRecord,
+    SoilAnalysis,
+    User,
+)
 from app.repositories.farm import FarmRepository
 
 
@@ -189,6 +204,101 @@ def create_fertilization(repository: FarmRepository, form: dict) -> Fertilizatio
     repository.db.commit()
     repository.db.refresh(record)
     return record
+
+
+def create_user(repository: FarmRepository, form: dict) -> User:
+    return repository.create(
+        User(
+            name=form["name"],
+            email=form["email"].strip().lower(),
+            hashed_password=get_password_hash(form["password"]),
+            is_active=bool(form.get("is_active", True)),
+            is_admin=bool(form.get("is_admin", False)),
+        )
+    )
+
+
+def update_user(repository: FarmRepository, user: User, form: dict) -> User:
+    payload = {
+        "name": form["name"],
+        "email": form["email"].strip().lower(),
+        "is_active": bool(form.get("is_active", True)),
+        "is_admin": bool(form.get("is_admin", False)),
+    }
+    password = (form.get("password") or "").strip()
+    if password:
+        payload["hashed_password"] = get_password_hash(password)
+    return repository.update(user, payload)
+
+
+def create_purchased_input(repository: FarmRepository, form: dict) -> PurchasedInput:
+    quantity_purchased = float(form["quantity_purchased"])
+    package_size = float(form["package_size"])
+    unit_price = float(form["unit_price"])
+    return repository.create(
+        PurchasedInput(
+            farm_id=form.get("farm_id"),
+            name=form["name"],
+            quantity_purchased=quantity_purchased,
+            package_size=package_size,
+            package_unit=form["package_unit"],
+            unit_price=unit_price,
+            total_quantity=round(quantity_purchased * package_size, 2),
+            total_cost=round(quantity_purchased * unit_price, 2),
+            notes=form.get("notes"),
+        )
+    )
+
+
+def update_purchased_input(repository: FarmRepository, item: PurchasedInput, form: dict) -> PurchasedInput:
+    quantity_purchased = float(form["quantity_purchased"])
+    package_size = float(form["package_size"])
+    unit_price = float(form["unit_price"])
+    return repository.update(
+        item,
+        {
+            "farm_id": form.get("farm_id"),
+            "name": form["name"],
+            "quantity_purchased": quantity_purchased,
+            "package_size": package_size,
+            "package_unit": form["package_unit"],
+            "unit_price": unit_price,
+            "total_quantity": round(quantity_purchased * package_size, 2),
+            "total_cost": round(quantity_purchased * unit_price, 2),
+            "notes": form.get("notes"),
+        },
+    )
+
+
+def create_input_recommendation(repository: FarmRepository, form: dict) -> InputRecommendation:
+    purchased_input = repository.get_purchased_input(form["purchased_input_id"])
+    unit = form.get("unit") or (purchased_input.package_unit if purchased_input else "kg")
+    return repository.create(
+        InputRecommendation(
+            farm_id=form.get("farm_id"),
+            application_name=form["application_name"],
+            purchased_input_id=form["purchased_input_id"],
+            unit=unit,
+            quantity_per_hectare=form["quantity_per_hectare"],
+            notes=form.get("notes"),
+        )
+    )
+
+
+def update_input_recommendation(repository: FarmRepository, recommendation: InputRecommendation, form: dict) -> InputRecommendation:
+    purchased_input = repository.get_purchased_input(form["purchased_input_id"])
+    unit = form.get("unit") or (purchased_input.package_unit if purchased_input else "kg")
+    return repository.update(
+        recommendation,
+        {
+            "farm_id": form.get("farm_id"),
+            "application_name": form["application_name"],
+            "purchased_input_id": form["purchased_input_id"],
+            "unit": unit,
+            "quantity_per_hectare": form["quantity_per_hectare"],
+            "notes": form.get("notes"),
+        },
+    )
 
 
 def update_fertilization(repository: FarmRepository, fertilization: FertilizationRecord, form: dict) -> FertilizationRecord:

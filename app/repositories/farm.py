@@ -7,11 +7,14 @@ from app.models import (
     Farm,
     FertilizationRecord,
     HarvestRecord,
+    InputRecommendation,
     IrrigationRecord,
     PestIncident,
     Plot,
+    PurchasedInput,
     RainfallRecord,
     SoilAnalysis,
+    User,
 )
 
 
@@ -21,6 +24,12 @@ class FarmRepository:
 
     def list_farms(self) -> list[Farm]:
         return self.db.query(Farm).order_by(Farm.name.asc()).all()
+
+    def list_users(self) -> list[User]:
+        return self.db.query(User).order_by(User.name.asc(), User.email.asc()).all()
+
+    def get_user(self, user_id: int) -> User | None:
+        return self.db.query(User).filter(User.id == user_id).first()
 
     def get_farm(self, farm_id: int) -> Farm | None:
         return self.db.query(Farm).filter(Farm.id == farm_id).first()
@@ -169,6 +178,38 @@ class FarmRepository:
             .order_by(FertilizationRecord.application_date.desc(), FertilizationRecord.id.desc())
         )
         return query.limit(limit).all() if limit else query.all()
+
+    def list_purchased_inputs(self) -> list[PurchasedInput]:
+        return (
+            self.db.query(PurchasedInput)
+            .options(joinedload(PurchasedInput.farm))
+            .order_by(PurchasedInput.name.asc(), PurchasedInput.id.desc())
+            .all()
+        )
+
+    def get_purchased_input(self, input_id: int) -> PurchasedInput | None:
+        return (
+            self.db.query(PurchasedInput)
+            .options(joinedload(PurchasedInput.farm))
+            .filter(PurchasedInput.id == input_id)
+            .first()
+        )
+
+    def list_input_recommendations(self) -> list[InputRecommendation]:
+        return (
+            self.db.query(InputRecommendation)
+            .options(joinedload(InputRecommendation.farm), joinedload(InputRecommendation.purchased_input))
+            .order_by(InputRecommendation.application_name.asc(), InputRecommendation.id.desc())
+            .all()
+        )
+
+    def get_input_recommendation(self, recommendation_id: int) -> InputRecommendation | None:
+        return (
+            self.db.query(InputRecommendation)
+            .options(joinedload(InputRecommendation.farm), joinedload(InputRecommendation.purchased_input))
+            .filter(InputRecommendation.id == recommendation_id)
+            .first()
+        )
 
     def get_fertilization(self, record_id: int) -> FertilizationRecord | None:
         return (

@@ -35,7 +35,8 @@
 <body class="bg-slate-100 text-slate-800">
     {% if user %}
     <div class="min-h-screen lg:flex">
-        <aside class="erp-sidebar bg-slate-950 text-slate-100 lg:fixed lg:inset-y-0 lg:w-72">
+        <div class="fixed inset-0 z-30 hidden bg-slate-950/50 lg:hidden" data-mobile-overlay></div>
+        <aside class="erp-sidebar fixed inset-y-0 left-0 z-40 w-72 -translate-x-full bg-slate-950 text-slate-100 transition-transform duration-200 lg:fixed lg:inset-y-0 lg:translate-x-0">
             <div class="flex h-full flex-col">
                 <div class="border-b border-slate-800 px-6 py-6">
                     <p class="text-xs uppercase tracking-[0.3em] text-brand-100/70">Agro ERP</p>
@@ -50,11 +51,11 @@
                         ('varieties', '/variedades', 'Variedades'),
                         ('irrigation', '/irrigacao', 'Irrigacao'),
                         ('rainfall', '/pluviometria', 'Pluviometria'),
-                        ('fertilization', '/fertilizacao', 'Fertilizacao'),
                         ('production', '/producao', 'Producao'),
                         ('pests', '/pragas', 'Pragas e Doencas'),
                         ('soil_analyses', '/analise-solo', 'Analise de Solo'),
                         ('agronomic_profiles', '/perfil-agronomico', 'Perfil Agronomico'),
+                        ('users', '/usuarios', 'Usuarios'),
                         ('map', '/mapa', 'Mapa da Fazenda'),
                         ('mobile', '/mobile', 'Campo Mobile')
                     ] %}
@@ -63,6 +64,18 @@
                         <span>{{ label }}</span>
                     </a>
                     {% endfor %}
+                    {% set inputs_pages = ['fertilization', 'input_recommendations', 'purchased_inputs'] %}
+                    <div class="rounded-2xl {% if page in inputs_pages %}bg-slate-900/80{% endif %}">
+                        <button type="button" class="flex w-full items-center justify-between rounded-2xl px-4 py-3 text-left transition {% if page in inputs_pages %}text-white{% else %}text-slate-300 hover:bg-slate-900 hover:text-white{% endif %}" data-submenu-toggle="inputs-menu">
+                            <span>Insumos</span>
+                            <span class="text-xs uppercase tracking-[0.2em]">+</span>
+                        </button>
+                        <div id="inputs-menu" class="{% if page not in inputs_pages %}hidden {% endif %}space-y-1 px-3 pb-3">
+                            <a href="/fertilizacao" class="block rounded-xl px-3 py-2 text-sm {% if page == 'fertilization' %}bg-brand-500 text-white{% else %}text-slate-300 hover:bg-slate-800 hover:text-white{% endif %}">Fertilizacao</a>
+                            <a href="/insumos/recomendacao" class="block rounded-xl px-3 py-2 text-sm {% if page == 'input_recommendations' %}bg-brand-500 text-white{% else %}text-slate-300 hover:bg-slate-800 hover:text-white{% endif %}">Recomendacao</a>
+                            <a href="/insumos/comprados" class="block rounded-xl px-3 py-2 text-sm {% if page == 'purchased_inputs' %}bg-brand-500 text-white{% else %}text-slate-300 hover:bg-slate-800 hover:text-white{% endif %}">Insumos comprados</a>
+                        </div>
+                    </div>
                     <a href="/docs" target="_blank" class="flex items-center rounded-2xl px-4 py-3 text-slate-300 transition hover:bg-slate-900 hover:text-white">API / Docs</a>
                 </nav>
                 <div class="border-t border-slate-800 px-6 py-5">
@@ -78,9 +91,18 @@
         <main class="flex-1 lg:ml-72">
             <div class="border-b border-slate-200 bg-white/80 backdrop-blur">
                 <div class="mx-auto flex max-w-7xl items-center justify-between px-6 py-5">
-                    <div>
+                    <div class="flex items-center gap-4">
+                        <button type="button" class="inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-900 text-white lg:hidden" data-mobile-menu-button aria-label="Abrir menu">
+                            <span class="space-y-1.5">
+                                <span class="block h-0.5 w-5 bg-white"></span>
+                                <span class="block h-0.5 w-5 bg-white"></span>
+                                <span class="block h-0.5 w-5 bg-white"></span>
+                            </span>
+                        </button>
+                        <div>
                         <p class="text-xs uppercase tracking-[0.3em] text-slate-400">Plataforma profissional</p>
                         <h2 class="text-2xl font-semibold">{{ title or "Painel da Fazenda" }}</h2>
+                        </div>
                     </div>
                     <div class="hidden rounded-2xl bg-mist px-4 py-3 text-right md:block">
                         <p class="text-xs uppercase tracking-[0.25em] text-slate-400">Safra</p>
@@ -101,5 +123,36 @@
     {% else %}
         {% block auth_content %}{% endblock %}
     {% endif %}
+    <script>
+        (() => {
+            const sidebar = document.querySelector('.erp-sidebar');
+            const overlay = document.querySelector('[data-mobile-overlay]');
+            const menuButton = document.querySelector('[data-mobile-menu-button]');
+            const closeMenu = () => {
+                if (!sidebar) return;
+                sidebar.classList.add('-translate-x-full');
+                overlay?.classList.add('hidden');
+            };
+            const openMenu = () => {
+                if (!sidebar) return;
+                sidebar.classList.remove('-translate-x-full');
+                overlay?.classList.remove('hidden');
+            };
+            menuButton?.addEventListener('click', () => {
+                if (sidebar?.classList.contains('-translate-x-full')) {
+                    openMenu();
+                    return;
+                }
+                closeMenu();
+            });
+            overlay?.addEventListener('click', closeMenu);
+            document.querySelectorAll('[data-submenu-toggle]').forEach((button) => {
+                button.addEventListener('click', () => {
+                    const target = document.getElementById(button.dataset.submenuToggle);
+                    target?.classList.toggle('hidden');
+                });
+            });
+        })();
+    </script>
 </body>
 </html>

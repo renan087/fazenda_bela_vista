@@ -14,9 +14,11 @@ from app.models import (
     FertilizationItem,
     FertilizationRecord,
     HarvestRecord,
+    InputRecommendation,
     IrrigationRecord,
     PestIncident,
     Plot,
+    PurchasedInput,
     RainfallRecord,
     SoilAnalysis,
     User,
@@ -78,6 +80,31 @@ def _sync_schema() -> None:
         )
         """,
         """
+        CREATE TABLE IF NOT EXISTS purchased_inputs (
+            id SERIAL PRIMARY KEY,
+            farm_id INTEGER REFERENCES farms(id) ON DELETE SET NULL,
+            name VARCHAR(160) NOT NULL,
+            quantity_purchased NUMERIC(10,2) NOT NULL,
+            package_size NUMERIC(10,2) NOT NULL,
+            package_unit VARCHAR(20) NOT NULL,
+            unit_price NUMERIC(10,2) NOT NULL,
+            total_quantity NUMERIC(12,2) NOT NULL,
+            total_cost NUMERIC(12,2) NOT NULL,
+            notes TEXT
+        )
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS input_recommendations (
+            id SERIAL PRIMARY KEY,
+            farm_id INTEGER REFERENCES farms(id) ON DELETE SET NULL,
+            application_name VARCHAR(160) NOT NULL,
+            purchased_input_id INTEGER NOT NULL REFERENCES purchased_inputs(id) ON DELETE CASCADE,
+            unit VARCHAR(20) NOT NULL,
+            quantity_per_hectare NUMERIC(10,2) NOT NULL,
+            notes TEXT
+        )
+        """,
+        """
         CREATE TABLE IF NOT EXISTS soil_analyses (
             id SERIAL PRIMARY KEY,
             farm_id INTEGER NOT NULL REFERENCES farms(id),
@@ -109,6 +136,7 @@ def _sync_schema() -> None:
         )
         """,
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW()",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS is_admin BOOLEAN DEFAULT FALSE",
         "ALTER TABLE coffee_varieties ADD COLUMN IF NOT EXISTS flavor_profile VARCHAR(180)",
         "ALTER TABLE plots ADD COLUMN IF NOT EXISTS planting_date DATE",
         "ALTER TABLE plots ADD COLUMN IF NOT EXISTS farm_id INTEGER",
@@ -164,6 +192,10 @@ def seed_admin(db: Session) -> None:
     settings = get_settings()
     existing = db.query(User).filter(User.email == settings.admin_email).first()
     if existing:
+        if not existing.is_admin:
+            existing.is_admin = True
+            db.add(existing)
+            db.commit()
         return
 
     admin = User(
@@ -171,6 +203,7 @@ def seed_admin(db: Session) -> None:
         email=settings.admin_email,
         hashed_password=get_password_hash(settings.admin_password),
         is_active=True,
+        is_admin=True,
     )
     db.add(admin)
     db.commit()
@@ -312,6 +345,31 @@ def seed_demo_data(db: Session) -> None:
         ]
     )
     db.flush()
+
+    purchased_input = PurchasedInput(
+        farm_id=farm.id,
+        name="MAP",
+        quantity_purchased=20,
+        package_size=50,
+        package_unit="kg",
+        unit_price=210,
+        total_quantity=1000,
+        total_cost=4200,
+        notes="Lote inicial para implantacao.",
+    )
+    db.add(purchased_input)
+    db.flush()
+
+    db.add(
+        InputRecommendation(
+            farm_id=farm.id,
+            application_name="Fertilizacao de Base",
+            purchased_input_id=purchased_input.id,
+            unit="kg",
+            quantity_per_hectare=1.5,
+            notes="Dose padrao de abertura.",
+        )
+    )
 
     for record in db.query(FertilizationRecord).all():
         if record.items:

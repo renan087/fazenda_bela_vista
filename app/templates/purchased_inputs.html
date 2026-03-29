@@ -1,0 +1,101 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
+    <section class="rounded-[2rem] bg-white p-6 shadow-panel">
+        <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Insumos</p>
+        <h3 class="mt-2 text-2xl font-semibold">{% if edit_input %}Editar insumo comprado{% else %}Insumos comprados{% endif %}</h3>
+        <form method="post" action="{% if edit_input %}/insumos/comprados/{{ edit_input.id }}/editar{% else %}/insumos/comprados{% endif %}" class="mt-6 grid gap-4" data-purchased-input-form>
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <label>
+                <span class="mb-2 block text-sm font-medium">Fazenda</span>
+                <select name="farm_id" class="w-full rounded-2xl border-slate-200 bg-slate-50">
+                    <option value="">Sem vinculo especifico</option>
+                    {% for farm in farms %}
+                    <option value="{{ farm.id }}" {% if edit_input and edit_input.farm_id == farm.id %}selected{% endif %}>{{ farm.name }}</option>
+                    {% endfor %}
+                </select>
+            </label>
+            <label><span class="mb-2 block text-sm font-medium">Nome do insumo</span><input name="name" value="{{ edit_input.name if edit_input else '' }}" class="w-full rounded-2xl border-slate-200 bg-slate-50" required></label>
+            <div class="grid gap-4 md:grid-cols-2">
+                <label><span class="mb-2 block text-sm font-medium">Quantidade comprada</span><input type="number" step="0.01" min="0" name="quantity_purchased" value="{{ edit_input.quantity_purchased if edit_input else '' }}" class="w-full rounded-2xl border-slate-200 bg-slate-50" required data-quantity-purchased></label>
+                <label><span class="mb-2 block text-sm font-medium">Tamanho do saco / embalagem</span><input type="number" step="0.01" min="0" name="package_size" value="{{ edit_input.package_size if edit_input else '' }}" class="w-full rounded-2xl border-slate-200 bg-slate-50" required data-package-size></label>
+            </div>
+            <div class="grid gap-4 md:grid-cols-2">
+                <label>
+                    <span class="mb-2 block text-sm font-medium">Unidade da embalagem</span>
+                    <select name="package_unit" class="w-full rounded-2xl border-slate-200 bg-slate-50">
+                        {% for unit in ['kg', 'g', 'L', 'ml', 'sacas', 'un'] %}
+                        <option value="{{ unit }}" {% if edit_input and edit_input.package_unit == unit %}selected{% endif %}>{{ unit }}</option>
+                        {% endfor %}
+                    </select>
+                </label>
+                <label><span class="mb-2 block text-sm font-medium">Valor por saco / embalagem (R$)</span><input type="number" step="0.01" min="0" name="unit_price" value="{{ edit_input.unit_price if edit_input else '' }}" class="w-full rounded-2xl border-slate-200 bg-slate-50" required data-unit-price></label>
+            </div>
+            <div class="grid gap-4 md:grid-cols-2">
+                <label><span class="mb-2 block text-sm font-medium">Quantidade total calculada</span><input type="number" step="0.01" value="{{ edit_input.total_quantity if edit_input else '' }}" class="w-full rounded-2xl border-slate-200 bg-slate-200 text-slate-500" readonly data-total-quantity></label>
+                <label><span class="mb-2 block text-sm font-medium">Valor total calculado (R$)</span><input type="number" step="0.01" value="{{ edit_input.total_cost if edit_input else '' }}" class="w-full rounded-2xl border-slate-200 bg-slate-200 text-slate-500" readonly data-total-cost></label>
+            </div>
+            <label><span class="mb-2 block text-sm font-medium">Observacoes</span><textarea name="notes" rows="4" class="w-full rounded-2xl border-slate-200 bg-slate-50">{{ edit_input.notes if edit_input else '' }}</textarea></label>
+            <div class="flex gap-3">
+                <button class="rounded-2xl bg-brand-500 px-4 py-3 font-semibold text-white hover:bg-brand-700">{% if edit_input %}Salvar alteracoes{% else %}Salvar insumo{% endif %}</button>
+                {% if edit_input %}
+                <a href="/insumos/comprados" class="rounded-2xl bg-slate-100 px-4 py-3 font-semibold text-slate-700 hover:bg-slate-200">Cancelar</a>
+                {% endif %}
+            </div>
+        </form>
+    </section>
+    <section class="rounded-[2rem] bg-white p-6 shadow-panel">
+        <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Estoque tecnico</p>
+        <h3 class="mt-2 text-2xl font-semibold">Insumos comprados</h3>
+        <div class="mt-6 space-y-4">
+            {% for item in inputs %}
+            <article class="rounded-[1.5rem] border border-slate-100 bg-slate-50 p-5">
+                <div class="flex flex-wrap items-start justify-between gap-4">
+                    <div>
+                        <p class="text-lg font-semibold">{{ item.name }}</p>
+                        <p class="mt-1 text-sm text-slate-500">{{ item.farm.name if item.farm else "Sem fazenda vinculada" }}</p>
+                        <p class="mt-2 text-sm text-slate-600">{{ item.quantity_purchased }} volumes x {{ item.package_size }} {{ item.package_unit }}</p>
+                        <p class="mt-1 text-sm text-slate-600">Total: <strong>{{ item.total_quantity }} {{ item.package_unit }}</strong> • Valor total: <strong>R$ {{ item.total_cost }}</strong></p>
+                    </div>
+                    <div class="flex gap-2">
+                        <a href="/insumos/comprados?edit_id={{ item.id }}" class="rounded-xl bg-slate-900 px-3 py-2 text-xs font-medium text-white hover:bg-slate-700">Editar</a>
+                        <form method="post" action="/insumos/comprados/{{ item.id }}/excluir" onsubmit="return confirm('Excluir o insumo {{ item.name }}?');">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                            <button class="rounded-xl bg-rose-600 px-3 py-2 text-xs font-medium text-white hover:bg-rose-700">Excluir</button>
+                        </form>
+                    </div>
+                </div>
+                {% if item.notes %}
+                <p class="mt-4 text-sm text-slate-500">{{ item.notes }}</p>
+                {% endif %}
+            </article>
+            {% else %}
+            <p class="text-sm text-slate-500">Nenhum insumo comprado cadastrado.</p>
+            {% endfor %}
+        </div>
+    </section>
+</div>
+
+<script>
+    (() => {
+        const form = document.querySelector('[data-purchased-input-form]');
+        if (!form) return;
+        const quantityField = form.querySelector('[data-quantity-purchased]');
+        const sizeField = form.querySelector('[data-package-size]');
+        const unitPriceField = form.querySelector('[data-unit-price]');
+        const totalQuantityField = form.querySelector('[data-total-quantity]');
+        const totalCostField = form.querySelector('[data-total-cost]');
+
+        const syncTotals = () => {
+            const quantity = Number(quantityField?.value || 0);
+            const size = Number(sizeField?.value || 0);
+            const unitPrice = Number(unitPriceField?.value || 0);
+            totalQuantityField.value = quantity && size ? (quantity * size).toFixed(2) : '';
+            totalCostField.value = quantity && unitPrice ? (quantity * unitPrice).toFixed(2) : '';
+        };
+
+        [quantityField, sizeField, unitPriceField].forEach((field) => field?.addEventListener('input', syncTotals));
+        syncTotals();
+    })();
+</script>
+{% endblock %}
