@@ -1286,8 +1286,8 @@ def delete_purchased_input_action(
 @router.get("/insumos/estoque")
 def stock_page(
     request: Request,
-    farm_id: int | None = None,
-    input_id: int | None = None,
+    farm_id: str | None = None,
+    input_id: str | None = None,
     start_date: str | None = None,
     end_date: str | None = None,
     movement_type: str = "all",
@@ -1297,13 +1297,15 @@ def stock_page(
     csrf_token: str = Depends(get_csrf_token),
 ):
     repo = _repository(db)
+    selected_farm_id = _int_or_none(farm_id)
+    selected_input_id = _int_or_none(input_id)
     start = _date_or_none(start_date)
     end = _date_or_none(end_date)
     normalized_item_type = item_type if item_type in {"insumo_agricola", "combustivel"} else None
     stock_context = _build_stock_context(
         repo,
-        farm_id=farm_id,
-        input_id=input_id,
+        farm_id=selected_farm_id,
+        input_id=selected_input_id,
         start_date=start,
         end_date=end,
         movement_type=movement_type,
@@ -1319,15 +1321,15 @@ def stock_page(
             title="Estoque de Insumos",
             farms=repo.list_farms(),
             plots=repo.list_plots(),
-            selected_farm_id=farm_id,
-            selected_input_id=input_id,
+            selected_farm_id=selected_farm_id,
+            selected_input_id=selected_input_id,
             selected_start_date=start_date,
             selected_end_date=end_date,
             selected_movement_type=movement_type,
             selected_item_type=normalized_item_type or "",
             stock_export_query=_stock_export_query(
-                farm_id=farm_id,
-                input_id=input_id,
+                farm_id=selected_farm_id,
+                input_id=selected_input_id,
                 start_date=start,
                 end_date=end,
                 movement_type=movement_type,
@@ -1381,8 +1383,8 @@ def create_manual_stock_output_action(
 
 @router.get("/insumos/estoque/exportar.xlsx")
 def export_stock_extract_xlsx(
-    farm_id: int | None = None,
-    input_id: int | None = None,
+    farm_id: str | None = None,
+    input_id: str | None = None,
     start_date: str | None = None,
     end_date: str | None = None,
     movement_type: str = "all",
@@ -1392,10 +1394,12 @@ def export_stock_extract_xlsx(
 ):
     del user
     repo = _repository(db)
+    selected_farm_id = _int_or_none(farm_id)
+    selected_input_id = _int_or_none(input_id)
     rows = _build_stock_context(
         repo,
-        farm_id=farm_id,
-        input_id=input_id,
+        farm_id=selected_farm_id,
+        input_id=selected_input_id,
         start_date=_date_or_none(start_date),
         end_date=_date_or_none(end_date),
         movement_type=movement_type,
@@ -1446,8 +1450,8 @@ def export_stock_extract_xlsx(
 
 @router.get("/insumos/estoque/exportar.pdf")
 def export_stock_extract_pdf(
-    farm_id: int | None = None,
-    input_id: int | None = None,
+    farm_id: str | None = None,
+    input_id: str | None = None,
     start_date: str | None = None,
     end_date: str | None = None,
     movement_type: str = "all",
@@ -1457,10 +1461,12 @@ def export_stock_extract_pdf(
 ):
     del user
     repo = _repository(db)
+    selected_farm_id = _int_or_none(farm_id)
+    selected_input_id = _int_or_none(input_id)
     rows = _build_stock_context(
         repo,
-        farm_id=farm_id,
-        input_id=input_id,
+        farm_id=selected_farm_id,
+        input_id=selected_input_id,
         start_date=_date_or_none(start_date),
         end_date=_date_or_none(end_date),
         movement_type=movement_type,

@@ -7,7 +7,7 @@
             <h3 class="mt-2 text-2xl font-semibold">Controle consolidado de insumos</h3>
             <p class="mt-2 max-w-3xl text-sm text-slate-500">Consulte saldos, entradas, saídas e o extrato cronológico do estoque. As saídas automáticas vindas da fertilização continuam registradas aqui, e você também pode lançar saídas manuais com validação de saldo.</p>
         </div>
-        <form method="get" action="/insumos/estoque" class="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
+        <form method="get" action="/insumos/estoque" class="grid gap-3 sm:grid-cols-2 xl:grid-cols-6" data-stock-filter-form>
             <label>
                 <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Tipo</span>
                 <select name="item_type" class="w-full rounded-xl border-slate-200 bg-slate-50">
@@ -296,10 +296,10 @@
     </div>
 </section>
 
-<script>
-    (() => {
-        const buttons = Array.from(document.querySelectorAll('[data-stock-tab-button]'));
-        const tabs = Array.from(document.querySelectorAll('[data-stock-tab]'));
+    <script>
+        (() => {
+            const buttons = Array.from(document.querySelectorAll('[data-stock-tab-button]'));
+            const tabs = Array.from(document.querySelectorAll('[data-stock-tab]'));
         if (!buttons.length || !tabs.length) return;
 
         const activate = (target) => {
@@ -315,10 +315,19 @@
             });
         };
 
-        buttons.forEach((button) => {
-            button.addEventListener('click', () => activate(button.dataset.stockTabButton));
-        });
-        activate('entries');
-    })();
-</script>
+            buttons.forEach((button) => {
+                button.addEventListener('click', () => activate(button.dataset.stockTabButton));
+            });
+            activate('entries');
+
+            const stockFilterForm = document.querySelector('[data-stock-filter-form]');
+            stockFilterForm?.addEventListener('submit', () => {
+                stockFilterForm.querySelectorAll('select[name="farm_id"], select[name="input_id"]').forEach((field) => {
+                    if (!field.value) {
+                        field.disabled = true;
+                    }
+                });
+            });
+        })();
+    </script>
 {% endblock %}
