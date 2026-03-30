@@ -1,0 +1,287 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="rounded-[2rem] bg-white p-6 shadow-panel">
+    <div class="flex flex-wrap items-start justify-between gap-4">
+        <div>
+            <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Estoque</p>
+            <h3 class="mt-2 text-2xl font-semibold">Controle consolidado de insumos</h3>
+            <p class="mt-2 max-w-3xl text-sm text-slate-500">Consulte saldos, entradas, saídas e o extrato cronológico do estoque. As saídas automáticas vindas da fertilização continuam registradas aqui, e você também pode lançar saídas manuais com validação de saldo.</p>
+        </div>
+        <form method="get" action="/insumos/estoque" class="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+            <label>
+                <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Fazenda</span>
+                <select name="farm_id" class="w-full rounded-xl border-slate-200 bg-slate-50">
+                    <option value="">Todas</option>
+                    {% for farm in farms %}
+                    <option value="{{ farm.id }}" {% if selected_farm_id == farm.id %}selected{% endif %}>{{ farm.name }}</option>
+                    {% endfor %}
+                </select>
+            </label>
+            <label>
+                <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Insumo</span>
+                <select name="input_id" class="w-full rounded-xl border-slate-200 bg-slate-50">
+                    <option value="">Todos</option>
+                    {% for input_item in inputs_catalog %}
+                    <option value="{{ input_item.id }}" {% if selected_input_id == input_item.id %}selected{% endif %}>{{ input_item.name }}</option>
+                    {% endfor %}
+                </select>
+            </label>
+            <div class="flex items-end gap-3">
+                <button class="rounded-xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white">Filtrar</button>
+                <a href="/insumos/estoque" class="rounded-xl bg-slate-100 px-4 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-200">Limpar</a>
+            </div>
+        </form>
+    </div>
+</section>
+
+<section class="mt-6 grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
+    <article class="rounded-[2rem] bg-white p-6 shadow-panel">
+        <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Visão consolidada</p>
+        <h3 class="mt-2 text-xl font-semibold">Saldo atual por insumo</h3>
+        <div class="mt-6 grid gap-4 md:grid-cols-2">
+            {% for item in stock_catalog_rows %}
+            <div class="rounded-[1.5rem] border {% if item.low_stock_threshold and item.available_quantity <= item.low_stock_threshold %}border-amber-200 bg-amber-50{% else %}border-slate-100 bg-slate-50{% endif %} p-5">
+                <div class="flex items-start justify-between gap-3">
+                    <div>
+                        <p class="text-lg font-semibold text-slate-900">{{ item.name }}</p>
+                        <p class="mt-1 text-sm text-slate-500">Saldo: <strong>{{ item.available_quantity }} {{ item.unit }}</strong></p>
+                    </div>
+                    {% if item.low_stock_threshold and item.available_quantity <= item.low_stock_threshold %}
+                    <span class="rounded-full bg-amber-200 px-3 py-1 text-xs font-semibold text-amber-800">Alerta</span>
+                    {% else %}
+                    <span class="rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-700">OK</span>
+                    {% endif %}
+                </div>
+                <div class="mt-4 grid gap-3 text-sm text-slate-600 sm:grid-cols-2">
+                    <p>Total em entradas: <strong>{{ item.total_quantity }} {{ item.unit }}</strong></p>
+                    <p>Custo médio: <strong>R$ {{ item.average_cost }}</strong></p>
+                    <p>Lotes: <strong>{{ item.entries_count }}</strong></p>
+                    <p>Saídas: <strong>{{ item.outputs_count }}</strong></p>
+                </div>
+                <p class="mt-3 text-sm text-slate-500">
+                    Estoque mínimo:
+                    <strong>{% if item.low_stock_threshold %}{{ item.low_stock_threshold }} {{ item.unit }}{% else %}não configurado{% endif %}</strong>
+                    {% if item.last_movement_date %} • Última movimentação: <strong>{{ item.last_movement_date }}</strong>{% endif %}
+                </p>
+            </div>
+            {% else %}
+            <p class="text-sm text-slate-500 md:col-span-2">Nenhum insumo encontrado para os filtros informados.</p>
+            {% endfor %}
+        </div>
+    </article>
+
+    <article class="rounded-[2rem] bg-white p-6 shadow-panel">
+        <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Saída manual</p>
+        <h3 class="mt-2 text-xl font-semibold">Lançar consumo avulso</h3>
+        <form method="post" action="/insumos/estoque/saida-manual" class="mt-6 grid gap-4">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <div class="grid gap-4 md:grid-cols-2">
+                <label>
+                    <span class="mb-2 block text-sm font-medium">Fazenda</span>
+                    <select name="farm_id" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50">
+                        <option value="">Sem vínculo específico</option>
+                        {% for farm in farms %}
+                        <option value="{{ farm.id }}" {% if selected_farm_id == farm.id %}selected{% endif %}>{{ farm.name }}</option>
+                        {% endfor %}
+                    </select>
+                </label>
+                <label>
+                    <span class="mb-2 block text-sm font-medium">Setor</span>
+                    <select name="plot_id" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50">
+                        <option value="">Sem setor</option>
+                        {% for plot in plots %}
+                        <option value="{{ plot.id }}">{{ plot.name }}{% if plot.farm %} • {{ plot.farm.name }}{% endif %}</option>
+                        {% endfor %}
+                    </select>
+                </label>
+            </div>
+            <div class="grid gap-4 md:grid-cols-2">
+                <label>
+                    <span class="mb-2 block text-sm font-medium">Insumo</span>
+                    <select name="input_id" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required>
+                        <option value="">Selecione</option>
+                        {% for input_item in inputs_catalog %}
+                        {% set stock = input_stock.get(input_item.id, {}) %}
+                        <option value="{{ input_item.id }}">
+                            {{ input_item.name }} — disponível: {{ stock.get('available', 0) }} {{ stock.get('unit', input_item.default_unit) }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </label>
+                <label>
+                    <span class="mb-2 block text-sm font-medium">Data</span>
+                    <input type="date" name="movement_date" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" value="{{ request.query_params.get('movement_date', '') }}">
+                </label>
+            </div>
+            <div class="grid gap-4 md:grid-cols-2">
+                <label>
+                    <span class="mb-2 block text-sm font-medium">Quantidade</span>
+                    <input type="number" step="0.01" min="0" name="quantity" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required>
+                </label>
+                <label>
+                    <span class="mb-2 block text-sm font-medium">Unidade</span>
+                    <select name="unit" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50">
+                        {% for unit in ['kg', 'g', 'L', 'ml', 'sacas', 'un'] %}
+                        <option value="{{ unit }}">{{ unit }}</option>
+                        {% endfor %}
+                    </select>
+                </label>
+            </div>
+            <label>
+                <span class="mb-2 block text-sm font-medium">Observações</span>
+                <textarea name="notes" rows="4" class="w-full rounded-2xl border-slate-200 bg-slate-50"></textarea>
+            </label>
+            <button class="rounded-2xl bg-brand-500 px-4 py-3 font-semibold text-white hover:bg-brand-700">Registrar saída manual</button>
+        </form>
+    </article>
+</section>
+
+<section class="mt-6 rounded-[2rem] bg-white p-6 shadow-panel">
+    <div class="flex flex-wrap gap-3">
+        <button type="button" class="rounded-xl bg-brand-500 px-4 py-2 text-sm font-semibold text-white" data-stock-tab-button="entries">Entradas</button>
+        <button type="button" class="rounded-xl bg-slate-100 px-4 py-2 text-sm font-semibold text-slate-700" data-stock-tab-button="outputs">Saídas</button>
+        <button type="button" class="rounded-xl bg-slate-100 px-4 py-2 text-sm font-semibold text-slate-700" data-stock-tab-button="extract">Extrato</button>
+    </div>
+
+    <div class="mt-6" data-stock-tab="entries">
+        <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Histórico de entradas</p>
+        <h3 class="mt-2 text-xl font-semibold">Compras e lotes</h3>
+        <div class="mt-6 overflow-hidden rounded-[1.5rem] border border-slate-200">
+            <div class="overflow-x-auto">
+                <table class="min-w-full divide-y divide-slate-200 text-sm">
+                    <thead class="bg-slate-50 text-left text-slate-500">
+                        <tr>
+                            <th class="px-4 py-3 font-medium">Data</th>
+                            <th class="px-4 py-3 font-medium">Insumo</th>
+                            <th class="px-4 py-3 font-medium">Fazenda</th>
+                            <th class="px-4 py-3 font-medium">Quantidade</th>
+                            <th class="px-4 py-3 font-medium">Saldo do lote</th>
+                            <th class="px-4 py-3 font-medium">Valor</th>
+                            <th class="px-4 py-3 font-medium">Observações</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-100 bg-white">
+                        {% for entry in purchase_entries %}
+                        <tr>
+                            <td class="px-4 py-3">{{ entry.purchase_date or "-" }}</td>
+                            <td class="px-4 py-3 font-medium text-slate-900">{{ entry.input_catalog.name if entry.input_catalog else entry.name }}</td>
+                            <td class="px-4 py-3">{{ entry.farm.name if entry.farm else "Sem vínculo" }}</td>
+                            <td class="px-4 py-3">{{ entry.total_quantity }} {{ entry.package_unit }}</td>
+                            <td class="px-4 py-3">{{ entry.available_quantity }} {{ entry.package_unit }}</td>
+                            <td class="px-4 py-3">R$ {{ entry.total_cost }}</td>
+                            <td class="px-4 py-3 text-slate-500">{{ entry.notes or "-" }}</td>
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="7" class="px-4 py-6 text-center text-slate-500">Nenhuma entrada encontrada.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <div class="mt-6 hidden" data-stock-tab="outputs">
+        <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Histórico de saídas</p>
+        <h3 class="mt-2 text-xl font-semibold">Usos e baixas</h3>
+        <div class="mt-6 overflow-hidden rounded-[1.5rem] border border-slate-200">
+            <div class="overflow-x-auto">
+                <table class="min-w-full divide-y divide-slate-200 text-sm">
+                    <thead class="bg-slate-50 text-left text-slate-500">
+                        <tr>
+                            <th class="px-4 py-3 font-medium">Data</th>
+                            <th class="px-4 py-3 font-medium">Insumo</th>
+                            <th class="px-4 py-3 font-medium">Origem</th>
+                            <th class="px-4 py-3 font-medium">Fazenda / Setor</th>
+                            <th class="px-4 py-3 font-medium">Quantidade</th>
+                            <th class="px-4 py-3 font-medium">Custo</th>
+                            <th class="px-4 py-3 font-medium">Observações</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-100 bg-white">
+                        {% for output in stock_outputs %}
+                        <tr>
+                            <td class="px-4 py-3">{{ output.movement_date }}</td>
+                            <td class="px-4 py-3 font-medium text-slate-900">{{ output.input_catalog.name if output.input_catalog else "-" }}</td>
+                            <td class="px-4 py-3">{{ output.origin }}</td>
+                            <td class="px-4 py-3">{{ output.farm.name if output.farm else "Sem vínculo" }}{% if output.plot %} / {{ output.plot.name }}{% endif %}</td>
+                            <td class="px-4 py-3">{{ output.quantity }} {{ output.unit }}</td>
+                            <td class="px-4 py-3">{% if output.total_cost is not none %}R$ {{ output.total_cost }}{% else %}-{% endif %}</td>
+                            <td class="px-4 py-3 text-slate-500">{{ output.notes or "-" }}</td>
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="7" class="px-4 py-6 text-center text-slate-500">Nenhuma saída encontrada.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <div class="mt-6 hidden" data-stock-tab="extract">
+        <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Extrato</p>
+        <h3 class="mt-2 text-xl font-semibold">Movimentações em ordem cronológica</h3>
+        <div class="mt-6 overflow-hidden rounded-[1.5rem] border border-slate-200">
+            <div class="overflow-x-auto">
+                <table class="min-w-full divide-y divide-slate-200 text-sm">
+                    <thead class="bg-slate-50 text-left text-slate-500">
+                        <tr>
+                            <th class="px-4 py-3 font-medium">Data</th>
+                            <th class="px-4 py-3 font-medium">Insumo</th>
+                            <th class="px-4 py-3 font-medium">Movimento</th>
+                            <th class="px-4 py-3 font-medium">Origem / Ref.</th>
+                            <th class="px-4 py-3 font-medium">Quantidade</th>
+                            <th class="px-4 py-3 font-medium">Saldo após</th>
+                            <th class="px-4 py-3 font-medium">Valor</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-100 bg-white">
+                        {% for row in extract_rows %}
+                        <tr>
+                            <td class="px-4 py-3">{{ row.date or "-" }}</td>
+                            <td class="px-4 py-3 font-medium text-slate-900">{{ row.input_name }}</td>
+                            <td class="px-4 py-3">
+                                <span class="rounded-full px-3 py-1 text-xs font-semibold {% if row.kind == 'entrada' %}bg-emerald-100 text-emerald-700{% else %}bg-rose-100 text-rose-700{% endif %}">
+                                    {{ row.kind }}
+                                </span>
+                            </td>
+                            <td class="px-4 py-3">{{ row.origin }} • {{ row.reference }}</td>
+                            <td class="px-4 py-3">{{ row.quantity }} {{ row.unit }}</td>
+                            <td class="px-4 py-3">{{ row.balance_after }} {{ row.unit }}</td>
+                            <td class="px-4 py-3">{% if row.value is not none %}R$ {{ row.value }}{% else %}-{% endif %}</td>
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="7" class="px-4 py-6 text-center text-slate-500">Nenhuma movimentação encontrada.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</section>
+
+<script>
+    (() => {
+        const buttons = Array.from(document.querySelectorAll('[data-stock-tab-button]'));
+        const tabs = Array.from(document.querySelectorAll('[data-stock-tab]'));
+        if (!buttons.length || !tabs.length) return;
+
+        const activate = (target) => {
+            buttons.forEach((button) => {
+                const active = button.dataset.stockTabButton === target;
+                button.classList.toggle('bg-brand-500', active);
+                button.classList.toggle('text-white', active);
+                button.classList.toggle('bg-slate-100', !active);
+                button.classList.toggle('text-slate-700', !active);
+            });
+            tabs.forEach((tab) => {
+                tab.classList.toggle('hidden', tab.dataset.stockTab !== target);
+            });
+        };
+
+        buttons.forEach((button) => {
+            button.addEventListener('click', () => activate(button.dataset.stockTabButton));
+        });
+        activate('entries');
+    })();
+</script>
+{% endblock %}

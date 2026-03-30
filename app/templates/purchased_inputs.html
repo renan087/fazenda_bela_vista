@@ -3,7 +3,7 @@
 <div class="grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
     <section class="rounded-[2rem] bg-white p-6 shadow-panel">
         <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Insumos</p>
-        <h3 class="mt-2 text-2xl font-semibold">{% if edit_input %}Editar insumo comprado{% else %}Insumos comprados{% endif %}</h3>
+        <h3 class="mt-2 text-2xl font-semibold">{% if edit_input %}Editar entrada de estoque{% else %}Nova entrada de estoque{% endif %}</h3>
         <form method="post" action="{% if edit_input %}/insumos/comprados/{{ edit_input.id }}/editar{% else %}/insumos/comprados{% endif %}" class="mt-6 grid gap-4" data-purchased-input-form>
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
             <div class="grid gap-4 md:grid-cols-2">
@@ -18,7 +18,16 @@
             </label>
             <label><span class="mb-2 block text-sm font-medium">Data da compra</span><input type="date" name="purchase_date" value="{{ edit_input.purchase_date.isoformat() if edit_input and edit_input.purchase_date else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50"></label>
             </div>
-            <label><span class="mb-2 block text-sm font-medium">Nome do insumo</span><input name="name" value="{{ edit_input.name if edit_input else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required></label>
+            <label>
+                <span class="mb-2 block text-sm font-medium">Nome do insumo</span>
+                <input name="name" list="inputs-catalog-list" value="{{ edit_input.input_catalog.name if edit_input and edit_input.input_catalog else (edit_input.name if edit_input else '') }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required>
+                <span class="mt-2 block text-xs text-slate-500">Digite para reutilizar um insumo ja existente. Se nao aparecer, o sistema cadastra um novo automaticamente.</span>
+            </label>
+            <datalist id="inputs-catalog-list">
+                {% for input_item in inputs_catalog %}
+                <option value="{{ input_item.name }}"></option>
+                {% endfor %}
+            </datalist>
             <div class="grid gap-4 md:grid-cols-2">
                 <label><span class="mb-2 block text-sm font-medium">Quantidade comprada</span><input type="number" step="0.01" min="0" name="quantity_purchased" value="{{ edit_input.quantity_purchased if edit_input else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required data-quantity-purchased></label>
                 <label><span class="mb-2 block text-sm font-medium">Tamanho do saco / embalagem</span><input type="number" step="0.01" min="0" name="package_size" value="{{ edit_input.package_size if edit_input else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required data-package-size></label>
@@ -50,22 +59,54 @@
     </section>
     <section class="rounded-[2rem] bg-white p-6 shadow-panel">
         <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Estoque tecnico</p>
-        <h3 class="mt-2 text-2xl font-semibold">Insumos comprados</h3>
+        <h3 class="mt-2 text-2xl font-semibold">Estoque consolidado</h3>
+        <div class="mt-6 grid gap-4 md:grid-cols-2">
+            {% for item in stock_catalog_rows %}
+            <article class="rounded-[1.5rem] border {% if item.low_stock_threshold and item.available_quantity <= item.low_stock_threshold %}border-amber-200 bg-amber-50{% else %}border-slate-100 bg-slate-50{% endif %} p-5">
+                <div class="flex items-start justify-between gap-3">
+                    <div>
+                        <p class="text-lg font-semibold text-slate-900">{{ item.name }}</p>
+                        <p class="mt-1 text-sm text-slate-500">Saldo atual: <strong>{{ item.available_quantity }} {{ item.unit }}</strong></p>
+                    </div>
+                    {% if item.low_stock_threshold and item.available_quantity <= item.low_stock_threshold %}
+                    <span class="rounded-full bg-amber-200 px-3 py-1 text-xs font-semibold text-amber-800">Estoque baixo</span>
+                    {% else %}
+                    <span class="rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-700">Regular</span>
+                    {% endif %}
+                </div>
+                <div class="mt-4 grid gap-3 text-sm text-slate-600 sm:grid-cols-2">
+                    <p>Total em entradas: <strong>{{ item.total_quantity }} {{ item.unit }}</strong></p>
+                    <p>Custo medio: <strong>R$ {{ item.average_cost }}</strong></p>
+                    <p>Lotes registrados: <strong>{{ item.entries_count }}</strong></p>
+                    <p>Saidas registradas: <strong>{{ item.outputs_count }}</strong></p>
+                </div>
+                <p class="mt-3 text-sm text-slate-500">
+                    Alerta minimo:
+                    <strong>{% if item.low_stock_threshold %}{{ item.low_stock_threshold }} {{ item.unit }}{% else %}nao configurado{% endif %}</strong>
+                    {% if item.last_movement_date %} • Ultima movimentacao: <strong>{{ item.last_movement_date }}</strong>{% endif %}
+                </p>
+            </article>
+            {% else %}
+            <p class="text-sm text-slate-500 md:col-span-2">Nenhum insumo consolidado disponivel.</p>
+            {% endfor %}
+        </div>
+
+        <div class="mt-8">
+            <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Entradas</p>
+            <h4 class="mt-2 text-xl font-semibold">Historico de compras e lotes</h4>
+        </div>
         <div class="mt-6 space-y-4">
             {% for item in inputs %}
             <article class="rounded-[1.5rem] border border-slate-100 bg-slate-50 p-5">
                 <div class="flex flex-wrap items-start justify-between gap-4">
                     <div>
-                        <p class="text-lg font-semibold">{{ item.name }}</p>
+                        <p class="text-lg font-semibold">{{ item.input_catalog.name if item.input_catalog else item.name }}</p>
                         <p class="mt-1 text-sm text-slate-500">{{ item.farm.name if item.farm else "Sem fazenda vinculada" }}</p>
-                        <p class="mt-2 text-sm text-slate-600">{{ item.quantity_purchased }} volumes x {{ item.package_size }} {{ item.package_unit }}</p>
-                        <p class="mt-1 text-sm text-slate-600">Total: <strong>{{ item.total_quantity }} {{ item.package_unit }}</strong> • Disponivel: <strong>{{ item.available_quantity }} {{ item.package_unit }}</strong></p>
+                        <p class="mt-2 text-sm text-slate-600">Lote: {{ item.quantity_purchased }} volumes x {{ item.package_size }} {{ item.package_unit }}</p>
+                        <p class="mt-1 text-sm text-slate-600">Entrada total: <strong>{{ item.total_quantity }} {{ item.package_unit }}</strong> • Saldo deste lote: <strong>{{ item.available_quantity }} {{ item.package_unit }}</strong></p>
                         <p class="mt-1 text-sm text-slate-600">Valor total: <strong>R$ {{ item.total_cost }}</strong>{% if item.purchase_date %} • Compra: <strong>{{ item.purchase_date }}</strong>{% endif %}</p>
                     </div>
                     <div class="flex gap-2">
-                        {% if item.low_stock_threshold and item.available_quantity <= item.low_stock_threshold %}
-                        <span class="rounded-xl bg-amber-100 px-3 py-2 text-xs font-semibold text-amber-700">Estoque baixo</span>
-                        {% endif %}
                         <a href="/insumos/comprados?edit_id={{ item.id }}" class="rounded-xl bg-slate-900 px-3 py-2 text-xs font-medium text-white hover:bg-slate-700">Editar</a>
                         <form method="post" action="/insumos/comprados/{{ item.id }}/excluir" onsubmit="return confirm('Excluir o insumo {{ item.name }}?');">
                             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
@@ -79,6 +120,30 @@
             </article>
             {% else %}
             <p class="text-sm text-slate-500">Nenhum insumo comprado cadastrado.</p>
+            {% endfor %}
+        </div>
+
+        <div class="mt-8">
+            <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Saidas</p>
+            <h4 class="mt-2 text-xl font-semibold">Historico de consumo</h4>
+        </div>
+        <div class="mt-6 space-y-4">
+            {% for output in stock_outputs %}
+            <article class="rounded-[1.5rem] border border-slate-100 bg-slate-50 p-5">
+                <div class="flex flex-wrap items-start justify-between gap-4">
+                    <div>
+                        <p class="text-lg font-semibold">{{ output.input_catalog.name if output.input_catalog else "Insumo removido" }}</p>
+                        <p class="mt-1 text-sm text-slate-500">{{ output.farm.name if output.farm else "Sem fazenda vinculada" }}{% if output.plot %} • {{ output.plot.name }}{% endif %}</p>
+                        <p class="mt-2 text-sm text-slate-600">Saida: <strong>{{ output.quantity }} {{ output.unit }}</strong> • Origem: <strong>{{ output.origin }}</strong></p>
+                        <p class="mt-1 text-sm text-slate-600">Data: <strong>{{ output.movement_date }}</strong>{% if output.total_cost is not none %} • Custo: <strong>R$ {{ output.total_cost }}</strong>{% endif %}</p>
+                    </div>
+                </div>
+                {% if output.notes %}
+                <p class="mt-4 text-sm text-slate-500">{{ output.notes }}</p>
+                {% endif %}
+            </article>
+            {% else %}
+            <p class="text-sm text-slate-500">Nenhuma saida registrada ate o momento.</p>
             {% endfor %}
         </div>
     </section>

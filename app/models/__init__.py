@@ -7,6 +7,7 @@ from app.models.fertilization_schedule_item import FertilizationScheduleItem
 from app.models.fertilization_stock_allocation import FertilizationStockAllocation
 from app.models.fertilization import FertilizationRecord
 from app.models.harvest import HarvestRecord
+from app.models.input_catalog import InputCatalog
 from app.models.input_recommendation import InputRecommendation
 from app.models.input_recommendation_item import InputRecommendationItem
 from app.models.irrigation import IrrigationRecord
@@ -15,6 +16,7 @@ from app.models.plot import Plot
 from app.models.purchased_input import PurchasedInput
 from app.models.rainfall import RainfallRecord
 from app.models.soil_analysis import SoilAnalysis
+from app.models.stock_output import StockOutput
 from app.models.user import User
 
 __all__ = [
@@ -27,6 +29,7 @@ __all__ = [
     "FertilizationStockAllocation",
     "FertilizationRecord",
     "HarvestRecord",
+    "InputCatalog",
     "InputRecommendation",
     "InputRecommendationItem",
     "IrrigationRecord",
@@ -35,5 +38,6 @@ __all__ = [
     "PurchasedInput",
     "RainfallRecord",
     "SoilAnalysis",
+    "StockOutput",
     "User",
 ]

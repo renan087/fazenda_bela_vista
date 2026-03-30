@@ -74,6 +74,7 @@ def build_dashboard_context(
     fertilizations = repository.list_fertilizations()
     schedules = repository.list_fertilization_schedules()
     purchased_inputs = repository.list_purchased_inputs()
+    catalog_inputs = repository.list_input_catalog()
     incidents = repository.list_pest_incidents()
     soil_analyses = repository.list_soil_analyses()[:6]
     today = date.today()
@@ -96,10 +97,39 @@ def build_dashboard_context(
     cost_per_hectare = total_cost / total_area if total_area else 0
     monthly_rainfall = sum(_float(item.millimeters) for item in month_rainfalls)
     rainfall_period_total = sum(_float(item.millimeters) for item in rainfalls)
+    stock_by_input: dict[int, dict] = {}
+    for catalog in catalog_inputs:
+        related_entries = [entry for entry in purchased_inputs if entry.input_id == catalog.id]
+        available_quantity = sum(_float(entry.available_quantity) for entry in related_entries)
+        total_quantity = sum(_float(entry.total_quantity) for entry in related_entries)
+        total_value = sum(
+            (_float(entry.available_quantity) * (_float(entry.total_cost) / max(_float(entry.total_quantity), 1)))
+            for entry in related_entries
+            if _float(entry.available_quantity) > 0
+        )
+        latest_entry = max(
+            related_entries,
+            key=lambda entry: ((entry.purchase_date or today), entry.id),
+            default=None,
+        )
+        stock_by_input[catalog.id] = {
+            "id": catalog.id,
+            "name": catalog.name,
+            "unit": catalog.default_unit,
+            "available_quantity": round(available_quantity, 2),
+            "total_quantity": round(total_quantity, 2),
+            "low_stock_threshold": round(_float(catalog.low_stock_threshold), 2),
+            "farm": latest_entry.farm if latest_entry else None,
+            "last_purchase_date": latest_entry.purchase_date if latest_entry else None,
+            "average_cost": round(total_value / available_quantity, 4) if available_quantity else 0,
+        }
+
     low_stock_items = [
-        item for item in purchased_inputs
-        if _float(item.low_stock_threshold) > 0 and _float(item.available_quantity) <= _float(item.low_stock_threshold)
+        item
+        for item in stock_by_input.values()
+        if item["low_stock_threshold"] > 0 and item["available_quantity"] <= item["low_stock_threshold"]
     ]
+    low_stock_items.sort(key=lambda item: (item["available_quantity"], item["name"]))
     schedule_alerts = []
     for schedule in schedules:
         status = schedule.status
@@ -110,7 +140,7 @@ def build_dashboard_context(
             "shortages": [],
         }
         for item in schedule.items:
-            available = _float(item.purchased_input.available_quantity if item.purchased_input else 0)
+            available = stock_by_input.get(item.input_id or 0, {}).get("available_quantity", 0)
             required = _float(item.quantity)
             if required > available:
                 validation["ok"] = False
@@ -118,7 +148,7 @@ def build_dashboard_context(
                     {
                         "name": item.name,
                         "missing": round(required - available, 2),
-                        "unit": item.unit,
+                        "unit": item.unit or stock_by_input.get(item.input_id or 0, {}).get("unit", ""),
                     }
                 )
         schedule_alerts.append(

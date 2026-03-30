@@ -10,8 +10,10 @@ class PurchasedInput(Base):
     __tablename__ = "purchased_inputs"
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    input_id: Mapped[int] = mapped_column(ForeignKey("input_catalog.id"), nullable=True)
     farm_id: Mapped[int] = mapped_column(ForeignKey("farms.id"), nullable=True)
     name: Mapped[str] = mapped_column(String(160), nullable=False)
+    normalized_name: Mapped[str] = mapped_column(String(180), nullable=True)
     quantity_purchased: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False)
     package_size: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False)
     package_unit: Mapped[str] = mapped_column(String(20), nullable=False)
@@ -23,8 +25,10 @@ class PurchasedInput(Base):
     low_stock_threshold: Mapped[float] = mapped_column(Numeric(10, 2), nullable=True)
     notes: Mapped[str] = mapped_column(Text, nullable=True)
 
+    input_catalog = relationship("InputCatalog", back_populates="purchase_entries")
     farm = relationship("Farm", back_populates="purchased_inputs")
     recommendations = relationship("InputRecommendation", back_populates="purchased_input")
     recommendation_items = relationship("InputRecommendationItem", back_populates="purchased_input")
     schedule_items = relationship("FertilizationScheduleItem", back_populates="purchased_input")
     stock_allocations = relationship("FertilizationStockAllocation", back_populates="purchased_input")
+    stock_outputs = relationship("StockOutput", back_populates="purchased_input")

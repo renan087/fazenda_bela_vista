@@ -17,6 +17,7 @@ from app.models import (
     FertilizationStockAllocation,
     FertilizationRecord,
     HarvestRecord,
+    InputCatalog,
     InputRecommendation,
     InputRecommendationItem,
     IrrigationRecord,
@@ -25,6 +26,7 @@ from app.models import (
     PurchasedInput,
     RainfallRecord,
     SoilAnalysis,
+    StockOutput,
     User,
 )
 
@@ -84,10 +86,22 @@ def _sync_schema() -> None:
         )
         """,
         """
+        CREATE TABLE IF NOT EXISTS input_catalog (
+            id SERIAL PRIMARY KEY,
+            name VARCHAR(160) NOT NULL,
+            normalized_name VARCHAR(180) UNIQUE NOT NULL,
+            default_unit VARCHAR(20) NOT NULL DEFAULT 'kg',
+            low_stock_threshold NUMERIC(10,2),
+            is_active BOOLEAN NOT NULL DEFAULT TRUE
+        )
+        """,
+        """
         CREATE TABLE IF NOT EXISTS purchased_inputs (
             id SERIAL PRIMARY KEY,
+            input_id INTEGER REFERENCES input_catalog(id) ON DELETE SET NULL,
             farm_id INTEGER REFERENCES farms(id) ON DELETE SET NULL,
             name VARCHAR(160) NOT NULL,
+            normalized_name VARCHAR(180),
             quantity_purchased NUMERIC(10,2) NOT NULL,
             package_size NUMERIC(10,2) NOT NULL,
             package_unit VARCHAR(20) NOT NULL,
@@ -116,7 +130,8 @@ def _sync_schema() -> None:
         CREATE TABLE IF NOT EXISTS input_recommendation_items (
             id SERIAL PRIMARY KEY,
             recommendation_id INTEGER NOT NULL REFERENCES input_recommendations(id) ON DELETE CASCADE,
-            purchased_input_id INTEGER NOT NULL REFERENCES purchased_inputs(id) ON DELETE CASCADE,
+            input_id INTEGER REFERENCES input_catalog(id) ON DELETE CASCADE,
+            purchased_input_id INTEGER REFERENCES purchased_inputs(id) ON DELETE CASCADE,
             unit VARCHAR(20) NOT NULL,
             quantity NUMERIC(10,2) NOT NULL
         )
@@ -135,10 +150,30 @@ def _sync_schema() -> None:
         CREATE TABLE IF NOT EXISTS fertilization_schedule_items (
             id SERIAL PRIMARY KEY,
             schedule_id INTEGER NOT NULL REFERENCES fertilization_schedules(id) ON DELETE CASCADE,
-            purchased_input_id INTEGER NOT NULL REFERENCES purchased_inputs(id) ON DELETE CASCADE,
+            input_id INTEGER REFERENCES input_catalog(id) ON DELETE CASCADE,
+            purchased_input_id INTEGER REFERENCES purchased_inputs(id) ON DELETE CASCADE,
             name VARCHAR(160) NOT NULL,
             unit VARCHAR(20) NOT NULL,
             quantity NUMERIC(10,2) NOT NULL
+        )
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS stock_outputs (
+            id SERIAL PRIMARY KEY,
+            input_id INTEGER NOT NULL REFERENCES input_catalog(id) ON DELETE CASCADE,
+            purchased_input_id INTEGER REFERENCES purchased_inputs(id) ON DELETE SET NULL,
+            farm_id INTEGER REFERENCES farms(id) ON DELETE SET NULL,
+            plot_id INTEGER REFERENCES plots(id) ON DELETE SET NULL,
+            movement_date DATE NOT NULL,
+            quantity NUMERIC(10,2) NOT NULL,
+            unit VARCHAR(20) NOT NULL,
+            origin VARCHAR(40) NOT NULL,
+            reference_type VARCHAR(40),
+            reference_id INTEGER,
+            unit_cost NUMERIC(10,4),
+            total_cost NUMERIC(12,2),
+            notes TEXT,
+            created_at TIMESTAMPTZ DEFAULT NOW()
         )
         """,
         """
@@ -184,6 +219,11 @@ def _sync_schema() -> None:
         """,
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW()",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS is_admin BOOLEAN DEFAULT FALSE",
+        "ALTER TABLE purchased_inputs ADD COLUMN IF NOT EXISTS input_id INTEGER",
+        "ALTER TABLE purchased_inputs ADD COLUMN IF NOT EXISTS normalized_name VARCHAR(180)",
+        "ALTER TABLE input_recommendation_items ADD COLUMN IF NOT EXISTS input_id INTEGER",
+        "ALTER TABLE fertilization_items ADD COLUMN IF NOT EXISTS input_id INTEGER",
+        "ALTER TABLE fertilization_schedule_items ADD COLUMN IF NOT EXISTS input_id INTEGER",
         "ALTER TABLE coffee_varieties ADD COLUMN IF NOT EXISTS flavor_profile VARCHAR(180)",
         "ALTER TABLE plots ADD COLUMN IF NOT EXISTS planting_date DATE",
         "ALTER TABLE plots ADD COLUMN IF NOT EXISTS farm_id INTEGER",
@@ -224,11 +264,90 @@ def _sync_schema() -> None:
         connection.execute(text("ALTER TABLE input_recommendations ALTER COLUMN purchased_input_id DROP NOT NULL"))
         connection.execute(text("ALTER TABLE input_recommendations ALTER COLUMN unit DROP NOT NULL"))
         connection.execute(text("ALTER TABLE input_recommendations ALTER COLUMN quantity_per_hectare DROP NOT NULL"))
+        connection.execute(text("ALTER TABLE input_recommendation_items ALTER COLUMN purchased_input_id DROP NOT NULL"))
+        connection.execute(text("ALTER TABLE fertilization_schedule_items ALTER COLUMN purchased_input_id DROP NOT NULL"))
         connection.execute(text("UPDATE plots SET irrigation_type = 'none' WHERE irrigation_type IS NULL"))
         connection.execute(text("ALTER TABLE plots ALTER COLUMN irrigation_type SET DEFAULT 'none'"))
         connection.execute(text("UPDATE purchased_inputs SET purchase_date = CURRENT_DATE WHERE purchase_date IS NULL"))
         connection.execute(text("UPDATE purchased_inputs SET available_quantity = total_quantity WHERE available_quantity IS NULL"))
         connection.execute(text("UPDATE purchased_inputs SET low_stock_threshold = 0 WHERE low_stock_threshold IS NULL"))
+        connection.execute(
+            text(
+                """
+                UPDATE purchased_inputs
+                SET normalized_name = lower(
+                    regexp_replace(
+                        translate(trim(name), 'ÁÀÂÃÄáàâãäÉÈÊËéèêëÍÌÎÏíìîïÓÒÔÕÖóòôõöÚÙÛÜúùûüÇç', 'AAAAAaaaaaEEEEeeeeIIIIiiiiOOOOOoooooUUUUuuuuCc'),
+                        '\s+',
+                        ' ',
+                        'g'
+                    )
+                )
+                WHERE normalized_name IS NULL OR normalized_name = ''
+                """
+            )
+        )
+        connection.execute(
+            text(
+                """
+                INSERT INTO input_catalog (name, normalized_name, default_unit, low_stock_threshold, is_active)
+                SELECT MIN(name) AS name, normalized_name, MIN(package_unit) AS default_unit, MAX(COALESCE(low_stock_threshold, 0)) AS low_stock_threshold, TRUE
+                FROM purchased_inputs
+                WHERE normalized_name IS NOT NULL AND normalized_name <> ''
+                GROUP BY normalized_name
+                ON CONFLICT (normalized_name) DO UPDATE
+                SET
+                    name = EXCLUDED.name,
+                    default_unit = COALESCE(input_catalog.default_unit, EXCLUDED.default_unit),
+                    low_stock_threshold = GREATEST(COALESCE(input_catalog.low_stock_threshold, 0), COALESCE(EXCLUDED.low_stock_threshold, 0)),
+                    is_active = TRUE
+                """
+            )
+        )
+        connection.execute(
+            text(
+                """
+                UPDATE purchased_inputs entry
+                SET input_id = catalog.id
+                FROM input_catalog catalog
+                WHERE entry.normalized_name = catalog.normalized_name
+                  AND (entry.input_id IS NULL OR entry.input_id <> catalog.id)
+                """
+            )
+        )
+        connection.execute(
+            text(
+                """
+                UPDATE input_recommendation_items item
+                SET input_id = entry.input_id
+                FROM purchased_inputs entry
+                WHERE item.purchased_input_id = entry.id
+                  AND (item.input_id IS NULL OR item.input_id <> entry.input_id)
+                """
+            )
+        )
+        connection.execute(
+            text(
+                """
+                UPDATE fertilization_items item
+                SET input_id = entry.input_id
+                FROM purchased_inputs entry
+                WHERE item.purchased_input_id = entry.id
+                  AND (item.input_id IS NULL OR item.input_id <> entry.input_id)
+                """
+            )
+        )
+        connection.execute(
+            text(
+                """
+                UPDATE fertilization_schedule_items item
+                SET input_id = entry.input_id
+                FROM purchased_inputs entry
+                WHERE item.purchased_input_id = entry.id
+                  AND (item.input_id IS NULL OR item.input_id <> entry.input_id)
+                """
+            )
+        )
         connection.execute(
             text(
                 """
@@ -246,6 +365,55 @@ def _sync_schema() -> None:
         connection.execute(
             text(
                 """
+                INSERT INTO stock_outputs (
+                    input_id,
+                    purchased_input_id,
+                    farm_id,
+                    plot_id,
+                    movement_date,
+                    quantity,
+                    unit,
+                    origin,
+                    reference_type,
+                    reference_id,
+                    unit_cost,
+                    total_cost,
+                    notes
+                )
+                SELECT
+                    entry.input_id,
+                    allocation.purchased_input_id,
+                    plot.farm_id,
+                    record.plot_id,
+                    record.application_date,
+                    allocation.quantity_used,
+                    item.unit,
+                    'fertilizacao',
+                    'fertilization_record',
+                    record.id,
+                    allocation.unit_cost,
+                    allocation.total_cost,
+                    'Saida gerada automaticamente a partir da aplicacao historica'
+                FROM fertilization_stock_allocations allocation
+                JOIN fertilization_items item ON item.id = allocation.fertilization_item_id
+                JOIN fertilization_records record ON record.id = item.fertilization_record_id
+                LEFT JOIN plots plot ON plot.id = record.plot_id
+                LEFT JOIN purchased_inputs entry ON entry.id = allocation.purchased_input_id
+                WHERE entry.input_id IS NOT NULL
+                  AND NOT EXISTS (
+                    SELECT 1
+                    FROM stock_outputs output
+                    WHERE output.reference_type = 'fertilization_record'
+                      AND output.reference_id = record.id
+                      AND output.purchased_input_id = allocation.purchased_input_id
+                      AND output.quantity = allocation.quantity_used
+                  )
+                """
+            )
+        )
+        connection.execute(
+            text(
+                """
                 DO $$
                 BEGIN
                     IF NOT EXISTS (
@@ -255,6 +423,74 @@ def _sync_schema() -> None:
                         ALTER TABLE plots
                         ADD CONSTRAINT plots_farm_id_fkey
                         FOREIGN KEY (farm_id) REFERENCES farms(id);
+                    END IF;
+                END $$;
+                """
+            )
+        )
+        connection.execute(
+            text(
+                """
+                DO $$
+                BEGIN
+                    IF NOT EXISTS (
+                        SELECT 1 FROM information_schema.table_constraints
+                        WHERE constraint_name = 'purchased_inputs_input_id_fkey'
+                    ) THEN
+                        ALTER TABLE purchased_inputs
+                        ADD CONSTRAINT purchased_inputs_input_id_fkey
+                        FOREIGN KEY (input_id) REFERENCES input_catalog(id);
+                    END IF;
+                END $$;
+                """
+            )
+        )
+        connection.execute(
+            text(
+                """
+                DO $$
+                BEGIN
+                    IF NOT EXISTS (
+                        SELECT 1 FROM information_schema.table_constraints
+                        WHERE constraint_name = 'input_recommendation_items_input_id_fkey'
+                    ) THEN
+                        ALTER TABLE input_recommendation_items
+                        ADD CONSTRAINT input_recommendation_items_input_id_fkey
+                        FOREIGN KEY (input_id) REFERENCES input_catalog(id);
+                    END IF;
+                END $$;
+                """
+            )
+        )
+        connection.execute(
+            text(
+                """
+                DO $$
+                BEGIN
+                    IF NOT EXISTS (
+                        SELECT 1 FROM information_schema.table_constraints
+                        WHERE constraint_name = 'fertilization_items_input_id_fkey'
+                    ) THEN
+                        ALTER TABLE fertilization_items
+                        ADD CONSTRAINT fertilization_items_input_id_fkey
+                        FOREIGN KEY (input_id) REFERENCES input_catalog(id);
+                    END IF;
+                END $$;
+                """
+            )
+        )
+        connection.execute(
+            text(
+                """
+                DO $$
+                BEGIN
+                    IF NOT EXISTS (
+                        SELECT 1 FROM information_schema.table_constraints
+                        WHERE constraint_name = 'fertilization_schedule_items_input_id_fkey'
+                    ) THEN
+                        ALTER TABLE fertilization_schedule_items
+                        ADD CONSTRAINT fertilization_schedule_items_input_id_fkey
+                        FOREIGN KEY (input_id) REFERENCES input_catalog(id);
                     END IF;
                 END $$;
                 """

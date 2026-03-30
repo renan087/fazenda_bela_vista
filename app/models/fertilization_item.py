@@ -9,6 +9,7 @@ class FertilizationItem(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
     fertilization_record_id: Mapped[int] = mapped_column(ForeignKey("fertilization_records.id"), nullable=False)
+    input_id: Mapped[int] = mapped_column(ForeignKey("input_catalog.id"), nullable=True)
     purchased_input_id: Mapped[int] = mapped_column(ForeignKey("purchased_inputs.id"), nullable=True)
     name: Mapped[str] = mapped_column(String(120), nullable=False)
     unit: Mapped[str] = mapped_column(String(40), nullable=False)
@@ -18,5 +19,6 @@ class FertilizationItem(Base):
     total_cost: Mapped[float] = mapped_column(Numeric(12, 2), nullable=True)
 
     fertilization = relationship("FertilizationRecord", back_populates="items")
+    input_catalog = relationship("InputCatalog", back_populates="fertilization_items")
     purchased_input = relationship("PurchasedInput")
     stock_allocations = relationship("FertilizationStockAllocation", back_populates="fertilization_item", cascade="all, delete-orphan")

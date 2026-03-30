@@ -41,6 +41,7 @@ from app.services.forms import (
     create_harvest,
     create_input_recommendation,
     create_irrigation,
+    create_manual_stock_output,
     create_pest_incident,
     create_plot,
     create_purchased_input,
@@ -142,6 +143,132 @@ def _page_number(value: str | int | None, default: int = 1) -> int:
         return default
 
 
+def _build_stock_context(repo: FarmRepository, farm_id: int | None = None, input_id: int | None = None):
+    catalog_inputs = repo.list_input_catalog()
+    if input_id:
+        catalog_inputs = [item for item in catalog_inputs if item.id == input_id]
+
+    purchase_entries = repo.list_purchased_inputs()
+    if input_id:
+        purchase_entries = [entry for entry in purchase_entries if entry.input_id == input_id]
+    if farm_id:
+        purchase_entries = [entry for entry in purchase_entries if entry.farm_id in (None, farm_id)]
+
+    stock_outputs = repo.list_stock_outputs()
+    if input_id:
+        stock_outputs = [output for output in stock_outputs if output.input_id == input_id]
+    if farm_id:
+        stock_outputs = [output for output in stock_outputs if output.farm_id in (None, farm_id)]
+
+    input_stock = {
+        item.id: {
+            "available": round(
+                sum(float(entry.available_quantity or 0) for entry in purchase_entries if entry.input_id == item.id),
+                2,
+            ),
+            "total": round(
+                sum(float(entry.total_quantity or 0) for entry in purchase_entries if entry.input_id == item.id),
+                2,
+            ),
+            "unit": item.default_unit,
+        }
+        for item in catalog_inputs
+    }
+
+    stock_catalog_rows = []
+    extract_rows = []
+    for item in catalog_inputs:
+        related_entries = [entry for entry in purchase_entries if entry.input_id == item.id]
+        related_outputs = [output for output in stock_outputs if output.input_id == item.id]
+        total_quantity = sum(float(entry.total_quantity or 0) for entry in related_entries)
+        total_value = sum(float(entry.total_cost or 0) for entry in related_entries)
+        row = {
+            "id": item.id,
+            "name": item.name,
+            "unit": item.default_unit,
+            "available_quantity": input_stock[item.id]["available"],
+            "total_quantity": input_stock[item.id]["total"],
+            "low_stock_threshold": float(item.low_stock_threshold or 0),
+            "average_cost": round(total_value / total_quantity, 2) if total_quantity else 0,
+            "entries_count": len(related_entries),
+            "outputs_count": len(related_outputs),
+            "last_movement_date": (
+                max(
+                    [entry.purchase_date for entry in related_entries if entry.purchase_date]
+                    + [output.movement_date for output in related_outputs if output.movement_date]
+                )
+                if related_entries or related_outputs
+                else None
+            ),
+        }
+        stock_catalog_rows.append(row)
+
+        events = []
+        for entry in related_entries:
+            events.append(
+                {
+                    "kind": "entrada",
+                    "date": entry.purchase_date,
+                    "quantity": float(entry.total_quantity or 0),
+                    "unit": entry.package_unit,
+                    "farm": entry.farm,
+                    "plot": None,
+                    "origin": "compra",
+                    "reference": f"Lote #{entry.id}",
+                    "value": float(entry.total_cost or 0),
+                    "sort_key": (entry.purchase_date or date.today(), 0, entry.id),
+                }
+            )
+        for output in related_outputs:
+            events.append(
+                {
+                    "kind": "saida",
+                    "date": output.movement_date,
+                    "quantity": float(output.quantity or 0),
+                    "unit": output.unit,
+                    "farm": output.farm,
+                    "plot": output.plot,
+                    "origin": output.origin,
+                    "reference": f"{output.reference_type or 'movimento'}#{output.reference_id}" if output.reference_id else (output.reference_type or "movimento manual"),
+                    "value": float(output.total_cost or 0),
+                    "sort_key": (output.movement_date or date.today(), 1, output.id),
+                }
+            )
+
+        running_balance = 0.0
+        for event in sorted(events, key=lambda item_: item_["sort_key"]):
+            delta = event["quantity"] if event["kind"] == "entrada" else -event["quantity"]
+            running_balance = round(running_balance + delta, 2)
+            extract_rows.append(
+                {
+                    "input_id": item.id,
+                    "input_name": item.name,
+                    "kind": event["kind"],
+                    "date": event["date"],
+                    "quantity": event["quantity"],
+                    "unit": event["unit"] or item.default_unit,
+                    "farm": event["farm"],
+                    "plot": event["plot"],
+                    "origin": event["origin"],
+                    "reference": event["reference"],
+                    "value": event["value"],
+                    "balance_after": running_balance,
+                    "sort_key": event["sort_key"],
+                }
+            )
+
+    stock_catalog_rows.sort(key=lambda row: row["name"].lower())
+    extract_rows.sort(key=lambda row: row["sort_key"], reverse=True)
+    return {
+        "catalog_inputs": catalog_inputs,
+        "purchase_entries": purchase_entries,
+        "stock_outputs": stock_outputs,
+        "input_stock": input_stock,
+        "stock_catalog_rows": stock_catalog_rows,
+        "extract_rows": extract_rows,
+    }
+
+
 def _bool_from_form(value) -> bool:
     return str(value or "").lower() in {"1", "true", "on", "yes"}
 
@@ -168,7 +295,7 @@ def _resolve_geojson(upload: UploadFile | None, fallback_text: str | None, curre
 
 
 def _parse_fertilization_items(values) -> list[dict]:
-    input_ids = values.getlist("purchased_input_id")
+    input_ids = values.getlist("input_id")
     names = values.getlist("item_name")
     units = values.getlist("item_unit")
     quantities = values.getlist("item_quantity")
@@ -181,7 +308,8 @@ def _parse_fertilization_items(values) -> list[dict]:
             continue
         items.append(
             {
-                "purchased_input_id": _int_or_none(input_id),
+                "input_id": _int_or_none(input_id),
+                "purchased_input_id": None,
                 "name": name,
                 "unit": unit,
                 "quantity": quantity,
@@ -192,10 +320,11 @@ def _parse_fertilization_items(values) -> list[dict]:
 
 def _legacy_fertilization_items(record: FertilizationRecord | None, plot_area: float | None) -> list[dict]:
     if not record:
-        return [{"purchased_input_id": "", "name": "", "unit": "kg", "quantity": "", "total_quantity": "", "available": ""}]
+        return [{"input_id": "", "purchased_input_id": "", "name": "", "unit": "kg", "quantity": "", "total_quantity": "", "available": ""}]
     if record.items:
         return [
             {
+                "input_id": item.input_id or "",
                 "purchased_input_id": item.purchased_input_id or "",
                 "name": item.name,
                 "unit": item.unit,
@@ -211,6 +340,7 @@ def _legacy_fertilization_items(record: FertilizationRecord | None, plot_area: f
     quantity_value = _float_or_none(quantity)
     return [
         {
+            "input_id": "",
             "purchased_input_id": "",
             "name": record.product,
             "unit": "kg",
@@ -222,7 +352,7 @@ def _legacy_fertilization_items(record: FertilizationRecord | None, plot_area: f
 
 
 def _parse_recommendation_items(values) -> list[dict]:
-    input_ids = values.getlist("purchased_input_id")
+    input_ids = values.getlist("input_id")
     units = values.getlist("unit")
     quantities = values.getlist("quantity")
     items: list[dict] = []
@@ -233,7 +363,7 @@ def _parse_recommendation_items(values) -> list[dict]:
             continue
         items.append(
             {
-                "purchased_input_id": int(input_id),
+                "input_id": int(input_id),
                 "unit": unit,
                 "quantity": float(quantity),
             }
@@ -932,6 +1062,7 @@ def purchased_inputs_page(
     csrf_token: str = Depends(get_csrf_token),
 ):
     repo = _repository(db)
+    stock_context = _build_stock_context(repo)
     return templates.TemplateResponse(
         "purchased_inputs.html",
         _base_context(
@@ -941,7 +1072,11 @@ def purchased_inputs_page(
             "purchased_inputs",
             title="Insumos Comprados",
             farms=repo.list_farms(),
-            inputs=repo.list_purchased_inputs(),
+            inputs=stock_context["purchase_entries"],
+            inputs_catalog=stock_context["catalog_inputs"],
+            input_stock=stock_context["input_stock"],
+            stock_outputs=stock_context["stock_outputs"],
+            stock_catalog_rows=stock_context["stock_catalog_rows"],
             edit_input=repo.get_purchased_input(edit_id) if edit_id else None,
         ),
     )
@@ -1044,12 +1179,81 @@ def delete_purchased_input_action(
     if item.recommendations:
         _flash(request, "error", "Nao e possivel excluir o insumo enquanto houver recomendacoes vinculadas.")
         return _redirect("/insumos/comprados")
-    if item.recommendation_items or item.schedule_items or item.stock_allocations:
+    if item.recommendation_items or item.schedule_items or item.stock_allocations or item.stock_outputs:
         _flash(request, "error", "Nao e possivel excluir o insumo enquanto houver recomendacoes, agendamentos ou aplicacoes vinculadas.")
         return _redirect("/insumos/comprados")
     repo.delete(item)
     _flash(request, "success", "Insumo comprado excluido com sucesso.")
     return _redirect("/insumos/comprados")
+
+
+@router.get("/insumos/estoque")
+def stock_page(
+    request: Request,
+    farm_id: int | None = None,
+    input_id: int | None = None,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+    csrf_token: str = Depends(get_csrf_token),
+):
+    repo = _repository(db)
+    stock_context = _build_stock_context(repo, farm_id=farm_id, input_id=input_id)
+    return templates.TemplateResponse(
+        "stock.html",
+        _base_context(
+            request,
+            user,
+            csrf_token,
+            "stock",
+            title="Estoque de Insumos",
+            farms=repo.list_farms(),
+            plots=repo.list_plots(),
+            selected_farm_id=farm_id,
+            selected_input_id=input_id,
+            inputs_catalog=stock_context["catalog_inputs"],
+            input_stock=stock_context["input_stock"],
+            stock_catalog_rows=stock_context["stock_catalog_rows"],
+            purchase_entries=stock_context["purchase_entries"],
+            stock_outputs=stock_context["stock_outputs"],
+            extract_rows=stock_context["extract_rows"],
+        ),
+    )
+
+
+@router.post("/insumos/estoque/saida-manual")
+def create_manual_stock_output_action(
+    request: Request,
+    csrf_token: str = Form(...),
+    farm_id: str | None = Form(None),
+    plot_id: str | None = Form(None),
+    input_id: int = Form(...),
+    movement_date: str | None = Form(None),
+    quantity: float = Form(...),
+    unit: str = Form(...),
+    notes: str | None = Form(None),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    del user
+    validate_csrf(request, csrf_token)
+    try:
+        create_manual_stock_output(
+            _repository(db),
+            {
+                "farm_id": _int_or_none(farm_id),
+                "plot_id": _int_or_none(plot_id),
+                "input_id": input_id,
+                "movement_date": movement_date,
+                "quantity": quantity,
+                "unit": unit,
+                "notes": notes,
+            },
+        )
+    except ValueError as exc:
+        _flash(request, "error", str(exc))
+        return _redirect("/insumos/estoque")
+    _flash(request, "success", "Saida manual registrada com sucesso.")
+    return _redirect("/insumos/estoque")
 
 
 @router.get("/insumos/recomendacao")
@@ -1061,6 +1265,18 @@ def input_recommendations_page(
     csrf_token: str = Depends(get_csrf_token),
 ):
     repo = _repository(db)
+    catalog_inputs = repo.list_input_catalog()
+    purchase_entries = repo.list_purchased_inputs()
+    input_stock = {
+        item.id: {
+            "available": round(
+                sum(float(entry.available_quantity or 0) for entry in purchase_entries if entry.input_id == item.id),
+                2,
+            ),
+            "unit": item.default_unit,
+        }
+        for item in catalog_inputs
+    }
     return templates.TemplateResponse(
         "input_recommendations.html",
         _base_context(
@@ -1071,7 +1287,8 @@ def input_recommendations_page(
             title="Recomendacao de Insumos",
             farms=repo.list_farms(),
             plots=repo.list_plots(),
-            purchased_inputs=repo.list_purchased_inputs(),
+            inputs_catalog=catalog_inputs,
+            input_stock=input_stock,
             recommendations=repo.list_input_recommendations(),
             edit_recommendation=repo.get_input_recommendation(edit_id) if edit_id else None,
         ),
@@ -1550,16 +1767,32 @@ def fertilization_page(
     repo = _repository(db)
     edit_fertilization = repo.get_fertilization(edit_id) if edit_id else None
     recommendation_groups: dict[str, list[dict]] = {}
+    consolidated_inputs = repo.list_input_catalog()
+    purchased_inputs = repo.list_purchased_inputs()
+    input_stock = {
+        item.id: {
+            "available": round(
+                sum(
+                    float(entry.available_quantity or 0)
+                    for entry in purchased_inputs
+                    if entry.input_id == item.id
+                ),
+                2,
+            ),
+            "unit": item.default_unit,
+        }
+        for item in consolidated_inputs
+    }
     for recommendation in repo.list_input_recommendations():
         bucket = recommendation_groups.setdefault(recommendation.application_name, [])
         for item in recommendation.items:
             bucket.append(
                 {
-                    "purchased_input_id": item.purchased_input_id,
-                    "name": item.purchased_input.name if item.purchased_input else "Insumo removido",
+                    "input_id": item.input_id,
+                    "name": item.input_catalog.name if item.input_catalog else (item.purchased_input.name if item.purchased_input else "Insumo removido"),
                     "unit": item.unit,
                     "quantity": float(item.quantity or 0),
-                    "available": float(item.purchased_input.available_quantity) if item.purchased_input and item.purchased_input.available_quantity is not None else 0,
+                    "available": input_stock.get(item.input_id or 0, {}).get("available", 0),
                 }
             )
     return templates.TemplateResponse(
@@ -1570,7 +1803,8 @@ def fertilization_page(
             csrf_token,
             "fertilization",
             plots=repo.list_plots(),
-            purchased_inputs=repo.list_purchased_inputs(),
+            inputs_catalog=consolidated_inputs,
+            input_stock=input_stock,
             fertilizations=repo.list_fertilizations(),
             schedules=repo.list_fertilization_schedules(),
             recommendation_groups=recommendation_groups,
@@ -1695,17 +1929,33 @@ def fertilization_schedules_page(
     edit_schedule = repo.get_fertilization_schedule(edit_id) if edit_id else None
     schedules = repo.list_fertilization_schedules()
     schedule_validations = {schedule.id: validate_schedule_stock(repo, schedule) for schedule in schedules}
+    consolidated_inputs = repo.list_input_catalog()
+    purchased_inputs = repo.list_purchased_inputs()
+    input_stock = {
+        item.id: {
+            "available": round(
+                sum(
+                    float(entry.available_quantity or 0)
+                    for entry in purchased_inputs
+                    if entry.input_id == item.id
+                ),
+                2,
+            ),
+            "unit": item.default_unit,
+        }
+        for item in consolidated_inputs
+    }
     edit_schedule_items = (
         [
             {
-                "purchased_input_id": item.purchased_input_id,
+                "input_id": item.input_id,
                 "unit": item.unit,
                 "quantity": float(item.quantity or 0),
             }
             for item in edit_schedule.items
         ]
         if edit_schedule and edit_schedule.items
-        else [{"purchased_input_id": "", "unit": "kg", "quantity": ""}]
+        else [{"input_id": "", "unit": "kg", "quantity": ""}]
     )
     return templates.TemplateResponse(
         "fertilization_schedule.html",
@@ -1716,7 +1966,8 @@ def fertilization_schedules_page(
             "fertilization_schedules",
             title="Agendamento de Fertilizacao",
             plots=repo.list_plots(),
-            purchased_inputs=repo.list_purchased_inputs(),
+            inputs_catalog=consolidated_inputs,
+            input_stock=input_stock,
             schedules=schedules,
             schedule_validations=schedule_validations,
             edit_schedule=edit_schedule,

@@ -40,11 +40,14 @@
                     {% for item in edit_schedule_items %}
                     <div class="grid gap-3 rounded-[1.25rem] border border-slate-200 bg-white p-4 md:grid-cols-[1.3fr_0.8fr_0.8fr_auto]" data-schedule-item>
                         <label>
-                            <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Insumo comprado</span>
-                            <select name="purchased_input_id" class="min-h-[3rem] w-full rounded-xl border-slate-200 bg-slate-50" required>
+                            <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Insumo</span>
+                            <select name="input_id" class="min-h-[3rem] w-full rounded-xl border-slate-200 bg-slate-50" required>
                                 <option value="">Selecione</option>
-                                {% for purchased_input in purchased_inputs %}
-                                <option value="{{ purchased_input.id }}" {% if item.purchased_input_id|string == purchased_input.id|string %}selected{% endif %}>{{ purchased_input.name }} • {{ purchased_input.available_quantity }} {{ purchased_input.package_unit }}</option>
+                                {% for input_item in inputs_catalog %}
+                                {% set stock = input_stock.get(input_item.id, {}) %}
+                                <option value="{{ input_item.id }}" {% if item.input_id|string == input_item.id|string %}selected{% endif %}>
+                                    {{ input_item.name }} • disponivel: {{ stock.get('available', 0) }} {{ stock.get('unit', input_item.default_unit) }}
+                                </option>
                                 {% endfor %}
                             </select>
                         </label>
@@ -121,7 +124,7 @@
                 <div class="mt-4 space-y-2">
                     {% for item in schedule.items %}
                     <div class="rounded-2xl bg-white px-4 py-3 text-sm text-slate-700">
-                        <span class="font-medium">{{ item.name }}</span>
+                        <span class="font-medium">{{ item.input_catalog.name if item.input_catalog else item.name }}</span>
                         <span class="text-slate-500"> • {{ item.quantity }} {{ item.unit }}</span>
                     </div>
                     {% endfor %}
@@ -145,11 +148,14 @@
 <template id="schedule-item-template">
     <div class="grid gap-3 rounded-[1.25rem] border border-slate-200 bg-white p-4 md:grid-cols-[1.3fr_0.8fr_0.8fr_auto]" data-schedule-item>
         <label>
-            <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Insumo comprado</span>
-            <select name="purchased_input_id" class="min-h-[3rem] w-full rounded-xl border-slate-200 bg-slate-50" required>
+            <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Insumo</span>
+            <select name="input_id" class="min-h-[3rem] w-full rounded-xl border-slate-200 bg-slate-50" required>
                 <option value="">Selecione</option>
-                {% for purchased_input in purchased_inputs %}
-                <option value="{{ purchased_input.id }}">{{ purchased_input.name }} • {{ purchased_input.available_quantity }} {{ purchased_input.package_unit }}</option>
+                {% for input_item in inputs_catalog %}
+                {% set stock = input_stock.get(input_item.id, {}) %}
+                <option value="{{ input_item.id }}">
+                    {{ input_item.name }} • disponivel: {{ stock.get('available', 0) }} {{ stock.get('unit', input_item.default_unit) }}
+                </option>
                 {% endfor %}
             </select>
         </label>

@@ -1,5 +1,6 @@
 import json
 import math
+import unicodedata
 from datetime import date
 from decimal import Decimal
 
@@ -14,6 +15,7 @@ from app.models import (
     FertilizationItem,
     FertilizationRecord,
     HarvestRecord,
+    InputCatalog,
     InputRecommendation,
     InputRecommendationItem,
     IrrigationRecord,
@@ -22,6 +24,7 @@ from app.models import (
     PurchasedInput,
     RainfallRecord,
     SoilAnalysis,
+    StockOutput,
     User,
 )
 from app.repositories.farm import FarmRepository
@@ -208,27 +211,88 @@ def update_user(repository: FarmRepository, user: User, form: dict) -> User:
     return repository.update(user, payload)
 
 
+def _normalize_input_name(value: str | None) -> str:
+    normalized = unicodedata.normalize("NFKD", (value or "").strip())
+    normalized = "".join(char for char in normalized if not unicodedata.combining(char))
+    normalized = " ".join(normalized.split())
+    return normalized.lower()
+
+
+def _resolve_input_catalog(
+    repository: FarmRepository,
+    name: str,
+    default_unit: str,
+    low_stock_threshold: float | None = None,
+) -> InputCatalog:
+    normalized_name = _normalize_input_name(name)
+    existing = repository.get_input_catalog_by_normalized_name(normalized_name)
+    if existing:
+        if default_unit and existing.default_unit != default_unit:
+            existing.default_unit = existing.default_unit or default_unit
+        if low_stock_threshold is not None and low_stock_threshold > 0:
+            existing.low_stock_threshold = low_stock_threshold
+        repository.db.add(existing)
+        repository.db.flush()
+        return existing
+    catalog = InputCatalog(
+        name=" ".join((name or "").strip().split()),
+        normalized_name=normalized_name,
+        default_unit=default_unit or "kg",
+        low_stock_threshold=low_stock_threshold if low_stock_threshold is not None else None,
+        is_active=True,
+    )
+    repository.db.add(catalog)
+    repository.db.flush()
+    return catalog
+
+
+def _catalog_available_stock(repository: FarmRepository, input_id: int | None, farm_id: int | None = None, unit: str | None = None) -> float:
+    if not input_id:
+        return 0.0
+    total = 0.0
+    for entry in repository.list_purchased_inputs():
+        if entry.input_id != input_id:
+            continue
+        if farm_id is not None and entry.farm_id not in (None, farm_id):
+            continue
+        if unit and entry.package_unit != unit:
+            continue
+        total += float(entry.available_quantity or 0)
+    return round(total, 2)
+
+
 def create_purchased_input(repository: FarmRepository, form: dict) -> PurchasedInput:
     quantity_purchased = float(form["quantity_purchased"])
     package_size = float(form["package_size"])
     unit_price = float(form["unit_price"])
     total_quantity = round(quantity_purchased * package_size, 2)
-    return repository.create(
-        PurchasedInput(
-            farm_id=form.get("farm_id"),
-            name=form["name"],
-            quantity_purchased=quantity_purchased,
-            package_size=package_size,
-            package_unit=form["package_unit"],
-            unit_price=unit_price,
-            purchase_date=date.fromisoformat(form["purchase_date"]) if form.get("purchase_date") else date.today(),
-            total_quantity=total_quantity,
-            available_quantity=total_quantity,
-            total_cost=round(quantity_purchased * unit_price, 2),
-            low_stock_threshold=float(form.get("low_stock_threshold") or 0),
-            notes=form.get("notes"),
-        )
+    low_stock_threshold = float(form.get("low_stock_threshold") or 0)
+    catalog = _resolve_input_catalog(
+        repository,
+        form["name"],
+        form["package_unit"],
+        low_stock_threshold if low_stock_threshold > 0 else None,
     )
+    item = PurchasedInput(
+        input_id=catalog.id,
+        farm_id=form.get("farm_id"),
+        name=catalog.name,
+        normalized_name=catalog.normalized_name,
+        quantity_purchased=quantity_purchased,
+        package_size=package_size,
+        package_unit=form["package_unit"],
+        unit_price=unit_price,
+        purchase_date=date.fromisoformat(form["purchase_date"]) if form.get("purchase_date") else date.today(),
+        total_quantity=total_quantity,
+        available_quantity=total_quantity,
+        total_cost=round(quantity_purchased * unit_price, 2),
+        low_stock_threshold=low_stock_threshold,
+        notes=form.get("notes"),
+    )
+    repository.db.add(item)
+    repository.db.commit()
+    repository.db.refresh(item)
+    return item
 
 
 def update_purchased_input(repository: FarmRepository, item: PurchasedInput, form: dict) -> PurchasedInput:
@@ -238,11 +302,20 @@ def update_purchased_input(repository: FarmRepository, item: PurchasedInput, for
     total_quantity = round(quantity_purchased * package_size, 2)
     consumed_quantity = max(float(item.total_quantity or 0) - float(item.available_quantity or 0), 0)
     available_quantity = max(round(total_quantity - consumed_quantity, 2), 0)
+    low_stock_threshold = float(form.get("low_stock_threshold") or 0)
+    catalog = _resolve_input_catalog(
+        repository,
+        form["name"],
+        form["package_unit"],
+        low_stock_threshold if low_stock_threshold > 0 else None,
+    )
     return repository.update(
         item,
         {
+            "input_id": catalog.id,
             "farm_id": form.get("farm_id"),
-            "name": form["name"],
+            "name": catalog.name,
+            "normalized_name": catalog.normalized_name,
             "quantity_purchased": quantity_purchased,
             "package_size": package_size,
             "package_unit": form["package_unit"],
@@ -251,10 +324,67 @@ def update_purchased_input(repository: FarmRepository, item: PurchasedInput, for
             "total_quantity": total_quantity,
             "available_quantity": available_quantity,
             "total_cost": round(quantity_purchased * unit_price, 2),
-            "low_stock_threshold": float(form.get("low_stock_threshold") or 0),
+            "low_stock_threshold": low_stock_threshold,
             "notes": form.get("notes"),
         },
     )
+
+
+def create_manual_stock_output(repository: FarmRepository, form: dict) -> list[StockOutput]:
+    input_id = int(form["input_id"])
+    quantity = float(form["quantity"])
+    if quantity <= 0:
+        raise ValueError("Informe uma quantidade valida para a saida manual.")
+
+    input_catalog = repository.get_input_catalog(input_id)
+    if not input_catalog:
+        raise ValueError("Insumo nao encontrado para a saida manual.")
+
+    unit = (form.get("unit") or input_catalog.default_unit or "kg").strip()
+    farm_id = form.get("farm_id")
+    plot_id = form.get("plot_id")
+    movement_date = date.fromisoformat(form["movement_date"]) if form.get("movement_date") else date.today()
+
+    available = _catalog_available_stock(repository, input_catalog.id, farm_id, unit)
+    if quantity > available:
+        missing = round(quantity - available, 2)
+        raise ValueError(f"Estoque insuficiente. Necessario comprar {missing} {unit} de {input_catalog.name}.")
+
+    candidate_lots = _find_candidate_lots(repository, input_catalog.id, None, input_catalog.name, unit, farm_id)
+    candidate_lots = sorted(candidate_lots, key=lambda item: (item.purchase_date or date.today(), item.id))
+
+    outputs: list[StockOutput] = []
+    remaining = quantity
+    for lot in candidate_lots:
+        if remaining <= 0:
+            break
+        lot_available = _available_stock_for_input(lot)
+        consumed = min(lot_available, remaining)
+        unit_cost = float(lot.total_cost or 0) / max(float(lot.total_quantity or 0), 1)
+        lot.available_quantity = round(lot_available - consumed, 2)
+        output = StockOutput(
+            input_id=input_catalog.id,
+            purchased_input_id=lot.id,
+            farm_id=farm_id,
+            plot_id=plot_id,
+            movement_date=movement_date,
+            quantity=consumed,
+            unit=unit,
+            origin="manual",
+            reference_type="manual_stock_output",
+            reference_id=None,
+            unit_cost=round(unit_cost, 4),
+            total_cost=round(consumed * unit_cost, 2),
+            notes=form.get("notes"),
+        )
+        repository.db.add(output)
+        outputs.append(output)
+        remaining = round(remaining - consumed, 2)
+
+    repository.db.commit()
+    for output in outputs:
+        repository.db.refresh(output)
+    return outputs
 
 
 def create_input_recommendation(repository: FarmRepository, form: dict) -> InputRecommendation:
@@ -267,19 +397,19 @@ def create_input_recommendation(repository: FarmRepository, form: dict) -> Input
     repository.db.add(recommendation)
     repository.db.flush()
     for item in form.get("items", []):
-        purchased_input = repository.get_purchased_input(item["purchased_input_id"])
-        if not purchased_input:
+        input_catalog = repository.get_input_catalog(item["input_id"])
+        if not input_catalog:
             continue
         recommendation.items.append(
             InputRecommendationItem(
-                purchased_input_id=purchased_input.id,
-                unit=item.get("unit") or purchased_input.package_unit,
+                input_id=input_catalog.id,
+                unit=item.get("unit") or input_catalog.default_unit,
                 quantity=item["quantity"],
             )
         )
     if recommendation.items:
         first_item = recommendation.items[0]
-        recommendation.purchased_input_id = first_item.purchased_input_id
+        recommendation.purchased_input_id = None
         recommendation.unit = first_item.unit
         recommendation.quantity_per_hectare = first_item.quantity
     repository.db.add(recommendation)
@@ -296,18 +426,18 @@ def update_input_recommendation(repository: FarmRepository, recommendation: Inpu
     recommendation.items.clear()
     repository.db.flush()
     for item in form.get("items", []):
-        purchased_input = repository.get_purchased_input(item["purchased_input_id"])
-        if not purchased_input:
+        input_catalog = repository.get_input_catalog(item["input_id"])
+        if not input_catalog:
             continue
         recommendation.items.append(
             InputRecommendationItem(
-                purchased_input_id=purchased_input.id,
-                unit=item.get("unit") or purchased_input.package_unit,
+                input_id=input_catalog.id,
+                unit=item.get("unit") or input_catalog.default_unit,
                 quantity=item["quantity"],
             )
         )
     first_item = recommendation.items[0] if recommendation.items else None
-    recommendation.purchased_input_id = first_item.purchased_input_id if first_item else None
+    recommendation.purchased_input_id = None
     recommendation.unit = first_item.unit if first_item else None
     recommendation.quantity_per_hectare = first_item.quantity if first_item else None
     repository.db.add(recommendation)
@@ -317,7 +447,7 @@ def update_input_recommendation(repository: FarmRepository, recommendation: Inpu
 
 
 def update_fertilization(repository: FarmRepository, fertilization: FertilizationRecord, form: dict) -> FertilizationRecord:
-    _restore_fertilization_stock(fertilization)
+    _restore_fertilization_stock(repository, fertilization)
     repository.db.flush()
     return _save_fertilization(repository, fertilization, form)
 
@@ -332,14 +462,15 @@ def create_fertilization_schedule(repository: FarmRepository, form: dict) -> Fer
     repository.db.add(schedule)
     repository.db.flush()
     for item in form.get("items", []):
-        purchased_input = repository.get_purchased_input(item["purchased_input_id"])
-        if not purchased_input:
+        input_catalog = repository.get_input_catalog(item["input_id"])
+        if not input_catalog:
             continue
         schedule.items.append(
             FertilizationScheduleItem(
-                purchased_input_id=purchased_input.id,
-                name=purchased_input.name,
-                unit=item.get("unit") or purchased_input.package_unit,
+                input_id=input_catalog.id,
+                purchased_input_id=None,
+                name=input_catalog.name,
+                unit=item.get("unit") or input_catalog.default_unit,
                 quantity=item["quantity"],
             )
         )
@@ -357,14 +488,15 @@ def update_fertilization_schedule(repository: FarmRepository, schedule: Fertiliz
     schedule.items.clear()
     repository.db.flush()
     for item in form.get("items", []):
-        purchased_input = repository.get_purchased_input(item["purchased_input_id"])
-        if not purchased_input:
+        input_catalog = repository.get_input_catalog(item["input_id"])
+        if not input_catalog:
             continue
         schedule.items.append(
             FertilizationScheduleItem(
-                purchased_input_id=purchased_input.id,
-                name=purchased_input.name,
-                unit=item.get("unit") or purchased_input.package_unit,
+                input_id=input_catalog.id,
+                purchased_input_id=None,
+                name=input_catalog.name,
+                unit=item.get("unit") or input_catalog.default_unit,
                 quantity=item["quantity"],
             )
         )
@@ -377,7 +509,7 @@ def update_fertilization_schedule(repository: FarmRepository, schedule: Fertiliz
 def validate_schedule_stock(repository: FarmRepository, schedule: FertilizationSchedule) -> dict:
     shortages = []
     for item in schedule.items:
-        available = _available_stock_for_input(item.purchased_input)
+        available = _catalog_available_stock(repository, item.input_id, schedule.plot.farm_id if schedule.plot else None, item.unit)
         required = float(item.quantity or 0)
         if required > available:
             shortages.append(
@@ -402,11 +534,11 @@ def conclude_fertilization_schedule(repository: FarmRepository, schedule: Fertil
             "application_date": application_date or schedule.scheduled_date.isoformat(),
             "notes": schedule.notes,
             "items": [
-                {
-                    "purchased_input_id": item.purchased_input_id,
-                    "unit": item.unit,
-                    "quantity": float(item.quantity or 0),
-                }
+            {
+                "input_id": item.input_id,
+                "unit": item.unit,
+                "quantity": float(item.quantity or 0),
+            }
                 for item in schedule.items
             ],
         },
@@ -420,7 +552,7 @@ def conclude_fertilization_schedule(repository: FarmRepository, schedule: Fertil
 
 
 def delete_fertilization(repository: FarmRepository, fertilization: FertilizationRecord) -> None:
-    _restore_fertilization_stock(fertilization)
+    _restore_fertilization_stock(repository, fertilization)
     repository.db.delete(fertilization)
     repository.db.commit()
 
@@ -535,34 +667,39 @@ def _available_stock_for_input(purchased_input: PurchasedInput | None) -> float:
 
 
 def _current_average_cost(repository: FarmRepository, farm_id: int | None, input_name: str, unit: str) -> float:
+    input_id = None
+    normalized_name = _normalize_input_name(input_name)
+    if normalized_name:
+        catalog = repository.get_input_catalog_by_normalized_name(normalized_name)
+        input_id = catalog.id if catalog else None
     lots = [
         item for item in repository.list_purchased_inputs()
-        if item.name == input_name and item.package_unit == unit and (farm_id is None or item.farm_id == farm_id) and _available_stock_for_input(item) > 0
+        if item.input_id == input_id and item.package_unit == unit and (farm_id is None or item.farm_id in (None, farm_id)) and _available_stock_for_input(item) > 0
     ]
     total_quantity = sum(_available_stock_for_input(item) for item in lots)
     total_value = sum(_available_stock_for_input(item) * (float(item.total_cost or 0) / max(float(item.total_quantity or 0), 1)) for item in lots)
     return round(total_value / total_quantity, 4) if total_quantity else 0
 
 
-def _find_candidate_lots(repository: FarmRepository, purchased_input_id: int | None, name: str | None, unit: str, farm_id: int | None) -> list[PurchasedInput]:
+def _find_candidate_lots(repository: FarmRepository, input_id: int | None, purchased_input_id: int | None, name: str | None, unit: str, farm_id: int | None) -> list[PurchasedInput]:
     purchased_inputs = repository.list_purchased_inputs()
-    if purchased_input_id:
-        direct = [item for item in purchased_inputs if item.id == purchased_input_id]
-        if direct:
-            target = direct[0]
-            return [
-                item for item in purchased_inputs
-                if item.name == target.name and item.package_unit == target.package_unit and (farm_id is None or item.farm_id == farm_id) and _available_stock_for_input(item) > 0
-            ]
+    target_input_id = input_id
+    if target_input_id is None and purchased_input_id:
+        direct = next((item for item in purchased_inputs if item.id == purchased_input_id), None)
+        target_input_id = direct.input_id if direct else None
+    if target_input_id is None and name:
+        catalog = repository.get_input_catalog_by_normalized_name(_normalize_input_name(name))
+        target_input_id = catalog.id if catalog else None
     return [
         item for item in purchased_inputs
-        if item.name == name and item.package_unit == unit and (farm_id is None or item.farm_id == farm_id) and _available_stock_for_input(item) > 0
+        if item.input_id == target_input_id and item.package_unit == unit and (farm_id is None or item.farm_id in (None, farm_id)) and _available_stock_for_input(item) > 0
     ]
 
 
 def _deduct_stock(repository: FarmRepository, fertilization_item: FertilizationItem, farm_id: int | None, requested_quantity: float) -> tuple[float, float]:
     candidate_lots = _find_candidate_lots(
         repository,
+        fertilization_item.input_id,
         fertilization_item.purchased_input_id,
         fertilization_item.name,
         fertilization_item.unit,
@@ -591,6 +728,23 @@ def _deduct_stock(repository: FarmRepository, fertilization_item: FertilizationI
                 total_cost=round(consumed * unit_cost, 2),
             )
         )
+        repository.db.add(
+            StockOutput(
+                input_id=lot.input_id,
+                purchased_input_id=lot.id,
+                farm_id=farm_id,
+                plot_id=fertilization_item.fertilization_record.plot_id if fertilization_item.fertilization_record else None,
+                movement_date=fertilization_item.fertilization_record.application_date if fertilization_item.fertilization_record else date.today(),
+                quantity=consumed,
+                unit=fertilization_item.unit,
+                origin="fertilizacao",
+                reference_type="fertilization_item",
+                reference_id=fertilization_item.id,
+                unit_cost=round(unit_cost, 4),
+                total_cost=round(consumed * unit_cost, 2),
+                notes=fertilization_item.name,
+            )
+        )
         remaining = round(remaining - consumed, 2)
         if fertilization_item.purchased_input_id is None:
             fertilization_item.purchased_input_id = lot.id
@@ -598,13 +752,18 @@ def _deduct_stock(repository: FarmRepository, fertilization_item: FertilizationI
     return round(average_cost, 4), round(requested_quantity * average_cost, 2)
 
 
-def _restore_fertilization_stock(fertilization: FertilizationRecord) -> None:
+def _restore_fertilization_stock(repository: FarmRepository, fertilization: FertilizationRecord) -> None:
+    item_ids = [item.id for item in fertilization.items if item.id]
     for item in fertilization.items:
         for allocation in item.stock_allocations:
             if allocation.purchased_input:
                 current_available = float(allocation.purchased_input.available_quantity or 0)
                 allocation.purchased_input.available_quantity = round(current_available + float(allocation.quantity_used or 0), 2)
         item.stock_allocations.clear()
+    if item_ids:
+        for output in repository.list_stock_outputs():
+            if output.reference_type == "fertilization_item" and output.reference_id in item_ids:
+                repository.db.delete(output)
 
 
 def _save_fertilization(repository: FarmRepository, fertilization: FertilizationRecord | None, form: dict) -> FertilizationRecord:
@@ -636,6 +795,7 @@ def _save_fertilization(repository: FarmRepository, fertilization: Fertilization
     for item in items:
         fertilization_item = FertilizationItem(
             fertilization_record_id=record.id,
+            input_id=item.get("input_id"),
             purchased_input_id=item.get("purchased_input_id"),
             name=item["name"],
             unit=item["unit"],
@@ -907,6 +1067,7 @@ def _normalize_fertilization_items(items: list[dict] | None, area_hectares: floa
         quantity_value = round(float(quantity), 2)
         normalized.append(
             {
+                "input_id": item.get("input_id"),
                 "purchased_input_id": item.get("purchased_input_id"),
                 "name": name,
                 "unit": unit,

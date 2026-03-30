@@ -20,3 +20,4 @@ class Farm(Base):
     rainfalls = relationship("RainfallRecord", back_populates="farm", cascade="all, delete-orphan")
     purchased_inputs = relationship("PurchasedInput", back_populates="farm", cascade="all, delete-orphan")
     input_recommendations = relationship("InputRecommendation", back_populates="farm", cascade="all, delete-orphan")
+    stock_outputs = relationship("StockOutput", back_populates="farm", cascade="all, delete-orphan")

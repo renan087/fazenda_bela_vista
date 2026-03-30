@@ -43,11 +43,12 @@
                     {% for item in edit_fertilization_items %}
                     <div class="grid gap-3 rounded-[1.25rem] border border-slate-200 bg-white p-4 md:grid-cols-[1.3fr_0.7fr_0.7fr_0.8fr_auto]" data-item-row>
                         <label>
-                            <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Insumo comprado</span>
-                            <select name="purchased_input_id" class="min-h-[3rem] w-full rounded-xl border-slate-200 bg-slate-50" data-input-select required>
+                            <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Insumo</span>
+                            <select name="input_id" class="min-h-[3rem] w-full rounded-xl border-slate-200 bg-slate-50" data-input-select required>
                                 <option value="">Selecione</option>
-                                {% for purchased_input in purchased_inputs %}
-                                <option value="{{ purchased_input.id }}" {% if item.purchased_input_id == purchased_input.id %}selected{% endif %}>{{ purchased_input.name }} • {{ purchased_input.available_quantity }} {{ purchased_input.package_unit }}</option>
+                                {% for input_item in inputs_catalog %}
+                                {% set stock = input_stock.get(input_item.id, {}) %}
+                                <option value="{{ input_item.id }}" {% if item.input_id == input_item.id %}selected{% endif %}>{{ input_item.name }} • {{ stock.get('available', 0) }} {{ stock.get('unit', input_item.default_unit) }}</option>
                                 {% endfor %}
                             </select>
                             <input type="hidden" name="item_name" value="{{ item.name }}" data-item-name>
@@ -131,11 +132,12 @@
 <template id="fertilization-item-template">
     <div class="grid gap-3 rounded-[1.25rem] border border-slate-200 bg-white p-4 md:grid-cols-[1.3fr_0.7fr_0.7fr_0.8fr_auto]" data-item-row>
         <label>
-            <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Insumo comprado</span>
-            <select name="purchased_input_id" class="min-h-[3rem] w-full rounded-xl border-slate-200 bg-slate-50" data-input-select required>
+            <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Insumo</span>
+            <select name="input_id" class="min-h-[3rem] w-full rounded-xl border-slate-200 bg-slate-50" data-input-select required>
                 <option value="">Selecione</option>
-                {% for purchased_input in purchased_inputs %}
-                <option value="{{ purchased_input.id }}">{{ purchased_input.name }} • {{ purchased_input.available_quantity }} {{ purchased_input.package_unit }}</option>
+                {% for input_item in inputs_catalog %}
+                {% set stock = input_stock.get(input_item.id, {}) %}
+                <option value="{{ input_item.id }}">{{ input_item.name }} • {{ stock.get('available', 0) }} {{ stock.get('unit', input_item.default_unit) }}</option>
                 {% endfor %}
             </select>
             <input type="hidden" name="item_name" value="" data-item-name>
@@ -163,12 +165,12 @@
         const addButton = form.querySelector('[data-add-item]');
         const recommendationSelect = form.querySelector('[data-recommendation-select]');
         const recommendationGroups = {{ recommendation_groups|tojson }};
-        const purchasedLookup = {
-            {% for purchased_input in purchased_inputs %}
-            "{{ purchased_input.id }}": {
-                name: {{ purchased_input.name|tojson }},
-                unit: {{ purchased_input.package_unit|tojson }},
-                available: "{{ purchased_input.available_quantity }} {{ purchased_input.package_unit }}"
+        const inputLookup = {
+            {% for input_item in inputs_catalog %}
+            "{{ input_item.id }}": {
+                name: {{ input_item.name|tojson }},
+                unit: {{ input_stock.get(input_item.id, {}).get('unit', input_item.default_unit)|tojson }},
+                available: "{{ input_stock.get(input_item.id, {}).get('available', 0) }} {{ input_stock.get(input_item.id, {}).get('unit', input_item.default_unit) }}"
             },
             {% endfor %}
         };
@@ -178,7 +180,7 @@
             const hiddenName = row.querySelector('[data-item-name]');
             const unitField = row.querySelector('[data-item-unit]');
             const availableField = row.querySelector('[data-item-available]');
-            const selected = purchasedLookup[select.value];
+            const selected = inputLookup[select.value];
             hiddenName.value = selected?.name || '';
             if (selected) {
                 unitField.value = selected.unit || 'kg';
@@ -215,7 +217,7 @@
             recommendationGroups[selected].forEach((item) => {
                 wrapper.appendChild(template.content.cloneNode(true));
                 const row = wrapper.lastElementChild;
-                row.querySelector('[data-input-select]').value = String(item.purchased_input_id || '');
+                row.querySelector('[data-input-select]').value = String(item.input_id || '');
                 row.querySelector('[data-item-unit]').value = item.unit || 'kg';
                 row.querySelector('[name="item_quantity"]').value = item.quantity || '';
                 bindRow(row);
