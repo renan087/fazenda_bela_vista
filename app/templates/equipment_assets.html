@@ -1,0 +1,123 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
+    <section class="rounded-[2rem] bg-white p-6 shadow-panel">
+        <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Patrimonio</p>
+        <h3 class="mt-2 text-2xl font-semibold">{% if edit_asset %}Editar equipamento{% else %}Novo equipamento / bem patrimonial{% endif %}</h3>
+        <p class="mt-2 text-sm text-slate-500">Cadastre equipamentos e bens patrimoniais sem misturar esses registros com o estoque consumível de insumos e combustíveis.</p>
+        <form method="post" action="{% if edit_asset %}/insumos/patrimonio/{{ edit_asset.id }}/editar{% else %}/insumos/patrimonio{% endif %}" class="mt-6 grid gap-4">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <div class="grid gap-4 md:grid-cols-2">
+                <label>
+                    <span class="mb-2 block text-sm font-medium">Fazenda</span>
+                    <select name="farm_id" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50">
+                        <option value="">Sem vinculo especifico</option>
+                        {% for farm in farms %}
+                        <option value="{{ farm.id }}" {% if edit_asset and edit_asset.farm_id == farm.id %}selected{% elif selected_farm_id == farm.id and not edit_asset %}selected{% endif %}>{{ farm.name }}</option>
+                        {% endfor %}
+                    </select>
+                </label>
+                <label>
+                    <span class="mb-2 block text-sm font-medium">Categoria</span>
+                    <input name="category" value="{{ edit_asset.category if edit_asset else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" placeholder="Ex.: Trator, bomba, pulverizador" required>
+                </label>
+            </div>
+            <div class="grid gap-4 md:grid-cols-2">
+                <label>
+                    <span class="mb-2 block text-sm font-medium">Nome do equipamento</span>
+                    <input name="name" value="{{ edit_asset.name if edit_asset else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required>
+                </label>
+                <label>
+                    <span class="mb-2 block text-sm font-medium">Marca / modelo</span>
+                    <input name="brand_model" value="{{ edit_asset.brand_model if edit_asset else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50">
+                </label>
+            </div>
+            <div class="grid gap-4 md:grid-cols-3">
+                <label>
+                    <span class="mb-2 block text-sm font-medium">Patrimônio / identificação</span>
+                    <input name="asset_code" value="{{ edit_asset.asset_code if edit_asset else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50">
+                </label>
+                <label>
+                    <span class="mb-2 block text-sm font-medium">Data de aquisição</span>
+                    <input type="date" name="acquisition_date" value="{{ edit_asset.acquisition_date.isoformat() if edit_asset and edit_asset.acquisition_date else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50">
+                </label>
+                <label>
+                    <span class="mb-2 block text-sm font-medium">Valor de aquisição (R$)</span>
+                    <input type="number" step="0.01" min="0" name="acquisition_value" value="{{ edit_asset.acquisition_value if edit_asset and edit_asset.acquisition_value is not none else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50">
+                </label>
+            </div>
+            <label>
+                <span class="mb-2 block text-sm font-medium">Status</span>
+                <select name="status" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50">
+                    {% set asset_status = edit_asset.status if edit_asset else 'ativo' %}
+                    {% for option in ['ativo', 'em_manutencao', 'baixado'] %}
+                    <option value="{{ option }}" {% if asset_status == option %}selected{% endif %}>{{ option.replace('_', ' ')|title }}</option>
+                    {% endfor %}
+                </select>
+            </label>
+            <label>
+                <span class="mb-2 block text-sm font-medium">Observações</span>
+                <textarea name="notes" rows="4" class="w-full rounded-2xl border-slate-200 bg-slate-50">{{ edit_asset.notes if edit_asset else '' }}</textarea>
+            </label>
+            <div class="flex gap-3">
+                <button class="rounded-2xl bg-brand-500 px-4 py-3 font-semibold text-white hover:bg-brand-700">{% if edit_asset %}Salvar alterações{% else %}Cadastrar patrimônio{% endif %}</button>
+                {% if edit_asset %}
+                <a href="/insumos/patrimonio" class="rounded-2xl bg-slate-100 px-4 py-3 font-semibold text-slate-700 hover:bg-slate-200">Cancelar</a>
+                {% endif %}
+            </div>
+        </form>
+    </section>
+
+    <section class="rounded-[2rem] bg-white p-6 shadow-panel">
+        <div class="flex flex-wrap items-start justify-between gap-4">
+            <div>
+                <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Cadastro patrimonial</p>
+                <h3 class="mt-2 text-2xl font-semibold">Equipamentos cadastrados</h3>
+            </div>
+            <form method="get" action="/insumos/patrimonio" class="flex flex-wrap gap-3">
+                <select name="farm_id" class="min-h-[3.25rem] rounded-2xl border-slate-200 bg-slate-50 px-4">
+                    <option value="">Todas as fazendas</option>
+                    {% for farm in farms %}
+                    <option value="{{ farm.id }}" {% if selected_farm_id == farm.id %}selected{% endif %}>{{ farm.name }}</option>
+                    {% endfor %}
+                </select>
+                <button class="rounded-2xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white hover:bg-slate-700">Filtrar</button>
+            </form>
+        </div>
+
+        <div class="mt-6 space-y-4">
+            {% for asset in assets %}
+            <article class="rounded-[1.5rem] border border-slate-100 bg-slate-50 p-5">
+                <div class="flex flex-wrap items-start justify-between gap-4">
+                    <div>
+                        <p class="text-lg font-semibold text-slate-900">{{ asset.name }}</p>
+                        <p class="mt-1 text-sm text-slate-500">{{ asset.category }}{% if asset.farm %} • {{ asset.farm.name }}{% endif %}</p>
+                        <p class="mt-2 text-sm text-slate-600">
+                            {% if asset.brand_model %}<strong>Marca/modelo:</strong> {{ asset.brand_model }}{% endif %}
+                            {% if asset.asset_code %} • <strong>ID:</strong> {{ asset.asset_code }}{% endif %}
+                        </p>
+                        <p class="mt-1 text-sm text-slate-600">
+                            {% if asset.acquisition_date %}<strong>Aquisição:</strong> {{ asset.acquisition_date }}{% endif %}
+                            {% if asset.acquisition_value is not none %} • <strong>Valor:</strong> R$ {{ asset.acquisition_value }}{% endif %}
+                        </p>
+                        <p class="mt-1 text-sm text-slate-600">Status: <strong>{{ asset.status.replace('_', ' ')|title }}</strong></p>
+                    </div>
+                    <div class="flex gap-2">
+                        <a href="/insumos/patrimonio?edit_id={{ asset.id }}{% if selected_farm_id %}&farm_id={{ selected_farm_id }}{% endif %}" class="rounded-xl bg-slate-900 px-3 py-2 text-xs font-medium text-white hover:bg-slate-700">Editar</a>
+                        <form method="post" action="/insumos/patrimonio/{{ asset.id }}/excluir" onsubmit="return confirm('Excluir o patrimônio {{ asset.name }}?');">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                            <button class="rounded-xl bg-rose-600 px-3 py-2 text-xs font-medium text-white hover:bg-rose-700">Excluir</button>
+                        </form>
+                    </div>
+                </div>
+                {% if asset.notes %}
+                <p class="mt-4 text-sm text-slate-500">{{ asset.notes }}</p>
+                {% endif %}
+            </article>
+            {% else %}
+            <p class="text-sm text-slate-500">Nenhum patrimônio cadastrado para os filtros informados.</p>
+            {% endfor %}
+        </div>
+    </section>
+</div>
+{% endblock %}

@@ -1,11 +1,19 @@
 from datetime import date, datetime
+from decimal import Decimal
+from io import BytesIO
 from urllib.parse import urlencode
 
 import json
 
 from fastapi import APIRouter, Depends, File, Form, Request, Response, UploadFile, status
-from fastapi.responses import RedirectResponse
+from fastapi.responses import RedirectResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
+from openpyxl import Workbook
+from openpyxl.utils import get_column_letter
+from reportlab.lib import colors
+from reportlab.lib.pagesizes import A4, landscape
+from reportlab.lib.styles import getSampleStyleSheet
+from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 from sqlalchemy.orm import Session
 
 from app.core.csrf import validate_csrf
@@ -15,6 +23,7 @@ from app.db.session import get_db
 from app.models import (
     AgronomicProfile,
     CoffeeVariety,
+    EquipmentAsset,
     Farm,
     FertilizationSchedule,
     FertilizationRecord,
@@ -35,6 +44,7 @@ from app.services.forms import (
     calculate_irrigation_volume,
     calculate_soil_recommendations,
     create_agronomic_profile,
+    create_equipment_asset,
     create_farm,
     create_fertilization,
     create_fertilization_schedule,
@@ -53,6 +63,7 @@ from app.services.forms import (
     extract_geojson_file,
     normalize_geojson,
     update_agronomic_profile,
+    update_equipment_asset,
     update_farm,
     update_fertilization,
     update_fertilization_schedule,
@@ -143,12 +154,20 @@ def _page_number(value: str | int | None, default: int = 1) -> int:
         return default
 
 
-def _build_stock_context(repo: FarmRepository, farm_id: int | None = None, input_id: int | None = None):
-    catalog_inputs = repo.list_input_catalog()
+def _build_stock_context(
+    repo: FarmRepository,
+    farm_id: int | None = None,
+    input_id: int | None = None,
+    start_date: date | None = None,
+    end_date: date | None = None,
+    movement_type: str = "all",
+    item_type: str | None = None,
+):
+    catalog_inputs = repo.list_input_catalog(item_type=item_type)
     if input_id:
         catalog_inputs = [item for item in catalog_inputs if item.id == input_id]
 
-    purchase_entries = repo.list_purchased_inputs()
+    purchase_entries = repo.list_purchased_inputs(item_type=item_type)
     if input_id:
         purchase_entries = [entry for entry in purchase_entries if entry.input_id == input_id]
     if farm_id:
@@ -159,6 +178,8 @@ def _build_stock_context(repo: FarmRepository, farm_id: int | None = None, input
         stock_outputs = [output for output in stock_outputs if output.input_id == input_id]
     if farm_id:
         stock_outputs = [output for output in stock_outputs if output.farm_id in (None, farm_id)]
+    if item_type:
+        stock_outputs = [output for output in stock_outputs if output.input_catalog and output.input_catalog.item_type == item_type]
 
     input_stock = {
         item.id: {
@@ -185,6 +206,7 @@ def _build_stock_context(repo: FarmRepository, farm_id: int | None = None, input
         row = {
             "id": item.id,
             "name": item.name,
+            "item_type": item.item_type,
             "unit": item.default_unit,
             "available_quantity": input_stock[item.id]["available"],
             "total_quantity": input_stock[item.id]["total"],
@@ -205,6 +227,7 @@ def _build_stock_context(repo: FarmRepository, farm_id: int | None = None, input
 
         events = []
         for entry in related_entries:
+            unit_cost = round(float(entry.total_cost or 0) / max(float(entry.total_quantity or 0), 1), 4)
             events.append(
                 {
                     "kind": "entrada",
@@ -216,6 +239,8 @@ def _build_stock_context(repo: FarmRepository, farm_id: int | None = None, input
                     "origin": "compra",
                     "reference": f"Lote #{entry.id}",
                     "value": float(entry.total_cost or 0),
+                    "unit_cost": unit_cost,
+                    "notes": entry.notes,
                     "sort_key": (entry.purchase_date or date.today(), 0, entry.id),
                 }
             )
@@ -231,6 +256,8 @@ def _build_stock_context(repo: FarmRepository, farm_id: int | None = None, input
                     "origin": output.origin,
                     "reference": f"{output.reference_type or 'movimento'}#{output.reference_id}" if output.reference_id else (output.reference_type or "movimento manual"),
                     "value": float(output.total_cost or 0),
+                    "unit_cost": float(output.unit_cost or 0),
+                    "notes": output.notes,
                     "sort_key": (output.movement_date or date.today(), 1, output.id),
                 }
             )
@@ -251,21 +278,76 @@ def _build_stock_context(repo: FarmRepository, farm_id: int | None = None, input
                     "plot": event["plot"],
                     "origin": event["origin"],
                     "reference": event["reference"],
-                    "value": event["value"],
+                    "unit_cost": event["unit_cost"],
+                    "total_cost": event["value"],
                     "balance_after": running_balance,
+                    "notes": event["notes"],
                     "sort_key": event["sort_key"],
                 }
             )
 
     stock_catalog_rows.sort(key=lambda row: row["name"].lower())
-    extract_rows.sort(key=lambda row: row["sort_key"], reverse=True)
+    filtered_entries = purchase_entries
+    filtered_outputs = stock_outputs
+    filtered_extract_rows = extract_rows
+    if start_date:
+        filtered_entries = [entry for entry in filtered_entries if entry.purchase_date and entry.purchase_date >= start_date]
+        filtered_outputs = [output for output in filtered_outputs if output.movement_date and output.movement_date >= start_date]
+        filtered_extract_rows = [row for row in filtered_extract_rows if row["date"] and row["date"] >= start_date]
+    if end_date:
+        filtered_entries = [entry for entry in filtered_entries if entry.purchase_date and entry.purchase_date <= end_date]
+        filtered_outputs = [output for output in filtered_outputs if output.movement_date and output.movement_date <= end_date]
+        filtered_extract_rows = [row for row in filtered_extract_rows if row["date"] and row["date"] <= end_date]
+    if movement_type in {"entrada", "saida"}:
+        filtered_extract_rows = [row for row in filtered_extract_rows if row["kind"] == movement_type]
+        if movement_type == "entrada":
+            filtered_outputs = []
+        else:
+            filtered_entries = []
+
+    filtered_extract_rows.sort(key=lambda row: row["sort_key"], reverse=True)
     return {
         "catalog_inputs": catalog_inputs,
-        "purchase_entries": purchase_entries,
-        "stock_outputs": stock_outputs,
+        "purchase_entries": filtered_entries,
+        "stock_outputs": filtered_outputs,
         "input_stock": input_stock,
         "stock_catalog_rows": stock_catalog_rows,
-        "extract_rows": extract_rows,
+        "extract_rows": filtered_extract_rows,
+    }
+
+
+def _stock_export_query(
+    farm_id: int | None = None,
+    input_id: int | None = None,
+    start_date: date | None = None,
+    end_date: date | None = None,
+    movement_type: str = "all",
+    item_type: str | None = None,
+) -> str:
+    params = {
+        "farm_id": farm_id,
+        "input_id": input_id,
+        "start_date": start_date.isoformat() if start_date else None,
+        "end_date": end_date.isoformat() if end_date else None,
+        "movement_type": movement_type if movement_type and movement_type != "all" else None,
+        "item_type": item_type,
+    }
+    clean = {key: value for key, value in params.items() if value not in (None, "", "all")}
+    return urlencode(clean)
+
+
+def _format_currency(value) -> str:
+    numeric = float(value or 0)
+    return f"R$ {numeric:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+
+
+def _stock_report_totals(rows: list[dict]) -> dict:
+    entries_total = sum(float(row.get("total_cost") or 0) for row in rows if row.get("kind") == "entrada")
+    outputs_total = sum(float(row.get("total_cost") or 0) for row in rows if row.get("kind") == "saida")
+    return {
+        "entries_total": round(entries_total, 2),
+        "outputs_total": round(outputs_total, 2),
+        "movements_count": len(rows),
     }
 
 
@@ -1057,12 +1139,20 @@ def delete_user_action(
 def purchased_inputs_page(
     request: Request,
     edit_id: int | None = None,
+    item_type: str | None = None,
+    farm_id: int | None = None,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user_web),
     csrf_token: str = Depends(get_csrf_token),
 ):
     repo = _repository(db)
-    stock_context = _build_stock_context(repo)
+    edit_input = repo.get_purchased_input(edit_id) if edit_id else None
+    normalized_item_type = item_type if item_type in {"insumo_agricola", "combustivel"} else None
+    if not normalized_item_type and edit_input and edit_input.input_catalog:
+        normalized_item_type = edit_input.input_catalog.item_type
+    if not normalized_item_type:
+        normalized_item_type = "insumo_agricola"
+    stock_context = _build_stock_context(repo, farm_id=farm_id, item_type=normalized_item_type)
     return templates.TemplateResponse(
         "purchased_inputs.html",
         _base_context(
@@ -1072,12 +1162,14 @@ def purchased_inputs_page(
             "purchased_inputs",
             title="Insumos Comprados",
             farms=repo.list_farms(),
+            selected_item_type=normalized_item_type or "insumo_agricola",
+            selected_farm_id=farm_id,
             inputs=stock_context["purchase_entries"],
             inputs_catalog=stock_context["catalog_inputs"],
             input_stock=stock_context["input_stock"],
             stock_outputs=stock_context["stock_outputs"],
             stock_catalog_rows=stock_context["stock_catalog_rows"],
-            edit_input=repo.get_purchased_input(edit_id) if edit_id else None,
+            edit_input=edit_input,
         ),
     )
 
@@ -1087,6 +1179,7 @@ def create_purchased_input_action(
     request: Request,
     csrf_token: str = Form(...),
     farm_id: str | None = Form(None),
+    item_type: str = Form("insumo_agricola"),
     name: str = Form(...),
     quantity_purchased: float = Form(...),
     package_size: float = Form(...),
@@ -1104,6 +1197,7 @@ def create_purchased_input_action(
         _repository(db),
         {
             "farm_id": _int_or_none(farm_id),
+            "item_type": item_type,
             "name": name,
             "quantity_purchased": quantity_purchased,
             "package_size": package_size,
@@ -1115,7 +1209,7 @@ def create_purchased_input_action(
         },
     )
     _flash(request, "success", "Insumo comprado cadastrado com sucesso.")
-    return _redirect("/insumos/comprados")
+    return _redirect_with_query("/insumos/comprados", item_type=item_type, farm_id=_int_or_none(farm_id))
 
 
 @router.post("/insumos/comprados/{input_id}/editar")
@@ -1124,6 +1218,7 @@ def update_purchased_input_action(
     request: Request,
     csrf_token: str = Form(...),
     farm_id: str | None = Form(None),
+    item_type: str = Form("insumo_agricola"),
     name: str = Form(...),
     quantity_purchased: float = Form(...),
     package_size: float = Form(...),
@@ -1147,6 +1242,7 @@ def update_purchased_input_action(
         item,
         {
             "farm_id": _int_or_none(farm_id),
+            "item_type": item_type,
             "name": name,
             "quantity_purchased": quantity_purchased,
             "package_size": package_size,
@@ -1158,7 +1254,7 @@ def update_purchased_input_action(
         },
     )
     _flash(request, "success", "Insumo comprado atualizado com sucesso.")
-    return _redirect("/insumos/comprados")
+    return _redirect_with_query("/insumos/comprados", item_type=item_type, farm_id=_int_or_none(farm_id))
 
 
 @router.post("/insumos/comprados/{input_id}/excluir")
@@ -1192,12 +1288,27 @@ def stock_page(
     request: Request,
     farm_id: int | None = None,
     input_id: int | None = None,
+    start_date: str | None = None,
+    end_date: str | None = None,
+    movement_type: str = "all",
+    item_type: str | None = None,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user_web),
     csrf_token: str = Depends(get_csrf_token),
 ):
     repo = _repository(db)
-    stock_context = _build_stock_context(repo, farm_id=farm_id, input_id=input_id)
+    start = _date_or_none(start_date)
+    end = _date_or_none(end_date)
+    normalized_item_type = item_type if item_type in {"insumo_agricola", "combustivel"} else None
+    stock_context = _build_stock_context(
+        repo,
+        farm_id=farm_id,
+        input_id=input_id,
+        start_date=start,
+        end_date=end,
+        movement_type=movement_type,
+        item_type=normalized_item_type,
+    )
     return templates.TemplateResponse(
         "stock.html",
         _base_context(
@@ -1210,6 +1321,18 @@ def stock_page(
             plots=repo.list_plots(),
             selected_farm_id=farm_id,
             selected_input_id=input_id,
+            selected_start_date=start_date,
+            selected_end_date=end_date,
+            selected_movement_type=movement_type,
+            selected_item_type=normalized_item_type or "",
+            stock_export_query=_stock_export_query(
+                farm_id=farm_id,
+                input_id=input_id,
+                start_date=start,
+                end_date=end,
+                movement_type=movement_type,
+                item_type=normalized_item_type,
+            ),
             inputs_catalog=stock_context["catalog_inputs"],
             input_stock=stock_context["input_stock"],
             stock_catalog_rows=stock_context["stock_catalog_rows"],
@@ -1254,6 +1377,277 @@ def create_manual_stock_output_action(
         return _redirect("/insumos/estoque")
     _flash(request, "success", "Saida manual registrada com sucesso.")
     return _redirect("/insumos/estoque")
+
+
+@router.get("/insumos/estoque/exportar.xlsx")
+def export_stock_extract_xlsx(
+    farm_id: int | None = None,
+    input_id: int | None = None,
+    start_date: str | None = None,
+    end_date: str | None = None,
+    movement_type: str = "all",
+    item_type: str | None = None,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    del user
+    repo = _repository(db)
+    rows = _build_stock_context(
+        repo,
+        farm_id=farm_id,
+        input_id=input_id,
+        start_date=_date_or_none(start_date),
+        end_date=_date_or_none(end_date),
+        movement_type=movement_type,
+        item_type=item_type if item_type in {"insumo_agricola", "combustivel"} else None,
+    )["extract_rows"]
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = "Extrato de estoque"
+    headers = [
+        "Data",
+        "Insumo",
+        "Tipo da movimentacao",
+        "Origem",
+        "Quantidade",
+        "Unidade",
+        "Custo unitario",
+        "Custo total",
+        "Saldo apos movimentacao",
+        "Observacoes",
+    ]
+    sheet.append(headers)
+    for row in rows:
+        sheet.append(
+            [
+                row["date"].isoformat() if row["date"] else "",
+                row["input_name"],
+                row["kind"],
+                row["origin"],
+                float(row["quantity"] or 0),
+                row["unit"],
+                float(row.get("unit_cost") or 0),
+                float(row.get("total_cost") or 0),
+                float(row.get("balance_after") or 0),
+                row.get("notes") or "",
+            ]
+        )
+    for index, width in enumerate([14, 30, 18, 20, 14, 12, 16, 16, 20, 42], start=1):
+        sheet.column_dimensions[get_column_letter(index)].width = width
+    output = BytesIO()
+    workbook.save(output)
+    output.seek(0)
+    return StreamingResponse(
+        output,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": 'attachment; filename="extrato_estoque.xlsx"'},
+    )
+
+
+@router.get("/insumos/estoque/exportar.pdf")
+def export_stock_extract_pdf(
+    farm_id: int | None = None,
+    input_id: int | None = None,
+    start_date: str | None = None,
+    end_date: str | None = None,
+    movement_type: str = "all",
+    item_type: str | None = None,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    del user
+    repo = _repository(db)
+    rows = _build_stock_context(
+        repo,
+        farm_id=farm_id,
+        input_id=input_id,
+        start_date=_date_or_none(start_date),
+        end_date=_date_or_none(end_date),
+        movement_type=movement_type,
+        item_type=item_type if item_type in {"insumo_agricola", "combustivel"} else None,
+    )["extract_rows"]
+    totals = _stock_report_totals(rows)
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=landscape(A4), leftMargin=24, rightMargin=24, topMargin=24, bottomMargin=24)
+    styles = getSampleStyleSheet()
+    elements = [
+        Paragraph("Fazenda Bela Vista", styles["Title"]),
+        Paragraph("Extrato de estoque", styles["Heading2"]),
+        Paragraph(f"Movimentacoes: {totals['movements_count']} • Entradas: {_format_currency(totals['entries_total'])} • Saidas: {_format_currency(totals['outputs_total'])}", styles["BodyText"]),
+        Spacer(1, 12),
+    ]
+    data = [[
+        "Data",
+        "Insumo",
+        "Mov.",
+        "Origem",
+        "Qtd.",
+        "Un.",
+        "Custo un.",
+        "Custo total",
+        "Saldo apos",
+        "Observacoes",
+    ]]
+    for row in rows:
+        data.append([
+            row["date"].isoformat() if row["date"] else "-",
+            row["input_name"],
+            row["kind"],
+            row["origin"],
+            f"{float(row['quantity'] or 0):.2f}",
+            row["unit"],
+            f"{float(row.get('unit_cost') or 0):.4f}",
+            f"{float(row.get('total_cost') or 0):.2f}",
+            f"{float(row.get('balance_after') or 0):.2f}",
+            (row.get("notes") or "-")[:60],
+        ])
+    table = Table(data, repeatRows=1)
+    table.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#e2e8f0")),
+                ("TEXTCOLOR", (0, 0), (-1, 0), colors.black),
+                ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#cbd5e1")),
+                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                ("FONTSIZE", (0, 0), (-1, -1), 8),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f8fafc")]),
+            ]
+        )
+    )
+    elements.append(table)
+    doc.build(elements)
+    buffer.seek(0)
+    return StreamingResponse(
+        buffer,
+        media_type="application/pdf",
+        headers={"Content-Disposition": 'attachment; filename="extrato_estoque.pdf"'},
+    )
+
+
+@router.get("/insumos/patrimonio")
+def equipment_assets_page(
+    request: Request,
+    edit_id: int | None = None,
+    farm_id: int | None = None,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+    csrf_token: str = Depends(get_csrf_token),
+):
+    repo = _repository(db)
+    return templates.TemplateResponse(
+        "equipment_assets.html",
+        _base_context(
+            request,
+            user,
+            csrf_token,
+            "assets",
+            title="Patrimonio e Equipamentos",
+            farms=repo.list_farms(),
+            selected_farm_id=farm_id,
+            assets=repo.list_equipment_assets(farm_id=farm_id),
+            edit_asset=repo.get_equipment_asset(edit_id) if edit_id else None,
+        ),
+    )
+
+
+@router.post("/insumos/patrimonio")
+def create_equipment_asset_action(
+    request: Request,
+    csrf_token: str = Form(...),
+    farm_id: str | None = Form(None),
+    name: str = Form(...),
+    category: str = Form(...),
+    brand_model: str | None = Form(None),
+    asset_code: str | None = Form(None),
+    acquisition_date: str | None = Form(None),
+    acquisition_value: str | None = Form(None),
+    status_value: str = Form("ativo", alias="status"),
+    notes: str | None = Form(None),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    del user
+    validate_csrf(request, csrf_token)
+    create_equipment_asset(
+        _repository(db),
+        {
+            "farm_id": _int_or_none(farm_id),
+            "name": name,
+            "category": category,
+            "brand_model": brand_model,
+            "asset_code": asset_code,
+            "acquisition_date": acquisition_date,
+            "acquisition_value": _float_or_none(acquisition_value),
+            "status": status_value,
+            "notes": notes,
+        },
+    )
+    _flash(request, "success", "Patrimonio cadastrado com sucesso.")
+    return _redirect_with_query("/insumos/patrimonio", farm_id=_int_or_none(farm_id))
+
+
+@router.post("/insumos/patrimonio/{asset_id}/editar")
+def update_equipment_asset_action(
+    asset_id: int,
+    request: Request,
+    csrf_token: str = Form(...),
+    farm_id: str | None = Form(None),
+    name: str = Form(...),
+    category: str = Form(...),
+    brand_model: str | None = Form(None),
+    asset_code: str | None = Form(None),
+    acquisition_date: str | None = Form(None),
+    acquisition_value: str | None = Form(None),
+    status_value: str = Form("ativo", alias="status"),
+    notes: str | None = Form(None),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    del user
+    validate_csrf(request, csrf_token)
+    repo = _repository(db)
+    asset = repo.get_equipment_asset(asset_id)
+    if not asset:
+        _flash(request, "error", "Patrimonio nao encontrado.")
+        return _redirect("/insumos/patrimonio")
+    update_equipment_asset(
+        repo,
+        asset,
+        {
+            "farm_id": _int_or_none(farm_id),
+            "name": name,
+            "category": category,
+            "brand_model": brand_model,
+            "asset_code": asset_code,
+            "acquisition_date": acquisition_date,
+            "acquisition_value": _float_or_none(acquisition_value),
+            "status": status_value,
+            "notes": notes,
+        },
+    )
+    _flash(request, "success", "Patrimonio atualizado com sucesso.")
+    return _redirect_with_query("/insumos/patrimonio", farm_id=_int_or_none(farm_id))
+
+
+@router.post("/insumos/patrimonio/{asset_id}/excluir")
+def delete_equipment_asset_action(
+    asset_id: int,
+    request: Request,
+    csrf_token: str = Form(...),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    del user
+    validate_csrf(request, csrf_token)
+    repo = _repository(db)
+    asset = repo.get_equipment_asset(asset_id)
+    if not asset:
+        _flash(request, "error", "Patrimonio nao encontrado.")
+        return _redirect("/insumos/patrimonio")
+    repo.delete(asset)
+    _flash(request, "success", "Patrimonio excluido com sucesso.")
+    return _redirect("/insumos/patrimonio")
 
 
 @router.get("/insumos/recomendacao")

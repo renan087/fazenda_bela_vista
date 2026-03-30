@@ -2,11 +2,18 @@
 {% block content %}
 <div class="grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
     <section class="rounded-[2rem] bg-white p-6 shadow-panel">
-        <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Insumos</p>
+        <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Entradas de estoque</p>
         <h3 class="mt-2 text-2xl font-semibold">{% if edit_input %}Editar entrada de estoque{% else %}Nova entrada de estoque{% endif %}</h3>
         <form method="post" action="{% if edit_input %}/insumos/comprados/{{ edit_input.id }}/editar{% else %}/insumos/comprados{% endif %}" class="mt-6 grid gap-4" data-purchased-input-form>
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
             <div class="grid gap-4 md:grid-cols-2">
+            <label>
+                <span class="mb-2 block text-sm font-medium">Tipo de item</span>
+                <select name="item_type" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" data-item-type-select>
+                    <option value="insumo_agricola" {% if selected_item_type == 'insumo_agricola' or (edit_input and edit_input.input_catalog and edit_input.input_catalog.item_type == 'insumo_agricola') %}selected{% endif %}>Insumo agricola</option>
+                    <option value="combustivel" {% if selected_item_type == 'combustivel' or (edit_input and edit_input.input_catalog and edit_input.input_catalog.item_type == 'combustivel') %}selected{% endif %}>Combustivel</option>
+                </select>
+            </label>
             <label>
                 <span class="mb-2 block text-sm font-medium">Fazenda</span>
                 <select name="farm_id" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50">
@@ -58,14 +65,32 @@
         </form>
     </section>
     <section class="rounded-[2rem] bg-white p-6 shadow-panel">
-        <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Estoque tecnico</p>
-        <h3 class="mt-2 text-2xl font-semibold">Estoque consolidado</h3>
+        <div class="flex flex-wrap items-start justify-between gap-4">
+            <div>
+                <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Estoque tecnico</p>
+                <h3 class="mt-2 text-2xl font-semibold">Estoque consolidado</h3>
+            </div>
+            <form method="get" action="/insumos/comprados" class="flex flex-wrap gap-3">
+                <select name="item_type" class="min-h-[3.25rem] rounded-2xl border-slate-200 bg-slate-50 px-4">
+                    <option value="insumo_agricola" {% if selected_item_type == 'insumo_agricola' %}selected{% endif %}>Insumo agricola</option>
+                    <option value="combustivel" {% if selected_item_type == 'combustivel' %}selected{% endif %}>Combustivel</option>
+                </select>
+                <select name="farm_id" class="min-h-[3.25rem] rounded-2xl border-slate-200 bg-slate-50 px-4">
+                    <option value="">Todas as fazendas</option>
+                    {% for farm in farms %}
+                    <option value="{{ farm.id }}" {% if selected_farm_id == farm.id %}selected{% endif %}>{{ farm.name }}</option>
+                    {% endfor %}
+                </select>
+                <button class="rounded-2xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white hover:bg-slate-700">Filtrar</button>
+            </form>
+        </div>
         <div class="mt-6 grid gap-4 md:grid-cols-2">
             {% for item in stock_catalog_rows %}
             <article class="rounded-[1.5rem] border {% if item.low_stock_threshold and item.available_quantity <= item.low_stock_threshold %}border-amber-200 bg-amber-50{% else %}border-slate-100 bg-slate-50{% endif %} p-5">
                 <div class="flex items-start justify-between gap-3">
                     <div>
                         <p class="text-lg font-semibold text-slate-900">{{ item.name }}</p>
+                        <p class="mt-1 text-xs uppercase tracking-[0.2em] text-slate-400">{{ 'Combustivel' if item.item_type == 'combustivel' else 'Insumo agricola' }}</p>
                         <p class="mt-1 text-sm text-slate-500">Saldo atual: <strong>{{ item.available_quantity }} {{ item.unit }}</strong></p>
                     </div>
                     {% if item.low_stock_threshold and item.available_quantity <= item.low_stock_threshold %}
@@ -101,6 +126,7 @@
                 <div class="flex flex-wrap items-start justify-between gap-4">
                     <div>
                         <p class="text-lg font-semibold">{{ item.input_catalog.name if item.input_catalog else item.name }}</p>
+                        <p class="mt-1 text-xs uppercase tracking-[0.2em] text-slate-400">{{ 'Combustivel' if item.input_catalog and item.input_catalog.item_type == 'combustivel' else 'Insumo agricola' }}</p>
                         <p class="mt-1 text-sm text-slate-500">{{ item.farm.name if item.farm else "Sem fazenda vinculada" }}</p>
                         <p class="mt-2 text-sm text-slate-600">Lote: {{ item.quantity_purchased }} volumes x {{ item.package_size }} {{ item.package_unit }}</p>
                         <p class="mt-1 text-sm text-slate-600">Entrada total: <strong>{{ item.total_quantity }} {{ item.package_unit }}</strong> • Saldo deste lote: <strong>{{ item.available_quantity }} {{ item.package_unit }}</strong></p>
@@ -133,6 +159,7 @@
                 <div class="flex flex-wrap items-start justify-between gap-4">
                     <div>
                         <p class="text-lg font-semibold">{{ output.input_catalog.name if output.input_catalog else "Insumo removido" }}</p>
+                        <p class="mt-1 text-xs uppercase tracking-[0.2em] text-slate-400">{{ 'Combustivel' if output.input_catalog and output.input_catalog.item_type == 'combustivel' else 'Insumo agricola' }}</p>
                         <p class="mt-1 text-sm text-slate-500">{{ output.farm.name if output.farm else "Sem fazenda vinculada" }}{% if output.plot %} • {{ output.plot.name }}{% endif %}</p>
                         <p class="mt-2 text-sm text-slate-600">Saida: <strong>{{ output.quantity }} {{ output.unit }}</strong> • Origem: <strong>{{ output.origin }}</strong></p>
                         <p class="mt-1 text-sm text-slate-600">Data: <strong>{{ output.movement_date }}</strong>{% if output.total_cost is not none %} • Custo: <strong>R$ {{ output.total_cost }}</strong>{% endif %}</p>
@@ -158,6 +185,9 @@
         const unitPriceField = form.querySelector('[data-unit-price]');
         const totalQuantityField = form.querySelector('[data-total-quantity]');
         const totalCostField = form.querySelector('[data-total-cost]');
+        const itemTypeField = form.querySelector('[data-item-type-select]');
+        const packageUnitField = form.querySelector('select[name="package_unit"]');
+        const lowStockThresholdField = form.querySelector('input[name="low_stock_threshold"]');
 
         const syncTotals = () => {
             const quantity = Number(quantityField?.value || 0);
@@ -167,8 +197,24 @@
             totalCostField.value = quantity && unitPrice ? (quantity * unitPrice).toFixed(2) : '';
         };
 
+        const syncItemType = () => {
+            if (!itemTypeField || !packageUnitField) return;
+            if (itemTypeField.value === 'combustivel') {
+                packageUnitField.value = 'L';
+                if (lowStockThresholdField && !lowStockThresholdField.value) {
+                    lowStockThresholdField.placeholder = 'Ex.: 200';
+                }
+                return;
+            }
+            if (lowStockThresholdField) {
+                lowStockThresholdField.placeholder = '';
+            }
+        };
+
         [quantityField, sizeField, unitPriceField].forEach((field) => field?.addEventListener('input', syncTotals));
+        itemTypeField?.addEventListener('change', syncItemType);
         syncTotals();
+        syncItemType();
     })();
 </script>
 {% endblock %}

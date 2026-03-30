@@ -10,6 +10,7 @@ from app.db.session import engine
 from app.models import (
     AgronomicProfile,
     CoffeeVariety,
+    EquipmentAsset,
     Farm,
     FertilizationItem,
     FertilizationSchedule,
@@ -90,9 +91,24 @@ def _sync_schema() -> None:
             id SERIAL PRIMARY KEY,
             name VARCHAR(160) NOT NULL,
             normalized_name VARCHAR(180) UNIQUE NOT NULL,
+            item_type VARCHAR(40) NOT NULL DEFAULT 'insumo_agricola',
             default_unit VARCHAR(20) NOT NULL DEFAULT 'kg',
             low_stock_threshold NUMERIC(10,2),
             is_active BOOLEAN NOT NULL DEFAULT TRUE
+        )
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS equipment_assets (
+            id SERIAL PRIMARY KEY,
+            farm_id INTEGER REFERENCES farms(id) ON DELETE SET NULL,
+            name VARCHAR(180) NOT NULL,
+            category VARCHAR(120) NOT NULL,
+            brand_model VARCHAR(180),
+            asset_code VARCHAR(120),
+            acquisition_date DATE,
+            acquisition_value NUMERIC(12,2),
+            status VARCHAR(60) NOT NULL DEFAULT 'ativo',
+            notes TEXT
         )
         """,
         """
@@ -219,6 +235,7 @@ def _sync_schema() -> None:
         """,
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW()",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS is_admin BOOLEAN DEFAULT FALSE",
+        "ALTER TABLE input_catalog ADD COLUMN IF NOT EXISTS item_type VARCHAR(40) DEFAULT 'insumo_agricola'",
         "ALTER TABLE purchased_inputs ADD COLUMN IF NOT EXISTS input_id INTEGER",
         "ALTER TABLE purchased_inputs ADD COLUMN IF NOT EXISTS normalized_name VARCHAR(180)",
         "ALTER TABLE input_recommendation_items ADD COLUMN IF NOT EXISTS input_id INTEGER",
@@ -271,6 +288,7 @@ def _sync_schema() -> None:
         connection.execute(text("UPDATE purchased_inputs SET purchase_date = CURRENT_DATE WHERE purchase_date IS NULL"))
         connection.execute(text("UPDATE purchased_inputs SET available_quantity = total_quantity WHERE available_quantity IS NULL"))
         connection.execute(text("UPDATE purchased_inputs SET low_stock_threshold = 0 WHERE low_stock_threshold IS NULL"))
+        connection.execute(text("UPDATE input_catalog SET item_type = 'insumo_agricola' WHERE item_type IS NULL OR item_type = ''"))
         connection.execute(
             text(
                 """

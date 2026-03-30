@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session, joinedload
 from app.models import (
     AgronomicProfile,
     CoffeeVariety,
+    EquipmentAsset,
     Farm,
     FertilizationItem,
     FertilizationSchedule,
@@ -192,8 +193,8 @@ class FarmRepository:
         )
         return query.limit(limit).all() if limit else query.all()
 
-    def list_purchased_inputs(self) -> list[PurchasedInput]:
-        return (
+    def list_purchased_inputs(self, item_type: str | None = None) -> list[PurchasedInput]:
+        query = (
             self.db.query(PurchasedInput)
             .options(
                 joinedload(PurchasedInput.farm),
@@ -201,8 +202,10 @@ class FarmRepository:
                 joinedload(PurchasedInput.stock_allocations),
             )
             .order_by(PurchasedInput.name.asc(), PurchasedInput.purchase_date.desc(), PurchasedInput.id.desc())
-            .all()
         )
+        if item_type:
+            query = query.join(PurchasedInput.input_catalog).filter(InputCatalog.item_type == item_type)
+        return query.all()
 
     def get_purchased_input(self, input_id: int) -> PurchasedInput | None:
         return (
@@ -218,13 +221,15 @@ class FarmRepository:
             .first()
         )
 
-    def list_input_catalog(self) -> list[InputCatalog]:
-        return (
+    def list_input_catalog(self, item_type: str | None = None) -> list[InputCatalog]:
+        query = (
             self.db.query(InputCatalog)
             .options(joinedload(InputCatalog.purchase_entries))
             .order_by(InputCatalog.name.asc())
-            .all()
         )
+        if item_type:
+            query = query.filter(InputCatalog.item_type == item_type)
+        return query.all()
 
     def get_input_catalog(self, input_id: int) -> InputCatalog | None:
         return (
@@ -238,6 +243,24 @@ class FarmRepository:
         return (
             self.db.query(InputCatalog)
             .filter(InputCatalog.normalized_name == normalized_name)
+            .first()
+        )
+
+    def list_equipment_assets(self, farm_id: int | None = None) -> list[EquipmentAsset]:
+        query = (
+            self.db.query(EquipmentAsset)
+            .options(joinedload(EquipmentAsset.farm))
+            .order_by(EquipmentAsset.name.asc(), EquipmentAsset.id.desc())
+        )
+        if farm_id:
+            query = query.filter(EquipmentAsset.farm_id == farm_id)
+        return query.all()
+
+    def get_equipment_asset(self, asset_id: int) -> EquipmentAsset | None:
+        return (
+            self.db.query(EquipmentAsset)
+            .options(joinedload(EquipmentAsset.farm))
+            .filter(EquipmentAsset.id == asset_id)
             .first()
         )
 

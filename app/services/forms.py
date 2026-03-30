@@ -8,6 +8,7 @@ from app.core.security import get_password_hash
 from app.models import (
     AgronomicProfile,
     CoffeeVariety,
+    EquipmentAsset,
     Farm,
     FertilizationSchedule,
     FertilizationScheduleItem,
@@ -222,11 +223,14 @@ def _resolve_input_catalog(
     repository: FarmRepository,
     name: str,
     default_unit: str,
+    item_type: str = "insumo_agricola",
     low_stock_threshold: float | None = None,
 ) -> InputCatalog:
     normalized_name = _normalize_input_name(name)
     existing = repository.get_input_catalog_by_normalized_name(normalized_name)
     if existing:
+        if item_type and existing.item_type != item_type:
+            existing.item_type = existing.item_type or item_type
         if default_unit and existing.default_unit != default_unit:
             existing.default_unit = existing.default_unit or default_unit
         if low_stock_threshold is not None and low_stock_threshold > 0:
@@ -237,6 +241,7 @@ def _resolve_input_catalog(
     catalog = InputCatalog(
         name=" ".join((name or "").strip().split()),
         normalized_name=normalized_name,
+        item_type=item_type or "insumo_agricola",
         default_unit=default_unit or "kg",
         low_stock_threshold=low_stock_threshold if low_stock_threshold is not None else None,
         is_active=True,
@@ -267,10 +272,12 @@ def create_purchased_input(repository: FarmRepository, form: dict) -> PurchasedI
     unit_price = float(form["unit_price"])
     total_quantity = round(quantity_purchased * package_size, 2)
     low_stock_threshold = float(form.get("low_stock_threshold") or 0)
+    item_type = form.get("item_type") or "insumo_agricola"
     catalog = _resolve_input_catalog(
         repository,
         form["name"],
         form["package_unit"],
+        item_type,
         low_stock_threshold if low_stock_threshold > 0 else None,
     )
     item = PurchasedInput(
@@ -303,10 +310,12 @@ def update_purchased_input(repository: FarmRepository, item: PurchasedInput, for
     consumed_quantity = max(float(item.total_quantity or 0) - float(item.available_quantity or 0), 0)
     available_quantity = max(round(total_quantity - consumed_quantity, 2), 0)
     low_stock_threshold = float(form.get("low_stock_threshold") or 0)
+    item_type = form.get("item_type") or "insumo_agricola"
     catalog = _resolve_input_catalog(
         repository,
         form["name"],
         form["package_unit"],
+        item_type,
         low_stock_threshold if low_stock_threshold > 0 else None,
     )
     return repository.update(
@@ -325,6 +334,39 @@ def update_purchased_input(repository: FarmRepository, item: PurchasedInput, for
             "available_quantity": available_quantity,
             "total_cost": round(quantity_purchased * unit_price, 2),
             "low_stock_threshold": low_stock_threshold,
+            "notes": form.get("notes"),
+        },
+    )
+
+
+def create_equipment_asset(repository: FarmRepository, form: dict) -> EquipmentAsset:
+    return repository.create(
+        EquipmentAsset(
+            farm_id=form.get("farm_id"),
+            name=form["name"],
+            category=form["category"],
+            brand_model=form.get("brand_model"),
+            asset_code=form.get("asset_code"),
+            acquisition_date=date.fromisoformat(form["acquisition_date"]) if form.get("acquisition_date") else None,
+            acquisition_value=form.get("acquisition_value"),
+            status=form.get("status") or "ativo",
+            notes=form.get("notes"),
+        )
+    )
+
+
+def update_equipment_asset(repository: FarmRepository, asset: EquipmentAsset, form: dict) -> EquipmentAsset:
+    return repository.update(
+        asset,
+        {
+            "farm_id": form.get("farm_id"),
+            "name": form["name"],
+            "category": form["category"],
+            "brand_model": form.get("brand_model"),
+            "asset_code": form.get("asset_code"),
+            "acquisition_date": date.fromisoformat(form["acquisition_date"]) if form.get("acquisition_date") else None,
+            "acquisition_value": form.get("acquisition_value"),
+            "status": form.get("status") or "ativo",
             "notes": form.get("notes"),
         },
     )

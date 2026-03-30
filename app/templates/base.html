@@ -35,31 +35,37 @@
 <body class="bg-slate-100 text-slate-800">
     {% macro nav_icon(name) -%}
         {% if name == 'dashboard' %}
-        <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 13h7V4H4z"/><path d="M13 20h7v-9h-7z"/><path d="M13 11h7V4h-7z"/><path d="M4 20h7v-5H4z"/></svg>
+        <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="4" rx="1.5"/><rect x="14" y="10" width="7" height="11" rx="1.5"/><rect x="3" y="13" width="7" height="8" rx="1.5"/></svg>
         {% elif name == 'farms' %}
-        <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 21h18"/><path d="M5 21V10l7-4 7 4v11"/><path d="M9 21v-6h6v6"/></svg>
-        {% elif name == 'plots' or name == 'map' %}
-        <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="m3 6 6-2 6 2 6-2v14l-6 2-6-2-6 2z"/><path d="M9 4v14"/><path d="M15 6v14"/></svg>
-        {% elif name == 'varieties' %}
-        <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 21V10"/><path d="M8 14c0-3 1.8-5.2 4-6 2.2.8 4 3 4 6"/><path d="M8 10c-2-1.3-3-3-3-5 2.7 0 4.8 1 6 3"/><path d="M16 10c2-1.3 3-3 3-5-2.7 0-4.8 1-6 3"/></svg>
-        {% elif name == 'irrigation' or name == 'rainfall' %}
-        <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3C9 7 7 9.6 7 13a5 5 0 0 0 10 0c0-3.4-2-6-5-10Z"/><path d="M8 20h8"/></svg>
-        {% elif name == 'production' %}
-        <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 20h16"/><path d="M7 20v-7"/><path d="M12 20V9"/><path d="M17 20V5"/></svg>
-        {% elif name == 'pests' %}
-        <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M8 8c2-2 6-2 8 0s2 6 0 8-6 2-8 0-2-6 0-8Z"/><path d="M12 4v4"/><path d="M4 12h4"/><path d="M16 12h4"/><path d="M12 16v4"/></svg>
-        {% elif name == 'soil_analyses' %}
-        <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M9 3h6"/><path d="M10 3v5l-5 8a4 4 0 0 0 3.4 6h7.2A4 4 0 0 0 19 16l-5-8V3"/><path d="M8 14h8"/></svg>
-        {% elif name == 'agronomic_profiles' %}
-        <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 21s7-4.4 7-11V5l-7-2-7 2v5c0 6.6 7 11 7 11Z"/><path d="m9 12 2 2 4-4"/></svg>
-        {% elif name == 'mobile' %}
-        <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="7" y="2" width="10" height="20" rx="2"/><path d="M11 18h2"/></svg>
+        <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-6-4.35-6-10a6 6 0 1 1 12 0c0 5.65-6 10-6 10Z"/><circle cx="12" cy="11" r="2.5"/></svg>
         {% elif name == 'inputs' %}
-        <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 2v20"/><path d="M7 7h10"/><path d="M7 17h10"/><path d="M5 12h14"/></svg>
+        <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M16.5 9.4 7.5 4.2"/><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="M3.3 7 12 12l8.7-5"/><path d="M12 22V12"/></svg>
+        {% elif name == 'plots' %}
+        <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="8" height="8" rx="1.5"/><rect x="13" y="3" width="8" height="8" rx="1.5"/><rect x="3" y="13" width="8" height="8" rx="1.5"/><rect x="13" y="13" width="8" height="8" rx="1.5"/></svg>
+        {% elif name == 'varieties' %}
+        <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M11 20A7 7 0 0 1 7 7c.8-2 2.7-4 5-4 2.6 0 5 2.1 5 5 0 3.7-2.4 6.6-6 12Z"/><path d="M11 11c1.5-1.5 3.6-2.6 6.5-3"/></svg>
+        {% elif name == 'irrigation' %}
+        <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3C9 7 7 9.8 7 13a5 5 0 0 0 10 0c0-3.2-2-6-5-10Z"/><path d="M17 15c1.5 0 2.8 1 3.5 2.4"/><path d="M3.5 17.4A4 4 0 0 1 7 15"/></svg>
+        {% elif name == 'rainfall' %}
+        <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17.5 18a4.5 4.5 0 1 0-1.2-8.84A6 6 0 0 0 5 11a4 4 0 0 0 1 7"/><path d="m8 19 1.2 2"/><path d="m12 17 1.2 2"/><path d="m16 19 1.2 2"/></svg>
+        {% elif name == 'production' %}
+        <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"/><path d="M7 16v-5"/><path d="M12 16V7"/><path d="M17 16V4"/><path d="M5 16h14"/></svg>
+        {% elif name == 'pests' %}
+        <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 9a4 4 0 1 1 8 0c0 2.5-1.8 4.5-4 4.5S8 11.5 8 9Z"/><path d="M12 13.5V21"/><path d="M6 8 3 5"/><path d="m18 8 3-3"/><path d="M6 14 3 17"/><path d="m18 14 3 3"/></svg>
+        {% elif name == 'soil_analyses' %}
+        <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 2v7l-5 8a3.5 3.5 0 0 0 3 5h8a3.5 3.5 0 0 0 3-5l-5-8V2"/><path d="M8 2h8"/><path d="M8.5 14h7"/></svg>
+        {% elif name == 'agronomic_profiles' %}
+        <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 7h6"/><path d="M9 11h6"/><path d="M9 15h4"/></svg>
+        {% elif name == 'map' %}
+        <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m3 6 6-2 6 2 6-2v14l-6 2-6-2-6 2z"/><path d="M9 4v14"/><path d="M15 6v14"/></svg>
+        {% elif name == 'mobile' %}
+        <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="2.5" width="10" height="19" rx="2.5"/><path d="M10 5.5h4"/><path d="M11 18.5h2"/></svg>
+        {% elif name == 'assets' %}
+        <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7h18"/><path d="M5 7V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v2"/><rect x="4" y="7" width="16" height="13" rx="2"/><path d="M10 12h4"/></svg>
         {% elif name == 'config' %}
-        <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 15.5A3.5 3.5 0 1 0 12 8.5a3.5 3.5 0 0 0 0 7Z"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1.04 1.56V21a2 2 0 1 1-4 0v-.09a1.7 1.7 0 0 0-1.04-1.56 1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.56-1.04H3a2 2 0 1 1 0-4h.09A1.7 1.7 0 0 0 4.65 8.9a1.7 1.7 0 0 0-.34-1.87l-.06-.06A2 2 0 1 1 7.08 4.14l.06.06A1.7 1.7 0 0 0 9 4.54 1.7 1.7 0 0 0 10.04 3H10a2 2 0 1 1 4 0v.09A1.7 1.7 0 0 0 15 4.65a1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.7 1.7 0 0 0 19.35 9c.66.27 1.09.91 1.09 1.63a1.7 1.7 0 0 0 1.56 1.04H22a2 2 0 1 1 0 4h-.09A1.7 1.7 0 0 0 19.4 15Z"/></svg>
+        <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.86l.06.07a2 2 0 1 1-2.83 2.83l-.07-.06a1.7 1.7 0 0 0-1.86-.34 1.7 1.7 0 0 0-1.04 1.57V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.04-1.56 1.7 1.7 0 0 0-1.86.34l-.07.06a2 2 0 1 1-2.83-2.83l.06-.07A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.57-1.04H3a2 2 0 1 1 0-4h.1A1.7 1.7 0 0 0 4.66 8.9a1.7 1.7 0 0 0-.34-1.86l-.06-.07a2 2 0 1 1 2.83-2.83l.07.06A1.7 1.7 0 0 0 9.02 4.54 1.7 1.7 0 0 0 10.06 3H10a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1.04 1.56 1.7 1.7 0 0 0 1.86-.34l.07-.06a2 2 0 1 1 2.83 2.83l-.06.07a1.7 1.7 0 0 0-.34 1.86 1.7 1.7 0 0 0 1.57 1.04H21a2 2 0 1 1 0 4h-.1A1.7 1.7 0 0 0 19.4 15Z"/></svg>
         {% elif name == 'users' %}
-        <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M16 21v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2"/><circle cx="9.5" cy="7" r="4"/><path d="M20 8v6"/><path d="M17 11h6"/></svg>
+        <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="10" cy="7" r="4"/><path d="M20 21v-2a4 4 0 0 0-3-3.87"/><path d="M16.5 3.13a4 4 0 0 1 0 7.75"/></svg>
         {% else %}
         <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="8"/></svg>
         {% endif %}
@@ -78,6 +84,29 @@
                     {% set nav = [
                         ('dashboard', '/dashboard', 'Dashboard'),
                         ('farms', '/fazendas', 'Fazendas'),
+                    ] %}
+                    {% for key, href, label in nav %}
+                    <a href="{{ href }}" class="flex items-center gap-3 rounded-2xl px-4 py-3 transition {% if page == key %}bg-brand-500 text-white shadow-lg{% else %}text-slate-300 hover:bg-slate-900 hover:text-white{% endif %}">
+                        {{ nav_icon(key) }}
+                        <span>{{ label }}</span>
+                    </a>
+                    {% endfor %}
+                    {% set inputs_pages = ['fertilization', 'fertilization_schedules', 'input_recommendations', 'purchased_inputs', 'stock', 'assets'] %}
+                    <div class="rounded-2xl {% if page in inputs_pages %}bg-slate-900/80{% endif %}">
+                        <button type="button" class="flex w-full items-center justify-between rounded-2xl px-4 py-3 text-left transition {% if page in inputs_pages %}text-white{% else %}text-slate-300 hover:bg-slate-900 hover:text-white{% endif %}" data-submenu-toggle="inputs-menu">
+                            <span class="flex items-center gap-3">{{ nav_icon('inputs') }}<span>Insumos</span></span>
+                            <span class="text-xs uppercase tracking-[0.2em]">+</span>
+                        </button>
+                        <div id="inputs-menu" class="{% if page not in inputs_pages %}hidden {% endif %}space-y-1 px-3 pb-3">
+                            <a href="/fertilizacao" class="block rounded-xl px-3 py-2 text-sm {% if page == 'fertilization' %}bg-brand-500 text-white{% else %}text-slate-300 hover:bg-slate-800 hover:text-white{% endif %}">Fertilizacao</a>
+                            <a href="/fertilizacao/agendamentos" class="block rounded-xl px-3 py-2 text-sm {% if page == 'fertilization_schedules' %}bg-brand-500 text-white{% else %}text-slate-300 hover:bg-slate-800 hover:text-white{% endif %}">Agendamentos</a>
+                            <a href="/insumos/recomendacao" class="block rounded-xl px-3 py-2 text-sm {% if page == 'input_recommendations' %}bg-brand-500 text-white{% else %}text-slate-300 hover:bg-slate-800 hover:text-white{% endif %}">Recomendacao</a>
+                            <a href="/insumos/comprados" class="block rounded-xl px-3 py-2 text-sm {% if page == 'purchased_inputs' %}bg-brand-500 text-white{% else %}text-slate-300 hover:bg-slate-800 hover:text-white{% endif %}">Insumos comprados</a>
+                            <a href="/insumos/estoque" class="block rounded-xl px-3 py-2 text-sm {% if page == 'stock' %}bg-brand-500 text-white{% else %}text-slate-300 hover:bg-slate-800 hover:text-white{% endif %}">Estoque</a>
+                            <a href="/insumos/patrimonio" class="block rounded-xl px-3 py-2 text-sm {% if page == 'assets' %}bg-brand-500 text-white{% else %}text-slate-300 hover:bg-slate-800 hover:text-white{% endif %}">Patrimonio</a>
+                        </div>
+                    </div>
+                    {% set nav = [
                         ('plots', '/setores', 'Setores'),
                         ('varieties', '/variedades', 'Variedades'),
                         ('irrigation', '/irrigacao', 'Irrigacao'),
@@ -95,20 +124,6 @@
                         <span>{{ label }}</span>
                     </a>
                     {% endfor %}
-                    {% set inputs_pages = ['fertilization', 'fertilization_schedules', 'input_recommendations', 'purchased_inputs', 'stock'] %}
-                    <div class="rounded-2xl {% if page in inputs_pages %}bg-slate-900/80{% endif %}">
-                        <button type="button" class="flex w-full items-center justify-between rounded-2xl px-4 py-3 text-left transition {% if page in inputs_pages %}text-white{% else %}text-slate-300 hover:bg-slate-900 hover:text-white{% endif %}" data-submenu-toggle="inputs-menu">
-                            <span class="flex items-center gap-3">{{ nav_icon('inputs') }}<span>Insumos</span></span>
-                            <span class="text-xs uppercase tracking-[0.2em]">+</span>
-                        </button>
-                        <div id="inputs-menu" class="{% if page not in inputs_pages %}hidden {% endif %}space-y-1 px-3 pb-3">
-                            <a href="/fertilizacao" class="block rounded-xl px-3 py-2 text-sm {% if page == 'fertilization' %}bg-brand-500 text-white{% else %}text-slate-300 hover:bg-slate-800 hover:text-white{% endif %}">Fertilizacao</a>
-                            <a href="/fertilizacao/agendamentos" class="block rounded-xl px-3 py-2 text-sm {% if page == 'fertilization_schedules' %}bg-brand-500 text-white{% else %}text-slate-300 hover:bg-slate-800 hover:text-white{% endif %}">Agendamentos</a>
-                            <a href="/insumos/recomendacao" class="block rounded-xl px-3 py-2 text-sm {% if page == 'input_recommendations' %}bg-brand-500 text-white{% else %}text-slate-300 hover:bg-slate-800 hover:text-white{% endif %}">Recomendacao</a>
-                            <a href="/insumos/comprados" class="block rounded-xl px-3 py-2 text-sm {% if page == 'purchased_inputs' %}bg-brand-500 text-white{% else %}text-slate-300 hover:bg-slate-800 hover:text-white{% endif %}">Insumos comprados</a>
-                            <a href="/insumos/estoque" class="block rounded-xl px-3 py-2 text-sm {% if page == 'stock' %}bg-brand-500 text-white{% else %}text-slate-300 hover:bg-slate-800 hover:text-white{% endif %}">Estoque</a>
-                        </div>
-                    </div>
                     {% set config_pages = ['users'] %}
                     <div class="rounded-2xl {% if page in config_pages %}bg-slate-900/80{% endif %}">
                         <button type="button" class="flex w-full items-center justify-between rounded-2xl px-4 py-3 text-left transition {% if page in config_pages %}text-white{% else %}text-slate-300 hover:bg-slate-900 hover:text-white{% endif %}" data-submenu-toggle="config-menu">

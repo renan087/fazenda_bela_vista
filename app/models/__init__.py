@@ -1,5 +1,6 @@
 from app.models.agronomic_profile import AgronomicProfile
 from app.models.coffee_variety import CoffeeVariety
+from app.models.equipment_asset import EquipmentAsset
 from app.models.farm import Farm
 from app.models.fertilization_item import FertilizationItem
 from app.models.fertilization_schedule import FertilizationSchedule
@@ -22,6 +23,7 @@ from app.models.user import User
 __all__ = [
     "AgronomicProfile",
     "CoffeeVariety",
+    "EquipmentAsset",
     "Farm",
     "FertilizationItem",
     "FertilizationSchedule",
