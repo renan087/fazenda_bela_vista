@@ -460,9 +460,9 @@ def _sync_schema() -> None:
                 FROM plots plot
                 JOIN crop_seasons season
                   ON season.farm_id = plot.farm_id
-                 AND record.application_date BETWEEN season.start_date AND season.end_date
-                 AND (season.variety_id IS NULL OR season.variety_id = plot.variety_id)
                 WHERE record.plot_id = plot.id
+                  AND record.application_date BETWEEN season.start_date AND season.end_date
+                  AND (season.variety_id IS NULL OR season.variety_id = plot.variety_id)
                   AND record.season_id IS NULL
                 """
             )
@@ -475,9 +475,9 @@ def _sync_schema() -> None:
                 FROM plots plot
                 JOIN crop_seasons season
                   ON season.farm_id = plot.farm_id
-                 AND schedule.scheduled_date BETWEEN season.start_date AND season.end_date
-                 AND (season.variety_id IS NULL OR season.variety_id = plot.variety_id)
                 WHERE schedule.plot_id = plot.id
+                  AND schedule.scheduled_date BETWEEN season.start_date AND season.end_date
+                  AND (season.variety_id IS NULL OR season.variety_id = plot.variety_id)
                   AND schedule.season_id IS NULL
                 """
             )
