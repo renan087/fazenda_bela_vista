@@ -21,3 +21,6 @@ class CropSeason(Base):
 
     farm = relationship("Farm", back_populates="crop_seasons")
     variety = relationship("CoffeeVariety", back_populates="crop_seasons")
+    fertilizations = relationship("FertilizationRecord", back_populates="season")
+    fertilization_schedules = relationship("FertilizationSchedule", back_populates="season")
+    stock_outputs = relationship("StockOutput", back_populates="season")

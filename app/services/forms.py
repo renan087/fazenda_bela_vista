@@ -430,6 +430,7 @@ def create_manual_stock_output(repository: FarmRepository, form: dict) -> list[S
     farm_id = form.get("farm_id")
     plot_id = form.get("plot_id")
     movement_date = date.fromisoformat(form["movement_date"]) if form.get("movement_date") else date.today()
+    season_id = _resolve_season_for_farm(repository, farm_id, movement_date, form.get("season_id"))
 
     available = _catalog_available_stock(repository, input_catalog.id, farm_id, unit)
     if quantity > available:
@@ -453,6 +454,7 @@ def create_manual_stock_output(repository: FarmRepository, form: dict) -> list[S
             purchased_input_id=lot.id,
             farm_id=farm_id,
             plot_id=plot_id,
+            season_id=season_id,
             movement_date=movement_date,
             quantity=consumed,
             unit=unit,
@@ -539,9 +541,12 @@ def update_fertilization(repository: FarmRepository, fertilization: Fertilizatio
 
 
 def create_fertilization_schedule(repository: FarmRepository, form: dict) -> FertilizationSchedule:
+    plot = repository.get_plot(form["plot_id"])
+    scheduled_date = date.fromisoformat(form["scheduled_date"])
     schedule = FertilizationSchedule(
         plot_id=form["plot_id"],
-        scheduled_date=date.fromisoformat(form["scheduled_date"]),
+        season_id=_resolve_season_for_plot(repository, plot, scheduled_date, form.get("season_id")),
+        scheduled_date=scheduled_date,
         status=form.get("status") or "scheduled",
         notes=form.get("notes"),
     )
@@ -567,8 +572,11 @@ def create_fertilization_schedule(repository: FarmRepository, form: dict) -> Fer
 
 
 def update_fertilization_schedule(repository: FarmRepository, schedule: FertilizationSchedule, form: dict) -> FertilizationSchedule:
+    plot = repository.get_plot(form["plot_id"])
+    scheduled_date = date.fromisoformat(form["scheduled_date"])
     schedule.plot_id = form["plot_id"]
-    schedule.scheduled_date = date.fromisoformat(form["scheduled_date"])
+    schedule.season_id = _resolve_season_for_plot(repository, plot, scheduled_date, form.get("season_id"))
+    schedule.scheduled_date = scheduled_date
     schedule.status = form.get("status") or schedule.status
     schedule.notes = form.get("notes")
     schedule.items.clear()
@@ -618,6 +626,7 @@ def conclude_fertilization_schedule(repository: FarmRepository, schedule: Fertil
         {
             "plot_id": schedule.plot_id,
             "application_date": application_date or schedule.scheduled_date.isoformat(),
+            "season_id": schedule.season_id,
             "notes": schedule.notes,
             "items": [
             {
@@ -752,6 +761,49 @@ def _available_stock_for_input(purchased_input: PurchasedInput | None) -> float:
     return float(purchased_input.available_quantity if purchased_input and purchased_input.available_quantity is not None else 0)
 
 
+def _resolve_season_for_plot(
+    repository: FarmRepository,
+    plot: Plot | None,
+    movement_date: date,
+    season_id: int | None = None,
+) -> int | None:
+    if not plot or not plot.farm_id:
+        return None
+    if season_id:
+        season = repository.get_crop_season(season_id)
+        if (
+            season
+            and season.farm_id == plot.farm_id
+            and season.start_date <= movement_date <= season.end_date
+            and (season.variety_id is None or season.variety_id == plot.variety_id)
+        ):
+            return season.id
+    for season in repository.list_crop_seasons(farm_id=plot.farm_id):
+        if season.start_date <= movement_date <= season.end_date:
+            if season.variety_id is not None and season.variety_id != plot.variety_id:
+                continue
+            return season.id
+    return None
+
+
+def _resolve_season_for_farm(
+    repository: FarmRepository,
+    farm_id: int | None,
+    movement_date: date,
+    season_id: int | None = None,
+) -> int | None:
+    if not farm_id:
+        return None
+    if season_id:
+        season = repository.get_crop_season(season_id)
+        if season and season.farm_id == farm_id and season.start_date <= movement_date <= season.end_date:
+            return season.id
+    for season in repository.list_crop_seasons(farm_id=farm_id):
+        if season.start_date <= movement_date <= season.end_date:
+            return season.id
+    return None
+
+
 def _current_average_cost(repository: FarmRepository, farm_id: int | None, input_name: str, unit: str) -> float:
     input_id = None
     normalized_name = _normalize_input_name(input_name)
@@ -820,6 +872,7 @@ def _deduct_stock(repository: FarmRepository, fertilization_item: FertilizationI
                 purchased_input_id=lot.id,
                 farm_id=farm_id,
                 plot_id=fertilization_item.fertilization.plot_id if fertilization_item.fertilization else None,
+                season_id=fertilization_item.fertilization.season_id if fertilization_item.fertilization else None,
                 movement_date=fertilization_item.fertilization.application_date if fertilization_item.fertilization else date.today(),
                 quantity=consumed,
                 unit=fertilization_item.unit,
@@ -857,17 +910,21 @@ def _save_fertilization(repository: FarmRepository, fertilization: Fertilization
     plot = repository.get_plot(form["plot_id"])
     if not plot:
         raise ValueError("Setor nao encontrado para fertilizacao.")
+    application_date = date.fromisoformat(form["application_date"])
+    season_id = _resolve_season_for_plot(repository, plot, application_date, form.get("season_id"))
     product, dose = _fertilization_summary(items)
     record = fertilization or FertilizationRecord(
         plot_id=form["plot_id"],
-        application_date=date.fromisoformat(form["application_date"]),
+        season_id=season_id,
+        application_date=application_date,
         product=product,
         dose=dose,
         cost=0,
         notes=form.get("notes"),
     )
     record.plot_id = form["plot_id"]
-    record.application_date = date.fromisoformat(form["application_date"])
+    record.season_id = season_id
+    record.application_date = application_date
     record.product = product
     record.dose = dose
     record.notes = form.get("notes")

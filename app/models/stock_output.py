@@ -14,6 +14,7 @@ class StockOutput(Base):
     purchased_input_id: Mapped[int] = mapped_column(ForeignKey("purchased_inputs.id"), nullable=True)
     farm_id: Mapped[int] = mapped_column(ForeignKey("farms.id"), nullable=True)
     plot_id: Mapped[int] = mapped_column(ForeignKey("plots.id"), nullable=True)
+    season_id: Mapped[int] = mapped_column(ForeignKey("crop_seasons.id"), nullable=True)
     movement_date: Mapped[date] = mapped_column(Date, nullable=False)
     quantity: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False)
     unit: Mapped[str] = mapped_column(String(20), nullable=False)
@@ -29,3 +30,4 @@ class StockOutput(Base):
     purchased_input = relationship("PurchasedInput", back_populates="stock_outputs")
     farm = relationship("Farm")
     plot = relationship("Plot")
+    season = relationship("CropSeason", back_populates="stock_outputs")

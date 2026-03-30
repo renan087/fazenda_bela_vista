@@ -203,6 +203,7 @@ class FarmRepository:
             self.db.query(FertilizationRecord)
             .options(
                 joinedload(FertilizationRecord.plot),
+                joinedload(FertilizationRecord.season),
                 joinedload(FertilizationRecord.items).joinedload(FertilizationItem.input_catalog),
                 joinedload(FertilizationRecord.items).joinedload(FertilizationItem.purchased_input),
                 joinedload(FertilizationRecord.items).joinedload(FertilizationItem.stock_allocations).joinedload(FertilizationStockAllocation.purchased_input),
@@ -314,6 +315,7 @@ class FarmRepository:
             self.db.query(FertilizationRecord)
             .options(
                 joinedload(FertilizationRecord.plot),
+                joinedload(FertilizationRecord.season),
                 joinedload(FertilizationRecord.items).joinedload(FertilizationItem.input_catalog),
                 joinedload(FertilizationRecord.items).joinedload(FertilizationItem.purchased_input),
                 joinedload(FertilizationRecord.items).joinedload(FertilizationItem.stock_allocations).joinedload(FertilizationStockAllocation.purchased_input),
@@ -328,6 +330,7 @@ class FarmRepository:
             self.db.query(FertilizationSchedule)
             .options(
                 joinedload(FertilizationSchedule.plot).joinedload(Plot.farm),
+                joinedload(FertilizationSchedule.season),
                 joinedload(FertilizationSchedule.items).joinedload(FertilizationScheduleItem.input_catalog),
                 joinedload(FertilizationSchedule.items).joinedload(FertilizationScheduleItem.purchased_input),
                 joinedload(FertilizationSchedule.fertilization_record),
@@ -341,6 +344,7 @@ class FarmRepository:
             self.db.query(FertilizationSchedule)
             .options(
                 joinedload(FertilizationSchedule.plot).joinedload(Plot.farm),
+                joinedload(FertilizationSchedule.season),
                 joinedload(FertilizationSchedule.items).joinedload(FertilizationScheduleItem.input_catalog),
                 joinedload(FertilizationSchedule.items).joinedload(FertilizationScheduleItem.purchased_input),
                 joinedload(FertilizationSchedule.fertilization_record),
@@ -356,6 +360,7 @@ class FarmRepository:
                 joinedload(StockOutput.input_catalog),
                 joinedload(StockOutput.farm),
                 joinedload(StockOutput.plot),
+                joinedload(StockOutput.season),
                 joinedload(StockOutput.purchased_input),
             )
             .order_by(StockOutput.movement_date.desc(), StockOutput.id.desc())

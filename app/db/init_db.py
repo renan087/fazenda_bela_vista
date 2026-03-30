@@ -172,6 +172,7 @@ def _sync_schema() -> None:
         CREATE TABLE IF NOT EXISTS fertilization_schedules (
             id SERIAL PRIMARY KEY,
             plot_id INTEGER NOT NULL REFERENCES plots(id) ON DELETE CASCADE,
+            season_id INTEGER REFERENCES crop_seasons(id) ON DELETE SET NULL,
             scheduled_date DATE NOT NULL,
             status VARCHAR(20) NOT NULL DEFAULT 'scheduled',
             notes TEXT,
@@ -196,6 +197,7 @@ def _sync_schema() -> None:
             purchased_input_id INTEGER REFERENCES purchased_inputs(id) ON DELETE SET NULL,
             farm_id INTEGER REFERENCES farms(id) ON DELETE SET NULL,
             plot_id INTEGER REFERENCES plots(id) ON DELETE SET NULL,
+            season_id INTEGER REFERENCES crop_seasons(id) ON DELETE SET NULL,
             movement_date DATE NOT NULL,
             quantity NUMERIC(10,2) NOT NULL,
             unit VARCHAR(20) NOT NULL,
@@ -284,6 +286,9 @@ def _sync_schema() -> None:
         "ALTER TABLE purchased_inputs ADD COLUMN IF NOT EXISTS purchase_date DATE",
         "ALTER TABLE purchased_inputs ADD COLUMN IF NOT EXISTS available_quantity NUMERIC(12,2)",
         "ALTER TABLE purchased_inputs ADD COLUMN IF NOT EXISTS low_stock_threshold NUMERIC(10,2)",
+        "ALTER TABLE fertilization_records ADD COLUMN IF NOT EXISTS season_id INTEGER",
+        "ALTER TABLE fertilization_schedules ADD COLUMN IF NOT EXISTS season_id INTEGER",
+        "ALTER TABLE stock_outputs ADD COLUMN IF NOT EXISTS season_id INTEGER",
         "ALTER TABLE input_recommendations ADD COLUMN IF NOT EXISTS plot_id INTEGER",
         "ALTER TABLE fertilization_items ADD COLUMN IF NOT EXISTS purchased_input_id INTEGER",
         "ALTER TABLE fertilization_items ADD COLUMN IF NOT EXISTS unit_cost NUMERIC(10,4)",
@@ -404,6 +409,7 @@ def _sync_schema() -> None:
                     purchased_input_id,
                     farm_id,
                     plot_id,
+                    season_id,
                     movement_date,
                     quantity,
                     unit,
@@ -419,6 +425,7 @@ def _sync_schema() -> None:
                     allocation.purchased_input_id,
                     plot.farm_id,
                     record.plot_id,
+                    record.season_id,
                     record.application_date,
                     allocation.quantity_used,
                     item.unit,
@@ -448,6 +455,48 @@ def _sync_schema() -> None:
         connection.execute(
             text(
                 """
+                UPDATE fertilization_records record
+                SET season_id = season.id
+                FROM plots plot
+                JOIN crop_seasons season
+                  ON season.farm_id = plot.farm_id
+                 AND record.application_date BETWEEN season.start_date AND season.end_date
+                 AND (season.variety_id IS NULL OR season.variety_id = plot.variety_id)
+                WHERE record.plot_id = plot.id
+                  AND record.season_id IS NULL
+                """
+            )
+        )
+        connection.execute(
+            text(
+                """
+                UPDATE fertilization_schedules schedule
+                SET season_id = season.id
+                FROM plots plot
+                JOIN crop_seasons season
+                  ON season.farm_id = plot.farm_id
+                 AND schedule.scheduled_date BETWEEN season.start_date AND season.end_date
+                 AND (season.variety_id IS NULL OR season.variety_id = plot.variety_id)
+                WHERE schedule.plot_id = plot.id
+                  AND schedule.season_id IS NULL
+                """
+            )
+        )
+        connection.execute(
+            text(
+                """
+                UPDATE stock_outputs output
+                SET season_id = season.id
+                FROM crop_seasons season
+                WHERE output.farm_id = season.farm_id
+                  AND output.movement_date BETWEEN season.start_date AND season.end_date
+                  AND output.season_id IS NULL
+                """
+            )
+        )
+        connection.execute(
+            text(
+                """
                 DO $$
                 BEGIN
                     IF NOT EXISTS (
@@ -457,6 +506,57 @@ def _sync_schema() -> None:
                         ALTER TABLE plots
                         ADD CONSTRAINT plots_farm_id_fkey
                         FOREIGN KEY (farm_id) REFERENCES farms(id);
+                    END IF;
+                END $$;
+                """
+            )
+        )
+        connection.execute(
+            text(
+                """
+                DO $$
+                BEGIN
+                    IF NOT EXISTS (
+                        SELECT 1 FROM information_schema.table_constraints
+                        WHERE constraint_name = 'fertilization_records_season_id_fkey'
+                    ) THEN
+                        ALTER TABLE fertilization_records
+                        ADD CONSTRAINT fertilization_records_season_id_fkey
+                        FOREIGN KEY (season_id) REFERENCES crop_seasons(id) ON DELETE SET NULL;
+                    END IF;
+                END $$;
+                """
+            )
+        )
+        connection.execute(
+            text(
+                """
+                DO $$
+                BEGIN
+                    IF NOT EXISTS (
+                        SELECT 1 FROM information_schema.table_constraints
+                        WHERE constraint_name = 'fertilization_schedules_season_id_fkey'
+                    ) THEN
+                        ALTER TABLE fertilization_schedules
+                        ADD CONSTRAINT fertilization_schedules_season_id_fkey
+                        FOREIGN KEY (season_id) REFERENCES crop_seasons(id) ON DELETE SET NULL;
+                    END IF;
+                END $$;
+                """
+            )
+        )
+        connection.execute(
+            text(
+                """
+                DO $$
+                BEGIN
+                    IF NOT EXISTS (
+                        SELECT 1 FROM information_schema.table_constraints
+                        WHERE constraint_name = 'stock_outputs_season_id_fkey'
+                    ) THEN
+                        ALTER TABLE stock_outputs
+                        ADD CONSTRAINT stock_outputs_season_id_fkey
+                        FOREIGN KEY (season_id) REFERENCES crop_seasons(id) ON DELETE SET NULL;
                     END IF;
                 END $$;
                 """

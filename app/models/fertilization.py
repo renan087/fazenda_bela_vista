@@ -11,6 +11,7 @@ class FertilizationRecord(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
     plot_id: Mapped[int] = mapped_column(ForeignKey("plots.id"), nullable=False)
+    season_id: Mapped[int] = mapped_column(ForeignKey("crop_seasons.id"), nullable=True)
     application_date: Mapped[date] = mapped_column(Date, nullable=False)
     product: Mapped[str] = mapped_column(String(120), nullable=False)
     dose: Mapped[str] = mapped_column(String(80), nullable=False)
@@ -18,5 +19,6 @@ class FertilizationRecord(Base):
     notes: Mapped[str] = mapped_column(Text, nullable=True)
 
     plot = relationship("Plot", back_populates="fertilizations")
+    season = relationship("CropSeason", back_populates="fertilizations")
     items = relationship("FertilizationItem", back_populates="fertilization", cascade="all, delete-orphan")
     schedule = relationship("FertilizationSchedule", back_populates="fertilization_record", uselist=False)

@@ -106,6 +106,41 @@
                 {% if season.notes %}
                 <p class="mt-4 text-sm text-slate-500">{{ season.notes }}</p>
                 {% endif %}
+                {% set costs = season_costs.get(season.id, {}) %}
+                <div class="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                    <div class="rounded-2xl bg-white px-4 py-3">
+                        <p class="text-xs uppercase tracking-[0.25em] text-slate-400">Insumos consumidos</p>
+                        <p class="mt-2 text-lg font-semibold">R$ {{ '%.2f'|format(costs.get('input_cost', 0)) }}</p>
+                    </div>
+                    <div class="rounded-2xl bg-white px-4 py-3">
+                        <p class="text-xs uppercase tracking-[0.25em] text-slate-400">Combustivel consumido</p>
+                        <p class="mt-2 text-lg font-semibold">R$ {{ '%.2f'|format(costs.get('fuel_cost', 0)) }}</p>
+                    </div>
+                    <div class="rounded-2xl bg-white px-4 py-3">
+                        <p class="text-xs uppercase tracking-[0.25em] text-slate-400">Custo de aplicacoes</p>
+                        <p class="mt-2 text-lg font-semibold">R$ {{ '%.2f'|format(costs.get('application_cost', 0)) }}</p>
+                    </div>
+                    <div class="rounded-2xl bg-white px-4 py-3">
+                        <p class="text-xs uppercase tracking-[0.25em] text-slate-400">Insumos consumidos na safra</p>
+                        <p class="mt-2 text-lg font-semibold">R$ {{ '%.2f'|format(costs.get('consumed_inputs_cost', 0)) }}</p>
+                    </div>
+                    <div class="rounded-2xl bg-white px-4 py-3">
+                        <p class="text-xs uppercase tracking-[0.25em] text-slate-400">Custo operacional total</p>
+                        <p class="mt-2 text-lg font-semibold">R$ {{ '%.2f'|format(costs.get('operational_total', 0)) }}</p>
+                    </div>
+                    <div class="rounded-2xl bg-white px-4 py-3">
+                        <p class="text-xs uppercase tracking-[0.25em] text-slate-400">Custo por hectare</p>
+                        <p class="mt-2 text-lg font-semibold">R$ {{ '%.2f'|format(costs.get('cost_per_hectare', 0)) }}/ha</p>
+                    </div>
+                    <div class="rounded-2xl bg-white px-4 py-3">
+                        <p class="text-xs uppercase tracking-[0.25em] text-slate-400">Custo por fazenda</p>
+                        <p class="mt-2 text-lg font-semibold">R$ {{ '%.2f'|format(costs.get('farm_cost', 0)) }}</p>
+                        <p class="mt-1 text-sm text-slate-500">Cultura {{ season.culture }}: R$ {{ '%.2f'|format(costs.get('culture_cost', 0)) }}</p>
+                        {% if season.variety %}
+                        <p class="mt-1 text-sm text-slate-500">Variedade {{ season.variety.name }}: R$ {{ '%.2f'|format(costs.get('variety_cost', 0)) }}</p>
+                        {% endif %}
+                    </div>
+                </div>
             </article>
             {% else %}
             <p class="text-sm text-slate-500">Nenhuma safra cadastrada.</p>

@@ -1502,6 +1502,7 @@ def create_manual_stock_output_action(
                 "farm_id": _int_or_none(farm_id),
                 "plot_id": _int_or_none(plot_id),
                 "input_id": input_id,
+                "season_id": _active_season_id(request),
                 "movement_date": movement_date,
                 "quantity": quantity,
                 "unit": unit,
@@ -2052,6 +2053,44 @@ def crop_seasons_page(
 ):
     repo = _repository(db)
     effective_farm_id = _active_farm_id(request)
+    crop_seasons = repo.list_crop_seasons(farm_id=effective_farm_id)
+    fertilizations = repo.list_fertilizations()
+    stock_outputs = repo.list_stock_outputs(farm_id=effective_farm_id) if effective_farm_id else repo.list_stock_outputs()
+    season_costs: dict[int, dict] = {}
+    for season in crop_seasons:
+        season_outputs = [output for output in stock_outputs if output.season_id == season.id]
+        season_fertilizations = [record for record in fertilizations if record.season_id == season.id]
+        input_cost = round(
+            sum(
+                float(output.total_cost or 0)
+                for output in season_outputs
+                if output.input_catalog and output.input_catalog.item_type != "combustivel"
+            ),
+            2,
+        )
+        fuel_cost = round(
+            sum(
+                float(output.total_cost or 0)
+                for output in season_outputs
+                if output.input_catalog and output.input_catalog.item_type == "combustivel"
+            ),
+            2,
+        )
+        application_cost = round(sum(float(record.cost or 0) for record in season_fertilizations), 2)
+        consumed_inputs_cost = round(input_cost + fuel_cost, 2)
+        operational_total = round(consumed_inputs_cost + application_cost, 2)
+        cultivated_area = float(season.cultivated_area or 0)
+        season_costs[season.id] = {
+            "input_cost": input_cost,
+            "fuel_cost": fuel_cost,
+            "application_cost": application_cost,
+            "consumed_inputs_cost": consumed_inputs_cost,
+            "operational_total": operational_total,
+            "cost_per_hectare": round(operational_total / cultivated_area, 2) if cultivated_area else 0,
+            "farm_cost": operational_total,
+            "culture_cost": operational_total,
+            "variety_cost": operational_total if season.variety_id else 0,
+        }
     return templates.TemplateResponse(
         "seasons.html",
         _base_context(
@@ -2063,7 +2102,8 @@ def crop_seasons_page(
             title="Safras",
             farms=repo.list_farms(),
             varieties=repo.list_varieties(),
-            crop_seasons=repo.list_crop_seasons(farm_id=effective_farm_id),
+            crop_seasons=crop_seasons,
+            season_costs=season_costs,
             edit_season=repo.get_crop_season(edit_id) if edit_id else None,
         ),
     )
@@ -2562,6 +2602,7 @@ async def create_fertilization_action(
             {
                 "plot_id": plot_id,
                 "application_date": str(form.get("application_date") or ""),
+                "season_id": _active_season_id(request),
                 "notes": str(form.get("notes") or "") or None,
                 "items": items,
             },
@@ -2605,6 +2646,7 @@ async def update_fertilization_action(
             {
                 "plot_id": plot_id,
                 "application_date": str(form.get("application_date") or ""),
+                "season_id": _active_season_id(request),
                 "notes": str(form.get("notes") or "") or None,
                 "items": items,
             },
@@ -2725,6 +2767,7 @@ async def create_fertilization_schedule_action(
         {
             "plot_id": plot_id,
             "scheduled_date": str(form.get("scheduled_date") or ""),
+            "season_id": _active_season_id(request),
             "status": str(form.get("status") or "scheduled"),
             "notes": str(form.get("notes") or "") or None,
             "items": items,
@@ -2759,6 +2802,7 @@ async def update_fertilization_schedule_action(
         {
             "plot_id": int(form.get("plot_id") or 0),
             "scheduled_date": str(form.get("scheduled_date") or ""),
+            "season_id": _active_season_id(request),
             "status": str(form.get("status") or schedule.status),
             "notes": str(form.get("notes") or "") or None,
             "items": items,
