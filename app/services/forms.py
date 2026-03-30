@@ -440,7 +440,7 @@ def create_input_recommendation(repository: FarmRepository, form: dict) -> Input
     repository.db.flush()
     for item in form.get("items", []):
         input_catalog = repository.get_input_catalog(item["input_id"])
-        if not input_catalog:
+        if not input_catalog or input_catalog.item_type != "insumo_agricola" or not input_catalog.is_active:
             continue
         recommendation.items.append(
             InputRecommendationItem(
@@ -469,7 +469,7 @@ def update_input_recommendation(repository: FarmRepository, recommendation: Inpu
     repository.db.flush()
     for item in form.get("items", []):
         input_catalog = repository.get_input_catalog(item["input_id"])
-        if not input_catalog:
+        if not input_catalog or input_catalog.item_type != "insumo_agricola" or not input_catalog.is_active:
             continue
         recommendation.items.append(
             InputRecommendationItem(
@@ -505,7 +505,7 @@ def create_fertilization_schedule(repository: FarmRepository, form: dict) -> Fer
     repository.db.flush()
     for item in form.get("items", []):
         input_catalog = repository.get_input_catalog(item["input_id"])
-        if not input_catalog:
+        if not input_catalog or input_catalog.item_type != "insumo_agricola" or not input_catalog.is_active:
             continue
         schedule.items.append(
             FertilizationScheduleItem(
@@ -531,7 +531,7 @@ def update_fertilization_schedule(repository: FarmRepository, schedule: Fertiliz
     repository.db.flush()
     for item in form.get("items", []):
         input_catalog = repository.get_input_catalog(item["input_id"])
-        if not input_catalog:
+        if not input_catalog or input_catalog.item_type != "insumo_agricola" or not input_catalog.is_active:
             continue
         schedule.items.append(
             FertilizationScheduleItem(
@@ -835,6 +835,10 @@ def _save_fertilization(repository: FarmRepository, fertilization: Fertilization
 
     total_cost = Decimal("0")
     for item in items:
+        if item.get("input_id"):
+            input_catalog = repository.get_input_catalog(item["input_id"])
+            if not input_catalog or input_catalog.item_type != "insumo_agricola" or not input_catalog.is_active:
+                raise ValueError("Selecione apenas insumos agrícolas válidos para a fertilização.")
         fertilization_item = FertilizationItem(
             fertilization_record_id=record.id,
             input_id=item.get("input_id"),

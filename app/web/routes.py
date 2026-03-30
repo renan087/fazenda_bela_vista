@@ -1665,7 +1665,7 @@ def input_recommendations_page(
     csrf_token: str = Depends(get_csrf_token),
 ):
     repo = _repository(db)
-    catalog_inputs = repo.list_input_catalog()
+    catalog_inputs = repo.list_input_catalog(item_type="insumo_agricola")
     purchase_entries = repo.list_purchased_inputs()
     input_stock = {
         item.id: {
@@ -2167,7 +2167,7 @@ def fertilization_page(
     repo = _repository(db)
     edit_fertilization = repo.get_fertilization(edit_id) if edit_id else None
     recommendation_groups: dict[str, list[dict]] = {}
-    consolidated_inputs = repo.list_input_catalog()
+    consolidated_inputs = repo.list_input_catalog(item_type="insumo_agricola")
     purchased_inputs = repo.list_purchased_inputs()
     input_stock = {
         item.id: {
@@ -2329,7 +2329,7 @@ def fertilization_schedules_page(
     edit_schedule = repo.get_fertilization_schedule(edit_id) if edit_id else None
     schedules = repo.list_fertilization_schedules()
     schedule_validations = {schedule.id: validate_schedule_stock(repo, schedule) for schedule in schedules}
-    consolidated_inputs = repo.list_input_catalog()
+    consolidated_inputs = repo.list_input_catalog(item_type="insumo_agricola")
     purchased_inputs = repo.list_purchased_inputs()
     input_stock = {
         item.id: {
