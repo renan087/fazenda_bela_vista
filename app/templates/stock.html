@@ -1,63 +1,11 @@
 {% extends "base.html" %}
 {% block content %}
 <section class="rounded-[2rem] bg-white p-6 shadow-panel">
-    <div class="flex flex-wrap items-start justify-between gap-4">
+    <div>
         <div>
             <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Estoque</p>
             <h3 class="mt-2 text-2xl font-semibold">Controle consolidado de insumos</h3>
             <p class="mt-2 max-w-3xl text-sm text-slate-500">Consulte saldos, entradas, saídas e o extrato cronológico do estoque. As saídas automáticas vindas da fertilização continuam registradas aqui, e você também pode lançar saídas manuais com validação de saldo.</p>
-        </div>
-        <form method="get" action="/insumos/estoque" class="grid gap-3 sm:grid-cols-2 xl:grid-cols-6" data-stock-filter-form>
-            <label>
-                <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Tipo</span>
-                <select name="item_type" class="w-full rounded-xl border-slate-200 bg-slate-50">
-                    <option value="">Todos os consumiveis</option>
-                    <option value="insumo_agricola" {% if selected_item_type == 'insumo_agricola' %}selected{% endif %}>Insumo agricola</option>
-                    <option value="combustivel" {% if selected_item_type == 'combustivel' %}selected{% endif %}>Combustivel</option>
-                </select>
-            </label>
-            <label>
-                <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Fazenda</span>
-                <select name="farm_id" class="w-full rounded-xl border-slate-200 bg-slate-50">
-                    <option value="">Todas</option>
-                    {% for farm in farms %}
-                    <option value="{{ farm.id }}" {% if selected_farm_id == farm.id %}selected{% endif %}>{{ farm.name }}</option>
-                    {% endfor %}
-                </select>
-            </label>
-            <label>
-                <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Insumo</span>
-                <select name="input_id" class="w-full rounded-xl border-slate-200 bg-slate-50">
-                    <option value="">Todos</option>
-                    {% for input_item in inputs_catalog %}
-                    <option value="{{ input_item.id }}" {% if selected_input_id == input_item.id %}selected{% endif %}>{{ input_item.name }}</option>
-                    {% endfor %}
-                </select>
-            </label>
-            <label>
-                <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Periodo inicial</span>
-                <input type="date" name="start_date" value="{{ selected_start_date or '' }}" class="w-full rounded-xl border-slate-200 bg-slate-50">
-            </label>
-            <label>
-                <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Periodo final</span>
-                <input type="date" name="end_date" value="{{ selected_end_date or '' }}" class="w-full rounded-xl border-slate-200 bg-slate-50">
-            </label>
-            <label>
-                <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Movimentacao</span>
-                <select name="movement_type" class="w-full rounded-xl border-slate-200 bg-slate-50">
-                    <option value="all" {% if selected_movement_type == 'all' %}selected{% endif %}>Todas</option>
-                    <option value="entrada" {% if selected_movement_type == 'entrada' %}selected{% endif %}>Entrada</option>
-                    <option value="saida" {% if selected_movement_type == 'saida' %}selected{% endif %}>Saida</option>
-                </select>
-            </label>
-            <div class="flex items-end gap-3">
-                <button class="rounded-xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white">Filtrar</button>
-                <a href="/insumos/estoque" class="rounded-xl bg-slate-100 px-4 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-200">Limpar</a>
-            </div>
-        </form>
-        <div class="flex flex-wrap gap-3">
-            <a href="/insumos/estoque/exportar.pdf{% if stock_export_query %}?{{ stock_export_query }}{% endif %}" class="rounded-xl bg-brand-500 px-4 py-3 text-sm font-semibold text-white hover:bg-brand-700">Exportar PDF</a>
-            <a href="/insumos/estoque/exportar.xlsx{% if stock_export_query %}?{{ stock_export_query }}{% endif %}" class="rounded-xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white hover:bg-emerald-700">Exportar Excel</a>
         </div>
     </div>
 </section>
@@ -166,7 +114,70 @@
 </section>
 
 <section class="mt-6 rounded-[2rem] bg-white p-6 shadow-panel">
-    <div class="flex flex-wrap gap-3">
+    <div class="flex flex-wrap items-start justify-between gap-4">
+        <div>
+            <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Histórico</p>
+            <h3 class="mt-2 text-xl font-semibold">Movimentações de estoque</h3>
+            <p class="mt-2 max-w-3xl text-sm text-slate-500">Filtre as movimentações e navegue entre entradas, saídas e extrato dentro do mesmo painel.</p>
+        </div>
+        <div class="flex flex-wrap gap-3">
+            <a href="/insumos/estoque/exportar.pdf{% if stock_export_query %}?{{ stock_export_query }}{% endif %}" class="rounded-xl bg-brand-500 px-4 py-3 text-sm font-semibold text-white hover:bg-brand-700">Exportar PDF</a>
+            <a href="/insumos/estoque/exportar.xlsx{% if stock_export_query %}?{{ stock_export_query }}{% endif %}" class="rounded-xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white hover:bg-emerald-700">Exportar Excel</a>
+        </div>
+    </div>
+
+    <div class="mt-6 rounded-[1.5rem] border border-slate-200 bg-slate-50/70 p-4 sm:p-5">
+        <form method="get" action="/insumos/estoque" class="grid gap-3 sm:grid-cols-2 xl:grid-cols-6" data-stock-filter-form>
+            <label>
+                <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Tipo</span>
+                <select name="item_type" class="w-full rounded-xl border-slate-200 bg-white">
+                    <option value="">Todos os consumiveis</option>
+                    <option value="insumo_agricola" {% if selected_item_type == 'insumo_agricola' %}selected{% endif %}>Insumo agricola</option>
+                    <option value="combustivel" {% if selected_item_type == 'combustivel' %}selected{% endif %}>Combustivel</option>
+                </select>
+            </label>
+            <label>
+                <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Fazenda</span>
+                <select name="farm_id" class="w-full rounded-xl border-slate-200 bg-white">
+                    <option value="">Todas</option>
+                    {% for farm in farms %}
+                    <option value="{{ farm.id }}" {% if selected_farm_id == farm.id %}selected{% endif %}>{{ farm.name }}</option>
+                    {% endfor %}
+                </select>
+            </label>
+            <label>
+                <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Insumo</span>
+                <select name="input_id" class="w-full rounded-xl border-slate-200 bg-white">
+                    <option value="">Todos</option>
+                    {% for input_item in inputs_catalog %}
+                    <option value="{{ input_item.id }}" {% if selected_input_id == input_item.id %}selected{% endif %}>{{ input_item.name }}</option>
+                    {% endfor %}
+                </select>
+            </label>
+            <label>
+                <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Periodo inicial</span>
+                <input type="date" name="start_date" value="{{ selected_start_date or '' }}" class="w-full rounded-xl border-slate-200 bg-white">
+            </label>
+            <label>
+                <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Periodo final</span>
+                <input type="date" name="end_date" value="{{ selected_end_date or '' }}" class="w-full rounded-xl border-slate-200 bg-white">
+            </label>
+            <label>
+                <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Movimentacao</span>
+                <select name="movement_type" class="w-full rounded-xl border-slate-200 bg-white">
+                    <option value="all" {% if selected_movement_type == 'all' %}selected{% endif %}>Todas</option>
+                    <option value="entrada" {% if selected_movement_type == 'entrada' %}selected{% endif %}>Entrada</option>
+                    <option value="saida" {% if selected_movement_type == 'saida' %}selected{% endif %}>Saida</option>
+                </select>
+            </label>
+            <div class="flex flex-wrap items-end gap-3 sm:col-span-2 xl:col-span-6">
+                <button class="rounded-xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white">Filtrar</button>
+                <a href="/insumos/estoque" class="rounded-xl bg-white px-4 py-3 text-sm font-semibold text-slate-700 ring-1 ring-slate-200 hover:bg-slate-100">Limpar</a>
+            </div>
+        </form>
+    </div>
+
+    <div class="mt-6 flex flex-wrap gap-3">
         <button type="button" class="rounded-xl bg-brand-500 px-4 py-2 text-sm font-semibold text-white" data-stock-tab-button="entries">Entradas</button>
         <button type="button" class="rounded-xl bg-slate-100 px-4 py-2 text-sm font-semibold text-slate-700" data-stock-tab-button="outputs">Saídas</button>
         <button type="button" class="rounded-xl bg-slate-100 px-4 py-2 text-sm font-semibold text-slate-700" data-stock-tab-button="extract">Extrato</button>
