@@ -27,10 +27,20 @@ def _paginate(items: list, page: int, per_page: int = 4) -> dict:
     }
 
 
-def calculate_forecast(repository: FarmRepository) -> dict:
-    harvests = repository.list_harvests()
+def _in_season(record_date, season) -> bool:
+    if not season or not record_date:
+        return True
+    return season.start_date <= record_date <= season.end_date
+
+
+def calculate_forecast(
+    repository: FarmRepository,
+    plots: list | None = None,
+    harvests: list | None = None,
+) -> dict:
+    harvests = harvests if harvests is not None else repository.list_harvests()
     grouped: dict[int, list[float]] = defaultdict(list)
-    plots = {plot.id: plot for plot in repository.list_plots()}
+    plots = {plot.id: plot for plot in (plots if plots is not None else repository.list_plots())}
 
     for harvest in harvests:
         productivity = _float(harvest.productivity_per_hectare)
@@ -65,29 +75,65 @@ def build_dashboard_context(
     rain_start_date: date | None = None,
     rain_end_date: date | None = None,
     pages: dict | None = None,
+    farm_id: int | None = None,
+    season=None,
 ) -> dict:
     pages = pages or {}
-    plots = repository.list_plots()
-    farms = repository.list_farms()
-    harvests = repository.list_harvests()
-    irrigations = repository.list_irrigations()
-    fertilizations = repository.list_fertilizations()
-    schedules = repository.list_fertilization_schedules()
-    purchased_inputs = repository.list_purchased_inputs()
+    plots = repository.list_plots(
+        farm_ids=[farm_id] if farm_id else None,
+        variety_ids=[season.variety_id] if season and season.variety_id else None,
+    )
+    farms = [farm for farm in repository.list_farms() if not farm_id or farm.id == farm_id]
+    plot_ids = {plot.id for plot in plots}
+    harvests = [
+        harvest
+        for harvest in repository.list_harvests()
+        if harvest.plot_id in plot_ids and _in_season(harvest.harvest_date, season)
+    ]
+    irrigations = [
+        irrigation
+        for irrigation in repository.list_irrigations()
+        if irrigation.plot_id in plot_ids and _in_season(irrigation.irrigation_date, season)
+    ]
+    fertilizations = [
+        fertilization
+        for fertilization in repository.list_fertilizations()
+        if fertilization.plot_id in plot_ids and _in_season(fertilization.application_date, season)
+    ]
+    schedules = [
+        schedule
+        for schedule in repository.list_fertilization_schedules()
+        if schedule.plot_id in plot_ids and _in_season(schedule.scheduled_date, season)
+    ]
+    purchased_inputs = [
+        entry
+        for entry in repository.list_purchased_inputs()
+        if not farm_id or entry.farm_id in (None, farm_id)
+    ]
     catalog_inputs = repository.list_input_catalog()
-    incidents = repository.list_pest_incidents()
-    soil_analyses = repository.list_soil_analyses()[:6]
+    incidents = [
+        incident
+        for incident in repository.list_pest_incidents()
+        if incident.plot_id in plot_ids and _in_season(incident.occurrence_date, season)
+    ]
+    soil_analyses = [
+        analysis
+        for analysis in repository.list_soil_analyses(farm_id=farm_id)
+        if analysis.plot_id in plot_ids and _in_season(analysis.analysis_date, season)
+    ][:6]
     today = date.today()
     month_start = today.replace(day=1)
     rainfalls = repository.list_rainfalls(
+        farm_id=farm_id,
         start_date=rain_start_date,
         end_date=rain_end_date,
     )
     month_rainfalls = repository.list_rainfalls(
+        farm_id=farm_id,
         start_date=month_start,
         end_date=today,
     )
-    forecast = calculate_forecast(repository)
+    forecast = calculate_forecast(repository, plots=plots, harvests=harvests)
 
     total_area = sum(_float(plot.area_hectares) for plot in plots)
     total_production = sum(_float(item.sacks_produced) for item in harvests)

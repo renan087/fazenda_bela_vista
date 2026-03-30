@@ -15,3 +15,4 @@ class CoffeeVariety(Base):
     notes: Mapped[str] = mapped_column(Text, nullable=True)
 
     plots = relationship("Plot", back_populates="variety")
+    crop_seasons = relationship("CropSeason", back_populates="variety")

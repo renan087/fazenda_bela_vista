@@ -44,6 +44,8 @@
         <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="8" height="8" rx="1.5"/><rect x="13" y="3" width="8" height="8" rx="1.5"/><rect x="3" y="13" width="8" height="8" rx="1.5"/><rect x="13" y="13" width="8" height="8" rx="1.5"/></svg>
         {% elif name == 'varieties' %}
         <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M11 20A7 7 0 0 1 7 7c.8-2 2.7-4 5-4 2.6 0 5 2.1 5 5 0 3.7-2.4 6.6-6 12Z"/><path d="M11 11c1.5-1.5 3.6-2.6 6.5-3"/></svg>
+        {% elif name == 'seasons' %}
+        <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2v4"/><path d="M16 2v4"/><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18"/><path d="m9 15 2 2 4-4"/></svg>
         {% elif name == 'irrigation' %}
         <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3C9 7 7 9.8 7 13a5 5 0 0 0 10 0c0-3.2-2-6-5-10Z"/><path d="M17 15c1.5 0 2.8 1 3.5 2.4"/><path d="M3.5 17.4A4 4 0 0 1 7 15"/></svg>
         {% elif name == 'rainfall' %}
@@ -109,6 +111,7 @@
                     {% set nav = [
                         ('plots', '/setores', 'Setores'),
                         ('varieties', '/variedades', 'Variedades'),
+                        ('seasons', '/safras', 'Safras'),
                         ('irrigation', '/irrigacao', 'Irrigacao'),
                         ('rainfall', '/pluviometria', 'Pluviometria'),
                         ('production', '/producao', 'Producao'),
@@ -162,10 +165,56 @@
                         <h2 class="text-2xl font-semibold">{{ title or "Painel da Fazenda" }}</h2>
                         </div>
                     </div>
-                    <div class="hidden rounded-2xl bg-mist px-4 py-3 text-right md:block">
-                        <p class="text-xs uppercase tracking-[0.25em] text-slate-400">Safra</p>
-                        <p class="font-semibold text-slate-700">Cafe Especial 2026</p>
-                    </div>
+                    <form method="post" action="/contexto" class="hidden min-w-[20rem] rounded-2xl border border-slate-200 bg-mist/80 px-4 py-3 md:block" data-global-context-form>
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                        <input type="hidden" name="redirect_to" value="{{ current_url or request.url.path }}">
+                        <div class="grid gap-3 lg:grid-cols-2">
+                            <label class="block text-left">
+                                <span class="mb-1 block text-[11px] uppercase tracking-[0.25em] text-slate-400">Fazenda ativa</span>
+                                <select name="farm_id" class="w-full rounded-xl border-slate-200 bg-white/90 text-sm font-medium text-slate-700">
+                                    <option value="">Todas as fazendas</option>
+                                    {% for farm_option in context_farms|default([]) %}
+                                    <option value="{{ farm_option.id }}" {% if active_farm_id == farm_option.id %}selected{% endif %}>{{ farm_option.name }}</option>
+                                    {% endfor %}
+                                </select>
+                            </label>
+                            <label class="block text-left">
+                                <span class="mb-1 block text-[11px] uppercase tracking-[0.25em] text-slate-400">Safra ativa</span>
+                                <select name="season_id" class="w-full rounded-xl border-slate-200 bg-white/90 text-sm font-medium text-slate-700">
+                                    <option value="">Sem safra ativa</option>
+                                    {% for season_option in context_seasons|default([]) %}
+                                    <option value="{{ season_option.id }}" {% if active_season_id == season_option.id %}selected{% endif %}>{{ season_option.name }}</option>
+                                    {% endfor %}
+                                </select>
+                            </label>
+                        </div>
+                    </form>
+                </div>
+                <div class="mx-auto max-w-7xl px-6 pb-5 md:hidden">
+                    <form method="post" action="/contexto" class="rounded-2xl border border-slate-200 bg-mist/80 px-4 py-3" data-global-context-form>
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                        <input type="hidden" name="redirect_to" value="{{ current_url or request.url.path }}">
+                        <div class="grid gap-3 sm:grid-cols-2">
+                            <label class="block text-left">
+                                <span class="mb-1 block text-[11px] uppercase tracking-[0.25em] text-slate-400">Fazenda ativa</span>
+                                <select name="farm_id" class="w-full rounded-xl border-slate-200 bg-white/90 text-sm font-medium text-slate-700">
+                                    <option value="">Todas as fazendas</option>
+                                    {% for farm_option in context_farms|default([]) %}
+                                    <option value="{{ farm_option.id }}" {% if active_farm_id == farm_option.id %}selected{% endif %}>{{ farm_option.name }}</option>
+                                    {% endfor %}
+                                </select>
+                            </label>
+                            <label class="block text-left">
+                                <span class="mb-1 block text-[11px] uppercase tracking-[0.25em] text-slate-400">Safra ativa</span>
+                                <select name="season_id" class="w-full rounded-xl border-slate-200 bg-white/90 text-sm font-medium text-slate-700">
+                                    <option value="">Sem safra ativa</option>
+                                    {% for season_option in context_seasons|default([]) %}
+                                    <option value="{{ season_option.id }}" {% if active_season_id == season_option.id %}selected{% endif %}>{{ season_option.name }}</option>
+                                    {% endfor %}
+                                </select>
+                            </label>
+                        </div>
+                    </form>
                 </div>
             </div>
             <div class="mx-auto max-w-7xl px-6 py-8">
@@ -208,6 +257,11 @@
                 button.addEventListener('click', () => {
                     const target = document.getElementById(button.dataset.submenuToggle);
                     target?.classList.toggle('hidden');
+                });
+            });
+            document.querySelectorAll('[data-global-context-form] select').forEach((field) => {
+                field.addEventListener('change', () => {
+                    field.form?.requestSubmit();
                 });
             });
         })();

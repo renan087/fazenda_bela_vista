@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session, joinedload
 from app.models import (
     AgronomicProfile,
     CoffeeVariety,
+    CropSeason,
     EquipmentAsset,
     Farm,
     FertilizationItem,
@@ -134,6 +135,24 @@ class FarmRepository:
 
     def get_variety(self, variety_id: int) -> CoffeeVariety | None:
         return self.db.query(CoffeeVariety).filter(CoffeeVariety.id == variety_id).first()
+
+    def list_crop_seasons(self, farm_id: int | None = None) -> list[CropSeason]:
+        query = (
+            self.db.query(CropSeason)
+            .options(joinedload(CropSeason.farm), joinedload(CropSeason.variety))
+            .order_by(CropSeason.start_date.desc(), CropSeason.id.desc())
+        )
+        if farm_id:
+            query = query.filter(CropSeason.farm_id == farm_id)
+        return query.all()
+
+    def get_crop_season(self, season_id: int) -> CropSeason | None:
+        return (
+            self.db.query(CropSeason)
+            .options(joinedload(CropSeason.farm), joinedload(CropSeason.variety))
+            .filter(CropSeason.id == season_id)
+            .first()
+        )
 
     def list_irrigations(self, limit: int | None = None) -> list[IrrigationRecord]:
         query = (

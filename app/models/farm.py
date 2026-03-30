@@ -18,6 +18,7 @@ class Farm(Base):
     agronomic_profile = relationship("AgronomicProfile", back_populates="farm", uselist=False, cascade="all, delete-orphan")
     soil_analyses = relationship("SoilAnalysis", back_populates="farm", cascade="all, delete-orphan")
     rainfalls = relationship("RainfallRecord", back_populates="farm", cascade="all, delete-orphan")
+    crop_seasons = relationship("CropSeason", back_populates="farm", cascade="all, delete-orphan")
     purchased_inputs = relationship("PurchasedInput", back_populates="farm", cascade="all, delete-orphan")
     input_recommendations = relationship("InputRecommendation", back_populates="farm", cascade="all, delete-orphan")
     stock_outputs = relationship("StockOutput", back_populates="farm", cascade="all, delete-orphan")

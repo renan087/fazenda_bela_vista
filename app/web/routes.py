@@ -23,6 +23,7 @@ from app.db.session import get_db
 from app.models import (
     AgronomicProfile,
     CoffeeVariety,
+    CropSeason,
     EquipmentAsset,
     Farm,
     FertilizationSchedule,
@@ -44,6 +45,7 @@ from app.services.forms import (
     calculate_irrigation_volume,
     calculate_soil_recommendations,
     create_agronomic_profile,
+    create_crop_season,
     create_equipment_asset,
     create_farm,
     create_fertilization,
@@ -63,6 +65,7 @@ from app.services.forms import (
     extract_geojson_file,
     normalize_geojson,
     update_agronomic_profile,
+    update_crop_season,
     update_equipment_asset,
     update_farm,
     update_fertilization,
@@ -107,6 +110,7 @@ def _redirect_with_query(path: str, **params) -> RedirectResponse:
 
 def _base_context(request: Request, user: User, csrf_token: str, page: str, **kwargs):
     flash = request.session.pop("flash", None)
+    repo = kwargs.pop("_repo", None)
     context = {
         "request": request,
         "user": user,
@@ -114,6 +118,8 @@ def _base_context(request: Request, user: User, csrf_token: str, page: str, **kw
         "page": page,
         "flash": flash,
     }
+    if repo:
+        context.update(_global_scope_context(request, repo))
     context.update(kwargs)
     return context
 
@@ -145,6 +151,72 @@ def _int_list(values: list[str]) -> list[int]:
 
 def _date_or_none(value: str | None):
     return date.fromisoformat(value) if value not in (None, "") else None
+
+
+def _active_farm_id(request: Request) -> int | None:
+    return _int_or_none(request.session.get("active_farm_id"))
+
+
+def _active_season_id(request: Request) -> int | None:
+    return _int_or_none(request.session.get("active_season_id"))
+
+
+def _global_scope_context(request: Request, repo: FarmRepository) -> dict:
+    farms = repo.list_farms()
+    active_farm_id = _active_farm_id(request)
+    active_season_id = _active_season_id(request)
+    active_farm = repo.get_farm(active_farm_id) if active_farm_id else None
+    active_season = repo.get_crop_season(active_season_id) if active_season_id else None
+
+    if active_farm_id and not active_farm:
+        request.session.pop("active_farm_id", None)
+        active_farm_id = None
+    if active_season_id and not active_season:
+        request.session.pop("active_season_id", None)
+        active_season_id = None
+
+    if active_season and active_farm_id and active_season.farm_id != active_farm_id:
+        request.session.pop("active_season_id", None)
+        active_season = None
+        active_season_id = None
+
+    all_seasons = repo.list_crop_seasons()
+    context_seasons = [
+        season for season in all_seasons if not active_farm_id or season.farm_id == active_farm_id
+    ]
+    current_url = request.url.path
+    if request.url.query:
+        current_url = f"{current_url}?{request.url.query}"
+
+    return {
+        "context_farms": farms,
+        "context_seasons": context_seasons,
+        "active_farm_id": active_farm_id,
+        "active_season_id": active_season_id,
+        "active_farm": active_farm,
+        "active_season": active_season,
+        "current_url": current_url,
+    }
+
+
+def _scoped_plot_filters(request: Request, active_season: CropSeason | None) -> tuple[list[int] | None, list[int] | None]:
+    farm_ids = [_active_farm_id(request)] if _active_farm_id(request) else None
+    variety_ids = [active_season.variety_id] if active_season and active_season.variety_id else None
+    return farm_ids, variety_ids
+
+
+def _scoped_dates(active_season: CropSeason | None) -> tuple[date | None, date | None]:
+    if not active_season:
+        return None, None
+    return active_season.start_date, active_season.end_date
+
+
+def _within_scope(value: date | None, start_date: date | None, end_date: date | None) -> bool:
+    if start_date and value and value < start_date:
+        return False
+    if end_date and value and value > end_date:
+        return False
+    return True
 
 
 def _page_number(value: str | int | None, default: int = 1) -> int:
@@ -608,6 +680,48 @@ def home():
     return _redirect("/dashboard")
 
 
+@router.post("/contexto")
+def update_global_context(
+    request: Request,
+    csrf_token: str = Form(...),
+    farm_id: str | None = Form(None),
+    season_id: str | None = Form(None),
+    redirect_to: str | None = Form(None),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    del user
+    validate_csrf(request, csrf_token)
+    repo = _repository(db)
+    selected_farm_id = _int_or_none(farm_id)
+    selected_season_id = _int_or_none(season_id)
+    selected_season = repo.get_crop_season(selected_season_id) if selected_season_id else None
+
+    if selected_season and not selected_farm_id:
+        selected_farm_id = selected_season.farm_id
+
+    if selected_farm_id and not repo.get_farm(selected_farm_id):
+        selected_farm_id = None
+
+    if selected_season and selected_farm_id and selected_season.farm_id != selected_farm_id:
+        selected_season_id = None
+        selected_season = None
+
+    if selected_farm_id:
+        request.session["active_farm_id"] = selected_farm_id
+    else:
+        request.session.pop("active_farm_id", None)
+
+    if selected_season_id:
+        request.session["active_season_id"] = selected_season_id
+    else:
+        request.session.pop("active_season_id", None)
+
+    if not redirect_to or not redirect_to.startswith("/"):
+        redirect_to = "/dashboard"
+    return _redirect(redirect_to)
+
+
 @router.get("/dashboard")
 def dashboard(
     request: Request,
@@ -624,10 +738,14 @@ def dashboard(
     user: User = Depends(get_current_user_web),
     csrf_token: str = Depends(get_csrf_token),
 ):
+    repo = _repository(db)
+    scope = _global_scope_context(request, repo)
     data = build_dashboard_context(
-        _repository(db),
+        repo,
         rain_start_date=_date_or_none(rain_start_date),
         rain_end_date=_date_or_none(rain_end_date),
+        farm_id=scope["active_farm_id"],
+        season=scope["active_season"],
         pages={
             "irrigations": _page_number(irrigations_page),
             "rainfalls": _page_number(rainfalls_page),
@@ -658,6 +776,7 @@ def dashboard(
                 "forecast_page": _page_number(forecast_page),
                 "timeline_page": _page_number(timeline_page),
             },
+            _repo=repo,
             **data,
         ),
     )
@@ -677,9 +796,15 @@ def plots_page(
     csrf_token: str = Depends(get_csrf_token),
 ):
     repo = _repository(db)
+    scope = _global_scope_context(request, repo)
     farm_ids = _int_list(request.query_params.getlist("farm_id"))
     variety_ids = _int_list(request.query_params.getlist("variety_id"))
+    if not farm_ids and scope["active_farm_id"]:
+        farm_ids = [scope["active_farm_id"]]
+    if not variety_ids and scope["active_season"] and scope["active_season"].variety_id:
+        variety_ids = [scope["active_season"].variety_id]
     edit_plot = repo.get_plot(edit_id) if edit_id else None
+    farms, varieties = repo.list_plot_filter_options(farm_ids or None, variety_ids or None)
     return templates.TemplateResponse(
         "plots.html",
         _base_context(
@@ -688,17 +813,18 @@ def plots_page(
             csrf_token,
             "plots",
             plots=repo.list_plots(search=q, farm_ids=farm_ids, variety_ids=variety_ids, sort=sort),
-            farms=repo.list_farms(),
-            varieties=repo.list_varieties(),
+            farms=farms,
+            varieties=varieties,
             filters={"q": q or "", "farm_ids": farm_ids, "variety_ids": variety_ids, "sort": sort},
             edit_plot=edit_plot,
-            selected_farm_id=selected_farm_id,
+            selected_farm_id=selected_farm_id or scope["active_farm_id"],
             open_farm_modal=bool(open_farm_modal),
             filter_links=[
                 {"farm_id": plot.farm_id, "variety_id": plot.variety_id}
-                for plot in repo.list_plots()
+                for plot in repo.list_plots(farm_ids=farm_ids or None, variety_ids=variety_ids or None)
                 if plot.farm_id or plot.variety_id
             ],
+            _repo=repo,
         ),
     )
 
@@ -891,6 +1017,7 @@ def farms_page(
             "farms",
             farms=repo.list_farms(),
             edit_farm=edit_farm,
+            _repo=repo,
         ),
     )
 
@@ -1010,6 +1137,7 @@ def users_page(
             title="Administracao de Usuarios",
             users=repo.list_users(),
             edit_user=repo.get_user(edit_id) if edit_id else None,
+            _repo=repo,
         ),
     )
 
@@ -1146,13 +1274,15 @@ def purchased_inputs_page(
     csrf_token: str = Depends(get_csrf_token),
 ):
     repo = _repository(db)
+    scope = _global_scope_context(request, repo)
+    effective_farm_id = farm_id or scope["active_farm_id"]
     edit_input = repo.get_purchased_input(edit_id) if edit_id else None
     normalized_item_type = item_type if item_type in {"insumo_agricola", "combustivel"} else None
     if not normalized_item_type and edit_input and edit_input.input_catalog:
         normalized_item_type = edit_input.input_catalog.item_type
     if not normalized_item_type:
         normalized_item_type = "insumo_agricola"
-    stock_context = _build_stock_context(repo, farm_id=farm_id, item_type=normalized_item_type)
+    stock_context = _build_stock_context(repo, farm_id=effective_farm_id, item_type=normalized_item_type)
     return templates.TemplateResponse(
         "purchased_inputs.html",
         _base_context(
@@ -1160,10 +1290,11 @@ def purchased_inputs_page(
             user,
             csrf_token,
             "purchased_inputs",
+            _repo=repo,
             title="Insumos Comprados",
             farms=repo.list_farms(),
             selected_item_type=normalized_item_type or "insumo_agricola",
-            selected_farm_id=farm_id,
+            selected_farm_id=effective_farm_id,
             inputs=stock_context["purchase_entries"],
             inputs_catalog=stock_context["catalog_inputs"],
             input_stock=stock_context["input_stock"],
@@ -1297,11 +1428,13 @@ def stock_page(
     csrf_token: str = Depends(get_csrf_token),
 ):
     repo = _repository(db)
-    selected_farm_id = _int_or_none(farm_id)
+    scope = _global_scope_context(request, repo)
+    selected_farm_id = _int_or_none(farm_id) or scope["active_farm_id"]
     selected_input_id = _int_or_none(input_id)
     start = _date_or_none(start_date)
     end = _date_or_none(end_date)
     normalized_item_type = item_type if item_type in {"insumo_agricola", "combustivel"} else None
+    farm_ids, variety_ids = _scoped_plot_filters(request, scope["active_season"])
     stock_context = _build_stock_context(
         repo,
         farm_id=selected_farm_id,
@@ -1318,9 +1451,10 @@ def stock_page(
             user,
             csrf_token,
             "stock",
+            _repo=repo,
             title="Estoque de Insumos",
             farms=repo.list_farms(),
-            plots=repo.list_plots(),
+            plots=repo.list_plots(farm_ids=farm_ids, variety_ids=variety_ids),
             selected_farm_id=selected_farm_id,
             selected_input_id=selected_input_id,
             selected_start_date=start_date,
@@ -1383,6 +1517,7 @@ def create_manual_stock_output_action(
 
 @router.get("/insumos/estoque/exportar.xlsx")
 def export_stock_extract_xlsx(
+    request: Request,
     farm_id: str | None = None,
     input_id: str | None = None,
     start_date: str | None = None,
@@ -1394,7 +1529,7 @@ def export_stock_extract_xlsx(
 ):
     del user
     repo = _repository(db)
-    selected_farm_id = _int_or_none(farm_id)
+    selected_farm_id = _int_or_none(farm_id) or _active_farm_id(request)
     selected_input_id = _int_or_none(input_id)
     rows = _build_stock_context(
         repo,
@@ -1450,6 +1585,7 @@ def export_stock_extract_xlsx(
 
 @router.get("/insumos/estoque/exportar.pdf")
 def export_stock_extract_pdf(
+    request: Request,
     farm_id: str | None = None,
     input_id: str | None = None,
     start_date: str | None = None,
@@ -1461,7 +1597,7 @@ def export_stock_extract_pdf(
 ):
     del user
     repo = _repository(db)
-    selected_farm_id = _int_or_none(farm_id)
+    selected_farm_id = _int_or_none(farm_id) or _active_farm_id(request)
     selected_input_id = _int_or_none(input_id)
     rows = _build_stock_context(
         repo,
@@ -1541,6 +1677,7 @@ def equipment_assets_page(
     csrf_token: str = Depends(get_csrf_token),
 ):
     repo = _repository(db)
+    effective_farm_id = farm_id or _active_farm_id(request)
     return templates.TemplateResponse(
         "equipment_assets.html",
         _base_context(
@@ -1548,10 +1685,11 @@ def equipment_assets_page(
             user,
             csrf_token,
             "assets",
+            _repo=repo,
             title="Patrimonio e Equipamentos",
             farms=repo.list_farms(),
-            selected_farm_id=farm_id,
-            assets=repo.list_equipment_assets(farm_id=farm_id),
+            selected_farm_id=effective_farm_id,
+            assets=repo.list_equipment_assets(farm_id=effective_farm_id),
             edit_asset=repo.get_equipment_asset(edit_id) if edit_id else None,
         ),
     )
@@ -1665,6 +1803,10 @@ def input_recommendations_page(
     csrf_token: str = Depends(get_csrf_token),
 ):
     repo = _repository(db)
+    scope = _global_scope_context(request, repo)
+    farm_ids, variety_ids = _scoped_plot_filters(request, scope["active_season"])
+    plots = repo.list_plots(farm_ids=farm_ids, variety_ids=variety_ids)
+    plot_ids = {plot.id for plot in plots}
     catalog_inputs = repo.list_input_catalog(item_type="insumo_agricola")
     purchase_entries = repo.list_purchased_inputs()
     input_stock = {
@@ -1677,6 +1819,14 @@ def input_recommendations_page(
         }
         for item in catalog_inputs
     }
+    recommendations = [
+        recommendation
+        for recommendation in repo.list_input_recommendations()
+        if (
+            (not scope["active_farm_id"] or recommendation.farm_id == scope["active_farm_id"])
+            and (not plot_ids or recommendation.plot_id is None or recommendation.plot_id in plot_ids)
+        )
+    ]
     return templates.TemplateResponse(
         "input_recommendations.html",
         _base_context(
@@ -1684,12 +1834,13 @@ def input_recommendations_page(
             user,
             csrf_token,
             "input_recommendations",
+            _repo=repo,
             title="Recomendacao de Insumos",
             farms=repo.list_farms(),
-            plots=repo.list_plots(),
+            plots=plots,
             inputs_catalog=catalog_inputs,
             input_stock=input_stock,
-            recommendations=repo.list_input_recommendations(),
+            recommendations=recommendations,
             edit_recommendation=repo.get_input_recommendation(edit_id) if edit_id else None,
         ),
     )
@@ -1798,6 +1949,7 @@ def varieties_page(
             user,
             csrf_token,
             "varieties",
+            _repo=repo,
             varieties=repo.list_varieties(),
             edit_variety=repo.get_variety(edit_id) if edit_id else None,
         ),
@@ -1890,6 +2042,136 @@ def delete_variety_action(
     return _redirect("/variedades")
 
 
+@router.get("/safras")
+def crop_seasons_page(
+    request: Request,
+    edit_id: int | None = None,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+    csrf_token: str = Depends(get_csrf_token),
+):
+    repo = _repository(db)
+    effective_farm_id = _active_farm_id(request)
+    return templates.TemplateResponse(
+        "seasons.html",
+        _base_context(
+            request,
+            user,
+            csrf_token,
+            "seasons",
+            _repo=repo,
+            title="Safras",
+            farms=repo.list_farms(),
+            varieties=repo.list_varieties(),
+            crop_seasons=repo.list_crop_seasons(farm_id=effective_farm_id),
+            edit_season=repo.get_crop_season(edit_id) if edit_id else None,
+        ),
+    )
+
+
+@router.post("/safras")
+def create_crop_season_action(
+    request: Request,
+    csrf_token: str = Form(...),
+    farm_id: int = Form(...),
+    name: str | None = Form(None),
+    start_date: str = Form(...),
+    end_date: str = Form(...),
+    culture: str = Form(...),
+    variety_id: str | None = Form(None),
+    cultivated_area: float = Form(...),
+    area_unit: str = Form("ha"),
+    notes: str | None = Form(None),
+    status_value: str = Form(..., alias="status"),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    del user
+    validate_csrf(request, csrf_token)
+    create_crop_season(
+        _repository(db),
+        {
+            "farm_id": farm_id,
+            "name": name,
+            "start_date": start_date,
+            "end_date": end_date,
+            "culture": culture,
+            "variety_id": _int_or_none(variety_id),
+            "cultivated_area": cultivated_area,
+            "area_unit": area_unit,
+            "notes": notes,
+            "status": status_value,
+        },
+    )
+    _flash(request, "success", "Safra cadastrada com sucesso.")
+    return _redirect("/safras")
+
+
+@router.post("/safras/{season_id}/editar")
+def update_crop_season_action(
+    season_id: int,
+    request: Request,
+    csrf_token: str = Form(...),
+    farm_id: int = Form(...),
+    name: str | None = Form(None),
+    start_date: str = Form(...),
+    end_date: str = Form(...),
+    culture: str = Form(...),
+    variety_id: str | None = Form(None),
+    cultivated_area: float = Form(...),
+    area_unit: str = Form("ha"),
+    notes: str | None = Form(None),
+    status_value: str = Form(..., alias="status"),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    del user
+    validate_csrf(request, csrf_token)
+    repo = _repository(db)
+    crop_season = repo.get_crop_season(season_id)
+    if not crop_season:
+        _flash(request, "error", "Safra nao encontrada.")
+        return _redirect("/safras")
+    update_crop_season(
+        repo,
+        crop_season,
+        {
+            "farm_id": farm_id,
+            "name": name,
+            "start_date": start_date,
+            "end_date": end_date,
+            "culture": culture,
+            "variety_id": _int_or_none(variety_id),
+            "cultivated_area": cultivated_area,
+            "area_unit": area_unit,
+            "notes": notes,
+            "status": status_value,
+        },
+    )
+    _flash(request, "success", "Safra atualizada com sucesso.")
+    return _redirect("/safras")
+
+
+@router.post("/safras/{season_id}/excluir")
+def delete_crop_season_action(
+    season_id: int,
+    request: Request,
+    csrf_token: str = Form(...),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    del user
+    validate_csrf(request, csrf_token)
+    repo = _repository(db)
+    crop_season = repo.get_crop_season(season_id)
+    if not crop_season:
+        _flash(request, "error", "Safra nao encontrada.")
+        return _redirect("/safras")
+    repo.delete(crop_season)
+    _flash(request, "success", "Safra excluida com sucesso.")
+    return _redirect("/safras")
+
+
 @router.get("/irrigacao")
 def irrigation_page(
     request: Request,
@@ -1899,6 +2181,16 @@ def irrigation_page(
     csrf_token: str = Depends(get_csrf_token),
 ):
     repo = _repository(db)
+    scope = _global_scope_context(request, repo)
+    farm_ids, variety_ids = _scoped_plot_filters(request, scope["active_season"])
+    start_date, end_date = _scoped_dates(scope["active_season"])
+    plots = repo.list_plots(farm_ids=farm_ids, variety_ids=variety_ids)
+    plot_ids = {plot.id for plot in plots}
+    irrigations = [
+        irrigation
+        for irrigation in repo.list_irrigations()
+        if irrigation.plot_id in plot_ids and _within_scope(irrigation.irrigation_date, start_date, end_date)
+    ]
     return templates.TemplateResponse(
         "irrigation.html",
         _base_context(
@@ -1906,8 +2198,9 @@ def irrigation_page(
             user,
             csrf_token,
             "irrigation",
-            plots=repo.list_plots(),
-            irrigations=repo.list_irrigations(),
+            _repo=repo,
+            plots=plots,
+            irrigations=irrigations,
             edit_irrigation=repo.get_irrigation(edit_id) if edit_id else None,
             plot_irrigation_configs=[
                 {
@@ -1921,7 +2214,7 @@ def irrigation_page(
                     "sprinkler_count": plot.sprinkler_count,
                     "sprinkler_lph": float(plot.sprinkler_liters_per_hour) if plot.sprinkler_liters_per_hour is not None else None,
                 }
-                for plot in repo.list_plots()
+                for plot in plots
             ],
         ),
     )
@@ -2041,6 +2334,7 @@ def rainfall_page(
     csrf_token: str = Depends(get_csrf_token),
 ):
     repo = _repository(db)
+    effective_farm_id = farm_id or _active_farm_id(request)
     return templates.TemplateResponse(
         "rainfall.html",
         _base_context(
@@ -2048,15 +2342,16 @@ def rainfall_page(
             user,
             csrf_token,
             "rainfall",
+            _repo=repo,
             farms=repo.list_farms(),
             rainfalls=repo.list_rainfalls(
-                farm_id=farm_id,
+                farm_id=effective_farm_id,
                 start_date=_date_or_none(start_date),
                 end_date=_date_or_none(end_date),
             ),
             edit_rainfall=repo.get_rainfall(edit_id) if edit_id else None,
             filters={
-                "farm_id": farm_id,
+                "farm_id": effective_farm_id,
                 "start_date": start_date or "",
                 "end_date": end_date or "",
             },
@@ -2165,6 +2460,11 @@ def fertilization_page(
     csrf_token: str = Depends(get_csrf_token),
 ):
     repo = _repository(db)
+    scope = _global_scope_context(request, repo)
+    farm_ids, variety_ids = _scoped_plot_filters(request, scope["active_season"])
+    start_date, end_date = _scoped_dates(scope["active_season"])
+    plots = repo.list_plots(farm_ids=farm_ids, variety_ids=variety_ids)
+    plot_ids = {plot.id for plot in plots}
     edit_fertilization = repo.get_fertilization(edit_id) if edit_id else None
     recommendation_groups: dict[str, list[dict]] = {}
     consolidated_inputs = repo.list_input_catalog(item_type="insumo_agricola")
@@ -2183,7 +2483,25 @@ def fertilization_page(
         }
         for item in consolidated_inputs
     }
-    for recommendation in repo.list_input_recommendations():
+    fertilizations = [
+        item
+        for item in repo.list_fertilizations()
+        if item.plot_id in plot_ids and _within_scope(item.application_date, start_date, end_date)
+    ]
+    schedules = [
+        item
+        for item in repo.list_fertilization_schedules()
+        if item.plot_id in plot_ids and _within_scope(item.scheduled_date, start_date, end_date)
+    ]
+    recommendations = [
+        recommendation
+        for recommendation in repo.list_input_recommendations()
+        if (
+            (not scope["active_farm_id"] or recommendation.farm_id == scope["active_farm_id"])
+            and (not plot_ids or recommendation.plot_id is None or recommendation.plot_id in plot_ids)
+        )
+    ]
+    for recommendation in recommendations:
         bucket = recommendation_groups.setdefault(recommendation.application_name, [])
         for item in recommendation.items:
             bucket.append(
@@ -2202,11 +2520,12 @@ def fertilization_page(
             user,
             csrf_token,
             "fertilization",
-            plots=repo.list_plots(),
+            _repo=repo,
+            plots=plots,
             inputs_catalog=consolidated_inputs,
             input_stock=input_stock,
-            fertilizations=repo.list_fertilizations(),
-            schedules=repo.list_fertilization_schedules(),
+            fertilizations=fertilizations,
+            schedules=schedules,
             recommendation_groups=recommendation_groups,
             edit_fertilization=edit_fertilization,
             edit_fertilization_items=_legacy_fertilization_items(
@@ -2326,8 +2645,17 @@ def fertilization_schedules_page(
     csrf_token: str = Depends(get_csrf_token),
 ):
     repo = _repository(db)
+    scope = _global_scope_context(request, repo)
+    farm_ids, variety_ids = _scoped_plot_filters(request, scope["active_season"])
+    start_date, end_date = _scoped_dates(scope["active_season"])
+    plots = repo.list_plots(farm_ids=farm_ids, variety_ids=variety_ids)
+    plot_ids = {plot.id for plot in plots}
     edit_schedule = repo.get_fertilization_schedule(edit_id) if edit_id else None
-    schedules = repo.list_fertilization_schedules()
+    schedules = [
+        schedule
+        for schedule in repo.list_fertilization_schedules()
+        if schedule.plot_id in plot_ids and _within_scope(schedule.scheduled_date, start_date, end_date)
+    ]
     schedule_validations = {schedule.id: validate_schedule_stock(repo, schedule) for schedule in schedules}
     consolidated_inputs = repo.list_input_catalog(item_type="insumo_agricola")
     purchased_inputs = repo.list_purchased_inputs()
@@ -2364,8 +2692,9 @@ def fertilization_schedules_page(
             user,
             csrf_token,
             "fertilization_schedules",
+            _repo=repo,
             title="Agendamento de Fertilizacao",
-            plots=repo.list_plots(),
+            plots=plots,
             inputs_catalog=consolidated_inputs,
             input_stock=input_stock,
             schedules=schedules,
@@ -2498,6 +2827,16 @@ def production_page(
     csrf_token: str = Depends(get_csrf_token),
 ):
     repo = _repository(db)
+    scope = _global_scope_context(request, repo)
+    farm_ids, variety_ids = _scoped_plot_filters(request, scope["active_season"])
+    start_date, end_date = _scoped_dates(scope["active_season"])
+    plots = repo.list_plots(farm_ids=farm_ids, variety_ids=variety_ids)
+    plot_ids = {plot.id for plot in plots}
+    harvests = [
+        harvest
+        for harvest in repo.list_harvests()
+        if harvest.plot_id in plot_ids and _within_scope(harvest.harvest_date, start_date, end_date)
+    ]
     return templates.TemplateResponse(
         "production.html",
         _base_context(
@@ -2505,8 +2844,9 @@ def production_page(
             user,
             csrf_token,
             "production",
-            plots=repo.list_plots(),
-            harvests=repo.list_harvests(),
+            _repo=repo,
+            plots=plots,
+            harvests=harvests,
             edit_harvest=repo.get_harvest(edit_id) if edit_id else None,
         ),
     )
@@ -2606,6 +2946,16 @@ def pests_page(
     csrf_token: str = Depends(get_csrf_token),
 ):
     repo = _repository(db)
+    scope = _global_scope_context(request, repo)
+    farm_ids, variety_ids = _scoped_plot_filters(request, scope["active_season"])
+    start_date, end_date = _scoped_dates(scope["active_season"])
+    plots = repo.list_plots(farm_ids=farm_ids, variety_ids=variety_ids)
+    plot_ids = {plot.id for plot in plots}
+    incidents = [
+        incident
+        for incident in repo.list_pest_incidents()
+        if incident.plot_id in plot_ids and _within_scope(incident.occurrence_date, start_date, end_date)
+    ]
     return templates.TemplateResponse(
         "pests.html",
         _base_context(
@@ -2613,8 +2963,9 @@ def pests_page(
             user,
             csrf_token,
             "pests",
-            plots=repo.list_plots(),
-            incidents=repo.list_pest_incidents(),
+            _repo=repo,
+            plots=plots,
+            incidents=incidents,
             edit_incident=repo.get_pest_incident(edit_id) if edit_id else None,
         ),
     )
@@ -2813,9 +3164,28 @@ def soil_analysis_page(
     csrf_token: str = Depends(get_csrf_token),
 ):
     repo = _repository(db)
-    analyses = repo.list_soil_analyses(farm_id=farm_id, plot_id=plot_id)
-    compare_target = compare_plot_id or plot_id
-    compare_analyses = repo.list_soil_analyses(plot_id=compare_target) if compare_target else analyses[:6]
+    scope = _global_scope_context(request, repo)
+    effective_farm_id = farm_id or scope["active_farm_id"]
+    farm_ids, variety_ids = _scoped_plot_filters(request, scope["active_season"])
+    start_date, end_date = _scoped_dates(scope["active_season"])
+    plots = repo.list_plots(farm_ids=farm_ids, variety_ids=variety_ids)
+    plot_ids = {plot.id for plot in plots}
+    effective_plot_id = plot_id if plot_id else None
+    analyses = [
+        analysis
+        for analysis in repo.list_soil_analyses(farm_id=effective_farm_id, plot_id=effective_plot_id)
+        if (not plot_ids or analysis.plot_id in plot_ids) and _within_scope(analysis.analysis_date, start_date, end_date)
+    ]
+    compare_target = compare_plot_id or effective_plot_id
+    compare_analyses = (
+        [
+            analysis
+            for analysis in repo.list_soil_analyses(plot_id=compare_target)
+            if _within_scope(analysis.analysis_date, start_date, end_date)
+        ]
+        if compare_target
+        else analyses[:6]
+    )
     return templates.TemplateResponse(
         "soil_analyses.html",
         _base_context(
@@ -2823,12 +3193,13 @@ def soil_analysis_page(
             user,
             csrf_token,
             "soil_analyses",
+            _repo=repo,
             title="Analise de Solo",
             farms=repo.list_farms(),
-            plots=repo.list_plots(),
+            plots=plots,
             analyses=analyses,
             edit_analysis=repo.get_soil_analysis(edit_id) if edit_id else None,
-            filters={"farm_id": farm_id, "plot_id": plot_id, "compare_plot_id": compare_target},
+            filters={"farm_id": effective_farm_id, "plot_id": effective_plot_id, "compare_plot_id": compare_target},
             compare_chart=_soil_history_chart(compare_analyses),
             compare_analyses=compare_analyses,
             latest_recommendations=[item for item in analyses if item.ai_recommendation][:4],
@@ -3032,7 +3403,13 @@ def map_page(
     csrf_token: str = Depends(get_csrf_token),
 ):
     repo = _repository(db)
-    geojson = build_dashboard_context(repo)["map_geojson"]
+    scope = _global_scope_context(request, repo)
+    farm_ids, variety_ids = _scoped_plot_filters(request, scope["active_season"])
+    geojson = build_dashboard_context(
+        repo,
+        farm_id=scope["active_farm_id"],
+        season=scope["active_season"],
+    )["map_geojson"]
     edit_plot = repo.get_plot(edit_plot_id) if edit_plot_id else None
     return templates.TemplateResponse(
         "map.html",
@@ -3041,8 +3418,9 @@ def map_page(
             user,
             csrf_token,
             "map",
+            _repo=repo,
             map_geojson=geojson,
-            plots=repo.list_plots(),
+            plots=repo.list_plots(farm_ids=farm_ids, variety_ids=variety_ids),
             edit_plot=edit_plot,
             edit_plot_geometry=edit_plot.boundary_geojson if edit_plot and edit_plot.boundary_geojson else None,
         ),
@@ -3092,6 +3470,11 @@ def mobile_page(
     csrf_token: str = Depends(get_csrf_token),
 ):
     repo = _repository(db)
+    scope = _global_scope_context(request, repo)
+    farm_ids, variety_ids = _scoped_plot_filters(request, scope["active_season"])
+    start_date, end_date = _scoped_dates(scope["active_season"])
+    plots = repo.list_plots(farm_ids=farm_ids, variety_ids=variety_ids)
+    plot_ids = {plot.id for plot in plots}
     return templates.TemplateResponse(
         "mobile.html",
         _base_context(
@@ -3099,8 +3482,17 @@ def mobile_page(
             user,
             csrf_token,
             "mobile",
-            plots=repo.list_plots(),
-            quick_irrigations=repo.list_irrigations(limit=3),
-            quick_incidents=repo.list_pest_incidents(limit=3),
+            _repo=repo,
+            plots=plots,
+            quick_irrigations=[
+                irrigation
+                for irrigation in repo.list_irrigations(limit=20)
+                if irrigation.plot_id in plot_ids and _within_scope(irrigation.irrigation_date, start_date, end_date)
+            ][:3],
+            quick_incidents=[
+                incident
+                for incident in repo.list_pest_incidents(limit=20)
+                if incident.plot_id in plot_ids and _within_scope(incident.occurrence_date, start_date, end_date)
+            ][:3],
         ),
     )

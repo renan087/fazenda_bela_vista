@@ -8,6 +8,7 @@ from app.core.security import get_password_hash
 from app.models import (
     AgronomicProfile,
     CoffeeVariety,
+    CropSeason,
     EquipmentAsset,
     Farm,
     FertilizationSchedule,
@@ -29,6 +30,14 @@ from app.models import (
     User,
 )
 from app.repositories.farm import FarmRepository
+
+
+def _suggest_crop_season_name(start_date_value: str | date | None, end_date_value: str | date | None) -> str:
+    if not start_date_value or not end_date_value:
+        return ""
+    start = date.fromisoformat(start_date_value) if isinstance(start_date_value, str) else start_date_value
+    end = date.fromisoformat(end_date_value) if isinstance(end_date_value, str) else end_date_value
+    return f"Safra {start.year}/{end.year}"
 
 
 def create_farm(repository: FarmRepository, form: dict) -> Farm:
@@ -133,6 +142,41 @@ def update_variety(repository: FarmRepository, variety: CoffeeVariety, form: dic
             "maturation_cycle": form["maturation_cycle"],
             "flavor_profile": form.get("flavor_profile"),
             "notes": form.get("notes"),
+        },
+    )
+
+
+def create_crop_season(repository: FarmRepository, form: dict) -> CropSeason:
+    return repository.create(
+        CropSeason(
+            farm_id=form["farm_id"],
+            variety_id=form.get("variety_id"),
+            name=(form.get("name") or "").strip() or _suggest_crop_season_name(form.get("start_date"), form.get("end_date")),
+            start_date=date.fromisoformat(form["start_date"]),
+            end_date=date.fromisoformat(form["end_date"]),
+            culture=form["culture"],
+            cultivated_area=form["cultivated_area"],
+            area_unit=form.get("area_unit") or "ha",
+            notes=form.get("notes"),
+            status=form.get("status") or "planejada",
+        )
+    )
+
+
+def update_crop_season(repository: FarmRepository, crop_season: CropSeason, form: dict) -> CropSeason:
+    return repository.update(
+        crop_season,
+        {
+            "farm_id": form["farm_id"],
+            "variety_id": form.get("variety_id"),
+            "name": (form.get("name") or "").strip() or _suggest_crop_season_name(form.get("start_date"), form.get("end_date")),
+            "start_date": date.fromisoformat(form["start_date"]),
+            "end_date": date.fromisoformat(form["end_date"]),
+            "culture": form["culture"],
+            "cultivated_area": form["cultivated_area"],
+            "area_unit": form.get("area_unit") or "ha",
+            "notes": form.get("notes"),
+            "status": form.get("status") or "planejada",
         },
     )
 

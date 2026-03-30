@@ -10,6 +10,7 @@ from app.db.session import engine
 from app.models import (
     AgronomicProfile,
     CoffeeVariety,
+    CropSeason,
     EquipmentAsset,
     Farm,
     FertilizationItem,
@@ -64,6 +65,21 @@ def _sync_schema() -> None:
             fertilizers_used TEXT,
             crop_stage TEXT,
             common_pests TEXT
+        )
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS crop_seasons (
+            id SERIAL PRIMARY KEY,
+            farm_id INTEGER NOT NULL REFERENCES farms(id) ON DELETE CASCADE,
+            variety_id INTEGER REFERENCES coffee_varieties(id) ON DELETE SET NULL,
+            name VARCHAR(160) NOT NULL,
+            start_date DATE NOT NULL,
+            end_date DATE NOT NULL,
+            culture VARCHAR(120) NOT NULL,
+            cultivated_area NUMERIC(12,2) NOT NULL,
+            area_unit VARCHAR(20) NOT NULL DEFAULT 'ha',
+            notes TEXT,
+            status VARCHAR(20) NOT NULL DEFAULT 'planejada'
         )
         """,
         """
