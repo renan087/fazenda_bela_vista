@@ -694,6 +694,21 @@ def validate_schedule_stock(repository: FarmRepository, schedule: FertilizationS
 def conclude_fertilization_schedule(repository: FarmRepository, schedule: FertilizationSchedule, application_date: str | None = None) -> FertilizationRecord:
     if not schedule.items:
         raise ValueError("Adicione ao menos um insumo no agendamento.")
+    schedule_items = [
+        {
+            "input_id": item.input_id,
+            "purchased_input_id": item.purchased_input_id,
+            "name": item.name or (item.input_catalog.name if item.input_catalog else ""),
+            "unit": item.unit or (item.input_catalog.default_unit if item.input_catalog else ""),
+            "quantity": float(item.quantity or 0),
+        }
+        for item in schedule.items
+        if (item.name or (item.input_catalog.name if item.input_catalog else "")).strip()
+        and (item.unit or (item.input_catalog.default_unit if item.input_catalog else "")).strip()
+        and float(item.quantity or 0) > 0
+    ]
+    if not schedule_items:
+        raise ValueError("Adicione ao menos um insumo valido no agendamento antes de concluir.")
     record = create_fertilization(
         repository,
         {
@@ -701,14 +716,7 @@ def conclude_fertilization_schedule(repository: FarmRepository, schedule: Fertil
             "application_date": application_date or schedule.scheduled_date.isoformat(),
             "season_id": schedule.season_id,
             "notes": schedule.notes,
-            "items": [
-            {
-                "input_id": item.input_id,
-                "unit": item.unit,
-                "quantity": float(item.quantity or 0),
-            }
-                for item in schedule.items
-            ],
+            "items": schedule_items,
         },
     )
     schedule.status = "completed"

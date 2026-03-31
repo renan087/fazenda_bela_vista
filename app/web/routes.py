@@ -2188,7 +2188,7 @@ def equipment_assets_page(
 
 
 @router.post("/insumos/patrimonio")
-def create_equipment_asset_action(
+async def create_equipment_asset_action(
     request: Request,
     csrf_token: str = Form(...),
     farm_id: str | None = Form(None),
@@ -2200,7 +2200,6 @@ def create_equipment_asset_action(
     acquisition_value: str | None = Form(None),
     status_value: str = Form("ativo", alias="status"),
     notes: str | None = Form(None),
-    attachments: list[UploadFile] | None = File(None),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user_web),
 ):
@@ -2211,7 +2210,7 @@ def create_equipment_asset_action(
     if denied:
         return denied
     try:
-        attachment_payloads = _read_attachments(attachments)
+        attachment_payloads = _read_attachments(await _request_attachments(request))
     except ValueError as exc:
         _flash(request, "error", str(exc))
         return _redirect("/insumos/patrimonio")
@@ -2229,15 +2228,20 @@ def create_equipment_asset_action(
             "notes": notes,
         },
     )
-    _save_equipment_asset_attachments(repo, asset, attachment_payloads)
-    _flash(request, "success", "Patrimonio cadastrado com sucesso.")
-    if attachment_payloads:
+    try:
+        saved_attachments = _save_equipment_asset_attachments(repo, asset, attachment_payloads)
+    except Exception:
+        _flash(request, "error", "O patrimonio foi salvo, mas nao foi possivel gravar os anexos agora.")
         return _redirect_with_query("/insumos/patrimonio", edit_id=asset.id)
+    if saved_attachments:
+        _flash(request, "success", f"Patrimonio cadastrado com sucesso. {saved_attachments} anexo(s) salvo(s).")
+        return _redirect_with_query("/insumos/patrimonio", edit_id=asset.id)
+    _flash(request, "success", "Patrimonio cadastrado com sucesso.")
     return _redirect("/insumos/patrimonio")
 
 
 @router.post("/insumos/patrimonio/{asset_id}/editar")
-def update_equipment_asset_action(
+async def update_equipment_asset_action(
     asset_id: int,
     request: Request,
     csrf_token: str = Form(...),
@@ -2250,7 +2254,6 @@ def update_equipment_asset_action(
     acquisition_value: str | None = Form(None),
     status_value: str = Form("ativo", alias="status"),
     notes: str | None = Form(None),
-    attachments: list[UploadFile] | None = File(None),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user_web),
 ):
@@ -2268,7 +2271,7 @@ def update_equipment_asset_action(
         _flash(request, "error", "Este patrimonio nao pertence ao contexto ativo.")
         return _redirect("/insumos/patrimonio")
     try:
-        attachment_payloads = _read_attachments(attachments)
+        attachment_payloads = _read_attachments(await _request_attachments(request))
     except ValueError as exc:
         _flash(request, "error", str(exc))
         return _redirect_with_query("/insumos/patrimonio", edit_id=asset_id)
@@ -2287,10 +2290,15 @@ def update_equipment_asset_action(
             "notes": notes,
         },
     )
-    _save_equipment_asset_attachments(repo, asset, attachment_payloads)
-    _flash(request, "success", "Patrimonio atualizado com sucesso.")
-    if attachment_payloads:
+    try:
+        saved_attachments = _save_equipment_asset_attachments(repo, asset, attachment_payloads)
+    except Exception:
+        _flash(request, "error", "As alteracoes foram salvas, mas nao foi possivel incluir os novos anexos.")
         return _redirect_with_query("/insumos/patrimonio", edit_id=asset_id)
+    if saved_attachments:
+        _flash(request, "success", f"Alteracoes salvas com sucesso. {saved_attachments} novo(s) anexo(s) adicionado(s).")
+        return _redirect_with_query("/insumos/patrimonio", edit_id=asset_id)
+    _flash(request, "success", "Patrimonio atualizado com sucesso.")
     return _redirect("/insumos/patrimonio")
 
 
@@ -2360,6 +2368,9 @@ def delete_equipment_asset_attachment_action(
         _flash(request, "error", "Anexo nao encontrado.")
         return _redirect_with_query("/insumos/patrimonio", edit_id=asset_id)
     repo.delete(attachment)
+    if repo.get_equipment_asset_attachment(attachment_id):
+        _flash(request, "error", "Nao foi possivel remover o anexo agora. Tente novamente.")
+        return _redirect_with_query("/insumos/patrimonio", edit_id=asset_id)
     _flash(request, "success", "Anexo removido com sucesso.")
     return _redirect_with_query("/insumos/patrimonio", edit_id=asset_id)
 

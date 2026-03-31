@@ -1,0 +1,28 @@
+<div data-attachment-manager>
+    <label>
+        <span class="mb-2 block text-sm font-medium">{{ attachment_label or 'Anexos' }}</span>
+        <div data-attachments-picker-slot>
+            <input
+                type="file"
+                name="{{ attachment_input_name or 'attachments' }}"
+                multiple
+                accept=".jpg,.jpeg,.png,.gif,.webp,.bmp,.pdf,.txt,.csv,.doc,.docx,.xls,.xlsx,.odt,.ods"
+                class="min-h-[3.25rem] w-full rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-3 text-sm text-slate-600"
+                data-attachments-picker
+            >
+        </div>
+        <span class="mt-2 block text-xs text-slate-500">{{ attachment_help_text }}</span>
+    </label>
+    <div class="hidden" data-attachments-hidden-inputs></div>
+    <div class="hidden rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700" data-attachments-feedback></div>
+    <div class="hidden rounded-[1.5rem] border border-slate-200 bg-slate-50 p-4" data-attachments-pending>
+        <div class="flex flex-wrap items-center justify-between gap-3">
+            <div>
+                <p class="text-xs uppercase tracking-[0.3em] text-slate-400">Novos anexos</p>
+                <h4 class="mt-2 text-sm font-semibold text-slate-900">Arquivos prontos para salvar neste registro</h4>
+            </div>
+            <button type="button" class="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-100" data-attachments-clear>Limpar selecao</button>
+        </div>
+        <div class="mt-4 space-y-3" data-attachments-pending-list></div>
+    </div>
+</div>

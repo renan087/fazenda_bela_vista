@@ -1,0 +1,128 @@
+<script>
+    (() => {
+        const formatKb = (size) => `${Math.max(1, Math.round((size || 0) / 1024))} KB`;
+
+        document.querySelectorAll('[data-attachment-manager]').forEach((manager) => {
+            const pickerSlot = manager.querySelector('[data-attachments-picker-slot]');
+            const hiddenInputs = manager.querySelector('[data-attachments-hidden-inputs]');
+            const feedback = manager.querySelector('[data-attachments-feedback]');
+            const pendingBox = manager.querySelector('[data-attachments-pending]');
+            const pendingList = manager.querySelector('[data-attachments-pending-list]');
+            const clearButton = manager.querySelector('[data-attachments-clear]');
+            if (!pickerSlot || !hiddenInputs || !feedback || !pendingBox || !pendingList) return;
+
+            let batchCounter = 0;
+
+            const refreshState = () => {
+                const batches = Array.from(hiddenInputs.querySelectorAll('[data-pending-batch-id]'));
+                if (!batches.length) {
+                    pendingBox.classList.add('hidden');
+                    feedback.classList.add('hidden');
+                    feedback.textContent = '';
+                    pendingList.innerHTML = '';
+                    return;
+                }
+
+                const filesCount = batches.reduce((total, input) => total + Array.from(input.files || []).length, 0);
+                pendingBox.classList.remove('hidden');
+                feedback.textContent = `${filesCount} anexo(s) pronto(s) para salvar.`;
+                feedback.classList.remove('hidden');
+            };
+
+            const bindPicker = (picker) => {
+                picker.addEventListener('change', () => {
+                    const files = Array.from(picker.files || []);
+                    if (!files.length) return;
+
+                    const batchId = `attachment-batch-${Date.now()}-${batchCounter++}`;
+                    picker.setAttribute('data-pending-batch-id', batchId);
+                    picker.classList.add('hidden');
+                    picker.tabIndex = -1;
+                    picker.setAttribute('aria-hidden', 'true');
+                    hiddenInputs.appendChild(picker);
+
+                    const card = document.createElement('div');
+                    card.className = 'rounded-2xl bg-white px-4 py-3';
+                    card.setAttribute('data-pending-batch-card', batchId);
+
+                    const top = document.createElement('div');
+                    top.className = 'flex flex-wrap items-center justify-between gap-3';
+
+                    const heading = document.createElement('div');
+                    const title = document.createElement('p');
+                    title.className = 'text-sm font-medium text-slate-900';
+                    title.textContent = files.length === 1 ? '1 novo anexo selecionado' : `${files.length} novos anexos selecionados`;
+                    const subtitle = document.createElement('p');
+                    subtitle.className = 'mt-1 text-xs text-slate-500';
+                    subtitle.textContent = 'Eles serao enviados ao clicar em salvar.';
+                    heading.appendChild(title);
+                    heading.appendChild(subtitle);
+
+                    const removeButton = document.createElement('button');
+                    removeButton.type = 'button';
+                    removeButton.className = 'rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-100';
+                    removeButton.textContent = 'Remover selecao';
+                    removeButton.addEventListener('click', () => {
+                        hiddenInputs.querySelector(`[data-pending-batch-id="${batchId}"]`)?.remove();
+                        card.remove();
+                        refreshState();
+                    });
+
+                    top.appendChild(heading);
+                    top.appendChild(removeButton);
+                    card.appendChild(top);
+
+                    const filesList = document.createElement('div');
+                    filesList.className = 'mt-4 space-y-2';
+                    files.forEach((file) => {
+                        const row = document.createElement('div');
+                        row.className = 'flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-100 bg-slate-50 px-3 py-2';
+
+                        const name = document.createElement('p');
+                        name.className = 'min-w-0 truncate text-sm text-slate-700';
+                        name.textContent = file.name;
+
+                        const meta = document.createElement('span');
+                        meta.className = 'text-xs text-slate-500';
+                        meta.textContent = `${file.type || 'documento'} • ${formatKb(file.size)}`;
+
+                        row.appendChild(name);
+                        row.appendChild(meta);
+                        filesList.appendChild(row);
+                    });
+                    card.appendChild(filesList);
+                    pendingList.appendChild(card);
+
+                    const freshPicker = picker.cloneNode(false);
+                    freshPicker.removeAttribute('data-pending-batch-id');
+                    freshPicker.className = picker.className.replace(/\bhidden\b/g, '').trim();
+                    freshPicker.removeAttribute('tabindex');
+                    freshPicker.removeAttribute('aria-hidden');
+                    pickerSlot.appendChild(freshPicker);
+                    bindPicker(freshPicker);
+                    refreshState();
+                });
+            };
+
+            const initialPicker = pickerSlot.querySelector('[data-attachments-picker]');
+            if (initialPicker) {
+                bindPicker(initialPicker);
+            }
+
+            clearButton?.addEventListener('click', () => {
+                hiddenInputs.innerHTML = '';
+                pendingList.innerHTML = '';
+                refreshState();
+            });
+        });
+
+        document.querySelectorAll('[data-attachment-delete-form]').forEach((deleteForm) => {
+            deleteForm.addEventListener('submit', (event) => {
+                const attachmentName = deleteForm.getAttribute('data-attachment-name') || 'este anexo';
+                if (!window.confirm(`Excluir o anexo "${attachmentName}"?`)) {
+                    event.preventDefault();
+                }
+            });
+        });
+    })();
+</script>
