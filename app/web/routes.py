@@ -3015,28 +3015,30 @@ def conclude_fertilization_schedule_action(
     request: Request,
     csrf_token: str = Form(...),
     application_date: str | None = Form(None),
+    redirect_to: str | None = Form(None),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user_web),
 ):
     del user
     validate_csrf(request, csrf_token)
+    target_url = redirect_to if redirect_to and redirect_to.startswith("/") else "/fertilizacao/agendamentos"
     repo = _repository(db)
     schedule = repo.get_fertilization_schedule(schedule_id)
     if not schedule:
         _flash(request, "error", "Agendamento nao encontrado.")
-        return _redirect("/fertilizacao/agendamentos")
+        return _redirect(target_url)
     validation = validate_schedule_stock(repo, schedule)
     if not validation["ok"]:
         first = validation["shortages"][0]
         _flash(request, "error", f"Estoque insuficiente. Necessario comprar {first['missing']} {first['unit']} de {first['name']}.")
-        return _redirect("/fertilizacao/agendamentos")
+        return _redirect(target_url)
     try:
         conclude_fertilization_schedule(repo, schedule, application_date)
     except ValueError as exc:
         _flash(request, "error", str(exc))
-        return _redirect("/fertilizacao/agendamentos")
+        return _redirect(target_url)
     _flash(request, "success", "Agendamento concluido e aplicacao registrada.")
-    return _redirect("/fertilizacao/agendamentos")
+    return _redirect(target_url)
 
 
 @router.post("/fertilizacao/agendamentos/{schedule_id}/excluir")
