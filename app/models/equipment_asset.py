@@ -21,3 +21,4 @@ class EquipmentAsset(Base):
     notes: Mapped[str] = mapped_column(Text, nullable=True)
 
     farm = relationship("Farm", back_populates="equipment_assets")
+    attachments = relationship("EquipmentAssetAttachment", back_populates="equipment_asset", cascade="all, delete-orphan")

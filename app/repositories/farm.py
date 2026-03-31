@@ -6,6 +6,7 @@ from app.models import (
     CoffeeVariety,
     CropSeason,
     EquipmentAsset,
+    EquipmentAssetAttachment,
     Farm,
     FertilizationItem,
     FertilizationSchedule,
@@ -20,6 +21,7 @@ from app.models import (
     PestIncident,
     Plot,
     PurchasedInput,
+    PurchasedInputAttachment,
     RainfallRecord,
     SoilAnalysis,
     StockOutput,
@@ -236,8 +238,17 @@ class FarmRepository:
                 joinedload(PurchasedInput.stock_allocations),
                 joinedload(PurchasedInput.recommendation_items),
                 joinedload(PurchasedInput.schedule_items),
+                joinedload(PurchasedInput.attachments),
             )
             .filter(PurchasedInput.id == input_id)
+            .first()
+        )
+
+    def get_purchased_input_attachment(self, attachment_id: int) -> PurchasedInputAttachment | None:
+        return (
+            self.db.query(PurchasedInputAttachment)
+            .options(joinedload(PurchasedInputAttachment.purchased_input).joinedload(PurchasedInput.farm))
+            .filter(PurchasedInputAttachment.id == attachment_id)
             .first()
         )
 
@@ -279,8 +290,16 @@ class FarmRepository:
     def get_equipment_asset(self, asset_id: int) -> EquipmentAsset | None:
         return (
             self.db.query(EquipmentAsset)
-            .options(joinedload(EquipmentAsset.farm))
+            .options(joinedload(EquipmentAsset.farm), joinedload(EquipmentAsset.attachments))
             .filter(EquipmentAsset.id == asset_id)
+            .first()
+        )
+
+    def get_equipment_asset_attachment(self, attachment_id: int) -> EquipmentAssetAttachment | None:
+        return (
+            self.db.query(EquipmentAssetAttachment)
+            .options(joinedload(EquipmentAssetAttachment.equipment_asset).joinedload(EquipmentAsset.farm))
+            .filter(EquipmentAssetAttachment.id == attachment_id)
             .first()
         )
 

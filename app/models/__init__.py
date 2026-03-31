@@ -2,6 +2,7 @@ from app.models.agronomic_profile import AgronomicProfile
 from app.models.coffee_variety import CoffeeVariety
 from app.models.crop_season import CropSeason
 from app.models.equipment_asset import EquipmentAsset
+from app.models.equipment_asset_attachment import EquipmentAssetAttachment
 from app.models.farm import Farm
 from app.models.fertilization_item import FertilizationItem
 from app.models.fertilization_schedule import FertilizationSchedule
@@ -17,6 +18,7 @@ from app.models.login_verification_code import LoginVerificationCode
 from app.models.pesticide import PestIncident
 from app.models.plot import Plot
 from app.models.purchased_input import PurchasedInput
+from app.models.purchased_input_attachment import PurchasedInputAttachment
 from app.models.rainfall import RainfallRecord
 from app.models.soil_analysis import SoilAnalysis
 from app.models.stock_output import StockOutput
@@ -28,6 +30,7 @@ __all__ = [
     "CoffeeVariety",
     "CropSeason",
     "EquipmentAsset",
+    "EquipmentAssetAttachment",
     "Farm",
     "FertilizationItem",
     "FertilizationSchedule",
@@ -43,6 +46,7 @@ __all__ = [
     "PestIncident",
     "Plot",
     "PurchasedInput",
+    "PurchasedInputAttachment",
     "RainfallRecord",
     "SoilAnalysis",
     "StockOutput",

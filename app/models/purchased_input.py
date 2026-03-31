@@ -32,3 +32,4 @@ class PurchasedInput(Base):
     schedule_items = relationship("FertilizationScheduleItem", back_populates="purchased_input")
     stock_allocations = relationship("FertilizationStockAllocation", back_populates="purchased_input")
     stock_outputs = relationship("StockOutput", back_populates="purchased_input")
+    attachments = relationship("PurchasedInputAttachment", back_populates="purchased_input", cascade="all, delete-orphan")

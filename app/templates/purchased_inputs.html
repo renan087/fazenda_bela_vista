@@ -4,7 +4,7 @@
     <section class="rounded-[2rem] bg-white p-6 shadow-panel">
         <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Entradas de estoque</p>
         <h3 class="mt-2 text-2xl font-semibold">{% if edit_input %}Editar entrada de estoque{% else %}Nova entrada de estoque{% endif %}</h3>
-        <form method="post" action="{% if edit_input %}/insumos/comprados/{{ edit_input.id }}/editar{% else %}/insumos/comprados{% endif %}" class="mt-6 grid gap-4" data-purchased-input-form>
+        <form method="post" action="{% if edit_input %}/insumos/comprados/{{ edit_input.id }}/editar{% else %}/insumos/comprados{% endif %}" enctype="multipart/form-data" class="mt-6 grid gap-4" data-purchased-input-form>
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
             {% include "partials/launch_context.html" %}
             <div class="grid gap-4 md:grid-cols-2">
@@ -47,7 +47,16 @@
                 <label><span class="mb-2 block text-sm font-medium">Valor total calculado (R$)</span><input type="number" step="0.01" value="{{ edit_input.total_cost if edit_input else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-200 text-slate-500" readonly data-total-cost></label>
                 <label><span class="mb-2 block text-sm font-medium">Alerta de estoque baixo</span><input type="number" step="0.01" min="0" name="low_stock_threshold" value="{{ edit_input.low_stock_threshold if edit_input and edit_input.low_stock_threshold is not none else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50"></label>
             </div>
+            <label>
+                <span class="mb-2 block text-sm font-medium">Anexos</span>
+                <input type="file" name="attachments" multiple accept=".jpg,.jpeg,.png,.gif,.webp,.bmp,.pdf,.txt,.csv,.doc,.docx,.xls,.xlsx,.odt,.ods" class="min-h-[3.25rem] w-full rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+                <span class="mt-2 block text-xs text-slate-500">Envie imagens, PDF ou documentos do registro. Voce pode selecionar varios arquivos.</span>
+            </label>
             <label><span class="mb-2 block text-sm font-medium">Observacoes</span><textarea name="notes" rows="4" class="w-full rounded-2xl border-slate-200 bg-slate-50">{{ edit_input.notes if edit_input else '' }}</textarea></label>
+            {% set attachment_owner = edit_input %}
+            {% set attachment_view_base = '/insumos/comprados/anexos' %}
+            {% set attachment_delete_base = '/insumos/comprados/' ~ edit_input.id ~ '/anexos' if edit_input else '' %}
+            {% include "partials/attachment_list.html" %}
             <div class="flex gap-3">
                 <button class="rounded-2xl bg-brand-500 px-4 py-3 font-semibold text-white hover:bg-brand-700">{% if edit_input %}Salvar alteracoes{% else %}Salvar insumo{% endif %}</button>
                 {% if edit_input %}

@@ -12,6 +12,7 @@ from app.models import (
     CoffeeVariety,
     CropSeason,
     EquipmentAsset,
+    EquipmentAssetAttachment,
     Farm,
     FertilizationItem,
     FertilizationSchedule,
@@ -27,6 +28,7 @@ from app.models import (
     PestIncident,
     Plot,
     PurchasedInput,
+    PurchasedInputAttachment,
     RainfallRecord,
     SoilAnalysis,
     StockOutput,
@@ -130,6 +132,16 @@ def _sync_schema() -> None:
         )
         """,
         """
+        CREATE TABLE IF NOT EXISTS equipment_asset_attachments (
+            id SERIAL PRIMARY KEY,
+            equipment_asset_id INTEGER NOT NULL REFERENCES equipment_assets(id) ON DELETE CASCADE,
+            filename VARCHAR(255) NOT NULL,
+            content_type VARCHAR(120) NOT NULL,
+            file_data BYTEA NOT NULL,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+        """,
+        """
         CREATE TABLE IF NOT EXISTS purchased_inputs (
             id SERIAL PRIMARY KEY,
             input_id INTEGER REFERENCES input_catalog(id) ON DELETE SET NULL,
@@ -146,6 +158,16 @@ def _sync_schema() -> None:
             total_cost NUMERIC(12,2) NOT NULL,
             low_stock_threshold NUMERIC(10,2),
             notes TEXT
+        )
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS purchased_input_attachments (
+            id SERIAL PRIMARY KEY,
+            purchased_input_id INTEGER NOT NULL REFERENCES purchased_inputs(id) ON DELETE CASCADE,
+            filename VARCHAR(255) NOT NULL,
+            content_type VARCHAR(120) NOT NULL,
+            file_data BYTEA NOT NULL,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
         )
         """,
         """
@@ -335,6 +357,8 @@ def _sync_schema() -> None:
         connection.execute(text("CREATE INDEX IF NOT EXISTS ix_trusted_browser_tokens_user_id ON trusted_browser_tokens(user_id)"))
         connection.execute(text("CREATE INDEX IF NOT EXISTS ix_trusted_browser_tokens_token_hash ON trusted_browser_tokens(token_hash)"))
         connection.execute(text("CREATE INDEX IF NOT EXISTS ix_trusted_browser_tokens_expires_at ON trusted_browser_tokens(expires_at)"))
+        connection.execute(text("CREATE INDEX IF NOT EXISTS ix_purchased_input_attachments_input_id ON purchased_input_attachments(purchased_input_id)"))
+        connection.execute(text("CREATE INDEX IF NOT EXISTS ix_equipment_asset_attachments_asset_id ON equipment_asset_attachments(equipment_asset_id)"))
         connection.execute(text("UPDATE plots SET irrigation_type = 'none' WHERE irrigation_type IS NULL"))
         connection.execute(text("ALTER TABLE plots ALTER COLUMN irrigation_type SET DEFAULT 'none'"))
         connection.execute(text("UPDATE purchased_inputs SET purchase_date = CURRENT_DATE WHERE purchase_date IS NULL"))

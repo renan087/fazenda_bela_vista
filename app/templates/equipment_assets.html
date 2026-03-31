@@ -5,7 +5,7 @@
         <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Patrimonio</p>
         <h3 class="mt-2 text-2xl font-semibold">{% if edit_asset %}Editar equipamento{% else %}Novo equipamento / bem patrimonial{% endif %}</h3>
         <p class="mt-2 text-sm text-slate-500">Cadastre equipamentos e bens patrimoniais sem misturar esses registros com o estoque consumível de insumos e combustíveis.</p>
-        <form method="post" action="{% if edit_asset %}/insumos/patrimonio/{{ edit_asset.id }}/editar{% else %}/insumos/patrimonio{% endif %}" class="mt-6 grid gap-4">
+        <form method="post" action="{% if edit_asset %}/insumos/patrimonio/{{ edit_asset.id }}/editar{% else %}/insumos/patrimonio{% endif %}" enctype="multipart/form-data" class="mt-6 grid gap-4">
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
             {% include "partials/launch_context.html" %}
             <div class="grid gap-4 md:grid-cols-2">
@@ -51,6 +51,15 @@
                 <span class="mb-2 block text-sm font-medium">Observações</span>
                 <textarea name="notes" rows="4" class="w-full rounded-2xl border-slate-200 bg-slate-50">{{ edit_asset.notes if edit_asset else '' }}</textarea>
             </label>
+            <label>
+                <span class="mb-2 block text-sm font-medium">Anexos</span>
+                <input type="file" name="attachments" multiple accept=".jpg,.jpeg,.png,.gif,.webp,.bmp,.pdf,.txt,.csv,.doc,.docx,.xls,.xlsx,.odt,.ods" class="min-h-[3.25rem] w-full rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+                <span class="mt-2 block text-xs text-slate-500">Envie nota fiscal, imagem ou documentos do patrimonio. Voce pode selecionar varios arquivos.</span>
+            </label>
+            {% set attachment_owner = edit_asset %}
+            {% set attachment_view_base = '/insumos/patrimonio/anexos' %}
+            {% set attachment_delete_base = '/insumos/patrimonio/' ~ edit_asset.id ~ '/anexos' if edit_asset else '' %}
+            {% include "partials/attachment_list.html" %}
             <div class="flex gap-3">
                 <button class="rounded-2xl bg-brand-500 px-4 py-3 font-semibold text-white hover:bg-brand-700">{% if edit_asset %}Salvar alterações{% else %}Cadastrar patrimônio{% endif %}</button>
                 {% if edit_asset %}

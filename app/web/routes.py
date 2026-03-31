@@ -1,6 +1,7 @@
 from datetime import date, datetime
 from decimal import Decimal
 from io import BytesIO
+from pathlib import Path
 from urllib.parse import urlencode
 
 import json
@@ -26,6 +27,7 @@ from app.models import (
     CoffeeVariety,
     CropSeason,
     EquipmentAsset,
+    EquipmentAssetAttachment,
     Farm,
     FertilizationItem,
     FertilizationSchedule,
@@ -36,6 +38,7 @@ from app.models import (
     PestIncident,
     Plot,
     PurchasedInput,
+    PurchasedInputAttachment,
     RainfallRecord,
     SoilAnalysis,
     User,
@@ -711,6 +714,99 @@ def _read_upload(upload: UploadFile | None) -> tuple[str | None, str | None, byt
     if not payload:
         return None, None, None
     return upload.filename, upload.content_type or "application/octet-stream", payload
+
+
+_ALLOWED_ATTACHMENT_EXTENSIONS = {
+    ".jpg",
+    ".jpeg",
+    ".png",
+    ".gif",
+    ".webp",
+    ".bmp",
+    ".pdf",
+    ".txt",
+    ".csv",
+    ".doc",
+    ".docx",
+    ".xls",
+    ".xlsx",
+    ".odt",
+    ".ods",
+}
+_MAX_ATTACHMENT_SIZE_BYTES = 10 * 1024 * 1024
+
+
+def _clean_attachment_filename(filename: str | None) -> str:
+    cleaned = Path((filename or "arquivo").strip()).name
+    return cleaned[:255] or "arquivo"
+
+
+def _read_attachments(uploads: list[UploadFile] | None) -> list[tuple[str, str, bytes]]:
+    attachments: list[tuple[str, str, bytes]] = []
+    for upload in uploads or []:
+        filename, content_type, payload = _read_upload(upload)
+        if not filename or payload is None:
+            continue
+        extension = Path(filename).suffix.lower()
+        if extension not in _ALLOWED_ATTACHMENT_EXTENSIONS and not (content_type or "").startswith("image/"):
+            raise ValueError("Envie apenas imagens, PDF ou documentos comuns.")
+        if len(payload) > _MAX_ATTACHMENT_SIZE_BYTES:
+            raise ValueError("Cada anexo deve ter no maximo 10 MB.")
+        attachments.append((_clean_attachment_filename(filename), content_type or "application/octet-stream", payload))
+    return attachments
+
+
+def _save_purchased_input_attachments(
+    repo: FarmRepository,
+    item: PurchasedInput,
+    attachments: list[tuple[str, str, bytes]],
+) -> None:
+    if not attachments:
+        return
+    repo.db.add_all(
+        [
+            PurchasedInputAttachment(
+                purchased_input_id=item.id,
+                filename=filename,
+                content_type=content_type,
+                file_data=payload,
+            )
+            for filename, content_type, payload in attachments
+        ]
+    )
+    repo.db.commit()
+    repo.db.refresh(item)
+
+
+def _save_equipment_asset_attachments(
+    repo: FarmRepository,
+    asset: EquipmentAsset,
+    attachments: list[tuple[str, str, bytes]],
+) -> None:
+    if not attachments:
+        return
+    repo.db.add_all(
+        [
+            EquipmentAssetAttachment(
+                equipment_asset_id=asset.id,
+                filename=filename,
+                content_type=content_type,
+                file_data=payload,
+            )
+            for filename, content_type, payload in attachments
+        ]
+    )
+    repo.db.commit()
+    repo.db.refresh(asset)
+
+
+def _attachment_response(filename: str, content_type: str, payload: bytes) -> Response:
+    safe_name = _clean_attachment_filename(filename).replace('"', "")
+    return Response(
+        content=payload,
+        media_type=content_type or "application/octet-stream",
+        headers={"Content-Disposition": f'inline; filename="{safe_name}"'},
+    )
 
 
 def _require_admin(request: Request, user: User) -> RedirectResponse | None:
@@ -1417,6 +1513,7 @@ def create_purchased_input_action(
     purchase_date: str | None = Form(None),
     low_stock_threshold: str | None = Form(None),
     notes: str | None = Form(None),
+    attachments: list[UploadFile] | None = File(None),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user_web),
 ):
@@ -1426,7 +1523,12 @@ def create_purchased_input_action(
     scope, denied = _launch_scope_or_redirect(request, repo, "/insumos/comprados")
     if denied:
         return denied
-    create_purchased_input(
+    try:
+        attachment_payloads = _read_attachments(attachments)
+    except ValueError as exc:
+        _flash(request, "error", str(exc))
+        return _redirect_with_query("/insumos/comprados", item_type=item_type)
+    item = create_purchased_input(
         repo,
         {
             "farm_id": scope["active_farm_id"],
@@ -1441,7 +1543,10 @@ def create_purchased_input_action(
             "notes": notes,
         },
     )
+    _save_purchased_input_attachments(repo, item, attachment_payloads)
     _flash(request, "success", "Insumo comprado cadastrado com sucesso.")
+    if attachment_payloads:
+        return _redirect_with_query("/insumos/comprados", edit_id=item.id, item_type=item_type)
     return _redirect_with_query("/insumos/comprados", item_type=item_type)
 
 
@@ -1460,6 +1565,7 @@ def update_purchased_input_action(
     purchase_date: str | None = Form(None),
     low_stock_threshold: str | None = Form(None),
     notes: str | None = Form(None),
+    attachments: list[UploadFile] | None = File(None),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user_web),
 ):
@@ -1476,6 +1582,11 @@ def update_purchased_input_action(
     if not _farm_matches_scope(item.farm_id, scope):
         _flash(request, "error", "Este lancamento de entrada nao pertence ao contexto ativo.")
         return _redirect("/insumos/comprados")
+    try:
+        attachment_payloads = _read_attachments(attachments)
+    except ValueError as exc:
+        _flash(request, "error", str(exc))
+        return _redirect_with_query("/insumos/comprados", edit_id=input_id, item_type=item_type)
     update_purchased_input(
         repo,
         item,
@@ -1492,7 +1603,10 @@ def update_purchased_input_action(
             "notes": notes,
         },
     )
+    _save_purchased_input_attachments(repo, item, attachment_payloads)
     _flash(request, "success", "Insumo comprado atualizado com sucesso.")
+    if attachment_payloads:
+        return _redirect_with_query("/insumos/comprados", edit_id=input_id, item_type=item_type)
     return _redirect_with_query("/insumos/comprados", item_type=item_type)
 
 
@@ -1520,6 +1634,57 @@ def delete_purchased_input_action(
     repo.delete(item)
     _flash(request, "success", "Insumo comprado excluido com sucesso.")
     return _redirect("/insumos/comprados")
+
+
+@router.get("/insumos/comprados/anexos/{attachment_id}")
+def open_purchased_input_attachment(
+    attachment_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    del user
+    repo = _repository(db)
+    attachment = repo.get_purchased_input_attachment(attachment_id)
+    if not attachment or not attachment.purchased_input:
+        _flash(request, "error", "Anexo nao encontrado.")
+        return _redirect("/insumos/comprados")
+    scope = _global_scope_context(request, repo)
+    item = attachment.purchased_input
+    if not _farm_matches_scope(item.farm_id, scope):
+        _flash(request, "error", "Este anexo nao pertence ao contexto ativo.")
+        return _redirect("/insumos/comprados")
+    return _attachment_response(attachment.filename, attachment.content_type, attachment.file_data)
+
+
+@router.post("/insumos/comprados/{input_id}/anexos/{attachment_id}/excluir")
+def delete_purchased_input_attachment_action(
+    input_id: int,
+    attachment_id: int,
+    request: Request,
+    csrf_token: str = Form(...),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    del user
+    validate_csrf(request, csrf_token)
+    repo = _repository(db)
+    item = repo.get_purchased_input(input_id)
+    if not item:
+        _flash(request, "error", "Insumo comprado nao encontrado.")
+        return _redirect("/insumos/comprados")
+    scope = _global_scope_context(request, repo)
+    if not _farm_matches_scope(item.farm_id, scope):
+        _flash(request, "error", "Este lancamento de entrada nao pertence ao contexto ativo.")
+        return _redirect("/insumos/comprados")
+    attachment = repo.get_purchased_input_attachment(attachment_id)
+    if not attachment or attachment.purchased_input_id != item.id:
+        _flash(request, "error", "Anexo nao encontrado.")
+        return _redirect_with_query("/insumos/comprados", edit_id=input_id)
+    repo.delete(attachment)
+    _flash(request, "success", "Anexo removido com sucesso.")
+    item_type = item.input_catalog.item_type if item.input_catalog else None
+    return _redirect_with_query("/insumos/comprados", edit_id=input_id, item_type=item_type)
 
 
 @router.get("/insumos/estoque")
@@ -2000,6 +2165,7 @@ def create_equipment_asset_action(
     acquisition_value: str | None = Form(None),
     status_value: str = Form("ativo", alias="status"),
     notes: str | None = Form(None),
+    attachments: list[UploadFile] | None = File(None),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user_web),
 ):
@@ -2009,7 +2175,12 @@ def create_equipment_asset_action(
     scope, denied = _launch_scope_or_redirect(request, repo, "/insumos/patrimonio")
     if denied:
         return denied
-    create_equipment_asset(
+    try:
+        attachment_payloads = _read_attachments(attachments)
+    except ValueError as exc:
+        _flash(request, "error", str(exc))
+        return _redirect("/insumos/patrimonio")
+    asset = create_equipment_asset(
         repo,
         {
             "farm_id": scope["active_farm_id"],
@@ -2023,7 +2194,10 @@ def create_equipment_asset_action(
             "notes": notes,
         },
     )
+    _save_equipment_asset_attachments(repo, asset, attachment_payloads)
     _flash(request, "success", "Patrimonio cadastrado com sucesso.")
+    if attachment_payloads:
+        return _redirect_with_query("/insumos/patrimonio", edit_id=asset.id)
     return _redirect("/insumos/patrimonio")
 
 
@@ -2041,6 +2215,7 @@ def update_equipment_asset_action(
     acquisition_value: str | None = Form(None),
     status_value: str = Form("ativo", alias="status"),
     notes: str | None = Form(None),
+    attachments: list[UploadFile] | None = File(None),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user_web),
 ):
@@ -2057,6 +2232,11 @@ def update_equipment_asset_action(
     if not _farm_matches_scope(asset.farm_id, scope):
         _flash(request, "error", "Este patrimonio nao pertence ao contexto ativo.")
         return _redirect("/insumos/patrimonio")
+    try:
+        attachment_payloads = _read_attachments(attachments)
+    except ValueError as exc:
+        _flash(request, "error", str(exc))
+        return _redirect_with_query("/insumos/patrimonio", edit_id=asset_id)
     update_equipment_asset(
         repo,
         asset,
@@ -2072,7 +2252,10 @@ def update_equipment_asset_action(
             "notes": notes,
         },
     )
+    _save_equipment_asset_attachments(repo, asset, attachment_payloads)
     _flash(request, "success", "Patrimonio atualizado com sucesso.")
+    if attachment_payloads:
+        return _redirect_with_query("/insumos/patrimonio", edit_id=asset_id)
     return _redirect("/insumos/patrimonio")
 
 
@@ -2094,6 +2277,56 @@ def delete_equipment_asset_action(
     repo.delete(asset)
     _flash(request, "success", "Patrimonio excluido com sucesso.")
     return _redirect("/insumos/patrimonio")
+
+
+@router.get("/insumos/patrimonio/anexos/{attachment_id}")
+def open_equipment_asset_attachment(
+    attachment_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    del user
+    repo = _repository(db)
+    attachment = repo.get_equipment_asset_attachment(attachment_id)
+    if not attachment or not attachment.equipment_asset:
+        _flash(request, "error", "Anexo nao encontrado.")
+        return _redirect("/insumos/patrimonio")
+    scope = _global_scope_context(request, repo)
+    asset = attachment.equipment_asset
+    if not _farm_matches_scope(asset.farm_id, scope):
+        _flash(request, "error", "Este anexo nao pertence ao contexto ativo.")
+        return _redirect("/insumos/patrimonio")
+    return _attachment_response(attachment.filename, attachment.content_type, attachment.file_data)
+
+
+@router.post("/insumos/patrimonio/{asset_id}/anexos/{attachment_id}/excluir")
+def delete_equipment_asset_attachment_action(
+    asset_id: int,
+    attachment_id: int,
+    request: Request,
+    csrf_token: str = Form(...),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    del user
+    validate_csrf(request, csrf_token)
+    repo = _repository(db)
+    asset = repo.get_equipment_asset(asset_id)
+    if not asset:
+        _flash(request, "error", "Patrimonio nao encontrado.")
+        return _redirect("/insumos/patrimonio")
+    scope = _global_scope_context(request, repo)
+    if not _farm_matches_scope(asset.farm_id, scope):
+        _flash(request, "error", "Este patrimonio nao pertence ao contexto ativo.")
+        return _redirect("/insumos/patrimonio")
+    attachment = repo.get_equipment_asset_attachment(attachment_id)
+    if not attachment or attachment.equipment_asset_id != asset.id:
+        _flash(request, "error", "Anexo nao encontrado.")
+        return _redirect_with_query("/insumos/patrimonio", edit_id=asset_id)
+    repo.delete(attachment)
+    _flash(request, "success", "Anexo removido com sucesso.")
+    return _redirect_with_query("/insumos/patrimonio", edit_id=asset_id)
 
 
 @router.get("/insumos/recomendacao")
