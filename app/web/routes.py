@@ -2373,10 +2373,15 @@ def crop_seasons_page(
     csrf_token: str = Depends(get_csrf_token),
 ):
     repo = _repository(db)
-    effective_farm_id = _active_farm_id(request)
+    scope = _global_scope_context(request, repo)
+    effective_farm_id = scope["active_farm_id"]
     crop_seasons = repo.list_crop_seasons(farm_id=effective_farm_id)
     fertilizations = repo.list_fertilizations()
     stock_outputs = repo.list_stock_outputs(farm_id=effective_farm_id) if effective_farm_id else repo.list_stock_outputs()
+    edit_season = repo.get_crop_season(edit_id) if edit_id else None
+    if edit_season and not _farm_matches_scope(edit_season.farm_id, scope):
+        _flash(request, "error", "Esta safra nao pertence ao contexto ativo.")
+        edit_season = None
     season_costs: dict[int, dict] = {}
     for season in crop_seasons:
         season_outputs = [output for output in stock_outputs if output.season_id == season.id]
@@ -2425,7 +2430,7 @@ def crop_seasons_page(
             varieties=repo.list_varieties(),
             crop_seasons=crop_seasons,
             season_costs=season_costs,
-            edit_season=repo.get_crop_season(edit_id) if edit_id else None,
+            edit_season=edit_season,
         ),
     )
 
@@ -2434,7 +2439,6 @@ def crop_seasons_page(
 def create_crop_season_action(
     request: Request,
     csrf_token: str = Form(...),
-    farm_id: int = Form(...),
     name: str | None = Form(None),
     start_date: str = Form(...),
     end_date: str = Form(...),
@@ -2449,10 +2453,15 @@ def create_crop_season_action(
 ):
     del user
     validate_csrf(request, csrf_token)
+    repo = _repository(db)
+    scope_or_redirect = _launch_scope_or_redirect(request, repo, "/safras", require_season=False)
+    if isinstance(scope_or_redirect, RedirectResponse):
+        return scope_or_redirect
+    scope = scope_or_redirect
     create_crop_season(
-        _repository(db),
+        repo,
         {
-            "farm_id": farm_id,
+            "farm_id": scope["active_farm_id"],
             "name": name,
             "start_date": start_date,
             "end_date": end_date,
@@ -2473,7 +2482,6 @@ def update_crop_season_action(
     season_id: int,
     request: Request,
     csrf_token: str = Form(...),
-    farm_id: int = Form(...),
     name: str | None = Form(None),
     start_date: str = Form(...),
     end_date: str = Form(...),
@@ -2489,15 +2497,22 @@ def update_crop_season_action(
     del user
     validate_csrf(request, csrf_token)
     repo = _repository(db)
+    scope_or_redirect = _launch_scope_or_redirect(request, repo, "/safras", require_season=False)
+    if isinstance(scope_or_redirect, RedirectResponse):
+        return scope_or_redirect
+    scope = scope_or_redirect
     crop_season = repo.get_crop_season(season_id)
     if not crop_season:
         _flash(request, "error", "Safra nao encontrada.")
+        return _redirect("/safras")
+    if not _farm_matches_scope(crop_season.farm_id, scope):
+        _flash(request, "error", "Esta safra nao pertence ao contexto ativo.")
         return _redirect("/safras")
     update_crop_season(
         repo,
         crop_season,
         {
-            "farm_id": farm_id,
+            "farm_id": scope["active_farm_id"],
             "name": name,
             "start_date": start_date,
             "end_date": end_date,
@@ -3018,6 +3033,7 @@ def fertilization_schedules_page(
         for schedule in repo.list_fertilization_schedules()
         if schedule.plot_id in plot_ids and _within_scope(schedule.scheduled_date, start_date, end_date)
     ]
+    schedules.sort(key=lambda schedule: (schedule.scheduled_date, schedule.id), reverse=True)
     schedule_validations = {schedule.id: validate_schedule_stock(repo, schedule) for schedule in schedules}
     consolidated_inputs = repo.list_input_catalog(item_type="insumo_agricola")
     purchased_inputs = repo.list_purchased_inputs()

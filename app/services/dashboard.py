@@ -177,7 +177,7 @@ def build_dashboard_context(
     ]
     low_stock_items.sort(key=lambda item: (item["available_quantity"], item["name"]))
     schedule_alerts = []
-    for schedule in schedules:
+    for schedule in sorted(schedules, key=lambda schedule: (schedule.scheduled_date, schedule.id)):
         status = schedule.status
         if status == "completed":
             continue
