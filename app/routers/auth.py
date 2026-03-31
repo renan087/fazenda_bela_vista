@@ -87,8 +87,6 @@ def login_web(
         send_access_code_email(user.email, code)
     except RuntimeError as exc:
         revoke_active_login_codes(db, user.id)
-        if str(exc) == "Servico de email nao configurado.":
-            return _complete_web_login(request, user)
         return _render_login(request, str(exc))
     except Exception:
         revoke_active_login_codes(db, user.id)
