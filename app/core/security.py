@@ -59,3 +59,22 @@ def hash_verification_code(code: str) -> str:
 def verify_verification_code(code: str, code_hash: str) -> bool:
     calculated = hash_verification_code(code)
     return hmac.compare_digest(calculated, code_hash)
+
+
+def generate_persistent_token() -> str:
+    return secrets.token_urlsafe(32)
+
+
+def _hash_with_secret(value: str) -> str:
+    settings = get_settings()
+    secret = settings.secret_key.encode("utf-8")
+    digest = hashlib.sha256(secret + value.encode("utf-8")).hexdigest()
+    return digest
+
+
+def hash_persistent_token(token: str) -> str:
+    return _hash_with_secret(token)
+
+
+def hash_browser_fingerprint(user_agent: str) -> str:
+    return _hash_with_secret(user_agent or "")

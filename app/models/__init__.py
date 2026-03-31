@@ -20,6 +20,7 @@ from app.models.purchased_input import PurchasedInput
 from app.models.rainfall import RainfallRecord
 from app.models.soil_analysis import SoilAnalysis
 from app.models.stock_output import StockOutput
+from app.models.trusted_browser_token import TrustedBrowserToken
 from app.models.user import User
 
 __all__ = [
@@ -45,5 +46,6 @@ __all__ = [
     "RainfallRecord",
     "SoilAnalysis",
     "StockOutput",
+    "TrustedBrowserToken",
     "User",
 ]

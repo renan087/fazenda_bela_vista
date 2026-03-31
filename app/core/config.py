@@ -31,6 +31,8 @@ class Settings(BaseSettings):
     smtp_use_tls: bool = True
     two_factor_code_minutes: int = 10
     two_factor_max_attempts: int = 5
+    trusted_browser_days: int = 5
+    trusted_browser_cookie_name: str = "fazenda_trusted_browser"
 
     @property
     def is_production(self) -> bool:
@@ -39,6 +41,10 @@ class Settings(BaseSettings):
     @property
     def session_idle_timeout_seconds(self) -> int:
         return self.session_idle_timeout_hours * 60 * 60
+
+    @property
+    def trusted_browser_seconds(self) -> int:
+        return self.trusted_browser_days * 24 * 60 * 60
 
     model_config = SettingsConfigDict(
         env_file=".env",

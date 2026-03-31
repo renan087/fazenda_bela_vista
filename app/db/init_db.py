@@ -30,6 +30,7 @@ from app.models import (
     RainfallRecord,
     SoilAnalysis,
     StockOutput,
+    TrustedBrowserToken,
     User,
 )
 
@@ -224,6 +225,18 @@ def _sync_schema() -> None:
         )
         """,
         """
+        CREATE TABLE IF NOT EXISTS trusted_browser_tokens (
+            id SERIAL PRIMARY KEY,
+            user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            token_hash VARCHAR(255) NOT NULL UNIQUE,
+            user_agent_hash VARCHAR(255) NOT NULL,
+            expires_at TIMESTAMPTZ NOT NULL,
+            last_used_at TIMESTAMPTZ,
+            revoked_at TIMESTAMPTZ,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+        """,
+        """
         CREATE TABLE IF NOT EXISTS fertilization_stock_allocations (
             id SERIAL PRIMARY KEY,
             fertilization_item_id INTEGER NOT NULL REFERENCES fertilization_items(id) ON DELETE CASCADE,
@@ -319,6 +332,9 @@ def _sync_schema() -> None:
         connection.execute(text("ALTER TABLE input_recommendations ALTER COLUMN quantity_per_hectare DROP NOT NULL"))
         connection.execute(text("ALTER TABLE input_recommendation_items ALTER COLUMN purchased_input_id DROP NOT NULL"))
         connection.execute(text("ALTER TABLE fertilization_schedule_items ALTER COLUMN purchased_input_id DROP NOT NULL"))
+        connection.execute(text("CREATE INDEX IF NOT EXISTS ix_trusted_browser_tokens_user_id ON trusted_browser_tokens(user_id)"))
+        connection.execute(text("CREATE INDEX IF NOT EXISTS ix_trusted_browser_tokens_token_hash ON trusted_browser_tokens(token_hash)"))
+        connection.execute(text("CREATE INDEX IF NOT EXISTS ix_trusted_browser_tokens_expires_at ON trusted_browser_tokens(expires_at)"))
         connection.execute(text("UPDATE plots SET irrigation_type = 'none' WHERE irrigation_type IS NULL"))
         connection.execute(text("ALTER TABLE plots ALTER COLUMN irrigation_type SET DEFAULT 'none'"))
         connection.execute(text("UPDATE purchased_inputs SET purchase_date = CURRENT_DATE WHERE purchase_date IS NULL"))

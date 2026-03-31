@@ -27,10 +27,20 @@
                     <span class="mb-2 block text-sm font-medium text-slate-700">Codigo</span>
                     <input type="text" name="code" inputmode="numeric" maxlength="6" class="w-full rounded-2xl border-slate-200 bg-slate-50 text-center text-2xl tracking-[0.55em]" placeholder="000000" required>
                 </label>
+                <label class="flex items-start gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+                    <input type="checkbox" name="trust_browser" value="on" class="mt-0.5 rounded border-slate-300 text-brand-500 focus:ring-brand-500" {% if trust_browser_checked %}checked{% endif %}>
+                    <span>
+                        <span class="block font-medium text-slate-700">Confiar neste navegador por {{ trusted_browser_days }} dias</span>
+                        <span class="mt-1 block text-slate-500">Neste dispositivo, vamos pular uma nova verificacao em duas etapas ate o prazo expirar.</span>
+                    </span>
+                </label>
                 <button type="submit" class="inline-flex w-full items-center justify-center rounded-2xl bg-brand-500 px-4 py-3 font-semibold text-white hover:bg-brand-700">Confirmar acesso</button>
             </form>
             <form method="post" action="/login/verificacao/reenviar" class="mt-4">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                {% if trust_browser_checked %}
+                <input type="hidden" name="trust_browser" value="on">
+                {% endif %}
                 <button type="submit" class="inline-flex w-full items-center justify-center rounded-2xl border border-slate-200 bg-white px-4 py-3 font-semibold text-slate-700 hover:bg-slate-50">Reenviar codigo</button>
             </form>
         </section>

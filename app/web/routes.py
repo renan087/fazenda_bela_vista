@@ -90,6 +90,7 @@ from app.services.forms import (
     update_manual_stock_output,
 )
 from app.services.openai_service import gerar_recomendacao_adubacao
+from app.services.trusted_browser import revoke_user_trusted_browsers
 
 router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")
@@ -1250,6 +1251,8 @@ def update_user_action(
                 "is_admin": _bool_from_form(is_admin),
             },
         )
+        if (password or "").strip():
+            revoke_user_trusted_browsers(db, updated_user.id)
 
         if updated_user.id == user.id:
             request.session["user_email"] = updated_user.email

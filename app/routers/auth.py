@@ -7,12 +7,18 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 
 from app.core.csrf import ensure_csrf_token, validate_csrf
+from app.core.config import get_settings
 from app.core.session import clear_expired_session, touch_session_activity
 from app.core.security import authenticate_user, create_access_token
 from app.db.session import get_db
 from app.models import User
 from app.schemas.auth import Token
 from app.services.email_service import send_access_code_email
+from app.services.trusted_browser import (
+    issue_trusted_browser_token,
+    revoke_trusted_browser_token,
+    validate_trusted_browser_token,
+)
 from app.services.two_factor import get_active_login_code, issue_login_verification_code, revoke_active_login_codes, verify_login_code
 
 templates = Jinja2Templates(directory="app/templates")
@@ -22,6 +28,31 @@ logger = logging.getLogger(__name__)
 
 PENDING_2FA_USER_ID = "pending_2fa_user_id"
 PENDING_2FA_EMAIL = "pending_2fa_email"
+
+
+def _trusted_browser_cookie_name() -> str:
+    return get_settings().trusted_browser_cookie_name
+
+
+def _set_trusted_browser_cookie(response: RedirectResponse, token: str) -> None:
+    settings = get_settings()
+    response.set_cookie(
+        key=settings.trusted_browser_cookie_name,
+        value=token,
+        max_age=settings.trusted_browser_seconds,
+        httponly=True,
+        samesite="lax",
+        secure=settings.is_production,
+        path="/",
+    )
+
+
+def _clear_trusted_browser_cookie(response: RedirectResponse) -> None:
+    response.delete_cookie(key=_trusted_browser_cookie_name(), path="/")
+
+
+def _trust_browser_requested(value: str | None) -> bool:
+    return (value or "").strip().lower() in {"1", "on", "true", "yes"}
 
 
 def _pending_2fa_user(request: Request, db: Session) -> User | None:
@@ -37,12 +68,22 @@ def _pending_2fa_user(request: Request, db: Session) -> User | None:
     return user
 
 
-def _complete_web_login(request: Request, user: User):
+def _complete_web_login(
+    request: Request,
+    user: User,
+    trusted_browser_token: str | None = None,
+    clear_trusted_browser_cookie: bool = False,
+):
     request.session["user_email"] = user.email
     request.session.pop(PENDING_2FA_USER_ID, None)
     request.session.pop(PENDING_2FA_EMAIL, None)
     touch_session_activity(request)
-    return RedirectResponse(url="/dashboard", status_code=status.HTTP_303_SEE_OTHER)
+    response = RedirectResponse(url="/dashboard", status_code=status.HTTP_303_SEE_OTHER)
+    if clear_trusted_browser_cookie:
+        _clear_trusted_browser_cookie(response)
+    if trusted_browser_token:
+        _set_trusted_browser_cookie(response, trusted_browser_token)
+    return response
 
 
 def _render_login(request: Request, error: str | None = None):
@@ -58,7 +99,13 @@ def _render_login(request: Request, error: str | None = None):
     )
 
 
-def _render_login_verification(request: Request, email: str, error: str | None = None, info: str | None = None):
+def _render_login_verification(
+    request: Request,
+    email: str,
+    error: str | None = None,
+    info: str | None = None,
+    trust_browser_checked: bool = False,
+):
     return templates.TemplateResponse(
         "login_verify.html",
         {
@@ -66,6 +113,8 @@ def _render_login_verification(request: Request, email: str, error: str | None =
             "error": error,
             "info": info,
             "email": email,
+            "trust_browser_checked": trust_browser_checked,
+            "trusted_browser_days": get_settings().trusted_browser_days,
             "csrf_token": ensure_csrf_token(request),
             "page": "login",
         },
@@ -95,6 +144,14 @@ def login_web(
     if not authenticate_user(user, password):
         return _render_login(request, "Credenciais invalidas.")
 
+    trusted_browser_cookie = request.cookies.get(_trusted_browser_cookie_name())
+    clear_trusted_cookie = False
+    if trusted_browser_cookie:
+        if validate_trusted_browser_token(db, user, request, trusted_browser_cookie):
+            revoke_active_login_codes(db, user.id)
+            return _complete_web_login(request, user)
+        clear_trusted_cookie = True
+
     try:
         code = issue_login_verification_code(db, user)
         send_access_code_email(user.email, code)
@@ -117,7 +174,10 @@ def login_web(
     request.session[PENDING_2FA_USER_ID] = user.id
     request.session[PENDING_2FA_EMAIL] = user.email
     touch_session_activity(request)
-    return RedirectResponse(url="/login/verificacao", status_code=status.HTTP_303_SEE_OTHER)
+    response = RedirectResponse(url="/login/verificacao", status_code=status.HTTP_303_SEE_OTHER)
+    if clear_trusted_cookie:
+        _clear_trusted_browser_cookie(response)
+    return response
 
 
 @router.get("/login/verificacao")
@@ -139,6 +199,7 @@ def login_verification_page(
 def login_verification_web(
     request: Request,
     code: str = Form(...),
+    trust_browser: str | None = Form(None),
     csrf_token: str = Form(...),
     db: Session = Depends(get_db),
 ):
@@ -146,12 +207,14 @@ def login_verification_web(
     user = _pending_2fa_user(request, db)
     if not user:
         return RedirectResponse(url="/login", status_code=status.HTTP_303_SEE_OTHER)
+    trust_browser_checked = _trust_browser_requested(trust_browser)
     normalized_code = "".join(char for char in code if char.isdigit())[:6]
     if len(normalized_code) != 6:
         return _render_login_verification(
             request,
             request.session.get(PENDING_2FA_EMAIL, user.email),
             "Informe um codigo numerico de 6 digitos.",
+            trust_browser_checked=trust_browser_checked,
         )
     valid, message = verify_login_code(db, user.id, normalized_code)
     if not valid:
@@ -159,14 +222,26 @@ def login_verification_web(
             request,
             request.session.get(PENDING_2FA_EMAIL, user.email),
             message,
+            trust_browser_checked=trust_browser_checked,
         )
 
-    return _complete_web_login(request, user)
+    trusted_browser_token = None
+    if trust_browser_checked:
+        try:
+            trusted_browser_token = issue_trusted_browser_token(db, user, request)
+        except Exception:
+            logger.exception(
+                "Falha ao registrar navegador confiavel",
+                extra={"user_email": user.email},
+            )
+
+    return _complete_web_login(request, user, trusted_browser_token=trusted_browser_token)
 
 
 @router.post("/login/verificacao/reenviar")
 def resend_login_verification_code(
     request: Request,
+    trust_browser: str | None = Form(None),
     csrf_token: str = Form(...),
     db: Session = Depends(get_db),
 ):
@@ -182,20 +257,41 @@ def resend_login_verification_code(
             "Falha controlada ao reenviar codigo 2FA",
             extra={"user_email": user.email},
         )
-        return _render_login_verification(request, user.email, str(exc))
+        return _render_login_verification(
+            request,
+            user.email,
+            str(exc),
+            trust_browser_checked=_trust_browser_requested(trust_browser),
+        )
     except Exception:
         logger.exception(
             "Falha inesperada ao reenviar codigo 2FA",
             extra={"user_email": user.email},
         )
-        return _render_login_verification(request, user.email, "Nao foi possivel reenviar o codigo. Tente novamente.")
-    return _render_login_verification(request, user.email, info="Enviamos um novo codigo para o seu email.")
+        return _render_login_verification(
+            request,
+            user.email,
+            "Nao foi possivel reenviar o codigo. Tente novamente.",
+            trust_browser_checked=_trust_browser_requested(trust_browser),
+        )
+    return _render_login_verification(
+        request,
+        user.email,
+        info="Enviamos um novo codigo para o seu email.",
+        trust_browser_checked=_trust_browser_requested(trust_browser),
+    )
 
 
 @router.get("/logout")
-def logout(request: Request):
+def logout(
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    revoke_trusted_browser_token(db, request.cookies.get(_trusted_browser_cookie_name()))
     request.session.clear()
-    return RedirectResponse(url="/login", status_code=status.HTTP_303_SEE_OTHER)
+    response = RedirectResponse(url="/login", status_code=status.HTTP_303_SEE_OTHER)
+    _clear_trusted_browser_cookie(response)
+    return response
 
 
 @api_router.post("/token", response_model=Token)
