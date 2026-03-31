@@ -1,4 +1,4 @@
-from sqlalchemy import distinct, func
+from sqlalchemy import distinct, func, or_
 from sqlalchemy.orm import Session, joinedload
 
 from app.models import (
@@ -27,6 +27,8 @@ from app.models import (
     StockOutput,
     User,
 )
+
+MANUAL_STOCK_OUTPUT_ALLOCATION = "manual_stock_output_allocation"
 
 
 class FarmRepository:
@@ -384,6 +386,12 @@ class FarmRepository:
                 joinedload(StockOutput.purchased_input),
             )
             .order_by(StockOutput.movement_date.desc(), StockOutput.id.desc())
+        )
+        query = query.filter(
+            or_(
+                StockOutput.reference_type.is_(None),
+                StockOutput.reference_type != MANUAL_STOCK_OUTPUT_ALLOCATION,
+            )
         )
         if input_id:
             query = query.filter(StockOutput.input_id == input_id)

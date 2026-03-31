@@ -31,6 +31,9 @@ from app.models import (
 )
 from app.repositories.farm import FarmRepository
 
+MANUAL_STOCK_OUTPUT_REFERENCE = "manual_stock_output"
+MANUAL_STOCK_OUTPUT_ALLOCATION = "manual_stock_output_allocation"
+
 
 def _suggest_crop_season_name(start_date_value: str | date | None, end_date_value: str | date | None) -> str:
     if not start_date_value or not end_date_value:
@@ -416,7 +419,19 @@ def update_equipment_asset(repository: FarmRepository, asset: EquipmentAsset, fo
     )
 
 
-def create_manual_stock_output(repository: FarmRepository, form: dict) -> list[StockOutput]:
+def _manual_stock_output_allocations(repository: FarmRepository, output_id: int) -> list[StockOutput]:
+    return (
+        repository.db.query(StockOutput)
+        .filter(
+            StockOutput.reference_type == MANUAL_STOCK_OUTPUT_ALLOCATION,
+            StockOutput.reference_id == output_id,
+        )
+        .order_by(StockOutput.id.asc())
+        .all()
+    )
+
+
+def create_manual_stock_output(repository: FarmRepository, form: dict) -> StockOutput:
     input_id = int(form["input_id"])
     quantity = float(form["quantity"])
     if quantity <= 0:
@@ -440,8 +455,27 @@ def create_manual_stock_output(repository: FarmRepository, form: dict) -> list[S
     candidate_lots = _find_candidate_lots(repository, input_catalog.id, None, input_catalog.name, unit, farm_id)
     candidate_lots = sorted(candidate_lots, key=lambda item: (item.purchase_date or date.today(), item.id))
 
-    outputs: list[StockOutput] = []
+    output = StockOutput(
+        input_id=input_catalog.id,
+        purchased_input_id=None,
+        farm_id=farm_id,
+        plot_id=plot_id,
+        season_id=season_id,
+        movement_date=movement_date,
+        quantity=round(quantity, 2),
+        unit=unit,
+        origin="manual",
+        reference_type=MANUAL_STOCK_OUTPUT_REFERENCE,
+        reference_id=None,
+        unit_cost=0,
+        total_cost=0,
+        notes=form.get("notes"),
+    )
+    repository.db.add(output)
+    repository.db.flush()
+
     remaining = quantity
+    total_cost = 0.0
     for lot in candidate_lots:
         if remaining <= 0:
             break
@@ -449,7 +483,7 @@ def create_manual_stock_output(repository: FarmRepository, form: dict) -> list[S
         consumed = min(lot_available, remaining)
         unit_cost = float(lot.total_cost or 0) / max(float(lot.total_quantity or 0), 1)
         lot.available_quantity = round(lot_available - consumed, 2)
-        output = StockOutput(
+        allocation = StockOutput(
             input_id=input_catalog.id,
             purchased_input_id=lot.id,
             farm_id=farm_id,
@@ -459,33 +493,32 @@ def create_manual_stock_output(repository: FarmRepository, form: dict) -> list[S
             quantity=consumed,
             unit=unit,
             origin="manual",
-            reference_type="manual_stock_output",
-            reference_id=None,
+            reference_type=MANUAL_STOCK_OUTPUT_ALLOCATION,
+            reference_id=output.id,
             unit_cost=round(unit_cost, 4),
             total_cost=round(consumed * unit_cost, 2),
             notes=form.get("notes"),
         )
-        repository.db.add(output)
-        outputs.append(output)
+        repository.db.add(allocation)
+        total_cost = round(total_cost + float(allocation.total_cost or 0), 2)
         remaining = round(remaining - consumed, 2)
 
+    output.total_cost = round(total_cost, 2)
+    output.unit_cost = round(total_cost / quantity, 4) if quantity else 0
+    repository.db.add(output)
     repository.db.commit()
-    for output in outputs:
-        repository.db.refresh(output)
-    return outputs
+    repository.db.refresh(output)
+    return output
 
 
 def update_manual_stock_output(repository: FarmRepository, output: StockOutput, form: dict) -> StockOutput:
-    if output.reference_type != "manual_stock_output":
+    if output.reference_type != MANUAL_STOCK_OUTPUT_REFERENCE:
         raise ValueError("Este lancamento nao pode ser editado por aqui.")
-    if not output.purchased_input:
-        raise ValueError("Nao foi possivel localizar o lote vinculado a esta saida manual.")
 
     new_quantity = float(form["quantity"])
     if new_quantity <= 0:
         raise ValueError("Informe uma quantidade valida para a saida manual.")
 
-    lot = output.purchased_input
     movement_date = date.fromisoformat(form["movement_date"]) if form.get("movement_date") else date.today()
     input_catalog = repository.get_input_catalog(int(output.input_id)) if output.input_id else None
     if not input_catalog or not input_catalog.is_active:
@@ -499,36 +532,88 @@ def update_manual_stock_output(repository: FarmRepository, output: StockOutput, 
     if target_plot and target_plot.farm_id:
         target_farm_id = target_plot.farm_id
 
-    current_available = float(lot.available_quantity or 0)
-    lot.available_quantity = round(current_available + float(output.quantity or 0), 2)
+    allocations = _manual_stock_output_allocations(repository, output.id)
+    if allocations:
+        for allocation in allocations:
+            if allocation.purchased_input:
+                allocation.purchased_input.available_quantity = round(
+                    float(allocation.purchased_input.available_quantity or 0) + float(allocation.quantity or 0),
+                    2,
+                )
+                repository.db.add(allocation.purchased_input)
+            repository.db.delete(allocation)
+        repository.db.flush()
+    elif output.purchased_input:
+        current_available = float(output.purchased_input.available_quantity or 0)
+        output.purchased_input.available_quantity = round(current_available + float(output.quantity or 0), 2)
+        repository.db.add(output.purchased_input)
+    else:
+        raise ValueError("Nao foi possivel localizar os lotes vinculados a esta saida manual.")
 
     candidate_lots = sorted(
         _find_candidate_lots(repository, input_catalog.id, None, input_catalog.name, target_unit, target_farm_id),
         key=lambda item: (item.purchase_date or date.today(), item.id),
     )
-    target_lot = next((candidate for candidate in candidate_lots if _available_stock_for_input(candidate) >= new_quantity), None)
-    if not target_lot:
+    available = _catalog_available_stock(repository, input_catalog.id, target_farm_id, target_unit)
+    if new_quantity > available:
+        missing = round(new_quantity - available, 2)
+        raise ValueError(
+            f"Estoque insuficiente. Necessario comprar {missing} {target_unit} de {input_catalog.name}."
+        )
+
+    remaining = new_quantity
+    total_cost = 0.0
+    first_lot = None
+    for lot in candidate_lots:
+        if remaining <= 0:
+            break
+        lot_available = _available_stock_for_input(lot)
+        consumed = min(lot_available, remaining)
+        if consumed <= 0:
+            continue
+        if first_lot is None:
+            first_lot = lot
+        unit_cost = float(lot.total_cost or 0) / max(float(lot.total_quantity or 0), 1)
+        lot.available_quantity = round(lot_available - consumed, 2)
+        allocation = StockOutput(
+            input_id=input_catalog.id,
+            purchased_input_id=lot.id,
+            farm_id=target_farm_id,
+            plot_id=target_plot.id if target_plot else None,
+            season_id=_resolve_season_for_farm(repository, target_farm_id, movement_date, output.season_id),
+            movement_date=movement_date,
+            quantity=round(consumed, 2),
+            unit=target_unit,
+            origin="manual",
+            reference_type=MANUAL_STOCK_OUTPUT_ALLOCATION,
+            reference_id=output.id,
+            unit_cost=round(unit_cost, 4),
+            total_cost=round(consumed * unit_cost, 2),
+            notes=form.get("notes"),
+        )
+        repository.db.add(lot)
+        repository.db.add(allocation)
+        total_cost = round(total_cost + float(allocation.total_cost or 0), 2)
+        remaining = round(remaining - consumed, 2)
+
+    if first_lot is None:
         available = _catalog_available_stock(repository, input_catalog.id, target_farm_id, target_unit)
         missing = round(new_quantity - available, 2)
         raise ValueError(
             f"Estoque insuficiente. Necessario comprar {missing} {target_unit} de {input_catalog.name}."
         )
 
-    unit_cost = float(target_lot.total_cost or 0) / max(float(target_lot.total_quantity or 0), 1)
-    target_lot.available_quantity = round(float(target_lot.available_quantity or 0) - new_quantity, 2)
     output.input_id = input_catalog.id
-    output.purchased_input_id = target_lot.id
+    output.purchased_input_id = None
     output.farm_id = target_farm_id
     output.plot_id = target_plot.id if target_plot else None
     output.movement_date = movement_date
     output.season_id = _resolve_season_for_farm(repository, target_farm_id, movement_date, output.season_id)
     output.quantity = round(new_quantity, 2)
     output.unit = target_unit
-    output.unit_cost = round(unit_cost, 4)
-    output.total_cost = round(unit_cost * new_quantity, 2)
+    output.unit_cost = round(total_cost / new_quantity, 4)
+    output.total_cost = round(total_cost, 2)
     output.notes = form.get("notes")
-    repository.db.add(lot)
-    repository.db.add(target_lot)
     repository.db.add(output)
     repository.db.commit()
     repository.db.refresh(output)
@@ -536,9 +621,19 @@ def update_manual_stock_output(repository: FarmRepository, output: StockOutput, 
 
 
 def delete_manual_stock_output(repository: FarmRepository, output: StockOutput) -> None:
-    if output.reference_type != "manual_stock_output":
+    if output.reference_type != MANUAL_STOCK_OUTPUT_REFERENCE:
         raise ValueError("Este lancamento esta vinculado a outro modulo e nao pode ser excluido por aqui.")
-    if output.purchased_input:
+    allocations = _manual_stock_output_allocations(repository, output.id)
+    if allocations:
+        for allocation in allocations:
+            if allocation.purchased_input:
+                allocation.purchased_input.available_quantity = round(
+                    float(allocation.purchased_input.available_quantity or 0) + float(allocation.quantity or 0),
+                    2,
+                )
+                repository.db.add(allocation.purchased_input)
+            repository.db.delete(allocation)
+    elif output.purchased_input:
         output.purchased_input.available_quantity = round(
             float(output.purchased_input.available_quantity or 0) + float(output.quantity or 0),
             2,
