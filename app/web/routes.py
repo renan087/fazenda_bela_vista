@@ -1623,7 +1623,6 @@ async def update_stock_output_entry_action(
                 {
                     "farm_id": _int_or_none(form.get("farm_id")),
                     "plot_id": _int_or_none(form.get("plot_id")),
-                    "input_id": _int_or_none(form.get("input_id")),
                     "movement_date": str(form.get("movement_date") or ""),
                     "quantity": float(form.get("quantity") or 0),
                     "unit": str(form.get("unit") or ""),
@@ -1634,11 +1633,11 @@ async def update_stock_output_entry_action(
             fertilization_item, fertilization = _resolve_fertilization_output_context(repo, db, output)
             if not fertilization_item or not fertilization:
                 raise ValueError("Nao foi possivel localizar o item de fertilizacao vinculado.")
-            plot_id = int(form.get("plot_id") or 0)
+            plot_id = int(fertilization.plot_id or 0)
             plot = repo.get_plot(plot_id)
             if not plot:
                 raise ValueError("Selecione um setor valido para a fertilizacao.")
-            input_catalog = repo.get_input_catalog(int(form.get("input_id") or 0))
+            input_catalog = repo.get_input_catalog(int(fertilization_item.input_id or 0))
             if not input_catalog or input_catalog.item_type != "insumo_agricola" or not input_catalog.is_active:
                 raise ValueError("Selecione apenas insumos agrícolas válidos para a fertilização.")
             quantity = float(form.get("quantity") or 0)

@@ -375,26 +375,36 @@
                 </label>
                 <label>
                     <span class="mb-2 block text-sm font-medium">Setor</span>
-                    <select name="plot_id" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50">
+                    {% set selected_plot_id = edit_fertilization_record.plot_id if edit_output_mode == 'fertilization' and edit_fertilization_record else edit_output.plot_id %}
+                    {% if edit_output_mode == "fertilization" %}
+                    <input type="hidden" name="plot_id" value="{{ selected_plot_id or '' }}">
+                    {% endif %}
+                    <select name="plot_id" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50 {% if edit_output_mode == 'fertilization' %}cursor-not-allowed opacity-70{% endif %}" {% if edit_output_mode == "fertilization" %}disabled{% endif %}>
                         <option value="">Sem setor</option>
                         {% for plot in plots %}
-                        <option value="{{ plot.id }}" {% if (edit_output_mode == 'fertilization' and edit_fertilization_record and edit_fertilization_record.plot_id == plot.id) or (edit_output_mode != 'fertilization' and edit_output.plot_id == plot.id) %}selected{% endif %}>{{ plot.name }}{% if plot.farm %} • {{ plot.farm.name }}{% endif %}</option>
+                        <option value="{{ plot.id }}" {% if selected_plot_id == plot.id %}selected{% endif %}>{{ plot.name }}{% if plot.farm %} • {{ plot.farm.name }}{% endif %}</option>
                         {% endfor %}
                     </select>
+                    {% if edit_output_mode == "fertilization" %}
+                    <span class="mt-2 block text-xs text-slate-500">Setor vinculado à fertilização. Para trocar, exclua o lançamento e crie outro.</span>
+                    {% endif %}
                 </label>
             </div>
             <div class="grid gap-4 md:grid-cols-2">
                 <label>
                     <span class="mb-2 block text-sm font-medium">Insumo</span>
-                    <select name="input_id" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required>
+                    {% set selected_input_id = edit_fertilization_item.input_id if edit_output_mode == 'fertilization' and edit_fertilization_item else edit_output.input_id %}
+                    <input type="hidden" name="input_id" value="{{ selected_input_id or '' }}">
+                    <select name="input_id" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50 cursor-not-allowed opacity-70" required disabled>
                         <option value="">Selecione</option>
                         {% for input_item in edit_inputs_catalog %}
                         {% set stock = input_stock.get(input_item.id, {}) %}
-                        <option value="{{ input_item.id }}" {% if (edit_output_mode == 'fertilization' and edit_fertilization_item and edit_fertilization_item.input_id == input_item.id) or (edit_output_mode != 'fertilization' and edit_output.input_id == input_item.id) %}selected{% endif %}>
+                        <option value="{{ input_item.id }}" {% if selected_input_id == input_item.id %}selected{% endif %}>
                             {{ input_item.name }} — disponível: {{ stock.get('available', 0) }} {{ stock.get('unit', input_item.default_unit) }}
                         </option>
                         {% endfor %}
                     </select>
+                    <span class="mt-2 block text-xs text-slate-500">O insumo é somente leitura na edição. Para trocar, exclua o lançamento e crie outro.</span>
                 </label>
                 <label>
                     <span class="mb-2 block text-sm font-medium">Data</span>

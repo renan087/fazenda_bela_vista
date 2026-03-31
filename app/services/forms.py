@@ -487,8 +487,7 @@ def update_manual_stock_output(repository: FarmRepository, output: StockOutput, 
 
     lot = output.purchased_input
     movement_date = date.fromisoformat(form["movement_date"]) if form.get("movement_date") else date.today()
-    target_input_id = form.get("input_id") or output.input_id
-    input_catalog = repository.get_input_catalog(int(target_input_id)) if target_input_id else None
+    input_catalog = repository.get_input_catalog(int(output.input_id)) if output.input_id else None
     if not input_catalog or not input_catalog.is_active:
         raise ValueError("Selecione um item válido para a saída manual.")
 
