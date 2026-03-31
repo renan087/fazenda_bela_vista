@@ -83,7 +83,6 @@
                                 <span class="rounded-full bg-white/80 px-3 py-1 font-medium text-slate-700 sm:whitespace-nowrap">{{ item.date }}</span>
                             </div>
                             <div class="flex flex-wrap items-center gap-2 md:justify-end">
-                                <a href="{{ item.link }}" class="rounded-xl bg-white/80 px-3 py-2 text-xs font-medium text-slate-700 hover:bg-white">Abrir</a>
                                 <form method="post" action="/fertilizacao/agendamentos/{{ item.id }}/concluir">
                                     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                                     <input type="hidden" name="redirect_to" value="{{ current_url or request.url.path }}">
