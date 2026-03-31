@@ -16,7 +16,6 @@ from app.schemas.auth import Token
 from app.services.email_service import send_access_code_email
 from app.services.trusted_browser import (
     issue_trusted_browser_token,
-    revoke_trusted_browser_token,
     validate_trusted_browser_token,
 )
 from app.services.two_factor import get_active_login_code, issue_login_verification_code, revoke_active_login_codes, verify_login_code
@@ -283,15 +282,9 @@ def resend_login_verification_code(
 
 
 @router.get("/logout")
-def logout(
-    request: Request,
-    db: Session = Depends(get_db),
-):
-    revoke_trusted_browser_token(db, request.cookies.get(_trusted_browser_cookie_name()))
+def logout(request: Request):
     request.session.clear()
-    response = RedirectResponse(url="/login", status_code=status.HTTP_303_SEE_OTHER)
-    _clear_trusted_browser_cookie(response)
-    return response
+    return RedirectResponse(url="/login", status_code=status.HTTP_303_SEE_OTHER)
 
 
 @api_router.post("/token", response_model=Token)
