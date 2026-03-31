@@ -485,23 +485,51 @@ def update_manual_stock_output(repository: FarmRepository, output: StockOutput, 
     if new_quantity <= 0:
         raise ValueError("Informe uma quantidade valida para a saida manual.")
 
-    movement_date = date.fromisoformat(form["movement_date"]) if form.get("movement_date") else date.today()
     lot = output.purchased_input
+    movement_date = date.fromisoformat(form["movement_date"]) if form.get("movement_date") else date.today()
+    target_input_id = form.get("input_id") or output.input_id
+    input_catalog = repository.get_input_catalog(int(target_input_id)) if target_input_id else None
+    if not input_catalog or not input_catalog.is_active:
+        raise ValueError("Selecione um item válido para a saída manual.")
+
+    target_unit = (form.get("unit") or output.unit or input_catalog.default_unit or "kg").strip()
+    target_plot_id = form.get("plot_id")
+    target_plot = repository.get_plot(int(target_plot_id)) if target_plot_id else None
+    target_farm_id_raw = form.get("farm_id")
+    target_farm_id = int(target_farm_id_raw) if target_farm_id_raw not in (None, "", 0, "0") else None
+    if target_plot and target_plot.farm_id:
+        target_farm_id = target_plot.farm_id
+
     current_available = float(lot.available_quantity or 0)
-    restored_available = round(current_available + float(output.quantity or 0), 2)
-    if new_quantity > restored_available:
-        missing = round(new_quantity - restored_available, 2)
+    lot.available_quantity = round(current_available + float(output.quantity or 0), 2)
+
+    candidate_lots = sorted(
+        _find_candidate_lots(repository, input_catalog.id, None, input_catalog.name, target_unit, target_farm_id),
+        key=lambda item: (item.purchase_date or date.today(), item.id),
+    )
+    target_lot = next((candidate for candidate in candidate_lots if _available_stock_for_input(candidate) >= new_quantity), None)
+    if not target_lot:
+        available = _catalog_available_stock(repository, input_catalog.id, target_farm_id, target_unit)
+        missing = round(new_quantity - available, 2)
         raise ValueError(
-            f"Estoque insuficiente. Necessario comprar {missing} {output.unit} de {output.input_catalog.name if output.input_catalog else 'insumo'}."
+            f"Estoque insuficiente. Necessario comprar {missing} {target_unit} de {input_catalog.name}."
         )
 
-    lot.available_quantity = round(restored_available - new_quantity, 2)
-    output.quantity = round(new_quantity, 2)
+    unit_cost = float(target_lot.total_cost or 0) / max(float(target_lot.total_quantity or 0), 1)
+    target_lot.available_quantity = round(float(target_lot.available_quantity or 0) - new_quantity, 2)
+    output.input_id = input_catalog.id
+    output.purchased_input_id = target_lot.id
+    output.farm_id = target_farm_id
+    output.plot_id = target_plot.id if target_plot else None
     output.movement_date = movement_date
-    output.season_id = _resolve_season_for_farm(repository, output.farm_id, movement_date, output.season_id)
+    output.season_id = _resolve_season_for_farm(repository, target_farm_id, movement_date, output.season_id)
+    output.quantity = round(new_quantity, 2)
+    output.unit = target_unit
+    output.unit_cost = round(unit_cost, 4)
+    output.total_cost = round(unit_cost * new_quantity, 2)
     output.notes = form.get("notes")
-    output.total_cost = round(float(output.unit_cost or 0) * new_quantity, 2) if output.unit_cost is not None else None
     repository.db.add(lot)
+    repository.db.add(target_lot)
     repository.db.add(output)
     repository.db.commit()
     repository.db.refresh(output)

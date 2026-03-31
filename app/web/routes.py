@@ -1449,8 +1449,27 @@ def stock_page(
         item_type=normalized_item_type,
     )
     edit_output = repo.get_stock_output(edit_output_id) if edit_output_id else None
-    if edit_output and edit_output.reference_type != "manual_stock_output":
-        edit_output = None
+    edit_output_mode = None
+    edit_fertilization_item = None
+    edit_fertilization_record = None
+    edit_inputs_catalog = repo.list_input_catalog()
+    if edit_output:
+        if edit_output.reference_type == "manual_stock_output":
+            edit_output_mode = "manual"
+        elif edit_output.reference_type == "fertilization_item" and edit_output.reference_id:
+            edit_fertilization_item = db.query(FertilizationItem).filter(FertilizationItem.id == edit_output.reference_id).first()
+            edit_fertilization_record = (
+                repo.get_fertilization(edit_fertilization_item.fertilization_record_id)
+                if edit_fertilization_item and edit_fertilization_item.fertilization_record_id
+                else None
+            )
+            if edit_fertilization_item and edit_fertilization_record:
+                edit_output_mode = "fertilization"
+                edit_inputs_catalog = repo.list_input_catalog(item_type="insumo_agricola")
+            else:
+                edit_output = None
+        else:
+            edit_output = None
     return templates.TemplateResponse(
         "stock.html",
         _base_context(
@@ -1483,6 +1502,10 @@ def stock_page(
             stock_outputs=stock_context["stock_outputs"],
             extract_rows=stock_context["extract_rows"],
             edit_output=edit_output,
+            edit_output_mode=edit_output_mode,
+            edit_fertilization_item=edit_fertilization_item,
+            edit_fertilization_record=edit_fertilization_record,
+            edit_inputs_catalog=edit_inputs_catalog,
         ),
     )
 
@@ -1537,28 +1560,22 @@ def edit_stock_output_entry(
     if not output:
         _flash(request, "error", "Lancamento de saida nao encontrado.")
         return _redirect("/insumos/estoque")
-    if output.reference_type == "manual_stock_output":
+    if output.reference_type in {"manual_stock_output", "fertilization_item"}:
         return _redirect_with_query("/insumos/estoque", edit_output_id=output_id)
-    if output.reference_type == "fertilization_item" and output.reference_id:
-        fertilization_item = db.query(FertilizationItem).filter(FertilizationItem.id == output.reference_id).first()
-        if fertilization_item and fertilization_item.fertilization_record_id:
-            return _redirect_with_query("/fertilizacao", edit_id=fertilization_item.fertilization_record_id)
-    _flash(request, "error", f"Este lancamento esta vinculado ao modulo {output.origin}. Edite por la.")
+    _flash(request, "error", f"Este lancamento ainda nao possui edicao integrada para o modulo {output.origin}.")
     return _redirect("/insumos/estoque")
 
 
 @router.post("/insumos/estoque/saidas/{output_id}/editar")
-def update_stock_output_entry_action(
+async def update_stock_output_entry_action(
     output_id: int,
     request: Request,
-    csrf_token: str = Form(...),
-    movement_date: str | None = Form(None),
-    quantity: float = Form(...),
-    notes: str | None = Form(None),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user_web),
 ):
     del user
+    form = await request.form()
+    csrf_token = str(form.get("csrf_token") or "")
     validate_csrf(request, csrf_token)
     repo = _repository(db)
     output = repo.get_stock_output(output_id)
@@ -1566,19 +1583,78 @@ def update_stock_output_entry_action(
         _flash(request, "error", "Lancamento de saida nao encontrado.")
         return _redirect("/insumos/estoque")
     try:
-        update_manual_stock_output(
-            repo,
-            output,
-            {
-                "movement_date": movement_date,
-                "quantity": quantity,
-                "notes": notes,
-            },
-        )
+        if output.reference_type == "manual_stock_output":
+            update_manual_stock_output(
+                repo,
+                output,
+                {
+                    "farm_id": _int_or_none(form.get("farm_id")),
+                    "plot_id": _int_or_none(form.get("plot_id")),
+                    "input_id": _int_or_none(form.get("input_id")),
+                    "movement_date": str(form.get("movement_date") or ""),
+                    "quantity": float(form.get("quantity") or 0),
+                    "unit": str(form.get("unit") or ""),
+                    "notes": str(form.get("notes") or "") or None,
+                },
+            )
+        elif output.reference_type == "fertilization_item" and output.reference_id:
+            fertilization_item = db.query(FertilizationItem).filter(FertilizationItem.id == output.reference_id).first()
+            fertilization = repo.get_fertilization(fertilization_item.fertilization_record_id) if fertilization_item else None
+            if not fertilization_item or not fertilization:
+                raise ValueError("Nao foi possivel localizar o registro de fertilizacao vinculado.")
+            plot_id = int(form.get("plot_id") or 0)
+            plot = repo.get_plot(plot_id)
+            if not plot:
+                raise ValueError("Selecione um setor valido para a fertilizacao.")
+            input_catalog = repo.get_input_catalog(int(form.get("input_id") or 0))
+            if not input_catalog or input_catalog.item_type != "insumo_agricola" or not input_catalog.is_active:
+                raise ValueError("Selecione apenas insumos agrícolas válidos para a fertilização.")
+            quantity = float(form.get("quantity") or 0)
+            if quantity <= 0:
+                raise ValueError("Informe uma quantidade valida para a saida.")
+            unit = str(form.get("unit") or input_catalog.default_unit or fertilization_item.unit or "kg").strip()
+            if not unit:
+                raise ValueError("Informe uma unidade valida para a saida.")
+
+            items = []
+            for item in fertilization.items:
+                if item.id == fertilization_item.id:
+                    items.append(
+                        {
+                            "input_id": input_catalog.id,
+                            "purchased_input_id": None,
+                            "name": input_catalog.name,
+                            "unit": unit,
+                            "quantity": quantity,
+                        }
+                    )
+                else:
+                    items.append(
+                        {
+                            "input_id": item.input_id,
+                            "purchased_input_id": None,
+                            "name": item.name,
+                            "unit": item.unit,
+                            "quantity": float(item.total_quantity or 0),
+                        }
+                    )
+            update_fertilization(
+                repo,
+                fertilization,
+                {
+                    "plot_id": plot_id,
+                    "application_date": str(form.get("movement_date") or fertilization.application_date.isoformat()),
+                    "season_id": fertilization.season_id,
+                    "notes": str(form.get("notes") or "") or None,
+                    "items": items,
+                },
+            )
+        else:
+            raise ValueError(f"Este lancamento ainda nao possui edicao integrada para o modulo {output.origin}.")
     except ValueError as exc:
         _flash(request, "error", str(exc))
         return _redirect_with_query("/insumos/estoque", edit_output_id=output_id)
-    _flash(request, "success", "Saida manual atualizada com sucesso.")
+    _flash(request, "success", "Lancamento atualizado com sucesso.")
     return _redirect("/insumos/estoque")
 
 
