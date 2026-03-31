@@ -26,6 +26,7 @@ from app.models import (
     CropSeason,
     EquipmentAsset,
     Farm,
+    FertilizationItem,
     FertilizationSchedule,
     FertilizationRecord,
     HarvestRecord,
@@ -83,7 +84,9 @@ from app.services.forms import (
     conclude_fertilization_schedule,
     delete_fertilization,
     delete_fertilization_schedule,
+    delete_manual_stock_output,
     validate_schedule_stock,
+    update_manual_stock_output,
 )
 from app.services.openai_service import gerar_recomendacao_adubacao
 
@@ -1417,6 +1420,7 @@ def delete_purchased_input_action(
 @router.get("/insumos/estoque")
 def stock_page(
     request: Request,
+    edit_output_id: int | None = None,
     farm_id: str | None = None,
     input_id: str | None = None,
     start_date: str | None = None,
@@ -1444,6 +1448,9 @@ def stock_page(
         movement_type=movement_type,
         item_type=normalized_item_type,
     )
+    edit_output = repo.get_stock_output(edit_output_id) if edit_output_id else None
+    if edit_output and edit_output.reference_type != "manual_stock_output":
+        edit_output = None
     return templates.TemplateResponse(
         "stock.html",
         _base_context(
@@ -1475,6 +1482,7 @@ def stock_page(
             purchase_entries=stock_context["purchase_entries"],
             stock_outputs=stock_context["stock_outputs"],
             extract_rows=stock_context["extract_rows"],
+            edit_output=edit_output,
         ),
     )
 
@@ -1513,6 +1521,88 @@ def create_manual_stock_output_action(
         _flash(request, "error", str(exc))
         return _redirect("/insumos/estoque")
     _flash(request, "success", "Saida manual registrada com sucesso.")
+    return _redirect("/insumos/estoque")
+
+
+@router.get("/insumos/estoque/saidas/{output_id}/editar")
+def edit_stock_output_entry(
+    output_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    del user
+    repo = _repository(db)
+    output = repo.get_stock_output(output_id)
+    if not output:
+        _flash(request, "error", "Lancamento de saida nao encontrado.")
+        return _redirect("/insumos/estoque")
+    if output.reference_type == "manual_stock_output":
+        return _redirect_with_query("/insumos/estoque", edit_output_id=output_id)
+    if output.reference_type == "fertilization_item" and output.reference_id:
+        fertilization_item = db.query(FertilizationItem).filter(FertilizationItem.id == output.reference_id).first()
+        if fertilization_item and fertilization_item.fertilization_record_id:
+            return _redirect_with_query("/fertilizacao", edit_id=fertilization_item.fertilization_record_id)
+    _flash(request, "error", f"Este lancamento esta vinculado ao modulo {output.origin}. Edite por la.")
+    return _redirect("/insumos/estoque")
+
+
+@router.post("/insumos/estoque/saidas/{output_id}/editar")
+def update_stock_output_entry_action(
+    output_id: int,
+    request: Request,
+    csrf_token: str = Form(...),
+    movement_date: str | None = Form(None),
+    quantity: float = Form(...),
+    notes: str | None = Form(None),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    del user
+    validate_csrf(request, csrf_token)
+    repo = _repository(db)
+    output = repo.get_stock_output(output_id)
+    if not output:
+        _flash(request, "error", "Lancamento de saida nao encontrado.")
+        return _redirect("/insumos/estoque")
+    try:
+        update_manual_stock_output(
+            repo,
+            output,
+            {
+                "movement_date": movement_date,
+                "quantity": quantity,
+                "notes": notes,
+            },
+        )
+    except ValueError as exc:
+        _flash(request, "error", str(exc))
+        return _redirect_with_query("/insumos/estoque", edit_output_id=output_id)
+    _flash(request, "success", "Saida manual atualizada com sucesso.")
+    return _redirect("/insumos/estoque")
+
+
+@router.post("/insumos/estoque/saidas/{output_id}/excluir")
+def delete_stock_output_entry_action(
+    output_id: int,
+    request: Request,
+    csrf_token: str = Form(...),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    del user
+    validate_csrf(request, csrf_token)
+    repo = _repository(db)
+    output = repo.get_stock_output(output_id)
+    if not output:
+        _flash(request, "error", "Lancamento de saida nao encontrado.")
+        return _redirect("/insumos/estoque")
+    try:
+        delete_manual_stock_output(repo, output)
+    except ValueError:
+        _flash(request, "error", f"Este lancamento esta vinculado ao modulo {output.origin}. Exclua por la.")
+        return _redirect("/insumos/estoque")
+    _flash(request, "success", "Saida manual excluida com sucesso.")
     return _redirect("/insumos/estoque")
 
 

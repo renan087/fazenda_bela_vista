@@ -475,6 +475,52 @@ def create_manual_stock_output(repository: FarmRepository, form: dict) -> list[S
     return outputs
 
 
+def update_manual_stock_output(repository: FarmRepository, output: StockOutput, form: dict) -> StockOutput:
+    if output.reference_type != "manual_stock_output":
+        raise ValueError("Este lancamento nao pode ser editado por aqui.")
+    if not output.purchased_input:
+        raise ValueError("Nao foi possivel localizar o lote vinculado a esta saida manual.")
+
+    new_quantity = float(form["quantity"])
+    if new_quantity <= 0:
+        raise ValueError("Informe uma quantidade valida para a saida manual.")
+
+    movement_date = date.fromisoformat(form["movement_date"]) if form.get("movement_date") else date.today()
+    lot = output.purchased_input
+    current_available = float(lot.available_quantity or 0)
+    restored_available = round(current_available + float(output.quantity or 0), 2)
+    if new_quantity > restored_available:
+        missing = round(new_quantity - restored_available, 2)
+        raise ValueError(
+            f"Estoque insuficiente. Necessario comprar {missing} {output.unit} de {output.input_catalog.name if output.input_catalog else 'insumo'}."
+        )
+
+    lot.available_quantity = round(restored_available - new_quantity, 2)
+    output.quantity = round(new_quantity, 2)
+    output.movement_date = movement_date
+    output.season_id = _resolve_season_for_farm(repository, output.farm_id, movement_date, output.season_id)
+    output.notes = form.get("notes")
+    output.total_cost = round(float(output.unit_cost or 0) * new_quantity, 2) if output.unit_cost is not None else None
+    repository.db.add(lot)
+    repository.db.add(output)
+    repository.db.commit()
+    repository.db.refresh(output)
+    return output
+
+
+def delete_manual_stock_output(repository: FarmRepository, output: StockOutput) -> None:
+    if output.reference_type != "manual_stock_output":
+        raise ValueError("Este lancamento esta vinculado a outro modulo e nao pode ser excluido por aqui.")
+    if output.purchased_input:
+        output.purchased_input.available_quantity = round(
+            float(output.purchased_input.available_quantity or 0) + float(output.quantity or 0),
+            2,
+        )
+        repository.db.add(output.purchased_input)
+    repository.db.delete(output)
+    repository.db.commit()
+
+
 def create_input_recommendation(repository: FarmRepository, form: dict) -> InputRecommendation:
     recommendation = InputRecommendation(
         farm_id=form.get("farm_id"),

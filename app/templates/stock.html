@@ -49,25 +49,32 @@
 
     <article class="rounded-[2rem] bg-white p-6 shadow-panel">
         <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Saída manual</p>
-        <h3 class="mt-2 text-xl font-semibold">Lançar consumo avulso</h3>
-        <form method="post" action="/insumos/estoque/saida-manual" class="mt-6 grid gap-4">
+        <h3 class="mt-2 text-xl font-semibold">{% if edit_output %}Editar consumo avulso{% else %}Lançar consumo avulso{% endif %}</h3>
+        {% if edit_output %}
+        <div class="mt-4 rounded-[1.25rem] border border-brand-100 bg-brand-50 p-4 text-sm text-slate-600">
+            <p class="font-semibold text-slate-900">{{ edit_output.input_catalog.name if edit_output.input_catalog else "-" }}</p>
+            <p class="mt-1">Fazenda: <strong>{{ edit_output.farm.name if edit_output.farm else "Sem vínculo" }}</strong>{% if edit_output.plot %} • Setor: <strong>{{ edit_output.plot.name }}</strong>{% endif %}</p>
+            <p class="mt-1">Unidade: <strong>{{ edit_output.unit }}</strong></p>
+        </div>
+        {% endif %}
+        <form method="post" action="{% if edit_output %}/insumos/estoque/saidas/{{ edit_output.id }}/editar{% else %}/insumos/estoque/saida-manual{% endif %}" class="mt-6 grid gap-4">
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
             <div class="grid gap-4 md:grid-cols-2">
                 <label>
                     <span class="mb-2 block text-sm font-medium">Fazenda</span>
-                    <select name="farm_id" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50">
+                    <select name="farm_id" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" {% if edit_output %}disabled{% endif %}>
                         <option value="">Sem vínculo específico</option>
                         {% for farm in farms %}
-                        <option value="{{ farm.id }}" {% if selected_farm_id == farm.id %}selected{% endif %}>{{ farm.name }}</option>
+                        <option value="{{ farm.id }}" {% if edit_output and edit_output.farm_id == farm.id %}selected{% elif not edit_output and selected_farm_id == farm.id %}selected{% endif %}>{{ farm.name }}</option>
                         {% endfor %}
                     </select>
                 </label>
                 <label>
                     <span class="mb-2 block text-sm font-medium">Setor</span>
-                    <select name="plot_id" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50">
+                    <select name="plot_id" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" {% if edit_output %}disabled{% endif %}>
                         <option value="">Sem setor</option>
                         {% for plot in plots %}
-                        <option value="{{ plot.id }}">{{ plot.name }}{% if plot.farm %} • {{ plot.farm.name }}{% endif %}</option>
+                        <option value="{{ plot.id }}" {% if edit_output and edit_output.plot_id == plot.id %}selected{% endif %}>{{ plot.name }}{% if plot.farm %} • {{ plot.farm.name }}{% endif %}</option>
                         {% endfor %}
                     </select>
                 </label>
@@ -75,11 +82,11 @@
             <div class="grid gap-4 md:grid-cols-2">
                 <label>
                     <span class="mb-2 block text-sm font-medium">Insumo</span>
-                    <select name="input_id" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required>
+                    <select name="input_id" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required {% if edit_output %}disabled{% endif %}>
                         <option value="">Selecione</option>
                         {% for input_item in inputs_catalog %}
                         {% set stock = input_stock.get(input_item.id, {}) %}
-                        <option value="{{ input_item.id }}">
+                        <option value="{{ input_item.id }}" {% if edit_output and edit_output.input_id == input_item.id %}selected{% endif %}>
                             {{ input_item.name }} — disponível: {{ stock.get('available', 0) }} {{ stock.get('unit', input_item.default_unit) }}
                         </option>
                         {% endfor %}
@@ -87,28 +94,33 @@
                 </label>
                 <label>
                     <span class="mb-2 block text-sm font-medium">Data</span>
-                    <input type="date" name="movement_date" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" value="{{ request.query_params.get('movement_date', '') }}">
+                    <input type="date" name="movement_date" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" value="{% if edit_output %}{{ edit_output.movement_date }}{% else %}{{ request.query_params.get('movement_date', '') }}{% endif %}">
                 </label>
             </div>
             <div class="grid gap-4 md:grid-cols-2">
                 <label>
                     <span class="mb-2 block text-sm font-medium">Quantidade</span>
-                    <input type="number" step="0.01" min="0" name="quantity" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required>
+                    <input type="number" step="0.01" min="0" name="quantity" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required value="{% if edit_output %}{{ edit_output.quantity }}{% endif %}">
                 </label>
                 <label>
                     <span class="mb-2 block text-sm font-medium">Unidade</span>
-                    <select name="unit" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50">
+                    <select name="unit" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" {% if edit_output %}disabled{% endif %}>
                         {% for unit in ['kg', 'g', 'L', 'ml', 'sacas', 'un'] %}
-                        <option value="{{ unit }}">{{ unit }}</option>
+                        <option value="{{ unit }}" {% if edit_output and edit_output.unit == unit %}selected{% endif %}>{{ unit }}</option>
                         {% endfor %}
                     </select>
                 </label>
             </div>
             <label>
                 <span class="mb-2 block text-sm font-medium">Observações</span>
-                <textarea name="notes" rows="4" class="w-full rounded-2xl border-slate-200 bg-slate-50"></textarea>
+                <textarea name="notes" rows="4" class="w-full rounded-2xl border-slate-200 bg-slate-50">{{ edit_output.notes if edit_output else '' }}</textarea>
             </label>
-            <button class="rounded-2xl bg-brand-500 px-4 py-3 font-semibold text-white hover:bg-brand-700">Registrar saída manual</button>
+            <div class="flex flex-wrap gap-3">
+                <button class="rounded-2xl bg-brand-500 px-4 py-3 font-semibold text-white hover:bg-brand-700">{% if edit_output %}Salvar alterações{% else %}Registrar saída manual{% endif %}</button>
+                {% if edit_output %}
+                <a href="/insumos/estoque" class="rounded-2xl bg-slate-100 px-4 py-3 font-semibold text-slate-700 hover:bg-slate-200">Cancelar edição</a>
+                {% endif %}
+            </div>
         </form>
     </article>
 </section>
@@ -238,6 +250,7 @@
                             <th class="px-4 py-3 font-medium">Quantidade</th>
                             <th class="px-4 py-3 font-medium">Custo</th>
                             <th class="px-4 py-3 font-medium">Observações</th>
+                            <th class="px-4 py-3 font-medium text-right">Ações</th>
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-slate-100 bg-white">
@@ -251,9 +264,31 @@
                             <td class="px-4 py-3">{{ output.quantity }} {{ output.unit }}</td>
                             <td class="px-4 py-3">{% if output.total_cost is not none %}R$ {{ output.total_cost }}{% else %}-{% endif %}</td>
                             <td class="px-4 py-3 text-slate-500">{{ output.notes or "-" }}</td>
+                            <td class="px-4 py-3">
+                                <div class="flex items-center justify-end gap-2">
+                                    <a href="/insumos/estoque/saidas/{{ output.id }}/editar" class="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-100" title="Editar">
+                                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                            <path d="M12 20h9"/>
+                                            <path d="M16.5 3.5a2.1 2.1 0 1 1 3 3L7 19l-4 1 1-4Z"/>
+                                        </svg>
+                                    </a>
+                                    <form method="post" action="/insumos/estoque/saidas/{{ output.id }}/excluir" onsubmit="return confirm('Confirma a exclusão deste lançamento de saída?');">
+                                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                                        <button type="submit" class="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 text-rose-600 hover:bg-rose-50" title="{% if output.reference_type == 'manual_stock_output' %}Excluir{% else %}Exclusão bloqueada{% endif %}">
+                                            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                                <path d="M3 6h18"/>
+                                                <path d="M8 6V4h8v2"/>
+                                                <path d="M19 6l-1 14H6L5 6"/>
+                                                <path d="M10 11v6"/>
+                                                <path d="M14 11v6"/>
+                                            </svg>
+                                        </button>
+                                    </form>
+                                </div>
+                            </td>
                         </tr>
                         {% else %}
-                        <tr><td colspan="8" class="px-4 py-6 text-center text-slate-500">Nenhuma saída encontrada.</td></tr>
+                        <tr><td colspan="9" class="px-4 py-6 text-center text-slate-500">Nenhuma saída encontrada.</td></tr>
                         {% endfor %}
                     </tbody>
                 </table>
@@ -329,7 +364,7 @@
             buttons.forEach((button) => {
                 button.addEventListener('click', () => activate(button.dataset.stockTabButton));
             });
-            activate('entries');
+            activate({% if edit_output %}'outputs'{% else %}'entries'{% endif %});
 
             const stockFilterForm = document.querySelector('[data-stock-filter-form]');
             stockFilterForm?.addEventListener('submit', () => {

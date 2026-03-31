@@ -371,6 +371,20 @@ class FarmRepository:
             query = query.filter(StockOutput.farm_id == farm_id)
         return query.all()
 
+    def get_stock_output(self, output_id: int) -> StockOutput | None:
+        return (
+            self.db.query(StockOutput)
+            .options(
+                joinedload(StockOutput.input_catalog),
+                joinedload(StockOutput.farm),
+                joinedload(StockOutput.plot),
+                joinedload(StockOutput.season),
+                joinedload(StockOutput.purchased_input),
+            )
+            .filter(StockOutput.id == output_id)
+            .first()
+        )
+
     def list_harvests(self, limit: int | None = None) -> list[HarvestRecord]:
         query = (
             self.db.query(HarvestRecord)
