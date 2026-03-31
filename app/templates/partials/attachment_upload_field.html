@@ -4,7 +4,6 @@
         <div data-attachments-picker-slot>
             <input
                 type="file"
-                name="{{ attachment_input_name or 'attachments' }}"
                 multiple
                 accept=".jpg,.jpeg,.png,.gif,.webp,.bmp,.pdf,.txt,.csv,.doc,.docx,.xls,.xlsx,.odt,.ods"
                 class="min-h-[3.25rem] w-full rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-3 text-sm text-slate-600"
@@ -13,7 +12,15 @@
         </div>
         <span class="mt-2 block text-xs text-slate-500">{{ attachment_help_text }}</span>
     </label>
-    <div class="hidden" data-attachments-hidden-inputs></div>
+    <input
+        type="file"
+        name="{{ attachment_input_name or 'attachments' }}"
+        multiple
+        class="hidden"
+        tabindex="-1"
+        aria-hidden="true"
+        data-attachments-submit-input
+    >
     <div class="hidden rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700" data-attachments-feedback></div>
     <div class="hidden rounded-[1.5rem] border border-slate-200 bg-slate-50 p-4" data-attachments-pending>
         <div class="flex flex-wrap items-center justify-between gap-3">

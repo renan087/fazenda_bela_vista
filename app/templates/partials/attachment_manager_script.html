@@ -1,21 +1,22 @@
 <script>
     (() => {
         const formatKb = (size) => `${Math.max(1, Math.round((size || 0) / 1024))} KB`;
+        const fileKey = (file) => [file.name, file.size, file.lastModified, file.type].join("::");
 
         document.querySelectorAll('[data-attachment-manager]').forEach((manager) => {
+            const form = manager.closest('form');
             const pickerSlot = manager.querySelector('[data-attachments-picker-slot]');
-            const hiddenInputs = manager.querySelector('[data-attachments-hidden-inputs]');
+            const submitInput = manager.querySelector('[data-attachments-submit-input]');
             const feedback = manager.querySelector('[data-attachments-feedback]');
             const pendingBox = manager.querySelector('[data-attachments-pending]');
             const pendingList = manager.querySelector('[data-attachments-pending-list]');
             const clearButton = manager.querySelector('[data-attachments-clear]');
-            if (!pickerSlot || !hiddenInputs || !feedback || !pendingBox || !pendingList) return;
+            if (!form || !pickerSlot || !submitInput || !feedback || !pendingBox || !pendingList) return;
 
-            let batchCounter = 0;
+            let pendingFiles = [];
 
             const refreshState = () => {
-                const batches = Array.from(hiddenInputs.querySelectorAll('[data-pending-batch-id]'));
-                if (!batches.length) {
+                if (!pendingFiles.length) {
                     pendingBox.classList.add('hidden');
                     feedback.classList.add('hidden');
                     feedback.textContent = '';
@@ -23,9 +24,40 @@
                     return;
                 }
 
-                const filesCount = batches.reduce((total, input) => total + Array.from(input.files || []).length, 0);
+                pendingList.innerHTML = '';
+                pendingFiles.forEach((file, index) => {
+                    const row = document.createElement('div');
+                    row.className = 'flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-white px-4 py-3';
+
+                    const content = document.createElement('div');
+                    content.className = 'min-w-0';
+
+                    const title = document.createElement('p');
+                    title.className = 'truncate text-sm font-medium text-slate-900';
+                    title.textContent = file.name;
+
+                    const meta = document.createElement('p');
+                    meta.className = 'mt-1 text-xs text-slate-500';
+                    meta.textContent = `${file.type || 'documento'} • ${formatKb(file.size)}`;
+
+                    const removeButton = document.createElement('button');
+                    removeButton.type = 'button';
+                    removeButton.className = 'rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-100';
+                    removeButton.textContent = 'Remover';
+                    removeButton.addEventListener('click', () => {
+                        pendingFiles = pendingFiles.filter((_, itemIndex) => itemIndex !== index);
+                        refreshState();
+                    });
+
+                    content.appendChild(title);
+                    content.appendChild(meta);
+                    row.appendChild(content);
+                    row.appendChild(removeButton);
+                    pendingList.appendChild(row);
+                });
+
                 pendingBox.classList.remove('hidden');
-                feedback.textContent = `${filesCount} anexo(s) pronto(s) para salvar.`;
+                feedback.textContent = `${pendingFiles.length} anexo(s) pendente(s). O envio so acontecera ao salvar.`;
                 feedback.classList.remove('hidden');
             };
 
@@ -33,73 +65,15 @@
                 picker.addEventListener('change', () => {
                     const files = Array.from(picker.files || []);
                     if (!files.length) return;
-
-                    const batchId = `attachment-batch-${Date.now()}-${batchCounter++}`;
-                    picker.setAttribute('data-pending-batch-id', batchId);
-                    picker.classList.add('hidden');
-                    picker.tabIndex = -1;
-                    picker.setAttribute('aria-hidden', 'true');
-                    hiddenInputs.appendChild(picker);
-
-                    const card = document.createElement('div');
-                    card.className = 'rounded-2xl bg-white px-4 py-3';
-                    card.setAttribute('data-pending-batch-card', batchId);
-
-                    const top = document.createElement('div');
-                    top.className = 'flex flex-wrap items-center justify-between gap-3';
-
-                    const heading = document.createElement('div');
-                    const title = document.createElement('p');
-                    title.className = 'text-sm font-medium text-slate-900';
-                    title.textContent = files.length === 1 ? '1 novo anexo selecionado' : `${files.length} novos anexos selecionados`;
-                    const subtitle = document.createElement('p');
-                    subtitle.className = 'mt-1 text-xs text-slate-500';
-                    subtitle.textContent = 'Eles serao enviados ao clicar em salvar.';
-                    heading.appendChild(title);
-                    heading.appendChild(subtitle);
-
-                    const removeButton = document.createElement('button');
-                    removeButton.type = 'button';
-                    removeButton.className = 'rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-100';
-                    removeButton.textContent = 'Remover selecao';
-                    removeButton.addEventListener('click', () => {
-                        hiddenInputs.querySelector(`[data-pending-batch-id="${batchId}"]`)?.remove();
-                        card.remove();
-                        refreshState();
-                    });
-
-                    top.appendChild(heading);
-                    top.appendChild(removeButton);
-                    card.appendChild(top);
-
-                    const filesList = document.createElement('div');
-                    filesList.className = 'mt-4 space-y-2';
+                    const known = new Set(pendingFiles.map(fileKey));
                     files.forEach((file) => {
-                        const row = document.createElement('div');
-                        row.className = 'flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-100 bg-slate-50 px-3 py-2';
-
-                        const name = document.createElement('p');
-                        name.className = 'min-w-0 truncate text-sm text-slate-700';
-                        name.textContent = file.name;
-
-                        const meta = document.createElement('span');
-                        meta.className = 'text-xs text-slate-500';
-                        meta.textContent = `${file.type || 'documento'} • ${formatKb(file.size)}`;
-
-                        row.appendChild(name);
-                        row.appendChild(meta);
-                        filesList.appendChild(row);
+                        const key = fileKey(file);
+                        if (!known.has(key)) {
+                            pendingFiles.push(file);
+                            known.add(key);
+                        }
                     });
-                    card.appendChild(filesList);
-                    pendingList.appendChild(card);
-
-                    const freshPicker = picker.cloneNode(false);
-                    freshPicker.removeAttribute('data-pending-batch-id');
-                    freshPicker.className = picker.className.replace(/\bhidden\b/g, '').trim();
-                    freshPicker.removeAttribute('tabindex');
-                    freshPicker.removeAttribute('aria-hidden');
-                    pickerSlot.appendChild(freshPicker);
-                    bindPicker(freshPicker);
+                    picker.value = '';
                     refreshState();
                 });
             };
@@ -110,9 +84,15 @@
             }
 
             clearButton?.addEventListener('click', () => {
-                hiddenInputs.innerHTML = '';
-                pendingList.innerHTML = '';
+                pendingFiles = [];
+                submitInput.value = '';
                 refreshState();
+            });
+
+            form.addEventListener('submit', () => {
+                const transfer = new DataTransfer();
+                pendingFiles.forEach((file) => transfer.items.add(file));
+                submitInput.files = transfer.files;
             });
         });
 
