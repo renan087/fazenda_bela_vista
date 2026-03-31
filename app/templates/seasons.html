@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block content %}
 <div class="grid gap-6 xl:grid-cols-[0.95fr_1.05fr]">
-    <section class="rounded-[2rem] bg-white p-6 shadow-panel">
+    <section id="cadastro-safra" class="rounded-[2rem] bg-white p-6 shadow-panel">
         <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Safras</p>
         <h3 class="mt-2 text-2xl font-semibold">{% if edit_season %}Editar safra{% else %}Cadastrar safra{% endif %}</h3>
         <form method="post" action="{% if edit_season %}/safras/{{ edit_season.id }}/editar{% else %}/safras{% endif %}" class="mt-6 grid gap-4" data-season-form>

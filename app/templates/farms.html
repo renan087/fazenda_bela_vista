@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block content %}
 <div class="grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
-    <section class="rounded-[2rem] bg-white p-6 shadow-panel">
+    <section id="cadastro-fazenda" class="rounded-[2rem] bg-white p-6 shadow-panel">
         <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Fazendas</p>
         <h3 class="mt-2 text-2xl font-semibold">{% if edit_farm %}Editar fazenda{% else %}Cadastrar fazenda{% endif %}</h3>
         <form method="post" enctype="multipart/form-data" action="{% if edit_farm %}/fazendas/{{ edit_farm.id }}/editar{% else %}/fazendas{% endif %}" class="mt-6 grid gap-4">

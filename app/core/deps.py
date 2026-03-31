@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 
 from app.core.csrf import ensure_csrf_token
 from app.core.session import clear_expired_session, touch_session_activity
+from app.core.user_context import sync_user_context_from_preferences
 from app.core.security import decode_token
 from app.db.session import get_db
 from app.models.user import User
@@ -45,6 +46,7 @@ def get_current_user_web(
     if not user:
         request.session.clear()
         raise HTTPException(status_code=status.HTTP_303_SEE_OTHER, headers={"Location": "/login"})
+    sync_user_context_from_preferences(request, db, user)
     touch_session_activity(request)
     return user
 

@@ -266,6 +266,8 @@ def _sync_schema() -> None:
         """,
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW()",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS is_admin BOOLEAN DEFAULT FALSE",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS active_farm_id INTEGER",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS active_season_id INTEGER",
         "ALTER TABLE input_catalog ADD COLUMN IF NOT EXISTS item_type VARCHAR(40) DEFAULT 'insumo_agricola'",
         "ALTER TABLE purchased_inputs ADD COLUMN IF NOT EXISTS input_id INTEGER",
         "ALTER TABLE purchased_inputs ADD COLUMN IF NOT EXISTS normalized_name VARCHAR(180)",

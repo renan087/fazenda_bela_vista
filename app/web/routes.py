@@ -19,6 +19,7 @@ from sqlalchemy.orm import Session
 from app.core.csrf import validate_csrf
 from app.core.deps import get_csrf_token, get_current_user_web
 from app.core.security import get_password_hash
+from app.core.user_context import persist_user_context, sync_user_context_from_preferences
 from app.db.session import get_db
 from app.models import (
     AgronomicProfile,
@@ -122,7 +123,10 @@ def _base_context(request: Request, user: User, csrf_token: str, page: str, **kw
         "flash": flash,
     }
     if repo:
-        context.update(_global_scope_context(request, repo))
+        scope_context = _global_scope_context(request, repo, user)
+        context.update(scope_context)
+        context["context_lock_exempt"] = page in {"farms", "seasons"}
+        context["context_selection_blocking"] = scope_context["context_selection_required"] and not context["context_lock_exempt"]
     context.update(kwargs)
     return context
 
@@ -202,7 +206,10 @@ def _active_season_id(request: Request) -> int | None:
     return _int_or_none(request.session.get("active_season_id"))
 
 
-def _global_scope_context(request: Request, repo: FarmRepository) -> dict:
+def _global_scope_context(request: Request, repo: FarmRepository, user: User | None = None) -> dict:
+    if user:
+        sync_user_context_from_preferences(request, repo.db, user)
+
     farms = repo.list_farms()
     active_farm_id = _active_farm_id(request)
     active_season_id = _active_season_id(request)
@@ -236,6 +243,9 @@ def _global_scope_context(request: Request, repo: FarmRepository) -> dict:
         "active_season_id": active_season_id,
         "active_farm": active_farm,
         "active_season": active_season,
+        "context_selection_required": not active_farm_id or not active_season_id,
+        "context_missing_farm": not active_farm_id,
+        "context_missing_season": not active_season_id,
         "current_url": current_url,
     }
 
@@ -731,32 +741,8 @@ def update_global_context(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user_web),
 ):
-    del user
     validate_csrf(request, csrf_token)
-    repo = _repository(db)
-    selected_farm_id = _int_or_none(farm_id)
-    selected_season_id = _int_or_none(season_id)
-    selected_season = repo.get_crop_season(selected_season_id) if selected_season_id else None
-
-    if selected_season and not selected_farm_id:
-        selected_farm_id = selected_season.farm_id
-
-    if selected_farm_id and not repo.get_farm(selected_farm_id):
-        selected_farm_id = None
-
-    if selected_season and selected_farm_id and selected_season.farm_id != selected_farm_id:
-        selected_season_id = None
-        selected_season = None
-
-    if selected_farm_id:
-        request.session["active_farm_id"] = selected_farm_id
-    else:
-        request.session.pop("active_farm_id", None)
-
-    if selected_season_id:
-        request.session["active_season_id"] = selected_season_id
-    else:
-        request.session.pop("active_season_id", None)
+    persist_user_context(request, db, user, _int_or_none(farm_id), _int_or_none(season_id))
 
     if not redirect_to or not redirect_to.startswith("/"):
         redirect_to = "/dashboard"
@@ -3322,6 +3308,7 @@ def agronomic_profiles_page(
             user,
             csrf_token,
             "agronomic_profiles",
+            _repo=repo,
             title="Perfil Agronomico",
             farms=repo.list_farms(),
             profiles=repo.list_agronomic_profiles(),
