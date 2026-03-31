@@ -65,34 +65,43 @@
             <div class="min-h-0 flex-1 space-y-4 overflow-y-auto pr-2" data-dashboard-list>
                 {% for item in schedule_alerts %}
                 <div class="rounded-2xl border p-4 transition {% if item.status == 'late' %}border-amber-100 bg-amber-50 hover:border-amber-200{% else %}border-sky-100 bg-sky-50 hover:border-sky-200{% endif %}" data-dashboard-item>
-                    <div class="flex items-start justify-between gap-4">
-                        <div class="min-w-0 flex-1">
-                            <a href="{{ item.link }}" class="block">
-                                <p class="font-medium text-slate-900">{{ item.plot }}</p>
-                                <p class="mt-1 text-sm text-slate-500">Prevista para {{ item.date }}</p>
-                            </a>
-                        </div>
-                        <div class="flex flex-wrap items-center justify-end gap-2">
-                            <span class="rounded-full px-3 py-1 text-xs font-semibold {% if item.status == 'late' %}bg-amber-200 text-amber-800{% else %}bg-sky-200 text-sky-800{% endif %}">
+                    <div class="grid gap-3">
+                        <div class="flex flex-wrap items-start justify-between gap-3">
+                            <div class="min-w-0 flex-1">
+                                <a href="{{ item.link }}" class="block">
+                                    <p class="font-medium text-slate-900">{{ item.plot }}</p>
+                                </a>
+                            </div>
+                            <span class="shrink-0 rounded-full px-3 py-1 text-xs font-semibold {% if item.status == 'late' %}bg-amber-200 text-amber-800{% else %}bg-sky-200 text-sky-800{% endif %}">
                                 {% if item.status == 'late' %}Atrasado{% else %}Programado{% endif %}
                             </span>
-                            <a href="{{ item.link }}" class="rounded-xl bg-white/80 px-3 py-2 text-xs font-medium text-slate-700 hover:bg-white">Abrir</a>
-                            <form method="post" action="/fertilizacao/agendamentos/{{ item.id }}/concluir">
-                                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                                <input type="hidden" name="redirect_to" value="{{ current_url or request.url.path }}">
-                                <button class="rounded-xl border border-emerald-200 bg-white/80 px-3 py-2 text-xs font-medium text-emerald-700 hover:bg-emerald-50">Concluir demanda</button>
-                            </form>
                         </div>
+
+                        <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                            <div class="flex flex-wrap items-center gap-2 text-sm">
+                                <span class="text-slate-500">Data prevista</span>
+                                <span class="rounded-full bg-white/80 px-3 py-1 font-medium text-slate-700 sm:whitespace-nowrap">{{ item.date }}</span>
+                            </div>
+                            <div class="flex flex-wrap items-center gap-2 md:justify-end">
+                                <a href="{{ item.link }}" class="rounded-xl bg-white/80 px-3 py-2 text-xs font-medium text-slate-700 hover:bg-white">Abrir</a>
+                                <form method="post" action="/fertilizacao/agendamentos/{{ item.id }}/concluir">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                                    <input type="hidden" name="redirect_to" value="{{ current_url or request.url.path }}">
+                                    <button class="rounded-xl border border-emerald-200 bg-white/80 px-3 py-2 text-xs font-medium text-emerald-700 hover:bg-emerald-50">Concluir demanda</button>
+                                </form>
+                            </div>
+                        </div>
+
+                        {% if item.stock_ok %}
+                        <p class="text-sm text-slate-600">Estoque validado para a aplicacao.</p>
+                        {% else %}
+                        <div class="space-y-1 text-sm text-rose-700">
+                            {% for shortage in item.shortages %}
+                            <p>Comprar {{ shortage.missing }} {{ shortage.unit }} de {{ shortage.name }}.</p>
+                            {% endfor %}
+                        </div>
+                        {% endif %}
                     </div>
-                    {% if item.stock_ok %}
-                    <p class="mt-3 text-sm text-slate-600">Estoque validado para a aplicacao.</p>
-                    {% else %}
-                    <div class="mt-3 space-y-1 text-sm text-rose-700">
-                        {% for shortage in item.shortages %}
-                        <p>Comprar {{ shortage.missing }} {{ shortage.unit }} de {{ shortage.name }}.</p>
-                        {% endfor %}
-                    </div>
-                    {% endif %}
                 </div>
                 {% else %}
                 <p class="text-sm text-slate-500">Nenhuma aplicacao programada.</p>
