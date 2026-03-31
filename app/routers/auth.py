@@ -27,6 +27,13 @@ def _pending_2fa_user(request: Request, db: Session) -> User | None:
     return db.query(User).filter(User.id == pending_user_id, User.is_active.is_(True)).first()
 
 
+def _complete_web_login(request: Request, user: User):
+    request.session["user_email"] = user.email
+    request.session.pop(PENDING_2FA_USER_ID, None)
+    request.session.pop(PENDING_2FA_EMAIL, None)
+    return RedirectResponse(url="/dashboard", status_code=status.HTTP_303_SEE_OTHER)
+
+
 def _render_login(request: Request, error: str | None = None):
     return templates.TemplateResponse(
         "login.html",
@@ -80,6 +87,8 @@ def login_web(
         send_access_code_email(user.email, code)
     except RuntimeError as exc:
         revoke_active_login_codes(db, user.id)
+        if str(exc) == "Servico de email nao configurado.":
+            return _complete_web_login(request, user)
         return _render_login(request, str(exc))
     except Exception:
         revoke_active_login_codes(db, user.id)
@@ -130,10 +139,7 @@ def login_verification_web(
             message,
         )
 
-    request.session["user_email"] = user.email
-    request.session.pop(PENDING_2FA_USER_ID, None)
-    request.session.pop(PENDING_2FA_EMAIL, None)
-    return RedirectResponse(url="/dashboard", status_code=status.HTTP_303_SEE_OTHER)
+    return _complete_web_login(request, user)
 
 
 @router.post("/login/verificacao/reenviar")
