@@ -7,6 +7,7 @@ class Settings(BaseSettings):
     app_name: str = "Fazenda Bela Vista"
     secret_key: str = "troque-esta-chave-em-producao"
     access_token_expire_minutes: int = 60
+    session_idle_timeout_hours: int = 4
     environment: str = "development"
     port: int = 8000
     session_cookie_name: str = "fazenda_session"
@@ -34,6 +35,10 @@ class Settings(BaseSettings):
     @property
     def is_production(self) -> bool:
         return self.environment.lower() == "production"
+
+    @property
+    def session_idle_timeout_seconds(self) -> int:
+        return self.session_idle_timeout_hours * 60 * 60
 
     model_config = SettingsConfigDict(
         env_file=".env",

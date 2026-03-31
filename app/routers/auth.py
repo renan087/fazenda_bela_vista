@@ -7,6 +7,7 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 
 from app.core.csrf import ensure_csrf_token, validate_csrf
+from app.core.session import clear_expired_session, touch_session_activity
 from app.core.security import authenticate_user, create_access_token
 from app.db.session import get_db
 from app.models import User
@@ -24,16 +25,23 @@ PENDING_2FA_EMAIL = "pending_2fa_email"
 
 
 def _pending_2fa_user(request: Request, db: Session) -> User | None:
+    if clear_expired_session(request):
+        return None
+
     pending_user_id = request.session.get(PENDING_2FA_USER_ID)
     if not pending_user_id:
         return None
-    return db.query(User).filter(User.id == pending_user_id, User.is_active.is_(True)).first()
+    user = db.query(User).filter(User.id == pending_user_id, User.is_active.is_(True)).first()
+    if user:
+        touch_session_activity(request)
+    return user
 
 
 def _complete_web_login(request: Request, user: User):
     request.session["user_email"] = user.email
     request.session.pop(PENDING_2FA_USER_ID, None)
     request.session.pop(PENDING_2FA_EMAIL, None)
+    touch_session_activity(request)
     return RedirectResponse(url="/dashboard", status_code=status.HTTP_303_SEE_OTHER)
 
 
@@ -67,7 +75,9 @@ def _render_login_verification(request: Request, email: str, error: str | None =
 
 @router.get("/login")
 def login_page(request: Request):
+    clear_expired_session(request)
     if request.session.get("user_email"):
+        touch_session_activity(request)
         return RedirectResponse(url="/dashboard", status_code=status.HTTP_303_SEE_OTHER)
     return _render_login(request)
 
@@ -106,6 +116,7 @@ def login_web(
     request.session.pop("user_email", None)
     request.session[PENDING_2FA_USER_ID] = user.id
     request.session[PENDING_2FA_EMAIL] = user.email
+    touch_session_activity(request)
     return RedirectResponse(url="/login/verificacao", status_code=status.HTTP_303_SEE_OTHER)
 
 
@@ -114,7 +125,9 @@ def login_verification_page(
     request: Request,
     db: Session = Depends(get_db),
 ):
+    clear_expired_session(request)
     if request.session.get("user_email"):
+        touch_session_activity(request)
         return RedirectResponse(url="/dashboard", status_code=status.HTTP_303_SEE_OTHER)
     user = _pending_2fa_user(request, db)
     if not user:

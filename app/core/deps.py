@@ -3,6 +3,7 @@ from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
 
 from app.core.csrf import ensure_csrf_token
+from app.core.session import clear_expired_session, touch_session_activity
 from app.core.security import decode_token
 from app.db.session import get_db
 from app.models.user import User
@@ -33,13 +34,18 @@ def get_current_user_web(
     request: Request,
     db: Session = Depends(get_db),
 ) -> User:
+    if clear_expired_session(request):
+        raise HTTPException(status_code=status.HTTP_303_SEE_OTHER, headers={"Location": "/login"})
+
     email = request.session.get("user_email")
     if not email:
         raise HTTPException(status_code=status.HTTP_303_SEE_OTHER, headers={"Location": "/login"})
 
     user = db.query(User).filter(User.email == email).first()
     if not user:
+        request.session.clear()
         raise HTTPException(status_code=status.HTTP_303_SEE_OTHER, headers={"Location": "/login"})
+    touch_session_activity(request)
     return user
 
 
