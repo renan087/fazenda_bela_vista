@@ -1,3 +1,5 @@
+import logging
+
 from fastapi import APIRouter, Depends, Form, HTTPException, Request, status
 from fastapi.responses import RedirectResponse
 from fastapi.security import OAuth2PasswordRequestForm
@@ -15,6 +17,7 @@ from app.services.two_factor import get_active_login_code, issue_login_verificat
 templates = Jinja2Templates(directory="app/templates")
 router = APIRouter()
 api_router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
+logger = logging.getLogger(__name__)
 
 PENDING_2FA_USER_ID = "pending_2fa_user_id"
 PENDING_2FA_EMAIL = "pending_2fa_email"
@@ -87,9 +90,17 @@ def login_web(
         send_access_code_email(user.email, code)
     except RuntimeError as exc:
         revoke_active_login_codes(db, user.id)
+        logger.exception(
+            "Falha controlada no envio do codigo 2FA",
+            extra={"user_email": user.email},
+        )
         return _render_login(request, str(exc))
     except Exception:
         revoke_active_login_codes(db, user.id)
+        logger.exception(
+            "Falha inesperada no envio do codigo 2FA",
+            extra={"user_email": user.email},
+        )
         return _render_login(request, "Nao foi possivel enviar o codigo de acesso. Tente novamente.")
 
     request.session.pop("user_email", None)
@@ -154,8 +165,16 @@ def resend_login_verification_code(
         code = issue_login_verification_code(db, user)
         send_access_code_email(user.email, code)
     except RuntimeError as exc:
+        logger.exception(
+            "Falha controlada ao reenviar codigo 2FA",
+            extra={"user_email": user.email},
+        )
         return _render_login_verification(request, user.email, str(exc))
     except Exception:
+        logger.exception(
+            "Falha inesperada ao reenviar codigo 2FA",
+            extra={"user_email": user.email},
+        )
         return _render_login_verification(request, user.email, "Nao foi possivel reenviar o codigo. Tente novamente.")
     return _render_login_verification(request, user.email, info="Enviamos um novo codigo para o seu email.")
 
