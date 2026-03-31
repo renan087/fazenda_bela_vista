@@ -24,7 +24,7 @@
         <section class="rounded-[2rem] bg-white p-8 shadow-panel">
             <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Acesso</p>
             <h2 class="mt-4 text-3xl font-semibold text-slate-900">Entrar na plataforma</h2>
-            <p class="mt-3 text-sm text-slate-500">Use as credenciais do administrador para acessar o ambiente de gestao.</p>
+            <p class="mt-3 text-sm text-slate-500">Acesse com seu email e senha para continuar no ambiente de gestao.</p>
             <form method="post" action="/login" class="mt-8 space-y-5">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                 {% if error %}
@@ -40,11 +40,6 @@
                 </label>
                 <button type="submit" class="inline-flex w-full items-center justify-center rounded-2xl bg-brand-500 px-4 py-3 font-semibold text-white hover:bg-brand-700">Entrar</button>
             </form>
-            <div class="mt-6 rounded-2xl bg-slate-50 p-4 text-sm text-slate-500">
-                <p class="font-medium text-slate-700">Credenciais iniciais</p>
-                <p class="mt-1">Email: <span class="font-mono">admin@fazenda.local</span></p>
-                <p>Senha: <span class="font-mono">admin123</span></p>
-            </div>
         </section>
     </div>
 </div>

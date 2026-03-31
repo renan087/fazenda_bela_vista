@@ -21,6 +21,15 @@ class Settings(BaseSettings):
     openai_api_key: str | None = None
     openai_recommendation_model: str = "gpt-5-mini"
     openai_timeout_seconds: float = 25.0
+    smtp_host: str | None = None
+    smtp_port: int = 587
+    smtp_username: str | None = None
+    smtp_password: str | None = None
+    smtp_from_email: str | None = None
+    smtp_from_name: str = "Fazenda Bela Vista"
+    smtp_use_tls: bool = True
+    two_factor_code_minutes: int = 10
+    two_factor_max_attempts: int = 5
 
     @property
     def is_production(self) -> bool:

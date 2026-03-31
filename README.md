@@ -73,6 +73,29 @@ uvicorn app.main:app --reload
 - Email: `admin@fazenda.local`
 - Senha: `admin123`
 
+## Login com 2FA por email
+
+O login web usa autenticacao em duas etapas por email:
+
+1. usuario informa email e senha
+2. o sistema envia um codigo numerico de 6 digitos
+3. o acesso so e liberado apos a validacao do codigo
+
+Para habilitar o envio do codigo, configure no `.env`:
+
+- `SMTP_HOST`
+- `SMTP_PORT`
+- `SMTP_USERNAME`
+- `SMTP_PASSWORD`
+- `SMTP_FROM_EMAIL`
+- `SMTP_FROM_NAME`
+- `SMTP_USE_TLS`
+
+Parametros de seguranca do 2FA:
+
+- `TWO_FACTOR_CODE_MINUTES`
+- `TWO_FACTOR_MAX_ATTEMPTS`
+
 ## Publicacao
 
 O projeto permanece preparado para deploy no Render com `render.yaml`.

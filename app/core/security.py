@@ -1,4 +1,7 @@
 from datetime import datetime, timedelta, timezone
+import hashlib
+import hmac
+import secrets
 
 from jose import JWTError, jwt
 from passlib.context import CryptContext
@@ -39,3 +42,20 @@ def decode_token(token: str) -> dict | None:
         return jwt.decode(token, settings.secret_key, algorithms=[ALGORITHM])
     except JWTError:
         return None
+
+
+def generate_numeric_code(length: int = 6) -> str:
+    upper = 10**length
+    return f"{secrets.randbelow(upper):0{length}d}"
+
+
+def hash_verification_code(code: str) -> str:
+    settings = get_settings()
+    secret = settings.secret_key.encode("utf-8")
+    digest = hashlib.sha256(secret + code.encode("utf-8")).hexdigest()
+    return digest
+
+
+def verify_verification_code(code: str, code_hash: str) -> bool:
+    calculated = hash_verification_code(code)
+    return hmac.compare_digest(calculated, code_hash)

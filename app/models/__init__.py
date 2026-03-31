@@ -13,6 +13,7 @@ from app.models.input_catalog import InputCatalog
 from app.models.input_recommendation import InputRecommendation
 from app.models.input_recommendation_item import InputRecommendationItem
 from app.models.irrigation import IrrigationRecord
+from app.models.login_verification_code import LoginVerificationCode
 from app.models.pesticide import PestIncident
 from app.models.plot import Plot
 from app.models.purchased_input import PurchasedInput
@@ -37,6 +38,7 @@ __all__ = [
     "InputRecommendation",
     "InputRecommendationItem",
     "IrrigationRecord",
+    "LoginVerificationCode",
     "PestIncident",
     "Plot",
     "PurchasedInput",

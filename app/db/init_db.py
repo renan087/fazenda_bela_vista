@@ -23,6 +23,7 @@ from app.models import (
     InputRecommendation,
     InputRecommendationItem,
     IrrigationRecord,
+    LoginVerificationCode,
     PestIncident,
     Plot,
     PurchasedInput,
@@ -208,6 +209,18 @@ def _sync_schema() -> None:
             total_cost NUMERIC(12,2),
             notes TEXT,
             created_at TIMESTAMPTZ DEFAULT NOW()
+        )
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS login_verification_codes (
+            id SERIAL PRIMARY KEY,
+            user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            code_hash VARCHAR(255) NOT NULL,
+            expires_at TIMESTAMPTZ NOT NULL,
+            attempts_count INTEGER NOT NULL DEFAULT 0,
+            max_attempts INTEGER NOT NULL DEFAULT 5,
+            used_at TIMESTAMPTZ,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
         )
         """,
         """
