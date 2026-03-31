@@ -14,7 +14,7 @@
                 <a href="{{ attachment_view_base }}/{{ attachment.id }}" target="_blank" class="block truncate text-sm font-medium text-brand-700 hover:text-brand-500">{{ attachment.filename }}</a>
                 <p class="mt-1 text-xs text-slate-500">{{ attachment.content_type }}</p>
             </div>
-            <form method="post" action="{{ attachment_delete_base }}/{{ attachment.id }}/excluir" onsubmit="return confirm('Excluir o anexo {{ attachment.filename }}?');">
+            <form method="post" action="{{ attachment_delete_base }}/{{ attachment.id }}/excluir" data-attachment-delete-form data-attachment-name="{{ attachment.filename }}">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                 <button class="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-medium text-rose-700 hover:bg-rose-100">Excluir anexo</button>
             </form>

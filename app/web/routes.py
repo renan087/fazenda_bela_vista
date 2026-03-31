@@ -16,6 +16,7 @@ from reportlab.lib.pagesizes import A4, landscape
 from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 from sqlalchemy.orm import Session
+from starlette.datastructures import UploadFile as StarletteUploadFile
 
 from app.core.csrf import validate_csrf
 from app.core.deps import get_csrf_token, get_current_user_web
@@ -710,6 +711,10 @@ def _build_plot_payload(
 def _read_upload(upload: UploadFile | None) -> tuple[str | None, str | None, bytes | None]:
     if not upload or not upload.filename:
         return None, None, None
+    try:
+        upload.file.seek(0)
+    except Exception:
+        pass
     payload = upload.file.read()
     if not payload:
         return None, None, None
@@ -760,9 +765,9 @@ def _save_purchased_input_attachments(
     repo: FarmRepository,
     item: PurchasedInput,
     attachments: list[tuple[str, str, bytes]],
-) -> None:
+) -> int:
     if not attachments:
-        return
+        return 0
     repo.db.add_all(
         [
             PurchasedInputAttachment(
@@ -774,17 +779,22 @@ def _save_purchased_input_attachments(
             for filename, content_type, payload in attachments
         ]
     )
-    repo.db.commit()
+    try:
+        repo.db.commit()
+    except Exception:
+        repo.db.rollback()
+        raise
     repo.db.refresh(item)
+    return len(attachments)
 
 
 def _save_equipment_asset_attachments(
     repo: FarmRepository,
     asset: EquipmentAsset,
     attachments: list[tuple[str, str, bytes]],
-) -> None:
+) -> int:
     if not attachments:
-        return
+        return 0
     repo.db.add_all(
         [
             EquipmentAssetAttachment(
@@ -796,8 +806,22 @@ def _save_equipment_asset_attachments(
             for filename, content_type, payload in attachments
         ]
     )
-    repo.db.commit()
+    try:
+        repo.db.commit()
+    except Exception:
+        repo.db.rollback()
+        raise
     repo.db.refresh(asset)
+    return len(attachments)
+
+
+async def _request_attachments(request: Request, field_name: str = "attachments") -> list[UploadFile]:
+    form = await request.form()
+    uploads: list[UploadFile] = []
+    for value in form.getlist(field_name):
+        if isinstance(value, (UploadFile, StarletteUploadFile)) and getattr(value, "filename", None):
+            uploads.append(value)
+    return uploads
 
 
 def _attachment_response(filename: str, content_type: str, payload: bytes) -> Response:
@@ -1500,7 +1524,7 @@ def purchased_inputs_page(
 
 
 @router.post("/insumos/comprados")
-def create_purchased_input_action(
+async def create_purchased_input_action(
     request: Request,
     csrf_token: str = Form(...),
     farm_id: str | None = Form(None),
@@ -1513,7 +1537,6 @@ def create_purchased_input_action(
     purchase_date: str | None = Form(None),
     low_stock_threshold: str | None = Form(None),
     notes: str | None = Form(None),
-    attachments: list[UploadFile] | None = File(None),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user_web),
 ):
@@ -1524,7 +1547,7 @@ def create_purchased_input_action(
     if denied:
         return denied
     try:
-        attachment_payloads = _read_attachments(attachments)
+        attachment_payloads = _read_attachments(await _request_attachments(request))
     except ValueError as exc:
         _flash(request, "error", str(exc))
         return _redirect_with_query("/insumos/comprados", item_type=item_type)
@@ -1543,15 +1566,20 @@ def create_purchased_input_action(
             "notes": notes,
         },
     )
-    _save_purchased_input_attachments(repo, item, attachment_payloads)
-    _flash(request, "success", "Insumo comprado cadastrado com sucesso.")
-    if attachment_payloads:
+    try:
+        saved_attachments = _save_purchased_input_attachments(repo, item, attachment_payloads)
+    except Exception:
+        _flash(request, "error", "O lancamento foi salvo, mas nao foi possivel gravar os anexos agora.")
         return _redirect_with_query("/insumos/comprados", edit_id=item.id, item_type=item_type)
+    if saved_attachments:
+        _flash(request, "success", f"Insumo comprado cadastrado com sucesso. {saved_attachments} anexo(s) salvo(s).")
+        return _redirect_with_query("/insumos/comprados", edit_id=item.id, item_type=item_type)
+    _flash(request, "success", "Insumo comprado cadastrado com sucesso.")
     return _redirect_with_query("/insumos/comprados", item_type=item_type)
 
 
 @router.post("/insumos/comprados/{input_id}/editar")
-def update_purchased_input_action(
+async def update_purchased_input_action(
     input_id: int,
     request: Request,
     csrf_token: str = Form(...),
@@ -1565,7 +1593,6 @@ def update_purchased_input_action(
     purchase_date: str | None = Form(None),
     low_stock_threshold: str | None = Form(None),
     notes: str | None = Form(None),
-    attachments: list[UploadFile] | None = File(None),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user_web),
 ):
@@ -1583,7 +1610,7 @@ def update_purchased_input_action(
         _flash(request, "error", "Este lancamento de entrada nao pertence ao contexto ativo.")
         return _redirect("/insumos/comprados")
     try:
-        attachment_payloads = _read_attachments(attachments)
+        attachment_payloads = _read_attachments(await _request_attachments(request))
     except ValueError as exc:
         _flash(request, "error", str(exc))
         return _redirect_with_query("/insumos/comprados", edit_id=input_id, item_type=item_type)
@@ -1603,10 +1630,15 @@ def update_purchased_input_action(
             "notes": notes,
         },
     )
-    _save_purchased_input_attachments(repo, item, attachment_payloads)
-    _flash(request, "success", "Insumo comprado atualizado com sucesso.")
-    if attachment_payloads:
+    try:
+        saved_attachments = _save_purchased_input_attachments(repo, item, attachment_payloads)
+    except Exception:
+        _flash(request, "error", "As alteracoes foram salvas, mas nao foi possivel incluir os novos anexos.")
         return _redirect_with_query("/insumos/comprados", edit_id=input_id, item_type=item_type)
+    if saved_attachments:
+        _flash(request, "success", f"Alteracoes salvas com sucesso. {saved_attachments} novo(s) anexo(s) adicionado(s).")
+        return _redirect_with_query("/insumos/comprados", edit_id=input_id, item_type=item_type)
+    _flash(request, "success", "Insumo comprado atualizado com sucesso.")
     return _redirect_with_query("/insumos/comprados", item_type=item_type)
 
 
@@ -1682,6 +1714,9 @@ def delete_purchased_input_attachment_action(
         _flash(request, "error", "Anexo nao encontrado.")
         return _redirect_with_query("/insumos/comprados", edit_id=input_id)
     repo.delete(attachment)
+    if repo.get_purchased_input_attachment(attachment_id):
+        _flash(request, "error", "Nao foi possivel remover o anexo agora. Tente novamente.")
+        return _redirect_with_query("/insumos/comprados", edit_id=input_id)
     _flash(request, "success", "Anexo removido com sucesso.")
     item_type = item.input_catalog.item_type if item.input_catalog else None
     return _redirect_with_query("/insumos/comprados", edit_id=input_id, item_type=item_type)

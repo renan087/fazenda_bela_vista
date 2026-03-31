@@ -222,6 +222,7 @@ class FarmRepository:
                 joinedload(PurchasedInput.farm),
                 joinedload(PurchasedInput.input_catalog),
                 joinedload(PurchasedInput.stock_allocations),
+                joinedload(PurchasedInput.attachments),
             )
             .order_by(PurchasedInput.name.asc(), PurchasedInput.purchase_date.desc(), PurchasedInput.id.desc())
         )
