@@ -7,16 +7,8 @@
         <p class="mt-2 text-sm text-slate-500">Cadastre equipamentos e bens patrimoniais sem misturar esses registros com o estoque consumível de insumos e combustíveis.</p>
         <form method="post" action="{% if edit_asset %}/insumos/patrimonio/{{ edit_asset.id }}/editar{% else %}/insumos/patrimonio{% endif %}" class="mt-6 grid gap-4">
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            {% include "partials/launch_context.html" %}
             <div class="grid gap-4 md:grid-cols-2">
-                <label>
-                    <span class="mb-2 block text-sm font-medium">Fazenda</span>
-                    <select name="farm_id" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50">
-                        <option value="">Sem vinculo especifico</option>
-                        {% for farm in farms %}
-                        <option value="{{ farm.id }}" {% if edit_asset and edit_asset.farm_id == farm.id %}selected{% elif selected_farm_id == farm.id and not edit_asset %}selected{% endif %}>{{ farm.name }}</option>
-                        {% endfor %}
-                    </select>
-                </label>
                 <label>
                     <span class="mb-2 block text-sm font-medium">Categoria</span>
                     <input name="category" value="{{ edit_asset.category if edit_asset else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" placeholder="Ex.: Trator, bomba, pulverizador" required>

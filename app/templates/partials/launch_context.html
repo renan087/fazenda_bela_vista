@@ -1,0 +1,14 @@
+<div class="{{ launch_context_class or '' }} rounded-[1.5rem] border border-brand-100 bg-brand-50/50 p-4">
+    <p class="text-xs uppercase tracking-[0.3em] text-slate-400">Contexto do lancamento</p>
+    <div class="mt-3 grid gap-3 md:grid-cols-2">
+        <div class="rounded-2xl bg-white px-4 py-3">
+            <p class="text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Fazenda ativa</p>
+            <p class="mt-2 text-sm font-semibold text-slate-900">{{ active_farm.name if active_farm else "Nao selecionada" }}</p>
+        </div>
+        <div class="rounded-2xl bg-white px-4 py-3">
+            <p class="text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Safra ativa</p>
+            <p class="mt-2 text-sm font-semibold text-slate-900">{{ active_season.name if active_season else "Nao selecionada" }}</p>
+        </div>
+    </div>
+    <p class="mt-3 text-xs text-slate-500">Para registrar em outra fazenda ou safra, altere primeiro o contexto global no topo do sistema.</p>
+</div>

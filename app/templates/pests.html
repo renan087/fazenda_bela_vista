@@ -6,6 +6,7 @@
         <h3 class="mt-2 text-2xl font-semibold">{% if edit_incident %}Editar ocorrencia fitossanitaria{% else %}Registrar ocorrencia fitossanitaria{% endif %}</h3>
         <form method="post" action="{% if edit_incident %}/pragas/{{ edit_incident.id }}/editar{% else %}/pragas{% endif %}" class="mt-6 grid gap-4">
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            {% include "partials/launch_context.html" %}
             <label><span class="mb-2 block text-sm font-medium">Setor</span><select name="plot_id" class="w-full rounded-2xl border-slate-200 bg-slate-50" required>{% for plot in plots %}<option value="{{ plot.id }}" {% if edit_incident and edit_incident.plot_id == plot.id %}selected{% endif %}>{{ plot.name }}</option>{% endfor %}</select></label>
             <label><span class="mb-2 block text-sm font-medium">Data</span><input type="date" name="occurrence_date" value="{{ edit_incident.occurrence_date.isoformat() if edit_incident else '' }}" class="w-full rounded-2xl border-slate-200 bg-slate-50" required></label>
             <label><span class="mb-2 block text-sm font-medium">Categoria</span><select name="category" class="w-full rounded-2xl border-slate-200 bg-slate-50"><option {% if edit_incident and edit_incident.category == 'Praga' %}selected{% endif %}>Praga</option><option {% if edit_incident and edit_incident.category == 'Doenca' %}selected{% endif %}>Doenca</option></select></label>

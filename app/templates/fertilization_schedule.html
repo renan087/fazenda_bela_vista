@@ -6,6 +6,7 @@
         <h3 class="mt-2 text-2xl font-semibold">{% if edit_schedule %}Editar fertilizacao programada{% else %}Agendar fertilizacao{% endif %}</h3>
         <form method="post" action="{% if edit_schedule %}/fertilizacao/agendamentos/{{ edit_schedule.id }}/editar{% else %}/fertilizacao/agendamentos{% endif %}" class="mt-6 grid gap-4" data-schedule-form>
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            {% include "partials/launch_context.html" %}
             <div class="grid gap-4 md:grid-cols-2">
                 <label>
                     <span class="mb-2 block text-sm font-medium">Setor</span>

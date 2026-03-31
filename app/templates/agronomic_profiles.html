@@ -6,14 +6,7 @@
         <h3 class="mt-2 text-2xl font-semibold">Contexto tecnico da fazenda</h3>
         <form method="post" action="/perfil-agronomico" class="mt-6 grid gap-4">
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-            <label><span class="mb-2 block text-sm font-medium">Fazenda</span>
-                <select name="farm_id" class="w-full rounded-2xl border-slate-200 bg-slate-50" required>
-                    <option value="">Selecione</option>
-                    {% for farm in farms %}
-                    <option value="{{ farm.id }}" {% if edit_farm and edit_farm.id == farm.id %}selected{% endif %}>{{ farm.name }}</option>
-                    {% endfor %}
-                </select>
-            </label>
+            {% include "partials/launch_context.html" %}
             <label><span class="mb-2 block text-sm font-medium">Cultura</span><input name="culture" value="{{ edit_profile.culture if edit_profile else 'Cafe arabica' }}" class="w-full rounded-2xl border-slate-200 bg-slate-50" required></label>
             <label><span class="mb-2 block text-sm font-medium">Regiao</span><input name="region" value="{{ edit_profile.region if edit_profile else 'Bahia - Brasil' }}" class="w-full rounded-2xl border-slate-200 bg-slate-50" required></label>
             <label><span class="mb-2 block text-sm font-medium">Clima</span><input name="climate" value="{{ edit_profile.climate if edit_profile else '' }}" class="w-full rounded-2xl border-slate-200 bg-slate-50"></label>

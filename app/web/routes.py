@@ -271,6 +271,74 @@ def _within_scope(value: date | None, start_date: date | None, end_date: date | 
     return True
 
 
+def _launch_scope_or_redirect(
+    request: Request,
+    repo: FarmRepository,
+    redirect_path: str,
+    require_season: bool = True,
+):
+    scope = _global_scope_context(request, repo)
+    if scope["active_farm_id"] and (scope["active_season_id"] or not require_season):
+        return scope, None
+    _flash(request, "error", "Selecione a fazenda e a safra ativas no topo antes de continuar.")
+    return None, _redirect(redirect_path)
+
+
+def _plot_matches_scope(plot: Plot | None, scope: dict) -> bool:
+    if not plot:
+        return False
+    if scope.get("active_farm_id") and plot.farm_id != scope["active_farm_id"]:
+        return False
+    active_season = scope.get("active_season")
+    if active_season and active_season.variety_id and plot.variety_id != active_season.variety_id:
+        return False
+    return True
+
+
+def _resolve_plot_in_scope(
+    request: Request,
+    repo: FarmRepository,
+    plot_id: int | None,
+    redirect_path: str,
+):
+    scope, denied = _launch_scope_or_redirect(request, repo, redirect_path)
+    if denied:
+        return None, None, denied
+    plot = repo.get_plot(plot_id) if plot_id else None
+    if not plot:
+        _flash(request, "error", "Setor nao encontrado para o contexto atual.")
+        return None, scope, _redirect(redirect_path)
+    if not _plot_matches_scope(plot, scope):
+        _flash(request, "error", "O setor informado nao pertence ao contexto ativo de fazenda e safra.")
+        return None, scope, _redirect(redirect_path)
+    return plot, scope, None
+
+
+def _resolve_optional_plot_in_scope(
+    request: Request,
+    repo: FarmRepository,
+    plot_id: int | None,
+    redirect_path: str,
+):
+    scope, denied = _launch_scope_or_redirect(request, repo, redirect_path)
+    if denied:
+        return None, scope, denied
+    if not plot_id:
+        return None, scope, None
+    plot = repo.get_plot(plot_id)
+    if not plot:
+        _flash(request, "error", "Setor nao encontrado para o contexto atual.")
+        return None, scope, _redirect(redirect_path)
+    if not _plot_matches_scope(plot, scope):
+        _flash(request, "error", "O setor informado nao pertence ao contexto ativo de fazenda e safra.")
+        return None, scope, _redirect(redirect_path)
+    return plot, scope, None
+
+
+def _farm_matches_scope(farm_id: int | None, scope: dict) -> bool:
+    return farm_id in (None, scope.get("active_farm_id"))
+
+
 def _page_number(value: str | int | None, default: int = 1) -> int:
     try:
         return max(int(value or default), 1)
@@ -1354,10 +1422,14 @@ def create_purchased_input_action(
 ):
     del user
     validate_csrf(request, csrf_token)
+    repo = _repository(db)
+    scope, denied = _launch_scope_or_redirect(request, repo, "/insumos/comprados")
+    if denied:
+        return denied
     create_purchased_input(
-        _repository(db),
+        repo,
         {
-            "farm_id": _int_or_none(farm_id),
+            "farm_id": scope["active_farm_id"],
             "item_type": item_type,
             "name": name,
             "quantity_purchased": quantity_purchased,
@@ -1370,7 +1442,7 @@ def create_purchased_input_action(
         },
     )
     _flash(request, "success", "Insumo comprado cadastrado com sucesso.")
-    return _redirect_with_query("/insumos/comprados", item_type=item_type, farm_id=_int_or_none(farm_id))
+    return _redirect_with_query("/insumos/comprados", item_type=item_type)
 
 
 @router.post("/insumos/comprados/{input_id}/editar")
@@ -1394,15 +1466,21 @@ def update_purchased_input_action(
     del user
     validate_csrf(request, csrf_token)
     repo = _repository(db)
+    scope, denied = _launch_scope_or_redirect(request, repo, "/insumos/comprados")
+    if denied:
+        return denied
     item = repo.get_purchased_input(input_id)
     if not item:
         _flash(request, "error", "Insumo comprado nao encontrado.")
+        return _redirect("/insumos/comprados")
+    if not _farm_matches_scope(item.farm_id, scope):
+        _flash(request, "error", "Este lancamento de entrada nao pertence ao contexto ativo.")
         return _redirect("/insumos/comprados")
     update_purchased_input(
         repo,
         item,
         {
-            "farm_id": _int_or_none(farm_id),
+            "farm_id": scope["active_farm_id"],
             "item_type": item_type,
             "name": name,
             "quantity_purchased": quantity_purchased,
@@ -1415,7 +1493,7 @@ def update_purchased_input_action(
         },
     )
     _flash(request, "success", "Insumo comprado atualizado com sucesso.")
-    return _redirect_with_query("/insumos/comprados", item_type=item_type, farm_id=_int_or_none(farm_id))
+    return _redirect_with_query("/insumos/comprados", item_type=item_type)
 
 
 @router.post("/insumos/comprados/{input_id}/excluir")
@@ -1548,14 +1626,23 @@ def create_manual_stock_output_action(
 ):
     del user
     validate_csrf(request, csrf_token)
+    repo = _repository(db)
+    plot, scope, denied = _resolve_optional_plot_in_scope(
+        request,
+        repo,
+        _int_or_none(plot_id),
+        "/insumos/estoque",
+    )
+    if denied:
+        return denied
     try:
         create_manual_stock_output(
-            _repository(db),
+            repo,
             {
-                "farm_id": _int_or_none(farm_id),
-                "plot_id": _int_or_none(plot_id),
+                "farm_id": scope["active_farm_id"],
+                "plot_id": plot.id if plot else None,
                 "input_id": input_id,
-                "season_id": _active_season_id(request),
+                "season_id": scope["active_season_id"],
                 "movement_date": movement_date,
                 "quantity": quantity,
                 "unit": unit,
@@ -1606,12 +1693,26 @@ async def update_stock_output_entry_action(
         return _redirect("/insumos/estoque")
     try:
         if output.reference_type == "manual_stock_output":
+            scope, denied = _launch_scope_or_redirect(request, repo, "/insumos/estoque")
+            if denied:
+                return denied
+            if not _farm_matches_scope(output.farm_id, scope) or (output.plot_id and not _plot_matches_scope(output.plot, scope)):
+                _flash(request, "error", "Este lancamento de saida nao pertence ao contexto ativo.")
+                return _redirect("/insumos/estoque")
+            plot, _, invalid_plot = _resolve_optional_plot_in_scope(
+                request,
+                repo,
+                _int_or_none(form.get("plot_id")),
+                "/insumos/estoque",
+            )
+            if invalid_plot:
+                return invalid_plot
             update_manual_stock_output(
                 repo,
                 output,
                 {
-                    "farm_id": _int_or_none(form.get("farm_id")),
-                    "plot_id": _int_or_none(form.get("plot_id")),
+                    "farm_id": scope["active_farm_id"],
+                    "plot_id": plot.id if plot else None,
                     "movement_date": str(form.get("movement_date") or ""),
                     "quantity": float(form.get("quantity") or 0),
                     "unit": str(form.get("unit") or ""),
@@ -1622,10 +1723,14 @@ async def update_stock_output_entry_action(
             fertilization_item, fertilization = _resolve_fertilization_output_context(repo, db, output)
             if not fertilization_item or not fertilization:
                 raise ValueError("Nao foi possivel localizar o item de fertilizacao vinculado.")
-            plot_id = int(fertilization.plot_id or 0)
-            plot = repo.get_plot(plot_id)
-            if not plot:
-                raise ValueError("Selecione um setor valido para a fertilizacao.")
+            plot, scope, invalid_plot = _resolve_plot_in_scope(
+                request,
+                repo,
+                int(fertilization.plot_id or 0),
+                "/insumos/estoque",
+            )
+            if invalid_plot:
+                return invalid_plot
             input_catalog = repo.get_input_catalog(int(fertilization_item.input_id or 0))
             if not input_catalog or input_catalog.item_type != "insumo_agricola" or not input_catalog.is_active:
                 raise ValueError("Selecione apenas insumos agrícolas válidos para a fertilização.")
@@ -1662,9 +1767,9 @@ async def update_stock_output_entry_action(
                 repo,
                 fertilization,
                 {
-                    "plot_id": plot_id,
+                    "plot_id": plot.id,
                     "application_date": str(form.get("movement_date") or fertilization.application_date.isoformat()),
-                    "season_id": fertilization.season_id,
+                    "season_id": scope["active_season_id"],
                     "notes": str(form.get("notes") or "") or None,
                     "items": items,
                 },
@@ -1900,10 +2005,14 @@ def create_equipment_asset_action(
 ):
     del user
     validate_csrf(request, csrf_token)
+    repo = _repository(db)
+    scope, denied = _launch_scope_or_redirect(request, repo, "/insumos/patrimonio")
+    if denied:
+        return denied
     create_equipment_asset(
-        _repository(db),
+        repo,
         {
-            "farm_id": _int_or_none(farm_id),
+            "farm_id": scope["active_farm_id"],
             "name": name,
             "category": category,
             "brand_model": brand_model,
@@ -1915,7 +2024,7 @@ def create_equipment_asset_action(
         },
     )
     _flash(request, "success", "Patrimonio cadastrado com sucesso.")
-    return _redirect_with_query("/insumos/patrimonio", farm_id=_int_or_none(farm_id))
+    return _redirect("/insumos/patrimonio")
 
 
 @router.post("/insumos/patrimonio/{asset_id}/editar")
@@ -1938,15 +2047,21 @@ def update_equipment_asset_action(
     del user
     validate_csrf(request, csrf_token)
     repo = _repository(db)
+    scope, denied = _launch_scope_or_redirect(request, repo, "/insumos/patrimonio")
+    if denied:
+        return denied
     asset = repo.get_equipment_asset(asset_id)
     if not asset:
         _flash(request, "error", "Patrimonio nao encontrado.")
+        return _redirect("/insumos/patrimonio")
+    if not _farm_matches_scope(asset.farm_id, scope):
+        _flash(request, "error", "Este patrimonio nao pertence ao contexto ativo.")
         return _redirect("/insumos/patrimonio")
     update_equipment_asset(
         repo,
         asset,
         {
-            "farm_id": _int_or_none(farm_id),
+            "farm_id": scope["active_farm_id"],
             "name": name,
             "category": category,
             "brand_model": brand_model,
@@ -1958,7 +2073,7 @@ def update_equipment_asset_action(
         },
     )
     _flash(request, "success", "Patrimonio atualizado com sucesso.")
-    return _redirect_with_query("/insumos/patrimonio", farm_id=_int_or_none(farm_id))
+    return _redirect("/insumos/patrimonio")
 
 
 @router.post("/insumos/patrimonio/{asset_id}/excluir")
@@ -2048,14 +2163,20 @@ async def create_input_recommendation_action(
         _flash(request, "error", "Informe a aplicacao e adicione ao menos um insumo.")
         return _redirect("/insumos/recomendacao")
     repo = _repository(db)
-    farm_id = _int_or_none(form.get("farm_id"))
-    plot_id = _int_or_none(form.get("plot_id"))
+    plot, scope, denied = _resolve_optional_plot_in_scope(
+        request,
+        repo,
+        _int_or_none(form.get("plot_id")),
+        "/insumos/recomendacao",
+    )
+    if denied:
+        return denied
     notes = str(form.get("notes") or "") or None
     create_input_recommendation(
         repo,
         {
-            "farm_id": farm_id,
-            "plot_id": plot_id,
+            "farm_id": scope["active_farm_id"],
+            "plot_id": plot.id if plot else None,
             "application_name": application_name,
             "items": items,
             "notes": notes,
@@ -2076,9 +2197,23 @@ async def update_input_recommendation_action(
     form = await request.form()
     validate_csrf(request, str(form.get("csrf_token") or ""))
     repo = _repository(db)
+    plot, scope, denied = _resolve_optional_plot_in_scope(
+        request,
+        repo,
+        _int_or_none(form.get("plot_id")),
+        "/insumos/recomendacao",
+    )
+    if denied:
+        return denied
     recommendation = repo.get_input_recommendation(recommendation_id)
     if not recommendation:
         _flash(request, "error", "Recomendacao nao encontrada.")
+        return _redirect("/insumos/recomendacao")
+    if not _farm_matches_scope(recommendation.farm_id, scope):
+        _flash(request, "error", "Esta recomendacao nao pertence ao contexto ativo.")
+        return _redirect("/insumos/recomendacao")
+    if recommendation.plot_id and not _plot_matches_scope(recommendation.plot, scope):
+        _flash(request, "error", "Esta recomendacao nao pertence ao contexto ativo.")
         return _redirect("/insumos/recomendacao")
     application_name = str(form.get("application_name") or "").strip()
     items = _parse_recommendation_items(form)
@@ -2089,8 +2224,8 @@ async def update_input_recommendation_action(
         repo,
         recommendation,
         {
-            "farm_id": _int_or_none(form.get("farm_id")),
-            "plot_id": _int_or_none(form.get("plot_id")),
+            "farm_id": scope["active_farm_id"],
+            "plot_id": plot.id if plot else None,
             "application_name": application_name,
             "items": items,
             "notes": str(form.get("notes") or "") or None,
@@ -2461,10 +2596,9 @@ def create_irrigation_action(
     del user
     validate_csrf(request, csrf_token)
     repo = _repository(db)
-    plot = repo.get_plot(plot_id)
-    if not plot:
-        _flash(request, "error", "Setor nao encontrado para registrar irrigacao.")
-        return _redirect("/irrigacao")
+    plot, _, denied = _resolve_plot_in_scope(request, repo, plot_id, "/irrigacao")
+    if denied:
+        return denied
     calculated_volume = calculate_irrigation_volume(plot, duration_minutes)
     manual_volume = _float_or_none(volume_liters)
     if calculated_volume is None and manual_volume is None:
@@ -2504,9 +2638,11 @@ def update_irrigation_action(
     if not irrigation:
         _flash(request, "error", "Registro de irrigacao nao encontrado.")
         return _redirect("/irrigacao")
-    plot = repo.get_plot(plot_id)
-    if not plot:
-        _flash(request, "error", "Setor nao encontrado para atualizar irrigacao.")
+    plot, scope, denied = _resolve_plot_in_scope(request, repo, plot_id, "/irrigacao")
+    if denied:
+        return denied
+    if not _plot_matches_scope(irrigation.plot, scope):
+        _flash(request, "error", "Este registro de irrigacao nao pertence ao contexto ativo.")
         return _redirect("/irrigacao")
     calculated_volume = calculate_irrigation_volume(plot, duration_minutes)
     manual_volume = _float_or_none(volume_liters)
@@ -2517,7 +2653,7 @@ def update_irrigation_action(
         repo,
         irrigation,
         {
-            "plot_id": plot_id,
+            "plot_id": plot.id,
             "irrigation_date": irrigation_date,
             "volume_liters": calculated_volume if calculated_volume is not None else manual_volume,
             "duration_minutes": duration_minutes,
@@ -2589,7 +2725,6 @@ def rainfall_page(
 def create_rainfall_action(
     request: Request,
     csrf_token: str = Form(...),
-    farm_id: int = Form(...),
     rainfall_date: str = Form(...),
     millimeters: float = Form(...),
     source: str | None = Form(None),
@@ -2600,14 +2735,13 @@ def create_rainfall_action(
     del user
     validate_csrf(request, csrf_token)
     repo = _repository(db)
-    farm = repo.get_farm(farm_id)
-    if not farm:
-        _flash(request, "error", "Fazenda nao encontrada para registrar a pluviometria.")
-        return _redirect("/pluviometria")
+    scope, denied = _launch_scope_or_redirect(request, repo, "/pluviometria")
+    if denied:
+        return denied
     create_rainfall(
         repo,
         {
-            "farm_id": farm_id,
+            "farm_id": scope["active_farm_id"],
             "rainfall_date": rainfall_date,
             "millimeters": millimeters,
             "source": source,
@@ -2623,7 +2757,6 @@ def update_rainfall_action(
     record_id: int,
     request: Request,
     csrf_token: str = Form(...),
-    farm_id: int = Form(...),
     rainfall_date: str = Form(...),
     millimeters: float = Form(...),
     source: str | None = Form(None),
@@ -2634,19 +2767,21 @@ def update_rainfall_action(
     del user
     validate_csrf(request, csrf_token)
     repo = _repository(db)
+    scope, denied = _launch_scope_or_redirect(request, repo, "/pluviometria")
+    if denied:
+        return denied
     rainfall = repo.get_rainfall(record_id)
     if not rainfall:
         _flash(request, "error", "Registro de pluviometria nao encontrado.")
         return _redirect("/pluviometria")
-    farm = repo.get_farm(farm_id)
-    if not farm:
-        _flash(request, "error", "Fazenda nao encontrada para atualizar a pluviometria.")
+    if not _farm_matches_scope(rainfall.farm_id, scope):
+        _flash(request, "error", "Este registro de pluviometria nao pertence ao contexto ativo.")
         return _redirect("/pluviometria")
     update_rainfall(
         repo,
         rainfall,
         {
-            "farm_id": farm_id,
+            "farm_id": scope["active_farm_id"],
             "rainfall_date": rainfall_date,
             "millimeters": millimeters,
             "source": source,
@@ -2772,12 +2907,10 @@ async def create_fertilization_action(
     form = await request.form()
     csrf_token = str(form.get("csrf_token") or "")
     validate_csrf(request, csrf_token)
-    plot_id = int(form.get("plot_id") or 0)
     repo = _repository(db)
-    plot = repo.get_plot(plot_id)
-    if not plot:
-        _flash(request, "error", "Setor nao encontrado para registrar a fertilizacao.")
-        return _redirect("/fertilizacao")
+    plot, scope, denied = _resolve_plot_in_scope(request, repo, int(form.get("plot_id") or 0), "/fertilizacao")
+    if denied:
+        return denied
     items = _parse_fertilization_items(form)
     if not items:
         _flash(request, "error", "Adicione ao menos um insumo na atividade.")
@@ -2786,9 +2919,9 @@ async def create_fertilization_action(
         create_fertilization(
             repo,
             {
-                "plot_id": plot_id,
+                "plot_id": plot.id,
                 "application_date": str(form.get("application_date") or ""),
-                "season_id": _active_season_id(request),
+                "season_id": scope["active_season_id"],
                 "notes": str(form.get("notes") or "") or None,
                 "items": items,
             },
@@ -2816,11 +2949,12 @@ async def update_fertilization_action(
     if not fertilization:
         _flash(request, "error", "Registro de fertilizacao nao encontrado.")
         return _redirect("/fertilizacao")
-    plot_id = int(form.get("plot_id") or 0)
-    plot = repo.get_plot(plot_id)
-    if not plot:
-        _flash(request, "error", "Setor nao encontrado para atualizar a fertilizacao.")
-        return _redirect_with_query("/fertilizacao", edit_id=record_id)
+    plot, scope, denied = _resolve_plot_in_scope(request, repo, int(form.get("plot_id") or 0), "/fertilizacao")
+    if denied:
+        return denied
+    if not _plot_matches_scope(fertilization.plot, scope):
+        _flash(request, "error", "Este registro de fertilizacao nao pertence ao contexto ativo.")
+        return _redirect("/fertilizacao")
     items = _parse_fertilization_items(form)
     if not items:
         _flash(request, "error", "Adicione ao menos um insumo na atividade.")
@@ -2830,9 +2964,9 @@ async def update_fertilization_action(
             repo,
             fertilization,
             {
-                "plot_id": plot_id,
+                "plot_id": plot.id,
                 "application_date": str(form.get("application_date") or ""),
-                "season_id": _active_season_id(request),
+                "season_id": scope["active_season_id"],
                 "notes": str(form.get("notes") or "") or None,
                 "items": items,
             },
@@ -2943,17 +3077,25 @@ async def create_fertilization_schedule_action(
     del user
     form = await request.form()
     validate_csrf(request, str(form.get("csrf_token") or ""))
-    plot_id = int(form.get("plot_id") or 0)
+    repo = _repository(db)
+    plot, scope, denied = _resolve_plot_in_scope(
+        request,
+        repo,
+        int(form.get("plot_id") or 0),
+        "/fertilizacao/agendamentos",
+    )
+    if denied:
+        return denied
     items = _parse_recommendation_items(form)
-    if not plot_id or not items:
+    if not plot or not items:
         _flash(request, "error", "Selecione o setor e adicione ao menos um insumo.")
         return _redirect("/fertilizacao/agendamentos")
     create_fertilization_schedule(
-        _repository(db),
+        repo,
         {
-            "plot_id": plot_id,
+            "plot_id": plot.id,
             "scheduled_date": str(form.get("scheduled_date") or ""),
-            "season_id": _active_season_id(request),
+            "season_id": scope["active_season_id"],
             "status": str(form.get("status") or "scheduled"),
             "notes": str(form.get("notes") or "") or None,
             "items": items,
@@ -2974,9 +3116,20 @@ async def update_fertilization_schedule_action(
     form = await request.form()
     validate_csrf(request, str(form.get("csrf_token") or ""))
     repo = _repository(db)
+    plot, scope, denied = _resolve_plot_in_scope(
+        request,
+        repo,
+        int(form.get("plot_id") or 0),
+        "/fertilizacao/agendamentos",
+    )
+    if denied:
+        return denied
     schedule = repo.get_fertilization_schedule(schedule_id)
     if not schedule:
         _flash(request, "error", "Agendamento nao encontrado.")
+        return _redirect("/fertilizacao/agendamentos")
+    if not _plot_matches_scope(schedule.plot, scope):
+        _flash(request, "error", "Este agendamento nao pertence ao contexto ativo.")
         return _redirect("/fertilizacao/agendamentos")
     items = _parse_recommendation_items(form)
     if not items:
@@ -2986,9 +3139,9 @@ async def update_fertilization_schedule_action(
         repo,
         schedule,
         {
-            "plot_id": int(form.get("plot_id") or 0),
+            "plot_id": plot.id,
             "scheduled_date": str(form.get("scheduled_date") or ""),
-            "season_id": _active_season_id(request),
+            "season_id": scope["active_season_id"],
             "status": str(form.get("status") or schedule.status),
             "notes": str(form.get("notes") or "") or None,
             "items": items,
@@ -3097,12 +3250,15 @@ def create_harvest_action(
 ):
     del user
     validate_csrf(request, csrf_token)
-    plot = db.query(Plot).filter(Plot.id == plot_id).first()
+    repo = _repository(db)
+    plot, _, denied = _resolve_plot_in_scope(request, repo, plot_id, "/producao")
+    if denied:
+        return denied
     area = float(plot.area_hectares) if plot else 0
     create_harvest(
-        _repository(db),
+        repo,
         {
-            "plot_id": plot_id,
+            "plot_id": plot.id,
             "harvest_date": harvest_date,
             "sacks_produced": sacks_produced,
             "notes": notes,
@@ -3128,17 +3284,22 @@ def update_harvest_action(
     del user
     validate_csrf(request, csrf_token)
     repo = _repository(db)
+    plot, scope, denied = _resolve_plot_in_scope(request, repo, plot_id, "/producao")
+    if denied:
+        return denied
     harvest = repo.get_harvest(record_id)
     if not harvest:
         _flash(request, "error", "Registro de producao nao encontrado.")
         return _redirect("/producao")
-    plot = db.query(Plot).filter(Plot.id == plot_id).first()
+    if not _plot_matches_scope(harvest.plot, scope):
+        _flash(request, "error", "Este registro de producao nao pertence ao contexto ativo.")
+        return _redirect("/producao")
     area = float(plot.area_hectares) if plot else 0
     update_harvest(
         repo,
         harvest,
         {
-            "plot_id": plot_id,
+            "plot_id": plot.id,
             "harvest_date": harvest_date,
             "sacks_produced": sacks_produced,
             "notes": notes,
@@ -3219,10 +3380,14 @@ def create_pest_action(
 ):
     del user
     validate_csrf(request, csrf_token)
+    repo = _repository(db)
+    plot, _, denied = _resolve_plot_in_scope(request, repo, plot_id, "/pragas")
+    if denied:
+        return denied
     create_pest_incident(
-        _repository(db),
+        repo,
         {
-            "plot_id": plot_id,
+            "plot_id": plot.id,
             "occurrence_date": occurrence_date,
             "category": category,
             "name": name,
@@ -3253,15 +3418,21 @@ def update_pest_action(
     del user
     validate_csrf(request, csrf_token)
     repo = _repository(db)
+    plot, scope, denied = _resolve_plot_in_scope(request, repo, plot_id, "/pragas")
+    if denied:
+        return denied
     incident = repo.get_pest_incident(record_id)
     if not incident:
         _flash(request, "error", "Ocorrencia nao encontrada.")
+        return _redirect("/pragas")
+    if not _plot_matches_scope(incident.plot, scope):
+        _flash(request, "error", "Esta ocorrencia nao pertence ao contexto ativo.")
         return _redirect("/pragas")
     update_pest_incident(
         repo,
         incident,
         {
-            "plot_id": plot_id,
+            "plot_id": plot.id,
             "occurrence_date": occurrence_date,
             "category": category,
             "name": name,
@@ -3303,7 +3474,9 @@ def agronomic_profiles_page(
     csrf_token: str = Depends(get_csrf_token),
 ):
     repo = _repository(db)
-    selected_farm = repo.get_farm(edit_farm_id) if edit_farm_id else None
+    del edit_farm_id
+    scope = _global_scope_context(request, repo)
+    selected_farm = scope["active_farm"]
     return templates.TemplateResponse(
         "agronomic_profiles.html",
         _base_context(
@@ -3314,9 +3487,13 @@ def agronomic_profiles_page(
             _repo=repo,
             title="Perfil Agronomico",
             farms=repo.list_farms(),
-            profiles=repo.list_agronomic_profiles(),
+            profiles=[
+                profile
+                for profile in repo.list_agronomic_profiles()
+                if not scope["active_farm_id"] or profile.farm_id == scope["active_farm_id"]
+            ],
             edit_farm=selected_farm,
-            edit_profile=repo.get_agronomic_profile_by_farm(edit_farm_id) if edit_farm_id else None,
+            edit_profile=repo.get_agronomic_profile_by_farm(scope["active_farm_id"]) if scope["active_farm_id"] else None,
         ),
     )
 
@@ -3325,7 +3502,6 @@ def agronomic_profiles_page(
 def save_agronomic_profile_action(
     request: Request,
     csrf_token: str = Form(...),
-    farm_id: int = Form(...),
     culture: str = Form(...),
     region: str = Form(...),
     climate: str | None = Form(None),
@@ -3342,6 +3518,10 @@ def save_agronomic_profile_action(
     del user
     validate_csrf(request, csrf_token)
     repo = _repository(db)
+    scope, denied = _launch_scope_or_redirect(request, repo, "/perfil-agronomico")
+    if denied:
+        return denied
+    farm_id = scope["active_farm_id"]
     existing = repo.get_agronomic_profile_by_farm(farm_id)
     payload = {
         "farm_id": farm_id,
@@ -3362,7 +3542,7 @@ def save_agronomic_profile_action(
     else:
         create_agronomic_profile(repo, payload)
         _flash(request, "success", "Perfil agronomico salvo com sucesso.")
-    return _redirect_with_query("/perfil-agronomico", edit_farm_id=farm_id)
+    return _redirect("/perfil-agronomico")
 
 
 @router.post("/perfil-agronomico/{farm_id}/excluir")
@@ -3376,6 +3556,12 @@ def delete_agronomic_profile_action(
     del user
     validate_csrf(request, csrf_token)
     repo = _repository(db)
+    scope, denied = _launch_scope_or_redirect(request, repo, "/perfil-agronomico")
+    if denied:
+        return denied
+    if farm_id != scope["active_farm_id"]:
+        _flash(request, "error", "Este perfil agronomico nao pertence ao contexto ativo.")
+        return _redirect("/perfil-agronomico")
     profile = repo.get_agronomic_profile_by_farm(farm_id)
     if not profile:
         _flash(request, "error", "Perfil agronomico nao encontrado.")
@@ -3444,7 +3630,6 @@ def soil_analysis_page(
 def create_soil_analysis_action(
     request: Request,
     csrf_token: str = Form(...),
-    farm_id: int = Form(...),
     plot_id: int = Form(...),
     analysis_date: str = Form(...),
     laboratory: str = Form(...),
@@ -3466,12 +3651,15 @@ def create_soil_analysis_action(
     del user
     validate_csrf(request, csrf_token)
     repo = _repository(db)
+    plot, scope, denied = _resolve_plot_in_scope(request, repo, plot_id, "/analise-solo")
+    if denied:
+        return denied
     pdf_filename, pdf_content_type, pdf_data = _read_upload(analysis_pdf)
     analysis = create_soil_analysis(
         repo,
         _soil_payload(
-            farm_id=farm_id,
-            plot_id=plot_id,
+            farm_id=scope["active_farm_id"],
+            plot_id=plot.id,
             analysis_date=analysis_date,
             laboratory=laboratory,
             ph=ph,
@@ -3497,7 +3685,7 @@ def create_soil_analysis_action(
         _flash(request, "success", "Analise de solo salva. Configure a OPENAI_API_KEY para gerar recomendacoes personalizadas.")
     else:
         _flash(request, "error", "Analise de solo salva, mas a recomendacao da IA falhou nesta tentativa.")
-    return _redirect_with_query("/analise-solo", plot_id=plot_id, compare_plot_id=plot_id)
+    return _redirect_with_query("/analise-solo", plot_id=plot.id, compare_plot_id=plot.id)
 
 
 @router.post("/analise-solo/{analysis_id}/editar")
@@ -3505,7 +3693,6 @@ def update_soil_analysis_action(
     analysis_id: int,
     request: Request,
     csrf_token: str = Form(...),
-    farm_id: int = Form(...),
     plot_id: int = Form(...),
     analysis_date: str = Form(...),
     laboratory: str = Form(...),
@@ -3527,17 +3714,23 @@ def update_soil_analysis_action(
     del user
     validate_csrf(request, csrf_token)
     repo = _repository(db)
+    plot, scope, denied = _resolve_plot_in_scope(request, repo, plot_id, "/analise-solo")
+    if denied:
+        return denied
     analysis = repo.get_soil_analysis(analysis_id)
     if not analysis:
         _flash(request, "error", "Analise de solo nao encontrada.")
+        return _redirect("/analise-solo")
+    if not _farm_matches_scope(analysis.farm_id, scope) or not _plot_matches_scope(analysis.plot, scope):
+        _flash(request, "error", "Esta analise de solo nao pertence ao contexto ativo.")
         return _redirect("/analise-solo")
     pdf_filename, pdf_content_type, pdf_data = _read_upload(analysis_pdf)
     updated = update_soil_analysis(
         repo,
         analysis,
         _soil_payload(
-            farm_id=farm_id,
-            plot_id=plot_id,
+            farm_id=scope["active_farm_id"],
+            plot_id=plot.id,
             analysis_date=analysis_date,
             laboratory=laboratory,
             ph=ph,
@@ -3564,7 +3757,7 @@ def update_soil_analysis_action(
         _flash(request, "success", "Analise de solo atualizada. Configure a OPENAI_API_KEY para gerar recomendacoes personalizadas.")
     else:
         _flash(request, "error", "Analise de solo atualizada, mas a recomendacao da IA falhou nesta tentativa.")
-    return _redirect_with_query("/analise-solo", plot_id=plot_id, compare_plot_id=plot_id)
+    return _redirect_with_query("/analise-solo", plot_id=plot.id, compare_plot_id=plot.id)
 
 
 @router.post("/analise-solo/{analysis_id}/regenerar")

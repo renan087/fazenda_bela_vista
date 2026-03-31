@@ -52,26 +52,16 @@
         <h3 class="mt-2 text-xl font-semibold">Lançar consumo avulso</h3>
         <form method="post" action="/insumos/estoque/saida-manual" class="mt-6 grid gap-4">
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-            <div class="grid gap-4 md:grid-cols-2">
-                <label>
-                    <span class="mb-2 block text-sm font-medium">Fazenda</span>
-                    <select name="farm_id" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50">
-                        <option value="">Sem vínculo específico</option>
-                        {% for farm in farms %}
-                        <option value="{{ farm.id }}" {% if selected_farm_id == farm.id %}selected{% endif %}>{{ farm.name }}</option>
-                        {% endfor %}
-                    </select>
-                </label>
-                <label>
-                    <span class="mb-2 block text-sm font-medium">Setor</span>
-                    <select name="plot_id" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50">
-                        <option value="">Sem setor</option>
-                        {% for plot in plots %}
-                        <option value="{{ plot.id }}">{{ plot.name }}{% if plot.farm %} • {{ plot.farm.name }}{% endif %}</option>
-                        {% endfor %}
-                    </select>
-                </label>
-            </div>
+            {% include "partials/launch_context.html" %}
+            <label>
+                <span class="mb-2 block text-sm font-medium">Setor</span>
+                <select name="plot_id" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50">
+                    <option value="">Sem setor</option>
+                    {% for plot in plots %}
+                    <option value="{{ plot.id }}">{{ plot.name }}{% if plot.farm %} • {{ plot.farm.name }}{% endif %}</option>
+                    {% endfor %}
+                </select>
+            </label>
             <div class="grid gap-4 md:grid-cols-2">
                 <label>
                     <span class="mb-2 block text-sm font-medium">Insumo</span>
@@ -363,16 +353,8 @@
 
         <form method="post" action="/insumos/estoque/saidas/{{ edit_output.id }}/editar" class="mt-6 grid gap-4">
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            {% include "partials/launch_context.html" %}
             <div class="grid gap-4 md:grid-cols-2">
-                <label>
-                    <span class="mb-2 block text-sm font-medium">Fazenda</span>
-                    <select name="farm_id" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" {% if edit_output_mode == "fertilization" %}disabled{% endif %}>
-                        <option value="">Sem vínculo específico</option>
-                        {% for farm in farms %}
-                        <option value="{{ farm.id }}" {% if edit_output.farm_id == farm.id %}selected{% endif %}>{{ farm.name }}</option>
-                        {% endfor %}
-                    </select>
-                </label>
                 <label>
                     <span class="mb-2 block text-sm font-medium">Setor</span>
                     {% set selected_plot_id = edit_fertilization_record.plot_id if edit_output_mode == 'fertilization' and edit_fertilization_record else edit_output.plot_id %}

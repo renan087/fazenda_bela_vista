@@ -6,16 +6,8 @@
         <h3 class="mt-2 text-2xl font-semibold">{% if edit_recommendation %}Editar recomendacao{% else %}Recomendacao de aplicacao{% endif %}</h3>
         <form method="post" action="{% if edit_recommendation %}/insumos/recomendacao/{{ edit_recommendation.id }}/editar{% else %}/insumos/recomendacao{% endif %}" class="mt-6 grid gap-4">
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            {% include "partials/launch_context.html" %}
             <div class="grid gap-4 md:grid-cols-2">
-            <label>
-                <span class="mb-2 block text-sm font-medium">Fazenda</span>
-                <select name="farm_id" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50">
-                    <option value="">Sem vinculo especifico</option>
-                    {% for farm in farms %}
-                    <option value="{{ farm.id }}" {% if edit_recommendation and edit_recommendation.farm_id == farm.id %}selected{% endif %}>{{ farm.name }}</option>
-                    {% endfor %}
-                </select>
-            </label>
             <label>
                 <span class="mb-2 block text-sm font-medium">Setor</span>
                 <select name="plot_id" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50">
