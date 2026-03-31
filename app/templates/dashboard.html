@@ -189,7 +189,7 @@
 </section>
 
 <section class="mt-6 grid gap-6 xl:grid-cols-2">
-    <article class="overflow-hidden rounded-[2rem] bg-white p-6 shadow-panel xl:col-span-2" data-dashboard-card="stock_alerts">
+    <article class="overflow-hidden rounded-[2rem] bg-white p-6 shadow-panel" data-dashboard-card="stock_alerts">
         <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Alertas</p>
         <h3 class="mt-2 text-xl font-semibold">Insumos proximos de acabar</h3>
         <div class="mt-6 flex h-[24rem] min-h-0 flex-col overflow-hidden">
@@ -210,6 +210,24 @@
                 {% endfor %}
             </div>
             {{ pager('stock_alerts') }}
+        </div>
+    </article>
+    <article class="rounded-[2rem] bg-white p-6 shadow-panel">
+        <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Fertilizacao</p>
+        <h3 class="mt-2 text-xl font-semibold">Aplicacoes recentes</h3>
+        <div class="mt-6 flex h-[24rem] min-h-0 flex-col overflow-hidden">
+            <div class="min-h-0 flex-1 space-y-4 overflow-y-auto pr-2" data-dashboard-list>
+                {% for item in recent_fertilizations %}
+                <a href="/fertilizacao?edit_id={{ item.id }}" class="block rounded-2xl bg-slate-50 p-4 transition hover:bg-brand-50/40" data-dashboard-item>
+                    <p class="font-medium">{{ item.product }}</p>
+                    <p class="mt-1 text-sm text-slate-500">{{ item.plot.name if item.plot else "Setor removido" }} • {{ item.application_date }}</p>
+                    <p class="mt-2 text-sm text-slate-600">Dose: {{ item.dose }} • Custo: R$ {{ item.cost }}</p>
+                </a>
+                {% else %}
+                <p class="text-sm text-slate-500">Sem registros.</p>
+                {% endfor %}
+            </div>
+            {{ pager('fertilizations') }}
         </div>
     </article>
 </section>
@@ -293,25 +311,7 @@
     </article>
 </section>
 
-<section class="mt-6 grid gap-6 xl:grid-cols-4">
-    <article class="rounded-[2rem] bg-white p-6 shadow-panel">
-        <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Fertilizacao</p>
-        <h3 class="mt-2 text-xl font-semibold">Aplicacoes recentes</h3>
-        <div class="mt-6 flex h-[28rem] min-h-0 flex-col overflow-hidden">
-            <div class="min-h-0 flex-1 space-y-4 overflow-y-auto pr-2" data-dashboard-list>
-                {% for item in recent_fertilizations %}
-                <a href="/fertilizacao?edit_id={{ item.id }}" class="block rounded-2xl bg-slate-50 p-4 transition hover:bg-brand-50/40" data-dashboard-item>
-                    <p class="font-medium">{{ item.product }}</p>
-                    <p class="mt-1 text-sm text-slate-500">{{ item.plot.name if item.plot else "Setor removido" }} • {{ item.application_date }}</p>
-                    <p class="mt-2 text-sm text-slate-600">Dose: {{ item.dose }} • Custo: R$ {{ item.cost }}</p>
-                </a>
-                {% else %}
-                <p class="text-sm text-slate-500">Sem registros.</p>
-                {% endfor %}
-            </div>
-            {{ pager('fertilizations') }}
-        </div>
-    </article>
+<section class="mt-6 grid gap-6 xl:grid-cols-3">
     <article class="overflow-hidden rounded-[2rem] bg-white p-6 shadow-panel" data-dashboard-card="incidents">
         <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Sanidade</p>
         <h3 class="mt-2 text-xl font-semibold">Pragas e doencas</h3>
