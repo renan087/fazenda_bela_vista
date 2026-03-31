@@ -973,9 +973,15 @@ def _restore_fertilization_stock(repository: FarmRepository, fertilization: Fert
                 current_available = float(allocation.purchased_input.available_quantity or 0)
                 allocation.purchased_input.available_quantity = round(current_available + float(allocation.quantity_used or 0), 2)
         item.stock_allocations.clear()
-    if item_ids:
+    if item_ids or fertilization.id:
         for output in repository.list_stock_outputs():
-            if output.reference_type == "fertilization_item" and output.reference_id in item_ids:
+            if (
+                output.reference_type == "fertilization_item"
+                and output.reference_id in item_ids
+            ) or (
+                output.reference_type == "fertilization_record"
+                and output.reference_id == fertilization.id
+            ):
                 repository.db.delete(output)
 
 

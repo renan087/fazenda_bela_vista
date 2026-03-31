@@ -378,7 +378,7 @@
                     <select name="plot_id" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50">
                         <option value="">Sem setor</option>
                         {% for plot in plots %}
-                        <option value="{{ plot.id }}" {% if edit_output.plot_id == plot.id %}selected{% endif %}>{{ plot.name }}{% if plot.farm %} • {{ plot.farm.name }}{% endif %}</option>
+                        <option value="{{ plot.id }}" {% if (edit_output_mode == 'fertilization' and edit_fertilization_record and edit_fertilization_record.plot_id == plot.id) or (edit_output_mode != 'fertilization' and edit_output.plot_id == plot.id) %}selected{% endif %}>{{ plot.name }}{% if plot.farm %} • {{ plot.farm.name }}{% endif %}</option>
                         {% endfor %}
                     </select>
                 </label>
@@ -390,7 +390,7 @@
                         <option value="">Selecione</option>
                         {% for input_item in edit_inputs_catalog %}
                         {% set stock = input_stock.get(input_item.id, {}) %}
-                        <option value="{{ input_item.id }}" {% if edit_output.input_id == input_item.id %}selected{% endif %}>
+                        <option value="{{ input_item.id }}" {% if (edit_output_mode == 'fertilization' and edit_fertilization_item and edit_fertilization_item.input_id == input_item.id) or (edit_output_mode != 'fertilization' and edit_output.input_id == input_item.id) %}selected{% endif %}>
                             {{ input_item.name }} — disponível: {{ stock.get('available', 0) }} {{ stock.get('unit', input_item.default_unit) }}
                         </option>
                         {% endfor %}

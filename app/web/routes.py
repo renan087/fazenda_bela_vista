@@ -143,6 +143,44 @@ def _int_or_none(value: str | None):
     return int(value) if value not in (None, "") else None
 
 
+def _resolve_fertilization_output_context(
+    repo: FarmRepository,
+    db: Session,
+    output,
+) -> tuple[FertilizationItem | None, FertilizationRecord | None]:
+    if output.reference_type == "fertilization_item" and output.reference_id:
+        fertilization_item = db.query(FertilizationItem).filter(FertilizationItem.id == output.reference_id).first()
+        fertilization = (
+            repo.get_fertilization(fertilization_item.fertilization_record_id)
+            if fertilization_item and fertilization_item.fertilization_record_id
+            else None
+        )
+        return fertilization_item, fertilization
+
+    if output.reference_type == "fertilization_record" and output.reference_id:
+        fertilization = repo.get_fertilization(output.reference_id)
+        if not fertilization:
+            return None, None
+
+        candidates = [
+            item for item in fertilization.items
+            if output.input_id is not None and item.input_id == output.input_id
+        ]
+        if not candidates and len(fertilization.items) == 1:
+            candidates = list(fertilization.items)
+        if len(candidates) > 1 and output.quantity is not None:
+            target_quantity = float(output.quantity or 0)
+            exact_matches = [
+                item for item in candidates
+                if abs(float(item.total_quantity or 0) - target_quantity) < 0.01
+            ]
+            if exact_matches:
+                candidates = exact_matches
+        return (candidates[0] if candidates else None), fertilization
+
+    return None, None
+
+
 def _int_list(values: list[str]) -> list[int]:
     parsed: list[int] = []
     for value in values:
@@ -1456,14 +1494,9 @@ def stock_page(
     if edit_output:
         if edit_output.reference_type == "manual_stock_output":
             edit_output_mode = "manual"
-        elif edit_output.reference_type == "fertilization_item" and edit_output.reference_id:
-            edit_fertilization_item = db.query(FertilizationItem).filter(FertilizationItem.id == edit_output.reference_id).first()
-            edit_fertilization_record = (
-                repo.get_fertilization(edit_fertilization_item.fertilization_record_id)
-                if edit_fertilization_item and edit_fertilization_item.fertilization_record_id
-                else None
-            )
-            if edit_fertilization_item and edit_fertilization_record:
+        elif edit_output.reference_type in {"fertilization_item", "fertilization_record"}:
+            edit_fertilization_item, edit_fertilization_record = _resolve_fertilization_output_context(repo, db, edit_output)
+            if edit_fertilization_record:
                 edit_output_mode = "fertilization"
                 edit_inputs_catalog = repo.list_input_catalog(item_type="insumo_agricola")
             else:
@@ -1560,7 +1593,7 @@ def edit_stock_output_entry(
     if not output:
         _flash(request, "error", "Lancamento de saida nao encontrado.")
         return _redirect("/insumos/estoque")
-    if output.reference_type in {"manual_stock_output", "fertilization_item"}:
+    if output.reference_type in {"manual_stock_output", "fertilization_item", "fertilization_record"}:
         return _redirect_with_query("/insumos/estoque", edit_output_id=output_id)
     _flash(request, "error", f"Este lancamento ainda nao possui edicao integrada para o modulo {output.origin}.")
     return _redirect("/insumos/estoque")
@@ -1597,11 +1630,10 @@ async def update_stock_output_entry_action(
                     "notes": str(form.get("notes") or "") or None,
                 },
             )
-        elif output.reference_type == "fertilization_item" and output.reference_id:
-            fertilization_item = db.query(FertilizationItem).filter(FertilizationItem.id == output.reference_id).first()
-            fertilization = repo.get_fertilization(fertilization_item.fertilization_record_id) if fertilization_item else None
+        elif output.reference_type in {"fertilization_item", "fertilization_record"}:
+            fertilization_item, fertilization = _resolve_fertilization_output_context(repo, db, output)
             if not fertilization_item or not fertilization:
-                raise ValueError("Nao foi possivel localizar o registro de fertilizacao vinculado.")
+                raise ValueError("Nao foi possivel localizar o item de fertilizacao vinculado.")
             plot_id = int(form.get("plot_id") or 0)
             plot = repo.get_plot(plot_id)
             if not plot:
