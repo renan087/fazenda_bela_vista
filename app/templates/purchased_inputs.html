@@ -1,10 +1,11 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="grid gap-6 xl:grid-cols-[0.9fr_1.1fr]" data-modal-single-pane>
-    <section class="rounded-[2rem] bg-white p-6 shadow-panel" data-history-edit-panel {% if edit_input %}data-history-edit-open="1"{% endif %}>
+<div class="grid gap-6 xl:grid-cols-[0.9fr_1.1fr] xl:items-start" data-modal-single-pane>
+    <section class="rounded-[2rem] bg-white p-6 shadow-panel xl:flex xl:max-h-[80vh] xl:min-h-0 xl:flex-col" data-history-edit-panel {% if edit_input %}data-history-edit-open="1"{% endif %}>
         <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Entradas de estoque</p>
         <h3 class="mt-2 text-2xl font-semibold">{% if edit_input %}Editar entrada de estoque{% else %}Nova entrada de estoque{% endif %}</h3>
-        <form method="post" action="{% if edit_input %}/insumos/comprados/{{ edit_input.id }}/editar{% else %}/insumos/comprados{% endif %}" enctype="multipart/form-data" class="mt-6 grid gap-4" data-purchased-input-form>
+        <div class="mt-6 xl:min-h-0 xl:flex-1 xl:overflow-y-auto xl:pr-2">
+        <form method="post" action="{% if edit_input %}/insumos/comprados/{{ edit_input.id }}/editar{% else %}/insumos/comprados{% endif %}" enctype="multipart/form-data" class="grid gap-4" data-purchased-input-form>
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
             {% include "partials/launch_context.html" %}
             <div class="grid gap-4 md:grid-cols-2">
@@ -62,8 +63,9 @@
         {% set attachment_view_base = '/insumos/comprados/anexos' %}
         {% set attachment_delete_base = '/insumos/comprados/' ~ edit_input.id ~ '/anexos' if edit_input else '' %}
         {% include "partials/attachment_list.html" %}
+        </div>
     </section>
-    <section class="rounded-[2rem] bg-white p-6 shadow-panel">
+    <section class="rounded-[2rem] bg-white p-6 shadow-panel xl:flex xl:max-h-[80vh] xl:min-h-0 xl:flex-col">
         <div class="flex flex-wrap items-start justify-between gap-4">
             <div>
                 <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Estoque tecnico</p>
@@ -83,7 +85,8 @@
                 <button class="rounded-2xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white hover:bg-slate-700">Filtrar</button>
             </form>
         </div>
-        <div class="mt-6 grid gap-4 md:grid-cols-2">
+        <div class="mt-6 space-y-8 xl:min-h-0 xl:flex-1 xl:overflow-y-auto xl:pr-2">
+        <div class="grid gap-4 md:grid-cols-2">
             {% for item in stock_catalog_rows %}
             <article class="rounded-[1.5rem] border {% if item.low_stock_threshold and item.available_quantity <= item.low_stock_threshold %}border-amber-200 bg-amber-50{% else %}border-slate-100 bg-slate-50{% endif %} p-5">
                 <div class="flex items-start justify-between gap-3">
@@ -115,7 +118,7 @@
             {% endfor %}
         </div>
 
-        <div class="mt-8">
+        <div>
             <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Entradas</p>
             <h4 class="mt-2 text-xl font-semibold">Historico de compras e lotes</h4>
         </div>
@@ -183,7 +186,7 @@
         </div>
         {% with pagination=inputs_pagination %}{% include "partials/history_pagination.html" %}{% endwith %}
 
-        <div class="mt-8">
+        <div>
             <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Saidas</p>
             <h4 class="mt-2 text-xl font-semibold">Historico de consumo</h4>
         </div>
@@ -223,6 +226,7 @@
             {% endfor %}
         </div>
         {% with pagination=stock_outputs_pagination %}{% include "partials/history_pagination.html" %}{% endwith %}
+        </div>
     </section>
 </div>
 {% include "partials/history_view_modal.html" %}
