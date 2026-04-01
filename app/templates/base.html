@@ -81,7 +81,8 @@
         <aside class="erp-sidebar fixed inset-y-0 left-0 z-40 w-72 -translate-x-full bg-slate-950 text-slate-100 transition-transform duration-200 lg:fixed lg:inset-y-0 lg:translate-x-0">
             <div class="flex h-full flex-col">
                 <div class="border-b border-slate-800 px-6 py-6">
-                    <a href="/dashboard" class="mx-auto flex h-36 w-36 items-center justify-center rounded-full lg:h-40 lg:w-40" style="background: radial-gradient(circle, rgba(255,255,255,0.34) 0%, rgba(255,255,255,0.18) 34%, rgba(255,255,255,0.08) 58%, rgba(255,255,255,0.02) 76%, rgba(255,255,255,0) 100%);" aria-label="Ir para o dashboard">
+                    <a href="/dashboard" class="relative mx-auto flex h-36 w-36 items-center justify-center rounded-full lg:h-40 lg:w-40" aria-label="Ir para o dashboard">
+                        <span aria-hidden="true" class="pointer-events-none absolute inset-0 rounded-full" style="background: radial-gradient(circle, rgba(255, 255, 255, 0.38) 0%, rgba(255, 255, 255, 0.25) 25%, rgba(255, 255, 255, 0.12) 50%, rgba(255, 255, 255, 0.04) 70%, rgba(255, 255, 255, 0) 100%); filter: blur(6px);"></span>
                         <img src="{{ url_for('static', path='images/logo-icon.svg') }}" alt="SiSFarm" class="h-[4.8rem] w-auto object-contain lg:hidden">
                         <img src="{{ url_for('static', path='images/logo.svg') }}" alt="SiSFarm" class="hidden h-[5.75rem] w-auto object-contain lg:block">
                     </a>
