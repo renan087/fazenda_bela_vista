@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{{ title or "Agro ERP Cafe" }}</title>
+    <title>{{ title or "SiSFarm" }}</title>
     <script src="https://cdn.tailwindcss.com?plugins=forms"></script>
     <script>
         tailwind.config = {
@@ -78,9 +78,12 @@
         <aside class="erp-sidebar fixed inset-y-0 left-0 z-40 w-72 -translate-x-full bg-slate-950 text-slate-100 transition-transform duration-200 lg:fixed lg:inset-y-0 lg:translate-x-0">
             <div class="flex h-full flex-col">
                 <div class="border-b border-slate-800 px-6 py-6">
-                    <p class="text-xs uppercase tracking-[0.3em] text-brand-100/70">Agro ERP</p>
-                    <h1 class="mt-2 text-2xl font-semibold">Fazenda de Cafe</h1>
-                    <p class="mt-3 text-sm text-slate-400">Gestao operacional, analitica e de campo em uma unica plataforma.</p>
+                    <p class="text-xs uppercase tracking-[0.3em] text-brand-100/70">SiSFarm</p>
+                    <h1 class="mt-2 text-2xl font-semibold">{{ active_farm.name if active_farm else "Fazenda" }}</h1>
+                    <div class="mt-3 space-y-1 text-slate-300">
+                        <p class="text-sm italic leading-6">"O Senhor &eacute; o meu pastor; nada me faltar&aacute;."</p>
+                        <p class="text-xs uppercase tracking-[0.22em] text-slate-500">Salmos 23:1</p>
+                    </div>
                 </div>
                 <nav class="flex-1 space-y-1 overflow-y-auto px-4 py-6 text-sm">
                     {% set nav = [
@@ -154,7 +157,7 @@
                 </div>
             </div>
         </aside>
-        <main class="flex-1 lg:ml-72">
+        <main class="flex min-h-screen flex-1 flex-col lg:ml-72">
             <div class="sticky top-0 z-20 border-b border-slate-200 bg-white/95 shadow-sm backdrop-blur">
                 <div class="mx-auto flex max-w-7xl items-center justify-between px-6 py-5">
                     <div class="flex items-center gap-4">
@@ -222,7 +225,7 @@
                     </div>
                 </form>
             </div>
-            <div class="mx-auto max-w-7xl px-6 py-6 md:py-8">
+            <div class="mx-auto max-w-7xl flex-1 px-6 py-6 md:py-8">
                 {% if flash %}
                 <div class="mb-6 rounded-2xl px-4 py-3 text-sm font-medium {% if flash.kind == 'success' %}border border-emerald-200 bg-emerald-50 text-emerald-700{% else %}border border-rose-200 bg-rose-50 text-rose-700{% endif %}">
                     {{ flash.message }}
@@ -230,6 +233,11 @@
                 {% endif %}
                 {% block content %}{% endblock %}
             </div>
+            <footer class="border-t border-slate-200 bg-white/90">
+                <div class="mx-auto max-w-7xl px-6 py-4 text-center text-xs text-slate-500 sm:text-sm">
+                    &copy; 2026 SiSFarm &mdash; Desenvolvido por Renan Terra Castro Correia
+                </div>
+            </footer>
         </main>
     </div>
     {% if context_selection_blocking %}
@@ -282,7 +290,16 @@
     </div>
     {% endif %}
     {% else %}
-        {% block auth_content %}{% endblock %}
+        <div class="flex min-h-screen flex-col">
+            <div class="flex-1">
+                {% block auth_content %}{% endblock %}
+            </div>
+            <footer class="border-t border-slate-200 bg-white/90">
+                <div class="mx-auto max-w-7xl px-6 py-4 text-center text-xs text-slate-500 sm:text-sm">
+                    &copy; 2026 SiSFarm &mdash; Desenvolvido por Renan Terra Castro Correia
+                </div>
+            </footer>
+        </div>
     {% endif %}
     <script>
         (() => {
