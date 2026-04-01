@@ -11,7 +11,16 @@
             <div class="grid gap-4 md:grid-cols-2">
                 <label>
                     <span class="mb-2 block text-sm font-medium">Categoria</span>
-                    <input name="category" value="{{ edit_asset.category if edit_asset else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" placeholder="Ex.: Trator, bomba, pulverizador" required>
+                    {% set selected_category = edit_asset.category if edit_asset else '' %}
+                    <select name="category" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required>
+                        <option value="">Selecione uma categoria</option>
+                        {% for option in asset_category_options %}
+                        <option value="{{ option }}" {% if selected_category == option %}selected{% endif %}>{{ option }}</option>
+                        {% endfor %}
+                        {% if selected_category and selected_category not in asset_category_options %}
+                        <option value="{{ selected_category }}" selected>{{ selected_category }}</option>
+                        {% endif %}
+                    </select>
                 </label>
             </div>
             <div class="grid gap-4 md:grid-cols-2">
@@ -20,15 +29,25 @@
                     <input name="name" value="{{ edit_asset.name if edit_asset else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required>
                 </label>
                 <label>
-                    <span class="mb-2 block text-sm font-medium">Marca / modelo</span>
+                    <span class="mb-2 block text-sm font-medium">Modelo</span>
                     <input name="brand_model" value="{{ edit_asset.brand_model if edit_asset else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50">
                 </label>
             </div>
             <div class="grid gap-4 md:grid-cols-3">
                 <label>
+                    <span class="mb-2 block text-sm font-medium">Fabricante</span>
+                    <input name="manufacturer" value="{{ edit_asset.manufacturer if edit_asset else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50">
+                </label>
+                <label>
+                    <span class="mb-2 block text-sm font-medium">Ano de fabricacao</span>
+                    <input type="text" name="manufacture_year" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" value="{{ edit_asset.manufacture_year if edit_asset and edit_asset.manufacture_year else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" placeholder="YYYY">
+                </label>
+                <label>
                     <span class="mb-2 block text-sm font-medium">Patrimônio / identificação</span>
                     <input name="asset_code" value="{{ edit_asset.asset_code if edit_asset else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50">
                 </label>
+            </div>
+            <div class="grid gap-4 md:grid-cols-2">
                 <label>
                     <span class="mb-2 block text-sm font-medium">Data de aquisição</span>
                     <input type="date" name="acquisition_date" value="{{ edit_asset.acquisition_date.isoformat() if edit_asset and edit_asset.acquisition_date else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50">
@@ -92,7 +111,9 @@
                         <p class="text-lg font-semibold text-slate-900">{{ asset.name }}</p>
                         <p class="mt-1 text-sm text-slate-500">{{ asset.category }}{% if asset.farm %} • {{ asset.farm.name }}{% endif %}</p>
                         <p class="mt-2 text-sm text-slate-600">
-                            {% if asset.brand_model %}<strong>Marca/modelo:</strong> {{ asset.brand_model }}{% endif %}
+                            {% if asset.manufacturer %}<strong>Fabricante:</strong> {{ asset.manufacturer }}{% endif %}
+                            {% if asset.brand_model %}{% if asset.manufacturer %} • {% endif %}<strong>Modelo:</strong> {{ asset.brand_model }}{% endif %}
+                            {% if asset.manufacture_year %} • <strong>Ano:</strong> {{ asset.manufacture_year }}{% endif %}
                             {% if asset.asset_code %} • <strong>ID:</strong> {{ asset.asset_code }}{% endif %}
                         </p>
                         <p class="mt-1 text-sm text-slate-600">

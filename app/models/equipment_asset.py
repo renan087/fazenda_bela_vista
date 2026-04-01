@@ -1,6 +1,6 @@
 from datetime import date
 
-from sqlalchemy import Date, ForeignKey, Numeric, String, Text
+from sqlalchemy import Date, ForeignKey, Integer, Numeric, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -13,6 +13,8 @@ class EquipmentAsset(Base):
     farm_id: Mapped[int] = mapped_column(ForeignKey("farms.id"), nullable=True)
     name: Mapped[str] = mapped_column(String(180), nullable=False)
     category: Mapped[str] = mapped_column(String(120), nullable=False)
+    manufacturer: Mapped[str] = mapped_column(String(180), nullable=True)
+    manufacture_year: Mapped[int] = mapped_column(Integer, nullable=True)
     brand_model: Mapped[str] = mapped_column(String(180), nullable=True)
     asset_code: Mapped[str] = mapped_column(String(120), nullable=True)
     acquisition_date: Mapped[date] = mapped_column(Date, nullable=True)

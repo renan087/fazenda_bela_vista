@@ -101,6 +101,15 @@ router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")
 templates.env.filters["datetime_sp"] = format_app_datetime
 
+EQUIPMENT_ASSET_CATEGORY_OPTIONS = [
+    "Benfeitoria",
+    "Equipamento",
+    "Máquina",
+    "Pivô",
+    "Silo",
+    "Veículo",
+]
+
 
 def _redirect(url: str) -> RedirectResponse:
     return RedirectResponse(url=url, status_code=status.HTTP_303_SEE_OTHER)
@@ -247,6 +256,19 @@ def _profile_gender_label(value: str | None) -> str:
         if option_value == value:
             return label
     return "Nao informado"
+
+
+def _parse_equipment_asset_manufacture_year(value: str | None) -> int | None:
+    normalized = (value or "").strip()
+    if not normalized:
+        return None
+    if len(normalized) != 4 or not normalized.isdigit():
+        raise ValueError("Informe o ano de fabricacao no formato YYYY.")
+    parsed = int(normalized)
+    current_year = today_in_app_timezone().year
+    if parsed < 1900 or parsed > current_year:
+        raise ValueError(f"Informe um ano de fabricacao entre 1900 e {current_year}.")
+    return parsed
 
 
 async def _read_avatar_upload(avatar: UploadFile | None) -> tuple[dict | None, str | None]:
@@ -2395,6 +2417,8 @@ def equipment_assets_page(
             title="Patrimonio e Equipamentos",
             farms=repo.list_farms(),
             selected_farm_id=effective_farm_id,
+            asset_category_options=EQUIPMENT_ASSET_CATEGORY_OPTIONS,
+            current_year=today_in_app_timezone().year,
             assets=repo.list_equipment_assets(farm_id=effective_farm_id),
             edit_asset=repo.get_equipment_asset(edit_id) if edit_id else None,
         ),
@@ -2408,6 +2432,8 @@ async def create_equipment_asset_action(
     farm_id: str | None = Form(None),
     name: str = Form(...),
     category: str = Form(...),
+    manufacturer: str | None = Form(None),
+    manufacture_year: str | None = Form(None),
     brand_model: str | None = Form(None),
     asset_code: str | None = Form(None),
     acquisition_date: str | None = Form(None),
@@ -2423,6 +2449,15 @@ async def create_equipment_asset_action(
     scope, denied = _launch_scope_or_redirect(request, repo, "/insumos/patrimonio")
     if denied:
         return denied
+    normalized_category = _clean_text(category)
+    if normalized_category not in EQUIPMENT_ASSET_CATEGORY_OPTIONS:
+        _flash(request, "error", "Selecione uma categoria valida para o patrimonio.")
+        return _redirect("/insumos/patrimonio")
+    try:
+        normalized_manufacture_year = _parse_equipment_asset_manufacture_year(manufacture_year)
+    except ValueError as exc:
+        _flash(request, "error", str(exc))
+        return _redirect("/insumos/patrimonio")
     try:
         attachment_payloads = _read_attachments(await _request_attachments(request))
     except ValueError as exc:
@@ -2433,9 +2468,11 @@ async def create_equipment_asset_action(
         {
             "farm_id": scope["active_farm_id"],
             "name": name,
-            "category": category,
-            "brand_model": brand_model,
-            "asset_code": asset_code,
+            "category": normalized_category,
+            "manufacturer": _clean_text(manufacturer),
+            "manufacture_year": normalized_manufacture_year,
+            "brand_model": _clean_text(brand_model),
+            "asset_code": _clean_text(asset_code),
             "acquisition_date": acquisition_date,
             "acquisition_value": _float_or_none(acquisition_value),
             "status": status_value,
@@ -2462,6 +2499,8 @@ async def update_equipment_asset_action(
     farm_id: str | None = Form(None),
     name: str = Form(...),
     category: str = Form(...),
+    manufacturer: str | None = Form(None),
+    manufacture_year: str | None = Form(None),
     brand_model: str | None = Form(None),
     asset_code: str | None = Form(None),
     acquisition_date: str | None = Form(None),
@@ -2484,6 +2523,15 @@ async def update_equipment_asset_action(
     if not _farm_matches_scope(asset.farm_id, scope):
         _flash(request, "error", "Este patrimonio nao pertence ao contexto ativo.")
         return _redirect("/insumos/patrimonio")
+    normalized_category = _clean_text(category)
+    if normalized_category not in EQUIPMENT_ASSET_CATEGORY_OPTIONS and normalized_category != asset.category:
+        _flash(request, "error", "Selecione uma categoria valida para o patrimonio.")
+        return _redirect_with_query("/insumos/patrimonio", edit_id=asset_id)
+    try:
+        normalized_manufacture_year = _parse_equipment_asset_manufacture_year(manufacture_year)
+    except ValueError as exc:
+        _flash(request, "error", str(exc))
+        return _redirect_with_query("/insumos/patrimonio", edit_id=asset_id)
     try:
         attachment_payloads = _read_attachments(await _request_attachments(request))
     except ValueError as exc:
@@ -2495,9 +2543,11 @@ async def update_equipment_asset_action(
         {
             "farm_id": scope["active_farm_id"],
             "name": name,
-            "category": category,
-            "brand_model": brand_model,
-            "asset_code": asset_code,
+            "category": normalized_category,
+            "manufacturer": _clean_text(manufacturer),
+            "manufacture_year": normalized_manufacture_year,
+            "brand_model": _clean_text(brand_model),
+            "asset_code": _clean_text(asset_code),
             "acquisition_date": acquisition_date,
             "acquisition_value": _float_or_none(acquisition_value),
             "status": status_value,
