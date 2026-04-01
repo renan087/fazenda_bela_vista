@@ -108,6 +108,8 @@ from app.services.email_service import send_password_change_code_email
 from app.services.trusted_browser import revoke_user_trusted_browsers
 from app.services.two_factor import revoke_active_login_codes
 
+settings = get_settings()
+
 router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")
 templates.env.filters["datetime_sp"] = format_app_datetime
