@@ -29,6 +29,35 @@ body {
     background: rgba(0, 0, 0, 0.45);
 }
 
+.sidebar-submenu-panel {
+    padding-left: 0.35rem;
+}
+
+.sidebar-submenu-link {
+    margin-left: 0.35rem;
+}
+
+.erp-sidebar [data-submenu-parent][data-parent-active="true"] {
+    background: #446a36;
+    color: #fff;
+    box-shadow: 0 10px 24px rgba(15, 23, 42, 0.18);
+}
+
+.erp-sidebar .sidebar-submenu-link[data-submenu-active="true"] {
+    background: #446a36;
+    color: #fff;
+}
+
+.erp-sidebar .sidebar-submenu-link[data-submenu-active="false"] {
+    background: transparent;
+    color: rgb(203 213 225);
+}
+
+.erp-sidebar .sidebar-submenu-link[data-submenu-active="false"]:hover {
+    background: rgb(30 41 59);
+    color: #fff;
+}
+
 #dashboardMap,
 #farmMap {
     z-index: 0;
