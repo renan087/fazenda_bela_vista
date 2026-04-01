@@ -34,95 +34,95 @@
     <section class="rounded-[2rem] bg-white p-6 shadow-panel">
         <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Historico</p>
         <h3 class="mt-2 text-2xl font-semibold">Ultimas execucoes</h3>
-        <div class="mt-5 space-y-3">
+        <div class="mt-5 overflow-hidden rounded-[1.5rem] border border-slate-200 bg-slate-50/80">
+            <div class="hidden border-b border-slate-200/80 bg-white/70 px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-400 md:grid md:grid-cols-[0.95fr_1.3fr_0.7fr_0.7fr_0.8fr_1.15fr] md:gap-3">
+                <span>Execucao</span>
+                <span>Data</span>
+                <span>Status</span>
+                <span>Origem</span>
+                <span>Tamanho</span>
+                <span>Destino</span>
+            </div>
+            <div class="divide-y divide-slate-200/80">
             {% for item in backup_history %}
             {% set run = item.run %}
             {% set details = item.details %}
             {% set files_details = details.get('files', {}) %}
             {% set db_details = details.get('database', {}) %}
-            <article class="rounded-[1.25rem] border border-slate-100 bg-slate-50 px-4 py-4">
-                <div class="flex flex-wrap items-start justify-between gap-3">
+            <article class="group px-4 py-3 transition-colors duration-150 hover:bg-white/75">
+                <div class="grid gap-3 md:grid-cols-[0.95fr_1.3fr_0.7fr_0.7fr_0.8fr_1.15fr] md:items-center">
                     <div class="min-w-0">
-                        <div class="flex flex-wrap items-center gap-2">
-                            <p class="text-base font-semibold text-slate-900">Execucao #{{ run.id }}</p>
-                            <span class="rounded-full px-2.5 py-1 text-[11px] font-semibold {% if run.status == 'success' %}bg-emerald-100 text-emerald-700{% elif run.status == 'partial' %}bg-amber-100 text-amber-700{% else %}bg-rose-100 text-rose-700{% endif %}">
-                                {{ 'Concluido' if run.status == 'success' else 'Parcial' if run.status == 'partial' else 'Falhou' }}
-                            </span>
-                            <span class="rounded-full bg-slate-200 px-2.5 py-1 text-[11px] font-semibold text-slate-600">
-                                {{ run.trigger_source }}
-                            </span>
-                        </div>
-                        <p class="mt-1 text-xs leading-5 text-slate-500">
-                            Iniciada em {{ run.started_at|datetime_sp if run.started_at else '-' }}
-                            {% if run.finished_at %} e finalizada em {{ run.finished_at|datetime_sp }}{% endif %}
+                        <p class="text-sm font-semibold text-slate-900">Execucao #{{ run.id }}</p>
+                        {% if run.initiated_by_user %}
+                        <p class="mt-0.5 truncate text-[11px] text-slate-500" title="Iniciado por {{ run.initiated_by_user.name }} ({{ run.initiated_by_user.email }})">
+                            {{ run.initiated_by_user.name }}
+                        </p>
+                        {% endif %}
+                    </div>
+                    <div class="min-w-0">
+                        <p class="text-sm font-medium text-slate-700">{{ run.started_at|datetime_sp if run.started_at else '-' }}</p>
+                        <p class="mt-0.5 text-[11px] text-slate-500">
+                            {% if run.finished_at %}Finalizado {{ run.finished_at|datetime_sp }}{% else %}Em andamento{% endif %}
                         </p>
                     </div>
-                    {% if run.initiated_by_user %}
-                    <p class="text-[11px] text-slate-500 sm:text-xs">Por {{ run.initiated_by_user.name }}</p>
-                    {% endif %}
-                </div>
-
-                <div class="mt-3 grid gap-3 md:grid-cols-2">
-                    <div class="rounded-[1rem] bg-white px-3 py-3">
-                        <div class="flex items-center justify-between gap-3">
-                            <p class="text-[11px] uppercase tracking-[0.24em] text-slate-400">Dump do banco</p>
-                            <p class="text-[11px] text-slate-500">
-                                {% if run.database_size_bytes %}{{ (run.database_size_bytes / 1024 / 1024)|round(2) }} MB{% else %}-{% endif %}
-                                {% if db_details.get('format') %} • {{ db_details.get('format') }}{% endif %}
-                            </p>
-                        </div>
-                        <p class="mt-1 break-all text-sm font-medium leading-5 text-slate-700">{{ run.database_object_path or 'Nao enviado' }}</p>
+                    <div class="flex items-center">
+                        <span class="inline-flex rounded-full px-2.5 py-1 text-[11px] font-semibold {% if run.status == 'success' %}bg-emerald-100 text-emerald-700{% elif run.status == 'partial' %}bg-amber-100 text-amber-700{% else %}bg-rose-100 text-rose-700{% endif %}">
+                            {{ 'Concluido' if run.status == 'success' else 'Parcial' if run.status == 'partial' else 'Falhou' }}
+                        </span>
                     </div>
-                    <div class="rounded-[1rem] bg-white px-3 py-3">
-                        <div class="flex items-center justify-between gap-3">
-                            <p class="text-[11px] uppercase tracking-[0.24em] text-slate-400">Pacote de arquivos</p>
-                            <p class="text-[11px] text-slate-500">
-                                {% if run.files_size_bytes %}{{ (run.files_size_bytes / 1024 / 1024)|round(2) }} MB{% else %}-{% endif %}
-                                {% if files_details %} • {{ files_details.get('local_file_count', 0) }} arquivo(s){% endif %}
-                            </p>
+                    <div class="flex flex-wrap items-center gap-2">
+                        <span class="inline-flex rounded-full bg-slate-200 px-2.5 py-1 text-[11px] font-semibold text-slate-600">
+                            {{ run.trigger_source }}
+                        </span>
+                        {% if run.error_message %}
+                        <span class="inline-flex rounded-full bg-rose-50 px-2.5 py-1 text-[11px] font-semibold text-rose-700" title="{{ run.error_message }}">
+                            Erro
+                        </span>
+                        {% endif %}
+                    </div>
+                    <div class="min-w-0">
+                        <p class="text-sm font-medium text-slate-700">
+                            {% if run.database_size_bytes %}{{ (run.database_size_bytes / 1024 / 1024)|round(2) }} MB{% else %}-{% endif %}
+                        </p>
+                        <div class="mt-1 flex flex-wrap gap-1.5">
+                            {% if db_details.get('format') %}
+                            <span class="inline-flex rounded-full bg-white px-2 py-1 text-[11px] text-slate-500">{{ db_details.get('format') }}</span>
+                            {% endif %}
+                            {% if run.files_size_bytes %}
+                            <span class="inline-flex rounded-full bg-white px-2 py-1 text-[11px] text-slate-500" title="Pacote complementar de arquivos">
+                                Arquivos {{ (run.files_size_bytes / 1024 / 1024)|round(2) }} MB
+                            </span>
+                            {% endif %}
                         </div>
-                        <p class="mt-1 break-all text-sm font-medium leading-5 text-slate-700">{{ run.files_object_path or 'Nao enviado' }}</p>
+                    </div>
+                    <div class="min-w-0">
+                        <p class="truncate text-sm font-medium text-slate-700" title="{{ run.database_object_path or 'Nao enviado' }}">
+                            {{ run.database_object_path or 'Nao enviado' }}
+                        </p>
+                        <div class="mt-1 flex flex-wrap gap-1.5">
+                            {% if run.files_object_path %}
+                            <span class="inline-flex max-w-full truncate rounded-full bg-white px-2 py-1 text-[11px] text-slate-500" title="{{ run.files_object_path }}">
+                                {{ run.files_object_path }}
+                            </span>
+                            {% endif %}
+                            {% if files_details %}
+                            <span class="inline-flex rounded-full bg-white px-2 py-1 text-[11px] text-slate-500" title="{{ files_details.get('local_directories', [])|length }} diretorio(s) local(is) e {{ files_details.get('local_file_count', 0) }} arquivo(s) local(is)">
+                                {{ files_details.get('local_file_count', 0) }} arquivo(s)
+                            </span>
+                            {% endif %}
+                            {% if files_details.get('notes') %}
+                            <span class="inline-flex rounded-full bg-white px-2 py-1 text-[11px] text-slate-500" title="{{ files_details.get('notes')|join(' ') }}">
+                                Observacoes
+                            </span>
+                            {% endif %}
+                        </div>
                     </div>
                 </div>
-
-                {% if files_details or run.error_message %}
-                <div class="mt-3 flex flex-wrap items-start gap-2 text-xs">
-                    {% if files_details %}
-                    <span class="rounded-full bg-white px-3 py-1.5 text-slate-600">
-                        {{ files_details.get('local_directories', [])|length }} diretorio(s)
-                    </span>
-                    <span class="rounded-full bg-white px-3 py-1.5 text-slate-600">
-                        {{ files_details.get('local_file_count', 0) }} arquivo(s) local(is)
-                    </span>
-                    {% endif %}
-                    {% if run.error_message %}
-                    <span class="rounded-full bg-rose-50 px-3 py-1.5 text-rose-700">
-                        Erro registrado
-                    </span>
-                    {% endif %}
-                </div>
-                {% endif %}
-
-                {% if files_details.get('notes') %}
-                <div class="mt-3 rounded-[1rem] border border-slate-200 bg-white px-3 py-2.5 text-xs leading-5 text-slate-600">
-                    {{ files_details.get('notes')|join(' ') }}
-                </div>
-                {% endif %}
-
-                {% if run.error_message %}
-                <div class="mt-3 rounded-[1rem] border border-rose-200 bg-rose-50 px-3 py-2.5 text-sm leading-5 text-rose-700">
-                    {{ run.error_message }}
-                </div>
-                {% endif %}
-
-                {% if run.initiated_by_user %}
-                <p class="mt-3 text-[11px] text-slate-500 sm:hidden">Iniciado por {{ run.initiated_by_user.name }} ({{ run.initiated_by_user.email }})</p>
-                <p class="mt-3 hidden text-xs text-slate-500 sm:block">Iniciado por {{ run.initiated_by_user.name }} ({{ run.initiated_by_user.email }})</p>
-                {% endif %}
             </article>
             {% else %}
-            <p class="text-sm text-slate-500">Nenhum backup registrado ate o momento.</p>
+            <p class="px-4 py-5 text-sm text-slate-500">Nenhum backup registrado ate o momento.</p>
             {% endfor %}
+            </div>
         </div>
     </section>
 </div>
