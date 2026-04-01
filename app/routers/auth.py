@@ -30,6 +30,24 @@ logger = logging.getLogger(__name__)
 
 PENDING_2FA_USER_ID = "pending_2fa_user_id"
 PENDING_2FA_EMAIL = "pending_2fa_email"
+PENDING_2FA_LAST_SENT_AT = "pending_2fa_last_sent_at"
+LOGIN_2FA_RESEND_COOLDOWN_SECONDS = 60
+
+
+def _mark_login_code_sent(request: Request) -> None:
+    request.session[PENDING_2FA_LAST_SENT_AT] = int(utc_now().timestamp())
+
+
+def _login_code_resend_cooldown_remaining(request: Request) -> int:
+    last_sent_at = request.session.get(PENDING_2FA_LAST_SENT_AT)
+    if not last_sent_at:
+        return 0
+    try:
+        elapsed_seconds = int(utc_now().timestamp()) - int(last_sent_at)
+    except (TypeError, ValueError):
+        request.session.pop(PENDING_2FA_LAST_SENT_AT, None)
+        return 0
+    return max(0, LOGIN_2FA_RESEND_COOLDOWN_SECONDS - elapsed_seconds)
 
 
 def _trusted_browser_cookie_name() -> str:
@@ -92,6 +110,7 @@ def _complete_web_login(
     request.session["user_email"] = user.email
     request.session.pop(PENDING_2FA_USER_ID, None)
     request.session.pop(PENDING_2FA_EMAIL, None)
+    request.session.pop(PENDING_2FA_LAST_SENT_AT, None)
     touch_session_activity(request)
     response = RedirectResponse(url="/dashboard", status_code=status.HTTP_303_SEE_OTHER)
     if clear_trusted_browser_cookie:
@@ -137,6 +156,7 @@ def _render_login_verification(
             "email": email,
             "trust_browser_checked": trust_browser_checked,
             "trusted_browser_days": get_settings().trusted_browser_days,
+            "resend_cooldown_seconds": _login_code_resend_cooldown_remaining(request),
             "csrf_token": ensure_csrf_token(request),
             "page": "login",
         },
@@ -343,6 +363,7 @@ def login_web(
     request.session.pop("user_email", None)
     request.session[PENDING_2FA_USER_ID] = user.id
     request.session[PENDING_2FA_EMAIL] = user.email
+    _mark_login_code_sent(request)
     touch_session_activity(request)
     response = RedirectResponse(url="/login/verificacao", status_code=status.HTTP_303_SEE_OTHER)
     if clear_trusted_cookie:
@@ -419,6 +440,14 @@ def resend_login_verification_code(
     user = _pending_2fa_user(request, db)
     if not user:
         return RedirectResponse(url="/login", status_code=status.HTTP_303_SEE_OTHER)
+    cooldown_seconds = _login_code_resend_cooldown_remaining(request)
+    if cooldown_seconds > 0:
+        return _render_login_verification(
+            request,
+            user.email,
+            info=f"Aguarde {cooldown_seconds}s para solicitar um novo codigo.",
+            trust_browser_checked=_trust_browser_requested(trust_browser),
+        )
     try:
         code = issue_login_verification_code(db, user)
         send_access_code_email(user.email, code)
@@ -444,6 +473,7 @@ def resend_login_verification_code(
             "Nao foi possivel reenviar o codigo. Tente novamente.",
             trust_browser_checked=_trust_browser_requested(trust_browser),
         )
+    _mark_login_code_sent(request)
     return _render_login_verification(
         request,
         user.email,

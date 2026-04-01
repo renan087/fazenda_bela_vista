@@ -41,14 +41,83 @@
                 </label>
                 <button type="submit" class="inline-flex w-full items-center justify-center rounded-2xl bg-brand-500 px-4 py-3 font-semibold text-white hover:bg-brand-700">Confirmar acesso</button>
             </form>
-            <form method="post" action="/login/verificacao/reenviar" class="mt-4">
+            <form method="post" action="/login/verificacao/reenviar" class="mt-4" data-resend-form data-initial-cooldown="{{ resend_cooldown_seconds }}">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                {% if trust_browser_checked %}
-                <input type="hidden" name="trust_browser" value="on">
-                {% endif %}
-                <button type="submit" class="inline-flex w-full items-center justify-center rounded-2xl border border-slate-200 bg-white px-4 py-3 font-semibold text-slate-700 hover:bg-slate-50">Reenviar codigo</button>
+                <input type="hidden" name="trust_browser" value="{% if trust_browser_checked %}on{% endif %}" data-resend-trust-browser>
+                <button
+                    type="submit"
+                    class="inline-flex w-full items-center justify-center rounded-2xl border border-slate-200 bg-white px-4 py-3 font-semibold text-slate-700 transition disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-100 disabled:text-slate-400 hover:bg-slate-50"
+                    data-resend-button
+                    {% if resend_cooldown_seconds > 0 %}disabled{% endif %}
+                >
+                    {% if resend_cooldown_seconds > 0 %}
+                    Novo codigo em {{ resend_cooldown_seconds }}s
+                    {% else %}
+                    Novo codigo
+                    {% endif %}
+                </button>
             </form>
         </section>
     </div>
 </div>
+<script>
+(() => {
+    const resendForm = document.querySelector("[data-resend-form]");
+    if (!resendForm) return;
+
+    const resendButton = resendForm.querySelector("[data-resend-button]");
+    const trustBrowserInput = document.querySelector('input[name="trust_browser"][type="checkbox"]');
+    const resendTrustBrowserInput = resendForm.querySelector("[data-resend-trust-browser]");
+
+    if (!resendButton) return;
+
+    let countdown = Number.parseInt(resendForm.dataset.initialCooldown || "0", 10);
+    let countdownTimer = null;
+
+    const syncTrustBrowserValue = () => {
+        if (!trustBrowserInput || !resendTrustBrowserInput) return;
+        resendTrustBrowserInput.value = trustBrowserInput.checked ? "on" : "";
+    };
+
+    const renderCountdown = () => {
+        if (countdown > 0) {
+            resendButton.disabled = true;
+            resendButton.textContent = `Novo codigo em ${countdown}s`;
+            return;
+        }
+        resendButton.disabled = false;
+        resendButton.textContent = "Novo codigo";
+    };
+
+    const startCountdown = (seconds) => {
+        countdown = Math.max(0, seconds);
+        if (countdownTimer) {
+            window.clearInterval(countdownTimer);
+            countdownTimer = null;
+        }
+        renderCountdown();
+        if (countdown <= 0) return;
+        countdownTimer = window.setInterval(() => {
+            countdown -= 1;
+            renderCountdown();
+            if (countdown <= 0 && countdownTimer) {
+                window.clearInterval(countdownTimer);
+                countdownTimer = null;
+            }
+        }, 1000);
+    };
+
+    if (trustBrowserInput) {
+        trustBrowserInput.addEventListener("change", syncTrustBrowserValue);
+        syncTrustBrowserValue();
+    }
+
+    resendForm.addEventListener("submit", () => {
+        syncTrustBrowserValue();
+        startCountdown(60);
+    });
+
+    startCountdown(countdown);
+})();
+</script>
 {% endblock %}
