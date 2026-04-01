@@ -17,46 +17,30 @@
         <form method="post" action="/meu-perfil" enctype="multipart/form-data" class="mt-6 grid gap-6" data-profile-form>
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
 
-            <div class="grid gap-5 rounded-[1.75rem] border border-slate-200 bg-slate-50 p-5 md:grid-cols-[auto_1fr] md:items-center">
-                <div class="flex flex-col items-center gap-3">
-                    <div class="relative overflow-hidden rounded-[1.75rem] border border-slate-200 bg-white shadow-sm">
+            <div class="rounded-[1.75rem] border border-slate-200 bg-slate-50 p-5">
+                <div class="flex flex-wrap items-center gap-4">
+                    <div class="relative h-24 w-24 overflow-hidden rounded-[1.4rem] border border-slate-200 bg-white shadow-sm">
                         {% if user.avatar_data %}
-                        <img src="/meu-perfil/avatar" alt="Avatar atual" class="h-56 w-56 object-cover" data-avatar-static>
-                        {% else %}
-                        <div class="flex h-56 w-56 items-center justify-center bg-brand-100 text-5xl font-semibold text-brand-700" data-avatar-static>
+                        <img src="/meu-perfil/avatar" alt="Avatar atual" class="h-full w-full object-cover" data-avatar-current-image>
+                        {% endif %}
+                        <img alt="Nova foto do avatar" class="hidden h-full w-full object-cover" data-avatar-pending-image>
+                        <div class="flex h-full w-full items-center justify-center bg-brand-100 text-3xl font-semibold text-brand-700 {% if user.avatar_data %}hidden{% endif %}" data-avatar-fallback>
                             {{ (user.display_name or user.name or 'U')[:1]|upper }}
                         </div>
-                        {% endif %}
-                        <canvas width="320" height="320" class="hidden h-56 w-56 touch-none bg-slate-950/5" data-avatar-editor></canvas>
-                        <div class="pointer-events-none absolute inset-x-4 bottom-4 hidden rounded-2xl bg-slate-950/70 px-3 py-2 text-center text-xs font-medium text-white" data-avatar-editor-badge>
-                            Arraste para mover e use o zoom para enquadrar
-                        </div>
                     </div>
-                    {% if user.avatar_data %}
-                    <button type="submit" form="remove-avatar-form" class="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-medium text-rose-700 hover:bg-rose-100">Remover foto</button>
-                    {% endif %}
-                </div>
-                <div class="grid gap-4">
-                    <div>
+                    <div class="min-w-0 flex-1">
                         <p class="text-sm font-medium text-slate-700">Foto do usuario</p>
-                        <p class="mt-1 text-sm text-slate-500">Escolha a imagem, ajuste o enquadramento dentro do quadro e salve. O envio final sera otimizado para web em 512x512 px.</p>
-                    </div>
-                    <label class="block">
-                        <span class="mb-2 block text-sm font-medium text-slate-700">Nova foto</span>
-                        <input type="file" name="avatar" accept="image/*" class="w-full rounded-2xl border-slate-200 bg-white text-sm file:mr-4 file:rounded-xl file:border-0 file:bg-brand-500 file:px-4 file:py-2 file:font-medium file:text-white hover:file:bg-brand-700" data-avatar-input>
-                    </label>
-                    <div class="hidden grid gap-3 rounded-[1.25rem] border border-brand-100 bg-white p-4" data-avatar-controls>
-                        <label>
-                            <span class="mb-2 block text-sm font-medium text-slate-700">Zoom</span>
-                            <input type="range" min="1" max="3" step="0.01" value="1" class="w-full accent-brand-500" data-avatar-zoom>
-                        </label>
-                        <div class="flex flex-wrap gap-3">
-                            <button type="button" class="rounded-xl bg-slate-100 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-200" data-avatar-reset>Recentralizar</button>
-                            <button type="button" class="rounded-xl bg-slate-100 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-200" data-avatar-clear>Descartar nova foto</button>
+                        <p class="mt-1 text-sm text-slate-500">Atualize seu avatar quando precisar, mantendo o perfil mais pessoal e profissional.</p>
+                        <div class="mt-3 flex flex-wrap gap-3">
+                            <button type="button" class="rounded-xl bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700" data-avatar-open-modal>Alterar foto</button>
+                            {% if user.avatar_data %}
+                            <button type="submit" form="remove-avatar-form" class="rounded-xl border border-rose-200 bg-rose-50 px-4 py-2 text-sm font-medium text-rose-700 hover:bg-rose-100">Remover foto</button>
+                            {% endif %}
                         </div>
-                        <p class="text-sm text-slate-500" data-avatar-feedback>O arquivo sera otimizado antes do envio e substituira a foto atual somente quando voce salvar.</p>
+                        <p class="mt-3 hidden text-sm font-medium text-brand-700" data-avatar-status>Nova foto pronta para salvar no perfil.</p>
                     </div>
                 </div>
+                <input type="file" name="avatar" accept="image/*" class="hidden" data-avatar-input>
             </div>
 
             <div class="grid gap-4 md:grid-cols-2">
@@ -171,6 +155,57 @@
     </div>
 </div>
 
+<div class="fixed inset-0 z-[90] hidden items-center justify-center px-4 py-6" data-avatar-modal>
+    <button type="button" class="absolute inset-0 bg-slate-950/55 backdrop-blur-[2px]" aria-label="Fechar editor de foto" data-avatar-close></button>
+    <div class="relative z-[91] w-full max-w-4xl rounded-[2rem] bg-white p-6 shadow-2xl">
+        <div class="flex flex-wrap items-start justify-between gap-4">
+            <div>
+                <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Avatar</p>
+                <h3 class="mt-2 text-2xl font-semibold text-slate-900">Alterar foto do perfil</h3>
+                <p class="mt-2 text-sm text-slate-500">Escolha a imagem, ajuste o enquadramento e salve a nova versao para aplicar no perfil.</p>
+            </div>
+            <button type="button" class="rounded-xl bg-slate-100 px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-200" data-avatar-close>Fechar</button>
+        </div>
+
+        <div class="mt-6 grid gap-6 lg:grid-cols-[minmax(0,1fr)_18rem]">
+            <div class="grid gap-4">
+                <label class="block">
+                    <span class="mb-2 block text-sm font-medium text-slate-700">Selecionar imagem</span>
+                    <input type="file" accept="image/*" class="w-full rounded-2xl border-slate-200 bg-slate-50 text-sm file:mr-4 file:rounded-xl file:border-0 file:bg-brand-500 file:px-4 file:py-2 file:font-medium file:text-white hover:file:bg-brand-700" data-avatar-picker>
+                </label>
+                <div class="flex items-center justify-center rounded-[1.75rem] border border-slate-200 bg-slate-50 p-4">
+                    <div class="relative overflow-hidden rounded-[1.75rem] border border-slate-200 bg-white shadow-sm">
+                        <canvas width="320" height="320" class="h-[20rem] w-[20rem] max-w-full touch-none bg-slate-950/5" data-avatar-editor></canvas>
+                        <div class="pointer-events-none absolute inset-x-4 bottom-4 rounded-2xl bg-slate-950/70 px-3 py-2 text-center text-xs font-medium text-white" data-avatar-editor-badge>
+                            Arraste a imagem para mover o enquadramento
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="grid gap-4 rounded-[1.75rem] border border-slate-200 bg-slate-50 p-5">
+                <div>
+                    <p class="text-sm font-medium text-slate-700">Como ajustar</p>
+                    <p class="mt-2 text-sm leading-6 text-slate-500">Use o seletor de zoom e arraste a imagem dentro do quadro para definir como o avatar sera exibido no sistema.</p>
+                </div>
+                <label>
+                    <span class="mb-2 block text-sm font-medium text-slate-700">Zoom</span>
+                    <input type="range" min="1" max="3" step="0.01" value="1" class="w-full accent-brand-500" data-avatar-zoom>
+                </label>
+                <div class="flex flex-wrap gap-3">
+                    <button type="button" class="rounded-xl bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100" data-avatar-reset>Recentralizar</button>
+                    <button type="button" class="rounded-xl bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100" data-avatar-clear>Limpar selecao</button>
+                </div>
+                <p class="text-sm text-slate-500" data-avatar-feedback>O arquivo sera otimizado para 512x512 antes de ser enviado ao servidor quando voce salvar o perfil.</p>
+                <div class="mt-auto flex flex-wrap gap-3 pt-2">
+                    <button type="button" class="rounded-2xl bg-brand-500 px-5 py-3 text-sm font-semibold text-white hover:bg-brand-700" data-avatar-save-modal>Salvar</button>
+                    <button type="button" class="rounded-2xl bg-slate-100 px-5 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-200" data-avatar-cancel>Cancelar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
 <script>
     (() => {
         const disableSubmitButton = (form) => {
@@ -189,16 +224,24 @@
         if (!profileForm) return;
 
         const avatarInput = profileForm.querySelector('[data-avatar-input]');
-        const avatarCanvas = profileForm.querySelector('[data-avatar-editor]');
-        const avatarStatic = profileForm.querySelector('[data-avatar-static]');
-        const avatarBadge = profileForm.querySelector('[data-avatar-editor-badge]');
-        const avatarControls = profileForm.querySelector('[data-avatar-controls]');
-        const avatarZoom = profileForm.querySelector('[data-avatar-zoom]');
-        const avatarReset = profileForm.querySelector('[data-avatar-reset]');
-        const avatarClear = profileForm.querySelector('[data-avatar-clear]');
-        const avatarFeedback = profileForm.querySelector('[data-avatar-feedback]');
+        const avatarPendingImage = profileForm.querySelector('[data-avatar-pending-image]');
+        const avatarCurrentImage = profileForm.querySelector('[data-avatar-current-image]');
+        const avatarFallback = profileForm.querySelector('[data-avatar-fallback]');
+        const avatarStatus = profileForm.querySelector('[data-avatar-status]');
+        const avatarOpenModal = profileForm.querySelector('[data-avatar-open-modal]');
+        const avatarModal = document.querySelector('[data-avatar-modal]');
+        const avatarPicker = document.querySelector('[data-avatar-picker]');
+        const avatarCanvas = document.querySelector('[data-avatar-editor]');
+        const avatarBadge = document.querySelector('[data-avatar-editor-badge]');
+        const avatarZoom = document.querySelector('[data-avatar-zoom]');
+        const avatarReset = document.querySelector('[data-avatar-reset]');
+        const avatarClear = document.querySelector('[data-avatar-clear]');
+        const avatarFeedback = document.querySelector('[data-avatar-feedback]');
+        const avatarSaveModal = document.querySelector('[data-avatar-save-modal]');
+        const avatarCancel = document.querySelector('[data-avatar-cancel]');
+        const avatarCloseButtons = document.querySelectorAll('[data-avatar-close]');
 
-        if (!avatarInput || !avatarCanvas || !avatarStatic || !avatarBadge || !avatarControls || !avatarZoom || !avatarReset || !avatarClear || !avatarFeedback) {
+        if (!avatarInput || !avatarPendingImage || !avatarFallback || !avatarOpenModal || !avatarModal || !avatarPicker || !avatarCanvas || !avatarBadge || !avatarZoom || !avatarReset || !avatarClear || !avatarFeedback || !avatarSaveModal || !avatarCancel) {
             profileForm.addEventListener('submit', () => disableSubmitButton(profileForm));
             return;
         }
@@ -207,6 +250,8 @@
         const state = {
             image: null,
             objectUrl: null,
+            pendingFile: null,
+            pendingPreviewUrl: null,
             scale: 1,
             baseScale: 1,
             offsetX: 0,
@@ -221,6 +266,17 @@
         };
 
         const viewportSize = avatarCanvas.width;
+
+        const syncCompactPreview = () => {
+            const hasPending = Boolean(state.pendingPreviewUrl);
+            avatarPendingImage.classList.toggle('hidden', !hasPending);
+            avatarPendingImage.src = hasPending ? state.pendingPreviewUrl : "";
+            if (avatarCurrentImage) {
+                avatarCurrentImage.classList.toggle('hidden', hasPending);
+            }
+            avatarFallback.classList.toggle('hidden', hasPending || Boolean(avatarCurrentImage));
+            avatarStatus.classList.toggle('hidden', !hasPending);
+        };
 
         const clampOffsets = () => {
             if (!state.image) return;
@@ -242,17 +298,13 @@
             targetContext.clearRect(0, 0, size, size);
             targetContext.fillStyle = "#f1f5f9";
             targetContext.fillRect(0, 0, size, size);
+            if (!state.image) {
+                return;
+            }
             targetContext.drawImage(state.image, x, y, drawWidth, drawHeight);
         };
 
-        const updateEditorVisibility = (editing) => {
-            avatarStatic.classList.toggle('hidden', editing);
-            avatarCanvas.classList.toggle('hidden', !editing);
-            avatarBadge.classList.toggle('hidden', !editing);
-            avatarControls.classList.toggle('hidden', !editing);
-        };
-
-        const resetEditor = () => {
+        const resetDraftEditor = () => {
             if (state.objectUrl) {
                 URL.revokeObjectURL(state.objectUrl);
             }
@@ -264,11 +316,34 @@
             state.offsetY = 0;
             state.pointerId = null;
             state.fileName = "avatar";
-            avatarInput.value = "";
             avatarZoom.value = "1";
-            avatarFeedback.textContent = "O arquivo sera otimizado antes do envio e substituira a foto atual somente quando voce salvar.";
-            updateEditorVisibility(false);
+            avatarPicker.value = "";
+            avatarFeedback.textContent = "O arquivo sera otimizado para 512x512 antes de ser enviado ao servidor quando voce salvar o perfil.";
             ctx.clearRect(0, 0, viewportSize, viewportSize);
+            ctx.fillStyle = "#f1f5f9";
+            ctx.fillRect(0, 0, viewportSize, viewportSize);
+        };
+
+        const clearPendingAvatar = () => {
+            if (state.pendingPreviewUrl) {
+                URL.revokeObjectURL(state.pendingPreviewUrl);
+            }
+            state.pendingPreviewUrl = null;
+            state.pendingFile = null;
+            avatarInput.value = "";
+            syncCompactPreview();
+        };
+
+        const fillEmptyEditor = () => {
+            avatarBadge.classList.add('hidden');
+            avatarZoom.value = "1";
+            ctx.clearRect(0, 0, viewportSize, viewportSize);
+            ctx.fillStyle = "#f1f5f9";
+            ctx.fillRect(0, 0, viewportSize, viewportSize);
+            ctx.fillStyle = "#94a3b8";
+            ctx.font = "500 14px sans-serif";
+            ctx.textAlign = "center";
+            ctx.fillText("Selecione uma imagem para iniciar o ajuste", viewportSize / 2, viewportSize / 2);
         };
 
         const initializeEditor = (image, fileName) => {
@@ -279,21 +354,22 @@
             state.offsetX = 0;
             state.offsetY = 0;
             avatarZoom.value = "1";
+            avatarBadge.classList.remove('hidden');
             clampOffsets();
             drawEditor();
-            avatarFeedback.textContent = "Nova foto pronta para ajuste. O envio ao servidor acontecera somente quando voce salvar.";
-            updateEditorVisibility(true);
+            avatarFeedback.textContent = "Ajuste a imagem e clique em salvar para usar essa nova foto no perfil.";
         };
 
         const loadSelectedImage = (file) => {
             if (!file) {
-                resetEditor();
+                resetDraftEditor();
+                fillEmptyEditor();
                 return;
             }
             if (!file.type.startsWith("image/")) {
-                resetEditor();
+                resetDraftEditor();
+                fillEmptyEditor();
                 avatarFeedback.textContent = "Selecione uma imagem valida para o avatar.";
-                avatarControls.classList.remove('hidden');
                 return;
             }
 
@@ -308,14 +384,46 @@
             };
             previewImage.onerror = () => {
                 URL.revokeObjectURL(nextUrl);
-                resetEditor();
+                resetDraftEditor();
+                fillEmptyEditor();
                 avatarFeedback.textContent = "Nao foi possivel abrir a imagem selecionada.";
-                avatarControls.classList.remove('hidden');
             };
             previewImage.src = nextUrl;
         };
 
-        avatarInput.addEventListener('change', (event) => {
+        const openModal = () => {
+            avatarModal.classList.remove('hidden');
+            avatarModal.classList.add('flex');
+            document.body.classList.add('overflow-hidden');
+            if (state.pendingFile) {
+                loadSelectedImage(state.pendingFile);
+            } else {
+                resetDraftEditor();
+                fillEmptyEditor();
+            }
+        };
+
+        const closeModal = () => {
+            avatarModal.classList.add('hidden');
+            avatarModal.classList.remove('flex');
+            document.body.classList.remove('overflow-hidden');
+            resetDraftEditor();
+            if (!state.pendingFile) {
+                fillEmptyEditor();
+            }
+        };
+
+        avatarOpenModal.addEventListener('click', openModal);
+        avatarCloseButtons.forEach((button) => button.addEventListener('click', closeModal));
+        avatarCancel.addEventListener('click', closeModal);
+
+        document.addEventListener('keydown', (event) => {
+            if (event.key === 'Escape' && !avatarModal.classList.contains('hidden')) {
+                closeModal();
+            }
+        });
+
+        avatarPicker.addEventListener('change', (event) => {
             const [file] = event.target.files || [];
             loadSelectedImage(file);
         });
@@ -338,7 +446,10 @@
         });
 
         avatarClear.addEventListener('click', () => {
-            resetEditor();
+            clearPendingAvatar();
+            resetDraftEditor();
+            fillEmptyEditor();
+            avatarFeedback.textContent = "Selecao limpa. Escolha outra imagem para continuar.";
         });
 
         avatarCanvas.addEventListener('pointerdown', (event) => {
@@ -387,25 +498,18 @@
             return blob;
         };
 
-        profileForm.addEventListener('submit', async (event) => {
-            if (state.processingSubmit) {
-                disableSubmitButton(profileForm);
-                return;
-            }
-
+        avatarSaveModal.addEventListener('click', async () => {
             if (!state.image) {
-                disableSubmitButton(profileForm);
+                avatarFeedback.textContent = "Selecione uma imagem antes de salvar o ajuste.";
                 return;
             }
 
-            event.preventDefault();
-            avatarFeedback.textContent = "Otimizando a foto para envio...";
+            avatarFeedback.textContent = "Preparando a nova foto...";
             const optimizedBlob = await createOptimizedAvatarBlob();
             if (!optimizedBlob) {
                 avatarFeedback.textContent = "Nao foi possivel preparar a foto. Tente novamente com outra imagem.";
                 return;
             }
-
             const extension = optimizedBlob.type === 'image/webp' ? 'webp' : 'jpg';
             const sanitizedBaseName = (state.fileName || 'avatar')
                 .replace(/\.[^.]+$/, '')
@@ -419,10 +523,25 @@
             const dataTransfer = new DataTransfer();
             dataTransfer.items.add(optimizedFile);
             avatarInput.files = dataTransfer.files;
+            state.pendingFile = optimizedFile;
+            if (state.pendingPreviewUrl) {
+                URL.revokeObjectURL(state.pendingPreviewUrl);
+            }
+            state.pendingPreviewUrl = URL.createObjectURL(optimizedFile);
+            syncCompactPreview();
+            closeModal();
+        });
+
+        profileForm.addEventListener('submit', () => {
+            if (state.processingSubmit) {
+                return;
+            }
             state.processingSubmit = true;
             disableSubmitButton(profileForm);
-            profileForm.requestSubmit();
         });
+
+        fillEmptyEditor();
+        syncCompactPreview();
     })();
 </script>
 {% endblock %}
