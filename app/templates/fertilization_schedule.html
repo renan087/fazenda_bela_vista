@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block content %}
 <div class="grid gap-6 xl:grid-cols-[0.92fr_1.08fr]" data-modal-single-pane>
-    <section class="rounded-[2rem] bg-white p-6 shadow-panel">
+    <section class="rounded-[2rem] bg-white p-6 shadow-panel" data-history-edit-panel {% if edit_schedule %}data-history-edit-open="1"{% endif %}>
         <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Agendamento</p>
         <h3 class="mt-2 text-2xl font-semibold">{% if edit_schedule %}Editar fertilizacao programada{% else %}Agendar fertilizacao{% endif %}</h3>
         <form method="post" action="{% if edit_schedule %}/fertilizacao/agendamentos/{{ edit_schedule.id }}/editar{% else %}/fertilizacao/agendamentos{% endif %}" class="mt-6 grid gap-4" data-schedule-form>

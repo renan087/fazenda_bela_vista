@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block content %}
 <div class="grid gap-6 xl:grid-cols-[0.85fr_1.15fr]" data-modal-single-pane>
-    <section class="rounded-[2rem] bg-white p-6 shadow-panel">
+    <section class="rounded-[2rem] bg-white p-6 shadow-panel" data-history-edit-panel {% if edit_incident %}data-history-edit-open="1"{% endif %}>
         <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Pragas e Doencas</p>
         <h3 class="mt-2 text-2xl font-semibold">{% if edit_incident %}Editar ocorrencia fitossanitaria{% else %}Registrar ocorrencia fitossanitaria{% endif %}</h3>
         <form method="post" action="{% if edit_incident %}/pragas/{{ edit_incident.id }}/editar{% else %}/pragas{% endif %}" class="mt-6 grid gap-4">

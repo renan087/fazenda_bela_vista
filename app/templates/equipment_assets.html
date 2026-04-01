@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block content %}
 <div class="grid gap-6 xl:grid-cols-[0.9fr_1.1fr]" data-modal-single-pane>
-    <section class="rounded-[2rem] bg-white p-6 shadow-panel">
+    <section class="rounded-[2rem] bg-white p-6 shadow-panel" data-history-edit-panel {% if edit_asset %}data-history-edit-open="1"{% endif %}>
         <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Patrimonio</p>
         <h3 class="mt-2 text-2xl font-semibold">{% if edit_asset %}Editar equipamento{% else %}Novo equipamento / bem patrimonial{% endif %}</h3>
         <p class="mt-2 text-sm text-slate-500">Cadastre equipamentos e bens patrimoniais sem misturar esses registros com o estoque consumível de insumos e combustíveis.</p>

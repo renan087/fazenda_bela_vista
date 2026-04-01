@@ -8,136 +8,126 @@
             </div>
             <button type="button" class="rounded-xl bg-slate-100 px-3 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-200" data-history-view-close>Fechar</button>
         </div>
-        <div class="mt-6 space-y-4" data-history-view-view-mode>
-            <div class="space-y-4" data-history-view-body></div>
-        </div>
-        <div class="mt-6 hidden" data-history-view-edit-mode>
-            <div class="overflow-hidden rounded-[1.75rem] border border-slate-200 bg-slate-50">
-                <div class="flex items-center justify-between gap-3 border-b border-slate-200 bg-white px-4 py-3">
-                    <p class="text-sm font-medium text-slate-700">Edicao inline</p>
-                    <span class="text-xs uppercase tracking-[0.28em] text-slate-400">Mesmo modulo</span>
-                </div>
-                <iframe
-                    title="Edicao do lancamento"
-                    class="min-h-[70vh] w-full bg-white"
-                    data-history-view-frame
-                ></iframe>
-            </div>
-        </div>
+        <div class="mt-6 space-y-4" data-history-view-body></div>
         <div class="mt-8 flex flex-wrap justify-end gap-3">
-            <button type="button" class="hidden rounded-2xl bg-slate-100 px-5 py-3 font-semibold text-slate-700 hover:bg-slate-200" data-history-view-back>Voltar para visualizacao</button>
             <a href="#" class="hidden rounded-2xl bg-slate-900 px-5 py-3 font-semibold text-white hover:bg-slate-700" data-history-view-edit>Editar</a>
             <button type="button" class="rounded-2xl bg-slate-100 px-5 py-3 font-semibold text-slate-700 hover:bg-slate-200" data-history-view-close>Fechar</button>
         </div>
     </div>
 </dialog>
+<dialog id="history-edit-modal" class="backdrop:bg-slate-950/55 rounded-[2rem] p-0 shadow-2xl w-full max-w-5xl">
+    <div class="bg-white p-6 sm:p-8">
+        <div class="flex flex-wrap items-start justify-between gap-4">
+            <div>
+                <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Edicao</p>
+                <h3 class="mt-2 text-2xl font-semibold text-slate-900" data-history-edit-title>Editar lancamento</h3>
+                <p class="mt-2 text-sm text-slate-500">Atualize os dados sem sair da tela atual.</p>
+            </div>
+            <button type="button" class="rounded-xl bg-slate-100 px-3 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-200" data-history-edit-close>Fechar</button>
+        </div>
+        <div class="mt-6" data-history-edit-body></div>
+    </div>
+</dialog>
 <script>
     (() => {
-        const modal = document.getElementById('history-view-modal');
-        if (!modal) return;
+        const viewModal = document.getElementById('history-view-modal');
+        const editModal = document.getElementById('history-edit-modal');
+        if (!viewModal) return;
 
-        const title = modal.querySelector('[data-history-view-title]');
-        const subtitle = modal.querySelector('[data-history-view-subtitle]');
-        const kicker = modal.querySelector('[data-history-view-kicker]');
-        const body = modal.querySelector('[data-history-view-body]');
-        const viewMode = modal.querySelector('[data-history-view-view-mode]');
-        const editMode = modal.querySelector('[data-history-view-edit-mode]');
-        const editLink = modal.querySelector('[data-history-view-edit]');
-        const backButton = modal.querySelector('[data-history-view-back]');
-        const frame = modal.querySelector('[data-history-view-frame]');
+        const viewTitle = viewModal.querySelector('[data-history-view-title]');
+        const viewSubtitle = viewModal.querySelector('[data-history-view-subtitle]');
+        const viewKicker = viewModal.querySelector('[data-history-view-kicker]');
+        const viewBody = viewModal.querySelector('[data-history-view-body]');
+        const editLink = viewModal.querySelector('[data-history-view-edit]');
+        const editBody = editModal?.querySelector('[data-history-edit-body]');
+        const editTitle = editModal?.querySelector('[data-history-edit-title]');
+
         let currentEditUrl = '';
-        let frameLoadedForEdit = false;
-        let currentKicker = 'Visualizacao';
+        let activeEditPanel = null;
+        let activeEditPanelParent = null;
+        let activeEditPanelNextSibling = null;
 
-        const isEditingLocation = (urlString) => {
-            try {
-                const url = new URL(urlString, window.location.origin);
-                return url.pathname.endsWith('/editar') || url.searchParams.has('edit_id') || url.searchParams.has('edit_output_id');
-            } catch (error) {
-                return false;
+        const sanitizedCurrentUrl = () => {
+            const url = new URL(window.location.href);
+            url.searchParams.delete('edit_id');
+            url.searchParams.delete('edit_output_id');
+            url.searchParams.delete('modal');
+            return `${url.pathname}${url.search}${url.hash}`;
+        };
+
+        const restoreEditPanel = () => {
+            if (!activeEditPanel || !activeEditPanelParent) return;
+            if (activeEditPanelNextSibling && activeEditPanelNextSibling.parentNode === activeEditPanelParent) {
+                activeEditPanelParent.insertBefore(activeEditPanel, activeEditPanelNextSibling);
+            } else {
+                activeEditPanelParent.appendChild(activeEditPanel);
+            }
+            activeEditPanel = null;
+            activeEditPanelParent = null;
+            activeEditPanelNextSibling = null;
+        };
+
+        const closeViewModal = () => {
+            if (typeof viewModal.close === 'function' && viewModal.open) {
+                viewModal.close();
             }
         };
 
-        const setViewState = (mode) => {
-            const editing = mode === 'edit';
-            viewMode?.classList.toggle('hidden', editing);
-            editMode?.classList.toggle('hidden', !editing);
-            backButton?.classList.toggle('hidden', !editing);
-            editLink?.classList.toggle('hidden', editing || !currentEditUrl);
-            if (kicker) {
-                kicker.textContent = editing ? 'Edicao' : currentKicker;
+        const closeEditModal = ({ redirect = true } = {}) => {
+            if (typeof editModal?.close === 'function' && editModal.open) {
+                editModal.close();
+            }
+            restoreEditPanel();
+            if (redirect) {
+                window.location.href = sanitizedCurrentUrl();
             }
         };
 
-        const closeModal = ({ clearFrame = true } = {}) => {
-            if (typeof modal.close === 'function' && modal.open) {
-                modal.close();
-            }
-            setViewState('view');
-            currentEditUrl = '';
-            frameLoadedForEdit = false;
-            if (clearFrame && frame) {
-                frame.removeAttribute('src');
-            }
-        };
-
-        modal.querySelectorAll('[data-history-view-close]').forEach((button) => {
-            button.addEventListener('click', () => closeModal());
+        viewModal.querySelectorAll('[data-history-view-close]').forEach((button) => {
+            button.addEventListener('click', closeViewModal);
         });
 
-        modal.addEventListener('cancel', (event) => {
+        viewModal.addEventListener('cancel', (event) => {
             event.preventDefault();
-            closeModal();
+            closeViewModal();
         });
 
-        backButton?.addEventListener('click', () => {
-            setViewState('view');
+        editModal?.querySelectorAll('[data-history-edit-close]').forEach((button) => {
+            button.addEventListener('click', () => closeEditModal());
+        });
+
+        editModal?.addEventListener('cancel', (event) => {
+            event.preventDefault();
+            closeEditModal();
         });
 
         editLink?.addEventListener('click', (event) => {
-            if (!currentEditUrl || !frame) return;
+            if (!currentEditUrl) return;
             event.preventDefault();
-            frameLoadedForEdit = true;
-            setViewState('edit');
-            frame.src = currentEditUrl;
-        });
-
-        frame?.addEventListener('load', () => {
-            if (!frameLoadedForEdit) return;
-            let frameUrl = frame.getAttribute('src') || '';
-            try {
-                frameUrl = frame.contentWindow?.location?.href || frameUrl;
-            } catch (error) {
-                return;
-            }
-            if (!isEditingLocation(frameUrl)) {
-                closeModal({ clearFrame: false });
-                window.location.reload();
-            }
+            closeViewModal();
+            window.location.href = currentEditUrl;
         });
 
         document.querySelectorAll('[data-history-view-trigger]').forEach((trigger) => {
             trigger.addEventListener('click', () => {
                 const sourceId = trigger.dataset.historyViewSource;
                 const source = sourceId ? document.getElementById(sourceId) : null;
-                if (!source || !body) return;
+                if (!source || !viewBody) return;
 
-                if (title) {
-                    title.textContent = trigger.dataset.historyViewTitle || 'Detalhes do lancamento';
+                if (viewTitle) {
+                    viewTitle.textContent = trigger.dataset.historyViewTitle || 'Detalhes do lancamento';
                 }
-                if (kicker) {
-                    currentKicker = trigger.dataset.historyViewKicker || 'Visualizacao';
-                    kicker.textContent = currentKicker;
+                if (viewKicker) {
+                    viewKicker.textContent = trigger.dataset.historyViewKicker || 'Visualizacao';
                 }
-                if (subtitle) {
+                if (viewSubtitle) {
                     const subtitleText = trigger.dataset.historyViewSubtitle || '';
-                    subtitle.textContent = subtitleText;
-                    subtitle.classList.toggle('hidden', !subtitleText);
+                    viewSubtitle.textContent = subtitleText;
+                    viewSubtitle.classList.toggle('hidden', !subtitleText);
                 }
-                body.innerHTML = source.innerHTML;
+                viewBody.innerHTML = source.innerHTML;
 
-                const editUrl = trigger.dataset.historyViewEditUrl || '';
-                currentEditUrl = editUrl ? `${editUrl}${editUrl.includes('?') ? '&' : '?'}modal=1` : '';
+                currentEditUrl = trigger.dataset.historyViewEditUrl || '';
                 if (editLink) {
                     if (currentEditUrl) {
                         editLink.href = currentEditUrl;
@@ -147,15 +137,28 @@
                         editLink.removeAttribute('href');
                     }
                 }
-                setViewState('view');
-                if (frame) {
-                    frame.removeAttribute('src');
-                }
 
-                if (typeof modal.showModal === 'function') {
-                    modal.showModal();
+                if (typeof viewModal.showModal === 'function') {
+                    viewModal.showModal();
                 }
             });
         });
+
+        const initialEditPanel = document.querySelector('[data-history-edit-panel][data-history-edit-open="1"]');
+        if (editModal && editBody && initialEditPanel) {
+            activeEditPanel = initialEditPanel;
+            activeEditPanelParent = initialEditPanel.parentNode;
+            activeEditPanelNextSibling = initialEditPanel.nextSibling;
+            editBody.appendChild(initialEditPanel);
+
+            const panelTitle = initialEditPanel.querySelector('h3');
+            if (editTitle && panelTitle?.textContent?.trim()) {
+                editTitle.textContent = panelTitle.textContent.trim();
+            }
+
+            if (typeof editModal.showModal === 'function') {
+                editModal.showModal();
+            }
+        }
     })();
 </script>

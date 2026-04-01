@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block content %}
 <div class="grid gap-6 xl:grid-cols-[0.95fr_1.05fr]" data-modal-single-pane>
-    <section class="rounded-[2rem] bg-white p-6 shadow-panel">
+    <section class="rounded-[2rem] bg-white p-6 shadow-panel" data-history-edit-panel {% if edit_fertilization %}data-history-edit-open="1"{% endif %}>
         <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Fertilizacao</p>
         <h3 class="mt-2 text-2xl font-semibold">{% if edit_fertilization %}Editar aplicacao{% else %}Registrar aplicacao{% endif %}</h3>
         <form method="post" action="{% if edit_fertilization %}/fertilizacao/{{ edit_fertilization.id }}/editar{% else %}/fertilizacao{% endif %}" class="mt-6 grid gap-4" data-fertilization-form>
