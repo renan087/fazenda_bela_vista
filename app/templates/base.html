@@ -151,12 +151,21 @@
                     <div class="rounded-2xl bg-slate-900 px-4 py-4">
                         {% set session_name_parts = (user.name or '').split() %}
                         {% set session_display_name = user.display_name or ((session_name_parts[0] ~ ' ' ~ session_name_parts[-1]) if session_name_parts|length > 1 else (session_name_parts[0] if session_name_parts else user.email)) %}
-                        <p class="text-xs uppercase tracking-[0.3em] text-slate-500">Sessao</p>
-                        <p class="mt-2 font-medium">{{ session_display_name }}</p>
-                        <p class="text-sm text-slate-400">{{ user.email }}</p>
-                        <div class="mt-4 grid gap-2 text-sm">
+                        <button type="button" class="flex w-full items-center justify-between gap-3 text-left lg:cursor-default" data-session-toggle aria-expanded="false">
+                            <div class="min-w-0">
+                                <p class="text-xs uppercase tracking-[0.3em] text-slate-500">Sessao</p>
+                                <p class="mt-2 truncate font-medium">{{ session_display_name }}</p>
+                            </div>
+                            <span class="inline-flex h-8 w-8 items-center justify-center rounded-full bg-white/5 text-slate-400 transition-transform duration-200 lg:hidden" data-session-chevron>
+                                <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+                            </span>
+                        </button>
+                        <div class="overflow-hidden transition-all duration-200 ease-out lg:mt-4" data-session-content>
+                            <p class="pt-4 text-sm text-slate-400 lg:pt-0">{{ user.email }}</p>
+                            <div class="mt-4 grid gap-2 text-sm">
                             <a href="/meu-perfil" class="inline-flex items-center rounded-xl bg-white/10 px-3 py-2 hover:bg-white/20 {% if page == 'profile' %}ring-1 ring-white/20{% endif %}">Meu Perfil</a>
                             <a href="/logout" class="inline-flex items-center rounded-xl bg-white/5 px-3 py-2 text-slate-200 hover:bg-white/15">Sair</a>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -335,6 +344,43 @@
                     target?.classList.toggle('hidden');
                 });
             });
+            const sessionToggle = document.querySelector('[data-session-toggle]');
+            const sessionContent = document.querySelector('[data-session-content]');
+            const sessionChevron = document.querySelector('[data-session-chevron]');
+            if (sessionToggle && sessionContent) {
+                const mobileQuery = window.matchMedia('(max-width: 1023px)');
+                const setSessionExpanded = (expanded) => {
+                    sessionToggle.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+                    if (mobileQuery.matches) {
+                        sessionContent.style.maxHeight = expanded ? `${sessionContent.scrollHeight}px` : '0px';
+                        sessionContent.style.opacity = expanded ? '1' : '0';
+                        sessionContent.style.pointerEvents = expanded ? 'auto' : 'none';
+                        sessionChevron?.classList.toggle('rotate-180', expanded);
+                    } else {
+                        sessionContent.style.maxHeight = 'none';
+                        sessionContent.style.opacity = '1';
+                        sessionContent.style.pointerEvents = 'auto';
+                        sessionChevron?.classList.remove('rotate-180');
+                    }
+                };
+                let sessionExpanded = false;
+                const syncSessionCard = () => setSessionExpanded(!mobileQuery.matches ? true : sessionExpanded);
+                sessionContent.style.maxHeight = '0px';
+                sessionContent.style.opacity = '0';
+                sessionContent.style.pointerEvents = 'none';
+                sessionToggle.addEventListener('click', () => {
+                    if (!mobileQuery.matches) return;
+                    sessionExpanded = !sessionExpanded;
+                    setSessionExpanded(sessionExpanded);
+                });
+                mobileQuery.addEventListener('change', () => {
+                    if (!mobileQuery.matches) {
+                        sessionExpanded = false;
+                    }
+                    syncSessionCard();
+                });
+                syncSessionCard();
+            }
             document.querySelectorAll('[data-global-context-form]').forEach((form) => {
                 const farmSelect = form.querySelector('select[name="farm_id"]');
                 const seasonSelect = form.querySelector('[data-context-season-select]');
