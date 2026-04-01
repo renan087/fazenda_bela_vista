@@ -6,6 +6,29 @@ body {
     z-index: 30;
 }
 
+.erp-sidebar nav {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(0, 0, 0, 0.3) transparent;
+}
+
+.erp-sidebar nav::-webkit-scrollbar {
+    width: 6px;
+}
+
+.erp-sidebar nav::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.erp-sidebar nav::-webkit-scrollbar-thumb {
+    background: rgba(0, 0, 0, 0.3);
+    border-radius: 9999px;
+    transition: background-color 0.2s ease;
+}
+
+.erp-sidebar nav::-webkit-scrollbar-thumb:hover {
+    background: rgba(0, 0, 0, 0.45);
+}
+
 #dashboardMap,
 #farmMap {
     z-index: 0;
