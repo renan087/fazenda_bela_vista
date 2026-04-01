@@ -323,7 +323,11 @@ def _global_scope_context(request: Request, repo: FarmRepository, user: User | N
 
     all_seasons = repo.list_crop_seasons()
     context_seasons = [
-        season for season in all_seasons if not active_farm_id or season.farm_id == active_farm_id
+        season for season in all_seasons if active_farm_id and season.farm_id == active_farm_id
+    ]
+    context_season_options = [
+        {"id": season.id, "farm_id": season.farm_id, "name": season.name}
+        for season in all_seasons
     ]
     current_url = request.url.path
     if request.url.query:
@@ -332,6 +336,7 @@ def _global_scope_context(request: Request, repo: FarmRepository, user: User | N
     return {
         "context_farms": farms,
         "context_seasons": context_seasons,
+        "context_season_options": context_season_options,
         "active_farm_id": active_farm_id,
         "active_season_id": active_season_id,
         "active_farm": active_farm,

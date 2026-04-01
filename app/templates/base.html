@@ -78,14 +78,14 @@
         <aside class="erp-sidebar fixed inset-y-0 left-0 z-40 w-72 -translate-x-full bg-slate-950 text-slate-100 transition-transform duration-200 lg:fixed lg:inset-y-0 lg:translate-x-0">
             <div class="flex h-full flex-col">
                 <div class="border-b border-slate-800 px-6 py-6">
-                    <a href="/dashboard" class="flex w-full items-center justify-center" aria-label="Ir para o dashboard">
-                        <img src="{{ url_for('static', path='images/logo-icon.svg') }}" alt="SiSFarm" class="h-12 w-auto object-contain lg:hidden">
-                        <img src="{{ url_for('static', path='images/logo.svg') }}" alt="SiSFarm" class="hidden h-14 w-auto object-contain lg:block">
+                    <a href="/dashboard" class="mx-auto flex w-full max-w-[13rem] items-center justify-center rounded-[1.75rem] px-5 py-4 shadow-lg" style="background: linear-gradient(135deg, #1f5f3a, #3fa46a);" aria-label="Ir para o dashboard">
+                        <img src="{{ url_for('static', path='images/logo-icon.svg') }}" alt="SiSFarm" class="h-14 w-auto object-contain lg:hidden">
+                        <img src="{{ url_for('static', path='images/logo.svg') }}" alt="SiSFarm" class="hidden h-16 w-auto object-contain lg:block">
                     </a>
-                    <h1 class="mt-3 text-2xl font-semibold">{{ active_farm.name if active_farm else "Fazenda" }}</h1>
-                    <div class="mt-3 space-y-1 text-slate-300">
-                        <p class="text-sm italic leading-6">"O Senhor &eacute; o meu pastor; nada me faltar&aacute;."</p>
-                        <p class="text-xs italic leading-5 text-slate-500">Salmos 23:1</p>
+                    <h1 class="mt-4 text-center text-base font-semibold leading-6 text-slate-100 sm:text-[1.05rem]">{{ active_farm.name if active_farm else "Fazenda" }}</h1>
+                    <div class="mt-3 space-y-1 text-center text-slate-300">
+                        <p class="text-sm italic leading-6 text-slate-300/95">"O Senhor &eacute; o meu pastor; nada me faltar&aacute;."</p>
+                        <p class="text-xs italic leading-5 text-slate-400">Salmos 23:1</p>
                     </div>
                 </div>
                 <nav class="flex-1 space-y-1 overflow-y-auto px-4 py-6 text-sm">
@@ -176,14 +176,14 @@
                         <h2 class="text-2xl font-semibold">{{ title or "Painel da Fazenda" }}</h2>
                         </div>
                     </div>
-                    <form method="post" action="/contexto" class="hidden min-w-[20rem] rounded-2xl border border-slate-200 bg-mist/80 px-4 py-3 md:block" data-global-context-form>
+                    <form method="post" action="/contexto" class="hidden min-w-[20rem] rounded-2xl border border-slate-200 bg-mist/80 px-4 py-3 md:block" data-global-context-form data-season-options='{{ context_season_options|tojson|safe }}'>
                         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                         <input type="hidden" name="redirect_to" value="{{ current_url or request.url.path }}">
                         <div class="grid gap-3 lg:grid-cols-2">
                             <label class="block text-left">
                                 <span class="mb-1 block text-[11px] uppercase tracking-[0.25em] text-slate-400">Fazenda ativa</span>
                                 <select name="farm_id" class="w-full rounded-xl border-slate-200 bg-white/90 text-sm font-medium text-slate-700">
-                                    <option value="">Todas as fazendas</option>
+                                    <option value="">Selecione uma fazenda</option>
                                     {% for farm_option in context_farms|default([]) %}
                                     <option value="{{ farm_option.id }}" {% if active_farm_id == farm_option.id %}selected{% endif %}>{{ farm_option.name }}</option>
                                     {% endfor %}
@@ -191,8 +191,8 @@
                             </label>
                             <label class="block text-left">
                                 <span class="mb-1 block text-[11px] uppercase tracking-[0.25em] text-slate-400">Safra ativa</span>
-                                <select name="season_id" class="w-full rounded-xl border-slate-200 bg-white/90 text-sm font-medium text-slate-700">
-                                    <option value="">Sem safra ativa</option>
+                                <select name="season_id" class="w-full rounded-xl border-slate-200 bg-white/90 text-sm font-medium text-slate-700" data-context-season-select>
+                                    <option value="">{% if active_farm_id %}Selecione uma safra{% else %}Selecione uma fazenda primeiro{% endif %}</option>
                                     {% for season_option in context_seasons|default([]) %}
                                     <option value="{{ season_option.id }}" {% if active_season_id == season_option.id %}selected{% endif %}>{{ season_option.name }}</option>
                                     {% endfor %}
@@ -203,14 +203,14 @@
                 </div>
             </div>
             <div class="mx-auto max-w-7xl px-6 pt-4 md:hidden">
-                <form method="post" action="/contexto" class="rounded-2xl border border-slate-200 bg-mist/80 px-3 py-3 shadow-sm" data-global-context-form>
+                <form method="post" action="/contexto" class="rounded-2xl border border-slate-200 bg-mist/80 px-3 py-3 shadow-sm" data-global-context-form data-season-options='{{ context_season_options|tojson|safe }}'>
                     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                     <input type="hidden" name="redirect_to" value="{{ current_url or request.url.path }}">
                     <div class="grid grid-cols-2 gap-3">
                         <label class="min-w-0 text-left">
                             <span class="mb-1 block text-[10px] uppercase tracking-[0.22em] text-slate-400">Fazenda ativa</span>
                             <select name="farm_id" class="min-h-[2.75rem] w-full rounded-xl border-slate-200 bg-white/90 text-sm font-medium text-slate-700">
-                                <option value="">Todas as fazendas</option>
+                                <option value="">Selecione uma fazenda</option>
                                 {% for farm_option in context_farms|default([]) %}
                                 <option value="{{ farm_option.id }}" {% if active_farm_id == farm_option.id %}selected{% endif %}>{{ farm_option.name }}</option>
                                 {% endfor %}
@@ -218,8 +218,8 @@
                         </label>
                         <label class="min-w-0 text-left">
                             <span class="mb-1 block text-[10px] uppercase tracking-[0.22em] text-slate-400">Safra ativa</span>
-                            <select name="season_id" class="min-h-[2.75rem] w-full rounded-xl border-slate-200 bg-white/90 text-sm font-medium text-slate-700">
-                                <option value="">Sem safra ativa</option>
+                            <select name="season_id" class="min-h-[2.75rem] w-full rounded-xl border-slate-200 bg-white/90 text-sm font-medium text-slate-700" data-context-season-select>
+                                <option value="">{% if active_farm_id %}Selecione uma safra{% else %}Selecione uma fazenda primeiro{% endif %}</option>
                                 {% for season_option in context_seasons|default([]) %}
                                 <option value="{{ season_option.id }}" {% if active_season_id == season_option.id %}selected{% endif %}>{{ season_option.name }}</option>
                                 {% endfor %}
@@ -252,13 +252,13 @@
             <p class="mt-3 text-sm leading-6 text-slate-600">
                 {% if not context_farms %}
                 Para liberar a plataforma, primeiro cadastre uma fazenda e depois a safra correspondente.
-                {% elif not context_seasons %}
+                {% elif active_farm_id and not context_seasons %}
                 Sua fazenda ja esta disponivel. Agora cadastre uma safra para liberar o restante da interface.
                 {% else %}
                 Vamos manter essa escolha salva para os proximos acessos e aplicar o mesmo contexto automaticamente no login.
                 {% endif %}
             </p>
-            <form method="post" action="/contexto" class="mt-8 grid gap-4">
+            <form method="post" action="/contexto" class="mt-8 grid gap-4" data-global-context-form data-context-modal-form data-season-options='{{ context_season_options|tojson|safe }}'>
                 <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                 <input type="hidden" name="redirect_to" value="{{ current_url or request.url.path }}">
                 <div class="grid gap-4 md:grid-cols-2">
@@ -273,8 +273,8 @@
                     </label>
                     <label class="block">
                         <span class="mb-2 block text-sm font-medium text-slate-700">Safra ativa</span>
-                        <select name="season_id" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50 text-slate-700" {% if context_seasons %}required{% endif %}>
-                            <option value="">Selecione uma safra</option>
+                        <select name="season_id" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50 text-slate-700" data-context-season-select {% if active_farm_id and context_seasons %}required{% endif %}>
+                            <option value="">{% if active_farm_id %}Selecione uma safra{% else %}Selecione uma fazenda primeiro{% endif %}</option>
                             {% for season_option in context_seasons|default([]) %}
                             <option value="{{ season_option.id }}" {% if active_season_id == season_option.id %}selected{% endif %}>
                                 {{ season_option.name }}{% if season_option.farm %} • {{ season_option.farm.name }}{% endif %}
@@ -284,7 +284,7 @@
                     </label>
                 </div>
                 <div class="flex flex-wrap gap-3 pt-2">
-                    <button class="rounded-2xl px-5 py-3 font-semibold text-white {% if context_farms and context_seasons %}bg-brand-500 hover:bg-brand-700{% else %}cursor-not-allowed bg-slate-300{% endif %}" {% if not context_farms or not context_seasons %}disabled{% endif %}>Aplicar contexto</button>
+                    <button class="rounded-2xl px-5 py-3 font-semibold text-white {% if context_farms and active_farm_id and context_seasons %}bg-brand-500 hover:bg-brand-700{% else %}cursor-not-allowed bg-slate-300{% endif %}" data-context-apply-button {% if not context_farms or not active_farm_id or not context_seasons %}disabled{% endif %}>Aplicar contexto</button>
                     <a href="/fazendas#cadastro-fazenda" class="rounded-2xl bg-slate-100 px-5 py-3 font-semibold text-slate-700 hover:bg-slate-200">Criar fazenda</a>
                     <a href="/safras#cadastro-safra" class="rounded-2xl border border-slate-200 bg-white px-5 py-3 font-semibold text-slate-700 hover:bg-slate-50">Criar safra</a>
                 </div>
@@ -333,9 +333,69 @@
                     target?.classList.toggle('hidden');
                 });
             });
-            document.querySelectorAll('[data-global-context-form] select').forEach((field) => {
-                field.addEventListener('change', () => {
-                    field.form?.requestSubmit();
+            document.querySelectorAll('[data-global-context-form]').forEach((form) => {
+                const farmSelect = form.querySelector('select[name="farm_id"]');
+                const seasonSelect = form.querySelector('[data-context-season-select]');
+                const applyButton = form.querySelector('[data-context-apply-button]');
+                if (!farmSelect || !seasonSelect) return;
+
+                const allSeasons = JSON.parse(form.dataset.seasonOptions || '[]');
+
+                const refreshSeasonOptions = () => {
+                    const selectedFarmId = farmSelect.value;
+                    const previousSeasonId = seasonSelect.value;
+                    const filteredSeasons = allSeasons.filter((season) => String(season.farm_id) === selectedFarmId);
+                    const preservedSeasonId = filteredSeasons.some((season) => String(season.id) === previousSeasonId) ? previousSeasonId : '';
+
+                    seasonSelect.innerHTML = '';
+
+                    const placeholder = document.createElement('option');
+                    placeholder.value = '';
+                    if (!selectedFarmId) {
+                        placeholder.textContent = 'Selecione uma fazenda primeiro';
+                    } else if (!filteredSeasons.length) {
+                        placeholder.textContent = 'Nenhuma safra cadastrada';
+                    } else {
+                        placeholder.textContent = 'Selecione uma safra';
+                    }
+                    seasonSelect.appendChild(placeholder);
+
+                    filteredSeasons.forEach((season) => {
+                        const option = document.createElement('option');
+                        option.value = String(season.id);
+                        option.textContent = season.name;
+                        if (String(season.id) === preservedSeasonId) {
+                            option.selected = true;
+                        }
+                        seasonSelect.appendChild(option);
+                    });
+
+                    seasonSelect.disabled = !selectedFarmId || !filteredSeasons.length;
+                    seasonSelect.required = form.hasAttribute('data-context-modal-form') && Boolean(selectedFarmId) && Boolean(filteredSeasons.length);
+                    if (applyButton) {
+                        const canApply = Boolean(selectedFarmId) && Boolean(filteredSeasons.length);
+                        applyButton.disabled = !canApply;
+                        applyButton.classList.toggle('bg-brand-500', canApply);
+                        applyButton.classList.toggle('hover:bg-brand-700', canApply);
+                        applyButton.classList.toggle('bg-slate-300', !canApply);
+                        applyButton.classList.toggle('cursor-not-allowed', !canApply);
+                    }
+                    return { selectedFarmId, filteredSeasons };
+                };
+
+                refreshSeasonOptions();
+
+                farmSelect.addEventListener('change', () => {
+                    const { selectedFarmId, filteredSeasons } = refreshSeasonOptions();
+                    if (!selectedFarmId) return;
+                    if (!filteredSeasons.length && !form.hasAttribute('data-context-modal-form')) {
+                        form.requestSubmit();
+                    }
+                });
+
+                seasonSelect.addEventListener('change', () => {
+                    if (!seasonSelect.value) return;
+                    form.requestSubmit();
                 });
             });
         })();
