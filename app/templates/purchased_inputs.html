@@ -181,6 +181,7 @@
             <p class="text-sm text-slate-500">Nenhum insumo comprado cadastrado.</p>
             {% endfor %}
         </div>
+        {% with pagination=inputs_pagination %}{% include "partials/history_pagination.html" %}{% endwith %}
 
         <div class="mt-8">
             <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Saidas</p>
@@ -221,6 +222,7 @@
             <p class="text-sm text-slate-500">Nenhuma saida registrada ate o momento.</p>
             {% endfor %}
         </div>
+        {% with pagination=stock_outputs_pagination %}{% include "partials/history_pagination.html" %}{% endwith %}
     </section>
 </div>
 {% include "partials/history_view_modal.html" %}

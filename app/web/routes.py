@@ -120,6 +120,7 @@ EQUIPMENT_ASSET_CATEGORY_OPTIONS = [
     "Veículo",
 ]
 PENDING_PASSWORD_CHANGE_SESSION_KEY = "pending_password_change_user_id"
+HISTORY_PAGE_SIZE = 10
 
 
 def _redirect(url: str) -> RedirectResponse:
@@ -209,6 +210,59 @@ def _float_or_none(value: str | None):
 
 def _int_or_none(value: str | None):
     return int(value) if value not in (None, "") else None
+
+
+def _positive_int(value: str | None, default: int = 1) -> int:
+    parsed = _int_or_none(value)
+    if parsed is None or parsed < 1:
+        return default
+    return parsed
+
+
+def _sort_collection_desc(items, *getters):
+    def sort_key(item):
+        values = []
+        for getter in getters:
+            value = getter(item)
+            values.append((value is not None, value))
+        return tuple(values)
+
+    return sorted(items, key=sort_key, reverse=True)
+
+
+def _url_with_query(request: Request, **updates) -> str:
+    params = [(key, value) for key, value in request.query_params.multi_items() if key not in updates]
+    for key, value in updates.items():
+        if value in (None, "", False):
+            continue
+        params.append((key, str(value)))
+    query = urlencode(params, doseq=True)
+    return f"{request.url.path}?{query}" if query else request.url.path
+
+
+def _paginate_collection(
+    request: Request,
+    items,
+    page_param: str,
+    per_page: int = HISTORY_PAGE_SIZE,
+):
+    total_items = len(items)
+    total_pages = max(1, (total_items + per_page - 1) // per_page)
+    page = min(_positive_int(request.query_params.get(page_param), 1), total_pages)
+    start = (page - 1) * per_page
+    end = start + per_page
+    return {
+        "items": items[start:end],
+        "page": page,
+        "total_items": total_items,
+        "total_pages": total_pages,
+        "has_prev": page > 1,
+        "has_next": page < total_pages,
+        "first_url": _url_with_query(request, **{page_param: None}),
+        "prev_url": _url_with_query(request, **{page_param: page - 1 if page > 2 else None}),
+        "next_url": _url_with_query(request, **{page_param: page + 1}),
+        "last_url": _url_with_query(request, **{page_param: total_pages if total_pages > 1 else None}),
+    }
 
 
 def _mark_password_change_pending(request: Request, user_id: int) -> None:
@@ -1858,6 +1912,18 @@ def purchased_inputs_page(
     if not normalized_item_type:
         normalized_item_type = "insumo_agricola"
     stock_context = _build_stock_context(repo, farm_id=effective_farm_id, item_type=normalized_item_type)
+    purchase_entries = _sort_collection_desc(
+        stock_context["purchase_entries"],
+        lambda item: item.purchase_date,
+        lambda item: item.id,
+    )
+    stock_outputs = _sort_collection_desc(
+        stock_context["stock_outputs"],
+        lambda item: item.movement_date,
+        lambda item: item.id,
+    )
+    purchase_entries_pagination = _paginate_collection(request, purchase_entries, "entries_page")
+    stock_outputs_pagination = _paginate_collection(request, stock_outputs, "outputs_page")
     return templates.TemplateResponse(
         "purchased_inputs.html",
         _base_context(
@@ -1870,10 +1936,12 @@ def purchased_inputs_page(
             farms=repo.list_farms(),
             selected_item_type=normalized_item_type or "insumo_agricola",
             selected_farm_id=effective_farm_id,
-            inputs=stock_context["purchase_entries"],
+            inputs=purchase_entries_pagination["items"],
+            inputs_pagination=purchase_entries_pagination,
             inputs_catalog=stock_context["catalog_inputs"],
             input_stock=stock_context["input_stock"],
-            stock_outputs=stock_context["stock_outputs"],
+            stock_outputs=stock_outputs_pagination["items"],
+            stock_outputs_pagination=stock_outputs_pagination,
             stock_catalog_rows=stock_context["stock_catalog_rows"],
             edit_input=edit_input,
         ),
@@ -2110,6 +2178,27 @@ def stock_page(
         movement_type=movement_type,
         item_type=normalized_item_type,
     )
+    selected_stock_tab = str(request.query_params.get("stock_tab") or "entries")
+    if selected_stock_tab not in {"entries", "outputs", "extract"}:
+        selected_stock_tab = "entries"
+    purchase_entries = _sort_collection_desc(
+        stock_context["purchase_entries"],
+        lambda item: item.purchase_date,
+        lambda item: item.id,
+    )
+    stock_outputs = _sort_collection_desc(
+        stock_context["stock_outputs"],
+        lambda item: item.movement_date,
+        lambda item: item.id,
+    )
+    extract_rows = _sort_collection_desc(
+        stock_context["extract_rows"],
+        lambda row: row.get("date"),
+        lambda row: row.get("reference"),
+    )
+    purchase_entries_pagination = _paginate_collection(request, purchase_entries, "entries_page")
+    stock_outputs_pagination = _paginate_collection(request, stock_outputs, "outputs_page")
+    extract_rows_pagination = _paginate_collection(request, extract_rows, "extract_page")
     edit_output = repo.get_stock_output(edit_output_id) if edit_output_id else None
     edit_output_mode = None
     edit_fertilization_item = None
@@ -2155,9 +2244,18 @@ def stock_page(
             inputs_catalog=stock_context["catalog_inputs"],
             input_stock=stock_context["input_stock"],
             stock_catalog_rows=stock_context["stock_catalog_rows"],
-            purchase_entries=stock_context["purchase_entries"],
-            stock_outputs=stock_context["stock_outputs"],
-            extract_rows=stock_context["extract_rows"],
+            purchase_entries=purchase_entries_pagination["items"],
+            purchase_entries_pagination=purchase_entries_pagination,
+            stock_outputs=stock_outputs_pagination["items"],
+            stock_outputs_pagination=stock_outputs_pagination,
+            extract_rows=extract_rows_pagination["items"],
+            extract_rows_pagination=extract_rows_pagination,
+            selected_stock_tab=selected_stock_tab,
+            stock_tab_urls={
+                "entries": _url_with_query(request, stock_tab="entries"),
+                "outputs": _url_with_query(request, stock_tab="outputs"),
+                "extract": _url_with_query(request, stock_tab="extract"),
+            },
             edit_output=edit_output,
             edit_output_mode=edit_output_mode,
             edit_fertilization_item=edit_fertilization_item,
@@ -2527,6 +2625,12 @@ def equipment_assets_page(
 ):
     repo = _repository(db)
     effective_farm_id = farm_id or _active_farm_id(request)
+    assets = _sort_collection_desc(
+        repo.list_equipment_assets(farm_id=effective_farm_id),
+        lambda item: item.acquisition_date,
+        lambda item: item.id,
+    )
+    assets_pagination = _paginate_collection(request, assets, "assets_page")
     return templates.TemplateResponse(
         "equipment_assets.html",
         _base_context(
@@ -2540,7 +2644,8 @@ def equipment_assets_page(
             selected_farm_id=effective_farm_id,
             asset_category_options=EQUIPMENT_ASSET_CATEGORY_OPTIONS,
             current_year=today_in_app_timezone().year,
-            assets=repo.list_equipment_assets(farm_id=effective_farm_id),
+            assets=assets_pagination["items"],
+            assets_pagination=assets_pagination,
             edit_asset=repo.get_equipment_asset(edit_id) if edit_id else None,
         ),
     )
@@ -2793,6 +2898,11 @@ def input_recommendations_page(
             and (not plot_ids or recommendation.plot_id is None or recommendation.plot_id in plot_ids)
         )
     ]
+    recommendations = _sort_collection_desc(
+        recommendations,
+        lambda item: item.id,
+    )
+    recommendations_pagination = _paginate_collection(request, recommendations, "recommendations_page")
     return templates.TemplateResponse(
         "input_recommendations.html",
         _base_context(
@@ -2806,7 +2916,8 @@ def input_recommendations_page(
             plots=plots,
             inputs_catalog=catalog_inputs,
             input_stock=input_stock,
-            recommendations=recommendations,
+            recommendations=recommendations_pagination["items"],
+            recommendations_pagination=recommendations_pagination,
             edit_recommendation=repo.get_input_recommendation(edit_id) if edit_id else None,
         ),
     )
@@ -3231,6 +3342,12 @@ def irrigation_page(
         for irrigation in repo.list_irrigations()
         if irrigation.plot_id in plot_ids and _within_scope(irrigation.irrigation_date, start_date, end_date)
     ]
+    irrigations = _sort_collection_desc(
+        irrigations,
+        lambda item: item.irrigation_date,
+        lambda item: item.id,
+    )
+    irrigations_pagination = _paginate_collection(request, irrigations, "irrigations_page")
     return templates.TemplateResponse(
         "irrigation.html",
         _base_context(
@@ -3240,7 +3357,8 @@ def irrigation_page(
             "irrigation",
             _repo=repo,
             plots=plots,
-            irrigations=irrigations,
+            irrigations=irrigations_pagination["items"],
+            irrigations_pagination=irrigations_pagination,
             edit_irrigation=repo.get_irrigation(edit_id) if edit_id else None,
             plot_irrigation_configs=[
                 {
@@ -3376,6 +3494,16 @@ def rainfall_page(
 ):
     repo = _repository(db)
     effective_farm_id = farm_id or _active_farm_id(request)
+    rainfalls = _sort_collection_desc(
+        repo.list_rainfalls(
+            farm_id=effective_farm_id,
+            start_date=_date_or_none(start_date),
+            end_date=_date_or_none(end_date),
+        ),
+        lambda item: item.rainfall_date,
+        lambda item: item.id,
+    )
+    rainfalls_pagination = _paginate_collection(request, rainfalls, "rainfalls_page")
     return templates.TemplateResponse(
         "rainfall.html",
         _base_context(
@@ -3385,11 +3513,8 @@ def rainfall_page(
             "rainfall",
             _repo=repo,
             farms=repo.list_farms(),
-            rainfalls=repo.list_rainfalls(
-                farm_id=effective_farm_id,
-                start_date=_date_or_none(start_date),
-                end_date=_date_or_none(end_date),
-            ),
+            rainfalls=rainfalls_pagination["items"],
+            rainfalls_pagination=rainfalls_pagination,
             edit_rainfall=repo.get_rainfall(edit_id) if edit_id else None,
             filters={
                 "farm_id": effective_farm_id,
@@ -3528,6 +3653,12 @@ def fertilization_page(
         for item in repo.list_fertilizations()
         if item.plot_id in plot_ids and _within_scope(item.application_date, start_date, end_date)
     ]
+    fertilizations = _sort_collection_desc(
+        fertilizations,
+        lambda item: item.application_date,
+        lambda item: item.id,
+    )
+    fertilizations_pagination = _paginate_collection(request, fertilizations, "fertilizations_page")
     schedules = [
         item
         for item in repo.list_fertilization_schedules()
@@ -3564,7 +3695,8 @@ def fertilization_page(
             plots=plots,
             inputs_catalog=consolidated_inputs,
             input_stock=input_stock,
-            fertilizations=fertilizations,
+            fertilizations=fertilizations_pagination["items"],
+            fertilizations_pagination=fertilizations_pagination,
             schedules=schedules,
             recommendation_groups=recommendation_groups,
             edit_fertilization=edit_fertilization,
@@ -3698,6 +3830,7 @@ def fertilization_schedules_page(
         if schedule.plot_id in plot_ids and _within_scope(schedule.scheduled_date, start_date, end_date)
     ]
     schedules.sort(key=lambda schedule: (schedule.scheduled_date, schedule.id), reverse=True)
+    schedules_pagination = _paginate_collection(request, schedules, "schedules_page")
     schedule_validations = {schedule.id: validate_schedule_stock(repo, schedule) for schedule in schedules}
     consolidated_inputs = repo.list_input_catalog(item_type="insumo_agricola")
     purchased_inputs = repo.list_purchased_inputs()
@@ -3739,7 +3872,8 @@ def fertilization_schedules_page(
             plots=plots,
             inputs_catalog=consolidated_inputs,
             input_stock=input_stock,
-            schedules=schedules,
+            schedules=schedules_pagination["items"],
+            schedules_pagination=schedules_pagination,
             schedule_validations=schedule_validations,
             edit_schedule=edit_schedule,
             edit_schedule_items=edit_schedule_items,
@@ -3902,6 +4036,12 @@ def production_page(
         for harvest in repo.list_harvests()
         if harvest.plot_id in plot_ids and _within_scope(harvest.harvest_date, start_date, end_date)
     ]
+    harvests = _sort_collection_desc(
+        harvests,
+        lambda item: item.harvest_date,
+        lambda item: item.id,
+    )
+    harvests_pagination = _paginate_collection(request, harvests, "harvests_page")
     return templates.TemplateResponse(
         "production.html",
         _base_context(
@@ -3911,7 +4051,8 @@ def production_page(
             "production",
             _repo=repo,
             plots=plots,
-            harvests=harvests,
+            harvests=harvests_pagination["items"],
+            harvests_pagination=harvests_pagination,
             edit_harvest=repo.get_harvest(edit_id) if edit_id else None,
         ),
     )
@@ -4029,6 +4170,12 @@ def pests_page(
         for incident in repo.list_pest_incidents()
         if incident.plot_id in plot_ids and _within_scope(incident.occurrence_date, start_date, end_date)
     ]
+    incidents = _sort_collection_desc(
+        incidents,
+        lambda item: item.occurrence_date,
+        lambda item: item.id,
+    )
+    incidents_pagination = _paginate_collection(request, incidents, "incidents_page")
     return templates.TemplateResponse(
         "pests.html",
         _base_context(
@@ -4038,7 +4185,8 @@ def pests_page(
             "pests",
             _repo=repo,
             plots=plots,
-            incidents=incidents,
+            incidents=incidents_pagination["items"],
+            incidents_pagination=incidents_pagination,
             edit_incident=repo.get_pest_incident(edit_id) if edit_id else None,
         ),
     )
@@ -4275,6 +4423,12 @@ def soil_analysis_page(
         for analysis in repo.list_soil_analyses(farm_id=effective_farm_id, plot_id=effective_plot_id)
         if (not plot_ids or analysis.plot_id in plot_ids) and _within_scope(analysis.analysis_date, start_date, end_date)
     ]
+    analyses = _sort_collection_desc(
+        analyses,
+        lambda item: item.analysis_date,
+        lambda item: item.id,
+    )
+    analyses_pagination = _paginate_collection(request, analyses, "analyses_page")
     compare_target = compare_plot_id or effective_plot_id
     compare_analyses = (
         [
@@ -4296,7 +4450,8 @@ def soil_analysis_page(
             title="Analise de Solo",
             farms=repo.list_farms(),
             plots=plots,
-            analyses=analyses,
+            analyses=analyses_pagination["items"],
+            analyses_pagination=analyses_pagination,
             edit_analysis=repo.get_soil_analysis(edit_id) if edit_id else None,
             filters={"farm_id": effective_farm_id, "plot_id": effective_plot_id, "compare_plot_id": compare_target},
             compare_chart=_soil_history_chart(compare_analyses),

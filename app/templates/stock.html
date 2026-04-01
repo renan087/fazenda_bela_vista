@@ -170,12 +170,12 @@
     </div>
 
     <div class="mt-6 flex flex-wrap gap-3">
-        <button type="button" class="rounded-xl bg-brand-500 px-4 py-2 text-sm font-semibold text-white" data-stock-tab-button="entries">Entradas</button>
-        <button type="button" class="rounded-xl bg-slate-100 px-4 py-2 text-sm font-semibold text-slate-700" data-stock-tab-button="outputs">Saídas</button>
-        <button type="button" class="rounded-xl bg-slate-100 px-4 py-2 text-sm font-semibold text-slate-700" data-stock-tab-button="extract">Extrato</button>
+        <a href="{{ stock_tab_urls.entries }}" class="rounded-xl px-4 py-2 text-sm font-semibold {% if selected_stock_tab == 'entries' %}bg-brand-500 text-white{% else %}bg-slate-100 text-slate-700 hover:bg-slate-200{% endif %}" data-stock-tab-button="entries">Entradas</a>
+        <a href="{{ stock_tab_urls.outputs }}" class="rounded-xl px-4 py-2 text-sm font-semibold {% if selected_stock_tab == 'outputs' %}bg-brand-500 text-white{% else %}bg-slate-100 text-slate-700 hover:bg-slate-200{% endif %}" data-stock-tab-button="outputs">Saídas</a>
+        <a href="{{ stock_tab_urls.extract }}" class="rounded-xl px-4 py-2 text-sm font-semibold {% if selected_stock_tab == 'extract' %}bg-brand-500 text-white{% else %}bg-slate-100 text-slate-700 hover:bg-slate-200{% endif %}" data-stock-tab-button="extract">Extrato</a>
     </div>
 
-    <div class="mt-6" data-stock-tab="entries">
+    <div class="mt-6 {% if selected_stock_tab != 'entries' %}hidden{% endif %}" data-stock-tab="entries">
         <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Histórico de entradas</p>
         <h3 class="mt-2 text-xl font-semibold">Compras e lotes</h3>
         <div class="mt-6 overflow-hidden rounded-[1.5rem] border border-slate-200">
@@ -225,9 +225,10 @@
                 </table>
             </div>
         </div>
+        {% with pagination=purchase_entries_pagination %}{% include "partials/history_pagination.html" %}{% endwith %}
     </div>
 
-    <div class="mt-6 hidden" data-stock-tab="outputs">
+    <div class="mt-6 {% if selected_stock_tab != 'outputs' %}hidden{% endif %}" data-stock-tab="outputs">
         <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Histórico de saídas</p>
         <h3 class="mt-2 text-xl font-semibold">Usos e baixas</h3>
         <div class="mt-6 overflow-hidden rounded-[1.5rem] border border-slate-200">
@@ -300,9 +301,10 @@
                 </table>
             </div>
         </div>
+        {% with pagination=stock_outputs_pagination %}{% include "partials/history_pagination.html" %}{% endwith %}
     </div>
 
-    <div class="mt-6 hidden" data-stock-tab="extract">
+    <div class="mt-6 {% if selected_stock_tab != 'extract' %}hidden{% endif %}" data-stock-tab="extract">
         <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Extrato</p>
         <h3 class="mt-2 text-xl font-semibold">Movimentações em ordem cronológica</h3>
         <div class="mt-6 overflow-hidden rounded-[1.5rem] border border-slate-200">
@@ -345,6 +347,7 @@
                 </table>
             </div>
         </div>
+        {% with pagination=extract_rows_pagination %}{% include "partials/history_pagination.html" %}{% endwith %}
     </div>
 </section>
 
@@ -450,27 +453,13 @@
 
     <script>
         (() => {
-            const buttons = Array.from(document.querySelectorAll('[data-stock-tab-button]'));
             const tabs = Array.from(document.querySelectorAll('[data-stock-tab]'));
-        if (!buttons.length || !tabs.length) return;
+        if (!tabs.length) return;
 
-        const activate = (target) => {
-            buttons.forEach((button) => {
-                const active = button.dataset.stockTabButton === target;
-                button.classList.toggle('bg-brand-500', active);
-                button.classList.toggle('text-white', active);
-                button.classList.toggle('bg-slate-100', !active);
-                button.classList.toggle('text-slate-700', !active);
-            });
+            const activeTab = {% if edit_output %}'outputs'{% else %}{{ selected_stock_tab|tojson }}{% endif %};
             tabs.forEach((tab) => {
-                tab.classList.toggle('hidden', tab.dataset.stockTab !== target);
+                tab.classList.toggle('hidden', tab.dataset.stockTab !== activeTab);
             });
-        };
-
-            buttons.forEach((button) => {
-                button.addEventListener('click', () => activate(button.dataset.stockTabButton));
-            });
-            activate({% if edit_output %}'outputs'{% else %}'entries'{% endif %});
 
             const stockFilterForm = document.querySelector('[data-stock-filter-form]');
             stockFilterForm?.addEventListener('submit', () => {

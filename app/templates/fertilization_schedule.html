@@ -173,6 +173,7 @@
             <p class="text-sm text-slate-500">Nenhum agendamento cadastrado.</p>
             {% endfor %}
         </div>
+        {% with pagination=schedules_pagination %}{% include "partials/history_pagination.html" %}{% endwith %}
     </section>
 </div>
 {% include "partials/history_view_modal.html" %}

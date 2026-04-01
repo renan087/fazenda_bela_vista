@@ -1,0 +1,22 @@
+{% if pagination and pagination.total_pages > 1 %}
+<nav class="mt-6 flex flex-col gap-3 rounded-[1.25rem] border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600 sm:flex-row sm:items-center sm:justify-between">
+    <p>Página {{ pagination.page }} de {{ pagination.total_pages }}</p>
+    <div class="flex flex-wrap gap-2">
+        {% if pagination.has_prev %}
+        <a href="{{ pagination.first_url }}" class="rounded-xl bg-white px-3 py-2 font-medium text-slate-700 ring-1 ring-slate-200 transition hover:bg-slate-100">Primeira</a>
+        <a href="{{ pagination.prev_url }}" class="rounded-xl bg-white px-3 py-2 font-medium text-slate-700 ring-1 ring-slate-200 transition hover:bg-slate-100">Anterior</a>
+        {% else %}
+        <span class="rounded-xl bg-white/70 px-3 py-2 font-medium text-slate-300 ring-1 ring-slate-200">Primeira</span>
+        <span class="rounded-xl bg-white/70 px-3 py-2 font-medium text-slate-300 ring-1 ring-slate-200">Anterior</span>
+        {% endif %}
+
+        {% if pagination.has_next %}
+        <a href="{{ pagination.next_url }}" class="rounded-xl bg-white px-3 py-2 font-medium text-slate-700 ring-1 ring-slate-200 transition hover:bg-slate-100">Próxima</a>
+        <a href="{{ pagination.last_url }}" class="rounded-xl bg-white px-3 py-2 font-medium text-slate-700 ring-1 ring-slate-200 transition hover:bg-slate-100">Última</a>
+        {% else %}
+        <span class="rounded-xl bg-white/70 px-3 py-2 font-medium text-slate-300 ring-1 ring-slate-200">Próxima</span>
+        <span class="rounded-xl bg-white/70 px-3 py-2 font-medium text-slate-300 ring-1 ring-slate-200">Última</span>
+        {% endif %}
+    </div>
+</nav>
+{% endif %}

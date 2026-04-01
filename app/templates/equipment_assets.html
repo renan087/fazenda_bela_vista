@@ -165,6 +165,7 @@
             <p class="text-sm text-slate-500">Nenhum patrimônio cadastrado para os filtros informados.</p>
             {% endfor %}
         </div>
+        {% with pagination=assets_pagination %}{% include "partials/history_pagination.html" %}{% endwith %}
     </section>
 </div>
 {% include "partials/history_view_modal.html" %}

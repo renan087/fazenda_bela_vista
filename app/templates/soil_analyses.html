@@ -115,6 +115,7 @@
                 <p class="text-sm text-slate-500">Nenhuma analise de solo registrada.</p>
                 {% endfor %}
             </div>
+            {% with pagination=analyses_pagination %}{% include "partials/history_pagination.html" %}{% endwith %}
         </section>
 
         <section class="rounded-[2rem] bg-white p-6 shadow-panel">

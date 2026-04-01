@@ -155,6 +155,7 @@
             <p class="text-sm text-slate-500">Sem registros.</p>
             {% endfor %}
         </div>
+        {% with pagination=fertilizations_pagination %}{% include "partials/history_pagination.html" %}{% endwith %}
     </section>
 </div>
 {% include "partials/history_view_modal.html" %}

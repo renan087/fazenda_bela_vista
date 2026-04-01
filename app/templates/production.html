@@ -62,6 +62,7 @@
                 </tbody>
             </table>
         </div>
+        {% with pagination=harvests_pagination %}{% include "partials/history_pagination.html" %}{% endwith %}
     </section>
 </div>
 {% include "partials/history_view_modal.html" %}

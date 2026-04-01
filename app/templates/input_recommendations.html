@@ -120,6 +120,7 @@
             <p class="text-sm text-slate-500">Nenhuma recomendacao cadastrada.</p>
             {% endfor %}
         </div>
+        {% with pagination=recommendations_pagination %}{% include "partials/history_pagination.html" %}{% endwith %}
     </section>
 </div>
 {% include "partials/history_view_modal.html" %}
