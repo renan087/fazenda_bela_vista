@@ -1,15 +1,16 @@
-from datetime import datetime, timedelta, timezone
+from datetime import timedelta
 
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.core.security import generate_numeric_code, hash_verification_code, verify_verification_code
+from app.core.timezone import utc_now
 from app.models import LoginVerificationCode, User
 
 
 def issue_login_verification_code(db: Session, user: User) -> str:
     settings = get_settings()
-    now = datetime.now(timezone.utc)
+    now = utc_now()
     db.query(LoginVerificationCode).filter(
         LoginVerificationCode.user_id == user.id,
         LoginVerificationCode.used_at.is_(None),
@@ -36,7 +37,7 @@ def revoke_active_login_codes(db: Session, user_id: int) -> None:
 
 
 def get_active_login_code(db: Session, user_id: int) -> LoginVerificationCode | None:
-    now = datetime.now(timezone.utc)
+    now = utc_now()
     return (
         db.query(LoginVerificationCode)
         .filter(
@@ -51,7 +52,7 @@ def get_active_login_code(db: Session, user_id: int) -> LoginVerificationCode | 
 
 
 def verify_login_code(db: Session, user_id: int, code: str) -> tuple[bool, str]:
-    now = datetime.now(timezone.utc)
+    now = utc_now()
     record = (
         db.query(LoginVerificationCode)
         .filter(

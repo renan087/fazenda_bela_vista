@@ -21,6 +21,7 @@ from starlette.datastructures import UploadFile as StarletteUploadFile
 from app.core.csrf import validate_csrf
 from app.core.deps import get_csrf_token, get_current_user_web
 from app.core.security import get_password_hash, verify_password
+from app.core.timezone import format_app_datetime, today_in_app_timezone
 from app.core.user_context import persist_user_context, sync_user_context_from_preferences
 from app.db.session import get_db
 from app.models import (
@@ -98,6 +99,7 @@ from app.services.trusted_browser import revoke_user_trusted_browsers
 
 router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")
+templates.env.filters["datetime_sp"] = format_app_datetime
 
 
 def _redirect(url: str) -> RedirectResponse:
@@ -499,7 +501,7 @@ def _build_stock_context(
                     "value": float(entry.total_cost or 0),
                     "unit_cost": unit_cost,
                     "notes": entry.notes,
-                    "sort_key": (entry.purchase_date or date.today(), 0, entry.id),
+                    "sort_key": (entry.purchase_date or today_in_app_timezone(), 0, entry.id),
                 }
             )
         for output in related_outputs:
@@ -516,7 +518,7 @@ def _build_stock_context(
                     "value": float(output.total_cost or 0),
                     "unit_cost": float(output.unit_cost or 0),
                     "notes": output.notes,
-                    "sort_key": (output.movement_date or date.today(), 1, output.id),
+                    "sort_key": (output.movement_date or today_in_app_timezone(), 1, output.id),
                 }
             )
 
@@ -3566,7 +3568,7 @@ def fertilization_schedules_page(
             schedule_validations=schedule_validations,
             edit_schedule=edit_schedule,
             edit_schedule_items=edit_schedule_items,
-            today=date.today(),
+            today=today_in_app_timezone(),
         ),
     )
 

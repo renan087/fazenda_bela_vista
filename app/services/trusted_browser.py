@@ -1,20 +1,17 @@
-from datetime import datetime, timedelta, timezone
+from datetime import timedelta
 
 from fastapi import Request
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.core.security import generate_persistent_token, hash_browser_fingerprint, hash_persistent_token
+from app.core.timezone import utc_now
 from app.models import TrustedBrowserToken, User
-
-
-def _utcnow() -> datetime:
-    return datetime.now(timezone.utc)
 
 
 def issue_trusted_browser_token(db: Session, user: User, request: Request) -> str:
     settings = get_settings()
-    now = _utcnow()
+    now = utc_now()
     user_agent_hash = hash_browser_fingerprint(request.headers.get("user-agent", ""))
 
     db.query(TrustedBrowserToken).filter(
@@ -44,7 +41,7 @@ def validate_trusted_browser_token(
     if not raw_token:
         return None
 
-    now = _utcnow()
+    now = utc_now()
     record = (
         db.query(TrustedBrowserToken)
         .filter(
@@ -84,13 +81,13 @@ def revoke_trusted_browser_token(db: Session, raw_token: str | None) -> None:
     if not record:
         return
 
-    record.revoked_at = _utcnow()
+    record.revoked_at = utc_now()
     db.add(record)
     db.commit()
 
 
 def revoke_user_trusted_browsers(db: Session, user_id: int) -> None:
-    now = _utcnow()
+    now = utc_now()
     db.query(TrustedBrowserToken).filter(
         TrustedBrowserToken.user_id == user_id,
         TrustedBrowserToken.revoked_at.is_(None),

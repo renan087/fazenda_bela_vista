@@ -10,6 +10,7 @@ class Settings(BaseSettings):
     session_idle_timeout_hours: int = 4
     environment: str = "development"
     port: int = 8000
+    app_timezone: str = "America/Sao_Paulo"
     session_cookie_name: str = "fazenda_session"
     database_url_override: str | None = None
     postgres_server: str = "localhost"

@@ -5,6 +5,7 @@ from datetime import date
 from decimal import Decimal
 
 from app.core.security import get_password_hash
+from app.core.timezone import today_in_app_timezone
 from app.models import (
     AgronomicProfile,
     CoffeeVariety,
@@ -336,7 +337,7 @@ def create_purchased_input(repository: FarmRepository, form: dict) -> PurchasedI
         package_size=package_size,
         package_unit=form["package_unit"],
         unit_price=unit_price,
-        purchase_date=date.fromisoformat(form["purchase_date"]) if form.get("purchase_date") else date.today(),
+        purchase_date=date.fromisoformat(form["purchase_date"]) if form.get("purchase_date") else today_in_app_timezone(),
         total_quantity=total_quantity,
         available_quantity=total_quantity,
         total_cost=round(quantity_purchased * unit_price, 2),
@@ -444,7 +445,7 @@ def create_manual_stock_output(repository: FarmRepository, form: dict) -> StockO
     unit = (form.get("unit") or input_catalog.default_unit or "kg").strip()
     farm_id = form.get("farm_id")
     plot_id = form.get("plot_id")
-    movement_date = date.fromisoformat(form["movement_date"]) if form.get("movement_date") else date.today()
+    movement_date = date.fromisoformat(form["movement_date"]) if form.get("movement_date") else today_in_app_timezone()
     season_id = _resolve_season_for_farm(repository, farm_id, movement_date, form.get("season_id"))
 
     available = _catalog_available_stock(repository, input_catalog.id, farm_id, unit)
@@ -453,7 +454,7 @@ def create_manual_stock_output(repository: FarmRepository, form: dict) -> StockO
         raise ValueError(f"Estoque insuficiente. Necessario comprar {missing} {unit} de {input_catalog.name}.")
 
     candidate_lots = _find_candidate_lots(repository, input_catalog.id, None, input_catalog.name, unit, farm_id)
-    candidate_lots = sorted(candidate_lots, key=lambda item: (item.purchase_date or date.today(), item.id))
+    candidate_lots = sorted(candidate_lots, key=lambda item: (item.purchase_date or today_in_app_timezone(), item.id))
 
     output = StockOutput(
         input_id=input_catalog.id,
@@ -519,7 +520,7 @@ def update_manual_stock_output(repository: FarmRepository, output: StockOutput, 
     if new_quantity <= 0:
         raise ValueError("Informe uma quantidade valida para a saida manual.")
 
-    movement_date = date.fromisoformat(form["movement_date"]) if form.get("movement_date") else date.today()
+    movement_date = date.fromisoformat(form["movement_date"]) if form.get("movement_date") else today_in_app_timezone()
     input_catalog = repository.get_input_catalog(int(output.input_id)) if output.input_id else None
     if not input_catalog or not input_catalog.is_active:
         raise ValueError("Selecione um item válido para a saída manual.")
@@ -552,7 +553,7 @@ def update_manual_stock_output(repository: FarmRepository, output: StockOutput, 
 
     candidate_lots = sorted(
         _find_candidate_lots(repository, input_catalog.id, None, input_catalog.name, target_unit, target_farm_id),
-        key=lambda item: (item.purchase_date or date.today(), item.id),
+        key=lambda item: (item.purchase_date or today_in_app_timezone(), item.id),
     )
     available = _catalog_available_stock(repository, input_catalog.id, target_farm_id, target_unit)
     if new_quantity > available:
@@ -1019,7 +1020,7 @@ def _deduct_stock(repository: FarmRepository, fertilization_item: FertilizationI
         fertilization_item.unit,
         farm_id,
     )
-    candidate_lots = sorted(candidate_lots, key=lambda item: (item.purchase_date or date.today(), item.id))
+    candidate_lots = sorted(candidate_lots, key=lambda item: (item.purchase_date or today_in_app_timezone(), item.id))
     total_available = sum(_available_stock_for_input(item) for item in candidate_lots)
     if requested_quantity > total_available:
         missing = round(requested_quantity - total_available, 2)
@@ -1049,7 +1050,7 @@ def _deduct_stock(repository: FarmRepository, fertilization_item: FertilizationI
                 farm_id=farm_id,
                 plot_id=fertilization_item.fertilization.plot_id if fertilization_item.fertilization else None,
                 season_id=fertilization_item.fertilization.season_id if fertilization_item.fertilization else None,
-                movement_date=fertilization_item.fertilization.application_date if fertilization_item.fertilization else date.today(),
+                movement_date=fertilization_item.fertilization.application_date if fertilization_item.fertilization else today_in_app_timezone(),
                 quantity=consumed,
                 unit=fertilization_item.unit,
                 origin="fertilizacao",

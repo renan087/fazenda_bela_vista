@@ -104,11 +104,11 @@
                 </article>
                 <article class="rounded-[1.5rem] border border-slate-100 bg-slate-50 p-4">
                     <p class="text-xs uppercase tracking-[0.28em] text-slate-400">Conta criada em</p>
-                    <p class="mt-2 text-base font-semibold text-slate-900">{% if user.created_at %}{{ user.created_at.strftime('%d/%m/%Y %H:%M') }}{% else %}Nao informado{% endif %}</p>
+                    <p class="mt-2 text-base font-semibold text-slate-900">{% if user.created_at %}{{ user.created_at|datetime_sp }}{% else %}Nao informado{% endif %}</p>
                 </article>
                 <article class="rounded-[1.5rem] border border-slate-100 bg-slate-50 p-4">
                     <p class="text-xs uppercase tracking-[0.28em] text-slate-400">Ultimo acesso</p>
-                    <p class="mt-2 text-base font-semibold text-slate-900">{% if user.last_login_at %}{{ user.last_login_at.strftime('%d/%m/%Y %H:%M') }}{% else %}Ainda nao registrado{% endif %}</p>
+                    <p class="mt-2 text-base font-semibold text-slate-900">{% if user.last_login_at %}{{ user.last_login_at|datetime_sp }}{% else %}Ainda nao registrado{% endif %}</p>
                 </article>
                 <article class="rounded-[1.5rem] border border-slate-100 bg-slate-50 p-4">
                     <div class="flex items-center justify-between gap-3">

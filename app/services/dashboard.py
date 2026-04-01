@@ -2,6 +2,7 @@ import json
 from collections import defaultdict
 from datetime import date
 
+from app.core.timezone import today_in_app_timezone
 from app.repositories.farm import FarmRepository
 
 
@@ -121,7 +122,7 @@ def build_dashboard_context(
         for analysis in repository.list_soil_analyses(farm_id=farm_id)
         if analysis.plot_id in plot_ids and _in_season(analysis.analysis_date, season)
     ][:6]
-    today = date.today()
+    today = today_in_app_timezone()
     month_start = today.replace(day=1)
     rainfalls = repository.list_rainfalls(
         farm_id=farm_id,

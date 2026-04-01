@@ -1,8 +1,8 @@
 import json
-from datetime import datetime, timezone
 import os
 
 from app.core.config import get_settings
+from app.core.timezone import utc_now
 from app.models import AgronomicProfile, Farm, Plot, SoilAnalysis
 
 def gerar_recomendacao_adubacao(analise_solo: SoilAnalysis) -> dict:
@@ -30,7 +30,7 @@ def gerar_recomendacao_adubacao(analise_solo: SoilAnalysis) -> dict:
             "status": "generated",
             "recommendation": response.choices[0].message.content.strip(),
             "model": model,
-            "generated_at": datetime.now(timezone.utc),
+            "generated_at": utc_now(),
             "error": None,
         }
     except Exception as exc:

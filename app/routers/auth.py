@@ -1,5 +1,4 @@
 import logging
-from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request, status
 from fastapi.responses import RedirectResponse
@@ -11,6 +10,7 @@ from app.core.csrf import ensure_csrf_token, validate_csrf
 from app.core.config import get_settings
 from app.core.session import clear_expired_session, touch_session_activity
 from app.core.security import authenticate_user, create_access_token
+from app.core.timezone import utc_now
 from app.db.session import get_db
 from app.models import User
 from app.schemas.auth import Token
@@ -76,7 +76,7 @@ def _complete_web_login(
     clear_trusted_browser_cookie: bool = False,
 ):
     try:
-        user.last_login_at = datetime.now(timezone.utc)
+        user.last_login_at = utc_now()
         db.add(user)
         db.commit()
         db.refresh(user)

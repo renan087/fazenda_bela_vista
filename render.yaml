@@ -10,6 +10,8 @@ services:
         value: 3.12.8
       - key: ENVIRONMENT
         value: production
+      - key: APP_TIMEZONE
+        value: America/Sao_Paulo
       - key: SECRET_KEY
         generateValue: true
       - key: ACCESS_TOKEN_EXPIRE_MINUTES
