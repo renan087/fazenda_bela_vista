@@ -1,10 +1,11 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="grid gap-6 xl:grid-cols-[0.95fr_1.05fr]" data-modal-single-pane>
-    <section class="rounded-[2rem] bg-white p-6 shadow-panel" data-history-edit-panel {% if edit_fertilization %}data-history-edit-open="1"{% endif %}>
+<div class="grid gap-6 xl:grid-cols-[0.95fr_1.05fr] xl:items-start" data-modal-single-pane>
+    <section class="rounded-[2rem] bg-white p-6 shadow-panel xl:flex xl:max-h-[80vh] xl:min-h-0 xl:flex-col" data-history-edit-panel {% if edit_fertilization %}data-history-edit-open="1"{% endif %}>
         <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Fertilizacao</p>
         <h3 class="mt-2 text-2xl font-semibold">{% if edit_fertilization %}Editar aplicacao{% else %}Registrar aplicacao{% endif %}</h3>
-        <form method="post" action="{% if edit_fertilization %}/fertilizacao/{{ edit_fertilization.id }}/editar{% else %}/fertilizacao{% endif %}" class="mt-6 grid gap-4" data-fertilization-form>
+        <div class="mt-6 xl:min-h-0 xl:flex-1 xl:overflow-y-auto xl:pr-2">
+        <form method="post" action="{% if edit_fertilization %}/fertilizacao/{{ edit_fertilization.id }}/editar{% else %}/fertilizacao{% endif %}" class="grid gap-4" data-fertilization-form>
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
             {% include "partials/launch_context.html" %}
             <div class="grid gap-4 md:grid-cols-2">
@@ -86,12 +87,13 @@
                 {% endif %}
             </div>
         </form>
+        </div>
     </section>
 
-    <section class="rounded-[2rem] bg-white p-6 shadow-panel">
+    <section class="rounded-[2rem] bg-white p-6 shadow-panel xl:flex xl:max-h-[80vh] xl:min-h-0 xl:flex-col">
         <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Historico</p>
         <h3 class="mt-2 text-2xl font-semibold">Aplicacoes registradas</h3>
-        <div class="mt-6 space-y-4">
+        <div class="mt-6 space-y-4 xl:min-h-0 xl:flex-1 xl:overflow-y-auto xl:pr-2">
             {% for item in fertilizations %}
             <div class="rounded-[1.5rem] border border-slate-100 bg-slate-50 p-5">
                 <div class="flex items-start justify-between gap-4">
@@ -154,8 +156,8 @@
             {% else %}
             <p class="text-sm text-slate-500">Sem registros.</p>
             {% endfor %}
+            {% with pagination=fertilizations_pagination %}{% include "partials/history_pagination.html" %}{% endwith %}
         </div>
-        {% with pagination=fertilizations_pagination %}{% include "partials/history_pagination.html" %}{% endwith %}
     </section>
 </div>
 {% include "partials/history_view_modal.html" %}

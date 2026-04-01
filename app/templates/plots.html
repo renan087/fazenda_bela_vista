@@ -161,7 +161,12 @@
                 <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Nova Fazenda</p>
                 <h3 class="mt-2 text-2xl font-semibold">Cadastrar fazenda sem sair da tela</h3>
             </div>
-            <button type="button" data-close-farm-modal class="rounded-xl bg-slate-100 px-3 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-200">Fechar</button>
+            <button type="button" data-close-farm-modal class="modal-close-button" aria-label="Fechar">
+                <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M18 6 6 18"/>
+                    <path d="m6 6 12 12"/>
+                </svg>
+            </button>
         </div>
         <form method="post" enctype="multipart/form-data" action="/fazendas" class="mt-6 grid gap-4 md:grid-cols-2">
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">

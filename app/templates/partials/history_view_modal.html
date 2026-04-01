@@ -6,12 +6,16 @@
                 <h3 class="mt-2 text-2xl font-semibold text-slate-900" data-history-view-title>Detalhes do lancamento</h3>
                 <p class="mt-2 text-sm text-slate-500" data-history-view-subtitle></p>
             </div>
-            <button type="button" class="rounded-xl bg-slate-100 px-3 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-200" data-history-view-close>Fechar</button>
+            <button type="button" class="modal-close-button" aria-label="Fechar" data-history-view-close>
+                <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M18 6 6 18"/>
+                    <path d="m6 6 12 12"/>
+                </svg>
+            </button>
         </div>
         <div class="mt-6 min-h-0 flex-1 overflow-y-auto pr-1 space-y-4" data-history-view-body data-modal-scroll></div>
         <div class="mt-8 flex flex-wrap justify-end gap-3">
             <a href="#" class="hidden rounded-2xl bg-slate-900 px-5 py-3 font-semibold text-white hover:bg-slate-700" data-history-view-edit>Editar</a>
-            <button type="button" class="rounded-2xl bg-slate-100 px-5 py-3 font-semibold text-slate-700 hover:bg-slate-200" data-history-view-close>Fechar</button>
         </div>
     </div>
 </dialog>
@@ -23,7 +27,12 @@
                 <h3 class="mt-2 text-2xl font-semibold text-slate-900" data-history-edit-title>Editar lancamento</h3>
                 <p class="mt-2 text-sm text-slate-500">Atualize os dados sem sair da tela atual.</p>
             </div>
-            <button type="button" class="rounded-xl bg-slate-100 px-3 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-200" data-history-edit-close>Fechar</button>
+            <button type="button" class="modal-close-button" aria-label="Fechar" data-history-edit-close>
+                <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M18 6 6 18"/>
+                    <path d="m6 6 12 12"/>
+                </svg>
+            </button>
         </div>
         <div class="mt-6 min-h-0 flex-1 overflow-y-auto pr-1" data-history-edit-body data-modal-scroll></div>
     </div>

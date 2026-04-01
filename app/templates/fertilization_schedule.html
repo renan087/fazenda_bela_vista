@@ -1,10 +1,11 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="grid gap-6 xl:grid-cols-[0.92fr_1.08fr]" data-modal-single-pane>
-    <section class="rounded-[2rem] bg-white p-6 shadow-panel" data-history-edit-panel {% if edit_schedule %}data-history-edit-open="1"{% endif %}>
+<div class="grid gap-6 xl:grid-cols-[0.92fr_1.08fr] xl:items-start" data-modal-single-pane>
+    <section class="rounded-[2rem] bg-white p-6 shadow-panel xl:flex xl:max-h-[80vh] xl:min-h-0 xl:flex-col" data-history-edit-panel {% if edit_schedule %}data-history-edit-open="1"{% endif %}>
         <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Agendamento</p>
         <h3 class="mt-2 text-2xl font-semibold">{% if edit_schedule %}Editar fertilizacao programada{% else %}Agendar fertilizacao{% endif %}</h3>
-        <form method="post" action="{% if edit_schedule %}/fertilizacao/agendamentos/{{ edit_schedule.id }}/editar{% else %}/fertilizacao/agendamentos{% endif %}" class="mt-6 grid gap-4" data-schedule-form>
+        <div class="mt-6 xl:min-h-0 xl:flex-1 xl:overflow-y-auto xl:pr-2">
+        <form method="post" action="{% if edit_schedule %}/fertilizacao/agendamentos/{{ edit_schedule.id }}/editar{% else %}/fertilizacao/agendamentos{% endif %}" class="grid gap-4" data-schedule-form>
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
             {% include "partials/launch_context.html" %}
             <div class="grid gap-4 md:grid-cols-2">
@@ -81,12 +82,13 @@
                 <a href="/fertilizacao/agendamentos" class="rounded-2xl bg-slate-100 px-4 py-3 font-semibold text-slate-700 hover:bg-slate-200">Cancelar</a>
             </div>
         </form>
+        </div>
     </section>
 
-    <section class="rounded-[2rem] bg-white p-6 shadow-panel">
+    <section class="rounded-[2rem] bg-white p-6 shadow-panel xl:flex xl:max-h-[80vh] xl:min-h-0 xl:flex-col">
         <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Planejamento</p>
         <h3 class="mt-2 text-2xl font-semibold">Proximas aplicacoes</h3>
-        <div class="mt-6 space-y-4">
+        <div class="mt-6 space-y-4 xl:min-h-0 xl:flex-1 xl:overflow-y-auto xl:pr-2">
             {% for schedule in schedules %}
             {% set validation = schedule_validations.get(schedule.id, {'ok': True, 'shortages': []}) %}
             {% set is_late = schedule.status != 'completed' and schedule.scheduled_date < today %}
@@ -172,8 +174,8 @@
             {% else %}
             <p class="text-sm text-slate-500">Nenhum agendamento cadastrado.</p>
             {% endfor %}
+            {% with pagination=schedules_pagination %}{% include "partials/history_pagination.html" %}{% endwith %}
         </div>
-        {% with pagination=schedules_pagination %}{% include "partials/history_pagination.html" %}{% endwith %}
     </section>
 </div>
 {% include "partials/history_view_modal.html" %}
