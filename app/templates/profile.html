@@ -19,13 +19,19 @@
 
             <div class="grid gap-5 rounded-[1.75rem] border border-slate-200 bg-slate-50 p-5 md:grid-cols-[auto_1fr] md:items-center">
                 <div class="flex flex-col items-center gap-3">
-                    {% if user.avatar_data %}
-                    <img src="/meu-perfil/avatar" alt="Avatar atual" class="h-28 w-28 rounded-[1.75rem] object-cover shadow-sm">
-                    {% else %}
-                    <div class="flex h-28 w-28 items-center justify-center rounded-[1.75rem] bg-brand-100 text-3xl font-semibold text-brand-700">
-                        {{ (user.display_name or user.name or 'U')[:1]|upper }}
+                    <div class="relative overflow-hidden rounded-[1.75rem] border border-slate-200 bg-white shadow-sm">
+                        {% if user.avatar_data %}
+                        <img src="/meu-perfil/avatar" alt="Avatar atual" class="h-56 w-56 object-cover" data-avatar-static>
+                        {% else %}
+                        <div class="flex h-56 w-56 items-center justify-center bg-brand-100 text-5xl font-semibold text-brand-700" data-avatar-static>
+                            {{ (user.display_name or user.name or 'U')[:1]|upper }}
+                        </div>
+                        {% endif %}
+                        <canvas width="320" height="320" class="hidden h-56 w-56 touch-none bg-slate-950/5" data-avatar-editor></canvas>
+                        <div class="pointer-events-none absolute inset-x-4 bottom-4 hidden rounded-2xl bg-slate-950/70 px-3 py-2 text-center text-xs font-medium text-white" data-avatar-editor-badge>
+                            Arraste para mover e use o zoom para enquadrar
+                        </div>
                     </div>
-                    {% endif %}
                     {% if user.avatar_data %}
                     <button type="submit" form="remove-avatar-form" class="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-medium text-rose-700 hover:bg-rose-100">Remover foto</button>
                     {% endif %}
@@ -33,12 +39,23 @@
                 <div class="grid gap-4">
                     <div>
                         <p class="text-sm font-medium text-slate-700">Foto do usuario</p>
-                        <p class="mt-1 text-sm text-slate-500">Envie uma imagem para usar como avatar. Ao salvar, ela substitui a foto atual.</p>
+                        <p class="mt-1 text-sm text-slate-500">Escolha a imagem, ajuste o enquadramento dentro do quadro e salve. O envio final sera otimizado para web em 512x512 px.</p>
                     </div>
                     <label class="block">
                         <span class="mb-2 block text-sm font-medium text-slate-700">Nova foto</span>
-                        <input type="file" name="avatar" accept="image/*" class="w-full rounded-2xl border-slate-200 bg-white text-sm file:mr-4 file:rounded-xl file:border-0 file:bg-brand-500 file:px-4 file:py-2 file:font-medium file:text-white hover:file:bg-brand-700">
+                        <input type="file" name="avatar" accept="image/*" class="w-full rounded-2xl border-slate-200 bg-white text-sm file:mr-4 file:rounded-xl file:border-0 file:bg-brand-500 file:px-4 file:py-2 file:font-medium file:text-white hover:file:bg-brand-700" data-avatar-input>
                     </label>
+                    <div class="hidden grid gap-3 rounded-[1.25rem] border border-brand-100 bg-white p-4" data-avatar-controls>
+                        <label>
+                            <span class="mb-2 block text-sm font-medium text-slate-700">Zoom</span>
+                            <input type="range" min="1" max="3" step="0.01" value="1" class="w-full accent-brand-500" data-avatar-zoom>
+                        </label>
+                        <div class="flex flex-wrap gap-3">
+                            <button type="button" class="rounded-xl bg-slate-100 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-200" data-avatar-reset>Recentralizar</button>
+                            <button type="button" class="rounded-xl bg-slate-100 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-200" data-avatar-clear>Descartar nova foto</button>
+                        </div>
+                        <p class="text-sm text-slate-500" data-avatar-feedback>O arquivo sera otimizado antes do envio e substituira a foto atual somente quando voce salvar.</p>
+                    </div>
                 </div>
             </div>
 
@@ -156,14 +173,255 @@
 
 <script>
     (() => {
-        const forms = document.querySelectorAll('[data-profile-form], [data-password-form]');
-        forms.forEach((form) => {
-            form.addEventListener('submit', () => {
-                const button = form.querySelector('[data-submit-button]');
-                if (!button) return;
-                button.disabled = true;
-                button.classList.add('opacity-70', 'cursor-not-allowed');
+        const disableSubmitButton = (form) => {
+            const button = form.querySelector('[data-submit-button]');
+            if (!button) return;
+            button.disabled = true;
+            button.classList.add('opacity-70', 'cursor-not-allowed');
+        };
+
+        const passwordForm = document.querySelector('[data-password-form]');
+        if (passwordForm) {
+            passwordForm.addEventListener('submit', () => disableSubmitButton(passwordForm));
+        }
+
+        const profileForm = document.querySelector('[data-profile-form]');
+        if (!profileForm) return;
+
+        const avatarInput = profileForm.querySelector('[data-avatar-input]');
+        const avatarCanvas = profileForm.querySelector('[data-avatar-editor]');
+        const avatarStatic = profileForm.querySelector('[data-avatar-static]');
+        const avatarBadge = profileForm.querySelector('[data-avatar-editor-badge]');
+        const avatarControls = profileForm.querySelector('[data-avatar-controls]');
+        const avatarZoom = profileForm.querySelector('[data-avatar-zoom]');
+        const avatarReset = profileForm.querySelector('[data-avatar-reset]');
+        const avatarClear = profileForm.querySelector('[data-avatar-clear]');
+        const avatarFeedback = profileForm.querySelector('[data-avatar-feedback]');
+
+        if (!avatarInput || !avatarCanvas || !avatarStatic || !avatarBadge || !avatarControls || !avatarZoom || !avatarReset || !avatarClear || !avatarFeedback) {
+            profileForm.addEventListener('submit', () => disableSubmitButton(profileForm));
+            return;
+        }
+
+        const ctx = avatarCanvas.getContext('2d');
+        const state = {
+            image: null,
+            objectUrl: null,
+            scale: 1,
+            baseScale: 1,
+            offsetX: 0,
+            offsetY: 0,
+            pointerId: null,
+            startX: 0,
+            startY: 0,
+            startOffsetX: 0,
+            startOffsetY: 0,
+            processingSubmit: false,
+            fileName: "avatar",
+        };
+
+        const viewportSize = avatarCanvas.width;
+
+        const clampOffsets = () => {
+            if (!state.image) return;
+            const drawWidth = state.image.width * state.scale;
+            const drawHeight = state.image.height * state.scale;
+            const maxOffsetX = Math.max(0, (drawWidth - viewportSize) / 2);
+            const maxOffsetY = Math.max(0, (drawHeight - viewportSize) / 2);
+            state.offsetX = Math.min(maxOffsetX, Math.max(-maxOffsetX, state.offsetX));
+            state.offsetY = Math.min(maxOffsetY, Math.max(-maxOffsetY, state.offsetY));
+        };
+
+        const drawEditor = (size = viewportSize, targetContext = ctx) => {
+            if (!state.image || !targetContext) return;
+            const ratio = size / viewportSize;
+            const drawWidth = state.image.width * state.scale * ratio;
+            const drawHeight = state.image.height * state.scale * ratio;
+            const x = (size - drawWidth) / 2 + (state.offsetX * ratio);
+            const y = (size - drawHeight) / 2 + (state.offsetY * ratio);
+            targetContext.clearRect(0, 0, size, size);
+            targetContext.fillStyle = "#f1f5f9";
+            targetContext.fillRect(0, 0, size, size);
+            targetContext.drawImage(state.image, x, y, drawWidth, drawHeight);
+        };
+
+        const updateEditorVisibility = (editing) => {
+            avatarStatic.classList.toggle('hidden', editing);
+            avatarCanvas.classList.toggle('hidden', !editing);
+            avatarBadge.classList.toggle('hidden', !editing);
+            avatarControls.classList.toggle('hidden', !editing);
+        };
+
+        const resetEditor = () => {
+            if (state.objectUrl) {
+                URL.revokeObjectURL(state.objectUrl);
+            }
+            state.image = null;
+            state.objectUrl = null;
+            state.scale = 1;
+            state.baseScale = 1;
+            state.offsetX = 0;
+            state.offsetY = 0;
+            state.pointerId = null;
+            state.fileName = "avatar";
+            avatarInput.value = "";
+            avatarZoom.value = "1";
+            avatarFeedback.textContent = "O arquivo sera otimizado antes do envio e substituira a foto atual somente quando voce salvar.";
+            updateEditorVisibility(false);
+            ctx.clearRect(0, 0, viewportSize, viewportSize);
+        };
+
+        const initializeEditor = (image, fileName) => {
+            state.image = image;
+            state.fileName = fileName || "avatar";
+            state.baseScale = Math.max(viewportSize / image.width, viewportSize / image.height);
+            state.scale = state.baseScale;
+            state.offsetX = 0;
+            state.offsetY = 0;
+            avatarZoom.value = "1";
+            clampOffsets();
+            drawEditor();
+            avatarFeedback.textContent = "Nova foto pronta para ajuste. O envio ao servidor acontecera somente quando voce salvar.";
+            updateEditorVisibility(true);
+        };
+
+        const loadSelectedImage = (file) => {
+            if (!file) {
+                resetEditor();
+                return;
+            }
+            if (!file.type.startsWith("image/")) {
+                resetEditor();
+                avatarFeedback.textContent = "Selecione uma imagem valida para o avatar.";
+                avatarControls.classList.remove('hidden');
+                return;
+            }
+
+            const nextUrl = URL.createObjectURL(file);
+            const previewImage = new Image();
+            previewImage.onload = () => {
+                if (state.objectUrl) {
+                    URL.revokeObjectURL(state.objectUrl);
+                }
+                state.objectUrl = nextUrl;
+                initializeEditor(previewImage, file.name);
+            };
+            previewImage.onerror = () => {
+                URL.revokeObjectURL(nextUrl);
+                resetEditor();
+                avatarFeedback.textContent = "Nao foi possivel abrir a imagem selecionada.";
+                avatarControls.classList.remove('hidden');
+            };
+            previewImage.src = nextUrl;
+        };
+
+        avatarInput.addEventListener('change', (event) => {
+            const [file] = event.target.files || [];
+            loadSelectedImage(file);
+        });
+
+        avatarZoom.addEventListener('input', () => {
+            if (!state.image) return;
+            state.scale = state.baseScale * Number(avatarZoom.value || 1);
+            clampOffsets();
+            drawEditor();
+        });
+
+        avatarReset.addEventListener('click', () => {
+            if (!state.image) return;
+            state.scale = state.baseScale;
+            state.offsetX = 0;
+            state.offsetY = 0;
+            avatarZoom.value = "1";
+            drawEditor();
+            avatarFeedback.textContent = "Enquadramento recentralizado.";
+        });
+
+        avatarClear.addEventListener('click', () => {
+            resetEditor();
+        });
+
+        avatarCanvas.addEventListener('pointerdown', (event) => {
+            if (!state.image) return;
+            state.pointerId = event.pointerId;
+            state.startX = event.clientX;
+            state.startY = event.clientY;
+            state.startOffsetX = state.offsetX;
+            state.startOffsetY = state.offsetY;
+            avatarCanvas.setPointerCapture(event.pointerId);
+        });
+
+        avatarCanvas.addEventListener('pointermove', (event) => {
+            if (state.pointerId !== event.pointerId || !state.image) return;
+            state.offsetX = state.startOffsetX + (event.clientX - state.startX);
+            state.offsetY = state.startOffsetY + (event.clientY - state.startY);
+            clampOffsets();
+            drawEditor();
+        });
+
+        const releasePointer = (event) => {
+            if (state.pointerId !== event.pointerId) return;
+            avatarCanvas.releasePointerCapture(event.pointerId);
+            state.pointerId = null;
+        };
+
+        avatarCanvas.addEventListener('pointerup', releasePointer);
+        avatarCanvas.addEventListener('pointercancel', releasePointer);
+
+        const createOptimizedAvatarBlob = async () => {
+            if (!state.image) return null;
+            const outputCanvas = document.createElement('canvas');
+            outputCanvas.width = 512;
+            outputCanvas.height = 512;
+            const outputContext = outputCanvas.getContext('2d');
+            drawEditor(512, outputContext);
+
+            const blobFromCanvas = (type, quality) => new Promise((resolve) => {
+                outputCanvas.toBlob((blob) => resolve(blob), type, quality);
             });
+
+            let blob = await blobFromCanvas('image/webp', 0.86);
+            if (!blob || !blob.type || blob.type === 'image/png') {
+                blob = await blobFromCanvas('image/jpeg', 0.88);
+            }
+            return blob;
+        };
+
+        profileForm.addEventListener('submit', async (event) => {
+            if (state.processingSubmit) {
+                disableSubmitButton(profileForm);
+                return;
+            }
+
+            if (!state.image) {
+                disableSubmitButton(profileForm);
+                return;
+            }
+
+            event.preventDefault();
+            avatarFeedback.textContent = "Otimizando a foto para envio...";
+            const optimizedBlob = await createOptimizedAvatarBlob();
+            if (!optimizedBlob) {
+                avatarFeedback.textContent = "Nao foi possivel preparar a foto. Tente novamente com outra imagem.";
+                return;
+            }
+
+            const extension = optimizedBlob.type === 'image/webp' ? 'webp' : 'jpg';
+            const sanitizedBaseName = (state.fileName || 'avatar')
+                .replace(/\.[^.]+$/, '')
+                .replace(/[^a-zA-Z0-9_-]+/g, '-')
+                .replace(/^-+|-+$/g, '') || 'avatar';
+            const optimizedFile = new File(
+                [optimizedBlob],
+                `${sanitizedBaseName}-avatar.${extension}`,
+                { type: optimizedBlob.type }
+            );
+            const dataTransfer = new DataTransfer();
+            dataTransfer.items.add(optimizedFile);
+            avatarInput.files = dataTransfer.files;
+            state.processingSubmit = true;
+            disableSubmitButton(profileForm);
+            profileForm.requestSubmit();
         });
     })();
 </script>
