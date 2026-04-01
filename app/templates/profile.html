@@ -1,99 +1,171 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="grid gap-6 xl:grid-cols-[1.05fr_0.95fr]">
-    <section id="perfil" class="rounded-[2rem] bg-white p-6 shadow-panel">
+<div class="grid gap-6">
+    <section class="rounded-[2rem] bg-white p-6 shadow-panel">
         <div class="flex flex-wrap items-start justify-between gap-4">
             <div>
                 <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Conta do usuario</p>
-                <h3 class="mt-2 text-2xl font-semibold">Meu Perfil</h3>
-                <p class="mt-2 text-sm text-slate-500">Atualize seus dados pessoais, foto e informacoes de contato sem alterar configuracoes administrativas.</p>
+                <h3 class="mt-2 text-2xl font-semibold">{% if active_profile_tab == 'security' %}Seguranca da conta{% else %}Meu Perfil{% endif %}</h3>
+                <p class="mt-2 text-sm text-slate-500">
+                    {% if active_profile_tab == 'security' %}
+                    Gerencie sua senha e acompanhe os pontos principais de protecao da conta em uma area dedicada.
+                    {% else %}
+                    Atualize seus dados pessoais, foto e informacoes de contato sem alterar configuracoes administrativas.
+                    {% endif %}
+                </p>
             </div>
             <div class="flex rounded-2xl border border-slate-200 bg-slate-50 p-1 text-sm">
-                <a href="#perfil" class="rounded-xl bg-white px-4 py-2 font-medium text-slate-700 shadow-sm">Perfil</a>
-                <a href="#seguranca" class="rounded-xl px-4 py-2 font-medium text-slate-500 hover:text-slate-700">Seguranca</a>
+                <a href="/meu-perfil?aba=perfil" class="rounded-xl px-4 py-2 font-medium {% if active_profile_tab == 'profile' %}bg-white text-slate-700 shadow-sm{% else %}text-slate-500 hover:text-slate-700{% endif %}">Perfil</a>
+                <a href="/meu-perfil?aba=seguranca" class="rounded-xl px-4 py-2 font-medium {% if active_profile_tab == 'security' %}bg-white text-slate-700 shadow-sm{% else %}text-slate-500 hover:text-slate-700{% endif %}">Seguranca</a>
             </div>
-        </div>
-
-        <form method="post" action="/meu-perfil" enctype="multipart/form-data" class="mt-6 grid gap-6" data-profile-form>
-            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-
-            <div class="rounded-[1.75rem] border border-slate-200 bg-slate-50 p-5">
-                <div class="flex flex-wrap items-center gap-4">
-                    <div class="relative h-24 w-24 overflow-hidden rounded-[1.4rem] border border-slate-200 bg-white shadow-sm">
-                        {% if user.avatar_data %}
-                        <img src="/meu-perfil/avatar" alt="Avatar atual" class="h-full w-full object-cover" data-avatar-current-image>
-                        {% endif %}
-                        <img alt="Nova foto do avatar" class="hidden h-full w-full object-cover" data-avatar-pending-image>
-                        <div class="flex h-full w-full items-center justify-center bg-brand-100 text-3xl font-semibold text-brand-700 {% if user.avatar_data %}hidden{% endif %}" data-avatar-fallback>
-                            {{ (user.display_name or user.name or 'U')[:1]|upper }}
-                        </div>
-                    </div>
-                    <div class="min-w-0 flex-1">
-                        <p class="text-sm font-medium text-slate-700">Foto do usuario</p>
-                        <p class="mt-1 text-sm text-slate-500">Atualize seu avatar quando precisar, mantendo o perfil mais pessoal e profissional.</p>
-                        <div class="mt-3 flex flex-wrap gap-3">
-                            <button type="button" class="rounded-xl bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700" data-avatar-open-modal>Alterar foto</button>
-                            {% if user.avatar_data %}
-                            <button type="submit" form="remove-avatar-form" class="rounded-xl border border-rose-200 bg-rose-50 px-4 py-2 text-sm font-medium text-rose-700 hover:bg-rose-100">Remover foto</button>
-                            {% endif %}
-                        </div>
-                        <p class="mt-3 hidden text-sm font-medium text-brand-700" data-avatar-status>Nova foto pronta para salvar no perfil.</p>
-                    </div>
-                </div>
-                <input type="file" name="avatar" accept="image/*" class="hidden" data-avatar-input>
-            </div>
-
-            <div class="grid gap-4 md:grid-cols-2">
-                <label>
-                    <span class="mb-2 block text-sm font-medium">Nome completo</span>
-                    <input name="name" value="{{ user.name or '' }}" class="w-full rounded-2xl border-slate-200 bg-slate-50" required>
-                </label>
-                <label>
-                    <span class="mb-2 block text-sm font-medium">Nome de exibicao</span>
-                    <input name="display_name" value="{{ user.display_name or '' }}" class="w-full rounded-2xl border-slate-200 bg-slate-50" placeholder="Como prefere aparecer no sistema">
-                </label>
-                <label>
-                    <span class="mb-2 block text-sm font-medium">Sexo</span>
-                    <select name="gender" class="w-full rounded-2xl border-slate-200 bg-slate-50">
-                        <option value="">Nao informar</option>
-                        {% for option_value, option_label in profile_gender_options %}
-                        <option value="{{ option_value }}" {% if user.gender == option_value %}selected{% endif %}>{{ option_label }}</option>
-                        {% endfor %}
-                    </select>
-                </label>
-                <label>
-                    <span class="mb-2 block text-sm font-medium">Data de nascimento</span>
-                    <input type="date" name="birth_date" value="{{ user.birth_date.isoformat() if user.birth_date else '' }}" class="w-full rounded-2xl border-slate-200 bg-slate-50">
-                </label>
-                <label>
-                    <span class="mb-2 block text-sm font-medium">Telefone</span>
-                    <input name="phone" value="{{ user.phone or '' }}" class="w-full rounded-2xl border-slate-200 bg-slate-50" placeholder="(00) 00000-0000">
-                </label>
-                <label>
-                    <span class="mb-2 block text-sm font-medium">Cargo / funcao</span>
-                    <input name="job_title" value="{{ user.job_title or '' }}" class="w-full rounded-2xl border-slate-200 bg-slate-50" placeholder="Ex.: gerente agricola">
-                </label>
-                <label class="md:col-span-2">
-                    <span class="mb-2 block text-sm font-medium">Email</span>
-                    <input type="email" name="email" value="{{ user.email or '' }}" class="w-full rounded-2xl border-slate-200 bg-slate-50" required>
-                </label>
-                <label class="md:col-span-2">
-                    <span class="mb-2 block text-sm font-medium">Observacoes</span>
-                    <textarea name="notes" rows="4" class="w-full rounded-2xl border-slate-200 bg-slate-50">{{ user.notes or '' }}</textarea>
-                </label>
-            </div>
-
-            <div class="flex flex-wrap gap-3">
-                <button data-submit-button class="rounded-2xl bg-brand-500 px-5 py-3 font-semibold text-white hover:bg-brand-700">Salvar alteracoes</button>
-                <a href="/dashboard" class="rounded-2xl bg-slate-100 px-5 py-3 font-semibold text-slate-700 hover:bg-slate-200">Voltar ao dashboard</a>
-            </div>
-        </form>
-        <form id="remove-avatar-form" method="post" action="/meu-perfil/avatar/remover" class="hidden">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-        </form>
     </section>
 
-    <div class="grid gap-6">
+    {% if active_profile_tab == 'security' %}
+    <div class="grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
+        <section class="rounded-[2rem] bg-white p-6 shadow-panel">
+            <div class="rounded-[1.75rem] border border-slate-200 bg-slate-50 p-5">
+                <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Seguranca</p>
+                <h3 class="mt-2 text-2xl font-semibold">Alterar senha</h3>
+                <p class="mt-2 text-sm leading-6 text-slate-500">Confirme sua senha atual para manter o fluxo de autenticacao seguro e revogar navegadores confiaveis antigos.</p>
+            </div>
+            <form method="post" action="/meu-perfil/alterar-senha" class="mt-6 grid gap-4" data-password-form>
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <label>
+                    <span class="mb-2 block text-sm font-medium">Senha atual</span>
+                    <input type="password" name="current_password" class="w-full rounded-2xl border-slate-200 bg-slate-50" required>
+                </label>
+                <label>
+                    <span class="mb-2 block text-sm font-medium">Nova senha</span>
+                    <input type="password" name="new_password" class="w-full rounded-2xl border-slate-200 bg-slate-50" required>
+                </label>
+                <label>
+                    <span class="mb-2 block text-sm font-medium">Confirmar nova senha</span>
+                    <input type="password" name="confirm_password" class="w-full rounded-2xl border-slate-200 bg-slate-50" required>
+                </label>
+                <div class="flex flex-wrap gap-3 pt-2">
+                    <button data-submit-button class="rounded-2xl bg-slate-900 px-5 py-3 font-semibold text-white hover:bg-slate-700">Atualizar senha</button>
+                    <a href="/meu-perfil?aba=perfil" class="rounded-2xl bg-slate-100 px-5 py-3 font-semibold text-slate-700 hover:bg-slate-200">Voltar ao perfil</a>
+                </div>
+            </form>
+        </section>
+
+        <div class="grid gap-6">
+            <section class="rounded-[2rem] bg-white p-6 shadow-panel">
+                <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Status da conta</p>
+                <h3 class="mt-2 text-2xl font-semibold">Protecao atual</h3>
+                <div class="mt-6 space-y-4">
+                    <article class="rounded-[1.5rem] border border-slate-100 bg-slate-50 p-4">
+                        <div class="flex items-center justify-between gap-3">
+                            <div>
+                                <p class="text-xs uppercase tracking-[0.28em] text-slate-400">Status do 2FA</p>
+                                <p class="mt-2 text-base font-semibold text-slate-900">Ativo por email</p>
+                            </div>
+                            <span class="rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-700">Protegido</span>
+                        </div>
+                    </article>
+                    <article class="rounded-[1.5rem] border border-slate-100 bg-slate-50 p-4">
+                        <p class="text-xs uppercase tracking-[0.28em] text-slate-400">Ultimo acesso</p>
+                        <p class="mt-2 text-base font-semibold text-slate-900">{% if user.last_login_at %}{{ user.last_login_at|datetime_sp }}{% else %}Ainda nao registrado{% endif %}</p>
+                    </article>
+                    <article class="rounded-[1.5rem] border border-slate-100 bg-slate-50 p-4">
+                        <p class="text-xs uppercase tracking-[0.28em] text-slate-400">Email de acesso</p>
+                        <p class="mt-2 text-base font-semibold text-slate-900">{{ user.email }}</p>
+                    </article>
+                </div>
+            </section>
+
+            <section class="rounded-[2rem] bg-white p-6 shadow-panel">
+                <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Boas praticas</p>
+                <h3 class="mt-2 text-2xl font-semibold">Recomendacoes</h3>
+                <div class="mt-6 space-y-3 text-sm leading-6 text-slate-500">
+                    <p class="rounded-[1.25rem] border border-slate-100 bg-slate-50 px-4 py-3">Escolha uma senha exclusiva para o sistema e evite reutilizar combinacoes de outros servicos.</p>
+                    <p class="rounded-[1.25rem] border border-slate-100 bg-slate-50 px-4 py-3">Ao atualizar a senha, navegadores confiaveis anteriores sao revogados automaticamente para reforcar a seguranca.</p>
+                </div>
+            </section>
+        </div>
+    </div>
+    {% else %}
+    <div class="grid gap-6 xl:grid-cols-[1.05fr_0.95fr]">
+        <section class="rounded-[2rem] bg-white p-6 shadow-panel">
+            <form method="post" action="/meu-perfil" enctype="multipart/form-data" class="grid gap-6" data-profile-form>
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+
+                <div class="rounded-[1.75rem] border border-slate-200 bg-slate-50 p-5">
+                    <div class="flex flex-wrap items-center gap-4">
+                        <div class="relative h-24 w-24 overflow-hidden rounded-[1.4rem] border border-slate-200 bg-white shadow-sm">
+                            {% if user.avatar_data %}
+                            <img src="/meu-perfil/avatar" alt="Avatar atual" class="h-full w-full object-cover" data-avatar-current-image>
+                            {% endif %}
+                            <img alt="Nova foto do avatar" class="hidden h-full w-full object-cover" data-avatar-pending-image>
+                            <div class="flex h-full w-full items-center justify-center bg-brand-100 text-3xl font-semibold text-brand-700 {% if user.avatar_data %}hidden{% endif %}" data-avatar-fallback>
+                                {{ (user.display_name or user.name or 'U')[:1]|upper }}
+                            </div>
+                        </div>
+                        <div class="min-w-0 flex-1">
+                            <p class="text-sm font-medium text-slate-700">Foto do usuario</p>
+                            <p class="mt-1 text-sm text-slate-500">Atualize seu avatar quando precisar, mantendo o perfil mais pessoal e profissional.</p>
+                            <div class="mt-3 flex flex-wrap gap-3">
+                                <button type="button" class="rounded-xl bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-700" data-avatar-open-modal>Alterar foto</button>
+                                {% if user.avatar_data %}
+                                <button type="submit" form="remove-avatar-form" class="rounded-xl border border-rose-200 bg-rose-50 px-4 py-2 text-sm font-medium text-rose-700 hover:bg-rose-100">Remover foto</button>
+                                {% endif %}
+                            </div>
+                            <p class="mt-3 hidden text-sm font-medium text-brand-700" data-avatar-status>Nova foto pronta para salvar no perfil.</p>
+                        </div>
+                    </div>
+                    <input type="file" name="avatar" accept="image/*" class="hidden" data-avatar-input>
+                </div>
+
+                <div class="grid gap-4 md:grid-cols-2">
+                    <label>
+                        <span class="mb-2 block text-sm font-medium">Nome completo</span>
+                        <input name="name" value="{{ user.name or '' }}" class="w-full rounded-2xl border-slate-200 bg-slate-50" required>
+                    </label>
+                    <label>
+                        <span class="mb-2 block text-sm font-medium">Nome de exibicao</span>
+                        <input name="display_name" value="{{ user.display_name or '' }}" class="w-full rounded-2xl border-slate-200 bg-slate-50" placeholder="Como prefere aparecer no sistema">
+                    </label>
+                    <label>
+                        <span class="mb-2 block text-sm font-medium">Sexo</span>
+                        <select name="gender" class="w-full rounded-2xl border-slate-200 bg-slate-50">
+                            <option value="">Nao informar</option>
+                            {% for option_value, option_label in profile_gender_options %}
+                            <option value="{{ option_value }}" {% if user.gender == option_value %}selected{% endif %}>{{ option_label }}</option>
+                            {% endfor %}
+                        </select>
+                    </label>
+                    <label>
+                        <span class="mb-2 block text-sm font-medium">Data de nascimento</span>
+                        <input type="date" name="birth_date" value="{{ user.birth_date.isoformat() if user.birth_date else '' }}" class="w-full rounded-2xl border-slate-200 bg-slate-50">
+                    </label>
+                    <label>
+                        <span class="mb-2 block text-sm font-medium">Telefone</span>
+                        <input name="phone" value="{{ user.phone or '' }}" class="w-full rounded-2xl border-slate-200 bg-slate-50" placeholder="(00) 00000-0000">
+                    </label>
+                    <label>
+                        <span class="mb-2 block text-sm font-medium">Cargo / funcao</span>
+                        <input name="job_title" value="{{ user.job_title or '' }}" class="w-full rounded-2xl border-slate-200 bg-slate-50" placeholder="Ex.: gerente agricola">
+                    </label>
+                    <label class="md:col-span-2">
+                        <span class="mb-2 block text-sm font-medium">Email</span>
+                        <input type="email" name="email" value="{{ user.email or '' }}" class="w-full rounded-2xl border-slate-200 bg-slate-50" required>
+                    </label>
+                    <label class="md:col-span-2">
+                        <span class="mb-2 block text-sm font-medium">Observacoes</span>
+                        <textarea name="notes" rows="4" class="w-full rounded-2xl border-slate-200 bg-slate-50">{{ user.notes or '' }}</textarea>
+                    </label>
+                </div>
+
+                <div class="flex flex-wrap gap-3">
+                    <button data-submit-button class="rounded-2xl bg-brand-500 px-5 py-3 font-semibold text-white hover:bg-brand-700">Salvar alteracoes</button>
+                    <a href="/dashboard" class="rounded-2xl bg-slate-100 px-5 py-3 font-semibold text-slate-700 hover:bg-slate-200">Voltar ao dashboard</a>
+                </div>
+            </form>
+            <form id="remove-avatar-form" method="post" action="/meu-perfil/avatar/remover" class="hidden">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            </form>
+        </section>
+
         <section class="rounded-[2rem] bg-white p-6 shadow-panel">
             <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Resumo da conta</p>
             <h3 class="mt-2 text-2xl font-semibold">Informacoes de acesso</h3>
@@ -130,31 +202,11 @@
                 </article>
             </div>
         </section>
-
-        <section id="seguranca" class="rounded-[2rem] bg-white p-6 shadow-panel">
-            <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Seguranca</p>
-            <h3 class="mt-2 text-2xl font-semibold">Alterar senha</h3>
-            <p class="mt-2 text-sm text-slate-500">Confirme sua senha atual para manter o fluxo de autenticacao seguro e revogar navegadores confiaveis antigos.</p>
-            <form method="post" action="/meu-perfil/alterar-senha" class="mt-6 grid gap-4" data-password-form>
-                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                <label>
-                    <span class="mb-2 block text-sm font-medium">Senha atual</span>
-                    <input type="password" name="current_password" class="w-full rounded-2xl border-slate-200 bg-slate-50" required>
-                </label>
-                <label>
-                    <span class="mb-2 block text-sm font-medium">Nova senha</span>
-                    <input type="password" name="new_password" class="w-full rounded-2xl border-slate-200 bg-slate-50" required>
-                </label>
-                <label>
-                    <span class="mb-2 block text-sm font-medium">Confirmar nova senha</span>
-                    <input type="password" name="confirm_password" class="w-full rounded-2xl border-slate-200 bg-slate-50" required>
-                </label>
-                <button data-submit-button class="rounded-2xl bg-slate-900 px-5 py-3 font-semibold text-white hover:bg-slate-700">Atualizar senha</button>
-            </form>
-        </section>
     </div>
+    {% endif %}
 </div>
 
+{% if active_profile_tab == 'profile' %}
 <div class="fixed inset-0 z-[90] hidden items-center justify-center px-4 py-6" data-avatar-modal>
     <button type="button" class="absolute inset-0 bg-slate-950/55 backdrop-blur-[2px]" aria-label="Fechar editor de foto" data-avatar-close></button>
     <div class="relative z-[91] w-full max-w-4xl rounded-[2rem] bg-white p-6 shadow-2xl">
@@ -205,6 +257,7 @@
         </div>
     </div>
 </div>
+{% endif %}
 
 <script>
     (() => {

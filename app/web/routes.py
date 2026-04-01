@@ -147,6 +147,7 @@ def _render_profile_page(
     user: User,
     csrf_token: str,
     repo: FarmRepository,
+    active_profile_tab: str = "profile",
 ):
     return templates.TemplateResponse(
         "profile.html",
@@ -159,6 +160,7 @@ def _render_profile_page(
             _repo=repo,
             profile_gender_options=_profile_gender_options(),
             profile_gender_label=_profile_gender_label(user.gender),
+            active_profile_tab=active_profile_tab,
         ),
     )
 
@@ -1548,12 +1550,14 @@ def delete_user_action(
 @router.get("/meu-perfil")
 def profile_page(
     request: Request,
+    aba: str | None = None,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user_web),
     csrf_token: str = Depends(get_csrf_token),
 ):
     repo = _repository(db)
-    return _render_profile_page(request, user, csrf_token, repo)
+    active_profile_tab = "security" if (aba or "").strip().lower() == "seguranca" else "profile"
+    return _render_profile_page(request, user, csrf_token, repo, active_profile_tab=active_profile_tab)
 
 
 @router.post("/meu-perfil")
@@ -1583,23 +1587,23 @@ async def update_profile_action(
 
     if not normalized_name or not normalized_email:
         _flash(request, "error", "Nome completo e email sao obrigatorios.")
-        return _redirect("/meu-perfil#perfil")
+        return _redirect("/meu-perfil?aba=perfil")
 
     existing = db.query(User).filter(User.email == normalized_email, User.id != user.id).first()
     if existing:
         _flash(request, "error", "Ja existe outro usuario com este email.")
-        return _redirect("/meu-perfil#perfil")
+        return _redirect("/meu-perfil?aba=perfil")
 
     try:
         normalized_birth_date = _date_or_none(birth_date)
     except ValueError:
         _flash(request, "error", "Informe uma data de nascimento valida.")
-        return _redirect("/meu-perfil#perfil")
+        return _redirect("/meu-perfil?aba=perfil")
 
     avatar_payload, avatar_error = await _read_avatar_upload(avatar)
     if avatar_error:
         _flash(request, "error", avatar_error)
-        return _redirect("/meu-perfil#perfil")
+        return _redirect("/meu-perfil?aba=perfil")
 
     payload = {
         "name": normalized_name,
@@ -1617,7 +1621,7 @@ async def update_profile_action(
     updated_user = repo.update(user, payload)
     request.session["user_email"] = updated_user.email
     _flash(request, "success", "Perfil atualizado com sucesso.")
-    return _redirect("/meu-perfil#perfil")
+    return _redirect("/meu-perfil?aba=perfil")
 
 
 @router.post("/meu-perfil/avatar/remover")
@@ -1638,7 +1642,7 @@ def remove_profile_avatar_action(
         },
     )
     _flash(request, "success", "Foto removida com sucesso.")
-    return _redirect("/meu-perfil#perfil")
+    return _redirect("/meu-perfil?aba=perfil")
 
 
 @router.get("/meu-perfil/avatar")
@@ -1673,22 +1677,22 @@ def change_own_password_action(
 
     if not verify_password(normalized_current_password, user.hashed_password):
         _flash(request, "error", "A senha atual informada nao confere.")
-        return _redirect("/meu-perfil#seguranca")
+        return _redirect("/meu-perfil?aba=seguranca")
     if not normalized_new_password:
         _flash(request, "error", "Informe a nova senha.")
-        return _redirect("/meu-perfil#seguranca")
+        return _redirect("/meu-perfil?aba=seguranca")
     if normalized_new_password != normalized_confirm_password:
         _flash(request, "error", "A confirmacao da nova senha nao confere.")
-        return _redirect("/meu-perfil#seguranca")
+        return _redirect("/meu-perfil?aba=seguranca")
     if verify_password(normalized_new_password, user.hashed_password):
         _flash(request, "error", "A nova senha precisa ser diferente da senha atual.")
-        return _redirect("/meu-perfil#seguranca")
+        return _redirect("/meu-perfil?aba=seguranca")
 
     repo = _repository(db)
     repo.update(user, {"hashed_password": get_password_hash(normalized_new_password)})
     revoke_user_trusted_browsers(db, user.id)
     _flash(request, "success", "Senha atualizada com sucesso.")
-    return _redirect("/meu-perfil#seguranca")
+    return _redirect("/meu-perfil?aba=seguranca")
 
 
 @router.get("/insumos/comprados")
