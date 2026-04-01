@@ -47,6 +47,7 @@ from app.models import (
     User,
 )
 from app.repositories.farm import FarmRepository
+from app.services.backup_service import execute_backup
 from app.services.dashboard import build_dashboard_context
 from app.services.forms import (
     calculate_geojson_area_hectares,
@@ -217,6 +218,16 @@ def _positive_int(value: str | None, default: int = 1) -> int:
     if parsed is None or parsed < 1:
         return default
     return parsed
+
+
+def _backup_details(value: str | None) -> dict:
+    if not value:
+        return {}
+    try:
+        parsed = json.loads(value)
+        return parsed if isinstance(parsed, dict) else {}
+    except json.JSONDecodeError:
+        return {}
 
 
 def _sort_collection_desc(items, *getters):
@@ -1668,6 +1679,58 @@ def delete_user_action(
     repo.delete(target_user)
     _flash(request, "success", "Usuario excluido com sucesso.")
     return _redirect("/usuarios")
+
+
+@router.get("/backups")
+def backups_page(
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+    csrf_token: str = Depends(get_csrf_token),
+):
+    denied = _require_admin(request, user)
+    if denied:
+        return denied
+    repo = _repository(db)
+    history = [
+        {"run": item, "details": _backup_details(item.details_json)}
+        for item in repo.list_backup_runs(limit=20)
+    ]
+    return templates.TemplateResponse(
+        "backups.html",
+        _base_context(
+            request,
+            user,
+            csrf_token,
+            "backups",
+            title="Backups do Sistema",
+            backup_history=history,
+            backup_db_bucket=settings.supabase_bucket_db,
+            backup_files_bucket=settings.supabase_bucket_files,
+            _repo=repo,
+        ),
+    )
+
+
+@router.post("/backups/executar")
+def execute_backup_action(
+    request: Request,
+    csrf_token: str = Form(...),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    denied = _require_admin(request, user)
+    if denied:
+        return denied
+    validate_csrf(request, csrf_token)
+    run = execute_backup(db, initiated_by=user, trigger_source="web_manual")
+    if run.status == "success":
+        _flash(request, "success", "Backup concluido com sucesso no Supabase Storage.")
+    elif run.status == "partial":
+        _flash(request, "error", "Backup executado parcialmente. Revise o historico para ver os detalhes.")
+    else:
+        _flash(request, "error", "Backup nao concluido. Revise o historico para ver o erro detalhado.")
+    return _redirect("/backups")
 
 
 @router.get("/meu-perfil")

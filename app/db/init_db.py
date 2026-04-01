@@ -9,6 +9,7 @@ from app.db.base import Base
 from app.db.session import engine
 from app.models import (
     AgronomicProfile,
+    BackupRun,
     CoffeeVariety,
     CropSeason,
     EquipmentAsset,
@@ -47,6 +48,25 @@ def create_tables() -> None:
 def _sync_schema() -> None:
     # Lightweight Postgres-friendly sync for new nullable columns added after first deploy.
     statements = [
+        """
+        CREATE TABLE IF NOT EXISTS backup_runs (
+            id SERIAL PRIMARY KEY,
+            initiated_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+            trigger_source VARCHAR(40) NOT NULL DEFAULT 'manual',
+            status VARCHAR(20) NOT NULL DEFAULT 'running',
+            database_bucket VARCHAR(120),
+            database_object_path VARCHAR(500),
+            database_size_bytes BIGINT,
+            files_bucket VARCHAR(120),
+            files_object_path VARCHAR(500),
+            files_size_bytes BIGINT,
+            details_json TEXT,
+            error_message TEXT,
+            started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            finished_at TIMESTAMPTZ,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+        """,
         """
         CREATE TABLE IF NOT EXISTS farms (
             id SERIAL PRIMARY KEY,
@@ -403,6 +423,8 @@ def _sync_schema() -> None:
         connection.execute(text("CREATE INDEX IF NOT EXISTS ix_password_change_verifications_expires_at ON password_change_verifications(expires_at)"))
         connection.execute(text("CREATE INDEX IF NOT EXISTS ix_purchased_input_attachments_input_id ON purchased_input_attachments(purchased_input_id)"))
         connection.execute(text("CREATE INDEX IF NOT EXISTS ix_equipment_asset_attachments_asset_id ON equipment_asset_attachments(equipment_asset_id)"))
+        connection.execute(text("CREATE INDEX IF NOT EXISTS ix_backup_runs_started_at ON backup_runs(started_at DESC)"))
+        connection.execute(text("CREATE INDEX IF NOT EXISTS ix_backup_runs_user_id ON backup_runs(initiated_by_user_id)"))
         connection.execute(text("UPDATE plots SET irrigation_type = 'none' WHERE irrigation_type IS NULL"))
         connection.execute(text("ALTER TABLE plots ALTER COLUMN irrigation_type SET DEFAULT 'none'"))
         connection.execute(text("UPDATE purchased_inputs SET purchase_date = CURRENT_DATE WHERE purchase_date IS NULL"))

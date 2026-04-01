@@ -35,6 +35,11 @@ class Settings(BaseSettings):
     password_reset_token_minutes: int = 60
     trusted_browser_days: int = 5
     trusted_browser_cookie_name: str = "fazenda_trusted_browser"
+    supabase_url: str | None = None
+    supabase_service_role_key: str | None = None
+    supabase_bucket_db: str = "backups-db"
+    supabase_bucket_files: str = "anexos"
+    backup_local_dirs: str | None = None
 
     @property
     def is_production(self) -> bool:
@@ -64,6 +69,19 @@ class Settings(BaseSettings):
             return self.database_url_override
         return (
             f"postgresql+psycopg://{self.postgres_user}:{self.postgres_password}"
+            f"@{self.postgres_server}:{self.postgres_port}/{self.postgres_db}"
+        )
+
+    @property
+    def database_backup_url(self) -> str:
+        if self.database_url_override:
+            if self.database_url_override.startswith("postgresql+psycopg://"):
+                return self.database_url_override.replace("postgresql+psycopg://", "postgresql://", 1)
+            if self.database_url_override.startswith("postgres+psycopg://"):
+                return self.database_url_override.replace("postgres+psycopg://", "postgres://", 1)
+            return self.database_url_override
+        return (
+            f"postgresql://{self.postgres_user}:{self.postgres_password}"
             f"@{self.postgres_server}:{self.postgres_port}/{self.postgres_db}"
         )
 

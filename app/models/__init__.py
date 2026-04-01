@@ -1,4 +1,5 @@
 from app.models.agronomic_profile import AgronomicProfile
+from app.models.backup_run import BackupRun
 from app.models.coffee_variety import CoffeeVariety
 from app.models.crop_season import CropSeason
 from app.models.equipment_asset import EquipmentAsset
@@ -29,6 +30,7 @@ from app.models.user import User
 
 __all__ = [
     "AgronomicProfile",
+    "BackupRun",
     "CoffeeVariety",
     "CropSeason",
     "EquipmentAsset",

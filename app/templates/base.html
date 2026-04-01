@@ -155,7 +155,7 @@
                         <span>{{ label }}</span>
                     </a>
                     {% endfor %}
-                    {% set config_pages = ['users'] %}
+                    {% set config_pages = ['users', 'backups'] %}
                     <div class="rounded-2xl {% if page in config_pages %}bg-slate-900/80{% endif %}" data-submenu-group>
                         <button type="button" class="flex w-full items-center justify-between rounded-2xl px-4 py-3 text-left transition {% if page in config_pages %}text-white{% else %}text-slate-300 hover:bg-slate-900 hover:text-white{% endif %}" data-submenu-toggle="config-menu" data-submenu-parent>
                             <span class="flex items-center gap-3">{{ nav_icon('config') }}<span>Configuracao</span></span>
@@ -163,6 +163,7 @@
                         </button>
                         <div id="config-menu" class="sidebar-submenu-panel {% if page not in config_pages %}hidden {% endif %}space-y-1 px-3 pb-3" data-submenu-panel>
                             <a href="/usuarios" class="sidebar-submenu-link block rounded-xl px-3 py-2 text-sm {% if page == 'users' %}bg-brand-500 text-white{% else %}text-slate-300 hover:bg-slate-800 hover:text-white{% endif %}" data-submenu-link>Usuarios</a>
+                            <a href="/backups" class="sidebar-submenu-link block rounded-xl px-3 py-2 text-sm {% if page == 'backups' %}bg-brand-500 text-white{% else %}text-slate-300 hover:bg-slate-800 hover:text-white{% endif %}" data-submenu-link>Backups</a>
                             <a href="/docs" target="_blank" class="sidebar-submenu-link block rounded-xl px-3 py-2 text-sm text-slate-300 hover:bg-slate-800 hover:text-white" data-submenu-link>API / Docs</a>
                         </div>
                     </div>

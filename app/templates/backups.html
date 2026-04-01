@@ -1,0 +1,128 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="grid gap-6 xl:grid-cols-[0.8fr_1.2fr]">
+    <section class="rounded-[2rem] bg-white p-6 shadow-panel">
+        <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Backups</p>
+        <h3 class="mt-2 text-2xl font-semibold">Execucao manual</h3>
+        <p class="mt-3 text-sm leading-6 text-slate-500">
+            O backup gera um dump do PostgreSQL e, quando houver diretorios locais relevantes, um pacote complementar de arquivos para o Supabase Storage, sempre pelo backend.
+        </p>
+        <div class="mt-6 rounded-[1.5rem] border border-slate-200 bg-slate-50 p-5">
+            <p class="text-sm font-medium text-slate-700">Buckets configurados</p>
+            <div class="mt-4 grid gap-3 sm:grid-cols-2">
+                <div class="rounded-2xl bg-white px-4 py-3">
+                    <p class="text-xs uppercase tracking-[0.28em] text-slate-400">Banco</p>
+                    <p class="mt-2 font-semibold text-slate-900">{{ backup_db_bucket }}</p>
+                </div>
+                <div class="rounded-2xl bg-white px-4 py-3">
+                    <p class="text-xs uppercase tracking-[0.28em] text-slate-400">Arquivos</p>
+                    <p class="mt-2 font-semibold text-slate-900">{{ backup_files_bucket }}</p>
+                </div>
+            </div>
+        </div>
+        <form method="post" action="/backups/executar" class="mt-6" data-backup-form>
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <button class="rounded-2xl bg-brand-500 px-5 py-3 font-semibold text-white hover:bg-brand-700">Executar backup agora</button>
+        </form>
+        <div class="mt-6 rounded-[1.5rem] border border-dashed border-slate-200 bg-slate-50/70 p-5 text-sm leading-6 text-slate-500">
+            <p class="font-medium text-slate-700">Observacao</p>
+            <p class="mt-2">No estado atual do projeto, anexos, avatares e PDFs operacionais ficam no PostgreSQL e ja entram no dump enviado para <span class="font-semibold text-slate-700">{{ backup_db_bucket }}</span>.</p>
+            <p class="mt-2">O bucket <span class="font-semibold text-slate-700">{{ backup_files_bucket }}</span> fica preparado para futuros diretorios locais reais ou migracao de storage, sem duplicar os BYTEA neste primeiro passo.</p>
+        </div>
+    </section>
+
+    <section class="rounded-[2rem] bg-white p-6 shadow-panel">
+        <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Historico</p>
+        <h3 class="mt-2 text-2xl font-semibold">Ultimas execucoes</h3>
+        <div class="mt-6 space-y-4">
+            {% for item in backup_history %}
+            {% set run = item.run %}
+            {% set details = item.details %}
+            {% set files_details = details.get('files', {}) %}
+            {% set db_details = details.get('database', {}) %}
+            <article class="rounded-[1.5rem] border border-slate-100 bg-slate-50 p-5">
+                <div class="flex flex-wrap items-start justify-between gap-4">
+                    <div>
+                        <p class="text-lg font-semibold text-slate-900">Execucao #{{ run.id }}</p>
+                        <p class="mt-1 text-sm text-slate-500">
+                            Iniciada em {{ run.started_at|datetime_sp if run.started_at else '-' }}
+                            {% if run.finished_at %} e finalizada em {{ run.finished_at|datetime_sp }}{% endif %}
+                        </p>
+                    </div>
+                    <div class="flex flex-wrap gap-2">
+                        <span class="rounded-full px-3 py-1 text-xs font-semibold {% if run.status == 'success' %}bg-emerald-100 text-emerald-700{% elif run.status == 'partial' %}bg-amber-100 text-amber-700{% else %}bg-rose-100 text-rose-700{% endif %}">
+                            {{ 'Concluido' if run.status == 'success' else 'Parcial' if run.status == 'partial' else 'Falhou' }}
+                        </span>
+                        <span class="rounded-full bg-slate-200 px-3 py-1 text-xs font-semibold text-slate-600">
+                            {{ run.trigger_source }}
+                        </span>
+                    </div>
+                </div>
+
+                <div class="mt-4 grid gap-4 md:grid-cols-2">
+                    <div class="rounded-2xl bg-white px-4 py-4">
+                        <p class="text-xs uppercase tracking-[0.28em] text-slate-400">Dump do banco</p>
+                        <p class="mt-2 break-all text-sm font-medium text-slate-700">{{ run.database_object_path or 'Nao enviado' }}</p>
+                        <p class="mt-2 text-xs text-slate-500">
+                            {% if run.database_size_bytes %}{{ (run.database_size_bytes / 1024 / 1024)|round(2) }} MB{% else %}-{% endif %}
+                            {% if db_details.get('format') %} • {{ db_details.get('format') }}{% endif %}
+                        </p>
+                    </div>
+                    <div class="rounded-2xl bg-white px-4 py-4">
+                        <p class="text-xs uppercase tracking-[0.28em] text-slate-400">Pacote de arquivos</p>
+                        <p class="mt-2 break-all text-sm font-medium text-slate-700">{{ run.files_object_path or 'Nao enviado' }}</p>
+                        <p class="mt-2 text-xs text-slate-500">
+                            {% if run.files_size_bytes %}{{ (run.files_size_bytes / 1024 / 1024)|round(2) }} MB{% else %}-{% endif %}
+                            {% if files_details %} • {{ files_details.get('local_file_count', 0) }} arquivo(s) local(is){% endif %}
+                        </p>
+                    </div>
+                </div>
+
+                {% if files_details %}
+                <div class="mt-4 grid gap-3 sm:grid-cols-2">
+                    <div class="rounded-2xl bg-white px-4 py-3">
+                        <p class="text-xs uppercase tracking-[0.24em] text-slate-400">Diretorios locais</p>
+                        <p class="mt-2 text-lg font-semibold text-slate-900">{{ files_details.get('local_directories', [])|length }}</p>
+                    </div>
+                    <div class="rounded-2xl bg-white px-4 py-3">
+                        <p class="text-xs uppercase tracking-[0.24em] text-slate-400">Arquivos locais</p>
+                        <p class="mt-2 text-lg font-semibold text-slate-900">{{ files_details.get('local_file_count', 0) }}</p>
+                    </div>
+                </div>
+                {% endif %}
+
+                {% if files_details.get('notes') %}
+                <div class="mt-4 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600">
+                    {{ files_details.get('notes')|join(' ') }}
+                </div>
+                {% endif %}
+
+                {% if run.initiated_by_user %}
+                <p class="mt-4 text-xs text-slate-500">Iniciado por {{ run.initiated_by_user.name }} ({{ run.initiated_by_user.email }})</p>
+                {% endif %}
+
+                {% if run.error_message %}
+                <div class="mt-4 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+                    {{ run.error_message }}
+                </div>
+                {% endif %}
+            </article>
+            {% else %}
+            <p class="text-sm text-slate-500">Nenhum backup registrado ate o momento.</p>
+            {% endfor %}
+        </div>
+    </section>
+</div>
+<script>
+    (() => {
+        const form = document.querySelector('[data-backup-form]');
+        if (!form) return;
+        form.addEventListener('submit', () => {
+            const button = form.querySelector('button[type="submit"], button:not([type])');
+            if (!button) return;
+            button.disabled = true;
+            button.classList.add('opacity-70', 'cursor-not-allowed');
+        });
+    })();
+</script>
+{% endblock %}
