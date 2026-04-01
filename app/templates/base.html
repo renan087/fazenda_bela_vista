@@ -142,9 +142,25 @@
                 <div class="border-t border-slate-800 px-6 py-5">
                     <div class="rounded-2xl bg-slate-900 px-4 py-4">
                         <p class="text-xs uppercase tracking-[0.3em] text-slate-500">Sessao</p>
-                        <p class="mt-2 font-medium">{{ user.name }}</p>
+                        <p class="mt-2 font-medium">{{ user.display_name or user.name }}</p>
+                        {% if user.display_name %}
+                        <p class="text-sm text-slate-400">{{ user.name }}</p>
+                        {% endif %}
                         <p class="text-sm text-slate-400">{{ user.email }}</p>
-                        <a href="/logout" class="mt-4 inline-flex rounded-xl bg-white/10 px-3 py-2 text-sm hover:bg-white/20">Sair</a>
+                        <div class="mt-4 grid gap-2 text-sm">
+                            <a href="/meu-perfil" class="inline-flex items-center justify-between rounded-xl bg-white/10 px-3 py-2 hover:bg-white/20 {% if page == 'profile' %}ring-1 ring-white/20{% endif %}">
+                                <span>Meu Perfil</span>
+                                <span class="text-slate-400">Abrir</span>
+                            </a>
+                            <a href="/meu-perfil#seguranca" class="inline-flex items-center justify-between rounded-xl bg-white/5 px-3 py-2 text-slate-200 hover:bg-white/15">
+                                <span>Alterar senha</span>
+                                <span class="text-slate-500">Seguranca</span>
+                            </a>
+                            <a href="/logout" class="inline-flex items-center justify-between rounded-xl bg-white/5 px-3 py-2 text-slate-200 hover:bg-white/15">
+                                <span>Sair</span>
+                                <span class="text-slate-500">Encerrar</span>
+                            </a>
+                        </div>
                     </div>
                 </div>
             </div>

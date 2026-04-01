@@ -1,4 +1,5 @@
 import logging
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request, status
 from fastapi.responses import RedirectResponse
@@ -69,10 +70,23 @@ def _pending_2fa_user(request: Request, db: Session) -> User | None:
 
 def _complete_web_login(
     request: Request,
+    db: Session,
     user: User,
     trusted_browser_token: str | None = None,
     clear_trusted_browser_cookie: bool = False,
 ):
+    try:
+        user.last_login_at = datetime.now(timezone.utc)
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+    except Exception:
+        db.rollback()
+        logger.exception(
+            "Falha ao registrar ultimo acesso do usuario",
+            extra={"user_email": user.email},
+        )
+
     request.session["user_email"] = user.email
     request.session.pop(PENDING_2FA_USER_ID, None)
     request.session.pop(PENDING_2FA_EMAIL, None)
@@ -148,7 +162,7 @@ def login_web(
     if trusted_browser_cookie:
         if validate_trusted_browser_token(db, user, request, trusted_browser_cookie):
             revoke_active_login_codes(db, user.id)
-            return _complete_web_login(request, user)
+            return _complete_web_login(request, db, user)
         clear_trusted_cookie = True
 
     try:
@@ -234,7 +248,7 @@ def login_verification_web(
                 extra={"user_email": user.email},
             )
 
-    return _complete_web_login(request, user, trusted_browser_token=trusted_browser_token)
+    return _complete_web_login(request, db, user, trusted_browser_token=trusted_browser_token)
 
 
 @router.post("/login/verificacao/reenviar")

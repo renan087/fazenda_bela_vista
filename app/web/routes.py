@@ -20,7 +20,7 @@ from starlette.datastructures import UploadFile as StarletteUploadFile
 
 from app.core.csrf import validate_csrf
 from app.core.deps import get_csrf_token, get_current_user_web
-from app.core.security import get_password_hash
+from app.core.security import get_password_hash, verify_password
 from app.core.user_context import persist_user_context, sync_user_context_from_preferences
 from app.db.session import get_db
 from app.models import (
@@ -130,7 +130,7 @@ def _base_context(request: Request, user: User, csrf_token: str, page: str, **kw
     if repo:
         scope_context = _global_scope_context(request, repo, user)
         context.update(scope_context)
-        context["context_lock_exempt"] = page in {"farms", "seasons"}
+        context["context_lock_exempt"] = page in {"farms", "seasons", "profile"}
         context["context_selection_blocking"] = scope_context["context_selection_required"] and not context["context_lock_exempt"]
     context.update(kwargs)
     return context
@@ -138,6 +138,27 @@ def _base_context(request: Request, user: User, csrf_token: str, page: str, **kw
 
 def _repository(db: Session) -> FarmRepository:
     return FarmRepository(db)
+
+
+def _render_profile_page(
+    request: Request,
+    user: User,
+    csrf_token: str,
+    repo: FarmRepository,
+):
+    return templates.TemplateResponse(
+        "profile.html",
+        _base_context(
+            request,
+            user,
+            csrf_token,
+            "profile",
+            title="Meu Perfil",
+            _repo=repo,
+            profile_gender_options=_profile_gender_options(),
+            profile_gender_label=_profile_gender_label(user.gender),
+        ),
+    )
 
 
 def _flash(request: Request, kind: str, message: str) -> None:
@@ -201,6 +222,47 @@ def _int_list(values: list[str]) -> list[int]:
 
 def _date_or_none(value: str | None):
     return date.fromisoformat(value) if value not in (None, "") else None
+
+
+def _clean_text(value: str | None) -> str | None:
+    normalized = " ".join((value or "").strip().split())
+    return normalized or None
+
+
+def _profile_gender_options() -> list[tuple[str, str]]:
+    return [
+        ("feminino", "Feminino"),
+        ("masculino", "Masculino"),
+        ("nao_informar", "Prefiro nao informar"),
+        ("outro", "Outro"),
+    ]
+
+
+def _profile_gender_label(value: str | None) -> str:
+    for option_value, label in _profile_gender_options():
+        if option_value == value:
+            return label
+    return "Nao informado"
+
+
+async def _read_avatar_upload(avatar: UploadFile | None) -> tuple[dict | None, str | None]:
+    if not avatar or not avatar.filename:
+        return None, None
+
+    if not (avatar.content_type or "").startswith("image/"):
+        await avatar.close()
+        return None, "Envie uma imagem valida para o avatar."
+
+    avatar_bytes = await avatar.read()
+    await avatar.close()
+    if not avatar_bytes:
+        return None, "A imagem selecionada esta vazia."
+
+    return {
+        "avatar_filename": Path(avatar.filename).name[:255],
+        "avatar_content_type": (avatar.content_type or "image/jpeg")[:120],
+        "avatar_data": avatar_bytes,
+    }, None
 
 
 def _active_farm_id(request: Request) -> int | None:
@@ -1479,6 +1541,152 @@ def delete_user_action(
     repo.delete(target_user)
     _flash(request, "success", "Usuario excluido com sucesso.")
     return _redirect("/usuarios")
+
+
+@router.get("/meu-perfil")
+def profile_page(
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+    csrf_token: str = Depends(get_csrf_token),
+):
+    repo = _repository(db)
+    return _render_profile_page(request, user, csrf_token, repo)
+
+
+@router.post("/meu-perfil")
+async def update_profile_action(
+    request: Request,
+    csrf_token: str = Form(...),
+    name: str = Form(...),
+    display_name: str | None = Form(None),
+    gender: str | None = Form(None),
+    birth_date: str | None = Form(None),
+    phone: str | None = Form(None),
+    email: str = Form(...),
+    job_title: str | None = Form(None),
+    notes: str | None = Form(None),
+    avatar: UploadFile | None = File(None),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    validate_csrf(request, csrf_token)
+    repo = _repository(db)
+
+    normalized_name = _clean_text(name)
+    normalized_email = (email or "").strip().lower()
+    normalized_gender = (gender or "").strip()
+    if normalized_gender and normalized_gender not in {option[0] for option in _profile_gender_options()}:
+        normalized_gender = None
+
+    if not normalized_name or not normalized_email:
+        _flash(request, "error", "Nome completo e email sao obrigatorios.")
+        return _redirect("/meu-perfil#perfil")
+
+    existing = db.query(User).filter(User.email == normalized_email, User.id != user.id).first()
+    if existing:
+        _flash(request, "error", "Ja existe outro usuario com este email.")
+        return _redirect("/meu-perfil#perfil")
+
+    try:
+        normalized_birth_date = _date_or_none(birth_date)
+    except ValueError:
+        _flash(request, "error", "Informe uma data de nascimento valida.")
+        return _redirect("/meu-perfil#perfil")
+
+    avatar_payload, avatar_error = await _read_avatar_upload(avatar)
+    if avatar_error:
+        _flash(request, "error", avatar_error)
+        return _redirect("/meu-perfil#perfil")
+
+    payload = {
+        "name": normalized_name,
+        "email": normalized_email,
+        "display_name": _clean_text(display_name),
+        "gender": normalized_gender or None,
+        "birth_date": normalized_birth_date,
+        "phone": _clean_text(phone),
+        "job_title": _clean_text(job_title),
+        "notes": (notes or "").strip() or None,
+    }
+    if avatar_payload:
+        payload.update(avatar_payload)
+
+    updated_user = repo.update(user, payload)
+    request.session["user_email"] = updated_user.email
+    _flash(request, "success", "Perfil atualizado com sucesso.")
+    return _redirect("/meu-perfil#perfil")
+
+
+@router.post("/meu-perfil/avatar/remover")
+def remove_profile_avatar_action(
+    request: Request,
+    csrf_token: str = Form(...),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    validate_csrf(request, csrf_token)
+    repo = _repository(db)
+    repo.update(
+        user,
+        {
+            "avatar_filename": None,
+            "avatar_content_type": None,
+            "avatar_data": None,
+        },
+    )
+    _flash(request, "success", "Foto removida com sucesso.")
+    return _redirect("/meu-perfil#perfil")
+
+
+@router.get("/meu-perfil/avatar")
+def profile_avatar_view(
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    current_user = _repository(db).get_user(user.id)
+    if not current_user or not current_user.avatar_data:
+        return Response(status_code=status.HTTP_404_NOT_FOUND)
+    return Response(
+        content=current_user.avatar_data,
+        media_type=current_user.avatar_content_type or "image/jpeg",
+        headers={"Cache-Control": "no-store"},
+    )
+
+
+@router.post("/meu-perfil/alterar-senha")
+def change_own_password_action(
+    request: Request,
+    csrf_token: str = Form(...),
+    current_password: str = Form(...),
+    new_password: str = Form(...),
+    confirm_password: str = Form(...),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    validate_csrf(request, csrf_token)
+    normalized_current_password = (current_password or "").strip()
+    normalized_new_password = (new_password or "").strip()
+    normalized_confirm_password = (confirm_password or "").strip()
+
+    if not verify_password(normalized_current_password, user.hashed_password):
+        _flash(request, "error", "A senha atual informada nao confere.")
+        return _redirect("/meu-perfil#seguranca")
+    if not normalized_new_password:
+        _flash(request, "error", "Informe a nova senha.")
+        return _redirect("/meu-perfil#seguranca")
+    if normalized_new_password != normalized_confirm_password:
+        _flash(request, "error", "A confirmacao da nova senha nao confere.")
+        return _redirect("/meu-perfil#seguranca")
+    if verify_password(normalized_new_password, user.hashed_password):
+        _flash(request, "error", "A nova senha precisa ser diferente da senha atual.")
+        return _redirect("/meu-perfil#seguranca")
+
+    repo = _repository(db)
+    repo.update(user, {"hashed_password": get_password_hash(normalized_new_password)})
+    revoke_user_trusted_browsers(db, user.id)
+    _flash(request, "success", "Senha atualizada com sucesso.")
+    return _redirect("/meu-perfil#seguranca")
 
 
 @router.get("/insumos/comprados")
