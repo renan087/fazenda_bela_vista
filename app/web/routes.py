@@ -18,6 +18,7 @@ from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, Tabl
 from sqlalchemy.orm import Session
 from starlette.datastructures import UploadFile as StarletteUploadFile
 
+from app.core.config import get_settings
 from app.core.csrf import validate_csrf
 from app.core.deps import get_csrf_token, get_current_user_web
 from app.core.security import get_password_hash, verify_password
@@ -95,8 +96,16 @@ from app.services.forms import (
     update_manual_stock_output,
 )
 from app.services.openai_service import gerar_recomendacao_adubacao
+from app.services.password_change import (
+    get_active_password_change_verification,
+    issue_password_change_verification,
+    revoke_password_change_verifications,
+    verify_password_change_code,
+)
 from app.services.password_reset import revoke_user_password_reset_tokens
+from app.services.email_service import send_password_change_code_email
 from app.services.trusted_browser import revoke_user_trusted_browsers
+from app.services.two_factor import revoke_active_login_codes
 
 router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")
@@ -157,6 +166,7 @@ def _render_profile_page(
     user: User,
     csrf_token: str,
     repo: FarmRepository,
+    pending_password_change=None,
     active_profile_tab: str = "profile",
 ):
     return templates.TemplateResponse(
@@ -170,6 +180,7 @@ def _render_profile_page(
             _repo=repo,
             profile_gender_options=_profile_gender_options(),
             profile_gender_label=_profile_gender_label(user.gender),
+            pending_password_change=pending_password_change,
             active_profile_tab=active_profile_tab,
         ),
     )
@@ -1585,7 +1596,15 @@ def profile_page(
 ):
     repo = _repository(db)
     active_profile_tab = "security" if (aba or "").strip().lower() == "seguranca" else "profile"
-    return _render_profile_page(request, user, csrf_token, repo, active_profile_tab=active_profile_tab)
+    pending_password_change = get_active_password_change_verification(db, user.id) if active_profile_tab == "security" else None
+    return _render_profile_page(
+        request,
+        user,
+        csrf_token,
+        repo,
+        pending_password_change=pending_password_change,
+        active_profile_tab=active_profile_tab,
+    )
 
 
 @router.post("/meu-perfil")
@@ -1716,10 +1735,48 @@ def change_own_password_action(
         _flash(request, "error", "A nova senha precisa ser diferente da senha atual.")
         return _redirect("/meu-perfil?aba=seguranca")
 
+    try:
+        code = issue_password_change_verification(db, user, get_password_hash(normalized_new_password))
+        send_password_change_code_email(user.email, code, get_settings().two_factor_code_minutes)
+    except RuntimeError as exc:
+        revoke_password_change_verifications(db, user.id)
+        _flash(request, "error", str(exc))
+        return _redirect("/meu-perfil?aba=seguranca")
+    except Exception:
+        db.rollback()
+        revoke_password_change_verifications(db, user.id)
+        _flash(request, "error", "Nao foi possivel enviar o codigo de confirmacao agora. Tente novamente.")
+        return _redirect("/meu-perfil?aba=seguranca")
+
+    _flash(request, "success", "Enviamos um codigo de confirmacao para o seu email. Informe o codigo para concluir a alteracao da senha.")
+    return _redirect("/meu-perfil?aba=seguranca")
+
+
+@router.post("/meu-perfil/alterar-senha/confirmar")
+def confirm_own_password_change_action(
+    request: Request,
+    csrf_token: str = Form(...),
+    code: str = Form(...),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    validate_csrf(request, csrf_token)
+    normalized_code = "".join(char for char in (code or "") if char.isdigit())[:6]
+    if len(normalized_code) != 6:
+        _flash(request, "error", "Informe um codigo numerico de 6 digitos.")
+        return _redirect("/meu-perfil?aba=seguranca")
+
+    valid, message, verification = verify_password_change_code(db, user.id, normalized_code)
+    if not valid or not verification:
+        _flash(request, "error", message)
+        return _redirect("/meu-perfil?aba=seguranca")
+
     repo = _repository(db)
-    repo.update(user, {"hashed_password": get_password_hash(normalized_new_password)})
+    repo.update(user, {"hashed_password": verification.new_password_hash})
+    revoke_password_change_verifications(db, user.id)
     revoke_user_password_reset_tokens(db, user.id)
     revoke_user_trusted_browsers(db, user.id)
+    revoke_active_login_codes(db, user.id)
     _flash(request, "success", "Senha atualizada com sucesso.")
     return _redirect("/meu-perfil?aba=seguranca")
 

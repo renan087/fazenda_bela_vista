@@ -139,3 +139,17 @@ def send_password_reset_email(recipient_email: str, reset_link: str, expires_in_
         ),
         error_context="password_reset",
     )
+
+
+def send_password_change_code_email(recipient_email: str, code: str, expires_in_minutes: int) -> None:
+    _send_email(
+        recipient_email=recipient_email,
+        subject="Confirmacao de alteracao de senha",
+        body=(
+            "Recebemos uma solicitacao para alterar a senha da sua conta no SiSFarm.\n\n"
+            f"Seu codigo de confirmacao e: {code}\n"
+            f"Este codigo expira em {expires_in_minutes} minutos.\n\n"
+            "Se voce nao iniciou essa alteracao, ignore esta mensagem."
+        ),
+        error_context="two_factor",
+    )

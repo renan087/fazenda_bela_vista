@@ -26,7 +26,7 @@
             <div class="rounded-[1.75rem] border border-slate-200 bg-slate-50 p-5">
                 <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Seguranca</p>
                 <h3 class="mt-2 text-2xl font-semibold">Alterar senha</h3>
-                <p class="mt-2 text-sm leading-6 text-slate-500">Confirme sua senha atual para manter o fluxo de autenticacao seguro e revogar navegadores confiaveis antigos.</p>
+                <p class="mt-2 text-sm leading-6 text-slate-500">Confirme sua senha atual e valide um codigo enviado por email antes de concluir a alteracao da senha.</p>
             </div>
             <form method="post" action="/meu-perfil/alterar-senha" class="mt-6 grid gap-4" data-password-form>
                 <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
@@ -43,10 +43,26 @@
                     <input type="password" name="confirm_password" class="w-full rounded-2xl border-slate-200 bg-slate-50" required>
                 </label>
                 <div class="flex flex-wrap gap-3 pt-2">
-                    <button data-submit-button class="rounded-2xl bg-slate-900 px-5 py-3 font-semibold text-white hover:bg-slate-700">Atualizar senha</button>
+                    <button data-submit-button class="rounded-2xl bg-slate-900 px-5 py-3 font-semibold text-white hover:bg-slate-700">Enviar codigo de confirmacao</button>
                     <a href="/meu-perfil?aba=perfil" class="rounded-2xl bg-slate-100 px-5 py-3 font-semibold text-slate-700 hover:bg-slate-200">Voltar ao perfil</a>
                 </div>
             </form>
+
+            {% if pending_password_change %}
+            <div class="mt-6 rounded-[1.75rem] border border-brand-100 bg-brand-50/70 p-5">
+                <p class="text-xs uppercase tracking-[0.35em] text-brand-700/70">Confirmacao por email</p>
+                <h4 class="mt-2 text-xl font-semibold text-slate-900">Digite o codigo recebido</h4>
+                <p class="mt-2 text-sm leading-6 text-slate-600">Enviamos um codigo de 6 digitos para <strong>{{ user.email }}</strong>. Informe esse codigo para concluir a alteracao da senha.</p>
+                <form method="post" action="/meu-perfil/alterar-senha/confirmar" class="mt-5 grid gap-4 sm:grid-cols-[1fr_auto] sm:items-end">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    <label>
+                        <span class="mb-2 block text-sm font-medium text-slate-700">Codigo de confirmacao</span>
+                        <input type="text" name="code" inputmode="numeric" maxlength="6" class="w-full rounded-2xl border-slate-200 bg-white text-center text-2xl tracking-[0.45em]" placeholder="000000" required>
+                    </label>
+                    <button class="rounded-2xl bg-brand-500 px-5 py-3 font-semibold text-white hover:bg-brand-700">Confirmar alteracao</button>
+                </form>
+            </div>
+            {% endif %}
         </section>
 
         <div class="grid gap-6">
@@ -79,6 +95,7 @@
                 <h3 class="mt-2 text-2xl font-semibold">Recomendacoes</h3>
                 <div class="mt-6 space-y-3 text-sm leading-6 text-slate-500">
                     <p class="rounded-[1.25rem] border border-slate-100 bg-slate-50 px-4 py-3">Escolha uma senha exclusiva para o sistema e evite reutilizar combinacoes de outros servicos.</p>
+                    <p class="rounded-[1.25rem] border border-slate-100 bg-slate-50 px-4 py-3">A alteracao da senha exige confirmacao por codigo enviado ao email, seguindo a mesma camada de protecao usada no acesso com 2FA.</p>
                     <p class="rounded-[1.25rem] border border-slate-100 bg-slate-50 px-4 py-3">Ao atualizar a senha, navegadores confiaveis anteriores sao revogados automaticamente para reforcar a seguranca.</p>
                 </div>
             </section>

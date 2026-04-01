@@ -25,6 +25,7 @@ from app.models import (
     InputRecommendationItem,
     IrrigationRecord,
     LoginVerificationCode,
+    PasswordChangeVerification,
     PasswordResetToken,
     PestIncident,
     Plot,
@@ -272,6 +273,19 @@ def _sync_schema() -> None:
         )
         """,
         """
+        CREATE TABLE IF NOT EXISTS password_change_verifications (
+            id SERIAL PRIMARY KEY,
+            user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            code_hash VARCHAR(255) NOT NULL,
+            new_password_hash VARCHAR(255) NOT NULL,
+            expires_at TIMESTAMPTZ NOT NULL,
+            attempts_count INTEGER NOT NULL DEFAULT 0,
+            max_attempts INTEGER NOT NULL DEFAULT 5,
+            used_at TIMESTAMPTZ,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+        """,
+        """
         CREATE TABLE IF NOT EXISTS fertilization_stock_allocations (
             id SERIAL PRIMARY KEY,
             fertilization_item_id INTEGER NOT NULL REFERENCES fertilization_items(id) ON DELETE CASCADE,
@@ -385,6 +399,8 @@ def _sync_schema() -> None:
         connection.execute(text("CREATE INDEX IF NOT EXISTS ix_password_reset_tokens_user_id ON password_reset_tokens(user_id)"))
         connection.execute(text("CREATE INDEX IF NOT EXISTS ix_password_reset_tokens_token_hash ON password_reset_tokens(token_hash)"))
         connection.execute(text("CREATE INDEX IF NOT EXISTS ix_password_reset_tokens_expires_at ON password_reset_tokens(expires_at)"))
+        connection.execute(text("CREATE INDEX IF NOT EXISTS ix_password_change_verifications_user_id ON password_change_verifications(user_id)"))
+        connection.execute(text("CREATE INDEX IF NOT EXISTS ix_password_change_verifications_expires_at ON password_change_verifications(expires_at)"))
         connection.execute(text("CREATE INDEX IF NOT EXISTS ix_purchased_input_attachments_input_id ON purchased_input_attachments(purchased_input_id)"))
         connection.execute(text("CREATE INDEX IF NOT EXISTS ix_equipment_asset_attachments_asset_id ON equipment_asset_attachments(equipment_asset_id)"))
         connection.execute(text("UPDATE plots SET irrigation_type = 'none' WHERE irrigation_type IS NULL"))
