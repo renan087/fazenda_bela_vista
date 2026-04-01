@@ -197,7 +197,20 @@
                         {% for entry in purchase_entries %}
                         <tr>
                             <td class="px-4 py-3">{{ entry.purchase_date or "-" }}</td>
-                            <td class="px-4 py-3 font-medium text-slate-900">{{ entry.input_catalog.name if entry.input_catalog else entry.name }}</td>
+                            <td class="px-4 py-3 font-medium text-slate-900">
+                                <button type="button" class="text-left transition hover:text-brand-700" data-history-view-trigger data-history-view-kicker="Entrada de estoque" data-history-view-title="{{ entry.input_catalog.name if entry.input_catalog else entry.name }}" data-history-view-subtitle="{{ entry.purchase_date or '-' }}" data-history-view-source="stock-entry-view-{{ entry.id }}">{{ entry.input_catalog.name if entry.input_catalog else entry.name }}</button>
+                                <template id="stock-entry-view-{{ entry.id }}">
+                                    <div class="grid gap-3 sm:grid-cols-2">
+                                        <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Data</p><p class="mt-2 text-sm font-medium text-slate-800">{{ entry.purchase_date or "-" }}</p></div>
+                                        <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Fazenda</p><p class="mt-2 text-sm font-medium text-slate-800">{{ entry.farm.name if entry.farm else "Sem vínculo" }}</p></div>
+                                        <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Tipo</p><p class="mt-2 text-sm font-medium text-slate-800">{{ 'Combustivel' if entry.input_catalog and entry.input_catalog.item_type == 'combustivel' else 'Insumo agricola' }}</p></div>
+                                        <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Quantidade</p><p class="mt-2 text-sm font-medium text-slate-800">{{ entry.total_quantity }} {{ entry.package_unit }}</p></div>
+                                        <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Saldo do lote</p><p class="mt-2 text-sm font-medium text-slate-800">{{ entry.available_quantity }} {{ entry.package_unit }}</p></div>
+                                        <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Valor</p><p class="mt-2 text-sm font-medium text-slate-800">R$ {{ entry.total_cost }}</p></div>
+                                    </div>
+                                    <div class="rounded-2xl bg-slate-50 px-4 py-4"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Observacoes</p><p class="mt-2 text-sm text-slate-600">{{ entry.notes or "Sem observacoes." }}</p></div>
+                                </template>
+                            </td>
                             <td class="px-4 py-3">{{ 'Combustivel' if entry.input_catalog and entry.input_catalog.item_type == 'combustivel' else 'Insumo agricola' }}</td>
                             <td class="px-4 py-3">{{ entry.farm.name if entry.farm else "Sem vínculo" }}</td>
                             <td class="px-4 py-3">{{ entry.total_quantity }} {{ entry.package_unit }}</td>
@@ -237,7 +250,20 @@
                         {% for output in stock_outputs %}
                         <tr>
                             <td class="px-4 py-3">{{ output.movement_date }}</td>
-                            <td class="px-4 py-3 font-medium text-slate-900">{{ output.input_catalog.name if output.input_catalog else "-" }}</td>
+                            <td class="px-4 py-3 font-medium text-slate-900">
+                                <button type="button" class="text-left transition hover:text-brand-700" data-history-view-trigger data-history-view-kicker="Saida de estoque" data-history-view-title="{{ output.input_catalog.name if output.input_catalog else '-' }}" data-history-view-subtitle="{{ output.movement_date }}" data-history-view-source="stock-output-table-view-{{ output.id }}" data-history-view-edit-url="/insumos/estoque/saidas/{{ output.id }}/editar">{{ output.input_catalog.name if output.input_catalog else "-" }}</button>
+                                <template id="stock-output-table-view-{{ output.id }}">
+                                    <div class="grid gap-3 sm:grid-cols-2">
+                                        <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Data</p><p class="mt-2 text-sm font-medium text-slate-800">{{ output.movement_date }}</p></div>
+                                        <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Origem</p><p class="mt-2 text-sm font-medium text-slate-800">{{ output.origin }}</p></div>
+                                        <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Tipo</p><p class="mt-2 text-sm font-medium text-slate-800">{{ 'Combustivel' if output.input_catalog and output.input_catalog.item_type == 'combustivel' else 'Insumo agricola' }}</p></div>
+                                        <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Fazenda / Setor</p><p class="mt-2 text-sm font-medium text-slate-800">{{ output.farm.name if output.farm else "Sem vínculo" }}{% if output.plot %} / {{ output.plot.name }}{% endif %}</p></div>
+                                        <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Quantidade</p><p class="mt-2 text-sm font-medium text-slate-800">{{ output.quantity }} {{ output.unit }}</p></div>
+                                        <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Custo</p><p class="mt-2 text-sm font-medium text-slate-800">{% if output.total_cost is not none %}R$ {{ output.total_cost }}{% else %}-{% endif %}</p></div>
+                                    </div>
+                                    <div class="rounded-2xl bg-slate-50 px-4 py-4"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Observacoes</p><p class="mt-2 text-sm text-slate-600">{{ output.notes or "Sem observacoes." }}</p></div>
+                                </template>
+                            </td>
                             <td class="px-4 py-3">{{ 'Combustivel' if output.input_catalog and output.input_catalog.item_type == 'combustivel' else 'Insumo agricola' }}</td>
                             <td class="px-4 py-3">{{ output.origin }}</td>
                             <td class="px-4 py-3">{{ output.farm.name if output.farm else "Sem vínculo" }}{% if output.plot %} / {{ output.plot.name }}{% endif %}</td>
@@ -420,6 +446,7 @@
     </div>
 </dialog>
 {% endif %}
+{% include "partials/history_view_modal.html" %}
 
     <script>
         (() => {

@@ -33,7 +33,21 @@
                 <tbody class="divide-y divide-slate-100 bg-white">
                     {% for item in irrigations %}
                     <tr>
-                        <td class="px-4 py-3 font-medium">{{ item.plot.name if item.plot else "Setor removido" }}</td>
+                        <td class="px-4 py-3 font-medium">
+                            <button type="button" class="text-left text-slate-900 transition hover:text-brand-700" data-history-view-trigger data-history-view-kicker="Irrigacao" data-history-view-title="{{ item.plot.name if item.plot else 'Setor removido' }}" data-history-view-subtitle="{{ item.irrigation_date }}" data-history-view-source="irrigation-view-{{ item.id }}" data-history-view-edit-url="/irrigacao?edit_id={{ item.id }}">{{ item.plot.name if item.plot else "Setor removido" }}</button>
+                            <template id="irrigation-view-{{ item.id }}">
+                                <div class="grid gap-3 sm:grid-cols-2">
+                                    <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Setor</p><p class="mt-2 text-sm font-medium text-slate-800">{{ item.plot.name if item.plot else "Setor removido" }}</p></div>
+                                    <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Data</p><p class="mt-2 text-sm font-medium text-slate-800">{{ item.irrigation_date }}</p></div>
+                                    <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Volume</p><p class="mt-2 text-sm font-medium text-slate-800">{{ item.volume_liters }} L</p></div>
+                                    <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Duracao</p><p class="mt-2 text-sm font-medium text-slate-800">{{ item.duration_minutes }} min</p></div>
+                                </div>
+                                <div class="rounded-2xl bg-slate-50 px-4 py-4">
+                                    <p class="text-xs uppercase tracking-[0.2em] text-slate-400">Observacoes</p>
+                                    <p class="mt-2 text-sm text-slate-600">{{ item.notes or "Sem observacoes." }}</p>
+                                </div>
+                            </template>
+                        </td>
                         <td class="px-4 py-3">{{ item.irrigation_date }}</td>
                         <td class="px-4 py-3">{{ item.volume_liters }} L</td>
                         <td class="px-4 py-3">{{ item.duration_minutes }} min</td>
@@ -55,6 +69,7 @@
         </div>
     </section>
 </div>
+{% include "partials/history_view_modal.html" %}
 <script>
     (() => {
         const plotSelect = document.querySelector('[data-irrigation-plot]');

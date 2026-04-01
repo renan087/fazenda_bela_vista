@@ -28,7 +28,21 @@
                 <tbody class="divide-y divide-slate-100 bg-white">
                     {% for item in harvests %}
                     <tr>
-                        <td class="px-4 py-3 font-medium">{{ item.plot.name if item.plot else "Setor removido" }}</td>
+                        <td class="px-4 py-3 font-medium">
+                            <button type="button" class="text-left text-slate-900 transition hover:text-brand-700" data-history-view-trigger data-history-view-kicker="Colheita" data-history-view-title="{{ item.plot.name if item.plot else 'Setor removido' }}" data-history-view-subtitle="{{ item.harvest_date }}" data-history-view-source="harvest-view-{{ item.id }}" data-history-view-edit-url="/producao?edit_id={{ item.id }}">{{ item.plot.name if item.plot else "Setor removido" }}</button>
+                            <template id="harvest-view-{{ item.id }}">
+                                <div class="grid gap-3 sm:grid-cols-2">
+                                    <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Setor</p><p class="mt-2 text-sm font-medium text-slate-800">{{ item.plot.name if item.plot else "Setor removido" }}</p></div>
+                                    <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Data</p><p class="mt-2 text-sm font-medium text-slate-800">{{ item.harvest_date }}</p></div>
+                                    <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Sacas</p><p class="mt-2 text-sm font-medium text-slate-800">{{ item.sacks_produced }}</p></div>
+                                    <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Produtividade</p><p class="mt-2 text-sm font-medium text-slate-800">{{ item.productivity_per_hectare or 0 }} sc/ha</p></div>
+                                </div>
+                                <div class="rounded-2xl bg-slate-50 px-4 py-4">
+                                    <p class="text-xs uppercase tracking-[0.2em] text-slate-400">Observacoes</p>
+                                    <p class="mt-2 text-sm text-slate-600">{{ item.notes or "Sem observacoes." }}</p>
+                                </div>
+                            </template>
+                        </td>
                         <td class="px-4 py-3">{{ item.harvest_date }}</td>
                         <td class="px-4 py-3">{{ item.sacks_produced }}</td>
                         <td class="px-4 py-3">{{ item.productivity_per_hectare or 0 }} sc/ha</td>
@@ -50,4 +64,5 @@
         </div>
     </section>
 </div>
+{% include "partials/history_view_modal.html" %}
 {% endblock %}

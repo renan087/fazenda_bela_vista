@@ -108,7 +108,7 @@
             <article class="rounded-[1.5rem] border border-slate-100 bg-slate-50 p-5">
                 <div class="flex flex-wrap items-start justify-between gap-4">
                     <div>
-                        <p class="text-lg font-semibold text-slate-900">{{ asset.name }}</p>
+                        <button type="button" class="text-left text-lg font-semibold text-slate-900 transition hover:text-brand-700" data-history-view-trigger data-history-view-kicker="Patrimonio" data-history-view-title="{{ asset.name }}" data-history-view-subtitle="{{ asset.category }}{% if asset.farm %} • {{ asset.farm.name }}{% endif %}" data-history-view-source="asset-view-{{ asset.id }}" data-history-view-edit-url="/insumos/patrimonio?edit_id={{ asset.id }}{% if selected_farm_id %}&farm_id={{ selected_farm_id }}{% endif %}">{{ asset.name }}</button>
                         <p class="mt-1 text-sm text-slate-500">{{ asset.category }}{% if asset.farm %} • {{ asset.farm.name }}{% endif %}</p>
                         <p class="mt-2 text-sm text-slate-600">
                             {% if asset.manufacturer %}<strong>Fabricante:</strong> {{ asset.manufacturer }}{% endif %}
@@ -133,6 +133,33 @@
                 {% if asset.notes %}
                 <p class="mt-4 text-sm text-slate-500">{{ asset.notes }}</p>
                 {% endif %}
+                <template id="asset-view-{{ asset.id }}">
+                    <div class="grid gap-3 sm:grid-cols-2">
+                        <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Categoria</p><p class="mt-2 text-sm font-medium text-slate-800">{{ asset.category }}</p></div>
+                        <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Fazenda</p><p class="mt-2 text-sm font-medium text-slate-800">{{ asset.farm.name if asset.farm else "Sem fazenda vinculada" }}</p></div>
+                        <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Fabricante</p><p class="mt-2 text-sm font-medium text-slate-800">{{ asset.manufacturer or "-" }}</p></div>
+                        <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Modelo</p><p class="mt-2 text-sm font-medium text-slate-800">{{ asset.brand_model or "-" }}</p></div>
+                        <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Ano</p><p class="mt-2 text-sm font-medium text-slate-800">{{ asset.manufacture_year or "-" }}</p></div>
+                        <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">ID do ativo</p><p class="mt-2 text-sm font-medium text-slate-800">{{ asset.asset_code or "-" }}</p></div>
+                        <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Aquisicao</p><p class="mt-2 text-sm font-medium text-slate-800">{{ asset.acquisition_date or "-" }}</p></div>
+                        <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Valor</p><p class="mt-2 text-sm font-medium text-slate-800">{% if asset.acquisition_value is not none %}R$ {{ asset.acquisition_value }}{% else %}-{% endif %}</p></div>
+                        <div class="rounded-2xl bg-slate-50 px-4 py-3 sm:col-span-2"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Status</p><p class="mt-2 text-sm font-medium text-slate-800">{{ asset.status.replace('_', ' ')|title }}</p></div>
+                    </div>
+                    {% if asset.attachments %}
+                    <div class="rounded-2xl bg-slate-50 px-4 py-4">
+                        <p class="text-xs uppercase tracking-[0.2em] text-slate-400">Anexos</p>
+                        <div class="mt-3 flex flex-wrap gap-2">
+                            {% for attachment in asset.attachments %}
+                            <a href="/insumos/patrimonio/anexos/{{ attachment.id }}" target="_blank" class="rounded-xl bg-white px-3 py-2 text-sm font-medium text-slate-700 ring-1 ring-slate-200 hover:bg-slate-100">{{ attachment.filename }}</a>
+                            {% endfor %}
+                        </div>
+                    </div>
+                    {% endif %}
+                    <div class="rounded-2xl bg-slate-50 px-4 py-4">
+                        <p class="text-xs uppercase tracking-[0.2em] text-slate-400">Observacoes</p>
+                        <p class="mt-2 text-sm text-slate-600">{{ asset.notes or "Sem observacoes." }}</p>
+                    </div>
+                </template>
             </article>
             {% else %}
             <p class="text-sm text-slate-500">Nenhum patrimônio cadastrado para os filtros informados.</p>
@@ -140,5 +167,6 @@
         </div>
     </section>
 </div>
+{% include "partials/history_view_modal.html" %}
 {% include "partials/attachment_manager_script.html" %}
 {% endblock %}

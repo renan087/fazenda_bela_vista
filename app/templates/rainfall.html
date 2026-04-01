@@ -38,7 +38,21 @@
                 <tbody class="divide-y divide-slate-100 bg-white">
                     {% for item in rainfalls %}
                     <tr>
-                        <td class="px-4 py-3 font-medium">{{ item.farm.name if item.farm else "Fazenda removida" }}</td>
+                        <td class="px-4 py-3 font-medium">
+                            <button type="button" class="text-left text-slate-900 transition hover:text-brand-700" data-history-view-trigger data-history-view-kicker="Pluviometria" data-history-view-title="{{ item.farm.name if item.farm else 'Fazenda removida' }}" data-history-view-subtitle="{{ item.rainfall_date }}" data-history-view-source="rainfall-view-{{ item.id }}" data-history-view-edit-url="/pluviometria?edit_id={{ item.id }}">{{ item.farm.name if item.farm else "Fazenda removida" }}</button>
+                            <template id="rainfall-view-{{ item.id }}">
+                                <div class="grid gap-3 sm:grid-cols-2">
+                                    <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Fazenda</p><p class="mt-2 text-sm font-medium text-slate-800">{{ item.farm.name if item.farm else "Fazenda removida" }}</p></div>
+                                    <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Data</p><p class="mt-2 text-sm font-medium text-slate-800">{{ item.rainfall_date }}</p></div>
+                                    <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Chuva</p><p class="mt-2 text-sm font-medium text-slate-800">{{ item.millimeters }} mm</p></div>
+                                    <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Origem</p><p class="mt-2 text-sm font-medium text-slate-800">{{ item.source or "-" }}</p></div>
+                                </div>
+                                <div class="rounded-2xl bg-slate-50 px-4 py-4">
+                                    <p class="text-xs uppercase tracking-[0.2em] text-slate-400">Observacoes</p>
+                                    <p class="mt-2 text-sm text-slate-600">{{ item.notes or "Sem observacoes." }}</p>
+                                </div>
+                            </template>
+                        </td>
                         <td class="px-4 py-3">{{ item.rainfall_date }}</td>
                         <td class="px-4 py-3">{{ item.millimeters }} mm</td>
                         <td class="px-4 py-3">{{ item.source or "-" }}</td>
@@ -60,4 +74,5 @@
         </div>
     </section>
 </div>
+{% include "partials/history_view_modal.html" %}
 {% endblock %}
