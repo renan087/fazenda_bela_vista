@@ -1,10 +1,11 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="grid gap-6 xl:grid-cols-[0.9fr_1.1fr]" data-modal-single-pane>
-    <section class="rounded-[2rem] bg-white p-6 shadow-panel" data-history-edit-panel {% if edit_recommendation %}data-history-edit-open="1"{% endif %}>
+<div class="grid gap-6 xl:grid-cols-[0.9fr_1.1fr] xl:items-start" data-modal-single-pane>
+    <section class="rounded-[2rem] bg-white p-6 shadow-panel xl:flex xl:max-h-[80vh] xl:min-h-0 xl:flex-col" data-history-edit-panel {% if edit_recommendation %}data-history-edit-open="1"{% endif %}>
         <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Insumos</p>
         <h3 class="mt-2 text-2xl font-semibold">{% if edit_recommendation %}Editar recomendacao{% else %}Recomendacao de aplicacao{% endif %}</h3>
-        <form method="post" action="{% if edit_recommendation %}/insumos/recomendacao/{{ edit_recommendation.id }}/editar{% else %}/insumos/recomendacao{% endif %}" class="mt-6 grid gap-4">
+        <div class="mt-6 xl:min-h-0 xl:flex-1 xl:overflow-y-auto xl:pr-2">
+        <form method="post" action="{% if edit_recommendation %}/insumos/recomendacao/{{ edit_recommendation.id }}/editar{% else %}/insumos/recomendacao{% endif %}" class="grid gap-4">
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
             {% include "partials/launch_context.html" %}
             <div class="grid gap-4 md:grid-cols-2">
@@ -63,11 +64,13 @@
                 <a href="/insumos/recomendacao" class="rounded-2xl bg-slate-100 px-4 py-3 font-semibold text-slate-700 hover:bg-slate-200">Cancelar</a>
             </div>
         </form>
+        </div>
     </section>
-    <section class="rounded-[2rem] bg-white p-6 shadow-panel">
+    <section class="rounded-[2rem] bg-white p-6 shadow-panel xl:flex xl:max-h-[80vh] xl:min-h-0 xl:flex-col">
         <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Aplicacoes</p>
         <h3 class="mt-2 text-2xl font-semibold">Recomendacoes cadastradas</h3>
-        <div class="mt-6 space-y-4">
+        <div class="mt-6 xl:min-h-0 xl:flex-1 xl:overflow-y-auto xl:pr-2">
+        <div class="space-y-4">
             {% for item in recommendations %}
             <article class="rounded-[1.5rem] border border-slate-100 bg-slate-50 p-5">
                 <div class="flex flex-wrap items-start justify-between gap-4">
@@ -121,6 +124,7 @@
             {% endfor %}
         </div>
         {% with pagination=recommendations_pagination %}{% include "partials/history_pagination.html" %}{% endwith %}
+        </div>
     </section>
 </div>
 {% include "partials/history_view_modal.html" %}
