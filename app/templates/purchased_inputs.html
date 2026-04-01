@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
+<div class="grid gap-6 xl:grid-cols-[0.9fr_1.1fr]" data-modal-single-pane>
     <section class="rounded-[2rem] bg-white p-6 shadow-panel">
         <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Entradas de estoque</p>
         <h3 class="mt-2 text-2xl font-semibold">{% if edit_input %}Editar entrada de estoque{% else %}Nova entrada de estoque{% endif %}</h3>

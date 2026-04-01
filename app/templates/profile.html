@@ -28,7 +28,7 @@
                 <h3 class="mt-2 text-2xl font-semibold">Alterar senha</h3>
                 <p class="mt-2 text-sm leading-6 text-slate-500">Confirme sua senha atual e valide um codigo enviado por email antes de concluir a alteracao da senha.</p>
             </div>
-            <form method="post" action="/meu-perfil/alterar-senha" class="mt-6 grid gap-4" data-password-form>
+            <form method="post" action="/meu-perfil/alterar-senha" class="mt-6 grid gap-4" data-password-form data-security-flow-form>
                 <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                 <label>
                     <span class="mb-2 block text-sm font-medium">Senha atual</span>
@@ -53,7 +53,7 @@
                 <p class="text-xs uppercase tracking-[0.35em] text-brand-700/70">Confirmacao por email</p>
                 <h4 class="mt-2 text-xl font-semibold text-slate-900">Digite o codigo recebido</h4>
                 <p class="mt-2 text-sm leading-6 text-slate-600">Enviamos um codigo de 6 digitos para <strong>{{ user.email }}</strong>. Informe esse codigo para concluir a alteracao da senha.</p>
-                <form method="post" action="/meu-perfil/alterar-senha/confirmar" class="mt-5 grid gap-4 sm:grid-cols-[1fr_auto] sm:items-end">
+                <form method="post" action="/meu-perfil/alterar-senha/confirmar" class="mt-5 grid gap-4 sm:grid-cols-[1fr_auto] sm:items-end" data-password-confirm-form data-security-flow-form>
                     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                     <label>
                         <span class="mb-2 block text-sm font-medium text-slate-700">Codigo de confirmacao</span>
@@ -288,6 +288,32 @@
         const passwordForm = document.querySelector('[data-password-form]');
         if (passwordForm) {
             passwordForm.addEventListener('submit', () => disableSubmitButton(passwordForm));
+        }
+
+        const passwordConfirmForm = document.querySelector('[data-password-confirm-form]');
+        if (passwordConfirmForm) {
+            passwordConfirmForm.addEventListener('submit', () => disableSubmitButton(passwordConfirmForm));
+        }
+
+        const securityFlowForms = document.querySelectorAll('[data-security-flow-form]');
+        const passwordChangePending = document.querySelector('[data-password-confirm-form]');
+        if (passwordChangePending) {
+            const cancelUrl = '/meu-perfil/alterar-senha/cancelar';
+            const csrfToken = {{ csrf_token|tojson }};
+            let keepPendingPasswordChange = false;
+
+            securityFlowForms.forEach((form) => {
+                form.addEventListener('submit', () => {
+                    keepPendingPasswordChange = true;
+                });
+            });
+
+            window.addEventListener('pagehide', () => {
+                if (keepPendingPasswordChange) return;
+                const payload = new FormData();
+                payload.append('csrf_token', csrfToken);
+                navigator.sendBeacon(cancelUrl, payload);
+            });
         }
 
         const profileForm = document.querySelector('[data-profile-form]');

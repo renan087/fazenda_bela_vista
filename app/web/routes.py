@@ -119,10 +119,15 @@ EQUIPMENT_ASSET_CATEGORY_OPTIONS = [
     "Silo",
     "Veículo",
 ]
+PENDING_PASSWORD_CHANGE_SESSION_KEY = "pending_password_change_user_id"
 
 
 def _redirect(url: str) -> RedirectResponse:
     return RedirectResponse(url=url, status_code=status.HTTP_303_SEE_OTHER)
+
+
+def _is_modal_request(request: Request) -> bool:
+    return str(request.query_params.get("modal") or "") == "1"
 
 
 def _redirect_with_query(path: str, **params) -> RedirectResponse:
@@ -138,8 +143,15 @@ def _redirect_with_query(path: str, **params) -> RedirectResponse:
     return _redirect(f"{path}?{urlencode(filtered, doseq=True)}" if filtered else path)
 
 
+def _redirect_for_request(request: Request, path: str, **params) -> RedirectResponse:
+    if _is_modal_request(request):
+        params["modal"] = "1"
+    return _redirect_with_query(path, **params)
+
+
 def _base_context(request: Request, user: User, csrf_token: str, page: str, **kwargs):
-    flash = request.session.pop("flash", None)
+    modal_mode = _is_modal_request(request)
+    flash = request.session.get("flash") if modal_mode else request.session.pop("flash", None)
     repo = kwargs.pop("_repo", None)
     context = {
         "request": request,
@@ -147,6 +159,7 @@ def _base_context(request: Request, user: User, csrf_token: str, page: str, **kw
         "csrf_token": csrf_token,
         "page": page,
         "flash": flash,
+        "modal_mode": modal_mode,
     }
     if repo:
         scope_context = _global_scope_context(request, repo, user)
@@ -196,6 +209,23 @@ def _float_or_none(value: str | None):
 
 def _int_or_none(value: str | None):
     return int(value) if value not in (None, "") else None
+
+
+def _mark_password_change_pending(request: Request, user_id: int) -> None:
+    request.session[PENDING_PASSWORD_CHANGE_SESSION_KEY] = user_id
+
+
+def _has_password_change_pending(request: Request, user_id: int) -> bool:
+    return request.session.get(PENDING_PASSWORD_CHANGE_SESSION_KEY) == user_id
+
+
+def _clear_password_change_pending(request: Request) -> None:
+    request.session.pop(PENDING_PASSWORD_CHANGE_SESSION_KEY, None)
+
+
+def _discard_password_change_pending(request: Request, db: Session, user_id: int) -> None:
+    revoke_password_change_verifications(db, user_id)
+    _clear_password_change_pending(request)
 
 
 def _resolve_fertilization_output_context(
@@ -1596,7 +1626,18 @@ def profile_page(
 ):
     repo = _repository(db)
     active_profile_tab = "security" if (aba or "").strip().lower() == "seguranca" else "profile"
-    pending_password_change = get_active_password_change_verification(db, user.id) if active_profile_tab == "security" else None
+    pending_password_change = None
+    if active_profile_tab == "security":
+        if _has_password_change_pending(request, user.id):
+            pending_password_change = get_active_password_change_verification(db, user.id)
+            if not pending_password_change:
+                _clear_password_change_pending(request)
+        else:
+            stale_password_change = get_active_password_change_verification(db, user.id)
+            if stale_password_change:
+                _discard_password_change_pending(request, db, user.id)
+    elif _has_password_change_pending(request, user.id):
+        _discard_password_change_pending(request, db, user.id)
     return _render_profile_page(
         request,
         user,
@@ -1739,15 +1780,16 @@ def change_own_password_action(
         code = issue_password_change_verification(db, user, get_password_hash(normalized_new_password))
         send_password_change_code_email(user.email, code, get_settings().two_factor_code_minutes)
     except RuntimeError as exc:
-        revoke_password_change_verifications(db, user.id)
+        _discard_password_change_pending(request, db, user.id)
         _flash(request, "error", str(exc))
         return _redirect("/meu-perfil?aba=seguranca")
     except Exception:
         db.rollback()
-        revoke_password_change_verifications(db, user.id)
+        _discard_password_change_pending(request, db, user.id)
         _flash(request, "error", "Nao foi possivel enviar o codigo de confirmacao agora. Tente novamente.")
         return _redirect("/meu-perfil?aba=seguranca")
 
+    _mark_password_change_pending(request, user.id)
     _flash(request, "success", "Enviamos um codigo de confirmacao para o seu email. Informe o codigo para concluir a alteracao da senha.")
     return _redirect("/meu-perfil?aba=seguranca")
 
@@ -1768,17 +1810,32 @@ def confirm_own_password_change_action(
 
     valid, message, verification = verify_password_change_code(db, user.id, normalized_code)
     if not valid or not verification:
+        if not get_active_password_change_verification(db, user.id):
+            _clear_password_change_pending(request)
         _flash(request, "error", message)
         return _redirect("/meu-perfil?aba=seguranca")
 
     repo = _repository(db)
     repo.update(user, {"hashed_password": verification.new_password_hash})
     revoke_password_change_verifications(db, user.id)
+    _clear_password_change_pending(request)
     revoke_user_password_reset_tokens(db, user.id)
     revoke_user_trusted_browsers(db, user.id)
     revoke_active_login_codes(db, user.id)
     _flash(request, "success", "Senha atualizada com sucesso.")
     return _redirect("/meu-perfil?aba=seguranca")
+
+
+@router.post("/meu-perfil/alterar-senha/cancelar")
+async def cancel_own_password_change_action(
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    form = await request.form()
+    validate_csrf(request, str(form.get("csrf_token") or ""))
+    _discard_password_change_pending(request, db, user.id)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.get("/insumos/comprados")
@@ -1905,15 +1962,15 @@ async def update_purchased_input_action(
     item = repo.get_purchased_input(input_id)
     if not item:
         _flash(request, "error", "Insumo comprado nao encontrado.")
-        return _redirect("/insumos/comprados")
+        return _redirect_for_request(request, "/insumos/comprados")
     if not _farm_matches_scope(item.farm_id, scope):
         _flash(request, "error", "Este lancamento de entrada nao pertence ao contexto ativo.")
-        return _redirect("/insumos/comprados")
+        return _redirect_for_request(request, "/insumos/comprados")
     try:
         attachment_payloads = _read_attachments(await _request_attachments(request))
     except ValueError as exc:
         _flash(request, "error", str(exc))
-        return _redirect_with_query("/insumos/comprados", edit_id=input_id, item_type=item_type)
+        return _redirect_for_request(request, "/insumos/comprados", edit_id=input_id, item_type=item_type)
     update_purchased_input(
         repo,
         item,
@@ -1934,12 +1991,12 @@ async def update_purchased_input_action(
         saved_attachments = _save_purchased_input_attachments(repo, item, attachment_payloads)
     except Exception:
         _flash(request, "error", "As alteracoes foram salvas, mas nao foi possivel incluir os novos anexos.")
-        return _redirect_with_query("/insumos/comprados", edit_id=input_id, item_type=item_type)
+        return _redirect_for_request(request, "/insumos/comprados", edit_id=input_id, item_type=item_type)
     if saved_attachments:
         _flash(request, "success", f"Alteracoes salvas com sucesso. {saved_attachments} novo(s) anexo(s) adicionado(s).")
-        return _redirect_with_query("/insumos/comprados", edit_id=input_id, item_type=item_type)
+        return _redirect_for_request(request, "/insumos/comprados", edit_id=input_id, item_type=item_type)
     _flash(request, "success", "Insumo comprado atualizado com sucesso.")
-    return _redirect_with_query("/insumos/comprados", item_type=item_type)
+    return _redirect_for_request(request, "/insumos/comprados", item_type=item_type)
 
 
 @router.post("/insumos/comprados/{input_id}/excluir")
@@ -1956,7 +2013,7 @@ def delete_purchased_input_action(
     item = repo.get_purchased_input(input_id)
     if not item:
         _flash(request, "error", "Insumo comprado nao encontrado.")
-        return _redirect("/insumos/comprados")
+        return _redirect_for_request(request, "/insumos/comprados")
     if item.recommendations:
         _flash(request, "error", "Nao e possivel excluir o insumo enquanto houver recomendacoes vinculadas.")
         return _redirect("/insumos/comprados")
@@ -2008,18 +2065,18 @@ def delete_purchased_input_attachment_action(
     scope = _global_scope_context(request, repo)
     if not _farm_matches_scope(item.farm_id, scope):
         _flash(request, "error", "Este lancamento de entrada nao pertence ao contexto ativo.")
-        return _redirect("/insumos/comprados")
+        return _redirect_for_request(request, "/insumos/comprados")
     attachment = repo.get_purchased_input_attachment(attachment_id)
     if not attachment or attachment.purchased_input_id != item.id:
         _flash(request, "error", "Anexo nao encontrado.")
-        return _redirect_with_query("/insumos/comprados", edit_id=input_id)
+        return _redirect_for_request(request, "/insumos/comprados", edit_id=input_id)
     repo.delete(attachment)
     if repo.get_purchased_input_attachment(attachment_id):
         _flash(request, "error", "Nao foi possivel remover o anexo agora. Tente novamente.")
-        return _redirect_with_query("/insumos/comprados", edit_id=input_id)
+        return _redirect_for_request(request, "/insumos/comprados", edit_id=input_id)
     _flash(request, "success", "Anexo removido com sucesso.")
     item_type = item.input_catalog.item_type if item.input_catalog else None
-    return _redirect_with_query("/insumos/comprados", edit_id=input_id, item_type=item_type)
+    return _redirect_for_request(request, "/insumos/comprados", edit_id=input_id, item_type=item_type)
 
 
 @router.get("/insumos/estoque")
@@ -2583,24 +2640,24 @@ async def update_equipment_asset_action(
     asset = repo.get_equipment_asset(asset_id)
     if not asset:
         _flash(request, "error", "Patrimonio nao encontrado.")
-        return _redirect("/insumos/patrimonio")
+        return _redirect_for_request(request, "/insumos/patrimonio")
     if not _farm_matches_scope(asset.farm_id, scope):
         _flash(request, "error", "Este patrimonio nao pertence ao contexto ativo.")
-        return _redirect("/insumos/patrimonio")
+        return _redirect_for_request(request, "/insumos/patrimonio")
     normalized_category = _clean_text(category)
     if normalized_category not in EQUIPMENT_ASSET_CATEGORY_OPTIONS and normalized_category != asset.category:
         _flash(request, "error", "Selecione uma categoria valida para o patrimonio.")
-        return _redirect_with_query("/insumos/patrimonio", edit_id=asset_id)
+        return _redirect_for_request(request, "/insumos/patrimonio", edit_id=asset_id)
     try:
         normalized_manufacture_year = _parse_equipment_asset_manufacture_year(manufacture_year)
     except ValueError as exc:
         _flash(request, "error", str(exc))
-        return _redirect_with_query("/insumos/patrimonio", edit_id=asset_id)
+        return _redirect_for_request(request, "/insumos/patrimonio", edit_id=asset_id)
     try:
         attachment_payloads = _read_attachments(await _request_attachments(request))
     except ValueError as exc:
         _flash(request, "error", str(exc))
-        return _redirect_with_query("/insumos/patrimonio", edit_id=asset_id)
+        return _redirect_for_request(request, "/insumos/patrimonio", edit_id=asset_id)
     update_equipment_asset(
         repo,
         asset,
@@ -2622,12 +2679,12 @@ async def update_equipment_asset_action(
         saved_attachments = _save_equipment_asset_attachments(repo, asset, attachment_payloads)
     except Exception:
         _flash(request, "error", "As alteracoes foram salvas, mas nao foi possivel incluir os novos anexos.")
-        return _redirect_with_query("/insumos/patrimonio", edit_id=asset_id)
+        return _redirect_for_request(request, "/insumos/patrimonio", edit_id=asset_id)
     if saved_attachments:
         _flash(request, "success", f"Alteracoes salvas com sucesso. {saved_attachments} novo(s) anexo(s) adicionado(s).")
-        return _redirect_with_query("/insumos/patrimonio", edit_id=asset_id)
+        return _redirect_for_request(request, "/insumos/patrimonio", edit_id=asset_id)
     _flash(request, "success", "Patrimonio atualizado com sucesso.")
-    return _redirect("/insumos/patrimonio")
+    return _redirect_for_request(request, "/insumos/patrimonio")
 
 
 @router.post("/insumos/patrimonio/{asset_id}/excluir")
@@ -2644,7 +2701,7 @@ def delete_equipment_asset_action(
     asset = repo.get_equipment_asset(asset_id)
     if not asset:
         _flash(request, "error", "Patrimonio nao encontrado.")
-        return _redirect("/insumos/patrimonio")
+        return _redirect_for_request(request, "/insumos/patrimonio")
     repo.delete(asset)
     _flash(request, "success", "Patrimonio excluido com sucesso.")
     return _redirect("/insumos/patrimonio")
@@ -2690,17 +2747,17 @@ def delete_equipment_asset_attachment_action(
     scope = _global_scope_context(request, repo)
     if not _farm_matches_scope(asset.farm_id, scope):
         _flash(request, "error", "Este patrimonio nao pertence ao contexto ativo.")
-        return _redirect("/insumos/patrimonio")
+        return _redirect_for_request(request, "/insumos/patrimonio")
     attachment = repo.get_equipment_asset_attachment(attachment_id)
     if not attachment or attachment.equipment_asset_id != asset.id:
         _flash(request, "error", "Anexo nao encontrado.")
-        return _redirect_with_query("/insumos/patrimonio", edit_id=asset_id)
+        return _redirect_for_request(request, "/insumos/patrimonio", edit_id=asset_id)
     repo.delete(attachment)
     if repo.get_equipment_asset_attachment(attachment_id):
         _flash(request, "error", "Nao foi possivel remover o anexo agora. Tente novamente.")
-        return _redirect_with_query("/insumos/patrimonio", edit_id=asset_id)
+        return _redirect_for_request(request, "/insumos/patrimonio", edit_id=asset_id)
     _flash(request, "success", "Anexo removido com sucesso.")
-    return _redirect_with_query("/insumos/patrimonio", edit_id=asset_id)
+    return _redirect_for_request(request, "/insumos/patrimonio", edit_id=asset_id)
 
 
 @router.get("/insumos/recomendacao")
@@ -2815,18 +2872,18 @@ async def update_input_recommendation_action(
     recommendation = repo.get_input_recommendation(recommendation_id)
     if not recommendation:
         _flash(request, "error", "Recomendacao nao encontrada.")
-        return _redirect("/insumos/recomendacao")
+        return _redirect_for_request(request, "/insumos/recomendacao")
     if not _farm_matches_scope(recommendation.farm_id, scope):
         _flash(request, "error", "Esta recomendacao nao pertence ao contexto ativo.")
-        return _redirect("/insumos/recomendacao")
+        return _redirect_for_request(request, "/insumos/recomendacao")
     if recommendation.plot_id and not _plot_matches_scope(recommendation.plot, scope):
         _flash(request, "error", "Esta recomendacao nao pertence ao contexto ativo.")
-        return _redirect("/insumos/recomendacao")
+        return _redirect_for_request(request, "/insumos/recomendacao")
     application_name = str(form.get("application_name") or "").strip()
     items = _parse_recommendation_items(form)
     if not application_name or not items:
         _flash(request, "error", "Informe a aplicacao e adicione ao menos um insumo.")
-        return _redirect_with_query("/insumos/recomendacao", edit_id=recommendation_id)
+        return _redirect_for_request(request, "/insumos/recomendacao", edit_id=recommendation_id)
     update_input_recommendation(
         repo,
         recommendation,
@@ -2839,7 +2896,7 @@ async def update_input_recommendation_action(
         },
     )
     _flash(request, "success", "Recomendacao atualizada com sucesso.")
-    return _redirect("/insumos/recomendacao")
+    return _redirect_for_request(request, "/insumos/recomendacao")
 
 
 @router.post("/insumos/recomendacao/{recommendation_id}/excluir")
@@ -3259,18 +3316,18 @@ def update_irrigation_action(
     irrigation = repo.get_irrigation(record_id)
     if not irrigation:
         _flash(request, "error", "Registro de irrigacao nao encontrado.")
-        return _redirect("/irrigacao")
+        return _redirect_for_request(request, "/irrigacao")
     plot, scope, denied = _resolve_plot_in_scope(request, repo, plot_id, "/irrigacao")
     if denied:
         return denied
     if not _plot_matches_scope(irrigation.plot, scope):
         _flash(request, "error", "Este registro de irrigacao nao pertence ao contexto ativo.")
-        return _redirect("/irrigacao")
+        return _redirect_for_request(request, "/irrigacao")
     calculated_volume = calculate_irrigation_volume(plot, duration_minutes)
     manual_volume = _float_or_none(volume_liters)
     if calculated_volume is None and manual_volume is None:
         _flash(request, "error", "Informe o volume manual em litros ou cadastre os dados de irrigacao no setor.")
-        return _redirect_with_query("/irrigacao", edit_id=record_id)
+        return _redirect_for_request(request, "/irrigacao", edit_id=record_id)
     update_irrigation(
         repo,
         irrigation,
@@ -3283,7 +3340,7 @@ def update_irrigation_action(
         },
     )
     _flash(request, "success", "Irrigacao atualizada com sucesso.")
-    return _redirect("/irrigacao")
+    return _redirect_for_request(request, "/irrigacao")
 
 
 @router.post("/irrigacao/{record_id}/excluir")
@@ -3395,10 +3452,10 @@ def update_rainfall_action(
     rainfall = repo.get_rainfall(record_id)
     if not rainfall:
         _flash(request, "error", "Registro de pluviometria nao encontrado.")
-        return _redirect("/pluviometria")
+        return _redirect_for_request(request, "/pluviometria")
     if not _farm_matches_scope(rainfall.farm_id, scope):
         _flash(request, "error", "Este registro de pluviometria nao pertence ao contexto ativo.")
-        return _redirect("/pluviometria")
+        return _redirect_for_request(request, "/pluviometria")
     update_rainfall(
         repo,
         rainfall,
@@ -3411,7 +3468,7 @@ def update_rainfall_action(
         },
     )
     _flash(request, "success", "Pluviometria atualizada com sucesso.")
-    return _redirect("/pluviometria")
+    return _redirect_for_request(request, "/pluviometria")
 
 
 @router.post("/pluviometria/{record_id}/excluir")
@@ -3570,17 +3627,17 @@ async def update_fertilization_action(
     fertilization = repo.get_fertilization(record_id)
     if not fertilization:
         _flash(request, "error", "Registro de fertilizacao nao encontrado.")
-        return _redirect("/fertilizacao")
+        return _redirect_for_request(request, "/fertilizacao")
     plot, scope, denied = _resolve_plot_in_scope(request, repo, int(form.get("plot_id") or 0), "/fertilizacao")
     if denied:
         return denied
     if not _plot_matches_scope(fertilization.plot, scope):
         _flash(request, "error", "Este registro de fertilizacao nao pertence ao contexto ativo.")
-        return _redirect("/fertilizacao")
+        return _redirect_for_request(request, "/fertilizacao")
     items = _parse_fertilization_items(form)
     if not items:
         _flash(request, "error", "Adicione ao menos um insumo na atividade.")
-        return _redirect_with_query("/fertilizacao", edit_id=record_id)
+        return _redirect_for_request(request, "/fertilizacao", edit_id=record_id)
     try:
         update_fertilization(
             repo,
@@ -3595,9 +3652,9 @@ async def update_fertilization_action(
         )
     except ValueError as exc:
         _flash(request, "error", str(exc))
-        return _redirect_with_query("/fertilizacao", edit_id=record_id)
+        return _redirect_for_request(request, "/fertilizacao", edit_id=record_id)
     _flash(request, "success", "Fertilizacao atualizada com sucesso.")
-    return _redirect("/fertilizacao")
+    return _redirect_for_request(request, "/fertilizacao")
 
 
 @router.post("/fertilizacao/{record_id}/excluir")
@@ -3750,14 +3807,14 @@ async def update_fertilization_schedule_action(
     schedule = repo.get_fertilization_schedule(schedule_id)
     if not schedule:
         _flash(request, "error", "Agendamento nao encontrado.")
-        return _redirect("/fertilizacao/agendamentos")
+        return _redirect_for_request(request, "/fertilizacao/agendamentos")
     if not _plot_matches_scope(schedule.plot, scope):
         _flash(request, "error", "Este agendamento nao pertence ao contexto ativo.")
-        return _redirect("/fertilizacao/agendamentos")
+        return _redirect_for_request(request, "/fertilizacao/agendamentos")
     items = _parse_recommendation_items(form)
     if not items:
         _flash(request, "error", "Adicione ao menos um insumo ao agendamento.")
-        return _redirect_with_query("/fertilizacao/agendamentos", edit_id=schedule_id)
+        return _redirect_for_request(request, "/fertilizacao/agendamentos", edit_id=schedule_id)
     update_fertilization_schedule(
         repo,
         schedule,
@@ -3771,7 +3828,7 @@ async def update_fertilization_schedule_action(
         },
     )
     _flash(request, "success", "Agendamento atualizado com sucesso.")
-    return _redirect("/fertilizacao/agendamentos")
+    return _redirect_for_request(request, "/fertilizacao/agendamentos")
 
 
 @router.post("/fertilizacao/agendamentos/{schedule_id}/concluir")
@@ -3913,10 +3970,10 @@ def update_harvest_action(
     harvest = repo.get_harvest(record_id)
     if not harvest:
         _flash(request, "error", "Registro de producao nao encontrado.")
-        return _redirect("/producao")
+        return _redirect_for_request(request, "/producao")
     if not _plot_matches_scope(harvest.plot, scope):
         _flash(request, "error", "Este registro de producao nao pertence ao contexto ativo.")
-        return _redirect("/producao")
+        return _redirect_for_request(request, "/producao")
     area = float(plot.area_hectares) if plot else 0
     update_harvest(
         repo,
@@ -3930,7 +3987,7 @@ def update_harvest_action(
         area,
     )
     _flash(request, "success", "Colheita atualizada com sucesso.")
-    return _redirect("/producao")
+    return _redirect_for_request(request, "/producao")
 
 
 @router.post("/producao/{record_id}/excluir")
@@ -4047,10 +4104,10 @@ def update_pest_action(
     incident = repo.get_pest_incident(record_id)
     if not incident:
         _flash(request, "error", "Ocorrencia nao encontrada.")
-        return _redirect("/pragas")
+        return _redirect_for_request(request, "/pragas")
     if not _plot_matches_scope(incident.plot, scope):
         _flash(request, "error", "Esta ocorrencia nao pertence ao contexto ativo.")
-        return _redirect("/pragas")
+        return _redirect_for_request(request, "/pragas")
     update_pest_incident(
         repo,
         incident,
@@ -4065,7 +4122,7 @@ def update_pest_action(
         },
     )
     _flash(request, "success", "Ocorrencia atualizada com sucesso.")
-    return _redirect("/pragas")
+    return _redirect_for_request(request, "/pragas")
 
 
 @router.post("/pragas/{record_id}/excluir")
@@ -4343,10 +4400,10 @@ def update_soil_analysis_action(
     analysis = repo.get_soil_analysis(analysis_id)
     if not analysis:
         _flash(request, "error", "Analise de solo nao encontrada.")
-        return _redirect("/analise-solo")
+        return _redirect_for_request(request, "/analise-solo")
     if not _farm_matches_scope(analysis.farm_id, scope) or not _plot_matches_scope(analysis.plot, scope):
         _flash(request, "error", "Esta analise de solo nao pertence ao contexto ativo.")
-        return _redirect("/analise-solo")
+        return _redirect_for_request(request, "/analise-solo")
     pdf_filename, pdf_content_type, pdf_data = _read_upload(analysis_pdf)
     updated = update_soil_analysis(
         repo,
@@ -4380,7 +4437,7 @@ def update_soil_analysis_action(
         _flash(request, "success", "Analise de solo atualizada. Configure a OPENAI_API_KEY para gerar recomendacoes personalizadas.")
     else:
         _flash(request, "error", "Analise de solo atualizada, mas a recomendacao da IA falhou nesta tentativa.")
-    return _redirect_with_query("/analise-solo", plot_id=plot.id, compare_plot_id=plot.id)
+    return _redirect_for_request(request, "/analise-solo", plot_id=plot.id, compare_plot_id=plot.id)
 
 
 @router.post("/analise-solo/{analysis_id}/regenerar")

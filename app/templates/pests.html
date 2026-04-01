@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="grid gap-6 xl:grid-cols-[0.85fr_1.15fr]">
+<div class="grid gap-6 xl:grid-cols-[0.85fr_1.15fr]" data-modal-single-pane>
     <section class="rounded-[2rem] bg-white p-6 shadow-panel">
         <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Pragas e Doencas</p>
         <h3 class="mt-2 text-2xl font-semibold">{% if edit_incident %}Editar ocorrencia fitossanitaria{% else %}Registrar ocorrencia fitossanitaria{% endif %}</h3>

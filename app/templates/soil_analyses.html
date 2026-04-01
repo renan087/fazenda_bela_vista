@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="grid gap-6 xl:grid-cols-[0.95fr_1.05fr]">
+<div class="grid gap-6 xl:grid-cols-[0.95fr_1.05fr]" data-modal-single-pane>
     <section class="rounded-[2rem] bg-white p-6 shadow-panel">
         <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Analise de Solo</p>
         <h3 class="mt-2 text-2xl font-semibold">{% if edit_analysis %}Editar analise{% else %}Cadastrar analise de solo{% endif %}</h3>
