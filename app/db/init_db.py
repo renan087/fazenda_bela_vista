@@ -25,6 +25,7 @@ from app.models import (
     InputRecommendationItem,
     IrrigationRecord,
     LoginVerificationCode,
+    PasswordResetToken,
     PestIncident,
     Plot,
     PurchasedInput,
@@ -261,6 +262,16 @@ def _sync_schema() -> None:
         )
         """,
         """
+        CREATE TABLE IF NOT EXISTS password_reset_tokens (
+            id SERIAL PRIMARY KEY,
+            user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            token_hash VARCHAR(255) NOT NULL UNIQUE,
+            expires_at TIMESTAMPTZ NOT NULL,
+            used_at TIMESTAMPTZ,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+        """,
+        """
         CREATE TABLE IF NOT EXISTS fertilization_stock_allocations (
             id SERIAL PRIMARY KEY,
             fertilization_item_id INTEGER NOT NULL REFERENCES fertilization_items(id) ON DELETE CASCADE,
@@ -371,6 +382,9 @@ def _sync_schema() -> None:
         connection.execute(text("CREATE INDEX IF NOT EXISTS ix_trusted_browser_tokens_user_id ON trusted_browser_tokens(user_id)"))
         connection.execute(text("CREATE INDEX IF NOT EXISTS ix_trusted_browser_tokens_token_hash ON trusted_browser_tokens(token_hash)"))
         connection.execute(text("CREATE INDEX IF NOT EXISTS ix_trusted_browser_tokens_expires_at ON trusted_browser_tokens(expires_at)"))
+        connection.execute(text("CREATE INDEX IF NOT EXISTS ix_password_reset_tokens_user_id ON password_reset_tokens(user_id)"))
+        connection.execute(text("CREATE INDEX IF NOT EXISTS ix_password_reset_tokens_token_hash ON password_reset_tokens(token_hash)"))
+        connection.execute(text("CREATE INDEX IF NOT EXISTS ix_password_reset_tokens_expires_at ON password_reset_tokens(expires_at)"))
         connection.execute(text("CREATE INDEX IF NOT EXISTS ix_purchased_input_attachments_input_id ON purchased_input_attachments(purchased_input_id)"))
         connection.execute(text("CREATE INDEX IF NOT EXISTS ix_equipment_asset_attachments_asset_id ON equipment_asset_attachments(equipment_asset_id)"))
         connection.execute(text("UPDATE plots SET irrigation_type = 'none' WHERE irrigation_type IS NULL"))

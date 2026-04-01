@@ -15,6 +15,7 @@ from app.models.input_recommendation import InputRecommendation
 from app.models.input_recommendation_item import InputRecommendationItem
 from app.models.irrigation import IrrigationRecord
 from app.models.login_verification_code import LoginVerificationCode
+from app.models.password_reset_token import PasswordResetToken
 from app.models.pesticide import PestIncident
 from app.models.plot import Plot
 from app.models.purchased_input import PurchasedInput
@@ -43,6 +44,7 @@ __all__ = [
     "InputRecommendationItem",
     "IrrigationRecord",
     "LoginVerificationCode",
+    "PasswordResetToken",
     "PestIncident",
     "Plot",
     "PurchasedInput",

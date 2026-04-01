@@ -9,14 +9,16 @@ from sqlalchemy.orm import Session
 from app.core.csrf import ensure_csrf_token, validate_csrf
 from app.core.config import get_settings
 from app.core.session import clear_expired_session, touch_session_activity
-from app.core.security import authenticate_user, create_access_token
+from app.core.security import authenticate_user, create_access_token, get_password_hash, verify_password
 from app.core.timezone import utc_now
 from app.db.session import get_db
 from app.models import User
 from app.schemas.auth import Token
-from app.services.email_service import send_access_code_email
+from app.services.email_service import send_access_code_email, send_password_reset_email
+from app.services.password_reset import get_valid_password_reset_token, issue_password_reset_token, revoke_user_password_reset_tokens
 from app.services.trusted_browser import (
     issue_trusted_browser_token,
+    revoke_user_trusted_browsers,
     validate_trusted_browser_token,
 )
 from app.services.two_factor import get_active_login_code, issue_login_verification_code, revoke_active_login_codes, verify_login_code
@@ -100,11 +102,18 @@ def _complete_web_login(
 
 
 def _render_login(request: Request, error: str | None = None):
+    notice_key = request.query_params.get("notice")
+    info = None
+    if notice_key == "password-reset-requested":
+        info = "Se existir uma conta para este email, enviaremos as instrucoes."
+    elif notice_key == "password-reset-success":
+        info = "Senha redefinida com sucesso. Entre com sua nova senha."
     return templates.TemplateResponse(
         "login.html",
         {
             "request": request,
             "error": error,
+            "info": info,
             "csrf_token": ensure_csrf_token(request),
             "page": "login",
         },
@@ -135,6 +144,40 @@ def _render_login_verification(
     )
 
 
+def _render_forgot_password(request: Request, error: str | None = None, info: str | None = None):
+    return templates.TemplateResponse(
+        "forgot_password.html",
+        {
+            "request": request,
+            "error": error,
+            "info": info,
+            "csrf_token": ensure_csrf_token(request),
+            "page": "login",
+        },
+        status_code=status.HTTP_400_BAD_REQUEST if error else status.HTTP_200_OK,
+    )
+
+
+def _render_password_reset(
+    request: Request,
+    token: str,
+    error: str | None = None,
+    info: str | None = None,
+):
+    return templates.TemplateResponse(
+        "reset_password.html",
+        {
+            "request": request,
+            "token": token,
+            "error": error,
+            "info": info,
+            "csrf_token": ensure_csrf_token(request),
+            "page": "login",
+        },
+        status_code=status.HTTP_400_BAD_REQUEST if error else status.HTTP_200_OK,
+    )
+
+
 @router.get("/login")
 def login_page(request: Request):
     clear_expired_session(request)
@@ -142,6 +185,120 @@ def login_page(request: Request):
         touch_session_activity(request)
         return RedirectResponse(url="/dashboard", status_code=status.HTTP_303_SEE_OTHER)
     return _render_login(request)
+
+
+@router.get("/login/recuperar-senha")
+def forgot_password_page(request: Request):
+    clear_expired_session(request)
+    return _render_forgot_password(request)
+
+
+@router.post("/login/recuperar-senha")
+def forgot_password_action(
+    request: Request,
+    email: str = Form(...),
+    csrf_token: str = Form(...),
+    db: Session = Depends(get_db),
+):
+    validate_csrf(request, csrf_token)
+    normalized_email = (email or "").strip().lower()
+    generic_info = "Se existir uma conta para este email, enviaremos as instrucoes."
+
+    if not normalized_email:
+        return _render_forgot_password(request, "Informe um email valido.")
+
+    user = db.query(User).filter(User.email == normalized_email, User.is_active.is_(True)).first()
+    if not user:
+        return _render_forgot_password(request, info=generic_info)
+
+    try:
+        reset_token = issue_password_reset_token(db, user)
+        reset_link = str(request.url_for("password_reset_page")) + f"?token={reset_token}"
+        send_password_reset_email(user.email, reset_link, get_settings().password_reset_token_minutes)
+    except RuntimeError:
+        logger.exception(
+            "Falha controlada ao enviar email de redefinicao de senha",
+            extra={"user_email": user.email},
+        )
+        return _render_forgot_password(request, "Nao foi possivel processar sua solicitacao agora. Tente novamente.")
+    except Exception:
+        logger.exception(
+            "Falha inesperada ao iniciar redefinicao de senha",
+            extra={"user_email": user.email},
+        )
+        return _render_forgot_password(request, "Nao foi possivel processar sua solicitacao agora. Tente novamente.")
+
+    return _render_forgot_password(request, info=generic_info)
+
+
+@router.get("/login/redefinir-senha")
+def password_reset_page(
+    request: Request,
+    token: str | None = None,
+    db: Session = Depends(get_db),
+):
+    clear_expired_session(request)
+    if not get_valid_password_reset_token(db, token):
+        return templates.TemplateResponse(
+            "reset_password.html",
+            {
+                "request": request,
+                "token": "",
+                "error": "Este link e invalido ou expirou. Solicite uma nova redefinicao.",
+                "info": None,
+                "csrf_token": ensure_csrf_token(request),
+                "page": "login",
+            },
+            status_code=status.HTTP_400_BAD_REQUEST,
+        )
+    return _render_password_reset(request, token or "")
+
+
+@router.post("/login/redefinir-senha")
+def password_reset_action(
+    request: Request,
+    token: str = Form(...),
+    new_password: str = Form(...),
+    confirm_password: str = Form(...),
+    csrf_token: str = Form(...),
+    db: Session = Depends(get_db),
+):
+    validate_csrf(request, csrf_token)
+    normalized_token = (token or "").strip()
+    normalized_new_password = (new_password or "").strip()
+    normalized_confirm_password = (confirm_password or "").strip()
+
+    if not normalized_token:
+        return _render_password_reset(request, "", error="Este link e invalido ou expirou. Solicite uma nova redefinicao.")
+    if not normalized_new_password:
+        return _render_password_reset(request, normalized_token, error="Informe a nova senha.")
+    if normalized_new_password != normalized_confirm_password:
+        return _render_password_reset(request, normalized_token, error="A confirmacao da nova senha nao confere.")
+
+    record = get_valid_password_reset_token(db, normalized_token)
+    if not record:
+        return _render_password_reset(request, "", error="Este link e invalido ou expirou. Solicite uma nova redefinicao.")
+
+    user = db.query(User).filter(User.id == record.user_id, User.is_active.is_(True)).first()
+    if not user:
+        return _render_password_reset(request, "", error="Este link e invalido ou expirou. Solicite uma nova redefinicao.")
+
+    if verify_password(normalized_new_password, user.hashed_password):
+        return _render_password_reset(request, normalized_token, error="A nova senha precisa ser diferente da senha atual.")
+
+    user.hashed_password = get_password_hash(normalized_new_password)
+    record.used_at = utc_now()
+    db.add(user)
+    db.add(record)
+    db.commit()
+    revoke_user_password_reset_tokens(db, user.id)
+    revoke_user_trusted_browsers(db, user.id)
+    revoke_active_login_codes(db, user.id)
+
+    request.session.pop("user_email", None)
+    request.session.pop(PENDING_2FA_USER_ID, None)
+    request.session.pop(PENDING_2FA_EMAIL, None)
+    return RedirectResponse(url="/login?notice=password-reset-success", status_code=status.HTTP_303_SEE_OTHER)
 
 
 @router.post("/login")

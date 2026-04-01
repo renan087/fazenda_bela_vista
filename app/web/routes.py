@@ -95,6 +95,7 @@ from app.services.forms import (
     update_manual_stock_output,
 )
 from app.services.openai_service import gerar_recomendacao_adubacao
+from app.services.password_reset import revoke_user_password_reset_tokens
 from app.services.trusted_browser import revoke_user_trusted_browsers
 
 router = APIRouter()
@@ -1717,6 +1718,7 @@ def change_own_password_action(
 
     repo = _repository(db)
     repo.update(user, {"hashed_password": get_password_hash(normalized_new_password)})
+    revoke_user_password_reset_tokens(db, user.id)
     revoke_user_trusted_browsers(db, user.id)
     _flash(request, "success", "Senha atualizada com sucesso.")
     return _redirect("/meu-perfil?aba=seguranca")

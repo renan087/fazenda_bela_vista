@@ -32,6 +32,7 @@ class Settings(BaseSettings):
     smtp_use_tls: bool = True
     two_factor_code_minutes: int = 10
     two_factor_max_attempts: int = 5
+    password_reset_token_minutes: int = 60
     trusted_browser_days: int = 5
     trusted_browser_cookie_name: str = "fazenda_trusted_browser"
 
