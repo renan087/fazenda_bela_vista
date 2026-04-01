@@ -33,3 +33,44 @@ body {
 #farmMap {
     z-index: 0;
 }
+
+.app-modal::backdrop {
+    background: rgba(0, 0, 0, 0.3);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+}
+
+.app-modal,
+.app-modal [data-modal-scroll] {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(47, 143, 91, 0.35) transparent;
+}
+
+.app-modal::-webkit-scrollbar,
+.app-modal [data-modal-scroll]::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+
+.app-modal::-webkit-scrollbar-track,
+.app-modal [data-modal-scroll]::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.app-modal::-webkit-scrollbar-thumb,
+.app-modal [data-modal-scroll]::-webkit-scrollbar-thumb {
+    background: rgba(47, 143, 91, 0.35);
+    border-radius: 9999px;
+    transition: background-color 0.2s ease;
+}
+
+.app-modal::-webkit-scrollbar-thumb:hover,
+.app-modal [data-modal-scroll]::-webkit-scrollbar-thumb:hover {
+    background: rgba(47, 143, 91, 0.6);
+}
+
+.app-modal-overlay {
+    background: rgba(0, 0, 0, 0.3);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+}
