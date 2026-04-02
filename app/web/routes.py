@@ -2989,7 +2989,7 @@ def equipment_assets_page(
         lambda item: item.acquisition_date,
         lambda item: item.id,
     )
-    assets_pagination = _paginate_collection(request, assets, "assets_page")
+    assets_pagination = _paginate_collection(request, assets, "assets_page", per_page=5)
     return templates.TemplateResponse(
         "equipment_assets.html",
         _base_context(
