@@ -157,7 +157,7 @@ body {
 
 .stock-page-header {
     position: sticky;
-    top: 8rem;
+    top: 8.6rem;
     z-index: 15;
     overflow: hidden;
     width: 100%;
@@ -663,7 +663,7 @@ body {
 
 @media (max-width: 899px) {
     .stock-page-header {
-        top: 6.8rem;
+        top: 7.1rem;
     }
 
     .stock-summary-toggle {

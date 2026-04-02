@@ -548,9 +548,47 @@
         if (!tabs.length) return;
 
             const activeTab = {% if edit_output %}'outputs'{% else %}{{ selected_stock_tab|tojson }}{% endif %};
-            tabs.forEach((tab) => {
-                tab.classList.toggle('hidden', tab.dataset.stockTab !== activeTab);
-            });
+            const tabButtons = Array.from(document.querySelectorAll('[data-stock-tab-button]'));
+            const setActiveTabView = (tabName) => {
+                tabs.forEach((tab) => {
+                    tab.classList.toggle('hidden', tab.dataset.stockTab !== tabName);
+                });
+                tabButtons.forEach((button) => {
+                    button.classList.toggle('is-active', button.dataset.stockTabButton === tabName);
+                });
+            };
+
+            setActiveTabView(activeTab);
+
+            const clearTabSearchState = () => {
+                tabs.forEach((tab) => {
+                    tab.querySelectorAll('[data-stock-history-row]').forEach((row) => {
+                        row.classList.remove('hidden');
+                    });
+                    tab.querySelector('[data-stock-search-empty]')?.classList.add('hidden');
+                });
+            };
+
+            const filterTabRows = (tab, query) => {
+                const rows = Array.from(tab.querySelectorAll('[data-stock-history-row]'));
+                const emptyState = tab.querySelector('[data-stock-search-empty]');
+                if (!rows.length) {
+                    emptyState?.classList.add('hidden');
+                    return;
+                }
+
+                let visibleRows = 0;
+                rows.forEach((row) => {
+                    const haystack = (row.dataset.stockSearchText || '').toLowerCase();
+                    const matches = !query || haystack.includes(query);
+                    row.classList.toggle('hidden', !matches);
+                    if (matches) visibleRows += 1;
+                });
+
+                emptyState?.classList.toggle('hidden', visibleRows > 0 || !query);
+            };
+
+            clearTabSearchState();
 
             const stockFilterForm = document.querySelector('[data-stock-filter-form]');
             const stockTabHiddenInput = stockFilterForm?.querySelector('[data-stock-tab-hidden]');
@@ -624,24 +662,16 @@
             const stockSearchInput = document.querySelector('[data-stock-history-search]');
             const applyStockHistorySearch = () => {
                 const query = (stockSearchInput?.value || '').trim().toLowerCase();
-                tabs.forEach((tab) => {
-                    const rows = Array.from(tab.querySelectorAll('[data-stock-history-row]'));
-                    const emptyState = tab.querySelector('[data-stock-search-empty]');
-                    if (!rows.length) {
-                        emptyState?.classList.add('hidden');
-                        return;
-                    }
+                clearTabSearchState();
+                if (!query) {
+                    setActiveTabView(activeTab);
+                    return;
+                }
 
-                    let visibleRows = 0;
-                    rows.forEach((row) => {
-                        const haystack = (row.dataset.stockSearchText || '').toLowerCase();
-                        const matches = !query || haystack.includes(query);
-                        row.classList.toggle('hidden', !matches);
-                        if (matches) visibleRows += 1;
-                    });
-
-                    emptyState?.classList.toggle('hidden', visibleRows > 0 || !query);
-                });
+                const extractTab = tabs.find((tab) => tab.dataset.stockTab === 'extract');
+                if (!extractTab) return;
+                setActiveTabView('extract');
+                filterTabRows(extractTab, query);
             };
 
             stockSearchInput?.addEventListener('input', applyStockHistorySearch);
