@@ -273,21 +273,19 @@
                         {% endfor %}
                     </select>
                 </label>
+                {% set attachment_label = 'Anexos' %}
+                {% set attachment_help_text = 'Envie nota fiscal, imagem ou documentos do patrimonio. Voce pode adicionar mais arquivos em etapas antes de salvar.' %}
+                {% include "partials/attachment_upload_field.html" %}
                 <label>
                     <span class="mb-2 block text-sm font-medium">Observações</span>
                     <textarea name="notes" rows="4" class="w-full rounded-2xl border-slate-200 bg-slate-50">{{ edit_asset.notes if edit_asset else '' }}</textarea>
                 </label>
-                {% set attachment_label = 'Anexos' %}
-                {% set attachment_help_text = 'Envie nota fiscal, imagem ou documentos do patrimonio. Voce pode adicionar mais arquivos em etapas antes de salvar.' %}
-                {% include "partials/attachment_upload_field.html" %}
             </form>
 
-            {% if edit_asset %}
             {% set attachment_owner = edit_asset %}
             {% set attachment_view_base = '/insumos/patrimonio/anexos' %}
-            {% set attachment_delete_base = '/insumos/patrimonio/' ~ edit_asset.id ~ '/anexos' %}
+            {% set attachment_delete_base = '/insumos/patrimonio/' ~ edit_asset.id ~ '/anexos' if edit_asset else '' %}
             {% include "partials/attachment_list.html" %}
-            {% endif %}
         </div>
     </div>
 </dialog>
@@ -332,7 +330,6 @@
             });
             launchModal.addEventListener('cancel', (event) => {
                 event.preventDefault();
-                closeAssetsModal();
             });
         }
 
