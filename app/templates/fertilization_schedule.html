@@ -8,7 +8,7 @@
                 <p class="stock-page-card-subtitle">Planeje aplicações futuras para a lavoura.</p>
             </div>
             <div class="stock-header-actions stock-header-actions-top">
-                <a href="/fertilizacao/agendamentos/exportar.pdf" class="stock-action-button stock-export-button stock-export-button-pdf">
+                <a href="/fertilizacao/agendamentos/exportar.pdf?schedule_tab={{ selected_schedule_tab }}" class="stock-action-button stock-export-button stock-export-button-pdf" data-schedule-export-link data-base-href="/fertilizacao/agendamentos/exportar.pdf">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true">
                         <path d="M7 3h7l5 5v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z"/>
                         <path d="M14 3v6h6"/>
@@ -17,7 +17,7 @@
                     </svg>
                     <span class="stock-action-button-label">Exportar PDF</span>
                 </a>
-                <a href="/fertilizacao/agendamentos/exportar.xlsx" class="stock-action-button stock-export-button stock-export-button-xlsx">
+                <a href="/fertilizacao/agendamentos/exportar.xlsx?schedule_tab={{ selected_schedule_tab }}" class="stock-action-button stock-export-button stock-export-button-xlsx" data-schedule-export-link data-base-href="/fertilizacao/agendamentos/exportar.xlsx">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true">
                         <path d="M7 3h7l5 5v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z"/>
                         <path d="M14 3v6h6"/>
@@ -472,9 +472,22 @@
         const contextCollapse = document.querySelector('[data-schedule-context-collapse]');
         const contextToggleLabel = document.querySelector('[data-schedule-context-toggle-label]');
         const contextTogglePlus = document.querySelector('[data-schedule-context-toggle-plus]');
+        const exportLinks = Array.from(document.querySelectorAll('[data-schedule-export-link]'));
         let scheduleListShell = document.querySelector('[data-schedule-list-shell]');
         let searchInput = scheduleListShell?.querySelector('[data-schedule-history-search]') || null;
         const getActiveStage = () => scheduleListShell?.querySelector('[data-schedule-tab]:not(.hidden)[data-schedule-history-stage]') || null;
+        const getActiveScheduleTab = () => scheduleListShell?.querySelector('[data-schedule-tab-button].is-active')?.dataset.scheduleTabButton || '{{ selected_schedule_tab }}';
+        const syncScheduleExportLinks = () => {
+            exportLinks.forEach((link) => {
+                const baseHref = link.dataset.baseHref;
+                if (!baseHref) return;
+                const params = new URLSearchParams();
+                params.set('schedule_tab', getActiveScheduleTab());
+                const query = (searchInput?.value || '').trim();
+                if (query) params.set('search', query);
+                link.href = `${baseHref}?${params.toString()}`;
+            });
+        };
         const scheduleRenderedInEditMode = {% if edit_schedule %}true{% else %}false{% endif %};
         const getScheduleCleanUrl = () => {
             const url = new URL(window.location.href);
@@ -580,6 +593,7 @@
             const emptyState = historyStage.querySelector('[data-schedule-search-empty]');
             const rows = Array.from(historyStage.querySelectorAll('[data-schedule-history-row]'));
             const query = (searchInput?.value || '').trim().toLowerCase();
+            syncScheduleExportLinks();
             let visibleCount = 0;
 
             rows.forEach((row) => {
@@ -608,6 +622,7 @@
             });
             bindScheduleItemsToggles(scheduleListShell);
             applyScheduleHistorySearch();
+            syncScheduleExportLinks();
         };
 
         const stickyHeader = document.querySelector('.stock-page-header');

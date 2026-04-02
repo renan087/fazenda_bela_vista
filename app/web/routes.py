@@ -4874,6 +4874,8 @@ def fertilization_schedules_page(
 @router.get("/fertilizacao/agendamentos/exportar.xlsx")
 def export_fertilization_schedules_xlsx(
     request: Request,
+    schedule_tab: str | None = None,
+    search: str | None = None,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user_web),
 ):
@@ -4890,18 +4892,31 @@ def export_fertilization_schedules_xlsx(
         if schedule.plot_id in plot_ids and _within_scope(schedule.scheduled_date, start_date, end_date)
     ]
     schedules.sort(key=lambda schedule: (schedule.scheduled_date, schedule.id), reverse=True)
-    active_schedules = [schedule for schedule in schedules if schedule.status != "completed"]
-    completed_schedules = [schedule for schedule in schedules if schedule.status == "completed"]
+    selected_schedule_tab = schedule_tab if schedule_tab in {"active", "completed"} else "active"
+    search_query = (search or "").strip().lower()
+    if search_query:
+        schedules = [
+            schedule
+            for schedule in schedules
+            if search_query in (
+                f"{schedule.plot.name if schedule.plot else ''} "
+                f"{schedule.scheduled_date or ''} "
+                f"{schedule.status or ''} "
+                f"{schedule.notes or ''} "
+                + " ".join(item.input_catalog.name if item.input_catalog else item.name for item in schedule.items)
+            ).lower()
+        ]
+    filtered_schedules = [schedule for schedule in schedules if schedule.status == "completed"] if selected_schedule_tab == "completed" else [schedule for schedule in schedules if schedule.status != "completed"]
 
     workbook = Workbook()
-    active_sheet = workbook.active
-    active_sheet.title = "Ativos"
-    active_sheet.append(["Data", "Setor", "Status", "Itens Programados", "Observações"])
-    for schedule in active_schedules:
-        active_sheet.append([
+    sheet = workbook.active
+    sheet.title = "Concluídos" if selected_schedule_tab == "completed" else "Ativos"
+    sheet.append(["Data", "Setor", "Status", "Itens Programados", "Observações"])
+    for schedule in filtered_schedules:
+        sheet.append([
             schedule.scheduled_date.isoformat() if schedule.scheduled_date else "",
             schedule.plot.name if schedule.plot else "Setor removido",
-            "Agendado",
+            "Concluído" if schedule.status == "completed" else "Agendado",
             " | ".join(
                 f"{item.input_catalog.name if item.input_catalog else item.name} ({_format_decimal_br(item.quantity, 2)} {item.unit})"
                 for item in schedule.items
@@ -4909,23 +4924,7 @@ def export_fertilization_schedules_xlsx(
             schedule.notes or "",
         ])
     for index, width in enumerate([14, 28, 16, 54, 40], start=1):
-        active_sheet.column_dimensions[get_column_letter(index)].width = width
-
-    completed_sheet = workbook.create_sheet("Concluídos")
-    completed_sheet.append(["Data", "Setor", "Status", "Itens Programados", "Observações"])
-    for schedule in completed_schedules:
-        completed_sheet.append([
-            schedule.scheduled_date.isoformat() if schedule.scheduled_date else "",
-            schedule.plot.name if schedule.plot else "Setor removido",
-            "Concluído",
-            " | ".join(
-                f"{item.input_catalog.name if item.input_catalog else item.name} ({_format_decimal_br(item.quantity, 2)} {item.unit})"
-                for item in schedule.items
-            ),
-            schedule.notes or "",
-        ])
-    for index, width in enumerate([14, 28, 16, 54, 40], start=1):
-        completed_sheet.column_dimensions[get_column_letter(index)].width = width
+        sheet.column_dimensions[get_column_letter(index)].width = width
 
     output = BytesIO()
     workbook.save(output)
@@ -4940,6 +4939,8 @@ def export_fertilization_schedules_xlsx(
 @router.get("/fertilizacao/agendamentos/exportar.pdf")
 def export_fertilization_schedules_pdf(
     request: Request,
+    schedule_tab: str | None = None,
+    search: str | None = None,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user_web),
 ):
@@ -4955,6 +4956,21 @@ def export_fertilization_schedules_pdf(
         if schedule.plot_id in plot_ids and _within_scope(schedule.scheduled_date, start_date, end_date)
     ]
     schedules.sort(key=lambda schedule: (schedule.scheduled_date, schedule.id), reverse=True)
+    selected_schedule_tab = schedule_tab if schedule_tab in {"active", "completed"} else "active"
+    search_query = (search or "").strip().lower()
+    if search_query:
+        schedules = [
+            schedule
+            for schedule in schedules
+            if search_query in (
+                f"{schedule.plot.name if schedule.plot else ''} "
+                f"{schedule.scheduled_date or ''} "
+                f"{schedule.status or ''} "
+                f"{schedule.notes or ''} "
+                + " ".join(item.input_catalog.name if item.input_catalog else item.name for item in schedule.items)
+            ).lower()
+        ]
+    schedules = [schedule for schedule in schedules if schedule.status == "completed"] if selected_schedule_tab == "completed" else [schedule for schedule in schedules if schedule.status != "completed"]
 
     generated_at = app_now()
     generated_by = user.display_name or user.name or user.email
@@ -4963,6 +4979,7 @@ def export_fertilization_schedules_pdf(
     completed_count = sum(1 for schedule in schedules if schedule.status == "completed")
     total_items = sum(len(schedule.items or []) for schedule in schedules)
     season_label = scope["active_season"].name if scope.get("active_season") else "Safra ativa"
+    scope_label = "Concluídos" if selected_schedule_tab == "completed" else "Ativos"
 
     buffer = BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=landscape(A4), leftMargin=28, rightMargin=28, topMargin=32, bottomMargin=34)
@@ -4990,7 +5007,7 @@ def export_fertilization_schedules_pdf(
         [
             [Paragraph("FAZENDA", meta_label_style), Paragraph(farm_name, meta_value_style)],
             [Paragraph("SAFRA", meta_label_style), Paragraph(season_label, meta_value_style)],
-            [Paragraph("ATIVOS", meta_label_style), Paragraph(str(active_count), summary_value_style)],
+            [Paragraph("LISTA", meta_label_style), Paragraph(scope_label, meta_value_style)],
         ],
         [
             [Paragraph("CONCLUÍDOS", meta_label_style), Paragraph(str(completed_count), summary_value_style)],
