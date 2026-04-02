@@ -138,6 +138,13 @@
                                 </td>
                                 <td class="px-4 py-3">
                                     <div class="flex items-center justify-end gap-2">
+                                        {% if item.attachments %}
+                                        <span class="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 text-slate-500 bg-slate-50" title="Possui anexos">
+                                            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                                <path d="m21.44 11.05-8.49 8.49a5 5 0 0 1-7.07-7.07l9.19-9.2a3.5 3.5 0 0 1 4.95 4.95l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
+                                            </svg>
+                                        </span>
+                                        {% endif %}
                                         <a href="/insumos/comprados?edit_id={{ item.id }}" class="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-100" title="Editar">
                                             <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                                 <path d="M12 20h9"/>
