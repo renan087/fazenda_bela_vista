@@ -157,8 +157,9 @@ body {
 
 .stock-page-header {
     position: sticky;
-    top: 6.15rem;
+    top: 6.6rem;
     z-index: 15;
+    overflow: hidden;
     border: 1px solid rgba(226, 232, 240, 0.92);
     background:
         radial-gradient(circle at top right, rgba(137, 178, 98, 0.14), transparent 28%),
@@ -187,6 +188,22 @@ body {
     max-width: 46rem;
     font-size: 0.98rem;
     line-height: 1.65;
+    color: rgb(100 116 139);
+}
+
+.stock-page-card-title {
+    margin-top: 0.35rem;
+    font-size: 1.45rem;
+    line-height: 1.2;
+    font-weight: 700;
+    color: rgb(15 23 42);
+}
+
+.stock-page-card-subtitle {
+    margin-top: 0.4rem;
+    max-width: 35rem;
+    font-size: 0.93rem;
+    line-height: 1.55;
     color: rgb(100 116 139);
 }
 
@@ -371,13 +388,14 @@ body {
 
 .stock-search-field {
     display: flex;
-    width: min(100%, 28rem);
+    width: min(100%, 32rem);
+    min-width: 0;
     align-items: center;
     gap: 0.75rem;
     border-radius: 1rem;
     border: 1px solid rgba(226, 232, 240, 0.95);
     background: rgba(248, 250, 252, 0.92);
-    padding: 0.68rem 0.95rem;
+    padding: 0.72rem 1rem;
     box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.85);
     transition: border-color 0.18s ease, background-color 0.18s ease, box-shadow 0.18s ease;
 }
@@ -397,20 +415,22 @@ body {
 
 .stock-search-field input {
     width: 100%;
+    min-width: 0;
     border: 0;
     background: transparent;
     color: rgb(15 23 42);
     outline: none;
     box-shadow: none;
-    font-size: 0.92rem;
-    line-height: 1.25rem;
+    font-size: 0.88rem;
+    line-height: 1.3rem;
     appearance: none;
     -webkit-appearance: none;
 }
 
 .stock-search-field input::placeholder {
     color: rgb(148 163 184);
-    font-size: 0.9rem;
+    font-size: 0.84rem;
+    line-height: 1.3rem;
 }
 
 .stock-search-field input:focus,
@@ -511,8 +531,7 @@ body {
     align-items: center;
     justify-content: space-between;
     gap: 1rem;
-    border-bottom: 1px solid rgba(226, 232, 240, 0.88);
-    padding-bottom: 1rem;
+    padding-bottom: 0;
 }
 
 .stock-tab-link {
@@ -635,13 +654,13 @@ body {
     }
 
     .stock-history-toolbar .stock-search-field {
-        width: min(100%, 24rem);
+        width: min(100%, 30rem);
     }
 }
 
 @media (max-width: 899px) {
     .stock-page-header {
-        top: 5.8rem;
+        top: 6rem;
     }
 
     .stock-summary-toggle {
