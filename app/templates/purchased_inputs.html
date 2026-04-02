@@ -8,8 +8,8 @@
                 <p class="stock-page-card-subtitle">Controle de entradas de estoque e histórico de consumo.</p>
             </div>
             <div class="stock-header-actions stock-header-actions-top">
-                <a href="/insumos/comprados/exportar.pdf{% if purchased_inputs_export_query %}?{{ purchased_inputs_export_query }}{% endif %}" class="stock-action-button stock-action-button-secondary">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                <a href="/insumos/comprados/exportar.pdf{% if purchased_inputs_export_query %}?{{ purchased_inputs_export_query }}{% endif %}" class="stock-action-button stock-export-button stock-export-button-pdf">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true">
                         <path d="M7 3h7l5 5v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z"/>
                         <path d="M14 3v6h6"/>
                         <path d="M10 13h4"/>
@@ -17,8 +17,8 @@
                     </svg>
                     <span class="stock-action-button-label">Exportar PDF</span>
                 </a>
-                <a href="/insumos/comprados/exportar.xlsx{% if purchased_inputs_export_query %}?{{ purchased_inputs_export_query }}{% endif %}" class="stock-action-button stock-action-button-secondary stock-action-button-success">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                <a href="/insumos/comprados/exportar.xlsx{% if purchased_inputs_export_query %}?{{ purchased_inputs_export_query }}{% endif %}" class="stock-action-button stock-export-button stock-export-button-xlsx">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true">
                         <path d="M7 3h7l5 5v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z"/>
                         <path d="M14 3v6h6"/>
                         <path d="m10 12 4 6"/>
@@ -420,7 +420,55 @@
         applyPurchasedHistorySearch();
 
         const stickyHeader = document.querySelector('.stock-page-header');
+        const headerIntro = stickyHeader?.querySelector('[data-stock-header-intro]');
         const fadingPanels = Array.from(document.querySelectorAll('[data-stock-fade-panel]'));
+        const mobileCompactMq = window.matchMedia('(max-width: 899px)');
+        const parseStickyTopPx = (el) => {
+            const raw = getComputedStyle(el).top;
+            if (!raw || raw === 'auto') return 0;
+            const pxMatch = /^([\d.]+)px$/.exec(raw);
+            if (pxMatch) return parseFloat(pxMatch[1]);
+            const remMatch = /^([\d.]+)rem$/.exec(raw);
+            if (remMatch) {
+                const rootPx = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
+                return parseFloat(remMatch[1]) * rootPx;
+            }
+            return 0;
+        };
+
+        let compactRaf = null;
+        const syncPurchasedHeaderCompact = () => {
+            compactRaf = null;
+            if (!stickyHeader) return;
+            if (!mobileCompactMq.matches) {
+                stickyHeader.classList.remove('is-compact');
+                if (headerIntro) headerIntro.removeAttribute('aria-hidden');
+                return;
+            }
+            const topPx = parseStickyTopPx(stickyHeader);
+            const rect = stickyHeader.getBoundingClientRect();
+            const isCompact = stickyHeader.classList.contains('is-compact');
+            let nextCompact = isCompact;
+            if (rect.top <= topPx + 2) nextCompact = true;
+            else if (rect.top > topPx + 8) nextCompact = false;
+            stickyHeader.classList.toggle('is-compact', nextCompact);
+            if (headerIntro) {
+                headerIntro.setAttribute('aria-hidden', nextCompact ? 'true' : 'false');
+            }
+        };
+
+        const schedulePurchasedHeaderCompact = () => {
+            if (compactRaf !== null) return;
+            compactRaf = window.requestAnimationFrame(syncPurchasedHeaderCompact);
+        };
+
+        if (stickyHeader) {
+            window.addEventListener('scroll', schedulePurchasedHeaderCompact, { passive: true });
+            window.addEventListener('resize', schedulePurchasedHeaderCompact);
+            mobileCompactMq.addEventListener('change', schedulePurchasedHeaderCompact);
+            schedulePurchasedHeaderCompact();
+        }
+
         const updateFadingPanels = () => {
             const stickyRect = stickyHeader?.getBoundingClientRect();
             if (!stickyRect) return;
