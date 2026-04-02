@@ -153,6 +153,8 @@ body {
 .stock-panel {
     background:
         linear-gradient(180deg, rgba(255, 255, 255, 0.99), rgba(248, 250, 252, 0.98));
+    max-width: 100%;
+    min-width: 0;
 }
 
 .stock-panel[data-stock-fade-panel] {
@@ -312,6 +314,7 @@ body {
 .stock-summary-collapse-inner {
     min-height: 0;
     overflow: hidden;
+    min-width: 0;
 }
 
 .stock-level-badge {
@@ -472,6 +475,7 @@ body {
     flex-wrap: wrap;
     justify-content: flex-end;
     gap: 0.75rem;
+    min-width: 0;
 }
 
 .stock-header-actions-top {
@@ -543,6 +547,8 @@ body {
         linear-gradient(180deg, rgba(248, 250, 252, 0.96), rgba(241, 245, 249, 0.78));
     padding: 1rem;
     box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9);
+    max-width: 100%;
+    min-width: 0;
 }
 
 .stock-filter-bar select,
@@ -560,6 +566,11 @@ body {
     justify-content: space-between;
     gap: 1rem;
     padding-bottom: 0;
+    min-width: 0;
+}
+
+.stock-history-toolbar > * {
+    min-width: 0;
 }
 
 .stock-tab-link {
@@ -602,6 +613,7 @@ body {
     background:
         linear-gradient(180deg, rgba(255, 255, 255, 0.99), rgba(248, 250, 252, 0.98));
     box-shadow: 0 20px 34px -32px rgba(15, 23, 42, 0.38);
+    max-width: 100%;
 }
 
 .stock-history-table thead th {
@@ -689,6 +701,8 @@ body {
 @media (max-width: 899px) {
     .stock-page-header {
         top: 7.1rem;
+        padding: 1rem !important;
+        border-radius: 1.5rem !important;
     }
 
     .stock-summary-toggle {
@@ -697,6 +711,10 @@ body {
 
     .stock-header-actions {
         justify-content: stretch;
+    }
+
+    .stock-header-actions-top {
+        width: 100%;
     }
 
     .stock-action-button {
@@ -709,5 +727,59 @@ body {
 
     .stock-history-toolbar {
         align-items: stretch;
+    }
+
+    .stock-panel {
+        padding: 1rem !important;
+        border-radius: 1.5rem !important;
+        overflow-x: clip;
+    }
+
+    .stock-filter-bar {
+        margin-top: 1rem !important;
+        padding: 0.85rem;
+        border-radius: 1.25rem;
+    }
+
+    .stock-summary-grid {
+        gap: 0.85rem;
+    }
+
+    .stock-summary-card {
+        padding: 1rem;
+    }
+
+    .stock-tab-nav {
+        width: 100%;
+        flex-wrap: nowrap;
+        overflow-x: auto;
+        padding-bottom: 0.15rem;
+        scrollbar-width: none;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    .stock-tab-nav::-webkit-scrollbar {
+        display: none;
+    }
+
+    .stock-tab-link {
+        flex: 0 0 auto;
+        white-space: nowrap;
+    }
+
+    .stock-history-stage,
+    .stock-table-shell,
+    .stock-table-shell > .overflow-x-auto {
+        min-width: 0;
+        max-width: 100%;
+    }
+
+    .stock-table-shell > .overflow-x-auto {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    .stock-history-table {
+        min-width: 48rem;
     }
 }
