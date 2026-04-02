@@ -725,6 +725,60 @@ body {
     }
 }
 
+@media (min-width: 900px) and (max-width: 1180px) {
+    .stock-page-header > div {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 1rem;
+    }
+
+    .stock-page-header > div > :first-child {
+        width: 100%;
+        min-width: 0;
+        max-width: 100%;
+    }
+
+    .stock-header-actions {
+        display: grid;
+        width: 100%;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        align-items: stretch;
+        gap: 0.75rem;
+        justify-content: stretch;
+    }
+
+    .stock-header-actions-top {
+        width: 100%;
+    }
+
+    .stock-header-actions > * {
+        min-width: 0;
+        max-width: 100%;
+    }
+
+    .stock-action-button {
+        flex-direction: column;
+        flex-wrap: nowrap;
+        width: 100%;
+        min-width: 0;
+        max-width: 100%;
+        justify-content: center;
+        gap: 0.4rem;
+        padding: 0.82rem 0.55rem;
+        font-size: 0.82rem;
+        line-height: 1.15;
+        text-align: center;
+        overflow: hidden;
+    }
+
+    .stock-action-button-label {
+        text-align: center;
+        overflow-wrap: anywhere;
+        word-break: break-word;
+        line-height: 1.15;
+    }
+}
+
 @media (max-width: 899px) {
     /* overflow-x aqui quebra position:sticky nos filhos; overflow horizontal fica no main (min-w-0) e nas tabelas */
     .stock-page-shell {
