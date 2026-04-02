@@ -46,42 +46,39 @@
             </div>
 
             <div class="stock-filter-bar mt-6">
-                <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-[minmax(0,1.15fr)_minmax(0,0.95fr)_auto_minmax(0,1.35fr)] xl:items-end">
-                    <form method="get" action="/insumos/patrimonio" class="contents">
-                        <label>
-                            <span class="mb-2 block text-sm font-medium">Fazenda</span>
-                            <select name="farm_id" class="assets-filter-select min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50 px-4">
-                                <option value="">Todas as fazendas</option>
-                                {% for farm in farms %}
-                                <option value="{{ farm.id }}" {% if selected_farm_id == farm.id %}selected{% endif %}>{{ farm.name }}</option>
-                                {% endfor %}
-                            </select>
-                        </label>
-                        <label>
-                            <span class="mb-2 block text-sm font-medium">Status</span>
-                            <select name="status" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50 px-4">
-                                <option value="">Todos os status</option>
-                                <option value="ativo" {% if selected_asset_status == 'ativo' %}selected{% endif %}>Ativo</option>
-                                <option value="em_manutencao" {% if selected_asset_status == 'em_manutencao' %}selected{% endif %}>Em manutenção</option>
-                                <option value="baixado" {% if selected_asset_status == 'baixado' %}selected{% endif %}>Baixado</option>
-                            </select>
-                        </label>
-                        <div class="flex items-end">
-                            <button class="min-h-[3.25rem] w-full rounded-2xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white hover:bg-slate-700">Filtrar</button>
-                        </div>
-                    </form>
-                    <div class="sm:col-span-2 xl:col-span-1">
-                        <label>
-                            <span class="mb-2 block text-sm font-medium">Pesquisar</span>
-                            <div class="stock-search-field w-full max-w-none">
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
-                                    <circle cx="11" cy="11" r="7"></circle>
-                                    <path d="m20 20-3.5-3.5"></path>
-                                </svg>
-                                <input type="search" placeholder="Buscar patrimônio, fazenda, fabricante, modelo ou observação" data-assets-history-search>
-                            </div>
-                        </label>
+                <form method="get" action="/insumos/patrimonio" class="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                    <label>
+                        <span class="mb-2 block text-sm font-medium">Fazenda</span>
+                        <select name="farm_id" class="assets-filter-select min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50 px-4">
+                            <option value="">Todas as fazendas</option>
+                            {% for farm in farms %}
+                            <option value="{{ farm.id }}" {% if selected_farm_id == farm.id %}selected{% endif %}>{{ farm.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </label>
+                    <label>
+                        <span class="mb-2 block text-sm font-medium">Status</span>
+                        <select name="status" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50 px-4">
+                            <option value="">Todos os status</option>
+                            <option value="ativo" {% if selected_asset_status == 'ativo' %}selected{% endif %}>Ativo</option>
+                            <option value="em_manutencao" {% if selected_asset_status == 'em_manutencao' %}selected{% endif %}>Em manutenção</option>
+                            <option value="baixado" {% if selected_asset_status == 'baixado' %}selected{% endif %}>Baixado</option>
+                        </select>
+                    </label>
+                    <div class="flex items-end">
+                        <button class="min-h-[3.25rem] w-full rounded-2xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white hover:bg-slate-700">Filtrar</button>
                     </div>
+                </form>
+            </div>
+
+            <div class="stock-history-toolbar mt-5">
+                <div></div>
+                <div class="stock-search-field">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+                        <circle cx="11" cy="11" r="7"></circle>
+                        <path d="m20 20-3.5-3.5"></path>
+                    </svg>
+                    <input type="search" placeholder="Buscar patrimônio, fazenda, fabricante, modelo ou observação" data-assets-history-search>
                 </div>
             </div>
 
