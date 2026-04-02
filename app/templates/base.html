@@ -31,7 +31,7 @@
         }
     </script>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-    <link rel="stylesheet" href="{{ url_for('static', path='css/styles.css') }}?v=20260402a">
+    <link rel="stylesheet" href="{{ url_for('static', path='css/styles.css') }}?v=20260402b">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <style>
@@ -96,7 +96,7 @@
         </div>
     </main>
     {% elif user %}
-    <div class="min-h-screen lg:flex">
+    <div class="min-h-screen min-w-0 lg:flex">
         <div class="fixed inset-0 z-30 hidden bg-slate-950/50 lg:hidden" data-mobile-overlay></div>
         <aside class="erp-sidebar fixed inset-y-0 left-0 z-40 w-72 -translate-x-full bg-slate-950 text-slate-100 transition-transform duration-200 lg:fixed lg:inset-y-0 lg:translate-x-0">
             <div class="flex h-full flex-col">
@@ -203,7 +203,7 @@
                 </div>
             </div>
         </aside>
-        <main class="flex min-h-screen flex-1 flex-col lg:ml-72">
+        <main class="flex min-h-screen min-w-0 flex-1 flex-col lg:ml-72">
             <div class="sticky top-0 z-20 border-b border-slate-200 bg-white/95 shadow-sm backdrop-blur">
                 <div class="mx-auto flex max-w-7xl items-center justify-between px-4 py-5 sm:px-6">
                     <div class="flex min-w-0 flex-1 items-center gap-4">
@@ -271,7 +271,7 @@
                     </div>
                 </form>
             </div>
-            <div class="mx-auto max-w-7xl flex-1 px-4 py-6 sm:px-6 md:py-8">
+            <div class="mx-auto w-full min-w-0 max-w-7xl flex-1 px-4 py-6 sm:px-6 md:py-8">
                 {% if flash %}
                 <div class="mb-6 rounded-2xl px-4 py-3 text-sm font-medium {% if flash.kind == 'success' %}border border-emerald-200 bg-emerald-50 text-emerald-700{% else %}border border-rose-200 bg-rose-50 text-rose-700{% endif %}">
                     {{ flash.message }}
