@@ -736,20 +736,23 @@
                 const updateFadingPanels = () => {
                     rafId = null;
                     const stickyRect = stickyHeader.getBoundingClientRect();
-                    const fadeTrigger = stickyRect.top + (stickyRect.height * 0.5);
                     const stickyBottom = stickyRect.bottom;
-                    const fadeFeather = 42;
                     fadingPanels.forEach((panel) => {
-                        const panelTop = panel.getBoundingClientRect().top;
-                        if (panelTop >= fadeTrigger) {
+                        const panelRect = panel.getBoundingClientRect();
+                        const panelTop = panelRect.top;
+                        const panelH = panelRect.height;
+                        /* Só zera quando o topo do painel já passou da base do cabeçalho sticky */
+                        if (panelTop >= stickyBottom || panelH <= 1) {
                             panel.style.setProperty('--stock-fade-cutoff', '0px');
                             panel.style.setProperty('--stock-fade-feather-end', '0px');
                             return;
                         }
 
-                        const overlap = Math.max(stickyBottom - panelTop, 0);
+                        const rawOverlap = Math.max(stickyBottom - panelTop, 0);
+                        const overlap = Math.min(rawOverlap, panelH);
+                        const featherBand = Math.min(80, Math.max(22, overlap * 0.45 + 16));
                         const cutoff = overlap;
-                        const featherEnd = overlap + fadeFeather;
+                        const featherEnd = overlap + featherBand;
                         panel.style.setProperty('--stock-fade-cutoff', `${cutoff.toFixed(2)}px`);
                         panel.style.setProperty('--stock-fade-feather-end', `${featherEnd.toFixed(2)}px`);
                     });
