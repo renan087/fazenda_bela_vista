@@ -4806,8 +4806,14 @@ def fertilization_schedules_page(
         if schedule.plot_id in plot_ids and _within_scope(schedule.scheduled_date, start_date, end_date)
     ]
     schedules.sort(key=lambda schedule: (schedule.scheduled_date, schedule.id), reverse=True)
-    schedules_pagination = _paginate_collection(request, schedules, "schedules_page")
     schedule_validations = {schedule.id: validate_schedule_stock(repo, schedule) for schedule in schedules}
+    selected_schedule_tab = str(request.query_params.get("schedule_tab") or "active")
+    if selected_schedule_tab not in {"active", "completed"}:
+        selected_schedule_tab = "active"
+    active_schedules = [schedule for schedule in schedules if schedule.status != "completed"]
+    completed_schedules = [schedule for schedule in schedules if schedule.status == "completed"]
+    active_schedules_pagination = _paginate_collection(request, active_schedules, "active_page")
+    completed_schedules_pagination = _paginate_collection(request, completed_schedules, "completed_page")
     consolidated_inputs = repo.list_input_catalog(item_type="insumo_agricola")
     purchased_inputs = repo.list_purchased_inputs()
     input_stock = {
@@ -4848,8 +4854,15 @@ def fertilization_schedules_page(
             plots=plots,
             inputs_catalog=consolidated_inputs,
             input_stock=input_stock,
-            schedules=schedules_pagination["items"],
-            schedules_pagination=schedules_pagination,
+            active_schedules=active_schedules_pagination["items"],
+            active_schedules_pagination=active_schedules_pagination,
+            completed_schedules=completed_schedules_pagination["items"],
+            completed_schedules_pagination=completed_schedules_pagination,
+            selected_schedule_tab=selected_schedule_tab,
+            schedule_tab_urls={
+                "active": _url_with_query(request, schedule_tab="active"),
+                "completed": _url_with_query(request, schedule_tab="completed"),
+            },
             schedule_validations=schedule_validations,
             edit_schedule=edit_schedule,
             edit_schedule_items=edit_schedule_items,
