@@ -130,7 +130,6 @@
                 <label>
                     <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Fazenda</span>
                     <select name="farm_id" class="w-full rounded-xl border-slate-200 bg-white">
-                        <option value="">Todas</option>
                         {% for farm in farms %}
                         <option value="{{ farm.id }}" {% if selected_farm_id == farm.id %}selected{% endif %}>{{ farm.name }}</option>
                         {% endfor %}
