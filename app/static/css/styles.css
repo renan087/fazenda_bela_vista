@@ -513,6 +513,10 @@ body {
     flex-shrink: 0;
 }
 
+.stock-action-button-label {
+    min-width: 0;
+}
+
 .stock-action-button:hover {
     transform: translateY(-1px);
 }
@@ -750,6 +754,8 @@ body {
 
     .stock-summary-toggle {
         width: 100%;
+        max-width: 100%;
+        box-sizing: border-box;
     }
 
     .stock-header-actions {
@@ -771,23 +777,35 @@ body {
     }
 
     .stock-action-button {
+        display: grid;
         width: 100%;
         min-width: 0;
         max-width: 100%;
         box-sizing: border-box;
+        grid-template-columns: auto minmax(0, 1fr);
+        align-items: center;
+        justify-items: start;
         padding: 0.82rem 0.9rem;
         font-size: 0.88rem;
         line-height: 1.2;
-        white-space: normal;
-        overflow-wrap: anywhere;
+        text-align: left;
+        overflow: hidden;
     }
 
     .stock-export-button {
-        justify-content: center;
+        justify-content: start;
     }
 
     .stock-action-button-primary {
         grid-column: auto;
+    }
+
+    .stock-action-button-label {
+        display: block;
+        min-width: 0;
+        max-width: 100%;
+        overflow-wrap: anywhere;
+        word-break: break-word;
     }
 
     .stock-search-field {
@@ -828,6 +846,8 @@ body {
 
     .stock-summary-card {
         padding: 1rem;
+        max-width: 100%;
+        box-sizing: border-box;
     }
 
     .stock-tab-nav {
