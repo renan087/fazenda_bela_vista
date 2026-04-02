@@ -721,7 +721,7 @@ body {
 
 @media (max-width: 899px) {
     .stock-page-shell {
-        overflow-x: clip;
+        overflow-x: hidden;
         isolation: isolate;
     }
 
