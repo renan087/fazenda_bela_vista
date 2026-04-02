@@ -47,7 +47,8 @@
                 </form>
             </div>
 
-            <div class="mt-6 space-y-4 lg:space-y-3">
+            <div class="stock-history-stage mt-6" data-assets-history-stage>
+            <div class="space-y-4 lg:space-y-3">
                 {% for asset in assets %}
                 <article class="rounded-[1.5rem] border border-slate-100 bg-slate-50 p-5 lg:p-4">
                     <div class="flex flex-wrap items-start justify-between gap-4 lg:gap-3">
@@ -125,6 +126,7 @@
                 {% endfor %}
             </div>
             {% with pagination=assets_pagination %}{% include "partials/history_pagination.html" %}{% endwith %}
+            </div>
     </section>
 </div>
 {% include "partials/history_view_modal.html" %}
@@ -253,6 +255,52 @@
             openAssetsModal();
         }
         {% endif %}
+
+        const syncAssetsHistoryFromUrl = async (url) => {
+            const currentStage = document.querySelector('[data-assets-history-stage]');
+            if (!currentStage) {
+                window.location.href = url;
+                return;
+            }
+
+            currentStage.classList.add('is-loading');
+            try {
+                const response = await window.fetch(url, {
+                    headers: {
+                        'X-Requested-With': 'XMLHttpRequest',
+                    },
+                });
+                if (!response.ok) {
+                    throw new Error(`Falha ao carregar paginação (${response.status})`);
+                }
+
+                const html = await response.text();
+                const parsed = new window.DOMParser().parseFromString(html, 'text/html');
+                const nextStage = parsed.querySelector('[data-assets-history-stage]');
+                if (!nextStage) {
+                    throw new Error('Bloco de histórico de patrimônio não encontrado na resposta.');
+                }
+
+                currentStage.replaceWith(nextStage);
+                window.history.replaceState({}, '', url);
+            } catch (error) {
+                console.error(error);
+                window.location.href = url;
+            }
+        };
+
+        document.addEventListener('click', (event) => {
+            const link = event.target.closest('[data-stock-pagination-link]');
+            if (!link || event.defaultPrevented) return;
+            if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) return;
+
+            const stage = link.closest('[data-assets-history-stage]');
+            const href = link.getAttribute('href');
+            if (!stage || !href) return;
+
+            event.preventDefault();
+            syncAssetsHistoryFromUrl(href);
+        });
 
         const stickyHeader = document.querySelector('.stock-page-header');
         const fadingPanels = Array.from(document.querySelectorAll('[data-stock-fade-panel]'));
