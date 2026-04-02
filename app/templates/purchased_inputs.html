@@ -81,10 +81,10 @@
                                 <td class="px-4 py-3">
                                     <span class="stock-movement-chip stock-movement-chip-entry">Entrada</span>
                                 </td>
-                                <td class="whitespace-nowrap px-4 py-3">
-                                    <p>{{ item.purchase_date.strftime('%d-%m-%Y') if item.purchase_date else "-" }}</p>
+                                <td class="whitespace-nowrap px-4 py-3 font-semibold text-slate-900">
+                                    <button type="button" class="text-left transition hover:text-brand-700" data-history-view-trigger data-history-view-kicker="Entrada" data-history-view-title="{{ item.input_catalog.name if item.input_catalog else item.name }}" data-history-view-subtitle="{{ item.farm.name if item.farm else 'Sem fazenda vinculada' }}" data-history-view-source="purchased-input-view-{{ item.id }}" data-history-view-edit-url="/insumos/comprados?edit_id={{ item.id }}">{{ item.purchase_date.strftime('%d-%m-%Y') if item.purchase_date else "-" }}</button>
                                 </td>
-                                <td class="px-4 py-3 font-medium text-slate-900">
+                                <td class="px-4 py-3 font-semibold text-slate-900">
                                     <button type="button" class="text-left transition hover:text-brand-700" data-history-view-trigger data-history-view-kicker="Entrada" data-history-view-title="{{ item.input_catalog.name if item.input_catalog else item.name }}" data-history-view-subtitle="{{ item.farm.name if item.farm else 'Sem fazenda vinculada' }}" data-history-view-source="purchased-input-view-{{ item.id }}" data-history-view-edit-url="/insumos/comprados?edit_id={{ item.id }}">{{ item.input_catalog.name if item.input_catalog else item.name }}</button>
                                     <template id="purchased-input-view-{{ item.id }}">
                                         <div class="grid gap-3 sm:grid-cols-2">
@@ -174,10 +174,10 @@
                                 <td class="px-4 py-3">
                                     <span class="stock-movement-chip stock-movement-chip-output">Saída</span>
                                 </td>
-                                <td class="whitespace-nowrap px-4 py-3">
-                                    <p>{{ output.movement_date.strftime('%d-%m-%Y') if output.movement_date else "-" }}</p>
+                                <td class="whitespace-nowrap px-4 py-3 font-semibold text-slate-900">
+                                    <button type="button" class="text-left transition hover:text-brand-700" data-history-view-trigger data-history-view-kicker="Saida" data-history-view-title="{{ output.input_catalog.name if output.input_catalog else 'Insumo removido' }}" data-history-view-subtitle="{{ output.farm.name if output.farm else 'Sem fazenda vinculada' }}{% if output.plot %} • {{ output.plot.name }}{% endif %}" data-history-view-source="stock-output-view-{{ output.id }}">{{ output.movement_date.strftime('%d-%m-%Y') if output.movement_date else "-" }}</button>
                                 </td>
-                                <td class="px-4 py-3 font-medium text-slate-900">
+                                <td class="px-4 py-3 font-semibold text-slate-900">
                                     <button type="button" class="text-left transition hover:text-brand-700" data-history-view-trigger data-history-view-kicker="Saida" data-history-view-title="{{ output.input_catalog.name if output.input_catalog else 'Insumo removido' }}" data-history-view-subtitle="{{ output.farm.name if output.farm else 'Sem fazenda vinculada' }}{% if output.plot %} • {{ output.plot.name }}{% endif %}" data-history-view-source="stock-output-view-{{ output.id }}">{{ output.input_catalog.name if output.input_catalog else "Insumo removido" }}</button>
                                     <template id="stock-output-view-{{ output.id }}">
                                         <div class="grid gap-3 sm:grid-cols-2">
