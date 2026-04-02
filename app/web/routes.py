@@ -762,6 +762,12 @@ def _stock_export_query(
     return urlencode(clean)
 
 
+def _assets_export_query(farm_id: int | None = None) -> str:
+    params = {"farm_id": farm_id}
+    clean = {key: value for key, value in params.items() if value not in (None, "", "all")}
+    return urlencode(clean)
+
+
 def _format_currency(value) -> str:
     numeric = float(value or 0)
     return f"R$ {numeric:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
@@ -2973,6 +2979,329 @@ def export_stock_extract_pdf(
     )
 
 
+@router.get("/insumos/patrimonio/exportar.xlsx")
+def export_equipment_assets_xlsx(
+    request: Request,
+    farm_id: str | None = None,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    del user
+    repo = _repository(db)
+    selected_farm_id = _int_or_none(farm_id) or _active_farm_id(request)
+    assets = _sort_collection_desc(
+        repo.list_equipment_assets(farm_id=selected_farm_id),
+        lambda item: item.acquisition_date,
+        lambda item: item.id,
+    )
+
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = "Patrimônio"
+    headers = [
+        "Nome",
+        "Categoria",
+        "Fazenda",
+        "Fabricante",
+        "Modelo",
+        "Ano",
+        "Identificação",
+        "Data de aquisição",
+        "Valor de aquisição",
+        "Status",
+        "Observações",
+    ]
+    sheet.append(headers)
+    for asset in assets:
+        sheet.append(
+            [
+                asset.name or "",
+                asset.category or "",
+                asset.farm.name if asset.farm else "",
+                asset.manufacturer or "",
+                asset.brand_model or "",
+                asset.manufacture_year or "",
+                asset.asset_code or "",
+                asset.acquisition_date.isoformat() if asset.acquisition_date else "",
+                float(asset.acquisition_value or 0),
+                asset.status.replace("_", " ").title() if asset.status else "",
+                asset.notes or "",
+            ]
+        )
+    for index, width in enumerate([28, 18, 24, 20, 20, 10, 18, 15, 18, 18, 38], start=1):
+        sheet.column_dimensions[get_column_letter(index)].width = width
+    output = BytesIO()
+    workbook.save(output)
+    output.seek(0)
+    return StreamingResponse(
+        output,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": 'attachment; filename="patrimonio_equipamentos.xlsx"'},
+    )
+
+
+@router.get("/insumos/patrimonio/exportar.pdf")
+def export_equipment_assets_pdf(
+    request: Request,
+    farm_id: str | None = None,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    repo = _repository(db)
+    selected_farm_id = _int_or_none(farm_id) or _active_farm_id(request)
+    selected_farm = repo.get_farm(selected_farm_id) if selected_farm_id else None
+    assets = _sort_collection_desc(
+        repo.list_equipment_assets(farm_id=selected_farm_id),
+        lambda item: item.acquisition_date,
+        lambda item: item.id,
+    )
+    generated_at = app_now()
+    generated_by = user.display_name or user.name or user.email
+    total_assets = len(assets)
+    total_acquisition = round(sum(float(asset.acquisition_value or 0) for asset in assets), 2)
+    active_assets = sum(1 for asset in assets if asset.status == "ativo")
+    maintenance_assets = sum(1 for asset in assets if asset.status == "em_manutencao")
+
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=landscape(A4), leftMargin=28, rightMargin=28, topMargin=32, bottomMargin=34)
+    styles = getSampleStyleSheet()
+    farm_header_style = ParagraphStyle(
+        "AssetPdfFarmHeader",
+        parent=styles["Title"],
+        fontName="Helvetica-Bold",
+        fontSize=18,
+        leading=22,
+        alignment=TA_RIGHT,
+        textColor=colors.HexColor("#1e293b"),
+    )
+    meta_label_style = ParagraphStyle(
+        "AssetPdfMetaLabel",
+        parent=styles["BodyText"],
+        fontName="Helvetica-Bold",
+        fontSize=8,
+        leading=10,
+        textColor=colors.HexColor("#446a36"),
+        spaceAfter=2,
+    )
+    meta_value_style = ParagraphStyle(
+        "AssetPdfMetaValue",
+        parent=styles["BodyText"],
+        fontName="Helvetica",
+        fontSize=10,
+        leading=13,
+        textColor=colors.HexColor("#334155"),
+    )
+    cell_style = ParagraphStyle(
+        "AssetPdfCell",
+        parent=styles["BodyText"],
+        fontName="Helvetica",
+        fontSize=8.3,
+        leading=10.5,
+        textColor=colors.HexColor("#0f172a"),
+    )
+    cell_muted_style = ParagraphStyle(
+        "AssetPdfCellMuted",
+        parent=cell_style,
+        textColor=colors.HexColor("#475569"),
+    )
+    cell_numeric_style = ParagraphStyle(
+        "AssetPdfCellNumeric",
+        parent=cell_style,
+        alignment=TA_RIGHT,
+    )
+    summary_value_style = ParagraphStyle(
+        "AssetPdfSummaryValue",
+        parent=styles["BodyText"],
+        fontName="Helvetica-Bold",
+        fontSize=11,
+        leading=14,
+        textColor=colors.HexColor("#0f172a"),
+    )
+
+    logo_path = Path("app/static/images/logo.png")
+    logo_flowable = Image(str(logo_path), width=92.8, height=73.6) if logo_path.exists() else Spacer(92.8, 73.6)
+    farm_name = selected_farm.name if selected_farm else "Fazenda Bela Vista"
+    scope_label = selected_farm.name if selected_farm else "Todas as fazendas"
+
+    header_table = Table(
+        [[logo_flowable, Paragraph(farm_name, farm_header_style)]],
+        colWidths=[76, doc.width - 76],
+        hAlign="LEFT",
+    )
+    header_table.setStyle(
+        TableStyle(
+            [
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("ALIGN", (1, 0), (1, 0), "RIGHT"),
+                ("LEFTPADDING", (0, 0), (-1, -1), 0),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+                ("TOPPADDING", (0, 0), (-1, -1), 0),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
+            ]
+        )
+    )
+
+    summary_table = Table(
+        [
+            [
+                [Paragraph("FAZENDA", meta_label_style), Paragraph(farm_name, meta_value_style)],
+                [Paragraph("ESCOPO", meta_label_style), Paragraph(scope_label, meta_value_style)],
+                [Paragraph("TOTAL DE BENS", meta_label_style), Paragraph(str(total_assets), summary_value_style)],
+            ],
+            [
+                [Paragraph("ATIVOS", meta_label_style), Paragraph(str(active_assets), summary_value_style)],
+                [Paragraph("EM MANUTENÇÃO", meta_label_style), Paragraph(str(maintenance_assets), summary_value_style)],
+                [Paragraph("VALOR TOTAL", meta_label_style), Paragraph(_format_currency(total_acquisition), summary_value_style)],
+            ],
+        ],
+        colWidths=[doc.width / 3] * 3,
+        hAlign="LEFT",
+    )
+    summary_table.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#f8fafc")),
+                ("BOX", (0, 0), (-1, -1), 0.8, colors.HexColor("#dbe5dd")),
+                ("INNERGRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#e2e8f0")),
+                ("LEFTPADDING", (0, 0), (-1, -1), 12),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 12),
+                ("TOPPADDING", (0, 0), (-1, -1), 10),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 10),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ]
+        )
+    )
+
+    elements = [header_table, Spacer(1, 16), summary_table, Spacer(1, 14)]
+    data = [[
+        "Nome",
+        "Categoria / Fazenda",
+        "Fabricante / Modelo",
+        "Ano / ID",
+        "Aquisição",
+        "Valor",
+        "Status",
+        "Observações",
+    ]]
+    for asset in assets:
+        status_color = {
+            "ativo": "#166534",
+            "em_manutencao": "#b45309",
+            "baixado": "#be123c",
+        }.get(asset.status or "", "#334155")
+        category_farm = asset.category or "-"
+        if asset.farm:
+            category_farm = f"{category_farm} • {asset.farm.name}"
+        maker_model = asset.manufacturer or "-"
+        if asset.brand_model:
+            maker_model = f"{maker_model} • {asset.brand_model}" if maker_model != "-" else asset.brand_model
+        year_code = asset.manufacture_year or "-"
+        if asset.asset_code:
+            year_code = f"{year_code} • {asset.asset_code}" if year_code != "-" else asset.asset_code
+
+        data.append([
+            Paragraph(asset.name or "-", cell_style),
+            Paragraph(category_farm, cell_muted_style),
+            Paragraph(maker_model, cell_muted_style),
+            Paragraph(year_code, cell_muted_style),
+            Paragraph(asset.acquisition_date.strftime("%d/%m/%Y") if asset.acquisition_date else "-", cell_style),
+            Paragraph(_format_currency(asset.acquisition_value or 0), cell_numeric_style),
+            Paragraph(f'<font color="{status_color}"><b>{(asset.status or "-").replace("_", " ").title()}</b></font>', cell_style),
+            Paragraph((asset.notes or "-")[:90], cell_muted_style),
+        ])
+    data.append([
+        "",
+        "",
+        "",
+        Paragraph("<b>Total geral</b>", cell_style),
+        "",
+        Paragraph(f"<b>{_format_currency(total_acquisition)}</b>", cell_numeric_style),
+        "",
+        "",
+    ])
+
+    column_weights = [16, 17, 17, 12, 9, 11, 8, 18]
+    weight_total = sum(column_weights)
+    table_col_widths = [doc.width * (weight / weight_total) for weight in column_weights[:-1]]
+    table_col_widths.append(doc.width - sum(table_col_widths))
+    table = Table(data, repeatRows=1, colWidths=table_col_widths, hAlign="LEFT")
+    table.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#446a36")),
+                ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+                ("LINEBELOW", (0, 0), (-1, 0), 0.8, colors.HexColor("#36552a")),
+                ("LINEBELOW", (0, 1), (-1, -2), 0.35, colors.HexColor("#e2e8f0")),
+                ("LINEABOVE", (0, -1), (-1, -1), 0.8, colors.HexColor("#cbd5e1")),
+                ("BACKGROUND", (0, -1), (-1, -1), colors.HexColor("#f8fafc")),
+                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                ("FONTSIZE", (0, 0), (-1, -1), 8.2),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("ROWBACKGROUNDS", (0, 1), (-1, -2), [colors.white, colors.HexColor("#f8fafc")]),
+                ("LEFTPADDING", (0, 0), (-1, -1), 7),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 7),
+                ("TOPPADDING", (0, 0), (-1, -1), 7),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 7),
+                ("ALIGN", (5, 1), (5, -1), "RIGHT"),
+            ]
+        )
+    )
+    elements.append(table)
+    elements.append(Spacer(1, 12))
+
+    footer_col_widths = [
+        sum(table_col_widths[:3]),
+        sum(table_col_widths[3:5]),
+        sum(table_col_widths[5:]),
+    ]
+    footer_summary = Table(
+        [[
+            Paragraph(f"<b>Total de bens:</b> {total_assets}", meta_value_style),
+            Paragraph(f"<b>Ativos:</b> {active_assets} • <b>Em manutenção:</b> {maintenance_assets}", meta_value_style),
+            Paragraph(f"<b>Valor total:</b> {_format_currency(total_acquisition)}", summary_value_style),
+        ]],
+        colWidths=footer_col_widths,
+        hAlign="LEFT",
+    )
+    footer_summary.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#eef6ee")),
+                ("BOX", (0, 0), (-1, -1), 0.7, colors.HexColor("#cfe1d0")),
+                ("LEFTPADDING", (0, 0), (-1, -1), 12),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 12),
+                ("TOPPADDING", (0, 0), (-1, -1), 10),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 10),
+            ]
+        )
+    )
+    elements.append(footer_summary)
+
+    generated_at_label = generated_at.strftime("%d/%m/%Y %H:%M")
+
+    def _draw_footer(canvas, doc):
+        canvas.saveState()
+        canvas.setStrokeColor(colors.HexColor("#e2e8f0"))
+        canvas.line(doc.leftMargin, 22, landscape(A4)[0] - doc.rightMargin, 22)
+        canvas.setFont("Helvetica", 8.2)
+        canvas.setFillColor(colors.HexColor("#64748b"))
+        canvas.drawString(doc.leftMargin, 10, f"Gerado por: {generated_by}")
+        canvas.drawRightString(
+            landscape(A4)[0] - doc.rightMargin,
+            10,
+            f"Emitido em {generated_at_label} • Página {canvas.getPageNumber()}",
+        )
+        canvas.restoreState()
+
+    doc.build(elements, onFirstPage=_draw_footer, onLaterPages=_draw_footer)
+    buffer.seek(0)
+    return StreamingResponse(
+        buffer,
+        media_type="application/pdf",
+        headers={"Content-Disposition": 'attachment; filename="patrimonio_equipamentos.pdf"'},
+    )
+
+
 @router.get("/insumos/patrimonio")
 def equipment_assets_page(
     request: Request,
@@ -3001,6 +3330,7 @@ def equipment_assets_page(
             title="Patrimonio e Equipamentos",
             farms=repo.list_farms(),
             selected_farm_id=effective_farm_id,
+            assets_export_query=_assets_export_query(farm_id=effective_farm_id),
             asset_category_options=EQUIPMENT_ASSET_CATEGORY_OPTIONS,
             current_year=today_in_app_timezone().year,
             assets=assets_pagination["items"],

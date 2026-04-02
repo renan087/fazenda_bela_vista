@@ -8,6 +8,24 @@
                 <p class="stock-page-card-subtitle">Cadastre e acompanhe equipamentos e bens patrimoniais sem misturar esses registros com o estoque consumível.</p>
             </div>
             <div class="stock-header-actions stock-header-actions-top">
+                <a href="/insumos/patrimonio/exportar.pdf{% if assets_export_query %}?{{ assets_export_query }}{% endif %}" class="stock-action-button stock-export-button stock-export-button-pdf">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true">
+                        <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/>
+                        <path d="M14 3v5h5"/>
+                        <path d="M8 13h8"/>
+                        <path d="M8 17h6"/>
+                    </svg>
+                    <span class="stock-action-button-label">Exportar PDF</span>
+                </a>
+                <a href="/insumos/patrimonio/exportar.xlsx{% if assets_export_query %}?{{ assets_export_query }}{% endif %}" class="stock-action-button stock-export-button stock-export-button-xlsx">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true">
+                        <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/>
+                        <path d="M14 3v5h5"/>
+                        <path d="m9 17 6-6"/>
+                        <path d="m9 11 6 6"/>
+                    </svg>
+                    <span class="stock-action-button-label">Exportar Excel</span>
+                </a>
                 <button type="button" class="stock-action-button stock-action-button-primary" data-assets-launch-open>
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
                         <path d="M12 5v14"/>
@@ -15,17 +33,6 @@
                     </svg>
                     <span class="stock-action-button-label">{% if edit_asset %}Editar patrimônio{% else %}Novo patrimônio{% endif %}</span>
                 </button>
-                <a href="#assets-list" class="stock-action-button stock-export-button">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-                        <path d="M8 6h13"/>
-                        <path d="M8 12h13"/>
-                        <path d="M8 18h13"/>
-                        <path d="M3 6h.01"/>
-                        <path d="M3 12h.01"/>
-                        <path d="M3 18h.01"/>
-                    </svg>
-                    <span class="stock-action-button-label">Ver cadastrados</span>
-                </a>
             </div>
         </div>
     </section>
