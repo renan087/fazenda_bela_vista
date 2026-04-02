@@ -8,12 +8,30 @@
                 <p class="stock-page-card-subtitle">Planeje aplicações futuras para a lavoura.</p>
             </div>
             <div class="stock-header-actions stock-header-actions-top">
+                <a href="/fertilizacao/agendamentos/exportar.pdf" class="stock-action-button stock-export-button stock-export-button-pdf">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true">
+                        <path d="M7 3h7l5 5v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z"/>
+                        <path d="M14 3v6h6"/>
+                        <path d="M10 13h4"/>
+                        <path d="M10 17h4"/>
+                    </svg>
+                    <span class="stock-action-button-label">Exportar PDF</span>
+                </a>
+                <a href="/fertilizacao/agendamentos/exportar.xlsx" class="stock-action-button stock-export-button stock-export-button-xlsx">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true">
+                        <path d="M7 3h7l5 5v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z"/>
+                        <path d="M14 3v6h6"/>
+                        <path d="m10 12 4 6"/>
+                        <path d="m14 12-4 6"/>
+                    </svg>
+                    <span class="stock-action-button-label">Exportar Excel</span>
+                </a>
                 <button type="button" class="stock-action-button stock-action-button-primary" data-schedule-launch-open>
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
                         <path d="M12 5v14"/>
                         <path d="M5 12h14"/>
                     </svg>
-                    <span class="stock-action-button-label">Novo agendamento</span>
+                    <span class="stock-action-button-label"><span class="sm:hidden">Novo</span><span class="hidden sm:inline">Novo agendamento</span></span>
                 </button>
             </div>
         </div>
@@ -97,7 +115,7 @@
                                     <path d="M5 12h14"/>
                                     <path d="M12 5v14" data-schedule-items-toggle-plus></path>
                                 </svg>
-                                <span data-schedule-items-toggle-label>+ Mostrar Insumos</span>
+                                <span data-schedule-items-toggle-label>Mostrar Insumos</span>
                             </button>
                         </div>
                         <div class="stock-summary-collapse is-expanded max-sm:mt-3" data-schedule-items-collapse>
@@ -215,7 +233,7 @@
                                     <path d="M5 12h14"/>
                                     <path d="M12 5v14" data-schedule-items-toggle-plus></path>
                                 </svg>
-                                <span data-schedule-items-toggle-label>+ Mostrar Insumos</span>
+                                <span data-schedule-items-toggle-label>Mostrar Insumos</span>
                             </button>
                         </div>
                         <div class="stock-summary-collapse is-expanded max-sm:mt-3" data-schedule-items-collapse>
@@ -527,7 +545,7 @@
                 const setExpanded = (expanded) => {
                     collapse.classList.toggle('is-expanded', expanded);
                     toggle.setAttribute('aria-expanded', expanded ? 'true' : 'false');
-                    label.textContent = expanded ? '- Esconder Insumos' : '+ Mostrar Insumos';
+                    label.textContent = expanded ? 'Esconder Insumos' : 'Mostrar Insumos';
                     plus?.classList.toggle('hidden', expanded);
                 };
 

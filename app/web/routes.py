@@ -4871,6 +4871,223 @@ def fertilization_schedules_page(
     )
 
 
+@router.get("/fertilizacao/agendamentos/exportar.xlsx")
+def export_fertilization_schedules_xlsx(
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    del user
+    repo = _repository(db)
+    scope = _global_scope_context(request, repo)
+    farm_ids, variety_ids = _scoped_plot_filters(request, scope["active_season"])
+    start_date, end_date = _scoped_dates(scope["active_season"])
+    plots = repo.list_plots(farm_ids=farm_ids, variety_ids=variety_ids)
+    plot_ids = {plot.id for plot in plots}
+    schedules = [
+        schedule
+        for schedule in repo.list_fertilization_schedules()
+        if schedule.plot_id in plot_ids and _within_scope(schedule.scheduled_date, start_date, end_date)
+    ]
+    schedules.sort(key=lambda schedule: (schedule.scheduled_date, schedule.id), reverse=True)
+    active_schedules = [schedule for schedule in schedules if schedule.status != "completed"]
+    completed_schedules = [schedule for schedule in schedules if schedule.status == "completed"]
+
+    workbook = Workbook()
+    active_sheet = workbook.active
+    active_sheet.title = "Ativos"
+    active_sheet.append(["Data", "Setor", "Status", "Itens Programados", "Observações"])
+    for schedule in active_schedules:
+        active_sheet.append([
+            schedule.scheduled_date.isoformat() if schedule.scheduled_date else "",
+            schedule.plot.name if schedule.plot else "Setor removido",
+            "Agendado",
+            " | ".join(
+                f"{item.input_catalog.name if item.input_catalog else item.name} ({_format_decimal_br(item.quantity, 2)} {item.unit})"
+                for item in schedule.items
+            ),
+            schedule.notes or "",
+        ])
+    for index, width in enumerate([14, 28, 16, 54, 40], start=1):
+        active_sheet.column_dimensions[get_column_letter(index)].width = width
+
+    completed_sheet = workbook.create_sheet("Concluídos")
+    completed_sheet.append(["Data", "Setor", "Status", "Itens Programados", "Observações"])
+    for schedule in completed_schedules:
+        completed_sheet.append([
+            schedule.scheduled_date.isoformat() if schedule.scheduled_date else "",
+            schedule.plot.name if schedule.plot else "Setor removido",
+            "Concluído",
+            " | ".join(
+                f"{item.input_catalog.name if item.input_catalog else item.name} ({_format_decimal_br(item.quantity, 2)} {item.unit})"
+                for item in schedule.items
+            ),
+            schedule.notes or "",
+        ])
+    for index, width in enumerate([14, 28, 16, 54, 40], start=1):
+        completed_sheet.column_dimensions[get_column_letter(index)].width = width
+
+    output = BytesIO()
+    workbook.save(output)
+    output.seek(0)
+    return StreamingResponse(
+        output,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": 'attachment; filename="planejamento_agendamentos.xlsx"'},
+    )
+
+
+@router.get("/fertilizacao/agendamentos/exportar.pdf")
+def export_fertilization_schedules_pdf(
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    repo = _repository(db)
+    scope = _global_scope_context(request, repo)
+    farm_ids, variety_ids = _scoped_plot_filters(request, scope["active_season"])
+    start_date, end_date = _scoped_dates(scope["active_season"])
+    plots = repo.list_plots(farm_ids=farm_ids, variety_ids=variety_ids)
+    plot_ids = {plot.id for plot in plots}
+    schedules = [
+        schedule
+        for schedule in repo.list_fertilization_schedules()
+        if schedule.plot_id in plot_ids and _within_scope(schedule.scheduled_date, start_date, end_date)
+    ]
+    schedules.sort(key=lambda schedule: (schedule.scheduled_date, schedule.id), reverse=True)
+
+    generated_at = app_now()
+    generated_by = user.display_name or user.name or user.email
+    farm_name = scope["active_farm"].name if scope.get("active_farm") else "Fazenda Bela Vista"
+    active_count = sum(1 for schedule in schedules if schedule.status != "completed")
+    completed_count = sum(1 for schedule in schedules if schedule.status == "completed")
+    total_items = sum(len(schedule.items or []) for schedule in schedules)
+    season_label = scope["active_season"].name if scope.get("active_season") else "Safra ativa"
+
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=landscape(A4), leftMargin=28, rightMargin=28, topMargin=32, bottomMargin=34)
+    styles = getSampleStyleSheet()
+    farm_header_style = ParagraphStyle("SchedulePdfFarmHeader", parent=styles["Title"], fontName="Helvetica-Bold", fontSize=18, leading=22, alignment=TA_RIGHT, textColor=colors.HexColor("#1e293b"))
+    meta_label_style = ParagraphStyle("SchedulePdfMetaLabel", parent=styles["BodyText"], fontName="Helvetica-Bold", fontSize=8, leading=10, textColor=colors.HexColor("#446a36"), spaceAfter=2)
+    meta_value_style = ParagraphStyle("SchedulePdfMetaValue", parent=styles["BodyText"], fontName="Helvetica", fontSize=10, leading=13, textColor=colors.HexColor("#334155"))
+    cell_style = ParagraphStyle("SchedulePdfCell", parent=styles["BodyText"], fontName="Helvetica", fontSize=8.2, leading=10.4, textColor=colors.HexColor("#0f172a"))
+    cell_muted_style = ParagraphStyle("SchedulePdfCellMuted", parent=cell_style, textColor=colors.HexColor("#475569"))
+    summary_value_style = ParagraphStyle("SchedulePdfSummaryValue", parent=styles["BodyText"], fontName="Helvetica-Bold", fontSize=11, leading=14, textColor=colors.HexColor("#0f172a"))
+
+    logo_path = Path("app/static/images/logo.png")
+    logo_flowable = Image(str(logo_path), width=92.8, height=73.6) if logo_path.exists() else Spacer(92.8, 73.6)
+    header_table = Table([[logo_flowable, Paragraph(farm_name, farm_header_style)]], colWidths=[76, doc.width - 76], hAlign="LEFT")
+    header_table.setStyle(TableStyle([
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("ALIGN", (1, 0), (1, 0), "RIGHT"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 0),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+        ("TOPPADDING", (0, 0), (-1, -1), 0),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
+    ]))
+
+    summary_table = Table([
+        [
+            [Paragraph("FAZENDA", meta_label_style), Paragraph(farm_name, meta_value_style)],
+            [Paragraph("SAFRA", meta_label_style), Paragraph(season_label, meta_value_style)],
+            [Paragraph("ATIVOS", meta_label_style), Paragraph(str(active_count), summary_value_style)],
+        ],
+        [
+            [Paragraph("CONCLUÍDOS", meta_label_style), Paragraph(str(completed_count), summary_value_style)],
+            [Paragraph("TOTAL DE AGENDAMENTOS", meta_label_style), Paragraph(str(len(schedules)), summary_value_style)],
+            [Paragraph("ITENS PROGRAMADOS", meta_label_style), Paragraph(str(total_items), summary_value_style)],
+        ],
+    ], colWidths=[doc.width / 3] * 3, hAlign="LEFT")
+    summary_table.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#f8fafc")),
+        ("BOX", (0, 0), (-1, -1), 0.8, colors.HexColor("#dbe5dd")),
+        ("INNERGRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#e2e8f0")),
+        ("LEFTPADDING", (0, 0), (-1, -1), 12),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 12),
+        ("TOPPADDING", (0, 0), (-1, -1), 10),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 10),
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+    ]))
+
+    elements = [header_table, Spacer(1, 16), summary_table, Spacer(1, 14)]
+    data = [["Data", "Setor", "Situação", "Itens Programados", "Observações"]]
+    for schedule in schedules:
+        items_label = " • ".join(
+            f"{item.input_catalog.name if item.input_catalog else item.name} ({_format_decimal_br(item.quantity, 2)} {item.unit})"
+            for item in schedule.items
+        ) or "-"
+        status_label = "Concluído" if schedule.status == "completed" else "Agendado"
+        status_color = "#166534" if schedule.status == "completed" else "#0369a1"
+        data.append([
+            Paragraph(schedule.scheduled_date.strftime("%d/%m/%Y") if schedule.scheduled_date else "-", cell_style),
+            Paragraph(schedule.plot.name if schedule.plot else "Setor removido", cell_style),
+            Paragraph(f'<font color="{status_color}"><b>{status_label}</b></font>', cell_style),
+            Paragraph(items_label, cell_muted_style),
+            Paragraph((schedule.notes or "-")[:120], cell_muted_style),
+        ])
+
+    column_weights = [10, 18, 12, 34, 26]
+    weight_total = sum(column_weights)
+    table_col_widths = [doc.width * (weight / weight_total) for weight in column_weights[:-1]]
+    table_col_widths.append(doc.width - sum(table_col_widths))
+    table = Table(data, repeatRows=1, colWidths=table_col_widths, hAlign="LEFT")
+    table.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#446a36")),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("LINEBELOW", (0, 0), (-1, 0), 0.8, colors.HexColor("#36552a")),
+        ("LINEBELOW", (0, 1), (-1, -1), 0.35, colors.HexColor("#e2e8f0")),
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("FONTSIZE", (0, 0), (-1, -1), 8.2),
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f8fafc")]),
+        ("LEFTPADDING", (0, 0), (-1, -1), 7),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 7),
+        ("TOPPADDING", (0, 0), (-1, -1), 7),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 7),
+    ]))
+    elements.append(table)
+    elements.append(Spacer(1, 12))
+
+    footer_summary = Table([[
+        Paragraph(f"<b>Ativos:</b> {active_count}", meta_value_style),
+        Paragraph(f"<b>Concluídos:</b> {completed_count}", meta_value_style),
+        Paragraph(f"<b>Total de agendamentos:</b> {len(schedules)} • <b>Itens:</b> {total_items}", summary_value_style),
+    ]], colWidths=[doc.width * 0.25, doc.width * 0.25, doc.width * 0.50], hAlign="LEFT")
+    footer_summary.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#eef6ee")),
+        ("BOX", (0, 0), (-1, -1), 0.7, colors.HexColor("#cfe1d0")),
+        ("LEFTPADDING", (0, 0), (-1, -1), 12),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 12),
+        ("TOPPADDING", (0, 0), (-1, -1), 10),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 10),
+    ]))
+    elements.append(footer_summary)
+
+    generated_at_label = generated_at.strftime("%d/%m/%Y %H:%M")
+
+    def _draw_footer(canvas, doc):
+        canvas.saveState()
+        canvas.setStrokeColor(colors.HexColor("#e2e8f0"))
+        canvas.line(doc.leftMargin, 22, landscape(A4)[0] - doc.rightMargin, 22)
+        canvas.setFont("Helvetica", 8.2)
+        canvas.setFillColor(colors.HexColor("#64748b"))
+        canvas.drawString(doc.leftMargin, 10, f"Gerado por: {generated_by}")
+        canvas.drawRightString(
+            landscape(A4)[0] - doc.rightMargin,
+            10,
+            f"Emitido em {generated_at_label} • Página {canvas.getPageNumber()}",
+        )
+        canvas.restoreState()
+
+    doc.build(elements, onFirstPage=_draw_footer, onLaterPages=_draw_footer)
+    buffer.seek(0)
+    return StreamingResponse(
+        buffer,
+        media_type="application/pdf",
+        headers={"Content-Disposition": 'attachment; filename="planejamento_agendamentos.pdf"'},
+    )
+
+
 @router.post("/fertilizacao/agendamentos")
 async def create_fertilization_schedule_action(
     request: Request,
