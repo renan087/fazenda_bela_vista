@@ -752,10 +752,30 @@ body {
         gap: 0.9rem;
     }
 
+    .stock-page-header > div > :first-child,
+    .stock-panel[data-stock-summary-panel] > div:first-child > :first-child {
+        width: 100%;
+        min-width: 0;
+        max-width: 100%;
+    }
+
+    .stock-panel[data-stock-summary-panel] > div:first-child {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 0.9rem;
+    }
+
     .stock-summary-toggle {
         width: 100%;
         max-width: 100%;
         box-sizing: border-box;
+    }
+
+    .stock-page-card-subtitle,
+    .stock-panel[data-stock-summary-panel] > div:first-child p:last-child {
+        max-width: 100%;
+        overflow-wrap: anywhere;
+        word-break: break-word;
     }
 
     .stock-header-actions {
