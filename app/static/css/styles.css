@@ -150,6 +150,17 @@ body {
     gap: 1.5rem;
 }
 
+.stock-page-shell {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+}
+
+.stock-page-shell > * {
+    min-width: 0;
+    max-width: 100%;
+}
+
 .stock-panel {
     background:
         linear-gradient(180deg, rgba(255, 255, 255, 0.99), rgba(248, 250, 252, 0.98));
@@ -705,6 +716,11 @@ body {
 }
 
 @media (max-width: 899px) {
+    .stock-page-shell {
+        overflow-x: clip;
+        isolation: isolate;
+    }
+
     .stock-page-header,
     .stock-page-header > div,
     .stock-panel,
@@ -723,6 +739,7 @@ body {
         padding: 1rem !important;
         border-radius: 1.5rem !important;
         overflow: hidden;
+        inline-size: 100%;
     }
 
     .stock-page-header > div {
@@ -748,6 +765,11 @@ body {
         width: 100%;
     }
 
+    .stock-header-actions > * {
+        min-width: 0;
+        max-width: 100%;
+    }
+
     .stock-action-button {
         width: 100%;
         min-width: 0;
@@ -770,7 +792,9 @@ body {
 
     .stock-search-field {
         width: 100%;
+        max-width: 100%;
         padding: 0.68rem 0.9rem;
+        box-sizing: border-box;
     }
 
     .stock-history-toolbar {
@@ -781,13 +805,17 @@ body {
     .stock-panel {
         padding: 1rem !important;
         border-radius: 1.5rem !important;
-        overflow-x: clip;
+        overflow-x: hidden;
+        inline-size: 100%;
+        box-sizing: border-box;
     }
 
     .stock-filter-bar {
         margin-top: 1rem !important;
         padding: 0.85rem;
         border-radius: 1.25rem;
+        inline-size: 100%;
+        box-sizing: border-box;
     }
 
     .stock-filter-bar .flex {
@@ -835,9 +863,14 @@ body {
         max-width: 100%;
     }
 
+    .stock-history-stage {
+        overflow-x: hidden;
+    }
+
     .stock-table-shell > .overflow-x-auto {
         overflow-x: auto;
         -webkit-overflow-scrolling: touch;
+        overscroll-behavior-x: contain;
     }
 
     .stock-history-table {
