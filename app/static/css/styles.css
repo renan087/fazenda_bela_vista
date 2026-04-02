@@ -705,10 +705,24 @@ body {
 }
 
 @media (max-width: 899px) {
+    .stock-page-header,
+    .stock-page-header > div,
+    .stock-panel,
+    .stock-panel > *,
+    .stock-filter-bar,
+    .stock-filter-bar form,
+    .stock-filter-bar label,
+    .stock-history-toolbar,
+    .stock-history-toolbar > * {
+        min-width: 0;
+        max-width: 100%;
+    }
+
     .stock-page-header {
         top: 7.1rem;
         padding: 1rem !important;
         border-radius: 1.5rem !important;
+        overflow: hidden;
     }
 
     .stock-summary-toggle {
@@ -716,6 +730,11 @@ body {
     }
 
     .stock-header-actions {
+        display: grid;
+        width: 100%;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        align-items: stretch;
+        gap: 0.75rem;
         justify-content: stretch;
     }
 
@@ -725,14 +744,30 @@ body {
 
     .stock-action-button {
         width: 100%;
+        min-width: 0;
+        padding: 0.82rem 0.9rem;
+        font-size: 0.88rem;
+        line-height: 1.2;
+        white-space: nowrap;
+        overflow: hidden;
+    }
+
+    .stock-export-button {
+        justify-content: center;
+    }
+
+    .stock-action-button-primary {
+        grid-column: 1 / -1;
     }
 
     .stock-search-field {
         width: 100%;
+        padding: 0.68rem 0.9rem;
     }
 
     .stock-history-toolbar {
         align-items: stretch;
+        gap: 0.75rem;
     }
 
     .stock-panel {
@@ -745,6 +780,10 @@ body {
         margin-top: 1rem !important;
         padding: 0.85rem;
         border-radius: 1.25rem;
+    }
+
+    .stock-filter-bar .flex {
+        width: 100%;
     }
 
     .stock-summary-grid {
@@ -773,6 +812,14 @@ body {
         white-space: nowrap;
     }
 
+    .stock-history-stage {
+        margin-top: 0.85rem !important;
+    }
+
+    .stock-history-stage nav {
+        margin-top: 0.85rem !important;
+    }
+
     .stock-history-stage,
     .stock-table-shell,
     .stock-table-shell > .overflow-x-auto {
@@ -787,5 +834,16 @@ body {
 
     .stock-history-table {
         min-width: 48rem;
+    }
+}
+
+@media (max-width: 420px) {
+    .stock-header-actions {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .stock-export-button,
+    .stock-action-button-primary {
+        grid-column: auto;
     }
 }
