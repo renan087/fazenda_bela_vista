@@ -2096,7 +2096,7 @@ def purchased_inputs_page(
             csrf_token,
             "purchased_inputs",
             _repo=repo,
-            title="Insumos Comprados",
+            title="Gestão de Compras",
             farms=repo.list_farms(),
             selected_item_type=normalized_item_type or "insumo_agricola",
             selected_farm_id=effective_farm_id,
