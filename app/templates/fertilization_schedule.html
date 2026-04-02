@@ -39,7 +39,7 @@
                 {% for schedule in schedules %}
                 {% set validation = schedule_validations.get(schedule.id, {'ok': True, 'shortages': []}) %}
                 {% set is_late = schedule.status != 'completed' and schedule.scheduled_date < today %}
-                <article class="rounded-[1.5rem] border border-slate-100 bg-slate-50 p-5 lg:p-4" data-schedule-history-row data-schedule-search-text="{{ (schedule.plot.name if schedule.plot else '') ~ ' ' ~ schedule.scheduled_date ~ ' ' ~ schedule.status ~ ' ' ~ (schedule.notes or '') }} {% for item in schedule.items %} {{ item.input_catalog.name if item.input_catalog else item.name }} {% endfor %}">
+                <article class="rounded-[1.5rem] border border-slate-100 bg-slate-50 p-5 lg:p-4 {% if schedule.status == 'completed' %}opacity-70 saturate-[0.82]{% endif %}" data-schedule-history-row data-schedule-search-text="{{ (schedule.plot.name if schedule.plot else '') ~ ' ' ~ schedule.scheduled_date ~ ' ' ~ schedule.status ~ ' ' ~ (schedule.notes or '') }} {% for item in schedule.items %} {{ item.input_catalog.name if item.input_catalog else item.name }} {% endfor %}">
                     <div class="flex flex-wrap items-start justify-between gap-4 lg:gap-3">
                         <div class="min-w-0">
                             <div class="flex flex-wrap items-center gap-2">
@@ -61,18 +61,18 @@
                             </div>
                         </div>
                         <div class="flex items-center gap-2 lg:gap-1.5">
-                            <a href="/fertilizacao/agendamentos?edit_id={{ schedule.id }}" class="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-100" title="Editar">
-                                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                    <path d="M12 20h9"/>
-                                    <path d="M16.5 3.5a2.1 2.1 0 1 1 3 3L7 19l-4 1 1-4Z"/>
-                                </svg>
-                            </a>
                             {% if schedule.status != 'completed' %}
                             <form method="post" action="/fertilizacao/agendamentos/{{ schedule.id }}/concluir">
                                 <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                                 <button class="rounded-xl bg-brand-500 px-3 py-2 text-xs font-medium text-white hover:bg-brand-700">Concluir</button>
                             </form>
                             {% endif %}
+                            <a href="/fertilizacao/agendamentos?edit_id={{ schedule.id }}" class="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-100" title="Editar">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M12 20h9"/>
+                                    <path d="M16.5 3.5a2.1 2.1 0 1 1 3 3L7 19l-4 1 1-4Z"/>
+                                </svg>
+                            </a>
                             <form method="post" action="/fertilizacao/agendamentos/{{ schedule.id }}/excluir" onsubmit="return confirm('Excluir este agendamento?');">
                                 <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                                 <button type="submit" class="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 text-rose-600 hover:bg-rose-50" title="Excluir">
@@ -88,9 +88,9 @@
                         </div>
                     </div>
 
-                    <div class="mt-4 space-y-2">
+                    <div class="mt-4 flex flex-wrap gap-2">
                         {% for item in schedule.items %}
-                        <div class="rounded-2xl bg-white px-4 py-3 text-sm text-slate-700">
+                        <div class="rounded-full bg-white px-3 py-2 text-sm text-slate-700 ring-1 ring-slate-200/80">
                             <span class="font-medium">{{ item.input_catalog.name if item.input_catalog else item.name }}</span>
                             <span class="text-slate-500"> • {{ item.quantity }} {{ item.unit }}</span>
                         </div>
