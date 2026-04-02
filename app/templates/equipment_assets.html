@@ -272,8 +272,20 @@
         const launchModal = document.getElementById('assets-launch-modal');
         const openLaunchButton = document.querySelector('[data-assets-launch-open]');
         const closeLaunchButtons = Array.from(document.querySelectorAll('[data-assets-launch-close]'));
-        const openAssetsModal = () => launchModal?.showModal();
-        const closeAssetsModal = () => launchModal?.close();
+        const clearAssetsEditState = () => {
+            const url = new URL(window.location.href);
+            if (!url.searchParams.has('edit_id')) return;
+            url.searchParams.delete('edit_id');
+            window.history.replaceState({}, '', `${url.pathname}${url.search}${url.hash}`);
+        };
+        const openAssetsModal = () => {
+            clearAssetsEditState();
+            launchModal?.showModal();
+        };
+        const closeAssetsModal = () => {
+            clearAssetsEditState();
+            launchModal?.close();
+        };
 
         if (launchModal) {
             openLaunchButton?.addEventListener('click', openAssetsModal);

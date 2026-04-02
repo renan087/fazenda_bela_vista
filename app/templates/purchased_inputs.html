@@ -350,20 +350,31 @@
         const purchasedContextCollapse = document.querySelector('[data-purchased-context-collapse]');
         const purchasedContextToggleLabel = document.querySelector('[data-purchased-context-toggle-label]');
         const purchasedContextTogglePlus = document.querySelector('[data-purchased-context-toggle-plus]');
+        const clearPurchasedEditState = () => {
+            const url = new URL(window.location.href);
+            if (!url.searchParams.has('edit_id')) return;
+            url.searchParams.delete('edit_id');
+            window.history.replaceState({}, '', `${url.pathname}${url.search}${url.hash}`);
+        };
 
         if (launchModal) {
-            openLaunchButton?.addEventListener('click', () => launchModal.showModal());
+            openLaunchButton?.addEventListener('click', () => {
+                clearPurchasedEditState();
+                launchModal.showModal();
+            });
             closeLaunchButtons.forEach((button) => {
                 button.addEventListener('click', (event) => {
                     if (!(event.currentTarget instanceof HTMLElement)) return;
                     if (!event.currentTarget.hasAttribute('data-purchased-close-button') && !event.currentTarget.classList.contains('modal-close-button')) {
                         return;
                     }
+                    clearPurchasedEditState();
                     launchModal.close();
                 });
             });
             launchModal.addEventListener('cancel', (event) => {
                 event.preventDefault();
+                clearPurchasedEditState();
             });
             {% if edit_input %}
             launchModal.showModal();
