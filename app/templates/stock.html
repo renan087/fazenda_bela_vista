@@ -682,13 +682,12 @@
                 let rafId = null;
                 const updateFadingPanels = () => {
                     rafId = null;
-                    const stickyBottom = stickyHeader.getBoundingClientRect().bottom;
-                    const fadeStartOffset = 88;
-                    const fadeDistance = 120;
+                    const stickyRect = stickyHeader.getBoundingClientRect();
+                    const fadeTrigger = stickyRect.top + (stickyRect.height * 0.5);
+                    const fadeDistance = Math.max(stickyRect.height * 0.8, 120);
                     fadingPanels.forEach((panel) => {
                         const panelTop = panel.getBoundingClientRect().top;
-                        const fadeStart = stickyBottom + fadeStartOffset;
-                        const overlap = Math.min(Math.max(fadeStart - panelTop, 0), fadeDistance);
+                        const overlap = Math.min(Math.max(fadeTrigger - panelTop, 0), fadeDistance);
                         const transparentEnd = overlap * 0.42;
                         const solidStart = overlap;
                         panel.style.setProperty('--stock-fade-transparent-end', `${transparentEnd.toFixed(2)}px`);

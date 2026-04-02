@@ -2714,6 +2714,15 @@ def export_stock_extract_pdf(
         leading=14,
         textColor=colors.HexColor("#64748b"),
     )
+    farm_header_style = ParagraphStyle(
+        "StockPdfFarmHeader",
+        parent=styles["Title"],
+        fontName="Helvetica-Bold",
+        fontSize=18,
+        leading=22,
+        alignment=TA_RIGHT,
+        textColor=colors.HexColor("#1e293b"),
+    )
     meta_label_style = ParagraphStyle(
         "StockPdfMetaLabel",
         parent=styles["BodyText"],
@@ -2759,8 +2768,7 @@ def export_stock_extract_pdf(
     )
 
     logo_path = Path("app/static/images/logo.png")
-    logo_flowable = Image(str(logo_path), width=88, height=56) if logo_path.exists() else Spacer(88, 56)
-    report_title = "Extrato de estoque"
+    logo_flowable = Image(str(logo_path), width=68, height=54) if logo_path.exists() else Spacer(68, 54)
     farm_name = selected_farm.name if selected_farm else "Fazenda Bela Vista"
     movement_label = {
         "entrada": "Somente entradas",
@@ -2778,19 +2786,15 @@ def export_stock_extract_pdf(
     header_table = Table(
         [[
             logo_flowable,
-            [
-                Paragraph(farm_name, title_style),
-                Paragraph(report_title, subtitle_style),
-                Spacer(1, 4),
-                Paragraph("Relatório administrativo com histórico consolidado de movimentações.", subtitle_style),
-            ],
+            Paragraph(farm_name, farm_header_style),
         ]],
-        colWidths=[96, doc.width - 96],
+        colWidths=[76, doc.width - 76],
     )
     header_table.setStyle(
         TableStyle(
             [
                 ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("ALIGN", (1, 0), (1, 0), "RIGHT"),
                 ("LEFTPADDING", (0, 0), (-1, -1), 0),
                 ("RIGHTPADDING", (0, 0), (-1, -1), 0),
                 ("TOPPADDING", (0, 0), (-1, -1), 0),
@@ -2869,11 +2873,10 @@ def export_stock_extract_pdf(
         "",
     ])
 
-    table = Table(
-        data,
-        repeatRows=1,
-        colWidths=[50, 116, 54, 138, 52, 38, 72, 74, 62, 106],
-    )
+    column_weights = [6, 14, 6, 19, 7, 5, 9, 10, 8, 16]
+    weight_total = sum(column_weights)
+    table_col_widths = [doc.width * (weight / weight_total) for weight in column_weights]
+    table = Table(data, repeatRows=1, colWidths=table_col_widths, hAlign="LEFT")
     table.setStyle(
         TableStyle(
             [
