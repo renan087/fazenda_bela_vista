@@ -234,13 +234,13 @@
 </div>
 {% include "partials/history_view_modal.html" %}
 
-<dialog id="purchased-input-launch-modal" class="app-modal rounded-[2rem] p-0 shadow-2xl w-full max-w-4xl">
+<dialog id="purchased-input-launch-modal" class="app-modal rounded-[2rem] p-0 shadow-2xl w-full max-w-4xl overflow-hidden">
     <div class="bg-white p-6 sm:p-8">
         <div class="flex items-start justify-between gap-4">
-            <div>
+            <div class="min-w-0">
                 <p class="text-xs uppercase tracking-[0.35em] text-slate-400">{% if edit_input %}Editar entrada{% else %}Nova entrada{% endif %}</p>
-                <h3 class="mt-2 text-2xl font-semibold">{% if edit_input %}Editar entrada de estoque{% else %}Nova entrada de estoque{% endif %}</h3>
-                <p class="mt-2 text-sm text-slate-500">Registre compras e lotes de insumos ou combustíveis sem sair do histórico principal.</p>
+                <h3 class="mt-2 text-2xl font-semibold purchased-modal-heading">{% if edit_input %}Editar entrada de estoque{% else %}Nova entrada de estoque{% endif %}</h3>
+                <p class="mt-2 text-sm text-slate-500 purchased-modal-subtitle">Registre compras e lotes de insumos ou combustíveis sem sair do histórico principal.</p>
             </div>
             <button type="button" class="modal-close-button" aria-label="Fechar" data-purchased-launch-close>
                 <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -250,14 +250,13 @@
             </button>
         </div>
 
-        <div class="sticky top-0 z-10 mt-6 rounded-[1.5rem] border border-slate-200 bg-white/95 px-3 py-3 shadow-sm backdrop-blur sm:px-4">
-            <div class="flex flex-wrap justify-end gap-3">
-                <button type="button" class="rounded-2xl bg-slate-100 px-4 py-3 font-semibold text-slate-700 hover:bg-slate-200" data-purchased-launch-close>Cancelar</button>
-                <button form="purchased-input-form" class="rounded-2xl bg-brand-500 px-4 py-3 font-semibold text-white hover:bg-brand-700">Salvar</button>
+        <div class="mt-6 max-h-[72vh] overflow-y-auto pr-1" data-modal-scroll>
+            <div class="sticky top-0 z-10 -mx-1 mb-4 bg-white/95 px-1 py-1 backdrop-blur">
+                <div class="flex flex-wrap justify-end gap-3 rounded-[1.5rem] px-2 py-2 sm:px-3">
+                    <button type="button" class="rounded-2xl bg-slate-100 px-4 py-3 font-semibold text-slate-700 hover:bg-slate-200" data-purchased-launch-close>Cancelar</button>
+                    <button form="purchased-input-form" class="rounded-2xl bg-brand-500 px-4 py-3 font-semibold text-white hover:bg-brand-700">Salvar</button>
+                </div>
             </div>
-        </div>
-
-        <div class="mt-4 max-h-[72vh] overflow-y-auto pr-1" data-modal-scroll>
             <form id="purchased-input-form" method="post" action="{% if edit_input %}/insumos/comprados/{{ edit_input.id }}/editar{% else %}/insumos/comprados{% endif %}" enctype="multipart/form-data" class="grid gap-4" data-purchased-input-form>
                 <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                 <div class="rounded-[1.5rem] border border-brand-100 bg-brand-50/50 p-4">

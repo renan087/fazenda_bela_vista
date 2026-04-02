@@ -673,6 +673,11 @@ body {
     word-break: break-word;
 }
 
+.purchased-modal-heading,
+.purchased-modal-subtitle {
+    transition: opacity 0.18s ease, max-height 0.22s ease, margin 0.22s ease;
+}
+
 .stock-history-table tbody tr[data-stock-kind="entrada"] td:first-child {
     box-shadow: inset 3px 0 0 rgba(34, 197, 94, 0.35);
 }
@@ -857,6 +862,11 @@ body {
         margin-top: 0 !important;
         margin-bottom: 0 !important;
         pointer-events: none;
+    }
+
+    .purchased-modal-heading,
+    .purchased-modal-subtitle {
+        display: none;
     }
 
     .stock-page-header > div {
