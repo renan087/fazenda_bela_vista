@@ -272,18 +272,27 @@
         const launchModal = document.getElementById('assets-launch-modal');
         const openLaunchButton = document.querySelector('[data-assets-launch-open]');
         const closeLaunchButtons = Array.from(document.querySelectorAll('[data-assets-launch-close]'));
-        const clearAssetsEditState = () => {
+        const assetsRenderedInEditMode = {% if edit_asset %}true{% else %}false{% endif %};
+        const getAssetsCleanUrl = () => {
             const url = new URL(window.location.href);
-            if (!url.searchParams.has('edit_id')) return;
             url.searchParams.delete('edit_id');
-            window.history.replaceState({}, '', `${url.pathname}${url.search}${url.hash}`);
+            return `${url.pathname}${url.search}${url.hash}`;
+        };
+        const clearAssetsEditState = () => {
+            const nextUrl = getAssetsCleanUrl();
+            if (assetsRenderedInEditMode) {
+                window.location.href = nextUrl;
+                return false;
+            }
+            window.history.replaceState({}, '', nextUrl);
+            return true;
         };
         const openAssetsModal = () => {
-            clearAssetsEditState();
+            if (!clearAssetsEditState()) return;
             launchModal?.showModal();
         };
         const closeAssetsModal = () => {
-            clearAssetsEditState();
+            if (!clearAssetsEditState()) return;
             launchModal?.close();
         };
 
@@ -300,7 +309,7 @@
 
         {% if edit_asset %}
         if (launchModal) {
-            openAssetsModal();
+            launchModal.showModal();
         }
         {% endif %}
 

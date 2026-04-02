@@ -350,16 +350,26 @@
         const purchasedContextCollapse = document.querySelector('[data-purchased-context-collapse]');
         const purchasedContextToggleLabel = document.querySelector('[data-purchased-context-toggle-label]');
         const purchasedContextTogglePlus = document.querySelector('[data-purchased-context-toggle-plus]');
-        const clearPurchasedEditState = () => {
+        const purchasedRenderedInEditMode = {% if edit_input %}true{% else %}false{% endif %};
+        const getPurchasedCleanUrl = () => {
             const url = new URL(window.location.href);
-            if (!url.searchParams.has('edit_id')) return;
             url.searchParams.delete('edit_id');
-            window.history.replaceState({}, '', `${url.pathname}${url.search}${url.hash}`);
+            return `${url.pathname}${url.search}${url.hash}`;
+        };
+        const clearPurchasedEditState = () => {
+            const nextUrl = getPurchasedCleanUrl();
+            if (purchasedRenderedInEditMode) {
+                window.location.href = nextUrl;
+                return false;
+            }
+            window.history.replaceState({}, '', nextUrl);
+            return true;
         };
 
         if (launchModal) {
             openLaunchButton?.addEventListener('click', () => {
                 clearPurchasedEditState();
+                if (purchasedRenderedInEditMode) return;
                 launchModal.showModal();
             });
             closeLaunchButtons.forEach((button) => {
@@ -368,7 +378,7 @@
                     if (!event.currentTarget.hasAttribute('data-purchased-close-button') && !event.currentTarget.classList.contains('modal-close-button')) {
                         return;
                     }
-                    clearPurchasedEditState();
+                    if (!clearPurchasedEditState()) return;
                     launchModal.close();
                 });
             });
