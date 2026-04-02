@@ -118,6 +118,7 @@
     <section class="stock-panel rounded-[2rem] bg-white p-6 shadow-panel">
         <div class="stock-filter-bar mt-6">
             <form method="get" action="/insumos/estoque" class="grid gap-3 sm:grid-cols-2 xl:grid-cols-6" data-stock-filter-form>
+                <input type="hidden" name="stock_tab" value="{{ selected_stock_tab }}" data-stock-tab-hidden>
                 <label>
                     <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Tipo</span>
                     <select name="item_type" class="w-full rounded-xl border-slate-200 bg-white">
@@ -552,7 +553,19 @@
             });
 
             const stockFilterForm = document.querySelector('[data-stock-filter-form]');
+            const stockTabHiddenInput = stockFilterForm?.querySelector('[data-stock-tab-hidden]');
+            const movementTypeField = stockFilterForm?.querySelector('select[name="movement_type"]');
             stockFilterForm?.addEventListener('submit', () => {
+                const selectedMovementType = movementTypeField?.value || 'all';
+                if (stockTabHiddenInput) {
+                    if (selectedMovementType === 'entrada') {
+                        stockTabHiddenInput.value = 'entries';
+                    } else if (selectedMovementType === 'saida') {
+                        stockTabHiddenInput.value = 'outputs';
+                    } else {
+                        stockTabHiddenInput.value = activeTab;
+                    }
+                }
                 stockFilterForm.querySelectorAll('select[name="farm_id"], select[name="input_id"]').forEach((field) => {
                     if (!field.value) {
                         field.disabled = true;
