@@ -1,184 +1,281 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="grid gap-6 xl:grid-cols-[0.92fr_1.08fr] xl:items-start" data-modal-single-pane>
-    <section class="rounded-[2rem] bg-white p-6 shadow-panel xl:flex xl:max-h-[80vh] xl:min-h-0 xl:flex-col" data-history-edit-panel {% if edit_schedule %}data-history-edit-open="1"{% endif %}>
-        <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Agendamento</p>
-        <h3 class="mt-2 text-2xl font-semibold">{% if edit_schedule %}Editar fertilizacao programada{% else %}Agendar fertilizacao{% endif %}</h3>
-        <div class="mt-6 xl:min-h-0 xl:flex-1 xl:overflow-y-auto xl:pr-2">
-        <form method="post" action="{% if edit_schedule %}/fertilizacao/agendamentos/{{ edit_schedule.id }}/editar{% else %}/fertilizacao/agendamentos{% endif %}" class="grid gap-4" data-schedule-form>
-            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-            {% include "partials/launch_context.html" %}
-            <div class="grid gap-4 md:grid-cols-2">
-                <label>
-                    <span class="mb-2 block text-sm font-medium">Setor</span>
-                    <select name="plot_id" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required>
-                        {% for plot in plots %}
-                        <option value="{{ plot.id }}" {% if edit_schedule and edit_schedule.plot_id == plot.id %}selected{% endif %}>{{ plot.name }}{% if plot.farm %} • {{ plot.farm.name }}{% endif %}</option>
-                        {% endfor %}
-                    </select>
-                </label>
-                <label>
-                    <span class="mb-2 block text-sm font-medium">Data prevista</span>
-                    <input type="date" name="scheduled_date" value="{{ edit_schedule.scheduled_date.isoformat() if edit_schedule else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required>
-                </label>
+<div class="stock-page-shell space-y-6">
+    <section class="stock-page-header rounded-[2rem] p-5 shadow-panel">
+        <div class="flex flex-wrap items-start justify-between gap-4">
+            <div class="min-w-0 stock-page-header-intro" data-stock-header-intro>
+                <h2 class="stock-page-card-title">Agendamentos de fertilização</h2>
+                <p class="stock-page-card-subtitle">Planeje aplicações futuras, valide o estoque antes da conclusão e acompanhe o histórico sem sair do fluxo principal.</p>
             </div>
-            <label>
-                <span class="mb-2 block text-sm font-medium">Status</span>
-                <select name="status" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50">
-                    <option value="scheduled" {% if not edit_schedule or edit_schedule.status == 'scheduled' %}selected{% endif %}>Programado</option>
-                    <option value="completed" {% if edit_schedule and edit_schedule.status == 'completed' %}selected{% endif %}>Concluido</option>
-                </select>
-            </label>
-
-            <div class="rounded-[1.5rem] border border-slate-200 bg-slate-50 p-4">
-                <div class="flex items-center justify-between gap-3">
-                    <div>
-                        <p class="text-xs uppercase tracking-[0.3em] text-slate-400">Lista de insumos</p>
-                        <p class="mt-1 text-sm text-slate-600">Monte a aplicacao prevista e deixe o sistema validar o estoque antes da conclusao.</p>
-                    </div>
-                    <button type="button" class="rounded-xl bg-brand-500 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700" data-add-schedule-item>Adicionar insumo</button>
-                </div>
-                <div class="mt-4 space-y-4" data-schedule-items>
-                    {% for item in edit_schedule_items %}
-                    <div class="grid gap-3 rounded-[1.25rem] border border-slate-200 bg-white p-4 md:grid-cols-[1.3fr_0.8fr_0.8fr_auto]" data-schedule-item>
-                        <label>
-                            <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Insumo</span>
-                            <select name="input_id" class="min-h-[3rem] w-full rounded-xl border-slate-200 bg-slate-50" required>
-                                <option value="">Selecione</option>
-                                {% for input_item in inputs_catalog %}
-                                {% set stock = input_stock.get(input_item.id, {}) %}
-                                <option value="{{ input_item.id }}" {% if item.input_id|string == input_item.id|string %}selected{% endif %}>
-                                    {{ input_item.name }} • disponivel: {{ stock.get('available', 0) }} {{ stock.get('unit', input_item.default_unit) }}
-                                </option>
-                                {% endfor %}
-                            </select>
-                        </label>
-                        <label>
-                            <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Unidade</span>
-                            <select name="unit" class="min-h-[3rem] w-full rounded-xl border-slate-200 bg-slate-50">
-                                {% for unit in ['kg', 'g', 'L', 'ml', 'sacas', 'un'] %}
-                                <option value="{{ unit }}" {% if item.unit == unit %}selected{% endif %}>{{ unit }}</option>
-                                {% endfor %}
-                            </select>
-                        </label>
-                        <label>
-                            <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Quantidade</span>
-                            <input type="number" step="0.01" min="0" name="quantity" value="{{ item.quantity }}" class="min-h-[3rem] w-full rounded-xl border-slate-200 bg-slate-50" required>
-                        </label>
-                        <div class="flex items-end">
-                            <button type="button" class="rounded-xl bg-rose-600 px-3 py-3 text-xs font-medium text-white hover:bg-rose-700" data-remove-schedule-item>Remover</button>
-                        </div>
-                    </div>
-                    {% endfor %}
-                </div>
+            <div class="stock-header-actions stock-header-actions-top">
+                <button type="button" class="stock-action-button stock-action-button-primary" data-schedule-launch-open>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                        <path d="M12 5v14"/>
+                        <path d="M5 12h14"/>
+                    </svg>
+                    <span class="stock-action-button-label">Novo agendamento</span>
+                </button>
             </div>
-
-            <label>
-                <span class="mb-2 block text-sm font-medium">Observacoes</span>
-                <textarea name="notes" rows="4" class="w-full rounded-2xl border-slate-200 bg-slate-50">{{ edit_schedule.notes if edit_schedule else '' }}</textarea>
-            </label>
-            <div class="flex gap-3">
-                <button class="rounded-2xl bg-brand-500 px-4 py-3 font-semibold text-white hover:bg-brand-700">{% if edit_schedule %}Salvar alteracoes{% else %}Salvar agendamento{% endif %}</button>
-                <a href="/fertilizacao/agendamentos" class="rounded-2xl bg-slate-100 px-4 py-3 font-semibold text-slate-700 hover:bg-slate-200">Cancelar</a>
-            </div>
-        </form>
         </div>
     </section>
 
-    <section class="rounded-[2rem] bg-white p-6 shadow-panel xl:flex xl:max-h-[80vh] xl:min-h-0 xl:flex-col">
-        <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Planejamento</p>
-        <h3 class="mt-2 text-2xl font-semibold">Proximas aplicacoes</h3>
-        <div class="mt-6 space-y-4 xl:min-h-0 xl:flex-1 xl:overflow-y-auto xl:pr-2">
-            {% for schedule in schedules %}
-            {% set validation = schedule_validations.get(schedule.id, {'ok': True, 'shortages': []}) %}
-            {% set is_late = schedule.status != 'completed' and schedule.scheduled_date < today %}
-            <article class="rounded-[1.5rem] border border-slate-100 bg-slate-50 p-5">
-                <div class="flex flex-wrap items-start justify-between gap-4">
-                    <div>
-                        <div class="flex flex-wrap items-center gap-2">
-                            <button type="button" class="text-left text-lg font-semibold text-slate-900 transition hover:text-brand-700" data-history-view-trigger data-history-view-kicker="Agendamento" data-history-view-title="{{ schedule.plot.name if schedule.plot else 'Setor removido' }}" data-history-view-subtitle="Prevista para {{ schedule.scheduled_date }}" data-history-view-source="schedule-view-{{ schedule.id }}" data-history-view-edit-url="/fertilizacao/agendamentos?edit_id={{ schedule.id }}">{{ schedule.plot.name if schedule.plot else "Setor removido" }}</button>
-                            {% if schedule.status == 'completed' %}
-                            <span class="rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-700">Concluido</span>
-                            {% elif is_late %}
-                            <span class="rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-700">Atrasado</span>
-                            {% else %}
-                            <span class="rounded-full bg-sky-100 px-3 py-1 text-xs font-semibold text-sky-700">Programado</span>
-                            {% endif %}
-                            {% if not validation.ok %}
-                            <span class="rounded-full bg-rose-100 px-3 py-1 text-xs font-semibold text-rose-700">Estoque insuficiente</span>
-                            {% endif %}
-                        </div>
-                        <p class="mt-2 text-sm text-slate-500">Prevista para {{ schedule.scheduled_date }}</p>
-                    </div>
-                    <div class="flex flex-wrap gap-2">
-                        <a href="/fertilizacao/agendamentos?edit_id={{ schedule.id }}" class="rounded-xl bg-slate-900 px-3 py-2 text-xs font-medium text-white hover:bg-slate-700">Editar</a>
-                        {% if schedule.status != 'completed' %}
-                        <form method="post" action="/fertilizacao/agendamentos/{{ schedule.id }}/concluir">
-                            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                            <button class="rounded-xl bg-brand-500 px-3 py-2 text-xs font-medium text-white hover:bg-brand-700">Concluir</button>
-                        </form>
-                        {% endif %}
-                        <form method="post" action="/fertilizacao/agendamentos/{{ schedule.id }}/excluir" onsubmit="return confirm('Excluir este agendamento?');">
-                            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                            <button class="rounded-xl bg-rose-600 px-3 py-2 text-xs font-medium text-white hover:bg-rose-700">Excluir</button>
-                        </form>
-                    </div>
-                </div>
-                <div class="mt-4 space-y-2">
-                    {% for item in schedule.items %}
-                    <div class="rounded-2xl bg-white px-4 py-3 text-sm text-slate-700">
-                        <span class="font-medium">{{ item.input_catalog.name if item.input_catalog else item.name }}</span>
-                        <span class="text-slate-500"> • {{ item.quantity }} {{ item.unit }}</span>
-                    </div>
-                    {% endfor %}
-                </div>
-                {% if not validation.ok %}
-                <div class="mt-4 rounded-2xl bg-rose-50 px-4 py-3 text-sm text-rose-700">
-                    {% for shortage in validation.shortages %}
-                    <p>Necessario comprar {{ shortage.missing }} {{ shortage.unit }} de {{ shortage.name }}.</p>
-                    {% endfor %}
-                </div>
-                {% endif %}
-                <p class="mt-4 text-sm text-slate-500">{{ schedule.notes or "Sem observacoes." }}</p>
-                <template id="schedule-view-{{ schedule.id }}">
-                    <div class="grid gap-3 sm:grid-cols-2">
-                        <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Setor</p><p class="mt-2 text-sm font-medium text-slate-800">{{ schedule.plot.name if schedule.plot else "Setor removido" }}</p></div>
-                        <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Data prevista</p><p class="mt-2 text-sm font-medium text-slate-800">{{ schedule.scheduled_date }}</p></div>
-                        <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Status</p><p class="mt-2 text-sm font-medium text-slate-800">{{ schedule.status }}</p></div>
-                        <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Estoque</p><p class="mt-2 text-sm font-medium text-slate-800">{% if validation.ok %}Disponivel{% else %}Insuficiente{% endif %}</p></div>
-                    </div>
-                    <div class="rounded-2xl bg-slate-50 px-4 py-4">
-                        <p class="text-xs uppercase tracking-[0.2em] text-slate-400">Itens programados</p>
-                        <div class="mt-3 space-y-2">
-                            {% for item in schedule.items %}
-                            <div class="rounded-xl bg-white px-4 py-3 text-sm text-slate-700">
-                                <span class="font-medium">{{ item.input_catalog.name if item.input_catalog else item.name }}</span>
-                                <span class="text-slate-500"> • {{ item.quantity }} {{ item.unit }}</span>
+    <section class="stock-panel rounded-[2rem] bg-white p-6 shadow-panel" data-stock-fade-panel>
+        <div class="stock-history-toolbar">
+            <div class="flex flex-wrap items-center gap-2 text-xs text-slate-500">
+                <span class="rounded-full bg-slate-100 px-3 py-1.5 font-medium">{{ schedules_pagination.total }} registro(s)</span>
+                <span class="rounded-full bg-slate-100 px-3 py-1.5 font-medium">Safra ativa</span>
+            </div>
+            <div class="stock-search-field">
+                <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+                    <circle cx="8.5" cy="8.5" r="5.75"></circle>
+                    <path d="M13 13l4 4"></path>
+                </svg>
+                <input type="search" placeholder="Buscar setor, data, status, insumo ou observação" data-schedule-history-search>
+            </div>
+        </div>
+
+        <div class="stock-history-stage mt-4" data-schedule-history-stage>
+            <div class="space-y-4">
+                {% for schedule in schedules %}
+                {% set validation = schedule_validations.get(schedule.id, {'ok': True, 'shortages': []}) %}
+                {% set is_late = schedule.status != 'completed' and schedule.scheduled_date < today %}
+                <article class="rounded-[1.5rem] border border-slate-100 bg-slate-50 p-5 lg:p-4" data-schedule-history-row data-schedule-search-text="{{ (schedule.plot.name if schedule.plot else '') ~ ' ' ~ schedule.scheduled_date ~ ' ' ~ schedule.status ~ ' ' ~ (schedule.notes or '') }} {% for item in schedule.items %} {{ item.input_catalog.name if item.input_catalog else item.name }} {% endfor %}">
+                    <div class="flex flex-wrap items-start justify-between gap-4 lg:gap-3">
+                        <div class="min-w-0">
+                            <div class="flex flex-wrap items-center gap-2">
+                                <button type="button" class="text-left text-lg font-semibold text-slate-900 transition hover:text-brand-700 lg:text-base" data-history-view-trigger data-history-view-kicker="Agendamento" data-history-view-title="{{ schedule.plot.name if schedule.plot else 'Setor removido' }}" data-history-view-subtitle="Prevista para {{ schedule.scheduled_date }}" data-history-view-source="schedule-view-{{ schedule.id }}" data-history-view-edit-url="/fertilizacao/agendamentos?edit_id={{ schedule.id }}">{{ schedule.plot.name if schedule.plot else "Setor removido" }}</button>
+                                {% if schedule.status == 'completed' %}
+                                <span class="stock-level-badge stock-level-badge-ok">Concluído</span>
+                                {% elif is_late %}
+                                <span class="stock-level-badge stock-level-badge-low">Atrasado</span>
+                                {% else %}
+                                <span class="stock-level-badge stock-level-badge-ok bg-sky-100 text-sky-700">Programado</span>
+                                {% endif %}
+                                {% if not validation.ok %}
+                                <span class="stock-level-badge stock-level-badge-critical">Estoque insuficiente</span>
+                                {% endif %}
                             </div>
-                            {% endfor %}
+                            <div class="mt-2 grid gap-1 text-sm text-slate-600 lg:grid-cols-2 lg:gap-x-5 lg:gap-y-1 lg:text-[13px] lg:leading-5">
+                                <p><strong>Data:</strong> {{ schedule.scheduled_date }}</p>
+                                <p><strong>Status:</strong> {{ schedule.status.replace('_', ' ')|title }}</p>
+                            </div>
+                        </div>
+                        <div class="flex items-center gap-2 lg:gap-1.5">
+                            <a href="/fertilizacao/agendamentos?edit_id={{ schedule.id }}" class="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-100" title="Editar">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M12 20h9"/>
+                                    <path d="M16.5 3.5a2.1 2.1 0 1 1 3 3L7 19l-4 1 1-4Z"/>
+                                </svg>
+                            </a>
+                            {% if schedule.status != 'completed' %}
+                            <form method="post" action="/fertilizacao/agendamentos/{{ schedule.id }}/concluir">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                                <button class="rounded-xl bg-brand-500 px-3 py-2 text-xs font-medium text-white hover:bg-brand-700">Concluir</button>
+                            </form>
+                            {% endif %}
+                            <form method="post" action="/fertilizacao/agendamentos/{{ schedule.id }}/excluir" onsubmit="return confirm('Excluir este agendamento?');">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                                <button type="submit" class="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 text-rose-600 hover:bg-rose-50" title="Excluir">
+                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                        <path d="M3 6h18"/>
+                                        <path d="M8 6V4h8v2"/>
+                                        <path d="M19 6l-1 14H6L5 6"/>
+                                        <path d="M10 11v6"/>
+                                        <path d="M14 11v6"/>
+                                    </svg>
+                                </button>
+                            </form>
                         </div>
                     </div>
+
+                    <div class="mt-4 space-y-2">
+                        {% for item in schedule.items %}
+                        <div class="rounded-2xl bg-white px-4 py-3 text-sm text-slate-700">
+                            <span class="font-medium">{{ item.input_catalog.name if item.input_catalog else item.name }}</span>
+                            <span class="text-slate-500"> • {{ item.quantity }} {{ item.unit }}</span>
+                        </div>
+                        {% endfor %}
+                    </div>
+
                     {% if not validation.ok %}
-                    <div class="rounded-2xl bg-rose-50 px-4 py-4 text-sm text-rose-700">
+                    <div class="mt-4 rounded-2xl bg-rose-50 px-4 py-3 text-sm text-rose-700">
                         {% for shortage in validation.shortages %}
-                        <p>Necessario comprar {{ shortage.missing }} {{ shortage.unit }} de {{ shortage.name }}.</p>
+                        <p>Necessário comprar {{ shortage.missing }} {{ shortage.unit }} de {{ shortage.name }}.</p>
                         {% endfor %}
                     </div>
                     {% endif %}
-                    <div class="rounded-2xl bg-slate-50 px-4 py-4">
-                        <p class="text-xs uppercase tracking-[0.2em] text-slate-400">Observacoes</p>
-                        <p class="mt-2 text-sm text-slate-600">{{ schedule.notes or "Sem observacoes." }}</p>
+
+                    <div class="mt-4 text-sm text-slate-500">
+                        <span class="stock-history-note-clamp" title="{{ schedule.notes or 'Sem observações.' }}">{{ schedule.notes or "Sem observações." }}</span>
                     </div>
-                </template>
-            </article>
-            {% else %}
-            <p class="text-sm text-slate-500">Nenhum agendamento cadastrado.</p>
-            {% endfor %}
+
+                    <template id="schedule-view-{{ schedule.id }}">
+                        <div class="grid gap-3 sm:grid-cols-2">
+                            <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Setor</p><p class="mt-2 text-sm font-medium text-slate-800">{{ schedule.plot.name if schedule.plot else "Setor removido" }}</p></div>
+                            <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Data prevista</p><p class="mt-2 text-sm font-medium text-slate-800">{{ schedule.scheduled_date }}</p></div>
+                            <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Status</p><p class="mt-2 text-sm font-medium text-slate-800">{{ schedule.status.replace('_', ' ')|title }}</p></div>
+                            <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Estoque</p><p class="mt-2 text-sm font-medium text-slate-800">{% if validation.ok %}Disponível{% else %}Insuficiente{% endif %}</p></div>
+                        </div>
+                        <div class="rounded-2xl bg-slate-50 px-4 py-4">
+                            <p class="text-xs uppercase tracking-[0.2em] text-slate-400">Itens programados</p>
+                            <div class="mt-3 space-y-2">
+                                {% for item in schedule.items %}
+                                <div class="rounded-xl bg-white px-4 py-3 text-sm text-slate-700">
+                                    <span class="font-medium">{{ item.input_catalog.name if item.input_catalog else item.name }}</span>
+                                    <span class="text-slate-500"> • {{ item.quantity }} {{ item.unit }}</span>
+                                </div>
+                                {% endfor %}
+                            </div>
+                        </div>
+                        {% if not validation.ok %}
+                        <div class="rounded-2xl bg-rose-50 px-4 py-4 text-sm text-rose-700">
+                            {% for shortage in validation.shortages %}
+                            <p>Necessário comprar {{ shortage.missing }} {{ shortage.unit }} de {{ shortage.name }}.</p>
+                            {% endfor %}
+                        </div>
+                        {% endif %}
+                        <div class="rounded-2xl bg-slate-50 px-4 py-4">
+                            <p class="text-xs uppercase tracking-[0.2em] text-slate-400">Observações</p>
+                            <p class="mt-2 text-sm text-slate-600">{{ schedule.notes or "Sem observações." }}</p>
+                        </div>
+                    </template>
+                </article>
+                {% else %}
+                <p class="text-sm text-slate-500">Nenhum agendamento cadastrado.</p>
+                {% endfor %}
+            </div>
+            <p class="stock-search-empty mt-4 hidden text-sm text-slate-500" data-schedule-search-empty>Nenhum agendamento corresponde à busca digitada.</p>
             {% with pagination=schedules_pagination %}{% include "partials/history_pagination.html" %}{% endwith %}
         </div>
     </section>
 </div>
+
 {% include "partials/history_view_modal.html" %}
+
+<dialog id="schedule-launch-modal" class="app-modal rounded-[2rem] p-0 shadow-2xl w-full max-w-4xl overflow-hidden">
+    <div class="bg-white p-6 sm:p-8">
+        <div class="flex items-start justify-between gap-4">
+            <div class="min-w-0">
+                <p class="text-xs uppercase tracking-[0.35em] text-slate-400">{% if edit_schedule %}Editar agendamento{% else %}Novo agendamento{% endif %}</p>
+                <h3 class="mt-2 text-2xl font-semibold purchased-modal-heading">{% if edit_schedule %}Editar fertilização programada{% else %}Agendar fertilização{% endif %}</h3>
+                <p class="mt-2 text-sm text-slate-500 purchased-modal-subtitle">Monte a aplicação prevista, valide o estoque e acompanhe as próximas intervenções sem sair do histórico principal.</p>
+            </div>
+            <button type="button" class="modal-close-button" aria-label="Fechar" data-schedule-launch-close>
+                <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M18 6 6 18"/>
+                    <path d="m6 6 12 12"/>
+                </svg>
+            </button>
+        </div>
+
+        <div class="mt-6 max-h-[72vh] overflow-y-auto pr-1" data-modal-scroll>
+            <form id="schedule-form" method="post" action="{% if edit_schedule %}/fertilizacao/agendamentos/{{ edit_schedule.id }}/editar{% else %}/fertilizacao/agendamentos{% endif %}" class="grid gap-4" data-schedule-form>
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+
+                <div class="rounded-[1.5rem] border border-brand-100 bg-brand-50/50 p-4">
+                    <div class="flex flex-wrap items-start justify-between gap-4">
+                        <div class="min-w-0">
+                            <p class="text-xs uppercase tracking-[0.3em] text-slate-400">Contexto do lançamento</p>
+                            <p class="mt-2 text-sm text-slate-500">Use este bloco para confirmar a fazenda e a safra ativas antes de salvar.</p>
+                        </div>
+                        <button type="button" class="stock-summary-toggle" data-schedule-context-toggle aria-expanded="false">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                                <path d="M5 12h14"/>
+                                <path d="M12 5v14" data-schedule-context-toggle-plus></path>
+                            </svg>
+                            <span data-schedule-context-toggle-label>Expandir</span>
+                        </button>
+                    </div>
+                    <div class="stock-summary-collapse" data-schedule-context-collapse>
+                        <div class="stock-summary-collapse-inner">
+                            <div class="mt-4">
+                                {% include "partials/launch_context.html" %}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="sticky top-0 z-10 -mx-1 bg-white/95 px-1 py-1 backdrop-blur">
+                    <div class="flex flex-wrap justify-end gap-3 rounded-[1.5rem] px-2 py-2 sm:px-3">
+                        <button type="button" class="rounded-2xl bg-slate-100 px-4 py-3 font-semibold text-slate-700 hover:bg-slate-200" data-schedule-launch-close>Cancelar</button>
+                        <button form="schedule-form" class="rounded-2xl bg-brand-500 px-4 py-3 font-semibold text-white hover:bg-brand-700">{% if edit_schedule %}Salvar{% else %}Salvar agendamento{% endif %}</button>
+                    </div>
+                </div>
+
+                <div class="grid gap-4 md:grid-cols-2">
+                    <label>
+                        <span class="mb-2 block text-sm font-medium">Setor</span>
+                        <select name="plot_id" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required>
+                            {% for plot in plots %}
+                            <option value="{{ plot.id }}" {% if edit_schedule and edit_schedule.plot_id == plot.id %}selected{% endif %}>{{ plot.name }}{% if plot.farm %} • {{ plot.farm.name }}{% endif %}</option>
+                            {% endfor %}
+                        </select>
+                    </label>
+                    <label>
+                        <span class="mb-2 block text-sm font-medium">Data prevista</span>
+                        <input type="date" name="scheduled_date" value="{{ edit_schedule.scheduled_date.isoformat() if edit_schedule else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required>
+                    </label>
+                </div>
+
+                <label>
+                    <span class="mb-2 block text-sm font-medium">Status</span>
+                    <select name="status" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50">
+                        <option value="scheduled" {% if not edit_schedule or edit_schedule.status == 'scheduled' %}selected{% endif %}>Programado</option>
+                        <option value="completed" {% if edit_schedule and edit_schedule.status == 'completed' %}selected{% endif %}>Concluído</option>
+                    </select>
+                </label>
+
+                <div class="rounded-[1.5rem] border border-slate-200 bg-slate-50 p-4">
+                    <div class="flex flex-wrap items-center justify-between gap-3">
+                        <div>
+                            <p class="text-xs uppercase tracking-[0.3em] text-slate-400">Lista de insumos</p>
+                            <p class="mt-1 text-sm text-slate-600">Monte a aplicação prevista e deixe o sistema validar o estoque antes da conclusão.</p>
+                        </div>
+                        <button type="button" class="rounded-xl bg-brand-500 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700" data-add-schedule-item>Adicionar insumo</button>
+                    </div>
+                    <div class="mt-4 space-y-4" data-schedule-items>
+                        {% for item in edit_schedule_items %}
+                        <div class="grid gap-3 rounded-[1.25rem] border border-slate-200 bg-white p-4 md:grid-cols-[1.3fr_0.8fr_0.8fr_auto]" data-schedule-item>
+                            <label>
+                                <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Insumo</span>
+                                <select name="input_id" class="min-h-[3rem] w-full rounded-xl border-slate-200 bg-slate-50" required>
+                                    <option value="">Selecione</option>
+                                    {% for input_item in inputs_catalog %}
+                                    {% set stock = input_stock.get(input_item.id, {}) %}
+                                    <option value="{{ input_item.id }}" {% if item.input_id|string == input_item.id|string %}selected{% endif %}>
+                                        {{ input_item.name }} • disponivel: {{ stock.get('available', 0) }} {{ stock.get('unit', input_item.default_unit) }}
+                                    </option>
+                                    {% endfor %}
+                                </select>
+                            </label>
+                            <label>
+                                <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Unidade</span>
+                                <select name="unit" class="min-h-[3rem] w-full rounded-xl border-slate-200 bg-slate-50">
+                                    {% for unit in ['kg', 'g', 'L', 'ml', 'sacas', 'un'] %}
+                                    <option value="{{ unit }}" {% if item.unit == unit %}selected{% endif %}>{{ unit }}</option>
+                                    {% endfor %}
+                                </select>
+                            </label>
+                            <label>
+                                <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Quantidade</span>
+                                <input type="number" step="0.01" min="0" name="quantity" value="{{ item.quantity }}" class="min-h-[3rem] w-full rounded-xl border-slate-200 bg-slate-50" required>
+                            </label>
+                            <div class="flex items-end">
+                                <button type="button" class="rounded-xl bg-rose-600 px-3 py-3 text-xs font-medium text-white hover:bg-rose-700" data-remove-schedule-item>Remover</button>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+
+                <label>
+                    <span class="mb-2 block text-sm font-medium">Observações</span>
+                    <textarea name="notes" rows="4" class="w-full rounded-2xl border-slate-200 bg-slate-50">{{ edit_schedule.notes if edit_schedule else '' }}</textarea>
+                </label>
+            </form>
+        </div>
+    </div>
+</dialog>
 
 <template id="schedule-item-template">
     <div class="grid gap-3 rounded-[1.25rem] border border-slate-200 bg-white p-4 md:grid-cols-[1.3fr_0.8fr_0.8fr_auto]" data-schedule-item>
@@ -214,6 +311,177 @@
 
 <script>
     (() => {
+        const launchModal = document.getElementById('schedule-launch-modal');
+        const openLaunchButton = document.querySelector('[data-schedule-launch-open]');
+        const closeLaunchButtons = Array.from(document.querySelectorAll('[data-schedule-launch-close]'));
+        const contextToggle = document.querySelector('[data-schedule-context-toggle]');
+        const contextCollapse = document.querySelector('[data-schedule-context-collapse]');
+        const contextToggleLabel = document.querySelector('[data-schedule-context-toggle-label]');
+        const contextTogglePlus = document.querySelector('[data-schedule-context-toggle-plus]');
+        const searchInput = document.querySelector('[data-schedule-history-search]');
+        const historyStage = document.querySelector('[data-schedule-history-stage]');
+        const emptyState = document.querySelector('[data-schedule-search-empty]');
+        const scheduleRenderedInEditMode = {% if edit_schedule %}true{% else %}false{% endif %};
+        const getScheduleCleanUrl = () => {
+            const url = new URL(window.location.href);
+            url.searchParams.delete('edit_id');
+            return `${url.pathname}${url.search}${url.hash}`;
+        };
+        const clearScheduleEditState = () => {
+            const nextUrl = getScheduleCleanUrl();
+            if (scheduleRenderedInEditMode) {
+                window.location.href = nextUrl;
+                return false;
+            }
+            window.history.replaceState({}, '', nextUrl);
+            return true;
+        };
+
+        const openScheduleModal = () => {
+            if (!clearScheduleEditState()) return;
+            launchModal?.showModal();
+        };
+
+        const closeScheduleModal = () => {
+            if (!clearScheduleEditState()) return;
+            launchModal?.close();
+        };
+
+        if (launchModal) {
+            openLaunchButton?.addEventListener('click', openScheduleModal);
+            closeLaunchButtons.forEach((button) => {
+                button.addEventListener('click', closeScheduleModal);
+            });
+            launchModal.addEventListener('cancel', (event) => {
+                event.preventDefault();
+                clearScheduleEditState();
+            });
+            {% if edit_schedule %}
+            launchModal.showModal();
+            {% endif %}
+        }
+
+        if (contextToggle && contextCollapse && contextToggleLabel) {
+            const setContextExpanded = (expanded) => {
+                contextCollapse.classList.toggle('is-expanded', expanded);
+                contextToggle.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+                contextToggleLabel.textContent = expanded ? 'Recolher' : 'Expandir';
+                if (contextTogglePlus) {
+                    contextTogglePlus.classList.toggle('hidden', expanded);
+                }
+            };
+
+            setContextExpanded(false);
+            contextToggle.addEventListener('click', () => {
+                const expanded = contextToggle.getAttribute('aria-expanded') === 'true';
+                setContextExpanded(!expanded);
+            });
+        }
+
+        const applyScheduleHistorySearch = () => {
+            if (!historyStage) return;
+            const rows = Array.from(historyStage.querySelectorAll('[data-schedule-history-row]'));
+            const query = (searchInput?.value || '').trim().toLowerCase();
+            let visibleCount = 0;
+
+            rows.forEach((row) => {
+                const haystack = (row.dataset.scheduleSearchText || '').toLowerCase();
+                const matches = !query || haystack.includes(query);
+                row.classList.toggle('hidden', !matches);
+                if (matches) visibleCount += 1;
+            });
+
+            emptyState?.classList.toggle('hidden', visibleCount !== 0 || !query);
+        };
+
+        searchInput?.addEventListener('input', applyScheduleHistorySearch);
+        applyScheduleHistorySearch();
+
+        const stickyHeader = document.querySelector('.stock-page-header');
+        const headerIntro = stickyHeader?.querySelector('[data-stock-header-intro]');
+        const fadingPanels = Array.from(document.querySelectorAll('[data-stock-fade-panel]'));
+        const mobileCompactMq = window.matchMedia('(max-width: 899px)');
+        const parseStickyTopPx = (el) => {
+            const raw = getComputedStyle(el).top;
+            if (!raw || raw === 'auto') return 0;
+            const pxMatch = /^([\d.]+)px$/.exec(raw);
+            if (pxMatch) return parseFloat(pxMatch[1]);
+            const remMatch = /^([\d.]+)rem$/.exec(raw);
+            if (remMatch) {
+                const rootPx = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
+                return parseFloat(remMatch[1]) * rootPx;
+            }
+            return 0;
+        };
+
+        let compactRaf = null;
+        const syncScheduleHeaderCompact = () => {
+            compactRaf = null;
+            if (!stickyHeader) return;
+            if (!mobileCompactMq.matches) {
+                stickyHeader.classList.remove('is-compact');
+                if (headerIntro) headerIntro.removeAttribute('aria-hidden');
+                return;
+            }
+            const topPx = parseStickyTopPx(stickyHeader);
+            const rect = stickyHeader.getBoundingClientRect();
+            const isCompact = stickyHeader.classList.contains('is-compact');
+            let nextCompact = isCompact;
+            if (rect.top <= topPx + 2) nextCompact = true;
+            else if (rect.top > topPx + 8) nextCompact = false;
+            stickyHeader.classList.toggle('is-compact', nextCompact);
+            if (headerIntro) {
+                headerIntro.setAttribute('aria-hidden', nextCompact ? 'true' : 'false');
+            }
+        };
+
+        const scheduleScheduleHeaderCompact = () => {
+            if (compactRaf !== null) return;
+            compactRaf = window.requestAnimationFrame(syncScheduleHeaderCompact);
+        };
+
+        if (stickyHeader) {
+            window.addEventListener('scroll', scheduleScheduleHeaderCompact, { passive: true });
+            window.addEventListener('resize', scheduleScheduleHeaderCompact);
+            mobileCompactMq.addEventListener('change', scheduleScheduleHeaderCompact);
+            scheduleScheduleHeaderCompact();
+        }
+
+        let fadeRafId = null;
+        const updateFadingPanels = () => {
+            fadeRafId = null;
+            const stickyRect = stickyHeader?.getBoundingClientRect();
+            if (!stickyRect) return;
+            const stickyBottom = stickyRect.bottom;
+
+            fadingPanels.forEach((panel) => {
+                const panelRect = panel.getBoundingClientRect();
+                const panelTop = panelRect.top;
+                const panelHeight = panelRect.height;
+                if (panelTop >= stickyBottom || panelHeight <= 1) {
+                    panel.style.setProperty('--stock-fade-cutoff', '0px');
+                    panel.style.setProperty('--stock-fade-feather-end', '0px');
+                    return;
+                }
+
+                const overlap = Math.min(Math.max(stickyBottom - panelTop, 0), panelHeight);
+                const featherBand = Math.min(80, Math.max(22, overlap * 0.45 + 16));
+                panel.style.setProperty('--stock-fade-cutoff', `${overlap.toFixed(2)}px`);
+                panel.style.setProperty('--stock-fade-feather-end', `${(overlap + featherBand).toFixed(2)}px`);
+            });
+        };
+
+        const scheduleFadeUpdate = () => {
+            if (fadeRafId !== null) return;
+            fadeRafId = window.requestAnimationFrame(updateFadingPanels);
+        };
+
+        if (stickyHeader && fadingPanels.length) {
+            window.addEventListener('scroll', scheduleFadeUpdate, { passive: true });
+            window.addEventListener('resize', scheduleFadeUpdate);
+            scheduleFadeUpdate();
+        }
+
         const wrapper = document.querySelector('[data-schedule-items]');
         const addButton = document.querySelector('[data-add-schedule-item]');
         const template = document.getElementById('schedule-item-template');
