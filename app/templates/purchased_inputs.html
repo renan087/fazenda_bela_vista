@@ -69,7 +69,7 @@
                                 <th class="px-4 py-3 font-medium">Tipo</th>
                                 <th class="px-4 py-3 font-medium">Fazenda</th>
                                 <th class="px-4 py-3 font-medium">Quantidade</th>
-                                <th class="px-4 py-3 font-medium">Saldo do lote</th>
+                                <th class="px-4 py-3 font-medium">Saldo</th>
                                 <th class="px-4 py-3 font-medium">Valor</th>
                                 <th class="px-4 py-3 font-medium">Observações</th>
                                 <th class="px-4 py-3 font-medium text-right">Ações</th>
@@ -81,8 +81,8 @@
                                 <td class="px-4 py-3">
                                     <span class="stock-movement-chip stock-movement-chip-entry">Entrada</span>
                                 </td>
-                                <td class="px-4 py-3">
-                                    <p>{{ item.purchase_date or "-" }}</p>
+                                <td class="whitespace-nowrap px-4 py-3">
+                                    <p>{{ item.purchase_date.strftime('%d-%m-%Y') if item.purchase_date else "-" }}</p>
                                 </td>
                                 <td class="px-4 py-3 font-medium text-slate-900">
                                     <button type="button" class="text-left transition hover:text-brand-700" data-history-view-trigger data-history-view-kicker="Entrada" data-history-view-title="{{ item.input_catalog.name if item.input_catalog else item.name }}" data-history-view-subtitle="{{ item.farm.name if item.farm else 'Sem fazenda vinculada' }}" data-history-view-source="purchased-input-view-{{ item.id }}" data-history-view-edit-url="/insumos/comprados?edit_id={{ item.id }}">{{ item.input_catalog.name if item.input_catalog else item.name }}</button>
@@ -112,9 +112,11 @@
                                 <td class="px-4 py-3">{{ 'Combustivel' if item.input_catalog and item.input_catalog.item_type == 'combustivel' else 'Insumo agricola' }}</td>
                                 <td class="px-4 py-3">{{ item.farm.name if item.farm else "Sem vínculo" }}</td>
                                 <td class="px-4 py-3">{{ item.total_quantity }} {{ item.package_unit }}</td>
-                                <td class="px-4 py-3">{{ item.available_quantity }} {{ item.package_unit }}</td>
-                                <td class="px-4 py-3">R$ {{ item.total_cost }}</td>
-                                <td class="px-4 py-3 text-slate-500">{{ item.notes or "-" }}</td>
+                                <td class="px-4 py-3 whitespace-nowrap">{{ item.available_quantity }} {{ item.package_unit }}</td>
+                                <td class="px-4 py-3 whitespace-nowrap">R$ {{ item.total_cost }}</td>
+                                <td class="px-4 py-3 text-slate-500">
+                                    <span class="stock-history-note-clamp" title="{{ item.notes or '-' }}">{{ item.notes or "-" }}</span>
+                                </td>
                                 <td class="px-4 py-3">
                                     <div class="flex items-center justify-end gap-2">
                                         <a href="/insumos/comprados?edit_id={{ item.id }}" class="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-100" title="Editar">
@@ -172,8 +174,8 @@
                                 <td class="px-4 py-3">
                                     <span class="stock-movement-chip stock-movement-chip-output">Saída</span>
                                 </td>
-                                <td class="px-4 py-3">
-                                    <p>{{ output.movement_date }}</p>
+                                <td class="whitespace-nowrap px-4 py-3">
+                                    <p>{{ output.movement_date.strftime('%d-%m-%Y') if output.movement_date else "-" }}</p>
                                 </td>
                                 <td class="px-4 py-3 font-medium text-slate-900">
                                     <button type="button" class="text-left transition hover:text-brand-700" data-history-view-trigger data-history-view-kicker="Saida" data-history-view-title="{{ output.input_catalog.name if output.input_catalog else 'Insumo removido' }}" data-history-view-subtitle="{{ output.farm.name if output.farm else 'Sem fazenda vinculada' }}{% if output.plot %} • {{ output.plot.name }}{% endif %}" data-history-view-source="stock-output-view-{{ output.id }}">{{ output.input_catalog.name if output.input_catalog else "Insumo removido" }}</button>
@@ -193,9 +195,11 @@
                                 <td class="px-4 py-3">{{ 'Combustivel' if output.input_catalog and output.input_catalog.item_type == 'combustivel' else 'Insumo agricola' }}</td>
                                 <td class="px-4 py-3">{{ output.origin }}</td>
                                 <td class="px-4 py-3">{{ output.farm.name if output.farm else "Sem vínculo" }}{% if output.plot %} / {{ output.plot.name }}{% endif %}</td>
-                                <td class="px-4 py-3">{{ output.quantity }} {{ output.unit }}</td>
-                                <td class="px-4 py-3">{% if output.total_cost is not none %}R$ {{ output.total_cost }}{% else %}-{% endif %}</td>
-                                <td class="px-4 py-3 text-slate-500">{{ output.notes or "-" }}</td>
+                                <td class="px-4 py-3 whitespace-nowrap">{{ output.quantity }} {{ output.unit }}</td>
+                                <td class="px-4 py-3 whitespace-nowrap">{% if output.total_cost is not none %}R$ {{ output.total_cost }}{% else %}-{% endif %}</td>
+                                <td class="px-4 py-3 text-slate-500">
+                                    <span class="stock-history-note-clamp" title="{{ output.notes or '-' }}">{{ output.notes or "-" }}</span>
+                                </td>
                             </tr>
                             {% else %}
                             <tr><td colspan="9" class="px-4 py-6 text-center text-slate-500">Nenhuma saída encontrada.</td></tr>
