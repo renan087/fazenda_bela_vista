@@ -36,8 +36,8 @@
                     <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Cadastro patrimonial</p>
                     <h3 class="mt-2 text-2xl font-semibold">Equipamentos cadastrados</h3>
                 </div>
-                <form method="get" action="/insumos/patrimonio" class="flex flex-wrap gap-3">
-                    <select name="farm_id" class="min-h-[3.25rem] rounded-2xl border-slate-200 bg-slate-50 px-4">
+                <form method="get" action="/insumos/patrimonio" class="assets-filter-form flex flex-wrap gap-3">
+                    <select name="farm_id" class="assets-filter-select min-h-[3.25rem] rounded-2xl border-slate-200 bg-slate-50 px-4">
                         <option value="">Todas as fazendas</option>
                         {% for farm in farms %}
                         <option value="{{ farm.id }}" {% if selected_farm_id == farm.id %}selected{% endif %}>{{ farm.name }}</option>
@@ -68,11 +68,24 @@
                                 </p>
                             </div>
                         </div>
-                        <div class="flex gap-2 lg:gap-1.5">
-                            <a href="/insumos/patrimonio?edit_id={{ asset.id }}{% if selected_farm_id %}&farm_id={{ selected_farm_id }}{% endif %}" class="rounded-xl bg-slate-900 px-3 py-2 text-xs font-medium text-white hover:bg-slate-700 lg:px-3 lg:py-1.5">Editar</a>
+                        <div class="flex items-center gap-2 lg:gap-1.5">
+                            <a href="/insumos/patrimonio?edit_id={{ asset.id }}{% if selected_farm_id %}&farm_id={{ selected_farm_id }}{% endif %}" class="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-100" title="Editar">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M12 20h9"/>
+                                    <path d="M16.5 3.5a2.1 2.1 0 1 1 3 3L7 19l-4 1 1-4Z"/>
+                                </svg>
+                            </a>
                             <form method="post" action="/insumos/patrimonio/{{ asset.id }}/excluir" onsubmit="return confirm('Excluir o patrimônio {{ asset.name }}?');">
                                 <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                                <button class="rounded-xl bg-rose-600 px-3 py-2 text-xs font-medium text-white hover:bg-rose-700 lg:px-3 lg:py-1.5">Excluir</button>
+                                <button type="submit" class="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 text-rose-600 hover:bg-rose-50" title="Excluir">
+                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                        <path d="M3 6h18"/>
+                                        <path d="M8 6V4h8v2"/>
+                                        <path d="M19 6l-1 14H6L5 6"/>
+                                        <path d="M10 11v6"/>
+                                        <path d="M14 11v6"/>
+                                    </svg>
+                                </button>
                             </form>
                         </div>
                     </div>

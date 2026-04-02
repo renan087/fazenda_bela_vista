@@ -710,6 +710,28 @@ body {
     pointer-events: none;
 }
 
+.assets-filter-form {
+    width: 100%;
+    align-items: stretch;
+}
+
+.assets-filter-select {
+    flex: 1 1 20rem;
+    min-width: min(100%, 20rem);
+    max-width: 100%;
+}
+
+@media (min-width: 900px) {
+    .assets-filter-form {
+        width: auto;
+    }
+
+    .assets-filter-select {
+        flex-basis: 24rem;
+        min-width: 24rem;
+    }
+}
+
 @media (min-width: 900px) {
     .stock-layout {
         grid-template-columns: minmax(0, 1.65fr) minmax(20rem, 0.9fr);
