@@ -3,7 +3,7 @@
 <div class="stock-page-shell space-y-6">
     <section class="stock-page-header rounded-[2rem] p-5 shadow-panel">
         <div class="flex flex-wrap items-start justify-between gap-4">
-            <div class="min-w-0">
+            <div class="min-w-0 stock-page-header-intro" data-stock-header-intro>
                 <h2 class="stock-page-card-title">Patrimônio e Equipamentos</h2>
                 <p class="stock-page-card-subtitle">Cadastre e acompanhe equipamentos e bens patrimoniais sem misturar esses registros com o estoque consumível.</p>
             </div>
@@ -426,7 +426,55 @@
         });
 
         const stickyHeader = document.querySelector('.stock-page-header');
+        const headerIntro = stickyHeader?.querySelector('[data-stock-header-intro]');
         const fadingPanels = Array.from(document.querySelectorAll('[data-stock-fade-panel]'));
+        const mobileCompactMq = window.matchMedia('(max-width: 899px)');
+        const parseStickyTopPx = (el) => {
+            const raw = getComputedStyle(el).top;
+            if (!raw || raw === 'auto') return 0;
+            const pxMatch = /^([\d.]+)px$/.exec(raw);
+            if (pxMatch) return parseFloat(pxMatch[1]);
+            const remMatch = /^([\d.]+)rem$/.exec(raw);
+            if (remMatch) {
+                const rootPx = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
+                return parseFloat(remMatch[1]) * rootPx;
+            }
+            return 0;
+        };
+
+        let compactRaf = null;
+        const syncAssetsHeaderCompact = () => {
+            compactRaf = null;
+            if (!stickyHeader) return;
+            if (!mobileCompactMq.matches) {
+                stickyHeader.classList.remove('is-compact');
+                if (headerIntro) headerIntro.removeAttribute('aria-hidden');
+                return;
+            }
+            const topPx = parseStickyTopPx(stickyHeader);
+            const rect = stickyHeader.getBoundingClientRect();
+            const isCompact = stickyHeader.classList.contains('is-compact');
+            let nextCompact = isCompact;
+            if (rect.top <= topPx + 2) nextCompact = true;
+            else if (rect.top > topPx + 8) nextCompact = false;
+            stickyHeader.classList.toggle('is-compact', nextCompact);
+            if (headerIntro) {
+                headerIntro.setAttribute('aria-hidden', nextCompact ? 'true' : 'false');
+            }
+        };
+
+        const scheduleAssetsHeaderCompact = () => {
+            if (compactRaf !== null) return;
+            compactRaf = window.requestAnimationFrame(syncAssetsHeaderCompact);
+        };
+
+        if (stickyHeader) {
+            window.addEventListener('scroll', scheduleAssetsHeaderCompact, { passive: true });
+            window.addEventListener('resize', scheduleAssetsHeaderCompact);
+            mobileCompactMq.addEventListener('change', scheduleAssetsHeaderCompact);
+            scheduleAssetsHeaderCompact();
+        }
+
         if (!stickyHeader || !fadingPanels.length) return;
 
         let rafId = null;
