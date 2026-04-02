@@ -42,14 +42,18 @@ class FarmRepository:
     def list_users(self) -> list[User]:
         return self.db.query(User).order_by(User.name.asc(), User.email.asc()).all()
 
-    def list_backup_runs(self, limit: int = 20) -> list[BackupRun]:
-        return (
+    def count_backup_runs(self) -> int:
+        return self.db.query(func.count(BackupRun.id)).scalar() or 0
+
+    def list_backup_runs(self, limit: int = 20, offset: int = 0) -> list[BackupRun]:
+        query = (
             self.db.query(BackupRun)
             .options(joinedload(BackupRun.initiated_by_user))
             .order_by(BackupRun.started_at.desc(), BackupRun.id.desc())
-            .limit(limit)
-            .all()
         )
+        if offset:
+            query = query.offset(offset)
+        return query.limit(limit).all()
 
     def get_user(self, user_id: int) -> User | None:
         return self.db.query(User).filter(User.id == user_id).first()

@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="grid gap-6 xl:grid-cols-[0.8fr_1.2fr]">
+<div class="space-y-6">
     <section class="rounded-[2rem] bg-white p-6 shadow-panel">
         <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Backups</p>
         <h3 class="mt-2 text-2xl font-semibold">Execucao manual</h3>
@@ -32,8 +32,15 @@
     </section>
 
     <section class="rounded-[2rem] bg-white p-6 shadow-panel">
-        <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Historico</p>
-        <h3 class="mt-2 text-2xl font-semibold">Ultimas execucoes</h3>
+        <div class="flex flex-wrap items-end justify-between gap-3">
+            <div>
+                <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Historico</p>
+                <h3 class="mt-2 text-2xl font-semibold">Ultimas execucoes</h3>
+            </div>
+            <p class="text-sm text-slate-500">
+                {{ backup_total_runs }} registro(s) • pagina {{ backup_page }} de {{ backup_total_pages }}
+            </p>
+        </div>
         <div class="mt-5 overflow-hidden rounded-[1.5rem] border border-slate-200 bg-slate-50/80">
             <div class="hidden border-b border-slate-200/80 bg-white/70 px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-400 md:grid md:grid-cols-[0.95fr_1.3fr_0.7fr_0.7fr_0.8fr_1.15fr] md:gap-3">
                 <span>Execucao</span>
@@ -124,6 +131,46 @@
             {% endfor %}
             </div>
         </div>
+        {% if backup_total_pages > 1 %}
+        <div class="mt-5 flex flex-wrap items-center justify-between gap-3">
+            <p class="text-sm text-slate-500">
+                Exibindo pagina {{ backup_page }} de {{ backup_total_pages }}
+            </p>
+            <div class="flex flex-wrap items-center gap-2">
+                {% if backup_has_prev %}
+                <a href="/backups?page={{ backup_page - 1 }}" class="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-600 transition hover:border-slate-300 hover:text-slate-900">
+                    Anterior
+                </a>
+                {% else %}
+                <span class="rounded-xl border border-slate-100 bg-slate-100 px-4 py-2 text-sm font-medium text-slate-400">
+                    Anterior
+                </span>
+                {% endif %}
+
+                {% for item_page in range(1, backup_total_pages + 1) %}
+                    {% if item_page == backup_page %}
+                    <span class="rounded-xl bg-brand-500 px-4 py-2 text-sm font-semibold text-white">{{ item_page }}</span>
+                    {% elif item_page == 1 or item_page == backup_total_pages or (item_page >= backup_page - 1 and item_page <= backup_page + 1) %}
+                    <a href="/backups?page={{ item_page }}" class="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-600 transition hover:border-slate-300 hover:text-slate-900">
+                        {{ item_page }}
+                    </a>
+                    {% elif item_page == backup_page - 2 or item_page == backup_page + 2 %}
+                    <span class="px-1 text-sm text-slate-400">...</span>
+                    {% endif %}
+                {% endfor %}
+
+                {% if backup_has_next %}
+                <a href="/backups?page={{ backup_page + 1 }}" class="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-600 transition hover:border-slate-300 hover:text-slate-900">
+                    Proxima
+                </a>
+                {% else %}
+                <span class="rounded-xl border border-slate-100 bg-slate-100 px-4 py-2 text-sm font-medium text-slate-400">
+                    Proxima
+                </span>
+                {% endif %}
+            </div>
+        </div>
+        {% endif %}
     </section>
 </div>
 <script>

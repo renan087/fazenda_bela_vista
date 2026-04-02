@@ -1694,9 +1694,19 @@ def backups_page(
     if denied:
         return denied
     repo = _repository(db)
+    page_param = request.query_params.get("page", "1")
+    try:
+        page = max(1, int(page_param or "1"))
+    except (TypeError, ValueError):
+        page = 1
+    per_page = 10
+    total_runs = repo.count_backup_runs()
+    total_pages = max(1, (total_runs + per_page - 1) // per_page)
+    page = min(page, total_pages)
+    offset = (page - 1) * per_page
     history = [
         {"run": item, "details": _backup_details(item.details_json)}
-        for item in repo.list_backup_runs(limit=20)
+        for item in repo.list_backup_runs(limit=per_page, offset=offset)
     ]
     return templates.TemplateResponse(
         "backups.html",
@@ -1709,6 +1719,11 @@ def backups_page(
             backup_history=history,
             backup_db_bucket=settings.supabase_bucket_db,
             backup_files_bucket=settings.supabase_bucket_files,
+            backup_page=page,
+            backup_total_pages=total_pages,
+            backup_total_runs=total_runs,
+            backup_has_prev=page > 1,
+            backup_has_next=page < total_pages,
             _repo=repo,
         ),
     )
