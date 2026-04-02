@@ -37,7 +37,7 @@
         </div>
     </section>
 
-    <article class="stock-panel rounded-[2rem] bg-white p-6 shadow-panel" data-stock-summary-panel>
+    <article class="stock-panel rounded-[2rem] bg-white p-6 shadow-panel" data-stock-summary-panel data-stock-fade-panel>
         <div class="flex flex-wrap items-start justify-between gap-4">
             <div>
                 <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Visão consolidada</p>
@@ -115,7 +115,7 @@
         </div>
     </article>
 
-    <section class="stock-panel rounded-[2rem] bg-white p-6 shadow-panel">
+    <section class="stock-panel rounded-[2rem] bg-white p-6 shadow-panel" data-stock-fade-panel>
         <div class="stock-filter-bar mt-6">
             <form method="get" action="/insumos/estoque" class="grid gap-3 sm:grid-cols-2 xl:grid-cols-6" data-stock-filter-form>
                 <input type="hidden" name="stock_tab" value="{{ selected_stock_tab }}" data-stock-tab-hidden>
@@ -675,6 +675,36 @@
             };
 
             stockSearchInput?.addEventListener('input', applyStockHistorySearch);
+
+            const stickyHeader = document.querySelector('.stock-page-header');
+            const fadingPanels = Array.from(document.querySelectorAll('[data-stock-fade-panel]'));
+            if (stickyHeader && fadingPanels.length) {
+                let rafId = null;
+                const updateFadingPanels = () => {
+                    rafId = null;
+                    const stickyBottom = stickyHeader.getBoundingClientRect().bottom;
+                    const fadeStartOffset = 88;
+                    const fadeDistance = 120;
+                    fadingPanels.forEach((panel) => {
+                        const panelTop = panel.getBoundingClientRect().top;
+                        const fadeStart = stickyBottom + fadeStartOffset;
+                        const progress = Math.min(Math.max((fadeStart - panelTop) / fadeDistance, 0), 1);
+                        const opacity = 1 - progress;
+                        panel.style.setProperty('--stock-fade-opacity', opacity.toFixed(3));
+                        panel.style.setProperty('--stock-fade-blur', `${(progress * 4).toFixed(2)}px`);
+                        panel.style.setProperty('--stock-fade-shift', `${(progress * -10).toFixed(2)}px`);
+                    });
+                };
+
+                const scheduleFadeUpdate = () => {
+                    if (rafId !== null) return;
+                    rafId = window.requestAnimationFrame(updateFadingPanels);
+                };
+
+                window.addEventListener('scroll', scheduleFadeUpdate, { passive: true });
+                window.addEventListener('resize', scheduleFadeUpdate);
+                scheduleFadeUpdate();
+            }
 
             const catalogCards = Array.from(document.querySelectorAll('[data-stock-catalog-card]'));
             const catalogDots = document.querySelector('[data-stock-catalog-dots]');

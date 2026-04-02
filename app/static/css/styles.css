@@ -155,6 +155,14 @@ body {
         linear-gradient(180deg, rgba(255, 255, 255, 0.99), rgba(248, 250, 252, 0.98));
 }
 
+.stock-panel[data-stock-fade-panel] {
+    opacity: var(--stock-fade-opacity, 1);
+    filter: blur(var(--stock-fade-blur, 0px));
+    transform: translateY(var(--stock-fade-shift, 0px));
+    transition: opacity 0.18s linear, filter 0.18s linear, transform 0.18s linear;
+    will-change: opacity, filter, transform;
+}
+
 .stock-page-header {
     position: sticky;
     top: 8.6rem;

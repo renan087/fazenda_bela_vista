@@ -13,9 +13,10 @@ from fastapi.templating import Jinja2Templates
 from openpyxl import Workbook
 from openpyxl.utils import get_column_letter
 from reportlab.lib import colors
+from reportlab.lib.enums import TA_LEFT, TA_RIGHT
 from reportlab.lib.pagesizes import A4, landscape
-from reportlab.lib.styles import getSampleStyleSheet
-from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+from reportlab.platypus import Image, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 from sqlalchemy.orm import Session
 from starlette.datastructures import UploadFile as StarletteUploadFile
 
@@ -23,7 +24,7 @@ from app.core.config import get_settings
 from app.core.csrf import validate_csrf
 from app.core.deps import get_csrf_token, get_current_user_web
 from app.core.security import get_password_hash, verify_password
-from app.core.timezone import format_app_datetime, today_in_app_timezone
+from app.core.timezone import app_now, format_app_datetime, today_in_app_timezone
 from app.core.user_context import persist_user_context, sync_user_context_from_preferences
 from app.db.session import get_db
 from app.models import (
@@ -751,12 +752,18 @@ def _format_currency(value) -> str:
     return f"R$ {numeric:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
 
+def _format_decimal_br(value, places: int = 2) -> str:
+    numeric = float(value or 0)
+    return f"{numeric:,.{places}f}".replace(",", "X").replace(".", ",").replace("X", ".")
+
+
 def _stock_report_totals(rows: list[dict]) -> dict:
     entries_total = sum(float(row.get("total_cost") or 0) for row in rows if row.get("kind") == "entrada")
     outputs_total = sum(float(row.get("total_cost") or 0) for row in rows if row.get("kind") == "saida")
     return {
         "entries_total": round(entries_total, 2),
         "outputs_total": round(outputs_total, 2),
+        "grand_total": round(entries_total + outputs_total, 2),
         "movements_count": len(rows),
     }
 
@@ -2671,10 +2678,10 @@ def export_stock_extract_pdf(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user_web),
 ):
-    del user
     repo = _repository(db)
     selected_farm_id = _int_or_none(farm_id) or _active_farm_id(request)
     selected_input_id = _int_or_none(input_id)
+    normalized_item_type = item_type if item_type in {"insumo_agricola", "combustivel"} else None
     rows = _build_stock_context(
         repo,
         farm_id=selected_farm_id,
@@ -2682,23 +2689,152 @@ def export_stock_extract_pdf(
         start_date=_date_or_none(start_date),
         end_date=_date_or_none(end_date),
         movement_type=movement_type,
-        item_type=item_type if item_type in {"insumo_agricola", "combustivel"} else None,
+        item_type=normalized_item_type,
     )["extract_rows"]
     totals = _stock_report_totals(rows)
+    selected_farm = repo.get_farm(selected_farm_id) if selected_farm_id else None
+    generated_at = app_now()
     buffer = BytesIO()
-    doc = SimpleDocTemplate(buffer, pagesize=landscape(A4), leftMargin=24, rightMargin=24, topMargin=24, bottomMargin=24)
+    doc = SimpleDocTemplate(buffer, pagesize=landscape(A4), leftMargin=28, rightMargin=28, topMargin=32, bottomMargin=34)
     styles = getSampleStyleSheet()
-    elements = [
-        Paragraph("Fazenda Bela Vista", styles["Title"]),
-        Paragraph("Extrato de estoque", styles["Heading2"]),
-        Paragraph(f"Movimentacoes: {totals['movements_count']} • Entradas: {_format_currency(totals['entries_total'])} • Saidas: {_format_currency(totals['outputs_total'])}", styles["BodyText"]),
-        Spacer(1, 12),
-    ]
+    title_style = ParagraphStyle(
+        "StockPdfTitle",
+        parent=styles["Title"],
+        fontName="Helvetica-Bold",
+        fontSize=20,
+        leading=24,
+        textColor=colors.HexColor("#1e293b"),
+        spaceAfter=2,
+    )
+    subtitle_style = ParagraphStyle(
+        "StockPdfSubtitle",
+        parent=styles["BodyText"],
+        fontName="Helvetica",
+        fontSize=10.5,
+        leading=14,
+        textColor=colors.HexColor("#64748b"),
+    )
+    meta_label_style = ParagraphStyle(
+        "StockPdfMetaLabel",
+        parent=styles["BodyText"],
+        fontName="Helvetica-Bold",
+        fontSize=8,
+        leading=10,
+        textColor=colors.HexColor("#446a36"),
+        spaceAfter=2,
+    )
+    meta_value_style = ParagraphStyle(
+        "StockPdfMetaValue",
+        parent=styles["BodyText"],
+        fontName="Helvetica",
+        fontSize=10,
+        leading=13,
+        textColor=colors.HexColor("#334155"),
+    )
+    cell_style = ParagraphStyle(
+        "StockPdfCell",
+        parent=styles["BodyText"],
+        fontName="Helvetica",
+        fontSize=8.3,
+        leading=10.5,
+        textColor=colors.HexColor("#0f172a"),
+    )
+    cell_muted_style = ParagraphStyle(
+        "StockPdfCellMuted",
+        parent=cell_style,
+        textColor=colors.HexColor("#475569"),
+    )
+    cell_numeric_style = ParagraphStyle(
+        "StockPdfCellNumeric",
+        parent=cell_style,
+        alignment=TA_RIGHT,
+    )
+    summary_value_style = ParagraphStyle(
+        "StockPdfSummaryValue",
+        parent=styles["BodyText"],
+        fontName="Helvetica-Bold",
+        fontSize=11,
+        leading=14,
+        textColor=colors.HexColor("#0f172a"),
+    )
+
+    logo_path = Path("app/static/images/logo.png")
+    logo_flowable = Image(str(logo_path), width=88, height=56) if logo_path.exists() else Spacer(88, 56)
+    report_title = "Extrato de estoque"
+    farm_name = selected_farm.name if selected_farm else "Fazenda Bela Vista"
+    movement_label = {
+        "entrada": "Somente entradas",
+        "saida": "Somente saídas",
+        "all": "Entradas, saídas e extrato consolidado",
+    }.get(movement_type, "Entradas, saídas e extrato consolidado")
+    item_type_label = {
+        "insumo_agricola": "Insumos agrícolas",
+        "combustivel": "Combustíveis",
+    }.get(normalized_item_type or "", "Todos os consumíveis")
+    period_label = "Período completo"
+    if start_date or end_date:
+        period_label = f"{start_date or 'Início'} até {end_date or 'Hoje'}"
+
+    header_table = Table(
+        [[
+            logo_flowable,
+            [
+                Paragraph(farm_name, title_style),
+                Paragraph(report_title, subtitle_style),
+                Spacer(1, 4),
+                Paragraph("Relatório administrativo com histórico consolidado de movimentações.", subtitle_style),
+            ],
+        ]],
+        colWidths=[96, doc.width - 96],
+    )
+    header_table.setStyle(
+        TableStyle(
+            [
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("LEFTPADDING", (0, 0), (-1, -1), 0),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+                ("TOPPADDING", (0, 0), (-1, -1), 0),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
+            ]
+        )
+    )
+
+    summary_table = Table(
+        [
+            [
+                [Paragraph("FAZENDA", meta_label_style), Paragraph(farm_name, meta_value_style)],
+                [Paragraph("PERÍODO", meta_label_style), Paragraph(period_label, meta_value_style)],
+                [Paragraph("ESCOPO", meta_label_style), Paragraph(item_type_label, meta_value_style)],
+            ],
+            [
+                [Paragraph("MOVIMENTAÇÕES", meta_label_style), Paragraph(movement_label, meta_value_style)],
+                [Paragraph("TOTAL DE LANÇAMENTOS", meta_label_style), Paragraph(str(totals["movements_count"]), summary_value_style)],
+                [Paragraph("TOTAL MOVIMENTADO", meta_label_style), Paragraph(_format_currency(totals["grand_total"]), summary_value_style)],
+            ],
+        ],
+        colWidths=[doc.width / 3] * 3,
+    )
+    summary_table.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#f8fafc")),
+                ("BOX", (0, 0), (-1, -1), 0.8, colors.HexColor("#dbe5dd")),
+                ("INNERGRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#e2e8f0")),
+                ("LEFTPADDING", (0, 0), (-1, -1), 12),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 12),
+                ("TOPPADDING", (0, 0), (-1, -1), 10),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 10),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ]
+        )
+    )
+
+    elements = [header_table, Spacer(1, 16), summary_table, Spacer(1, 14)]
     data = [[
         "Data",
         "Insumo",
         "Mov.",
-        "Origem",
+        "Origem / Ref.",
         "Qtd.",
         "Un.",
         "Custo un.",
@@ -2707,34 +2843,101 @@ def export_stock_extract_pdf(
         "Observacoes",
     ]]
     for row in rows:
+        movement_color = "#166534" if row["kind"] == "entrada" else "#be123c"
         data.append([
-            row["date"].isoformat() if row["date"] else "-",
-            row["input_name"],
-            row["kind"],
-            row["origin"],
-            f"{float(row['quantity'] or 0):.2f}",
-            row["unit"],
-            f"{float(row.get('unit_cost') or 0):.4f}",
-            f"{float(row.get('total_cost') or 0):.2f}",
-            f"{float(row.get('balance_after') or 0):.2f}",
-            (row.get("notes") or "-")[:60],
+            Paragraph(row["date"].strftime("%d/%m/%Y") if row["date"] else "-", cell_style),
+            Paragraph(row["input_name"], cell_style),
+            Paragraph(f'<font color="{movement_color}"><b>{str(row["kind"]).title()}</b></font>', cell_style),
+            Paragraph(f'{row["origin"]} • {row["reference"]}', cell_muted_style),
+            Paragraph(_format_decimal_br(row["quantity"], 2), cell_numeric_style),
+            Paragraph(str(row["unit"] or "-"), cell_style),
+            Paragraph(_format_currency(row.get("unit_cost") or 0), cell_numeric_style),
+            Paragraph(_format_currency(row.get("total_cost") or 0), cell_numeric_style),
+            Paragraph(_format_decimal_br(row.get("balance_after") or 0, 2), cell_numeric_style),
+            Paragraph((row.get("notes") or "-")[:90], cell_muted_style),
         ])
-    table = Table(data, repeatRows=1)
+    data.append([
+        "",
+        "",
+        "",
+        Paragraph("<b>Total geral</b>", cell_style),
+        "",
+        "",
+        "",
+        Paragraph(f"<b>{_format_currency(totals['grand_total'])}</b>", cell_numeric_style),
+        "",
+        "",
+    ])
+
+    table = Table(
+        data,
+        repeatRows=1,
+        colWidths=[50, 116, 54, 138, 52, 38, 72, 74, 62, 106],
+    )
     table.setStyle(
         TableStyle(
             [
-                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#e2e8f0")),
-                ("TEXTCOLOR", (0, 0), (-1, 0), colors.black),
-                ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#cbd5e1")),
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#446a36")),
+                ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+                ("LINEBELOW", (0, 0), (-1, 0), 0.8, colors.HexColor("#36552a")),
+                ("LINEBELOW", (0, 1), (-1, -2), 0.35, colors.HexColor("#e2e8f0")),
+                ("LINEABOVE", (0, -1), (-1, -1), 0.8, colors.HexColor("#cbd5e1")),
+                ("BACKGROUND", (0, -1), (-1, -1), colors.HexColor("#f8fafc")),
                 ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-                ("FONTSIZE", (0, 0), (-1, -1), 8),
+                ("FONTSIZE", (0, 0), (-1, -1), 8.2),
                 ("VALIGN", (0, 0), (-1, -1), "TOP"),
-                ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f8fafc")]),
+                ("ROWBACKGROUNDS", (0, 1), (-1, -2), [colors.white, colors.HexColor("#f8fafc")]),
+                ("LEFTPADDING", (0, 0), (-1, -1), 7),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 7),
+                ("TOPPADDING", (0, 0), (-1, -1), 7),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 7),
+                ("ALIGN", (4, 1), (4, -1), "RIGHT"),
+                ("ALIGN", (6, 1), (8, -1), "RIGHT"),
             ]
         )
     )
     elements.append(table)
-    doc.build(elements)
+    elements.append(Spacer(1, 12))
+    footer_summary = Table(
+        [[
+            Paragraph(f"<b>Entradas:</b> {_format_currency(totals['entries_total'])}", meta_value_style),
+            Paragraph(f"<b>Saídas:</b> {_format_currency(totals['outputs_total'])}", meta_value_style),
+            Paragraph(f"<b>Total geral:</b> {_format_currency(totals['grand_total'])}", summary_value_style),
+        ]],
+        colWidths=[doc.width / 3] * 3,
+    )
+    footer_summary.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#eef6ee")),
+                ("BOX", (0, 0), (-1, -1), 0.7, colors.HexColor("#cfe1d0")),
+                ("LEFTPADDING", (0, 0), (-1, -1), 12),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 12),
+                ("TOPPADDING", (0, 0), (-1, -1), 10),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 10),
+            ]
+        )
+    )
+    elements.append(footer_summary)
+
+    generated_by = user.display_name or user.name or user.email
+    generated_at_label = generated_at.strftime("%d/%m/%Y %H:%M")
+
+    def _draw_footer(canvas, doc):
+        canvas.saveState()
+        canvas.setStrokeColor(colors.HexColor("#e2e8f0"))
+        canvas.line(doc.leftMargin, 22, landscape(A4)[0] - doc.rightMargin, 22)
+        canvas.setFont("Helvetica", 8.2)
+        canvas.setFillColor(colors.HexColor("#64748b"))
+        canvas.drawString(doc.leftMargin, 10, f"Gerado por: {generated_by}")
+        canvas.drawRightString(
+            landscape(A4)[0] - doc.rightMargin,
+            10,
+            f"Emitido em {generated_at_label} • Página {canvas.getPageNumber()}",
+        )
+        canvas.restoreState()
+
+    doc.build(elements, onFirstPage=_draw_footer, onLaterPages=_draw_footer)
     buffer.seek(0)
     return StreamingResponse(
         buffer,
