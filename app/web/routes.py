@@ -762,8 +762,8 @@ def _stock_export_query(
     return urlencode(clean)
 
 
-def _assets_export_query(farm_id: int | None = None) -> str:
-    params = {"farm_id": farm_id}
+def _assets_export_query(farm_id: int | None = None, status: str | None = None) -> str:
+    params = {"farm_id": farm_id, "status": status}
     clean = {key: value for key, value in params.items() if value not in (None, "", "all")}
     return urlencode(clean)
 
@@ -787,6 +787,13 @@ def _stock_report_totals(rows: list[dict]) -> dict:
         "grand_total": round(entries_total + outputs_total, 2),
         "movements_count": len(rows),
     }
+
+
+def _filter_equipment_assets_by_status(assets: list[EquipmentAsset], status_value: str | None) -> list[EquipmentAsset]:
+    normalized_status = status_value if status_value in {"ativo", "em_manutencao", "baixado"} else None
+    if not normalized_status:
+        return assets
+    return [asset for asset in assets if asset.status == normalized_status]
 
 
 def _bool_from_form(value) -> bool:
@@ -2983,14 +2990,16 @@ def export_stock_extract_pdf(
 def export_equipment_assets_xlsx(
     request: Request,
     farm_id: str | None = None,
+    status: str | None = None,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user_web),
 ):
     del user
     repo = _repository(db)
     selected_farm_id = _int_or_none(farm_id) or _active_farm_id(request)
+    selected_status = status if status in {"ativo", "em_manutencao", "baixado"} else None
     assets = _sort_collection_desc(
-        repo.list_equipment_assets(farm_id=selected_farm_id),
+        _filter_equipment_assets_by_status(repo.list_equipment_assets(farm_id=selected_farm_id), selected_status),
         lambda item: item.acquisition_date,
         lambda item: item.id,
     )
@@ -3044,14 +3053,16 @@ def export_equipment_assets_xlsx(
 def export_equipment_assets_pdf(
     request: Request,
     farm_id: str | None = None,
+    status: str | None = None,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user_web),
 ):
     repo = _repository(db)
     selected_farm_id = _int_or_none(farm_id) or _active_farm_id(request)
     selected_farm = repo.get_farm(selected_farm_id) if selected_farm_id else None
+    selected_status = status if status in {"ativo", "em_manutencao", "baixado"} else None
     assets = _sort_collection_desc(
-        repo.list_equipment_assets(farm_id=selected_farm_id),
+        _filter_equipment_assets_by_status(repo.list_equipment_assets(farm_id=selected_farm_id), selected_status),
         lambda item: item.acquisition_date,
         lambda item: item.id,
     )
@@ -3307,14 +3318,16 @@ def equipment_assets_page(
     request: Request,
     edit_id: int | None = None,
     farm_id: int | None = None,
+    status: str | None = None,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user_web),
     csrf_token: str = Depends(get_csrf_token),
 ):
     repo = _repository(db)
     effective_farm_id = farm_id or _active_farm_id(request)
+    selected_status = status if status in {"ativo", "em_manutencao", "baixado"} else None
     assets = _sort_collection_desc(
-        repo.list_equipment_assets(farm_id=effective_farm_id),
+        _filter_equipment_assets_by_status(repo.list_equipment_assets(farm_id=effective_farm_id), selected_status),
         lambda item: item.acquisition_date,
         lambda item: item.id,
     )
@@ -3330,7 +3343,8 @@ def equipment_assets_page(
             title="Patrimonio e Equipamentos",
             farms=repo.list_farms(),
             selected_farm_id=effective_farm_id,
-            assets_export_query=_assets_export_query(farm_id=effective_farm_id),
+            selected_asset_status=selected_status or "",
+            assets_export_query=_assets_export_query(farm_id=effective_farm_id, status=selected_status),
             asset_category_options=EQUIPMENT_ASSET_CATEGORY_OPTIONS,
             current_year=today_in_app_timezone().year,
             assets=assets_pagination["items"],

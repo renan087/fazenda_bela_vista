@@ -31,7 +31,7 @@
                         <path d="M12 5v14"/>
                         <path d="M5 12h14"/>
                     </svg>
-                    <span class="stock-action-button-label">{% if edit_asset %}Editar patrimônio{% else %}Novo patrimônio{% endif %}</span>
+                    <span class="stock-action-button-label">Novo patrimônio</span>
                 </button>
             </div>
         </div>
@@ -43,21 +43,49 @@
                     <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Cadastro patrimonial</p>
                     <h3 class="mt-2 text-2xl font-semibold">Equipamentos cadastrados</h3>
                 </div>
-                <form method="get" action="/insumos/patrimonio" class="assets-filter-form flex flex-wrap gap-3">
-                    <select name="farm_id" class="assets-filter-select min-h-[3.25rem] rounded-2xl border-slate-200 bg-slate-50 px-4">
-                        <option value="">Todas as fazendas</option>
-                        {% for farm in farms %}
-                        <option value="{{ farm.id }}" {% if selected_farm_id == farm.id %}selected{% endif %}>{{ farm.name }}</option>
-                        {% endfor %}
-                    </select>
-                    <button class="rounded-2xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white hover:bg-slate-700">Filtrar</button>
+            </div>
+
+            <div class="stock-filter-bar mt-6">
+                <form method="get" action="/insumos/patrimonio" class="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                    <label>
+                        <span class="mb-2 block text-sm font-medium">Fazenda</span>
+                        <select name="farm_id" class="assets-filter-select min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50 px-4">
+                            <option value="">Todas as fazendas</option>
+                            {% for farm in farms %}
+                            <option value="{{ farm.id }}" {% if selected_farm_id == farm.id %}selected{% endif %}>{{ farm.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </label>
+                    <label>
+                        <span class="mb-2 block text-sm font-medium">Status</span>
+                        <select name="status" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50 px-4">
+                            <option value="">Todos os status</option>
+                            <option value="ativo" {% if selected_asset_status == 'ativo' %}selected{% endif %}>Ativo</option>
+                            <option value="em_manutencao" {% if selected_asset_status == 'em_manutencao' %}selected{% endif %}>Em manutenção</option>
+                            <option value="baixado" {% if selected_asset_status == 'baixado' %}selected{% endif %}>Baixado</option>
+                        </select>
+                    </label>
+                    <div class="flex items-end">
+                        <button class="min-h-[3.25rem] w-full rounded-2xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white hover:bg-slate-700">Filtrar</button>
+                    </div>
                 </form>
             </div>
 
-            <div class="stock-history-stage mt-6" data-assets-history-stage>
+            <div class="stock-history-toolbar mt-5">
+                <div></div>
+                <div class="stock-search-field">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+                        <circle cx="11" cy="11" r="7"></circle>
+                        <path d="m20 20-3.5-3.5"></path>
+                    </svg>
+                    <input type="search" placeholder="Buscar patrimônio, fazenda, fabricante, modelo ou observação" data-assets-history-search>
+                </div>
+            </div>
+
+            <div class="stock-history-stage mt-4" data-assets-history-stage>
             <div class="space-y-4 lg:space-y-3">
                 {% for asset in assets %}
-                <article class="rounded-[1.5rem] border border-slate-100 bg-slate-50 p-5 lg:p-4">
+                <article class="rounded-[1.5rem] border border-slate-100 bg-slate-50 p-5 lg:p-4" data-assets-history-row data-assets-search-text="{{ (asset.name or '') ~ ' ' ~ (asset.category or '') ~ ' ' ~ (asset.farm.name if asset.farm else '') ~ ' ' ~ (asset.manufacturer or '') ~ ' ' ~ (asset.brand_model or '') ~ ' ' ~ (asset.asset_code or '') ~ ' ' ~ (asset.notes or '') ~ ' ' ~ (asset.status or '') }}">
                     <div class="flex flex-wrap items-start justify-between gap-4 lg:gap-3">
                         <div>
                             <button type="button" class="text-left text-lg font-semibold text-slate-900 transition hover:text-brand-700 lg:text-base" data-history-view-trigger data-history-view-kicker="Patrimonio" data-history-view-title="{{ asset.name }}" data-history-view-subtitle="{{ asset.category }}{% if asset.farm %} • {{ asset.farm.name }}{% endif %}" data-history-view-source="asset-view-{{ asset.id }}" data-history-view-edit-url="/insumos/patrimonio?edit_id={{ asset.id }}{% if selected_farm_id %}&farm_id={{ selected_farm_id }}{% endif %}">{{ asset.name }}</button>
@@ -132,6 +160,7 @@
                 <p class="text-sm text-slate-500">Nenhum patrimônio cadastrado para os filtros informados.</p>
                 {% endfor %}
             </div>
+            <p class="stock-search-empty mt-4 hidden text-sm text-slate-500" data-assets-search-empty>Nenhum patrimônio corresponde à busca digitada.</p>
             {% with pagination=assets_pagination %}{% include "partials/history_pagination.html" %}{% endwith %}
             </div>
     </section>
@@ -263,6 +292,28 @@
         }
         {% endif %}
 
+        const assetsSearchInput = document.querySelector('[data-assets-history-search]');
+        const applyAssetsHistorySearch = () => {
+            const currentStage = document.querySelector('[data-assets-history-stage]');
+            if (!currentStage) return;
+
+            const query = (assetsSearchInput?.value || '').trim().toLowerCase();
+            const rows = Array.from(currentStage.querySelectorAll('[data-assets-history-row]'));
+            const emptyState = currentStage.querySelector('[data-assets-search-empty]');
+            let visibleCount = 0;
+
+            rows.forEach((row) => {
+                const haystack = (row.dataset.assetsSearchText || '').toLowerCase();
+                const matches = !query || haystack.includes(query);
+                row.classList.toggle('hidden', !matches);
+                if (matches) visibleCount += 1;
+            });
+
+            emptyState?.classList.toggle('hidden', visibleCount !== 0 || !query);
+        };
+
+        assetsSearchInput?.addEventListener('input', applyAssetsHistorySearch);
+
         const syncAssetsHistoryFromUrl = async (url) => {
             const currentStage = document.querySelector('[data-assets-history-stage]');
             if (!currentStage) {
@@ -289,6 +340,7 @@
                 }
 
                 currentStage.replaceWith(nextStage);
+                applyAssetsHistorySearch();
                 window.history.replaceState({}, '', url);
             } catch (error) {
                 console.error(error);
@@ -344,6 +396,7 @@
         window.addEventListener('scroll', scheduleFadeUpdate, { passive: true });
         window.addEventListener('resize', scheduleFadeUpdate);
         scheduleFadeUpdate();
+        applyAssetsHistorySearch();
     })();
 </script>
 {% endblock %}
