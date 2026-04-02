@@ -1,17 +1,6 @@
 {% extends "base.html" %}
 {% block content %}
-<section class="stock-hero rounded-[2rem] bg-white p-6 shadow-panel">
-    <div>
-        <div>
-            <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Estoque</p>
-            <h3 class="mt-2 text-2xl font-semibold">Controle consolidado de insumos</h3>
-            <p class="mt-2 max-w-3xl text-sm text-slate-500">Consulte saldos, entradas, saídas e o extrato cronológico do estoque. As saídas automáticas vindas da fertilização continuam registradas aqui, e você também pode lançar saídas manuais com validação de saldo.</p>
-        </div>
-    </div>
-</section>
-
-<section class="stock-layout mt-6">
-    <div class="stock-primary-column">
+<div class="space-y-6">
     <article class="stock-panel rounded-[2rem] bg-white p-6 shadow-panel">
         <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Visão consolidada</p>
         <h3 class="mt-2 text-xl font-semibold">Saldo atual por insumo</h3>
@@ -75,19 +64,46 @@
         {% endif %}
     </article>
 
-    <section class="stock-panel mt-6 rounded-[2rem] bg-white p-6 shadow-panel">
+    <section class="stock-panel rounded-[2rem] bg-white p-6 shadow-panel">
         <div class="flex flex-wrap items-start justify-between gap-4">
             <div>
                 <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Histórico</p>
                 <h3 class="mt-2 text-xl font-semibold">Movimentações de estoque</h3>
                 <p class="mt-2 max-w-3xl text-sm text-slate-500">Filtre as movimentações e navegue entre entradas, saídas e extrato dentro do mesmo painel.</p>
             </div>
-            <div class="stock-search-field">
-                <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
-                    <circle cx="8.5" cy="8.5" r="5.75"></circle>
-                    <path d="M13 13l4 4"></path>
-                </svg>
-                <input type="search" placeholder="Buscar insumo, fazenda, origem ou observação" data-stock-history-search>
+            <div class="stock-header-actions">
+                <button type="button" class="stock-action-button stock-action-button-primary" data-stock-launch-open>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                        <path d="M12 5v14"/>
+                        <path d="M5 12h14"/>
+                    </svg>
+                    Registrar consumo
+                </button>
+                <a href="/insumos/estoque/exportar.pdf{% if stock_export_query %}?{{ stock_export_query }}{% endif %}" class="stock-action-button stock-export-button stock-export-button-pdf">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true">
+                        <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/>
+                        <path d="M14 3v5h5"/>
+                        <path d="M8 13h8"/>
+                        <path d="M8 17h6"/>
+                    </svg>
+                    Exportar PDF
+                </a>
+                <a href="/insumos/estoque/exportar.xlsx{% if stock_export_query %}?{{ stock_export_query }}{% endif %}" class="stock-action-button stock-export-button stock-export-button-xlsx">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true">
+                        <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/>
+                        <path d="M14 3v5h5"/>
+                        <path d="m9 17 6-6"/>
+                        <path d="m9 11 6 6"/>
+                    </svg>
+                    Exportar Excel
+                </a>
+                <div class="stock-search-field">
+                    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+                        <circle cx="8.5" cy="8.5" r="5.75"></circle>
+                        <path d="M13 13l4 4"></path>
+                    </svg>
+                    <input type="search" placeholder="Buscar insumo, fazenda, origem ou observação" data-stock-history-search>
+                </div>
             </div>
         </div>
 
@@ -332,80 +348,7 @@
             {% with pagination=extract_rows_pagination %}{% include "partials/history_pagination.html" %}{% endwith %}
         </div>
     </section>
-    </div>
-
-    <aside class="stock-secondary-column">
-    <article class="stock-panel rounded-[2rem] bg-white p-6 shadow-panel">
-        <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Ações rápidas</p>
-        <h3 class="mt-2 text-xl font-semibold">Atalhos do módulo</h3>
-        <p class="mt-2 text-sm text-slate-500">Use os atalhos para exportar relatórios e navegar rápido entre as áreas mais usadas do estoque.</p>
-        <div class="stock-quick-actions mt-6">
-            <a href="/insumos/estoque/exportar.pdf{% if stock_export_query %}?{{ stock_export_query }}{% endif %}" class="stock-quick-action stock-quick-action-primary">Exportar PDF</a>
-            <a href="/insumos/estoque/exportar.xlsx{% if stock_export_query %}?{{ stock_export_query }}{% endif %}" class="stock-quick-action stock-quick-action-secondary">Exportar Excel</a>
-            <a href="{{ stock_tab_urls.entries }}" class="stock-quick-action stock-quick-action-light">Ir para entradas</a>
-            <a href="{{ stock_tab_urls.outputs }}" class="stock-quick-action stock-quick-action-light">Ir para saídas</a>
-            <a href="{{ stock_tab_urls.extract }}" class="stock-quick-action stock-quick-action-light">Abrir extrato</a>
-        </div>
-    </article>
-
-    <article class="stock-panel mt-6 rounded-[2rem] bg-white p-6 shadow-panel">
-        <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Saída manual</p>
-        <h3 class="mt-2 text-xl font-semibold">Lançar consumo avulso</h3>
-        <form method="post" action="/insumos/estoque/saida-manual" class="mt-6 grid gap-4">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-            {% include "partials/launch_context.html" %}
-            <label>
-                <span class="mb-2 block text-sm font-medium">Setor</span>
-                <select name="plot_id" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50">
-                    <option value="">Sem setor</option>
-                    {% for plot in plots %}
-                    <option value="{{ plot.id }}">{{ plot.name }}{% if plot.farm %} • {{ plot.farm.name }}{% endif %}</option>
-                    {% endfor %}
-                </select>
-            </label>
-            <div class="grid gap-4 md:grid-cols-2">
-                <label>
-                    <span class="mb-2 block text-sm font-medium">Insumo</span>
-                    <select name="input_id" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required>
-                        <option value="">Selecione</option>
-                        {% for input_item in inputs_catalog %}
-                        {% set stock = input_stock.get(input_item.id, {}) %}
-                        <option value="{{ input_item.id }}">
-                            {{ input_item.name }} — disponível: {{ stock.get('available', 0) }} {{ stock.get('unit', input_item.default_unit) }}
-                        </option>
-                        {% endfor %}
-                    </select>
-                </label>
-                <label>
-                    <span class="mb-2 block text-sm font-medium">Data</span>
-                    <input type="date" name="movement_date" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" value="{% if edit_output %}{{ edit_output.movement_date }}{% else %}{{ request.query_params.get('movement_date', '') }}{% endif %}">
-                </label>
-            </div>
-            <div class="grid gap-4 md:grid-cols-2">
-                <label>
-                    <span class="mb-2 block text-sm font-medium">Quantidade</span>
-                    <input type="number" step="0.01" min="0" name="quantity" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required>
-                </label>
-                <label>
-                    <span class="mb-2 block text-sm font-medium">Unidade</span>
-                    <select name="unit" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50">
-                        {% for unit in ['kg', 'g', 'L', 'ml', 'sacas', 'un'] %}
-                        <option value="{{ unit }}">{{ unit }}</option>
-                        {% endfor %}
-                    </select>
-                </label>
-            </div>
-            <label>
-                <span class="mb-2 block text-sm font-medium">Observações</span>
-                <textarea name="notes" rows="4" class="w-full rounded-2xl border-slate-200 bg-slate-50"></textarea>
-            </label>
-            <div class="flex flex-wrap gap-3">
-                <button class="rounded-2xl bg-brand-500 px-4 py-3 font-semibold text-white hover:bg-brand-700">Registrar saída manual</button>
-            </div>
-        </form>
-    </article>
-    </aside>
-</section>
+</div>
 
 {% if edit_output %}
 <dialog id="stock-output-modal" class="app-modal rounded-[2rem] p-0 shadow-2xl w-full max-w-3xl">
@@ -510,6 +453,80 @@
     </div>
 </dialog>
 {% endif %}
+
+<dialog id="stock-launch-modal" class="app-modal rounded-[2rem] p-0 shadow-2xl w-full max-w-3xl">
+    <div class="bg-white p-6 sm:p-8">
+        <div class="flex items-start justify-between gap-4">
+            <div>
+                <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Registrar consumo</p>
+                <h3 class="mt-2 text-2xl font-semibold">Lançar consumo avulso</h3>
+                <p class="mt-2 text-sm text-slate-500">
+                    Registre uma baixa manual sem sair do histórico de estoque.
+                </p>
+            </div>
+            <button type="button" class="modal-close-button" aria-label="Fechar" data-stock-launch-close>
+                <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M18 6 6 18"/>
+                    <path d="m6 6 12 12"/>
+                </svg>
+            </button>
+        </div>
+
+        <form method="post" action="/insumos/estoque/saida-manual" class="mt-6 grid gap-4">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            {% include "partials/launch_context.html" %}
+            <label>
+                <span class="mb-2 block text-sm font-medium">Setor</span>
+                <select name="plot_id" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50">
+                    <option value="">Sem setor</option>
+                    {% for plot in plots %}
+                    <option value="{{ plot.id }}">{{ plot.name }}{% if plot.farm %} • {{ plot.farm.name }}{% endif %}</option>
+                    {% endfor %}
+                </select>
+            </label>
+            <div class="grid gap-4 md:grid-cols-2">
+                <label>
+                    <span class="mb-2 block text-sm font-medium">Insumo</span>
+                    <select name="input_id" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required>
+                        <option value="">Selecione</option>
+                        {% for input_item in inputs_catalog %}
+                        {% set stock = input_stock.get(input_item.id, {}) %}
+                        <option value="{{ input_item.id }}">
+                            {{ input_item.name }} — disponível: {{ stock.get('available', 0) }} {{ stock.get('unit', input_item.default_unit) }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </label>
+                <label>
+                    <span class="mb-2 block text-sm font-medium">Data</span>
+                    <input type="date" name="movement_date" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" value="{{ request.query_params.get('movement_date', '') }}">
+                </label>
+            </div>
+            <div class="grid gap-4 md:grid-cols-2">
+                <label>
+                    <span class="mb-2 block text-sm font-medium">Quantidade</span>
+                    <input type="number" step="0.01" min="0" name="quantity" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required>
+                </label>
+                <label>
+                    <span class="mb-2 block text-sm font-medium">Unidade</span>
+                    <select name="unit" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50">
+                        {% for unit in ['kg', 'g', 'L', 'ml', 'sacas', 'un'] %}
+                        <option value="{{ unit }}">{{ unit }}</option>
+                        {% endfor %}
+                    </select>
+                </label>
+            </div>
+            <label>
+                <span class="mb-2 block text-sm font-medium">Observações</span>
+                <textarea name="notes" rows="4" class="w-full rounded-2xl border-slate-200 bg-slate-50"></textarea>
+            </label>
+            <div class="flex flex-wrap justify-end gap-3">
+                <button type="button" class="rounded-2xl bg-slate-100 px-4 py-3 font-semibold text-slate-700 hover:bg-slate-200" data-stock-launch-close>Cancelar</button>
+                <button class="rounded-2xl bg-brand-500 px-4 py-3 font-semibold text-white hover:bg-brand-700">Registrar consumo</button>
+            </div>
+        </form>
+    </div>
+</dialog>
 {% include "partials/history_view_modal.html" %}
 
     <script>
@@ -537,6 +554,20 @@
                 modal.addEventListener('cancel', (event) => {
                     event.preventDefault();
                     window.location.href = '/insumos/estoque';
+                });
+            }
+
+            const launchModal = document.getElementById('stock-launch-modal');
+            const openLaunchButton = document.querySelector('[data-stock-launch-open]');
+            const closeLaunchButtons = Array.from(document.querySelectorAll('[data-stock-launch-close]'));
+            if (launchModal) {
+                openLaunchButton?.addEventListener('click', () => launchModal.showModal());
+                closeLaunchButtons.forEach((button) => {
+                    button.addEventListener('click', () => launchModal.close());
+                });
+                launchModal.addEventListener('cancel', (event) => {
+                    event.preventDefault();
+                    launchModal.close();
                 });
             }
 

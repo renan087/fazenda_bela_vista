@@ -319,6 +319,70 @@ body {
     color: rgb(148 163 184);
 }
 
+.stock-header-actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 0.75rem;
+}
+
+.stock-action-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.55rem;
+    border-radius: 1rem;
+    padding: 0.85rem 1rem;
+    font-size: 0.92rem;
+    font-weight: 600;
+    text-decoration: none;
+    transition: transform 0.18s ease, box-shadow 0.18s ease, background-color 0.18s ease, color 0.18s ease;
+}
+
+.stock-action-button svg {
+    width: 1rem;
+    height: 1rem;
+    flex-shrink: 0;
+}
+
+.stock-action-button:hover {
+    transform: translateY(-1px);
+}
+
+.stock-action-button-primary {
+    border: 0;
+    background: #446a36;
+    color: #fff;
+    box-shadow: 0 16px 30px -24px rgba(68, 106, 54, 0.9);
+}
+
+.stock-action-button-primary:hover {
+    background: #36552a;
+}
+
+.stock-export-button {
+    border: 1px solid rgba(226, 232, 240, 0.95);
+    background: rgba(255, 255, 255, 0.98);
+}
+
+.stock-export-button-pdf {
+    color: rgb(190 24 93);
+}
+
+.stock-export-button-pdf:hover {
+    border-color: rgba(251, 113, 133, 0.35);
+    background: rgba(255, 241, 242, 0.85);
+}
+
+.stock-export-button-xlsx {
+    color: rgb(21 128 61);
+}
+
+.stock-export-button-xlsx:hover {
+    border-color: rgba(74, 222, 128, 0.35);
+    background: rgba(240, 253, 244, 0.9);
+}
+
 .stock-tab-link {
     display: inline-flex;
     align-items: center;
@@ -407,6 +471,14 @@ body {
 }
 
 @media (max-width: 899px) {
+    .stock-header-actions {
+        justify-content: stretch;
+    }
+
+    .stock-action-button {
+        width: 100%;
+    }
+
     .stock-search-field {
         width: 100%;
     }
