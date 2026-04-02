@@ -1,173 +1,244 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="grid gap-6 xl:grid-cols-[0.9fr_1.1fr]" data-modal-single-pane>
-    <section class="rounded-[2rem] bg-white p-6 shadow-panel" data-history-edit-panel {% if edit_asset %}data-history-edit-open="1"{% endif %}>
-        <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Patrimonio</p>
-        <h3 class="mt-2 text-2xl font-semibold">{% if edit_asset %}Editar equipamento{% else %}Novo equipamento / bem patrimonial{% endif %}</h3>
-        <p class="mt-2 text-sm text-slate-500">Cadastre equipamentos e bens patrimoniais sem misturar esses registros com o estoque consumível de insumos e combustíveis.</p>
-        <form method="post" action="{% if edit_asset %}/insumos/patrimonio/{{ edit_asset.id }}/editar{% else %}/insumos/patrimonio{% endif %}" enctype="multipart/form-data" class="mt-6 grid gap-4">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-            {% include "partials/launch_context.html" %}
-            <div class="grid gap-4 md:grid-cols-2">
+<div class="stock-page-shell space-y-6">
+    <section class="stock-page-header rounded-[2rem] p-5 shadow-panel">
+        <div class="flex flex-wrap items-start justify-between gap-4">
+            <div class="min-w-0">
+                <h2 class="stock-page-card-title">Patrimônio e Equipamentos</h2>
+                <p class="stock-page-card-subtitle">Cadastre e acompanhe equipamentos e bens patrimoniais sem misturar esses registros com o estoque consumível.</p>
+            </div>
+            <div class="stock-header-actions stock-header-actions-top">
+                <a href="#assets-form" class="stock-action-button stock-export-button">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                        <path d="M12 5v14"/>
+                        <path d="M5 12h14"/>
+                    </svg>
+                    <span class="stock-action-button-label">{% if edit_asset %}Editar patrimônio{% else %}Novo patrimônio{% endif %}</span>
+                </a>
+                <a href="#assets-list" class="stock-action-button stock-export-button">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                        <path d="M8 6h13"/>
+                        <path d="M8 12h13"/>
+                        <path d="M8 18h13"/>
+                        <path d="M3 6h.01"/>
+                        <path d="M3 12h.01"/>
+                        <path d="M3 18h.01"/>
+                    </svg>
+                    <span class="stock-action-button-label">Ver cadastrados</span>
+                </a>
+            </div>
+        </div>
+    </section>
+
+    <div class="stock-layout">
+        <section id="assets-form" class="stock-panel rounded-[2rem] bg-white p-6 shadow-panel stock-primary-column" data-history-edit-panel data-stock-fade-panel {% if edit_asset %}data-history-edit-open="1"{% endif %}>
+            <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Patrimonio</p>
+            <h3 class="mt-2 text-2xl font-semibold">{% if edit_asset %}Editar equipamento{% else %}Novo equipamento / bem patrimonial{% endif %}</h3>
+            <p class="mt-2 text-sm text-slate-500">Cadastre equipamentos e bens patrimoniais sem misturar esses registros com o estoque consumível de insumos e combustíveis.</p>
+            <form method="post" action="{% if edit_asset %}/insumos/patrimonio/{{ edit_asset.id }}/editar{% else %}/insumos/patrimonio{% endif %}" enctype="multipart/form-data" class="mt-6 grid gap-4">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                {% include "partials/launch_context.html" %}
+                <div class="grid gap-4 md:grid-cols-2">
+                    <label>
+                        <span class="mb-2 block text-sm font-medium">Categoria</span>
+                        {% set selected_category = edit_asset.category if edit_asset else '' %}
+                        <select name="category" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required>
+                            <option value="">Selecione uma categoria</option>
+                            {% for option in asset_category_options %}
+                            <option value="{{ option }}" {% if selected_category == option %}selected{% endif %}>{{ option }}</option>
+                            {% endfor %}
+                            {% if selected_category and selected_category not in asset_category_options %}
+                            <option value="{{ selected_category }}" selected>{{ selected_category }}</option>
+                            {% endif %}
+                        </select>
+                    </label>
+                </div>
+                <div class="grid gap-4 md:grid-cols-2">
+                    <label>
+                        <span class="mb-2 block text-sm font-medium">Nome do equipamento</span>
+                        <input name="name" value="{{ edit_asset.name if edit_asset else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required>
+                    </label>
+                    <label>
+                        <span class="mb-2 block text-sm font-medium">Modelo</span>
+                        <input name="brand_model" value="{{ edit_asset.brand_model if edit_asset else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50">
+                    </label>
+                </div>
+                <div class="grid gap-4 md:grid-cols-3">
+                    <label>
+                        <span class="mb-2 block text-sm font-medium">Fabricante</span>
+                        <input name="manufacturer" value="{{ edit_asset.manufacturer if edit_asset else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50">
+                    </label>
+                    <label>
+                        <span class="mb-2 block text-sm font-medium">Ano de fabricacao</span>
+                        <input type="text" name="manufacture_year" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" value="{{ edit_asset.manufacture_year if edit_asset and edit_asset.manufacture_year else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" placeholder="YYYY">
+                    </label>
+                    <label>
+                        <span class="mb-2 block text-sm font-medium">Patrimônio / identificação</span>
+                        <input name="asset_code" value="{{ edit_asset.asset_code if edit_asset else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50">
+                    </label>
+                </div>
+                <div class="grid gap-4 md:grid-cols-2">
+                    <label>
+                        <span class="mb-2 block text-sm font-medium">Data de aquisição</span>
+                        <input type="date" name="acquisition_date" value="{{ edit_asset.acquisition_date.isoformat() if edit_asset and edit_asset.acquisition_date else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50">
+                    </label>
+                    <label>
+                        <span class="mb-2 block text-sm font-medium">Valor de aquisição (R$)</span>
+                        <input type="number" step="0.01" min="0" name="acquisition_value" value="{{ edit_asset.acquisition_value if edit_asset and edit_asset.acquisition_value is not none else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50">
+                    </label>
+                </div>
                 <label>
-                    <span class="mb-2 block text-sm font-medium">Categoria</span>
-                    {% set selected_category = edit_asset.category if edit_asset else '' %}
-                    <select name="category" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required>
-                        <option value="">Selecione uma categoria</option>
-                        {% for option in asset_category_options %}
-                        <option value="{{ option }}" {% if selected_category == option %}selected{% endif %}>{{ option }}</option>
+                    <span class="mb-2 block text-sm font-medium">Status</span>
+                    <select name="status" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50">
+                        {% set asset_status = edit_asset.status if edit_asset else 'ativo' %}
+                        {% for option in ['ativo', 'em_manutencao', 'baixado'] %}
+                        <option value="{{ option }}" {% if asset_status == option %}selected{% endif %}>{{ option.replace('_', ' ')|title }}</option>
                         {% endfor %}
-                        {% if selected_category and selected_category not in asset_category_options %}
-                        <option value="{{ selected_category }}" selected>{{ selected_category }}</option>
-                        {% endif %}
                     </select>
                 </label>
-            </div>
-            <div class="grid gap-4 md:grid-cols-2">
                 <label>
-                    <span class="mb-2 block text-sm font-medium">Nome do equipamento</span>
-                    <input name="name" value="{{ edit_asset.name if edit_asset else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required>
+                    <span class="mb-2 block text-sm font-medium">Observações</span>
+                    <textarea name="notes" rows="4" class="w-full rounded-2xl border-slate-200 bg-slate-50">{{ edit_asset.notes if edit_asset else '' }}</textarea>
                 </label>
-                <label>
-                    <span class="mb-2 block text-sm font-medium">Modelo</span>
-                    <input name="brand_model" value="{{ edit_asset.brand_model if edit_asset else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50">
-                </label>
-            </div>
-            <div class="grid gap-4 md:grid-cols-3">
-                <label>
-                    <span class="mb-2 block text-sm font-medium">Fabricante</span>
-                    <input name="manufacturer" value="{{ edit_asset.manufacturer if edit_asset else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50">
-                </label>
-                <label>
-                    <span class="mb-2 block text-sm font-medium">Ano de fabricacao</span>
-                    <input type="text" name="manufacture_year" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" value="{{ edit_asset.manufacture_year if edit_asset and edit_asset.manufacture_year else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" placeholder="YYYY">
-                </label>
-                <label>
-                    <span class="mb-2 block text-sm font-medium">Patrimônio / identificação</span>
-                    <input name="asset_code" value="{{ edit_asset.asset_code if edit_asset else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50">
-                </label>
-            </div>
-            <div class="grid gap-4 md:grid-cols-2">
-                <label>
-                    <span class="mb-2 block text-sm font-medium">Data de aquisição</span>
-                    <input type="date" name="acquisition_date" value="{{ edit_asset.acquisition_date.isoformat() if edit_asset and edit_asset.acquisition_date else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50">
-                </label>
-                <label>
-                    <span class="mb-2 block text-sm font-medium">Valor de aquisição (R$)</span>
-                    <input type="number" step="0.01" min="0" name="acquisition_value" value="{{ edit_asset.acquisition_value if edit_asset and edit_asset.acquisition_value is not none else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50">
-                </label>
-            </div>
-            <label>
-                <span class="mb-2 block text-sm font-medium">Status</span>
-                <select name="status" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50">
-                    {% set asset_status = edit_asset.status if edit_asset else 'ativo' %}
-                    {% for option in ['ativo', 'em_manutencao', 'baixado'] %}
-                    <option value="{{ option }}" {% if asset_status == option %}selected{% endif %}>{{ option.replace('_', ' ')|title }}</option>
-                    {% endfor %}
-                </select>
-            </label>
-            <label>
-                <span class="mb-2 block text-sm font-medium">Observações</span>
-                <textarea name="notes" rows="4" class="w-full rounded-2xl border-slate-200 bg-slate-50">{{ edit_asset.notes if edit_asset else '' }}</textarea>
-            </label>
-            {% set attachment_label = 'Anexos' %}
-            {% set attachment_help_text = 'Envie nota fiscal, imagem ou documentos do patrimonio. Voce pode adicionar mais arquivos em etapas antes de salvar.' %}
-            {% include "partials/attachment_upload_field.html" %}
-            <div class="flex gap-3">
-                <button class="rounded-2xl bg-brand-500 px-4 py-3 font-semibold text-white hover:bg-brand-700">{% if edit_asset %}Salvar alterações{% else %}Cadastrar patrimônio{% endif %}</button>
-                {% if edit_asset %}
-                <a href="/insumos/patrimonio" class="rounded-2xl bg-slate-100 px-4 py-3 font-semibold text-slate-700 hover:bg-slate-200">Cancelar</a>
-                {% endif %}
-            </div>
-        </form>
-        {% set attachment_owner = edit_asset %}
-        {% set attachment_view_base = '/insumos/patrimonio/anexos' %}
-        {% set attachment_delete_base = '/insumos/patrimonio/' ~ edit_asset.id ~ '/anexos' if edit_asset else '' %}
-        {% include "partials/attachment_list.html" %}
-    </section>
-
-    <section class="rounded-[2rem] bg-white p-6 shadow-panel">
-        <div class="flex flex-wrap items-start justify-between gap-4">
-            <div>
-                <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Cadastro patrimonial</p>
-                <h3 class="mt-2 text-2xl font-semibold">Equipamentos cadastrados</h3>
-            </div>
-            <form method="get" action="/insumos/patrimonio" class="flex flex-wrap gap-3">
-                <select name="farm_id" class="min-h-[3.25rem] rounded-2xl border-slate-200 bg-slate-50 px-4">
-                    <option value="">Todas as fazendas</option>
-                    {% for farm in farms %}
-                    <option value="{{ farm.id }}" {% if selected_farm_id == farm.id %}selected{% endif %}>{{ farm.name }}</option>
-                    {% endfor %}
-                </select>
-                <button class="rounded-2xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white hover:bg-slate-700">Filtrar</button>
-            </form>
-        </div>
-
-        <div class="mt-6 space-y-4">
-            {% for asset in assets %}
-            <article class="rounded-[1.5rem] border border-slate-100 bg-slate-50 p-5">
-                <div class="flex flex-wrap items-start justify-between gap-4">
-                    <div>
-                        <button type="button" class="text-left text-lg font-semibold text-slate-900 transition hover:text-brand-700" data-history-view-trigger data-history-view-kicker="Patrimonio" data-history-view-title="{{ asset.name }}" data-history-view-subtitle="{{ asset.category }}{% if asset.farm %} • {{ asset.farm.name }}{% endif %}" data-history-view-source="asset-view-{{ asset.id }}" data-history-view-edit-url="/insumos/patrimonio?edit_id={{ asset.id }}{% if selected_farm_id %}&farm_id={{ selected_farm_id }}{% endif %}">{{ asset.name }}</button>
-                        <p class="mt-1 text-sm text-slate-500">{{ asset.category }}{% if asset.farm %} • {{ asset.farm.name }}{% endif %}</p>
-                        <p class="mt-2 text-sm text-slate-600">
-                            {% if asset.manufacturer %}<strong>Fabricante:</strong> {{ asset.manufacturer }}{% endif %}
-                            {% if asset.brand_model %}{% if asset.manufacturer %} • {% endif %}<strong>Modelo:</strong> {{ asset.brand_model }}{% endif %}
-                            {% if asset.manufacture_year %} • <strong>Ano:</strong> {{ asset.manufacture_year }}{% endif %}
-                            {% if asset.asset_code %} • <strong>ID:</strong> {{ asset.asset_code }}{% endif %}
-                        </p>
-                        <p class="mt-1 text-sm text-slate-600">
-                            {% if asset.acquisition_date %}<strong>Aquisição:</strong> {{ asset.acquisition_date }}{% endif %}
-                            {% if asset.acquisition_value is not none %} • <strong>Valor:</strong> R$ {{ asset.acquisition_value }}{% endif %}
-                        </p>
-                        <p class="mt-1 text-sm text-slate-600">Status: <strong>{{ asset.status.replace('_', ' ')|title }}</strong></p>
-                    </div>
-                    <div class="flex gap-2">
-                        <a href="/insumos/patrimonio?edit_id={{ asset.id }}{% if selected_farm_id %}&farm_id={{ selected_farm_id }}{% endif %}" class="rounded-xl bg-slate-900 px-3 py-2 text-xs font-medium text-white hover:bg-slate-700">Editar</a>
-                        <form method="post" action="/insumos/patrimonio/{{ asset.id }}/excluir" onsubmit="return confirm('Excluir o patrimônio {{ asset.name }}?');">
-                            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                            <button class="rounded-xl bg-rose-600 px-3 py-2 text-xs font-medium text-white hover:bg-rose-700">Excluir</button>
-                        </form>
-                    </div>
+                {% set attachment_label = 'Anexos' %}
+                {% set attachment_help_text = 'Envie nota fiscal, imagem ou documentos do patrimonio. Voce pode adicionar mais arquivos em etapas antes de salvar.' %}
+                {% include "partials/attachment_upload_field.html" %}
+                <div class="flex flex-wrap gap-3">
+                    <button class="rounded-2xl bg-brand-500 px-4 py-3 font-semibold text-white hover:bg-brand-700">{% if edit_asset %}Salvar alterações{% else %}Cadastrar patrimônio{% endif %}</button>
+                    {% if edit_asset %}
+                    <a href="/insumos/patrimonio" class="rounded-2xl bg-slate-100 px-4 py-3 font-semibold text-slate-700 hover:bg-slate-200">Cancelar</a>
+                    {% endif %}
                 </div>
-                {% if asset.notes %}
-                <p class="mt-4 text-sm text-slate-500">{{ asset.notes }}</p>
-                {% endif %}
-                <template id="asset-view-{{ asset.id }}">
-                    <div class="grid gap-3 sm:grid-cols-2">
-                        <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Categoria</p><p class="mt-2 text-sm font-medium text-slate-800">{{ asset.category }}</p></div>
-                        <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Fazenda</p><p class="mt-2 text-sm font-medium text-slate-800">{{ asset.farm.name if asset.farm else "Sem fazenda vinculada" }}</p></div>
-                        <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Fabricante</p><p class="mt-2 text-sm font-medium text-slate-800">{{ asset.manufacturer or "-" }}</p></div>
-                        <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Modelo</p><p class="mt-2 text-sm font-medium text-slate-800">{{ asset.brand_model or "-" }}</p></div>
-                        <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Ano</p><p class="mt-2 text-sm font-medium text-slate-800">{{ asset.manufacture_year or "-" }}</p></div>
-                        <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">ID do ativo</p><p class="mt-2 text-sm font-medium text-slate-800">{{ asset.asset_code or "-" }}</p></div>
-                        <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Aquisicao</p><p class="mt-2 text-sm font-medium text-slate-800">{{ asset.acquisition_date or "-" }}</p></div>
-                        <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Valor</p><p class="mt-2 text-sm font-medium text-slate-800">{% if asset.acquisition_value is not none %}R$ {{ asset.acquisition_value }}{% else %}-{% endif %}</p></div>
-                        <div class="rounded-2xl bg-slate-50 px-4 py-3 sm:col-span-2"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Status</p><p class="mt-2 text-sm font-medium text-slate-800">{{ asset.status.replace('_', ' ')|title }}</p></div>
-                    </div>
-                    {% if asset.attachments %}
-                    <div class="rounded-2xl bg-slate-50 px-4 py-4">
-                        <p class="text-xs uppercase tracking-[0.2em] text-slate-400">Anexos</p>
-                        <div class="mt-3 flex flex-wrap gap-2">
-                            {% for attachment in asset.attachments %}
-                            <a href="/insumos/patrimonio/anexos/{{ attachment.id }}" target="_blank" class="rounded-xl bg-white px-3 py-2 text-sm font-medium text-slate-700 ring-1 ring-slate-200 hover:bg-slate-100">{{ attachment.filename }}</a>
-                            {% endfor %}
+            </form>
+            {% set attachment_owner = edit_asset %}
+            {% set attachment_view_base = '/insumos/patrimonio/anexos' %}
+            {% set attachment_delete_base = '/insumos/patrimonio/' ~ edit_asset.id ~ '/anexos' if edit_asset else '' %}
+            {% include "partials/attachment_list.html" %}
+        </section>
+
+        <section id="assets-list" class="stock-panel rounded-[2rem] bg-white p-6 shadow-panel stock-secondary-column" data-stock-fade-panel>
+            <div class="flex flex-wrap items-start justify-between gap-4">
+                <div>
+                    <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Cadastro patrimonial</p>
+                    <h3 class="mt-2 text-2xl font-semibold">Equipamentos cadastrados</h3>
+                </div>
+                <form method="get" action="/insumos/patrimonio" class="flex flex-wrap gap-3">
+                    <select name="farm_id" class="min-h-[3.25rem] rounded-2xl border-slate-200 bg-slate-50 px-4">
+                        <option value="">Todas as fazendas</option>
+                        {% for farm in farms %}
+                        <option value="{{ farm.id }}" {% if selected_farm_id == farm.id %}selected{% endif %}>{{ farm.name }}</option>
+                        {% endfor %}
+                    </select>
+                    <button class="rounded-2xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white hover:bg-slate-700">Filtrar</button>
+                </form>
+            </div>
+
+            <div class="mt-6 space-y-4">
+                {% for asset in assets %}
+                <article class="rounded-[1.5rem] border border-slate-100 bg-slate-50 p-5">
+                    <div class="flex flex-wrap items-start justify-between gap-4">
+                        <div>
+                            <button type="button" class="text-left text-lg font-semibold text-slate-900 transition hover:text-brand-700" data-history-view-trigger data-history-view-kicker="Patrimonio" data-history-view-title="{{ asset.name }}" data-history-view-subtitle="{{ asset.category }}{% if asset.farm %} • {{ asset.farm.name }}{% endif %}" data-history-view-source="asset-view-{{ asset.id }}" data-history-view-edit-url="/insumos/patrimonio?edit_id={{ asset.id }}{% if selected_farm_id %}&farm_id={{ selected_farm_id }}{% endif %}">{{ asset.name }}</button>
+                            <p class="mt-1 text-sm text-slate-500">{{ asset.category }}{% if asset.farm %} • {{ asset.farm.name }}{% endif %}</p>
+                            <p class="mt-2 text-sm text-slate-600">
+                                {% if asset.manufacturer %}<strong>Fabricante:</strong> {{ asset.manufacturer }}{% endif %}
+                                {% if asset.brand_model %}{% if asset.manufacturer %} • {% endif %}<strong>Modelo:</strong> {{ asset.brand_model }}{% endif %}
+                                {% if asset.manufacture_year %} • <strong>Ano:</strong> {{ asset.manufacture_year }}{% endif %}
+                                {% if asset.asset_code %} • <strong>ID:</strong> {{ asset.asset_code }}{% endif %}
+                            </p>
+                            <p class="mt-1 text-sm text-slate-600">
+                                {% if asset.acquisition_date %}<strong>Aquisição:</strong> {{ asset.acquisition_date }}{% endif %}
+                                {% if asset.acquisition_value is not none %} • <strong>Valor:</strong> R$ {{ asset.acquisition_value }}{% endif %}
+                            </p>
+                            <p class="mt-1 text-sm text-slate-600">Status: <strong>{{ asset.status.replace('_', ' ')|title }}</strong></p>
+                        </div>
+                        <div class="flex gap-2">
+                            <a href="/insumos/patrimonio?edit_id={{ asset.id }}{% if selected_farm_id %}&farm_id={{ selected_farm_id }}{% endif %}" class="rounded-xl bg-slate-900 px-3 py-2 text-xs font-medium text-white hover:bg-slate-700">Editar</a>
+                            <form method="post" action="/insumos/patrimonio/{{ asset.id }}/excluir" onsubmit="return confirm('Excluir o patrimônio {{ asset.name }}?');">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                                <button class="rounded-xl bg-rose-600 px-3 py-2 text-xs font-medium text-white hover:bg-rose-700">Excluir</button>
+                            </form>
                         </div>
                     </div>
+                    {% if asset.notes %}
+                    <p class="mt-4 text-sm text-slate-500">{{ asset.notes }}</p>
                     {% endif %}
-                    <div class="rounded-2xl bg-slate-50 px-4 py-4">
-                        <p class="text-xs uppercase tracking-[0.2em] text-slate-400">Observacoes</p>
-                        <p class="mt-2 text-sm text-slate-600">{{ asset.notes or "Sem observacoes." }}</p>
-                    </div>
-                </template>
-            </article>
-            {% else %}
-            <p class="text-sm text-slate-500">Nenhum patrimônio cadastrado para os filtros informados.</p>
-            {% endfor %}
-        </div>
-        {% with pagination=assets_pagination %}{% include "partials/history_pagination.html" %}{% endwith %}
-    </section>
+                    <template id="asset-view-{{ asset.id }}">
+                        <div class="grid gap-3 sm:grid-cols-2">
+                            <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Categoria</p><p class="mt-2 text-sm font-medium text-slate-800">{{ asset.category }}</p></div>
+                            <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Fazenda</p><p class="mt-2 text-sm font-medium text-slate-800">{{ asset.farm.name if asset.farm else "Sem fazenda vinculada" }}</p></div>
+                            <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Fabricante</p><p class="mt-2 text-sm font-medium text-slate-800">{{ asset.manufacturer or "-" }}</p></div>
+                            <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Modelo</p><p class="mt-2 text-sm font-medium text-slate-800">{{ asset.brand_model or "-" }}</p></div>
+                            <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Ano</p><p class="mt-2 text-sm font-medium text-slate-800">{{ asset.manufacture_year or "-" }}</p></div>
+                            <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">ID do ativo</p><p class="mt-2 text-sm font-medium text-slate-800">{{ asset.asset_code or "-" }}</p></div>
+                            <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Aquisicao</p><p class="mt-2 text-sm font-medium text-slate-800">{{ asset.acquisition_date or "-" }}</p></div>
+                            <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Valor</p><p class="mt-2 text-sm font-medium text-slate-800">{% if asset.acquisition_value is not none %}R$ {{ asset.acquisition_value }}{% else %}-{% endif %}</p></div>
+                            <div class="rounded-2xl bg-slate-50 px-4 py-3 sm:col-span-2"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Status</p><p class="mt-2 text-sm font-medium text-slate-800">{{ asset.status.replace('_', ' ')|title }}</p></div>
+                        </div>
+                        {% if asset.attachments %}
+                        <div class="rounded-2xl bg-slate-50 px-4 py-4">
+                            <p class="text-xs uppercase tracking-[0.2em] text-slate-400">Anexos</p>
+                            <div class="mt-3 flex flex-wrap gap-2">
+                                {% for attachment in asset.attachments %}
+                                <a href="/insumos/patrimonio/anexos/{{ attachment.id }}" target="_blank" class="rounded-xl bg-white px-3 py-2 text-sm font-medium text-slate-700 ring-1 ring-slate-200 hover:bg-slate-100">{{ attachment.filename }}</a>
+                                {% endfor %}
+                            </div>
+                        </div>
+                        {% endif %}
+                        <div class="rounded-2xl bg-slate-50 px-4 py-4">
+                            <p class="text-xs uppercase tracking-[0.2em] text-slate-400">Observacoes</p>
+                            <p class="mt-2 text-sm text-slate-600">{{ asset.notes or "Sem observacoes." }}</p>
+                        </div>
+                    </template>
+                </article>
+                {% else %}
+                <p class="text-sm text-slate-500">Nenhum patrimônio cadastrado para os filtros informados.</p>
+                {% endfor %}
+            </div>
+            {% with pagination=assets_pagination %}{% include "partials/history_pagination.html" %}{% endwith %}
+        </section>
+    </div>
 </div>
 {% include "partials/history_view_modal.html" %}
 {% include "partials/attachment_manager_script.html" %}
+
+<script>
+    (() => {
+        const stickyHeader = document.querySelector('.stock-page-header');
+        const fadingPanels = Array.from(document.querySelectorAll('[data-stock-fade-panel]'));
+        if (!stickyHeader || !fadingPanels.length) return;
+
+        let rafId = null;
+        const updateFadingPanels = () => {
+            rafId = null;
+            const stickyRect = stickyHeader.getBoundingClientRect();
+            const stickyBottom = stickyRect.bottom;
+            fadingPanels.forEach((panel) => {
+                const panelRect = panel.getBoundingClientRect();
+                const panelTop = panelRect.top;
+                const panelH = panelRect.height;
+                if (panelTop >= stickyBottom || panelH <= 1) {
+                    panel.style.setProperty('--stock-fade-cutoff', '0px');
+                    panel.style.setProperty('--stock-fade-feather-end', '0px');
+                    return;
+                }
+
+                const rawOverlap = Math.max(stickyBottom - panelTop, 0);
+                const overlap = Math.min(rawOverlap, panelH);
+                const featherBand = Math.min(80, Math.max(22, overlap * 0.45 + 16));
+                panel.style.setProperty('--stock-fade-cutoff', `${overlap.toFixed(2)}px`);
+                panel.style.setProperty('--stock-fade-feather-end', `${(overlap + featherBand).toFixed(2)}px`);
+            });
+        };
+
+        const scheduleFadeUpdate = () => {
+            if (rafId !== null) return;
+            rafId = window.requestAnimationFrame(updateFadingPanels);
+        };
+
+        window.addEventListener('scroll', scheduleFadeUpdate, { passive: true });
+        window.addEventListener('resize', scheduleFadeUpdate);
+        scheduleFadeUpdate();
+    })();
+</script>
 {% endblock %}
