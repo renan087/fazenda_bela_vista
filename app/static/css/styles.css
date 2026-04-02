@@ -803,33 +803,33 @@ body {
     }
 
     .stock-action-button {
-        display: grid;
+        display: flex;
+        flex-direction: row;
+        flex-wrap: wrap;
         width: 100%;
         min-width: 0;
         max-width: 100%;
         box-sizing: border-box;
-        grid-template-columns: auto minmax(0, 1fr);
         align-items: center;
-        justify-items: start;
+        justify-content: center;
+        gap: 0.55rem;
         padding: 0.82rem 0.9rem;
         font-size: 0.88rem;
         line-height: 1.2;
-        text-align: left;
+        text-align: center;
         overflow: hidden;
     }
 
     .stock-export-button {
-        justify-content: start;
-    }
-
-    .stock-action-button-primary {
-        grid-column: auto;
+        justify-content: center;
     }
 
     .stock-action-button-label {
         display: block;
+        flex: 0 1 auto;
         min-width: 0;
         max-width: 100%;
+        text-align: center;
         overflow-wrap: anywhere;
         word-break: break-word;
     }
