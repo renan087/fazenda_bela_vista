@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block content %}
-<section class="rounded-[2rem] bg-white p-6 shadow-panel">
+<section class="stock-hero rounded-[2rem] bg-white p-6 shadow-panel">
     <div>
         <div>
             <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Estoque</p>
@@ -10,36 +10,61 @@
     </div>
 </section>
 
-<section class="mt-6 grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
-    <article class="rounded-[2rem] bg-white p-6 shadow-panel">
+<section class="stock-layout mt-6">
+    <div class="stock-primary-column">
+    <article class="stock-panel rounded-[2rem] bg-white p-6 shadow-panel">
         <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Visão consolidada</p>
         <h3 class="mt-2 text-xl font-semibold">Saldo atual por insumo</h3>
-        <div class="mt-6 grid gap-4 md:grid-cols-2" data-stock-catalog-grid>
+        <p class="mt-2 max-w-3xl text-sm text-slate-500">Acompanhe rapidamente os insumos com saldo confortável, atenção preventiva e nível crítico sem sair da visão principal.</p>
+        <div class="stock-summary-grid mt-6" data-stock-catalog-grid>
             {% for item in stock_catalog_rows %}
-            <div class="rounded-[1.5rem] border {% if item.low_stock_threshold and item.available_quantity <= item.low_stock_threshold %}border-amber-200 bg-amber-50{% else %}border-slate-100 bg-slate-50{% endif %} p-5" data-stock-catalog-card>
+            {% set has_threshold = item.low_stock_threshold and item.low_stock_threshold > 0 %}
+            {% set is_critical = has_threshold and item.available_quantity <= (item.low_stock_threshold * 0.4) %}
+            {% set is_low = has_threshold and item.available_quantity <= item.low_stock_threshold %}
+            {% if not has_threshold %}
+                {% set level_width = 100 %}
+            {% elif item.available_quantity >= item.low_stock_threshold %}
+                {% set level_width = 100 %}
+            {% elif item.available_quantity <= 0 %}
+                {% set level_width = 6 %}
+            {% else %}
+                {% set level_width = (item.available_quantity / item.low_stock_threshold * 100) %}
+            {% endif %}
+            <div class="stock-summary-card" data-stock-catalog-card data-stock-level="{% if is_critical %}critical{% elif is_low %}low{% else %}ok{% endif %}">
                 <div class="flex items-start justify-between gap-3">
-                    <div>
-                        <p class="text-lg font-semibold text-slate-900">{{ item.name }}</p>
+                    <div class="min-w-0">
+                        <p class="truncate text-lg font-semibold text-slate-900">{{ item.name }}</p>
                         <p class="mt-1 text-xs uppercase tracking-[0.2em] text-slate-400">{{ 'Combustivel' if item.item_type == 'combustivel' else 'Insumo agricola' }}</p>
-                        <p class="mt-1 text-sm text-slate-500">Saldo: <strong>{{ item.available_quantity }} {{ item.unit }}</strong></p>
                     </div>
-                    {% if item.low_stock_threshold and item.available_quantity <= item.low_stock_threshold %}
-                    <span class="rounded-full bg-amber-200 px-3 py-1 text-xs font-semibold text-amber-800">Alerta</span>
+                    {% if is_critical %}
+                    <span class="stock-level-badge stock-level-badge-critical">Crítico</span>
+                    {% elif is_low %}
+                    <span class="stock-level-badge stock-level-badge-low">Baixo</span>
                     {% else %}
-                    <span class="rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-700">OK</span>
+                    <span class="stock-level-badge stock-level-badge-ok">OK</span>
                     {% endif %}
                 </div>
-                <div class="mt-4 grid gap-3 text-sm text-slate-600 sm:grid-cols-2">
-                    <p>Total em entradas: <strong>{{ item.total_quantity }} {{ item.unit }}</strong></p>
-                    <p>Custo médio: <strong>R$ {{ item.average_cost }}</strong></p>
-                    <p>Lotes: <strong>{{ item.entries_count }}</strong></p>
-                    <p>Saídas: <strong>{{ item.outputs_count }}</strong></p>
+                <div class="mt-5">
+                    <p class="text-xs uppercase tracking-[0.18em] text-slate-400">Saldo disponível</p>
+                    <p class="mt-2 text-2xl font-semibold text-slate-900">{{ item.available_quantity }} <span class="text-base font-medium text-slate-500">{{ item.unit }}</span></p>
+                    <div class="stock-level-meter mt-4">
+                        <span style="width: {{ level_width if level_width <= 100 else 100 }}%"></span>
+                    </div>
                 </div>
-                <p class="mt-3 text-sm text-slate-500">
-                    Estoque mínimo:
-                    <strong>{% if item.low_stock_threshold %}{{ item.low_stock_threshold }} {{ item.unit }}{% else %}não configurado{% endif %}</strong>
-                    {% if item.last_movement_date %} • Última movimentação: <strong>{{ item.last_movement_date }}</strong>{% endif %}
-                </p>
+                <div class="mt-4 grid gap-3 text-sm text-slate-600 sm:grid-cols-2">
+                    <p>Total recebido <strong>{{ item.total_quantity }} {{ item.unit }}</strong></p>
+                    <p>Custo médio <strong>R$ {{ item.average_cost }}</strong></p>
+                    <p>Lotes <strong>{{ item.entries_count }}</strong></p>
+                    <p>Saídas <strong>{{ item.outputs_count }}</strong></p>
+                </div>
+                <div class="mt-4 flex flex-wrap gap-2 text-xs text-slate-500">
+                    <span class="rounded-full bg-white px-3 py-1.5 ring-1 ring-slate-200/80">
+                        Min.: {% if item.low_stock_threshold %}{{ item.low_stock_threshold }} {{ item.unit }}{% else %}não configurado{% endif %}
+                    </span>
+                    {% if item.last_movement_date %}
+                    <span class="rounded-full bg-white px-3 py-1.5 ring-1 ring-slate-200/80">Última mov.: {{ item.last_movement_date }}</span>
+                    {% endif %}
+                </div>
             </div>
             {% else %}
             <p class="text-sm text-slate-500 md:col-span-2">Nenhum insumo encontrado para os filtros informados.</p>
@@ -50,7 +75,280 @@
         {% endif %}
     </article>
 
-    <article class="rounded-[2rem] bg-white p-6 shadow-panel">
+    <section class="stock-panel mt-6 rounded-[2rem] bg-white p-6 shadow-panel">
+        <div class="flex flex-wrap items-start justify-between gap-4">
+            <div>
+                <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Histórico</p>
+                <h3 class="mt-2 text-xl font-semibold">Movimentações de estoque</h3>
+                <p class="mt-2 max-w-3xl text-sm text-slate-500">Filtre as movimentações e navegue entre entradas, saídas e extrato dentro do mesmo painel.</p>
+            </div>
+            <div class="stock-search-field">
+                <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+                    <circle cx="8.5" cy="8.5" r="5.75"></circle>
+                    <path d="M13 13l4 4"></path>
+                </svg>
+                <input type="search" placeholder="Buscar insumo, fazenda, origem ou observação" data-stock-history-search>
+            </div>
+        </div>
+
+        <div class="mt-6 rounded-[1.5rem] border border-slate-200 bg-slate-50/70 p-4 sm:p-5">
+            <form method="get" action="/insumos/estoque" class="grid gap-3 sm:grid-cols-2 xl:grid-cols-6" data-stock-filter-form>
+                <label>
+                    <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Tipo</span>
+                    <select name="item_type" class="w-full rounded-xl border-slate-200 bg-white">
+                        <option value="">Todos os consumiveis</option>
+                        <option value="insumo_agricola" {% if selected_item_type == 'insumo_agricola' %}selected{% endif %}>Insumo agricola</option>
+                        <option value="combustivel" {% if selected_item_type == 'combustivel' %}selected{% endif %}>Combustivel</option>
+                    </select>
+                </label>
+                <label>
+                    <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Fazenda</span>
+                    <select name="farm_id" class="w-full rounded-xl border-slate-200 bg-white">
+                        <option value="">Todas</option>
+                        {% for farm in farms %}
+                        <option value="{{ farm.id }}" {% if selected_farm_id == farm.id %}selected{% endif %}>{{ farm.name }}</option>
+                        {% endfor %}
+                    </select>
+                </label>
+                <label>
+                    <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Insumo</span>
+                    <select name="input_id" class="w-full rounded-xl border-slate-200 bg-white">
+                        <option value="">Todos</option>
+                        {% for input_item in inputs_catalog %}
+                        <option value="{{ input_item.id }}" {% if selected_input_id == input_item.id %}selected{% endif %}>{{ input_item.name }}</option>
+                        {% endfor %}
+                    </select>
+                </label>
+                <label>
+                    <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Periodo inicial</span>
+                    <input type="date" name="start_date" value="{{ selected_start_date or '' }}" class="w-full rounded-xl border-slate-200 bg-white">
+                </label>
+                <label>
+                    <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Periodo final</span>
+                    <input type="date" name="end_date" value="{{ selected_end_date or '' }}" class="w-full rounded-xl border-slate-200 bg-white">
+                </label>
+                <label>
+                    <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Movimentacao</span>
+                    <select name="movement_type" class="w-full rounded-xl border-slate-200 bg-white">
+                        <option value="all" {% if selected_movement_type == 'all' %}selected{% endif %}>Todas</option>
+                        <option value="entrada" {% if selected_movement_type == 'entrada' %}selected{% endif %}>Entrada</option>
+                        <option value="saida" {% if selected_movement_type == 'saida' %}selected{% endif %}>Saida</option>
+                    </select>
+                </label>
+                <div class="flex flex-wrap items-end gap-3 sm:col-span-2 xl:col-span-6">
+                    <button class="rounded-xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white">Filtrar</button>
+                    <a href="/insumos/estoque" class="rounded-xl bg-white px-4 py-3 text-sm font-semibold text-slate-700 ring-1 ring-slate-200 hover:bg-slate-100">Limpar</a>
+                </div>
+            </form>
+        </div>
+
+        <div class="stock-tab-nav mt-6 flex flex-wrap gap-3">
+            <a href="{{ stock_tab_urls.entries }}" class="stock-tab-link {% if selected_stock_tab == 'entries' %}is-active{% endif %}" data-stock-tab-button="entries">Entradas</a>
+            <a href="{{ stock_tab_urls.outputs }}" class="stock-tab-link {% if selected_stock_tab == 'outputs' %}is-active{% endif %}" data-stock-tab-button="outputs">Saídas</a>
+            <a href="{{ stock_tab_urls.extract }}" class="stock-tab-link {% if selected_stock_tab == 'extract' %}is-active{% endif %}" data-stock-tab-button="extract">Extrato</a>
+        </div>
+
+        <div class="mt-6 {% if selected_stock_tab != 'entries' %}hidden{% endif %}" data-stock-tab="entries">
+            <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Histórico de entradas</p>
+            <h3 class="mt-2 text-xl font-semibold">Compras e lotes</h3>
+            <div class="stock-table-shell mt-6 overflow-hidden rounded-[1.5rem] border border-slate-200">
+                <div class="overflow-x-auto">
+                    <table class="stock-history-table min-w-full divide-y divide-slate-200 text-sm">
+                        <thead class="bg-slate-50 text-left text-slate-500">
+                            <tr>
+                                <th class="px-4 py-3 font-medium">Data</th>
+                                <th class="px-4 py-3 font-medium">Insumo</th>
+                                <th class="px-4 py-3 font-medium">Tipo</th>
+                                <th class="px-4 py-3 font-medium">Fazenda</th>
+                                <th class="px-4 py-3 font-medium">Quantidade</th>
+                                <th class="px-4 py-3 font-medium">Saldo do lote</th>
+                                <th class="px-4 py-3 font-medium">Valor</th>
+                                <th class="px-4 py-3 font-medium">Observações</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-100 bg-white">
+                            {% for entry in purchase_entries %}
+                            <tr data-stock-history-row data-stock-kind="entrada" data-stock-search-text="{{ (entry.purchase_date or '') ~ ' ' ~ (entry.input_catalog.name if entry.input_catalog else entry.name) ~ ' ' ~ (entry.farm.name if entry.farm else '') ~ ' ' ~ (entry.notes or '') ~ ' ' ~ ('Combustivel' if entry.input_catalog and entry.input_catalog.item_type == 'combustivel' else 'Insumo agricola') }}">
+                                <td class="px-4 py-3">
+                                    <span class="stock-movement-chip stock-movement-chip-entry">Entrada</span>
+                                    <p class="mt-2">{{ entry.purchase_date or "-" }}</p>
+                                </td>
+                                <td class="px-4 py-3 font-medium text-slate-900">
+                                    <button type="button" class="text-left transition hover:text-brand-700" data-history-view-trigger data-history-view-kicker="Entrada de estoque" data-history-view-title="{{ entry.input_catalog.name if entry.input_catalog else entry.name }}" data-history-view-subtitle="{{ entry.purchase_date or '-' }}" data-history-view-source="stock-entry-view-{{ entry.id }}">{{ entry.input_catalog.name if entry.input_catalog else entry.name }}</button>
+                                    <template id="stock-entry-view-{{ entry.id }}">
+                                        <div class="grid gap-3 sm:grid-cols-2">
+                                            <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Data</p><p class="mt-2 text-sm font-medium text-slate-800">{{ entry.purchase_date or "-" }}</p></div>
+                                            <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Fazenda</p><p class="mt-2 text-sm font-medium text-slate-800">{{ entry.farm.name if entry.farm else "Sem vínculo" }}</p></div>
+                                            <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Tipo</p><p class="mt-2 text-sm font-medium text-slate-800">{{ 'Combustivel' if entry.input_catalog and entry.input_catalog.item_type == 'combustivel' else 'Insumo agricola' }}</p></div>
+                                            <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Quantidade</p><p class="mt-2 text-sm font-medium text-slate-800">{{ entry.total_quantity }} {{ entry.package_unit }}</p></div>
+                                            <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Saldo do lote</p><p class="mt-2 text-sm font-medium text-slate-800">{{ entry.available_quantity }} {{ entry.package_unit }}</p></div>
+                                            <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Valor</p><p class="mt-2 text-sm font-medium text-slate-800">R$ {{ entry.total_cost }}</p></div>
+                                        </div>
+                                        <div class="rounded-2xl bg-slate-50 px-4 py-4"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Observacoes</p><p class="mt-2 text-sm text-slate-600">{{ entry.notes or "Sem observacoes." }}</p></div>
+                                    </template>
+                                </td>
+                                <td class="px-4 py-3">{{ 'Combustivel' if entry.input_catalog and entry.input_catalog.item_type == 'combustivel' else 'Insumo agricola' }}</td>
+                                <td class="px-4 py-3">{{ entry.farm.name if entry.farm else "Sem vínculo" }}</td>
+                                <td class="px-4 py-3">{{ entry.total_quantity }} {{ entry.package_unit }}</td>
+                                <td class="px-4 py-3">{{ entry.available_quantity }} {{ entry.package_unit }}</td>
+                                <td class="px-4 py-3">R$ {{ entry.total_cost }}</td>
+                                <td class="px-4 py-3 text-slate-500">{{ entry.notes or "-" }}</td>
+                            </tr>
+                            {% else %}
+                            <tr><td colspan="8" class="px-4 py-6 text-center text-slate-500">Nenhuma entrada encontrada.</td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            <p class="stock-search-empty mt-4 hidden text-sm text-slate-500" data-stock-search-empty>Nenhuma entrada corresponde à busca digitada.</p>
+            {% with pagination=purchase_entries_pagination %}{% include "partials/history_pagination.html" %}{% endwith %}
+        </div>
+
+        <div class="mt-6 {% if selected_stock_tab != 'outputs' %}hidden{% endif %}" data-stock-tab="outputs">
+            <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Histórico de saídas</p>
+            <h3 class="mt-2 text-xl font-semibold">Usos e baixas</h3>
+            <div class="stock-table-shell mt-6 overflow-hidden rounded-[1.5rem] border border-slate-200">
+                <div class="overflow-x-auto">
+                    <table class="stock-history-table min-w-full divide-y divide-slate-200 text-sm">
+                        <thead class="bg-slate-50 text-left text-slate-500">
+                            <tr>
+                                <th class="px-4 py-3 font-medium">Data</th>
+                                <th class="px-4 py-3 font-medium">Insumo</th>
+                                <th class="px-4 py-3 font-medium">Tipo</th>
+                                <th class="px-4 py-3 font-medium">Origem</th>
+                                <th class="px-4 py-3 font-medium">Fazenda / Setor</th>
+                                <th class="px-4 py-3 font-medium">Quantidade</th>
+                                <th class="px-4 py-3 font-medium">Custo</th>
+                                <th class="px-4 py-3 font-medium">Observações</th>
+                                <th class="px-4 py-3 font-medium text-right">Ações</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-100 bg-white">
+                            {% for output in stock_outputs %}
+                            <tr data-stock-history-row data-stock-kind="saida" data-stock-search-text="{{ output.movement_date ~ ' ' ~ (output.input_catalog.name if output.input_catalog else '') ~ ' ' ~ output.origin ~ ' ' ~ (output.farm.name if output.farm else '') ~ ' ' ~ (output.plot.name if output.plot else '') ~ ' ' ~ (output.notes or '') }}">
+                                <td class="px-4 py-3">
+                                    <span class="stock-movement-chip stock-movement-chip-output">Saída</span>
+                                    <p class="mt-2">{{ output.movement_date }}</p>
+                                </td>
+                                <td class="px-4 py-3 font-medium text-slate-900">
+                                    <button type="button" class="text-left transition hover:text-brand-700" data-history-view-trigger data-history-view-kicker="Saida de estoque" data-history-view-title="{{ output.input_catalog.name if output.input_catalog else '-' }}" data-history-view-subtitle="{{ output.movement_date }}" data-history-view-source="stock-output-table-view-{{ output.id }}" data-history-view-edit-url="/insumos/estoque/saidas/{{ output.id }}/editar">{{ output.input_catalog.name if output.input_catalog else "-" }}</button>
+                                    <template id="stock-output-table-view-{{ output.id }}">
+                                        <div class="grid gap-3 sm:grid-cols-2">
+                                            <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Data</p><p class="mt-2 text-sm font-medium text-slate-800">{{ output.movement_date }}</p></div>
+                                            <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Origem</p><p class="mt-2 text-sm font-medium text-slate-800">{{ output.origin }}</p></div>
+                                            <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Tipo</p><p class="mt-2 text-sm font-medium text-slate-800">{{ 'Combustivel' if output.input_catalog and output.input_catalog.item_type == 'combustivel' else 'Insumo agricola' }}</p></div>
+                                            <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Fazenda / Setor</p><p class="mt-2 text-sm font-medium text-slate-800">{{ output.farm.name if output.farm else "Sem vínculo" }}{% if output.plot %} / {{ output.plot.name }}{% endif %}</p></div>
+                                            <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Quantidade</p><p class="mt-2 text-sm font-medium text-slate-800">{{ output.quantity }} {{ output.unit }}</p></div>
+                                            <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Custo</p><p class="mt-2 text-sm font-medium text-slate-800">{% if output.total_cost is not none %}R$ {{ output.total_cost }}{% else %}-{% endif %}</p></div>
+                                        </div>
+                                        <div class="rounded-2xl bg-slate-50 px-4 py-4"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Observacoes</p><p class="mt-2 text-sm text-slate-600">{{ output.notes or "Sem observacoes." }}</p></div>
+                                    </template>
+                                </td>
+                                <td class="px-4 py-3">{{ 'Combustivel' if output.input_catalog and output.input_catalog.item_type == 'combustivel' else 'Insumo agricola' }}</td>
+                                <td class="px-4 py-3">{{ output.origin }}</td>
+                                <td class="px-4 py-3">{{ output.farm.name if output.farm else "Sem vínculo" }}{% if output.plot %} / {{ output.plot.name }}{% endif %}</td>
+                                <td class="px-4 py-3">{{ output.quantity }} {{ output.unit }}</td>
+                                <td class="px-4 py-3">{% if output.total_cost is not none %}R$ {{ output.total_cost }}{% else %}-{% endif %}</td>
+                                <td class="px-4 py-3 text-slate-500">{{ output.notes or "-" }}</td>
+                                <td class="px-4 py-3">
+                                    <div class="flex items-center justify-end gap-2">
+                                        <a href="/insumos/estoque/saidas/{{ output.id }}/editar" class="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-100" title="Editar">
+                                            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                                <path d="M12 20h9"/>
+                                                <path d="M16.5 3.5a2.1 2.1 0 1 1 3 3L7 19l-4 1 1-4Z"/>
+                                            </svg>
+                                        </a>
+                                        <form method="post" action="/insumos/estoque/saidas/{{ output.id }}/excluir" onsubmit="return confirm('Confirma a exclusão deste lançamento de saída?');">
+                                            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                                            <button type="submit" class="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 text-rose-600 hover:bg-rose-50" title="{% if output.reference_type == 'manual_stock_output' %}Excluir{% else %}Exclusão bloqueada{% endif %}">
+                                                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                                    <path d="M3 6h18"/>
+                                                    <path d="M8 6V4h8v2"/>
+                                                    <path d="M19 6l-1 14H6L5 6"/>
+                                                    <path d="M10 11v6"/>
+                                                    <path d="M14 11v6"/>
+                                                </svg>
+                                            </button>
+                                        </form>
+                                    </div>
+                                </td>
+                            </tr>
+                            {% else %}
+                            <tr><td colspan="9" class="px-4 py-6 text-center text-slate-500">Nenhuma saída encontrada.</td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            <p class="stock-search-empty mt-4 hidden text-sm text-slate-500" data-stock-search-empty>Nenhuma saída corresponde à busca digitada.</p>
+            {% with pagination=stock_outputs_pagination %}{% include "partials/history_pagination.html" %}{% endwith %}
+        </div>
+
+        <div class="mt-6 {% if selected_stock_tab != 'extract' %}hidden{% endif %}" data-stock-tab="extract">
+            <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Extrato</p>
+            <h3 class="mt-2 text-xl font-semibold">Movimentações em ordem cronológica</h3>
+            <div class="stock-table-shell mt-6 overflow-hidden rounded-[1.5rem] border border-slate-200">
+                <div class="overflow-x-auto">
+                    <table class="stock-history-table min-w-full divide-y divide-slate-200 text-sm">
+                        <thead class="bg-slate-50 text-left text-slate-500">
+                            <tr>
+                                <th class="px-4 py-3 font-medium">Data</th>
+                                <th class="px-4 py-3 font-medium">Insumo</th>
+                                <th class="px-4 py-3 font-medium">Movimento</th>
+                                <th class="px-4 py-3 font-medium">Origem / Ref.</th>
+                                <th class="px-4 py-3 font-medium">Quantidade</th>
+                                <th class="px-4 py-3 font-medium">Custo unit.</th>
+                                <th class="px-4 py-3 font-medium">Custo total</th>
+                                <th class="px-4 py-3 font-medium">Saldo após</th>
+                                <th class="px-4 py-3 font-medium">Observações</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-100 bg-white">
+                            {% for row in extract_rows %}
+                            <tr data-stock-history-row data-stock-kind="{{ row.kind }}" data-stock-search-text="{{ (row.date or '') ~ ' ' ~ row.input_name ~ ' ' ~ row.kind ~ ' ' ~ row.origin ~ ' ' ~ row.reference ~ ' ' ~ (row.notes or '') }}">
+                                <td class="px-4 py-3">{{ row.date or "-" }}</td>
+                                <td class="px-4 py-3 font-medium text-slate-900">{{ row.input_name }}</td>
+                                <td class="px-4 py-3">
+                                    <span class="stock-movement-chip {% if row.kind == 'entrada' %}stock-movement-chip-entry{% else %}stock-movement-chip-output{% endif %}">
+                                        {{ row.kind }}
+                                    </span>
+                                </td>
+                                <td class="px-4 py-3">{{ row.origin }} • {{ row.reference }}</td>
+                                <td class="px-4 py-3">{{ row.quantity }} {{ row.unit }}</td>
+                                <td class="px-4 py-3">{% if row.unit_cost is not none %}R$ {{ row.unit_cost }}{% else %}-{% endif %}</td>
+                                <td class="px-4 py-3">{% if row.total_cost is not none %}R$ {{ row.total_cost }}{% else %}-{% endif %}</td>
+                                <td class="px-4 py-3">{{ row.balance_after }} {{ row.unit }}</td>
+                                <td class="px-4 py-3 text-slate-500">{{ row.notes or '-' }}</td>
+                            </tr>
+                            {% else %}
+                            <tr><td colspan="9" class="px-4 py-6 text-center text-slate-500">Nenhuma movimentação encontrada.</td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            <p class="stock-search-empty mt-4 hidden text-sm text-slate-500" data-stock-search-empty>Nenhuma movimentação corresponde à busca digitada.</p>
+            {% with pagination=extract_rows_pagination %}{% include "partials/history_pagination.html" %}{% endwith %}
+        </div>
+    </section>
+    </div>
+
+    <aside class="stock-secondary-column">
+    <article class="stock-panel rounded-[2rem] bg-white p-6 shadow-panel">
+        <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Ações rápidas</p>
+        <h3 class="mt-2 text-xl font-semibold">Atalhos do módulo</h3>
+        <p class="mt-2 text-sm text-slate-500">Use os atalhos para exportar relatórios e navegar rápido entre as áreas mais usadas do estoque.</p>
+        <div class="stock-quick-actions mt-6">
+            <a href="/insumos/estoque/exportar.pdf{% if stock_export_query %}?{{ stock_export_query }}{% endif %}" class="stock-quick-action stock-quick-action-primary">Exportar PDF</a>
+            <a href="/insumos/estoque/exportar.xlsx{% if stock_export_query %}?{{ stock_export_query }}{% endif %}" class="stock-quick-action stock-quick-action-secondary">Exportar Excel</a>
+            <a href="{{ stock_tab_urls.entries }}" class="stock-quick-action stock-quick-action-light">Ir para entradas</a>
+            <a href="{{ stock_tab_urls.outputs }}" class="stock-quick-action stock-quick-action-light">Ir para saídas</a>
+            <a href="{{ stock_tab_urls.extract }}" class="stock-quick-action stock-quick-action-light">Abrir extrato</a>
+        </div>
+    </article>
+
+    <article class="stock-panel mt-6 rounded-[2rem] bg-white p-6 shadow-panel">
         <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Saída manual</p>
         <h3 class="mt-2 text-xl font-semibold">Lançar consumo avulso</h3>
         <form method="post" action="/insumos/estoque/saida-manual" class="mt-6 grid gap-4">
@@ -106,252 +404,7 @@
             </div>
         </form>
     </article>
-</section>
-
-<section class="mt-6 rounded-[2rem] bg-white p-6 shadow-panel">
-    <div class="flex flex-wrap items-start justify-between gap-4">
-        <div>
-            <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Histórico</p>
-            <h3 class="mt-2 text-xl font-semibold">Movimentações de estoque</h3>
-            <p class="mt-2 max-w-3xl text-sm text-slate-500">Filtre as movimentações e navegue entre entradas, saídas e extrato dentro do mesmo painel.</p>
-        </div>
-        <div class="flex flex-wrap gap-3">
-            <a href="/insumos/estoque/exportar.pdf{% if stock_export_query %}?{{ stock_export_query }}{% endif %}" class="rounded-xl bg-brand-500 px-4 py-3 text-sm font-semibold text-white hover:bg-brand-700">Exportar PDF</a>
-            <a href="/insumos/estoque/exportar.xlsx{% if stock_export_query %}?{{ stock_export_query }}{% endif %}" class="rounded-xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white hover:bg-emerald-700">Exportar Excel</a>
-        </div>
-    </div>
-
-    <div class="mt-6 rounded-[1.5rem] border border-slate-200 bg-slate-50/70 p-4 sm:p-5">
-        <form method="get" action="/insumos/estoque" class="grid gap-3 sm:grid-cols-2 xl:grid-cols-6" data-stock-filter-form>
-            <label>
-                <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Tipo</span>
-                <select name="item_type" class="w-full rounded-xl border-slate-200 bg-white">
-                    <option value="">Todos os consumiveis</option>
-                    <option value="insumo_agricola" {% if selected_item_type == 'insumo_agricola' %}selected{% endif %}>Insumo agricola</option>
-                    <option value="combustivel" {% if selected_item_type == 'combustivel' %}selected{% endif %}>Combustivel</option>
-                </select>
-            </label>
-            <label>
-                <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Fazenda</span>
-                <select name="farm_id" class="w-full rounded-xl border-slate-200 bg-white">
-                    <option value="">Todas</option>
-                    {% for farm in farms %}
-                    <option value="{{ farm.id }}" {% if selected_farm_id == farm.id %}selected{% endif %}>{{ farm.name }}</option>
-                    {% endfor %}
-                </select>
-            </label>
-            <label>
-                <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Insumo</span>
-                <select name="input_id" class="w-full rounded-xl border-slate-200 bg-white">
-                    <option value="">Todos</option>
-                    {% for input_item in inputs_catalog %}
-                    <option value="{{ input_item.id }}" {% if selected_input_id == input_item.id %}selected{% endif %}>{{ input_item.name }}</option>
-                    {% endfor %}
-                </select>
-            </label>
-            <label>
-                <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Periodo inicial</span>
-                <input type="date" name="start_date" value="{{ selected_start_date or '' }}" class="w-full rounded-xl border-slate-200 bg-white">
-            </label>
-            <label>
-                <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Periodo final</span>
-                <input type="date" name="end_date" value="{{ selected_end_date or '' }}" class="w-full rounded-xl border-slate-200 bg-white">
-            </label>
-            <label>
-                <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Movimentacao</span>
-                <select name="movement_type" class="w-full rounded-xl border-slate-200 bg-white">
-                    <option value="all" {% if selected_movement_type == 'all' %}selected{% endif %}>Todas</option>
-                    <option value="entrada" {% if selected_movement_type == 'entrada' %}selected{% endif %}>Entrada</option>
-                    <option value="saida" {% if selected_movement_type == 'saida' %}selected{% endif %}>Saida</option>
-                </select>
-            </label>
-            <div class="flex flex-wrap items-end gap-3 sm:col-span-2 xl:col-span-6">
-                <button class="rounded-xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white">Filtrar</button>
-                <a href="/insumos/estoque" class="rounded-xl bg-white px-4 py-3 text-sm font-semibold text-slate-700 ring-1 ring-slate-200 hover:bg-slate-100">Limpar</a>
-            </div>
-        </form>
-    </div>
-
-    <div class="mt-6 flex flex-wrap gap-3">
-        <a href="{{ stock_tab_urls.entries }}" class="rounded-xl px-4 py-2 text-sm font-semibold {% if selected_stock_tab == 'entries' %}bg-brand-500 text-white{% else %}bg-slate-100 text-slate-700 hover:bg-slate-200{% endif %}" data-stock-tab-button="entries">Entradas</a>
-        <a href="{{ stock_tab_urls.outputs }}" class="rounded-xl px-4 py-2 text-sm font-semibold {% if selected_stock_tab == 'outputs' %}bg-brand-500 text-white{% else %}bg-slate-100 text-slate-700 hover:bg-slate-200{% endif %}" data-stock-tab-button="outputs">Saídas</a>
-        <a href="{{ stock_tab_urls.extract }}" class="rounded-xl px-4 py-2 text-sm font-semibold {% if selected_stock_tab == 'extract' %}bg-brand-500 text-white{% else %}bg-slate-100 text-slate-700 hover:bg-slate-200{% endif %}" data-stock-tab-button="extract">Extrato</a>
-    </div>
-
-    <div class="mt-6 {% if selected_stock_tab != 'entries' %}hidden{% endif %}" data-stock-tab="entries">
-        <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Histórico de entradas</p>
-        <h3 class="mt-2 text-xl font-semibold">Compras e lotes</h3>
-        <div class="mt-6 overflow-hidden rounded-[1.5rem] border border-slate-200">
-            <div class="overflow-x-auto">
-                <table class="min-w-full divide-y divide-slate-200 text-sm">
-                    <thead class="bg-slate-50 text-left text-slate-500">
-                        <tr>
-                            <th class="px-4 py-3 font-medium">Data</th>
-                            <th class="px-4 py-3 font-medium">Insumo</th>
-                            <th class="px-4 py-3 font-medium">Tipo</th>
-                            <th class="px-4 py-3 font-medium">Fazenda</th>
-                            <th class="px-4 py-3 font-medium">Quantidade</th>
-                            <th class="px-4 py-3 font-medium">Saldo do lote</th>
-                            <th class="px-4 py-3 font-medium">Valor</th>
-                            <th class="px-4 py-3 font-medium">Observações</th>
-                        </tr>
-                    </thead>
-                    <tbody class="divide-y divide-slate-100 bg-white">
-                        {% for entry in purchase_entries %}
-                        <tr>
-                            <td class="px-4 py-3">{{ entry.purchase_date or "-" }}</td>
-                            <td class="px-4 py-3 font-medium text-slate-900">
-                                <button type="button" class="text-left transition hover:text-brand-700" data-history-view-trigger data-history-view-kicker="Entrada de estoque" data-history-view-title="{{ entry.input_catalog.name if entry.input_catalog else entry.name }}" data-history-view-subtitle="{{ entry.purchase_date or '-' }}" data-history-view-source="stock-entry-view-{{ entry.id }}">{{ entry.input_catalog.name if entry.input_catalog else entry.name }}</button>
-                                <template id="stock-entry-view-{{ entry.id }}">
-                                    <div class="grid gap-3 sm:grid-cols-2">
-                                        <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Data</p><p class="mt-2 text-sm font-medium text-slate-800">{{ entry.purchase_date or "-" }}</p></div>
-                                        <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Fazenda</p><p class="mt-2 text-sm font-medium text-slate-800">{{ entry.farm.name if entry.farm else "Sem vínculo" }}</p></div>
-                                        <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Tipo</p><p class="mt-2 text-sm font-medium text-slate-800">{{ 'Combustivel' if entry.input_catalog and entry.input_catalog.item_type == 'combustivel' else 'Insumo agricola' }}</p></div>
-                                        <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Quantidade</p><p class="mt-2 text-sm font-medium text-slate-800">{{ entry.total_quantity }} {{ entry.package_unit }}</p></div>
-                                        <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Saldo do lote</p><p class="mt-2 text-sm font-medium text-slate-800">{{ entry.available_quantity }} {{ entry.package_unit }}</p></div>
-                                        <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Valor</p><p class="mt-2 text-sm font-medium text-slate-800">R$ {{ entry.total_cost }}</p></div>
-                                    </div>
-                                    <div class="rounded-2xl bg-slate-50 px-4 py-4"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Observacoes</p><p class="mt-2 text-sm text-slate-600">{{ entry.notes or "Sem observacoes." }}</p></div>
-                                </template>
-                            </td>
-                            <td class="px-4 py-3">{{ 'Combustivel' if entry.input_catalog and entry.input_catalog.item_type == 'combustivel' else 'Insumo agricola' }}</td>
-                            <td class="px-4 py-3">{{ entry.farm.name if entry.farm else "Sem vínculo" }}</td>
-                            <td class="px-4 py-3">{{ entry.total_quantity }} {{ entry.package_unit }}</td>
-                            <td class="px-4 py-3">{{ entry.available_quantity }} {{ entry.package_unit }}</td>
-                            <td class="px-4 py-3">R$ {{ entry.total_cost }}</td>
-                            <td class="px-4 py-3 text-slate-500">{{ entry.notes or "-" }}</td>
-                        </tr>
-                        {% else %}
-                        <tr><td colspan="8" class="px-4 py-6 text-center text-slate-500">Nenhuma entrada encontrada.</td></tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </div>
-        </div>
-        {% with pagination=purchase_entries_pagination %}{% include "partials/history_pagination.html" %}{% endwith %}
-    </div>
-
-    <div class="mt-6 {% if selected_stock_tab != 'outputs' %}hidden{% endif %}" data-stock-tab="outputs">
-        <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Histórico de saídas</p>
-        <h3 class="mt-2 text-xl font-semibold">Usos e baixas</h3>
-        <div class="mt-6 overflow-hidden rounded-[1.5rem] border border-slate-200">
-            <div class="overflow-x-auto">
-                <table class="min-w-full divide-y divide-slate-200 text-sm">
-                    <thead class="bg-slate-50 text-left text-slate-500">
-                        <tr>
-                            <th class="px-4 py-3 font-medium">Data</th>
-                            <th class="px-4 py-3 font-medium">Insumo</th>
-                            <th class="px-4 py-3 font-medium">Tipo</th>
-                            <th class="px-4 py-3 font-medium">Origem</th>
-                            <th class="px-4 py-3 font-medium">Fazenda / Setor</th>
-                            <th class="px-4 py-3 font-medium">Quantidade</th>
-                            <th class="px-4 py-3 font-medium">Custo</th>
-                            <th class="px-4 py-3 font-medium">Observações</th>
-                            <th class="px-4 py-3 font-medium text-right">Ações</th>
-                        </tr>
-                    </thead>
-                    <tbody class="divide-y divide-slate-100 bg-white">
-                        {% for output in stock_outputs %}
-                        <tr>
-                            <td class="px-4 py-3">{{ output.movement_date }}</td>
-                            <td class="px-4 py-3 font-medium text-slate-900">
-                                <button type="button" class="text-left transition hover:text-brand-700" data-history-view-trigger data-history-view-kicker="Saida de estoque" data-history-view-title="{{ output.input_catalog.name if output.input_catalog else '-' }}" data-history-view-subtitle="{{ output.movement_date }}" data-history-view-source="stock-output-table-view-{{ output.id }}" data-history-view-edit-url="/insumos/estoque/saidas/{{ output.id }}/editar">{{ output.input_catalog.name if output.input_catalog else "-" }}</button>
-                                <template id="stock-output-table-view-{{ output.id }}">
-                                    <div class="grid gap-3 sm:grid-cols-2">
-                                        <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Data</p><p class="mt-2 text-sm font-medium text-slate-800">{{ output.movement_date }}</p></div>
-                                        <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Origem</p><p class="mt-2 text-sm font-medium text-slate-800">{{ output.origin }}</p></div>
-                                        <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Tipo</p><p class="mt-2 text-sm font-medium text-slate-800">{{ 'Combustivel' if output.input_catalog and output.input_catalog.item_type == 'combustivel' else 'Insumo agricola' }}</p></div>
-                                        <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Fazenda / Setor</p><p class="mt-2 text-sm font-medium text-slate-800">{{ output.farm.name if output.farm else "Sem vínculo" }}{% if output.plot %} / {{ output.plot.name }}{% endif %}</p></div>
-                                        <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Quantidade</p><p class="mt-2 text-sm font-medium text-slate-800">{{ output.quantity }} {{ output.unit }}</p></div>
-                                        <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Custo</p><p class="mt-2 text-sm font-medium text-slate-800">{% if output.total_cost is not none %}R$ {{ output.total_cost }}{% else %}-{% endif %}</p></div>
-                                    </div>
-                                    <div class="rounded-2xl bg-slate-50 px-4 py-4"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Observacoes</p><p class="mt-2 text-sm text-slate-600">{{ output.notes or "Sem observacoes." }}</p></div>
-                                </template>
-                            </td>
-                            <td class="px-4 py-3">{{ 'Combustivel' if output.input_catalog and output.input_catalog.item_type == 'combustivel' else 'Insumo agricola' }}</td>
-                            <td class="px-4 py-3">{{ output.origin }}</td>
-                            <td class="px-4 py-3">{{ output.farm.name if output.farm else "Sem vínculo" }}{% if output.plot %} / {{ output.plot.name }}{% endif %}</td>
-                            <td class="px-4 py-3">{{ output.quantity }} {{ output.unit }}</td>
-                            <td class="px-4 py-3">{% if output.total_cost is not none %}R$ {{ output.total_cost }}{% else %}-{% endif %}</td>
-                            <td class="px-4 py-3 text-slate-500">{{ output.notes or "-" }}</td>
-                            <td class="px-4 py-3">
-                                <div class="flex items-center justify-end gap-2">
-                                    <a href="/insumos/estoque/saidas/{{ output.id }}/editar" class="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-100" title="Editar">
-                                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                            <path d="M12 20h9"/>
-                                            <path d="M16.5 3.5a2.1 2.1 0 1 1 3 3L7 19l-4 1 1-4Z"/>
-                                        </svg>
-                                    </a>
-                                    <form method="post" action="/insumos/estoque/saidas/{{ output.id }}/excluir" onsubmit="return confirm('Confirma a exclusão deste lançamento de saída?');">
-                                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                                        <button type="submit" class="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 text-rose-600 hover:bg-rose-50" title="{% if output.reference_type == 'manual_stock_output' %}Excluir{% else %}Exclusão bloqueada{% endif %}">
-                                            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                                <path d="M3 6h18"/>
-                                                <path d="M8 6V4h8v2"/>
-                                                <path d="M19 6l-1 14H6L5 6"/>
-                                                <path d="M10 11v6"/>
-                                                <path d="M14 11v6"/>
-                                            </svg>
-                                        </button>
-                                    </form>
-                                </div>
-                            </td>
-                        </tr>
-                        {% else %}
-                        <tr><td colspan="9" class="px-4 py-6 text-center text-slate-500">Nenhuma saída encontrada.</td></tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </div>
-        </div>
-        {% with pagination=stock_outputs_pagination %}{% include "partials/history_pagination.html" %}{% endwith %}
-    </div>
-
-    <div class="mt-6 {% if selected_stock_tab != 'extract' %}hidden{% endif %}" data-stock-tab="extract">
-        <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Extrato</p>
-        <h3 class="mt-2 text-xl font-semibold">Movimentações em ordem cronológica</h3>
-        <div class="mt-6 overflow-hidden rounded-[1.5rem] border border-slate-200">
-            <div class="overflow-x-auto">
-                <table class="min-w-full divide-y divide-slate-200 text-sm">
-                    <thead class="bg-slate-50 text-left text-slate-500">
-                        <tr>
-                            <th class="px-4 py-3 font-medium">Data</th>
-                            <th class="px-4 py-3 font-medium">Insumo</th>
-                            <th class="px-4 py-3 font-medium">Movimento</th>
-                            <th class="px-4 py-3 font-medium">Origem / Ref.</th>
-                            <th class="px-4 py-3 font-medium">Quantidade</th>
-                            <th class="px-4 py-3 font-medium">Custo unit.</th>
-                            <th class="px-4 py-3 font-medium">Custo total</th>
-                            <th class="px-4 py-3 font-medium">Saldo após</th>
-                            <th class="px-4 py-3 font-medium">Observações</th>
-                        </tr>
-                    </thead>
-                    <tbody class="divide-y divide-slate-100 bg-white">
-                        {% for row in extract_rows %}
-                        <tr>
-                            <td class="px-4 py-3">{{ row.date or "-" }}</td>
-                            <td class="px-4 py-3 font-medium text-slate-900">{{ row.input_name }}</td>
-                            <td class="px-4 py-3">
-                                <span class="rounded-full px-3 py-1 text-xs font-semibold {% if row.kind == 'entrada' %}bg-emerald-100 text-emerald-700{% else %}bg-rose-100 text-rose-700{% endif %}">
-                                    {{ row.kind }}
-                                </span>
-                            </td>
-                            <td class="px-4 py-3">{{ row.origin }} • {{ row.reference }}</td>
-                            <td class="px-4 py-3">{{ row.quantity }} {{ row.unit }}</td>
-                            <td class="px-4 py-3">{% if row.unit_cost is not none %}R$ {{ row.unit_cost }}{% else %}-{% endif %}</td>
-                            <td class="px-4 py-3">{% if row.total_cost is not none %}R$ {{ row.total_cost }}{% else %}-{% endif %}</td>
-                            <td class="px-4 py-3">{{ row.balance_after }} {{ row.unit }}</td>
-                            <td class="px-4 py-3 text-slate-500">{{ row.notes or '-' }}</td>
-                        </tr>
-                        {% else %}
-                        <tr><td colspan="9" class="px-4 py-6 text-center text-slate-500">Nenhuma movimentação encontrada.</td></tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </div>
-        </div>
-        {% with pagination=extract_rows_pagination %}{% include "partials/history_pagination.html" %}{% endwith %}
-    </div>
+    </aside>
 </section>
 
 {% if edit_output %}
@@ -487,6 +540,31 @@
                 });
             }
 
+            const stockSearchInput = document.querySelector('[data-stock-history-search]');
+            const applyStockHistorySearch = () => {
+                const query = (stockSearchInput?.value || '').trim().toLowerCase();
+                tabs.forEach((tab) => {
+                    const rows = Array.from(tab.querySelectorAll('[data-stock-history-row]'));
+                    const emptyState = tab.querySelector('[data-stock-search-empty]');
+                    if (!rows.length) {
+                        emptyState?.classList.add('hidden');
+                        return;
+                    }
+
+                    let visibleRows = 0;
+                    rows.forEach((row) => {
+                        const haystack = (row.dataset.stockSearchText || '').toLowerCase();
+                        const matches = !query || haystack.includes(query);
+                        row.classList.toggle('hidden', !matches);
+                        if (matches) visibleRows += 1;
+                    });
+
+                    emptyState?.classList.toggle('hidden', visibleRows > 0 || !query);
+                });
+            };
+
+            stockSearchInput?.addEventListener('input', applyStockHistorySearch);
+
             const catalogCards = Array.from(document.querySelectorAll('[data-stock-catalog-card]'));
             const catalogDots = document.querySelector('[data-stock-catalog-dots]');
             const cardsPerPage = 4;
@@ -517,6 +595,8 @@
 
                 setCatalogPage(0);
             }
+
+            applyStockHistorySearch();
         })();
     </script>
 {% endblock %}
