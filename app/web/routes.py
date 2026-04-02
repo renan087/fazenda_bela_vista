@@ -768,6 +768,12 @@ def _assets_export_query(farm_id: int | None = None, status: str | None = None) 
     return urlencode(clean)
 
 
+def _purchased_inputs_export_query(farm_id: int | None = None, item_type: str | None = None) -> str:
+    params = {"farm_id": farm_id, "item_type": item_type}
+    clean = {key: value for key, value in params.items() if value not in (None, "", "all")}
+    return urlencode(clean)
+
+
 def _format_currency(value) -> str:
     numeric = float(value or 0)
     return f"R$ {numeric:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
@@ -2067,10 +2073,11 @@ def purchased_inputs_page(
     scope = _global_scope_context(request, repo)
     effective_farm_id = farm_id or scope["active_farm_id"]
     edit_input = repo.get_purchased_input(edit_id) if edit_id else None
+    selected_item_type = item_type if item_type in {"insumo_agricola", "combustivel", "all"} else None
     normalized_item_type = item_type if item_type in {"insumo_agricola", "combustivel"} else None
     if not normalized_item_type and edit_input and edit_input.input_catalog:
         normalized_item_type = edit_input.input_catalog.item_type
-    if not normalized_item_type:
+    if not normalized_item_type and selected_item_type != "all":
         normalized_item_type = "insumo_agricola"
     stock_context = _build_stock_context(repo, farm_id=effective_farm_id, item_type=normalized_item_type)
     purchase_entries = _sort_collection_desc(
@@ -2098,7 +2105,7 @@ def purchased_inputs_page(
             _repo=repo,
             title="Gestão de Compras",
             farms=repo.list_farms(),
-            selected_item_type=normalized_item_type or "insumo_agricola",
+            selected_item_type=selected_item_type or normalized_item_type or "insumo_agricola",
             selected_farm_id=effective_farm_id,
             inputs=purchase_entries_pagination["items"],
             inputs_pagination=purchase_entries_pagination,
@@ -2106,6 +2113,10 @@ def purchased_inputs_page(
             input_stock=stock_context["input_stock"],
             stock_outputs=stock_outputs_pagination["items"],
             stock_outputs_pagination=stock_outputs_pagination,
+            purchased_inputs_export_query=_purchased_inputs_export_query(
+                farm_id=effective_farm_id,
+                item_type=selected_item_type,
+            ),
             edit_input=edit_input,
             selected_purchased_tab=selected_purchased_tab,
             purchased_tab_urls={
@@ -2313,6 +2324,260 @@ def delete_purchased_input_attachment_action(
     _flash(request, "success", "Anexo removido com sucesso.")
     item_type = item.input_catalog.item_type if item.input_catalog else None
     return _redirect_for_request(request, "/insumos/comprados", edit_id=input_id, item_type=item_type)
+
+
+@router.get("/insumos/comprados/exportar.xlsx")
+def export_purchased_inputs_xlsx(
+    request: Request,
+    farm_id: str | None = None,
+    item_type: str | None = None,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    del user
+    repo = _repository(db)
+    selected_farm_id = _int_or_none(farm_id) or _active_farm_id(request)
+    normalized_item_type = item_type if item_type in {"insumo_agricola", "combustivel"} else None
+    stock_context = _build_stock_context(repo, farm_id=selected_farm_id, item_type=normalized_item_type)
+    purchase_entries = _sort_collection_desc(
+        stock_context["purchase_entries"],
+        lambda item: item.purchase_date,
+        lambda item: item.id,
+    )
+    stock_outputs = _sort_collection_desc(
+        stock_context["stock_outputs"],
+        lambda item: item.movement_date,
+        lambda item: item.id,
+    )
+
+    workbook = Workbook()
+    entries_sheet = workbook.active
+    entries_sheet.title = "Entradas"
+    entries_sheet.append(["Data", "Insumo", "Tipo", "Fazenda", "Quantidade", "Saldo", "Valor", "Observações"])
+    for item in purchase_entries:
+        entries_sheet.append([
+            item.purchase_date.isoformat() if item.purchase_date else "",
+            item.input_catalog.name if item.input_catalog else item.name,
+            "Combustível" if item.input_catalog and item.input_catalog.item_type == "combustivel" else "Insumo agrícola",
+            item.farm.name if item.farm else "",
+            float(item.total_quantity or 0),
+            float(item.available_quantity or 0),
+            float(item.total_cost or 0),
+            item.notes or "",
+        ])
+    for index, width in enumerate([14, 30, 18, 24, 16, 16, 16, 40], start=1):
+        entries_sheet.column_dimensions[get_column_letter(index)].width = width
+
+    outputs_sheet = workbook.create_sheet("Saídas")
+    outputs_sheet.append(["Data", "Insumo", "Tipo", "Origem", "Fazenda / Setor", "Quantidade", "Custo", "Observações"])
+    for output in stock_outputs:
+        outputs_sheet.append([
+            output.movement_date.isoformat() if output.movement_date else "",
+            output.input_catalog.name if output.input_catalog else "Insumo removido",
+            "Combustível" if output.input_catalog and output.input_catalog.item_type == "combustivel" else "Insumo agrícola",
+            output.origin or "",
+            f"{output.farm.name if output.farm else ''}{(' / ' + output.plot.name) if output.plot else ''}",
+            float(output.quantity or 0),
+            float(output.total_cost or 0),
+            output.notes or "",
+        ])
+    for index, width in enumerate([14, 30, 18, 18, 28, 16, 16, 40], start=1):
+        outputs_sheet.column_dimensions[get_column_letter(index)].width = width
+
+    output = BytesIO()
+    workbook.save(output)
+    output.seek(0)
+    return StreamingResponse(
+        output,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": 'attachment; filename="gestao_compras.xlsx"'},
+    )
+
+
+@router.get("/insumos/comprados/exportar.pdf")
+def export_purchased_inputs_pdf(
+    request: Request,
+    farm_id: str | None = None,
+    item_type: str | None = None,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    repo = _repository(db)
+    selected_farm_id = _int_or_none(farm_id) or _active_farm_id(request)
+    selected_farm = repo.get_farm(selected_farm_id) if selected_farm_id else None
+    normalized_item_type = item_type if item_type in {"insumo_agricola", "combustivel"} else None
+    stock_context = _build_stock_context(repo, farm_id=selected_farm_id, item_type=normalized_item_type)
+    purchase_entries = _sort_collection_desc(
+        stock_context["purchase_entries"],
+        lambda item: item.purchase_date,
+        lambda item: item.id,
+    )
+    stock_outputs = _sort_collection_desc(
+        stock_context["stock_outputs"],
+        lambda item: item.movement_date,
+        lambda item: item.id,
+    )
+
+    generated_at = app_now()
+    generated_by = user.display_name or user.name or user.email
+    farm_name = selected_farm.name if selected_farm else "Fazenda Bela Vista"
+    item_type_label = {
+        "insumo_agricola": "Insumos agrícolas",
+        "combustivel": "Combustíveis",
+    }.get(normalized_item_type or "", "Todos os itens")
+    entries_total = sum(float(item.total_cost or 0) for item in purchase_entries)
+    outputs_total = sum(float(output.total_cost or 0) for output in stock_outputs)
+    grand_total = round(entries_total + outputs_total, 2)
+
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=landscape(A4), leftMargin=28, rightMargin=28, topMargin=32, bottomMargin=34)
+    styles = getSampleStyleSheet()
+    farm_header_style = ParagraphStyle("PurchasedPdfFarmHeader", parent=styles["Title"], fontName="Helvetica-Bold", fontSize=18, leading=22, alignment=TA_RIGHT, textColor=colors.HexColor("#1e293b"))
+    meta_label_style = ParagraphStyle("PurchasedPdfMetaLabel", parent=styles["BodyText"], fontName="Helvetica-Bold", fontSize=8, leading=10, textColor=colors.HexColor("#446a36"), spaceAfter=2)
+    meta_value_style = ParagraphStyle("PurchasedPdfMetaValue", parent=styles["BodyText"], fontName="Helvetica", fontSize=10, leading=13, textColor=colors.HexColor("#334155"))
+    cell_style = ParagraphStyle("PurchasedPdfCell", parent=styles["BodyText"], fontName="Helvetica", fontSize=8.2, leading=10.4, textColor=colors.HexColor("#0f172a"))
+    cell_muted_style = ParagraphStyle("PurchasedPdfCellMuted", parent=cell_style, textColor=colors.HexColor("#475569"))
+    cell_numeric_style = ParagraphStyle("PurchasedPdfCellNumeric", parent=cell_style, alignment=TA_RIGHT)
+    summary_value_style = ParagraphStyle("PurchasedPdfSummaryValue", parent=styles["BodyText"], fontName="Helvetica-Bold", fontSize=11, leading=14, textColor=colors.HexColor("#0f172a"))
+
+    logo_path = Path("app/static/images/logo.png")
+    logo_flowable = Image(str(logo_path), width=92.8, height=73.6) if logo_path.exists() else Spacer(92.8, 73.6)
+    header_table = Table([[logo_flowable, Paragraph(farm_name, farm_header_style)]], colWidths=[76, doc.width - 76], hAlign="LEFT")
+    header_table.setStyle(TableStyle([
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("ALIGN", (1, 0), (1, 0), "RIGHT"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 0),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+        ("TOPPADDING", (0, 0), (-1, -1), 0),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
+    ]))
+
+    summary_table = Table([
+        [
+            [Paragraph("FAZENDA", meta_label_style), Paragraph(farm_name, meta_value_style)],
+            [Paragraph("ESCOPO", meta_label_style), Paragraph(item_type_label, meta_value_style)],
+            [Paragraph("ENTRADAS", meta_label_style), Paragraph(str(len(purchase_entries)), summary_value_style)],
+        ],
+        [
+            [Paragraph("SAÍDAS", meta_label_style), Paragraph(str(len(stock_outputs)), summary_value_style)],
+            [Paragraph("TOTAL DE REGISTROS", meta_label_style), Paragraph(str(len(purchase_entries) + len(stock_outputs)), summary_value_style)],
+            [Paragraph("TOTAL FINANCEIRO", meta_label_style), Paragraph(_format_currency(grand_total), summary_value_style)],
+        ],
+    ], colWidths=[doc.width / 3] * 3, hAlign="LEFT")
+    summary_table.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#f8fafc")),
+        ("BOX", (0, 0), (-1, -1), 0.8, colors.HexColor("#dbe5dd")),
+        ("INNERGRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#e2e8f0")),
+        ("LEFTPADDING", (0, 0), (-1, -1), 12),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 12),
+        ("TOPPADDING", (0, 0), (-1, -1), 10),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 10),
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+    ]))
+
+    elements = [header_table, Spacer(1, 16), summary_table, Spacer(1, 14)]
+    table_data = [["Mov.", "Data", "Insumo", "Tipo", "Origem / Fazenda", "Quantidade", "Valor", "Observações"]]
+    report_rows = []
+    for item in purchase_entries:
+        report_rows.append({
+            "kind": "Entrada",
+            "date": item.purchase_date,
+            "name": item.input_catalog.name if item.input_catalog else item.name,
+            "type": "Combustível" if item.input_catalog and item.input_catalog.item_type == "combustivel" else "Insumo agrícola",
+            "origin": item.farm.name if item.farm else "Sem fazenda vinculada",
+            "quantity": f"{_format_decimal_br(item.total_quantity, 2)} {item.package_unit}",
+            "value": float(item.total_cost or 0),
+            "notes": item.notes or "-",
+            "sort_key": (item.purchase_date or today_in_app_timezone(), 0, item.id),
+        })
+    for output in stock_outputs:
+        report_rows.append({
+            "kind": "Saída",
+            "date": output.movement_date,
+            "name": output.input_catalog.name if output.input_catalog else "Insumo removido",
+            "type": "Combustível" if output.input_catalog and output.input_catalog.item_type == "combustivel" else "Insumo agrícola",
+            "origin": f"{output.origin} • {output.farm.name if output.farm else 'Sem fazenda'}{(' / ' + output.plot.name) if output.plot else ''}",
+            "quantity": f"{_format_decimal_br(output.quantity, 2)} {output.unit}",
+            "value": float(output.total_cost or 0),
+            "notes": output.notes or "-",
+            "sort_key": (output.movement_date or today_in_app_timezone(), 1, output.id),
+        })
+    report_rows.sort(key=lambda row: row["sort_key"], reverse=True)
+
+    for row in report_rows:
+        movement_color = "#166534" if row["kind"] == "Entrada" else "#be123c"
+        table_data.append([
+            Paragraph(f'<font color="{movement_color}"><b>{row["kind"]}</b></font>', cell_style),
+            Paragraph(row["date"].strftime("%d/%m/%Y") if row["date"] else "-", cell_style),
+            Paragraph(row["name"], cell_style),
+            Paragraph(row["type"], cell_muted_style),
+            Paragraph(row["origin"], cell_muted_style),
+            Paragraph(row["quantity"], cell_numeric_style),
+            Paragraph(_format_currency(row["value"]), cell_numeric_style),
+            Paragraph(row["notes"][:90], cell_muted_style),
+        ])
+
+    column_weights = [7, 8, 18, 12, 20, 11, 12, 20]
+    weight_total = sum(column_weights)
+    table_col_widths = [doc.width * (weight / weight_total) for weight in column_weights[:-1]]
+    table_col_widths.append(doc.width - sum(table_col_widths))
+    table = Table(table_data, repeatRows=1, colWidths=table_col_widths, hAlign="LEFT")
+    table.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#446a36")),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("LINEBELOW", (0, 0), (-1, 0), 0.8, colors.HexColor("#36552a")),
+        ("LINEBELOW", (0, 1), (-1, -1), 0.35, colors.HexColor("#e2e8f0")),
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("FONTSIZE", (0, 0), (-1, -1), 8.2),
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f8fafc")]),
+        ("LEFTPADDING", (0, 0), (-1, -1), 7),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 7),
+        ("TOPPADDING", (0, 0), (-1, -1), 7),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 7),
+        ("ALIGN", (5, 1), (6, -1), "RIGHT"),
+    ]))
+    elements.append(table)
+    elements.append(Spacer(1, 12))
+
+    footer_summary = Table([[
+        Paragraph(f"<b>Entradas:</b> {_format_currency(entries_total)}", meta_value_style),
+        Paragraph(f"<b>Saídas:</b> {_format_currency(outputs_total)}", meta_value_style),
+        Paragraph(f"<b>Total geral:</b> {_format_currency(grand_total)}", summary_value_style),
+    ]], colWidths=[doc.width * 0.35, doc.width * 0.25, doc.width * 0.40], hAlign="LEFT")
+    footer_summary.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#eef6ee")),
+        ("BOX", (0, 0), (-1, -1), 0.7, colors.HexColor("#cfe1d0")),
+        ("LEFTPADDING", (0, 0), (-1, -1), 12),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 12),
+        ("TOPPADDING", (0, 0), (-1, -1), 10),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 10),
+    ]))
+    elements.append(footer_summary)
+
+    generated_at_label = generated_at.strftime("%d/%m/%Y %H:%M")
+
+    def _draw_footer(canvas, doc):
+        canvas.saveState()
+        canvas.setStrokeColor(colors.HexColor("#e2e8f0"))
+        canvas.line(doc.leftMargin, 22, landscape(A4)[0] - doc.rightMargin, 22)
+        canvas.setFont("Helvetica", 8.2)
+        canvas.setFillColor(colors.HexColor("#64748b"))
+        canvas.drawString(doc.leftMargin, 10, f"Gerado por: {generated_by}")
+        canvas.drawRightString(
+            landscape(A4)[0] - doc.rightMargin,
+            10,
+            f"Emitido em {generated_at_label} • Página {canvas.getPageNumber()}",
+        )
+        canvas.restoreState()
+
+    doc.build(elements, onFirstPage=_draw_footer, onLaterPages=_draw_footer)
+    buffer.seek(0)
+    return StreamingResponse(
+        buffer,
+        media_type="application/pdf",
+        headers={"Content-Disposition": 'attachment; filename="gestao_compras.pdf"'},
+    )
 
 
 @router.get("/insumos/estoque")

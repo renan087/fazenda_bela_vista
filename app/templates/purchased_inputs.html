@@ -5,9 +5,27 @@
         <div class="flex flex-wrap items-start justify-between gap-4">
             <div class="min-w-0 stock-page-header-intro" data-stock-header-intro>
                 <h2 class="stock-page-card-title">Gerenciamento de compras</h2>
-                <p class="stock-page-card-subtitle">Controle as entradas de estoque e consulte o histórico técnico de compras e consumos.</p>
+                <p class="stock-page-card-subtitle">Controle de entradas de estoque e histórico de consumo.</p>
             </div>
             <div class="stock-header-actions stock-header-actions-top">
+                <a href="/insumos/comprados/exportar.pdf{% if purchased_inputs_export_query %}?{{ purchased_inputs_export_query }}{% endif %}" class="stock-action-button stock-action-button-secondary">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                        <path d="M7 3h7l5 5v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z"/>
+                        <path d="M14 3v6h6"/>
+                        <path d="M10 13h4"/>
+                        <path d="M10 17h4"/>
+                    </svg>
+                    <span class="stock-action-button-label">Exportar PDF</span>
+                </a>
+                <a href="/insumos/comprados/exportar.xlsx{% if purchased_inputs_export_query %}?{{ purchased_inputs_export_query }}{% endif %}" class="stock-action-button stock-action-button-secondary stock-action-button-success">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                        <path d="M7 3h7l5 5v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z"/>
+                        <path d="M14 3v6h6"/>
+                        <path d="m10 12 4 6"/>
+                        <path d="m14 12-4 6"/>
+                    </svg>
+                    <span class="stock-action-button-label">Exportar Excel</span>
+                </a>
                 <button type="button" class="stock-action-button stock-action-button-primary" data-purchased-launch-open>
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
                         <path d="M12 5v14"/>
@@ -26,6 +44,7 @@
                 <label>
                     <span class="mb-2 block text-sm font-medium">Tipo de item</span>
                     <select name="item_type" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50 px-4">
+                        <option value="all" {% if selected_item_type == 'all' %}selected{% endif %}>Todos</option>
                         <option value="insumo_agricola" {% if selected_item_type == 'insumo_agricola' %}selected{% endif %}>Insumo agricola</option>
                         <option value="combustivel" {% if selected_item_type == 'combustivel' %}selected{% endif %}>Combustivel</option>
                     </select>
