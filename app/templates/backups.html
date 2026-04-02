@@ -24,10 +24,20 @@
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
             <button class="rounded-2xl bg-brand-500 px-5 py-3 font-semibold text-white hover:bg-brand-700">Executar backup agora</button>
         </form>
-        <div class="mt-6 rounded-[1.5rem] border border-dashed border-slate-200 bg-slate-50/70 p-5 text-sm leading-6 text-slate-500">
-            <p class="font-medium text-slate-700">Observacao</p>
-            <p class="mt-2">No estado atual do projeto, anexos, avatares e PDFs operacionais ficam no PostgreSQL e ja entram no dump enviado para <span class="font-semibold text-slate-700">{{ backup_db_bucket }}</span>.</p>
-            <p class="mt-2">O bucket <span class="font-semibold text-slate-700">{{ backup_files_bucket }}</span> fica preparado para futuros diretorios locais reais ou migracao de storage, sem duplicar os BYTEA neste primeiro passo.</p>
+        <div class="mt-4 flex items-center gap-2 text-xs text-slate-400">
+            <span
+                class="inline-flex h-6 w-6 items-center justify-center rounded-full border border-amber-200 bg-amber-50 text-amber-600 cursor-help"
+                title="No estado atual do projeto, anexos, avatares e PDFs operacionais ficam no PostgreSQL e ja entram no dump enviado para {{ backup_db_bucket }}. O bucket {{ backup_files_bucket }} fica preparado para futuros diretorios locais reais ou migracao de storage, sem duplicar os BYTEA neste primeiro passo."
+                aria-label="Observacao sobre cobertura do backup"
+            >
+                <svg viewBox="0 0 20 20" fill="currentColor" class="h-3.5 w-3.5" aria-hidden="true">
+                    <path fill-rule="evenodd" d="M18 10A8 8 0 1 1 2 10a8 8 0 0 1 16 0Zm-8.75-3a.75.75 0 0 1 1.5 0v3.25a.75.75 0 0 1-1.5 0V7Zm.75 7a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z" clip-rule="evenodd" />
+                </svg>
+            </span>
+            <span class="leading-5">
+                Cobertura atual do backup
+                <span class="text-slate-300">Passe o mouse no icone para ver os detalhes.</span>
+            </span>
         </div>
     </section>
 
@@ -42,7 +52,7 @@
             </p>
         </div>
         <div class="mt-5 overflow-hidden rounded-[1.5rem] border border-slate-200 bg-slate-50/80">
-            <div class="hidden border-b border-slate-200/80 bg-white/70 px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-400 md:grid md:grid-cols-[0.95fr_1.3fr_0.7fr_0.7fr_0.8fr_1.15fr] md:gap-3">
+            <div class="hidden border-b border-slate-200/80 bg-white/70 px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-400 md:grid md:grid-cols-[0.9fr_1.05fr_0.62fr_0.66fr_0.72fr_1.85fr] md:gap-3">
                 <span>Execucao</span>
                 <span>Data</span>
                 <span>Status</span>
@@ -57,7 +67,7 @@
             {% set files_details = details.get('files', {}) %}
             {% set db_details = details.get('database', {}) %}
             <article class="group px-4 py-3 transition-colors duration-150 hover:bg-white/75">
-                <div class="grid gap-3 md:grid-cols-[0.95fr_1.3fr_0.7fr_0.7fr_0.8fr_1.15fr] md:items-center">
+                <div class="grid gap-3 md:grid-cols-[0.9fr_1.05fr_0.62fr_0.66fr_0.72fr_1.85fr] md:items-center">
                     <div class="min-w-0">
                         <p class="text-sm font-semibold text-slate-900">Execucao #{{ run.id }}</p>
                         {% if run.initiated_by_user %}
@@ -103,12 +113,12 @@
                         </div>
                     </div>
                     <div class="min-w-0">
-                        <p class="truncate text-sm font-medium text-slate-700" title="{{ run.database_object_path or 'Nao enviado' }}">
+                        <p class="break-all text-sm font-medium leading-5 text-slate-700" title="{{ run.database_object_path or 'Nao enviado' }}">
                             {{ run.database_object_path or 'Nao enviado' }}
                         </p>
                         <div class="mt-1 flex flex-wrap gap-1.5">
                             {% if run.files_object_path %}
-                            <span class="inline-flex max-w-full truncate rounded-full bg-white px-2 py-1 text-[11px] text-slate-500" title="{{ run.files_object_path }}">
+                            <span class="inline-flex max-w-full break-all rounded-full bg-white px-2 py-1 text-[11px] leading-4 text-slate-500" title="{{ run.files_object_path }}">
                                 {{ run.files_object_path }}
                             </span>
                             {% endif %}
