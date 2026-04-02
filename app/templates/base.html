@@ -205,8 +205,8 @@
         </aside>
         <main class="flex min-h-screen flex-1 flex-col lg:ml-72">
             <div class="sticky top-0 z-20 border-b border-slate-200 bg-white/95 shadow-sm backdrop-blur">
-                <div class="mx-auto flex max-w-7xl items-center justify-between px-6 py-5">
-                    <div class="flex items-center gap-4">
+                <div class="mx-auto flex max-w-7xl items-center justify-between px-4 py-5 sm:px-6">
+                    <div class="flex min-w-0 flex-1 items-center gap-4">
                         <button type="button" class="inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-900 text-white lg:hidden" data-mobile-menu-button aria-label="Abrir menu">
                             <span class="space-y-1.5">
                                 <span class="block h-0.5 w-5 bg-white"></span>
@@ -214,9 +214,9 @@
                                 <span class="block h-0.5 w-5 bg-white"></span>
                             </span>
                         </button>
-                        <div>
+                        <div class="min-w-0">
                         <p class="text-xs uppercase tracking-[0.3em] text-slate-400">SiSFarm</p>
-                        <h2 class="text-2xl font-semibold">{{ title or "Painel da Fazenda" }}</h2>
+                        <h2 class="text-2xl font-semibold leading-tight">{{ title or "Painel da Fazenda" }}</h2>
                         </div>
                     </div>
                     <form method="post" action="/contexto" class="hidden min-w-[20rem] rounded-2xl border border-slate-200 bg-mist/80 px-4 py-3 md:block" data-global-context-form data-season-options='{{ context_season_options|tojson|safe }}'>
@@ -245,11 +245,11 @@
                     </form>
                 </div>
             </div>
-            <div class="mx-auto max-w-7xl px-6 pt-4 md:hidden">
+            <div class="mx-auto max-w-7xl px-4 pt-4 sm:px-6 md:hidden">
                 <form method="post" action="/contexto" class="rounded-2xl border border-slate-200 bg-mist/80 px-3 py-3 shadow-sm" data-global-context-form data-season-options='{{ context_season_options|tojson|safe }}'>
                     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                     <input type="hidden" name="redirect_to" value="{{ current_url or request.url.path }}">
-                    <div class="grid grid-cols-2 gap-3">
+                    <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
                         <label class="min-w-0 text-left">
                             <span class="mb-1 block text-[10px] uppercase tracking-[0.22em] text-slate-400">Fazenda ativa</span>
                             <select name="farm_id" class="min-h-[2.75rem] w-full rounded-xl border-slate-200 bg-white/90 text-sm font-medium text-slate-700">
@@ -271,7 +271,7 @@
                     </div>
                 </form>
             </div>
-            <div class="mx-auto max-w-7xl flex-1 px-6 py-6 md:py-8">
+            <div class="mx-auto max-w-7xl flex-1 px-4 py-6 sm:px-6 md:py-8">
                 {% if flash %}
                 <div class="mb-6 rounded-2xl px-4 py-3 text-sm font-medium {% if flash.kind == 'success' %}border border-emerald-200 bg-emerald-50 text-emerald-700{% else %}border border-rose-200 bg-rose-50 text-rose-700{% endif %}">
                     {{ flash.message }}
