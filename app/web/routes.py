@@ -127,6 +127,10 @@ EQUIPMENT_ASSET_CATEGORY_OPTIONS = [
 ]
 PENDING_PASSWORD_CHANGE_SESSION_KEY = "pending_password_change_user_id"
 HISTORY_PAGE_SIZE = 10
+MENU_ITEM_VISIBILITY_RULES = {
+    "users": lambda user: bool(user and user.is_admin),
+    "backups": lambda user: bool(user and user.is_admin),
+}
 
 
 def _redirect(url: str) -> RedirectResponse:
@@ -167,6 +171,7 @@ def _base_context(request: Request, user: User, csrf_token: str, page: str, **kw
         "page": page,
         "flash": flash,
         "modal_mode": modal_mode,
+        "menu_visibility": _build_menu_visibility(user),
     }
     if repo:
         scope_context = _global_scope_context(request, repo, user)
@@ -179,6 +184,16 @@ def _base_context(request: Request, user: User, csrf_token: str, page: str, **kw
 
 def _repository(db: Session) -> FarmRepository:
     return FarmRepository(db)
+
+
+def _build_menu_visibility(user: User | None) -> dict[str, bool]:
+    visibility: dict[str, bool] = {}
+    for key, rule in MENU_ITEM_VISIBILITY_RULES.items():
+        try:
+            visibility[key] = bool(rule(user))
+        except Exception:
+            visibility[key] = False
+    return visibility
 
 
 def _render_profile_page(
