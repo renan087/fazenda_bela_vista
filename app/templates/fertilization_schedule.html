@@ -118,7 +118,7 @@
                                 <span data-schedule-items-toggle-label>Mostrar Insumos</span>
                             </button>
                         </div>
-                        <div class="stock-summary-collapse is-expanded max-sm:mt-3" data-schedule-items-collapse>
+                        <div class="stock-summary-collapse max-sm:mt-3" data-schedule-items-collapse>
                             <div class="stock-summary-collapse-inner">
                                 <div class="flex flex-wrap gap-2">
                                     {% for item in schedule.items %}
@@ -236,7 +236,7 @@
                                 <span data-schedule-items-toggle-label>Mostrar Insumos</span>
                             </button>
                         </div>
-                        <div class="stock-summary-collapse is-expanded max-sm:mt-3" data-schedule-items-collapse>
+                        <div class="stock-summary-collapse max-sm:mt-3" data-schedule-items-collapse>
                             <div class="stock-summary-collapse-inner">
                                 <div class="flex flex-wrap gap-2">
                                     {% for item in schedule.items %}
@@ -534,6 +534,15 @@
 
         const scheduleItemsMobileQuery = window.matchMedia('(max-width: 639px)');
 
+        const syncScheduleItemsForViewport = (expandedOnDesktop = true) => {
+            document.querySelectorAll('[data-schedule-items-toggle]').forEach((toggle) => {
+                const sync = toggle._scheduleItemsSync;
+                if (typeof sync === 'function') {
+                    sync(scheduleItemsMobileQuery.matches ? false : expandedOnDesktop);
+                }
+            });
+        };
+
         const bindScheduleItemsToggles = (root = document) => {
             root.querySelectorAll('[data-schedule-items-toggle]').forEach((toggle) => {
                 if (toggle.dataset.scheduleItemsBound === 'true') return;
@@ -549,6 +558,7 @@
                     plus?.classList.toggle('hidden', expanded);
                 };
 
+                toggle._scheduleItemsSync = setExpanded;
                 setExpanded(!scheduleItemsMobileQuery.matches);
                 toggle.addEventListener('click', () => {
                     const expanded = toggle.getAttribute('aria-expanded') === 'true';
@@ -557,6 +567,12 @@
                 toggle.dataset.scheduleItemsBound = 'true';
             });
         };
+
+        if (typeof scheduleItemsMobileQuery.addEventListener === 'function') {
+            scheduleItemsMobileQuery.addEventListener('change', () => syncScheduleItemsForViewport(true));
+        } else if (typeof scheduleItemsMobileQuery.addListener === 'function') {
+            scheduleItemsMobileQuery.addListener(() => syncScheduleItemsForViewport(true));
+        }
 
         const applyScheduleHistorySearch = () => {
             const historyStage = getActiveStage();
