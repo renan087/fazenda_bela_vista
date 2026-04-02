@@ -4,8 +4,8 @@
     <section class="stock-page-header rounded-[2rem] p-5 shadow-panel">
         <div class="flex flex-wrap items-start justify-between gap-4">
             <div class="min-w-0 stock-page-header-intro" data-stock-header-intro>
-                <h2 class="stock-page-card-title">Gerenciamento de compras</h2>
-                <p class="stock-page-card-subtitle">Gerencie entradas de estoque e consulte o histórico técnico de compras e consumos.</p>
+                <h2 class="stock-page-card-title">Gestão de Compras</h2>
+                <p class="stock-page-card-subtitle">Controle as entradas de estoque e consulte o histórico técnico de compras e consumos.</p>
             </div>
             <div class="stock-header-actions stock-header-actions-top">
                 <button type="button" class="stock-action-button stock-action-button-primary" data-purchased-launch-open>
@@ -33,7 +33,6 @@
                 <label>
                     <span class="mb-2 block text-sm font-medium">Fazenda</span>
                     <select name="farm_id" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50 px-4">
-                        <option value="">Todas as fazendas</option>
                         {% for farm in farms %}
                         <option value="{{ farm.id }}" {% if selected_farm_id == farm.id %}selected{% endif %}>{{ farm.name }}</option>
                         {% endfor %}
@@ -79,10 +78,10 @@
                             {% for item in inputs %}
                             <tr data-purchased-history-row data-purchased-kind="entrada" data-purchased-search-text="{{ (item.purchase_date or '') ~ ' ' ~ (item.input_catalog.name if item.input_catalog else item.name) ~ ' ' ~ (item.farm.name if item.farm else '') ~ ' ' ~ (item.notes or '') ~ ' ' ~ ('Combustivel' if item.input_catalog and item.input_catalog.item_type == 'combustivel' else 'Insumo agricola') }}">
                                 <td class="px-4 py-3">
-                                    <span class="stock-movement-chip stock-movement-chip-entry">Entrada</span>
-                                    <p class="mt-2">{{ item.purchase_date or "-" }}</p>
+                                    <p>{{ item.purchase_date or "-" }}</p>
                                 </td>
                                 <td class="px-4 py-3 font-medium text-slate-900">
+                                    <span class="stock-movement-chip stock-movement-chip-entry">Entrada</span>
                                     <button type="button" class="text-left transition hover:text-brand-700" data-history-view-trigger data-history-view-kicker="Entrada" data-history-view-title="{{ item.input_catalog.name if item.input_catalog else item.name }}" data-history-view-subtitle="{{ item.farm.name if item.farm else 'Sem fazenda vinculada' }}" data-history-view-source="purchased-input-view-{{ item.id }}" data-history-view-edit-url="/insumos/comprados?edit_id={{ item.id }}">{{ item.input_catalog.name if item.input_catalog else item.name }}</button>
                                     <template id="purchased-input-view-{{ item.id }}">
                                         <div class="grid gap-3 sm:grid-cols-2">
@@ -167,10 +166,10 @@
                             {% for output in stock_outputs %}
                             <tr data-purchased-history-row data-purchased-kind="saida" data-purchased-search-text="{{ output.movement_date ~ ' ' ~ (output.input_catalog.name if output.input_catalog else '') ~ ' ' ~ output.origin ~ ' ' ~ (output.farm.name if output.farm else '') ~ ' ' ~ (output.plot.name if output.plot else '') ~ ' ' ~ (output.notes or '') }}">
                                 <td class="px-4 py-3">
-                                    <span class="stock-movement-chip stock-movement-chip-output">Saída</span>
-                                    <p class="mt-2">{{ output.movement_date }}</p>
+                                    <p>{{ output.movement_date }}</p>
                                 </td>
                                 <td class="px-4 py-3 font-medium text-slate-900">
+                                    <span class="stock-movement-chip stock-movement-chip-output">Saída</span>
                                     <button type="button" class="text-left transition hover:text-brand-700" data-history-view-trigger data-history-view-kicker="Saida" data-history-view-title="{{ output.input_catalog.name if output.input_catalog else 'Insumo removido' }}" data-history-view-subtitle="{{ output.farm.name if output.farm else 'Sem fazenda vinculada' }}{% if output.plot %} • {{ output.plot.name }}{% endif %}" data-history-view-source="stock-output-view-{{ output.id }}">{{ output.input_catalog.name if output.input_catalog else "Insumo removido" }}</button>
                                     <template id="stock-output-view-{{ output.id }}">
                                         <div class="grid gap-3 sm:grid-cols-2">
