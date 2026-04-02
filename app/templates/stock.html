@@ -1,10 +1,23 @@
 {% extends "base.html" %}
 {% block content %}
 <div class="space-y-6">
-    <article class="stock-panel rounded-[2rem] bg-white p-6 shadow-panel">
-        <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Visão consolidada</p>
-        <h3 class="mt-2 text-xl font-semibold">Saldo atual por insumo</h3>
-        <p class="mt-2 max-w-3xl text-sm text-slate-500">Acompanhe rapidamente os insumos com saldo confortável, atenção preventiva e nível crítico sem sair da visão principal.</p>
+    <article class="stock-panel rounded-[2rem] bg-white p-6 shadow-panel" data-stock-summary-panel>
+        <div class="flex flex-wrap items-start justify-between gap-4">
+            <div>
+                <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Visão consolidada</p>
+                <h3 class="mt-2 text-xl font-semibold">Saldo atual por insumo</h3>
+                <p class="mt-2 max-w-3xl text-sm text-slate-500">Acompanhe rapidamente os insumos com saldo confortável, atenção preventiva e nível crítico sem sair da visão principal.</p>
+            </div>
+            <button type="button" class="stock-summary-toggle" data-stock-summary-toggle aria-expanded="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                    <path d="M5 12h14"/>
+                    <path d="M12 5v14" data-stock-summary-toggle-plus></path>
+                </svg>
+                <span data-stock-summary-toggle-label>Recolher</span>
+            </button>
+        </div>
+        <div class="stock-summary-collapse is-expanded" data-stock-summary-collapse>
+        <div class="stock-summary-collapse-inner">
         <div class="stock-summary-grid mt-6" data-stock-catalog-grid>
             {% for item in stock_catalog_rows %}
             {% set has_threshold = item.low_stock_threshold and item.low_stock_threshold > 0 %}
@@ -62,6 +75,8 @@
         {% if stock_catalog_rows|length > 4 %}
         <div class="mt-5 flex items-center justify-center gap-2" data-stock-catalog-dots></div>
         {% endif %}
+        </div>
+        </div>
     </article>
 
     <section class="stock-panel rounded-[2rem] bg-white p-6 shadow-panel">
@@ -568,6 +583,31 @@
                 launchModal.addEventListener('cancel', (event) => {
                     event.preventDefault();
                     launchModal.close();
+                });
+            }
+
+            const summaryToggle = document.querySelector('[data-stock-summary-toggle]');
+            const summaryCollapse = document.querySelector('[data-stock-summary-collapse]');
+            const summaryToggleLabel = document.querySelector('[data-stock-summary-toggle-label]');
+            const summaryTogglePlus = document.querySelector('[data-stock-summary-toggle-plus]');
+            if (summaryToggle && summaryCollapse && summaryToggleLabel) {
+                const summaryStorageKey = 'sisfarm.stock.summary.expanded';
+                const setSummaryExpanded = (expanded) => {
+                    summaryCollapse.classList.toggle('is-expanded', expanded);
+                    summaryToggle.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+                    summaryToggleLabel.textContent = expanded ? 'Recolher' : 'Expandir';
+                    if (summaryTogglePlus) {
+                        summaryTogglePlus.classList.toggle('hidden', expanded);
+                    }
+                };
+
+                const savedSummaryState = window.localStorage.getItem(summaryStorageKey);
+                setSummaryExpanded(savedSummaryState !== 'false');
+                summaryToggle.addEventListener('click', () => {
+                    const expanded = summaryToggle.getAttribute('aria-expanded') === 'true';
+                    const nextExpanded = !expanded;
+                    setSummaryExpanded(nextExpanded);
+                    window.localStorage.setItem(summaryStorageKey, nextExpanded ? 'true' : 'false');
                 });
             }
 

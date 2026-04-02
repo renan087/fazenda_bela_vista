@@ -188,6 +188,52 @@ body {
     border-color: rgba(253, 164, 175, 0.75);
 }
 
+.stock-summary-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.55rem;
+    border-radius: 1rem;
+    border: 1px solid rgba(226, 232, 240, 0.95);
+    background: rgba(248, 250, 252, 0.94);
+    padding: 0.8rem 1rem;
+    color: rgb(71 85 105);
+    font-size: 0.92rem;
+    font-weight: 600;
+    transition: background-color 0.18s ease, color 0.18s ease, transform 0.18s ease, box-shadow 0.18s ease;
+}
+
+.stock-summary-toggle svg {
+    width: 1rem;
+    height: 1rem;
+    flex-shrink: 0;
+}
+
+.stock-summary-toggle:hover {
+    background: rgba(241, 245, 249, 1);
+    color: rgb(15 23 42);
+    transform: translateY(-1px);
+}
+
+.stock-summary-collapse {
+    display: grid;
+    grid-template-rows: 0fr;
+    transition: grid-template-rows 0.28s ease, opacity 0.22s ease, margin-top 0.22s ease;
+    opacity: 0;
+    margin-top: 0;
+}
+
+.stock-summary-collapse.is-expanded {
+    grid-template-rows: 1fr;
+    opacity: 1;
+    margin-top: 1.5rem;
+}
+
+.stock-summary-collapse-inner {
+    min-height: 0;
+    overflow: hidden;
+}
+
 .stock-level-badge {
     display: inline-flex;
     align-items: center;
@@ -471,6 +517,10 @@ body {
 }
 
 @media (max-width: 899px) {
+    .stock-summary-toggle {
+        width: 100%;
+    }
+
     .stock-header-actions {
         justify-content: stretch;
     }
