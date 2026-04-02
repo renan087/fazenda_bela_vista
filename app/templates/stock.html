@@ -688,11 +688,11 @@
                     fadingPanels.forEach((panel) => {
                         const panelTop = panel.getBoundingClientRect().top;
                         const fadeStart = stickyBottom + fadeStartOffset;
-                        const progress = Math.min(Math.max((fadeStart - panelTop) / fadeDistance, 0), 1);
-                        const opacity = 1 - progress;
-                        panel.style.setProperty('--stock-fade-opacity', opacity.toFixed(3));
-                        panel.style.setProperty('--stock-fade-blur', `${(progress * 4).toFixed(2)}px`);
-                        panel.style.setProperty('--stock-fade-shift', `${(progress * -10).toFixed(2)}px`);
+                        const overlap = Math.min(Math.max(fadeStart - panelTop, 0), fadeDistance);
+                        const transparentEnd = overlap * 0.42;
+                        const solidStart = overlap;
+                        panel.style.setProperty('--stock-fade-transparent-end', `${transparentEnd.toFixed(2)}px`);
+                        panel.style.setProperty('--stock-fade-solid-start', `${solidStart.toFixed(2)}px`);
                     });
                 };
 
