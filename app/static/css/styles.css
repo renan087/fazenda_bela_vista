@@ -683,6 +683,12 @@ body {
     border-radius: 0.9rem;
 }
 
+.stock-history-stage.is-loading {
+    opacity: 0.68;
+    transition: opacity 0.18s ease;
+    pointer-events: none;
+}
+
 @media (min-width: 900px) {
     .stock-layout {
         grid-template-columns: minmax(0, 1.65fr) minmax(20rem, 0.9fr);

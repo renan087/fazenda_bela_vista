@@ -544,24 +544,31 @@
 
     <script>
         (() => {
-            const tabs = Array.from(document.querySelectorAll('[data-stock-tab]'));
-        if (!tabs.length) return;
+            const getTabs = () => Array.from(document.querySelectorAll('[data-stock-tab]'));
+            if (!getTabs().length) return;
 
-            const activeTab = {% if edit_output %}'outputs'{% else %}{{ selected_stock_tab|tojson }}{% endif %};
-            const tabButtons = Array.from(document.querySelectorAll('[data-stock-tab-button]'));
+            let activeTab = {% if edit_output %}'outputs'{% else %}{{ selected_stock_tab|tojson }}{% endif %};
+            const getTabButtons = () => Array.from(document.querySelectorAll('[data-stock-tab-button]'));
+            const stockFilterForm = document.querySelector('[data-stock-filter-form]');
+            const stockTabHiddenInput = stockFilterForm?.querySelector('[data-stock-tab-hidden]');
+            const movementTypeField = stockFilterForm?.querySelector('select[name="movement_type"]');
             const setActiveTabView = (tabName) => {
-                tabs.forEach((tab) => {
+                activeTab = tabName;
+                getTabs().forEach((tab) => {
                     tab.classList.toggle('hidden', tab.dataset.stockTab !== tabName);
                 });
-                tabButtons.forEach((button) => {
+                getTabButtons().forEach((button) => {
                     button.classList.toggle('is-active', button.dataset.stockTabButton === tabName);
                 });
+                if (stockTabHiddenInput) {
+                    stockTabHiddenInput.value = tabName;
+                }
             };
 
             setActiveTabView(activeTab);
 
             const clearTabSearchState = () => {
-                tabs.forEach((tab) => {
+                getTabs().forEach((tab) => {
                     tab.querySelectorAll('[data-stock-history-row]').forEach((row) => {
                         row.classList.remove('hidden');
                     });
@@ -590,9 +597,6 @@
 
             clearTabSearchState();
 
-            const stockFilterForm = document.querySelector('[data-stock-filter-form]');
-            const stockTabHiddenInput = stockFilterForm?.querySelector('[data-stock-tab-hidden]');
-            const movementTypeField = stockFilterForm?.querySelector('select[name="movement_type"]');
             stockFilterForm?.addEventListener('submit', () => {
                 const selectedMovementType = movementTypeField?.value || 'all';
                 if (stockTabHiddenInput) {
@@ -668,13 +672,62 @@
                     return;
                 }
 
-                const extractTab = tabs.find((tab) => tab.dataset.stockTab === 'extract');
+                const extractTab = getTabs().find((tab) => tab.dataset.stockTab === 'extract');
                 if (!extractTab) return;
                 setActiveTabView('extract');
                 filterTabRows(extractTab, query);
             };
 
             stockSearchInput?.addEventListener('input', applyStockHistorySearch);
+
+            const syncStockStageFromUrl = async (url, tabName) => {
+                const currentStage = document.querySelector(`[data-stock-tab="${tabName}"]`);
+                if (!currentStage) {
+                    window.location.href = url;
+                    return;
+                }
+
+                currentStage.classList.add('is-loading');
+                try {
+                    const response = await window.fetch(url, {
+                        headers: {
+                            'X-Requested-With': 'XMLHttpRequest',
+                        },
+                    });
+                    if (!response.ok) {
+                        throw new Error(`Falha ao carregar paginação (${response.status})`);
+                    }
+
+                    const html = await response.text();
+                    const parsed = new window.DOMParser().parseFromString(html, 'text/html');
+                    const nextStage = parsed.querySelector(`[data-stock-tab="${tabName}"]`);
+                    if (!nextStage) {
+                        throw new Error('Bloco de histórico não encontrado na resposta.');
+                    }
+
+                    currentStage.replaceWith(nextStage);
+                    setActiveTabView(tabName);
+                    applyStockHistorySearch();
+                    window.history.replaceState({}, '', url);
+                } catch (error) {
+                    console.error(error);
+                    window.location.href = url;
+                }
+            };
+
+            document.addEventListener('click', (event) => {
+                const link = event.target.closest('[data-stock-pagination-link]');
+                if (!link || event.defaultPrevented) return;
+                if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) return;
+
+                const stage = link.closest('[data-stock-tab]');
+                const tabName = stage?.dataset.stockTab;
+                const href = link.getAttribute('href');
+                if (!tabName || !href) return;
+
+                event.preventDefault();
+                syncStockStageFromUrl(href, tabName);
+            });
 
             const stickyHeader = document.querySelector('.stock-page-header');
             const fadingPanels = Array.from(document.querySelectorAll('[data-stock-fade-panel]'));

@@ -3,16 +3,16 @@
     <p>Página {{ pagination.page }} de {{ pagination.total_pages }}</p>
     <div class="flex flex-wrap gap-2">
         {% if pagination.has_prev %}
-        <a href="{{ pagination.first_url }}" class="rounded-xl bg-white px-3 py-2 font-medium text-slate-700 ring-1 ring-slate-200 transition hover:bg-slate-100">Primeira</a>
-        <a href="{{ pagination.prev_url }}" class="rounded-xl bg-white px-3 py-2 font-medium text-slate-700 ring-1 ring-slate-200 transition hover:bg-slate-100">Anterior</a>
+        <a href="{{ pagination.first_url }}" class="rounded-xl bg-white px-3 py-2 font-medium text-slate-700 ring-1 ring-slate-200 transition hover:bg-slate-100" data-stock-pagination-link>Primeira</a>
+        <a href="{{ pagination.prev_url }}" class="rounded-xl bg-white px-3 py-2 font-medium text-slate-700 ring-1 ring-slate-200 transition hover:bg-slate-100" data-stock-pagination-link>Anterior</a>
         {% else %}
         <span class="rounded-xl bg-white/70 px-3 py-2 font-medium text-slate-300 ring-1 ring-slate-200">Primeira</span>
         <span class="rounded-xl bg-white/70 px-3 py-2 font-medium text-slate-300 ring-1 ring-slate-200">Anterior</span>
         {% endif %}
 
         {% if pagination.has_next %}
-        <a href="{{ pagination.next_url }}" class="rounded-xl bg-white px-3 py-2 font-medium text-slate-700 ring-1 ring-slate-200 transition hover:bg-slate-100">Próxima</a>
-        <a href="{{ pagination.last_url }}" class="rounded-xl bg-white px-3 py-2 font-medium text-slate-700 ring-1 ring-slate-200 transition hover:bg-slate-100">Última</a>
+        <a href="{{ pagination.next_url }}" class="rounded-xl bg-white px-3 py-2 font-medium text-slate-700 ring-1 ring-slate-200 transition hover:bg-slate-100" data-stock-pagination-link>Próxima</a>
+        <a href="{{ pagination.last_url }}" class="rounded-xl bg-white px-3 py-2 font-medium text-slate-700 ring-1 ring-slate-200 transition hover:bg-slate-100" data-stock-pagination-link>Última</a>
         {% else %}
         <span class="rounded-xl bg-white/70 px-3 py-2 font-medium text-slate-300 ring-1 ring-slate-200">Próxima</span>
         <span class="rounded-xl bg-white/70 px-3 py-2 font-medium text-slate-300 ring-1 ring-slate-200">Última</span>
