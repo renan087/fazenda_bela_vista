@@ -563,6 +563,16 @@ def _build_stock_context(
     movement_type: str = "all",
     item_type: str | None = None,
 ):
+    def _stock_priority(row: dict) -> tuple[int, float, str]:
+        threshold = float(row.get("low_stock_threshold") or 0)
+        available = float(row.get("available_quantity") or 0)
+        if threshold > 0:
+            if available <= threshold * 0.4:
+                return (0, available, row["name"].lower())
+            if available <= threshold:
+                return (1, available, row["name"].lower())
+        return (2, available, row["name"].lower())
+
     catalog_inputs = repo.list_input_catalog(item_type=item_type)
     if input_id:
         catalog_inputs = [item for item in catalog_inputs if item.id == input_id]
@@ -686,7 +696,7 @@ def _build_stock_context(
                 }
             )
 
-    stock_catalog_rows.sort(key=lambda row: row["name"].lower())
+    stock_catalog_rows.sort(key=_stock_priority)
     filtered_entries = purchase_entries
     filtered_outputs = stock_outputs
     filtered_extract_rows = extract_rows
