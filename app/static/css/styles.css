@@ -194,9 +194,8 @@ body {
 }
 
 .stock-page-header {
-    position: sticky;
-    top: 8.6rem;
-    z-index: 15;
+    position: relative;
+    z-index: 0;
     overflow: hidden;
     width: 100%;
     box-sizing: border-box;
@@ -739,7 +738,6 @@ body {
     }
 
     .stock-page-header {
-        top: 7.1rem;
         padding: 1rem !important;
         border-radius: 1.5rem !important;
         overflow: hidden;
