@@ -20,6 +20,7 @@
     </section>
 
     <section class="stock-panel rounded-[2rem] bg-white p-6 shadow-panel" data-stock-fade-panel>
+        <div data-schedule-list-shell>
         <div class="stock-history-toolbar">
             <div class="stock-tab-nav flex flex-wrap gap-3">
                 <a href="{{ schedule_tab_urls.active }}" class="stock-tab-link {% if selected_schedule_tab == 'active' %}is-active{% endif %}" data-schedule-tab-button="active">Ativos</a>
@@ -91,15 +92,15 @@
 
                     <div class="mt-4">
                         <div class="hidden max-sm:flex max-sm:items-center max-sm:justify-end">
-                            <button type="button" class="stock-summary-toggle" data-schedule-items-toggle aria-expanded="false">
+                            <button type="button" class="stock-summary-toggle sm:hidden" data-schedule-items-toggle aria-expanded="false">
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
                                     <path d="M5 12h14"/>
                                     <path d="M12 5v14" data-schedule-items-toggle-plus></path>
                                 </svg>
-                                <span data-schedule-items-toggle-label>Expandir</span>
+                                <span data-schedule-items-toggle-label>+ Mostrar Insumos</span>
                             </button>
                         </div>
-                        <div class="stock-summary-collapse max-sm:mt-3 sm:is-expanded" data-schedule-items-collapse>
+                        <div class="stock-summary-collapse is-expanded max-sm:mt-3" data-schedule-items-collapse>
                             <div class="stock-summary-collapse-inner">
                                 <div class="flex flex-wrap gap-2">
                                     {% for item in schedule.items %}
@@ -209,15 +210,15 @@
 
                     <div class="mt-4">
                         <div class="hidden max-sm:flex max-sm:items-center max-sm:justify-end">
-                            <button type="button" class="stock-summary-toggle" data-schedule-items-toggle aria-expanded="false">
+                            <button type="button" class="stock-summary-toggle sm:hidden" data-schedule-items-toggle aria-expanded="false">
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
                                     <path d="M5 12h14"/>
                                     <path d="M12 5v14" data-schedule-items-toggle-plus></path>
                                 </svg>
-                                <span data-schedule-items-toggle-label>Expandir</span>
+                                <span data-schedule-items-toggle-label>+ Mostrar Insumos</span>
                             </button>
                         </div>
-                        <div class="stock-summary-collapse max-sm:mt-3 sm:is-expanded" data-schedule-items-collapse>
+                        <div class="stock-summary-collapse is-expanded max-sm:mt-3" data-schedule-items-collapse>
                             <div class="stock-summary-collapse-inner">
                                 <div class="flex flex-wrap gap-2">
                                     {% for item in schedule.items %}
@@ -280,6 +281,7 @@
             </div>
             <p class="stock-search-empty mt-4 hidden text-sm text-slate-500" data-schedule-search-empty>Nenhum agendamento concluído corresponde à busca digitada.</p>
             {% with pagination=completed_schedules_pagination %}{% include "partials/history_pagination.html" %}{% endwith %}
+        </div>
         </div>
     </section>
 </div>
@@ -452,8 +454,9 @@
         const contextCollapse = document.querySelector('[data-schedule-context-collapse]');
         const contextToggleLabel = document.querySelector('[data-schedule-context-toggle-label]');
         const contextTogglePlus = document.querySelector('[data-schedule-context-toggle-plus]');
-        const searchInput = document.querySelector('[data-schedule-history-search]');
-        const getActiveStage = () => document.querySelector('[data-schedule-tab]:not(.hidden)[data-schedule-history-stage]');
+        let scheduleListShell = document.querySelector('[data-schedule-list-shell]');
+        let searchInput = scheduleListShell?.querySelector('[data-schedule-history-search]') || null;
+        const getActiveStage = () => scheduleListShell?.querySelector('[data-schedule-tab]:not(.hidden)[data-schedule-history-stage]') || null;
         const scheduleRenderedInEditMode = {% if edit_schedule %}true{% else %}false{% endif %};
         const getScheduleCleanUrl = () => {
             const url = new URL(window.location.href);
@@ -511,25 +514,31 @@
             });
         }
 
-        document.querySelectorAll('[data-schedule-items-toggle]').forEach((toggle) => {
-            const collapse = toggle.closest('.mt-4')?.querySelector('[data-schedule-items-collapse]');
-            const label = toggle.querySelector('[data-schedule-items-toggle-label]');
-            const plus = toggle.querySelector('[data-schedule-items-toggle-plus]');
-            if (!collapse || !label) return;
+        const scheduleItemsMobileQuery = window.matchMedia('(max-width: 639px)');
 
-            const setExpanded = (expanded) => {
-                collapse.classList.toggle('is-expanded', expanded);
-                toggle.setAttribute('aria-expanded', expanded ? 'true' : 'false');
-                label.textContent = expanded ? 'Recolher' : 'Expandir';
-                plus?.classList.toggle('hidden', expanded);
-            };
+        const bindScheduleItemsToggles = (root = document) => {
+            root.querySelectorAll('[data-schedule-items-toggle]').forEach((toggle) => {
+                if (toggle.dataset.scheduleItemsBound === 'true') return;
+                const collapse = toggle.closest('.mt-4')?.querySelector('[data-schedule-items-collapse]');
+                const label = toggle.querySelector('[data-schedule-items-toggle-label]');
+                const plus = toggle.querySelector('[data-schedule-items-toggle-plus]');
+                if (!collapse || !label) return;
 
-            setExpanded(false);
-            toggle.addEventListener('click', () => {
-                const expanded = toggle.getAttribute('aria-expanded') === 'true';
-                setExpanded(!expanded);
+                const setExpanded = (expanded) => {
+                    collapse.classList.toggle('is-expanded', expanded);
+                    toggle.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+                    label.textContent = expanded ? '- Esconder Insumos' : '+ Mostrar Insumos';
+                    plus?.classList.toggle('hidden', expanded);
+                };
+
+                setExpanded(!scheduleItemsMobileQuery.matches);
+                toggle.addEventListener('click', () => {
+                    const expanded = toggle.getAttribute('aria-expanded') === 'true';
+                    setExpanded(!expanded);
+                });
+                toggle.dataset.scheduleItemsBound = 'true';
             });
-        });
+        };
 
         const applyScheduleHistorySearch = () => {
             const historyStage = getActiveStage();
@@ -549,8 +558,23 @@
             emptyState?.classList.toggle('hidden', visibleCount !== 0 || !query);
         };
 
-        searchInput?.addEventListener('input', applyScheduleHistorySearch);
-        applyScheduleHistorySearch();
+        const bindScheduleListShell = () => {
+            if (!scheduleListShell) return;
+            searchInput = scheduleListShell.querySelector('[data-schedule-history-search]');
+            searchInput?.addEventListener('input', applyScheduleHistorySearch);
+            scheduleListShell.addEventListener('click', async (event) => {
+                const link = event.target instanceof Element
+                    ? event.target.closest('[data-schedule-tab-button], [data-stock-pagination-link]')
+                    : null;
+                if (!(link instanceof HTMLAnchorElement)) return;
+                const href = link.getAttribute('href');
+                if (!href) return;
+                event.preventDefault();
+                await syncScheduleListFromUrl(href);
+            });
+            bindScheduleItemsToggles(scheduleListShell);
+            applyScheduleHistorySearch();
+        };
 
         const stickyHeader = document.querySelector('.stock-page-header');
         const headerIntro = stickyHeader?.querySelector('[data-stock-header-intro]');
@@ -637,6 +661,35 @@
             scheduleFadeUpdate();
         }
 
+        const syncScheduleListFromUrl = async (url) => {
+            if (!scheduleListShell) {
+                window.location.href = url;
+                return;
+            }
+            const currentQuery = searchInput?.value || '';
+            scheduleListShell.classList.add('is-loading');
+            try {
+                const response = await fetch(url, {
+                    headers: { 'X-Requested-With': 'fetch' },
+                    credentials: 'same-origin',
+                });
+                if (!response.ok) throw new Error('request_failed');
+                const html = await response.text();
+                const doc = new DOMParser().parseFromString(html, 'text/html');
+                const nextShell = doc.querySelector('[data-schedule-list-shell]');
+                if (!nextShell) throw new Error('missing_schedule_shell');
+                scheduleListShell.replaceWith(nextShell);
+                scheduleListShell = nextShell;
+                searchInput = scheduleListShell.querySelector('[data-schedule-history-search]');
+                if (searchInput) searchInput.value = currentQuery;
+                bindScheduleListShell();
+                window.history.replaceState({}, '', url);
+                scheduleFadeUpdate();
+            } catch (error) {
+                window.location.href = url;
+            }
+        };
+
         const wrapper = document.querySelector('[data-schedule-items]');
         const addButton = document.querySelector('[data-add-schedule-item]');
         const template = document.getElementById('schedule-item-template');
@@ -663,6 +716,7 @@
             wrapper.appendChild(template.content.cloneNode(true));
             bindRemove(wrapper.lastElementChild);
         });
+        bindScheduleListShell();
     })();
 </script>
 {% endblock %}
