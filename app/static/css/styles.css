@@ -157,9 +157,12 @@ body {
 
 .stock-page-header {
     position: sticky;
-    top: 6.6rem;
+    top: 7rem;
     z-index: 15;
     overflow: hidden;
+    width: 100%;
+    box-sizing: border-box;
+    isolation: isolate;
     border: 1px solid rgba(226, 232, 240, 0.92);
     background:
         radial-gradient(circle at top right, rgba(137, 178, 98, 0.14), transparent 28%),
@@ -660,7 +663,7 @@ body {
 
 @media (max-width: 899px) {
     .stock-page-header {
-        top: 6rem;
+        top: 6.2rem;
     }
 
     .stock-summary-toggle {
