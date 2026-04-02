@@ -2058,6 +2058,7 @@ def purchased_inputs_page(
     edit_id: int | None = None,
     item_type: str | None = None,
     farm_id: int | None = None,
+    purchased_tab: str | None = None,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user_web),
     csrf_token: str = Depends(get_csrf_token),
@@ -2084,6 +2085,9 @@ def purchased_inputs_page(
     )
     purchase_entries_pagination = _paginate_collection(request, purchase_entries, "entries_page")
     stock_outputs_pagination = _paginate_collection(request, stock_outputs, "outputs_page")
+    selected_purchased_tab = str(request.query_params.get("purchased_tab") or purchased_tab or "entries")
+    if selected_purchased_tab not in {"entries", "outputs"}:
+        selected_purchased_tab = "entries"
     return templates.TemplateResponse(
         "purchased_inputs.html",
         _base_context(
@@ -2102,8 +2106,12 @@ def purchased_inputs_page(
             input_stock=stock_context["input_stock"],
             stock_outputs=stock_outputs_pagination["items"],
             stock_outputs_pagination=stock_outputs_pagination,
-            stock_catalog_rows=stock_context["stock_catalog_rows"],
             edit_input=edit_input,
+            selected_purchased_tab=selected_purchased_tab,
+            purchased_tab_urls={
+                "entries": _url_with_query(request, purchased_tab="entries"),
+                "outputs": _url_with_query(request, purchased_tab="outputs"),
+            },
         ),
     )
 
