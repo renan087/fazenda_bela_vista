@@ -85,6 +85,41 @@ def execute_backup(
     return run
 
 
+def delete_backup_run(db: Session, run: BackupRun) -> list[str]:
+    warnings: list[str] = []
+    storage_errors: list[str] = []
+
+    objects_to_delete = [
+        ("banco", run.database_bucket, run.database_object_path),
+        ("arquivos", run.files_bucket, run.files_object_path),
+    ]
+
+    for label, bucket, object_path in objects_to_delete:
+        if not bucket or not object_path:
+            continue
+        try:
+            deleted, missing = _delete_object_from_supabase(bucket=bucket, object_path=object_path)
+            if missing or not deleted:
+                warning_message = f"O arquivo de {label} ja nao existia mais no storage."
+                warnings.append(warning_message)
+                logger.warning("%s BackupRun id=%s path=%s", warning_message, run.id, object_path)
+        except Exception as exc:
+            logger.exception(
+                "Falha ao excluir arquivo de backup no Supabase. run_id=%s bucket=%s object=%s",
+                run.id,
+                bucket,
+                object_path,
+            )
+            storage_errors.append(f"{label.title()}: {exc}")
+
+    if storage_errors:
+        raise RuntimeError(" ".join(storage_errors))
+
+    db.delete(run)
+    db.commit()
+    return warnings
+
+
 def _validate_storage_configuration() -> None:
     if not settings.supabase_url:
         raise RuntimeError("SUPABASE_URL nao configurada.")
@@ -232,6 +267,35 @@ def _upload_file_to_supabase(bucket: str, object_path: str, file_path: Path, con
         raise RuntimeError(body or f"Erro HTTP {exc.code} ao enviar backup para o Supabase.") from exc
     except URLError as exc:
         raise RuntimeError(f"Falha de rede ao enviar backup para o Supabase: {exc.reason}") from exc
+
+
+def _delete_object_from_supabase(bucket: str, object_path: str) -> tuple[bool, bool]:
+    _validate_storage_configuration()
+    delete_url = (
+        f"{settings.supabase_url.rstrip('/')}/storage/v1/object/"
+        f"{quote(bucket, safe='')}/{quote(object_path, safe='/')}"
+    )
+    request = Request(
+        delete_url,
+        method="DELETE",
+        headers={
+            "Authorization": f"Bearer {settings.supabase_service_role_key}",
+            "apikey": settings.supabase_service_role_key or "",
+        },
+    )
+    try:
+        with urlopen(request, timeout=120) as response:
+            if response.status not in (200, 204):
+                raise RuntimeError(f"Supabase Storage retornou status {response.status}.")
+            return True, False
+    except HTTPError as exc:
+        body = exc.read().decode("utf-8", errors="ignore").strip()
+        normalized_body = body.lower()
+        if exc.code == 404 or "not found" in normalized_body or "no such object" in normalized_body:
+            return False, True
+        raise RuntimeError(body or f"Erro HTTP {exc.code} ao excluir backup no Supabase.") from exc
+    except URLError as exc:
+        raise RuntimeError(f"Falha de rede ao excluir backup no Supabase: {exc.reason}") from exc
 
 
 def _utc_now() -> datetime:

@@ -5,6 +5,7 @@ from pathlib import Path
 from urllib.parse import urlencode
 
 import json
+import logging
 
 from fastapi import APIRouter, Depends, File, Form, Request, Response, UploadFile, status
 from fastapi.responses import RedirectResponse, StreamingResponse
@@ -47,7 +48,7 @@ from app.models import (
     User,
 )
 from app.repositories.farm import FarmRepository
-from app.services.backup_service import execute_backup
+from app.services.backup_service import delete_backup_run, execute_backup
 from app.services.dashboard import build_dashboard_context
 from app.services.forms import (
     calculate_geojson_area_hectares,
@@ -109,6 +110,7 @@ from app.services.trusted_browser import revoke_user_trusted_browsers
 from app.services.two_factor import revoke_active_login_codes
 
 settings = get_settings()
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")
@@ -1748,6 +1750,39 @@ def execute_backup_action(
     else:
         _flash(request, "error", "Backup nao concluido. Revise o historico para ver o erro detalhado.")
     return _redirect("/backups")
+
+
+@router.post("/backups/{backup_run_id}/excluir")
+def delete_backup_action(
+    backup_run_id: int,
+    request: Request,
+    csrf_token: str = Form(...),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    denied = _require_admin(request, user)
+    if denied:
+        return denied
+    validate_csrf(request, csrf_token)
+    repo = _repository(db)
+    run = repo.get_backup_run(backup_run_id)
+    page = request.query_params.get("page")
+    if not run:
+        _flash(request, "error", "Backup nao encontrado.")
+        return _redirect_with_query("/backups", page=page)
+
+    try:
+        warnings = delete_backup_run(db, run)
+    except Exception as exc:
+        logger.exception("Falha ao excluir backup. run_id=%s", backup_run_id)
+        _flash(request, "error", f"Nao foi possivel excluir o backup agora. {exc}")
+        return _redirect_with_query("/backups", page=page)
+
+    if warnings:
+        _flash(request, "success", f"Backup removido do historico. {' '.join(warnings)}")
+    else:
+        _flash(request, "success", "Backup excluido com sucesso.")
+    return _redirect_with_query("/backups", page=page)
 
 
 @router.get("/meu-perfil")

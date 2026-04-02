@@ -7,17 +7,17 @@
         <p class="mt-3 text-sm leading-6 text-slate-500">
             O backup gera um dump do PostgreSQL e, quando houver diretorios locais relevantes, um pacote complementar de arquivos para o Supabase Storage, sempre pelo backend.
         </p>
-        <div class="mt-6 rounded-[1.5rem] border border-slate-200 bg-slate-50 p-5">
-            <p class="text-sm font-medium text-slate-700">Buckets configurados</p>
-            <div class="mt-4 grid gap-3 sm:grid-cols-2">
-                <div class="rounded-2xl bg-white px-4 py-3">
-                    <p class="text-xs uppercase tracking-[0.28em] text-slate-400">Banco</p>
-                    <p class="mt-2 font-semibold text-slate-900">{{ backup_db_bucket }}</p>
-                </div>
-                <div class="rounded-2xl bg-white px-4 py-3">
-                    <p class="text-xs uppercase tracking-[0.28em] text-slate-400">Arquivos</p>
-                    <p class="mt-2 font-semibold text-slate-900">{{ backup_files_bucket }}</p>
-                </div>
+        <div class="mt-5 rounded-[1.25rem] border border-slate-200 bg-slate-50/90 px-4 py-3">
+            <div class="flex flex-wrap items-center gap-2 text-xs">
+                <span class="font-medium uppercase tracking-[0.24em] text-slate-400">Buckets</span>
+                <span class="inline-flex items-center gap-2 rounded-full bg-white px-3 py-1.5 text-slate-600 ring-1 ring-slate-200">
+                    <span class="font-semibold text-slate-500">Banco</span>
+                    <span class="font-semibold text-slate-900">{{ backup_db_bucket }}</span>
+                </span>
+                <span class="inline-flex items-center gap-2 rounded-full bg-white px-3 py-1.5 text-slate-600 ring-1 ring-slate-200">
+                    <span class="font-semibold text-slate-500">Arquivos</span>
+                    <span class="font-semibold text-slate-900">{{ backup_files_bucket }}</span>
+                </span>
             </div>
         </div>
         <form method="post" action="/backups/executar" class="mt-6" data-backup-form>
@@ -52,13 +52,14 @@
             </p>
         </div>
         <div class="mt-5 overflow-hidden rounded-[1.5rem] border border-slate-200 bg-slate-50/80">
-            <div class="hidden border-b border-slate-200/80 bg-white/70 px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-400 md:grid md:grid-cols-[0.9fr_1.05fr_0.62fr_0.66fr_0.72fr_1.85fr] md:gap-3">
+            <div class="hidden border-b border-slate-200/80 bg-white/70 px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-400 md:grid md:grid-cols-[0.9fr_1.05fr_0.62fr_0.66fr_0.72fr_1.55fr_0.42fr] md:gap-3">
                 <span>Execucao</span>
                 <span>Data</span>
                 <span>Status</span>
                 <span>Origem</span>
                 <span>Tamanho</span>
                 <span>Destino</span>
+                <span class="text-right">Ação</span>
             </div>
             <div class="divide-y divide-slate-200/80">
             {% for item in backup_history %}
@@ -67,7 +68,7 @@
             {% set files_details = details.get('files', {}) %}
             {% set db_details = details.get('database', {}) %}
             <article class="group px-4 py-3 transition-colors duration-150 hover:bg-white/75">
-                <div class="grid gap-3 md:grid-cols-[0.9fr_1.05fr_0.62fr_0.66fr_0.72fr_1.85fr] md:items-center">
+                <div class="grid gap-3 md:grid-cols-[0.9fr_1.05fr_0.62fr_0.66fr_0.72fr_1.55fr_0.42fr] md:items-center">
                     <div class="min-w-0">
                         <p class="text-sm font-semibold text-slate-900">Execucao #{{ run.id }}</p>
                         {% if run.initiated_by_user %}
@@ -133,6 +134,20 @@
                             </span>
                             {% endif %}
                         </div>
+                    </div>
+                    <div class="flex items-center justify-end">
+                        <form method="post" action="/backups/{{ run.id }}/excluir?page={{ backup_page }}" onsubmit="return confirm('Confirma a exclusão deste backup? Esta ação remove o histórico e tenta apagar os arquivos no storage.');">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                            <button type="submit" class="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 transition hover:border-rose-200 hover:bg-rose-50 hover:text-rose-700" title="Excluir backup" aria-label="Excluir backup">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="h-4 w-4" aria-hidden="true">
+                                    <path d="M3 6h18"/>
+                                    <path d="M8 6V4h8v2"/>
+                                    <path d="M19 6l-1 14H6L5 6"/>
+                                    <path d="M10 11v6"/>
+                                    <path d="M14 11v6"/>
+                                </svg>
+                            </button>
+                        </form>
                     </div>
                 </div>
             </article>

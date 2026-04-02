@@ -45,6 +45,14 @@ class FarmRepository:
     def count_backup_runs(self) -> int:
         return self.db.query(func.count(BackupRun.id)).scalar() or 0
 
+    def get_backup_run(self, backup_run_id: int) -> BackupRun | None:
+        return (
+            self.db.query(BackupRun)
+            .options(joinedload(BackupRun.initiated_by_user))
+            .filter(BackupRun.id == backup_run_id)
+            .first()
+        )
+
     def list_backup_runs(self, limit: int = 20, offset: int = 0) -> list[BackupRun]:
         query = (
             self.db.query(BackupRun)
