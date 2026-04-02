@@ -2768,7 +2768,7 @@ def export_stock_extract_pdf(
     )
 
     logo_path = Path("app/static/images/logo.png")
-    logo_flowable = Image(str(logo_path), width=68, height=54) if logo_path.exists() else Spacer(68, 54)
+    logo_flowable = Image(str(logo_path), width=116, height=92) if logo_path.exists() else Spacer(116, 92)
     farm_name = selected_farm.name if selected_farm else "Fazenda Bela Vista"
     movement_label = {
         "entrada": "Somente entradas",
@@ -2789,6 +2789,7 @@ def export_stock_extract_pdf(
             Paragraph(farm_name, farm_header_style),
         ]],
         colWidths=[76, doc.width - 76],
+        hAlign="LEFT",
     )
     header_table.setStyle(
         TableStyle(
@@ -2817,6 +2818,7 @@ def export_stock_extract_pdf(
             ],
         ],
         colWidths=[doc.width / 3] * 3,
+        hAlign="LEFT",
     )
     summary_table.setStyle(
         TableStyle(
@@ -2875,7 +2877,8 @@ def export_stock_extract_pdf(
 
     column_weights = [6, 14, 6, 19, 7, 5, 9, 10, 8, 16]
     weight_total = sum(column_weights)
-    table_col_widths = [doc.width * (weight / weight_total) for weight in column_weights]
+    table_col_widths = [doc.width * (weight / weight_total) for weight in column_weights[:-1]]
+    table_col_widths.append(doc.width - sum(table_col_widths))
     table = Table(data, repeatRows=1, colWidths=table_col_widths, hAlign="LEFT")
     table.setStyle(
         TableStyle(

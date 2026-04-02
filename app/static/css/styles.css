@@ -156,20 +156,20 @@ body {
 }
 
 .stock-panel[data-stock-fade-panel] {
-    --stock-fade-transparent-end: 0px;
-    --stock-fade-solid-start: 0px;
+    --stock-fade-cutoff: 0px;
+    --stock-fade-feather-end: 0px;
     -webkit-mask-image: linear-gradient(
         to bottom,
         rgba(0, 0, 0, 0) 0,
-        rgba(0, 0, 0, 0) var(--stock-fade-transparent-end),
-        rgba(0, 0, 0, 1) var(--stock-fade-solid-start),
+        rgba(0, 0, 0, 0) var(--stock-fade-cutoff),
+        rgba(0, 0, 0, 1) var(--stock-fade-feather-end),
         rgba(0, 0, 0, 1) 100%
     );
     mask-image: linear-gradient(
         to bottom,
         rgba(0, 0, 0, 0) 0,
-        rgba(0, 0, 0, 0) var(--stock-fade-transparent-end),
-        rgba(0, 0, 0, 1) var(--stock-fade-solid-start),
+        rgba(0, 0, 0, 0) var(--stock-fade-cutoff),
+        rgba(0, 0, 0, 1) var(--stock-fade-feather-end),
         rgba(0, 0, 0, 1) 100%
     );
     -webkit-mask-repeat: no-repeat;

@@ -684,14 +684,21 @@
                     rafId = null;
                     const stickyRect = stickyHeader.getBoundingClientRect();
                     const fadeTrigger = stickyRect.top + (stickyRect.height * 0.5);
-                    const fadeDistance = Math.max(stickyRect.height * 0.8, 120);
+                    const stickyBottom = stickyRect.bottom;
+                    const fadeFeather = 42;
                     fadingPanels.forEach((panel) => {
                         const panelTop = panel.getBoundingClientRect().top;
-                        const overlap = Math.min(Math.max(fadeTrigger - panelTop, 0), fadeDistance);
-                        const transparentEnd = overlap * 0.42;
-                        const solidStart = overlap;
-                        panel.style.setProperty('--stock-fade-transparent-end', `${transparentEnd.toFixed(2)}px`);
-                        panel.style.setProperty('--stock-fade-solid-start', `${solidStart.toFixed(2)}px`);
+                        if (panelTop >= fadeTrigger) {
+                            panel.style.setProperty('--stock-fade-cutoff', '0px');
+                            panel.style.setProperty('--stock-fade-feather-end', '0px');
+                            return;
+                        }
+
+                        const overlap = Math.max(stickyBottom - panelTop, 0);
+                        const cutoff = overlap;
+                        const featherEnd = overlap + fadeFeather;
+                        panel.style.setProperty('--stock-fade-cutoff', `${cutoff.toFixed(2)}px`);
+                        panel.style.setProperty('--stock-fade-feather-end', `${featherEnd.toFixed(2)}px`);
                     });
                 };
 
