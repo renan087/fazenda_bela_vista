@@ -99,6 +99,24 @@
                 <p class="stock-page-card-subtitle">Registre aplicações em campo, acompanhe custos e consulte o histórico da safra ativa.</p>
             </div>
             <div class="stock-header-actions stock-header-actions-top">
+                <a href="/fertilizacao/exportar.pdf" class="stock-action-button stock-export-button stock-export-button-pdf" data-fertilization-export-link data-base-href="/fertilizacao/exportar.pdf">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true">
+                        <path d="M7 3h7l5 5v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z"/>
+                        <path d="M14 3v6h6"/>
+                        <path d="M10 13h4"/>
+                        <path d="M10 17h4"/>
+                    </svg>
+                    <span class="stock-action-button-label">Exportar PDF</span>
+                </a>
+                <a href="/fertilizacao/exportar.xlsx" class="stock-action-button stock-export-button stock-export-button-xlsx" data-fertilization-export-link data-base-href="/fertilizacao/exportar.xlsx">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true">
+                        <path d="M7 3h7l5 5v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z"/>
+                        <path d="M14 3v6h6"/>
+                        <path d="m10 12 4 6"/>
+                        <path d="m14 12-4 6"/>
+                    </svg>
+                    <span class="stock-action-button-label">Exportar Excel</span>
+                </a>
                 <button type="button" class="stock-action-button stock-action-button-primary" data-fertilization-launch-open>
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
                         <path d="M12 5v14"/>
@@ -116,6 +134,27 @@
                 <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Histórico</p>
                 <h3 class="mt-2 text-2xl font-semibold">Aplicações registradas</h3>
             </div>
+        </div>
+        <div class="stock-filter-bar mt-6">
+            <form method="get" action="/fertilizacao" class="flex flex-col gap-3 xl:flex-row xl:items-end">
+                {% if edit_fertilization %}
+                <input type="hidden" name="edit_id" value="{{ edit_fertilization.id }}">
+                {% endif %}
+                <div class="grid grid-cols-2 gap-3 xl:contents">
+                    <label>
+                        <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Período inicial</span>
+                        <input type="date" name="start_date" value="{{ fertilization_filter_start_date or '' }}" class="w-full rounded-xl border-slate-200 bg-white" data-fertilization-filter-start autocomplete="off">
+                    </label>
+                    <label>
+                        <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Período final</span>
+                        <input type="date" name="end_date" value="{{ fertilization_filter_end_date or '' }}" class="w-full rounded-xl border-slate-200 bg-white" data-fertilization-filter-end autocomplete="off">
+                    </label>
+                </div>
+                <div class="flex flex-wrap gap-3">
+                    <button type="submit" class="rounded-xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white hover:bg-slate-700">Filtrar</button>
+                    <a href="{{ fertilization_filter_clear_url }}" class="rounded-xl bg-white px-4 py-3 text-sm font-semibold text-slate-700 ring-1 ring-slate-200 hover:bg-slate-100">Limpar</a>
+                </div>
+            </form>
         </div>
         <div class="stock-history-toolbar mt-5">
             <div class="hidden min-w-0 sm:block sm:flex-1"></div>
@@ -329,6 +368,7 @@
         const contextCollapse = document.querySelector('[data-fertilization-context-collapse]');
         const contextToggleLabel = document.querySelector('[data-fertilization-context-toggle-label]');
         const contextTogglePlus = document.querySelector('[data-fertilization-context-toggle-plus]');
+        const exportLinks = Array.from(document.querySelectorAll('[data-fertilization-export-link]'));
         const fertilizationRenderedInEditMode = {% if edit_fertilization %}true{% else %}false{% endif %};
         const getFertilizationCleanUrl = () => {
             const url = new URL(window.location.href);
@@ -520,6 +560,8 @@
         const historySearch = historyShell?.querySelector('[data-fertilization-history-search]');
         const historyList = historyShell?.querySelector('[data-fertilization-history-list]');
         const emptySearch = historyShell?.querySelector('[data-fertilization-search-empty]');
+        const filterStartInput = document.querySelector('[data-fertilization-filter-start]');
+        const filterEndInput = document.querySelector('[data-fertilization-filter-end]');
 
         const normalizeSearchText = (value) => (
             (value || '')
@@ -529,9 +571,25 @@
                 .toLowerCase()
         );
 
+        const syncFertilizationExportLinks = () => {
+            exportLinks.forEach((link) => {
+                const baseHref = link.dataset.baseHref;
+                if (!baseHref) return;
+                const params = new URLSearchParams();
+                const query = (historySearch?.value || '').trim();
+                if (query) params.set('search', query);
+                const startDate = (filterStartInput?.value || '').trim();
+                if (startDate) params.set('start_date', startDate);
+                const endDate = (filterEndInput?.value || '').trim();
+                if (endDate) params.set('end_date', endDate);
+                link.href = params.toString() ? `${baseHref}?${params.toString()}` : baseHref;
+            });
+        };
+
         const applyFertilizationHistorySearch = () => {
             if (!historyList) return;
             const query = normalizeSearchText((historySearch?.value || '').trim());
+            syncFertilizationExportLinks();
             const rows = Array.from(historyList.querySelectorAll('[data-fertilization-history-row]'));
             const groups = Array.from(historyList.querySelectorAll('[data-fertilization-group]'));
             let visible = 0;
@@ -564,6 +622,8 @@
         bindFertilizationGroupToggles(historyList || document);
         bindFertilizationItemsToggles(historyList || document);
         historySearch?.addEventListener('input', applyFertilizationHistorySearch);
+        filterStartInput?.addEventListener('change', syncFertilizationExportLinks);
+        filterEndInput?.addEventListener('change', syncFertilizationExportLinks);
         applyFertilizationHistorySearch();
 
         const stickyHeader = document.querySelector('.stock-page-header');

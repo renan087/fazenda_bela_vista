@@ -6,6 +6,7 @@ from urllib.parse import urlencode
 
 import json
 import logging
+import unicodedata
 
 from fastapi import APIRouter, Depends, File, Form, Request, Response, UploadFile, status
 from fastapi.responses import RedirectResponse, StreamingResponse
@@ -531,6 +532,49 @@ def _schedule_filter_date_bounds(
     if user_end:
         eff_end = user_end if eff_end is None else min(eff_end, user_end)
     return eff_start, eff_end, raw_start, raw_end
+
+
+def _normalize_search_value(value: object) -> str:
+    return (
+        unicodedata.normalize("NFD", str(value or ""))
+        .encode("ascii", "ignore")
+        .decode("ascii")
+        .lower()
+    )
+
+
+def _filter_fertilization_records(
+    repo: FarmRepository,
+    plot_ids: set[int],
+    start_date: date | None,
+    end_date: date | None,
+    *,
+    search: str | None = None,
+) -> list[FertilizationRecord]:
+    fertilizations = [
+        item
+        for item in repo.list_fertilizations()
+        if item.plot_id in plot_ids and _within_scope(item.application_date, start_date, end_date)
+    ]
+    query = _normalize_search_value((search or "").strip())
+    if query:
+        fertilizations = [
+            item
+            for item in fertilizations
+            if query in _normalize_search_value(
+                f"{item.plot.name if item.plot else ''} "
+                f"{item.application_date or ''} "
+                f"{item.product or ''} "
+                f"{item.notes or ''} "
+                + " ".join(detail.name for detail in item.items)
+            )
+        ]
+    fertilizations = _sort_collection_desc(
+        fertilizations,
+        lambda item: item.application_date,
+        lambda item: item.id,
+    )
+    return fertilizations
 
 
 def _launch_scope_or_redirect(
@@ -4685,7 +4729,9 @@ def fertilization_page(
     repo = _repository(db)
     scope = _global_scope_context(request, repo)
     farm_ids, variety_ids = _scoped_plot_filters(request, scope["active_season"])
-    start_date, end_date = _scoped_dates(scope["active_season"])
+    start_date, end_date, filter_start_str, filter_end_str = _schedule_filter_date_bounds(
+        request, scope["active_season"], flash_invalid=True
+    )
     plots = repo.list_plots(farm_ids=farm_ids, variety_ids=variety_ids)
     plot_ids = {plot.id for plot in plots}
     edit_fertilization = repo.get_fertilization(edit_id) if edit_id else None
@@ -4706,16 +4752,13 @@ def fertilization_page(
         }
         for item in consolidated_inputs
     }
-    fertilizations = [
-        item
-        for item in repo.list_fertilizations()
-        if item.plot_id in plot_ids and _within_scope(item.application_date, start_date, end_date)
-    ]
-    fertilizations = _sort_collection_desc(
-        fertilizations,
-        lambda item: item.application_date,
-        lambda item: item.id,
+    fertilization_filter_clear_url = _url_with_query(
+        request,
+        start_date=None,
+        end_date=None,
+        fertilizations_page=None,
     )
+    fertilizations = _filter_fertilization_records(repo, plot_ids, start_date, end_date)
     fertilizations_pagination = _paginate_collection(request, fertilizations, "fertilizations_page")
     schedules = [
         item
@@ -4755,6 +4798,9 @@ def fertilization_page(
             input_stock=input_stock,
             fertilizations=fertilizations_pagination["items"],
             fertilizations_pagination=fertilizations_pagination,
+            fertilization_filter_start_date=filter_start_str or None,
+            fertilization_filter_end_date=filter_end_str or None,
+            fertilization_filter_clear_url=fertilization_filter_clear_url,
             schedules=schedules,
             recommendation_groups=recommendation_groups,
             edit_fertilization=edit_fertilization,
@@ -4865,6 +4911,199 @@ def delete_fertilization_action(
     delete_fertilization(repo, fertilization)
     _flash(request, "success", "Fertilizacao excluida com sucesso.")
     return _redirect("/fertilizacao")
+
+
+@router.get("/fertilizacao/exportar.xlsx")
+def export_fertilization_xlsx(
+    request: Request,
+    search: str | None = None,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    del user
+    repo = _repository(db)
+    scope = _global_scope_context(request, repo)
+    farm_ids, variety_ids = _scoped_plot_filters(request, scope["active_season"])
+    start_date, end_date, _, _ = _schedule_filter_date_bounds(request, scope["active_season"], flash_invalid=False)
+    plots = repo.list_plots(farm_ids=farm_ids, variety_ids=variety_ids)
+    plot_ids = {plot.id for plot in plots}
+    fertilizations = _filter_fertilization_records(repo, plot_ids, start_date, end_date, search=search)
+
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = "Fertilizacao"
+    sheet.append(["Data", "Setor", "Produto", "Custo", "Insumos Aplicados", "Observações"])
+    for item in fertilizations:
+        sheet.append([
+            item.application_date.isoformat() if item.application_date else "",
+            item.plot.name if item.plot else "Setor removido",
+            item.product or "",
+            _format_brl_currency(item.cost),
+            " | ".join(
+                f"{detail.name} ({_format_decimal_br(detail.total_quantity, 2)} {detail.unit})"
+                for detail in item.items
+            ) or (item.dose or ""),
+            item.notes or "",
+        ])
+    for index, width in enumerate([14, 28, 26, 16, 54, 40], start=1):
+        sheet.column_dimensions[get_column_letter(index)].width = width
+
+    output = BytesIO()
+    workbook.save(output)
+    output.seek(0)
+    return StreamingResponse(
+        output,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": 'attachment; filename="fertilizacao.xlsx"'},
+    )
+
+
+@router.get("/fertilizacao/exportar.pdf")
+def export_fertilization_pdf(
+    request: Request,
+    search: str | None = None,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    repo = _repository(db)
+    scope = _global_scope_context(request, repo)
+    farm_ids, variety_ids = _scoped_plot_filters(request, scope["active_season"])
+    start_date, end_date, raw_start, raw_end = _schedule_filter_date_bounds(request, scope["active_season"], flash_invalid=False)
+    plots = repo.list_plots(farm_ids=farm_ids, variety_ids=variety_ids)
+    plot_ids = {plot.id for plot in plots}
+    fertilizations = _filter_fertilization_records(repo, plot_ids, start_date, end_date, search=search)
+
+    generated_at = app_now()
+    generated_by = user.display_name or user.name or user.email
+    farm_name = scope["active_farm"].name if scope.get("active_farm") else "Fazenda Bela Vista"
+    season_label = scope["active_season"].name if scope.get("active_season") else "Safra ativa"
+    period_label = "Safra ativa"
+    if raw_start or raw_end:
+        period_label = f"{(raw_start or '--').replace('-', '/')} a {(raw_end or '--').replace('-', '/')}"
+    total_cost = sum(float(item.cost or 0) for item in fertilizations)
+    total_items = sum(len(item.items or []) for item in fertilizations)
+
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=landscape(A4), leftMargin=28, rightMargin=28, topMargin=32, bottomMargin=34)
+    styles = getSampleStyleSheet()
+    farm_header_style = ParagraphStyle("FertilizationPdfFarmHeader", parent=styles["Title"], fontName="Helvetica-Bold", fontSize=18, leading=22, alignment=TA_RIGHT, textColor=colors.HexColor("#1e293b"))
+    meta_label_style = ParagraphStyle("FertilizationPdfMetaLabel", parent=styles["BodyText"], fontName="Helvetica-Bold", fontSize=8, leading=10, textColor=colors.HexColor("#446a36"), spaceAfter=2)
+    meta_value_style = ParagraphStyle("FertilizationPdfMetaValue", parent=styles["BodyText"], fontName="Helvetica", fontSize=10, leading=13, textColor=colors.HexColor("#334155"))
+    cell_style = ParagraphStyle("FertilizationPdfCell", parent=styles["BodyText"], fontName="Helvetica", fontSize=8.2, leading=10.4, textColor=colors.HexColor("#0f172a"))
+    cell_muted_style = ParagraphStyle("FertilizationPdfCellMuted", parent=cell_style, textColor=colors.HexColor("#475569"))
+    summary_value_style = ParagraphStyle("FertilizationPdfSummaryValue", parent=styles["BodyText"], fontName="Helvetica-Bold", fontSize=11, leading=14, textColor=colors.HexColor("#0f172a"))
+
+    logo_path = Path("app/static/images/logo.png")
+    logo_flowable = Image(str(logo_path), width=92.8, height=73.6) if logo_path.exists() else Spacer(92.8, 73.6)
+    header_table = Table([[logo_flowable, Paragraph(farm_name, farm_header_style)]], colWidths=[76, doc.width - 76], hAlign="LEFT")
+    header_table.setStyle(TableStyle([
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("ALIGN", (1, 0), (1, 0), "RIGHT"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 0),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+        ("TOPPADDING", (0, 0), (-1, -1), 0),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
+    ]))
+
+    summary_table = Table([
+        [
+            [Paragraph("FAZENDA", meta_label_style), Paragraph(farm_name, meta_value_style)],
+            [Paragraph("SAFRA", meta_label_style), Paragraph(season_label, meta_value_style)],
+            [Paragraph("PERÍODO", meta_label_style), Paragraph(period_label, meta_value_style)],
+        ],
+        [
+            [Paragraph("LANÇAMENTOS", meta_label_style), Paragraph(str(len(fertilizations)), summary_value_style)],
+            [Paragraph("INSUMOS APLICADOS", meta_label_style), Paragraph(str(total_items), summary_value_style)],
+            [Paragraph("CUSTO TOTAL", meta_label_style), Paragraph(_format_brl_currency(total_cost), summary_value_style)],
+        ],
+    ], colWidths=[doc.width / 3] * 3, hAlign="LEFT")
+    summary_table.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#f8fafc")),
+        ("BOX", (0, 0), (-1, -1), 0.8, colors.HexColor("#dbe5dd")),
+        ("INNERGRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#e2e8f0")),
+        ("LEFTPADDING", (0, 0), (-1, -1), 12),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 12),
+        ("TOPPADDING", (0, 0), (-1, -1), 10),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 10),
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+    ]))
+
+    elements = [header_table, Spacer(1, 16), summary_table, Spacer(1, 14)]
+    data = [["Data", "Setor", "Produto", "Custo", "Insumos Aplicados", "Observações"]]
+    for item in fertilizations:
+        items_label = " • ".join(
+            f"{detail.name} ({_format_decimal_br(detail.total_quantity, 2)} {detail.unit})"
+            for detail in item.items
+        ) or (item.dose or "-")
+        data.append([
+            Paragraph(item.application_date.strftime("%d/%m/%Y") if item.application_date else "-", cell_style),
+            Paragraph(item.plot.name if item.plot else "Setor removido", cell_style),
+            Paragraph(item.product or "-", cell_style),
+            Paragraph(_format_brl_currency(item.cost), cell_style),
+            Paragraph(items_label, cell_muted_style),
+            Paragraph(item.notes or "-", cell_muted_style),
+        ])
+
+    table = Table(data, colWidths=[60, 110, 110, 76, 260, doc.width - 616], repeatRows=1, hAlign="LEFT")
+    table.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#446a36")),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("FONTSIZE", (0, 0), (-1, -1), 8.5),
+        ("LEADING", (0, 0), (-1, -1), 10),
+        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f8fafc")]),
+        ("BOX", (0, 0), (-1, -1), 0.6, colors.HexColor("#dbe5dd")),
+        ("INNERGRID", (0, 0), (-1, -1), 0.35, colors.HexColor("#e2e8f0")),
+        ("LEFTPADDING", (0, 0), (-1, -1), 8),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+        ("TOPPADDING", (0, 0), (-1, -1), 7),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 7),
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+    ]))
+    elements.append(table)
+    elements.append(Spacer(1, 14))
+
+    footer_summary = Table([
+        ["Total de lançamentos", str(len(fertilizations))],
+        ["Total de insumos aplicados", str(total_items)],
+        ["Custo total", _format_brl_currency(total_cost)],
+    ], colWidths=[doc.width * 0.28, doc.width * 0.18], hAlign="LEFT")
+    footer_summary.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#f8fafc")),
+        ("BOX", (0, 0), (-1, -1), 0.8, colors.HexColor("#dbe5dd")),
+        ("INNERGRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#e2e8f0")),
+        ("FONTNAME", (0, 0), (-1, -1), "Helvetica-Bold"),
+        ("TEXTCOLOR", (0, 0), (-1, -1), colors.HexColor("#0f172a")),
+        ("LEFTPADDING", (0, 0), (-1, -1), 10),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 10),
+        ("TOPPADDING", (0, 0), (-1, -1), 8),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
+    ]))
+    elements.append(footer_summary)
+
+    generated_at_label = format_app_datetime(generated_at)
+
+    def _draw_footer(canvas, doc):
+        canvas.saveState()
+        canvas.setStrokeColor(colors.HexColor("#e2e8f0"))
+        canvas.line(doc.leftMargin, 22, landscape(A4)[0] - doc.rightMargin, 22)
+        canvas.setFont("Helvetica", 8.2)
+        canvas.setFillColor(colors.HexColor("#64748b"))
+        canvas.drawString(doc.leftMargin, 10, f"Gerado por: {generated_by}")
+        canvas.drawRightString(
+            landscape(A4)[0] - doc.rightMargin,
+            10,
+            f"Emitido em {generated_at_label} • Página {canvas.getPageNumber()}",
+        )
+        canvas.restoreState()
+
+    doc.build(elements, onFirstPage=_draw_footer, onLaterPages=_draw_footer)
+    buffer.seek(0)
+    return StreamingResponse(
+        buffer,
+        media_type="application/pdf",
+        headers={"Content-Disposition": 'attachment; filename="fertilizacao.pdf"'},
+    )
 
 
 @router.get("/fertilizacao/agendamentos")
