@@ -217,16 +217,22 @@
                                 <span class="module-filter-preset-option-meta">Selecione data inicial e final</span>
                             </button>
                         </div>
-                    </div>
-                    <div class="module-filter-period {% if selected_schedule_range != 'custom' %}hidden{% endif %}" data-schedule-custom-range>
-                        <label class="module-filter-date-field">
-                            <span class="module-filter-date-label">Período inicial</span>
-                            <input type="date" name="start_date" value="{{ schedule_filter_start_date or '' }}" class="module-filter-date-input" data-schedule-filter-start autocomplete="off">
-                        </label>
-                        <label class="module-filter-date-field">
-                            <span class="module-filter-date-label">Período final</span>
-                            <input type="date" name="end_date" value="{{ schedule_filter_end_date or '' }}" class="module-filter-date-input" data-schedule-filter-end autocomplete="off">
-                        </label>
+                        <div class="module-filter-period module-filter-custom-panel {% if selected_schedule_range != 'custom' %}hidden{% endif %}" data-schedule-custom-range>
+                            <div class="module-filter-custom-step" data-schedule-custom-start-step>
+                                <p class="module-filter-custom-title">Data inicial</p>
+                                <label class="module-filter-date-field">
+                                    <span class="module-filter-date-label">Escolha o início do período</span>
+                                    <input type="date" name="start_date" value="{{ schedule_filter_start_date or '' }}" class="module-filter-date-input" data-schedule-filter-start autocomplete="off">
+                                </label>
+                            </div>
+                            <div class="module-filter-custom-step {% if not schedule_filter_start_date %}hidden{% endif %}" data-schedule-custom-end-step>
+                                <p class="module-filter-custom-title">Data final</p>
+                                <label class="module-filter-date-field">
+                                    <span class="module-filter-date-label">Escolha o fim do período</span>
+                                    <input type="date" name="end_date" value="{{ schedule_filter_end_date or '' }}" class="module-filter-date-input" data-schedule-filter-end autocomplete="off">
+                                </label>
+                            </div>
+                        </div>
                     </div>
                 </div>
                 <div class="module-filter-toolbar-actions">
@@ -875,6 +881,8 @@
             const menu = picker.querySelector('[data-schedule-range-menu]');
             const label = picker.querySelector('[data-schedule-range-label]');
             const customRange = root.querySelector('[data-schedule-custom-range]');
+            const customStartStep = root.querySelector('[data-schedule-custom-start-step]');
+            const customEndStep = root.querySelector('[data-schedule-custom-end-step]');
             rangeInput = root.querySelector('[data-schedule-range-input]');
             filterStartInput = root.querySelector('[data-schedule-filter-start]');
             filterEndInput = root.querySelector('[data-schedule-filter-end]');
@@ -882,8 +890,15 @@
             filterClearButton = root.querySelector('[data-schedule-filter-clear]');
             if (!(trigger instanceof HTMLButtonElement) || !(menu instanceof HTMLElement) || !(label instanceof HTMLElement) || !(rangeInput instanceof HTMLInputElement)) return;
 
+            const syncCustomStep = () => {
+                const hasStart = Boolean((filterStartInput?.value || '').trim());
+                customStartStep?.classList.remove('hidden');
+                customEndStep?.classList.toggle('hidden', !hasStart);
+            };
+
             const syncCustomVisibility = () => {
                 customRange?.classList.toggle('hidden', rangeInput.value !== 'custom');
+                syncCustomStep();
                 syncScheduleFilterActions();
             };
 
@@ -920,12 +935,20 @@
                         const range = getPresetRange(value);
                         if (filterStartInput instanceof HTMLInputElement) filterStartInput.value = range.start;
                         if (filterEndInput instanceof HTMLInputElement) filterEndInput.value = range.end;
+                    } else {
+                        if (filterStartInput instanceof HTMLInputElement) filterStartInput.value = '';
+                        if (filterEndInput instanceof HTMLInputElement) filterEndInput.value = '';
                     }
                     syncCustomVisibility();
                     syncScheduleExportLinks();
                     closeMenu();
                     if (value !== 'custom') {
                         picker.closest('form')?.requestSubmit();
+                    } else {
+                        window.setTimeout(() => {
+                            filterStartInput?.focus();
+                            filterStartInput?.showPicker?.();
+                        }, 0);
                     }
                 });
             });
@@ -942,6 +965,28 @@
                 if (filterEndInput instanceof HTMLInputElement) filterEndInput.value = range.end;
             });
 
+            filterStartInput?.addEventListener('change', () => {
+                syncCustomStep();
+                syncScheduleFilterActions();
+                syncScheduleExportLinks();
+                if ((rangeInput?.value || '') !== 'custom') return;
+                if (!(filterEndInput instanceof HTMLInputElement)) return;
+                window.setTimeout(() => {
+                    filterEndInput.focus();
+                    filterEndInput.showPicker?.();
+                }, 0);
+            });
+
+            filterEndInput?.addEventListener('change', () => {
+                syncCustomStep();
+                syncScheduleFilterActions();
+                syncScheduleExportLinks();
+                if ((rangeInput?.value || '') !== 'custom') return;
+                if ((filterStartInput?.value || '').trim() && (filterEndInput.value || '').trim()) {
+                    picker.closest('form')?.requestSubmit();
+                }
+            });
+
             syncCustomVisibility();
         };
 
@@ -954,14 +999,6 @@
             filterSubmitButton = scheduleListShell.querySelector('[data-schedule-filter-submit]');
             filterClearButton = scheduleListShell.querySelector('[data-schedule-filter-clear]');
             searchInput?.addEventListener('input', applyScheduleHistorySearch);
-            filterStartInput?.addEventListener('change', () => {
-                syncScheduleFilterActions();
-                syncScheduleExportLinks();
-            });
-            filterEndInput?.addEventListener('change', () => {
-                syncScheduleFilterActions();
-                syncScheduleExportLinks();
-            });
             scheduleListShell.addEventListener('click', async (event) => {
                 const link = event.target instanceof Element
                     ? event.target.closest('[data-schedule-tab-button], [data-stock-pagination-link]')
