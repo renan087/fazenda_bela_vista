@@ -649,6 +649,17 @@ body {
     min-width: 0;
 }
 
+.module-filter-period-row {
+    display: inline-flex;
+    align-items: stretch;
+    gap: 0.75rem;
+    min-width: 0;
+}
+
+.module-filter-period-row .module-filter-preset {
+    flex: 0 1 auto;
+}
+
 .module-filter-preset {
     position: relative;
     flex: 0 1 auto;
@@ -905,6 +916,10 @@ body {
 .module-filter-action-icon svg {
     width: 1rem;
     height: 1rem;
+}
+
+.module-filter-action-mobile-clear {
+    flex: 0 0 3rem;
 }
 
 .module-filter-action-primary {
@@ -1507,7 +1522,8 @@ body {
     .module-filter-toolbar-grid,
     .module-filter-toolbar-main,
     .module-filter-toolbar-actions,
-    .module-filter-period {
+    .module-filter-period,
+    .module-filter-period-row {
         width: 100%;
     }
 
@@ -1522,6 +1538,21 @@ body {
     .module-filter-preset-button,
     .module-filter-preset-menu {
         width: 100%;
+    }
+
+    .module-filter-period-row {
+        display: flex;
+        align-items: stretch;
+    }
+
+    .module-filter-period-row .module-filter-preset {
+        flex: 1 1 auto;
+        min-width: 0;
+    }
+
+    .module-filter-action-mobile-clear {
+        width: 3rem;
+        min-width: 3rem;
     }
 
     .stock-history-stage {
