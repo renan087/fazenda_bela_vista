@@ -554,6 +554,30 @@ def _fertilization_filter_range_preset(raw_preset: str | None, raw_start: str, r
     return "last_10_days"
 
 
+def _schedule_tab_filter_range_preset(
+    raw_preset: str | None,
+    raw_start: str,
+    raw_end: str,
+    *,
+    schedule_tab: str,
+) -> str:
+    """Aba Ativos: presets futuros; aba Concluídos: presets passados."""
+    preset = (raw_preset or "").strip()
+    past_ok = {"last_10_days", "last_20_days", "last_month", "custom"}
+    future_ok = {"next_10_days", "next_20_days", "next_month", "custom"}
+    if schedule_tab == "completed":
+        if preset in past_ok:
+            return preset
+        if raw_start or raw_end:
+            return "custom"
+        return "last_10_days"
+    if preset in future_ok:
+        return preset
+    if raw_start or raw_end:
+        return "custom"
+    return "next_10_days"
+
+
 def _normalize_search_value(value: object) -> str:
     return (
         unicodedata.normalize("NFD", str(value or ""))
@@ -5173,13 +5197,17 @@ def fertilization_schedules_page(
     repo = _repository(db)
     scope = _global_scope_context(request, repo)
     farm_ids, variety_ids = _scoped_plot_filters(request, scope["active_season"])
+    selected_schedule_tab = str(request.query_params.get("schedule_tab") or "active")
+    if selected_schedule_tab not in {"active", "completed"}:
+        selected_schedule_tab = "active"
     start_date, end_date, filter_start_str, filter_end_str = _schedule_filter_date_bounds(
         request, scope["active_season"], flash_invalid=True
     )
-    selected_schedule_range = _planning_filter_range_preset(
+    selected_schedule_range = _schedule_tab_filter_range_preset(
         request.query_params.get("schedule_range"),
         filter_start_str,
         filter_end_str,
+        schedule_tab=selected_schedule_tab,
     )
     plots = repo.list_plots(farm_ids=farm_ids, variety_ids=variety_ids)
     plot_ids = {plot.id for plot in plots}
@@ -5191,9 +5219,6 @@ def fertilization_schedules_page(
     ]
     schedules.sort(key=lambda schedule: (schedule.scheduled_date, schedule.id), reverse=True)
     schedule_validations = {schedule.id: validate_schedule_stock(repo, schedule) for schedule in schedules}
-    selected_schedule_tab = str(request.query_params.get("schedule_tab") or "active")
-    if selected_schedule_tab not in {"active", "completed"}:
-        selected_schedule_tab = "active"
     schedule_filter_clear_url = _url_with_query(
         request,
         start_date=None,
