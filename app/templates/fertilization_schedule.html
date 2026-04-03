@@ -219,7 +219,7 @@
                         </div>
                         <input type="hidden" name="start_date" value="{{ schedule_filter_start_date or '' }}" data-schedule-filter-start>
                         <input type="hidden" name="end_date" value="{{ schedule_filter_end_date or '' }}" data-schedule-filter-end>
-                        <div class="module-filter-period module-filter-custom-panel {% if selected_schedule_range != 'custom' %}hidden{% endif %}" data-schedule-custom-range>
+                        <div class="module-filter-period module-filter-custom-panel hidden" data-schedule-custom-range>
                             <div class="module-filter-custom-head">
                                 <p class="module-filter-custom-title">Período personalizado</p>
                                 <p class="module-filter-custom-subtitle" data-schedule-custom-caption>Selecione a data inicial e depois a data final.</p>
@@ -913,6 +913,7 @@
                 return new Date(parsed.getFullYear(), parsed.getMonth(), 1);
             })();
             let pendingRangeStart = (filterStartInput?.value || '').trim();
+            let customRangeOpen = false;
 
             const compareIsoDate = (left, right) => {
                 if (!left || !right) return 0;
@@ -929,7 +930,8 @@
             };
 
             const syncCustomVisibility = () => {
-                customRange?.classList.toggle('hidden', rangeInput.value !== 'custom');
+                const shouldShowCustomRange = rangeInput.value === 'custom' && customRangeOpen;
+                customRange?.classList.toggle('hidden', !shouldShowCustomRange);
                 syncCustomStep();
                 syncScheduleFilterActions();
             };
@@ -984,6 +986,9 @@
                         syncScheduleFilterActions();
                         syncScheduleExportLinks();
                         renderCalendar();
+                        customRangeOpen = false;
+                        customRange?.classList.add('hidden');
+                        closeMenu();
                         picker.closest('form')?.requestSubmit();
                     });
                     calendarGrid.appendChild(button);
@@ -1008,6 +1013,7 @@
             };
 
             const openCustomRange = () => {
+                customRangeOpen = true;
                 customRange?.classList.remove('hidden');
                 trigger.setAttribute('aria-expanded', 'true');
                 fadePanel?.classList.add('is-filter-menu-open');
@@ -1016,10 +1022,15 @@
 
             trigger.addEventListener('click', (event) => {
                 event.stopPropagation();
-                const customOpen = customRange instanceof HTMLElement && !customRange.classList.contains('hidden');
+                const customOpen = customRangeOpen && customRange instanceof HTMLElement && !customRange.classList.contains('hidden');
                 if (customOpen) {
+                    customRangeOpen = false;
                     customRange.classList.add('hidden');
                     closeMenu();
+                    return;
+                }
+                if (rangeInput.value === 'custom') {
+                    openCustomRange();
                     return;
                 }
                 if (menu.classList.contains('hidden')) openMenu();
@@ -1065,6 +1076,7 @@
 
             document.addEventListener('click', (event) => {
                 if (clickHappenedInsidePicker(event)) return;
+                customRangeOpen = false;
                 customRange?.classList.add('hidden');
                 closeMenu();
             });
