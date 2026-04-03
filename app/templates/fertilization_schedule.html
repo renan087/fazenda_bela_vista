@@ -169,37 +169,36 @@
             </div>
         </div>
 
-        <div class="stock-filter-bar mt-6">
-            <form method="get" action="/fertilizacao/agendamentos" class="flex flex-col gap-3 xl:flex-row xl:items-end">
+        <div class="module-filter-toolbar mt-6">
+            <form method="get" action="/fertilizacao/agendamentos" class="module-filter-toolbar-grid">
                 <input type="hidden" name="schedule_tab" value="{{ selected_schedule_tab }}">
                 {% if edit_schedule %}
                 <input type="hidden" name="edit_id" value="{{ edit_schedule.id }}">
                 {% endif %}
-                <div class="grid grid-cols-2 gap-3 xl:contents">
-                    <label>
-                        <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Periodo inicial</span>
-                        <input type="date" name="start_date" value="{{ schedule_filter_start_date or '' }}" class="w-full rounded-xl border-slate-200 bg-white" data-schedule-filter-start autocomplete="off">
-                    </label>
-                    <label>
-                        <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Periodo final</span>
-                        <input type="date" name="end_date" value="{{ schedule_filter_end_date or '' }}" class="w-full rounded-xl border-slate-200 bg-white" data-schedule-filter-end autocomplete="off">
-                    </label>
+                <div class="module-filter-toolbar-main">
+                    <div class="stock-search-field module-filter-search">
+                        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+                            <circle cx="8.5" cy="8.5" r="5.75"></circle>
+                            <path d="M13 13l4 4"></path>
+                        </svg>
+                        <input type="search" placeholder="Buscar setor, data, status, insumo ou observação" data-schedule-history-search>
+                    </div>
+                    <div class="module-filter-period">
+                        <label class="module-filter-date-field">
+                            <span class="module-filter-date-label">Período inicial</span>
+                            <input type="date" name="start_date" value="{{ schedule_filter_start_date or '' }}" class="module-filter-date-input" data-schedule-filter-start autocomplete="off">
+                        </label>
+                        <label class="module-filter-date-field">
+                            <span class="module-filter-date-label">Período final</span>
+                            <input type="date" name="end_date" value="{{ schedule_filter_end_date or '' }}" class="module-filter-date-input" data-schedule-filter-end autocomplete="off">
+                        </label>
+                    </div>
                 </div>
-                <div class="flex flex-wrap gap-3">
-                    <button type="submit" class="rounded-xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white hover:bg-slate-700">Filtrar</button>
-                    <a href="{{ schedule_filter_clear_url }}" class="rounded-xl bg-white px-4 py-3 text-sm font-semibold text-slate-700 ring-1 ring-slate-200 hover:bg-slate-100">Limpar</a>
+                <div class="module-filter-toolbar-actions">
+                    <button type="submit" class="module-filter-action module-filter-action-primary">Filtrar</button>
+                    <a href="{{ schedule_filter_clear_url }}" class="module-filter-action module-filter-action-secondary">Limpar</a>
                 </div>
             </form>
-        </div>
-
-        <div class="stock-history-toolbar mt-5">
-            <div class="stock-search-field">
-                <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
-                    <circle cx="8.5" cy="8.5" r="5.75"></circle>
-                    <path d="M13 13l4 4"></path>
-                </svg>
-                <input type="search" placeholder="Buscar setor, data, status, insumo ou observação" data-schedule-history-search>
-            </div>
         </div>
 
         <div class="stock-history-stage mt-4 {% if selected_schedule_tab != 'active' %}hidden{% endif %}" data-schedule-tab="active" data-schedule-history-stage>
