@@ -4209,21 +4209,35 @@ def create_crop_season_action(
     if isinstance(scope_or_redirect, RedirectResponse):
         return scope_or_redirect
     scope = scope_or_redirect
-    create_crop_season(
-        repo,
-        {
-            "farm_id": scope["active_farm_id"],
-            "name": name,
-            "start_date": start_date,
-            "end_date": end_date,
-            "culture": culture,
-            "variety_id": _int_or_none(variety_id),
-            "cultivated_area": cultivated_area,
-            "area_unit": area_unit,
-            "notes": notes,
-            "status": status_value,
-        },
-    )
+    try:
+        parsed_start_date = date.fromisoformat(start_date)
+        parsed_end_date = date.fromisoformat(end_date)
+    except ValueError:
+        _flash(request, "error", "Informe datas validas para a safra.")
+        return _redirect("/safras")
+    if parsed_end_date < parsed_start_date:
+        _flash(request, "error", "A data final da safra nao pode ser anterior a data inicial.")
+        return _redirect("/safras")
+    try:
+        create_crop_season(
+            repo,
+            {
+                "farm_id": scope["active_farm_id"],
+                "name": name,
+                "start_date": start_date,
+                "end_date": end_date,
+                "culture": culture,
+                "variety_id": _int_or_none(variety_id),
+                "cultivated_area": cultivated_area,
+                "area_unit": area_unit,
+                "notes": notes,
+                "status": status_value,
+            },
+        )
+    except Exception:
+        logger.exception("Falha ao criar safra", extra={"farm_id": scope["active_farm_id"], "start_date": start_date, "end_date": end_date})
+        _flash(request, "error", "Nao foi possivel salvar a safra agora. Revise os dados e tente novamente.")
+        return _redirect("/safras")
     _flash(request, "success", "Safra cadastrada com sucesso.")
     return _redirect("/safras")
 
@@ -4259,22 +4273,36 @@ def update_crop_season_action(
     if not _farm_matches_scope(crop_season.farm_id, scope):
         _flash(request, "error", "Esta safra nao pertence ao contexto ativo.")
         return _redirect("/safras")
-    update_crop_season(
-        repo,
-        crop_season,
-        {
-            "farm_id": scope["active_farm_id"],
-            "name": name,
-            "start_date": start_date,
-            "end_date": end_date,
-            "culture": culture,
-            "variety_id": _int_or_none(variety_id),
-            "cultivated_area": cultivated_area,
-            "area_unit": area_unit,
-            "notes": notes,
-            "status": status_value,
-        },
-    )
+    try:
+        parsed_start_date = date.fromisoformat(start_date)
+        parsed_end_date = date.fromisoformat(end_date)
+    except ValueError:
+        _flash(request, "error", "Informe datas validas para a safra.")
+        return _redirect("/safras")
+    if parsed_end_date < parsed_start_date:
+        _flash(request, "error", "A data final da safra nao pode ser anterior a data inicial.")
+        return _redirect("/safras")
+    try:
+        update_crop_season(
+            repo,
+            crop_season,
+            {
+                "farm_id": scope["active_farm_id"],
+                "name": name,
+                "start_date": start_date,
+                "end_date": end_date,
+                "culture": culture,
+                "variety_id": _int_or_none(variety_id),
+                "cultivated_area": cultivated_area,
+                "area_unit": area_unit,
+                "notes": notes,
+                "status": status_value,
+            },
+        )
+    except Exception:
+        logger.exception("Falha ao atualizar safra", extra={"season_id": season_id, "farm_id": scope["active_farm_id"]})
+        _flash(request, "error", "Nao foi possivel atualizar a safra agora. Revise os dados e tente novamente.")
+        return _redirect("/safras")
     _flash(request, "success", "Safra atualizada com sucesso.")
     return _redirect("/safras")
 
