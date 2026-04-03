@@ -5,7 +5,7 @@
         <div class="flex flex-wrap items-start justify-between gap-4">
             <div class="min-w-0 stock-page-header-intro" data-stock-header-intro>
                 <h2 class="stock-page-card-title">Fertilização</h2>
-                <p class="stock-page-card-subtitle">Registre aplicações em campo, acompanhe custos e consulte o histórico no contexto da safra ativa.</p>
+                <p class="stock-page-card-subtitle">Registre aplicações em campo, acompanhe custos e consulte o histórico da safra ativa.</p>
             </div>
             <div class="stock-header-actions stock-header-actions-top">
                 <a href="/fertilizacao/agendamentos" class="stock-action-button stock-export-button text-slate-700 hover:bg-slate-50">
@@ -17,7 +17,7 @@
                     </svg>
                     <span class="stock-action-button-label"><span class="sm:hidden">Agenda</span><span class="hidden sm:inline">Agendamentos</span></span>
                 </a>
-                <button type="button" class="stock-action-button stock-action-button-primary" data-fertilization-scroll-form>
+                <button type="button" class="stock-action-button stock-action-button-primary" data-fertilization-launch-open>
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
                         <path d="M12 5v14"/>
                         <path d="M5 12h14"/>
@@ -28,104 +28,7 @@
         </div>
     </section>
 
-    <div class="grid gap-6 xl:grid-cols-[0.95fr_1.05fr] xl:items-start">
-    <section id="fertilization-form-panel" class="stock-panel rounded-[2rem] bg-white p-6 shadow-panel xl:flex xl:max-h-[80vh] xl:min-h-0 xl:flex-col" data-stock-fade-panel data-history-edit-panel {% if edit_fertilization %}data-history-edit-open="1"{% endif %}>
-        <div class="min-w-0">
-            <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Lançamento</p>
-            <h3 class="mt-2 text-2xl font-semibold">{% if edit_fertilization %}Editar aplicação{% else %}Registrar aplicação{% endif %}</h3>
-        </div>
-        <div class="mt-6 xl:min-h-0 xl:flex-1 xl:overflow-y-auto xl:pr-2">
-        <form method="post" action="{% if edit_fertilization %}/fertilizacao/{{ edit_fertilization.id }}/editar{% else %}/fertilizacao{% endif %}" class="grid gap-4" data-fertilization-form>
-            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-            {% include "partials/launch_context.html" %}
-            <div class="grid gap-4 sm:grid-cols-2">
-                <label>
-                    <span class="mb-2 block text-sm font-medium text-slate-700">Setor</span>
-                    <select name="plot_id" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50 px-4" required>
-                        {% for plot in plots %}
-                        <option value="{{ plot.id }}" {% if edit_fertilization and edit_fertilization.plot_id == plot.id %}selected{% endif %}>{{ plot.name }}{% if plot.farm %} • {{ plot.farm.name }}{% endif %}</option>
-                        {% endfor %}
-                    </select>
-                </label>
-                <label>
-                    <span class="mb-2 block text-sm font-medium text-slate-700">Data</span>
-                    <input type="date" name="application_date" value="{{ edit_fertilization.application_date.isoformat() if edit_fertilization else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50 px-4" required>
-                </label>
-            </div>
-
-            <label>
-                <span class="mb-2 block text-sm font-medium text-slate-700">Recomendação pronta</span>
-                <select class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50 px-4" data-recommendation-select>
-                    <option value="">Montar aplicação manualmente</option>
-                    {% for application_name in recommendation_groups.keys()|sort %}
-                    <option value="{{ application_name }}">{{ application_name }}</option>
-                    {% endfor %}
-                </select>
-            </label>
-
-            <div class="rounded-[1.5rem] border border-slate-200 bg-slate-50 p-4 lg:p-5">
-                <div class="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-start sm:justify-between">
-                    <div class="min-w-0">
-                        <p class="text-xs uppercase tracking-[0.3em] text-slate-400">Insumos da aplicação</p>
-                        <p class="mt-1 text-sm text-slate-600">A baixa de estoque e o custo médio são calculados automaticamente ao salvar.</p>
-                    </div>
-                    <button type="button" class="shrink-0 rounded-xl bg-brand-500 px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-700" data-add-item>Adicionar insumo</button>
-                </div>
-                <div class="mt-4 space-y-4" data-items-wrapper>
-                    {% for item in edit_fertilization_items %}
-                    <div class="grid gap-3 rounded-[1.25rem] border border-slate-200 bg-white p-4 sm:grid-cols-2 lg:grid-cols-[1.3fr_0.7fr_0.7fr_0.8fr_auto]" data-item-row>
-                        <label class="sm:col-span-2 lg:col-span-1">
-                            <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Insumo</span>
-                            <select name="input_id" class="min-h-[3rem] w-full rounded-xl border-slate-200 bg-slate-50 px-3" data-input-select required>
-                                <option value="">Selecione</option>
-                                {% for input_item in inputs_catalog %}
-                                {% set stock = input_stock.get(input_item.id, {}) %}
-                                <option value="{{ input_item.id }}" {% if item.input_id == input_item.id %}selected{% endif %}>{{ input_item.name }} • {{ stock.get('available', 0) }} {{ stock.get('unit', input_item.default_unit) }}</option>
-                                {% endfor %}
-                            </select>
-                            <input type="hidden" name="item_name" value="{{ item.name }}" data-item-name>
-                        </label>
-                        <label>
-                            <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Unidade</span>
-                            <select name="item_unit" class="min-h-[3rem] w-full rounded-xl border-slate-200 bg-slate-50 px-3" data-item-unit>
-                                {% for unit in ['kg', 'g', 'L', 'ml', 'sacas', 'un'] %}
-                                <option value="{{ unit }}" {% if item.unit == unit %}selected{% endif %}>{{ unit }}</option>
-                                {% endfor %}
-                            </select>
-                        </label>
-                        <label>
-                            <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Quantidade</span>
-                            <input type="number" step="0.01" min="0" name="item_quantity" value="{{ item.quantity }}" class="min-h-[3rem] w-full rounded-xl border-slate-200 bg-slate-50 px-3" required>
-                        </label>
-                        <label>
-                            <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Disponível</span>
-                            <input type="text" value="{{ item.available }} {{ item.unit if item.available != '' else '' }}" class="min-h-[3rem] w-full rounded-xl border-slate-200 bg-slate-200 px-3 text-slate-500" readonly data-item-available>
-                        </label>
-                        <div class="flex items-end sm:col-span-2 lg:col-span-1 lg:justify-end">
-                            <button type="button" class="w-full rounded-xl bg-rose-600 px-3 py-3 text-xs font-medium text-white hover:bg-rose-700 sm:w-auto" data-remove-item>Remover</button>
-                        </div>
-                    </div>
-                    {% endfor %}
-                </div>
-            </div>
-
-            <label>
-                <span class="mb-2 block text-sm font-medium text-slate-700">Observações</span>
-                <textarea name="notes" rows="4" class="w-full rounded-2xl border-slate-200 bg-slate-50 px-4 py-3">{{ edit_fertilization.notes if edit_fertilization else '' }}</textarea>
-            </label>
-            <div class="flex flex-col gap-3 sm:flex-row sm:flex-wrap">
-                <button type="submit" class="stock-action-button stock-action-button-primary justify-center sm:justify-center">
-                    <span class="stock-action-button-label">{% if edit_fertilization %}Salvar alterações{% else %}Salvar aplicação{% endif %}</span>
-                </button>
-                {% if edit_fertilization %}
-                <a href="/fertilizacao" class="inline-flex items-center justify-center rounded-2xl bg-slate-100 px-4 py-3 text-center text-sm font-semibold text-slate-700 hover:bg-slate-200">Cancelar</a>
-                {% endif %}
-            </div>
-        </form>
-        </div>
-    </section>
-
-    <section class="stock-panel rounded-[2rem] bg-white p-6 shadow-panel xl:flex xl:max-h-[80vh] xl:min-h-0 xl:flex-col" data-stock-fade-panel data-fertilization-history-shell>
+    <section class="stock-panel rounded-[2rem] bg-white p-6 shadow-panel" data-stock-fade-panel data-fertilization-history-shell>
         <div class="flex flex-wrap items-start justify-between gap-4">
             <div class="min-w-0">
                 <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Histórico</p>
@@ -142,7 +45,7 @@
                 <input type="search" placeholder="Buscar setor, data, produto ou observação" data-fertilization-history-search>
             </div>
         </div>
-        <div class="mt-4 space-y-4 xl:min-h-0 xl:flex-1 xl:overflow-y-auto xl:pr-2" data-fertilization-history-list>
+        <div class="mt-4 space-y-4" data-fertilization-history-list>
             {% for item in fertilizations %}
             <article class="rounded-[1.5rem] border border-slate-100 bg-slate-50 p-5 lg:p-4" data-fertilization-history-row data-fertilization-search-text="{{ (item.plot.name if item.plot else '') ~ ' ' ~ (item.application_date|string) ~ ' ' ~ (item.product or '') ~ ' ' ~ (item.notes or '') }} {% for detail in item.items %} {{ detail.name }} {% endfor %}">
                 <div class="flex flex-wrap items-start justify-between gap-4 lg:gap-3">
@@ -222,9 +125,135 @@
             {% with pagination=fertilizations_pagination %}{% include "partials/history_pagination.html" %}{% endwith %}
         </div>
     </section>
-    </div>
 </div>
 {% include "partials/history_view_modal.html" %}
+
+<dialog id="fertilization-launch-modal" class="app-modal rounded-[2rem] p-0 shadow-2xl w-full max-w-4xl overflow-hidden">
+    <div class="bg-white p-6 sm:p-8">
+        <div class="flex items-start justify-between gap-4">
+            <div class="min-w-0">
+                <p class="text-xs uppercase tracking-[0.35em] text-slate-400">{% if edit_fertilization %}Editar aplicação{% else %}Nova aplicação{% endif %}</p>
+                <h3 class="mt-2 text-2xl font-semibold purchased-modal-heading">{% if edit_fertilization %}Editar fertilização aplicada{% else %}Nova fertilização aplicada{% endif %}</h3>
+                <p class="mt-2 text-sm text-slate-500 purchased-modal-subtitle">Registre aplicações em campo, acompanhe custos e atualize o histórico sem sair da listagem principal.</p>
+            </div>
+            <button type="button" class="modal-close-button" aria-label="Fechar" data-fertilization-launch-close>
+                <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M18 6 6 18"/>
+                    <path d="m6 6 12 12"/>
+                </svg>
+            </button>
+        </div>
+
+        <div class="mt-6 max-h-[72vh] overflow-y-auto pr-1" data-modal-scroll>
+            <form id="fertilization-form" method="post" action="{% if edit_fertilization %}/fertilizacao/{{ edit_fertilization.id }}/editar{% else %}/fertilizacao{% endif %}" class="grid gap-4" data-fertilization-form>
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <div class="rounded-[1.5rem] border border-brand-100 bg-brand-50/50 p-4">
+                    <div class="flex flex-wrap items-start justify-between gap-4">
+                        <div class="min-w-0">
+                            <p class="text-xs uppercase tracking-[0.3em] text-slate-400">Contexto do lançamento</p>
+                            <p class="mt-2 text-sm text-slate-500">Use este bloco para confirmar a fazenda e a safra ativas antes de salvar.</p>
+                        </div>
+                        <button type="button" class="stock-summary-toggle" data-fertilization-context-toggle aria-expanded="false">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                                <path d="M5 12h14"/>
+                                <path d="M12 5v14" data-fertilization-context-toggle-plus></path>
+                            </svg>
+                            <span data-fertilization-context-toggle-label>Expandir</span>
+                        </button>
+                    </div>
+                    <div class="stock-summary-collapse" data-fertilization-context-collapse>
+                        <div class="stock-summary-collapse-inner">
+                            <div class="mt-4">
+                                {% include "partials/launch_context.html" %}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="sticky top-0 z-10 -mx-1 bg-white/95 px-1 py-1 backdrop-blur">
+                    <div class="flex flex-wrap justify-end gap-3 rounded-[1.5rem] px-2 py-2 sm:px-3">
+                        <button type="button" class="rounded-2xl bg-slate-100 px-4 py-3 font-semibold text-slate-700 hover:bg-slate-200" data-fertilization-launch-close data-fertilization-close-button>Cancelar</button>
+                        <button form="fertilization-form" class="rounded-2xl bg-brand-500 px-4 py-3 font-semibold text-white hover:bg-brand-700">{% if edit_fertilization %}Salvar{% else %}Salvar aplicação{% endif %}</button>
+                    </div>
+                </div>
+                <div class="grid gap-4 sm:grid-cols-2">
+                    <label>
+                        <span class="mb-2 block text-sm font-medium text-slate-700">Setor</span>
+                        <select name="plot_id" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50 px-4" required>
+                            {% for plot in plots %}
+                            <option value="{{ plot.id }}" {% if edit_fertilization and edit_fertilization.plot_id == plot.id %}selected{% endif %}>{{ plot.name }}{% if plot.farm %} • {{ plot.farm.name }}{% endif %}</option>
+                            {% endfor %}
+                        </select>
+                    </label>
+                    <label>
+                        <span class="mb-2 block text-sm font-medium text-slate-700">Data</span>
+                        <input type="date" name="application_date" value="{{ edit_fertilization.application_date.isoformat() if edit_fertilization else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50 px-4" required>
+                    </label>
+                </div>
+
+                <label>
+                    <span class="mb-2 block text-sm font-medium text-slate-700">Recomendação pronta</span>
+                    <select class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50 px-4" data-recommendation-select>
+                        <option value="">Montar aplicação manualmente</option>
+                        {% for application_name in recommendation_groups.keys()|sort %}
+                        <option value="{{ application_name }}">{{ application_name }}</option>
+                        {% endfor %}
+                    </select>
+                </label>
+
+                <div class="rounded-[1.5rem] border border-slate-200 bg-slate-50 p-4 lg:p-5">
+                    <div class="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-start sm:justify-between">
+                        <div class="min-w-0">
+                            <p class="text-xs uppercase tracking-[0.3em] text-slate-400">Insumos da aplicação</p>
+                            <p class="mt-1 text-sm text-slate-600">A baixa de estoque e o custo médio são calculados automaticamente ao salvar.</p>
+                        </div>
+                        <button type="button" class="shrink-0 rounded-xl bg-brand-500 px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-700" data-add-item>Adicionar insumo</button>
+                    </div>
+                    <div class="mt-4 space-y-4" data-items-wrapper>
+                        {% for item in edit_fertilization_items %}
+                        <div class="grid gap-3 rounded-[1.25rem] border border-slate-200 bg-white p-4 sm:grid-cols-2 lg:grid-cols-[1.3fr_0.7fr_0.7fr_0.8fr_auto]" data-item-row>
+                            <label class="sm:col-span-2 lg:col-span-1">
+                                <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Insumo</span>
+                                <select name="input_id" class="min-h-[3rem] w-full rounded-xl border-slate-200 bg-slate-50 px-3" data-input-select required>
+                                    <option value="">Selecione</option>
+                                    {% for input_item in inputs_catalog %}
+                                    {% set stock = input_stock.get(input_item.id, {}) %}
+                                    <option value="{{ input_item.id }}" {% if item.input_id == input_item.id %}selected{% endif %}>{{ input_item.name }} • {{ stock.get('available', 0) }} {{ stock.get('unit', input_item.default_unit) }}</option>
+                                    {% endfor %}
+                                </select>
+                                <input type="hidden" name="item_name" value="{{ item.name }}" data-item-name>
+                            </label>
+                            <label>
+                                <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Unidade</span>
+                                <select name="item_unit" class="min-h-[3rem] w-full rounded-xl border-slate-200 bg-slate-50 px-3" data-item-unit>
+                                    {% for unit in ['kg', 'g', 'L', 'ml', 'sacas', 'un'] %}
+                                    <option value="{{ unit }}" {% if item.unit == unit %}selected{% endif %}>{{ unit }}</option>
+                                    {% endfor %}
+                                </select>
+                            </label>
+                            <label>
+                                <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Quantidade</span>
+                                <input type="number" step="0.01" min="0" name="item_quantity" value="{{ item.quantity }}" class="min-h-[3rem] w-full rounded-xl border-slate-200 bg-slate-50 px-3" required>
+                            </label>
+                            <label>
+                                <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Disponível</span>
+                                <input type="text" value="{{ item.available }} {{ item.unit if item.available != '' else '' }}" class="min-h-[3rem] w-full rounded-xl border-slate-200 bg-slate-200 px-3 text-slate-500" readonly data-item-available>
+                            </label>
+                            <div class="flex items-end sm:col-span-2 lg:col-span-1 lg:justify-end">
+                                <button type="button" class="w-full rounded-xl bg-rose-600 px-3 py-3 text-xs font-medium text-white hover:bg-rose-700 sm:w-auto" data-remove-item>Remover</button>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+
+                <label>
+                    <span class="mb-2 block text-sm font-medium text-slate-700">Observações</span>
+                    <textarea name="notes" rows="4" class="w-full rounded-2xl border-slate-200 bg-slate-50 px-4 py-3">{{ edit_fertilization.notes if edit_fertilization else '' }}</textarea>
+                </label>
+            </form>
+        </div>
+    </div>
+</dialog>
 
 <template id="fertilization-item-template">
     <div class="grid gap-3 rounded-[1.25rem] border border-slate-200 bg-white p-4 sm:grid-cols-2 lg:grid-cols-[1.3fr_0.7fr_0.7fr_0.8fr_auto]" data-item-row>
@@ -255,6 +284,67 @@
 
 <script>
     (() => {
+        const launchModal = document.getElementById('fertilization-launch-modal');
+        const openLaunchButton = document.querySelector('[data-fertilization-launch-open]');
+        const closeLaunchButtons = Array.from(document.querySelectorAll('[data-fertilization-launch-close]'));
+        const contextToggle = document.querySelector('[data-fertilization-context-toggle]');
+        const contextCollapse = document.querySelector('[data-fertilization-context-collapse]');
+        const contextToggleLabel = document.querySelector('[data-fertilization-context-toggle-label]');
+        const contextTogglePlus = document.querySelector('[data-fertilization-context-toggle-plus]');
+        const fertilizationRenderedInEditMode = {% if edit_fertilization %}true{% else %}false{% endif %};
+        const getFertilizationCleanUrl = () => {
+            const url = new URL(window.location.href);
+            url.searchParams.delete('edit_id');
+            return `${url.pathname}${url.search}${url.hash}`;
+        };
+        const clearFertilizationEditState = () => {
+            const nextUrl = getFertilizationCleanUrl();
+            if (fertilizationRenderedInEditMode) {
+                window.location.href = nextUrl;
+                return false;
+            }
+            window.history.replaceState({}, '', nextUrl);
+            return true;
+        };
+
+        if (launchModal) {
+            openLaunchButton?.addEventListener('click', () => {
+                clearFertilizationEditState();
+                if (fertilizationRenderedInEditMode) return;
+                launchModal.showModal();
+            });
+            closeLaunchButtons.forEach((button) => {
+                button.addEventListener('click', (event) => {
+                    if (!(event.currentTarget instanceof HTMLElement)) return;
+                    if (!event.currentTarget.hasAttribute('data-fertilization-close-button') && !event.currentTarget.classList.contains('modal-close-button')) return;
+                    if (!clearFertilizationEditState()) return;
+                    launchModal.close();
+                });
+            });
+            launchModal.addEventListener('cancel', (event) => {
+                event.preventDefault();
+                clearFertilizationEditState();
+            });
+            {% if edit_fertilization %}
+            launchModal.showModal();
+            {% endif %}
+        }
+
+        if (contextToggle && contextCollapse && contextToggleLabel) {
+            const setFertilizationContextExpanded = (expanded) => {
+                contextCollapse.classList.toggle('is-expanded', expanded);
+                contextToggle.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+                contextToggleLabel.textContent = expanded ? 'Recolher' : 'Expandir';
+                contextTogglePlus?.classList.toggle('hidden', expanded);
+            };
+
+            setFertilizationContextExpanded(false);
+            contextToggle.addEventListener('click', () => {
+                const expanded = contextToggle.getAttribute('aria-expanded') === 'true';
+                setFertilizationContextExpanded(!expanded);
+            });
+        }
+
         const form = document.querySelector('[data-fertilization-form]');
         if (!form) return;
         const wrapper = form.querySelector('[data-items-wrapper]');
@@ -321,15 +411,6 @@
             });
         });
 
-        const scrollFormBtn = document.querySelector('[data-fertilization-scroll-form]');
-        const formPanel = document.getElementById('fertilization-form-panel');
-        scrollFormBtn?.addEventListener('click', () => {
-            if (!formPanel) return;
-            formPanel.scrollIntoView({ behavior: 'smooth', block: 'start' });
-            const focusable = formPanel.querySelector('select:not([data-recommendation-select]), input:not([type="hidden"])');
-            if (focusable) focusable.focus({ preventScroll: true });
-        });
-
         const historyShell = document.querySelector('[data-fertilization-history-shell]');
         const historySearch = historyShell?.querySelector('[data-fertilization-history-search]');
         const historyList = historyShell?.querySelector('[data-fertilization-history-list]');
@@ -362,6 +443,90 @@
 
         historySearch?.addEventListener('input', applyFertilizationHistorySearch);
         applyFertilizationHistorySearch();
+
+        const stickyHeader = document.querySelector('.stock-page-header');
+        const headerIntro = stickyHeader?.querySelector('[data-stock-header-intro]');
+        const fadingPanels = Array.from(document.querySelectorAll('[data-stock-fade-panel]'));
+        const mobileCompactMq = window.matchMedia('(max-width: 899px)');
+        const parseStickyTopPx = (el) => {
+            const raw = getComputedStyle(el).top;
+            if (!raw || raw === 'auto') return 0;
+            const pxMatch = /^([\d.]+)px$/.exec(raw);
+            if (pxMatch) return parseFloat(pxMatch[1]);
+            const remMatch = /^([\d.]+)rem$/.exec(raw);
+            if (remMatch) {
+                const rootPx = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
+                return parseFloat(remMatch[1]) * rootPx;
+            }
+            return 0;
+        };
+
+        let compactRaf = null;
+        const syncHeaderCompact = () => {
+            compactRaf = null;
+            if (!stickyHeader) return;
+            if (!mobileCompactMq.matches) {
+                stickyHeader.classList.remove('is-compact');
+                headerIntro?.removeAttribute('aria-hidden');
+                return;
+            }
+            const topPx = parseStickyTopPx(stickyHeader);
+            const rect = stickyHeader.getBoundingClientRect();
+            const isCompact = stickyHeader.classList.contains('is-compact');
+            let nextCompact = isCompact;
+            if (rect.top <= topPx + 2) nextCompact = true;
+            else if (rect.top > topPx + 8) nextCompact = false;
+            stickyHeader.classList.toggle('is-compact', nextCompact);
+            headerIntro?.setAttribute('aria-hidden', nextCompact ? 'true' : 'false');
+        };
+
+        const scheduleHeaderCompact = () => {
+            if (compactRaf !== null) return;
+            compactRaf = window.requestAnimationFrame(syncHeaderCompact);
+        };
+
+        if (stickyHeader) {
+            window.addEventListener('scroll', scheduleHeaderCompact, { passive: true });
+            window.addEventListener('resize', scheduleHeaderCompact);
+            if (typeof mobileCompactMq.addEventListener === 'function') mobileCompactMq.addEventListener('change', scheduleHeaderCompact);
+            else if (typeof mobileCompactMq.addListener === 'function') mobileCompactMq.addListener(scheduleHeaderCompact);
+            scheduleHeaderCompact();
+        }
+
+        let fadeRafId = null;
+        const updateFadingPanels = () => {
+            fadeRafId = null;
+            const stickyRect = stickyHeader?.getBoundingClientRect();
+            if (!stickyRect) return;
+            const stickyBottom = stickyRect.bottom;
+
+            fadingPanels.forEach((panel) => {
+                const panelRect = panel.getBoundingClientRect();
+                const panelTop = panelRect.top;
+                const panelHeight = panelRect.height;
+                if (panelTop >= stickyBottom || panelHeight <= 1) {
+                    panel.style.setProperty('--stock-fade-cutoff', '0px');
+                    panel.style.setProperty('--stock-fade-feather-end', '0px');
+                    return;
+                }
+
+                const overlap = Math.min(Math.max(stickyBottom - panelTop, 0), panelHeight);
+                const featherBand = Math.min(80, Math.max(22, overlap * 0.45 + 16));
+                panel.style.setProperty('--stock-fade-cutoff', `${overlap.toFixed(2)}px`);
+                panel.style.setProperty('--stock-fade-feather-end', `${(overlap + featherBand).toFixed(2)}px`);
+            });
+        };
+
+        const scheduleFadeUpdate = () => {
+            if (fadeRafId !== null) return;
+            fadeRafId = window.requestAnimationFrame(updateFadingPanels);
+        };
+
+        if (stickyHeader && fadingPanels.length) {
+            window.addEventListener('scroll', scheduleFadeUpdate, { passive: true });
+            window.addEventListener('resize', scheduleFadeUpdate);
+            scheduleFadeUpdate();
+        }
     })();
 </script>
 {% endblock %}
