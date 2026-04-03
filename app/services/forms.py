@@ -243,6 +243,7 @@ def create_user(repository: FarmRepository, form: dict) -> User:
             hashed_password=get_password_hash(form["password"]),
             is_active=bool(form.get("is_active", True)),
             is_admin=bool(form.get("is_admin", False)),
+            is_two_factor_enabled=bool(form.get("is_two_factor_enabled", True)),
         )
     )
 
@@ -253,6 +254,7 @@ def update_user(repository: FarmRepository, user: User, form: dict) -> User:
         "email": form["email"].strip().lower(),
         "is_active": bool(form.get("is_active", True)),
         "is_admin": bool(form.get("is_admin", False)),
+        "is_two_factor_enabled": bool(form.get("is_two_factor_enabled", True)),
     }
     password = (form.get("password") or "").strip()
     if password:

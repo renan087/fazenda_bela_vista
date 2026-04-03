@@ -15,6 +15,7 @@ class User(Base):
     hashed_password: Mapped[str] = mapped_column(String(255), nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     is_admin: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    is_two_factor_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     active_farm_id: Mapped[int] = mapped_column(Integer, ForeignKey("farms.id", ondelete="SET NULL"), nullable=True, index=True)
     active_season_id: Mapped[int] = mapped_column(Integer, ForeignKey("crop_seasons.id", ondelete="SET NULL"), nullable=True, index=True)
     display_name: Mapped[str] = mapped_column(String(120), nullable=True)

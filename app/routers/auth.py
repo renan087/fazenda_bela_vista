@@ -342,6 +342,13 @@ def login_web(
             return _complete_web_login(request, db, user)
         clear_trusted_cookie = True
 
+    if not user.is_two_factor_enabled:
+        revoke_active_login_codes(db, user.id)
+        response = _complete_web_login(request, db, user)
+        if clear_trusted_cookie:
+            _clear_trusted_browser_cookie(response)
+        return response
+
     try:
         code = issue_login_verification_code(db, user)
         send_access_code_email(user.email, code)

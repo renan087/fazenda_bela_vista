@@ -1704,6 +1704,7 @@ def create_user_action(
     password: str = Form(...),
     is_active: str | None = Form(None),
     is_admin: str | None = Form(None),
+    is_two_factor_enabled: str | None = Form(None),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user_web),
 ):
@@ -1724,6 +1725,7 @@ def create_user_action(
             "password": password,
             "is_active": _bool_from_form(is_active),
             "is_admin": _bool_from_form(is_admin),
+            "is_two_factor_enabled": _bool_from_form(is_two_factor_enabled),
         },
     )
     _flash(request, "success", "Usuario criado com sucesso.")
@@ -1740,6 +1742,7 @@ def update_user_action(
     password: str | None = Form(None),
     is_active: str | None = Form(None),
     is_admin: str | None = Form(None),
+    is_two_factor_enabled: str | None = Form(None),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user_web),
 ):
@@ -1774,10 +1777,13 @@ def update_user_action(
                 "password": password,
                 "is_active": _bool_from_form(is_active),
                 "is_admin": _bool_from_form(is_admin),
+                "is_two_factor_enabled": _bool_from_form(is_two_factor_enabled),
             },
         )
         if (password or "").strip():
             revoke_user_trusted_browsers(db, updated_user.id)
+        if not updated_user.is_two_factor_enabled:
+            revoke_active_login_codes(db, updated_user.id)
 
         if updated_user.id == user.id:
             request.session["user_email"] = updated_user.email

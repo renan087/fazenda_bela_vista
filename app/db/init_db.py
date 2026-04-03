@@ -348,6 +348,7 @@ def _sync_schema() -> None:
         """,
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW()",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS is_admin BOOLEAN DEFAULT FALSE",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS is_two_factor_enabled BOOLEAN DEFAULT TRUE",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS active_farm_id INTEGER",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS active_season_id INTEGER",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS display_name VARCHAR(120)",

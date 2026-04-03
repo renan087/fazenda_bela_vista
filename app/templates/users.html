@@ -17,6 +17,10 @@
                 <input type="checkbox" name="is_admin" value="true" class="rounded border-slate-300 text-brand-600" {% if edit_user and edit_user.is_admin %}checked{% endif %}>
                 <span class="text-sm font-medium text-slate-700">Permissao de administrador</span>
             </label>
+            <label class="flex items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                <input type="checkbox" name="is_two_factor_enabled" value="true" class="rounded border-slate-300 text-brand-600" {% if not edit_user or edit_user.is_two_factor_enabled %}checked{% endif %}>
+                <span class="text-sm font-medium text-slate-700">2FA habilitado</span>
+            </label>
             <div class="flex gap-3">
                 <button class="rounded-2xl bg-brand-500 px-4 py-3 font-semibold text-white hover:bg-brand-700">{% if edit_user %}Salvar alteracoes{% else %}Criar usuario{% endif %}</button>
                 {% if edit_user %}
@@ -38,6 +42,7 @@
                         <div class="mt-3 flex flex-wrap gap-2">
                             <span class="rounded-full px-3 py-1 text-xs font-semibold {% if item.is_active %}bg-emerald-100 text-emerald-700{% else %}bg-slate-200 text-slate-600{% endif %}">{% if item.is_active %}Ativo{% else %}Inativo{% endif %}</span>
                             <span class="rounded-full px-3 py-1 text-xs font-semibold {% if item.is_admin %}bg-amber-100 text-amber-700{% else %}bg-slate-200 text-slate-600{% endif %}">{% if item.is_admin %}Administrador{% else %}Operacional{% endif %}</span>
+                            <span class="rounded-full px-3 py-1 text-xs font-semibold {% if item.is_two_factor_enabled %}bg-sky-100 text-sky-700{% else %}bg-slate-200 text-slate-600{% endif %}">{% if item.is_two_factor_enabled %}2FA ativo{% else %}2FA desabilitado{% endif %}</span>
                         </div>
                     </div>
                     <div class="flex gap-2">
