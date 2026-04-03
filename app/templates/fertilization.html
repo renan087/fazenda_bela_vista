@@ -142,12 +142,13 @@
             {{ module_history_filter_toolbar(
                 '/fertilizacao',
                 'Buscar setor, data, produto ou observação',
-                selected_schedule_range or 'next_10_days',
+                selected_fertilization_range,
                 fertilization_filter_start_date or '',
                 fertilization_filter_end_date or '',
                 fertilization_filter_clear_url,
                 ([{'name': 'edit_id', 'value': edit_fertilization.id|string}] if edit_fertilization else []),
-                request.query_params.get('search', '')
+                request.query_params.get('search', ''),
+                preset_variant='past'
             ) }}
         </div>
         <div class="mt-4 space-y-4" data-fertilization-history-list>
@@ -363,7 +364,7 @@
     </div>
 </template>
 
-<script src="{{ url_for('static', path='js/module_period_filters.js') }}?v=1"></script>
+<script src="{{ url_for('static', path='js/module_period_filters.js') }}?v=2"></script>
 <script>
     (() => {
         const launchModal = document.getElementById('fertilization-launch-modal');

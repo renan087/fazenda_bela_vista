@@ -1,6 +1,7 @@
 /**
- * Busca + presets de período (próximos 10/20 dias, próximo mês, personalizado)
- * para formulários GET. Uso: marcar o <form> com data-module-period-filter-root.
+ * Busca + presets de período: futuro (próximos N dias, próximo mês) ou passado
+ * (últimos N dias, mês passado), além de personalizado. Form: data-module-period-filter-root
+ * e data-module-range-default (ex.: next_10_days | last_10_days).
  */
 (function (global) {
     const stateByForm = new WeakMap();
@@ -16,6 +17,21 @@
     const getPresetRange = (preset) => {
         const today = new Date();
         today.setHours(0, 0, 0, 0);
+        if (preset === 'last_10_days') {
+            const start = new Date(today);
+            start.setDate(start.getDate() - 10);
+            return { start: formatIsoDate(start), end: formatIsoDate(today) };
+        }
+        if (preset === 'last_20_days') {
+            const start = new Date(today);
+            start.setDate(start.getDate() - 20);
+            return { start: formatIsoDate(start), end: formatIsoDate(today) };
+        }
+        if (preset === 'last_month') {
+            const start = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+            const end = new Date(today.getFullYear(), today.getMonth(), 0);
+            return { start: formatIsoDate(start), end: formatIsoDate(end) };
+        }
         if (preset === 'next_20_days') {
             const end = new Date(today);
             end.setDate(end.getDate() + 20);
@@ -25,6 +41,16 @@
             const start = new Date(today.getFullYear(), today.getMonth() + 1, 1);
             const end = new Date(today.getFullYear(), today.getMonth() + 2, 0);
             return { start: formatIsoDate(start), end: formatIsoDate(end) };
+        }
+        if (preset === 'next_10_days') {
+            const end = new Date(today);
+            end.setDate(end.getDate() + 10);
+            return { start: formatIsoDate(today), end: formatIsoDate(end) };
+        }
+        if (String(preset || '').startsWith('last_')) {
+            const start = new Date(today);
+            start.setDate(start.getDate() - 10);
+            return { start: formatIsoDate(start), end: formatIsoDate(today) };
         }
         const end = new Date(today);
         end.setDate(end.getDate() + 10);
@@ -40,6 +66,9 @@
     };
 
     const getPresetRangeTitle = (preset) => {
+        if (preset === 'last_20_days') return 'Últimos 20 dias';
+        if (preset === 'last_month') return 'Mês passado';
+        if (preset === 'last_10_days') return 'Últimos 10 dias';
         if (preset === 'next_20_days') return 'Próximos 20 dias';
         if (preset === 'next_month') return 'Próximo mês';
         if (preset === 'custom') return 'Período personalizado';
@@ -100,6 +129,8 @@
         ) {
             return;
         }
+
+        const defaultPreset = (form.dataset.moduleRangeDefault || 'next_10_days').trim() || 'next_10_days';
 
         const monthNames = [
             'Janeiro',
@@ -263,7 +294,7 @@
         menu.querySelectorAll('[data-module-range-option]').forEach((option) => {
             option.addEventListener('click', (event) => {
                 event.stopPropagation();
-                const value = option.getAttribute('data-range-value') || 'next_10_days';
+                const value = option.getAttribute('data-range-value') || defaultPreset;
                 rangeInput.value = value;
                 label.textContent = getPresetRangeTitle(value);
                 menu.querySelectorAll('.module-filter-preset-option').forEach((item) => item.classList.remove('is-active'));
@@ -291,7 +322,7 @@
 
         form.addEventListener('submit', () => {
             if (rangeInput.value === 'custom') return;
-            const range = getPresetRange(rangeInput.value || 'next_10_days');
+            const range = getPresetRange(rangeInput.value || defaultPreset);
             if (filterStartInput instanceof HTMLInputElement) filterStartInput.value = range.start;
             if (filterEndInput instanceof HTMLInputElement) filterEndInput.value = range.end;
         });

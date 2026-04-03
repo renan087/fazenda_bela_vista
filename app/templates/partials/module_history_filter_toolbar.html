@@ -1,12 +1,15 @@
-{# Toolbar reutilizável: busca + período (presets + calendário). Form GET com hidden start_date/end_date/schedule_range. #}
-{% macro module_history_filter_toolbar(form_action, search_placeholder, selected_range, start_date, end_date, clear_url, hidden_fields=None, search_value='') %}
+{# Toolbar reutilizável: busca + período (presets + calendário). Form GET com hidden start_date/end_date/schedule_range.
+   preset_variant: 'future' (Agendamentos — próximos N dias / próximo mês) ou 'past' (Fertilização — últimos N dias / mês passado). #}
+{% macro module_history_filter_toolbar(form_action, search_placeholder, selected_range, start_date, end_date, clear_url, hidden_fields=None, search_value='', preset_variant='future') %}
 {% if hidden_fields is none %}{% set hidden_fields = [] %}{% endif %}
+{% set _default_range = 'last_10_days' if preset_variant == 'past' else 'next_10_days' %}
+{% set _range_val = selected_range or _default_range %}
 <div class="module-filter-toolbar">
-    <form method="get" action="{{ form_action }}" class="module-filter-toolbar-grid" data-module-period-filter-root>
+    <form method="get" action="{{ form_action }}" class="module-filter-toolbar-grid" data-module-period-filter-root data-module-range-default="{{ _default_range }}">
         {% for h in hidden_fields %}
         <input type="hidden" name="{{ h.name }}" value="{{ h.value }}">
         {% endfor %}
-        <input type="hidden" name="schedule_range" value="{{ selected_range or 'next_10_days' }}" data-module-range-input>
+        <input type="hidden" name="schedule_range" value="{{ _range_val }}" data-module-range-input>
         <div class="module-filter-toolbar-main">
             <div class="stock-search-field module-filter-search">
                 <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
@@ -24,13 +27,31 @@
                         <path d="M3 10h18"/>
                     </svg>
                     <span data-module-range-label>
-                        {% if selected_range == 'next_20_days' %}Próximos 20 dias{% elif selected_range == 'next_month' %}Próximo mês{% elif selected_range == 'custom' %}Período personalizado{% else %}Próximos 10 dias{% endif %}
+                        {% if preset_variant == 'past' %}
+                            {% if selected_range == 'last_20_days' %}Últimos 20 dias{% elif selected_range == 'last_month' %}Mês passado{% elif selected_range == 'custom' %}Período personalizado{% else %}Últimos 10 dias{% endif %}
+                        {% else %}
+                            {% if selected_range == 'next_20_days' %}Próximos 20 dias{% elif selected_range == 'next_month' %}Próximo mês{% elif selected_range == 'custom' %}Período personalizado{% else %}Próximos 10 dias{% endif %}
+                        {% endif %}
                     </span>
                     <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
                         <path d="m5 7 5 5 5-5"/>
                     </svg>
                 </button>
                 <div class="module-filter-preset-menu hidden" data-module-range-menu>
+                    {% if preset_variant == 'past' %}
+                    <button type="button" class="module-filter-preset-option {% if selected_range == 'last_10_days' or not selected_range %}is-active{% endif %}" data-module-range-option data-range-value="last_10_days">
+                        <span class="module-filter-preset-option-title">Últimos 10 dias</span>
+                        <span class="module-filter-preset-option-meta" data-module-range-meta="last_10_days"></span>
+                    </button>
+                    <button type="button" class="module-filter-preset-option {% if selected_range == 'last_20_days' %}is-active{% endif %}" data-module-range-option data-range-value="last_20_days">
+                        <span class="module-filter-preset-option-title">Últimos 20 dias</span>
+                        <span class="module-filter-preset-option-meta" data-module-range-meta="last_20_days"></span>
+                    </button>
+                    <button type="button" class="module-filter-preset-option {% if selected_range == 'last_month' %}is-active{% endif %}" data-module-range-option data-range-value="last_month">
+                        <span class="module-filter-preset-option-title">Mês passado</span>
+                        <span class="module-filter-preset-option-meta" data-module-range-meta="last_month"></span>
+                    </button>
+                    {% else %}
                     <button type="button" class="module-filter-preset-option {% if selected_range == 'next_10_days' or not selected_range %}is-active{% endif %}" data-module-range-option data-range-value="next_10_days">
                         <span class="module-filter-preset-option-title">Próximos 10 dias</span>
                         <span class="module-filter-preset-option-meta" data-module-range-meta="next_10_days"></span>
@@ -43,6 +64,7 @@
                         <span class="module-filter-preset-option-title">Próximo mês</span>
                         <span class="module-filter-preset-option-meta" data-module-range-meta="next_month"></span>
                     </button>
+                    {% endif %}
                     <button type="button" class="module-filter-preset-option {% if selected_range == 'custom' %}is-active{% endif %}" data-module-range-option data-range-value="custom">
                         <span class="module-filter-preset-option-title">Período personalizado</span>
                         <span class="module-filter-preset-option-meta">Selecione data inicial e final</span>

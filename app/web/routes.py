@@ -544,6 +544,16 @@ def _planning_filter_range_preset(raw_preset: str | None, raw_start: str, raw_en
     return "next_10_days"
 
 
+def _fertilization_filter_range_preset(raw_preset: str | None, raw_start: str, raw_end: str) -> str:
+    valid_presets = {"last_10_days", "last_20_days", "last_month", "custom"}
+    preset = (raw_preset or "").strip()
+    if preset in valid_presets:
+        return preset
+    if raw_start or raw_end:
+        return "custom"
+    return "last_10_days"
+
+
 def _normalize_search_value(value: object) -> str:
     return (
         unicodedata.normalize("NFD", str(value or ""))
@@ -4749,7 +4759,7 @@ def fertilization_page(
     start_date, end_date, filter_start_str, filter_end_str = _schedule_filter_date_bounds(
         request, scope["active_season"], flash_invalid=True
     )
-    selected_schedule_range = _planning_filter_range_preset(
+    selected_fertilization_range = _fertilization_filter_range_preset(
         request.query_params.get("schedule_range"),
         filter_start_str,
         filter_end_str,
@@ -4825,7 +4835,7 @@ def fertilization_page(
             fertilization_filter_start_date=filter_start_str or None,
             fertilization_filter_end_date=filter_end_str or None,
             fertilization_filter_clear_url=fertilization_filter_clear_url,
-            selected_schedule_range=selected_schedule_range,
+            selected_fertilization_range=selected_fertilization_range,
             schedules=schedules,
             recommendation_groups=recommendation_groups,
             edit_fertilization=edit_fertilization,
