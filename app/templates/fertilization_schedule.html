@@ -961,7 +961,8 @@
                     if (isStart) button.classList.add('is-range-start');
                     if (isEnd) button.classList.add('is-range-end');
                     if (isStart || isEnd) button.classList.add('is-selected');
-                    button.addEventListener('click', () => {
+                    button.addEventListener('click', (event) => {
+                        event.stopPropagation();
                         const currentStart = pendingRangeStart || (filterStartInput?.value || '').trim();
                         const currentEnd = (filterEndInput?.value || '').trim();
                         if (!currentStart || currentEnd) {
@@ -983,7 +984,6 @@
                         syncScheduleFilterActions();
                         syncScheduleExportLinks();
                         renderCalendar();
-                        closeMenu();
                         picker.closest('form')?.requestSubmit();
                     });
                     calendarGrid.appendChild(button);
@@ -1014,7 +1014,8 @@
                 renderCalendar();
             };
 
-            trigger.addEventListener('click', () => {
+            trigger.addEventListener('click', (event) => {
+                event.stopPropagation();
                 const customOpen = customRange instanceof HTMLElement && !customRange.classList.contains('hidden');
                 if (customOpen) {
                     customRange.classList.add('hidden');
@@ -1026,7 +1027,8 @@
             });
 
             menu.querySelectorAll('[data-schedule-range-option]').forEach((option) => {
-                option.addEventListener('click', () => {
+                option.addEventListener('click', (event) => {
+                    event.stopPropagation();
                     const value = option.getAttribute('data-range-value') || 'next_10_days';
                     rangeInput.value = value;
                     label.textContent = getPresetRangeTitle(value);
@@ -1054,8 +1056,15 @@
                 });
             });
 
+            const clickHappenedInsidePicker = (event) => {
+                if (!(event.target instanceof Node)) return false;
+                if (picker.contains(event.target)) return true;
+                const eventPath = typeof event.composedPath === 'function' ? event.composedPath() : [];
+                return Array.isArray(eventPath) && eventPath.includes(picker);
+            };
+
             document.addEventListener('click', (event) => {
-                if (!(event.target instanceof Node) || picker.contains(event.target)) return;
+                if (clickHappenedInsidePicker(event)) return;
                 customRange?.classList.add('hidden');
                 closeMenu();
             });
@@ -1067,12 +1076,14 @@
                 if (filterEndInput instanceof HTMLInputElement) filterEndInput.value = range.end;
             });
 
-            calendarPrev?.addEventListener('click', () => {
+            calendarPrev?.addEventListener('click', (event) => {
+                event.stopPropagation();
                 calendarMonth = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() - 1, 1);
                 renderCalendar();
             });
 
-            calendarNext?.addEventListener('click', () => {
+            calendarNext?.addEventListener('click', (event) => {
+                event.stopPropagation();
                 calendarMonth = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() + 1, 1);
                 renderCalendar();
             });
