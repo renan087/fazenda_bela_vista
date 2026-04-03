@@ -595,6 +595,9 @@ body {
 }
 
 .module-filter-toolbar {
+    position: relative;
+    z-index: 12;
+    overflow: visible;
     border: 1px solid rgba(226, 232, 240, 0.95);
     border-radius: 1.35rem;
     background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(248, 250, 252, 0.96));
@@ -607,6 +610,7 @@ body {
     flex-wrap: wrap;
     align-items: center;
     gap: 0.85rem;
+    overflow: visible;
 }
 
 .module-filter-toolbar-main {
@@ -616,6 +620,7 @@ body {
     align-items: center;
     gap: 0.85rem;
     min-width: 0;
+    overflow: visible;
 }
 
 .module-filter-search {
@@ -638,6 +643,7 @@ body {
 .module-filter-preset {
     position: relative;
     flex: 0 1 auto;
+    z-index: 18;
 }
 
 .module-filter-preset-button {
@@ -669,7 +675,7 @@ body {
 
 .module-filter-preset-menu {
     position: absolute;
-    z-index: 20;
+    z-index: 40;
     top: calc(100% + 0.55rem);
     left: 0;
     min-width: 15rem;
