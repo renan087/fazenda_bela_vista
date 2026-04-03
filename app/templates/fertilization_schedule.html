@@ -187,15 +187,15 @@
                                 <span class="stock-level-badge bg-white text-slate-600 ring-1 ring-slate-200/80">{{ group.list|length }} registro(s)</span>
                             </div>
                         </div>
-                        <button type="button" class="stock-summary-toggle" data-schedule-group-toggle aria-expanded="true">
+                        <button type="button" class="stock-summary-toggle" data-schedule-group-toggle aria-expanded="false">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
                                 <path d="M5 12h14"/>
-                                <path d="M12 5v14" data-schedule-group-toggle-plus class="hidden"></path>
+                                <path d="M12 5v14" data-schedule-group-toggle-plus></path>
                             </svg>
-                            <span data-schedule-group-toggle-label>Esconder Agendamentos</span>
+                            <span data-schedule-group-toggle-label>Mostrar Agendamentos</span>
                         </button>
                     </div>
-                    <div class="stock-summary-collapse is-expanded mt-4" data-schedule-group-collapse>
+                    <div class="stock-summary-collapse mt-4" data-schedule-group-collapse>
                         <div class="stock-summary-collapse-inner">
                             <div class="space-y-4">
                                 {% for schedule in group.list %}
@@ -225,15 +225,15 @@
                                 <span class="stock-level-badge bg-white text-slate-600 ring-1 ring-slate-200/80">{{ group.list|length }} registro(s)</span>
                             </div>
                         </div>
-                        <button type="button" class="stock-summary-toggle" data-schedule-group-toggle aria-expanded="true">
+                        <button type="button" class="stock-summary-toggle" data-schedule-group-toggle aria-expanded="false">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
                                 <path d="M5 12h14"/>
-                                <path d="M12 5v14" data-schedule-group-toggle-plus class="hidden"></path>
+                                <path d="M12 5v14" data-schedule-group-toggle-plus></path>
                             </svg>
-                            <span data-schedule-group-toggle-label>Esconder Agendamentos</span>
+                            <span data-schedule-group-toggle-label>Mostrar Agendamentos</span>
                         </button>
                     </div>
-                    <div class="stock-summary-collapse is-expanded mt-4" data-schedule-group-collapse>
+                    <div class="stock-summary-collapse mt-4" data-schedule-group-collapse>
                         <div class="stock-summary-collapse-inner">
                             <div class="space-y-4">
                                 {% for schedule in group.list %}
@@ -513,7 +513,7 @@
                 };
 
                 toggle._scheduleGroupSync = setExpanded;
-                setExpanded(true);
+                setExpanded(false);
                 toggle.addEventListener('click', () => {
                     const expanded = toggle.getAttribute('aria-expanded') === 'true';
                     setExpanded(!expanded);
