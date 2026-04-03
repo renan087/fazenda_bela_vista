@@ -230,8 +230,8 @@
                     </div>
                 </div>
                 <div class="module-filter-toolbar-actions">
-                    <button type="submit" class="module-filter-action module-filter-action-primary">Filtrar</button>
-                    <a href="{{ schedule_filter_clear_url }}" class="module-filter-action module-filter-action-secondary">Limpar</a>
+                    <button type="submit" class="module-filter-action module-filter-action-primary {% if selected_schedule_range != 'custom' %}hidden{% endif %}" data-schedule-filter-submit>Filtrar</button>
+                    <a href="{{ schedule_filter_clear_url }}" class="module-filter-action module-filter-action-secondary {% if not schedule_filter_start_date and not schedule_filter_end_date %}hidden{% endif %}" data-schedule-filter-clear>Limpar</a>
                 </div>
             </form>
         </div>
@@ -533,6 +533,8 @@
         let filterStartInput = null;
         let filterEndInput = null;
         let rangeInput = scheduleListShell?.querySelector('[data-schedule-range-input]') || null;
+        let filterSubmitButton = scheduleListShell?.querySelector('[data-schedule-filter-submit]') || null;
+        let filterClearButton = scheduleListShell?.querySelector('[data-schedule-filter-clear]') || null;
         const normalizeSearchText = (value) => (
             (value || '')
                 .toString()
@@ -569,8 +571,19 @@
             const end = new Date(`${range.end}T00:00:00`);
             return `${formatShortDatePtBr(start)} a ${formatShortDatePtBr(end)}`;
         };
+        const getPresetRangeTitle = (preset) => {
+            if (preset === 'next_20_days') return 'Próximos 20 dias';
+            if (preset === 'next_month') return 'Próximo mês';
+            if (preset === 'custom') return 'Período personalizado';
+            return 'Próximos 10 dias';
+        };
         const getActiveStage = () => scheduleListShell?.querySelector('[data-schedule-tab]:not(.hidden)[data-schedule-history-stage]') || null;
         const getActiveScheduleTab = () => scheduleListShell?.querySelector('[data-schedule-tab-button].is-active')?.dataset.scheduleTabButton || '{{ selected_schedule_tab }}';
+        const syncScheduleFilterActions = () => {
+            const hasDateFilter = Boolean((filterStartInput?.value || '').trim() || (filterEndInput?.value || '').trim());
+            filterSubmitButton?.classList.toggle('hidden', (rangeInput?.value || '') !== 'custom');
+            filterClearButton?.classList.toggle('hidden', !hasDateFilter);
+        };
         const syncScheduleExportLinks = () => {
             exportLinks.forEach((link) => {
                 const baseHref = link.dataset.baseHref;
@@ -865,10 +878,13 @@
             rangeInput = root.querySelector('[data-schedule-range-input]');
             filterStartInput = root.querySelector('[data-schedule-filter-start]');
             filterEndInput = root.querySelector('[data-schedule-filter-end]');
+            filterSubmitButton = root.querySelector('[data-schedule-filter-submit]');
+            filterClearButton = root.querySelector('[data-schedule-filter-clear]');
             if (!(trigger instanceof HTMLButtonElement) || !(menu instanceof HTMLElement) || !(label instanceof HTMLElement) || !(rangeInput instanceof HTMLInputElement)) return;
 
             const syncCustomVisibility = () => {
                 customRange?.classList.toggle('hidden', rangeInput.value !== 'custom');
+                syncScheduleFilterActions();
             };
 
             menu.querySelectorAll('[data-schedule-range-meta]').forEach((meta) => {
@@ -897,7 +913,7 @@
                 option.addEventListener('click', () => {
                     const value = option.getAttribute('data-range-value') || 'next_10_days';
                     rangeInput.value = value;
-                    label.textContent = option.textContent?.trim() || 'Próximos 10 dias';
+                    label.textContent = getPresetRangeTitle(value);
                     menu.querySelectorAll('.module-filter-preset-option').forEach((item) => item.classList.remove('is-active'));
                     option.classList.add('is-active');
                     if (value !== 'custom') {
@@ -935,9 +951,17 @@
             filterStartInput = scheduleListShell.querySelector('[data-schedule-filter-start]');
             filterEndInput = scheduleListShell.querySelector('[data-schedule-filter-end]');
             rangeInput = scheduleListShell.querySelector('[data-schedule-range-input]');
+            filterSubmitButton = scheduleListShell.querySelector('[data-schedule-filter-submit]');
+            filterClearButton = scheduleListShell.querySelector('[data-schedule-filter-clear]');
             searchInput?.addEventListener('input', applyScheduleHistorySearch);
-            filterStartInput?.addEventListener('change', syncScheduleExportLinks);
-            filterEndInput?.addEventListener('change', syncScheduleExportLinks);
+            filterStartInput?.addEventListener('change', () => {
+                syncScheduleFilterActions();
+                syncScheduleExportLinks();
+            });
+            filterEndInput?.addEventListener('change', () => {
+                syncScheduleFilterActions();
+                syncScheduleExportLinks();
+            });
             scheduleListShell.addEventListener('click', async (event) => {
                 const link = event.target instanceof Element
                     ? event.target.closest('[data-schedule-tab-button], [data-stock-pagination-link]')
