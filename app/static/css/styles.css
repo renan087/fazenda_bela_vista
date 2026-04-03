@@ -1296,15 +1296,18 @@ body {
         overflow: hidden;
         max-height: 15rem;
         opacity: 1;
+        transform: translateY(0);
         transition:
-            max-height 0.24s ease,
-            opacity 0.2s ease,
-            margin 0.24s ease;
+            max-height 0.38s cubic-bezier(0.22, 1, 0.36, 1),
+            opacity 0.24s ease,
+            margin 0.38s cubic-bezier(0.22, 1, 0.36, 1),
+            transform 0.38s cubic-bezier(0.22, 1, 0.36, 1);
     }
 
     .stock-page-header.is-compact .stock-page-header-intro {
         max-height: 0;
         opacity: 0;
+        transform: translateY(-0.35rem);
         margin-top: 0 !important;
         margin-bottom: 0 !important;
         pointer-events: none;
@@ -1319,6 +1322,7 @@ body {
         flex-direction: column;
         align-items: stretch;
         gap: 0.9rem;
+        transition: gap 0.38s cubic-bezier(0.22, 1, 0.36, 1);
     }
 
     .stock-page-header > div > :first-child,
@@ -1358,11 +1362,23 @@ body {
 
     .stock-header-actions-top {
         width: 100%;
+        transform: translateY(0);
+        transition:
+            transform 0.38s cubic-bezier(0.22, 1, 0.36, 1),
+            margin 0.38s cubic-bezier(0.22, 1, 0.36, 1);
     }
 
     .stock-header-actions > * {
         min-width: 0;
         max-width: 100%;
+    }
+
+    .stock-page-header.is-compact > div {
+        gap: 0.5rem;
+    }
+
+    .stock-page-header.is-compact .stock-header-actions-top {
+        transform: translateY(-0.12rem);
     }
 
     .stock-action-button {
