@@ -591,8 +591,13 @@
                 const matchingRows = groupRows.filter((row) => !row.classList.contains('hidden'));
                 group.classList.toggle('hidden', matchingRows.length === 0);
                 const sync = group.querySelector('[data-schedule-group-toggle]')?._scheduleGroupSync;
-                if (typeof sync === 'function' && query) {
-                    sync(matchingRows.length > 0);
+                if (typeof sync === 'function') {
+                    if (!query) {
+                        group.classList.remove('hidden');
+                        sync(false);
+                    } else {
+                        sync(matchingRows.length > 0);
+                    }
                 }
             });
 
