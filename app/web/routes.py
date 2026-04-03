@@ -4938,7 +4938,7 @@ def export_fertilization_xlsx(
             item.application_date.isoformat() if item.application_date else "",
             item.plot.name if item.plot else "Setor removido",
             item.product or "",
-            _format_brl_currency(item.cost),
+            _format_currency(item.cost),
             " | ".join(
                 f"{detail.name} ({_format_decimal_br(detail.total_quantity, 2)} {detail.unit})"
                 for detail in item.items
@@ -5014,7 +5014,7 @@ def export_fertilization_pdf(
         [
             [Paragraph("LANÇAMENTOS", meta_label_style), Paragraph(str(len(fertilizations)), summary_value_style)],
             [Paragraph("INSUMOS APLICADOS", meta_label_style), Paragraph(str(total_items), summary_value_style)],
-            [Paragraph("CUSTO TOTAL", meta_label_style), Paragraph(_format_brl_currency(total_cost), summary_value_style)],
+            [Paragraph("CUSTO TOTAL", meta_label_style), Paragraph(_format_currency(total_cost), summary_value_style)],
         ],
     ], colWidths=[doc.width / 3] * 3, hAlign="LEFT")
     summary_table.setStyle(TableStyle([
@@ -5039,7 +5039,7 @@ def export_fertilization_pdf(
             Paragraph(item.application_date.strftime("%d/%m/%Y") if item.application_date else "-", cell_style),
             Paragraph(item.plot.name if item.plot else "Setor removido", cell_style),
             Paragraph(item.product or "-", cell_style),
-            Paragraph(_format_brl_currency(item.cost), cell_style),
+            Paragraph(_format_currency(item.cost), cell_style),
             Paragraph(items_label, cell_muted_style),
             Paragraph(item.notes or "-", cell_muted_style),
         ])
@@ -5066,7 +5066,7 @@ def export_fertilization_pdf(
     footer_summary = Table([
         ["Total de lançamentos", str(len(fertilizations))],
         ["Total de insumos aplicados", str(total_items)],
-        ["Custo total", _format_brl_currency(total_cost)],
+        ["Custo total", _format_currency(total_cost)],
     ], colWidths=[doc.width * 0.28, doc.width * 0.18], hAlign="LEFT")
     footer_summary.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#f8fafc")),
