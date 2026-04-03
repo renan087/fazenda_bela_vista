@@ -4814,6 +4814,14 @@ def fertilization_schedules_page(
     completed_schedules = [schedule for schedule in schedules if schedule.status == "completed"]
     active_schedules_pagination = _paginate_collection(request, active_schedules, "active_page")
     completed_schedules_pagination = _paginate_collection(request, completed_schedules, "completed_page")
+    recommendations = [
+        recommendation
+        for recommendation in repo.list_input_recommendations()
+        if (
+            (not scope["active_farm_id"] or recommendation.farm_id == scope["active_farm_id"])
+            and (not plot_ids or recommendation.plot_id is None or recommendation.plot_id in plot_ids)
+        )
+    ]
     consolidated_inputs = repo.list_input_catalog(item_type="insumo_agricola")
     purchased_inputs = repo.list_purchased_inputs()
     input_stock = {
@@ -4842,6 +4850,25 @@ def fertilization_schedules_page(
         if edit_schedule and edit_schedule.items
         else [{"input_id": "", "unit": "kg", "quantity": ""}]
     )
+    schedule_recommendations = [
+        {
+            "id": recommendation.id,
+            "application_name": recommendation.application_name,
+            "plot_name": recommendation.plot.name if recommendation.plot else None,
+            "farm_name": recommendation.farm.name if recommendation.farm else None,
+            "items": [
+                {
+                    "input_id": item.input_id,
+                    "unit": item.unit,
+                    "quantity": float(item.quantity or 0),
+                }
+                for item in recommendation.items
+                if item.input_id
+            ],
+        }
+        for recommendation in recommendations
+        if recommendation.items
+    ]
     return templates.TemplateResponse(
         "fertilization_schedule.html",
         _base_context(
@@ -4866,6 +4893,7 @@ def fertilization_schedules_page(
             schedule_validations=schedule_validations,
             edit_schedule=edit_schedule,
             edit_schedule_items=edit_schedule_items,
+            schedule_recommendations=schedule_recommendations,
             today=today_in_app_timezone(),
         ),
     )
@@ -5115,30 +5143,38 @@ async def create_fertilization_schedule_action(
     form = await request.form()
     validate_csrf(request, str(form.get("csrf_token") or ""))
     repo = _repository(db)
-    plot, scope, denied = _resolve_plot_in_scope(
-        request,
-        repo,
-        int(form.get("plot_id") or 0),
-        "/fertilizacao/agendamentos",
-    )
-    if denied:
-        return denied
+    scope = _global_scope_context(request, repo)
+    farm_ids, variety_ids = _scoped_plot_filters(request, scope["active_season"])
+    allowed_plots = {
+        plot.id: plot
+        for plot in repo.list_plots(farm_ids=farm_ids, variety_ids=variety_ids)
+    }
+    selected_plot_ids = []
+    for raw_plot_id in form.getlist("plot_id"):
+        parsed_plot_id = _int_or_none(raw_plot_id)
+        if parsed_plot_id and parsed_plot_id not in selected_plot_ids:
+            selected_plot_ids.append(parsed_plot_id)
+    selected_plots = [allowed_plots[plot_id] for plot_id in selected_plot_ids if plot_id in allowed_plots]
     items = _parse_recommendation_items(form)
-    if not plot or not items:
-        _flash(request, "error", "Selecione o setor e adicione ao menos um insumo.")
+    if not selected_plots or not items:
+        _flash(request, "error", "Selecione ao menos um setor e adicione ao menos um insumo.")
         return _redirect("/fertilizacao/agendamentos")
-    create_fertilization_schedule(
-        repo,
-        {
-            "plot_id": plot.id,
-            "scheduled_date": str(form.get("scheduled_date") or ""),
-            "season_id": scope["active_season_id"],
-            "status": str(form.get("status") or "scheduled"),
-            "notes": str(form.get("notes") or "") or None,
-            "items": items,
-        },
-    )
-    _flash(request, "success", "Agendamento salvo com sucesso.")
+    for plot in selected_plots:
+        create_fertilization_schedule(
+            repo,
+            {
+                "plot_id": plot.id,
+                "scheduled_date": str(form.get("scheduled_date") or ""),
+                "season_id": scope["active_season_id"],
+                "status": str(form.get("status") or "scheduled"),
+                "notes": str(form.get("notes") or "") or None,
+                "items": items,
+            },
+        )
+    if len(selected_plots) == 1:
+        _flash(request, "success", "Agendamento salvo com sucesso.")
+    else:
+        _flash(request, "success", f"Agendamentos salvos com sucesso para {len(selected_plots)} setores.")
     return _redirect("/fertilizacao/agendamentos")
 
 

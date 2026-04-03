@@ -307,14 +307,26 @@
                 </div>
 
                 <div class="grid gap-4 md:grid-cols-2">
+                    {% if edit_schedule %}
                     <label>
                         <span class="mb-2 block text-sm font-medium">Setor</span>
                         <select name="plot_id" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required>
                             {% for plot in plots %}
-                            <option value="{{ plot.id }}" {% if edit_schedule and edit_schedule.plot_id == plot.id %}selected{% endif %}>{{ plot.name }}{% if plot.farm %} • {{ plot.farm.name }}{% endif %}</option>
+                            <option value="{{ plot.id }}" {% if edit_schedule.plot_id == plot.id %}selected{% endif %}>{{ plot.name }}{% if plot.farm %} • {{ plot.farm.name }}{% endif %}</option>
                             {% endfor %}
                         </select>
                     </label>
+                    {% else %}
+                    <label class="md:col-span-2">
+                        <span class="mb-2 block text-sm font-medium">Setores</span>
+                        <select name="plot_id" class="min-h-[10rem] w-full rounded-2xl border-slate-200 bg-slate-50 px-4 py-3" multiple required data-schedule-plot-select>
+                            {% for plot in plots %}
+                            <option value="{{ plot.id }}">{{ plot.name }}{% if plot.farm %} • {{ plot.farm.name }}{% endif %}</option>
+                            {% endfor %}
+                        </select>
+                        <span class="mt-2 block text-xs text-slate-500">Selecione um ou mais setores para repetir o mesmo agendamento.</span>
+                    </label>
+                    {% endif %}
                     <label>
                         <span class="mb-2 block text-sm font-medium">Data prevista</span>
                         <input type="date" name="scheduled_date" value="{{ edit_schedule.scheduled_date.isoformat() if edit_schedule else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required>
@@ -328,6 +340,21 @@
                         <option value="completed" {% if edit_schedule and edit_schedule.status == 'completed' %}selected{% endif %}>Concluído</option>
                     </select>
                 </label>
+
+                {% if schedule_recommendations %}
+                <label>
+                    <span class="mb-2 block text-sm font-medium">Usar recomendação</span>
+                    <select class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" data-schedule-recommendation-select>
+                        <option value="">Selecionar recomendação</option>
+                        {% for recommendation in schedule_recommendations %}
+                        <option value="{{ recommendation.id }}">
+                            {{ recommendation.application_name }}{% if recommendation.plot_name %} • {{ recommendation.plot_name }}{% endif %}{% if recommendation.farm_name %} • {{ recommendation.farm_name }}{% endif %}
+                        </option>
+                        {% endfor %}
+                    </select>
+                    <span class="mt-2 block text-xs text-slate-500">Ao selecionar uma recomendação, os insumos são preenchidos automaticamente e ainda podem ser ajustados antes de salvar.</span>
+                </label>
+                {% endif %}
 
                 <div class="rounded-[1.5rem] border border-slate-200 bg-slate-50 p-4">
                     <div class="flex flex-wrap items-center justify-between gap-3">
@@ -423,6 +450,8 @@
         const contextToggleLabel = document.querySelector('[data-schedule-context-toggle-label]');
         const contextTogglePlus = document.querySelector('[data-schedule-context-toggle-plus]');
         const exportLinks = Array.from(document.querySelectorAll('[data-schedule-export-link]'));
+        const recommendationSelect = document.querySelector('[data-schedule-recommendation-select]');
+        const recommendationMap = new Map({{ schedule_recommendations|tojson }}.map((recommendation) => [String(recommendation.id), recommendation]));
         let scheduleListShell = document.querySelector('[data-schedule-list-shell]');
         let searchInput = scheduleListShell?.querySelector('[data-schedule-history-search]') || null;
         const normalizeSearchText = (value) => (
@@ -760,9 +789,36 @@
         };
 
         wrapper.querySelectorAll('[data-schedule-item]').forEach(bindRemove);
+        const buildScheduleItemRow = (itemData = null) => {
+            const fragment = template.content.cloneNode(true);
+            const row = fragment.firstElementChild;
+            if (row && itemData) {
+                const inputField = row.querySelector('select[name="input_id"]');
+                const unitField = row.querySelector('select[name="unit"]');
+                const quantityField = row.querySelector('input[name="quantity"]');
+                if (inputField) inputField.value = String(itemData.input_id || '');
+                if (unitField) unitField.value = itemData.unit || 'kg';
+                if (quantityField) quantityField.value = itemData.quantity ?? '';
+            }
+            if (row) bindRemove(row);
+            return fragment;
+        };
+
+        const applyRecommendationToSchedule = (recommendationId) => {
+            const recommendation = recommendationMap.get(String(recommendationId || ''));
+            if (!recommendation || !Array.isArray(recommendation.items) || !recommendation.items.length) return;
+            wrapper.innerHTML = '';
+            recommendation.items.forEach((item) => {
+                wrapper.appendChild(buildScheduleItemRow(item));
+            });
+        };
+
         addButton.addEventListener('click', () => {
-            wrapper.appendChild(template.content.cloneNode(true));
-            bindRemove(wrapper.lastElementChild);
+            wrapper.appendChild(buildScheduleItemRow());
+        });
+        recommendationSelect?.addEventListener('change', (event) => {
+            if (!(event.currentTarget instanceof HTMLSelectElement)) return;
+            applyRecommendationToSchedule(event.currentTarget.value);
         });
         bindScheduleListShell();
     })();
