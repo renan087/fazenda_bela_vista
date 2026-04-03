@@ -20,103 +20,107 @@
                 </svg>
                 <input type="search" name="search" value="{{ search_value }}" placeholder="{{ search_placeholder }}" data-module-history-search>
             </div>
-            <div class="module-filter-preset" data-module-range-picker>
-                <button type="button" class="module-filter-preset-button" data-module-range-trigger aria-expanded="false">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true">
-                        <path d="M8 2v4"/>
-                        <path d="M16 2v4"/>
-                        <rect x="3" y="5" width="18" height="16" rx="2"/>
-                        <path d="M3 10h18"/>
-                    </svg>
-                    <span data-module-range-label>
-                        {% if not _has_period %}
-                            {{ period_placeholder }}
-                        {% elif preset_variant == 'past' %}
-                            {% if selected_range == 'last_20_days' %}Últimos 20 dias{% elif selected_range == 'last_month' %}Mês passado{% elif selected_range == 'custom' %}Período personalizado{% else %}Últimos 10 dias{% endif %}
+            <div class="module-filter-period-row">
+                <div class="module-filter-preset" data-module-range-picker>
+                    <button type="button" class="module-filter-preset-button" data-module-range-trigger aria-expanded="false">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true">
+                            <path d="M8 2v4"/>
+                            <path d="M16 2v4"/>
+                            <rect x="3" y="5" width="18" height="16" rx="2"/>
+                            <path d="M3 10h18"/>
+                        </svg>
+                        <span data-module-range-label>
+                            {% if not _has_period %}
+                                {{ period_placeholder }}
+                            {% elif preset_variant == 'past' %}
+                                {% if selected_range == 'last_20_days' %}Últimos 20 dias{% elif selected_range == 'last_month' %}Mês passado{% elif selected_range == 'custom' %}Período personalizado{% else %}Últimos 10 dias{% endif %}
+                            {% else %}
+                                {% if selected_range == 'next_20_days' %}Próximos 20 dias{% elif selected_range == 'next_month' %}Próximo mês{% elif selected_range == 'custom' %}Período personalizado{% else %}Próximos 10 dias{% endif %}
+                            {% endif %}
+                        </span>
+                        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+                            <path d="m5 7 5 5 5-5"/>
+                        </svg>
+                    </button>
+                    <div class="module-filter-preset-menu hidden" data-module-range-menu>
+                        {% if preset_variant == 'past' %}
+                        <button type="button" class="module-filter-preset-option {% if _has_period and selected_range == 'last_10_days' %}is-active{% endif %}" data-module-range-option data-range-value="last_10_days">
+                            <span class="module-filter-preset-option-title">Últimos 10 dias</span>
+                            <span class="module-filter-preset-option-meta" data-module-range-meta="last_10_days"></span>
+                        </button>
+                        <button type="button" class="module-filter-preset-option {% if _has_period and selected_range == 'last_20_days' %}is-active{% endif %}" data-module-range-option data-range-value="last_20_days">
+                            <span class="module-filter-preset-option-title">Últimos 20 dias</span>
+                            <span class="module-filter-preset-option-meta" data-module-range-meta="last_20_days"></span>
+                        </button>
+                        <button type="button" class="module-filter-preset-option {% if _has_period and selected_range == 'last_month' %}is-active{% endif %}" data-module-range-option data-range-value="last_month">
+                            <span class="module-filter-preset-option-title">Mês passado</span>
+                            <span class="module-filter-preset-option-meta" data-module-range-meta="last_month"></span>
+                        </button>
                         {% else %}
-                            {% if selected_range == 'next_20_days' %}Próximos 20 dias{% elif selected_range == 'next_month' %}Próximo mês{% elif selected_range == 'custom' %}Período personalizado{% else %}Próximos 10 dias{% endif %}
+                        <button type="button" class="module-filter-preset-option {% if _has_period and selected_range == 'next_10_days' %}is-active{% endif %}" data-module-range-option data-range-value="next_10_days">
+                            <span class="module-filter-preset-option-title">Próximos 10 dias</span>
+                            <span class="module-filter-preset-option-meta" data-module-range-meta="next_10_days"></span>
+                        </button>
+                        <button type="button" class="module-filter-preset-option {% if _has_period and selected_range == 'next_20_days' %}is-active{% endif %}" data-module-range-option data-range-value="next_20_days">
+                            <span class="module-filter-preset-option-title">Próximos 20 dias</span>
+                            <span class="module-filter-preset-option-meta" data-module-range-meta="next_20_days"></span>
+                        </button>
+                        <button type="button" class="module-filter-preset-option {% if _has_period and selected_range == 'next_month' %}is-active{% endif %}" data-module-range-option data-range-value="next_month">
+                            <span class="module-filter-preset-option-title">Próximo mês</span>
+                            <span class="module-filter-preset-option-meta" data-module-range-meta="next_month"></span>
+                        </button>
                         {% endif %}
-                    </span>
-                    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
-                        <path d="m5 7 5 5 5-5"/>
+                        <button type="button" class="module-filter-preset-option {% if _has_period and selected_range == 'custom' %}is-active{% endif %}" data-module-range-option data-range-value="custom">
+                            <span class="module-filter-preset-option-title">Período personalizado</span>
+                            <span class="module-filter-preset-option-meta">Selecione data inicial e final</span>
+                        </button>
+                    </div>
+                    <input type="hidden" name="start_date" value="{{ start_date or '' }}" data-module-filter-start>
+                    <input type="hidden" name="end_date" value="{{ end_date or '' }}" data-module-filter-end>
+                    <div class="module-filter-period module-filter-custom-panel hidden" data-module-custom-range>
+                        <div class="module-filter-custom-head">
+                            <p class="module-filter-custom-title">Período personalizado</p>
+                        </div>
+                        <div class="module-filter-calendar">
+                            <div class="module-filter-calendar-header">
+                                <button type="button" class="module-filter-calendar-nav" data-module-calendar-prev aria-label="Mês anterior">
+                                    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true">
+                                        <path d="m12.5 4.5-5 5 5 5"/>
+                                    </svg>
+                                </button>
+                                <div class="module-filter-calendar-title" data-module-calendar-title></div>
+                                <button type="button" class="module-filter-calendar-nav" data-module-calendar-next aria-label="Próximo mês">
+                                    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true">
+                                        <path d="m7.5 4.5 5 5-5 5"/>
+                                    </svg>
+                                </button>
+                            </div>
+                            <div class="module-filter-calendar-weekdays">
+                                <span>Dom</span>
+                                <span>Seg</span>
+                                <span>Ter</span>
+                                <span>Qua</span>
+                                <span>Qui</span>
+                                <span>Sex</span>
+                                <span>Sáb</span>
+                            </div>
+                            <div class="module-filter-calendar-grid" data-module-calendar-grid></div>
+                        </div>
+                    </div>
+                </div>
+                {% if mobile_icon_clear %}
+                <a href="{{ clear_url }}" class="module-filter-action module-filter-action-secondary module-filter-action-icon module-filter-action-mobile-clear md:hidden {% if not start_date and not end_date %}hidden{% endif %}" data-module-filter-clear-mobile aria-label="Limpar filtro de período" title="Limpar filtro de período">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <path d="M14 4h5"/>
+                        <path d="m14 4 3 3"/>
+                        <path d="M3 21h7"/>
+                        <path d="m6 21 3-9"/>
+                        <path d="m9 12 8-5 2 2-5 8"/>
+                        <path d="m11 14 3 3"/>
                     </svg>
-                </button>
-                <div class="module-filter-preset-menu hidden" data-module-range-menu>
-                    {% if preset_variant == 'past' %}
-                    <button type="button" class="module-filter-preset-option {% if _has_period and selected_range == 'last_10_days' %}is-active{% endif %}" data-module-range-option data-range-value="last_10_days">
-                        <span class="module-filter-preset-option-title">Últimos 10 dias</span>
-                        <span class="module-filter-preset-option-meta" data-module-range-meta="last_10_days"></span>
-                    </button>
-                    <button type="button" class="module-filter-preset-option {% if _has_period and selected_range == 'last_20_days' %}is-active{% endif %}" data-module-range-option data-range-value="last_20_days">
-                        <span class="module-filter-preset-option-title">Últimos 20 dias</span>
-                        <span class="module-filter-preset-option-meta" data-module-range-meta="last_20_days"></span>
-                    </button>
-                    <button type="button" class="module-filter-preset-option {% if _has_period and selected_range == 'last_month' %}is-active{% endif %}" data-module-range-option data-range-value="last_month">
-                        <span class="module-filter-preset-option-title">Mês passado</span>
-                        <span class="module-filter-preset-option-meta" data-module-range-meta="last_month"></span>
-                    </button>
-                    {% else %}
-                    <button type="button" class="module-filter-preset-option {% if _has_period and selected_range == 'next_10_days' %}is-active{% endif %}" data-module-range-option data-range-value="next_10_days">
-                        <span class="module-filter-preset-option-title">Próximos 10 dias</span>
-                        <span class="module-filter-preset-option-meta" data-module-range-meta="next_10_days"></span>
-                    </button>
-                    <button type="button" class="module-filter-preset-option {% if _has_period and selected_range == 'next_20_days' %}is-active{% endif %}" data-module-range-option data-range-value="next_20_days">
-                        <span class="module-filter-preset-option-title">Próximos 20 dias</span>
-                        <span class="module-filter-preset-option-meta" data-module-range-meta="next_20_days"></span>
-                    </button>
-                    <button type="button" class="module-filter-preset-option {% if _has_period and selected_range == 'next_month' %}is-active{% endif %}" data-module-range-option data-range-value="next_month">
-                        <span class="module-filter-preset-option-title">Próximo mês</span>
-                        <span class="module-filter-preset-option-meta" data-module-range-meta="next_month"></span>
-                    </button>
-                    {% endif %}
-                    <button type="button" class="module-filter-preset-option {% if _has_period and selected_range == 'custom' %}is-active{% endif %}" data-module-range-option data-range-value="custom">
-                        <span class="module-filter-preset-option-title">Período personalizado</span>
-                        <span class="module-filter-preset-option-meta">Selecione data inicial e final</span>
-                    </button>
-                </div>
-                <input type="hidden" name="start_date" value="{{ start_date or '' }}" data-module-filter-start>
-                <input type="hidden" name="end_date" value="{{ end_date or '' }}" data-module-filter-end>
-                <div class="module-filter-period module-filter-custom-panel hidden" data-module-custom-range>
-                    <div class="module-filter-custom-head">
-                        <p class="module-filter-custom-title">Período personalizado</p>
-                    </div>
-                    <div class="module-filter-calendar">
-                        <div class="module-filter-calendar-header">
-                            <button type="button" class="module-filter-calendar-nav" data-module-calendar-prev aria-label="Mês anterior">
-                                <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true">
-                                    <path d="m12.5 4.5-5 5 5 5"/>
-                                </svg>
-                            </button>
-                            <div class="module-filter-calendar-title" data-module-calendar-title></div>
-                            <button type="button" class="module-filter-calendar-nav" data-module-calendar-next aria-label="Próximo mês">
-                                <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true">
-                                    <path d="m7.5 4.5 5 5-5 5"/>
-                                </svg>
-                            </button>
-                        </div>
-                        <div class="module-filter-calendar-weekdays">
-                            <span>Dom</span>
-                            <span>Seg</span>
-                            <span>Ter</span>
-                            <span>Qua</span>
-                            <span>Qui</span>
-                            <span>Sex</span>
-                            <span>Sáb</span>
-                        </div>
-                        <div class="module-filter-calendar-grid" data-module-calendar-grid></div>
-                    </div>
-                </div>
+                </a>
+                {% endif %}
             </div>
-            {% if mobile_icon_clear %}
-            <a href="{{ clear_url }}" class="module-filter-action module-filter-action-secondary module-filter-action-icon md:hidden {% if not start_date and not end_date %}hidden{% endif %}" data-module-filter-clear-mobile aria-label="Limpar filtro de período" title="Limpar filtro de período">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                    <path d="m15 4 5 5"/>
-                    <path d="M4 20h5l10-10-5-5L4 15v5Z"/>
-                    <path d="M13 6 6 13"/>
-                    <path d="M7 17h6"/>
-                </svg>
-            </a>
-            {% endif %}
         </div>
         <div class="module-filter-toolbar-actions">
             <a href="{{ clear_url }}" class="module-filter-action module-filter-action-secondary {% if mobile_icon_clear %}hidden md:inline-flex {% endif %}{% if not start_date and not end_date %}hidden{% endif %}" data-module-filter-clear>Limpar</a>
