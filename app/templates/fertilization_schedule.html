@@ -162,20 +162,22 @@
     <section class="stock-panel rounded-[2rem] bg-white p-6 shadow-panel" data-stock-fade-panel>
         <div data-schedule-list-shell>
         <div class="stock-filter-bar mt-6">
-            <form method="get" action="/fertilizacao/agendamentos" class="grid gap-3 sm:grid-cols-2 xl:grid-cols-[1fr_1fr_auto] xl:items-end">
+            <form method="get" action="/fertilizacao/agendamentos" class="flex flex-col gap-3 xl:flex-row xl:items-end">
                 <input type="hidden" name="schedule_tab" value="{{ selected_schedule_tab }}">
                 {% if edit_schedule %}
                 <input type="hidden" name="edit_id" value="{{ edit_schedule.id }}">
                 {% endif %}
-                <label>
-                    <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Periodo inicial</span>
-                    <input type="date" name="start_date" value="{{ schedule_filter_start_date or '' }}" class="w-full rounded-xl border-slate-200 bg-white" data-schedule-filter-start autocomplete="off">
-                </label>
-                <label>
-                    <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Periodo final</span>
-                    <input type="date" name="end_date" value="{{ schedule_filter_end_date or '' }}" class="w-full rounded-xl border-slate-200 bg-white" data-schedule-filter-end autocomplete="off">
-                </label>
-                <div class="flex flex-wrap items-end gap-3 sm:col-span-2 xl:col-span-1">
+                <div class="grid grid-cols-2 gap-3 xl:contents">
+                    <label>
+                        <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Periodo inicial</span>
+                        <input type="date" name="start_date" value="{{ schedule_filter_start_date or '' }}" class="w-full rounded-xl border-slate-200 bg-white" data-schedule-filter-start autocomplete="off">
+                    </label>
+                    <label>
+                        <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Periodo final</span>
+                        <input type="date" name="end_date" value="{{ schedule_filter_end_date or '' }}" class="w-full rounded-xl border-slate-200 bg-white" data-schedule-filter-end autocomplete="off">
+                    </label>
+                </div>
+                <div class="flex flex-wrap gap-3">
                     <button type="submit" class="rounded-xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white hover:bg-slate-700">Filtrar</button>
                     <a href="{{ schedule_filter_clear_url }}" class="rounded-xl bg-white px-4 py-3 text-sm font-semibold text-slate-700 ring-1 ring-slate-200 hover:bg-slate-100">Limpar</a>
                 </div>
