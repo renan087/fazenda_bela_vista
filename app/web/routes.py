@@ -495,6 +495,44 @@ def _within_scope(value: date | None, start_date: date | None, end_date: date | 
     return True
 
 
+def _schedule_filter_date_bounds(
+    request: Request,
+    active_season,
+    *,
+    flash_invalid: bool = False,
+) -> tuple[date | None, date | None, str, str]:
+    """Restringe o intervalo da safra ativa com start_date/end_date opcionais na query."""
+    scope_start, scope_end = _scoped_dates(active_season)
+    raw_start = (request.query_params.get("start_date") or "").strip()
+    raw_end = (request.query_params.get("end_date") or "").strip()
+    user_start: date | None = None
+    user_end: date | None = None
+    if raw_start:
+        try:
+            user_start = date.fromisoformat(raw_start)
+        except ValueError:
+            raw_start = ""
+    if raw_end:
+        try:
+            user_end = date.fromisoformat(raw_end)
+        except ValueError:
+            raw_end = ""
+    if user_start and user_end and user_start > user_end:
+        if flash_invalid:
+            _flash(request, "error", "A data inicial do periodo nao pode ser posterior a data final.")
+        raw_start = ""
+        raw_end = ""
+        user_start = None
+        user_end = None
+    eff_start = scope_start
+    eff_end = scope_end
+    if user_start:
+        eff_start = user_start if eff_start is None else max(eff_start, user_start)
+    if user_end:
+        eff_end = user_end if eff_end is None else min(eff_end, user_end)
+    return eff_start, eff_end, raw_start, raw_end
+
+
 def _launch_scope_or_redirect(
     request: Request,
     repo: FarmRepository,
@@ -4840,7 +4878,9 @@ def fertilization_schedules_page(
     repo = _repository(db)
     scope = _global_scope_context(request, repo)
     farm_ids, variety_ids = _scoped_plot_filters(request, scope["active_season"])
-    start_date, end_date = _scoped_dates(scope["active_season"])
+    start_date, end_date, filter_start_str, filter_end_str = _schedule_filter_date_bounds(
+        request, scope["active_season"], flash_invalid=True
+    )
     plots = repo.list_plots(farm_ids=farm_ids, variety_ids=variety_ids)
     plot_ids = {plot.id for plot in plots}
     edit_schedule = repo.get_fertilization_schedule(edit_id) if edit_id else None
@@ -4854,6 +4894,14 @@ def fertilization_schedules_page(
     selected_schedule_tab = str(request.query_params.get("schedule_tab") or "active")
     if selected_schedule_tab not in {"active", "completed"}:
         selected_schedule_tab = "active"
+    schedule_filter_clear_url = _url_with_query(
+        request,
+        start_date=None,
+        end_date=None,
+        active_page=None,
+        completed_page=None,
+        schedule_tab=selected_schedule_tab,
+    )
     active_schedules = [schedule for schedule in schedules if schedule.status != "completed"]
     completed_schedules = [schedule for schedule in schedules if schedule.status == "completed"]
     active_schedules_pagination = _paginate_collection(request, active_schedules, "active_page")
@@ -4934,6 +4982,9 @@ def fertilization_schedules_page(
                 "active": _url_with_query(request, schedule_tab="active"),
                 "completed": _url_with_query(request, schedule_tab="completed"),
             },
+            schedule_filter_start_date=filter_start_str or None,
+            schedule_filter_end_date=filter_end_str or None,
+            schedule_filter_clear_url=schedule_filter_clear_url,
             schedule_validations=schedule_validations,
             edit_schedule=edit_schedule,
             edit_schedule_items=edit_schedule_items,
@@ -4955,7 +5006,7 @@ def export_fertilization_schedules_xlsx(
     repo = _repository(db)
     scope = _global_scope_context(request, repo)
     farm_ids, variety_ids = _scoped_plot_filters(request, scope["active_season"])
-    start_date, end_date = _scoped_dates(scope["active_season"])
+    start_date, end_date, _, _ = _schedule_filter_date_bounds(request, scope["active_season"], flash_invalid=False)
     plots = repo.list_plots(farm_ids=farm_ids, variety_ids=variety_ids)
     plot_ids = {plot.id for plot in plots}
     schedules = [
@@ -5019,7 +5070,7 @@ def export_fertilization_schedules_pdf(
     repo = _repository(db)
     scope = _global_scope_context(request, repo)
     farm_ids, variety_ids = _scoped_plot_filters(request, scope["active_season"])
-    start_date, end_date = _scoped_dates(scope["active_season"])
+    start_date, end_date, _, _ = _schedule_filter_date_bounds(request, scope["active_season"], flash_invalid=False)
     plots = repo.list_plots(farm_ids=farm_ids, variety_ids=variety_ids)
     plot_ids = {plot.id for plot in plots}
     schedules = [
