@@ -4205,10 +4205,9 @@ def create_crop_season_action(
     del user
     validate_csrf(request, csrf_token)
     repo = _repository(db)
-    scope_or_redirect = _launch_scope_or_redirect(request, repo, "/safras", require_season=False)
-    if isinstance(scope_or_redirect, RedirectResponse):
-        return scope_or_redirect
-    scope = scope_or_redirect
+    scope, denied = _launch_scope_or_redirect(request, repo, "/safras", require_season=False)
+    if denied:
+        return denied
     try:
         parsed_start_date = date.fromisoformat(start_date)
         parsed_end_date = date.fromisoformat(end_date)
@@ -4271,10 +4270,9 @@ def update_crop_season_action(
     del user
     validate_csrf(request, csrf_token)
     repo = _repository(db)
-    scope_or_redirect = _launch_scope_or_redirect(request, repo, "/safras", require_season=False)
-    if isinstance(scope_or_redirect, RedirectResponse):
-        return scope_or_redirect
-    scope = scope_or_redirect
+    scope, denied = _launch_scope_or_redirect(request, repo, "/safras", require_season=False)
+    if denied:
+        return denied
     crop_season = repo.get_crop_season(season_id)
     if not crop_season:
         _flash(request, "error", "Safra nao encontrada.")
