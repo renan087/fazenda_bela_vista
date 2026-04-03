@@ -1293,20 +1293,25 @@ body {
     }
 
     .stock-page-header-intro {
-        overflow: hidden;
-        max-height: 15rem;
+        display: grid;
+        grid-template-rows: 1fr;
         opacity: 1;
         transform: translateY(0);
-        will-change: max-height, opacity, margin, transform;
+        will-change: grid-template-rows, opacity, margin, transform;
         transition:
-            max-height 0.52s cubic-bezier(0.22, 1, 0.36, 1),
-            opacity 0.36s ease,
+            grid-template-rows 0.52s cubic-bezier(0.22, 1, 0.36, 1),
+            opacity 0.52s cubic-bezier(0.22, 1, 0.36, 1),
             margin 0.52s cubic-bezier(0.22, 1, 0.36, 1),
             transform 0.52s cubic-bezier(0.22, 1, 0.36, 1);
     }
 
+    .stock-page-header-intro-inner {
+        min-height: 0;
+        overflow: hidden;
+    }
+
     .stock-page-header.is-compact .stock-page-header-intro {
-        max-height: 0;
+        grid-template-rows: 0fr;
         opacity: 0;
         transform: translateY(-0.28rem);
         margin-top: 0 !important;
