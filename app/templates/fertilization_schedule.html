@@ -819,8 +819,9 @@
                 const sync = () => {
                     const active = control.querySelector('.stock-tab-link.is-active');
                     if (!(active instanceof HTMLElement) || !(indicator instanceof HTMLElement)) return;
+                    const indicatorLeft = parseFloat(getComputedStyle(indicator).left || '0') || 0;
                     indicator.style.width = `${active.offsetWidth}px`;
-                    indicator.style.transform = `translateX(${active.offsetLeft}px)`;
+                    indicator.style.transform = `translateX(${Math.max(active.offsetLeft - indicatorLeft, 0)}px)`;
                     control.classList.add('is-ready');
                 };
                 sync();
