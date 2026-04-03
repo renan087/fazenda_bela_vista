@@ -451,6 +451,7 @@
 <script>
     (() => {
         const launchModal = document.getElementById('schedule-launch-modal');
+        const scheduleForm = document.getElementById('schedule-form');
         const openLaunchButton = document.querySelector('[data-schedule-launch-open]');
         const closeLaunchButtons = Array.from(document.querySelectorAll('[data-schedule-launch-close]'));
         const contextToggle = document.querySelector('[data-schedule-context-toggle]');
@@ -465,6 +466,7 @@
         const plotEmptyState = document.querySelector('[data-schedule-plot-empty]');
         const plotSelectionCount = document.querySelector('[data-schedule-plot-selection-count]');
         const recommendationMap = new Map({{ schedule_recommendations|tojson }}.map((recommendation) => [String(recommendation.id), recommendation]));
+        const initialPlotOptionsHtml = plotSelect?.innerHTML || '';
         let scheduleListShell = document.querySelector('[data-schedule-list-shell]');
         let searchInput = scheduleListShell?.querySelector('[data-schedule-history-search]') || null;
         const normalizeSearchText = (value) => (
@@ -503,12 +505,40 @@
             return true;
         };
 
+        const resetScheduleCreateState = () => {
+            if (scheduleRenderedInEditMode || !scheduleForm) return;
+            scheduleForm.reset();
+            if (plotSelect) {
+                plotSelect.innerHTML = initialPlotOptionsHtml;
+                plotSelect.value = '';
+                plotSelect.setCustomValidity('');
+            }
+            if (plotSelected) {
+                plotSelected.querySelectorAll('.schedule-plot-chip').forEach((chip) => chip.remove());
+            }
+            plotHiddenInputs?.replaceChildren();
+            if (recommendationSelect) recommendationSelect.value = '';
+            if (contextToggle && contextCollapse && contextToggleLabel) {
+                contextCollapse.classList.remove('is-expanded');
+                contextToggle.setAttribute('aria-expanded', 'false');
+                contextToggleLabel.textContent = 'Expandir';
+                contextTogglePlus?.classList.remove('hidden');
+            }
+            if (wrapper && template) {
+                wrapper.innerHTML = '';
+                wrapper.appendChild(buildScheduleItemRow());
+            }
+            syncPlotSelectionState();
+        };
+
         const openScheduleModal = () => {
             if (!clearScheduleEditState()) return;
+            resetScheduleCreateState();
             launchModal?.showModal();
         };
 
         const closeScheduleModal = () => {
+            resetScheduleCreateState();
             if (!clearScheduleEditState()) return;
             launchModal?.close();
         };

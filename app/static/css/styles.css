@@ -679,13 +679,18 @@ body {
 }
 
 .schedule-plot-selected {
-    display: grid;
+    display: flex;
+    flex-wrap: wrap;
     gap: 0.75rem;
+    align-items: flex-start;
 }
 
 .schedule-plot-chip {
-    display: flex;
+    display: inline-flex;
     min-width: 0;
+    width: auto;
+    max-width: 100%;
+    flex: 0 1 auto;
     align-items: center;
     justify-content: space-between;
     gap: 0.9rem;
@@ -699,7 +704,7 @@ body {
 .schedule-plot-chip-body {
     display: flex;
     min-width: 0;
-    flex: 1;
+    flex: 0 1 auto;
     flex-direction: column;
     gap: 0.24rem;
 }
