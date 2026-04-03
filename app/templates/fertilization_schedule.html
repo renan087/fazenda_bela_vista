@@ -819,10 +819,8 @@
                 const sync = () => {
                     const active = control.querySelector('.stock-tab-link.is-active');
                     if (!(active instanceof HTMLElement) || !(indicator instanceof HTMLElement)) return;
-                    const controlRect = control.getBoundingClientRect();
-                    const activeRect = active.getBoundingClientRect();
-                    indicator.style.width = `${activeRect.width}px`;
-                    indicator.style.transform = `translateX(${activeRect.left - controlRect.left}px)`;
+                    indicator.style.width = `${active.offsetWidth}px`;
+                    indicator.style.transform = `translateX(${active.offsetLeft}px)`;
                     control.classList.add('is-ready');
                 };
                 sync();
