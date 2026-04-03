@@ -131,6 +131,7 @@
         }
 
         const defaultPreset = (form.dataset.moduleRangeDefault || 'next_10_days').trim() || 'next_10_days';
+        const placeholderLabel = (form.dataset.moduleRangePlaceholder || 'Filtre por período').trim() || 'Filtre por período';
 
         const monthNames = [
             'Janeiro',
@@ -162,9 +163,25 @@
             return left.localeCompare(right);
         };
 
+        const syncRangeLabel = () => {
+            const s = (filterStartInput?.value || '').trim();
+            const e = (filterEndInput?.value || '').trim();
+            const isCustom = rangeInput.value === 'custom';
+            if (!s && !e && !isCustom) {
+                label.textContent = placeholderLabel;
+                return;
+            }
+            if (isCustom) {
+                label.textContent = getPresetRangeTitle('custom');
+                return;
+            }
+            label.textContent = getPresetRangeTitle(rangeInput.value || defaultPreset);
+        };
+
         const syncFilterActions = () => {
             const hasDateFilter = Boolean((filterStartInput?.value || '').trim() || (filterEndInput?.value || '').trim());
             filterClearButton?.classList.toggle('hidden', !hasDateFilter);
+            syncRangeLabel();
             if (typeof options.onSync === 'function') options.onSync();
         };
 
@@ -296,7 +313,6 @@
                 event.stopPropagation();
                 const value = option.getAttribute('data-range-value') || defaultPreset;
                 rangeInput.value = value;
-                label.textContent = getPresetRangeTitle(value);
                 menu.querySelectorAll('.module-filter-preset-option').forEach((item) => item.classList.remove('is-active'));
                 option.classList.add('is-active');
                 if (value !== 'custom') {

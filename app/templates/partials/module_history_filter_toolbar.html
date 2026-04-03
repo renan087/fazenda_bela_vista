@@ -1,11 +1,13 @@
 {# Toolbar reutilizável: busca + período (presets + calendário). Form GET com hidden start_date/end_date/schedule_range.
-   preset_variant: 'future' (Agendamentos — próximos N dias / próximo mês) ou 'past' (Fertilização — últimos N dias / mês passado). #}
-{% macro module_history_filter_toolbar(form_action, search_placeholder, selected_range, start_date, end_date, clear_url, hidden_fields=None, search_value='', preset_variant='future') %}
+   preset_variant: 'future' (Agendamentos — próximos N dias / próximo mês) ou 'past' (Fertilização — últimos N dias / mês passado).
+   Sem start_date/end_date na URL: rótulo period_placeholder (ex.: convite a filtrar). #}
+{% macro module_history_filter_toolbar(form_action, search_placeholder, selected_range, start_date, end_date, clear_url, hidden_fields=None, search_value='', preset_variant='future', period_placeholder='Filtre por período') %}
 {% if hidden_fields is none %}{% set hidden_fields = [] %}{% endif %}
 {% set _default_range = 'last_10_days' if preset_variant == 'past' else 'next_10_days' %}
 {% set _range_val = selected_range or _default_range %}
+{% set _has_period = (start_date or end_date) %}
 <div class="module-filter-toolbar">
-    <form method="get" action="{{ form_action }}" class="module-filter-toolbar-grid" data-module-period-filter-root data-module-range-default="{{ _default_range }}">
+    <form method="get" action="{{ form_action }}" class="module-filter-toolbar-grid" data-module-period-filter-root data-module-range-default="{{ _default_range }}" data-module-range-placeholder="{{ period_placeholder }}">
         {% for h in hidden_fields %}
         <input type="hidden" name="{{ h.name }}" value="{{ h.value }}">
         {% endfor %}
@@ -27,7 +29,9 @@
                         <path d="M3 10h18"/>
                     </svg>
                     <span data-module-range-label>
-                        {% if preset_variant == 'past' %}
+                        {% if not _has_period %}
+                            {{ period_placeholder }}
+                        {% elif preset_variant == 'past' %}
                             {% if selected_range == 'last_20_days' %}Últimos 20 dias{% elif selected_range == 'last_month' %}Mês passado{% elif selected_range == 'custom' %}Período personalizado{% else %}Últimos 10 dias{% endif %}
                         {% else %}
                             {% if selected_range == 'next_20_days' %}Próximos 20 dias{% elif selected_range == 'next_month' %}Próximo mês{% elif selected_range == 'custom' %}Período personalizado{% else %}Próximos 10 dias{% endif %}
@@ -39,33 +43,33 @@
                 </button>
                 <div class="module-filter-preset-menu hidden" data-module-range-menu>
                     {% if preset_variant == 'past' %}
-                    <button type="button" class="module-filter-preset-option {% if selected_range == 'last_10_days' or not selected_range %}is-active{% endif %}" data-module-range-option data-range-value="last_10_days">
+                    <button type="button" class="module-filter-preset-option {% if _has_period and selected_range == 'last_10_days' %}is-active{% endif %}" data-module-range-option data-range-value="last_10_days">
                         <span class="module-filter-preset-option-title">Últimos 10 dias</span>
                         <span class="module-filter-preset-option-meta" data-module-range-meta="last_10_days"></span>
                     </button>
-                    <button type="button" class="module-filter-preset-option {% if selected_range == 'last_20_days' %}is-active{% endif %}" data-module-range-option data-range-value="last_20_days">
+                    <button type="button" class="module-filter-preset-option {% if _has_period and selected_range == 'last_20_days' %}is-active{% endif %}" data-module-range-option data-range-value="last_20_days">
                         <span class="module-filter-preset-option-title">Últimos 20 dias</span>
                         <span class="module-filter-preset-option-meta" data-module-range-meta="last_20_days"></span>
                     </button>
-                    <button type="button" class="module-filter-preset-option {% if selected_range == 'last_month' %}is-active{% endif %}" data-module-range-option data-range-value="last_month">
+                    <button type="button" class="module-filter-preset-option {% if _has_period and selected_range == 'last_month' %}is-active{% endif %}" data-module-range-option data-range-value="last_month">
                         <span class="module-filter-preset-option-title">Mês passado</span>
                         <span class="module-filter-preset-option-meta" data-module-range-meta="last_month"></span>
                     </button>
                     {% else %}
-                    <button type="button" class="module-filter-preset-option {% if selected_range == 'next_10_days' or not selected_range %}is-active{% endif %}" data-module-range-option data-range-value="next_10_days">
+                    <button type="button" class="module-filter-preset-option {% if _has_period and selected_range == 'next_10_days' %}is-active{% endif %}" data-module-range-option data-range-value="next_10_days">
                         <span class="module-filter-preset-option-title">Próximos 10 dias</span>
                         <span class="module-filter-preset-option-meta" data-module-range-meta="next_10_days"></span>
                     </button>
-                    <button type="button" class="module-filter-preset-option {% if selected_range == 'next_20_days' %}is-active{% endif %}" data-module-range-option data-range-value="next_20_days">
+                    <button type="button" class="module-filter-preset-option {% if _has_period and selected_range == 'next_20_days' %}is-active{% endif %}" data-module-range-option data-range-value="next_20_days">
                         <span class="module-filter-preset-option-title">Próximos 20 dias</span>
                         <span class="module-filter-preset-option-meta" data-module-range-meta="next_20_days"></span>
                     </button>
-                    <button type="button" class="module-filter-preset-option {% if selected_range == 'next_month' %}is-active{% endif %}" data-module-range-option data-range-value="next_month">
+                    <button type="button" class="module-filter-preset-option {% if _has_period and selected_range == 'next_month' %}is-active{% endif %}" data-module-range-option data-range-value="next_month">
                         <span class="module-filter-preset-option-title">Próximo mês</span>
                         <span class="module-filter-preset-option-meta" data-module-range-meta="next_month"></span>
                     </button>
                     {% endif %}
-                    <button type="button" class="module-filter-preset-option {% if selected_range == 'custom' %}is-active{% endif %}" data-module-range-option data-range-value="custom">
+                    <button type="button" class="module-filter-preset-option {% if _has_period and selected_range == 'custom' %}is-active{% endif %}" data-module-range-option data-range-value="custom">
                         <span class="module-filter-preset-option-title">Período personalizado</span>
                         <span class="module-filter-preset-option-meta">Selecione data inicial e final</span>
                     </button>
