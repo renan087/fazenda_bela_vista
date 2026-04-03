@@ -4823,28 +4823,49 @@ async def create_fertilization_action(
     csrf_token = str(form.get("csrf_token") or "")
     validate_csrf(request, csrf_token)
     repo = _repository(db)
-    plot, scope, denied = _resolve_plot_in_scope(request, repo, int(form.get("plot_id") or 0), "/fertilizacao")
+    scope, denied = _launch_scope_or_redirect(request, repo, "/fertilizacao")
     if denied:
         return denied
+    selected_plot_ids: list[int] = []
+    for raw_plot_id in form.getlist("plot_id"):
+        parsed_plot_id = _int_or_none(raw_plot_id)
+        if parsed_plot_id and parsed_plot_id not in selected_plot_ids:
+            selected_plot_ids.append(parsed_plot_id)
+    if not selected_plot_ids:
+        _flash(request, "error", "Selecione ao menos um setor.")
+        return _redirect("/fertilizacao")
+    selected_plots = []
+    for plot_id in selected_plot_ids:
+        plot, _, denied = _resolve_plot_in_scope(request, repo, plot_id, "/fertilizacao")
+        if denied:
+            return denied
+        selected_plots.append(plot)
     items = _parse_fertilization_items(form)
     if not items:
         _flash(request, "error", "Adicione ao menos um insumo na atividade.")
         return _redirect("/fertilizacao")
     try:
-        create_fertilization(
-            repo,
-            {
-                "plot_id": plot.id,
-                "application_date": str(form.get("application_date") or ""),
-                "season_id": scope["active_season_id"],
-                "notes": str(form.get("notes") or "") or None,
-                "items": items,
-            },
-        )
+        for plot in selected_plots:
+            create_fertilization(
+                repo,
+                {
+                    "plot_id": plot.id,
+                    "application_date": str(form.get("application_date") or ""),
+                    "season_id": scope["active_season_id"],
+                    "notes": str(form.get("notes") or "") or None,
+                    "items": items,
+                },
+            )
     except ValueError as exc:
         _flash(request, "error", str(exc))
         return _redirect("/fertilizacao")
-    _flash(request, "success", "Fertilizacao registrada com sucesso.")
+    _flash(
+        request,
+        "success",
+        "Fertilizacao registrada com sucesso."
+        if len(selected_plots) == 1
+        else f"Fertilizacao registrada com sucesso para {len(selected_plots)} setores.",
+    )
     return _redirect("/fertilizacao")
 
 

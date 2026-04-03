@@ -253,14 +253,34 @@
                     </div>
                 </div>
                 <div class="grid gap-4 sm:grid-cols-2">
+                    {% if edit_fertilization %}
                     <label>
                         <span class="mb-2 block text-sm font-medium text-slate-700">Setor</span>
                         <select name="plot_id" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50 px-4" required>
                             {% for plot in plots %}
-                            <option value="{{ plot.id }}" {% if edit_fertilization and edit_fertilization.plot_id == plot.id %}selected{% endif %}>{{ plot.name }}{% if plot.farm %} • {{ plot.farm.name }}{% endif %}</option>
+                            <option value="{{ plot.id }}" {% if edit_fertilization.plot_id == plot.id %}selected{% endif %}>{{ plot.name }}{% if plot.farm %} • {{ plot.farm.name }}{% endif %}</option>
                             {% endfor %}
                         </select>
                     </label>
+                    {% else %}
+                    <div class="sm:col-span-2">
+                        <span class="mb-2 block text-sm font-medium text-slate-700">Setores</span>
+                        <select class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50 px-4" data-fertilization-plot-select>
+                            <option value="">Selecione um setor</option>
+                            {% for plot in plots %}
+                            <option value="{{ plot.id }}" data-plot-name="{{ plot.name }}" data-plot-farm="{{ plot.farm.name if plot.farm else 'Sem fazenda vinculada' }}">{{ plot.name }}{% if plot.farm %} • {{ plot.farm.name }}{% endif %}</option>
+                            {% endfor %}
+                        </select>
+                        <div class="schedule-plot-selected mt-3" data-fertilization-plot-selected>
+                            <p class="schedule-plot-selected-empty text-sm text-slate-500" data-fertilization-plot-empty>Nenhum setor selecionado.</p>
+                        </div>
+                        <div data-fertilization-plot-hidden-inputs></div>
+                        <div class="mt-2 flex flex-wrap items-center justify-between gap-2">
+                            <span class="block text-xs text-slate-500">Selecione um ou mais setores para repetir a mesma aplicação.</span>
+                            <span class="schedule-plot-picker-count text-xs font-medium text-slate-500" data-fertilization-plot-selection-count>Nenhum setor selecionado</span>
+                        </div>
+                    </div>
+                    {% endif %}
                     <label>
                         <span class="mb-2 block text-sm font-medium text-slate-700">Data</span>
                         <input type="date" name="application_date" value="{{ edit_fertilization.application_date.isoformat() if edit_fertilization else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50 px-4" required>
@@ -369,6 +389,12 @@
         const contextToggleLabel = document.querySelector('[data-fertilization-context-toggle-label]');
         const contextTogglePlus = document.querySelector('[data-fertilization-context-toggle-plus]');
         const exportLinks = Array.from(document.querySelectorAll('[data-fertilization-export-link]'));
+        const plotSelect = document.querySelector('[data-fertilization-plot-select]');
+        const plotSelected = document.querySelector('[data-fertilization-plot-selected]');
+        const plotHiddenInputs = document.querySelector('[data-fertilization-plot-hidden-inputs]');
+        const plotEmptyState = document.querySelector('[data-fertilization-plot-empty]');
+        const plotSelectionCount = document.querySelector('[data-fertilization-plot-selection-count]');
+        const initialPlotOptionsHtml = plotSelect?.innerHTML || '';
         const fertilizationRenderedInEditMode = {% if edit_fertilization %}true{% else %}false{% endif %};
         const getFertilizationCleanUrl = () => {
             const url = new URL(window.location.href);
@@ -422,6 +448,59 @@
                 setFertilizationContextExpanded(!expanded);
             });
         }
+
+        const syncFertilizationPlotSelectionState = () => {
+            if (!plotHiddenInputs) return;
+            const selectedCount = plotHiddenInputs.querySelectorAll('input[name="plot_id"]').length;
+            if (plotSelect) {
+                plotSelect.setCustomValidity(selectedCount ? '' : 'Selecione ao menos um setor.');
+            }
+            if (plotEmptyState) {
+                plotEmptyState.classList.toggle('hidden', selectedCount > 0);
+            }
+            if (plotSelectionCount) {
+                plotSelectionCount.textContent = selectedCount
+                    ? `${selectedCount} setor${selectedCount > 1 ? 'es' : ''} selecionado${selectedCount > 1 ? 's' : ''}`
+                    : 'Nenhum setor selecionado';
+            }
+        };
+
+        const restoreFertilizationPlotOption = (plotId, plotName, plotFarm) => {
+            if (!plotSelect || !plotId) return;
+            const option = document.createElement('option');
+            option.value = plotId;
+            option.dataset.plotName = plotName || '';
+            option.dataset.plotFarm = plotFarm || '';
+            option.textContent = plotFarm ? `${plotName} • ${plotFarm}` : plotName;
+            plotSelect.appendChild(option);
+        };
+
+        const bindFertilizationPlotTagRemove = (chip) => {
+            chip.querySelector('[data-fertilization-plot-remove]')?.addEventListener('click', () => {
+                const plotId = chip.dataset.plotId || '';
+                const plotName = chip.dataset.plotName || '';
+                const plotFarm = chip.dataset.plotFarm || '';
+                plotHiddenInputs?.querySelector(`input[name="plot_id"][value="${CSS.escape(plotId)}"]`)?.remove();
+                restoreFertilizationPlotOption(plotId, plotName, plotFarm);
+                chip.remove();
+                syncFertilizationPlotSelectionState();
+            });
+        };
+
+        const resetFertilizationCreateState = () => {
+            if (fertilizationRenderedInEditMode || !form) return;
+            form.reset();
+            if (plotSelect) {
+                plotSelect.innerHTML = initialPlotOptionsHtml;
+                plotSelect.value = '';
+                plotSelect.setCustomValidity('');
+            }
+            if (plotSelected) {
+                plotSelected.querySelectorAll('.schedule-plot-chip').forEach((chip) => chip.remove());
+            }
+            plotHiddenInputs?.replaceChildren();
+            syncFertilizationPlotSelectionState();
+        };
 
         const fertilizationItemsMobileQuery = window.matchMedia('(max-width: 639px)');
         const bindFertilizationGroupToggles = (root = document) => {
@@ -537,6 +616,47 @@
             syncRow(row);
         };
 
+        plotSelect?.addEventListener('change', (event) => {
+            const select = event.currentTarget;
+            if (!(select instanceof HTMLSelectElement)) return;
+            const option = select.selectedOptions[0];
+            const plotId = option?.value || '';
+            if (!plotId || !plotSelected || !plotHiddenInputs) return;
+            const plotName = option.dataset.plotName || option.textContent.split(' • ')[0] || '';
+            const plotFarm = option.dataset.plotFarm || '';
+
+            const hiddenInput = document.createElement('input');
+            hiddenInput.type = 'hidden';
+            hiddenInput.name = 'plot_id';
+            hiddenInput.value = plotId;
+            plotHiddenInputs.appendChild(hiddenInput);
+
+            const chip = document.createElement('div');
+            chip.className = 'schedule-plot-chip';
+            chip.dataset.plotId = plotId;
+            chip.dataset.plotName = plotName;
+            chip.dataset.plotFarm = plotFarm;
+            chip.innerHTML = `
+                <div class="schedule-plot-chip-body">
+                    <span class="schedule-plot-chip-title">${plotName}</span>
+                    <span class="schedule-plot-chip-meta">${plotFarm || 'Sem fazenda vinculada'}</span>
+                </div>
+                <button type="button" class="schedule-plot-chip-remove" data-fertilization-plot-remove aria-label="Remover setor">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true">
+                        <path d="M18 6 6 18"/>
+                        <path d="m6 6 12 12"/>
+                    </svg>
+                </button>
+            `;
+            plotSelected.appendChild(chip);
+            bindFertilizationPlotTagRemove(chip);
+            option.remove();
+            select.value = '';
+            syncFertilizationPlotSelectionState();
+        });
+
+        syncFertilizationPlotSelectionState();
+
         wrapper.querySelectorAll('[data-item-row]').forEach(bindRow);
         addButton?.addEventListener('click', () => {
             wrapper.appendChild(template.content.cloneNode(true));
@@ -625,6 +745,17 @@
         filterStartInput?.addEventListener('change', syncFertilizationExportLinks);
         filterEndInput?.addEventListener('change', syncFertilizationExportLinks);
         applyFertilizationHistorySearch();
+
+        if (launchModal) {
+            openLaunchButton?.addEventListener('click', () => {
+                resetFertilizationCreateState();
+            });
+            closeLaunchButtons.forEach((button) => {
+                button.addEventListener('click', () => {
+                    resetFertilizationCreateState();
+                });
+            });
+        }
 
         const stickyHeader = document.querySelector('.stock-page-header');
         const headerIntro = stickyHeader?.querySelector('[data-stock-header-intro]');
