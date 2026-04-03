@@ -706,6 +706,12 @@ body {
     box-shadow: 0 20px 40px -28px rgba(15, 23, 42, 0.28);
 }
 
+.module-filter-custom-head {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+}
+
 .module-filter-custom-step {
     display: flex;
     flex-direction: column;
@@ -716,6 +722,90 @@ body {
     font-size: 0.95rem;
     font-weight: 700;
     color: rgb(30 41 59);
+}
+
+.module-filter-custom-subtitle {
+    font-size: 0.88rem;
+    color: rgb(100 116 139);
+}
+
+.module-filter-calendar {
+    display: flex;
+    flex-direction: column;
+    gap: 0.8rem;
+}
+
+.module-filter-calendar-header {
+    display: grid;
+    grid-template-columns: 2.2rem 1fr 2.2rem;
+    align-items: center;
+    gap: 0.6rem;
+}
+
+.module-filter-calendar-title {
+    text-align: center;
+    font-size: 1rem;
+    font-weight: 700;
+    color: rgb(30 41 59);
+}
+
+.module-filter-calendar-nav {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.2rem;
+    height: 2.2rem;
+    border: 1px solid rgba(203, 213, 225, 0.95);
+    border-radius: 999px;
+    background: #fff;
+    color: rgb(71 85 105);
+}
+
+.module-filter-calendar-weekdays,
+.module-filter-calendar-grid {
+    display: grid;
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+    gap: 0.2rem;
+}
+
+.module-filter-calendar-weekdays span {
+    text-align: center;
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: rgb(148 163 184);
+    padding: 0.2rem 0;
+}
+
+.module-filter-calendar-day {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 2.35rem;
+    border: 0;
+    border-radius: 0.9rem;
+    background: transparent;
+    color: rgb(30 41 59);
+    font-size: 0.95rem;
+    font-weight: 600;
+}
+
+.module-filter-calendar-day.is-outside {
+    color: rgb(203 213 225);
+}
+
+.module-filter-calendar-day.is-in-range {
+    background: rgba(68, 106, 54, 0.14);
+    border-radius: 0;
+}
+
+.module-filter-calendar-day.is-range-start,
+.module-filter-calendar-day.is-range-end,
+.module-filter-calendar-day.is-selected {
+    background: #446a36;
+    color: #fff;
+    border-radius: 999px;
 }
 
 .module-filter-preset-option {

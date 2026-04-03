@@ -217,26 +217,42 @@
                                 <span class="module-filter-preset-option-meta">Selecione data inicial e final</span>
                             </button>
                         </div>
+                        <input type="hidden" name="start_date" value="{{ schedule_filter_start_date or '' }}" data-schedule-filter-start>
+                        <input type="hidden" name="end_date" value="{{ schedule_filter_end_date or '' }}" data-schedule-filter-end>
                         <div class="module-filter-period module-filter-custom-panel {% if selected_schedule_range != 'custom' %}hidden{% endif %}" data-schedule-custom-range>
-                            <div class="module-filter-custom-step" data-schedule-custom-start-step>
-                                <p class="module-filter-custom-title">Data inicial</p>
-                                <label class="module-filter-date-field">
-                                    <span class="module-filter-date-label">Escolha o início do período</span>
-                                    <input type="date" name="start_date" value="{{ schedule_filter_start_date or '' }}" class="module-filter-date-input" data-schedule-filter-start autocomplete="off">
-                                </label>
+                            <div class="module-filter-custom-head">
+                                <p class="module-filter-custom-title">Período personalizado</p>
+                                <p class="module-filter-custom-subtitle" data-schedule-custom-caption>Selecione a data inicial e depois a data final.</p>
                             </div>
-                            <div class="module-filter-custom-step {% if not schedule_filter_start_date %}hidden{% endif %}" data-schedule-custom-end-step>
-                                <p class="module-filter-custom-title">Data final</p>
-                                <label class="module-filter-date-field">
-                                    <span class="module-filter-date-label">Escolha o fim do período</span>
-                                    <input type="date" name="end_date" value="{{ schedule_filter_end_date or '' }}" class="module-filter-date-input" data-schedule-filter-end autocomplete="off">
-                                </label>
+                            <div class="module-filter-calendar">
+                                <div class="module-filter-calendar-header">
+                                    <button type="button" class="module-filter-calendar-nav" data-schedule-calendar-prev aria-label="Mês anterior">
+                                        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true">
+                                            <path d="m12.5 4.5-5 5 5 5"/>
+                                        </svg>
+                                    </button>
+                                    <div class="module-filter-calendar-title" data-schedule-calendar-title></div>
+                                    <button type="button" class="module-filter-calendar-nav" data-schedule-calendar-next aria-label="Próximo mês">
+                                        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true">
+                                            <path d="m7.5 4.5 5 5-5 5"/>
+                                        </svg>
+                                    </button>
+                                </div>
+                                <div class="module-filter-calendar-weekdays">
+                                    <span>Dom</span>
+                                    <span>Seg</span>
+                                    <span>Ter</span>
+                                    <span>Qua</span>
+                                    <span>Qui</span>
+                                    <span>Sex</span>
+                                    <span>Sáb</span>
+                                </div>
+                                <div class="module-filter-calendar-grid" data-schedule-calendar-grid></div>
                             </div>
                         </div>
                     </div>
                 </div>
                 <div class="module-filter-toolbar-actions">
-                    <button type="submit" class="module-filter-action module-filter-action-primary {% if selected_schedule_range != 'custom' %}hidden{% endif %}" data-schedule-filter-submit>Filtrar</button>
                     <a href="{{ schedule_filter_clear_url }}" class="module-filter-action module-filter-action-secondary {% if not schedule_filter_start_date and not schedule_filter_end_date %}hidden{% endif %}" data-schedule-filter-clear>Limpar</a>
                 </div>
             </form>
@@ -539,7 +555,6 @@
         let filterStartInput = null;
         let filterEndInput = null;
         let rangeInput = scheduleListShell?.querySelector('[data-schedule-range-input]') || null;
-        let filterSubmitButton = scheduleListShell?.querySelector('[data-schedule-filter-submit]') || null;
         let filterClearButton = scheduleListShell?.querySelector('[data-schedule-filter-clear]') || null;
         const normalizeSearchText = (value) => (
             (value || '')
@@ -587,7 +602,6 @@
         const getActiveScheduleTab = () => scheduleListShell?.querySelector('[data-schedule-tab-button].is-active')?.dataset.scheduleTabButton || '{{ selected_schedule_tab }}';
         const syncScheduleFilterActions = () => {
             const hasDateFilter = Boolean((filterStartInput?.value || '').trim() || (filterEndInput?.value || '').trim());
-            filterSubmitButton?.classList.toggle('hidden', (rangeInput?.value || '') !== 'custom');
             filterClearButton?.classList.toggle('hidden', !hasDateFilter);
         };
         const syncScheduleExportLinks = () => {
@@ -881,25 +895,99 @@
             const menu = picker.querySelector('[data-schedule-range-menu]');
             const label = picker.querySelector('[data-schedule-range-label]');
             const customRange = root.querySelector('[data-schedule-custom-range]');
-            const customStartStep = root.querySelector('[data-schedule-custom-start-step]');
-            const customEndStep = root.querySelector('[data-schedule-custom-end-step]');
+            const customCaption = root.querySelector('[data-schedule-custom-caption]');
+            const calendarTitle = root.querySelector('[data-schedule-calendar-title]');
+            const calendarGrid = root.querySelector('[data-schedule-calendar-grid]');
+            const calendarPrev = root.querySelector('[data-schedule-calendar-prev]');
+            const calendarNext = root.querySelector('[data-schedule-calendar-next]');
             rangeInput = root.querySelector('[data-schedule-range-input]');
             filterStartInput = root.querySelector('[data-schedule-filter-start]');
             filterEndInput = root.querySelector('[data-schedule-filter-end]');
-            filterSubmitButton = root.querySelector('[data-schedule-filter-submit]');
             filterClearButton = root.querySelector('[data-schedule-filter-clear]');
             if (!(trigger instanceof HTMLButtonElement) || !(menu instanceof HTMLElement) || !(label instanceof HTMLElement) || !(rangeInput instanceof HTMLInputElement)) return;
 
+            const monthNames = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
+            let calendarMonth = (() => {
+                const seed = (filterStartInput?.value || filterEndInput?.value || formatIsoDate(new Date()));
+                const parsed = new Date(`${seed}T00:00:00`);
+                return new Date(parsed.getFullYear(), parsed.getMonth(), 1);
+            })();
+            let pendingRangeStart = (filterStartInput?.value || '').trim();
+
+            const compareIsoDate = (left, right) => {
+                if (!left || !right) return 0;
+                return left.localeCompare(right);
+            };
+
             const syncCustomStep = () => {
-                const hasStart = Boolean((filterStartInput?.value || '').trim());
-                customStartStep?.classList.remove('hidden');
-                customEndStep?.classList.toggle('hidden', !hasStart);
+                const hasStart = Boolean((pendingRangeStart || '').trim());
+                if (customCaption) {
+                    customCaption.textContent = hasStart
+                        ? 'Agora selecione a data final para completar o período.'
+                        : 'Selecione a data inicial e depois a data final.';
+                }
             };
 
             const syncCustomVisibility = () => {
                 customRange?.classList.toggle('hidden', rangeInput.value !== 'custom');
                 syncCustomStep();
                 syncScheduleFilterActions();
+            };
+
+            const renderCalendar = () => {
+                if (!(calendarGrid instanceof HTMLElement) || !(calendarTitle instanceof HTMLElement)) return;
+                calendarTitle.textContent = `${monthNames[calendarMonth.getMonth()]} ${calendarMonth.getFullYear()}`;
+                const monthStart = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth(), 1);
+                const monthEnd = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() + 1, 0);
+                const startOffset = monthStart.getDay();
+                const totalCells = Math.ceil((startOffset + monthEnd.getDate()) / 7) * 7;
+                const selectedStart = pendingRangeStart || (filterStartInput?.value || '').trim();
+                const selectedEnd = (filterEndInput?.value || '').trim();
+                calendarGrid.innerHTML = '';
+                for (let index = 0; index < totalCells; index += 1) {
+                    const dayNumber = index - startOffset + 1;
+                    const cellDate = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth(), dayNumber);
+                    const iso = formatIsoDate(cellDate);
+                    const button = document.createElement('button');
+                    button.type = 'button';
+                    button.className = 'module-filter-calendar-day';
+                    button.textContent = String(cellDate.getDate());
+                    button.dataset.dateValue = iso;
+                    if (cellDate.getMonth() !== calendarMonth.getMonth()) button.classList.add('is-outside');
+                    const isStart = selectedStart && compareIsoDate(iso, selectedStart) === 0;
+                    const isEnd = selectedEnd && compareIsoDate(iso, selectedEnd) === 0;
+                    const inRange = selectedStart && selectedEnd && compareIsoDate(iso, selectedStart) >= 0 && compareIsoDate(iso, selectedEnd) <= 0;
+                    if (inRange) button.classList.add('is-in-range');
+                    if (isStart) button.classList.add('is-range-start');
+                    if (isEnd) button.classList.add('is-range-end');
+                    if (isStart || isEnd) button.classList.add('is-selected');
+                    button.addEventListener('click', () => {
+                        const currentStart = pendingRangeStart || (filterStartInput?.value || '').trim();
+                        const currentEnd = (filterEndInput?.value || '').trim();
+                        if (!currentStart || currentEnd) {
+                            pendingRangeStart = iso;
+                            if (filterStartInput instanceof HTMLInputElement) filterStartInput.value = iso;
+                            if (filterEndInput instanceof HTMLInputElement) filterEndInput.value = '';
+                            syncCustomStep();
+                            syncScheduleFilterActions();
+                            syncScheduleExportLinks();
+                            renderCalendar();
+                            return;
+                        }
+                        const nextStart = compareIsoDate(iso, currentStart) < 0 ? iso : currentStart;
+                        const nextEnd = compareIsoDate(iso, currentStart) < 0 ? currentStart : iso;
+                        pendingRangeStart = '';
+                        if (filterStartInput instanceof HTMLInputElement) filterStartInput.value = nextStart;
+                        if (filterEndInput instanceof HTMLInputElement) filterEndInput.value = nextEnd;
+                        syncCustomStep();
+                        syncScheduleFilterActions();
+                        syncScheduleExportLinks();
+                        renderCalendar();
+                        closeMenu();
+                        picker.closest('form')?.requestSubmit();
+                    });
+                    calendarGrid.appendChild(button);
+                }
             };
 
             menu.querySelectorAll('[data-schedule-range-meta]').forEach((meta) => {
@@ -919,7 +1007,20 @@
                 fadePanel?.classList.add('is-filter-menu-open');
             };
 
+            const openCustomRange = () => {
+                customRange?.classList.remove('hidden');
+                trigger.setAttribute('aria-expanded', 'true');
+                fadePanel?.classList.add('is-filter-menu-open');
+                renderCalendar();
+            };
+
             trigger.addEventListener('click', () => {
+                const customOpen = customRange instanceof HTMLElement && !customRange.classList.contains('hidden');
+                if (customOpen) {
+                    customRange.classList.add('hidden');
+                    closeMenu();
+                    return;
+                }
                 if (menu.classList.contains('hidden')) openMenu();
                 else closeMenu();
             });
@@ -936,8 +1037,11 @@
                         if (filterStartInput instanceof HTMLInputElement) filterStartInput.value = range.start;
                         if (filterEndInput instanceof HTMLInputElement) filterEndInput.value = range.end;
                     } else {
+                        pendingRangeStart = '';
                         if (filterStartInput instanceof HTMLInputElement) filterStartInput.value = '';
                         if (filterEndInput instanceof HTMLInputElement) filterEndInput.value = '';
+                        calendarMonth = new Date();
+                        calendarMonth = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth(), 1);
                     }
                     syncCustomVisibility();
                     syncScheduleExportLinks();
@@ -945,16 +1049,14 @@
                     if (value !== 'custom') {
                         picker.closest('form')?.requestSubmit();
                     } else {
-                        window.setTimeout(() => {
-                            filterStartInput?.focus();
-                            filterStartInput?.showPicker?.();
-                        }, 0);
+                        openCustomRange();
                     }
                 });
             });
 
             document.addEventListener('click', (event) => {
                 if (!(event.target instanceof Node) || picker.contains(event.target)) return;
+                customRange?.classList.add('hidden');
                 closeMenu();
             });
 
@@ -965,29 +1067,18 @@
                 if (filterEndInput instanceof HTMLInputElement) filterEndInput.value = range.end;
             });
 
-            filterStartInput?.addEventListener('change', () => {
-                syncCustomStep();
-                syncScheduleFilterActions();
-                syncScheduleExportLinks();
-                if ((rangeInput?.value || '') !== 'custom') return;
-                if (!(filterEndInput instanceof HTMLInputElement)) return;
-                window.setTimeout(() => {
-                    filterEndInput.focus();
-                    filterEndInput.showPicker?.();
-                }, 0);
+            calendarPrev?.addEventListener('click', () => {
+                calendarMonth = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() - 1, 1);
+                renderCalendar();
             });
 
-            filterEndInput?.addEventListener('change', () => {
-                syncCustomStep();
-                syncScheduleFilterActions();
-                syncScheduleExportLinks();
-                if ((rangeInput?.value || '') !== 'custom') return;
-                if ((filterStartInput?.value || '').trim() && (filterEndInput.value || '').trim()) {
-                    picker.closest('form')?.requestSubmit();
-                }
+            calendarNext?.addEventListener('click', () => {
+                calendarMonth = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() + 1, 1);
+                renderCalendar();
             });
 
             syncCustomVisibility();
+            renderCalendar();
         };
 
         const bindScheduleListShell = () => {
@@ -996,7 +1087,6 @@
             filterStartInput = scheduleListShell.querySelector('[data-schedule-filter-start]');
             filterEndInput = scheduleListShell.querySelector('[data-schedule-filter-end]');
             rangeInput = scheduleListShell.querySelector('[data-schedule-range-input]');
-            filterSubmitButton = scheduleListShell.querySelector('[data-schedule-filter-submit]');
             filterClearButton = scheduleListShell.querySelector('[data-schedule-filter-clear]');
             searchInput?.addEventListener('input', applyScheduleHistorySearch);
             scheduleListShell.addEventListener('click', async (event) => {
