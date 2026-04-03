@@ -317,15 +317,29 @@
                         </select>
                     </label>
                     {% else %}
-                    <label class="md:col-span-2">
+                    <div class="md:col-span-2">
                         <span class="mb-2 block text-sm font-medium">Setores</span>
-                        <select name="plot_id" class="min-h-[10rem] w-full rounded-2xl border-slate-200 bg-slate-50 px-4 py-3" multiple required data-schedule-plot-select>
+                        <div class="schedule-plot-picker" data-schedule-plot-picker>
                             {% for plot in plots %}
-                            <option value="{{ plot.id }}">{{ plot.name }}{% if plot.farm %} • {{ plot.farm.name }}{% endif %}</option>
+                            <label class="schedule-plot-option">
+                                <input type="checkbox" name="plot_id" value="{{ plot.id }}" class="sr-only" data-schedule-plot-checkbox {% if loop.first %}required{% endif %}>
+                                <span class="schedule-plot-option-body">
+                                    <span class="schedule-plot-option-title">{{ plot.name }}</span>
+                                    <span class="schedule-plot-option-meta">{{ plot.farm.name if plot.farm else 'Sem fazenda vinculada' }}</span>
+                                </span>
+                                <span class="schedule-plot-option-check" aria-hidden="true">
+                                    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2.2">
+                                        <path d="m5 10 3 3 7-7"/>
+                                    </svg>
+                                </span>
+                            </label>
                             {% endfor %}
-                        </select>
-                        <span class="mt-2 block text-xs text-slate-500">Selecione um ou mais setores para repetir o mesmo agendamento.</span>
-                    </label>
+                        </div>
+                        <div class="mt-2 flex flex-wrap items-center justify-between gap-2">
+                            <span class="block text-xs text-slate-500">Selecione um ou mais setores para repetir o mesmo agendamento.</span>
+                            <span class="schedule-plot-picker-count text-xs font-medium text-slate-500" data-schedule-plot-selection-count>Nenhum setor selecionado</span>
+                        </div>
+                    </div>
                     {% endif %}
                     <label>
                         <span class="mb-2 block text-sm font-medium">Data prevista</span>
@@ -451,6 +465,8 @@
         const contextTogglePlus = document.querySelector('[data-schedule-context-toggle-plus]');
         const exportLinks = Array.from(document.querySelectorAll('[data-schedule-export-link]'));
         const recommendationSelect = document.querySelector('[data-schedule-recommendation-select]');
+        const plotCheckboxes = Array.from(document.querySelectorAll('[data-schedule-plot-checkbox]'));
+        const plotSelectionCount = document.querySelector('[data-schedule-plot-selection-count]');
         const recommendationMap = new Map({{ schedule_recommendations|tojson }}.map((recommendation) => [String(recommendation.id), recommendation]));
         let scheduleListShell = document.querySelector('[data-schedule-list-shell]');
         let searchInput = scheduleListShell?.querySelector('[data-schedule-history-search]') || null;
@@ -597,6 +613,25 @@
         } else if (typeof scheduleItemsMobileQuery.addListener === 'function') {
             scheduleItemsMobileQuery.addListener(() => syncScheduleItemsForViewport(true));
         }
+
+        const syncPlotSelectionState = () => {
+            if (!plotCheckboxes.length) return;
+            const selectedCount = plotCheckboxes.filter((field) => field.checked).length;
+            const primaryCheckbox = plotCheckboxes[0];
+            if (primaryCheckbox) {
+                primaryCheckbox.setCustomValidity(selectedCount ? '' : 'Selecione ao menos um setor.');
+            }
+            if (plotSelectionCount) {
+                plotSelectionCount.textContent = selectedCount
+                    ? `${selectedCount} setor${selectedCount > 1 ? 'es' : ''} selecionado${selectedCount > 1 ? 's' : ''}`
+                    : 'Nenhum setor selecionado';
+            }
+        };
+
+        plotCheckboxes.forEach((field) => {
+            field.addEventListener('change', syncPlotSelectionState);
+        });
+        syncPlotSelectionState();
 
         const applyScheduleHistorySearch = () => {
             const historyStage = getActiveStage();
