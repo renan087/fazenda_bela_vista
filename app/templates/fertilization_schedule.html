@@ -912,6 +912,7 @@
             })();
             let pendingRangeStart = (filterStartInput?.value || '').trim();
             let customRangeOpen = false;
+            let customRangeSubmitTimer = null;
 
             const compareIsoDate = (left, right) => {
                 if (!left || !right) return 0;
@@ -977,10 +978,15 @@
                         syncScheduleFilterActions();
                         syncScheduleExportLinks();
                         renderCalendar();
-                        customRangeOpen = false;
-                        customRange?.classList.add('hidden');
-                        closeMenu();
-                        picker.closest('form')?.requestSubmit();
+                        if (customRangeSubmitTimer) {
+                            window.clearTimeout(customRangeSubmitTimer);
+                        }
+                        customRangeSubmitTimer = window.setTimeout(() => {
+                            customRangeOpen = false;
+                            customRange?.classList.add('hidden');
+                            closeMenu();
+                            picker.closest('form')?.requestSubmit();
+                        }, 1000);
                     });
                     calendarGrid.appendChild(button);
                 }
@@ -1015,6 +1021,10 @@
                 event.stopPropagation();
                 const customOpen = customRangeOpen && customRange instanceof HTMLElement && !customRange.classList.contains('hidden');
                 if (customOpen) {
+                    if (customRangeSubmitTimer) {
+                        window.clearTimeout(customRangeSubmitTimer);
+                        customRangeSubmitTimer = null;
+                    }
                     customRangeOpen = false;
                     customRange.classList.add('hidden');
                     closeMenu();
@@ -1067,6 +1077,10 @@
 
             document.addEventListener('click', (event) => {
                 if (clickHappenedInsidePicker(event)) return;
+                if (customRangeSubmitTimer) {
+                    window.clearTimeout(customRangeSubmitTimer);
+                    customRangeSubmitTimer = null;
+                }
                 customRangeOpen = false;
                 customRange?.classList.add('hidden');
                 closeMenu();
