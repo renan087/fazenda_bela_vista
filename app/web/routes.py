@@ -4195,7 +4195,7 @@ def create_crop_season_action(
     end_date: str = Form(...),
     culture: str = Form(...),
     variety_id: str | None = Form(None),
-    cultivated_area: float = Form(...),
+    cultivated_area: str | None = Form(None),
     area_unit: str = Form("ha"),
     notes: str | None = Form(None),
     status_value: str = Form(..., alias="status"),
@@ -4215,6 +4215,15 @@ def create_crop_season_action(
     except ValueError:
         _flash(request, "error", "Informe datas validas para a safra.")
         return _redirect("/safras")
+    try:
+        normalized_area = str(cultivated_area or "").strip().replace(",", ".")
+        parsed_cultivated_area = float(normalized_area)
+    except ValueError:
+        _flash(request, "error", "Informe uma area cultivada valida.")
+        return _redirect("/safras")
+    if parsed_cultivated_area <= 0:
+        _flash(request, "error", "A area cultivada deve ser maior que zero.")
+        return _redirect("/safras")
     if parsed_end_date < parsed_start_date:
         _flash(request, "error", "A data final da safra nao pode ser anterior a data inicial.")
         return _redirect("/safras")
@@ -4228,7 +4237,7 @@ def create_crop_season_action(
                 "end_date": end_date,
                 "culture": culture,
                 "variety_id": _int_or_none(variety_id),
-                "cultivated_area": cultivated_area,
+                "cultivated_area": parsed_cultivated_area,
                 "area_unit": area_unit,
                 "notes": notes,
                 "status": status_value,
@@ -4252,7 +4261,7 @@ def update_crop_season_action(
     end_date: str = Form(...),
     culture: str = Form(...),
     variety_id: str | None = Form(None),
-    cultivated_area: float = Form(...),
+    cultivated_area: str | None = Form(None),
     area_unit: str = Form("ha"),
     notes: str | None = Form(None),
     status_value: str = Form(..., alias="status"),
@@ -4279,6 +4288,15 @@ def update_crop_season_action(
     except ValueError:
         _flash(request, "error", "Informe datas validas para a safra.")
         return _redirect("/safras")
+    try:
+        normalized_area = str(cultivated_area or "").strip().replace(",", ".")
+        parsed_cultivated_area = float(normalized_area)
+    except ValueError:
+        _flash(request, "error", "Informe uma area cultivada valida.")
+        return _redirect("/safras")
+    if parsed_cultivated_area <= 0:
+        _flash(request, "error", "A area cultivada deve ser maior que zero.")
+        return _redirect("/safras")
     if parsed_end_date < parsed_start_date:
         _flash(request, "error", "A data final da safra nao pode ser anterior a data inicial.")
         return _redirect("/safras")
@@ -4293,7 +4311,7 @@ def update_crop_season_action(
                 "end_date": end_date,
                 "culture": culture,
                 "variety_id": _int_or_none(variety_id),
-                "cultivated_area": cultivated_area,
+                "cultivated_area": parsed_cultivated_area,
                 "area_unit": area_unit,
                 "notes": notes,
                 "status": status_value,
