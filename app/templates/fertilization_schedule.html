@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% block content %}
+{% from "partials/module_history_filter_toolbar.html" import module_history_filter_toolbar %}
 {% macro render_schedule_card(schedule, schedule_validations, today) %}
     {% set validation = schedule_validations.get(schedule.id, {'ok': True, 'shortages': []}) %}
     {% set is_late = schedule.status != 'completed' and schedule.scheduled_date < today %}
@@ -172,91 +173,16 @@
         </div>
 
         <div class="module-filter-toolbar mt-6">
-            <form method="get" action="/fertilizacao/agendamentos" class="module-filter-toolbar-grid">
-                <input type="hidden" name="schedule_tab" value="{{ selected_schedule_tab }}">
-                {% if edit_schedule %}
-                <input type="hidden" name="edit_id" value="{{ edit_schedule.id }}">
-                {% endif %}
-                <input type="hidden" name="schedule_range" value="{{ selected_schedule_range or 'next_10_days' }}" data-schedule-range-input>
-                <div class="module-filter-toolbar-main">
-                    <div class="stock-search-field module-filter-search">
-                        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
-                            <circle cx="8.5" cy="8.5" r="5.75"></circle>
-                            <path d="M13 13l4 4"></path>
-                        </svg>
-                        <input type="search" placeholder="Buscar setor, data, status, insumo ou observação" data-schedule-history-search>
-                    </div>
-                    <div class="module-filter-preset" data-schedule-range-picker>
-                        <button type="button" class="module-filter-preset-button" data-schedule-range-trigger aria-expanded="false">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true">
-                                <path d="M8 2v4"/>
-                                <path d="M16 2v4"/>
-                                <rect x="3" y="5" width="18" height="16" rx="2"/>
-                                <path d="M3 10h18"/>
-                            </svg>
-                            <span data-schedule-range-label>
-                                {% if selected_schedule_range == 'next_20_days' %}Próximos 20 dias{% elif selected_schedule_range == 'next_month' %}Próximo mês{% elif selected_schedule_range == 'custom' %}Período personalizado{% else %}Próximos 10 dias{% endif %}
-                            </span>
-                            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
-                                <path d="m5 7 5 5 5-5"/>
-                            </svg>
-                        </button>
-                        <div class="module-filter-preset-menu hidden" data-schedule-range-menu>
-                            <button type="button" class="module-filter-preset-option {% if selected_schedule_range == 'next_10_days' %}is-active{% endif %}" data-schedule-range-option data-range-value="next_10_days">
-                                <span class="module-filter-preset-option-title">Próximos 10 dias</span>
-                                <span class="module-filter-preset-option-meta" data-schedule-range-meta="next_10_days"></span>
-                            </button>
-                            <button type="button" class="module-filter-preset-option {% if selected_schedule_range == 'next_20_days' %}is-active{% endif %}" data-schedule-range-option data-range-value="next_20_days">
-                                <span class="module-filter-preset-option-title">Próximos 20 dias</span>
-                                <span class="module-filter-preset-option-meta" data-schedule-range-meta="next_20_days"></span>
-                            </button>
-                            <button type="button" class="module-filter-preset-option {% if selected_schedule_range == 'next_month' %}is-active{% endif %}" data-schedule-range-option data-range-value="next_month">
-                                <span class="module-filter-preset-option-title">Próximo mês</span>
-                                <span class="module-filter-preset-option-meta" data-schedule-range-meta="next_month"></span>
-                            </button>
-                            <button type="button" class="module-filter-preset-option {% if selected_schedule_range == 'custom' %}is-active{% endif %}" data-schedule-range-option data-range-value="custom">
-                                <span class="module-filter-preset-option-title">Período personalizado</span>
-                                <span class="module-filter-preset-option-meta">Selecione data inicial e final</span>
-                            </button>
-                        </div>
-                        <input type="hidden" name="start_date" value="{{ schedule_filter_start_date or '' }}" data-schedule-filter-start>
-                        <input type="hidden" name="end_date" value="{{ schedule_filter_end_date or '' }}" data-schedule-filter-end>
-                        <div class="module-filter-period module-filter-custom-panel hidden" data-schedule-custom-range>
-                            <div class="module-filter-custom-head">
-                                <p class="module-filter-custom-title">Período personalizado</p>
-                            </div>
-                            <div class="module-filter-calendar">
-                                <div class="module-filter-calendar-header">
-                                    <button type="button" class="module-filter-calendar-nav" data-schedule-calendar-prev aria-label="Mês anterior">
-                                        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true">
-                                            <path d="m12.5 4.5-5 5 5 5"/>
-                                        </svg>
-                                    </button>
-                                    <div class="module-filter-calendar-title" data-schedule-calendar-title></div>
-                                    <button type="button" class="module-filter-calendar-nav" data-schedule-calendar-next aria-label="Próximo mês">
-                                        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true">
-                                            <path d="m7.5 4.5 5 5-5 5"/>
-                                        </svg>
-                                    </button>
-                                </div>
-                                <div class="module-filter-calendar-weekdays">
-                                    <span>Dom</span>
-                                    <span>Seg</span>
-                                    <span>Ter</span>
-                                    <span>Qua</span>
-                                    <span>Qui</span>
-                                    <span>Sex</span>
-                                    <span>Sáb</span>
-                                </div>
-                                <div class="module-filter-calendar-grid" data-schedule-calendar-grid></div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                <div class="module-filter-toolbar-actions">
-                    <a href="{{ schedule_filter_clear_url }}" class="module-filter-action module-filter-action-secondary {% if not schedule_filter_start_date and not schedule_filter_end_date %}hidden{% endif %}" data-schedule-filter-clear>Limpar</a>
-                </div>
-            </form>
+            {{ module_history_filter_toolbar(
+                '/fertilizacao/agendamentos',
+                'Buscar setor, data, status, insumo ou observação',
+                selected_schedule_range or 'next_10_days',
+                schedule_filter_start_date or '',
+                schedule_filter_end_date or '',
+                schedule_filter_clear_url,
+                [{'name': 'schedule_tab', 'value': selected_schedule_tab}] + ([{'name': 'edit_id', 'value': edit_schedule.id|string}] if edit_schedule else []),
+                request.query_params.get('search', '')
+            ) }}
         </div>
 
         <div class="stock-history-stage mt-4 {% if selected_schedule_tab != 'active' %}hidden{% endif %}" data-schedule-tab="active" data-schedule-history-stage>
@@ -532,6 +458,7 @@
     </div>
 </template>
 
+<script src="{{ url_for('static', path='js/module_period_filters.js') }}?v=1"></script>
 <script>
     (() => {
         const launchModal = document.getElementById('schedule-launch-modal');
@@ -552,11 +479,11 @@
         const recommendationMap = new Map({{ schedule_recommendations|tojson }}.map((recommendation) => [String(recommendation.id), recommendation]));
         const initialPlotOptionsHtml = plotSelect?.innerHTML || '';
         let scheduleListShell = document.querySelector('[data-schedule-list-shell]');
-        let searchInput = scheduleListShell?.querySelector('[data-schedule-history-search]') || null;
+        let searchInput = scheduleListShell?.querySelector('[data-module-history-search]') || null;
         let filterStartInput = null;
         let filterEndInput = null;
-        let rangeInput = scheduleListShell?.querySelector('[data-schedule-range-input]') || null;
-        let filterClearButton = scheduleListShell?.querySelector('[data-schedule-filter-clear]') || null;
+        let rangeInput = null;
+        let filterClearButton = null;
         const normalizeSearchText = (value) => (
             (value || '')
                 .toString()
@@ -564,48 +491,18 @@
                 .replace(/[\u0300-\u036f]/g, '')
                 .toLowerCase()
         );
-        const formatIsoDate = (value) => value.toISOString().slice(0, 10);
-        const formatShortDatePtBr = (value) => {
-            const months = ['jan.', 'fev.', 'mar.', 'abr.', 'mai.', 'jun.', 'jul.', 'ago.', 'set.', 'out.', 'nov.', 'dez.'];
-            return `${value.getDate()} ${months[value.getMonth()]}`;
-        };
-        const getPresetRange = (preset) => {
-            const today = new Date();
-            today.setHours(0, 0, 0, 0);
-            if (preset === 'next_20_days') {
-                const end = new Date(today);
-                end.setDate(end.getDate() + 20);
-                return { start: formatIsoDate(today), end: formatIsoDate(end) };
-            }
-            if (preset === 'next_month') {
-                const start = new Date(today.getFullYear(), today.getMonth() + 1, 1);
-                const end = new Date(today.getFullYear(), today.getMonth() + 2, 0);
-                return { start: formatIsoDate(start), end: formatIsoDate(end) };
-            }
-            const end = new Date(today);
-            end.setDate(end.getDate() + 10);
-            return { start: formatIsoDate(today), end: formatIsoDate(end) };
-        };
-        const getPresetRangeLabel = (preset) => {
-            if (preset === 'custom') return 'Selecione data inicial e final';
-            const range = getPresetRange(preset);
-            const start = new Date(`${range.start}T00:00:00`);
-            const end = new Date(`${range.end}T00:00:00`);
-            return `${formatShortDatePtBr(start)} a ${formatShortDatePtBr(end)}`;
-        };
-        const getPresetRangeTitle = (preset) => {
-            if (preset === 'next_20_days') return 'Próximos 20 dias';
-            if (preset === 'next_month') return 'Próximo mês';
-            if (preset === 'custom') return 'Período personalizado';
-            return 'Próximos 10 dias';
-        };
         const getActiveStage = () => scheduleListShell?.querySelector('[data-schedule-tab]:not(.hidden)[data-schedule-history-stage]') || null;
         const getActiveScheduleTab = () => scheduleListShell?.querySelector('[data-schedule-tab-button].is-active')?.dataset.scheduleTabButton || '{{ selected_schedule_tab }}';
-        const syncScheduleFilterActions = () => {
-            const hasDateFilter = Boolean((filterStartInput?.value || '').trim() || (filterEndInput?.value || '').trim());
-            filterClearButton?.classList.toggle('hidden', !hasDateFilter);
+        const rebindScheduleFilterRefs = () => {
+            if (!scheduleListShell) return;
+            searchInput = scheduleListShell.querySelector('[data-module-history-search]');
+            filterStartInput = scheduleListShell.querySelector('[data-module-filter-start]');
+            filterEndInput = scheduleListShell.querySelector('[data-module-filter-end]');
+            rangeInput = scheduleListShell.querySelector('[data-module-range-input]');
+            filterClearButton = scheduleListShell.querySelector('[data-module-filter-clear]');
         };
         const syncScheduleExportLinks = () => {
+            rebindScheduleFilterRefs();
             exportLinks.forEach((link) => {
                 const baseHref = link.dataset.baseHref;
                 if (!baseHref) return;
@@ -888,236 +785,9 @@
             emptyState?.classList.toggle('hidden', visibleCount !== 0 || !query);
         };
 
-        const bindScheduleRangePicker = (root = document) => {
-            const picker = root.querySelector('[data-schedule-range-picker]');
-            if (!(picker instanceof HTMLElement)) return;
-            const fadePanel = picker.closest('[data-stock-fade-panel]');
-            const trigger = picker.querySelector('[data-schedule-range-trigger]');
-            const menu = picker.querySelector('[data-schedule-range-menu]');
-            const label = picker.querySelector('[data-schedule-range-label]');
-            const customRange = root.querySelector('[data-schedule-custom-range]');
-            const calendarTitle = root.querySelector('[data-schedule-calendar-title]');
-            const calendarGrid = root.querySelector('[data-schedule-calendar-grid]');
-            const calendarPrev = root.querySelector('[data-schedule-calendar-prev]');
-            const calendarNext = root.querySelector('[data-schedule-calendar-next]');
-            rangeInput = root.querySelector('[data-schedule-range-input]');
-            filterStartInput = root.querySelector('[data-schedule-filter-start]');
-            filterEndInput = root.querySelector('[data-schedule-filter-end]');
-            filterClearButton = root.querySelector('[data-schedule-filter-clear]');
-            if (!(trigger instanceof HTMLButtonElement) || !(menu instanceof HTMLElement) || !(label instanceof HTMLElement) || !(rangeInput instanceof HTMLInputElement)) return;
-
-            const monthNames = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
-            let calendarMonth = (() => {
-                const seed = (filterStartInput?.value || filterEndInput?.value || formatIsoDate(new Date()));
-                const parsed = new Date(`${seed}T00:00:00`);
-                return new Date(parsed.getFullYear(), parsed.getMonth(), 1);
-            })();
-            let pendingRangeStart = (filterStartInput?.value || '').trim();
-            let customRangeOpen = false;
-            let customRangeSubmitTimer = null;
-
-            const compareIsoDate = (left, right) => {
-                if (!left || !right) return 0;
-                return left.localeCompare(right);
-            };
-
-            const syncCustomStep = () => {};
-
-            const syncCustomVisibility = () => {
-                const shouldShowCustomRange = rangeInput.value === 'custom' && customRangeOpen;
-                customRange?.classList.toggle('hidden', !shouldShowCustomRange);
-                syncCustomStep();
-                syncScheduleFilterActions();
-            };
-
-            const renderCalendar = () => {
-                if (!(calendarGrid instanceof HTMLElement) || !(calendarTitle instanceof HTMLElement)) return;
-                calendarTitle.textContent = `${monthNames[calendarMonth.getMonth()]} ${calendarMonth.getFullYear()}`;
-                const monthStart = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth(), 1);
-                const monthEnd = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() + 1, 0);
-                const startOffset = monthStart.getDay();
-                const totalCells = Math.ceil((startOffset + monthEnd.getDate()) / 7) * 7;
-                const selectedStart = pendingRangeStart || (filterStartInput?.value || '').trim();
-                const selectedEnd = (filterEndInput?.value || '').trim();
-                calendarGrid.innerHTML = '';
-                for (let index = 0; index < totalCells; index += 1) {
-                    const dayNumber = index - startOffset + 1;
-                    const cellDate = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth(), dayNumber);
-                    const iso = formatIsoDate(cellDate);
-                    const button = document.createElement('button');
-                    button.type = 'button';
-                    button.className = 'module-filter-calendar-day';
-                    button.textContent = String(cellDate.getDate());
-                    button.dataset.dateValue = iso;
-                    if (cellDate.getMonth() !== calendarMonth.getMonth()) button.classList.add('is-outside');
-                    const isStart = selectedStart && compareIsoDate(iso, selectedStart) === 0;
-                    const isEnd = selectedEnd && compareIsoDate(iso, selectedEnd) === 0;
-                    const inRange = selectedStart && selectedEnd && compareIsoDate(iso, selectedStart) >= 0 && compareIsoDate(iso, selectedEnd) <= 0;
-                    if (inRange) button.classList.add('is-in-range');
-                    if (isStart) button.classList.add('is-range-start');
-                    if (isEnd) button.classList.add('is-range-end');
-                    if (isStart || isEnd) button.classList.add('is-selected');
-                    button.addEventListener('click', (event) => {
-                        event.stopPropagation();
-                        const currentStart = pendingRangeStart || (filterStartInput?.value || '').trim();
-                        const currentEnd = (filterEndInput?.value || '').trim();
-                        if (!currentStart || currentEnd) {
-                            pendingRangeStart = iso;
-                            if (filterStartInput instanceof HTMLInputElement) filterStartInput.value = iso;
-                            if (filterEndInput instanceof HTMLInputElement) filterEndInput.value = '';
-                            syncCustomStep();
-                            syncScheduleFilterActions();
-                            syncScheduleExportLinks();
-                            renderCalendar();
-                            return;
-                        }
-                        const nextStart = compareIsoDate(iso, currentStart) < 0 ? iso : currentStart;
-                        const nextEnd = compareIsoDate(iso, currentStart) < 0 ? currentStart : iso;
-                        pendingRangeStart = '';
-                        if (filterStartInput instanceof HTMLInputElement) filterStartInput.value = nextStart;
-                        if (filterEndInput instanceof HTMLInputElement) filterEndInput.value = nextEnd;
-                        syncCustomStep();
-                        syncScheduleFilterActions();
-                        syncScheduleExportLinks();
-                        renderCalendar();
-                        if (customRangeSubmitTimer) {
-                            window.clearTimeout(customRangeSubmitTimer);
-                        }
-                        customRangeSubmitTimer = window.setTimeout(() => {
-                            customRangeOpen = false;
-                            customRange?.classList.add('hidden');
-                            closeMenu();
-                            picker.closest('form')?.requestSubmit();
-                        }, 1000);
-                    });
-                    calendarGrid.appendChild(button);
-                }
-            };
-
-            menu.querySelectorAll('[data-schedule-range-meta]').forEach((meta) => {
-                const preset = meta.getAttribute('data-schedule-range-meta') || '';
-                meta.textContent = getPresetRangeLabel(preset);
-            });
-
-            const closeMenu = () => {
-                menu.classList.add('hidden');
-                trigger.setAttribute('aria-expanded', 'false');
-                fadePanel?.classList.remove('is-filter-menu-open');
-            };
-
-            const openMenu = () => {
-                menu.classList.remove('hidden');
-                trigger.setAttribute('aria-expanded', 'true');
-                fadePanel?.classList.add('is-filter-menu-open');
-            };
-
-            const openCustomRange = () => {
-                customRangeOpen = true;
-                customRange?.classList.remove('hidden');
-                trigger.setAttribute('aria-expanded', 'true');
-                fadePanel?.classList.add('is-filter-menu-open');
-                renderCalendar();
-            };
-
-            trigger.addEventListener('click', (event) => {
-                event.stopPropagation();
-                const customOpen = customRangeOpen && customRange instanceof HTMLElement && !customRange.classList.contains('hidden');
-                if (customOpen) {
-                    if (customRangeSubmitTimer) {
-                        window.clearTimeout(customRangeSubmitTimer);
-                        customRangeSubmitTimer = null;
-                    }
-                    customRangeOpen = false;
-                    customRange.classList.add('hidden');
-                    closeMenu();
-                    return;
-                }
-                if (rangeInput.value === 'custom') {
-                    openCustomRange();
-                    return;
-                }
-                if (menu.classList.contains('hidden')) openMenu();
-                else closeMenu();
-            });
-
-            menu.querySelectorAll('[data-schedule-range-option]').forEach((option) => {
-                option.addEventListener('click', (event) => {
-                    event.stopPropagation();
-                    const value = option.getAttribute('data-range-value') || 'next_10_days';
-                    rangeInput.value = value;
-                    label.textContent = getPresetRangeTitle(value);
-                    menu.querySelectorAll('.module-filter-preset-option').forEach((item) => item.classList.remove('is-active'));
-                    option.classList.add('is-active');
-                    if (value !== 'custom') {
-                        const range = getPresetRange(value);
-                        if (filterStartInput instanceof HTMLInputElement) filterStartInput.value = range.start;
-                        if (filterEndInput instanceof HTMLInputElement) filterEndInput.value = range.end;
-                    } else {
-                        pendingRangeStart = '';
-                        if (filterStartInput instanceof HTMLInputElement) filterStartInput.value = '';
-                        if (filterEndInput instanceof HTMLInputElement) filterEndInput.value = '';
-                        calendarMonth = new Date();
-                        calendarMonth = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth(), 1);
-                    }
-                    syncCustomVisibility();
-                    syncScheduleExportLinks();
-                    closeMenu();
-                    if (value !== 'custom') {
-                        picker.closest('form')?.requestSubmit();
-                    } else {
-                        openCustomRange();
-                    }
-                });
-            });
-
-            const clickHappenedInsidePicker = (event) => {
-                if (!(event.target instanceof Node)) return false;
-                if (picker.contains(event.target)) return true;
-                const eventPath = typeof event.composedPath === 'function' ? event.composedPath() : [];
-                return Array.isArray(eventPath) && eventPath.includes(picker);
-            };
-
-            document.addEventListener('click', (event) => {
-                if (clickHappenedInsidePicker(event)) return;
-                if (customRangeSubmitTimer) {
-                    window.clearTimeout(customRangeSubmitTimer);
-                    customRangeSubmitTimer = null;
-                }
-                customRangeOpen = false;
-                customRange?.classList.add('hidden');
-                closeMenu();
-            });
-
-            picker.closest('form')?.addEventListener('submit', () => {
-                if (rangeInput.value === 'custom') return;
-                const range = getPresetRange(rangeInput.value || 'next_10_days');
-                if (filterStartInput instanceof HTMLInputElement) filterStartInput.value = range.start;
-                if (filterEndInput instanceof HTMLInputElement) filterEndInput.value = range.end;
-            });
-
-            calendarPrev?.addEventListener('click', (event) => {
-                event.stopPropagation();
-                calendarMonth = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() - 1, 1);
-                renderCalendar();
-            });
-
-            calendarNext?.addEventListener('click', (event) => {
-                event.stopPropagation();
-                calendarMonth = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() + 1, 1);
-                renderCalendar();
-            });
-
-            syncCustomVisibility();
-            renderCalendar();
-        };
-
         const bindScheduleListShell = () => {
             if (!scheduleListShell) return;
-            searchInput = scheduleListShell.querySelector('[data-schedule-history-search]');
-            filterStartInput = scheduleListShell.querySelector('[data-schedule-filter-start]');
-            filterEndInput = scheduleListShell.querySelector('[data-schedule-filter-end]');
-            rangeInput = scheduleListShell.querySelector('[data-schedule-range-input]');
-            filterClearButton = scheduleListShell.querySelector('[data-schedule-filter-clear]');
+            rebindScheduleFilterRefs();
             searchInput?.addEventListener('input', applyScheduleHistorySearch);
             scheduleListShell.addEventListener('click', async (event) => {
                 const link = event.target instanceof Element
@@ -1132,7 +802,11 @@
             bindScheduleGroupToggles(scheduleListShell);
             bindScheduleItemsToggles(scheduleListShell);
             bindSegmentedControls(scheduleListShell);
-            bindScheduleRangePicker(scheduleListShell);
+            scheduleListShell.querySelectorAll('form[data-module-period-filter-root]').forEach((form) => {
+                window.ModulePeriodFilters?.bind(form, {
+                    onSync: () => syncScheduleExportLinks(),
+                });
+            });
             applyScheduleHistorySearch();
             syncScheduleExportLinks();
         };
@@ -1263,7 +937,7 @@
                 if (!nextShell) throw new Error('missing_schedule_shell');
                 scheduleListShell.replaceWith(nextShell);
                 scheduleListShell = nextShell;
-                searchInput = scheduleListShell.querySelector('[data-schedule-history-search]');
+                searchInput = scheduleListShell.querySelector('[data-module-history-search]');
                 if (searchInput) searchInput.value = currentQuery;
                 bindScheduleListShell();
                 window.history.replaceState({}, '', url);

@@ -4778,9 +4778,11 @@ def fertilization_page(
         request,
         start_date=None,
         end_date=None,
+        schedule_range=None,
         fertilizations_page=None,
     )
-    fertilizations = _filter_fertilization_records(repo, plot_ids, start_date, end_date)
+    search_q = (request.query_params.get("search") or "").strip() or None
+    fertilizations = _filter_fertilization_records(repo, plot_ids, start_date, end_date, search=search_q)
     fertilizations_pagination = _paginate_collection(request, fertilizations, "fertilizations_page")
     schedules = [
         item
@@ -4823,6 +4825,7 @@ def fertilization_page(
             fertilization_filter_start_date=filter_start_str or None,
             fertilization_filter_end_date=filter_end_str or None,
             fertilization_filter_clear_url=fertilization_filter_clear_url,
+            selected_schedule_range=selected_schedule_range,
             schedules=schedules,
             recommendation_groups=recommendation_groups,
             edit_fertilization=edit_fertilization,

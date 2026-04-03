@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% block content %}
+{% from "partials/module_history_filter_toolbar.html" import module_history_filter_toolbar %}
 {% macro render_fertilization_card(item) %}
 <article class="rounded-[1.5rem] border border-slate-100 bg-slate-50 p-5 lg:p-4" data-fertilization-history-row data-fertilization-search-text="{{ (item.plot.name if item.plot else '') ~ ' ' ~ (item.application_date|string) ~ ' ' ~ (item.product or '') ~ ' ' ~ (item.notes or '') }} {% for detail in item.items %} {{ detail.name }} {% endfor %}">
     <div class="flex flex-wrap items-start justify-between gap-4 lg:gap-3">
@@ -137,36 +138,17 @@
                 <h3 class="mt-2 text-2xl font-semibold">Aplicações registradas</h3>
             </div>
         </div>
-        <div class="stock-filter-bar mt-6">
-            <form method="get" action="/fertilizacao" class="flex flex-col gap-3 xl:flex-row xl:items-end">
-                {% if edit_fertilization %}
-                <input type="hidden" name="edit_id" value="{{ edit_fertilization.id }}">
-                {% endif %}
-                <div class="grid grid-cols-2 gap-3 xl:contents">
-                    <label>
-                        <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Período inicial</span>
-                        <input type="date" name="start_date" value="{{ fertilization_filter_start_date or '' }}" class="w-full rounded-xl border-slate-200 bg-white" data-fertilization-filter-start autocomplete="off">
-                    </label>
-                    <label>
-                        <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Período final</span>
-                        <input type="date" name="end_date" value="{{ fertilization_filter_end_date or '' }}" class="w-full rounded-xl border-slate-200 bg-white" data-fertilization-filter-end autocomplete="off">
-                    </label>
-                </div>
-                <div class="flex flex-wrap gap-3">
-                    <button type="submit" class="rounded-xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white hover:bg-slate-700">Filtrar</button>
-                    <a href="{{ fertilization_filter_clear_url }}" class="rounded-xl bg-white px-4 py-3 text-sm font-semibold text-slate-700 ring-1 ring-slate-200 hover:bg-slate-100">Limpar</a>
-                </div>
-            </form>
-        </div>
-        <div class="stock-history-toolbar mt-5">
-            <div class="hidden min-w-0 sm:block sm:flex-1"></div>
-            <div class="stock-search-field min-w-0 w-full sm:max-w-md">
-                <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
-                    <circle cx="8.5" cy="8.5" r="5.75"></circle>
-                    <path d="M13 13l4 4"></path>
-                </svg>
-                <input type="search" placeholder="Buscar setor, data, produto ou observação" data-fertilization-history-search>
-            </div>
+        <div class="module-filter-toolbar mt-6">
+            {{ module_history_filter_toolbar(
+                '/fertilizacao',
+                'Buscar setor, data, produto ou observação',
+                selected_schedule_range or 'next_10_days',
+                fertilization_filter_start_date or '',
+                fertilization_filter_end_date or '',
+                fertilization_filter_clear_url,
+                ([{'name': 'edit_id', 'value': edit_fertilization.id|string}] if edit_fertilization else []),
+                request.query_params.get('search', '')
+            ) }}
         </div>
         <div class="mt-4 space-y-4" data-fertilization-history-list>
             {% for group in fertilizations|groupby('application_date') %}
@@ -381,6 +363,7 @@
     </div>
 </template>
 
+<script src="{{ url_for('static', path='js/module_period_filters.js') }}?v=1"></script>
 <script>
     (() => {
         const launchModal = document.getElementById('fertilization-launch-modal');
@@ -679,11 +662,9 @@
         });
 
         const historyShell = document.querySelector('[data-fertilization-history-shell]');
-        const historySearch = historyShell?.querySelector('[data-fertilization-history-search]');
         const historyList = historyShell?.querySelector('[data-fertilization-history-list]');
         const emptySearch = historyShell?.querySelector('[data-fertilization-search-empty]');
-        const filterStartInput = document.querySelector('[data-fertilization-filter-start]');
-        const filterEndInput = document.querySelector('[data-fertilization-filter-end]');
+        let historySearch = historyShell?.querySelector('[data-module-history-search]');
 
         const normalizeSearchText = (value) => (
             (value || '')
@@ -694,6 +675,10 @@
         );
 
         const syncFertilizationExportLinks = () => {
+            historySearch = historyShell?.querySelector('[data-module-history-search]');
+            const filterStartInput = historyShell?.querySelector('[data-module-filter-start]');
+            const filterEndInput = historyShell?.querySelector('[data-module-filter-end]');
+            const rangeInput = historyShell?.querySelector('[data-module-range-input]');
             exportLinks.forEach((link) => {
                 const baseHref = link.dataset.baseHref;
                 if (!baseHref) return;
@@ -704,6 +689,8 @@
                 if (startDate) params.set('start_date', startDate);
                 const endDate = (filterEndInput?.value || '').trim();
                 if (endDate) params.set('end_date', endDate);
+                const rangeValue = (rangeInput?.value || '').trim();
+                if (rangeValue) params.set('schedule_range', rangeValue);
                 link.href = params.toString() ? `${baseHref}?${params.toString()}` : baseHref;
             });
         };
@@ -743,9 +730,13 @@
 
         bindFertilizationGroupToggles(historyList || document);
         bindFertilizationItemsToggles(historyList || document);
+        historyShell?.querySelectorAll('form[data-module-period-filter-root]').forEach((form) => {
+            window.ModulePeriodFilters?.bind(form, {
+                onSync: () => syncFertilizationExportLinks(),
+            });
+        });
+        historySearch = historyShell?.querySelector('[data-module-history-search]');
         historySearch?.addEventListener('input', applyFertilizationHistorySearch);
-        filterStartInput?.addEventListener('change', syncFertilizationExportLinks);
-        filterEndInput?.addEventListener('change', syncFertilizationExportLinks);
         applyFertilizationHistorySearch();
 
         if (launchModal) {
