@@ -603,11 +603,11 @@ body {
     position: relative;
     z-index: 12;
     overflow: visible;
-    border: 1px solid rgba(226, 232, 240, 0.95);
-    border-radius: 1.35rem;
-    background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(248, 250, 252, 0.96));
-    box-shadow: 0 14px 30px -26px rgba(15, 23, 42, 0.18);
-    padding: 1rem;
+    padding: 0;
+    border: none;
+    background: transparent;
+    box-shadow: none;
+    border-radius: 0;
 }
 
 .module-filter-toolbar-grid {
@@ -1491,10 +1491,6 @@ body {
     .stock-tab-link {
         flex: 0 0 auto;
         white-space: nowrap;
-    }
-
-    .module-filter-toolbar {
-        padding: 0.9rem;
     }
 
     .module-filter-toolbar-grid,
