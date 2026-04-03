@@ -1690,6 +1690,7 @@ def users_page(
             title="Administracao de Usuarios",
             users=repo.list_users(),
             edit_user=repo.get_user(edit_id) if edit_id else None,
+            format_app_datetime=format_app_datetime,
             _repo=repo,
         ),
     )

@@ -82,7 +82,7 @@
             <div class="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
                 <span class="font-medium text-slate-700">Ultimo acesso:</span>
                 {% if edit_user.last_login_at %}
-                {{ edit_user.last_login_at.strftime('%d/%m/%Y %H:%M') }}
+                {{ format_app_datetime(edit_user.last_login_at) }}
                 {% else %}
                 Nunca acessou
                 {% endif %}
@@ -125,7 +125,7 @@
                             Ultimo acesso:
                             <span class="tracking-normal text-slate-500">
                                 {% if item.last_login_at %}
-                                {{ item.last_login_at.strftime('%d/%m/%Y %H:%M') }}
+                                {{ format_app_datetime(item.last_login_at) }}
                                 {% else %}
                                 Nunca acessou
                                 {% endif %}
