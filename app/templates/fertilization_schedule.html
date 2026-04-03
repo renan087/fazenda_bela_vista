@@ -200,10 +200,22 @@
                             </svg>
                         </button>
                         <div class="module-filter-preset-menu hidden" data-schedule-range-menu>
-                            <button type="button" class="module-filter-preset-option {% if selected_schedule_range == 'next_10_days' %}is-active{% endif %}" data-schedule-range-option data-range-value="next_10_days">Próximos 10 dias</button>
-                            <button type="button" class="module-filter-preset-option {% if selected_schedule_range == 'next_20_days' %}is-active{% endif %}" data-schedule-range-option data-range-value="next_20_days">Próximos 20 dias</button>
-                            <button type="button" class="module-filter-preset-option {% if selected_schedule_range == 'next_month' %}is-active{% endif %}" data-schedule-range-option data-range-value="next_month">Próximo mês</button>
-                            <button type="button" class="module-filter-preset-option {% if selected_schedule_range == 'custom' %}is-active{% endif %}" data-schedule-range-option data-range-value="custom">Período personalizado</button>
+                            <button type="button" class="module-filter-preset-option {% if selected_schedule_range == 'next_10_days' %}is-active{% endif %}" data-schedule-range-option data-range-value="next_10_days">
+                                <span class="module-filter-preset-option-title">Próximos 10 dias</span>
+                                <span class="module-filter-preset-option-meta" data-schedule-range-meta="next_10_days"></span>
+                            </button>
+                            <button type="button" class="module-filter-preset-option {% if selected_schedule_range == 'next_20_days' %}is-active{% endif %}" data-schedule-range-option data-range-value="next_20_days">
+                                <span class="module-filter-preset-option-title">Próximos 20 dias</span>
+                                <span class="module-filter-preset-option-meta" data-schedule-range-meta="next_20_days"></span>
+                            </button>
+                            <button type="button" class="module-filter-preset-option {% if selected_schedule_range == 'next_month' %}is-active{% endif %}" data-schedule-range-option data-range-value="next_month">
+                                <span class="module-filter-preset-option-title">Próximo mês</span>
+                                <span class="module-filter-preset-option-meta" data-schedule-range-meta="next_month"></span>
+                            </button>
+                            <button type="button" class="module-filter-preset-option {% if selected_schedule_range == 'custom' %}is-active{% endif %}" data-schedule-range-option data-range-value="custom">
+                                <span class="module-filter-preset-option-title">Período personalizado</span>
+                                <span class="module-filter-preset-option-meta">Selecione data inicial e final</span>
+                            </button>
                         </div>
                     </div>
                     <div class="module-filter-period {% if selected_schedule_range != 'custom' %}hidden{% endif %}" data-schedule-custom-range>
@@ -529,6 +541,10 @@
                 .toLowerCase()
         );
         const formatIsoDate = (value) => value.toISOString().slice(0, 10);
+        const formatShortDatePtBr = (value) => {
+            const months = ['jan.', 'fev.', 'mar.', 'abr.', 'mai.', 'jun.', 'jul.', 'ago.', 'set.', 'out.', 'nov.', 'dez.'];
+            return `${value.getDate()} ${months[value.getMonth()]}`;
+        };
         const getPresetRange = (preset) => {
             const today = new Date();
             today.setHours(0, 0, 0, 0);
@@ -545,6 +561,13 @@
             const end = new Date(today);
             end.setDate(end.getDate() + 10);
             return { start: formatIsoDate(today), end: formatIsoDate(end) };
+        };
+        const getPresetRangeLabel = (preset) => {
+            if (preset === 'custom') return 'Selecione data inicial e final';
+            const range = getPresetRange(preset);
+            const start = new Date(`${range.start}T00:00:00`);
+            const end = new Date(`${range.end}T00:00:00`);
+            return `${formatShortDatePtBr(start)} a ${formatShortDatePtBr(end)}`;
         };
         const getActiveStage = () => scheduleListShell?.querySelector('[data-schedule-tab]:not(.hidden)[data-schedule-history-stage]') || null;
         const getActiveScheduleTab = () => scheduleListShell?.querySelector('[data-schedule-tab-button].is-active')?.dataset.scheduleTabButton || '{{ selected_schedule_tab }}';
@@ -848,6 +871,11 @@
                 customRange?.classList.toggle('hidden', rangeInput.value !== 'custom');
             };
 
+            menu.querySelectorAll('[data-schedule-range-meta]').forEach((meta) => {
+                const preset = meta.getAttribute('data-schedule-range-meta') || '';
+                meta.textContent = getPresetRangeLabel(preset);
+            });
+
             const closeMenu = () => {
                 menu.classList.add('hidden');
                 trigger.setAttribute('aria-expanded', 'false');
@@ -880,6 +908,9 @@
                     syncCustomVisibility();
                     syncScheduleExportLinks();
                     closeMenu();
+                    if (value !== 'custom') {
+                        picker.closest('form')?.requestSubmit();
+                    }
                 });
             });
 

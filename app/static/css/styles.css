@@ -704,6 +704,18 @@ body {
     color: rgb(30 41 59);
 }
 
+.module-filter-preset-option-title {
+    display: block;
+}
+
+.module-filter-preset-option-meta {
+    display: block;
+    margin-top: 0.22rem;
+    font-size: 0.86rem;
+    font-weight: 500;
+    color: rgb(100 116 139);
+}
+
 .module-filter-preset-option:last-child {
     border-bottom: 0;
 }
