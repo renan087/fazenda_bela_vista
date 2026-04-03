@@ -1,4 +1,4 @@
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 from io import BytesIO
 from pathlib import Path
@@ -532,6 +532,16 @@ def _schedule_filter_date_bounds(
     if user_end:
         eff_end = user_end if eff_end is None else min(eff_end, user_end)
     return eff_start, eff_end, raw_start, raw_end
+
+
+def _planning_filter_range_preset(raw_preset: str | None, raw_start: str, raw_end: str) -> str:
+    valid_presets = {"next_10_days", "next_20_days", "next_month", "custom"}
+    preset = (raw_preset or "").strip()
+    if preset in valid_presets:
+        return preset
+    if raw_start or raw_end:
+        return "custom"
+    return "next_10_days"
 
 
 def _normalize_search_value(value: object) -> str:
@@ -4739,6 +4749,11 @@ def fertilization_page(
     start_date, end_date, filter_start_str, filter_end_str = _schedule_filter_date_bounds(
         request, scope["active_season"], flash_invalid=True
     )
+    selected_schedule_range = _planning_filter_range_preset(
+        request.query_params.get("schedule_range"),
+        filter_start_str,
+        filter_end_str,
+    )
     plots = repo.list_plots(farm_ids=farm_ids, variety_ids=variety_ids)
     plot_ids = {plot.id for plot in plots}
     edit_fertilization = repo.get_fertilization(edit_id) if edit_id else None
@@ -5165,6 +5180,7 @@ def fertilization_schedules_page(
         request,
         start_date=None,
         end_date=None,
+        schedule_range=None,
         active_page=None,
         completed_page=None,
         schedule_tab=selected_schedule_tab,
@@ -5251,6 +5267,7 @@ def fertilization_schedules_page(
             },
             schedule_filter_start_date=filter_start_str or None,
             schedule_filter_end_date=filter_end_str or None,
+            selected_schedule_range=selected_schedule_range,
             schedule_filter_clear_url=schedule_filter_clear_url,
             schedule_validations=schedule_validations,
             edit_schedule=edit_schedule,

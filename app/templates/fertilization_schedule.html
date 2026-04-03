@@ -175,6 +175,7 @@
                 {% if edit_schedule %}
                 <input type="hidden" name="edit_id" value="{{ edit_schedule.id }}">
                 {% endif %}
+                <input type="hidden" name="schedule_range" value="{{ selected_schedule_range or 'next_10_days' }}" data-schedule-range-input>
                 <div class="module-filter-toolbar-main">
                     <div class="stock-search-field module-filter-search">
                         <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
@@ -183,7 +184,29 @@
                         </svg>
                         <input type="search" placeholder="Buscar setor, data, status, insumo ou observação" data-schedule-history-search>
                     </div>
-                    <div class="module-filter-period">
+                    <div class="module-filter-preset" data-schedule-range-picker>
+                        <button type="button" class="module-filter-preset-button" data-schedule-range-trigger aria-expanded="false">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true">
+                                <path d="M8 2v4"/>
+                                <path d="M16 2v4"/>
+                                <rect x="3" y="5" width="18" height="16" rx="2"/>
+                                <path d="M3 10h18"/>
+                            </svg>
+                            <span data-schedule-range-label>
+                                {% if selected_schedule_range == 'next_20_days' %}Próximos 20 dias{% elif selected_schedule_range == 'next_month' %}Próximo mês{% elif selected_schedule_range == 'custom' %}Período personalizado{% else %}Próximos 10 dias{% endif %}
+                            </span>
+                            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+                                <path d="m5 7 5 5 5-5"/>
+                            </svg>
+                        </button>
+                        <div class="module-filter-preset-menu hidden" data-schedule-range-menu>
+                            <button type="button" class="module-filter-preset-option {% if selected_schedule_range == 'next_10_days' %}is-active{% endif %}" data-schedule-range-option data-range-value="next_10_days">Próximos 10 dias</button>
+                            <button type="button" class="module-filter-preset-option {% if selected_schedule_range == 'next_20_days' %}is-active{% endif %}" data-schedule-range-option data-range-value="next_20_days">Próximos 20 dias</button>
+                            <button type="button" class="module-filter-preset-option {% if selected_schedule_range == 'next_month' %}is-active{% endif %}" data-schedule-range-option data-range-value="next_month">Próximo mês</button>
+                            <button type="button" class="module-filter-preset-option {% if selected_schedule_range == 'custom' %}is-active{% endif %}" data-schedule-range-option data-range-value="custom">Período personalizado</button>
+                        </div>
+                    </div>
+                    <div class="module-filter-period {% if selected_schedule_range != 'custom' %}hidden{% endif %}" data-schedule-custom-range>
                         <label class="module-filter-date-field">
                             <span class="module-filter-date-label">Período inicial</span>
                             <input type="date" name="start_date" value="{{ schedule_filter_start_date or '' }}" class="module-filter-date-input" data-schedule-filter-start autocomplete="off">
@@ -497,6 +520,7 @@
         let searchInput = scheduleListShell?.querySelector('[data-schedule-history-search]') || null;
         let filterStartInput = null;
         let filterEndInput = null;
+        let rangeInput = scheduleListShell?.querySelector('[data-schedule-range-input]') || null;
         const normalizeSearchText = (value) => (
             (value || '')
                 .toString()
@@ -504,6 +528,24 @@
                 .replace(/[\u0300-\u036f]/g, '')
                 .toLowerCase()
         );
+        const formatIsoDate = (value) => value.toISOString().slice(0, 10);
+        const getPresetRange = (preset) => {
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            if (preset === 'next_20_days') {
+                const end = new Date(today);
+                end.setDate(end.getDate() + 20);
+                return { start: formatIsoDate(today), end: formatIsoDate(end) };
+            }
+            if (preset === 'next_month') {
+                const start = new Date(today.getFullYear(), today.getMonth() + 1, 1);
+                const end = new Date(today.getFullYear(), today.getMonth() + 2, 0);
+                return { start: formatIsoDate(start), end: formatIsoDate(end) };
+            }
+            const end = new Date(today);
+            end.setDate(end.getDate() + 10);
+            return { start: formatIsoDate(today), end: formatIsoDate(end) };
+        };
         const getActiveStage = () => scheduleListShell?.querySelector('[data-schedule-tab]:not(.hidden)[data-schedule-history-stage]') || null;
         const getActiveScheduleTab = () => scheduleListShell?.querySelector('[data-schedule-tab-button].is-active')?.dataset.scheduleTabButton || '{{ selected_schedule_tab }}';
         const syncScheduleExportLinks = () => {
@@ -518,6 +560,8 @@
                 if (startDate) params.set('start_date', startDate);
                 const endDate = (filterEndInput?.value || '').trim();
                 if (endDate) params.set('end_date', endDate);
+                const rangeValue = (rangeInput?.value || '').trim();
+                if (rangeValue) params.set('schedule_range', rangeValue);
                 link.href = `${baseHref}?${params.toString()}`;
             });
         };
@@ -787,11 +831,76 @@
             emptyState?.classList.toggle('hidden', visibleCount !== 0 || !query);
         };
 
+        const bindScheduleRangePicker = (root = document) => {
+            const picker = root.querySelector('[data-schedule-range-picker]');
+            if (!(picker instanceof HTMLElement)) return;
+            const trigger = picker.querySelector('[data-schedule-range-trigger]');
+            const menu = picker.querySelector('[data-schedule-range-menu]');
+            const label = picker.querySelector('[data-schedule-range-label]');
+            const customRange = root.querySelector('[data-schedule-custom-range]');
+            rangeInput = root.querySelector('[data-schedule-range-input]');
+            filterStartInput = root.querySelector('[data-schedule-filter-start]');
+            filterEndInput = root.querySelector('[data-schedule-filter-end]');
+            if (!(trigger instanceof HTMLButtonElement) || !(menu instanceof HTMLElement) || !(label instanceof HTMLElement) || !(rangeInput instanceof HTMLInputElement)) return;
+
+            const syncCustomVisibility = () => {
+                customRange?.classList.toggle('hidden', rangeInput.value !== 'custom');
+            };
+
+            const closeMenu = () => {
+                menu.classList.add('hidden');
+                trigger.setAttribute('aria-expanded', 'false');
+            };
+
+            const openMenu = () => {
+                menu.classList.remove('hidden');
+                trigger.setAttribute('aria-expanded', 'true');
+            };
+
+            trigger.addEventListener('click', () => {
+                if (menu.classList.contains('hidden')) openMenu();
+                else closeMenu();
+            });
+
+            menu.querySelectorAll('[data-schedule-range-option]').forEach((option) => {
+                option.addEventListener('click', () => {
+                    const value = option.getAttribute('data-range-value') || 'next_10_days';
+                    rangeInput.value = value;
+                    label.textContent = option.textContent?.trim() || 'Próximos 10 dias';
+                    menu.querySelectorAll('.module-filter-preset-option').forEach((item) => item.classList.remove('is-active'));
+                    option.classList.add('is-active');
+                    if (value !== 'custom') {
+                        const range = getPresetRange(value);
+                        if (filterStartInput instanceof HTMLInputElement) filterStartInput.value = range.start;
+                        if (filterEndInput instanceof HTMLInputElement) filterEndInput.value = range.end;
+                    }
+                    syncCustomVisibility();
+                    syncScheduleExportLinks();
+                    closeMenu();
+                });
+            });
+
+            document.addEventListener('click', (event) => {
+                if (!(event.target instanceof Node) || picker.contains(event.target)) return;
+                closeMenu();
+            });
+
+            picker.closest('form')?.addEventListener('submit', () => {
+                if (rangeInput.value === 'custom') return;
+                const range = getPresetRange(rangeInput.value || 'next_10_days');
+                if (filterStartInput instanceof HTMLInputElement) filterStartInput.value = range.start;
+                if (filterEndInput instanceof HTMLInputElement) filterEndInput.value = range.end;
+            });
+
+            syncCustomVisibility();
+        };
+
         const bindScheduleListShell = () => {
             if (!scheduleListShell) return;
             searchInput = scheduleListShell.querySelector('[data-schedule-history-search]');
             filterStartInput = scheduleListShell.querySelector('[data-schedule-filter-start]');
             filterEndInput = scheduleListShell.querySelector('[data-schedule-filter-end]');
+            rangeInput = scheduleListShell.querySelector('[data-schedule-range-input]');
             searchInput?.addEventListener('input', applyScheduleHistorySearch);
             filterStartInput?.addEventListener('change', syncScheduleExportLinks);
             filterEndInput?.addEventListener('change', syncScheduleExportLinks);
@@ -808,6 +917,7 @@
             bindScheduleGroupToggles(scheduleListShell);
             bindScheduleItemsToggles(scheduleListShell);
             bindSegmentedControls(scheduleListShell);
+            bindScheduleRangePicker(scheduleListShell);
             applyScheduleHistorySearch();
             syncScheduleExportLinks();
         };
