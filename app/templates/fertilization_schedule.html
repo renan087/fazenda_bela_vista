@@ -834,6 +834,7 @@
         const bindScheduleRangePicker = (root = document) => {
             const picker = root.querySelector('[data-schedule-range-picker]');
             if (!(picker instanceof HTMLElement)) return;
+            const fadePanel = picker.closest('[data-stock-fade-panel]');
             const trigger = picker.querySelector('[data-schedule-range-trigger]');
             const menu = picker.querySelector('[data-schedule-range-menu]');
             const label = picker.querySelector('[data-schedule-range-label]');
@@ -850,11 +851,13 @@
             const closeMenu = () => {
                 menu.classList.add('hidden');
                 trigger.setAttribute('aria-expanded', 'false');
+                fadePanel?.classList.remove('is-filter-menu-open');
             };
 
             const openMenu = () => {
                 menu.classList.remove('hidden');
                 trigger.setAttribute('aria-expanded', 'true');
+                fadePanel?.classList.add('is-filter-menu-open');
             };
 
             trigger.addEventListener('click', () => {
