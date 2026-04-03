@@ -5163,6 +5163,11 @@ def fertilization_schedules_page(
     start_date, end_date, filter_start_str, filter_end_str = _schedule_filter_date_bounds(
         request, scope["active_season"], flash_invalid=True
     )
+    selected_schedule_range = _planning_filter_range_preset(
+        request.query_params.get("schedule_range"),
+        filter_start_str,
+        filter_end_str,
+    )
     plots = repo.list_plots(farm_ids=farm_ids, variety_ids=variety_ids)
     plot_ids = {plot.id for plot in plots}
     edit_schedule = repo.get_fertilization_schedule(edit_id) if edit_id else None
