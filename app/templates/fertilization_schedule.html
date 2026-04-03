@@ -319,22 +319,16 @@
                     {% else %}
                     <div class="md:col-span-2">
                         <span class="mb-2 block text-sm font-medium">Setores</span>
-                        <div class="schedule-plot-picker" data-schedule-plot-picker>
+                        <select class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" data-schedule-plot-select>
+                            <option value="">Selecione um setor</option>
                             {% for plot in plots %}
-                            <label class="schedule-plot-option">
-                                <input type="checkbox" name="plot_id" value="{{ plot.id }}" class="sr-only" data-schedule-plot-checkbox {% if loop.first %}required{% endif %}>
-                                <span class="schedule-plot-option-body">
-                                    <span class="schedule-plot-option-title">{{ plot.name }}</span>
-                                    <span class="schedule-plot-option-meta">{{ plot.farm.name if plot.farm else 'Sem fazenda vinculada' }}</span>
-                                </span>
-                                <span class="schedule-plot-option-check" aria-hidden="true">
-                                    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2.2">
-                                        <path d="m5 10 3 3 7-7"/>
-                                    </svg>
-                                </span>
-                            </label>
+                            <option value="{{ plot.id }}" data-plot-name="{{ plot.name }}" data-plot-farm="{{ plot.farm.name if plot.farm else 'Sem fazenda vinculada' }}">{{ plot.name }}{% if plot.farm %} • {{ plot.farm.name }}{% endif %}</option>
                             {% endfor %}
+                        </select>
+                        <div class="schedule-plot-selected mt-3" data-schedule-plot-selected>
+                            <p class="schedule-plot-selected-empty text-sm text-slate-500" data-schedule-plot-empty>Nenhum setor selecionado.</p>
                         </div>
+                        <div data-schedule-plot-hidden-inputs></div>
                         <div class="mt-2 flex flex-wrap items-center justify-between gap-2">
                             <span class="block text-xs text-slate-500">Selecione um ou mais setores para repetir o mesmo agendamento.</span>
                             <span class="schedule-plot-picker-count text-xs font-medium text-slate-500" data-schedule-plot-selection-count>Nenhum setor selecionado</span>
@@ -465,7 +459,10 @@
         const contextTogglePlus = document.querySelector('[data-schedule-context-toggle-plus]');
         const exportLinks = Array.from(document.querySelectorAll('[data-schedule-export-link]'));
         const recommendationSelect = document.querySelector('[data-schedule-recommendation-select]');
-        const plotCheckboxes = Array.from(document.querySelectorAll('[data-schedule-plot-checkbox]'));
+        const plotSelect = document.querySelector('[data-schedule-plot-select]');
+        const plotSelected = document.querySelector('[data-schedule-plot-selected]');
+        const plotHiddenInputs = document.querySelector('[data-schedule-plot-hidden-inputs]');
+        const plotEmptyState = document.querySelector('[data-schedule-plot-empty]');
         const plotSelectionCount = document.querySelector('[data-schedule-plot-selection-count]');
         const recommendationMap = new Map({{ schedule_recommendations|tojson }}.map((recommendation) => [String(recommendation.id), recommendation]));
         let scheduleListShell = document.querySelector('[data-schedule-list-shell]');
@@ -615,11 +612,13 @@
         }
 
         const syncPlotSelectionState = () => {
-            if (!plotCheckboxes.length) return;
-            const selectedCount = plotCheckboxes.filter((field) => field.checked).length;
-            const primaryCheckbox = plotCheckboxes[0];
-            if (primaryCheckbox) {
-                primaryCheckbox.setCustomValidity(selectedCount ? '' : 'Selecione ao menos um setor.');
+            if (!plotHiddenInputs) return;
+            const selectedCount = plotHiddenInputs.querySelectorAll('input[name="plot_id"]').length;
+            if (plotSelect) {
+                plotSelect.setCustomValidity(selectedCount ? '' : 'Selecione ao menos um setor.');
+            }
+            if (plotEmptyState) {
+                plotEmptyState.classList.toggle('hidden', selectedCount > 0);
             }
             if (plotSelectionCount) {
                 plotSelectionCount.textContent = selectedCount
@@ -628,9 +627,67 @@
             }
         };
 
-        plotCheckboxes.forEach((field) => {
-            field.addEventListener('change', syncPlotSelectionState);
+        const restorePlotOption = (plotId, plotName, plotFarm) => {
+            if (!plotSelect || !plotId) return;
+            const option = document.createElement('option');
+            option.value = plotId;
+            option.dataset.plotName = plotName || '';
+            option.dataset.plotFarm = plotFarm || '';
+            option.textContent = plotFarm ? `${plotName} • ${plotFarm}` : plotName;
+            plotSelect.appendChild(option);
+        };
+
+        const bindPlotTagRemove = (chip) => {
+            chip.querySelector('[data-schedule-plot-remove]')?.addEventListener('click', () => {
+                const plotId = chip.dataset.plotId || '';
+                const plotName = chip.dataset.plotName || '';
+                const plotFarm = chip.dataset.plotFarm || '';
+                plotHiddenInputs?.querySelector(`input[name="plot_id"][value="${CSS.escape(plotId)}"]`)?.remove();
+                restorePlotOption(plotId, plotName, plotFarm);
+                chip.remove();
+                syncPlotSelectionState();
+            });
+        };
+
+        plotSelect?.addEventListener('change', (event) => {
+            const select = event.currentTarget;
+            if (!(select instanceof HTMLSelectElement)) return;
+            const option = select.selectedOptions[0];
+            const plotId = option?.value || '';
+            if (!plotId || !plotSelected || !plotHiddenInputs) return;
+            const plotName = option.dataset.plotName || option.textContent.split(' • ')[0] || '';
+            const plotFarm = option.dataset.plotFarm || '';
+
+            const hiddenInput = document.createElement('input');
+            hiddenInput.type = 'hidden';
+            hiddenInput.name = 'plot_id';
+            hiddenInput.value = plotId;
+            plotHiddenInputs.appendChild(hiddenInput);
+
+            const chip = document.createElement('div');
+            chip.className = 'schedule-plot-chip';
+            chip.dataset.plotId = plotId;
+            chip.dataset.plotName = plotName;
+            chip.dataset.plotFarm = plotFarm;
+            chip.innerHTML = `
+                <div class="schedule-plot-chip-body">
+                    <span class="schedule-plot-chip-title">${plotName}</span>
+                    <span class="schedule-plot-chip-meta">${plotFarm || 'Sem fazenda vinculada'}</span>
+                </div>
+                <button type="button" class="schedule-plot-chip-remove" data-schedule-plot-remove aria-label="Remover setor">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true">
+                        <path d="M18 6 6 18"/>
+                        <path d="m6 6 12 12"/>
+                    </svg>
+                </button>
+            `;
+            plotSelected.appendChild(chip);
+            bindPlotTagRemove(chip);
+            option.remove();
+            select.value = '';
+            syncPlotSelectionState();
         });
+
         syncPlotSelectionState();
 
         const applyScheduleHistorySearch = () => {
