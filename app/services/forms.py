@@ -257,7 +257,7 @@ def update_user(repository: FarmRepository, user: User, form: dict) -> User:
         "is_two_factor_enabled": bool(form.get("is_two_factor_enabled", True)),
     }
     password = (form.get("password") or "").strip()
-    if password:
+    if password and password != "********":
         payload["hashed_password"] = get_password_hash(password)
     return repository.update(user, payload)
 

@@ -1,5 +1,63 @@
 {% extends "base.html" %}
 {% block content %}
+<style>
+    .user-switch {
+        position: relative;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.9rem;
+        cursor: pointer;
+        user-select: none;
+    }
+
+    .user-switch input {
+        position: absolute;
+        opacity: 0;
+        pointer-events: none;
+    }
+
+    .user-switch-track {
+        position: relative;
+        flex: 0 0 auto;
+        width: 3.6rem;
+        height: 2rem;
+        border-radius: 999px;
+        background: rgba(148, 163, 184, 0.28);
+        border: 1px solid rgba(148, 163, 184, 0.28);
+        transition: background-color 180ms ease, border-color 180ms ease;
+    }
+
+    .user-switch-track::after {
+        content: "";
+        position: absolute;
+        top: 50%;
+        left: 0.22rem;
+        width: 1.5rem;
+        height: 1.5rem;
+        border-radius: 999px;
+        background: #fff;
+        box-shadow: 0 3px 10px rgba(15, 23, 42, 0.16);
+        transform: translateY(-50%);
+        transition: transform 180ms ease;
+    }
+
+    .user-switch input:checked + .user-switch-track {
+        background: rgba(91, 179, 74, 0.92);
+        border-color: rgba(91, 179, 74, 0.92);
+    }
+
+    .user-switch input:checked + .user-switch-track::after {
+        transform: translate(1.56rem, -50%);
+    }
+
+    .user-switch-copy {
+        min-width: 0;
+    }
+
+    .user-password-mask {
+        letter-spacing: 0.22em;
+    }
+</style>
 <div class="grid gap-6 xl:grid-cols-[0.85fr_1.15fr]">
     <section class="rounded-[2rem] bg-white p-6 shadow-panel">
         <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Usuarios</p>
@@ -8,18 +66,42 @@
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
             <label><span class="mb-2 block text-sm font-medium">Nome</span><input name="name" value="{{ edit_user.name if edit_user else '' }}" class="w-full rounded-2xl border-slate-200 bg-slate-50" required></label>
             <label><span class="mb-2 block text-sm font-medium">Email</span><input type="email" name="email" value="{{ edit_user.email if edit_user else '' }}" class="w-full rounded-2xl border-slate-200 bg-slate-50" required></label>
-            <label><span class="mb-2 block text-sm font-medium">Senha {% if edit_user %}<span class="text-slate-400">(opcional)</span>{% endif %}</span><input type="password" name="password" class="w-full rounded-2xl border-slate-200 bg-slate-50" {% if not edit_user %}required{% endif %}></label>
-            <label class="flex items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-                <input type="checkbox" name="is_active" value="true" class="rounded border-slate-300 text-brand-600" {% if not edit_user or edit_user.is_active %}checked{% endif %}>
-                <span class="text-sm font-medium text-slate-700">Usuario ativo</span>
+            <label>
+                <span class="mb-2 block text-sm font-medium">Senha</span>
+                <input
+                    type="password"
+                    name="password"
+                    value="{% if edit_user %}********{% endif %}"
+                    class="user-password-mask w-full rounded-2xl border-slate-200 bg-slate-50"
+                    autocomplete="new-password"
+                    {% if not edit_user %}required{% endif %}
+                    {% if edit_user %}data-password-mask="true"{% endif %}
+                >
             </label>
-            <label class="flex items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-                <input type="checkbox" name="is_admin" value="true" class="rounded border-slate-300 text-brand-600" {% if edit_user and edit_user.is_admin %}checked{% endif %}>
-                <span class="text-sm font-medium text-slate-700">Permissao de administrador</span>
+            {% if edit_user %}
+            <div class="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+                <span class="font-medium text-slate-700">Ultimo acesso:</span>
+                {% if edit_user.last_login_at %}
+                {{ edit_user.last_login_at.strftime('%d/%m/%Y %H:%M') }}
+                {% else %}
+                Nunca acessou
+                {% endif %}
+            </div>
+            {% endif %}
+            <label class="user-switch rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                <input type="checkbox" name="is_active" value="true" {% if not edit_user or edit_user.is_active %}checked{% endif %}>
+                <span class="user-switch-track" aria-hidden="true"></span>
+                <span class="user-switch-copy text-sm font-medium text-slate-700">Usuário ativo</span>
             </label>
-            <label class="flex items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-                <input type="checkbox" name="is_two_factor_enabled" value="true" class="rounded border-slate-300 text-brand-600" {% if not edit_user or edit_user.is_two_factor_enabled %}checked{% endif %}>
-                <span class="text-sm font-medium text-slate-700">2FA habilitado</span>
+            <label class="user-switch rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                <input type="checkbox" name="is_admin" value="true" {% if edit_user and edit_user.is_admin %}checked{% endif %}>
+                <span class="user-switch-track" aria-hidden="true"></span>
+                <span class="user-switch-copy text-sm font-medium text-slate-700">Permissão de administrador</span>
+            </label>
+            <label class="user-switch rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                <input type="checkbox" name="is_two_factor_enabled" value="true" {% if not edit_user or edit_user.is_two_factor_enabled %}checked{% endif %}>
+                <span class="user-switch-track" aria-hidden="true"></span>
+                <span class="user-switch-copy text-sm font-medium text-slate-700">2FA habilitado</span>
             </label>
             <div class="flex gap-3">
                 <button class="rounded-2xl bg-brand-500 px-4 py-3 font-semibold text-white hover:bg-brand-700">{% if edit_user %}Salvar alteracoes{% else %}Criar usuario{% endif %}</button>
@@ -39,6 +121,16 @@
                     <div>
                         <p class="text-lg font-semibold">{{ item.name }}</p>
                         <p class="mt-1 text-sm text-slate-500">{{ item.email }}</p>
+                        <p class="mt-2 text-xs font-medium uppercase tracking-[0.24em] text-slate-400">
+                            Ultimo acesso:
+                            <span class="tracking-normal text-slate-500">
+                                {% if item.last_login_at %}
+                                {{ item.last_login_at.strftime('%d/%m/%Y %H:%M') }}
+                                {% else %}
+                                Nunca acessou
+                                {% endif %}
+                            </span>
+                        </p>
                         <div class="mt-3 flex flex-wrap gap-2">
                             <span class="rounded-full px-3 py-1 text-xs font-semibold {% if item.is_active %}bg-emerald-100 text-emerald-700{% else %}bg-slate-200 text-slate-600{% endif %}">{% if item.is_active %}Ativo{% else %}Inativo{% endif %}</span>
                             <span class="rounded-full px-3 py-1 text-xs font-semibold {% if item.is_admin %}bg-amber-100 text-amber-700{% else %}bg-slate-200 text-slate-600{% endif %}">{% if item.is_admin %}Administrador{% else %}Operacional{% endif %}</span>
@@ -64,6 +156,19 @@
     (() => {
         const form = document.querySelector('[data-user-form]');
         if (!form) return;
+        const passwordField = form.querySelector('[data-password-mask="true"]');
+        if (passwordField) {
+            const maskValue = '********';
+            passwordField.addEventListener('focus', () => {
+                if (passwordField.value === maskValue) passwordField.value = '';
+                passwordField.classList.remove('user-password-mask');
+            });
+            passwordField.addEventListener('blur', () => {
+                if (passwordField.value.trim()) return;
+                passwordField.value = maskValue;
+                passwordField.classList.add('user-password-mask');
+            });
+        }
         form.addEventListener('submit', () => {
             const button = form.querySelector('button[type="submit"], button:not([type])');
             if (!button) return;
