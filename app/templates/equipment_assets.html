@@ -356,18 +356,26 @@
             });
         }
 
+        const normalizeSearchText = (value) => (
+            (value || '')
+                .toString()
+                .normalize('NFD')
+                .replace(/[\u0300-\u036f]/g, '')
+                .toLowerCase()
+        );
+
         const assetsSearchInput = document.querySelector('[data-assets-history-search]');
         const applyAssetsHistorySearch = () => {
             const currentStage = document.querySelector('[data-assets-history-stage]');
             if (!currentStage) return;
 
-            const query = (assetsSearchInput?.value || '').trim().toLowerCase();
+            const query = normalizeSearchText((assetsSearchInput?.value || '').trim());
             const rows = Array.from(currentStage.querySelectorAll('[data-assets-history-row]'));
             const emptyState = currentStage.querySelector('[data-assets-search-empty]');
             let visibleCount = 0;
 
             rows.forEach((row) => {
-                const haystack = (row.dataset.assetsSearchText || '').toLowerCase();
+                const haystack = normalizeSearchText(row.dataset.assetsSearchText || '');
                 const matches = !query || haystack.includes(query);
                 row.classList.toggle('hidden', !matches);
                 if (matches) visibleCount += 1;

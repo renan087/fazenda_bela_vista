@@ -570,6 +570,14 @@
                 }
             };
 
+            const normalizeSearchText = (value) => (
+                (value || '')
+                    .toString()
+                    .normalize('NFD')
+                    .replace(/[\u0300-\u036f]/g, '')
+                    .toLowerCase()
+            );
+
             setActiveTabView(activeTab);
 
             const clearTabSearchState = () => {
@@ -591,7 +599,7 @@
 
                 let visibleRows = 0;
                 rows.forEach((row) => {
-                    const haystack = (row.dataset.stockSearchText || '').toLowerCase();
+                    const haystack = normalizeSearchText(row.dataset.stockSearchText || '');
                     const matches = !query || haystack.includes(query);
                     row.classList.toggle('hidden', !matches);
                     if (matches) visibleRows += 1;
@@ -670,7 +678,7 @@
 
             const stockSearchInput = document.querySelector('[data-stock-history-search]');
             const applyStockHistorySearch = () => {
-                const query = (stockSearchInput?.value || '').trim().toLowerCase();
+                const query = normalizeSearchText((stockSearchInput?.value || '').trim());
                 clearTabSearchState();
                 if (!query) {
                     setActiveTabView(activeTab);

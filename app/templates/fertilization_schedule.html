@@ -425,6 +425,13 @@
         const exportLinks = Array.from(document.querySelectorAll('[data-schedule-export-link]'));
         let scheduleListShell = document.querySelector('[data-schedule-list-shell]');
         let searchInput = scheduleListShell?.querySelector('[data-schedule-history-search]') || null;
+        const normalizeSearchText = (value) => (
+            (value || '')
+                .toString()
+                .normalize('NFD')
+                .replace(/[\u0300-\u036f]/g, '')
+                .toLowerCase()
+        );
         const getActiveStage = () => scheduleListShell?.querySelector('[data-schedule-tab]:not(.hidden)[data-schedule-history-stage]') || null;
         const getActiveScheduleTab = () => scheduleListShell?.querySelector('[data-schedule-tab-button].is-active')?.dataset.scheduleTabButton || '{{ selected_schedule_tab }}';
         const syncScheduleExportLinks = () => {
@@ -568,12 +575,12 @@
             const emptyState = historyStage.querySelector('[data-schedule-search-empty]');
             const rows = Array.from(historyStage.querySelectorAll('[data-schedule-history-row]'));
             const groups = Array.from(historyStage.querySelectorAll('[data-schedule-group]'));
-            const query = (searchInput?.value || '').trim().toLowerCase();
+            const query = normalizeSearchText((searchInput?.value || '').trim());
             syncScheduleExportLinks();
             let visibleCount = 0;
 
             rows.forEach((row) => {
-                const haystack = (row.dataset.scheduleSearchText || '').toLowerCase();
+                const haystack = normalizeSearchText(row.dataset.scheduleSearchText || '');
                 const matches = !query || haystack.includes(query);
                 row.classList.toggle('hidden', !matches);
                 if (matches) visibleCount += 1;

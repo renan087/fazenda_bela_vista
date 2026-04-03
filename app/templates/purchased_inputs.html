@@ -358,6 +358,13 @@
         const purchasedContextToggleLabel = document.querySelector('[data-purchased-context-toggle-label]');
         const purchasedContextTogglePlus = document.querySelector('[data-purchased-context-toggle-plus]');
         const purchasedRenderedInEditMode = {% if edit_input %}true{% else %}false{% endif %};
+        const normalizeSearchText = (value) => (
+            (value || '')
+                .toString()
+                .normalize('NFD')
+                .replace(/[\u0300-\u036f]/g, '')
+                .toLowerCase()
+        );
         const getPurchasedCleanUrl = () => {
             const url = new URL(window.location.href);
             url.searchParams.delete('edit_id');
@@ -425,14 +432,14 @@
         };
 
         const applyPurchasedHistorySearch = () => {
-            const query = (purchasedSearchInput?.value || '').trim().toLowerCase();
+            const query = normalizeSearchText((purchasedSearchInput?.value || '').trim());
             getPurchasedTabs().forEach((tab) => {
                 const rows = Array.from(tab.querySelectorAll('[data-purchased-history-row]'));
                 const emptyState = tab.querySelector('[data-purchased-search-empty]');
                 let visibleCount = 0;
 
                 rows.forEach((row) => {
-                    const haystack = (row.dataset.purchasedSearchText || '').toLowerCase();
+                    const haystack = normalizeSearchText(row.dataset.purchasedSearchText || '');
                     const matches = !query || haystack.includes(query);
                     row.classList.toggle('hidden', !matches);
                     if (matches) visibleCount += 1;
