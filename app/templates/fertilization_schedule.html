@@ -162,7 +162,8 @@
     <section class="stock-panel rounded-[2rem] bg-white p-6 shadow-panel" data-stock-fade-panel>
         <div data-schedule-list-shell>
         <div class="stock-history-toolbar mt-5">
-            <div class="stock-tab-nav flex flex-wrap gap-3">
+            <div class="stock-tab-nav stock-segmented-control" data-segmented-control>
+                <div class="stock-segmented-indicator" aria-hidden="true" data-segmented-indicator></div>
                 <a href="{{ schedule_tab_urls.active }}" class="stock-tab-link {% if selected_schedule_tab == 'active' %}is-active{% endif %}" data-schedule-tab-button="active">Ativos</a>
                 <a href="{{ schedule_tab_urls.completed }}" class="stock-tab-link {% if selected_schedule_tab == 'completed' %}is-active{% endif %}" data-schedule-tab-button="completed">Concluídos</a>
             </div>
@@ -807,8 +808,26 @@
             });
             bindScheduleGroupToggles(scheduleListShell);
             bindScheduleItemsToggles(scheduleListShell);
+            bindSegmentedControls(scheduleListShell);
             applyScheduleHistorySearch();
             syncScheduleExportLinks();
+        };
+
+        const bindSegmentedControls = (root = document) => {
+            root.querySelectorAll('[data-segmented-control]').forEach((control) => {
+                const indicator = control.querySelector('[data-segmented-indicator]');
+                const sync = () => {
+                    const active = control.querySelector('.stock-tab-link.is-active');
+                    if (!(active instanceof HTMLElement) || !(indicator instanceof HTMLElement)) return;
+                    const controlRect = control.getBoundingClientRect();
+                    const activeRect = active.getBoundingClientRect();
+                    indicator.style.width = `${activeRect.width}px`;
+                    indicator.style.transform = `translateX(${activeRect.left - controlRect.left}px)`;
+                    control.classList.add('is-ready');
+                };
+                sync();
+                control._segmentedSync = sync;
+            });
         };
 
         const stickyHeader = document.querySelector('.stock-page-header');
@@ -895,6 +914,12 @@
             window.addEventListener('resize', scheduleFadeUpdate);
             scheduleFadeUpdate();
         }
+
+        window.addEventListener('resize', () => {
+            document.querySelectorAll('[data-segmented-control]').forEach((control) => {
+                control._segmentedSync?.();
+            });
+        });
 
         const syncScheduleListFromUrl = async (url) => {
             if (!scheduleListShell) {

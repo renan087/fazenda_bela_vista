@@ -619,6 +619,56 @@ body {
     box-shadow: 0 18px 34px -26px rgba(68, 106, 54, 0.95);
 }
 
+.stock-segmented-control {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.35rem;
+    border: 1px solid rgba(226, 232, 240, 0.95);
+    border-radius: 999px;
+    background: linear-gradient(180deg, rgba(248, 250, 252, 0.98), rgba(241, 245, 249, 0.92));
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.92), 0 18px 30px -28px rgba(15, 23, 42, 0.28);
+    overflow: hidden;
+    max-width: 100%;
+}
+
+.stock-segmented-indicator {
+    position: absolute;
+    top: 0.35rem;
+    left: 0.35rem;
+    height: calc(100% - 0.7rem);
+    border-radius: 999px;
+    background: #446a36;
+    box-shadow: 0 18px 34px -26px rgba(68, 106, 54, 0.95);
+    transition: transform 0.26s ease, width 0.26s ease, opacity 0.2s ease;
+    pointer-events: none;
+    opacity: 0;
+}
+
+.stock-segmented-control.is-ready .stock-segmented-indicator {
+    opacity: 1;
+}
+
+.stock-segmented-control .stock-tab-link {
+    position: relative;
+    z-index: 1;
+    background: transparent;
+    box-shadow: none;
+    transition: color 0.18s ease, transform 0.18s ease;
+}
+
+.stock-segmented-control .stock-tab-link:hover {
+    background: transparent;
+    color: rgb(15 23 42);
+}
+
+.stock-segmented-control .stock-tab-link.is-active {
+    background: transparent;
+    color: #fff;
+    box-shadow: none;
+}
+
 .stock-history-stage > p:first-child {
     font-size: 0.72rem;
     font-weight: 700;
@@ -1078,6 +1128,11 @@ body {
 
     .stock-tab-nav::-webkit-scrollbar {
         display: none;
+    }
+
+    .stock-segmented-control {
+        gap: 0.25rem;
+        padding: 0.3rem;
     }
 
     .stock-tab-link {
