@@ -1,7 +1,7 @@
 {# Toolbar reutilizável: busca + período (presets + calendário). Form GET com hidden start_date/end_date/schedule_range.
    preset_variant: 'future' (Agendamentos — próximos N dias / próximo mês) ou 'past' (Fertilização — últimos N dias / mês passado).
    Sem start_date/end_date na URL: rótulo period_placeholder (ex.: convite a filtrar). #}
-{% macro module_history_filter_toolbar(form_action, search_placeholder, selected_range, start_date, end_date, clear_url, hidden_fields=None, search_value='', preset_variant='future', period_placeholder='Filtre por período') %}
+{% macro module_history_filter_toolbar(form_action, search_placeholder, selected_range, start_date, end_date, clear_url, hidden_fields=None, search_value='', preset_variant='future', period_placeholder='Filtre por período', mobile_icon_clear=False) %}
 {% if hidden_fields is none %}{% set hidden_fields = [] %}{% endif %}
 {% set _default_range = 'last_10_days' if preset_variant == 'past' else 'next_10_days' %}
 {% set _range_val = selected_range or _default_range %}
@@ -107,9 +107,19 @@
                     </div>
                 </div>
             </div>
+            {% if mobile_icon_clear %}
+            <a href="{{ clear_url }}" class="module-filter-action module-filter-action-secondary module-filter-action-icon md:hidden {% if not start_date and not end_date %}hidden{% endif %}" data-module-filter-clear-mobile aria-label="Limpar filtro de período" title="Limpar filtro de período">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="m15 4 5 5"/>
+                    <path d="M4 20h5l10-10-5-5L4 15v5Z"/>
+                    <path d="M13 6 6 13"/>
+                    <path d="M7 17h6"/>
+                </svg>
+            </a>
+            {% endif %}
         </div>
         <div class="module-filter-toolbar-actions">
-            <a href="{{ clear_url }}" class="module-filter-action module-filter-action-secondary {% if not start_date and not end_date %}hidden{% endif %}" data-module-filter-clear>Limpar</a>
+            <a href="{{ clear_url }}" class="module-filter-action module-filter-action-secondary {% if mobile_icon_clear %}hidden md:inline-flex {% endif %}{% if not start_date and not end_date %}hidden{% endif %}" data-module-filter-clear>Limpar</a>
         </div>
     </form>
 </div>
