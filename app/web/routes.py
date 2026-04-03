@@ -17,7 +17,7 @@ from reportlab.lib import colors
 from reportlab.lib.enums import TA_LEFT, TA_RIGHT
 from reportlab.lib.pagesizes import A4, landscape
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
-from reportlab.platypus import Image, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+from reportlab.platypus import Image, KeepInFrame, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 from sqlalchemy.orm import Session
 from starlette.datastructures import UploadFile as StarletteUploadFile
 
@@ -5417,6 +5417,13 @@ def export_fertilization_schedules_pdf(
     ]))
 
     elements = [header_table, Spacer(1, 16), summary_table, Spacer(1, 14)]
+    column_weights = [10, 18, 12, 34, 26]
+    weight_total = sum(column_weights)
+    table_col_widths = [doc.width * (weight / weight_total) for weight in column_weights[:-1]]
+    table_col_widths.append(doc.width - sum(table_col_widths))
+    notes_col_width = table_col_widths[-1] - 14
+    notes_max_height = cell_muted_style.leading * 4 + 2
+
     data = [["Data", "Setor", "Situação", "Itens Programados", "Observações"]]
     for schedule in schedules:
         items_label = " • ".join(
@@ -5430,13 +5437,9 @@ def export_fertilization_schedules_pdf(
             Paragraph(schedule.plot.name if schedule.plot else "Setor removido", cell_style),
             Paragraph(f'<font color="{status_color}"><b>{status_label}</b></font>', cell_style),
             Paragraph(items_label, cell_muted_style),
-            Paragraph((schedule.notes or "-")[:120], cell_muted_style),
+            KeepInFrame(notes_col_width, notes_max_height, [Paragraph(schedule.notes or "-", cell_muted_style)], mode="truncate"),
         ])
 
-    column_weights = [10, 18, 12, 34, 26]
-    weight_total = sum(column_weights)
-    table_col_widths = [doc.width * (weight / weight_total) for weight in column_weights[:-1]]
-    table_col_widths.append(doc.width - sum(table_col_widths))
     table = Table(data, repeatRows=1, colWidths=table_col_widths, hAlign="LEFT")
     table.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#446a36")),
