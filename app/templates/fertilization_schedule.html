@@ -161,6 +161,13 @@
 
     <section class="stock-panel rounded-[2rem] bg-white p-6 shadow-panel" data-stock-fade-panel>
         <div data-schedule-list-shell>
+        <div class="stock-history-toolbar mt-5">
+            <div class="stock-tab-nav flex flex-wrap gap-3">
+                <a href="{{ schedule_tab_urls.active }}" class="stock-tab-link {% if selected_schedule_tab == 'active' %}is-active{% endif %}" data-schedule-tab-button="active">Ativos</a>
+                <a href="{{ schedule_tab_urls.completed }}" class="stock-tab-link {% if selected_schedule_tab == 'completed' %}is-active{% endif %}" data-schedule-tab-button="completed">Concluídos</a>
+            </div>
+        </div>
+
         <div class="stock-filter-bar mt-6">
             <form method="get" action="/fertilizacao/agendamentos" class="flex flex-col gap-3 xl:flex-row xl:items-end">
                 <input type="hidden" name="schedule_tab" value="{{ selected_schedule_tab }}">
@@ -185,10 +192,6 @@
         </div>
 
         <div class="stock-history-toolbar mt-5">
-            <div class="stock-tab-nav flex flex-wrap gap-3">
-                <a href="{{ schedule_tab_urls.active }}" class="stock-tab-link {% if selected_schedule_tab == 'active' %}is-active{% endif %}" data-schedule-tab-button="active">Ativos</a>
-                <a href="{{ schedule_tab_urls.completed }}" class="stock-tab-link {% if selected_schedule_tab == 'completed' %}is-active{% endif %}" data-schedule-tab-button="completed">Concluídos</a>
-            </div>
             <div class="stock-search-field">
                 <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
                     <circle cx="8.5" cy="8.5" r="5.75"></circle>
