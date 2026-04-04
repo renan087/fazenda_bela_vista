@@ -139,6 +139,47 @@ body {
     outline-offset: 2px;
 }
 
+.password-visibility-field {
+    position: relative;
+}
+
+.password-visibility-input {
+    padding-right: 3.7rem !important;
+}
+
+.password-visibility-toggle {
+    position: absolute;
+    top: 50%;
+    right: 0.8rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.45rem;
+    height: 2.45rem;
+    border: 0;
+    border-radius: 9999px;
+    background: rgba(148, 163, 184, 0.12);
+    color: rgba(51, 65, 85, 0.86);
+    cursor: pointer;
+    transform: translateY(-50%);
+    transition: background-color 180ms ease, color 180ms ease, transform 180ms ease;
+}
+
+.password-visibility-toggle:hover {
+    background: rgba(91, 179, 74, 0.14);
+    color: #446a36;
+}
+
+.password-visibility-toggle:focus-visible {
+    outline: 2px solid rgba(91, 179, 74, 0.42);
+    outline-offset: 2px;
+}
+
+.password-visibility-toggle svg {
+    width: 1.15rem;
+    height: 1.15rem;
+}
+
 .stock-hero {
     background:
         radial-gradient(circle at top right, rgba(137, 178, 98, 0.16), transparent 26%),

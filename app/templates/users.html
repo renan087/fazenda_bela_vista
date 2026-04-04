@@ -210,15 +210,30 @@
 
                 <label>
                     <span class="mb-2 block text-sm font-medium">Senha</span>
-                    <input
-                        type="password"
-                        name="password"
-                        value="{% if edit_user %}********{% endif %}"
-                        class="user-password-mask min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50"
-                        autocomplete="new-password"
-                        {% if not edit_user %}required{% endif %}
-                        {% if edit_user %}data-password-mask="true"{% endif %}
-                    >
+                    <div class="password-visibility-field" data-password-visibility>
+                        <input
+                            type="password"
+                            name="password"
+                            value="{% if edit_user %}********{% endif %}"
+                            class="password-visibility-input user-password-mask min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50"
+                            autocomplete="new-password"
+                            {% if not edit_user %}required{% endif %}
+                            {% if edit_user %}data-password-mask="true"{% endif %}
+                            data-password-input
+                        >
+                        <button type="button" class="password-visibility-toggle" aria-label="Mostrar senha" aria-pressed="false" data-password-toggle>
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" data-eye-open>
+                                <path d="M2 12s3.6-6 10-6 10 6 10 6-3.6 6-10 6S2 12 2 12Z"/>
+                                <circle cx="12" cy="12" r="3"/>
+                            </svg>
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="hidden" data-eye-closed>
+                                <path d="m3 3 18 18"/>
+                                <path d="M10.6 5.3A10.7 10.7 0 0 1 12 5.2c6.4 0 10 6.8 10 6.8a17.4 17.4 0 0 1-4 4.7"/>
+                                <path d="M6.7 6.8C3.9 8.6 2 12 2 12s3.6 6 10 6c1.5 0 2.8-.3 4-.8"/>
+                                <path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/>
+                            </svg>
+                        </button>
+                    </div>
                 </label>
 
                 <label class="user-switch rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
@@ -266,6 +281,30 @@
 
 <script>
     (() => {
+        document.querySelectorAll('[data-password-visibility]').forEach((field) => {
+            const input = field.querySelector('[data-password-input]');
+            const toggle = field.querySelector('[data-password-toggle]');
+            const eyeOpen = field.querySelector('[data-eye-open]');
+            const eyeClosed = field.querySelector('[data-eye-closed]');
+            if (!input || !toggle || !eyeOpen || !eyeClosed) return;
+
+            const syncState = () => {
+                const showing = input.type === 'text';
+                toggle.setAttribute('aria-label', showing ? 'Ocultar senha' : 'Mostrar senha');
+                toggle.setAttribute('aria-pressed', showing ? 'true' : 'false');
+                eyeOpen.classList.toggle('hidden', showing);
+                eyeClosed.classList.toggle('hidden', !showing);
+            };
+
+            toggle.addEventListener('click', () => {
+                input.type = input.type === 'password' ? 'text' : 'password';
+                syncState();
+                input.focus({ preventScroll: true });
+            });
+
+            syncState();
+        });
+
         const launchModal = document.getElementById('users-launch-modal');
         const openButtons = Array.from(document.querySelectorAll('[data-users-launch-open]'));
         const closeButtons = Array.from(document.querySelectorAll('[data-users-launch-close]'));
