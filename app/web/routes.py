@@ -4,11 +4,12 @@ from io import BytesIO
 from pathlib import Path
 from urllib.parse import urlencode
 
+import hashlib
 import json
 import logging
 import unicodedata
 
-from fastapi import APIRouter, Depends, File, Form, Request, Response, UploadFile, status
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, Request, Response, UploadFile, status
 from fastapi.responses import JSONResponse, RedirectResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
 from openpyxl import Workbook
@@ -53,6 +54,11 @@ from app.models import (
 from app.repositories.farm import FarmRepository
 from app.services.backup_service import delete_backup_run, execute_backup
 from app.services.dashboard import build_dashboard_context
+from app.services.farm_preview_image import (
+    farm_preview_fs_path,
+    generate_farm_preview_image,
+    remove_farm_preview_image,
+)
 from app.services.forms import (
     calculate_geojson_area_hectares,
     calculate_irrigation_volume,
@@ -1691,6 +1697,7 @@ def delete_plot_action(
 @router.get("/fazendas")
 def farms_page(
     request: Request,
+    background_tasks: BackgroundTasks,
     edit_id: int | None = None,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user_web),
@@ -1698,6 +1705,17 @@ def farms_page(
 ):
     repo = _repository(db)
     edit_farm = repo.get_farm(edit_id) if edit_id else None
+    farms = repo.list_farms()
+    farm_preview_ready: dict[int, bool] = {}
+    farm_preview_fingerprint: dict[int, str] = {}
+    for farm in farms:
+        if not farm.boundary_geojson:
+            continue
+        farm_preview_fingerprint[farm.id] = hashlib.sha256(farm.boundary_geojson.encode("utf-8")).hexdigest()[:14]
+        preview_path = farm_preview_fs_path(farm.id)
+        farm_preview_ready[farm.id] = preview_path.is_file() and preview_path.stat().st_size > 0
+        if not farm_preview_ready[farm.id]:
+            background_tasks.add_task(generate_farm_preview_image, farm.id, farm.boundary_geojson)
     return templates.TemplateResponse(
         "farms.html",
         _base_context(
@@ -1705,8 +1723,10 @@ def farms_page(
             user,
             csrf_token,
             "farms",
-            farms=repo.list_farms(),
+            farms=farms,
             edit_farm=edit_farm,
+            farm_preview_ready=farm_preview_ready,
+            farm_preview_fingerprint=farm_preview_fingerprint,
             _repo=repo,
         ),
     )
@@ -1742,6 +1762,11 @@ def create_farm_action(
             "notes": notes,
         },
     )
+    if geometry:
+        try:
+            generate_farm_preview_image(farm.id, geometry)
+        except Exception:
+            logging.getLogger(__name__).exception("Falha ao gerar imagem de satelite da fazenda %s", farm.id)
     _flash(request, "success", "Fazenda cadastrada com sucesso.")
     if redirect_to == "/setores":
         return _redirect_with_query("/setores", selected_farm_id=farm.id)
@@ -1778,6 +1803,13 @@ def update_farm_action(
         farm,
         {"name": name, "location": location, "total_area": total_area, "boundary_geojson": geometry, "notes": notes},
     )
+    if geometry:
+        try:
+            generate_farm_preview_image(farm.id, geometry)
+        except Exception:
+            logging.getLogger(__name__).exception("Falha ao gerar imagem de satelite da fazenda %s", farm.id)
+    else:
+        remove_farm_preview_image(farm.id)
     _flash(request, "success", "Fazenda atualizada com sucesso.")
     return _redirect("/fazendas")
 
@@ -1800,6 +1832,7 @@ def delete_farm_action(
     if farm.plots:
         _flash(request, "error", "Nao e possivel excluir a fazenda enquanto houver setores vinculados.")
         return _redirect("/fazendas")
+    remove_farm_preview_image(farm_id)
     repo.delete(farm)
     _flash(request, "success", "Fazenda excluida com sucesso.")
     return _redirect("/fazendas")

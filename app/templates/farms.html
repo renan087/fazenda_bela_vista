@@ -53,22 +53,39 @@
                             <div class="flex items-center justify-between gap-3">
                                 <div>
                                     <p class="text-[11px] uppercase tracking-[0.25em] text-slate-400">Prévia da fazenda</p>
-                                    <p class="mt-1 text-sm font-medium text-slate-700">{% if farm.boundary_geojson %}Geometria georreferenciada{% else %}Aguardando GeoJSON{% endif %}</p>
+                                    <p class="mt-1 text-sm font-medium text-slate-700">{% if farm.boundary_geojson %}Satélite e contorno (imagem gerada no servidor){% else %}Georreferenciamento{% endif %}</p>
                                 </div>
                             </div>
-                            <div class="mt-3 h-40 overflow-hidden rounded-[1rem] border border-slate-200 bg-[radial-gradient(circle_at_top,_rgba(91,179,74,0.12),_transparent_55%),linear-gradient(180deg,_rgba(248,250,252,1),_rgba(241,245,249,0.95))]" data-farm-geo-preview data-geojson="{{ farm.boundary_geojson|tojson if farm.boundary_geojson else '' }}">
-                                <div class="flex h-full items-center justify-center text-sm text-slate-400" data-farm-geo-preview-empty>
-                                    {% if farm.boundary_geojson %}Gerando prévia...{% else %}Sem geometria enviada{% endif %}
+                            <div class="mt-3 overflow-hidden rounded-[1rem] border border-slate-200 bg-slate-100">
+                                {% if farm.boundary_geojson and farm_preview_ready.get(farm.id) %}
+                                <div class="relative">
+                                    <img
+                                        src="{{ url_for('static', path='generated/farm_previews/' ~ farm.id ~ '.png') }}?v={{ farm_preview_fingerprint.get(farm.id, '') }}"
+                                        alt="Imagem de satélite com o perímetro da fazenda {{ farm.name }}"
+                                        width="960"
+                                        height="540"
+                                        loading="lazy"
+                                        decoding="async"
+                                        class="block h-auto w-full object-cover"
+                                        style="aspect-ratio: 16 / 9;"
+                                    >
+                                    <p class="border-t border-slate-200/80 bg-white/95 px-3 py-1.5 text-[10px] leading-snug text-slate-500">
+                                        Imagem de base: Esri, Maxar, Earthstar Geographics e outros fornecedores do mapa. Contorno conforme GeoJSON cadastrado.
+                                    </p>
                                 </div>
-                                <svg class="hidden h-full w-full" viewBox="0 0 220 140" preserveAspectRatio="xMidYMid meet" aria-hidden="true" data-farm-geo-preview-svg>
-                                    <defs>
-                                        <linearGradient id="farm-preview-fill-{{ farm.id }}" x1="0%" x2="100%" y1="0%" y2="100%">
-                                            <stop offset="0%" stop-color="rgba(91,179,74,0.34)"/>
-                                            <stop offset="100%" stop-color="rgba(91,179,74,0.14)"/>
-                                        </linearGradient>
-                                    </defs>
-                                    <path d="" fill="url(#farm-preview-fill-{{ farm.id }})" stroke="rgba(65, 132, 54, 0.95)" stroke-width="3.2" stroke-linejoin="round" stroke-linecap="round" data-farm-geo-preview-path></path>
-                                </svg>
+                                {% elif farm.boundary_geojson %}
+                                <div class="flex min-h-[10rem] flex-col items-center justify-center gap-2 px-4 py-8 text-center">
+                                    <span class="inline-flex h-10 w-10 animate-pulse rounded-full bg-brand-500/20" aria-hidden="true"></span>
+                                    <p class="text-sm font-medium text-slate-700">Gerando imagem de satélite…</p>
+                                    <p class="max-w-sm text-xs text-slate-500">A prévia é montada no servidor (não é um mapa ao vivo). Se demorar, atualize a página em alguns segundos.</p>
+                                </div>
+                                {% else %}
+                                <div class="flex min-h-[10rem] flex-col items-center justify-center gap-2 px-4 py-8 text-center">
+                                    <p class="text-sm font-medium text-slate-700">Envie o arquivo GeoJSON da fazenda</p>
+                                    <p class="max-w-sm text-xs text-slate-500">Use o botão <span class="font-semibold text-slate-600">Nova fazenda</span> ou <span class="font-semibold text-slate-600">Editar</span> e anexe o <span class="whitespace-nowrap">.json</span> / <span class="whitespace-nowrap">.geojson</span> com o polígono da propriedade. Depois de salvar, geramos automaticamente a imagem de satélite com o contorno.</p>
+                                    <button type="button" class="mt-1 rounded-xl bg-brand-500 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700" data-farms-launch-open data-farms-edit-link="/fazendas?edit_id={{ farm.id }}">Enviar geometria</button>
+                                </div>
+                                {% endif %}
                             </div>
                         </div>
                     </div>
@@ -178,7 +195,6 @@
         const headerIntro = stickyHeader?.querySelector('[data-stock-header-intro]');
         const fadingPanels = Array.from(document.querySelectorAll('[data-stock-fade-panel]'));
         const isEditing = {{ 'true' if edit_farm else 'false' }};
-        const geoPreviewCards = Array.from(document.querySelectorAll('[data-farm-geo-preview]'));
 
         const resetForm = () => {
             if (isEditing || !form) return;
@@ -250,68 +266,6 @@
 
         searchInput?.addEventListener('input', applySearch);
         applySearch();
-
-        const extractFarmPreviewRing = (geometry) => {
-            if (!geometry || !geometry.type) return [];
-            if (geometry.type === 'Polygon') {
-                return Array.isArray(geometry.coordinates?.[0]) ? geometry.coordinates[0] : [];
-            }
-            if (geometry.type === 'MultiPolygon') {
-                return Array.isArray(geometry.coordinates?.[0]?.[0]) ? geometry.coordinates[0][0] : [];
-            }
-            return [];
-        };
-
-        const renderFarmPreview = (card) => {
-            const rawGeojson = card.dataset.geojson;
-            const emptyState = card.querySelector('[data-farm-geo-preview-empty]');
-            const svg = card.querySelector('[data-farm-geo-preview-svg]');
-            const path = card.querySelector('[data-farm-geo-preview-path]');
-            if (!rawGeojson || !svg || !path) return;
-
-            let parsed;
-            try {
-                parsed = JSON.parse(rawGeojson);
-            } catch {
-                return;
-            }
-
-            const geometry = parsed.type === 'Feature' ? parsed.geometry : parsed;
-            const ring = extractFarmPreviewRing(geometry)
-                .filter((point) => Array.isArray(point) && point.length >= 2)
-                .map(([lng, lat]) => ({ x: Number(lng), y: Number(lat) }));
-
-            if (ring.length < 3 || ring.some((point) => Number.isNaN(point.x) || Number.isNaN(point.y))) {
-                return;
-            }
-
-            const xs = ring.map((point) => point.x);
-            const ys = ring.map((point) => point.y);
-            const minX = Math.min(...xs);
-            const maxX = Math.max(...xs);
-            const minY = Math.min(...ys);
-            const maxY = Math.max(...ys);
-            const width = Math.max(maxX - minX, 0.000001);
-            const height = Math.max(maxY - minY, 0.000001);
-            const pad = 18;
-            const boxWidth = 220;
-            const boxHeight = 140;
-            const scale = Math.min((boxWidth - pad * 2) / width, (boxHeight - pad * 2) / height);
-            const offsetX = (boxWidth - width * scale) / 2;
-            const offsetY = (boxHeight - height * scale) / 2;
-
-            const commands = ring.map((point, index) => {
-                const x = ((point.x - minX) * scale + offsetX).toFixed(2);
-                const y = (((maxY - point.y) * scale) + offsetY).toFixed(2);
-                return `${index === 0 ? 'M' : 'L'}${x} ${y}`;
-            });
-
-            path.setAttribute('d', `${commands.join(' ')} Z`);
-            svg.classList.remove('hidden');
-            emptyState?.classList.add('hidden');
-        };
-
-        geoPreviewCards.forEach(renderFarmPreview);
 
         const mobileCompactMq = window.matchMedia('(max-width: 899px)');
         const parseStickyTopPx = (el) => {
