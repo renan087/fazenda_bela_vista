@@ -22,7 +22,7 @@ from sqlalchemy.orm import Session
 from starlette.datastructures import UploadFile as StarletteUploadFile
 
 from app.core.config import get_settings
-from app.core.admin_access import has_admin_access
+from app.core.admin_access import has_admin_access, is_super_admin_email
 from app.core.csrf import validate_csrf
 from app.core.deps import get_csrf_token, get_current_user_web
 from app.core.security import get_password_hash, verify_password
@@ -108,9 +108,9 @@ from app.services.password_change import (
     verify_password_change_code,
 )
 from app.services.password_reset import revoke_user_password_reset_tokens
-from app.services.email_service import send_password_change_code_email
+from app.services.email_service import send_access_code_email, send_password_change_code_email
 from app.services.trusted_browser import revoke_user_trusted_browsers
-from app.services.two_factor import revoke_active_login_codes
+from app.services.two_factor import get_active_login_code, issue_login_verification_code, revoke_active_login_codes, verify_login_code
 
 settings = get_settings()
 logger = logging.getLogger(__name__)
@@ -128,6 +128,7 @@ EQUIPMENT_ASSET_CATEGORY_OPTIONS = [
     "Veículo",
 ]
 PENDING_PASSWORD_CHANGE_SESSION_KEY = "pending_password_change_user_id"
+PENDING_SUPER_ADMIN_2FA_DISABLE_SESSION_KEY = "pending_super_admin_2fa_disable"
 HISTORY_PAGE_SIZE = 10
 MENU_ITEM_VISIBILITY_RULES = {
     "users": has_admin_access,
@@ -313,6 +314,43 @@ def _clear_password_change_pending(request: Request) -> None:
 def _discard_password_change_pending(request: Request, db: Session, user_id: int) -> None:
     revoke_password_change_verifications(db, user_id)
     _clear_password_change_pending(request)
+
+
+def _mark_super_admin_2fa_disable_pending(
+    request: Request,
+    *,
+    target_user_id: int,
+    actor_user_id: int,
+) -> None:
+    request.session[PENDING_SUPER_ADMIN_2FA_DISABLE_SESSION_KEY] = {
+        "target_user_id": int(target_user_id),
+        "actor_user_id": int(actor_user_id),
+    }
+
+
+def _get_super_admin_2fa_disable_pending(request: Request) -> dict | None:
+    payload = request.session.get(PENDING_SUPER_ADMIN_2FA_DISABLE_SESSION_KEY)
+    return payload if isinstance(payload, dict) else None
+
+
+def _has_super_admin_2fa_disable_pending(request: Request, *, target_user_id: int, actor_user_id: int) -> bool:
+    payload = _get_super_admin_2fa_disable_pending(request)
+    if not payload:
+        return False
+    return (
+        int(payload.get("target_user_id") or 0) == int(target_user_id)
+        and int(payload.get("actor_user_id") or 0) == int(actor_user_id)
+    )
+
+
+def _clear_super_admin_2fa_disable_pending(request: Request) -> None:
+    request.session.pop(PENDING_SUPER_ADMIN_2FA_DISABLE_SESSION_KEY, None)
+
+
+def _discard_super_admin_2fa_disable_pending(request: Request, db: Session, actor_user_id: int | None = None) -> None:
+    if actor_user_id:
+        revoke_active_login_codes(db, actor_user_id)
+    _clear_super_admin_2fa_disable_pending(request)
 
 
 def _resolve_fertilization_output_context(
@@ -1757,6 +1795,14 @@ def users_page(
     if denied:
         return denied
     repo = _repository(db)
+    pending_super_admin_two_factor_disable = None
+    pending_payload = _get_super_admin_2fa_disable_pending(request)
+    if pending_payload and int(pending_payload.get("actor_user_id") or 0) == int(user.id):
+        pending_target_user_id = int(pending_payload.get("target_user_id") or 0)
+        if not get_active_login_code(db, user.id):
+            _clear_super_admin_2fa_disable_pending(request)
+        elif edit_id and pending_target_user_id == edit_id:
+            pending_super_admin_two_factor_disable = pending_payload
     return templates.TemplateResponse(
         "users.html",
         _base_context(
@@ -1769,6 +1815,7 @@ def users_page(
             edit_user=repo.get_user(edit_id) if edit_id else None,
             format_app_datetime=format_app_datetime,
             super_admin_email=(settings.super_admin_email or settings.admin_email or "").strip().lower(),
+            pending_super_admin_two_factor_disable=pending_super_admin_two_factor_disable,
             _repo=repo,
         ),
     )
@@ -1867,6 +1914,10 @@ def update_user_action(
             _flash(request, "error", "Ja existe outro usuario com este email.")
             return _redirect_with_query("/usuarios", edit_id=user_id)
 
+        requested_is_admin = _bool_from_form(is_admin)
+        requested_is_two_factor_enabled = _bool_from_form(is_two_factor_enabled)
+        pending_super_admin_two_factor_disable = is_super_admin_email(normalized_email) and not requested_is_admin and not requested_is_two_factor_enabled
+
         updated_user = update_user(
             repo,
             target_user,
@@ -1875,10 +1926,27 @@ def update_user_action(
                 "email": normalized_email,
                 "password": password,
                 "is_active": _bool_from_form(is_active),
-                "is_admin": _bool_from_form(is_admin),
-                "is_two_factor_enabled": _bool_from_form(is_two_factor_enabled),
+                "is_admin": requested_is_admin,
+                "is_two_factor_enabled": requested_is_two_factor_enabled,
             },
         )
+        if pending_super_admin_two_factor_disable:
+            try:
+                code = issue_login_verification_code(db, user)
+                send_access_code_email(user.email, code)
+            except Exception:
+                db.rollback()
+                _discard_super_admin_2fa_disable_pending(request, db, user.id)
+                _flash(
+                    request,
+                    "error",
+                    "O usuario foi atualizado, mas nao foi possivel enviar o codigo de confirmacao para desabilitar o 2FA agora. Tente novamente.",
+                )
+                return _redirect_with_query("/usuarios", edit_id=user_id)
+            _mark_super_admin_2fa_disable_pending(request, target_user_id=updated_user.id, actor_user_id=user.id)
+        elif _has_super_admin_2fa_disable_pending(request, target_user_id=updated_user.id, actor_user_id=user.id):
+            _discard_super_admin_2fa_disable_pending(request, db, user.id)
+
         if (password or "").strip():
             revoke_user_trusted_browsers(db, updated_user.id)
         if not updated_user.is_two_factor_enabled:
@@ -1890,12 +1958,68 @@ def update_user_action(
                 _flash(request, "success", "Usuario atualizado com sucesso.")
                 return _redirect("/dashboard")
 
+        if pending_super_admin_two_factor_disable:
+            _flash(
+                request,
+                "success",
+                "Usuario atualizado. Enviamos um codigo para o seu email para confirmar a desabilitacao do 2FA.",
+            )
+            return _redirect_with_query("/usuarios", edit_id=user_id)
+
         _flash(request, "success", "Usuario atualizado com sucesso.")
         return _redirect("/usuarios")
     except Exception:
         db.rollback()
         _flash(request, "error", "Nao foi possivel atualizar o usuario agora. Revise os dados e tente novamente.")
         return _redirect_with_query("/usuarios", edit_id=user_id)
+
+
+@router.post("/usuarios/{user_id}/confirmar-desabilitar-2fa")
+def confirm_super_admin_two_factor_disable_action(
+    user_id: int,
+    request: Request,
+    csrf_token: str = Form(...),
+    code: str = Form(...),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    denied = _require_admin(request, user)
+    if denied:
+        return denied
+    validate_csrf(request, csrf_token)
+
+    if not _has_super_admin_2fa_disable_pending(request, target_user_id=user_id, actor_user_id=user.id):
+        _flash(request, "error", "Nao ha confirmacao pendente para desabilitar o 2FA deste usuario.")
+        return _redirect_with_query("/usuarios", edit_id=user_id)
+
+    normalized_code = "".join(char for char in (code or "") if char.isdigit())[:6]
+    if len(normalized_code) != 6:
+        _flash(request, "error", "Informe um codigo numerico de 6 digitos.")
+        return _redirect_with_query("/usuarios", edit_id=user_id)
+
+    valid, message = verify_login_code(db, user.id, normalized_code)
+    if not valid:
+        if not get_active_login_code(db, user.id):
+            _clear_super_admin_2fa_disable_pending(request)
+        _flash(request, "error", message)
+        return _redirect_with_query("/usuarios", edit_id=user_id)
+
+    repo = _repository(db)
+    target_user = repo.get_user(user_id)
+    if not target_user:
+        _discard_super_admin_2fa_disable_pending(request, db, user.id)
+        _flash(request, "error", "Usuario nao encontrado.")
+        return _redirect("/usuarios")
+    if not is_super_admin_email(target_user.email) or target_user.is_admin:
+        _discard_super_admin_2fa_disable_pending(request, db, user.id)
+        _flash(request, "error", "A confirmacao pendente nao e mais valida para este usuario.")
+        return _redirect("/usuarios")
+
+    repo.update(target_user, {"is_two_factor_enabled": False})
+    _clear_super_admin_2fa_disable_pending(request)
+    revoke_active_login_codes(db, target_user.id)
+    _flash(request, "success", "2FA desabilitado com confirmacao adicional.")
+    return _redirect("/usuarios")
 
 
 @router.post("/usuarios/{user_id}/excluir")

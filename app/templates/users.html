@@ -231,10 +231,24 @@
                     <span class="user-switch-copy text-sm font-medium text-slate-700">Permissão de administrador</span>
                 </label>
                 <label class="user-switch rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-                    <input type="checkbox" name="is_two_factor_enabled" value="true" {% if not edit_user or edit_user.is_two_factor_enabled %}checked{% endif %}>
+                    <input type="checkbox" name="is_two_factor_enabled" value="true" {% if not (pending_super_admin_two_factor_disable and edit_user and pending_super_admin_two_factor_disable.target_user_id == edit_user.id) and (not edit_user or edit_user.is_two_factor_enabled) %}checked{% endif %}>
                     <span class="user-switch-track" aria-hidden="true"></span>
                     <span class="user-switch-copy text-sm font-medium text-slate-700">2FA habilitado</span>
                 </label>
+                {% if pending_super_admin_two_factor_disable and edit_user and pending_super_admin_two_factor_disable.target_user_id == edit_user.id %}
+                <div class="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-4 text-slate-700">
+                    <p class="text-sm font-medium text-amber-800">Confirme a desabilitação do 2FA</p>
+                    <p class="mt-1 text-sm text-amber-700">Enviamos um código de 6 dígitos para o seu email. Informe o código para concluir essa alteração com segurança.</p>
+                    <form method="post" action="/usuarios/{{ edit_user.id }}/confirmar-desabilitar-2fa" class="mt-4 flex flex-col gap-3 sm:flex-row sm:items-end">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                        <label class="flex-1">
+                            <span class="mb-2 block text-sm font-medium text-slate-700">Código de confirmação</span>
+                            <input type="text" name="code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="[0-9]{6}" class="min-h-[3.25rem] w-full rounded-2xl border-amber-200 bg-white tracking-[0.35em]" placeholder="000000" required>
+                        </label>
+                        <button class="rounded-2xl bg-amber-500 px-4 py-3 font-semibold text-white hover:bg-amber-600">Confirmar 2FA</button>
+                    </form>
+                </div>
+                {% endif %}
             </form>
         </div>
     </div>
