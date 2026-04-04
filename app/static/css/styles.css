@@ -599,6 +599,19 @@ body {
     min-width: 0;
 }
 
+.stock-filter-grid {
+    align-items: end;
+}
+
+.stock-filter-field {
+    min-width: 0;
+}
+
+.stock-filter-field select,
+.stock-filter-field input {
+    min-width: 0;
+}
+
 .module-filter-toolbar {
     position: relative;
     z-index: 12;
@@ -616,6 +629,17 @@ body {
     align-items: center;
     gap: 0.85rem;
     overflow: visible;
+}
+
+@media (min-width: 1280px) {
+    .stock-filter-grid {
+        grid-template-columns:
+            minmax(14rem, 1.3fr)
+            minmax(17rem, 1.75fr)
+            minmax(14rem, 1.3fr)
+            minmax(12.75rem, 1.08fr)
+            minmax(9.5rem, 0.8fr);
+    }
 }
 
 .module-filter-toolbar-main {

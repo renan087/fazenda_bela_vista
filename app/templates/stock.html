@@ -120,9 +120,9 @@
 
     <section class="stock-panel rounded-[2rem] bg-white p-6 shadow-panel" data-stock-fade-panel>
         <div class="stock-filter-bar mt-6">
-            <form method="get" action="/insumos/estoque" class="grid gap-3 sm:grid-cols-2 xl:grid-cols-6" data-stock-filter-form data-module-period-filter-root data-module-range-default="last_10_days" data-module-range-placeholder="Filtre por período" data-module-custom-auto-apply="false">
+            <form method="get" action="/insumos/estoque" class="stock-filter-grid grid gap-3 sm:grid-cols-2" data-stock-filter-form data-module-period-filter-root data-module-range-default="last_10_days" data-module-range-placeholder="Filtre por período" data-module-custom-auto-apply="false">
                 <input type="hidden" name="stock_tab" value="{{ selected_stock_tab }}" data-stock-tab-hidden>
-                <label>
+                <label class="stock-filter-field stock-filter-field-type">
                     <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Tipo</span>
                     <select name="item_type" class="w-full rounded-xl border-slate-200 bg-white">
                         <option value="">Todos os consumiveis</option>
@@ -130,7 +130,7 @@
                         <option value="combustivel" {% if selected_item_type == 'combustivel' %}selected{% endif %}>Combustivel</option>
                     </select>
                 </label>
-                <label>
+                <label class="stock-filter-field stock-filter-field-farm">
                     <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Fazenda</span>
                     <select name="farm_id" class="w-full rounded-xl border-slate-200 bg-white">
                         {% for farm in farms %}
@@ -138,7 +138,7 @@
                         {% endfor %}
                     </select>
                 </label>
-                <label>
+                <label class="stock-filter-field stock-filter-field-input">
                     <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Insumo</span>
                     <select name="input_id" class="w-full rounded-xl border-slate-200 bg-white">
                         <option value="">Todos</option>
@@ -147,13 +147,13 @@
                         {% endfor %}
                     </select>
                 </label>
-                <div class="sm:col-span-2 xl:col-span-2">
+                <div class="stock-filter-field stock-filter-field-period sm:col-span-2">
                     <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Período</span>
                     <div class="module-filter-period-row">
                         {{ module_period_picker_inline(request.query_params.get('schedule_range') or ('custom' if selected_start_date or selected_end_date else ''), selected_start_date, selected_end_date, 'past', 'Filtre por período') }}
                     </div>
                 </div>
-                <label>
+                <label class="stock-filter-field stock-filter-field-movement">
                     <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Movimentacao</span>
                     <select name="movement_type" class="w-full rounded-xl border-slate-200 bg-white">
                         <option value="all" {% if selected_movement_type == 'all' %}selected{% endif %}>Todas</option>
@@ -161,13 +161,14 @@
                         <option value="saida" {% if selected_movement_type == 'saida' %}selected{% endif %}>Saida</option>
                     </select>
                 </label>
-                <div class="flex flex-wrap items-end gap-3 sm:col-span-2 xl:col-span-6">
+                <div class="flex flex-wrap items-end gap-3 sm:col-span-2 xl:col-span-full">
                     <button class="rounded-xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white">Filtrar</button>
                     <a href="/insumos/estoque" class="rounded-xl bg-white px-4 py-3 text-sm font-semibold text-slate-700 ring-1 ring-slate-200 hover:bg-slate-100">Limpar</a>
                 </div>
             </form>
         </div>
 
+        <div data-stock-list-shell>
         <div class="stock-history-toolbar mt-5">
             <div class="stock-tab-nav stock-segmented-control" data-segmented-control>
                 <div class="stock-segmented-indicator" aria-hidden="true" data-segmented-indicator></div>
@@ -367,6 +368,7 @@
             <p class="stock-search-empty mt-4 hidden text-sm text-slate-500" data-stock-search-empty>Nenhuma movimentação corresponde à busca digitada.</p>
             {% with pagination=extract_rows_pagination %}{% include "partials/history_pagination.html" %}{% endwith %}
         </div>
+        </div>
     </section>
 </div>
 
@@ -557,6 +559,7 @@
 
             let activeTab = {% if edit_output %}'outputs'{% else %}{{ selected_stock_tab|tojson }}{% endif %};
             const getTabButtons = () => Array.from(document.querySelectorAll('[data-stock-tab-button]'));
+            let stockListShell = document.querySelector('[data-stock-list-shell]');
             const stockFilterForm = document.querySelector('[data-stock-filter-form]');
             const stockTabHiddenInput = stockFilterForm?.querySelector('[data-stock-tab-hidden]');
             const movementTypeField = stockFilterForm?.querySelector('select[name="movement_type"]');
@@ -698,7 +701,7 @@
                 });
             }
 
-            const stockSearchInput = document.querySelector('[data-stock-history-search]');
+            let stockSearchInput = stockListShell?.querySelector('[data-stock-history-search]') || null;
             stockFilterForm && window.ModulePeriodFilters?.bind(stockFilterForm);
             const applyStockHistorySearch = () => {
                 const query = normalizeSearchText((stockSearchInput?.value || '').trim());
@@ -714,16 +717,32 @@
                 filterTabRows(extractTab, query);
             };
 
-            stockSearchInput?.addEventListener('input', applyStockHistorySearch);
+            const bindStockListShell = () => {
+                if (!stockListShell) return;
+                stockSearchInput = stockListShell.querySelector('[data-stock-history-search]');
+                stockSearchInput?.addEventListener('input', applyStockHistorySearch);
+                stockListShell.addEventListener('click', (event) => {
+                    const link = event.target instanceof Element
+                        ? event.target.closest('[data-stock-tab-button], [data-stock-pagination-link]')
+                        : null;
+                    if (!(link instanceof HTMLAnchorElement)) return;
+                    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) return;
+                    const href = link.getAttribute('href');
+                    if (!href) return;
+                    event.preventDefault();
+                    syncStockListFromUrl(href);
+                });
+                bindSegmentedControls(stockListShell);
+                applyStockHistorySearch();
+            };
 
-            const syncStockStageFromUrl = async (url, tabName) => {
-                const currentStage = document.querySelector(`[data-stock-tab="${tabName}"]`);
-                if (!currentStage) {
+            const syncStockListFromUrl = async (url) => {
+                if (!stockListShell) {
                     window.location.href = url;
                     return;
                 }
-
-                currentStage.classList.add('is-loading');
+                const currentQuery = stockSearchInput?.value || '';
+                stockListShell.classList.add('is-loading');
                 try {
                     const response = await window.fetch(url, {
                         headers: {
@@ -736,34 +755,26 @@
 
                     const html = await response.text();
                     const parsed = new window.DOMParser().parseFromString(html, 'text/html');
-                    const nextStage = parsed.querySelector(`[data-stock-tab="${tabName}"]`);
-                    if (!nextStage) {
-                        throw new Error('Bloco de histórico não encontrado na resposta.');
+                    const nextShell = parsed.querySelector('[data-stock-list-shell]');
+                    if (!nextShell) {
+                        throw new Error('Bloco da listagem não encontrado na resposta.');
                     }
 
-                    currentStage.replaceWith(nextStage);
-                    setActiveTabView(tabName);
-                    applyStockHistorySearch();
+                    stockListShell.replaceWith(nextShell);
+                    stockListShell = nextShell;
+                    stockSearchInput = stockListShell.querySelector('[data-stock-history-search]');
+                    if (stockSearchInput) {
+                        stockSearchInput.value = currentQuery;
+                    }
+                    bindStockListShell();
+                    setActiveTabView(parsed.querySelector('[data-stock-tab-button].is-active')?.dataset.stockTabButton || activeTab);
                     window.history.replaceState({}, '', url);
                 } catch (error) {
                     console.error(error);
                     window.location.href = url;
                 }
             };
-
-            document.addEventListener('click', (event) => {
-                const link = event.target.closest('[data-stock-pagination-link]');
-                if (!link || event.defaultPrevented) return;
-                if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) return;
-
-                const stage = link.closest('[data-stock-tab]');
-                const tabName = stage?.dataset.stockTab;
-                const href = link.getAttribute('href');
-                if (!tabName || !href) return;
-
-                event.preventDefault();
-                syncStockStageFromUrl(href, tabName);
-            });
+            bindStockListShell();
 
             window.addEventListener('resize', () => {
                 document.querySelectorAll('[data-segmented-control]').forEach((control) => {
