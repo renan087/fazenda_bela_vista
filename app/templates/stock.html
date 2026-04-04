@@ -532,7 +532,7 @@
             </button>
         </div>
 
-        <form method="post" action="/insumos/estoque/saida-manual" class="mt-6 grid gap-4">
+        <form method="post" action="/insumos/estoque/saida-manual" class="mt-6 grid gap-4" data-stock-launch-form>
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
             <div class="rounded-[1.5rem] border border-brand-100 bg-brand-50/50 p-4">
                 <div class="flex flex-wrap items-start justify-between gap-4">
@@ -728,6 +728,7 @@
             const launchModal = document.getElementById('stock-launch-modal');
             const openLaunchButton = document.querySelector('[data-stock-launch-open]');
             const closeLaunchButtons = Array.from(document.querySelectorAll('[data-stock-launch-close]'));
+            const launchForm = launchModal?.querySelector('[data-stock-launch-form]');
             const launchInputSelect = launchModal?.querySelector('[data-stock-launch-input-select]');
             const launchUnitHidden = launchModal?.querySelector('[data-stock-launch-unit-hidden]');
             const launchUnitDisplay = launchModal?.querySelector('[data-stock-launch-unit-display]');
@@ -743,16 +744,47 @@
                     }
                 };
 
+                const resetLaunchContextPanels = () => {
+                    launchModal.querySelectorAll('[data-stock-launch-context-toggle]').forEach((toggle) => {
+                        const container = toggle.closest('.border-brand-100');
+                        const collapse = container?.querySelector('[data-stock-launch-context-collapse]');
+                        const label = toggle.querySelector('[data-stock-launch-context-toggle-label]');
+                        const plus = toggle.querySelector('[data-stock-launch-context-toggle-plus]');
+                        if (!collapse || !label) return;
+                        toggle.setAttribute('aria-expanded', 'false');
+                        collapse.classList.remove('is-expanded');
+                        label.textContent = 'Expandir';
+                        if (plus) plus.style.display = '';
+                    });
+                };
+
+                const resetLaunchForm = () => {
+                    launchForm?.reset();
+                    syncLaunchUnit();
+                    resetLaunchContextPanels();
+                };
+
+                launchForm?.addEventListener('submit', () => {
+                    resetLaunchForm();
+                    launchModal.close();
+                });
                 launchInputSelect?.addEventListener('change', syncLaunchUnit);
-                openLaunchButton?.addEventListener('click', () => launchModal.showModal());
+                openLaunchButton?.addEventListener('click', () => {
+                    resetLaunchForm();
+                    launchModal.showModal();
+                });
                 closeLaunchButtons.forEach((button) => {
-                    button.addEventListener('click', () => launchModal.close());
+                    button.addEventListener('click', () => {
+                        resetLaunchForm();
+                        launchModal.close();
+                    });
                 });
                 launchModal.addEventListener('cancel', (event) => {
                     event.preventDefault();
+                    resetLaunchForm();
                     launchModal.close();
                 });
-                syncLaunchUnit();
+                resetLaunchForm();
             }
 
             const summaryToggle = document.querySelector('[data-stock-summary-toggle]');
