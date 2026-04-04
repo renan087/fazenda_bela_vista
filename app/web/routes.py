@@ -1916,7 +1916,7 @@ def update_user_action(
 
         requested_is_admin = _bool_from_form(is_admin)
         requested_is_two_factor_enabled = _bool_from_form(is_two_factor_enabled)
-        pending_super_admin_two_factor_disable = is_super_admin_email(normalized_email) and not requested_is_admin and not requested_is_two_factor_enabled
+        pending_super_admin_two_factor_disable = is_super_admin_email(normalized_email) and not requested_is_two_factor_enabled
 
         updated_user = update_user(
             repo,
@@ -2010,7 +2010,7 @@ def confirm_super_admin_two_factor_disable_action(
         _discard_super_admin_2fa_disable_pending(request, db, user.id)
         _flash(request, "error", "Usuario nao encontrado.")
         return _redirect("/usuarios")
-    if not is_super_admin_email(target_user.email) or target_user.is_admin:
+    if not is_super_admin_email(target_user.email):
         _discard_super_admin_2fa_disable_pending(request, db, user.id)
         _flash(request, "error", "A confirmacao pendente nao e mais valida para este usuario.")
         return _redirect("/usuarios")
