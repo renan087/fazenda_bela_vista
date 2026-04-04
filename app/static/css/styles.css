@@ -981,6 +981,16 @@ body {
     margin-top: 0.85rem;
 }
 
+[data-fertilization-group] [data-fertilization-history-row] {
+    border-color: rgba(68, 106, 54, 0.16) !important;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(244, 249, 243, 0.9)) !important;
+    box-shadow: 0 12px 24px -22px rgba(68, 106, 54, 0.3);
+}
+
+[data-fertilization-group] [data-fertilization-history-row] + [data-fertilization-history-row] {
+    margin-top: 0.85rem;
+}
+
 @media (min-width: 768px) {
     .module-filter-action-desktop-clear {
         display: inline-flex;

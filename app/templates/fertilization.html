@@ -148,7 +148,8 @@
                 fertilization_filter_clear_url,
                 ([{'name': 'edit_id', 'value': edit_fertilization.id|string}] if edit_fertilization else []),
                 request.query_params.get('search', ''),
-                preset_variant='past'
+                preset_variant='past',
+                mobile_icon_clear=True
             ) }}
         </div>
         <div class="mt-4 space-y-4" data-fertilization-history-list>
