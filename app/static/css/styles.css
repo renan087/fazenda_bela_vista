@@ -929,6 +929,24 @@ body {
     flex: 0 0 3rem;
 }
 
+@media (max-width: 767px) {
+    .module-filter-action-mobile-clear {
+        border: 0;
+        background: transparent;
+        box-shadow: none;
+        padding: 0;
+    }
+
+    .module-filter-action-mobile-clear:hover {
+        background: transparent;
+    }
+
+    .module-filter-action-mobile-clear .module-filter-action-icon-image {
+        width: 2rem;
+        height: 2rem;
+    }
+}
+
 .module-filter-action-desktop-clear {
     display: none;
 }
