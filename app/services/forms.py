@@ -266,7 +266,12 @@ def update_user(repository: FarmRepository, user: User, form: dict) -> User:
     allow_super_admin_two_factor_disable = bool(form.get("allow_super_admin_two_factor_disable", False))
     if is_super_admin_email(normalized_email):
         is_active = True
-    if is_super_admin_email(normalized_email) and not allow_super_admin_two_factor_disable:
+    if (
+        is_super_admin_email(normalized_email)
+        and not allow_super_admin_two_factor_disable
+        and bool(user.is_two_factor_enabled)
+        and not is_two_factor_enabled
+    ):
         is_two_factor_enabled = True
     payload = {
         "name": form["name"],
