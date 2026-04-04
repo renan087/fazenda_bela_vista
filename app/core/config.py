@@ -40,6 +40,8 @@ class Settings(BaseSettings):
     google_client_id: str | None = None
     google_client_secret: str | None = None
     google_redirect_uri: str | None = None
+    # Maps Static API (satélite + path) para prévia de fazenda; opcional — sem chave usa fallback Esri
+    google_maps_api_key: str | None = None
     supabase_url: str | None = None
     supabase_service_role_key: str | None = None
     supabase_bucket_db: str = "backups-db"

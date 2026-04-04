@@ -8,9 +8,12 @@ import math
 import tempfile
 from io import BytesIO
 from pathlib import Path
+from urllib.parse import urlencode
 
 import httpx
 from PIL import Image, ImageDraw
+
+from app.core.config import get_settings
 
 logger = logging.getLogger(__name__)
 
@@ -21,7 +24,9 @@ OUTPUT_HEIGHT = 540
 ESRI_IMAGERY_URL = (
     "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
 )
+GOOGLE_STATIC_MAP_URL = "https://maps.googleapis.com/maps/api/staticmap"
 USER_AGENT = "FazendaBelaVista/1.0 (+https://github.com/renan087/fazenda_bela_vista)"
+STATIC_MAP_MAX_URL_LEN = 7600
 
 # Diretório servido em /static/generated/farm_previews/
 _APP_DIR = Path(__file__).resolve().parents[1]
@@ -162,29 +167,104 @@ def _fetch_tile(client: httpx.Client, z: int, x: int, y: int) -> Image.Image:
     return Image.open(BytesIO(response.content)).convert("RGB")
 
 
-def generate_farm_preview_image(farm_id: int, boundary_geojson: str | None) -> bool:
-    """
-    Gera PNG em disco. Retorna True se salvou com sucesso.
-    """
-    if not boundary_geojson or not boundary_geojson.strip():
-        remove_farm_preview_image(farm_id)
-        return False
+def _subsample_ring(ring: list[tuple[float, float]], max_points: int) -> list[tuple[float, float]]:
+    if len(ring) < 3 or max_points < 3:
+        return ring
+    pts = list(ring)
+    if len(pts) > 1 and pts[0] == pts[-1]:
+        pts = pts[:-1]
+    if len(pts) < 3:
+        return ring
+    if len(pts) <= max_points:
+        return ring
+    step = (len(pts) - 1) / (max_points - 1)
+    return [pts[min(int(round(i * step)), len(pts) - 1)] for i in range(max_points)]
 
-    geometry = _parse_geometry(boundary_geojson)
-    if not geometry:
-        logger.warning("GeoJSON invalido para preview da fazenda %s", farm_id)
-        return False
 
-    rings = _exterior_rings(geometry)
-    bbox = _rings_bbox(rings)
-    if not bbox:
-        return False
-
+def _google_static_query_pairs(
+    rings: list[list[tuple[float, float]]],
+    bbox: tuple[float, float, float, float],
+    api_key: str,
+    max_points_per_ring: int,
+) -> list[tuple[str, str]]:
     lon_min, lat_min, lon_max, lat_max = bbox
+    visible = "|".join(
+        [
+            f"{lat_min:.7f},{lon_min:.7f}",
+            f"{lat_min:.7f},{lon_max:.7f}",
+            f"{lat_max:.7f},{lon_max:.7f}",
+            f"{lat_max:.7f},{lon_min:.7f}",
+        ]
+    )
+    pairs: list[tuple[str, str]] = [
+        ("size", "640x360"),
+        ("scale", "2"),
+        ("maptype", "satellite"),
+        ("visible", visible),
+        ("key", api_key),
+    ]
+    for ring in rings:
+        sampled = _subsample_ring(ring, max_points_per_ring)
+        parts = ["fillcolor:0x5BB34AB3", "color:0x418436", "weight:2"]
+        for lon, lat in sampled:
+            parts.append(f"{lat:.7f},{lon:.7f}")
+        pairs.append(("path", "|".join(parts)))
+    return pairs
+
+
+def _try_google_static_preview(
+    rings: list[list[tuple[float, float]]],
+    bbox: tuple[float, float, float, float],
+    api_key: str,
+) -> Image.Image | None:
+    max_pts = 72
+    pairs: list[tuple[str, str]] = []
+    for _ in range(6):
+        pairs = _google_static_query_pairs(rings, bbox, api_key.strip(), max_pts)
+        if len(urlencode(pairs)) <= STATIC_MAP_MAX_URL_LEN:
+            break
+        max_pts = max(12, max_pts // 2)
+    else:
+        pairs = _google_static_query_pairs(rings, bbox, api_key.strip(), 12)
+
+    url = f"{GOOGLE_STATIC_MAP_URL}?{urlencode(pairs)}"
+    try:
+        with httpx.Client(timeout=httpx.Timeout(30.0), follow_redirects=True) as client:
+            response = client.get(url)
+            if response.status_code != 200:
+                logger.warning(
+                    "Google Static Maps HTTP %s ao gerar preview",
+                    response.status_code,
+                )
+                return None
+            img = Image.open(BytesIO(response.content)).convert("RGB")
+            if img.width < 64 or img.height < 64:
+                logger.warning("Google Static Maps retornou imagem muito pequena (%sx%s)", img.width, img.height)
+                return None
+            if img.size != (OUTPUT_WIDTH, OUTPUT_HEIGHT):
+                try:
+                    resample = Image.Resampling.LANCZOS
+                except AttributeError:
+                    resample = Image.LANCZOS
+                img = img.resize((OUTPUT_WIDTH, OUTPUT_HEIGHT), resample)
+            return img
+    except Exception as exc:
+        logger.warning("Falha na requisicao Google Static Maps: %s", exc)
+        return None
+
+
+def _try_esri_tile_preview(
+    farm_id: int,
+    rings: list[list[tuple[float, float]]],
+    lon_min: float,
+    lat_min: float,
+    lon_max: float,
+    lat_max: float,
+) -> Image.Image | None:
     z = _pick_zoom(lon_min, lat_min, lon_max, lat_max)
     if z is None:
-        logger.warning("Nao foi possivel escolher zoom para preview da fazenda %s", farm_id)
-        return False
+        logger.warning("Nao foi possivel escolher zoom (Esri) para preview da fazenda %s", farm_id)
+        return None
 
     wx0, wy0, wx1, wy1 = _bbox_world_rect(lon_min, lat_min, lon_max, lat_max, z)
     pad_w = (wx1 - wx0) * 0.06
@@ -214,14 +294,14 @@ def generate_farm_preview_image(farm_id: int, boundary_geojson: str | None) -> b
                     try:
                         tile = _fetch_tile(client, z, tx, ty)
                     except Exception as exc:
-                        logger.warning("Tile satelite z=%s %s,%s falhou: %s", z, tx, ty, exc)
+                        logger.warning("Tile Esri z=%s %s,%s falhou: %s", z, tx, ty, exc)
                         continue
                     ox = (tx - tx0) * TILE_SIZE
                     oy = (ty - ty0) * TILE_SIZE
                     mosaic.paste(tile, (ox, oy))
     except Exception as exc:
-        logger.exception("Falha ao montar mosaic de satelite para fazenda %s: %s", farm_id, exc)
-        return False
+        logger.exception("Falha ao montar mosaic Esri para fazenda %s: %s", farm_id, exc)
+        return None
 
     crop_x0 = int(wx0 - tx0 * TILE_SIZE)
     crop_y0 = int(wy0 - ty0 * TILE_SIZE)
@@ -234,9 +314,10 @@ def generate_farm_preview_image(farm_id: int, boundary_geojson: str | None) -> b
 
     cropped = mosaic.crop((crop_x0, crop_y0, crop_x1, crop_y1))
     try:
-        cropped = cropped.resize((OUTPUT_WIDTH, OUTPUT_HEIGHT), Image.Resampling.LANCZOS)
+        resample = Image.Resampling.LANCZOS
     except AttributeError:
-        cropped = cropped.resize((OUTPUT_WIDTH, OUTPUT_HEIGHT), Image.LANCZOS)
+        resample = Image.LANCZOS
+    cropped = cropped.resize((OUTPUT_WIDTH, OUTPUT_HEIGHT), resample)
 
     crop_w = crop_x1 - crop_x0
     crop_h = crop_y1 - crop_y0
@@ -262,7 +343,46 @@ def generate_farm_preview_image(farm_id: int, boundary_geojson: str | None) -> b
         )
 
     base = cropped.convert("RGBA")
-    composed = Image.alpha_composite(base, overlay).convert("RGB")
+    return Image.alpha_composite(base, overlay).convert("RGB")
+
+
+def generate_farm_preview_image(farm_id: int, boundary_geojson: str | None) -> bool:
+    """
+    Gera PNG em disco. Prefere Google Maps Static API (satélite + path) se
+    GOOGLE_MAPS_API_KEY estiver definida; caso contrário usa tiles Esri + desenho local.
+    """
+    if not boundary_geojson or not boundary_geojson.strip():
+        remove_farm_preview_image(farm_id)
+        return False
+
+    geometry = _parse_geometry(boundary_geojson)
+    if not geometry:
+        logger.warning("GeoJSON invalido para preview da fazenda %s", farm_id)
+        return False
+
+    rings = _exterior_rings(geometry)
+    bbox = _rings_bbox(rings)
+    if not bbox:
+        return False
+
+    lon_min, lat_min, lon_max, lat_max = bbox
+    final_img: Image.Image | None = None
+
+    api_key = (get_settings().google_maps_api_key or "").strip()
+    if api_key:
+        final_img = _try_google_static_preview(rings, bbox, api_key)
+        if final_img is not None:
+            logger.info("Preview fazenda %s gerado via Google Static Maps", farm_id)
+
+    if final_img is None:
+        final_img = _try_esri_tile_preview(farm_id, rings, lon_min, lat_min, lon_max, lat_max)
+        if final_img is not None and api_key:
+            logger.info("Preview fazenda %s gerado via fallback Esri (Google indisponivel ou sem chave)", farm_id)
+        elif final_img is not None:
+            logger.info("Preview fazenda %s gerado via Esri", farm_id)
+
+    if final_img is None:
+        return False
 
     PREVIEW_DIR.mkdir(parents=True, exist_ok=True)
     final_path = farm_preview_fs_path(farm_id)
@@ -270,7 +390,7 @@ def generate_farm_preview_image(farm_id: int, boundary_geojson: str | None) -> b
     try:
         with tempfile.NamedTemporaryFile(suffix=".png", delete=False, dir=PREVIEW_DIR) as tmp:
             tmp_path = Path(tmp.name)
-        composed.save(tmp_path, format="PNG", optimize=True)
+        final_img.save(tmp_path, format="PNG", optimize=True)
         tmp_path.replace(final_path)
     except OSError as exc:
         logger.exception("Falha ao salvar preview da fazenda %s: %s", farm_id, exc)
