@@ -670,6 +670,13 @@ body {
     min-width: 0;
 }
 
+.stock-filter-bar .stock-filter-field-period .module-filter-preset-button {
+    display: flex;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+}
+
 .stock-filter-bar .stock-filter-field-period [data-module-range-label] {
     flex: 1 1 auto;
     min-width: 0;
@@ -677,6 +684,10 @@ body {
     overflow: hidden;
     text-overflow: ellipsis;
     line-height: 1.1;
+}
+
+.stock-filter-bar .stock-filter-field-period .module-filter-preset-button svg {
+    flex-shrink: 0;
 }
 
 .stock-filter-field-actions > * {
