@@ -70,8 +70,8 @@ uvicorn app.main:app --reload
 
 ## Credenciais iniciais
 
-- Email: `admin@fazenda.local`
-- Senha: `admin123`
+- Email: definido pelas variáveis `SUPER_ADMIN_EMAIL` e `ADMIN_EMAIL`
+- Senha: enviada por email quando a conta de contingência precisar ser criada automaticamente
 
 ## Login com 2FA por email
 

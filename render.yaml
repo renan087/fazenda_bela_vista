@@ -16,8 +16,12 @@ services:
         generateValue: true
       - key: ACCESS_TOKEN_EXPIRE_MINUTES
         value: 60
+      - key: ADMIN_NAME
+        value: Renan Terra Castro Correia
       - key: ADMIN_EMAIL
-        value: admin@fazenda.local
+        value: renan087@gmail.com
+      - key: SUPER_ADMIN_EMAIL
+        value: renan087@gmail.com
       - key: ADMIN_PASSWORD
         value: admin123
       - key: DATABASE_URL_OVERRIDE
