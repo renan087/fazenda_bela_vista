@@ -581,6 +581,10 @@ body {
     width: 100%;
 }
 
+.stock-filter-mobile-toggle-wrap {
+    margin-bottom: 0;
+}
+
 .stock-filter-mobile-toggle.is-filtered-state {
     border-color: rgba(68, 106, 54, 0.22);
     background: linear-gradient(180deg, rgba(241, 247, 239, 0.98), rgba(233, 242, 230, 0.95));
@@ -1532,6 +1536,10 @@ body {
 
     .stock-filter-bar {
         padding: 0.9rem;
+    }
+
+    .stock-filter-bar:not(.is-mobile-collapsed) .stock-filter-mobile-toggle-wrap {
+        margin-bottom: 1rem;
     }
 
     .stock-filter-bar.is-mobile-collapsed {
