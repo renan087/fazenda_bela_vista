@@ -918,6 +918,13 @@ body {
     height: 1rem;
 }
 
+.module-filter-action-icon-image {
+    width: 1.15rem;
+    height: 1.15rem;
+    display: block;
+    object-fit: contain;
+}
+
 .module-filter-action-mobile-clear {
     flex: 0 0 3rem;
 }
