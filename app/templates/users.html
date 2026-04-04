@@ -168,13 +168,17 @@
                 <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                 <div class="sticky top-0 z-10 -mx-1 bg-white/95 px-1 py-1 backdrop-blur">
                     <div class="flex items-center justify-between gap-4 rounded-[1.5rem] px-2 py-2 sm:px-3">
+                        {% if edit_user %}
                         <div class="flex h-24 w-24 shrink-0 items-center justify-center overflow-hidden rounded-full ring-4 ring-brand-100 bg-brand-50 text-2xl font-semibold text-brand-700">
-                            {% if edit_user and edit_user.avatar_data %}
+                            {% if edit_user.avatar_data %}
                             <img src="/usuarios/{{ edit_user.id }}/avatar" alt="Foto do usuário" class="h-full w-full object-cover">
                             {% else %}
-                            <span>{{ (edit_user.name[0] if edit_user and edit_user.name else 'U')|upper }}</span>
+                            <span>{{ (edit_user.name[0] if edit_user.name else 'U')|upper }}</span>
                             {% endif %}
                         </div>
+                        {% else %}
+                        <div></div>
+                        {% endif %}
                         <div class="flex flex-wrap justify-end gap-3">
                             <button type="button" class="rounded-2xl bg-slate-100 px-4 py-3 font-semibold text-slate-700 hover:bg-slate-200" data-users-launch-close>Cancelar</button>
                             <button form="users-form" class="rounded-2xl bg-brand-500 px-4 py-3 font-semibold text-white hover:bg-brand-700">{% if edit_user %}Salvar{% else %}Criar usuário{% endif %}</button>
@@ -235,6 +239,8 @@
         const searchRows = Array.from(document.querySelectorAll('[data-users-row]'));
         const searchEmpty = document.querySelector('[data-users-search-empty]');
         const stickyHeader = document.querySelector('.stock-page-header');
+        const headerIntro = stickyHeader?.querySelector('[data-stock-header-intro]');
+        const fadingPanels = Array.from(document.querySelectorAll('[data-stock-fade-panel]'));
         const form = document.querySelector('[data-user-form]');
         const passwordField = form?.querySelector('[data-password-mask="true"]');
         const editMode = {{ 'true' if edit_user else 'false' }};
@@ -333,20 +339,86 @@
         searchInput?.addEventListener('input', applySearch);
         applySearch();
 
+        const mobileCompactMq = window.matchMedia('(max-width: 899px)');
+        const parseStickyTopPx = (el) => {
+            const raw = getComputedStyle(el).top;
+            if (!raw || raw === 'auto') return 0;
+            const pxMatch = /^([\d.]+)px$/.exec(raw);
+            if (pxMatch) return parseFloat(pxMatch[1]);
+            const remMatch = /^([\d.]+)rem$/.exec(raw);
+            if (remMatch) {
+                const rootPx = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
+                return parseFloat(remMatch[1]) * rootPx;
+            }
+            return 0;
+        };
+
+        let compactRaf = null;
+        const syncUsersHeaderCompact = () => {
+            compactRaf = null;
+            if (!stickyHeader) return;
+            if (!mobileCompactMq.matches) {
+                stickyHeader.classList.remove('is-compact');
+                if (headerIntro) headerIntro.removeAttribute('aria-hidden');
+                return;
+            }
+            const topPx = parseStickyTopPx(stickyHeader);
+            const rect = stickyHeader.getBoundingClientRect();
+            const isCompact = stickyHeader.classList.contains('is-compact');
+            let nextCompact = isCompact;
+            if (rect.top <= topPx + 2) nextCompact = true;
+            else if (rect.top > topPx + 8) nextCompact = false;
+            stickyHeader.classList.toggle('is-compact', nextCompact);
+            if (headerIntro) {
+                headerIntro.setAttribute('aria-hidden', nextCompact ? 'true' : 'false');
+            }
+        };
+
+        const scheduleUsersHeaderCompact = () => {
+            if (compactRaf !== null) return;
+            compactRaf = window.requestAnimationFrame(syncUsersHeaderCompact);
+        };
+
         if (stickyHeader) {
-            const handleHeaderCompaction = () => {
-                if (window.innerWidth >= 900) {
-                    stickyHeader.classList.remove('is-compact');
+            window.addEventListener('scroll', scheduleUsersHeaderCompact, { passive: true });
+            window.addEventListener('resize', scheduleUsersHeaderCompact);
+            mobileCompactMq.addEventListener('change', scheduleUsersHeaderCompact);
+            scheduleUsersHeaderCompact();
+        }
+
+        if (!stickyHeader || !fadingPanels.length) return;
+
+        let rafId = null;
+        const updateFadingPanels = () => {
+            rafId = null;
+            const stickyRect = stickyHeader.getBoundingClientRect();
+            const stickyBottom = stickyRect.bottom;
+            fadingPanels.forEach((panel) => {
+                const panelRect = panel.getBoundingClientRect();
+                const panelTop = panelRect.top;
+                const panelH = panelRect.height;
+                if (panelTop >= stickyBottom || panelH <= 1) {
+                    panel.style.setProperty('--stock-fade-cutoff', '0px');
+                    panel.style.setProperty('--stock-fade-feather-end', '0px');
                     return;
                 }
-                const rect = stickyHeader.getBoundingClientRect();
-                stickyHeader.classList.toggle('is-compact', rect.top <= 96);
-            };
 
-            handleHeaderCompaction();
-            window.addEventListener('scroll', handleHeaderCompaction, { passive: true });
-            window.addEventListener('resize', handleHeaderCompaction);
-        }
+                const rawOverlap = Math.max(stickyBottom - panelTop, 0);
+                const overlap = Math.min(rawOverlap, panelH);
+                const featherBand = Math.min(80, Math.max(22, overlap * 0.45 + 16));
+                panel.style.setProperty('--stock-fade-cutoff', `${overlap.toFixed(2)}px`);
+                panel.style.setProperty('--stock-fade-feather-end', `${(overlap + featherBand).toFixed(2)}px`);
+            });
+        };
+
+        const scheduleFadeUpdate = () => {
+            if (rafId !== null) return;
+            rafId = window.requestAnimationFrame(updateFadingPanels);
+        };
+
+        window.addEventListener('scroll', scheduleFadeUpdate, { passive: true });
+        window.addEventListener('resize', scheduleFadeUpdate);
+        scheduleFadeUpdate();
     })();
 </script>
 {% endblock %}
