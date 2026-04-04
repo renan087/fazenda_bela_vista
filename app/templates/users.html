@@ -57,6 +57,15 @@
     .user-password-mask {
         letter-spacing: 0.22em;
     }
+
+    @media (max-width: 899px) {
+        .users-header-actions {
+            width: auto;
+            margin-left: auto;
+            grid-template-columns: minmax(0, 1fr);
+            justify-content: end;
+        }
+    }
 </style>
 <div class="stock-page-shell space-y-6">
     <section class="stock-page-header rounded-[2rem] p-5 shadow-panel">
@@ -67,7 +76,7 @@
                     <p class="stock-page-card-subtitle">Gerencie acessos, permissões administrativas e contingências de autenticação em um fluxo unificado.</p>
                 </div>
             </div>
-            <div class="stock-header-actions stock-header-actions-top">
+            <div class="stock-header-actions stock-header-actions-top users-header-actions">
                 <button type="button" class="stock-action-button stock-action-button-primary" data-users-launch-open>
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
                         <path d="M12 5v14"/>
