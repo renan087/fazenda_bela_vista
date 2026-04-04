@@ -11,6 +11,7 @@ from app.core.config import get_settings
 from app.core.session import clear_expired_session, touch_session_activity
 from app.core.security import authenticate_user, create_access_token, get_password_hash, verify_password
 from app.core.timezone import utc_now
+from app.db.init_db import seed_admin
 from app.db.session import get_db
 from app.models import User
 from app.schemas.auth import Token
@@ -199,7 +200,8 @@ def _render_password_reset(
 
 
 @router.get("/login")
-def login_page(request: Request):
+def login_page(request: Request, db: Session = Depends(get_db)):
+    seed_admin(db)
     clear_expired_session(request)
     if request.session.get("user_email"):
         touch_session_activity(request)
@@ -329,6 +331,7 @@ def login_web(
     csrf_token: str = Form(...),
     db: Session = Depends(get_db),
 ):
+    seed_admin(db)
     validate_csrf(request, csrf_token)
     user = db.query(User).filter(User.email == email.strip().lower()).first()
     if not authenticate_user(user, password):

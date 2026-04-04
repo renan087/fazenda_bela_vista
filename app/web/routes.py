@@ -22,6 +22,7 @@ from sqlalchemy.orm import Session
 from starlette.datastructures import UploadFile as StarletteUploadFile
 
 from app.core.config import get_settings
+from app.core.admin_access import has_admin_access
 from app.core.csrf import validate_csrf
 from app.core.deps import get_csrf_token, get_current_user_web
 from app.core.security import get_password_hash, verify_password
@@ -129,8 +130,8 @@ EQUIPMENT_ASSET_CATEGORY_OPTIONS = [
 PENDING_PASSWORD_CHANGE_SESSION_KEY = "pending_password_change_user_id"
 HISTORY_PAGE_SIZE = 10
 MENU_ITEM_VISIBILITY_RULES = {
-    "users": lambda user: bool(user and user.is_admin),
-    "backups": lambda user: bool(user and user.is_admin),
+    "users": has_admin_access,
+    "backups": has_admin_access,
 }
 
 
@@ -1247,7 +1248,7 @@ def _attachment_response(filename: str, content_type: str, payload: bytes) -> Re
 
 
 def _require_admin(request: Request, user: User) -> RedirectResponse | None:
-    if user.is_admin:
+    if has_admin_access(user):
         return None
     _flash(request, "error", "Apenas administradores podem acessar este modulo.")
     return _redirect("/dashboard")
@@ -1767,6 +1768,7 @@ def users_page(
             users=repo.list_users(),
             edit_user=repo.get_user(edit_id) if edit_id else None,
             format_app_datetime=format_app_datetime,
+            super_admin_email=(settings.super_admin_email or settings.admin_email or "").strip().lower(),
             _repo=repo,
         ),
     )
@@ -1884,7 +1886,7 @@ def update_user_action(
 
         if updated_user.id == user.id:
             request.session["user_email"] = updated_user.email
-            if not updated_user.is_admin:
+            if not has_admin_access(updated_user):
                 _flash(request, "success", "Usuario atualizado com sucesso.")
                 return _redirect("/dashboard")
 

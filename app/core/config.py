@@ -20,6 +20,7 @@ class Settings(BaseSettings):
     postgres_password: str = "postgres"
     admin_name: str = "Renan Terra Castro Correia"
     admin_email: str = "renan087@gmail.com"
+    super_admin_email: str | None = None
     admin_password: str = "admin123"
     openai_api_key: str | None = None
     openai_recommendation_model: str = "gpt-5-mini"

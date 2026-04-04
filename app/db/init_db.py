@@ -765,7 +765,8 @@ def seed_admin(db: Session) -> None:
     if existing_admin:
         return
 
-    existing = db.query(User).filter(User.email == settings.admin_email).first()
+    bootstrap_email = settings.super_admin_email or settings.admin_email
+    existing = db.query(User).filter(User.email == bootstrap_email).first()
     if existing:
         updated = False
         if not existing.is_admin:
@@ -786,7 +787,7 @@ def seed_admin(db: Session) -> None:
 
     admin = User(
         name=settings.admin_name,
-        email=settings.admin_email,
+        email=bootstrap_email,
         hashed_password=get_password_hash(bootstrap_password),
         is_active=True,
         is_admin=True,
@@ -795,11 +796,11 @@ def seed_admin(db: Session) -> None:
     db.add(admin)
     db.commit()
     try:
-        send_bootstrap_admin_password_email(settings.admin_email, bootstrap_password)
+        send_bootstrap_admin_password_email(bootstrap_email, bootstrap_password)
     except Exception:
         logger.exception(
             "Conta administrativa de contingencia criada, mas o envio da senha por email falhou.",
-            extra={"recipient_email": settings.admin_email},
+            extra={"recipient_email": bootstrap_email},
         )
 
 

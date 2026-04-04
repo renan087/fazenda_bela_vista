@@ -4,6 +4,7 @@ import unicodedata
 from datetime import date
 from decimal import Decimal
 
+from app.core.admin_access import is_super_admin_email
 from app.core.security import get_password_hash
 from app.core.timezone import today_in_app_timezone
 from app.models import (
@@ -236,25 +237,35 @@ def update_rainfall(repository: FarmRepository, rainfall: RainfallRecord, form: 
 
 
 def create_user(repository: FarmRepository, form: dict) -> User:
+    normalized_email = form["email"].strip().lower()
+    is_admin = bool(form.get("is_admin", False))
+    is_two_factor_enabled = bool(form.get("is_two_factor_enabled", True))
+    if is_super_admin_email(normalized_email) and not is_admin:
+        is_two_factor_enabled = True
     return repository.create(
         User(
             name=form["name"],
-            email=form["email"].strip().lower(),
+            email=normalized_email,
             hashed_password=get_password_hash(form["password"]),
             is_active=bool(form.get("is_active", True)),
-            is_admin=bool(form.get("is_admin", False)),
-            is_two_factor_enabled=bool(form.get("is_two_factor_enabled", True)),
+            is_admin=is_admin,
+            is_two_factor_enabled=is_two_factor_enabled,
         )
     )
 
 
 def update_user(repository: FarmRepository, user: User, form: dict) -> User:
+    normalized_email = form["email"].strip().lower()
+    is_admin = bool(form.get("is_admin", False))
+    is_two_factor_enabled = bool(form.get("is_two_factor_enabled", True))
+    if is_super_admin_email(normalized_email) and not is_admin:
+        is_two_factor_enabled = True
     payload = {
         "name": form["name"],
-        "email": form["email"].strip().lower(),
+        "email": normalized_email,
         "is_active": bool(form.get("is_active", True)),
-        "is_admin": bool(form.get("is_admin", False)),
-        "is_two_factor_enabled": bool(form.get("is_two_factor_enabled", True)),
+        "is_admin": is_admin,
+        "is_two_factor_enabled": is_two_factor_enabled,
     }
     password = (form.get("password") or "").strip()
     if password and password != "********":
