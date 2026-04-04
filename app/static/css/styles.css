@@ -638,7 +638,18 @@ body {
             minmax(17rem, 1.75fr)
             minmax(14rem, 1.3fr)
             minmax(12.75rem, 1.08fr)
-            minmax(9.5rem, 0.8fr);
+            minmax(9.5rem, 0.78fr)
+            auto;
+    }
+
+    .stock-filter-field-period,
+    .stock-filter-field-actions {
+        grid-column: auto;
+    }
+
+    .stock-filter-field-actions {
+        justify-content: flex-end;
+        align-self: end;
     }
 }
 

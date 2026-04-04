@@ -161,7 +161,7 @@
                         <option value="saida" {% if selected_movement_type == 'saida' %}selected{% endif %}>Saida</option>
                     </select>
                 </label>
-                <div class="flex flex-wrap items-end gap-3 sm:col-span-2 xl:col-span-full">
+                <div class="stock-filter-field stock-filter-field-actions flex flex-wrap items-end gap-3 sm:col-span-2">
                     <button class="rounded-xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white">Filtrar</button>
                     <a href="/insumos/estoque" class="rounded-xl bg-white px-4 py-3 text-sm font-semibold text-slate-700 ring-1 ring-slate-200 hover:bg-slate-100">Limpar</a>
                 </div>
@@ -721,17 +721,6 @@
                 if (!stockListShell) return;
                 stockSearchInput = stockListShell.querySelector('[data-stock-history-search]');
                 stockSearchInput?.addEventListener('input', applyStockHistorySearch);
-                stockListShell.addEventListener('click', (event) => {
-                    const link = event.target instanceof Element
-                        ? event.target.closest('[data-stock-tab-button], [data-stock-pagination-link]')
-                        : null;
-                    if (!(link instanceof HTMLAnchorElement)) return;
-                    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) return;
-                    const href = link.getAttribute('href');
-                    if (!href) return;
-                    event.preventDefault();
-                    syncStockListFromUrl(href);
-                });
                 bindSegmentedControls(stockListShell);
                 applyStockHistorySearch();
             };
@@ -775,6 +764,18 @@
                 }
             };
             bindStockListShell();
+
+            document.addEventListener('click', (event) => {
+                const link = event.target instanceof Element
+                    ? event.target.closest('[data-stock-tab-button], [data-stock-pagination-link]')
+                    : null;
+                if (!(link instanceof HTMLAnchorElement) || event.defaultPrevented) return;
+                if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) return;
+                const href = link.getAttribute('href');
+                if (!href) return;
+                event.preventDefault();
+                syncStockListFromUrl(href);
+            });
 
             window.addEventListener('resize', () => {
                 document.querySelectorAll('[data-segmented-control]').forEach((control) => {
