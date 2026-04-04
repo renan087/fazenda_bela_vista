@@ -345,6 +345,9 @@ body {
     background: rgb(203 213 225);
     flex: 0 0 auto;
     padding: 0;
+    transform-origin: center center;
+    backface-visibility: hidden;
+    will-change: width, opacity, transform;
     transition: width 180ms ease, background-color 180ms ease, opacity 180ms ease, transform 180ms ease;
 }
 
@@ -379,11 +382,13 @@ body {
 }
 
 [data-stock-catalog-dots].is-transitioning-next .swipe-card-pager-dot[data-role="current"] {
-    transform: translateX(0.56rem) scaleX(1.72);
+    width: 2.9rem;
+    transform: translateX(0.56rem);
 }
 
 [data-stock-catalog-dots].is-transitioning-prev .swipe-card-pager-dot[data-role="current"] {
-    transform: translateX(-0.56rem) scaleX(1.72);
+    width: 2.9rem;
+    transform: translateX(-0.56rem);
 }
 
 [data-stock-catalog-dots].is-settling-next .swipe-card-pager-dot[data-role="current"] {
@@ -395,30 +400,34 @@ body {
 }
 
 [data-stock-catalog-dots].is-settling-next .swipe-card-pager-dot[data-role="next"] {
-    animation: swipePagerSideRevealNext 180ms ease;
+    animation: swipePagerSideRevealNext 140ms ease 120ms both;
 }
 
 [data-stock-catalog-dots].is-settling-prev .swipe-card-pager-dot[data-role="prev"] {
-    animation: swipePagerSideRevealPrev 180ms ease;
+    animation: swipePagerSideRevealPrev 140ms ease 120ms both;
 }
 
 @keyframes swipePagerCurrentSettleNext {
     0% {
-        transform: translateX(0.56rem) scaleX(1.72);
+        width: 2.9rem;
+        transform: translateX(0.56rem);
     }
 
     100% {
-        transform: translateX(0) scaleX(1);
+        width: 1.8rem;
+        transform: translateX(0);
     }
 }
 
 @keyframes swipePagerCurrentSettlePrev {
     0% {
-        transform: translateX(-0.56rem) scaleX(1.72);
+        width: 2.9rem;
+        transform: translateX(-0.56rem);
     }
 
     100% {
-        transform: translateX(0) scaleX(1);
+        width: 1.8rem;
+        transform: translateX(0);
     }
 }
 
