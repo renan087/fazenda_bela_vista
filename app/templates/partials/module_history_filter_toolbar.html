@@ -110,20 +110,22 @@
                 </div>
                 {% if mobile_icon_clear %}
                 <a href="{{ clear_url }}" class="module-filter-action module-filter-action-secondary module-filter-action-icon module-filter-action-mobile-clear md:hidden {% if not start_date and not end_date %}hidden{% endif %}" data-module-filter-clear-mobile aria-label="Limpar filtro de período" title="Limpar filtro de período">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                        <path d="M14 4h5"/>
-                        <path d="m14 4 3 3"/>
-                        <path d="M3 21h7"/>
-                        <path d="m6 21 3-9"/>
-                        <path d="m9 12 8-5 2 2-5 8"/>
-                        <path d="m11 14 3 3"/>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <path d="M9 3v8"/>
+                        <path d="M7 11h6"/>
+                        <path d="m6 11 1.2 3.4a2 2 0 0 0 1.9 1.3h1.8a2 2 0 0 0 1.9-1.3L14 11"/>
+                        <path d="m7.7 15.7-.9 4.3"/>
+                        <path d="m10 15.7.3 4.6"/>
+                        <path d="m12.3 15.7 1 4.3"/>
+                        <path d="M15.5 18.5c.7-1 1.6-1.5 2.7-1.5 1.6 0 2.8 1 3.3 2.5"/>
+                        <path d="M14.3 20.5c.5-1.9 1.7-2.8 3.6-2.8"/>
                     </svg>
                 </a>
                 {% endif %}
             </div>
         </div>
         <div class="module-filter-toolbar-actions">
-            <a href="{{ clear_url }}" class="module-filter-action module-filter-action-secondary {% if mobile_icon_clear %}hidden md:inline-flex {% endif %}{% if not start_date and not end_date %}hidden{% endif %}" data-module-filter-clear>Limpar</a>
+            <a href="{{ clear_url }}" class="module-filter-action module-filter-action-secondary {% if mobile_icon_clear %}module-filter-action-desktop-clear{% endif %}{% if not start_date and not end_date %} hidden{% endif %}" data-module-filter-clear>Limpar</a>
         </div>
     </form>
 </div>
