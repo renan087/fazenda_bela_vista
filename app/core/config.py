@@ -37,6 +37,9 @@ class Settings(BaseSettings):
     password_reset_token_minutes: int = 60
     trusted_browser_days: int = 5
     trusted_browser_cookie_name: str = "fazenda_trusted_browser"
+    google_client_id: str | None = None
+    google_client_secret: str | None = None
+    google_redirect_uri: str | None = None
     supabase_url: str | None = None
     supabase_service_role_key: str | None = None
     supabase_bucket_db: str = "backups-db"

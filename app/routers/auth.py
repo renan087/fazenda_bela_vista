@@ -1,5 +1,8 @@
 import logging
+import secrets
+from urllib.parse import urlencode
 
+import httpx
 from fastapi import APIRouter, Depends, Form, HTTPException, Request, status
 from fastapi.responses import RedirectResponse
 from fastapi.security import OAuth2PasswordRequestForm
@@ -34,6 +37,11 @@ PENDING_2FA_USER_ID = "pending_2fa_user_id"
 PENDING_2FA_EMAIL = "pending_2fa_email"
 PENDING_2FA_LAST_SENT_AT = "pending_2fa_last_sent_at"
 LOGIN_2FA_RESEND_COOLDOWN_SECONDS = 60
+GOOGLE_OAUTH_STATE = "google_oauth_state"
+GOOGLE_OAUTH_NONCE = "google_oauth_nonce"
+GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
+GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
+GOOGLE_TOKEN_INFO_URL = "https://oauth2.googleapis.com/tokeninfo"
 
 
 def _mark_login_code_sent(request: Request) -> None:
@@ -122,6 +130,144 @@ def _complete_web_login(
     return response
 
 
+def _google_login_enabled() -> bool:
+    settings = get_settings()
+    return bool(settings.google_client_id and settings.google_client_secret and settings.google_redirect_uri)
+
+
+def _clear_google_oauth_flow(request: Request) -> tuple[str | None, str | None]:
+    return (
+        request.session.pop(GOOGLE_OAUTH_STATE, None),
+        request.session.pop(GOOGLE_OAUTH_NONCE, None),
+    )
+
+
+def _build_google_authorization_url(request: Request) -> str:
+    settings = get_settings()
+    state = secrets.token_urlsafe(32)
+    nonce = secrets.token_urlsafe(32)
+    request.session[GOOGLE_OAUTH_STATE] = state
+    request.session[GOOGLE_OAUTH_NONCE] = nonce
+    params = {
+        "client_id": settings.google_client_id,
+        "redirect_uri": settings.google_redirect_uri,
+        "response_type": "code",
+        "scope": "openid email profile",
+        "state": state,
+        "nonce": nonce,
+        "prompt": "select_account",
+    }
+    return f"{GOOGLE_AUTH_URL}?{urlencode(params)}"
+
+
+def _exchange_google_code(code: str) -> dict:
+    settings = get_settings()
+    try:
+        with httpx.Client(timeout=15.0) as client:
+            response = client.post(
+                GOOGLE_TOKEN_URL,
+                data={
+                    "code": code,
+                    "client_id": settings.google_client_id,
+                    "client_secret": settings.google_client_secret,
+                    "redirect_uri": settings.google_redirect_uri,
+                    "grant_type": "authorization_code",
+                },
+            )
+        response.raise_for_status()
+    except httpx.HTTPError as exc:
+        raise RuntimeError("Nao foi possivel concluir o login com Google agora. Tente novamente.") from exc
+    payload = response.json()
+    if not payload.get("id_token"):
+        raise RuntimeError("O Google nao retornou um token de identificacao valido.")
+    return payload
+
+
+def _validate_google_id_token(id_token: str, expected_nonce: str | None = None) -> dict:
+    settings = get_settings()
+    try:
+        with httpx.Client(timeout=15.0) as client:
+            response = client.get(GOOGLE_TOKEN_INFO_URL, params={"id_token": id_token})
+        response.raise_for_status()
+    except httpx.HTTPError as exc:
+        raise RuntimeError("Nao foi possivel validar o login com Google. Tente novamente.") from exc
+
+    claims = response.json()
+    if claims.get("aud") != settings.google_client_id:
+        raise RuntimeError("A autenticacao Google retornou um cliente invalido.")
+    if claims.get("iss") not in {"accounts.google.com", "https://accounts.google.com"}:
+        raise RuntimeError("A autenticacao Google retornou um emissor invalido.")
+    if str(claims.get("email_verified", "")).lower() != "true":
+        raise RuntimeError("A conta Google precisa ter email verificado para acessar o sistema.")
+    if expected_nonce and claims.get("nonce") != expected_nonce:
+        raise RuntimeError("Falha de validacao do login com Google. Tente novamente.")
+    email = (claims.get("email") or "").strip().lower()
+    if not email:
+        raise RuntimeError("O Google nao retornou um email valido para esta conta.")
+    return claims
+
+
+def _reactivate_super_admin_if_needed(db: Session, user: User | None) -> None:
+    if not user or not is_super_admin_email(user.email) or user.is_active:
+        return
+    try:
+        user.is_active = True
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+    except Exception:
+        db.rollback()
+        logger.exception(
+            "Falha ao reativar automaticamente o super admin no login",
+            extra={"user_email": user.email},
+        )
+
+
+def _start_web_login_challenge(request: Request, db: Session, user: User):
+    trusted_browser_cookie = request.cookies.get(_trusted_browser_cookie_name())
+    clear_trusted_cookie = False
+    if trusted_browser_cookie:
+        if validate_trusted_browser_token(db, user, request, trusted_browser_cookie):
+            revoke_active_login_codes(db, user.id)
+            return _complete_web_login(request, db, user)
+        clear_trusted_cookie = True
+
+    if not user.is_two_factor_enabled:
+        revoke_active_login_codes(db, user.id)
+        response = _complete_web_login(request, db, user)
+        if clear_trusted_cookie:
+            _clear_trusted_browser_cookie(response)
+        return response
+
+    try:
+        code = issue_login_verification_code(db, user)
+        send_access_code_email(user.email, code)
+    except RuntimeError as exc:
+        revoke_active_login_codes(db, user.id)
+        logger.exception(
+            "Falha controlada no envio do codigo 2FA",
+            extra={"user_email": user.email},
+        )
+        return _render_login(request, str(exc))
+    except Exception:
+        revoke_active_login_codes(db, user.id)
+        logger.exception(
+            "Falha inesperada no envio do codigo 2FA",
+            extra={"user_email": user.email},
+        )
+        return _render_login(request, "Nao foi possivel enviar o codigo de acesso. Tente novamente.")
+
+    request.session.pop("user_email", None)
+    request.session[PENDING_2FA_USER_ID] = user.id
+    request.session[PENDING_2FA_EMAIL] = user.email
+    _mark_login_code_sent(request)
+    touch_session_activity(request)
+    response = RedirectResponse(url="/login/verificacao", status_code=status.HTTP_303_SEE_OTHER)
+    if clear_trusted_cookie:
+        _clear_trusted_browser_cookie(response)
+    return response
+
+
 def _render_login(request: Request, error: str | None = None):
     notice_key = request.query_params.get("notice")
     info = None
@@ -136,6 +282,7 @@ def _render_login(request: Request, error: str | None = None):
             "error": error,
             "info": info,
             "csrf_token": ensure_csrf_token(request),
+            "google_login_enabled": _google_login_enabled(),
             "page": "login",
         },
         status_code=status.HTTP_400_BAD_REQUEST if error else status.HTTP_200_OK,
@@ -208,6 +355,55 @@ def login_page(request: Request, db: Session = Depends(get_db)):
         touch_session_activity(request)
         return RedirectResponse(url="/dashboard", status_code=status.HTTP_303_SEE_OTHER)
     return _render_login(request)
+
+
+@router.get("/login/google")
+def login_google_start(request: Request):
+    clear_expired_session(request)
+    if request.session.get("user_email"):
+        touch_session_activity(request)
+        return RedirectResponse(url="/dashboard", status_code=status.HTTP_303_SEE_OTHER)
+    if not _google_login_enabled():
+        return _render_login(request, "Login com Google nao esta configurado no ambiente.")
+    return RedirectResponse(url=_build_google_authorization_url(request), status_code=status.HTTP_302_FOUND)
+
+
+@router.get("/login/google/callback")
+def login_google_callback(
+    request: Request,
+    code: str | None = None,
+    state: str | None = None,
+    error: str | None = None,
+    db: Session = Depends(get_db),
+):
+    seed_admin(db)
+    clear_expired_session(request)
+    if request.session.get("user_email"):
+        touch_session_activity(request)
+        return RedirectResponse(url="/dashboard", status_code=status.HTTP_303_SEE_OTHER)
+    if not _google_login_enabled():
+        return _render_login(request, "Login com Google nao esta configurado no ambiente.")
+
+    expected_state, expected_nonce = _clear_google_oauth_flow(request)
+    if error:
+        return _render_login(request, "Nao foi possivel autenticar com Google. Tente novamente.")
+    if not code or not state or not expected_state or state != expected_state:
+        return _render_login(request, "Falha de validacao no retorno do Google. Tente entrar novamente.")
+
+    try:
+        token_payload = _exchange_google_code(code)
+        claims = _validate_google_id_token(token_payload["id_token"], expected_nonce=expected_nonce)
+    except RuntimeError as exc:
+        return _render_login(request, str(exc))
+
+    email = (claims.get("email") or "").strip().lower()
+    user = db.query(User).filter(User.email == email).first()
+    _reactivate_super_admin_if_needed(db, user)
+    if not user:
+        return _render_login(request, "Seu email Google nao esta cadastrado no sistema. Solicite acesso ao administrador.")
+    if not user.is_active:
+        return _render_login(request, "Seu usuario esta inativo no sistema. Entre em contato com o administrador.")
+    return _start_web_login_challenge(request, db, user)
 
 
 @router.get("/login/recuperar-senha")
@@ -335,63 +531,10 @@ def login_web(
     seed_admin(db)
     validate_csrf(request, csrf_token)
     user = db.query(User).filter(User.email == email.strip().lower()).first()
-    if user and is_super_admin_email(user.email) and not user.is_active:
-        try:
-            user.is_active = True
-            db.add(user)
-            db.commit()
-            db.refresh(user)
-        except Exception:
-            db.rollback()
-            logger.exception(
-                "Falha ao reativar automaticamente o super admin no login",
-                extra={"user_email": user.email},
-            )
+    _reactivate_super_admin_if_needed(db, user)
     if not authenticate_user(user, password):
         return _render_login(request, "Credenciais invalidas.")
-
-    trusted_browser_cookie = request.cookies.get(_trusted_browser_cookie_name())
-    clear_trusted_cookie = False
-    if trusted_browser_cookie:
-        if validate_trusted_browser_token(db, user, request, trusted_browser_cookie):
-            revoke_active_login_codes(db, user.id)
-            return _complete_web_login(request, db, user)
-        clear_trusted_cookie = True
-
-    if not user.is_two_factor_enabled:
-        revoke_active_login_codes(db, user.id)
-        response = _complete_web_login(request, db, user)
-        if clear_trusted_cookie:
-            _clear_trusted_browser_cookie(response)
-        return response
-
-    try:
-        code = issue_login_verification_code(db, user)
-        send_access_code_email(user.email, code)
-    except RuntimeError as exc:
-        revoke_active_login_codes(db, user.id)
-        logger.exception(
-            "Falha controlada no envio do codigo 2FA",
-            extra={"user_email": user.email},
-        )
-        return _render_login(request, str(exc))
-    except Exception:
-        revoke_active_login_codes(db, user.id)
-        logger.exception(
-            "Falha inesperada no envio do codigo 2FA",
-            extra={"user_email": user.email},
-        )
-        return _render_login(request, "Nao foi possivel enviar o codigo de acesso. Tente novamente.")
-
-    request.session.pop("user_email", None)
-    request.session[PENDING_2FA_USER_ID] = user.id
-    request.session[PENDING_2FA_EMAIL] = user.email
-    _mark_login_code_sent(request)
-    touch_session_activity(request)
-    response = RedirectResponse(url="/login/verificacao", status_code=status.HTTP_303_SEE_OTHER)
-    if clear_trusted_cookie:
-        _clear_trusted_browser_cookie(response)
-    return response
+    return _start_web_login_challenge(request, db, user)
 
 
 @router.get("/login/verificacao")
