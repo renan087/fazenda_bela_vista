@@ -220,7 +220,7 @@
                             </label>
                             <label>
                                 <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Unidade</span>
-                                <input type="text" value="{{ recommendation_item.unit if recommendation_item else '' }}" class="min-h-[3rem] w-full rounded-xl border-slate-200 bg-slate-100 text-slate-500" data-recommendation-item-unit-display readonly tabindex="-1">
+                                <input type="text" value="{{ recommendation_item.unit if recommendation_item else '' }}" class="min-h-[3rem] w-full rounded-xl border-slate-200 bg-slate-200 px-3 text-slate-500 cursor-not-allowed" data-recommendation-item-unit-display readonly disabled tabindex="-1">
                                 <input type="hidden" name="unit" value="{{ recommendation_item.unit if recommendation_item else '' }}" data-recommendation-item-unit>
                             </label>
                             <label>
@@ -260,7 +260,7 @@
         </label>
         <label>
             <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Unidade</span>
-            <input type="text" value="" class="min-h-[3rem] w-full rounded-xl border-slate-200 bg-slate-100 text-slate-500" data-recommendation-item-unit-display readonly tabindex="-1">
+            <input type="text" value="" class="min-h-[3rem] w-full rounded-xl border-slate-200 bg-slate-200 px-3 text-slate-500 cursor-not-allowed" data-recommendation-item-unit-display readonly disabled tabindex="-1">
             <input type="hidden" name="unit" value="" data-recommendation-item-unit>
         </label>
         <label>
@@ -289,6 +289,7 @@
         const headerIntro = stickyHeader?.querySelector('[data-stock-header-intro]');
         const fadingPanels = Array.from(document.querySelectorAll('[data-stock-fade-panel]'));
         const isEditing = {{ 'true' if edit_recommendation else 'false' }};
+        const recommendationItemsMobileMq = window.matchMedia('(max-width: 639px)');
 
         const closeModal = () => {
             if (isEditing) {
@@ -408,16 +409,23 @@
             if (!toggle || !collapse || !label) return;
 
             const sync = (expanded) => {
+                const desktopExpanded = !recommendationItemsMobileMq.matches;
+                const nextExpanded = desktopExpanded ? true : expanded;
                 toggle.setAttribute('aria-expanded', expanded ? 'true' : 'false');
-                collapse.classList.toggle('is-expanded', expanded);
-                label.textContent = expanded ? 'Esconder Insumos' : 'Mostrar Insumos';
-                if (plus) plus.style.display = expanded ? 'none' : '';
+                collapse.classList.toggle('is-expanded', nextExpanded);
+                label.textContent = nextExpanded ? 'Esconder Insumos' : 'Mostrar Insumos';
+                if (plus) plus.style.display = nextExpanded ? 'none' : '';
             };
 
             sync(false);
             toggle.addEventListener('click', () => {
+                if (!recommendationItemsMobileMq.matches) return;
                 const expanded = toggle.getAttribute('aria-expanded') === 'true';
                 sync(!expanded);
+            });
+            recommendationItemsMobileMq.addEventListener('change', () => {
+                const expanded = toggle.getAttribute('aria-expanded') === 'true';
+                sync(expanded);
             });
         };
 
