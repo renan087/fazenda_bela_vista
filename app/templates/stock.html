@@ -776,6 +776,13 @@
                 const href = link.getAttribute('href');
                 if (!href) return;
                 event.preventDefault();
+
+                if (link.hasAttribute('data-stock-tab-button')) {
+                    setActiveTabView(link.dataset.stockTabButton || 'entries');
+                    window.history.replaceState({}, '', href);
+                    return;
+                }
+
                 syncStockListFromUrl(href);
             });
 

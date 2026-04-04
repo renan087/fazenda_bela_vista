@@ -600,41 +600,28 @@ body {
 }
 
 .stock-filter-grid {
-    display: flex;
-    flex-direction: column;
-    gap: 0.75rem;
-    align-items: stretch;
     min-width: 0;
 }
 
 .stock-filter-fields-row {
-    display: flex;
-    flex-wrap: nowrap;
-    align-items: flex-end;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    align-items: end;
     gap: 0.75rem;
-    overflow-x: auto;
-    padding-bottom: 0.15rem;
-    -webkit-overflow-scrolling: touch;
-    scrollbar-width: thin;
     min-width: 0;
 }
 
 .stock-filter-fields-row > .stock-filter-field,
 .stock-filter-fields-row > .stock-filter-field-period,
-.stock-filter-fields-row > .stock-filter-field-actions {
-    flex: 0 0 auto;
-    min-width: 9.5rem;
-}
-
-.stock-filter-field-period {
-    flex: 1 1 12rem;
-    min-width: 11.5rem;
+.stock-filter-fields-row > .stock-filter-field-actions,
+.stock-filter-field-period,
+.stock-filter-field-actions {
+    min-width: 0;
 }
 
 .stock-filter-field-actions {
-    margin-left: auto;
-    flex: 0 0 auto;
-    min-width: 0;
+    margin-left: 0;
+    justify-content: flex-start;
 }
 
 .stock-filter-field {
@@ -644,6 +631,28 @@ body {
 .stock-filter-field select,
 .stock-filter-field input {
     min-width: 0;
+}
+
+@media (min-width: 900px) {
+    .stock-filter-fields-row {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+@media (min-width: 1180px) {
+    .stock-filter-fields-row {
+        grid-template-columns:
+            minmax(0, 0.9fr)
+            minmax(0, 1.2fr)
+            minmax(0, 1.2fr)
+            minmax(0, 1.25fr)
+            minmax(0, 0.95fr)
+            auto;
+    }
+
+    .stock-filter-field-actions {
+        justify-content: flex-end;
+    }
 }
 
 .module-filter-toolbar {
