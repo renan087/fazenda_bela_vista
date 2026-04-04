@@ -577,6 +577,10 @@ body {
     min-width: 0;
 }
 
+.stock-filter-mobile-toggle {
+    width: 100%;
+}
+
 .stock-filter-bar select,
 .stock-filter-bar input {
     min-height: 3.2rem;
@@ -684,6 +688,7 @@ body {
     overflow: hidden;
     text-overflow: ellipsis;
     line-height: 1.1;
+    text-align: left;
 }
 
 .stock-filter-bar .stock-filter-field-period .module-filter-preset-button svg {
@@ -1514,6 +1519,10 @@ body {
     .stock-history-toolbar > * {
         min-width: 0;
         max-width: 100%;
+    }
+
+    .stock-filter-bar {
+        padding: 0.9rem;
     }
 
     .stock-page-header {
