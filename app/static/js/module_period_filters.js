@@ -88,8 +88,8 @@
         document.addEventListener(
             'click',
             (event) => {
-                document.querySelectorAll('form[data-module-period-filter-root]').forEach((form) => {
-                    const st = stateByForm.get(form);
+        document.querySelectorAll('[data-module-period-filter-root]').forEach((root) => {
+                    const st = stateByForm.get(root);
                     if (!st) return;
                     if (clickHappenedInsidePicker(event, st.picker)) return;
                     st.handleOutsideClick();
@@ -99,26 +99,28 @@
         );
     }
 
-    function bindModulePeriodFilter(form, options) {
-        if (!(form instanceof HTMLFormElement)) return;
-        if (!form.hasAttribute('data-module-period-filter-root')) return;
-        if (form.dataset.modulePeriodFilterBound === '1') return;
-        form.dataset.modulePeriodFilterBound = '1';
+    function bindModulePeriodFilter(root, options) {
+        if (!(root instanceof HTMLElement)) return;
+        if (!root.hasAttribute('data-module-period-filter-root')) return;
+        if (root.dataset.modulePeriodFilterBound === '1') return;
+        root.dataset.modulePeriodFilterBound = '1';
+        const ownerForm = root instanceof HTMLFormElement ? root : root.closest('form');
+        if (!(ownerForm instanceof HTMLFormElement)) return;
 
-        const picker = form.querySelector('[data-module-range-picker]');
+        const picker = root.querySelector('[data-module-range-picker]');
         const fadePanel = picker?.closest('[data-stock-fade-panel]');
         const trigger = picker?.querySelector('[data-module-range-trigger]');
         const menu = picker?.querySelector('[data-module-range-menu]');
         const label = picker?.querySelector('[data-module-range-label]');
-        const customRange = form.querySelector('[data-module-custom-range]');
-        const calendarTitle = form.querySelector('[data-module-calendar-title]');
-        const calendarGrid = form.querySelector('[data-module-calendar-grid]');
-        const calendarPrev = form.querySelector('[data-module-calendar-prev]');
-        const calendarNext = form.querySelector('[data-module-calendar-next]');
-        const rangeInput = form.querySelector('[data-module-range-input]');
-        const filterStartInput = form.querySelector('[data-module-filter-start]');
-        const filterEndInput = form.querySelector('[data-module-filter-end]');
-        const filterClearButton = form.querySelector('[data-module-filter-clear]');
+        const customRange = root.querySelector('[data-module-custom-range]');
+        const calendarTitle = root.querySelector('[data-module-calendar-title]');
+        const calendarGrid = root.querySelector('[data-module-calendar-grid]');
+        const calendarPrev = root.querySelector('[data-module-calendar-prev]');
+        const calendarNext = root.querySelector('[data-module-calendar-next]');
+        const rangeInput = root.querySelector('[data-module-range-input]');
+        const filterStartInput = root.querySelector('[data-module-filter-start]');
+        const filterEndInput = root.querySelector('[data-module-filter-end]');
+        const filterClearButton = root.querySelector('[data-module-filter-clear]');
 
         if (
             !(picker instanceof HTMLElement) ||
@@ -130,8 +132,9 @@
             return;
         }
 
-        const defaultPreset = (form.dataset.moduleRangeDefault || 'next_10_days').trim() || 'next_10_days';
-        const placeholderLabel = (form.dataset.moduleRangePlaceholder || 'Filtre por período').trim() || 'Filtre por período';
+        const defaultPreset = (root.dataset.moduleRangeDefault || 'next_10_days').trim() || 'next_10_days';
+        const placeholderLabel = (root.dataset.moduleRangePlaceholder || 'Filtre por período').trim() || 'Filtre por período';
+        const customAutoApply = root.dataset.moduleCustomAutoApply !== 'false';
 
         const monthNames = [
             'Janeiro',
@@ -167,7 +170,7 @@
             const s = (filterStartInput?.value || '').trim();
             const e = (filterEndInput?.value || '').trim();
             const isCustom = rangeInput.value === 'custom';
-            if (!s && !e && !isCustom) {
+            if (!s && !e && !isCustom && !(rangeInput.value || '').trim()) {
                 label.textContent = placeholderLabel;
                 return;
             }
@@ -245,8 +248,17 @@
                         customRangeOpen = false;
                         customRange?.classList.add('hidden');
                         closeMenu();
-                        form.requestSubmit();
+                        ownerForm.requestSubmit();
                     }, 1000);
+                    if (!customAutoApply) {
+                        if (customRangeSubmitTimer) {
+                            window.clearTimeout(customRangeSubmitTimer);
+                            customRangeSubmitTimer = null;
+                        }
+                        customRangeOpen = false;
+                        customRange?.classList.add('hidden');
+                        closeMenu();
+                    }
                 });
                 calendarGrid.appendChild(button);
             }
@@ -336,7 +348,8 @@
             });
         });
 
-        form.addEventListener('submit', () => {
+        ownerForm.addEventListener('submit', () => {
+            if (!(rangeInput.value || '').trim()) return;
             if (rangeInput.value === 'custom') return;
             const range = getPresetRange(rangeInput.value || defaultPreset);
             if (filterStartInput instanceof HTMLInputElement) filterStartInput.value = range.start;
@@ -355,7 +368,7 @@
             renderCalendar();
         });
 
-        stateByForm.set(form, {
+        stateByForm.set(root, {
             picker,
             handleOutsideClick,
         });
