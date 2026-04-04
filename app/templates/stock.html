@@ -164,7 +164,9 @@
                     </label>
                     <div class="stock-filter-field stock-filter-field-actions flex flex-nowrap items-end gap-3">
                         <button type="submit" class="shrink-0 rounded-xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white">Filtrar</button>
+                        {% if stock_filters_active %}
                         <a href="/insumos/estoque" class="shrink-0 rounded-xl bg-white px-4 py-3 text-sm font-semibold text-slate-700 ring-1 ring-slate-200 hover:bg-slate-100">Limpar</a>
+                        {% endif %}
                     </div>
                 </div>
             </form>

@@ -888,6 +888,38 @@ def _stock_export_query(
     return urlencode(clean)
 
 
+def _stock_page_filters_active(
+    request: Request,
+    *,
+    active_farm_id: int | None,
+    selected_input_id: int | None,
+    movement_type: str,
+    normalized_item_type: str | None,
+    edit_output_id: int | None,
+) -> bool:
+    if edit_output_id:
+        return True
+    qp = request.query_params
+    if selected_input_id:
+        return True
+    if (qp.get("start_date") or "").strip() or (qp.get("end_date") or "").strip():
+        return True
+    if movement_type and movement_type != "all":
+        return True
+    if normalized_item_type:
+        return True
+    if (qp.get("schedule_range") or "").strip():
+        return True
+    raw_farm = qp.get("farm_id")
+    if raw_farm is not None and str(raw_farm).strip() != "":
+        try:
+            if int(raw_farm) != int(active_farm_id or 0):
+                return True
+        except (TypeError, ValueError):
+            return True
+    return False
+
+
 def _assets_export_query(farm_id: int | None = None, status: str | None = None) -> str:
     params = {"farm_id": farm_id, "status": status}
     clean = {key: value for key, value in params.items() if value not in (None, "", "all")}
@@ -2790,6 +2822,14 @@ def stock_page(
                 edit_output = None
         else:
             edit_output = None
+    stock_filters_active = _stock_page_filters_active(
+        request,
+        active_farm_id=scope["active_farm_id"],
+        selected_input_id=selected_input_id,
+        movement_type=movement_type,
+        normalized_item_type=normalized_item_type,
+        edit_output_id=edit_output_id,
+    )
     return templates.TemplateResponse(
         "stock.html",
         _base_context(
@@ -2807,6 +2847,7 @@ def stock_page(
             selected_end_date=end_date,
             selected_movement_type=movement_type,
             selected_item_type=normalized_item_type or "",
+            stock_filters_active=stock_filters_active,
             stock_export_query=_stock_export_query(
                 farm_id=selected_farm_id,
                 input_id=selected_input_id,
