@@ -411,18 +411,12 @@ body {
     transform: translateY(-50%);
 }
 
-[data-stock-catalog-dots].is-pre-settling-prev .swipe-card-pager-dot[data-role="current"] {
-    left: calc(50% - 1.425rem);
-    width: 2.2rem;
-    transform: translateY(-50%);
-}
-
 [data-stock-catalog-dots].is-settling-next .swipe-card-pager-dot[data-role="current"] {
     animation: swipePagerCurrentSettleNext 180ms ease;
 }
 
 [data-stock-catalog-dots].is-settling-prev .swipe-card-pager-dot[data-role="current"] {
-    animation: swipePagerCurrentSettlePrev 180ms ease;
+    animation: swipePagerCurrentSettlePrev 180ms ease both;
 }
 
 [data-stock-catalog-dots].is-settling-next .swipe-card-pager-dot[data-role="next"] {
