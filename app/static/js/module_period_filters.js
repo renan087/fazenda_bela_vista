@@ -248,17 +248,10 @@
                         customRangeOpen = false;
                         customRange?.classList.add('hidden');
                         closeMenu();
-                        ownerForm.requestSubmit();
-                    }, 1000);
-                    if (!customAutoApply) {
-                        if (customRangeSubmitTimer) {
-                            window.clearTimeout(customRangeSubmitTimer);
-                            customRangeSubmitTimer = null;
+                        if (customAutoApply) {
+                            ownerForm.requestSubmit();
                         }
-                        customRangeOpen = false;
-                        customRange?.classList.add('hidden');
-                        closeMenu();
-                    }
+                    }, 1000);
                 });
                 calendarGrid.appendChild(button);
             }
