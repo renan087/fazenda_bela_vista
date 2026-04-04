@@ -177,6 +177,9 @@
             <form id="users-form" method="post" action="{% if edit_user %}/usuarios/{{ edit_user.id }}/editar{% else %}/usuarios{% endif %}" class="grid gap-4" data-user-form>
                 <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                 <input type="hidden" name="allow_super_admin_two_factor_disable" value="{% if pending_super_admin_two_factor_disable_confirmed %}true{% endif %}" data-super-admin-2fa-approved>
+                <div class="hidden rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-800" data-user-submit-success>
+                    Salvamento com sucesso. Fechando...
+                </div>
                 <div class="sticky top-0 z-10 -mx-1 bg-white/95 px-1 py-1 backdrop-blur">
                     <div class="flex items-center justify-between gap-4 rounded-[1.5rem] px-2 py-2 sm:px-3">
                         {% if edit_user %}
@@ -290,7 +293,9 @@
         const superAdminTwoFactorPrompt = form?.querySelector('[data-super-admin-2fa-prompt]');
         const superAdminTwoFactorConfirmedBlock = form?.querySelector('[data-super-admin-2fa-confirmed]');
         const superAdminTwoFactorApprovedInput = form?.querySelector('[data-super-admin-2fa-approved]');
+        const submitSuccessBanner = form?.querySelector('[data-user-submit-success]');
         let superAdminTwoFactorConfirmed = superAdminTwoFactorPanel?.dataset.panelConfirmed === 'true';
+        let isSubmittingUsersForm = false;
 
         const setSuperAdminPanelState = (mode, message) => {
             if (!superAdminTwoFactorPanel) return;
@@ -470,6 +475,7 @@
 
         if (form) {
             form.addEventListener('submit', async (event) => {
+                if (isSubmittingUsersForm) return;
                 if (isSuperAdminEdit && initialSuperAdminTwoFactorEnabled && superAdminTwoFactorToggle && !superAdminTwoFactorToggle.checked && !superAdminTwoFactorConfirmed) {
                     event.preventDefault();
                     window.alert('Confirme o código do 2FA antes de salvar a desabilitação.');
@@ -480,8 +486,20 @@
                 }
                 const button = form.querySelector('button[type="submit"], button:not([type])');
                 if (!button) return;
+                event.preventDefault();
+                isSubmittingUsersForm = true;
+                submitSuccessBanner?.classList.remove('hidden');
                 button.disabled = true;
                 button.classList.add('opacity-70', 'cursor-not-allowed');
+                form.querySelectorAll('[data-users-launch-close], input, select, textarea, button').forEach((element) => {
+                    if (element instanceof HTMLInputElement || element instanceof HTMLSelectElement || element instanceof HTMLTextAreaElement || element instanceof HTMLButtonElement) {
+                        if (element !== button) element.disabled = true;
+                    }
+                });
+                window.setTimeout(() => {
+                    launchModal?.close();
+                    form.submit();
+                }, 1500);
             });
         }
 
