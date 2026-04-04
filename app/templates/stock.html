@@ -120,50 +120,52 @@
 
     <section class="stock-panel rounded-[2rem] bg-white p-6 shadow-panel" data-stock-fade-panel>
         <div class="stock-filter-bar mt-6">
-            <form method="get" action="/insumos/estoque" class="stock-filter-grid grid gap-3 sm:grid-cols-2" data-stock-filter-form data-module-period-filter-root data-module-range-default="last_10_days" data-module-range-placeholder="Filtre por período" data-module-custom-auto-apply="false">
+            <form method="get" action="/insumos/estoque" class="stock-filter-grid" data-stock-filter-form data-module-period-filter-root data-module-range-default="last_10_days" data-module-range-placeholder="Filtre por período" data-module-custom-auto-apply="false">
                 <input type="hidden" name="stock_tab" value="{{ selected_stock_tab }}" data-stock-tab-hidden>
-                <label class="stock-filter-field stock-filter-field-type">
-                    <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Tipo</span>
-                    <select name="item_type" class="w-full rounded-xl border-slate-200 bg-white">
-                        <option value="">Todos os consumiveis</option>
-                        <option value="insumo_agricola" {% if selected_item_type == 'insumo_agricola' %}selected{% endif %}>Insumo agricola</option>
-                        <option value="combustivel" {% if selected_item_type == 'combustivel' %}selected{% endif %}>Combustivel</option>
-                    </select>
-                </label>
-                <label class="stock-filter-field stock-filter-field-farm">
-                    <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Fazenda</span>
-                    <select name="farm_id" class="w-full rounded-xl border-slate-200 bg-white">
-                        {% for farm in farms %}
-                        <option value="{{ farm.id }}" {% if selected_farm_id == farm.id %}selected{% endif %}>{{ farm.name }}</option>
-                        {% endfor %}
-                    </select>
-                </label>
-                <label class="stock-filter-field stock-filter-field-input">
-                    <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Insumo</span>
-                    <select name="input_id" class="w-full rounded-xl border-slate-200 bg-white">
-                        <option value="">Todos</option>
-                        {% for input_item in inputs_catalog %}
-                        <option value="{{ input_item.id }}" {% if selected_input_id == input_item.id %}selected{% endif %}>{{ input_item.name }}</option>
-                        {% endfor %}
-                    </select>
-                </label>
-                <div class="stock-filter-field stock-filter-field-period sm:col-span-2">
-                    <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Período</span>
-                    <div class="module-filter-period-row">
-                        {{ module_period_picker_inline(request.query_params.get('schedule_range') or ('custom' if selected_start_date or selected_end_date else ''), selected_start_date, selected_end_date, 'past', 'Filtre por período') }}
+                <div class="stock-filter-fields-row">
+                    <label class="stock-filter-field stock-filter-field-type">
+                        <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Tipo</span>
+                        <select name="item_type" class="w-full rounded-xl border-slate-200 bg-white">
+                            <option value="">Todos os consumiveis</option>
+                            <option value="insumo_agricola" {% if selected_item_type == 'insumo_agricola' %}selected{% endif %}>Insumo agricola</option>
+                            <option value="combustivel" {% if selected_item_type == 'combustivel' %}selected{% endif %}>Combustivel</option>
+                        </select>
+                    </label>
+                    <label class="stock-filter-field stock-filter-field-farm">
+                        <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Fazenda</span>
+                        <select name="farm_id" class="w-full rounded-xl border-slate-200 bg-white">
+                            {% for farm in farms %}
+                            <option value="{{ farm.id }}" {% if selected_farm_id == farm.id %}selected{% endif %}>{{ farm.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </label>
+                    <label class="stock-filter-field stock-filter-field-input">
+                        <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Insumo</span>
+                        <select name="input_id" class="w-full rounded-xl border-slate-200 bg-white">
+                            <option value="">Todos</option>
+                            {% for input_item in inputs_catalog %}
+                            <option value="{{ input_item.id }}" {% if selected_input_id == input_item.id %}selected{% endif %}>{{ input_item.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </label>
+                    <div class="stock-filter-field stock-filter-field-period">
+                        <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Período</span>
+                        <div class="module-filter-period-row">
+                            {{ module_period_picker_inline(request.query_params.get('schedule_range') or ('custom' if selected_start_date or selected_end_date else ''), selected_start_date, selected_end_date, 'past', 'Filtre por período') }}
+                        </div>
                     </div>
-                </div>
-                <label class="stock-filter-field stock-filter-field-movement">
-                    <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Movimentacao</span>
-                    <select name="movement_type" class="w-full rounded-xl border-slate-200 bg-white">
-                        <option value="all" {% if selected_movement_type == 'all' %}selected{% endif %}>Todas</option>
-                        <option value="entrada" {% if selected_movement_type == 'entrada' %}selected{% endif %}>Entrada</option>
-                        <option value="saida" {% if selected_movement_type == 'saida' %}selected{% endif %}>Saida</option>
-                    </select>
-                </label>
-                <div class="stock-filter-field stock-filter-field-actions flex flex-wrap items-end gap-3 sm:col-span-2">
-                    <button class="rounded-xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white">Filtrar</button>
-                    <a href="/insumos/estoque" class="rounded-xl bg-white px-4 py-3 text-sm font-semibold text-slate-700 ring-1 ring-slate-200 hover:bg-slate-100">Limpar</a>
+                    <label class="stock-filter-field stock-filter-field-movement">
+                        <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Movimentacao</span>
+                        <select name="movement_type" class="w-full rounded-xl border-slate-200 bg-white">
+                            <option value="all" {% if selected_movement_type == 'all' %}selected{% endif %}>Todas</option>
+                            <option value="entrada" {% if selected_movement_type == 'entrada' %}selected{% endif %}>Entrada</option>
+                            <option value="saida" {% if selected_movement_type == 'saida' %}selected{% endif %}>Saida</option>
+                        </select>
+                    </label>
+                    <div class="stock-filter-field stock-filter-field-actions flex flex-nowrap items-end gap-3">
+                        <button type="submit" class="shrink-0 rounded-xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white">Filtrar</button>
+                        <a href="/insumos/estoque" class="shrink-0 rounded-xl bg-white px-4 py-3 text-sm font-semibold text-slate-700 ring-1 ring-slate-200 hover:bg-slate-100">Limpar</a>
+                    </div>
                 </div>
             </form>
         </div>
@@ -707,7 +709,6 @@
                 const query = normalizeSearchText((stockSearchInput?.value || '').trim());
                 clearTabSearchState();
                 if (!query) {
-                    setActiveTabView(activeTab);
                     return;
                 }
 
@@ -734,6 +735,7 @@
                 stockListShell.classList.add('is-loading');
                 try {
                     const response = await window.fetch(url, {
+                        credentials: 'same-origin',
                         headers: {
                             'X-Requested-With': 'XMLHttpRequest',
                         },

@@ -600,7 +600,41 @@ body {
 }
 
 .stock-filter-grid {
-    align-items: end;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    align-items: stretch;
+    min-width: 0;
+}
+
+.stock-filter-fields-row {
+    display: flex;
+    flex-wrap: nowrap;
+    align-items: flex-end;
+    gap: 0.75rem;
+    overflow-x: auto;
+    padding-bottom: 0.15rem;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+    min-width: 0;
+}
+
+.stock-filter-fields-row > .stock-filter-field,
+.stock-filter-fields-row > .stock-filter-field-period,
+.stock-filter-fields-row > .stock-filter-field-actions {
+    flex: 0 0 auto;
+    min-width: 9.5rem;
+}
+
+.stock-filter-field-period {
+    flex: 1 1 12rem;
+    min-width: 11.5rem;
+}
+
+.stock-filter-field-actions {
+    margin-left: auto;
+    flex: 0 0 auto;
+    min-width: 0;
 }
 
 .stock-filter-field {
@@ -631,27 +665,6 @@ body {
     overflow: visible;
 }
 
-@media (min-width: 1280px) {
-    .stock-filter-grid {
-        grid-template-columns:
-            minmax(14rem, 1.3fr)
-            minmax(17rem, 1.75fr)
-            minmax(14rem, 1.3fr)
-            minmax(12.75rem, 1.08fr)
-            minmax(9.5rem, 0.78fr)
-            auto;
-    }
-
-    .stock-filter-field-period,
-    .stock-filter-field-actions {
-        grid-column: auto;
-    }
-
-    .stock-filter-field-actions {
-        justify-content: flex-end;
-        align-self: end;
-    }
-}
 
 .module-filter-toolbar-main {
     display: flex;

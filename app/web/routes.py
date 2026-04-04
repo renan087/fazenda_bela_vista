@@ -2744,11 +2744,15 @@ def stock_page(
         movement_type=movement_type,
         item_type=normalized_item_type,
     )
-    selected_stock_tab = str(request.query_params.get("stock_tab") or "entries")
-    if movement_type == "entrada":
+    raw_stock_tab = request.query_params.get("stock_tab")
+    if raw_stock_tab in {"entries", "outputs", "extract"}:
+        selected_stock_tab = raw_stock_tab
+    else:
         selected_stock_tab = "entries"
-    elif movement_type == "saida":
-        selected_stock_tab = "outputs"
+        if movement_type == "entrada":
+            selected_stock_tab = "entries"
+        elif movement_type == "saida":
+            selected_stock_tab = "outputs"
     if selected_stock_tab not in {"entries", "outputs", "extract"}:
         selected_stock_tab = "entries"
     purchase_entries = _sort_collection_desc(
