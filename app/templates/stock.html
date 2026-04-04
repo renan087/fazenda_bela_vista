@@ -592,6 +592,7 @@
                     <span class="mb-2 block text-sm font-medium">Unidade</span>
                     <input type="hidden" name="unit" value="" data-stock-launch-unit-hidden>
                     <select class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50 cursor-not-allowed opacity-70" data-stock-launch-unit-display disabled>
+                        <option value=""></option>
                         {% for unit in ['kg', 'g', 'L', 'ml', 'sacas', 'un'] %}
                         <option value="{{ unit }}">{{ unit }}</option>
                         {% endfor %}
