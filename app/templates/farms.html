@@ -43,50 +43,42 @@
                     <div class="min-w-0 flex-1">
                         <button type="button" class="text-left text-lg font-semibold text-slate-900 transition hover:text-brand-700 lg:text-base" data-farms-launch-open data-farms-edit-link="/fazendas?edit_id={{ farm.id }}">{{ farm.name }}</button>
                         <p class="mt-1 text-sm text-slate-500 lg:mt-0.5 lg:text-[13px]">{{ farm.location }}</p>
-                        <div class="mt-3 flex flex-wrap gap-2">
+                        {% set farm_map_src = url_for('static', path='generated/farm_previews/' ~ farm.id ~ '.png') ~ '?v=' ~ farm_preview_fingerprint.get(farm.id, '') %}
+                        <div class="mt-3 flex flex-wrap items-center gap-x-2 gap-y-2">
                             <span class="stock-level-badge bg-white text-slate-700 ring-1 ring-slate-200/80">{{ farm.total_area }} ha</span>
                             <span class="stock-level-badge {% if farm.boundary_geojson %}bg-emerald-50 text-emerald-700 ring-1 ring-emerald-100{% else %}bg-slate-200 text-slate-600{% endif %}">
                                 {% if farm.boundary_geojson %}Georreferenciada{% else %}Sem geometria{% endif %}
                             </span>
-                        </div>
-                        <div class="mt-4 rounded-[1.25rem] border border-slate-200 bg-white p-3 shadow-sm">
-                            <div class="flex items-center justify-between gap-3">
-                                <div>
-                                    <p class="text-[11px] uppercase tracking-[0.25em] text-slate-400">Prévia da fazenda</p>
-                                    <p class="mt-1 text-sm font-medium text-slate-700">{% if farm.boundary_geojson %}Satélite e contorno (imagem gerada no servidor){% else %}Georreferenciamento{% endif %}</p>
-                                </div>
-                            </div>
-                            <div class="mt-3 overflow-hidden rounded-[1rem] border border-slate-200 bg-slate-100">
-                                {% if farm.boundary_geojson and farm_preview_ready.get(farm.id) %}
-                                <div class="relative">
-                                    <img
-                                        src="{{ url_for('static', path='generated/farm_previews/' ~ farm.id ~ '.png') }}?v={{ farm_preview_fingerprint.get(farm.id, '') }}"
-                                        alt="Imagem de satélite com o perímetro da fazenda {{ farm.name }}"
-                                        width="960"
-                                        height="540"
-                                        loading="lazy"
-                                        decoding="async"
-                                        class="block h-auto w-full object-cover"
-                                        style="aspect-ratio: 16 / 9;"
-                                    >
-                                    <p class="border-t border-slate-200/80 bg-white/95 px-3 py-1.5 text-[10px] leading-snug text-slate-500">
-                                        Imagem de base: Esri, Maxar, Earthstar Geographics e outros fornecedores do mapa. Contorno conforme GeoJSON cadastrado.
-                                    </p>
-                                </div>
-                                {% elif farm.boundary_geojson %}
-                                <div class="flex min-h-[10rem] flex-col items-center justify-center gap-2 px-4 py-8 text-center">
-                                    <span class="inline-flex h-10 w-10 animate-pulse rounded-full bg-brand-500/20" aria-hidden="true"></span>
-                                    <p class="text-sm font-medium text-slate-700">Gerando imagem de satélite…</p>
-                                    <p class="max-w-sm text-xs text-slate-500">A prévia é montada no servidor (não é um mapa ao vivo). Se demorar, atualize a página em alguns segundos.</p>
-                                </div>
-                                {% else %}
-                                <div class="flex min-h-[10rem] flex-col items-center justify-center gap-2 px-4 py-8 text-center">
-                                    <p class="text-sm font-medium text-slate-700">Envie o arquivo GeoJSON da fazenda</p>
-                                    <p class="max-w-sm text-xs text-slate-500">Use o botão <span class="font-semibold text-slate-600">Nova fazenda</span> ou <span class="font-semibold text-slate-600">Editar</span> e anexe o <span class="whitespace-nowrap">.json</span> / <span class="whitespace-nowrap">.geojson</span> com o polígono da propriedade. Depois de salvar, geramos automaticamente a imagem de satélite com o contorno.</p>
-                                    <button type="button" class="mt-1 rounded-xl bg-brand-500 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700" data-farms-launch-open data-farms-edit-link="/fazendas?edit_id={{ farm.id }}">Enviar geometria</button>
-                                </div>
-                                {% endif %}
-                            </div>
+                            {% if farm.boundary_geojson and farm_preview_ready.get(farm.id) %}
+                            <button
+                                type="button"
+                                class="group relative ml-0 aspect-video w-20 shrink-0 overflow-hidden rounded-xl border-2 border-slate-200 bg-slate-100 shadow-sm transition hover:border-brand-400 hover:shadow-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500 sm:w-24 lg:ml-1"
+                                title="Ampliar mapa da fazenda"
+                                aria-label="Abrir mapa ampliado — {{ farm.name }}"
+                                data-farms-map-open
+                                data-map-src="{{ farm_map_src }}"
+                                data-map-farm-name="{{ farm.name | e }}"
+                            >
+                                <img
+                                    src="{{ farm_map_src }}"
+                                    alt=""
+                                    width="96"
+                                    height="54"
+                                    loading="lazy"
+                                    decoding="async"
+                                    class="pointer-events-none h-full w-full object-cover"
+                                >
+                                <span class="pointer-events-none absolute inset-0 ring-inset ring-transparent transition group-hover:bg-slate-900/10" aria-hidden="true"></span>
+                            </button>
+                            {% elif farm.boundary_geojson %}
+                            <span class="inline-flex max-w-[14rem] items-center gap-2 rounded-xl border border-dashed border-slate-200 bg-white px-2.5 py-1.5 text-left text-xs text-slate-600 lg:ml-1">
+                                <span class="inline-flex h-2 w-2 shrink-0 animate-pulse rounded-full bg-brand-500" aria-hidden="true"></span>
+                                <span>Gerando miniatura do mapa… Atualize em instantes.</span>
+                            </span>
+                            {% else %}
+                            <span class="w-full text-xs text-slate-500 sm:w-auto lg:ml-1">Envie o GeoJSON no cadastro para gerar o mapa.</span>
+                            <button type="button" class="rounded-xl bg-brand-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-700" data-farms-launch-open data-farms-edit-link="/fazendas?edit_id={{ farm.id }}">Enviar geometria</button>
+                            {% endif %}
                         </div>
                     </div>
                     <div class="flex items-center gap-2 lg:gap-1.5">
@@ -121,6 +113,29 @@
         <p class="stock-search-empty mt-4 hidden text-sm text-slate-500" data-farms-search-empty>Nenhuma fazenda corresponde à busca digitada.</p>
     </section>
 </div>
+
+<dialog id="farms-map-preview-modal" class="app-modal rounded-[2rem] p-0 shadow-2xl w-full max-w-5xl overflow-hidden">
+    <div class="max-h-[92vh] overflow-y-auto bg-white p-5 sm:p-7">
+        <div class="flex items-start justify-between gap-4">
+            <div class="min-w-0">
+                <h3 class="text-xl font-semibold text-slate-900 sm:text-2xl">Mapa da fazenda</h3>
+                <p class="mt-1 text-sm font-medium text-slate-600" data-farms-map-modal-name></p>
+            </div>
+            <button type="button" class="modal-close-button shrink-0" aria-label="Fechar mapa" data-farms-map-modal-close>
+                <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M18 6 6 18"/>
+                    <path d="m6 6 12 12"/>
+                </svg>
+            </button>
+        </div>
+        <div class="mt-4 overflow-hidden rounded-2xl border border-slate-200 bg-slate-100">
+            <img data-farms-map-modal-img src="" alt="" class="mx-auto max-h-[min(72vh,600px)] w-full object-contain">
+        </div>
+        <p class="mt-3 text-[10px] leading-snug text-slate-500">
+            Imagem de base: Esri, Maxar, Earthstar Geographics e outros fornecedores do mapa. Contorno conforme GeoJSON cadastrado.
+        </p>
+    </div>
+</dialog>
 
 <dialog id="farms-launch-modal" class="app-modal rounded-[2rem] p-0 shadow-2xl w-full max-w-3xl overflow-hidden">
     <div class="bg-white p-6 sm:p-8">
@@ -185,6 +200,11 @@
 <script>
     (() => {
         const launchModal = document.getElementById('farms-launch-modal');
+        const mapPreviewModal = document.getElementById('farms-map-preview-modal');
+        const mapPreviewImg = mapPreviewModal?.querySelector('[data-farms-map-modal-img]');
+        const mapPreviewName = mapPreviewModal?.querySelector('[data-farms-map-modal-name]');
+        const mapOpenButtons = Array.from(document.querySelectorAll('[data-farms-map-open]'));
+        const mapCloseButtons = Array.from(document.querySelectorAll('[data-farms-map-modal-close]'));
         const openButtons = Array.from(document.querySelectorAll('[data-farms-launch-open]'));
         const closeButtons = Array.from(document.querySelectorAll('[data-farms-launch-close]'));
         const form = document.querySelector('[data-farms-form]');
@@ -209,6 +229,32 @@
             resetForm();
             launchModal?.close();
         };
+
+        const closeMapModal = () => {
+            mapPreviewModal?.close();
+            if (mapPreviewImg) {
+                mapPreviewImg.removeAttribute('src');
+                mapPreviewImg.alt = '';
+            }
+        };
+
+        mapOpenButtons.forEach((button) => {
+            button.addEventListener('click', () => {
+                const src = button.getAttribute('data-map-src') || '';
+                const farmName = button.getAttribute('data-map-farm-name') || '';
+                if (!mapPreviewModal || !mapPreviewImg) return;
+                mapPreviewImg.src = src;
+                mapPreviewImg.alt = farmName ? `Mapa de satélite — ${farmName}` : 'Mapa de satélite da fazenda';
+                if (mapPreviewName) mapPreviewName.textContent = farmName;
+                mapPreviewModal.showModal();
+            });
+        });
+
+        mapCloseButtons.forEach((btn) => btn.addEventListener('click', () => closeMapModal()));
+        mapPreviewModal?.addEventListener('cancel', (event) => {
+            event.preventDefault();
+            closeMapModal();
+        });
 
         openButtons.forEach((button) => {
             button.addEventListener('click', (event) => {
