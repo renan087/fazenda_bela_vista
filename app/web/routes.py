@@ -1942,7 +1942,12 @@ def update_user_action(
 
         requested_is_admin = _bool_from_form(is_admin)
         requested_is_two_factor_enabled = _bool_from_form(is_two_factor_enabled)
-        pending_super_admin_two_factor_disable = is_super_admin_email(normalized_email) and not requested_is_two_factor_enabled
+        # Só exige fluxo de código ao desligar 2FA que ainda está ativo no banco (evita bloquear edição quando já está desligado).
+        pending_super_admin_two_factor_disable = (
+            is_super_admin_email(normalized_email)
+            and not requested_is_two_factor_enabled
+            and bool(target_user.is_two_factor_enabled)
+        )
         confirmed_super_admin_two_factor_disable = _super_admin_2fa_disable_pending_confirmed(
             request,
             target_user_id=user_id,
