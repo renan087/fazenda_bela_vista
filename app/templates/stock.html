@@ -611,6 +611,7 @@
 {% include "partials/history_view_modal.html" %}
 
     <script src="{{ url_for('static', path='js/module_period_filters.js') }}?v=4"></script>
+    <script src="{{ url_for('static', path='js/swipe_card_pager.js') }}?v=1"></script>
     <script>
         (() => {
             const getTabs = () => Array.from(document.querySelectorAll('[data-stock-tab]'));
@@ -997,33 +998,16 @@
 
             const catalogCards = Array.from(document.querySelectorAll('[data-stock-catalog-card]'));
             const catalogDots = document.querySelector('[data-stock-catalog-dots]');
+            const catalogGrid = document.querySelector('[data-stock-catalog-grid]');
             const cardsPerPage = 4;
-            if (catalogCards.length > cardsPerPage && catalogDots) {
-                const totalPages = Math.ceil(catalogCards.length / cardsPerPage);
-                const setCatalogPage = (pageIndex) => {
-                    catalogCards.forEach((card, index) => {
-                        const page = Math.floor(index / cardsPerPage);
-                        card.classList.toggle('hidden', page !== pageIndex);
-                    });
-                    Array.from(catalogDots.querySelectorAll('[data-stock-catalog-dot]')).forEach((dot, index) => {
-                        const active = index === pageIndex;
-                        dot.classList.toggle('bg-brand-500', active);
-                        dot.classList.toggle('scale-110', active);
-                        dot.classList.toggle('bg-slate-300', !active);
-                    });
-                };
-
-                for (let pageIndex = 0; pageIndex < totalPages; pageIndex += 1) {
-                    const dot = document.createElement('button');
-                    dot.type = 'button';
-                    dot.className = 'h-2.5 w-2.5 rounded-full bg-slate-300 transition hover:bg-brand-300';
-                    dot.setAttribute('aria-label', `Ir para página ${pageIndex + 1}`);
-                    dot.dataset.stockCatalogDot = String(pageIndex);
-                    dot.addEventListener('click', () => setCatalogPage(pageIndex));
-                    catalogDots.appendChild(dot);
-                }
-
-                setCatalogPage(0);
+            if (catalogCards.length > cardsPerPage && catalogDots && catalogGrid && window.SiSFarmSwipePager) {
+                window.SiSFarmSwipePager.create({
+                    root: catalogGrid,
+                    items: catalogCards,
+                    dotsContainer: catalogDots,
+                    itemsPerPage: cardsPerPage,
+                    mobileOnly: true,
+                });
             }
 
             applyStockHistorySearch();
