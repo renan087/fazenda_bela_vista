@@ -152,7 +152,7 @@
                 dotsAnimationTimer = window.setTimeout(() => {
                     clearDotsAnimation();
                     isTransitioning = false;
-                }, 320);
+                }, 440);
             }, 180);
         };
 
