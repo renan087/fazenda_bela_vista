@@ -178,7 +178,7 @@
                 <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                 <input type="hidden" name="allow_super_admin_two_factor_disable" value="{% if pending_super_admin_two_factor_disable_confirmed %}true{% endif %}" data-super-admin-2fa-approved>
                 <div class="hidden rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-800" data-user-submit-success>
-                    Salvamento com sucesso. Fechando...
+                    Salvo com sucesso
                 </div>
                 <div class="sticky top-0 z-10 -mx-1 bg-white/95 px-1 py-1 backdrop-blur">
                     <div class="flex items-center justify-between gap-4 rounded-[1.5rem] px-2 py-2 sm:px-3">
@@ -195,7 +195,7 @@
                         {% endif %}
                         <div class="flex flex-wrap justify-end gap-3">
                             <button type="button" class="rounded-2xl bg-slate-100 px-4 py-3 font-semibold text-slate-700 hover:bg-slate-200" data-users-launch-close>Cancelar</button>
-                            <button form="users-form" class="rounded-2xl bg-brand-500 px-4 py-3 font-semibold text-white hover:bg-brand-700">{% if edit_user %}Salvar{% else %}Criar usuário{% endif %}</button>
+                            <button type="submit" form="users-form" class="rounded-2xl bg-brand-500 px-4 py-3 font-semibold text-white hover:bg-brand-700">{% if edit_user %}Salvar{% else %}Criar usuário{% endif %}</button>
                         </div>
                     </div>
                 </div>
@@ -491,13 +491,7 @@
                 submitSuccessBanner?.classList.remove('hidden');
                 button.disabled = true;
                 button.classList.add('opacity-70', 'cursor-not-allowed');
-                form.querySelectorAll('[data-users-launch-close], input, select, textarea, button').forEach((element) => {
-                    if (element instanceof HTMLInputElement || element instanceof HTMLSelectElement || element instanceof HTMLTextAreaElement || element instanceof HTMLButtonElement) {
-                        if (element === button) return;
-                        if (element instanceof HTMLInputElement && element.type === 'hidden') return;
-                        element.disabled = true;
-                    }
-                });
+                /* Não desabilitar inputs/selects: campos disabled não entram no POST e o servidor exige name/email (Form). */
                 window.setTimeout(() => {
                     launchModal?.close();
                     form.submit();
