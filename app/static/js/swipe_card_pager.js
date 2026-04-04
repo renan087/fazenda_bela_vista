@@ -48,33 +48,51 @@
             }, 240);
         };
 
-        const syncDots = () => {
-            if (!(dotsContainer instanceof HTMLElement)) return;
-            const dots = Array.from(dotsContainer.querySelectorAll('[data-swipe-pager-dot]'));
-            dots.forEach((dot, index) => {
-                const active = index === currentPage;
-                dot.classList.toggle('bg-brand-500', active);
-                dot.classList.toggle('scale-110', active);
-                dot.classList.toggle('bg-slate-300', !active);
-                dot.setAttribute('aria-current', active ? 'true' : 'false');
-            });
-        };
-
         const buildDots = () => {
             if (!(dotsContainer instanceof HTMLElement)) return;
             dotsContainer.innerHTML = '';
-            for (let pageIndex = 0; pageIndex < currentTotalPages; pageIndex += 1) {
+            for (let slotIndex = 0; slotIndex < 3; slotIndex += 1) {
                 const dot = document.createElement('button');
                 dot.type = 'button';
-                dot.className = 'h-2.5 w-2.5 rounded-full bg-slate-300 transition hover:bg-brand-300';
-                dot.setAttribute('aria-label', `Ir para página ${pageIndex + 1}`);
-                dot.dataset.swipePagerDot = String(pageIndex);
+                dot.className = 'swipe-card-pager-dot';
+                dot.dataset.swipePagerSlot = String(slotIndex);
                 dot.addEventListener('click', () => {
-                    const direction = pageIndex > currentPage ? 'next' : 'prev';
-                    setPage(pageIndex, direction);
+                    const targetPage = Number(dot.dataset.pageIndex || '');
+                    if (!Number.isInteger(targetPage)) return;
+                    const direction = targetPage > currentPage ? 'next' : 'prev';
+                    setPage(targetPage, direction);
                 });
                 dotsContainer.appendChild(dot);
             }
+        };
+
+        const syncDots = () => {
+            if (!(dotsContainer instanceof HTMLElement)) return;
+            const dots = Array.from(dotsContainer.querySelectorAll('[data-swipe-pager-slot]'));
+            const visiblePages = [];
+            if (currentPage > 0) visiblePages.push(currentPage - 1);
+            visiblePages.push(currentPage);
+            if (currentPage < currentTotalPages - 1) visiblePages.push(currentPage + 1);
+
+            dots.forEach((dot, index) => {
+                const pageIndex = visiblePages[index];
+                const isVisible = Number.isInteger(pageIndex);
+                const active = pageIndex === currentPage;
+                dot.classList.toggle('hidden', !isVisible);
+                dot.classList.toggle('is-active', active);
+                dot.classList.toggle('is-inactive', isVisible && !active);
+                if (!isVisible) {
+                    dot.removeAttribute('data-page-index');
+                    dot.removeAttribute('aria-label');
+                    dot.removeAttribute('aria-current');
+                    dot.disabled = true;
+                    return;
+                }
+                dot.dataset.pageIndex = String(pageIndex);
+                dot.setAttribute('aria-label', active ? `Página atual ${pageIndex + 1}` : `Ir para página ${pageIndex + 1}`);
+                dot.setAttribute('aria-current', active ? 'true' : 'false');
+                dot.disabled = active;
+            });
         };
 
         const setPage = (pageIndex, direction = null) => {

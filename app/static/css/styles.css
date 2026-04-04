@@ -337,6 +337,30 @@ body {
     animation-name: swipeCardPagerPrev;
 }
 
+.swipe-card-pager-dot {
+    width: 0.65rem;
+    height: 0.65rem;
+    border: 0;
+    border-radius: 9999px;
+    background: rgb(203 213 225);
+    flex: 0 0 auto;
+    padding: 0;
+    transition: width 180ms ease, background-color 180ms ease, opacity 180ms ease, transform 180ms ease;
+}
+
+.swipe-card-pager-dot.is-active {
+    width: 1.8rem;
+    background: #5bb34a;
+}
+
+.swipe-card-pager-dot.is-inactive {
+    background: rgb(203 213 225);
+}
+
+.swipe-card-pager-dot:not(.hidden):hover {
+    background: rgba(91, 179, 74, 0.6);
+}
+
 @keyframes swipeCardPagerNext {
     0% {
         opacity: 0.78;
