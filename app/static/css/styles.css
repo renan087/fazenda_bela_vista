@@ -622,6 +622,7 @@ body {
 .stock-filter-field-actions {
     margin-left: 0;
     justify-content: flex-start;
+    align-self: stretch;
 }
 
 .stock-filter-field {
@@ -671,6 +672,10 @@ body {
     line-height: 1.1;
 }
 
+.stock-filter-field-actions > * {
+    min-height: 3.2rem;
+}
+
 @media (min-width: 900px) {
     .stock-filter-fields-row {
         grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -681,19 +686,30 @@ body {
     .stock-filter-fields-row {
         grid-template-columns:
             minmax(0, 0.92fr)
-            minmax(0, 1.35fr)
+            minmax(0, 1.34fr)
             minmax(0, 1.08fr)
             minmax(0, 0.98fr)
-            minmax(0, 0.68fr)
+            minmax(0, 0.72fr)
             auto;
         column-gap: 0.85rem;
     }
 
+    .stock-filter-fields-row.has-clear-action {
+        grid-template-columns:
+            minmax(0, 0.92fr)
+            minmax(0, 1.18fr)
+            minmax(0, 1.08fr)
+            minmax(0, 1.02fr)
+            minmax(0, 0.72fr)
+            auto;
+    }
+
     .stock-filter-field-actions {
         justify-content: flex-end;
-        align-self: end;
+        align-self: stretch;
         white-space: nowrap;
         min-width: 0;
+        gap: 0.75rem;
     }
 }
 

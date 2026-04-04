@@ -122,7 +122,7 @@
         <div class="stock-filter-bar mt-6">
             <form method="get" action="/insumos/estoque" class="stock-filter-grid" data-stock-filter-form data-module-period-filter-root data-module-range-default="last_10_days" data-module-range-placeholder="Filtre por período" data-module-custom-auto-apply="false">
                 <input type="hidden" name="stock_tab" value="{{ selected_stock_tab }}" data-stock-tab-hidden>
-                <div class="stock-filter-fields-row">
+                <div class="stock-filter-fields-row {% if stock_filters_active %}has-clear-action{% endif %}">
                     <label class="stock-filter-field stock-filter-field-type {% if selected_item_type %}is-filtered{% endif %}">
                         <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Tipo</span>
                         <select name="item_type" class="w-full rounded-xl border-slate-200 bg-white">
