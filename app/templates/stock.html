@@ -568,11 +568,11 @@
             <div class="grid gap-4 md:grid-cols-2">
                 <label>
                     <span class="mb-2 block text-sm font-medium">Insumo</span>
-                    <select name="input_id" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required>
+                    <select name="input_id" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required data-stock-launch-input-select>
                         <option value="">Selecione</option>
                         {% for input_item in inputs_catalog %}
                         {% set stock = input_stock.get(input_item.id, {}) %}
-                        <option value="{{ input_item.id }}">
+                        <option value="{{ input_item.id }}" data-default-unit="{{ input_item.default_unit }}">
                             {{ input_item.name }} — disponível: {{ stock.get('available', 0) }} {{ stock.get('unit', input_item.default_unit) }}
                         </option>
                         {% endfor %}
@@ -590,11 +590,13 @@
                 </label>
                 <label>
                     <span class="mb-2 block text-sm font-medium">Unidade</span>
-                    <select name="unit" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50">
+                    <input type="hidden" name="unit" value="" data-stock-launch-unit-hidden>
+                    <select class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50 cursor-not-allowed opacity-70" data-stock-launch-unit-display disabled>
                         {% for unit in ['kg', 'g', 'L', 'ml', 'sacas', 'un'] %}
                         <option value="{{ unit }}">{{ unit }}</option>
                         {% endfor %}
                     </select>
+                    <span class="mt-2 block text-xs text-slate-500">A unidade segue o cadastro padrão do insumo selecionado.</span>
                 </label>
             </div>
             <label>
@@ -725,7 +727,22 @@
             const launchModal = document.getElementById('stock-launch-modal');
             const openLaunchButton = document.querySelector('[data-stock-launch-open]');
             const closeLaunchButtons = Array.from(document.querySelectorAll('[data-stock-launch-close]'));
+            const launchInputSelect = launchModal?.querySelector('[data-stock-launch-input-select]');
+            const launchUnitHidden = launchModal?.querySelector('[data-stock-launch-unit-hidden]');
+            const launchUnitDisplay = launchModal?.querySelector('[data-stock-launch-unit-display]');
             if (launchModal) {
+                const syncLaunchUnit = () => {
+                    if (!(launchInputSelect instanceof HTMLSelectElement) || !(launchUnitHidden instanceof HTMLInputElement) || !(launchUnitDisplay instanceof HTMLSelectElement)) return;
+                    const selectedOption = launchInputSelect.selectedOptions[0];
+                    const unit = (selectedOption?.dataset.defaultUnit || '').trim();
+                    launchUnitHidden.value = unit;
+                    launchUnitDisplay.value = unit || '';
+                    if (!unit) {
+                        launchUnitDisplay.selectedIndex = 0;
+                    }
+                };
+
+                launchInputSelect?.addEventListener('change', syncLaunchUnit);
                 openLaunchButton?.addEventListener('click', () => launchModal.showModal());
                 closeLaunchButtons.forEach((button) => {
                     button.addEventListener('click', () => launchModal.close());
@@ -734,6 +751,7 @@
                     event.preventDefault();
                     launchModal.close();
                 });
+                syncLaunchUnit();
             }
 
             const summaryToggle = document.querySelector('[data-stock-summary-toggle]');
