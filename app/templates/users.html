@@ -58,71 +58,51 @@
         letter-spacing: 0.22em;
     }
 </style>
-<div class="grid gap-6 xl:grid-cols-[0.85fr_1.15fr]">
-    <section class="rounded-[2rem] bg-white p-6 shadow-panel">
-        <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Usuarios</p>
-        <h3 class="mt-2 text-2xl font-semibold">{% if edit_user %}Editar usuario{% else %}Administrador de usuarios{% endif %}</h3>
-        <form method="post" action="{% if edit_user %}/usuarios/{{ edit_user.id }}/editar{% else %}/usuarios{% endif %}" class="mt-6 grid gap-4" data-user-form>
-            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-            <label><span class="mb-2 block text-sm font-medium">Nome</span><input name="name" value="{{ edit_user.name if edit_user else '' }}" class="w-full rounded-2xl border-slate-200 bg-slate-50" required></label>
-            <label><span class="mb-2 block text-sm font-medium">Email</span><input type="email" name="email" value="{{ edit_user.email if edit_user else '' }}" class="w-full rounded-2xl border-slate-200 bg-slate-50" required></label>
-            <label>
-                <span class="mb-2 block text-sm font-medium">Senha</span>
-                <input
-                    type="password"
-                    name="password"
-                    value="{% if edit_user %}********{% endif %}"
-                    class="user-password-mask w-full rounded-2xl border-slate-200 bg-slate-50"
-                    autocomplete="new-password"
-                    {% if not edit_user %}required{% endif %}
-                    {% if edit_user %}data-password-mask="true"{% endif %}
-                >
-            </label>
-            {% if edit_user %}
-            <div class="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
-                <span class="font-medium text-slate-700">Ultimo acesso:</span>
-                {% if edit_user.last_login_at %}
-                {{ format_app_datetime(edit_user.last_login_at) }}
-                {% else %}
-                Nunca acessou
-                {% endif %}
+<div class="stock-page-shell space-y-6">
+    <section class="stock-page-header rounded-[2rem] p-5 shadow-panel">
+        <div class="flex flex-wrap items-start justify-between gap-4">
+            <div class="min-w-0 stock-page-header-intro" data-stock-header-intro>
+                <div class="stock-page-header-intro-inner">
+                    <h2 class="stock-page-card-title">Usuários e Permissões</h2>
+                    <p class="stock-page-card-subtitle">Gerencie acessos, permissões administrativas e contingências de autenticação em um fluxo unificado.</p>
+                </div>
             </div>
-            {% endif %}
-            <label class="user-switch rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-                <input type="checkbox" name="is_active" value="true" {% if not edit_user or edit_user.is_active %}checked{% endif %}>
-                <span class="user-switch-track" aria-hidden="true"></span>
-                <span class="user-switch-copy text-sm font-medium text-slate-700">Usuário ativo</span>
-            </label>
-            <label class="user-switch rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-                <input type="checkbox" name="is_admin" value="true" {% if edit_user and edit_user.is_admin %}checked{% endif %}>
-                <span class="user-switch-track" aria-hidden="true"></span>
-                <span class="user-switch-copy text-sm font-medium text-slate-700">Permissão de administrador</span>
-            </label>
-            <label class="user-switch rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-                <input type="checkbox" name="is_two_factor_enabled" value="true" {% if not edit_user or edit_user.is_two_factor_enabled %}checked{% endif %}>
-                <span class="user-switch-track" aria-hidden="true"></span>
-                <span class="user-switch-copy text-sm font-medium text-slate-700">2FA habilitado</span>
-            </label>
-            <div class="flex gap-3">
-                <button class="rounded-2xl bg-brand-500 px-4 py-3 font-semibold text-white hover:bg-brand-700">{% if edit_user %}Salvar alteracoes{% else %}Criar usuario{% endif %}</button>
-                {% if edit_user %}
-                <a href="/usuarios" class="rounded-2xl bg-slate-100 px-4 py-3 font-semibold text-slate-700 hover:bg-slate-200">Cancelar</a>
-                {% endif %}
+            <div class="stock-header-actions stock-header-actions-top">
+                <button type="button" class="stock-action-button stock-action-button-primary" data-users-launch-open>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                        <path d="M12 5v14"/>
+                        <path d="M5 12h14"/>
+                    </svg>
+                    <span class="stock-action-button-label">Novo usuário</span>
+                </button>
             </div>
-        </form>
+        </div>
     </section>
-    <section class="rounded-[2rem] bg-white p-6 shadow-panel">
-        <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Equipe</p>
-        <h3 class="mt-2 text-2xl font-semibold">Usuarios cadastrados</h3>
-        <div class="mt-6 space-y-4">
+
+    <section class="stock-panel rounded-[2rem] bg-white p-6 shadow-panel" data-stock-fade-panel>
+        <div class="flex flex-wrap items-start justify-between gap-4">
+            <div>
+                <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Equipe</p>
+                <h3 class="mt-2 text-2xl font-semibold">Usuários cadastrados</h3>
+            </div>
+            <div class="stock-search-field">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+                    <circle cx="11" cy="11" r="7"></circle>
+                    <path d="m20 20-3.5-3.5"></path>
+                </svg>
+                <input type="search" placeholder="Buscar nome, email, status ou permissão" data-users-search>
+            </div>
+        </div>
+
+        <div class="mt-5 space-y-4" data-users-history-stage>
             {% for item in users %}
-            <article class="rounded-[1.5rem] border border-slate-100 bg-slate-50 p-5">
-                <div class="flex flex-wrap items-start justify-between gap-4">
-                    <div>
-                        <p class="text-lg font-semibold">{{ item.name }}</p>
-                        <p class="mt-1 text-sm text-slate-500">{{ item.email }}</p>
+            <article class="rounded-[1.5rem] border border-slate-100 bg-slate-50 p-5 lg:p-4" data-users-row data-users-search-text="{{ item.name ~ ' ' ~ item.email ~ ' ' ~ ('ativo' if item.is_active else 'inativo') ~ ' ' ~ ('administrador' if item.is_admin else 'operacional') ~ ' ' ~ ('2fa ativo' if item.is_two_factor_enabled else '2fa desabilitado') }}">
+                <div class="flex flex-wrap items-start justify-between gap-4 lg:gap-3">
+                    <div class="min-w-0">
+                        <button type="button" class="text-left text-lg font-semibold text-slate-900 transition hover:text-brand-700 lg:text-base" data-users-launch-open data-users-edit-link="/usuarios?edit_id={{ item.id }}">{{ item.name }}</button>
+                        <p class="mt-1 text-sm text-slate-500 lg:mt-0.5 lg:text-[13px]">{{ item.email }}</p>
                         <p class="mt-2 text-xs font-medium uppercase tracking-[0.24em] text-slate-400">
-                            Ultimo acesso:
+                            Último acesso:
                             <span class="tracking-normal text-slate-500">
                                 {% if item.last_login_at %}
                                 {{ format_app_datetime(item.last_login_at) }}
@@ -137,26 +117,179 @@
                             <span class="rounded-full px-3 py-1 text-xs font-semibold {% if item.is_two_factor_enabled %}bg-sky-100 text-sky-700{% else %}bg-slate-200 text-slate-600{% endif %}">{% if item.is_two_factor_enabled %}2FA ativo{% else %}2FA desabilitado{% endif %}</span>
                         </div>
                     </div>
-                    <div class="flex gap-2">
-                        <a href="/usuarios?edit_id={{ item.id }}" class="rounded-xl bg-slate-900 px-3 py-2 text-xs font-medium text-white hover:bg-slate-700">Editar</a>
-                        <form method="post" action="/usuarios/{{ item.id }}/excluir" onsubmit="return confirm('Excluir o usuario {{ item.name }}?');">
+                    <div class="flex items-center gap-2 lg:gap-1.5">
+                        <a href="/usuarios?edit_id={{ item.id }}" class="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-100" title="Editar">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M12 20h9"/>
+                                <path d="M16.5 3.5a2.1 2.1 0 1 1 3 3L7 19l-4 1 1-4Z"/>
+                            </svg>
+                        </a>
+                        <form method="post" action="/usuarios/{{ item.id }}/excluir" onsubmit="return confirm('Excluir o usuário {{ item.name }}?');">
                             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                            <button class="rounded-xl bg-rose-600 px-3 py-2 text-xs font-medium text-white hover:bg-rose-700">Excluir</button>
+                            <button type="submit" class="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 text-rose-600 hover:bg-rose-50" title="Excluir">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M3 6h18"/>
+                                    <path d="M8 6V4h8v2"/>
+                                    <path d="M19 6l-1 14H6L5 6"/>
+                                    <path d="M10 11v6"/>
+                                    <path d="M14 11v6"/>
+                                </svg>
+                            </button>
                         </form>
                     </div>
                 </div>
             </article>
             {% else %}
-            <p class="text-sm text-slate-500">Nenhum usuario cadastrado.</p>
+            <p class="text-sm text-slate-500">Nenhum usuário cadastrado.</p>
             {% endfor %}
         </div>
+        <p class="stock-search-empty mt-4 hidden text-sm text-slate-500" data-users-search-empty>Nenhum usuário corresponde à busca digitada.</p>
     </section>
 </div>
+
+<dialog id="users-launch-modal" class="app-modal rounded-[2rem] p-0 shadow-2xl w-full max-w-3xl overflow-hidden">
+    <div class="bg-white p-6 sm:p-8">
+        <div class="flex items-start justify-between gap-4">
+            <div class="min-w-0">
+                <p class="text-xs uppercase tracking-[0.35em] text-slate-400">{% if edit_user %}Editar usuário{% else %}Novo usuário{% endif %}</p>
+                <h3 class="mt-2 text-2xl font-semibold purchased-modal-heading">{% if edit_user %}Editar usuário{% else %}Cadastrar novo usuário{% endif %}</h3>
+                <p class="mt-2 text-sm text-slate-500 purchased-modal-subtitle">Configure credenciais, permissões administrativas e a contingência de autenticação em um único formulário.</p>
+            </div>
+            <button type="button" class="modal-close-button" aria-label="Fechar" data-users-launch-close>
+                <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M18 6 6 18"/>
+                    <path d="m6 6 12 12"/>
+                </svg>
+            </button>
+        </div>
+
+        <div class="mt-6 max-h-[72vh] overflow-y-auto pr-1" data-modal-scroll>
+            <form id="users-form" method="post" action="{% if edit_user %}/usuarios/{{ edit_user.id }}/editar{% else %}/usuarios{% endif %}" class="grid gap-4" data-user-form>
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <div class="sticky top-0 z-10 -mx-1 bg-white/95 px-1 py-1 backdrop-blur">
+                    <div class="flex flex-wrap justify-end gap-3 rounded-[1.5rem] px-2 py-2 sm:px-3">
+                        <button type="button" class="rounded-2xl bg-slate-100 px-4 py-3 font-semibold text-slate-700 hover:bg-slate-200" data-users-launch-close>Cancelar</button>
+                        <button form="users-form" class="rounded-2xl bg-brand-500 px-4 py-3 font-semibold text-white hover:bg-brand-700">{% if edit_user %}Salvar{% else %}Criar usuário{% endif %}</button>
+                    </div>
+                </div>
+
+                <div class="grid gap-4 md:grid-cols-2">
+                    <label>
+                        <span class="mb-2 block text-sm font-medium">Nome</span>
+                        <input name="name" value="{{ edit_user.name if edit_user else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required>
+                    </label>
+                    <label>
+                        <span class="mb-2 block text-sm font-medium">Email</span>
+                        <input type="email" name="email" value="{{ edit_user.email if edit_user else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required>
+                    </label>
+                </div>
+
+                <label>
+                    <span class="mb-2 block text-sm font-medium">Senha</span>
+                    <input
+                        type="password"
+                        name="password"
+                        value="{% if edit_user %}********{% endif %}"
+                        class="user-password-mask min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50"
+                        autocomplete="new-password"
+                        {% if not edit_user %}required{% endif %}
+                        {% if edit_user %}data-password-mask="true"{% endif %}
+                    >
+                </label>
+
+                {% if edit_user %}
+                <div class="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+                    <span class="font-medium text-slate-700">Último acesso:</span>
+                    {% if edit_user.last_login_at %}
+                    {{ format_app_datetime(edit_user.last_login_at) }}
+                    {% else %}
+                    Nunca acessou
+                    {% endif %}
+                </div>
+                {% endif %}
+
+                <label class="user-switch rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                    <input type="checkbox" name="is_active" value="true" {% if not edit_user or edit_user.is_active %}checked{% endif %}>
+                    <span class="user-switch-track" aria-hidden="true"></span>
+                    <span class="user-switch-copy text-sm font-medium text-slate-700">Usuário ativo</span>
+                </label>
+                <label class="user-switch rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                    <input type="checkbox" name="is_admin" value="true" {% if edit_user and edit_user.is_admin %}checked{% endif %}>
+                    <span class="user-switch-track" aria-hidden="true"></span>
+                    <span class="user-switch-copy text-sm font-medium text-slate-700">Permissão de administrador</span>
+                </label>
+                <label class="user-switch rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                    <input type="checkbox" name="is_two_factor_enabled" value="true" {% if not edit_user or edit_user.is_two_factor_enabled %}checked{% endif %}>
+                    <span class="user-switch-track" aria-hidden="true"></span>
+                    <span class="user-switch-copy text-sm font-medium text-slate-700">2FA habilitado</span>
+                </label>
+            </form>
+        </div>
+    </div>
+</dialog>
+
 <script>
     (() => {
+        const launchModal = document.getElementById('users-launch-modal');
+        const openButtons = Array.from(document.querySelectorAll('[data-users-launch-open]'));
+        const closeButtons = Array.from(document.querySelectorAll('[data-users-launch-close]'));
+        const searchInput = document.querySelector('[data-users-search]');
+        const searchRows = Array.from(document.querySelectorAll('[data-users-row]'));
+        const searchEmpty = document.querySelector('[data-users-search-empty]');
+        const stickyHeader = document.querySelector('.stock-page-header');
         const form = document.querySelector('[data-user-form]');
-        if (!form) return;
-        const passwordField = form.querySelector('[data-password-mask="true"]');
+        const passwordField = form?.querySelector('[data-password-mask="true"]');
+        const editMode = {{ 'true' if edit_user else 'false' }};
+
+        const removeEditIdFromUrl = () => {
+            const url = new URL(window.location.href);
+            url.searchParams.delete('edit_id');
+            window.location.href = url.pathname + (url.searchParams.toString() ? `?${url.searchParams.toString()}` : '');
+        };
+
+        const openCreateModal = () => {
+            if (editMode) {
+                removeEditIdFromUrl();
+                return;
+            }
+            launchModal?.showModal();
+        };
+
+        const closeModal = () => {
+            if (editMode) {
+                removeEditIdFromUrl();
+                return;
+            }
+            launchModal?.close();
+        };
+
+        openButtons.forEach((button) => {
+            button.addEventListener('click', (event) => {
+                const editLink = button.getAttribute('data-users-edit-link');
+                if (editLink) {
+                    event.preventDefault();
+                    window.location.href = editLink;
+                    return;
+                }
+                openCreateModal();
+            });
+        });
+
+        closeButtons.forEach((button) => {
+            button.addEventListener('click', () => closeModal());
+        });
+
+        if (launchModal) {
+            launchModal.addEventListener('cancel', (event) => {
+                event.preventDefault();
+                closeModal();
+            });
+        }
+
+        if (launchModal && editMode) {
+            launchModal.showModal();
+        }
+
         if (passwordField) {
             const maskValue = '********';
             passwordField.addEventListener('focus', () => {
@@ -169,12 +302,53 @@
                 passwordField.classList.add('user-password-mask');
             });
         }
-        form.addEventListener('submit', () => {
-            const button = form.querySelector('button[type="submit"], button:not([type])');
-            if (!button) return;
-            button.disabled = true;
-            button.classList.add('opacity-70', 'cursor-not-allowed');
-        });
+
+        if (form) {
+            form.addEventListener('submit', () => {
+                const button = form.querySelector('button[type="submit"], button:not([type])');
+                if (!button) return;
+                button.disabled = true;
+                button.classList.add('opacity-70', 'cursor-not-allowed');
+            });
+        }
+
+        const normalizeText = (value) => (value || '')
+            .toString()
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '')
+            .toLowerCase()
+            .trim();
+
+        const applySearch = () => {
+            if (!searchInput) return;
+            const query = normalizeText(searchInput.value);
+            let visibleCount = 0;
+            searchRows.forEach((row) => {
+                const haystack = normalizeText(row.dataset.usersSearchText || row.textContent);
+                const matches = !query || haystack.includes(query);
+                row.classList.toggle('hidden', !matches);
+                if (matches) visibleCount += 1;
+            });
+            searchEmpty?.classList.toggle('hidden', visibleCount !== 0);
+        };
+
+        searchInput?.addEventListener('input', applySearch);
+        applySearch();
+
+        if (stickyHeader) {
+            const handleHeaderCompaction = () => {
+                if (window.innerWidth >= 900) {
+                    stickyHeader.classList.remove('is-compact');
+                    return;
+                }
+                const rect = stickyHeader.getBoundingClientRect();
+                stickyHeader.classList.toggle('is-compact', rect.top <= 96);
+            };
+
+            handleHeaderCompaction();
+            window.addEventListener('scroll', handleHeaderCompaction, { passive: true });
+            window.addEventListener('resize', handleHeaderCompaction);
+        }
     })();
 </script>
 {% endblock %}
