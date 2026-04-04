@@ -1772,6 +1772,26 @@ def users_page(
     )
 
 
+@router.get("/usuarios/{user_id}/avatar")
+def user_avatar_view(
+    user_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    denied = _require_admin(request, user)
+    if denied:
+        return denied
+    repo = _repository(db)
+    target_user = repo.get_user(user_id)
+    if not target_user or not target_user.avatar_data:
+        return Response(status_code=404)
+    return Response(
+        content=target_user.avatar_data,
+        media_type=target_user.avatar_content_type or "image/jpeg",
+    )
+
+
 @router.post("/usuarios")
 def create_user_action(
     request: Request,
