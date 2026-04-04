@@ -366,10 +366,11 @@ body {
 
 [data-stock-catalog-dots] {
     display: inline-grid;
-    grid-template-columns: 0.65rem 1.8rem 0.65rem;
+    grid-template-columns: 0.65rem 2.9rem 0.65rem;
     align-items: center;
     justify-content: center;
     column-gap: 0.45rem;
+    width: 5.1rem;
 }
 
 .swipe-card-pager-dot[data-role="prev"] {
@@ -379,7 +380,7 @@ body {
 
 .swipe-card-pager-dot[data-role="current"] {
     grid-column: 2;
-    justify-self: start;
+    justify-self: center;
 }
 
 .swipe-card-pager-dot[data-role="next"] {
