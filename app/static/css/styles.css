@@ -158,15 +158,15 @@ body {
     height: 2.45rem;
     border: 0;
     border-radius: 9999px;
-    background: rgba(148, 163, 184, 0.12);
+    background: transparent;
     color: rgba(51, 65, 85, 0.86);
     cursor: pointer;
     transform: translateY(-50%);
-    transition: background-color 180ms ease, color 180ms ease, transform 180ms ease;
+    box-shadow: none;
+    transition: color 180ms ease, transform 180ms ease;
 }
 
 .password-visibility-toggle:hover {
-    background: rgba(91, 179, 74, 0.14);
     color: #446a36;
 }
 
