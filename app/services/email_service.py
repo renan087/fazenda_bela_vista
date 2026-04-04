@@ -153,3 +153,17 @@ def send_password_change_code_email(recipient_email: str, code: str, expires_in_
         ),
         error_context="two_factor",
     )
+
+
+def send_bootstrap_admin_password_email(recipient_email: str, password: str) -> None:
+    _send_email(
+        recipient_email=recipient_email,
+        subject="Acesso administrativo de contingencia",
+        body=(
+            "Uma conta administrativa de contingencia foi criada no SiSFarm.\n\n"
+            f"Login: {recipient_email}\n"
+            f"Senha temporaria: {password}\n\n"
+            "Ao acessar, mantenha o 2FA ativo e altere a senha assim que possivel."
+        ),
+        error_context="two_factor",
+    )

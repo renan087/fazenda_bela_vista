@@ -1,3 +1,5 @@
+import logging
+import secrets
 from datetime import date
 
 from sqlalchemy import text
@@ -38,6 +40,9 @@ from app.models import (
     TrustedBrowserToken,
     User,
 )
+from app.services.email_service import send_bootstrap_admin_password_email
+
+logger = logging.getLogger(__name__)
 
 
 def create_tables() -> None:
@@ -756,23 +761,46 @@ def _sync_schema() -> None:
 
 def seed_admin(db: Session) -> None:
     settings = get_settings()
+    existing_admin = db.query(User).filter(User.is_admin.is_(True)).first()
+    if existing_admin:
+        return
+
     existing = db.query(User).filter(User.email == settings.admin_email).first()
     if existing:
+        updated = False
         if not existing.is_admin:
             existing.is_admin = True
+            updated = True
+        if not existing.is_active:
+            existing.is_active = True
+            updated = True
+        if not existing.is_two_factor_enabled:
+            existing.is_two_factor_enabled = True
+            updated = True
+        if updated:
             db.add(existing)
             db.commit()
         return
 
+    bootstrap_password = secrets.token_urlsafe(12)
+
     admin = User(
-        name="Administrador",
+        name=settings.admin_name,
         email=settings.admin_email,
-        hashed_password=get_password_hash(settings.admin_password),
+        hashed_password=get_password_hash(bootstrap_password),
         is_active=True,
         is_admin=True,
+        is_two_factor_enabled=True,
     )
     db.add(admin)
     db.commit()
+    try:
+        send_bootstrap_admin_password_email(settings.admin_email, bootstrap_password)
+    except Exception:
+        logger.exception(
+            "Conta administrativa de contingencia criada, mas o envio da senha por email falhou.",
+            extra={"recipient_email": settings.admin_email},
+        )
 
 
 def seed_demo_data(db: Session) -> None:
