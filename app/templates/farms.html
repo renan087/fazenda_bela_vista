@@ -207,6 +207,11 @@
                 <div class="rounded-[1.25rem] border border-slate-200 bg-slate-50/80 p-4">
                     <p class="text-xs uppercase tracking-[0.25em] text-slate-400">Perímetro no mapa</p>
                     <p class="mt-2 text-sm text-slate-600">Desenhe o polígono clicando no mapa (não é necessário enviar arquivo antes). Arraste os pontos para ajustar. Envie um arquivo GeoJSON abaixo apenas se preferir importar de outra ferramenta.</p>
+                    {% if google_maps_web_key %}
+                    <p class="mt-2 text-xs text-emerald-700">Mapa em modo satélite (Google Maps).</p>
+                    {% else %}
+                    <p class="mt-2 text-xs text-slate-500">Configure <code class="rounded bg-slate-200 px-1 py-0.5 text-[11px]">GOOGLE_MAPS_API_KEY</code> no servidor para usar imagens de satélite do Google ao desenhar; sem chave, o mapa usa OpenStreetMap.</p>
+                    {% endif %}
                     <div id="farms-form-boundary-map" class="relative z-0 mt-3 h-[280px] overflow-hidden rounded-2xl border border-slate-200 bg-white sm:h-[320px]"></div>
                     <div class="mt-3 flex flex-wrap gap-2">
                         <button type="button" class="rounded-xl bg-slate-200 px-3 py-2 text-xs font-semibold text-slate-800 hover:bg-slate-300" data-farms-form-remove-point>Remover ponto selecionado</button>
@@ -233,8 +238,9 @@
 <script type="application/json" id="farm-boundary-geometries-data">{{ farm_boundary_geometries_json|safe }}</script>
 <script>
     const EDIT_FARM_GEOMETRY = {{ edit_farm_geometry_json|safe }};
+    window.__GOOGLE_MAPS_API_KEY = {{ google_maps_web_key | tojson }};
 </script>
-<script src="{{ url_for('static', path='js/farm_boundary_editor.js') }}?v=2"></script>
+<script src="{{ url_for('static', path='js/farm_boundary_editor.js') }}?v=3"></script>
 <script>
     (() => {
         let FARM_BOUNDARY_DATA = {};
@@ -314,7 +320,7 @@
             if (previewGeometryForm) previewGeometryForm.action = '';
         };
 
-        const startPreviewPolygonEdit = () => {
+        const startPreviewPolygonEdit = async () => {
             if (!previewMapFarmId || typeof window.initFarmBoundaryEditor !== 'function') return;
             teardownPreviewBoundaryEditor();
             mapPreviewViewImage?.classList.add('hidden');
@@ -323,21 +329,28 @@
             if (previewGeometryForm) {
                 previewGeometryForm.action = `/fazendas/${previewMapFarmId}/geometria`;
             }
-            previewBoundaryEditor = window.initFarmBoundaryEditor({
-                containerId: 'farms-preview-boundary-map',
-                hiddenInput: previewGeometryInput,
-                initialGeometry: rawGeom,
-                removePointButton: previewRemovePointBtn,
-                onStats: ({ vertices, area }) => {
-                    if (previewVerticesEl) previewVerticesEl.textContent = String(vertices);
-                    if (previewAreaEl) previewAreaEl.textContent = area.toFixed(2).replace('.', ',');
-                },
-            });
+            try {
+                previewBoundaryEditor = await window.initFarmBoundaryEditor({
+                    containerId: 'farms-preview-boundary-map',
+                    hiddenInput: previewGeometryInput,
+                    initialGeometry: rawGeom,
+                    removePointButton: previewRemovePointBtn,
+                    onStats: ({ vertices, area }) => {
+                        if (previewVerticesEl) previewVerticesEl.textContent = String(vertices);
+                        if (previewAreaEl) previewAreaEl.textContent = area.toFixed(2).replace('.', ',');
+                    },
+                });
+            } catch (err) {
+                console.error(err);
+                return;
+            }
             window.setTimeout(() => previewBoundaryEditor?.invalidate(), 250);
             window.setTimeout(() => previewBoundaryEditor?.invalidate(), 600);
         };
 
-        mapPreviewStartEdit?.addEventListener('click', () => startPreviewPolygonEdit());
+        mapPreviewStartEdit?.addEventListener('click', () => {
+            void startPreviewPolygonEdit();
+        });
         mapPreviewCancelEdit?.addEventListener('click', () => {
             resetPreviewModalLayout();
         });
@@ -376,19 +389,24 @@
             }
         };
 
-        const setupFarmFormBoundaryEditor = () => {
+        const setupFarmFormBoundaryEditor = async () => {
             destroyFarmFormBoundaryEditor();
             if (typeof window.initFarmBoundaryEditor !== 'function' || !form) return;
             const mapEl = document.getElementById('farms-form-boundary-map');
             const hiddenInput = form.querySelector('[data-farms-boundary-input]');
             const removeBtn = document.querySelector('[data-farms-form-remove-point]');
             if (!mapEl || !hiddenInput) return;
-            farmFormBoundaryEditor = window.initFarmBoundaryEditor({
-                containerId: 'farms-form-boundary-map',
-                hiddenInput,
-                initialGeometry: EDIT_FARM_GEOMETRY || null,
-                removePointButton: removeBtn,
-            });
+            try {
+                farmFormBoundaryEditor = await window.initFarmBoundaryEditor({
+                    containerId: 'farms-form-boundary-map',
+                    hiddenInput,
+                    initialGeometry: EDIT_FARM_GEOMETRY || null,
+                    removePointButton: removeBtn,
+                });
+            } catch (err) {
+                console.error(err);
+                return;
+            }
             window.setTimeout(() => farmFormBoundaryEditor?.invalidate(), 200);
             window.setTimeout(() => farmFormBoundaryEditor?.invalidate(), 500);
         };
@@ -404,7 +422,9 @@
                 resetForm();
                 destroyFarmFormBoundaryEditor();
                 launchModal?.showModal();
-                window.requestAnimationFrame(() => setupFarmFormBoundaryEditor());
+                window.requestAnimationFrame(() => {
+                    void setupFarmFormBoundaryEditor();
+                });
             });
         });
 
@@ -419,7 +439,7 @@
 
         if (isEditing) {
             launchModal?.showModal();
-            window.requestAnimationFrame(() => setupFarmFormBoundaryEditor());
+            void setupFarmFormBoundaryEditor();
         }
 
         form?.addEventListener('submit', () => {

@@ -1731,6 +1731,7 @@ def farms_page(
             edit_farm_geometry_json = json.dumps(json.loads(edit_farm.boundary_geojson))
         except json.JSONDecodeError:
             edit_farm_geometry_json = "null"
+    google_maps_web_key = (get_settings().google_maps_api_key or "").strip()
     return templates.TemplateResponse(
         "farms.html",
         _base_context(
@@ -1744,6 +1745,7 @@ def farms_page(
             farm_preview_fingerprint=farm_preview_fingerprint,
             farm_boundary_geometries_json=farm_boundary_geometries_json,
             edit_farm_geometry_json=edit_farm_geometry_json,
+            google_maps_web_key=google_maps_web_key,
             _repo=repo,
         ),
     )
