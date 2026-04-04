@@ -250,10 +250,7 @@
                                 <span class="mb-2 block text-sm font-medium text-slate-700">Código de confirmação</span>
                                 <input type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="[0-9]{6}" class="min-h-[3.25rem] w-full rounded-2xl border-amber-200 bg-white tracking-[0.35em]" placeholder="000000" data-super-admin-2fa-code>
                             </label>
-                            <div class="flex gap-3">
-                                <button type="button" class="rounded-2xl bg-slate-100 px-4 py-3 font-semibold text-slate-700 hover:bg-slate-200" data-super-admin-2fa-cancel>Cancelar</button>
-                                <button type="button" class="rounded-2xl bg-amber-500 px-4 py-3 font-semibold text-white hover:bg-amber-600" data-super-admin-2fa-confirm>Confirmar 2FA</button>
-                            </div>
+                            <button type="button" class="rounded-2xl bg-amber-500 px-4 py-3 font-semibold text-white hover:bg-amber-600" data-super-admin-2fa-confirm>Confirmar 2FA</button>
                         </div>
                     </div>
                     <div data-super-admin-2fa-confirmed {% if not pending_super_admin_two_factor_disable_confirmed %}class="hidden"{% endif %}>
@@ -284,12 +281,12 @@
         const csrfToken = {{ csrf_token|tojson }};
         const editUserId = {{ edit_user.id if edit_user else 'null' }};
         const isSuperAdminEdit = {{ 'true' if edit_user and edit_user.email == (super_admin_email or '') else 'false' }};
+        const initialSuperAdminTwoFactorEnabled = {{ 'true' if edit_user and edit_user.is_two_factor_enabled else 'false' }};
         const superAdminTwoFactorToggle = form?.querySelector('[data-super-admin-2fa-toggle]');
         const superAdminTwoFactorPanel = form?.querySelector('[data-super-admin-2fa-panel]');
         const superAdminTwoFactorMessage = form?.querySelector('[data-super-admin-2fa-message]');
         const superAdminTwoFactorCode = form?.querySelector('[data-super-admin-2fa-code]');
         const superAdminTwoFactorConfirmButton = form?.querySelector('[data-super-admin-2fa-confirm]');
-        const superAdminTwoFactorCancelButton = form?.querySelector('[data-super-admin-2fa-cancel]');
         const superAdminTwoFactorPrompt = form?.querySelector('[data-super-admin-2fa-prompt]');
         const superAdminTwoFactorConfirmedBlock = form?.querySelector('[data-super-admin-2fa-confirmed]');
         const superAdminTwoFactorApprovedInput = form?.querySelector('[data-super-admin-2fa-approved]');
@@ -340,7 +337,7 @@
                 if (!silent) window.alert(error.message);
             }
             superAdminTwoFactorConfirmed = false;
-            superAdminTwoFactorToggle.checked = true;
+            superAdminTwoFactorToggle.checked = initialSuperAdminTwoFactorEnabled;
             if (superAdminTwoFactorCode) superAdminTwoFactorCode.value = '';
             setSuperAdminPanelState('hidden');
             syncSuperAdminTwoFactorApproval();
@@ -420,11 +417,20 @@
 
             superAdminTwoFactorToggle.addEventListener('change', async () => {
                 if (superAdminTwoFactorToggle.checked) {
-                    await cancelSuperAdminTwoFactorFlow({ silent: true });
+                    if (superAdminTwoFactorConfirmed || (superAdminTwoFactorPanel && !superAdminTwoFactorPanel.classList.contains('hidden'))) {
+                        await cancelSuperAdminTwoFactorFlow({ silent: true });
+                        superAdminTwoFactorToggle.checked = true;
+                    }
                     return;
                 }
 
                 if (superAdminTwoFactorConfirmed) {
+                    syncSuperAdminTwoFactorApproval();
+                    return;
+                }
+
+                if (!initialSuperAdminTwoFactorEnabled) {
+                    setSuperAdminPanelState('hidden');
                     syncSuperAdminTwoFactorApproval();
                     return;
                 }
@@ -460,14 +466,11 @@
                 }
             });
 
-            superAdminTwoFactorCancelButton?.addEventListener('click', async () => {
-                await cancelSuperAdminTwoFactorFlow();
-            });
         }
 
         if (form) {
             form.addEventListener('submit', async (event) => {
-                if (isSuperAdminEdit && superAdminTwoFactorToggle && !superAdminTwoFactorToggle.checked && !superAdminTwoFactorConfirmed) {
+                if (isSuperAdminEdit && initialSuperAdminTwoFactorEnabled && superAdminTwoFactorToggle && !superAdminTwoFactorToggle.checked && !superAdminTwoFactorConfirmed) {
                     event.preventDefault();
                     window.alert('Confirme o código do 2FA antes de salvar a desabilitação.');
                     return;
