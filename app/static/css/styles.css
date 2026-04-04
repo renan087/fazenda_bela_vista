@@ -339,6 +339,10 @@ body {
     min-width: 0;
 }
 
+[data-stock-filter-collapse] > .stock-summary-collapse-inner {
+    overflow: visible;
+}
+
 .stock-level-badge {
     display: inline-flex;
     align-items: center;
