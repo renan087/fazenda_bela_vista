@@ -1,133 +1,239 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="grid gap-6 xl:grid-cols-[0.9fr_1.1fr] xl:items-start" data-modal-single-pane>
-    <section class="rounded-[2rem] bg-white p-6 shadow-panel xl:flex xl:max-h-[80vh] xl:min-h-0 xl:flex-col" data-history-edit-panel {% if edit_recommendation %}data-history-edit-open="1"{% endif %}>
-        <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Insumos</p>
-        <h3 class="mt-2 text-2xl font-semibold">{% if edit_recommendation %}Editar recomendacao{% else %}Recomendacao de aplicacao{% endif %}</h3>
-        <div class="mt-6 xl:min-h-0 xl:flex-1 xl:overflow-y-auto xl:pr-2">
-        <form method="post" action="{% if edit_recommendation %}/insumos/recomendacao/{{ edit_recommendation.id }}/editar{% else %}/insumos/recomendacao{% endif %}" class="grid gap-4">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-            {% include "partials/launch_context.html" %}
-            <div class="grid gap-4 md:grid-cols-2">
-            <label>
-                <span class="mb-2 block text-sm font-medium">Setor</span>
-                <select name="plot_id" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50">
-                    <option value="">Sem setor especifico</option>
-                    {% for plot in plots %}
-                    <option value="{{ plot.id }}" {% if edit_recommendation and edit_recommendation.plot_id == plot.id %}selected{% endif %}>{{ plot.name }}{% if plot.farm %} • {{ plot.farm.name }}{% endif %}</option>
-                    {% endfor %}
-                </select>
-            </label>
-            </div>
-            <label><span class="mb-2 block text-sm font-medium">Nome da aplicacao</span><input name="application_name" value="{{ edit_recommendation.application_name if edit_recommendation else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" placeholder="Ex.: Fertilizacao de Base" required></label>
-            <div class="rounded-[1.5rem] border border-slate-200 bg-slate-50 p-4">
-                <div class="flex items-center justify-between gap-3">
-                    <div>
-                        <p class="text-xs uppercase tracking-[0.3em] text-slate-400">Insumos da recomendacao</p>
-                        <p class="mt-1 text-sm text-slate-600">Monte a recomendacao por setor, sem divisao automatica por area.</p>
-                    </div>
-                    <button type="button" class="rounded-xl bg-brand-500 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700" data-add-recommendation-item>Adicionar insumo</button>
+{% macro render_recommendation_card(item) %}
+<article class="rounded-[1.5rem] border border-slate-100 bg-slate-50 p-5 lg:p-4" data-recommendation-row data-recommendation-search-text="{{ (item.application_name or '') ~ ' ' ~ (item.farm.name if item.farm else '') ~ ' ' ~ (item.plot.name if item.plot else '') ~ ' ' ~ (item.notes or '') }}{% for recommendation_item in item.items %} {{ recommendation_item.input_catalog.name if recommendation_item.input_catalog else (recommendation_item.purchased_input.name if recommendation_item.purchased_input else '') }} {{ recommendation_item.quantity }} {{ recommendation_item.unit }}{% endfor %}">
+    <div class="flex flex-wrap items-start justify-between gap-4 lg:gap-3">
+        <div class="min-w-0">
+            <button type="button" class="text-left text-lg font-semibold text-slate-900 transition hover:text-brand-700 lg:text-base" data-history-view-trigger data-history-view-kicker="Recomendação" data-history-view-title="{{ item.application_name }}" data-history-view-subtitle="{{ item.farm.name if item.farm else 'Sem fazenda vinculada' }}{% if item.plot %} • {{ item.plot.name }}{% endif %}" data-history-view-source="recommendation-view-{{ item.id }}" data-history-view-edit-url="/insumos/recomendacao?edit_id={{ item.id }}">{{ item.application_name }}</button>
+            <p class="mt-1 text-sm text-slate-500 lg:mt-0.5 lg:text-[13px]">{{ item.farm.name if item.farm else "Sem fazenda vinculada" }}{% if item.plot %} • {{ item.plot.name }}{% endif %}</p>
+        </div>
+        <div class="flex items-center gap-2 lg:gap-1.5">
+            <a href="/insumos/recomendacao?edit_id={{ item.id }}" class="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-100" title="Editar">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M12 20h9"/>
+                    <path d="M16.5 3.5a2.1 2.1 0 1 1 3 3L7 19l-4 1 1-4Z"/>
+                </svg>
+            </a>
+            <form method="post" action="/insumos/recomendacao/{{ item.id }}/excluir" onsubmit="return confirm('Excluir esta recomendação?');">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <button type="submit" class="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 text-rose-600 hover:bg-rose-50" title="Excluir">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M3 6h18"/>
+                        <path d="M8 6V4h8v2"/>
+                        <path d="M19 6l-1 14H6L5 6"/>
+                        <path d="M10 11v6"/>
+                        <path d="M14 11v6"/>
+                    </svg>
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <div class="mt-4 flex flex-wrap gap-2">
+        {% for recommendation_item in item.items %}
+        <div class="rounded-full bg-white px-3 py-2 text-sm text-slate-700 ring-1 ring-slate-200/80">
+            <span class="font-medium">{{ recommendation_item.input_catalog.name if recommendation_item.input_catalog else (recommendation_item.purchased_input.name if recommendation_item.purchased_input else "Insumo removido") }}</span>
+            <span class="text-slate-500"> • {{ recommendation_item.quantity }} {{ recommendation_item.unit }}</span>
+        </div>
+        {% endfor %}
+    </div>
+
+    {% if item.notes %}
+    <p class="mt-3 text-sm text-slate-500">{{ item.notes }}</p>
+    {% endif %}
+
+    <template id="recommendation-view-{{ item.id }}">
+        <div class="grid gap-3 sm:grid-cols-2">
+            <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Fazenda</p><p class="mt-2 text-sm font-medium text-slate-800">{{ item.farm.name if item.farm else "Sem fazenda vinculada" }}</p></div>
+            <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Setor</p><p class="mt-2 text-sm font-medium text-slate-800">{{ item.plot.name if item.plot else "-" }}</p></div>
+        </div>
+        <div class="rounded-2xl bg-slate-50 px-4 py-4">
+            <p class="text-xs uppercase tracking-[0.2em] text-slate-400">Itens recomendados</p>
+            <div class="mt-3 space-y-2">
+                {% for recommendation_item in item.items %}
+                <div class="rounded-xl bg-white px-3 py-3 text-sm text-slate-700">
+                    <span class="font-medium">{{ recommendation_item.input_catalog.name if recommendation_item.input_catalog else (recommendation_item.purchased_input.name if recommendation_item.purchased_input else "Insumo removido") }}</span>
+                    <span class="text-slate-500"> • {{ recommendation_item.quantity }} {{ recommendation_item.unit }}</span>
                 </div>
-                <div class="mt-4 space-y-4" data-recommendation-items>
-                    {% set initial_items = edit_recommendation.items if edit_recommendation and edit_recommendation.items else [None] %}
-                    {% for recommendation_item in initial_items %}
-                    <div class="grid gap-3 rounded-[1.25rem] border border-slate-200 bg-white p-4 md:grid-cols-[1.3fr_0.8fr_0.8fr_auto]" data-recommendation-item>
-                        <label>
-                            <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Insumo</span>
-                            <select name="input_id" class="min-h-[3rem] w-full rounded-xl border-slate-200 bg-slate-50" required>
-                                <option value="">Selecione</option>
-                                {% for item in inputs_catalog %}
-                                {% set availability = input_stock.get(item.id, {}).get('available', 0) %}
-                                <option value="{{ item.id }}" {% if recommendation_item and recommendation_item.input_id == item.id %}selected{% endif %}>{{ item.name }} • disponivel: {{ availability }} {{ item.default_unit }}</option>
-                                {% endfor %}
-                            </select>
-                        </label>
-                        <label>
-                            <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Unidade</span>
-                            <select name="unit" class="min-h-[3rem] w-full rounded-xl border-slate-200 bg-slate-50">
-                                {% for unit in ['kg', 'g', 'L', 'ml', 'sacas', 'un'] %}
-                                <option value="{{ unit }}" {% if recommendation_item and recommendation_item.unit == unit %}selected{% endif %}>{{ unit }}</option>
-                                {% endfor %}
-                            </select>
-                        </label>
-                        <label><span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Quantidade</span><input type="number" step="0.01" min="0" name="quantity" value="{{ recommendation_item.quantity if recommendation_item else '' }}" class="min-h-[3rem] w-full rounded-xl border-slate-200 bg-slate-50" required></label>
-                        <div class="flex items-end">
-                            <button type="button" class="rounded-xl bg-rose-600 px-3 py-3 text-xs font-medium text-white hover:bg-rose-700" data-remove-recommendation-item>Remover</button>
-                        </div>
-                    </div>
-                    {% endfor %}
+                {% endfor %}
+            </div>
+        </div>
+        <div class="rounded-2xl bg-slate-50 px-4 py-4">
+            <p class="text-xs uppercase tracking-[0.2em] text-slate-400">Observações</p>
+            <p class="mt-2 text-sm text-slate-600">{{ item.notes or "Sem observações." }}</p>
+        </div>
+    </template>
+</article>
+{% endmacro %}
+
+<div class="stock-page-shell space-y-6" data-modal-single-pane>
+    <section class="stock-page-header rounded-[2rem] p-5 shadow-panel">
+        <div class="flex flex-wrap items-start justify-between gap-4">
+            <div class="min-w-0 stock-page-header-intro" data-stock-header-intro>
+                <div class="stock-page-header-intro-inner">
+                    <h2 class="stock-page-card-title">Recomendação de Insumos</h2>
+                    <p class="stock-page-card-subtitle">Monte recomendações por setor, reutilize combinações de insumos e consulte o histórico em um fluxo unificado.</p>
                 </div>
             </div>
-            <label><span class="mb-2 block text-sm font-medium">Observacoes</span><textarea name="notes" rows="4" class="w-full rounded-2xl border-slate-200 bg-slate-50">{{ edit_recommendation.notes if edit_recommendation else '' }}</textarea></label>
-            <div class="flex gap-3">
-                <button class="rounded-2xl bg-brand-500 px-4 py-3 font-semibold text-white hover:bg-brand-700">{% if edit_recommendation %}Salvar alteracoes{% else %}Salvar recomendacao{% endif %}</button>
-                <a href="/insumos/recomendacao" class="rounded-2xl bg-slate-100 px-4 py-3 font-semibold text-slate-700 hover:bg-slate-200">Cancelar</a>
+            <div class="stock-header-actions stock-header-actions-top">
+                <button type="button" class="stock-action-button stock-action-button-primary" data-recommendation-launch-open>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                        <path d="M12 5v14"/>
+                        <path d="M5 12h14"/>
+                    </svg>
+                    <span class="stock-action-button-label"><span class="sm:hidden">Nova</span><span class="hidden sm:inline">Nova recomendação</span></span>
+                </button>
             </div>
-        </form>
         </div>
     </section>
-    <section class="rounded-[2rem] bg-white p-6 shadow-panel xl:flex xl:max-h-[80vh] xl:min-h-0 xl:flex-col">
-        <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Aplicacoes</p>
-        <h3 class="mt-2 text-2xl font-semibold">Recomendacoes cadastradas</h3>
-        <div class="mt-6 xl:min-h-0 xl:flex-1 xl:overflow-y-auto xl:pr-2">
-        <div class="space-y-4">
+
+    <section class="stock-panel rounded-[2rem] bg-white p-6 shadow-panel" data-stock-fade-panel>
+        <div class="flex flex-wrap items-start justify-between gap-4">
+            <div class="min-w-0">
+                <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Histórico</p>
+                <h3 class="mt-2 text-2xl font-semibold">Recomendações cadastradas</h3>
+            </div>
+            <div class="stock-search-field">
+                <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+                    <circle cx="8.5" cy="8.5" r="5.75"></circle>
+                    <path d="M13 13l4 4"></path>
+                </svg>
+                <input type="search" placeholder="Buscar aplicação, fazenda, setor, insumo ou observação" data-recommendation-search>
+            </div>
+        </div>
+
+        <div class="mt-5 space-y-4" data-recommendation-history-list>
             {% for item in recommendations %}
-            <article class="rounded-[1.5rem] border border-slate-100 bg-slate-50 p-5">
-                <div class="flex flex-wrap items-start justify-between gap-4">
-                    <div>
-                        <button type="button" class="text-left text-lg font-semibold text-slate-900 transition hover:text-brand-700" data-history-view-trigger data-history-view-kicker="Recomendacao" data-history-view-title="{{ item.application_name }}" data-history-view-subtitle="{{ item.farm.name if item.farm else 'Sem fazenda vinculada' }}{% if item.plot %} • {{ item.plot.name }}{% endif %}" data-history-view-source="recommendation-view-{{ item.id }}" data-history-view-edit-url="/insumos/recomendacao?edit_id={{ item.id }}">{{ item.application_name }}</button>
-                        <p class="mt-1 text-sm text-slate-500">{{ item.farm.name if item.farm else "Sem fazenda vinculada" }}{% if item.plot %} • {{ item.plot.name }}{% endif %}</p>
-                    </div>
-                    <div class="flex gap-2">
-                        <a href="/insumos/recomendacao?edit_id={{ item.id }}" class="rounded-xl bg-slate-900 px-3 py-2 text-xs font-medium text-white hover:bg-slate-700">Editar</a>
-                        <form method="post" action="/insumos/recomendacao/{{ item.id }}/excluir" onsubmit="return confirm('Excluir esta recomendacao?');">
-                            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                            <button class="rounded-xl bg-rose-600 px-3 py-2 text-xs font-medium text-white hover:bg-rose-700">Excluir</button>
-                        </form>
-                    </div>
-                </div>
-                <div class="mt-4 space-y-2">
-                    {% for recommendation_item in item.items %}
-                    <div class="rounded-2xl bg-white px-4 py-3 text-sm text-slate-700">
-                        <span class="font-medium">{{ recommendation_item.input_catalog.name if recommendation_item.input_catalog else (recommendation_item.purchased_input.name if recommendation_item.purchased_input else "Insumo removido") }}</span>
-                        <span class="text-slate-500"> • {{ recommendation_item.quantity }} {{ recommendation_item.unit }}</span>
-                    </div>
-                    {% endfor %}
-                </div>
-                {% if item.notes %}
-                <p class="mt-4 text-sm text-slate-500">{{ item.notes }}</p>
-                {% endif %}
-                <template id="recommendation-view-{{ item.id }}">
-                    <div class="grid gap-3 sm:grid-cols-2">
-                        <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Fazenda</p><p class="mt-2 text-sm font-medium text-slate-800">{{ item.farm.name if item.farm else "Sem fazenda vinculada" }}</p></div>
-                        <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Setor</p><p class="mt-2 text-sm font-medium text-slate-800">{{ item.plot.name if item.plot else "-" }}</p></div>
-                    </div>
-                    <div class="rounded-2xl bg-slate-50 px-4 py-4">
-                        <p class="text-xs uppercase tracking-[0.2em] text-slate-400">Itens recomendados</p>
-                        <div class="mt-3 space-y-2">
-                            {% for recommendation_item in item.items %}
-                            <div class="rounded-xl bg-white px-3 py-3 text-sm text-slate-700">
-                                <span class="font-medium">{{ recommendation_item.input_catalog.name if recommendation_item.input_catalog else (recommendation_item.purchased_input.name if recommendation_item.purchased_input else "Insumo removido") }}</span>
-                                <span class="text-slate-500"> • {{ recommendation_item.quantity }} {{ recommendation_item.unit }}</span>
-                            </div>
-                            {% endfor %}
-                        </div>
-                    </div>
-                    <div class="rounded-2xl bg-slate-50 px-4 py-4">
-                        <p class="text-xs uppercase tracking-[0.2em] text-slate-400">Observacoes</p>
-                        <p class="mt-2 text-sm text-slate-600">{{ item.notes or "Sem observacoes." }}</p>
-                    </div>
-                </template>
-            </article>
+            {{ render_recommendation_card(item) }}
             {% else %}
-            <p class="text-sm text-slate-500">Nenhuma recomendacao cadastrada.</p>
+            <p class="text-sm text-slate-500">Nenhuma recomendação cadastrada.</p>
             {% endfor %}
         </div>
+        <p class="stock-search-empty mt-4 hidden text-sm text-slate-500" data-recommendation-search-empty>Nenhuma recomendação corresponde à busca digitada.</p>
         {% with pagination=recommendations_pagination %}{% include "partials/history_pagination.html" %}{% endwith %}
-        </div>
     </section>
 </div>
+
+<dialog id="recommendation-launch-modal" class="app-modal rounded-[2rem] p-0 shadow-2xl w-full max-w-4xl overflow-hidden">
+    <div class="bg-white p-6 sm:p-8">
+        <div class="flex items-start justify-between gap-4">
+            <div class="min-w-0">
+                <p class="text-xs uppercase tracking-[0.35em] text-slate-400">{% if edit_recommendation %}Editar recomendação{% else %}Nova recomendação{% endif %}</p>
+                <h3 class="mt-2 text-2xl font-semibold purchased-modal-heading">{% if edit_recommendation %}Editar recomendação de aplicação{% else %}Nova recomendação de aplicação{% endif %}</h3>
+                <p class="mt-2 text-sm text-slate-500 purchased-modal-subtitle">Cadastre combinações de insumos por setor e reutilize essas recomendações nos lançamentos futuros.</p>
+            </div>
+            <button type="button" class="modal-close-button" aria-label="Fechar" data-recommendation-launch-close>
+                <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M18 6 6 18"/>
+                    <path d="m6 6 12 12"/>
+                </svg>
+            </button>
+        </div>
+
+        <div class="mt-6 max-h-[72vh] overflow-y-auto pr-1" data-modal-scroll>
+            <form id="recommendation-form" method="post" action="{% if edit_recommendation %}/insumos/recomendacao/{{ edit_recommendation.id }}/editar{% else %}/insumos/recomendacao{% endif %}" class="grid gap-4" data-recommendation-form>
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+
+                <div class="rounded-[1.5rem] border border-brand-100 bg-brand-50/50 p-4">
+                    <div class="flex flex-wrap items-start justify-between gap-4">
+                        <div class="min-w-0">
+                            <p class="text-xs uppercase tracking-[0.3em] text-slate-400">Contexto do lançamento</p>
+                            <p class="mt-2 text-sm text-slate-500">Use este bloco para confirmar a fazenda e a safra ativas antes de salvar.</p>
+                        </div>
+                        <button type="button" class="stock-summary-toggle" data-recommendation-context-toggle aria-expanded="false">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                                <path d="M5 12h14"/>
+                                <path d="M12 5v14" data-recommendation-context-toggle-plus></path>
+                            </svg>
+                            <span data-recommendation-context-toggle-label>Expandir</span>
+                        </button>
+                    </div>
+                    <div class="stock-summary-collapse" data-recommendation-context-collapse>
+                        <div class="stock-summary-collapse-inner">
+                            <div class="mt-4">
+                                {% include "partials/launch_context.html" %}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="sticky top-0 z-10 -mx-1 bg-white/95 px-1 py-1 backdrop-blur">
+                    <div class="flex flex-wrap justify-end gap-3 rounded-[1.5rem] px-2 py-2 sm:px-3">
+                        <button type="button" class="rounded-2xl bg-slate-100 px-4 py-3 font-semibold text-slate-700 hover:bg-slate-200" data-recommendation-launch-close>Cancelar</button>
+                        <button form="recommendation-form" class="rounded-2xl bg-brand-500 px-4 py-3 font-semibold text-white hover:bg-brand-700">{% if edit_recommendation %}Salvar alterações{% else %}Salvar recomendação{% endif %}</button>
+                    </div>
+                </div>
+
+                <div class="grid gap-4 md:grid-cols-2">
+                    <label>
+                        <span class="mb-2 block text-sm font-medium">Setor</span>
+                        <select name="plot_id" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50">
+                            <option value="">Sem setor específico</option>
+                            {% for plot in plots %}
+                            <option value="{{ plot.id }}" {% if edit_recommendation and edit_recommendation.plot_id == plot.id %}selected{% endif %}>{{ plot.name }}{% if plot.farm %} • {{ plot.farm.name }}{% endif %}</option>
+                            {% endfor %}
+                        </select>
+                    </label>
+                </div>
+
+                <label>
+                    <span class="mb-2 block text-sm font-medium">Nome da aplicação</span>
+                    <input name="application_name" value="{{ edit_recommendation.application_name if edit_recommendation else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" placeholder="Ex.: Fertilização de Base" required>
+                </label>
+
+                <div class="rounded-[1.5rem] border border-slate-200 bg-slate-50 p-4">
+                    <div class="flex flex-wrap items-center justify-between gap-3">
+                        <div>
+                            <p class="text-xs uppercase tracking-[0.3em] text-slate-400">Insumos da recomendação</p>
+                            <p class="mt-1 text-sm text-slate-600">Monte a recomendação por setor, sem divisão automática por área.</p>
+                        </div>
+                        <button type="button" class="rounded-xl bg-brand-500 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700" data-add-recommendation-item>Adicionar insumo</button>
+                    </div>
+                    <div class="mt-4 space-y-4" data-recommendation-items>
+                        {% set initial_items = edit_recommendation.items if edit_recommendation and edit_recommendation.items else [None] %}
+                        {% for recommendation_item in initial_items %}
+                        <div class="grid gap-3 rounded-[1.25rem] border border-slate-200 bg-white p-4 md:grid-cols-[1.3fr_0.8fr_0.8fr_auto]" data-recommendation-item>
+                            <label>
+                                <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Insumo</span>
+                                <select name="input_id" class="min-h-[3rem] w-full rounded-xl border-slate-200 bg-slate-50" required>
+                                    <option value="">Selecione</option>
+                                    {% for item in inputs_catalog %}
+                                    {% set availability = input_stock.get(item.id, {}).get('available', 0) %}
+                                    <option value="{{ item.id }}" {% if recommendation_item and recommendation_item.input_id == item.id %}selected{% endif %}>{{ item.name }} • disponível: {{ availability }} {{ item.default_unit }}</option>
+                                    {% endfor %}
+                                </select>
+                            </label>
+                            <label>
+                                <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Unidade</span>
+                                <select name="unit" class="min-h-[3rem] w-full rounded-xl border-slate-200 bg-slate-50">
+                                    {% for unit in ['kg', 'g', 'L', 'ml', 'sacas', 'un'] %}
+                                    <option value="{{ unit }}" {% if recommendation_item and recommendation_item.unit == unit %}selected{% endif %}>{{ unit }}</option>
+                                    {% endfor %}
+                                </select>
+                            </label>
+                            <label>
+                                <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Quantidade</span>
+                                <input type="number" step="0.01" min="0" name="quantity" value="{{ recommendation_item.quantity if recommendation_item else '' }}" class="min-h-[3rem] w-full rounded-xl border-slate-200 bg-slate-50" required>
+                            </label>
+                            <div class="flex items-end">
+                                <button type="button" class="rounded-xl bg-rose-600 px-3 py-3 text-xs font-medium text-white hover:bg-rose-700" data-remove-recommendation-item>Remover</button>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+
+                <label>
+                    <span class="mb-2 block text-sm font-medium">Observações</span>
+                    <textarea name="notes" rows="4" class="w-full rounded-2xl border-slate-200 bg-slate-50">{{ edit_recommendation.notes if edit_recommendation else '' }}</textarea>
+                </label>
+            </form>
+        </div>
+    </div>
+</dialog>
+
 {% include "partials/history_view_modal.html" %}
+
 <template id="recommendation-item-template">
     <div class="grid gap-3 rounded-[1.25rem] border border-slate-200 bg-white p-4 md:grid-cols-[1.2fr_0.8fr_0.8fr_auto]" data-recommendation-item>
         <label>
@@ -136,7 +242,7 @@
                 <option value="">Selecione</option>
                 {% for item in inputs_catalog %}
                 {% set availability = input_stock.get(item.id, {}).get('available', 0) %}
-                <option value="{{ item.id }}">{{ item.name }} • disponivel: {{ availability }} {{ item.default_unit }}</option>
+                <option value="{{ item.id }}">{{ item.name }} • disponível: {{ availability }} {{ item.default_unit }}</option>
                 {% endfor %}
             </select>
         </label>
@@ -148,16 +254,107 @@
                 {% endfor %}
             </select>
         </label>
-        <label><span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Quantidade</span><input type="number" step="0.01" min="0" name="quantity" class="min-h-[3rem] w-full rounded-xl border-slate-200 bg-slate-50" required></label>
-        <div class="flex items-end"><button type="button" class="rounded-xl bg-rose-600 px-3 py-3 text-xs font-medium text-white hover:bg-rose-700" data-remove-recommendation-item>Remover</button></div>
+        <label>
+            <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Quantidade</span>
+            <input type="number" step="0.01" min="0" name="quantity" class="min-h-[3rem] w-full rounded-xl border-slate-200 bg-slate-50" required>
+        </label>
+        <div class="flex items-end">
+            <button type="button" class="rounded-xl bg-rose-600 px-3 py-3 text-xs font-medium text-white hover:bg-rose-700" data-remove-recommendation-item>Remover</button>
+        </div>
     </div>
 </template>
+
 <script>
     (() => {
+        const launchModal = document.getElementById('recommendation-launch-modal');
+        const openButtons = Array.from(document.querySelectorAll('[data-recommendation-launch-open]'));
+        const closeButtons = Array.from(document.querySelectorAll('[data-recommendation-launch-close]'));
+        const searchInput = document.querySelector('[data-recommendation-search]');
+        const rows = Array.from(document.querySelectorAll('[data-recommendation-row]'));
+        const emptyState = document.querySelector('[data-recommendation-search-empty]');
         const wrapper = document.querySelector('[data-recommendation-items]');
         const addButton = document.querySelector('[data-add-recommendation-item]');
         const template = document.getElementById('recommendation-item-template');
-        if (!wrapper || !addButton || !template) return;
+        const stickyHeader = document.querySelector('.stock-page-header');
+        const headerIntro = stickyHeader?.querySelector('[data-stock-header-intro]');
+        const fadingPanels = Array.from(document.querySelectorAll('[data-stock-fade-panel]'));
+
+        const closeModal = () => {
+            if ({{ 'true' if edit_recommendation else 'false' }}) {
+                window.location.href = '/insumos/recomendacao';
+                return;
+            }
+            launchModal?.close();
+        };
+
+        openButtons.forEach((button) => {
+            button.addEventListener('click', (event) => {
+                const editUrl = button.getAttribute('data-edit-url');
+                if (editUrl) {
+                    event.preventDefault();
+                    window.location.href = editUrl;
+                    return;
+                }
+                launchModal?.showModal();
+            });
+        });
+
+        closeButtons.forEach((button) => {
+            button.addEventListener('click', () => closeModal());
+        });
+
+        launchModal?.addEventListener('cancel', (event) => {
+            event.preventDefault();
+            closeModal();
+        });
+
+        if ({{ 'true' if edit_recommendation else 'false' }}) {
+            launchModal?.showModal();
+        }
+
+        document.querySelectorAll('[data-recommendation-context-toggle]').forEach((toggle) => {
+            const container = toggle.closest('.border-brand-100');
+            const collapse = container?.querySelector('[data-recommendation-context-collapse]');
+            const label = toggle.querySelector('[data-recommendation-context-toggle-label]');
+            const plus = toggle.querySelector('[data-recommendation-context-toggle-plus]');
+            if (!collapse || !label) return;
+
+            const sync = (expanded) => {
+                toggle.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+                collapse.classList.toggle('is-expanded', expanded);
+                label.textContent = expanded ? 'Recolher' : 'Expandir';
+                if (plus) plus.style.display = expanded ? 'none' : '';
+            };
+
+            sync(false);
+            toggle.addEventListener('click', () => {
+                const expanded = toggle.getAttribute('aria-expanded') === 'true';
+                sync(!expanded);
+            });
+        });
+
+        const normalizeText = (value) => (value || '')
+            .toString()
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '')
+            .toLowerCase()
+            .trim();
+
+        const applySearch = () => {
+            const query = normalizeText(searchInput?.value || '');
+            let visible = 0;
+            rows.forEach((row) => {
+                const haystack = normalizeText(row.dataset.recommendationSearchText || row.textContent);
+                const matches = !query || haystack.includes(query);
+                row.classList.toggle('hidden', !matches);
+                if (matches) visible += 1;
+            });
+            emptyState?.classList.toggle('hidden', visible !== 0);
+        };
+
+        searchInput?.addEventListener('input', applySearch);
+        applySearch();
+
         const bindRemove = (row) => {
             row.querySelector('[data-remove-recommendation-item]')?.addEventListener('click', () => {
                 if (wrapper.querySelectorAll('[data-recommendation-item]').length === 1) {
@@ -173,12 +370,94 @@
                 row.remove();
             });
         };
-        wrapper.querySelectorAll('[data-recommendation-item]').forEach(bindRemove);
-        addButton.addEventListener('click', () => {
-            const fragment = template.content.cloneNode(true);
-            wrapper.appendChild(fragment);
-            bindRemove(wrapper.lastElementChild);
-        });
+
+        if (wrapper && addButton && template) {
+            wrapper.querySelectorAll('[data-recommendation-item]').forEach(bindRemove);
+            addButton.addEventListener('click', () => {
+                const fragment = template.content.cloneNode(true);
+                wrapper.appendChild(fragment);
+                bindRemove(wrapper.lastElementChild);
+            });
+        }
+
+        const mobileCompactMq = window.matchMedia('(max-width: 899px)');
+        const parseStickyTopPx = (el) => {
+            const raw = getComputedStyle(el).top;
+            if (!raw || raw === 'auto') return 0;
+            const pxMatch = /^([\d.]+)px$/.exec(raw);
+            if (pxMatch) return parseFloat(pxMatch[1]);
+            const remMatch = /^([\d.]+)rem$/.exec(raw);
+            if (remMatch) {
+                const rootPx = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
+                return parseFloat(remMatch[1]) * rootPx;
+            }
+            return 0;
+        };
+
+        let compactRaf = null;
+        const syncHeaderCompact = () => {
+            compactRaf = null;
+            if (!stickyHeader) return;
+            if (!mobileCompactMq.matches) {
+                stickyHeader.classList.remove('is-compact');
+                if (headerIntro) headerIntro.removeAttribute('aria-hidden');
+                return;
+            }
+            const topPx = parseStickyTopPx(stickyHeader);
+            const rect = stickyHeader.getBoundingClientRect();
+            const isCompact = stickyHeader.classList.contains('is-compact');
+            let nextCompact = isCompact;
+            if (rect.top <= topPx + 2) nextCompact = true;
+            else if (rect.top > topPx + 8) nextCompact = false;
+            stickyHeader.classList.toggle('is-compact', nextCompact);
+            if (headerIntro) headerIntro.setAttribute('aria-hidden', nextCompact ? 'true' : 'false');
+        };
+
+        const scheduleHeaderCompact = () => {
+            if (compactRaf !== null) return;
+            compactRaf = window.requestAnimationFrame(syncHeaderCompact);
+        };
+
+        if (stickyHeader) {
+            window.addEventListener('scroll', scheduleHeaderCompact, { passive: true });
+            window.addEventListener('resize', scheduleHeaderCompact);
+            mobileCompactMq.addEventListener('change', scheduleHeaderCompact);
+            scheduleHeaderCompact();
+        }
+
+        if (!stickyHeader || !fadingPanels.length) return;
+
+        let rafId = null;
+        const updateFadingPanels = () => {
+            rafId = null;
+            const stickyRect = stickyHeader.getBoundingClientRect();
+            const stickyBottom = stickyRect.bottom;
+            fadingPanels.forEach((panel) => {
+                const panelRect = panel.getBoundingClientRect();
+                const panelTop = panelRect.top;
+                const panelH = panelRect.height;
+                if (panelTop >= stickyBottom || panelH <= 1) {
+                    panel.style.setProperty('--stock-fade-cutoff', '0px');
+                    panel.style.setProperty('--stock-fade-feather-end', '0px');
+                    return;
+                }
+
+                const rawOverlap = Math.max(stickyBottom - panelTop, 0);
+                const overlap = Math.min(rawOverlap, panelH);
+                const featherBand = Math.min(80, Math.max(22, overlap * 0.45 + 16));
+                panel.style.setProperty('--stock-fade-cutoff', `${overlap.toFixed(2)}px`);
+                panel.style.setProperty('--stock-fade-feather-end', `${(overlap + featherBand).toFixed(2)}px`);
+            });
+        };
+
+        const scheduleFadeUpdate = () => {
+            if (rafId !== null) return;
+            rafId = window.requestAnimationFrame(updateFadingPanels);
+        };
+
+        window.addEventListener('scroll', scheduleFadeUpdate, { passive: true });
+        window.addEventListener('resize', scheduleFadeUpdate);
+        scheduleFadeUpdate();
     })();
 </script>
 {% endblock %}
