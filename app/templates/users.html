@@ -493,7 +493,9 @@
                 button.classList.add('opacity-70', 'cursor-not-allowed');
                 form.querySelectorAll('[data-users-launch-close], input, select, textarea, button').forEach((element) => {
                     if (element instanceof HTMLInputElement || element instanceof HTMLSelectElement || element instanceof HTMLTextAreaElement || element instanceof HTMLButtonElement) {
-                        if (element !== button) element.disabled = true;
+                        if (element === button) return;
+                        if (element instanceof HTMLInputElement && element.type === 'hidden') return;
+                        element.disabled = true;
                     }
                 });
                 window.setTimeout(() => {
