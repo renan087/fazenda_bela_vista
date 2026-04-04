@@ -9,7 +9,7 @@ import logging
 import unicodedata
 
 from fastapi import APIRouter, Depends, File, Form, Request, Response, UploadFile, status
-from fastapi.responses import RedirectResponse, StreamingResponse
+from fastapi.responses import JSONResponse, RedirectResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
 from openpyxl import Workbook
 from openpyxl.utils import get_column_letter
@@ -321,10 +321,12 @@ def _mark_super_admin_2fa_disable_pending(
     *,
     target_user_id: int,
     actor_user_id: int,
+    confirmed: bool = False,
 ) -> None:
     request.session[PENDING_SUPER_ADMIN_2FA_DISABLE_SESSION_KEY] = {
         "target_user_id": int(target_user_id),
         "actor_user_id": int(actor_user_id),
+        "confirmed": bool(confirmed),
     }
 
 
@@ -345,6 +347,26 @@ def _has_super_admin_2fa_disable_pending(request: Request, *, target_user_id: in
 
 def _clear_super_admin_2fa_disable_pending(request: Request) -> None:
     request.session.pop(PENDING_SUPER_ADMIN_2FA_DISABLE_SESSION_KEY, None)
+
+
+def _super_admin_2fa_disable_pending_confirmed(request: Request, *, target_user_id: int, actor_user_id: int) -> bool:
+    payload = _get_super_admin_2fa_disable_pending(request)
+    if not payload:
+        return False
+    return (
+        int(payload.get("target_user_id") or 0) == int(target_user_id)
+        and int(payload.get("actor_user_id") or 0) == int(actor_user_id)
+        and bool(payload.get("confirmed"))
+    )
+
+
+def _mark_super_admin_2fa_disable_confirmed(request: Request, *, target_user_id: int, actor_user_id: int) -> None:
+    _mark_super_admin_2fa_disable_pending(
+        request,
+        target_user_id=target_user_id,
+        actor_user_id=actor_user_id,
+        confirmed=True,
+    )
 
 
 def _discard_super_admin_2fa_disable_pending(request: Request, db: Session, actor_user_id: int | None = None) -> None:
@@ -1796,13 +1818,16 @@ def users_page(
         return denied
     repo = _repository(db)
     pending_super_admin_two_factor_disable = None
+    pending_super_admin_two_factor_disable_confirmed = False
     pending_payload = _get_super_admin_2fa_disable_pending(request)
     if pending_payload and int(pending_payload.get("actor_user_id") or 0) == int(user.id):
         pending_target_user_id = int(pending_payload.get("target_user_id") or 0)
-        if not get_active_login_code(db, user.id):
+        pending_confirmed = bool(pending_payload.get("confirmed"))
+        if not pending_confirmed and not get_active_login_code(db, user.id):
             _clear_super_admin_2fa_disable_pending(request)
         elif edit_id and pending_target_user_id == edit_id:
             pending_super_admin_two_factor_disable = pending_payload
+            pending_super_admin_two_factor_disable_confirmed = pending_confirmed
     return templates.TemplateResponse(
         "users.html",
         _base_context(
@@ -1816,6 +1841,7 @@ def users_page(
             format_app_datetime=format_app_datetime,
             super_admin_email=(settings.super_admin_email or settings.admin_email or "").strip().lower(),
             pending_super_admin_two_factor_disable=pending_super_admin_two_factor_disable,
+            pending_super_admin_two_factor_disable_confirmed=pending_super_admin_two_factor_disable_confirmed,
             _repo=repo,
         ),
     )
@@ -1917,6 +1943,11 @@ def update_user_action(
         requested_is_admin = _bool_from_form(is_admin)
         requested_is_two_factor_enabled = _bool_from_form(is_two_factor_enabled)
         pending_super_admin_two_factor_disable = is_super_admin_email(normalized_email) and not requested_is_two_factor_enabled
+        confirmed_super_admin_two_factor_disable = _super_admin_2fa_disable_pending_confirmed(
+            request,
+            target_user_id=user_id,
+            actor_user_id=user.id,
+        )
 
         updated_user = update_user(
             repo,
@@ -1928,22 +1959,12 @@ def update_user_action(
                 "is_active": _bool_from_form(is_active),
                 "is_admin": requested_is_admin,
                 "is_two_factor_enabled": requested_is_two_factor_enabled,
+                "allow_super_admin_two_factor_disable": pending_super_admin_two_factor_disable and confirmed_super_admin_two_factor_disable,
             },
         )
-        if pending_super_admin_two_factor_disable:
-            try:
-                code = issue_login_verification_code(db, user)
-                send_access_code_email(user.email, code)
-            except Exception:
-                db.rollback()
-                _discard_super_admin_2fa_disable_pending(request, db, user.id)
-                _flash(
-                    request,
-                    "error",
-                    "O usuario foi atualizado, mas nao foi possivel enviar o codigo de confirmacao para desabilitar o 2FA agora. Tente novamente.",
-                )
-                return _redirect_with_query("/usuarios", edit_id=user_id)
-            _mark_super_admin_2fa_disable_pending(request, target_user_id=updated_user.id, actor_user_id=user.id)
+
+        if pending_super_admin_two_factor_disable and confirmed_super_admin_two_factor_disable:
+            _discard_super_admin_2fa_disable_pending(request, db, user.id)
         elif _has_super_admin_2fa_disable_pending(request, target_user_id=updated_user.id, actor_user_id=user.id):
             _discard_super_admin_2fa_disable_pending(request, db, user.id)
 
@@ -1958,11 +1979,11 @@ def update_user_action(
                 _flash(request, "success", "Usuario atualizado com sucesso.")
                 return _redirect("/dashboard")
 
-        if pending_super_admin_two_factor_disable:
+        if pending_super_admin_two_factor_disable and not confirmed_super_admin_two_factor_disable:
             _flash(
                 request,
-                "success",
-                "Usuario atualizado. Enviamos um codigo para o seu email para confirmar a desabilitacao do 2FA.",
+                "error",
+                "Confirme antes a desabilitacao do 2FA para concluir essa alteracao.",
             )
             return _redirect_with_query("/usuarios", edit_id=user_id)
 
@@ -1989,8 +2010,7 @@ def confirm_super_admin_two_factor_disable_action(
     validate_csrf(request, csrf_token)
 
     if not _has_super_admin_2fa_disable_pending(request, target_user_id=user_id, actor_user_id=user.id):
-        _flash(request, "error", "Nao ha confirmacao pendente para desabilitar o 2FA deste usuario.")
-        return _redirect_with_query("/usuarios", edit_id=user_id)
+        return JSONResponse({"ok": False, "message": "Nao ha confirmacao pendente para desabilitar o 2FA deste usuario."}, status_code=400)
 
     normalized_code = "".join(char for char in (code or "") if char.isdigit())[:6]
     if len(normalized_code) != 6:
@@ -2001,25 +2021,72 @@ def confirm_super_admin_two_factor_disable_action(
     if not valid:
         if not get_active_login_code(db, user.id):
             _clear_super_admin_2fa_disable_pending(request)
-        _flash(request, "error", message)
-        return _redirect_with_query("/usuarios", edit_id=user_id)
+        return JSONResponse({"ok": False, "message": message}, status_code=400)
 
     repo = _repository(db)
     target_user = repo.get_user(user_id)
     if not target_user:
         _discard_super_admin_2fa_disable_pending(request, db, user.id)
-        _flash(request, "error", "Usuario nao encontrado.")
-        return _redirect("/usuarios")
+        return JSONResponse({"ok": False, "message": "Usuario nao encontrado."}, status_code=404)
     if not is_super_admin_email(target_user.email):
         _discard_super_admin_2fa_disable_pending(request, db, user.id)
-        _flash(request, "error", "A confirmacao pendente nao e mais valida para este usuario.")
-        return _redirect("/usuarios")
+        return JSONResponse({"ok": False, "message": "A confirmacao pendente nao e mais valida para este usuario."}, status_code=400)
 
-    repo.update(target_user, {"is_two_factor_enabled": False})
-    _clear_super_admin_2fa_disable_pending(request)
-    revoke_active_login_codes(db, target_user.id)
-    _flash(request, "success", "2FA desabilitado com confirmacao adicional.")
-    return _redirect("/usuarios")
+    _mark_super_admin_2fa_disable_confirmed(request, target_user_id=user_id, actor_user_id=user.id)
+    return JSONResponse({"ok": True, "message": "Codigo confirmado. Agora clique em Salvar para concluir a alteracao."})
+
+
+@router.post("/usuarios/{user_id}/iniciar-desabilitar-2fa")
+def start_super_admin_two_factor_disable_action(
+    user_id: int,
+    request: Request,
+    csrf_token: str = Form(...),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    denied = _require_admin(request, user)
+    if denied:
+        return denied
+    validate_csrf(request, csrf_token)
+
+    repo = _repository(db)
+    target_user = repo.get_user(user_id)
+    if not target_user or not is_super_admin_email(target_user.email):
+        _discard_super_admin_2fa_disable_pending(request, db, user.id)
+        return JSONResponse({"ok": False, "message": "Usuario nao encontrado para esta confirmacao."}, status_code=404)
+
+    try:
+        code = issue_login_verification_code(db, user)
+        send_access_code_email(user.email, code)
+    except Exception:
+        db.rollback()
+        _discard_super_admin_2fa_disable_pending(request, db, user.id)
+        return JSONResponse(
+            {"ok": False, "message": "Nao foi possivel enviar o codigo de confirmacao agora. Tente novamente."},
+            status_code=500,
+        )
+
+    _mark_super_admin_2fa_disable_pending(request, target_user_id=user_id, actor_user_id=user.id)
+    return JSONResponse({"ok": True, "message": "Enviamos um codigo de 6 digitos para o seu email."})
+
+
+@router.post("/usuarios/{user_id}/cancelar-desabilitar-2fa")
+def cancel_super_admin_two_factor_disable_action(
+    user_id: int,
+    request: Request,
+    csrf_token: str = Form(...),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    denied = _require_admin(request, user)
+    if denied:
+        return denied
+    validate_csrf(request, csrf_token)
+
+    if _has_super_admin_2fa_disable_pending(request, target_user_id=user_id, actor_user_id=user.id):
+        _discard_super_admin_2fa_disable_pending(request, db, user.id)
+
+    return JSONResponse({"ok": True})
 
 
 @router.post("/usuarios/{user_id}/excluir")
