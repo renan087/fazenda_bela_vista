@@ -691,24 +691,26 @@ body {
 
 @media (min-width: 1180px) {
     .stock-filter-fields-row {
+        --stock-filter-col-type: minmax(10.75rem, 0.92fr);
+        --stock-filter-col-farm: minmax(15.5rem, 1.34fr);
+        --stock-filter-col-input: minmax(11.75rem, 1.08fr);
+        --stock-filter-col-period: minmax(12rem, 0.98fr);
+        --stock-filter-col-movement: minmax(8.75rem, 0.72fr);
+        --stock-filter-col-actions: max-content;
         grid-template-columns:
-            minmax(10.75rem, 0.92fr)
-            minmax(15.5rem, 1.34fr)
-            minmax(11.75rem, 1.08fr)
-            minmax(12rem, 0.98fr)
-            minmax(8.75rem, 0.72fr)
-            max-content;
+            var(--stock-filter-col-type)
+            var(--stock-filter-col-farm)
+            var(--stock-filter-col-input)
+            var(--stock-filter-col-period)
+            var(--stock-filter-col-movement)
+            var(--stock-filter-col-actions);
         column-gap: 0.85rem;
     }
 
     .stock-filter-fields-row.has-clear-action {
-        grid-template-columns:
-            minmax(10.75rem, 0.92fr)
-            minmax(13.9rem, 1.12fr)
-            minmax(11.2rem, 1fr)
-            minmax(11.4rem, 0.94fr)
-            minmax(8.75rem, 0.72fr)
-            max-content;
+        --stock-filter-col-farm: minmax(13.9rem, 1.12fr);
+        --stock-filter-col-input: minmax(11.2rem, 1fr);
+        --stock-filter-col-period: minmax(11.4rem, 0.94fr);
     }
 
     .stock-filter-field-actions {
@@ -720,15 +722,19 @@ body {
     }
 
     .stock-filter-field-period {
-        min-width: 12rem;
+        min-width: 0;
     }
 
     .stock-filter-fields-row.has-clear-action .stock-filter-field-period {
-        min-width: 11.4rem;
+        min-width: 0;
     }
 
     .stock-filter-field-movement {
-        min-width: 8.75rem;
+        min-width: 0;
+    }
+
+    .stock-filter-field-actions > * {
+        align-self: end;
     }
 }
 
