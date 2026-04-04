@@ -29,13 +29,28 @@
         </div>
     </div>
 
-    <div class="mt-4 flex flex-wrap gap-2">
-        {% for recommendation_item in item.items %}
-        <div class="rounded-full bg-white px-3 py-2 text-sm text-slate-700 ring-1 ring-slate-200/80">
-            <span class="font-medium">{{ recommendation_item.input_catalog.name if recommendation_item.input_catalog else (recommendation_item.purchased_input.name if recommendation_item.purchased_input else "Insumo removido") }}</span>
-            <span class="text-slate-500"> • {{ recommendation_item.quantity }} {{ recommendation_item.unit }}</span>
+    <div class="mt-4">
+        <div class="hidden max-sm:flex max-sm:items-center max-sm:justify-end">
+            <button type="button" class="stock-summary-toggle sm:hidden" data-recommendation-items-toggle aria-expanded="false">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                    <path d="M5 12h14"/>
+                    <path d="M12 5v14" data-recommendation-items-toggle-plus></path>
+                </svg>
+                <span data-recommendation-items-toggle-label>Mostrar Insumos</span>
+            </button>
         </div>
-        {% endfor %}
+        <div class="stock-summary-collapse max-sm:mt-3" data-recommendation-items-collapse>
+            <div class="stock-summary-collapse-inner">
+                <div class="flex flex-wrap gap-2">
+                    {% for recommendation_item in item.items %}
+                    <div class="rounded-full bg-white px-3 py-2 text-sm text-slate-700 ring-1 ring-slate-200/80">
+                        <span class="font-medium">{{ recommendation_item.input_catalog.name if recommendation_item.input_catalog else (recommendation_item.purchased_input.name if recommendation_item.purchased_input else "Insumo removido") }}</span>
+                        <span class="text-slate-500"> • {{ recommendation_item.quantity }} {{ recommendation_item.unit }}</span>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
     </div>
 
     {% if item.notes %}
@@ -195,21 +210,18 @@
                         <div class="grid gap-3 rounded-[1.25rem] border border-slate-200 bg-white p-4 md:grid-cols-[1.3fr_0.8fr_0.8fr_auto]" data-recommendation-item>
                             <label>
                                 <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Insumo</span>
-                                <select name="input_id" class="min-h-[3rem] w-full rounded-xl border-slate-200 bg-slate-50" required>
+                                <select name="input_id" class="min-h-[3rem] w-full rounded-xl border-slate-200 bg-slate-50" data-recommendation-item-input required>
                                     <option value="">Selecione</option>
                                     {% for item in inputs_catalog %}
                                     {% set availability = input_stock.get(item.id, {}).get('available', 0) %}
-                                    <option value="{{ item.id }}" {% if recommendation_item and recommendation_item.input_id == item.id %}selected{% endif %}>{{ item.name }} • disponível: {{ availability }} {{ item.default_unit }}</option>
+                                    <option value="{{ item.id }}" data-default-unit="{{ item.default_unit }}" {% if recommendation_item and recommendation_item.input_id == item.id %}selected{% endif %}>{{ item.name }} • disponível: {{ availability }} {{ item.default_unit }}</option>
                                     {% endfor %}
                                 </select>
                             </label>
                             <label>
                                 <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Unidade</span>
-                                <select name="unit" class="min-h-[3rem] w-full rounded-xl border-slate-200 bg-slate-50">
-                                    {% for unit in ['kg', 'g', 'L', 'ml', 'sacas', 'un'] %}
-                                    <option value="{{ unit }}" {% if recommendation_item and recommendation_item.unit == unit %}selected{% endif %}>{{ unit }}</option>
-                                    {% endfor %}
-                                </select>
+                                <input type="text" value="{{ recommendation_item.unit if recommendation_item else '' }}" class="min-h-[3rem] w-full rounded-xl border-slate-200 bg-slate-100 text-slate-500" data-recommendation-item-unit-display readonly tabindex="-1">
+                                <input type="hidden" name="unit" value="{{ recommendation_item.unit if recommendation_item else '' }}" data-recommendation-item-unit>
                             </label>
                             <label>
                                 <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Quantidade</span>
@@ -238,21 +250,18 @@
     <div class="grid gap-3 rounded-[1.25rem] border border-slate-200 bg-white p-4 md:grid-cols-[1.2fr_0.8fr_0.8fr_auto]" data-recommendation-item>
         <label>
             <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Insumo</span>
-            <select name="input_id" class="min-h-[3rem] w-full rounded-xl border-slate-200 bg-slate-50" required>
+            <select name="input_id" class="min-h-[3rem] w-full rounded-xl border-slate-200 bg-slate-50" data-recommendation-item-input required>
                 <option value="">Selecione</option>
                 {% for item in inputs_catalog %}
                 {% set availability = input_stock.get(item.id, {}).get('available', 0) %}
-                <option value="{{ item.id }}">{{ item.name }} • disponível: {{ availability }} {{ item.default_unit }}</option>
+                <option value="{{ item.id }}" data-default-unit="{{ item.default_unit }}">{{ item.name }} • disponível: {{ availability }} {{ item.default_unit }}</option>
                 {% endfor %}
             </select>
         </label>
         <label>
             <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Unidade</span>
-            <select name="unit" class="min-h-[3rem] w-full rounded-xl border-slate-200 bg-slate-50">
-                {% for unit in ['kg', 'g', 'L', 'ml', 'sacas', 'un'] %}
-                <option value="{{ unit }}">{{ unit }}</option>
-                {% endfor %}
-            </select>
+            <input type="text" value="" class="min-h-[3rem] w-full rounded-xl border-slate-200 bg-slate-100 text-slate-500" data-recommendation-item-unit-display readonly tabindex="-1">
+            <input type="hidden" name="unit" value="" data-recommendation-item-unit>
         </label>
         <label>
             <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Quantidade</span>
@@ -275,16 +284,64 @@
         const wrapper = document.querySelector('[data-recommendation-items]');
         const addButton = document.querySelector('[data-add-recommendation-item]');
         const template = document.getElementById('recommendation-item-template');
+        const form = document.querySelector('[data-recommendation-form]');
         const stickyHeader = document.querySelector('.stock-page-header');
         const headerIntro = stickyHeader?.querySelector('[data-stock-header-intro]');
         const fadingPanels = Array.from(document.querySelectorAll('[data-stock-fade-panel]'));
+        const isEditing = {{ 'true' if edit_recommendation else 'false' }};
 
         const closeModal = () => {
-            if ({{ 'true' if edit_recommendation else 'false' }}) {
+            if (isEditing) {
                 window.location.href = '/insumos/recomendacao';
                 return;
             }
+            resetRecommendationForm();
             launchModal?.close();
+        };
+
+        const syncRecommendationItemUnit = (row) => {
+            if (!row) return;
+            const inputSelect = row.querySelector('[data-recommendation-item-input]');
+            const unitDisplay = row.querySelector('[data-recommendation-item-unit-display]');
+            const unitInput = row.querySelector('[data-recommendation-item-unit]');
+            if (!inputSelect || !unitDisplay || !unitInput) return;
+            const selectedOption = inputSelect.options[inputSelect.selectedIndex];
+            const defaultUnit = selectedOption?.dataset.defaultUnit || '';
+            unitDisplay.value = defaultUnit;
+            unitInput.value = defaultUnit;
+        };
+
+        const buildRecommendationItemRow = () => {
+            if (!template) return null;
+            const fragment = template.content.cloneNode(true);
+            const row = fragment.firstElementChild;
+            if (!row) return null;
+            bindRemove(row);
+            bindRecommendationItem(row);
+            return row;
+        };
+
+        const resetRecommendationForm = () => {
+            if (isEditing || !form || !wrapper) return;
+            form.reset();
+            wrapper.innerHTML = '';
+            const row = buildRecommendationItemRow();
+            if (row) wrapper.appendChild(row);
+            syncRecommendationContext(false);
+        };
+
+        const syncRecommendationContext = (expanded) => {
+            document.querySelectorAll('[data-recommendation-context-toggle]').forEach((toggle) => {
+                const container = toggle.closest('.border-brand-100');
+                const collapse = container?.querySelector('[data-recommendation-context-collapse]');
+                const label = toggle.querySelector('[data-recommendation-context-toggle-label]');
+                const plus = toggle.querySelector('[data-recommendation-context-toggle-plus]');
+                if (!collapse || !label) return;
+                toggle.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+                collapse.classList.toggle('is-expanded', expanded);
+                label.textContent = expanded ? 'Recolher' : 'Expandir';
+                if (plus) plus.style.display = expanded ? 'none' : '';
+            });
         };
 
         openButtons.forEach((button) => {
@@ -295,6 +352,7 @@
                     window.location.href = editUrl;
                     return;
                 }
+                resetRecommendationForm();
                 launchModal?.showModal();
             });
         });
@@ -308,30 +366,17 @@
             closeModal();
         });
 
-        if ({{ 'true' if edit_recommendation else 'false' }}) {
+        if (isEditing) {
             launchModal?.showModal();
         }
 
         document.querySelectorAll('[data-recommendation-context-toggle]').forEach((toggle) => {
-            const container = toggle.closest('.border-brand-100');
-            const collapse = container?.querySelector('[data-recommendation-context-collapse]');
-            const label = toggle.querySelector('[data-recommendation-context-toggle-label]');
-            const plus = toggle.querySelector('[data-recommendation-context-toggle-plus]');
-            if (!collapse || !label) return;
-
-            const sync = (expanded) => {
-                toggle.setAttribute('aria-expanded', expanded ? 'true' : 'false');
-                collapse.classList.toggle('is-expanded', expanded);
-                label.textContent = expanded ? 'Recolher' : 'Expandir';
-                if (plus) plus.style.display = expanded ? 'none' : '';
-            };
-
-            sync(false);
             toggle.addEventListener('click', () => {
                 const expanded = toggle.getAttribute('aria-expanded') === 'true';
-                sync(!expanded);
+                syncRecommendationContext(!expanded);
             });
         });
+        syncRecommendationContext(false);
 
         const normalizeText = (value) => (value || '')
             .toString()
@@ -355,12 +400,41 @@
         searchInput?.addEventListener('input', applySearch);
         applySearch();
 
+        const bindRecommendationItemsCollapse = (card) => {
+            const toggle = card.querySelector('[data-recommendation-items-toggle]');
+            const collapse = card.querySelector('[data-recommendation-items-collapse]');
+            const label = card.querySelector('[data-recommendation-items-toggle-label]');
+            const plus = card.querySelector('[data-recommendation-items-toggle-plus]');
+            if (!toggle || !collapse || !label) return;
+
+            const sync = (expanded) => {
+                toggle.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+                collapse.classList.toggle('is-expanded', expanded);
+                label.textContent = expanded ? 'Esconder Insumos' : 'Mostrar Insumos';
+                if (plus) plus.style.display = expanded ? 'none' : '';
+            };
+
+            sync(false);
+            toggle.addEventListener('click', () => {
+                const expanded = toggle.getAttribute('aria-expanded') === 'true';
+                sync(!expanded);
+            });
+        };
+
+        rows.forEach(bindRecommendationItemsCollapse);
+
         const bindRemove = (row) => {
             row.querySelector('[data-remove-recommendation-item]')?.addEventListener('click', () => {
                 if (wrapper.querySelectorAll('[data-recommendation-item]').length === 1) {
                     row.querySelectorAll('input, select').forEach((field) => {
+                        if (field.matches('[data-recommendation-item-unit]')) return;
+                        if (field.matches('[data-recommendation-item-unit-display]')) {
+                            field.value = '';
+                            return;
+                        }
                         if (field.tagName === 'SELECT') {
                             field.selectedIndex = 0;
+                            syncRecommendationItemUnit(row);
                             return;
                         }
                         field.value = '';
@@ -371,14 +445,32 @@
             });
         };
 
+        const bindRecommendationItem = (row) => {
+            const inputSelect = row.querySelector('[data-recommendation-item-input]');
+            if (!inputSelect) return;
+            inputSelect.addEventListener('change', () => syncRecommendationItemUnit(row));
+            syncRecommendationItemUnit(row);
+        };
+
         if (wrapper && addButton && template) {
-            wrapper.querySelectorAll('[data-recommendation-item]').forEach(bindRemove);
+            wrapper.querySelectorAll('[data-recommendation-item]').forEach((row) => {
+                bindRemove(row);
+                bindRecommendationItem(row);
+            });
             addButton.addEventListener('click', () => {
-                const fragment = template.content.cloneNode(true);
-                wrapper.appendChild(fragment);
-                bindRemove(wrapper.lastElementChild);
+                const row = buildRecommendationItemRow();
+                if (row) wrapper.appendChild(row);
             });
         }
+
+        form?.addEventListener('submit', () => {
+            if (!isEditing) {
+                window.setTimeout(() => {
+                    resetRecommendationForm();
+                    launchModal?.close();
+                }, 0);
+            }
+        });
 
         const mobileCompactMq = window.matchMedia('(max-width: 899px)');
         const parseStickyTopPx = (el) => {
