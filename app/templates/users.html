@@ -167,19 +167,18 @@
             <form id="users-form" method="post" action="{% if edit_user %}/usuarios/{{ edit_user.id }}/editar{% else %}/usuarios{% endif %}" class="grid gap-4" data-user-form>
                 <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                 <div class="sticky top-0 z-10 -mx-1 bg-white/95 px-1 py-1 backdrop-blur">
-                    <div class="flex flex-wrap justify-end gap-3 rounded-[1.5rem] px-2 py-2 sm:px-3">
-                        <button type="button" class="rounded-2xl bg-slate-100 px-4 py-3 font-semibold text-slate-700 hover:bg-slate-200" data-users-launch-close>Cancelar</button>
-                        <button form="users-form" class="rounded-2xl bg-brand-500 px-4 py-3 font-semibold text-white hover:bg-brand-700">{% if edit_user %}Salvar{% else %}Criar usuário{% endif %}</button>
-                    </div>
-                </div>
-
-                <div class="flex justify-center">
-                    <div class="flex h-24 w-24 items-center justify-center overflow-hidden rounded-full ring-4 ring-brand-100 bg-brand-50 text-2xl font-semibold text-brand-700">
-                        {% if edit_user and edit_user.avatar_data %}
-                        <img src="/usuarios/{{ edit_user.id }}/avatar" alt="Foto do usuário" class="h-full w-full object-cover">
-                        {% else %}
-                        <span>{{ (edit_user.name[0] if edit_user and edit_user.name else 'U')|upper }}</span>
-                        {% endif %}
+                    <div class="flex items-center justify-between gap-4 rounded-[1.5rem] px-2 py-2 sm:px-3">
+                        <div class="flex h-24 w-24 shrink-0 items-center justify-center overflow-hidden rounded-full ring-4 ring-brand-100 bg-brand-50 text-2xl font-semibold text-brand-700">
+                            {% if edit_user and edit_user.avatar_data %}
+                            <img src="/usuarios/{{ edit_user.id }}/avatar" alt="Foto do usuário" class="h-full w-full object-cover">
+                            {% else %}
+                            <span>{{ (edit_user.name[0] if edit_user and edit_user.name else 'U')|upper }}</span>
+                            {% endif %}
+                        </div>
+                        <div class="flex flex-wrap justify-end gap-3">
+                            <button type="button" class="rounded-2xl bg-slate-100 px-4 py-3 font-semibold text-slate-700 hover:bg-slate-200" data-users-launch-close>Cancelar</button>
+                            <button form="users-form" class="rounded-2xl bg-brand-500 px-4 py-3 font-semibold text-white hover:bg-brand-700">{% if edit_user %}Salvar{% else %}Criar usuário{% endif %}</button>
+                        </div>
                     </div>
                 </div>
 
