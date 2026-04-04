@@ -43,13 +43,14 @@
                     <div class="min-w-0 flex-1">
                         <button type="button" class="text-left text-lg font-semibold text-slate-900 transition hover:text-brand-700 lg:text-base" data-farms-launch-open data-farms-edit-link="/fazendas?edit_id={{ farm.id }}">{{ farm.name }}</button>
                         <p class="mt-1 text-sm text-slate-500 lg:mt-0.5 lg:text-[13px]">{{ farm.location }}</p>
-                        {% set farm_map_src = url_for('static', path='generated/farm_previews/' ~ farm.id ~ '.png') ~ '?v=' ~ farm_preview_fingerprint.get(farm.id, '') %}
                         <div class="mt-3 flex flex-wrap items-center gap-x-2 gap-y-2">
                             <span class="stock-level-badge bg-white text-slate-700 ring-1 ring-slate-200/80">{{ farm.total_area }} ha</span>
                             <span class="stock-level-badge {% if farm.boundary_geojson %}bg-emerald-50 text-emerald-700 ring-1 ring-emerald-100{% else %}bg-slate-200 text-slate-600{% endif %}">
                                 {% if farm.boundary_geojson %}Georreferenciada{% else %}Sem geometria{% endif %}
                             </span>
-                            {% if farm.boundary_geojson and farm_preview_ready.get(farm.id) %}
+                            {% if farm.boundary_geojson %}
+                            {% set farm_map_src = url_for('static', path='generated/farm_previews/' ~ farm.id ~ '.png') ~ '?v=' ~ farm_preview_fingerprint.get(farm.id, '') %}
+                            {% if farm_preview_ready.get(farm.id) %}
                             <button
                                 type="button"
                                 class="group relative ml-0 aspect-video w-20 shrink-0 overflow-hidden rounded-xl border-2 border-slate-200 bg-slate-100 shadow-sm transition hover:border-brand-400 hover:shadow-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500 sm:w-24 lg:ml-1"
@@ -58,6 +59,7 @@
                                 data-farms-map-open
                                 data-map-src="{{ farm_map_src }}"
                                 data-map-farm-name="{{ farm.name | e }}"
+                                data-map-farm-id="{{ farm.id }}"
                             >
                                 <img
                                     src="{{ farm_map_src }}"
@@ -70,24 +72,12 @@
                                 >
                                 <span class="pointer-events-none absolute inset-0 ring-inset ring-transparent transition group-hover:bg-slate-900/10" aria-hidden="true"></span>
                             </button>
-                            {% elif farm.boundary_geojson %}
+                            {% else %}
                             <span class="inline-flex max-w-[14rem] items-center gap-2 rounded-xl border border-dashed border-slate-200 bg-white px-2.5 py-1.5 text-left text-xs text-slate-600 lg:ml-1">
                                 <span class="inline-flex h-2 w-2 shrink-0 animate-pulse rounded-full bg-brand-500" aria-hidden="true"></span>
                                 <span>Gerando miniatura do mapa… Atualize em instantes.</span>
                             </span>
-                            {% else %}
-                            <div
-                                class="ml-0 flex aspect-video w-20 shrink-0 items-center justify-center rounded-xl border-2 border-slate-200 bg-slate-50 sm:w-24 lg:ml-1"
-                                role="img"
-                                aria-label="Nenhum mapa disponível — cadastre um arquivo GeoJSON ao editar esta fazenda."
-                            >
-                                <svg class="h-[72%] w-[72%]" viewBox="0 0 96 54" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-                                    <rect x="7" y="7" width="82" height="40" rx="6" class="fill-slate-100 stroke-slate-300" stroke-width="2"/>
-                                    <path d="M12 45 L30 26 L40 35 L54 18 L86 45 V47 H12 Z" class="fill-slate-200"/>
-                                    <circle cx="72" cy="17" r="5" class="fill-slate-200"/>
-                                    <path d="M18 13 L78 41" class="stroke-slate-400" stroke-width="4" stroke-linecap="round"/>
-                                </svg>
-                            </div>
+                            {% endif %}
                             {% endif %}
                         </div>
                     </div>
@@ -138,8 +128,34 @@
                 </svg>
             </button>
         </div>
-        <div class="mt-4 overflow-hidden rounded-2xl border border-slate-200 bg-slate-100">
-            <img data-farms-map-modal-img src="" alt="" class="mx-auto max-h-[min(72vh,600px)] w-full object-contain">
+
+        <div class="mt-4 space-y-4" data-farms-map-modal-view-image>
+            <div class="overflow-hidden rounded-2xl border border-slate-200 bg-slate-100">
+                <img data-farms-map-modal-img src="" alt="" class="mx-auto max-h-[min(72vh,600px)] w-full object-contain">
+            </div>
+            <div class="flex flex-wrap gap-2">
+                <button type="button" class="rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50" data-farms-map-modal-start-edit>
+                    Editar polígono
+                </button>
+            </div>
+        </div>
+
+        <div class="mt-4 hidden space-y-4" data-farms-map-modal-view-editor>
+            <p class="text-sm text-slate-600">Clique no mapa para adicionar vértices, arraste os pontos para ajustar e use <span class="font-medium">Remover ponto</span> no vértice selecionado (mínimo de três pontos).</p>
+            <div class="grid gap-2 text-sm text-slate-600 sm:grid-cols-2">
+                <p>Vértices: <span class="font-semibold text-slate-900" data-preview-editor-vertices>0</span></p>
+                <p>Área aproximada: <span class="font-semibold text-slate-900" data-preview-editor-area>0,00</span> ha</p>
+            </div>
+            <div id="farms-preview-boundary-map" class="relative z-0 h-[min(52vh,440px)] min-h-[220px] overflow-hidden rounded-2xl border border-slate-200"></div>
+            <div class="flex flex-wrap gap-2">
+                <button type="button" class="rounded-2xl bg-slate-100 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-200" data-preview-remove-point>Remover ponto</button>
+                <button type="button" class="rounded-2xl bg-slate-100 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-200" data-farms-map-modal-cancel-edit>Cancelar edição</button>
+                <form method="post" class="inline" id="farms-preview-geometry-form" data-preview-geometry-form>
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    <input type="hidden" name="boundary_geojson" value="" data-preview-geometry-input>
+                    <button type="submit" class="rounded-2xl bg-brand-500 px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-700">Salvar geometria</button>
+                </form>
+            </div>
         </div>
     </div>
 </dialog>
@@ -163,6 +179,7 @@
         <div class="mt-6 max-h-[72vh] overflow-y-auto pr-1" data-modal-scroll>
             <form id="farms-form" method="post" enctype="multipart/form-data" action="{% if edit_farm %}/fazendas/{{ edit_farm.id }}/editar{% else %}/fazendas{% endif %}" class="grid gap-4" data-farms-form>
                 <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <input type="hidden" name="boundary_geojson" value="" data-farms-boundary-input>
 
                 <div class="sticky top-0 z-10 -mx-1 bg-white/95 px-1 py-1 backdrop-blur">
                     <div class="flex flex-wrap justify-end gap-3 rounded-[1.5rem] px-2 py-2 sm:px-3">
@@ -187,12 +204,21 @@
                     </label>
                 </div>
 
+                <div class="rounded-[1.25rem] border border-slate-200 bg-slate-50/80 p-4">
+                    <p class="text-xs uppercase tracking-[0.25em] text-slate-400">Perímetro no mapa</p>
+                    <p class="mt-2 text-sm text-slate-600">Desenhe o polígono clicando no mapa (não é necessário enviar arquivo antes). Arraste os pontos para ajustar. Envie um arquivo GeoJSON abaixo apenas se preferir importar de outra ferramenta.</p>
+                    <div id="farms-form-boundary-map" class="relative z-0 mt-3 h-[280px] overflow-hidden rounded-2xl border border-slate-200 bg-white sm:h-[320px]"></div>
+                    <div class="mt-3 flex flex-wrap gap-2">
+                        <button type="button" class="rounded-xl bg-slate-200 px-3 py-2 text-xs font-semibold text-slate-800 hover:bg-slate-300" data-farms-form-remove-point>Remover ponto selecionado</button>
+                    </div>
+                </div>
+
                 <label>
-                    <span class="mb-2 block text-sm font-medium">GeoJSON da fazenda (.json)</span>
+                    <span class="mb-2 block text-sm font-medium">GeoJSON da fazenda (.json) — opcional</span>
                     <input type="file" name="boundary_geojson_file" accept=".json,.geojson,application/json" class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm">
                 </label>
                 {% if edit_farm and edit_farm.boundary_geojson %}
-                <p class="-mt-2 text-sm text-slate-500">Esta fazenda já possui geometria salva. Envie um novo arquivo apenas se quiser substituir.</p>
+                <p class="-mt-2 text-sm text-slate-500">Esta fazenda já possui geometria salva. O desenho no mapa ou um novo arquivo substituem a geometria atual ao salvar.</p>
                 {% endif %}
 
                 <label>
@@ -204,12 +230,34 @@
     </div>
 </dialog>
 
+<script type="application/json" id="farm-boundary-geometries-data">{{ farm_boundary_geometries_json|safe }}</script>
+<script>
+    const EDIT_FARM_GEOMETRY = {{ edit_farm_geometry_json|safe }};
+</script>
+<script src="{{ url_for('static', path='js/farm_boundary_editor.js') }}?v=2"></script>
 <script>
     (() => {
+        let FARM_BOUNDARY_DATA = {};
+        try {
+            const geoEl = document.getElementById('farm-boundary-geometries-data');
+            if (geoEl && geoEl.textContent.trim()) FARM_BOUNDARY_DATA = JSON.parse(geoEl.textContent);
+        } catch (e) {
+            FARM_BOUNDARY_DATA = {};
+        }
+
         const launchModal = document.getElementById('farms-launch-modal');
         const mapPreviewModal = document.getElementById('farms-map-preview-modal');
         const mapPreviewImg = mapPreviewModal?.querySelector('[data-farms-map-modal-img]');
         const mapPreviewName = mapPreviewModal?.querySelector('[data-farms-map-modal-name]');
+        const mapPreviewViewImage = mapPreviewModal?.querySelector('[data-farms-map-modal-view-image]');
+        const mapPreviewViewEditor = mapPreviewModal?.querySelector('[data-farms-map-modal-view-editor]');
+        const mapPreviewStartEdit = mapPreviewModal?.querySelector('[data-farms-map-modal-start-edit]');
+        const mapPreviewCancelEdit = mapPreviewModal?.querySelector('[data-farms-map-modal-cancel-edit]');
+        const previewGeometryForm = mapPreviewModal?.querySelector('[data-preview-geometry-form]');
+        const previewGeometryInput = mapPreviewModal?.querySelector('[data-preview-geometry-input]');
+        const previewRemovePointBtn = mapPreviewModal?.querySelector('[data-preview-remove-point]');
+        const previewVerticesEl = mapPreviewModal?.querySelector('[data-preview-editor-vertices]');
+        const previewAreaEl = mapPreviewModal?.querySelector('[data-preview-editor-area]');
         const mapOpenButtons = Array.from(document.querySelectorAll('[data-farms-map-open]'));
         const mapCloseButtons = Array.from(document.querySelectorAll('[data-farms-map-modal-close]'));
         const openButtons = Array.from(document.querySelectorAll('[data-farms-launch-open]'));
@@ -230,26 +278,82 @@
 
         const closeModal = () => {
             if (isEditing) {
+                destroyFarmFormBoundaryEditor();
                 window.location.href = '/fazendas';
                 return;
             }
+            destroyFarmFormBoundaryEditor();
             resetForm();
             launchModal?.close();
         };
 
+        let previewMapFarmId = null;
+        let previewBoundaryEditor = null;
+
+        const teardownPreviewBoundaryEditor = () => {
+            if (previewBoundaryEditor) {
+                previewBoundaryEditor.destroy();
+                previewBoundaryEditor = null;
+            }
+        };
+
+        const resetPreviewModalLayout = () => {
+            teardownPreviewBoundaryEditor();
+            mapPreviewViewImage?.classList.remove('hidden');
+            mapPreviewViewEditor?.classList.add('hidden');
+        };
+
         const closeMapModal = () => {
+            resetPreviewModalLayout();
+            previewMapFarmId = null;
             mapPreviewModal?.close();
             if (mapPreviewImg) {
                 mapPreviewImg.removeAttribute('src');
                 mapPreviewImg.alt = '';
             }
+            if (previewGeometryForm) previewGeometryForm.action = '';
         };
+
+        const startPreviewPolygonEdit = () => {
+            if (!previewMapFarmId || typeof window.initFarmBoundaryEditor !== 'function') return;
+            teardownPreviewBoundaryEditor();
+            mapPreviewViewImage?.classList.add('hidden');
+            mapPreviewViewEditor?.classList.remove('hidden');
+            const rawGeom = FARM_BOUNDARY_DATA[String(previewMapFarmId)] || null;
+            if (previewGeometryForm) {
+                previewGeometryForm.action = `/fazendas/${previewMapFarmId}/geometria`;
+            }
+            previewBoundaryEditor = window.initFarmBoundaryEditor({
+                containerId: 'farms-preview-boundary-map',
+                hiddenInput: previewGeometryInput,
+                initialGeometry: rawGeom,
+                removePointButton: previewRemovePointBtn,
+                onStats: ({ vertices, area }) => {
+                    if (previewVerticesEl) previewVerticesEl.textContent = String(vertices);
+                    if (previewAreaEl) previewAreaEl.textContent = area.toFixed(2).replace('.', ',');
+                },
+            });
+            window.setTimeout(() => previewBoundaryEditor?.invalidate(), 250);
+            window.setTimeout(() => previewBoundaryEditor?.invalidate(), 600);
+        };
+
+        mapPreviewStartEdit?.addEventListener('click', () => startPreviewPolygonEdit());
+        mapPreviewCancelEdit?.addEventListener('click', () => {
+            resetPreviewModalLayout();
+        });
+
+        previewGeometryForm?.addEventListener('submit', () => {
+            previewBoundaryEditor?.syncToHidden();
+        });
 
         mapOpenButtons.forEach((button) => {
             button.addEventListener('click', () => {
                 const src = button.getAttribute('data-map-src') || '';
                 const farmName = button.getAttribute('data-map-farm-name') || '';
+                const farmId = button.getAttribute('data-map-farm-id');
                 if (!mapPreviewModal || !mapPreviewImg) return;
+                resetPreviewModalLayout();
+                previewMapFarmId = farmId ? String(farmId) : null;
                 mapPreviewImg.src = src;
                 mapPreviewImg.alt = farmName ? `Mapa de satélite — ${farmName}` : 'Mapa de satélite da fazenda';
                 if (mapPreviewName) mapPreviewName.textContent = farmName;
@@ -263,6 +367,32 @@
             closeMapModal();
         });
 
+        let farmFormBoundaryEditor = null;
+
+        const destroyFarmFormBoundaryEditor = () => {
+            if (farmFormBoundaryEditor) {
+                farmFormBoundaryEditor.destroy();
+                farmFormBoundaryEditor = null;
+            }
+        };
+
+        const setupFarmFormBoundaryEditor = () => {
+            destroyFarmFormBoundaryEditor();
+            if (typeof window.initFarmBoundaryEditor !== 'function' || !form) return;
+            const mapEl = document.getElementById('farms-form-boundary-map');
+            const hiddenInput = form.querySelector('[data-farms-boundary-input]');
+            const removeBtn = document.querySelector('[data-farms-form-remove-point]');
+            if (!mapEl || !hiddenInput) return;
+            farmFormBoundaryEditor = window.initFarmBoundaryEditor({
+                containerId: 'farms-form-boundary-map',
+                hiddenInput,
+                initialGeometry: EDIT_FARM_GEOMETRY || null,
+                removePointButton: removeBtn,
+            });
+            window.setTimeout(() => farmFormBoundaryEditor?.invalidate(), 200);
+            window.setTimeout(() => farmFormBoundaryEditor?.invalidate(), 500);
+        };
+
         openButtons.forEach((button) => {
             button.addEventListener('click', (event) => {
                 const editUrl = button.getAttribute('data-farms-edit-link');
@@ -272,7 +402,9 @@
                     return;
                 }
                 resetForm();
+                destroyFarmFormBoundaryEditor();
                 launchModal?.showModal();
+                window.requestAnimationFrame(() => setupFarmFormBoundaryEditor());
             });
         });
 
@@ -287,12 +419,15 @@
 
         if (isEditing) {
             launchModal?.showModal();
+            window.requestAnimationFrame(() => setupFarmFormBoundaryEditor());
         }
 
         form?.addEventListener('submit', () => {
+            farmFormBoundaryEditor?.syncToHidden();
             if (!isEditing) {
                 window.setTimeout(() => {
                     resetForm();
+                    destroyFarmFormBoundaryEditor();
                     launchModal?.close();
                 }, 0);
             }

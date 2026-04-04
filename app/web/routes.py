@@ -1716,6 +1716,21 @@ def farms_page(
         farm_preview_ready[farm.id] = preview_path.is_file() and preview_path.stat().st_size > 0
         if not farm_preview_ready[farm.id]:
             background_tasks.add_task(generate_farm_preview_image, farm.id, farm.boundary_geojson)
+    farm_boundary_by_id: dict[str, object] = {}
+    for farm in farms:
+        if not farm.boundary_geojson:
+            continue
+        try:
+            farm_boundary_by_id[str(farm.id)] = json.loads(farm.boundary_geojson)
+        except json.JSONDecodeError:
+            pass
+    farm_boundary_geometries_json = json.dumps(farm_boundary_by_id)
+    edit_farm_geometry_json = "null"
+    if edit_farm and edit_farm.boundary_geojson:
+        try:
+            edit_farm_geometry_json = json.dumps(json.loads(edit_farm.boundary_geojson))
+        except json.JSONDecodeError:
+            edit_farm_geometry_json = "null"
     return templates.TemplateResponse(
         "farms.html",
         _base_context(
@@ -1727,6 +1742,8 @@ def farms_page(
             edit_farm=edit_farm,
             farm_preview_ready=farm_preview_ready,
             farm_preview_fingerprint=farm_preview_fingerprint,
+            farm_boundary_geometries_json=farm_boundary_geometries_json,
+            edit_farm_geometry_json=edit_farm_geometry_json,
             _repo=repo,
         ),
     )
@@ -1811,6 +1828,35 @@ def update_farm_action(
     else:
         remove_farm_preview_image(farm.id)
     _flash(request, "success", "Fazenda atualizada com sucesso.")
+    return _redirect("/fazendas")
+
+
+@router.post("/fazendas/{farm_id}/geometria")
+def update_farm_geometry_only(
+    farm_id: int,
+    request: Request,
+    csrf_token: str = Form(...),
+    boundary_geojson: str = Form(...),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    del user
+    validate_csrf(request, csrf_token)
+    repo = _repository(db)
+    farm = repo.get_farm(farm_id)
+    if not farm:
+        _flash(request, "error", "Fazenda nao encontrada.")
+        return _redirect("/fazendas")
+    normalized = normalize_geojson(boundary_geojson)
+    if not normalized:
+        _flash(request, "error", "A geometria enviada nao e valida.")
+        return _redirect("/fazendas")
+    update_farm(repo, farm, {"boundary_geojson": normalized})
+    try:
+        generate_farm_preview_image(farm.id, normalized)
+    except Exception:
+        logging.getLogger(__name__).exception("Falha ao gerar imagem de satelite da fazenda %s", farm.id)
+    _flash(request, "success", "Geometria da fazenda atualizada.")
     return _redirect("/fazendas")
 
 
