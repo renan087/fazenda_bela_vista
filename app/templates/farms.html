@@ -40,7 +40,7 @@
             {% for farm in farms %}
             <article class="rounded-[1.5rem] border border-slate-100 bg-slate-50 p-5 lg:p-4" data-farms-row data-farms-search-text="{{ farm.name }} {{ farm.location }} {{ farm.total_area }} {{ farm.notes or '' }} {{ 'georreferenciada' if farm.boundary_geojson else 'sem geometria' }}">
                 <div class="flex flex-wrap items-start justify-between gap-4 lg:gap-3">
-                    <div class="min-w-0">
+                    <div class="min-w-0 flex-1">
                         <button type="button" class="text-left text-lg font-semibold text-slate-900 transition hover:text-brand-700 lg:text-base" data-farms-launch-open data-farms-edit-link="/fazendas?edit_id={{ farm.id }}">{{ farm.name }}</button>
                         <p class="mt-1 text-sm text-slate-500 lg:mt-0.5 lg:text-[13px]">{{ farm.location }}</p>
                         <div class="mt-3 flex flex-wrap gap-2">
@@ -48,6 +48,28 @@
                             <span class="stock-level-badge {% if farm.boundary_geojson %}bg-emerald-50 text-emerald-700 ring-1 ring-emerald-100{% else %}bg-slate-200 text-slate-600{% endif %}">
                                 {% if farm.boundary_geojson %}Georreferenciada{% else %}Sem geometria{% endif %}
                             </span>
+                        </div>
+                        <div class="mt-4 rounded-[1.25rem] border border-slate-200 bg-white p-3 shadow-sm">
+                            <div class="flex items-center justify-between gap-3">
+                                <div>
+                                    <p class="text-[11px] uppercase tracking-[0.25em] text-slate-400">Prévia da fazenda</p>
+                                    <p class="mt-1 text-sm font-medium text-slate-700">{% if farm.boundary_geojson %}Geometria georreferenciada{% else %}Aguardando GeoJSON{% endif %}</p>
+                                </div>
+                            </div>
+                            <div class="mt-3 h-40 overflow-hidden rounded-[1rem] border border-slate-200 bg-[radial-gradient(circle_at_top,_rgba(91,179,74,0.12),_transparent_55%),linear-gradient(180deg,_rgba(248,250,252,1),_rgba(241,245,249,0.95))]" data-farm-geo-preview data-geojson="{{ farm.boundary_geojson|tojson if farm.boundary_geojson else '' }}">
+                                <div class="flex h-full items-center justify-center text-sm text-slate-400" data-farm-geo-preview-empty>
+                                    {% if farm.boundary_geojson %}Gerando prévia...{% else %}Sem geometria enviada{% endif %}
+                                </div>
+                                <svg class="hidden h-full w-full" viewBox="0 0 220 140" preserveAspectRatio="xMidYMid meet" aria-hidden="true" data-farm-geo-preview-svg>
+                                    <defs>
+                                        <linearGradient id="farm-preview-fill-{{ farm.id }}" x1="0%" x2="100%" y1="0%" y2="100%">
+                                            <stop offset="0%" stop-color="rgba(91,179,74,0.34)"/>
+                                            <stop offset="100%" stop-color="rgba(91,179,74,0.14)"/>
+                                        </linearGradient>
+                                    </defs>
+                                    <path d="" fill="url(#farm-preview-fill-{{ farm.id }})" stroke="rgba(65, 132, 54, 0.95)" stroke-width="3.2" stroke-linejoin="round" stroke-linecap="round" data-farm-geo-preview-path></path>
+                                </svg>
+                            </div>
                         </div>
                     </div>
                     <div class="flex items-center gap-2 lg:gap-1.5">
@@ -156,6 +178,7 @@
         const headerIntro = stickyHeader?.querySelector('[data-stock-header-intro]');
         const fadingPanels = Array.from(document.querySelectorAll('[data-stock-fade-panel]'));
         const isEditing = {{ 'true' if edit_farm else 'false' }};
+        const geoPreviewCards = Array.from(document.querySelectorAll('[data-farm-geo-preview]'));
 
         const resetForm = () => {
             if (isEditing || !form) return;
@@ -227,6 +250,68 @@
 
         searchInput?.addEventListener('input', applySearch);
         applySearch();
+
+        const extractFarmPreviewRing = (geometry) => {
+            if (!geometry || !geometry.type) return [];
+            if (geometry.type === 'Polygon') {
+                return Array.isArray(geometry.coordinates?.[0]) ? geometry.coordinates[0] : [];
+            }
+            if (geometry.type === 'MultiPolygon') {
+                return Array.isArray(geometry.coordinates?.[0]?.[0]) ? geometry.coordinates[0][0] : [];
+            }
+            return [];
+        };
+
+        const renderFarmPreview = (card) => {
+            const rawGeojson = card.dataset.geojson;
+            const emptyState = card.querySelector('[data-farm-geo-preview-empty]');
+            const svg = card.querySelector('[data-farm-geo-preview-svg]');
+            const path = card.querySelector('[data-farm-geo-preview-path]');
+            if (!rawGeojson || !svg || !path) return;
+
+            let parsed;
+            try {
+                parsed = JSON.parse(rawGeojson);
+            } catch {
+                return;
+            }
+
+            const geometry = parsed.type === 'Feature' ? parsed.geometry : parsed;
+            const ring = extractFarmPreviewRing(geometry)
+                .filter((point) => Array.isArray(point) && point.length >= 2)
+                .map(([lng, lat]) => ({ x: Number(lng), y: Number(lat) }));
+
+            if (ring.length < 3 || ring.some((point) => Number.isNaN(point.x) || Number.isNaN(point.y))) {
+                return;
+            }
+
+            const xs = ring.map((point) => point.x);
+            const ys = ring.map((point) => point.y);
+            const minX = Math.min(...xs);
+            const maxX = Math.max(...xs);
+            const minY = Math.min(...ys);
+            const maxY = Math.max(...ys);
+            const width = Math.max(maxX - minX, 0.000001);
+            const height = Math.max(maxY - minY, 0.000001);
+            const pad = 18;
+            const boxWidth = 220;
+            const boxHeight = 140;
+            const scale = Math.min((boxWidth - pad * 2) / width, (boxHeight - pad * 2) / height);
+            const offsetX = (boxWidth - width * scale) / 2;
+            const offsetY = (boxHeight - height * scale) / 2;
+
+            const commands = ring.map((point, index) => {
+                const x = ((point.x - minX) * scale + offsetX).toFixed(2);
+                const y = (((maxY - point.y) * scale) + offsetY).toFixed(2);
+                return `${index === 0 ? 'M' : 'L'}${x} ${y}`;
+            });
+
+            path.setAttribute('d', `${commands.join(' ')} Z`);
+            svg.classList.remove('hidden');
+            emptyState?.classList.add('hidden');
+        };
+
+        geoPreviewCards.forEach(renderFarmPreview);
 
         const mobileCompactMq = window.matchMedia('(max-width: 899px)');
         const parseStickyTopPx = (el) => {
