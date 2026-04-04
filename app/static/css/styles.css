@@ -922,6 +922,10 @@ body {
     flex: 0 0 3rem;
 }
 
+.module-filter-action-desktop-clear {
+    display: none;
+}
+
 .module-filter-action-primary {
     background: #446a36;
     color: #fff;
@@ -940,6 +944,12 @@ body {
 
 .module-filter-action-secondary:hover {
     background: rgb(248 250 252);
+}
+
+@media (min-width: 768px) {
+    .module-filter-action-desktop-clear {
+        display: inline-flex;
+    }
 }
 
 .stock-tab-link {
