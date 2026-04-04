@@ -23,6 +23,7 @@
         let tracking = false;
         let lockDirection = null;
         let animationTimer = null;
+        let dotsAnimationTimer = null;
         let currentPageSize = 1;
         let currentTotalPages = 1;
 
@@ -46,6 +47,17 @@
             animationTimer = window.setTimeout(() => {
                 root.classList.remove('is-page-transition-next', 'is-page-transition-prev');
             }, 240);
+        };
+
+        const animateDots = (direction) => {
+            if (!(dotsContainer instanceof HTMLElement) || !direction) return;
+            dotsContainer.classList.remove('is-moving-next', 'is-moving-prev');
+            window.clearTimeout(dotsAnimationTimer);
+            void dotsContainer.offsetWidth;
+            dotsContainer.classList.add(direction === 'next' ? 'is-moving-next' : 'is-moving-prev');
+            dotsAnimationTimer = window.setTimeout(() => {
+                dotsContainer.classList.remove('is-moving-next', 'is-moving-prev');
+            }, 260);
         };
 
         const buildDots = () => {
@@ -111,6 +123,7 @@
             });
             syncDots();
             animate(direction);
+            animateDots(direction);
         };
 
         currentPageSize = getPageSize();

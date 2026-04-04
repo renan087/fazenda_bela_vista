@@ -361,6 +361,49 @@ body {
     background: rgba(91, 179, 74, 0.6);
 }
 
+[data-stock-catalog-dots] {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.45rem;
+}
+
+[data-stock-catalog-dots].is-moving-next .swipe-card-pager-dot.is-active {
+    animation: swipePagerDotForward 240ms ease;
+}
+
+[data-stock-catalog-dots].is-moving-prev .swipe-card-pager-dot.is-active {
+    animation: swipePagerDotBackward 240ms ease;
+}
+
+@keyframes swipePagerDotForward {
+    0% {
+        transform: translateX(-0.45rem) scaleX(0.78);
+    }
+
+    55% {
+        transform: translateX(0.38rem) scaleX(1.18);
+    }
+
+    100% {
+        transform: translateX(0) scaleX(1);
+    }
+}
+
+@keyframes swipePagerDotBackward {
+    0% {
+        transform: translateX(0.45rem) scaleX(0.78);
+    }
+
+    55% {
+        transform: translateX(-0.38rem) scaleX(1.18);
+    }
+
+    100% {
+        transform: translateX(0) scaleX(1);
+    }
+}
+
 @keyframes swipeCardPagerNext {
     0% {
         opacity: 0.78;
