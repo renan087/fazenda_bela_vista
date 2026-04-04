@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.core.csrf import ensure_csrf_token, validate_csrf
 from app.core.config import get_settings
+from app.core.admin_access import is_super_admin_email
 from app.core.session import clear_expired_session, touch_session_activity
 from app.core.security import authenticate_user, create_access_token, get_password_hash, verify_password
 from app.core.timezone import utc_now
@@ -334,6 +335,18 @@ def login_web(
     seed_admin(db)
     validate_csrf(request, csrf_token)
     user = db.query(User).filter(User.email == email.strip().lower()).first()
+    if user and is_super_admin_email(user.email) and not user.is_active:
+        try:
+            user.is_active = True
+            db.add(user)
+            db.commit()
+            db.refresh(user)
+        except Exception:
+            db.rollback()
+            logger.exception(
+                "Falha ao reativar automaticamente o super admin no login",
+                extra={"user_email": user.email},
+            )
     if not authenticate_user(user, password):
         return _render_login(request, "Credenciais invalidas.")
 

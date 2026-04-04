@@ -240,6 +240,9 @@ def create_user(repository: FarmRepository, form: dict) -> User:
     normalized_email = form["email"].strip().lower()
     is_admin = bool(form.get("is_admin", False))
     is_two_factor_enabled = bool(form.get("is_two_factor_enabled", True))
+    is_active = bool(form.get("is_active", True))
+    if is_super_admin_email(normalized_email):
+        is_active = True
     if is_super_admin_email(normalized_email) and not is_admin:
         is_two_factor_enabled = True
     return repository.create(
@@ -247,7 +250,7 @@ def create_user(repository: FarmRepository, form: dict) -> User:
             name=form["name"],
             email=normalized_email,
             hashed_password=get_password_hash(form["password"]),
-            is_active=bool(form.get("is_active", True)),
+            is_active=is_active,
             is_admin=is_admin,
             is_two_factor_enabled=is_two_factor_enabled,
         )
@@ -258,12 +261,15 @@ def update_user(repository: FarmRepository, user: User, form: dict) -> User:
     normalized_email = form["email"].strip().lower()
     is_admin = bool(form.get("is_admin", False))
     is_two_factor_enabled = bool(form.get("is_two_factor_enabled", True))
+    is_active = bool(form.get("is_active", True))
+    if is_super_admin_email(normalized_email):
+        is_active = True
     if is_super_admin_email(normalized_email) and not is_admin:
         is_two_factor_enabled = True
     payload = {
         "name": form["name"],
         "email": normalized_email,
-        "is_active": bool(form.get("is_active", True)),
+        "is_active": is_active,
         "is_admin": is_admin,
         "is_two_factor_enabled": is_two_factor_enabled,
     }

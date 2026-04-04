@@ -221,9 +221,9 @@
                 </label>
 
                 <label class="user-switch rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-                    <input type="checkbox" name="is_active" value="true" {% if not edit_user or edit_user.is_active %}checked{% endif %}>
+                    <input type="checkbox" name="is_active" value="true" {% if not edit_user or edit_user.is_active or (edit_user and edit_user.email == (super_admin_email or '')) %}checked{% endif %} {% if edit_user and edit_user.email == (super_admin_email or '') %}disabled{% endif %}>
                     <span class="user-switch-track" aria-hidden="true"></span>
-                    <span class="user-switch-copy text-sm font-medium text-slate-700">Usuário ativo</span>
+                    <span class="user-switch-copy text-sm font-medium text-slate-700">Usuário ativo{% if edit_user and edit_user.email == (super_admin_email or '') %} <span class="text-xs font-medium text-slate-400">(fixo para o super admin)</span>{% endif %}</span>
                 </label>
                 <label class="user-switch rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
                     <input type="checkbox" name="is_admin" value="true" {% if edit_user and (edit_user.is_admin or edit_user.email == (super_admin_email or '')) %}checked{% endif %}>
