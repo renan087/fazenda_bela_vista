@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block content %}
-{% from "partials/module_history_filter_toolbar.html" import module_history_filter_toolbar %}
+{% from "partials/module_history_filter_toolbar.html" import module_history_filter_toolbar with context %}
 {% macro render_schedule_card(schedule, schedule_validations, today) %}
     {% set validation = schedule_validations.get(schedule.id, {'ok': True, 'shortages': []}) %}
     {% set is_late = schedule.status != 'completed' and schedule.scheduled_date < today %}
