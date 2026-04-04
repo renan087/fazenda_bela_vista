@@ -357,7 +357,7 @@ def login_page(request: Request, db: Session = Depends(get_db)):
     return _render_login(request)
 
 
-@router.get("/login/google")
+@router.get("/auth/google")
 def login_google_start(request: Request):
     clear_expired_session(request)
     if request.session.get("user_email"):
@@ -368,7 +368,12 @@ def login_google_start(request: Request):
     return RedirectResponse(url=_build_google_authorization_url(request), status_code=status.HTTP_302_FOUND)
 
 
-@router.get("/login/google/callback")
+@router.get("/login/google")
+def login_google_start_alias(request: Request):
+    return login_google_start(request)
+
+
+@router.get("/auth/google/callback")
 def login_google_callback(
     request: Request,
     code: str | None = None,
@@ -404,6 +409,17 @@ def login_google_callback(
     if not user.is_active:
         return _render_login(request, "Seu usuario esta inativo no sistema. Entre em contato com o administrador.")
     return _start_web_login_challenge(request, db, user)
+
+
+@router.get("/login/google/callback")
+def login_google_callback_alias(
+    request: Request,
+    code: str | None = None,
+    state: str | None = None,
+    error: str | None = None,
+    db: Session = Depends(get_db),
+):
+    return login_google_callback(request=request, code=code, state=state, error=error, db=db)
 
 
 @router.get("/login/recuperar-senha")
