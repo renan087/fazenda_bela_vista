@@ -123,7 +123,7 @@
             <form method="get" action="/insumos/estoque" class="stock-filter-grid" data-stock-filter-form data-module-period-filter-root data-module-range-default="last_10_days" data-module-range-placeholder="Filtre por período" data-module-custom-auto-apply="false">
                 <input type="hidden" name="stock_tab" value="{{ selected_stock_tab }}" data-stock-tab-hidden>
                 <div class="stock-filter-fields-row">
-                    <label class="stock-filter-field stock-filter-field-type">
+                    <label class="stock-filter-field stock-filter-field-type {% if selected_item_type %}is-filtered{% endif %}">
                         <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Tipo</span>
                         <select name="item_type" class="w-full rounded-xl border-slate-200 bg-white">
                             <option value="">Todos os consumiveis</option>
@@ -131,7 +131,7 @@
                             <option value="combustivel" {% if selected_item_type == 'combustivel' %}selected{% endif %}>Combustivel</option>
                         </select>
                     </label>
-                    <label class="stock-filter-field stock-filter-field-farm">
+                    <label class="stock-filter-field stock-filter-field-farm {% if selected_farm_id %}is-filtered{% endif %}">
                         <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Fazenda</span>
                         <select name="farm_id" class="w-full rounded-xl border-slate-200 bg-white">
                             {% for farm in farms %}
@@ -139,7 +139,7 @@
                             {% endfor %}
                         </select>
                     </label>
-                    <label class="stock-filter-field stock-filter-field-input">
+                    <label class="stock-filter-field stock-filter-field-input {% if selected_input_id %}is-filtered{% endif %}">
                         <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Insumo</span>
                         <select name="input_id" class="w-full rounded-xl border-slate-200 bg-white">
                             <option value="">Todos</option>
@@ -148,13 +148,13 @@
                             {% endfor %}
                         </select>
                     </label>
-                    <div class="stock-filter-field stock-filter-field-period">
+                    <div class="stock-filter-field stock-filter-field-period {% if selected_start_date or selected_end_date %}is-filtered{% endif %}">
                         <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Período</span>
                         <div class="module-filter-period-row">
                             {{ module_period_picker_inline(request.query_params.get('schedule_range') or ('custom' if selected_start_date or selected_end_date else ''), selected_start_date, selected_end_date, 'past', 'Filtre por período') }}
                         </div>
                     </div>
-                    <label class="stock-filter-field stock-filter-field-movement">
+                    <label class="stock-filter-field stock-filter-field-movement {% if selected_movement_type and selected_movement_type != 'all' %}is-filtered{% endif %}">
                         <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Movimentacao</span>
                         <select name="movement_type" class="w-full rounded-xl border-slate-200 bg-white">
                             <option value="all" {% if selected_movement_type == 'all' %}selected{% endif %}>Todas</option>
