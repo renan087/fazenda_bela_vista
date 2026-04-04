@@ -368,21 +368,43 @@ body {
     gap: 0.45rem;
 }
 
-[data-stock-catalog-dots].is-moving-next .swipe-card-pager-dot.is-active {
-    animation: swipePagerDotForward 240ms ease;
+[data-stock-catalog-dots].is-transitioning-next .swipe-card-pager-dot[data-role="next"] {
+    opacity: 0;
+    transform: scale(0.55);
 }
 
-[data-stock-catalog-dots].is-moving-prev .swipe-card-pager-dot.is-active {
-    animation: swipePagerDotBackward 240ms ease;
+[data-stock-catalog-dots].is-transitioning-prev .swipe-card-pager-dot[data-role="prev"] {
+    opacity: 0;
+    transform: scale(0.55);
 }
 
-@keyframes swipePagerDotForward {
+[data-stock-catalog-dots].is-transitioning-next .swipe-card-pager-dot[data-role="current"] {
+    transform: translateX(0.56rem) scaleX(1.72);
+}
+
+[data-stock-catalog-dots].is-transitioning-prev .swipe-card-pager-dot[data-role="current"] {
+    transform: translateX(-0.56rem) scaleX(1.72);
+}
+
+[data-stock-catalog-dots].is-settling-next .swipe-card-pager-dot[data-role="current"] {
+    animation: swipePagerCurrentSettleNext 180ms ease;
+}
+
+[data-stock-catalog-dots].is-settling-prev .swipe-card-pager-dot[data-role="current"] {
+    animation: swipePagerCurrentSettlePrev 180ms ease;
+}
+
+[data-stock-catalog-dots].is-settling-next .swipe-card-pager-dot[data-role="next"] {
+    animation: swipePagerSideRevealNext 180ms ease;
+}
+
+[data-stock-catalog-dots].is-settling-prev .swipe-card-pager-dot[data-role="prev"] {
+    animation: swipePagerSideRevealPrev 180ms ease;
+}
+
+@keyframes swipePagerCurrentSettleNext {
     0% {
-        transform: translateX(-0.45rem) scaleX(0.78);
-    }
-
-    55% {
-        transform: translateX(0.38rem) scaleX(1.18);
+        transform: translateX(0.56rem) scaleX(1.72);
     }
 
     100% {
@@ -390,17 +412,37 @@ body {
     }
 }
 
-@keyframes swipePagerDotBackward {
+@keyframes swipePagerCurrentSettlePrev {
     0% {
-        transform: translateX(0.45rem) scaleX(0.78);
-    }
-
-    55% {
-        transform: translateX(-0.38rem) scaleX(1.18);
+        transform: translateX(-0.56rem) scaleX(1.72);
     }
 
     100% {
         transform: translateX(0) scaleX(1);
+    }
+}
+
+@keyframes swipePagerSideRevealNext {
+    0% {
+        opacity: 0;
+        transform: translateX(0.28rem) scale(0.55);
+    }
+
+    100% {
+        opacity: 1;
+        transform: translateX(0) scale(1);
+    }
+}
+
+@keyframes swipePagerSideRevealPrev {
+    0% {
+        opacity: 0;
+        transform: translateX(-0.28rem) scale(0.55);
+    }
+
+    100% {
+        opacity: 1;
+        transform: translateX(0) scale(1);
     }
 }
 

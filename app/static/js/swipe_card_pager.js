@@ -24,6 +24,7 @@
         let lockDirection = null;
         let animationTimer = null;
         let dotsAnimationTimer = null;
+        let isTransitioning = false;
         let currentPageSize = 1;
         let currentTotalPages = 1;
 
@@ -49,15 +50,14 @@
             }, 240);
         };
 
-        const animateDots = (direction) => {
-            if (!(dotsContainer instanceof HTMLElement) || !direction) return;
-            dotsContainer.classList.remove('is-moving-next', 'is-moving-prev');
-            window.clearTimeout(dotsAnimationTimer);
-            void dotsContainer.offsetWidth;
-            dotsContainer.classList.add(direction === 'next' ? 'is-moving-next' : 'is-moving-prev');
-            dotsAnimationTimer = window.setTimeout(() => {
-                dotsContainer.classList.remove('is-moving-next', 'is-moving-prev');
-            }, 260);
+        const clearDotsAnimation = () => {
+            if (!(dotsContainer instanceof HTMLElement)) return;
+            dotsContainer.classList.remove(
+                'is-transitioning-next',
+                'is-transitioning-prev',
+                'is-settling-next',
+                'is-settling-prev',
+            );
         };
 
         const buildDots = () => {
@@ -81,18 +81,22 @@
         const syncDots = () => {
             if (!(dotsContainer instanceof HTMLElement)) return;
             const dots = Array.from(dotsContainer.querySelectorAll('[data-swipe-pager-slot]'));
-            const visiblePages = [];
-            if (currentPage > 0) visiblePages.push(currentPage - 1);
-            visiblePages.push(currentPage);
-            if (currentPage < currentTotalPages - 1) visiblePages.push(currentPage + 1);
+            const slotPages = [
+                currentPage > 0 ? currentPage - 1 : null,
+                currentPage,
+                currentPage < currentTotalPages - 1 ? currentPage + 1 : null,
+            ];
+            const slotRoles = ['prev', 'current', 'next'];
 
             dots.forEach((dot, index) => {
-                const pageIndex = visiblePages[index];
+                const pageIndex = slotPages[index];
+                const role = slotRoles[index];
                 const isVisible = Number.isInteger(pageIndex);
-                const active = pageIndex === currentPage;
+                const active = role === 'current';
                 dot.classList.toggle('hidden', !isVisible);
                 dot.classList.toggle('is-active', active);
                 dot.classList.toggle('is-inactive', isVisible && !active);
+                dot.dataset.role = role;
                 if (!isVisible) {
                     dot.removeAttribute('data-page-index');
                     dot.removeAttribute('aria-label');
@@ -116,14 +120,40 @@
             }
             const nextPage = clamp(pageIndex, 0, currentTotalPages - 1);
             if (nextPage === currentPage && direction) return;
-            currentPage = nextPage;
-            items.forEach((item, index) => {
-                const page = Math.floor(index / currentPageSize);
-                item.classList.toggle('hidden', page !== currentPage);
-            });
-            syncDots();
-            animate(direction);
-            animateDots(direction);
+
+            const renderPage = (targetPage) => {
+                currentPage = targetPage;
+                items.forEach((item, index) => {
+                    const page = Math.floor(index / currentPageSize);
+                    item.classList.toggle('hidden', page !== currentPage);
+                });
+                syncDots();
+            };
+
+            if (!direction || !(dotsContainer instanceof HTMLElement) || !shouldHandleSwipe()) {
+                renderPage(nextPage);
+                animate(direction);
+                return;
+            }
+
+            if (isTransitioning) return;
+            isTransitioning = true;
+            clearDotsAnimation();
+            window.clearTimeout(dotsAnimationTimer);
+            void dotsContainer.offsetWidth;
+            dotsContainer.classList.add(direction === 'next' ? 'is-transitioning-next' : 'is-transitioning-prev');
+
+            dotsAnimationTimer = window.setTimeout(() => {
+                renderPage(nextPage);
+                animate(direction);
+                clearDotsAnimation();
+                void dotsContainer.offsetWidth;
+                dotsContainer.classList.add(direction === 'next' ? 'is-settling-next' : 'is-settling-prev');
+                dotsAnimationTimer = window.setTimeout(() => {
+                    clearDotsAnimation();
+                    isTransitioning = false;
+                }, 180);
+            }, 180);
         };
 
         currentPageSize = getPageSize();
@@ -140,7 +170,7 @@
         };
 
         root.addEventListener('touchstart', (event) => {
-            if (!shouldHandleSwipe() || event.touches.length !== 1) return;
+            if (!shouldHandleSwipe() || isTransitioning || event.touches.length !== 1) return;
             if (event.target instanceof Element && event.target.closest('a, button, input, select, textarea, label')) return;
             const touch = event.touches[0];
             tracking = true;
@@ -189,7 +219,10 @@
         });
 
         root.addEventListener('touchcancel', resetTracking);
-        mediaQuery.addEventListener('change', () => setPage(currentPage));
+        mediaQuery.addEventListener('change', () => {
+            if (isTransitioning) return;
+            setPage(currentPage);
+        });
         setPage(0);
 
         return {
