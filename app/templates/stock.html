@@ -999,13 +999,15 @@
             const catalogCards = Array.from(document.querySelectorAll('[data-stock-catalog-card]'));
             const catalogDots = document.querySelector('[data-stock-catalog-dots]');
             const catalogGrid = document.querySelector('[data-stock-catalog-grid]');
-            const cardsPerPage = 4;
-            if (catalogCards.length > cardsPerPage && catalogDots && catalogGrid && window.SiSFarmSwipePager) {
+            const cardsPerPageDesktop = 4;
+            const cardsPerPageMobile = 1;
+            if (catalogCards.length > cardsPerPageMobile && catalogDots && catalogGrid && window.SiSFarmSwipePager) {
                 window.SiSFarmSwipePager.create({
                     root: catalogGrid,
                     items: catalogCards,
                     dotsContainer: catalogDots,
-                    itemsPerPage: cardsPerPage,
+                    itemsPerPageDesktop: cardsPerPageDesktop,
+                    itemsPerPageMobile: cardsPerPageMobile,
                     mobileOnly: true,
                 });
             }

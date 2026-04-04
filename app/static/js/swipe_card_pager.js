@@ -6,6 +6,8 @@
         items = [],
         dotsContainer = null,
         itemsPerPage = 1,
+        itemsPerPageMobile = null,
+        itemsPerPageDesktop = null,
         mobileOnly = true,
         mobileBreakpoint = '(max-width: 899px)',
         threshold = 52,
@@ -13,8 +15,6 @@
         if (!(root instanceof HTMLElement) || !items.length) return null;
 
         const mediaQuery = window.matchMedia(mobileBreakpoint);
-        const pageSize = Math.max(1, Number(itemsPerPage) || 1);
-        const totalPages = Math.ceil(items.length / pageSize);
         let currentPage = 0;
         let startX = 0;
         let startY = 0;
@@ -23,11 +23,19 @@
         let tracking = false;
         let lockDirection = null;
         let animationTimer = null;
+        let currentPageSize = 1;
+        let currentTotalPages = 1;
 
         root.classList.add('swipe-card-pager-surface');
         root.style.touchAction = 'pan-y';
 
         const shouldHandleSwipe = () => !mobileOnly || mediaQuery.matches;
+        const getPageSize = () => {
+            const fallback = Math.max(1, Number(itemsPerPage) || 1);
+            const mobileSize = Math.max(1, Number(itemsPerPageMobile) || fallback);
+            const desktopSize = Math.max(1, Number(itemsPerPageDesktop) || fallback);
+            return mediaQuery.matches ? mobileSize : desktopSize;
+        };
 
         const animate = (direction) => {
             if (!direction) return;
@@ -52,21 +60,10 @@
             });
         };
 
-        const setPage = (pageIndex, direction = null) => {
-            const nextPage = clamp(pageIndex, 0, totalPages - 1);
-            if (nextPage === currentPage && direction) return;
-            currentPage = nextPage;
-            items.forEach((item, index) => {
-                const page = Math.floor(index / pageSize);
-                item.classList.toggle('hidden', page !== currentPage);
-            });
-            syncDots();
-            animate(direction);
-        };
-
-        if (dotsContainer instanceof HTMLElement) {
+        const buildDots = () => {
+            if (!(dotsContainer instanceof HTMLElement)) return;
             dotsContainer.innerHTML = '';
-            for (let pageIndex = 0; pageIndex < totalPages; pageIndex += 1) {
+            for (let pageIndex = 0; pageIndex < currentTotalPages; pageIndex += 1) {
                 const dot = document.createElement('button');
                 dot.type = 'button';
                 dot.className = 'h-2.5 w-2.5 rounded-full bg-slate-300 transition hover:bg-brand-300';
@@ -78,7 +75,29 @@
                 });
                 dotsContainer.appendChild(dot);
             }
-        }
+        };
+
+        const setPage = (pageIndex, direction = null) => {
+            const pageSize = getPageSize();
+            if (pageSize !== currentPageSize) {
+                currentPageSize = pageSize;
+                currentTotalPages = Math.ceil(items.length / currentPageSize);
+                buildDots();
+            }
+            const nextPage = clamp(pageIndex, 0, currentTotalPages - 1);
+            if (nextPage === currentPage && direction) return;
+            currentPage = nextPage;
+            items.forEach((item, index) => {
+                const page = Math.floor(index / currentPageSize);
+                item.classList.toggle('hidden', page !== currentPage);
+            });
+            syncDots();
+            animate(direction);
+        };
+
+        currentPageSize = getPageSize();
+        currentTotalPages = Math.ceil(items.length / currentPageSize);
+        buildDots();
 
         const resetTracking = () => {
             tracking = false;
@@ -129,7 +148,7 @@
             const deltaY = lastY - startY;
             const horizontalIntent = Math.abs(deltaX) > threshold && Math.abs(deltaX) > Math.abs(deltaY) * 1.2;
             if (horizontalIntent) {
-                if (deltaX < 0 && currentPage < totalPages - 1) {
+                if (deltaX < 0 && currentPage < currentTotalPages - 1) {
                     setPage(currentPage + 1, 'next');
                 } else if (deltaX > 0 && currentPage > 0) {
                     setPage(currentPage - 1, 'prev');
@@ -145,7 +164,7 @@
         return {
             setPage,
             getPage: () => currentPage,
-            getTotalPages: () => totalPages,
+            getTotalPages: () => currentTotalPages,
         };
     };
 
