@@ -581,6 +581,15 @@ body {
     width: 100%;
 }
 
+.stock-filter-mobile-toggle.is-filtered-state {
+    border-color: rgba(68, 106, 54, 0.22);
+    background: linear-gradient(180deg, rgba(241, 247, 239, 0.98), rgba(233, 242, 230, 0.95));
+    color: rgb(56 84 46);
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.94),
+        0 10px 20px -18px rgba(68, 106, 54, 0.4);
+}
+
 .stock-filter-bar select,
 .stock-filter-bar input {
     min-height: 3.2rem;
@@ -1523,6 +1532,14 @@ body {
 
     .stock-filter-bar {
         padding: 0.9rem;
+    }
+
+    .stock-filter-bar.is-mobile-collapsed {
+        padding-bottom: 0.9rem;
+    }
+
+    .stock-filter-bar.is-mobile-collapsed [data-stock-filter-collapse] {
+        margin-top: 0 !important;
     }
 
     .stock-page-header {

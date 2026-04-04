@@ -121,12 +121,12 @@
     <section class="stock-panel rounded-[2rem] bg-white p-6 shadow-panel" data-stock-fade-panel>
         <div class="stock-filter-bar mt-6">
             <div class="mb-4 md:hidden">
-                <button type="button" class="stock-summary-toggle stock-filter-mobile-toggle" data-stock-filter-toggle aria-expanded="{% if stock_filters_active %}false{% else %}true{% endif %}">
+                <button type="button" class="stock-summary-toggle stock-filter-mobile-toggle {% if stock_filters_active %}is-filtered-state{% endif %}" data-stock-filter-toggle data-stock-filter-applied="{% if stock_filters_active %}true{% else %}false{% endif %}" aria-expanded="{% if stock_filters_active %}false{% else %}true{% endif %}">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
                         <path d="M5 12h14"/>
                         <path d="M12 5v14" data-stock-filter-toggle-plus{% if stock_filters_active %} class="hidden"{% endif %}></path>
                     </svg>
-                    <span data-stock-filter-toggle-label>{% if stock_filters_active %}Mostrar filtros{% else %}Recolher filtros{% endif %}</span>
+                    <span data-stock-filter-toggle-label>{% if stock_filters_active %}Mostrar filtro aplicado{% else %}Recolher filtros{% endif %}</span>
                 </button>
             </div>
             <form method="get" action="/insumos/estoque" class="stock-filter-grid" data-stock-filter-form data-module-period-filter-root data-module-range-default="last_10_days" data-module-range-placeholder="Filtre por período" data-module-custom-auto-apply="false">
@@ -723,18 +723,24 @@
             const filterToggleLabel = document.querySelector('[data-stock-filter-toggle-label]');
             const filterTogglePlus = document.querySelector('[data-stock-filter-toggle-plus]');
             const filterMobileMq = window.matchMedia('(max-width: 899px)');
+            const filterBar = document.querySelector('.stock-filter-bar');
             if (filterToggle && filterCollapse && filterToggleLabel) {
+                const hasAppliedFilters = filterToggle.dataset.stockFilterApplied === 'true';
                 const setFilterExpanded = (expanded) => {
                     filterCollapse.classList.toggle('is-expanded', expanded);
                     filterToggle.setAttribute('aria-expanded', expanded ? 'true' : 'false');
-                    filterToggleLabel.textContent = expanded ? 'Recolher filtros' : 'Mostrar filtros';
+                    filterToggleLabel.textContent = expanded
+                        ? 'Recolher filtros'
+                        : (hasAppliedFilters ? 'Mostrar filtro aplicado' : 'Mostrar filtros');
                     filterTogglePlus?.classList.toggle('hidden', expanded);
+                    filterBar?.classList.toggle('is-mobile-collapsed', filterMobileMq.matches && !expanded);
                 };
 
                 const syncFilterCollapseForViewport = () => {
                     if (!filterMobileMq.matches) {
                         filterCollapse.classList.add('is-expanded');
                         filterToggle.setAttribute('aria-expanded', 'true');
+                        filterBar?.classList.remove('is-mobile-collapsed');
                         return;
                     }
                     const expanded = filterToggle.getAttribute('aria-expanded') === 'true';
