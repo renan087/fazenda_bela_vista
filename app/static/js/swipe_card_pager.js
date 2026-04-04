@@ -53,6 +53,7 @@
         const clearDotsAnimation = () => {
             if (!(dotsContainer instanceof HTMLElement)) return;
             dotsContainer.classList.remove(
+                'is-pre-settling-prev',
                 'is-transitioning-next',
                 'is-transitioning-prev',
                 'is-settling-next',
@@ -148,7 +149,14 @@
                 animate(direction);
                 clearDotsAnimation();
                 void dotsContainer.offsetWidth;
+                if (direction === 'prev') {
+                    dotsContainer.classList.add('is-pre-settling-prev');
+                    void dotsContainer.offsetWidth;
+                }
                 dotsContainer.classList.add(direction === 'next' ? 'is-settling-next' : 'is-settling-prev');
+                if (direction === 'prev') {
+                    dotsContainer.classList.remove('is-pre-settling-prev');
+                }
                 dotsAnimationTimer = window.setTimeout(() => {
                     clearDotsAnimation();
                     isTransitioning = false;
