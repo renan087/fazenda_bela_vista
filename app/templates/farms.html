@@ -293,7 +293,7 @@
 
                 <div class="rounded-[1.25rem] border border-slate-200 bg-slate-50/80 p-4">
                     <p class="text-xs uppercase tracking-[0.25em] text-slate-400">Perímetro no mapa</p>
-                    {% if edit_farm and not edit_farm_preview_only_src %}
+                    {% if edit_farm and not edit_farm_preview_only_src and not farm_needs_map_gate %}
                     <p class="mt-2 text-sm text-slate-600">Desenhe o polígono clicando no mapa (não é necessário enviar arquivo antes). Arraste os pontos para ajustar. Envie um arquivo GeoJSON abaixo apenas se preferir importar de outra ferramenta.</p>
                     {% if google_maps_web_key %}
                     <p class="mt-2 text-xs text-emerald-700">Mapa em modo satélite (Google Maps).</p>
