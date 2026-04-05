@@ -65,7 +65,8 @@
             </form>
         </div>
         <div class="stock-history-toolbar mt-5">
-            <div class="stock-tab-nav flex flex-wrap gap-3">
+            <div class="stock-tab-nav stock-segmented-control" data-segmented-control>
+                <div class="stock-segmented-indicator" aria-hidden="true" data-segmented-indicator></div>
                 <a href="{{ purchased_tab_urls.entries }}" class="stock-tab-link {% if selected_purchased_tab == 'entries' %}is-active{% endif %}" data-purchased-tab-button="entries">Entradas</a>
                 <a href="{{ purchased_tab_urls.outputs }}" class="stock-tab-link {% if selected_purchased_tab == 'outputs' %}is-active{% endif %}" data-purchased-tab-button="outputs">Saídas</a>
             </div>
@@ -424,12 +425,31 @@
             });
         }
 
+        const bindPurchasedSegmentedControls = () => {
+            document.querySelectorAll('[data-segmented-control]').forEach((control) => {
+                const indicator = control.querySelector('[data-segmented-indicator]');
+                const sync = () => {
+                    const active = control.querySelector('.stock-tab-link.is-active');
+                    if (!(active instanceof HTMLElement) || !(indicator instanceof HTMLElement)) return;
+                    const indicatorLeft = parseFloat(getComputedStyle(indicator).left || '0') || 0;
+                    indicator.style.width = `${active.offsetWidth}px`;
+                    indicator.style.transform = `translateX(${Math.max(active.offsetLeft - indicatorLeft, 0)}px)`;
+                    control.classList.add('is-ready');
+                };
+                sync();
+                control._segmentedSync = sync;
+            });
+        };
+
         const setActivePurchasedTab = (tabName) => {
             getPurchasedTabs().forEach((tab) => {
                 tab.classList.toggle('hidden', tab.dataset.purchasedTab !== tabName);
             });
             getPurchasedTabButtons().forEach((button) => {
                 button.classList.toggle('is-active', button.dataset.purchasedTabButton === tabName);
+            });
+            document.querySelectorAll('[data-segmented-control]').forEach((control) => {
+                control._segmentedSync?.();
             });
         };
 
@@ -502,8 +522,15 @@
             syncPurchasedStageFromUrl(href, tabName);
         });
 
+        bindPurchasedSegmentedControls();
         setActivePurchasedTab('{{ selected_purchased_tab }}');
         applyPurchasedHistorySearch();
+
+        window.addEventListener('resize', () => {
+            document.querySelectorAll('[data-segmented-control]').forEach((control) => {
+                control._segmentedSync?.();
+            });
+        });
 
         const stickyHeader = document.querySelector('.stock-page-header');
         const headerIntro = stickyHeader?.querySelector('[data-stock-header-intro]');
