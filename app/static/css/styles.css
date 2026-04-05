@@ -15,7 +15,9 @@ body {
     .erp-sidebar {
         width: 18rem;
         min-width: 18rem;
-        overflow: hidden;
+        /* Visível na horizontal para o toggle ficar metade fora, na borda com o conteúdo. */
+        overflow-x: visible;
+        overflow-y: hidden;
     }
 
     .erp-main-shell {
@@ -42,8 +44,20 @@ body {
             background-color 300ms ease-in-out, box-shadow 300ms ease-in-out;
     }
 
+    .erp-sidebar-header-row {
+        padding-right: 1.35rem;
+    }
+
+    /*
+     * Centro do círculo na borda entre sidebar e conteúdo. O header usa px-6 (1.5rem);
+     * compensamos no translate para o ponto de ancoragem não ficar só na área de conteúdo.
+     */
     .erp-sidebar-toggle {
-        position: relative;
+        position: absolute;
+        right: 0;
+        top: 50%;
+        z-index: 50;
+        transform: translate(calc(50% + 1.5rem), -50%);
         align-items: center;
         justify-content: center;
         width: 2.5rem;
@@ -52,6 +66,7 @@ body {
         border-radius: 9999px;
         background: rgba(255, 255, 255, 0.08);
         color: rgb(203 213 225);
+        box-shadow: 0 2px 12px rgb(0 0 0 / 0.25);
         transition: background-color 200ms ease, color 200ms ease, transform 300ms ease-in-out;
     }
 
@@ -61,7 +76,7 @@ body {
     }
 
     .erp-sidebar-brand-mobile {
-        display: none;
+        display: none !important;
     }
 
     .erp-sidebar-link {
@@ -74,6 +89,12 @@ body {
         align-items: center;
         justify-content: center;
         flex: 0 0 auto;
+        width: 2.5rem;
+        min-width: 2.5rem;
+    }
+
+    .erp-sidebar-icon > svg {
+        flex-shrink: 0;
     }
 
     .erp-sidebar-label {
@@ -93,11 +114,7 @@ body {
     }
 
     body.erp-sidebar-collapsed .erp-sidebar-toggle {
-        position: absolute;
-        right: 0;
-        top: 50%;
-        transform: translate(50%, -50%);
-        z-index: 5;
+        transform: translate(calc(50% + 0.375rem), -50%);
     }
 
     body.erp-sidebar-collapsed .erp-sidebar-toggle svg {
@@ -189,6 +206,17 @@ body {
     body.erp-sidebar-collapsed .erp-sidebar [data-submenu-parent] > span:first-child {
         justify-content: center;
         gap: 0;
+        width: 2.5rem;
+        min-width: 2.5rem;
+        flex-shrink: 0;
+    }
+
+    body.erp-sidebar-collapsed .erp-sidebar [data-submenu-group] {
+        padding-left: 0 !important;
+        padding-right: 0 !important;
+        margin-left: 0 !important;
+        margin-right: 0 !important;
+        background: transparent !important;
     }
 
     body.erp-sidebar-collapsed .erp-sidebar-link.bg-brand-500 {
@@ -197,6 +225,7 @@ body {
     }
 
     body.erp-sidebar-collapsed .erp-sidebar-link.bg-brand-500 .erp-sidebar-icon {
+        width: 2.5rem;
         min-width: 2.5rem;
         min-height: 2.5rem;
         border-radius: 0.75rem;
@@ -210,6 +239,7 @@ body {
     }
 
     body.erp-sidebar-collapsed .erp-sidebar [data-submenu-parent].text-white .erp-sidebar-icon {
+        width: 2.5rem;
         min-width: 2.5rem;
         min-height: 2.5rem;
         border-radius: 0.75rem;
@@ -234,10 +264,6 @@ body {
     body.erp-sidebar-collapsed .erp-sidebar [data-submenu-parent].text-slate-300:hover .erp-sidebar-icon {
         border-radius: 0.75rem;
         background-color: rgb(15 23 42);
-    }
-
-    body.erp-sidebar-collapsed .erp-sidebar [data-submenu-group] {
-        background: transparent !important;
     }
 }
 
