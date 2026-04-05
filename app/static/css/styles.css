@@ -276,8 +276,19 @@ body {
     }
 
     body.erp-sidebar-collapsed .erp-sidebar-nav {
+        display: flex;
+        flex-direction: column;
+        align-items: stretch;
+        gap: 0.375rem;
         padding-left: 0;
         padding-right: 0;
+        padding-top: 0.5rem;
+        padding-bottom: 0.5rem;
+    }
+
+    /* Neutraliza space-y-* do Tailwind para não somar com flex gap. */
+    body.erp-sidebar-collapsed .erp-sidebar-nav > :not([hidden]) ~ :not([hidden]) {
+        margin-top: 0 !important;
     }
 
     body.erp-sidebar-collapsed .erp-sidebar-link,
@@ -287,7 +298,13 @@ body {
         gap: 0;
         padding-left: 0;
         padding-right: 0;
+        padding-top: 0.125rem;
+        padding-bottom: 0.125rem;
         overflow: visible;
+        /* Sem animar borda/sombra ao colapsar — só cor/opacidade/transform. */
+        transition-property: background-color, color, opacity, transform;
+        transition-duration: 200ms;
+        transition-timing-function: ease;
     }
 
     body.erp-sidebar-collapsed .erp-sidebar [data-submenu-parent] {
@@ -315,6 +332,9 @@ body {
         border-radius: 0.875rem;
         box-sizing: border-box;
         border: 1px solid transparent;
+        transition-property: background-color, color, opacity, transform;
+        transition-duration: 200ms;
+        transition-timing-function: ease;
     }
 
     body.erp-sidebar-collapsed .erp-sidebar [data-submenu-group] {
