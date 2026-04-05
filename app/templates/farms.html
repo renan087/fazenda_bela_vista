@@ -41,7 +41,7 @@
             <article class="rounded-[1.5rem] border border-slate-100 bg-slate-50 p-5 lg:p-4" data-farms-row data-farms-search-text="{{ farm.name }} {{ farm.location }} {{ farm.total_area }} {{ farm.notes or '' }} {{ 'georreferenciada' if farm.boundary_geojson else 'sem geometria' }}">
                 <div class="flex flex-wrap items-start justify-between gap-4 lg:gap-3">
                     <div class="min-w-0 flex-1">
-                        <button type="button" class="text-left text-lg font-semibold text-slate-900 transition hover:text-brand-700 lg:text-base" data-farms-launch-open data-farms-edit-link="/fazendas?edit_id={{ farm.id }}">{{ farm.name }}</button>
+                        <button type="button" class="text-left text-lg font-semibold text-slate-900 transition hover:text-brand-700 lg:text-base" data-farms-launch-open data-farms-edit-link="/fazendas?edit_id={{ farm.id }}&view=1">{{ farm.name }}</button>
                         <p class="mt-1 text-sm text-slate-500 lg:mt-0.5 lg:text-[13px]">{{ farm.location }}</p>
                         <div class="mt-3 flex flex-wrap items-center gap-x-2 gap-y-2">
                             <span class="stock-level-badge bg-white text-slate-700 ring-1 ring-slate-200/80">{{ farm.total_area }} ha</span>
@@ -210,9 +210,15 @@
     <div class="bg-white p-6 sm:p-8">
         <div class="flex items-start justify-between gap-4">
             <div class="min-w-0">
+                {% if farm_form_view_only %}
+                <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Visualização</p>
+                <h3 class="mt-2 text-2xl font-semibold purchased-modal-heading">{{ edit_farm.name }}</h3>
+                <p class="mt-2 text-sm text-slate-500 purchased-modal-subtitle">Dados da fazenda (somente leitura). Use Editar para alterar.</p>
+                {% else %}
                 <p class="text-xs uppercase tracking-[0.35em] text-slate-400">{% if edit_farm %}Editar fazenda{% else %}Nova fazenda{% endif %}</p>
                 <h3 class="mt-2 text-2xl font-semibold purchased-modal-heading">{% if edit_farm %}Editar fazenda{% else %}Cadastrar nova fazenda{% endif %}</h3>
                 <p class="mt-2 text-sm text-slate-500 purchased-modal-subtitle">Centralize dados de localização, área total e geometria.</p>
+                {% endif %}
             </div>
             <button type="button" class="modal-close-button" aria-label="Fechar" data-farms-launch-close>
                 <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -225,20 +231,24 @@
         <div class="mt-6 max-h-[72vh] overflow-y-auto pr-1" data-modal-scroll>
             {% set edit_farm_preview_only_src = (url_for('static', path='generated/farm_previews/' ~ edit_farm.id ~ '.png') ~ '?v=' ~ farm_preview_fingerprint.get(edit_farm.id, '')) if edit_farm and edit_farm.boundary_geojson and farm_preview_ready.get(edit_farm.id) else none %}
             {% set farm_needs_map_gate = (not edit_farm) or (edit_farm and not edit_farm.boundary_geojson) %}
-            <form id="farms-form" method="post" enctype="multipart/form-data" action="{% if edit_farm %}/fazendas/{{ edit_farm.id }}/editar{% else %}/fazendas{% endif %}" class="grid gap-4" data-farms-form{% if edit_farm_preview_only_src %} data-farms-defer-inline-map="1"{% endif %}>
+            <form id="farms-form" method="post" enctype="multipart/form-data" action="{% if edit_farm %}/fazendas/{{ edit_farm.id }}/editar{% else %}/fazendas{% endif %}" class="grid gap-4" data-farms-form{% if edit_farm_preview_only_src %} data-farms-defer-inline-map="1"{% endif %}{% if farm_form_view_only %} data-farms-form-view-only="1"{% endif %}>
                 <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                 <input type="hidden" name="boundary_geojson" value="" data-farms-boundary-input>
 
                 <div class="sticky top-0 z-10 -mx-1 bg-white/95 px-1 py-1 backdrop-blur">
                     <div class="flex flex-wrap justify-end gap-3 rounded-[1.5rem] px-2 py-2 sm:px-3">
-                        <button type="button" class="rounded-2xl bg-slate-100 px-4 py-3 font-semibold text-slate-700 hover:bg-slate-200" data-farms-launch-close>Cancelar</button>
+                        <button type="button" class="rounded-2xl bg-slate-100 px-4 py-3 font-semibold text-slate-700 hover:bg-slate-200" data-farms-launch-close>{% if farm_form_view_only %}Fechar{% else %}Cancelar{% endif %}</button>
+                        {% if farm_form_view_only and edit_farm %}
+                        <a href="/fazendas?edit_id={{ edit_farm.id }}" class="inline-flex items-center justify-center rounded-2xl bg-brand-500 px-4 py-3 font-semibold text-white hover:bg-brand-700">Editar</a>
+                        {% else %}
                         <button form="farms-form" class="rounded-2xl bg-brand-500 px-4 py-3 font-semibold text-white hover:bg-brand-700">{% if edit_farm %}Salvar alterações{% else %}Salvar fazenda{% endif %}</button>
+                        {% endif %}
                     </div>
                 </div>
 
                 <label>
                     <span class="mb-2 block text-sm font-medium">Nome</span>
-                    <input name="name" value="{{ edit_farm.name if edit_farm else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required>
+                    <input name="name" value="{{ edit_farm.name if edit_farm else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50{% if farm_form_view_only %} cursor-default text-slate-700{% endif %}" required{% if farm_form_view_only %} readonly tabindex="-1"{% endif %}>
                 </label>
 
                 <div class="grid gap-4 md:grid-cols-2 md:items-start">
@@ -250,11 +260,11 @@
                                 value="{{ edit_farm.location if edit_farm else '' }}"
                                 placeholder="Ex.: Vitória da Conquista, BA"
                                 autocomplete="address-level2"
-                                class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50"
-                                required
+                                class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50{% if farm_form_view_only %} cursor-default text-slate-700{% endif %}"
+                                required{% if farm_form_view_only %} readonly tabindex="-1"{% endif %}
                             >
                         </label>
-                        {% if farm_needs_map_gate %}
+                        {% if farm_needs_map_gate and not farm_form_view_only %}
                         <details class="group rounded-xl border border-slate-200 bg-slate-50/80 open:bg-white">
                             <summary class="cursor-pointer list-none px-3 py-2.5 text-sm font-medium text-brand-700 outline-none marker:content-[''] [&::-webkit-details-marker]:hidden">
                                 <span class="underline decoration-brand-500/30 group-open:no-underline">Coordenadas no mapa (opcional)</span>
@@ -288,12 +298,38 @@
                     </div>
                     <label>
                         <span class="mb-2 block text-sm font-medium">Área total (ha)</span>
-                        <input type="number" step="0.01" name="total_area" value="{{ edit_farm.total_area if edit_farm else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required>
+                        <input type="number" step="0.01" name="total_area" value="{{ edit_farm.total_area if edit_farm else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50{% if farm_form_view_only %} cursor-default text-slate-700{% endif %}" required{% if farm_form_view_only %} readonly tabindex="-1"{% endif %}>
                     </label>
                 </div>
 
                 <div class="rounded-[1.25rem] border border-slate-200 bg-slate-50/80 p-4">
                     <p class="text-xs uppercase tracking-[0.25em] text-slate-400">Perímetro no mapa</p>
+                    {% if farm_form_view_only and edit_farm %}
+                    {% if edit_farm_preview_only_src %}
+                    <div class="mt-3">
+                        <button
+                            type="button"
+                            class="group relative w-full max-w-2xl overflow-hidden rounded-2xl border-2 border-slate-200 bg-slate-100 text-left shadow-sm transition hover:border-brand-400 hover:shadow-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500"
+                            title="Ampliar mapa da fazenda"
+                            aria-label="Abrir mapa ampliado — {{ edit_farm.name | e }}"
+                            data-farms-map-open
+                            data-map-src="{{ edit_farm_preview_only_src }}"
+                            data-map-farm-name="{{ edit_farm.name | e }}"
+                            data-map-farm-id="{{ edit_farm.id }}"
+                        >
+                            <img src="{{ edit_farm_preview_only_src }}" alt="" width="640" height="360" loading="lazy" decoding="async" class="aspect-video w-full object-cover">
+                            <span class="pointer-events-none absolute inset-0 ring-inset ring-transparent transition group-hover:bg-slate-900/10" aria-hidden="true"></span>
+                            <span class="pointer-events-none absolute bottom-2 left-2 right-2 rounded-xl bg-slate-900/70 px-3 py-2 text-center text-xs font-semibold text-white backdrop-blur-sm sm:text-sm">
+                                Ver mapa ampliado
+                            </span>
+                        </button>
+                    </div>
+                    {% elif not edit_farm.boundary_geojson %}
+                    <p class="mt-2 text-sm text-slate-600">Esta fazenda ainda não possui perímetro georreferenciado.</p>
+                    {% else %}
+                    <p class="mt-2 text-sm text-slate-600">Perímetro cadastrado. Clique em <span class="font-medium text-slate-800">Editar</span> para abrir o mapa interativo.</p>
+                    {% endif %}
+                    {% else %}
                     {% if edit_farm and not edit_farm_preview_only_src and not farm_needs_map_gate %}
                     <p class="mt-2 text-sm text-slate-600">Desenhe o polígono clicando no mapa (não é necessário enviar arquivo antes). Arraste os pontos para ajustar. Envie um arquivo GeoJSON abaixo apenas se preferir importar de outra ferramenta.</p>
                     {% if google_maps_web_key %}
@@ -350,8 +386,10 @@
                         </div>
                     </div>
                     {% endif %}
+                    {% endif %}
                 </div>
 
+                {% if not farm_form_view_only %}
                 <label>
                     <span class="mb-2 block text-sm font-medium">GeoJSON da fazenda (.json) — opcional</span>
                     <input type="file" name="boundary_geojson_file" accept=".json,.geojson,application/json" class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm">
@@ -359,10 +397,11 @@
                 {% if edit_farm and edit_farm.boundary_geojson %}
                 <p class="-mt-2 text-sm text-slate-500">Esta fazenda já possui geometria salva. O desenho no mapa ou um novo arquivo substituem a geometria atual ao salvar.</p>
                 {% endif %}
+                {% endif %}
 
                 <label>
                     <span class="mb-2 block text-sm font-medium">Observações</span>
-                    <textarea name="notes" rows="4" class="w-full rounded-2xl border-slate-200 bg-slate-50">{{ edit_farm.notes if edit_farm else '' }}</textarea>
+                    <textarea name="notes" rows="4" class="w-full rounded-2xl border-slate-200 bg-slate-50{% if farm_form_view_only %} cursor-default text-slate-700{% endif %}"{% if farm_form_view_only %} readonly tabindex="-1"{% endif %}>{{ edit_farm.notes if edit_farm else '' }}</textarea>
                 </label>
             </form>
         </div>
@@ -435,6 +474,7 @@
         const headerIntro = stickyHeader?.querySelector('[data-stock-header-intro]');
         const fadingPanels = Array.from(document.querySelectorAll('[data-stock-fade-panel]'));
         const isEditing = {{ 'true' if edit_farm else 'false' }};
+        const isViewOnly = {{ 'true' if farm_form_view_only else 'false' }};
 
         const resetForm = () => {
             if (isEditing || !form) return;
@@ -772,10 +812,16 @@
 
         if (isEditing) {
             launchModal?.showModal();
-            void setupFarmFormBoundaryEditor();
+            if (!isViewOnly) {
+                void setupFarmFormBoundaryEditor();
+            }
         }
 
-        form?.addEventListener('submit', () => {
+        form?.addEventListener('submit', (event) => {
+            if (isViewOnly) {
+                event.preventDefault();
+                return;
+            }
             farmFormBoundaryEditor?.syncToHidden();
             if (!isEditing) {
                 window.setTimeout(() => {

@@ -1716,12 +1716,14 @@ def farms_page(
     request: Request,
     background_tasks: BackgroundTasks,
     edit_id: int | None = None,
+    view: int | None = None,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user_web),
     csrf_token: str = Depends(get_csrf_token),
 ):
     repo = _repository(db)
     edit_farm = repo.get_farm(edit_id) if edit_id else None
+    farm_form_view_only = bool(edit_farm and view == 1)
     farms = repo.list_farms()
     farm_preview_ready: dict[int, bool] = {}
     farm_preview_fingerprint: dict[int, str] = {}
@@ -1763,6 +1765,7 @@ def farms_page(
             "farms",
             farms=farms,
             edit_farm=edit_farm,
+            farm_form_view_only=farm_form_view_only,
             farm_preview_ready=farm_preview_ready,
             farm_preview_fingerprint=farm_preview_fingerprint,
             farm_boundary_geometries_json=farm_boundary_geometries_json,
