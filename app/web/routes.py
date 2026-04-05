@@ -1015,6 +1015,37 @@ def _stock_page_filters_active(
     return False
 
 
+def _plots_page_filters_active(
+    request: Request,
+    *,
+    active_farm_id: int | None,
+    active_season_variety_id: int | None,
+    q: str | None,
+    sort: str,
+) -> bool:
+    """Igual ao estoque: verde / 'filtro aplicado' só com parâmetros na URL que alteram o padrão do contexto."""
+    if (q or "").strip():
+        return True
+    if sort != "name":
+        return True
+    raw_farm = request.query_params.get("farm_id")
+    if raw_farm is not None and str(raw_farm).strip() != "":
+        try:
+            if int(raw_farm) != int(active_farm_id or 0):
+                return True
+        except (TypeError, ValueError):
+            return True
+    raw_variety = request.query_params.get("variety_id")
+    if raw_variety is not None and str(raw_variety).strip() != "":
+        try:
+            vid = int(raw_variety)
+            if active_season_variety_id is None or vid != int(active_season_variety_id):
+                return True
+        except (TypeError, ValueError):
+            return True
+    return False
+
+
 def _assets_export_query(farm_id: int | None = None, status: str | None = None) -> str:
     params = {"farm_id": farm_id, "status": status}
     clean = {key: value for key, value in params.items() if value not in (None, "", "all")}
@@ -1681,8 +1712,13 @@ def plots_page(
         except json.JSONDecodeError:
             edit_plot_geometry_json = "null"
     google_maps_web_key = (get_settings().google_maps_api_key or "").strip()
-    plots_filters_active = bool(
-        (q or "").strip() or bool(farm_ids) or bool(variety_ids) or sort != "name"
+    _plot_scope_season = scope.get("active_season")
+    plots_filters_active = _plots_page_filters_active(
+        request,
+        active_farm_id=scope["active_farm_id"],
+        active_season_variety_id=(_plot_scope_season.variety_id if _plot_scope_season and _plot_scope_season.variety_id else None),
+        q=q,
+        sort=sort,
     )
     return templates.TemplateResponse(
         "plots.html",
