@@ -3628,7 +3628,7 @@ def export_purchased_inputs_pdf(
             [
                 [Paragraph("LANÇAMENTOS", meta_label_style), Paragraph(str(extract_totals["movements_count"]), summary_value_style)],
                 [Paragraph("TOTAL MOVIMENTADO", meta_label_style), Paragraph(_format_currency(extract_totals["grand_total"]), summary_value_style)],
-                ["", ""],
+                [Paragraph("", meta_value_style), Paragraph("", meta_value_style)],
             ],
         ], colWidths=[doc.width / 3] * 3, hAlign="LEFT")
     elif export_tab == "entries":
@@ -3641,7 +3641,7 @@ def export_purchased_inputs_pdf(
             [
                 [Paragraph("REGISTROS", meta_label_style), Paragraph(str(len(purchase_entries)), summary_value_style)],
                 [Paragraph("TOTAL FINANCEIRO", meta_label_style), Paragraph(_format_currency(entries_total), summary_value_style)],
-                ["", ""],
+                [Paragraph("", meta_value_style), Paragraph("", meta_value_style)],
             ],
         ], colWidths=[doc.width / 3] * 3, hAlign="LEFT")
     else:
@@ -3654,7 +3654,7 @@ def export_purchased_inputs_pdf(
             [
                 [Paragraph("REGISTROS", meta_label_style), Paragraph(str(len(stock_outputs)), summary_value_style)],
                 [Paragraph("TOTAL FINANCEIRO", meta_label_style), Paragraph(_format_currency(outputs_total), summary_value_style)],
-                ["", ""],
+                [Paragraph("", meta_value_style), Paragraph("", meta_value_style)],
             ],
         ], colWidths=[doc.width / 3] * 3, hAlign="LEFT")
 
@@ -4343,7 +4343,7 @@ def export_stock_extract_pdf(
                 [
                     [Paragraph("LANÇAMENTOS", meta_label_style), Paragraph(str(extract_totals["movements_count"]), summary_value_style)],
                     [Paragraph("TOTAL MOVIMENTADO", meta_label_style), Paragraph(_format_currency(extract_totals["grand_total"]), summary_value_style)],
-                    ["", ""],
+                    [Paragraph("", meta_value_style), Paragraph("", meta_value_style)],
                 ],
             ],
             colWidths=[doc.width / 3] * 3,
@@ -4365,7 +4365,7 @@ def export_stock_extract_pdf(
                 [
                     [Paragraph("REGISTROS", meta_label_style), Paragraph(str(len(purchase_entries)), summary_value_style)],
                     [Paragraph("TOTAL FINANCEIRO", meta_label_style), Paragraph(_format_currency(entries_total_sum), summary_value_style)],
-                    ["", ""],
+                    [Paragraph("", meta_value_style), Paragraph("", meta_value_style)],
                 ],
             ],
             colWidths=[doc.width / 3] * 3,
@@ -4387,7 +4387,7 @@ def export_stock_extract_pdf(
                 [
                     [Paragraph("REGISTROS", meta_label_style), Paragraph(str(len(stock_outputs)), summary_value_style)],
                     [Paragraph("TOTAL FINANCEIRO", meta_label_style), Paragraph(_format_currency(outputs_total_sum), summary_value_style)],
-                    ["", ""],
+                    [Paragraph("", meta_value_style), Paragraph("", meta_value_style)],
                 ],
             ],
             colWidths=[doc.width / 3] * 3,
