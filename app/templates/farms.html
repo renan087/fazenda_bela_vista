@@ -392,7 +392,7 @@
                 {% if not farm_form_view_only %}
                 <label>
                     <span class="mb-2 block text-sm font-medium">GeoJSON da fazenda (.json) — opcional</span>
-                    <input type="file" name="boundary_geojson_file" accept=".json,.geojson,application/json" class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm">
+                    <input type="file" name="boundary_geojson_file" accept=".json,.geojson,application/json" class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600 file:mr-3 file:cursor-pointer file:rounded-xl file:border file:border-gray-200 file:bg-gray-100 file:px-3 file:py-2 file:text-sm file:font-medium file:text-gray-700 hover:file:bg-gray-200">
                 </label>
                 {% if edit_farm and edit_farm.boundary_geojson %}
                 <p class="-mt-2 text-sm text-slate-500">Esta fazenda já possui geometria salva. O desenho no mapa ou um novo arquivo substituem a geometria atual ao salvar.</p>
