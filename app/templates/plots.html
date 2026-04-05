@@ -1,164 +1,258 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="grid gap-6 xl:grid-cols-[0.95fr_1.05fr]">
-    <section class="rounded-[2rem] bg-white p-6 shadow-panel">
-        <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Cadastro de Setores</p>
-        <h3 class="mt-2 text-2xl font-semibold">{% if edit_plot %}Editar setor{% else %}Estrutura produtiva da fazenda{% endif %}</h3>
-        <form method="post" enctype="multipart/form-data" action="{% if edit_plot %}/setores/{{ edit_plot.id }}/editar{% else %}/setores{% endif %}" class="mt-6 grid gap-4 md:grid-cols-2">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-            <label class="block md:col-span-2"><span class="mb-2 block text-sm font-medium">Nome do setor</span><input name="name" value="{{ edit_plot.name if edit_plot else '' }}" class="w-full rounded-2xl border-slate-200 bg-slate-50" required></label>
-            <label><span class="mb-2 block text-sm font-medium">Area (ha)</span><input type="number" step="0.01" name="area_hectares" value="{{ edit_plot.area_hectares if edit_plot else '' }}" class="w-full rounded-2xl border-slate-200 bg-slate-50" required></label>
-            <div>
-                <div class="mb-2 flex items-center justify-between gap-3">
-                    <span class="block text-sm font-medium">Fazenda</span>
-                    <button type="button" data-open-farm-modal class="text-sm font-semibold text-brand-700 hover:text-brand-500">Nova fazenda</button>
+<div class="stock-page-shell space-y-6" data-modal-single-pane>
+    <section class="stock-page-header rounded-[2rem] p-5 shadow-panel">
+        <div class="flex flex-wrap items-start justify-between gap-4">
+            <div class="min-w-0 stock-page-header-intro" data-stock-header-intro>
+                <div class="stock-page-header-intro-inner">
+                    <h2 class="stock-page-card-title">Setores</h2>
+                    <p class="stock-page-card-subtitle">Gestão unificada da estrutura produtiva, irrigação e organização territorial da fazenda.</p>
                 </div>
-                <select name="farm_id" class="w-full rounded-2xl border-slate-200 bg-slate-50" required>
-                    <option value="">Selecione</option>
-                    {% for farm in farms %}
-                    <option value="{{ farm.id }}" {% if edit_plot and edit_plot.farm_id == farm.id %}selected{% elif selected_farm_id == farm.id %}selected{% endif %}>{{ farm.name }}</option>
-                    {% endfor %}
-                </select>
             </div>
-            <label><span class="mb-2 block text-sm font-medium">Data de plantio</span><input type="date" name="planting_date" value="{{ edit_plot.planting_date.isoformat() if edit_plot and edit_plot.planting_date else '' }}" class="w-full rounded-2xl border-slate-200 bg-slate-50"></label>
-            <label><span class="mb-2 block text-sm font-medium">Numero de plantas</span><input type="number" name="plant_count" value="{{ edit_plot.plant_count if edit_plot else '' }}" class="w-full rounded-2xl border-slate-200 bg-slate-50" required></label>
-            <label><span class="mb-2 block text-sm font-medium">Espacamento entre linhas (m)</span><input type="number" step="0.01" name="spacing_row_meters" value="{{ edit_plot.spacing_row_meters if edit_plot else '' }}" class="w-full rounded-2xl border-slate-200 bg-slate-50"></label>
-            <label><span class="mb-2 block text-sm font-medium">Espacamento entre plantas (cm)</span><input type="number" step="0.01" name="spacing_plant_centimeters" value="{{ ((edit_plot.spacing_plant_meters * 100) if edit_plot and edit_plot.spacing_plant_meters is not none else '') }}" class="w-full rounded-2xl border-slate-200 bg-slate-50"></label>
-            <label><span class="mb-2 block text-sm font-medium">Producao estimada (sacas)</span><input type="number" step="0.01" name="estimated_yield_sacks" value="{{ edit_plot.estimated_yield_sacks if edit_plot else '' }}" class="w-full rounded-2xl border-slate-200 bg-slate-50"></label>
-            <label><span class="mb-2 block text-sm font-medium">Variedade</span>
-                <select name="variety_id" class="w-full rounded-2xl border-slate-200 bg-slate-50">
-                    <option value="">Selecione</option>
-                    {% for variety in varieties %}
-                    <option value="{{ variety.id }}" {% if edit_plot and edit_plot.variety_id == variety.id %}selected{% endif %}>{{ variety.name }}</option>
-                    {% endfor %}
-                </select>
-            </label>
-            <label><span class="mb-2 block text-sm font-medium">Latitude</span><input type="number" step="0.000001" name="centroid_lat" value="{{ edit_plot.centroid_lat if edit_plot else '' }}" class="w-full rounded-2xl border-slate-200 bg-slate-50" placeholder="Opcional"></label>
-            <label><span class="mb-2 block text-sm font-medium">Longitude</span><input type="number" step="0.000001" name="centroid_lng" value="{{ edit_plot.centroid_lng if edit_plot else '' }}" class="w-full rounded-2xl border-slate-200 bg-slate-50" placeholder="Opcional"></label>
-            <label class="md:col-span-2"><span class="mb-2 block text-sm font-medium">GeoJSON do setor (.json)</span><input type="file" name="boundary_geojson_file" accept=".json,.geojson,application/json" class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm"></label>
-            {% if edit_plot and edit_plot.boundary_geojson %}
-            <p class="md:col-span-2 -mt-2 text-sm text-slate-500">Este setor ja possui geometria salva no mapa. Envie um novo arquivo apenas se quiser substituir.</p>
-            {% endif %}
-
-            <div class="md:col-span-2 rounded-[1.5rem] border border-slate-200 bg-slate-50 p-4">
-                <p class="text-xs uppercase tracking-[0.3em] text-slate-400">Configuracao de Irrigacao</p>
-                <div class="mt-4 grid gap-4 md:grid-cols-2">
-                    <label><span class="mb-2 block text-sm font-medium">Tipo de irrigacao</span>
-                        <select name="irrigation_type" data-irrigation-type class="w-full rounded-2xl border-slate-200 bg-white">
-                            <option value="none" {% if not edit_plot or edit_plot.irrigation_type == 'none' %}selected{% endif %}>Nenhum</option>
-                            <option value="gotejo" {% if edit_plot and edit_plot.irrigation_type == 'gotejo' %}selected{% endif %}>Gotejo</option>
-                            <option value="aspersor" {% if edit_plot and edit_plot.irrigation_type == 'aspersor' %}selected{% endif %}>Aspersor</option>
-                        </select>
-                    </label>
-                    <label><span class="mb-2 block text-sm font-medium">Quantidade de linhas de irrigacao</span><input type="number" name="irrigation_line_count" value="{{ edit_plot.irrigation_line_count if edit_plot and edit_plot.irrigation_line_count is not none else '' }}" class="w-full rounded-2xl border-slate-200 bg-white" placeholder="Opcional"></label>
-                </div>
-                <div data-irrigation-group="gotejo" class="mt-4 grid gap-4 md:grid-cols-3">
-                    <label><span class="mb-2 block text-sm font-medium">Comprimento das linhas (m)</span><input type="number" step="0.01" name="irrigation_line_length_meters" value="{{ edit_plot.irrigation_line_length_meters if edit_plot and edit_plot.irrigation_line_length_meters is not none else '' }}" class="w-full rounded-2xl border-slate-200 bg-white" placeholder="Ex.: 90"></label>
-                    <label><span class="mb-2 block text-sm font-medium">Espacamento entre gotejos (cm)</span><input type="number" step="0.01" name="drip_spacing_centimeters" value="{{ ((edit_plot.drip_spacing_meters * 100) if edit_plot and edit_plot.drip_spacing_meters is not none else '') }}" class="w-full rounded-2xl border-slate-200 bg-white" placeholder="Ex.: 30"></label>
-                    <label><span class="mb-2 block text-sm font-medium">Litros por gotejo / hora</span><input type="number" step="0.01" name="drip_liters_per_hour" value="{{ edit_plot.drip_liters_per_hour if edit_plot and edit_plot.drip_liters_per_hour is not none else '' }}" class="w-full rounded-2xl border-slate-200 bg-white" placeholder="Ex.: 1.6"></label>
-                </div>
-                <div data-irrigation-group="aspersor" class="mt-4 grid gap-4 md:grid-cols-2">
-                    <label><span class="mb-2 block text-sm font-medium">Quantidade de aspersores</span><input type="number" name="sprinkler_count" value="{{ edit_plot.sprinkler_count if edit_plot and edit_plot.sprinkler_count is not none else '' }}" class="w-full rounded-2xl border-slate-200 bg-white"></label>
-                    <label><span class="mb-2 block text-sm font-medium">Litros por aspersor / hora</span><input type="number" step="0.01" name="sprinkler_liters_per_hour" value="{{ edit_plot.sprinkler_liters_per_hour if edit_plot and edit_plot.sprinkler_liters_per_hour is not none else '' }}" class="w-full rounded-2xl border-slate-200 bg-white"></label>
-                </div>
-                <p class="mt-4 text-sm text-slate-500">Quando os dados de irrigacao estiverem preenchidos, o sistema calcula automaticamente o volume em litros no lancamento da irrigacao.</p>
+            <div class="stock-header-actions stock-header-actions-top max-[899px]:mx-auto max-[899px]:flex max-[899px]:w-full max-[899px]:justify-center">
+                <button type="button" class="stock-action-button stock-action-button-primary" data-plots-launch-open>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                        <path d="M12 5v14"/>
+                        <path d="M5 12h14"/>
+                    </svg>
+                    <span class="stock-action-button-label"><span class="sm:hidden">Novo</span><span class="hidden sm:inline">Novo setor</span></span>
+                </button>
             </div>
-
-            <label class="md:col-span-2"><span class="mb-2 block text-sm font-medium">Observacoes</span><textarea name="notes" rows="3" class="w-full rounded-2xl border-slate-200 bg-slate-50">{{ edit_plot.notes if edit_plot else '' }}</textarea></label>
-            <div class="md:col-span-2 flex gap-3">
-                <button class="rounded-2xl bg-brand-500 px-4 py-3 font-semibold text-white hover:bg-brand-700">{% if edit_plot %}Salvar alteracoes{% else %}Salvar setor{% endif %}</button>
-                {% if edit_plot %}
-                <a href="/setores" class="rounded-2xl bg-slate-100 px-4 py-3 font-semibold text-slate-700 hover:bg-slate-200">Cancelar</a>
-                {% endif %}
-            </div>
-        </form>
+        </div>
     </section>
-    <section class="rounded-[2rem] bg-white p-6 shadow-panel">
-        <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Portifolio Agricola</p>
-        <h3 class="mt-2 text-2xl font-semibold">Setores cadastrados</h3>
-        <form method="get" action="/setores" class="mt-6 grid gap-3 rounded-[1.5rem] bg-slate-50 p-4 md:grid-cols-4">
-            <label><span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Buscar</span><input name="q" value="{{ filters.q }}" class="w-full rounded-xl border-slate-200 bg-white" placeholder="Nome do setor"></label>
-            <div class="md:col-span-1">
-                <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Fazenda</span>
-                <details class="relative" data-floating-filter>
-                    <summary class="flex cursor-pointer list-none items-center justify-between rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700">
-                        <span>{% if filters.farm_ids %}{{ filters.farm_ids|length }} selecionada(s){% else %}Todas{% endif %}</span>
-                        <span class="text-slate-400">Selecionar</span>
-                    </summary>
-                    <div class="absolute z-20 mt-2 w-full rounded-2xl border border-slate-200 bg-white p-3 shadow-xl">
-                        <div class="max-h-60 space-y-2 overflow-y-auto">
-                            {% for farm in farms %}
-                            <label class="flex items-center gap-3 rounded-xl px-2 py-2 hover:bg-slate-50"><input type="checkbox" name="farm_id" value="{{ farm.id }}" data-filter-farms {% if farm.id in filters.farm_ids %}checked{% endif %} class="rounded border-slate-300 text-brand-600"> <span class="text-sm">{{ farm.name }}</span></label>
-                            {% endfor %}
+
+    <section class="stock-panel rounded-[2rem] bg-white p-6 shadow-panel" data-stock-fade-panel>
+        <div class="module-filter-toolbar">
+            <form method="get" action="/setores" class="grid gap-3 xl:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)_minmax(0,0.9fr)_minmax(0,0.7fr)_auto]">
+                <label>
+                    <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Buscar</span>
+                    <input name="q" value="{{ filters.q }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" placeholder="Nome do setor">
+                </label>
+                <div>
+                    <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Fazenda</span>
+                    <details class="relative" data-floating-filter>
+                        <summary class="flex min-h-[3.25rem] cursor-pointer list-none items-center justify-between rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
+                            <span>{% if filters.farm_ids %}{{ filters.farm_ids|length }} selecionada(s){% else %}Todas{% endif %}</span>
+                            <span class="text-slate-400">Selecionar</span>
+                        </summary>
+                        <div class="absolute z-20 mt-2 w-full rounded-2xl border border-slate-200 bg-white p-3 shadow-xl">
+                            <div class="max-h-60 space-y-2 overflow-y-auto">
+                                {% for farm in farms %}
+                                <label class="flex items-center gap-3 rounded-xl px-2 py-2 hover:bg-slate-50"><input type="checkbox" name="farm_id" value="{{ farm.id }}" data-filter-farms {% if farm.id in filters.farm_ids %}checked{% endif %} class="rounded border-slate-300 text-brand-600"> <span class="text-sm">{{ farm.name }}</span></label>
+                                {% endfor %}
+                            </div>
                         </div>
-                    </div>
-                </details>
-            </div>
-            <div class="md:col-span-1">
-                <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Variedade</span>
-                <details class="relative" data-floating-filter>
-                    <summary class="flex cursor-pointer list-none items-center justify-between rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-700">
-                        <span>{% if filters.variety_ids %}{{ filters.variety_ids|length }} selecionada(s){% else %}Todas{% endif %}</span>
-                        <span class="text-slate-400">Selecionar</span>
-                    </summary>
-                    <div class="absolute z-20 mt-2 w-full rounded-2xl border border-slate-200 bg-white p-3 shadow-xl">
-                        <div class="max-h-60 space-y-2 overflow-y-auto">
-                            {% for variety in varieties %}
-                            <label class="flex items-center gap-3 rounded-xl px-2 py-2 hover:bg-slate-50"><input type="checkbox" name="variety_id" value="{{ variety.id }}" data-filter-varieties {% if variety.id in filters.variety_ids %}checked{% endif %} class="rounded border-slate-300 text-brand-600"> <span class="text-sm">{{ variety.name }}</span></label>
-                            {% endfor %}
+                    </details>
+                </div>
+                <div>
+                    <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Variedade</span>
+                    <details class="relative" data-floating-filter>
+                        <summary class="flex min-h-[3.25rem] cursor-pointer list-none items-center justify-between rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
+                            <span>{% if filters.variety_ids %}{{ filters.variety_ids|length }} selecionada(s){% else %}Todas{% endif %}</span>
+                            <span class="text-slate-400">Selecionar</span>
+                        </summary>
+                        <div class="absolute z-20 mt-2 w-full rounded-2xl border border-slate-200 bg-white p-3 shadow-xl">
+                            <div class="max-h-60 space-y-2 overflow-y-auto">
+                                {% for variety in varieties %}
+                                <label class="flex items-center gap-3 rounded-xl px-2 py-2 hover:bg-slate-50"><input type="checkbox" name="variety_id" value="{{ variety.id }}" data-filter-varieties {% if variety.id in filters.variety_ids %}checked{% endif %} class="rounded border-slate-300 text-brand-600"> <span class="text-sm">{{ variety.name }}</span></label>
+                                {% endfor %}
+                            </div>
                         </div>
-                    </div>
-                </details>
+                    </details>
+                </div>
+                <label>
+                    <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Ordenar</span>
+                    <select name="sort" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50">
+                        <option value="name" {% if filters.sort == 'name' %}selected{% endif %}>Nome</option>
+                        <option value="area_desc" {% if filters.sort == 'area_desc' %}selected{% endif %}>Maior área</option>
+                        <option value="area_asc" {% if filters.sort == 'area_asc' %}selected{% endif %}>Menor área</option>
+                        <option value="planting_desc" {% if filters.sort == 'planting_desc' %}selected{% endif %}>Plantio recente</option>
+                        <option value="planting_asc" {% if filters.sort == 'planting_asc' %}selected{% endif %}>Plantio antigo</option>
+                    </select>
+                </label>
+                <div class="flex flex-wrap items-end gap-3">
+                    <button class="min-h-[3.25rem] rounded-2xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white hover:bg-slate-700">Filtrar</button>
+                    <a href="/setores" class="min-h-[3.25rem] rounded-2xl bg-white px-4 py-3 text-sm font-semibold text-slate-700 ring-1 ring-slate-200">Limpar</a>
+                </div>
+            </form>
+        </div>
+
+        <div class="mt-6 flex flex-wrap items-start justify-between gap-4">
+            <div class="min-w-0">
+                <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Portfólio agrícola</p>
+                <h3 class="mt-2 text-2xl font-semibold">Setores cadastrados</h3>
             </div>
-            <label><span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Ordenar</span><select name="sort" class="w-full rounded-xl border-slate-200 bg-white"><option value="name" {% if filters.sort == 'name' %}selected{% endif %}>Nome</option><option value="area_desc" {% if filters.sort == 'area_desc' %}selected{% endif %}>Maior area</option><option value="area_asc" {% if filters.sort == 'area_asc' %}selected{% endif %}>Menor area</option><option value="planting_desc" {% if filters.sort == 'planting_desc' %}selected{% endif %}>Plantio recente</option><option value="planting_asc" {% if filters.sort == 'planting_asc' %}selected{% endif %}>Plantio antigo</option></select></label>
-            <div class="md:col-span-4 flex flex-wrap gap-3">
-                <button class="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white">Filtrar</button>
-                <a href="/setores" class="rounded-xl bg-white px-4 py-2 text-sm font-semibold text-slate-700 ring-1 ring-slate-200">Limpar</a>
-                <p class="self-center text-xs text-slate-500">Voce pode selecionar uma ou varias fazendas e variedades.</p>
+            <div class="stock-search-field">
+                <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+                    <circle cx="8.5" cy="8.5" r="5.75"></circle>
+                    <path d="M13 13l4 4"></path>
+                </svg>
+                <input type="search" placeholder="Buscar setor, fazenda, variedade ou observação" data-plots-search>
             </div>
-        </form>
-        <div class="mt-6 space-y-4">
+        </div>
+
+        <div class="mt-5 space-y-4" data-plots-list>
             {% for plot in plots %}
-            <article class="rounded-[1.5rem] border border-slate-100 bg-slate-50 p-5">
-                <div class="flex flex-wrap items-start justify-between gap-3">
-                    <div>
-                        <h4 class="text-lg font-semibold">{{ plot.name }}</h4>
-                        <p class="mt-1 text-sm text-slate-500">{{ plot.farm.name if plot.farm else "Sem fazenda" }} • {{ plot.area_hectares }} ha</p>
+            <article class="rounded-[1.5rem] border border-slate-100 bg-slate-50 p-5 lg:p-4" data-plots-row data-plots-search-text="{{ plot.name }} {{ plot.farm.name if plot.farm else '' }} {{ plot.variety.name if plot.variety else '' }} {{ plot.notes or '' }} {{ plot.area_hectares }} {{ plot.plant_count }}">
+                <div class="flex flex-wrap items-start justify-between gap-4 lg:gap-3">
+                    <div class="min-w-0 flex-1">
+                        <button type="button" class="text-left text-lg font-semibold text-slate-900 transition hover:text-brand-700 lg:text-base" data-plots-launch-open data-plots-edit-link="/setores?edit_id={{ plot.id }}">{{ plot.name }}</button>
+                        <p class="mt-1 text-sm text-slate-500 lg:mt-0.5 lg:text-[13px]">{{ plot.farm.name if plot.farm else "Sem fazenda" }} • {{ plot.area_hectares }} ha</p>
+                        <div class="mt-3 flex flex-wrap gap-2">
+                            <span class="stock-level-badge bg-brand-50 text-brand-700 ring-1 ring-brand-100">{{ plot.variety.name if plot.variety else "Sem variedade" }}</span>
+                            <span class="stock-level-badge bg-white text-slate-700 ring-1 ring-slate-200/80">
+                                {% if plot.irrigation_type == 'gotejo' %}Gotejo{% elif plot.irrigation_type == 'aspersor' %}Aspersor{% else %}Sem irrigação{% endif %}
+                            </span>
+                        </div>
                     </div>
-                    <div class="flex items-center gap-2">
-                        <span class="rounded-full bg-brand-50 px-3 py-1 text-sm font-semibold text-brand-700">{{ plot.variety.name if plot.variety else "Sem variedade" }}</span>
-                        <a href="/mapa?edit_plot_id={{ plot.id }}" class="rounded-xl bg-brand-600 px-3 py-2 text-sm font-medium text-white hover:bg-brand-700">Mapa</a>
-                        <a href="/setores?edit_id={{ plot.id }}" class="rounded-xl bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-700">Editar</a>
+                    <div class="flex items-center gap-2 lg:gap-1.5">
+                        <a href="/mapa?edit_plot_id={{ plot.id }}" class="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-brand-100 bg-brand-50 text-brand-700 hover:bg-brand-100" title="Mapa">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="m3 6 6-2 6 2 6-2v14l-6 2-6-2-6 2V6z"/>
+                                <path d="M9 4v14"/>
+                                <path d="M15 6v14"/>
+                            </svg>
+                        </a>
+                        <a href="/setores?edit_id={{ plot.id }}" class="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-100" title="Editar">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M12 20h9"/>
+                                <path d="M16.5 3.5a2.1 2.1 0 1 1 3 3L7 19l-4 1 1-4Z"/>
+                            </svg>
+                        </a>
                         <form method="post" action="/setores/{{ plot.id }}/excluir" onsubmit="return confirm('Excluir o setor {{ plot.name }}?');">
                             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                            <button class="rounded-xl bg-rose-600 px-3 py-2 text-sm font-medium text-white hover:bg-rose-700">Excluir</button>
+                            <button type="submit" class="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 text-rose-600 hover:bg-rose-50" title="Excluir">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M3 6h18"/>
+                                    <path d="M8 6V4h8v2"/>
+                                    <path d="M19 6l-1 14H6L5 6"/>
+                                    <path d="M10 11v6"/>
+                                    <path d="M14 11v6"/>
+                                </svg>
+                            </button>
                         </form>
                     </div>
                 </div>
-                <div class="mt-4 grid gap-3 text-sm text-slate-600 sm:grid-cols-2">
-                    <p>Data de plantio: <strong>{{ plot.planting_date or "-" }}</strong></p>
+                <div class="mt-4 grid gap-3 text-sm text-slate-600 sm:grid-cols-2 xl:grid-cols-3">
+                    <p>Plantio: <strong>{{ plot.planting_date or "-" }}</strong></p>
                     <p>Plantas: <strong>{{ plot.plant_count }}</strong></p>
-                    <p>Espacamento: <strong>{{ plot.spacing_row_meters or "-" }} m x {{ ((plot.spacing_plant_meters * 100) if plot.spacing_plant_meters is not none else "-") }} cm</strong></p>
+                    <p>Espaçamento: <strong>{{ plot.spacing_row_meters or "-" }} m x {{ ((plot.spacing_plant_meters * 100) if plot.spacing_plant_meters is not none else "-") }} cm</strong></p>
                     <p>Estimativa: <strong>{{ plot.estimated_yield_sacks or "-" }} sacas</strong></p>
-                    <p>Tipo de irrigacao: <strong>{% if plot.irrigation_type == 'gotejo' %}Gotejo{% elif plot.irrigation_type == 'aspersor' %}Aspersor{% else %}Nenhum{% endif %}</strong></p>
-                    <p>Linhas de irrigacao: <strong>{{ plot.irrigation_line_count or "-" }}</strong></p>
+                    <p>Linhas de irrigação: <strong>{{ plot.irrigation_line_count or "-" }}</strong></p>
+                    <p>Geometria: <strong>{% if plot.boundary_geojson %}Cadastrada{% else %}Pendente{% endif %}</strong></p>
                 </div>
                 {% if plot.notes %}
-                <p class="mt-4 text-sm text-slate-500">{{ plot.notes }}</p>
+                <p class="mt-3 text-sm text-slate-500">{{ plot.notes }}</p>
                 {% endif %}
             </article>
             {% else %}
             <p class="text-sm text-slate-500">Nenhum setor cadastrado.</p>
             {% endfor %}
         </div>
+        <p class="stock-search-empty mt-4 hidden text-sm text-slate-500" data-plots-search-empty>Nenhum setor corresponde à busca digitada.</p>
     </section>
 </div>
+
+<dialog id="plots-launch-modal" class="app-modal rounded-[2rem] p-0 shadow-2xl w-full max-w-5xl overflow-hidden">
+    <div class="bg-white p-6 sm:p-8">
+        <div class="flex items-start justify-between gap-4">
+            <div class="min-w-0">
+                <p class="text-xs uppercase tracking-[0.35em] text-slate-400">{% if edit_plot %}Editar setor{% else %}Novo setor{% endif %}</p>
+                <h3 class="mt-2 text-2xl font-semibold purchased-modal-heading">{% if edit_plot %}Editar setor{% else %}Cadastrar novo setor{% endif %}</h3>
+                <p class="mt-2 text-sm text-slate-500 purchased-modal-subtitle">Organize área, plantio, variedade, irrigação e dados geográficos em um único formulário.</p>
+            </div>
+            <button type="button" class="modal-close-button" aria-label="Fechar" data-plots-launch-close>
+                <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M18 6 6 18"/>
+                    <path d="m6 6 12 12"/>
+                </svg>
+            </button>
+        </div>
+
+        <div class="mt-6 max-h-[72vh] overflow-y-auto pr-1" data-modal-scroll>
+            <form method="post" enctype="multipart/form-data" action="{% if edit_plot %}/setores/{{ edit_plot.id }}/editar{% else %}/setores{% endif %}" class="grid gap-4" id="plots-form">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+
+                <div class="sticky top-0 z-10 -mx-1 bg-white/95 px-1 py-1 backdrop-blur">
+                    <div class="flex flex-wrap justify-end gap-3 rounded-[1.5rem] px-2 py-2 sm:px-3">
+                        <button type="button" class="rounded-2xl bg-slate-100 px-4 py-3 font-semibold text-slate-700 hover:bg-slate-200" data-plots-launch-close>Cancelar</button>
+                        <button form="plots-form" class="rounded-2xl bg-brand-500 px-4 py-3 font-semibold text-white hover:bg-brand-700">{% if edit_plot %}Salvar alterações{% else %}Salvar setor{% endif %}</button>
+                    </div>
+                </div>
+
+                <label><span class="mb-2 block text-sm font-medium">Nome do setor</span><input name="name" value="{{ edit_plot.name if edit_plot else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required></label>
+
+                <div class="grid gap-4 md:grid-cols-2">
+                    <label><span class="mb-2 block text-sm font-medium">Área (ha)</span><input type="number" step="0.01" name="area_hectares" value="{{ edit_plot.area_hectares if edit_plot else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required></label>
+                    <div>
+                        <div class="mb-2 flex items-center justify-between gap-3">
+                            <span class="block text-sm font-medium">Fazenda</span>
+                            <button type="button" data-open-farm-modal class="text-sm font-semibold text-brand-700 hover:text-brand-500">Nova fazenda</button>
+                        </div>
+                        <select name="farm_id" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required>
+                            <option value="">Selecione</option>
+                            {% for farm in farms %}
+                            <option value="{{ farm.id }}" {% if edit_plot and edit_plot.farm_id == farm.id %}selected{% elif selected_farm_id == farm.id %}selected{% endif %}>{{ farm.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <label><span class="mb-2 block text-sm font-medium">Data de plantio</span><input type="date" name="planting_date" value="{{ edit_plot.planting_date.isoformat() if edit_plot and edit_plot.planting_date else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50"></label>
+                    <label><span class="mb-2 block text-sm font-medium">Número de plantas</span><input type="number" name="plant_count" value="{{ edit_plot.plant_count if edit_plot else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required></label>
+                    <label><span class="mb-2 block text-sm font-medium">Espaçamento entre linhas (m)</span><input type="number" step="0.01" name="spacing_row_meters" value="{{ edit_plot.spacing_row_meters if edit_plot else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50"></label>
+                    <label><span class="mb-2 block text-sm font-medium">Espaçamento entre plantas (cm)</span><input type="number" step="0.01" name="spacing_plant_centimeters" value="{{ ((edit_plot.spacing_plant_meters * 100) if edit_plot and edit_plot.spacing_plant_meters is not none else '') }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50"></label>
+                    <label><span class="mb-2 block text-sm font-medium">Produção estimada (sacas)</span><input type="number" step="0.01" name="estimated_yield_sacks" value="{{ edit_plot.estimated_yield_sacks if edit_plot else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50"></label>
+                    <label><span class="mb-2 block text-sm font-medium">Variedade</span>
+                        <select name="variety_id" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50">
+                            <option value="">Selecione</option>
+                            {% for variety in varieties %}
+                            <option value="{{ variety.id }}" {% if edit_plot and edit_plot.variety_id == variety.id %}selected{% endif %}>{{ variety.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </label>
+                    <label><span class="mb-2 block text-sm font-medium">Latitude</span><input type="number" step="0.000001" name="centroid_lat" value="{{ edit_plot.centroid_lat if edit_plot else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" placeholder="Opcional"></label>
+                    <label><span class="mb-2 block text-sm font-medium">Longitude</span><input type="number" step="0.000001" name="centroid_lng" value="{{ edit_plot.centroid_lng if edit_plot else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" placeholder="Opcional"></label>
+                </div>
+
+                <label><span class="mb-2 block text-sm font-medium">GeoJSON do setor (.json)</span><input type="file" name="boundary_geojson_file" accept=".json,.geojson,application/json" class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm"></label>
+                {% if edit_plot and edit_plot.boundary_geojson %}
+                <p class="-mt-2 text-sm text-slate-500">Este setor já possui geometria salva no mapa. Envie um novo arquivo apenas se quiser substituir.</p>
+                {% endif %}
+
+                <div class="rounded-[1.5rem] border border-slate-200 bg-slate-50 p-4">
+                    <p class="text-xs uppercase tracking-[0.3em] text-slate-400">Configuração de irrigação</p>
+                    <div class="mt-4 grid gap-4 md:grid-cols-2">
+                        <label><span class="mb-2 block text-sm font-medium">Tipo de irrigação</span>
+                            <select name="irrigation_type" data-irrigation-type class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-white">
+                                <option value="none" {% if not edit_plot or edit_plot.irrigation_type == 'none' %}selected{% endif %}>Nenhum</option>
+                                <option value="gotejo" {% if edit_plot and edit_plot.irrigation_type == 'gotejo' %}selected{% endif %}>Gotejo</option>
+                                <option value="aspersor" {% if edit_plot and edit_plot.irrigation_type == 'aspersor' %}selected{% endif %}>Aspersor</option>
+                            </select>
+                        </label>
+                        <label><span class="mb-2 block text-sm font-medium">Quantidade de linhas de irrigação</span><input type="number" name="irrigation_line_count" value="{{ edit_plot.irrigation_line_count if edit_plot and edit_plot.irrigation_line_count is not none else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-white" placeholder="Opcional"></label>
+                    </div>
+                    <div data-irrigation-group="gotejo" class="mt-4 grid gap-4 md:grid-cols-3">
+                        <label><span class="mb-2 block text-sm font-medium">Comprimento das linhas (m)</span><input type="number" step="0.01" name="irrigation_line_length_meters" value="{{ edit_plot.irrigation_line_length_meters if edit_plot and edit_plot.irrigation_line_length_meters is not none else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-white" placeholder="Ex.: 90"></label>
+                        <label><span class="mb-2 block text-sm font-medium">Espaçamento entre gotejos (cm)</span><input type="number" step="0.01" name="drip_spacing_centimeters" value="{{ ((edit_plot.drip_spacing_meters * 100) if edit_plot and edit_plot.drip_spacing_meters is not none else '') }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-white" placeholder="Ex.: 30"></label>
+                        <label><span class="mb-2 block text-sm font-medium">Litros por gotejo / hora</span><input type="number" step="0.01" name="drip_liters_per_hour" value="{{ edit_plot.drip_liters_per_hour if edit_plot and edit_plot.drip_liters_per_hour is not none else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-white" placeholder="Ex.: 1.6"></label>
+                    </div>
+                    <div data-irrigation-group="aspersor" class="mt-4 grid gap-4 md:grid-cols-2">
+                        <label><span class="mb-2 block text-sm font-medium">Quantidade de aspersores</span><input type="number" name="sprinkler_count" value="{{ edit_plot.sprinkler_count if edit_plot and edit_plot.sprinkler_count is not none else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-white"></label>
+                        <label><span class="mb-2 block text-sm font-medium">Litros por aspersor / hora</span><input type="number" step="0.01" name="sprinkler_liters_per_hour" value="{{ edit_plot.sprinkler_liters_per_hour if edit_plot and edit_plot.sprinkler_liters_per_hour is not none else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-white"></label>
+                    </div>
+                    <p class="mt-4 text-sm text-slate-500">Quando os dados de irrigação estiverem preenchidos, o sistema calcula automaticamente o volume em litros no lançamento da irrigação.</p>
+                </div>
+
+                <label><span class="mb-2 block text-sm font-medium">Observações</span><textarea name="notes" rows="3" class="w-full rounded-2xl border-slate-200 bg-slate-50">{{ edit_plot.notes if edit_plot else '' }}</textarea></label>
+            </form>
+        </div>
+    </div>
+</dialog>
 
 <dialog id="farm-modal" class="app-modal rounded-[2rem] p-0 shadow-2xl">
     <div class="w-full max-w-2xl rounded-[2rem] bg-white p-6">
         <div class="flex items-start justify-between gap-4">
             <div>
-                <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Nova Fazenda</p>
+                <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Nova fazenda</p>
                 <h3 class="mt-2 text-2xl font-semibold">Cadastrar fazenda sem sair da tela</h3>
             </div>
             <button type="button" data-close-farm-modal class="modal-close-button" aria-label="Fechar">
@@ -172,10 +266,10 @@
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
             <input type="hidden" name="redirect_to" value="/setores">
             <label><span class="mb-2 block text-sm font-medium">Nome da fazenda</span><input name="name" class="w-full rounded-2xl border-slate-200 bg-slate-50" required></label>
-            <label><span class="mb-2 block text-sm font-medium">Localizacao</span><input name="location" class="w-full rounded-2xl border-slate-200 bg-slate-50" required></label>
-            <label><span class="mb-2 block text-sm font-medium">Area total (ha)</span><input type="number" step="0.01" name="total_area" class="w-full rounded-2xl border-slate-200 bg-slate-50" required></label>
+            <label><span class="mb-2 block text-sm font-medium">Localização</span><input name="location" class="w-full rounded-2xl border-slate-200 bg-slate-50" required></label>
+            <label><span class="mb-2 block text-sm font-medium">Área total (ha)</span><input type="number" step="0.01" name="total_area" class="w-full rounded-2xl border-slate-200 bg-slate-50" required></label>
             <label><span class="mb-2 block text-sm font-medium">GeoJSON da fazenda (.json)</span><input type="file" name="boundary_geojson_file" accept=".json,.geojson,application/json" class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm"></label>
-            <label class="md:col-span-2"><span class="mb-2 block text-sm font-medium">Observacoes</span><input name="notes" class="w-full rounded-2xl border-slate-200 bg-slate-50"></label>
+            <label class="md:col-span-2"><span class="mb-2 block text-sm font-medium">Observações</span><input name="notes" class="w-full rounded-2xl border-slate-200 bg-slate-50"></label>
             <div class="md:col-span-2 flex gap-3">
                 <button class="rounded-2xl bg-brand-500 px-4 py-3 font-semibold text-white hover:bg-brand-700">Salvar fazenda</button>
                 <button type="button" data-close-farm-modal class="rounded-2xl bg-slate-100 px-4 py-3 font-semibold text-slate-700 hover:bg-slate-200">Cancelar</button>
@@ -186,6 +280,72 @@
 
 <script>
     (() => {
+        const launchModal = document.getElementById('plots-launch-modal');
+        const openButtons = Array.from(document.querySelectorAll('[data-plots-launch-open]'));
+        const closeButtons = Array.from(document.querySelectorAll('[data-plots-launch-close]'));
+        const plotSearchInput = document.querySelector('[data-plots-search]');
+        const plotRows = Array.from(document.querySelectorAll('[data-plots-row]'));
+        const plotEmptyState = document.querySelector('[data-plots-search-empty]');
+        const stickyHeader = document.querySelector('.stock-page-header');
+        const headerIntro = stickyHeader?.querySelector('[data-stock-header-intro]');
+        const fadingPanels = Array.from(document.querySelectorAll('[data-stock-fade-panel]'));
+        const isEditing = {{ 'true' if edit_plot else 'false' }};
+
+        const closePlotsModal = () => {
+            if (isEditing) {
+                window.location.href = '/setores';
+                return;
+            }
+            launchModal?.close();
+        };
+
+        openButtons.forEach((button) => {
+            button.addEventListener('click', (event) => {
+                const editUrl = button.getAttribute('data-plots-edit-link');
+                if (editUrl) {
+                    event.preventDefault();
+                    window.location.href = editUrl;
+                    return;
+                }
+                launchModal?.showModal();
+            });
+        });
+
+        closeButtons.forEach((button) => {
+            button.addEventListener('click', () => closePlotsModal());
+        });
+
+        launchModal?.addEventListener('cancel', (event) => {
+            event.preventDefault();
+            closePlotsModal();
+        });
+
+        if (isEditing) {
+            launchModal?.showModal();
+        }
+
+        const normalizeText = (value) => (value || '')
+            .toString()
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '')
+            .toLowerCase()
+            .trim();
+
+        const applyLocalSearch = () => {
+            const query = normalizeText(plotSearchInput?.value || '');
+            let visible = 0;
+            plotRows.forEach((row) => {
+                const haystack = normalizeText(row.dataset.plotsSearchText || row.textContent);
+                const matches = !query || haystack.includes(query);
+                row.classList.toggle('hidden', !matches);
+                if (matches) visible += 1;
+            });
+            plotEmptyState?.classList.toggle('hidden', visible !== 0);
+        };
+
+        plotSearchInput?.addEventListener('input', applyLocalSearch);
+        applyLocalSearch();
+
         const dialog = document.getElementById('farm-modal');
         if (dialog) {
             document.querySelectorAll('[data-open-farm-modal]').forEach((button) => {
@@ -244,6 +404,7 @@
             varietyChecks.forEach((item) => item.addEventListener('change', syncCascade));
             syncCascade();
         }
+
         document.querySelectorAll('[data-floating-filter]').forEach((details) => {
             details.addEventListener('toggle', () => {
                 if (!details.open) return;
@@ -252,6 +413,85 @@
                 });
             });
         });
+
+        const mobileCompactMq = window.matchMedia('(max-width: 899px)');
+        const parseStickyTopPx = (el) => {
+            const raw = getComputedStyle(el).top;
+            if (!raw || raw === 'auto') return 0;
+            const pxMatch = /^([\d.]+)px$/.exec(raw);
+            if (pxMatch) return parseFloat(pxMatch[1]);
+            const remMatch = /^([\d.]+)rem$/.exec(raw);
+            if (remMatch) {
+                const rootPx = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
+                return parseFloat(remMatch[1]) * rootPx;
+            }
+            return 0;
+        };
+
+        let compactRaf = null;
+        const syncHeaderCompact = () => {
+            compactRaf = null;
+            if (!stickyHeader) return;
+            if (!mobileCompactMq.matches) {
+                stickyHeader.classList.remove('is-compact');
+                if (headerIntro) headerIntro.removeAttribute('aria-hidden');
+                return;
+            }
+            const topPx = parseStickyTopPx(stickyHeader);
+            const rect = stickyHeader.getBoundingClientRect();
+            const isCompact = stickyHeader.classList.contains('is-compact');
+            let nextCompact = isCompact;
+            if (rect.top <= topPx + 2) nextCompact = true;
+            else if (rect.top > topPx + 8) nextCompact = false;
+            stickyHeader.classList.toggle('is-compact', nextCompact);
+            if (headerIntro) headerIntro.setAttribute('aria-hidden', nextCompact ? 'true' : 'false');
+        };
+
+        const scheduleHeaderCompact = () => {
+            if (compactRaf !== null) return;
+            compactRaf = window.requestAnimationFrame(syncHeaderCompact);
+        };
+
+        if (stickyHeader) {
+            window.addEventListener('scroll', scheduleHeaderCompact, { passive: true });
+            window.addEventListener('resize', scheduleHeaderCompact);
+            mobileCompactMq.addEventListener('change', scheduleHeaderCompact);
+            scheduleHeaderCompact();
+        }
+
+        if (!stickyHeader || !fadingPanels.length) return;
+
+        let rafId = null;
+        const updateFadingPanels = () => {
+            rafId = null;
+            const stickyRect = stickyHeader.getBoundingClientRect();
+            const stickyBottom = stickyRect.bottom;
+            fadingPanels.forEach((panel) => {
+                const panelRect = panel.getBoundingClientRect();
+                const panelTop = panelRect.top;
+                const panelH = panelRect.height;
+                if (panelTop >= stickyBottom || panelH <= 1) {
+                    panel.style.setProperty('--stock-fade-cutoff', '0px');
+                    panel.style.setProperty('--stock-fade-feather-end', '0px');
+                    return;
+                }
+
+                const rawOverlap = Math.max(stickyBottom - panelTop, 0);
+                const overlap = Math.min(rawOverlap, panelH);
+                const featherBand = Math.min(80, Math.max(22, overlap * 0.45 + 16));
+                panel.style.setProperty('--stock-fade-cutoff', `${overlap.toFixed(2)}px`);
+                panel.style.setProperty('--stock-fade-feather-end', `${(overlap + featherBand).toFixed(2)}px`);
+            });
+        };
+
+        const scheduleFadeUpdate = () => {
+            if (rafId !== null) return;
+            rafId = window.requestAnimationFrame(updateFadingPanels);
+        };
+
+        window.addEventListener('scroll', scheduleFadeUpdate, { passive: true });
+        window.addEventListener('resize', scheduleFadeUpdate);
+        scheduleFadeUpdate();
     })();
 </script>
 {% endblock %}
