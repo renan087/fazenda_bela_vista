@@ -7,9 +7,12 @@ body {
 }
 
 @media (min-width: 1024px) {
+    --erp-sidebar-ease: cubic-bezier(0.22, 1, 0.36, 1);
+
     .erp-sidebar,
     .erp-main-shell {
-        transition: width 300ms ease-in-out, margin-left 300ms ease-in-out, min-width 300ms ease-in-out;
+        transition: width 320ms var(--erp-sidebar-ease), margin-left 320ms var(--erp-sidebar-ease),
+            min-width 320ms var(--erp-sidebar-ease);
     }
 
     .erp-sidebar {
@@ -25,11 +28,11 @@ body {
     }
 
     .erp-sidebar-inner {
-        transition: opacity 300ms ease-in-out;
+        transition: opacity 280ms var(--erp-sidebar-ease);
     }
 
     .erp-sidebar-header {
-        transition: padding 300ms ease-in-out;
+        transition: padding 300ms var(--erp-sidebar-ease);
     }
 
     .erp-sidebar-brand,
@@ -39,9 +42,9 @@ body {
     .erp-sidebar-parent-indicator,
     .erp-sidebar-icon,
     .sidebar-submenu-panel {
-        transition: opacity 300ms ease-in-out, transform 300ms ease-in-out, max-height 300ms ease-in-out,
-            width 300ms ease-in-out, height 300ms ease-in-out, margin 300ms ease-in-out, padding 300ms ease-in-out,
-            background-color 300ms ease-in-out, box-shadow 300ms ease-in-out;
+        transition: opacity 240ms ease, transform 300ms var(--erp-sidebar-ease), max-height 280ms var(--erp-sidebar-ease),
+            width 300ms var(--erp-sidebar-ease), height 280ms ease, margin 280ms ease, padding 280ms ease,
+            background-color 220ms ease, box-shadow 220ms ease, border-color 220ms ease;
     }
 
     /* Toggle minimalista: centro vertical da sidebar, levemente fora da borda direita. */
@@ -64,7 +67,7 @@ body {
         background: transparent;
         color: #9ca3af;
         cursor: pointer;
-        transition: background-color 0.2s ease, color 0.2s ease, transform 0.18s ease;
+        transition: background-color 220ms ease, color 220ms ease, transform 220ms var(--erp-sidebar-ease);
         -webkit-tap-highlight-color: transparent;
     }
 
@@ -128,6 +131,49 @@ body {
         transform-origin: left center;
     }
 
+    /*
+     * Menu expandido: hover e ativo compartilham a mesma moldura (min-altura, borda 1px, rounded-2xl no HTML).
+     * Prévia do ativo = fundo/borda marca mais suaves; ativo = contraste máximo.
+     */
+    body:not(.erp-sidebar-collapsed) .erp-sidebar-nav > a.erp-sidebar-link,
+    body:not(.erp-sidebar-collapsed) .erp-sidebar-nav [data-submenu-group] > .erp-sidebar-link {
+        min-height: 2.75rem;
+        box-sizing: border-box;
+        border: 1px solid transparent;
+        transition: background-color 220ms ease, border-color 220ms ease, color 220ms ease, box-shadow 220ms ease;
+    }
+
+    body:not(.erp-sidebar-collapsed) .erp-sidebar-nav .erp-sidebar-link.bg-brand-500 {
+        border-color: #3d5f31;
+        box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.2);
+    }
+
+    body:not(.erp-sidebar-collapsed) .erp-sidebar-nav .erp-sidebar-link.bg-brand-500:hover {
+        background-color: #4f7a3e !important;
+        border-color: #547d42;
+        box-shadow: 0 12px 18px -3px rgb(0 0 0 / 0.22);
+    }
+
+    body:not(.erp-sidebar-collapsed) .erp-sidebar-nav .erp-sidebar-link.text-slate-300:hover,
+    body:not(.erp-sidebar-collapsed) .erp-sidebar-nav [data-submenu-parent].text-slate-300:hover {
+        background-color: rgba(68, 106, 54, 0.16) !important;
+        border-color: rgba(111, 154, 87, 0.52);
+        color: #f8fafc !important;
+        box-shadow: none;
+    }
+
+    body:not(.erp-sidebar-collapsed) .erp-sidebar-nav [data-submenu-parent].text-white {
+        background-color: rgba(68, 106, 54, 0.12) !important;
+        border-color: rgba(111, 154, 87, 0.38);
+        color: #f8fafc !important;
+    }
+
+    body:not(.erp-sidebar-collapsed) .erp-sidebar-nav [data-submenu-parent].text-white:hover {
+        background-color: rgba(68, 106, 54, 0.2) !important;
+        border-color: rgba(111, 154, 87, 0.55);
+        color: #fff !important;
+    }
+
     body.erp-sidebar-collapsed .erp-sidebar {
         width: 5.75rem;
         min-width: 5.75rem;
@@ -187,7 +233,7 @@ body {
         display: none !important;
     }
 
-    body.erp-sidebar-collapsed .erp-sidebar-label {
+    body.erp-sidebar-collapsed .erp-sidebar .erp-sidebar-label {
         position: absolute;
         width: 1px;
         height: 1px;
@@ -198,7 +244,25 @@ body {
         white-space: nowrap;
         border: 0;
         opacity: 0;
+        transform: translateX(-6px);
         pointer-events: none;
+        transition: opacity 220ms ease, transform 300ms var(--erp-sidebar-ease);
+    }
+
+    body:not(.erp-sidebar-collapsed) .erp-sidebar .erp-sidebar-label {
+        position: static;
+        width: auto;
+        height: auto;
+        margin: 0;
+        padding: 0;
+        overflow: visible;
+        clip: auto;
+        white-space: nowrap;
+        border: 0;
+        opacity: 1;
+        transform: translateX(0);
+        pointer-events: auto;
+        transition: opacity 220ms ease 25ms, transform 300ms var(--erp-sidebar-ease) 20ms;
     }
 
     body.erp-sidebar-collapsed .erp-sidebar-copy,
@@ -236,11 +300,21 @@ body {
         justify-content: center;
         align-items: center;
         gap: 0;
-        width: 2.5rem;
-        min-width: 2.5rem;
+        width: 2.75rem;
+        min-width: 2.75rem;
         flex-shrink: 0;
         margin-left: auto;
         margin-right: auto;
+    }
+
+    /* Slot fixo 44×44 / raio 14px: hover e ativo mesma caixa; só mudam cor e borda. */
+    body.erp-sidebar-collapsed .erp-sidebar .erp-sidebar-icon {
+        width: 2.75rem;
+        min-width: 2.75rem;
+        min-height: 2.75rem;
+        border-radius: 0.875rem;
+        box-sizing: border-box;
+        border: 1px solid transparent;
     }
 
     body.erp-sidebar-collapsed .erp-sidebar [data-submenu-group] {
@@ -257,13 +331,10 @@ body {
     }
 
     body.erp-sidebar-collapsed .erp-sidebar-link.bg-brand-500 .erp-sidebar-icon {
-        width: 2.5rem;
-        min-width: 2.5rem;
-        min-height: 2.5rem;
-        border-radius: 0.75rem;
         background-color: #446a36;
         color: #fff;
-        box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.18);
+        border-color: #3d5f31;
+        box-shadow: 0 8px 14px -2px rgb(0 0 0 / 0.2);
     }
 
     body.erp-sidebar-collapsed .erp-sidebar [data-submenu-parent].text-white {
@@ -271,25 +342,19 @@ body {
     }
 
     body.erp-sidebar-collapsed .erp-sidebar [data-submenu-parent].text-white .erp-sidebar-icon {
-        width: 2.5rem;
-        min-width: 2.5rem;
-        min-height: 2.5rem;
-        border-radius: 0.75rem;
-        background-color: rgba(68, 106, 54, 0.45);
+        background-color: rgba(68, 106, 54, 0.48);
         color: #fff;
-        box-shadow: inset 0 0 0 1px rgba(98, 135, 73, 0.35);
+        border-color: rgba(111, 154, 87, 0.55);
     }
 
     body.erp-sidebar-collapsed .erp-sidebar-link:not(.bg-brand-500):hover {
         background-color: transparent !important;
     }
 
-    /* Hover: mesma proporção de raio do ativo (0.75rem), cor da marca do sistema. */
     body.erp-sidebar-collapsed .erp-sidebar-link:not(.bg-brand-500):hover .erp-sidebar-icon {
-        border-radius: 0.75rem;
-        background-color: rgba(68, 106, 54, 0.28);
+        background-color: rgba(68, 106, 54, 0.22);
         color: #f8fafc;
-        box-shadow: inset 0 0 0 1px rgba(98, 135, 73, 0.35);
+        border-color: rgba(111, 154, 87, 0.5);
     }
 
     body.erp-sidebar-collapsed .erp-sidebar [data-submenu-parent].text-slate-300:hover {
@@ -297,10 +362,9 @@ body {
     }
 
     body.erp-sidebar-collapsed .erp-sidebar [data-submenu-parent].text-slate-300:hover .erp-sidebar-icon {
-        border-radius: 0.75rem;
-        background-color: rgba(68, 106, 54, 0.28);
+        background-color: rgba(68, 106, 54, 0.22);
         color: #f8fafc;
-        box-shadow: inset 0 0 0 1px rgba(98, 135, 73, 0.35);
+        border-color: rgba(111, 154, 87, 0.5);
     }
 
     body.erp-sidebar-collapsed .erp-sidebar [data-submenu-parent].text-white:hover {
@@ -308,10 +372,9 @@ body {
     }
 
     body.erp-sidebar-collapsed .erp-sidebar [data-submenu-parent].text-white:hover .erp-sidebar-icon {
-        border-radius: 0.75rem;
         background-color: rgba(68, 106, 54, 0.58);
         color: #fff;
-        box-shadow: inset 0 0 0 1px rgba(120, 160, 95, 0.45);
+        border-color: rgba(130, 175, 100, 0.65);
     }
 
     body.erp-sidebar-collapsed .erp-sidebar-link.bg-brand-500:hover {
@@ -320,7 +383,8 @@ body {
 
     body.erp-sidebar-collapsed .erp-sidebar-link.bg-brand-500:hover .erp-sidebar-icon {
         background-color: #527a42;
-        box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.22);
+        border-color: #5c8649;
+        box-shadow: 0 8px 16px -2px rgb(0 0 0 / 0.24);
     }
 
     body.erp-sidebar-collapsed .erp-sidebar [data-submenu-parent][data-parent-active="true"] {
