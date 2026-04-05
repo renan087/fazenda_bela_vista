@@ -92,7 +92,7 @@
                             {% if plot.boundary_geojson %}
                             {% set plot_list_thumb_src = url_for('static', path='generated/plot_previews/' ~ plot.id ~ '_thumb.jpg') ~ '?v=' ~ plot_preview_fingerprint.get(plot.id, '') %}
                             {% if plot_preview_ready.get(plot.id) %}
-                            <a href="/setores?edit_id={{ plot.id }}" class="relative ml-0 inline-block aspect-video w-20 shrink-0 overflow-hidden rounded-xl border-2 border-slate-200 bg-slate-100 shadow-sm transition hover:border-brand-400 hover:shadow-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500 sm:w-24" title="Abrir setor — {{ plot.name }}">
+                            <a href="/setores?edit_id={{ plot.id }}&amp;plot_map=1" class="relative ml-0 inline-block aspect-video w-20 shrink-0 overflow-hidden rounded-xl border-2 border-slate-200 bg-slate-100 shadow-sm transition hover:border-brand-400 hover:shadow-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500 sm:w-24" title="Ver mapa ampliado do setor — {{ plot.name }}">
                                 <img src="{{ plot_list_thumb_src }}" alt="" width="96" height="54" loading="lazy" decoding="async" class="h-full w-full object-cover">
                             </a>
                             {% else %}
@@ -225,7 +225,7 @@
                             data-plots-map-open
                             data-plots-map-direct-edit="1"
                         >
-                            <img src="{{ edit_plot_preview_only_src }}" alt="" width="960" height="540" loading="lazy" decoding="async" class="pointer-events-none mx-auto block max-h-[min(52vh,420px)] w-full object-contain">
+                            <img src="{{ edit_plot_preview_only_src }}" alt="" width="960" height="540" loading="lazy" decoding="async" class="pointer-events-none aspect-video max-h-[min(52vh,420px)] w-full object-cover">
                             <span class="pointer-events-none absolute inset-0 ring-inset ring-transparent transition group-hover:bg-slate-900/10" aria-hidden="true"></span>
                             <span class="pointer-events-none absolute bottom-2 left-2 right-2 rounded-xl bg-slate-900/70 px-3 py-2 text-center text-xs font-semibold text-white backdrop-blur-sm sm:text-sm">
                                 Editar perímetro no mapa
@@ -235,7 +235,7 @@
                     {% elif edit_plot.boundary_geojson %}
                     <button
                         type="button"
-                        class="group relative mx-auto mt-4 flex w-full max-w-3xl min-h-[260px] overflow-hidden rounded-2xl border border-slate-200 text-left shadow-sm transition hover:border-brand-400 hover:shadow-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500"
+                        class="group relative mx-auto mt-4 flex w-full max-w-3xl min-h-[260px] overflow-hidden rounded-2xl border border-slate-200 text-center shadow-sm transition hover:border-brand-400 hover:shadow-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500"
                         title="Editar perímetro no mapa"
                         aria-label="Editar perímetro do setor no mapa — {{ edit_plot.name | e }}"
                         data-plots-map-open
@@ -246,12 +246,12 @@
                         {% else %}
                         <div class="pointer-events-none absolute inset-0 bg-gradient-to-br from-slate-200 to-slate-100" aria-hidden="true"></div>
                         {% endif %}
-                        <div class="relative z-10 flex min-h-[240px] flex-col items-center justify-center px-4 py-10 text-center">
-                            <p class="pointer-events-none inline-flex items-center gap-2 rounded-xl border border-dashed border-slate-300 bg-white/90 px-3 py-2 text-xs text-slate-700 shadow-sm">
+                        <div class="relative z-10 flex w-full min-h-[240px] flex-col items-center justify-center px-4 py-10 text-center">
+                            <p class="pointer-events-none inline-flex items-center justify-center gap-2 rounded-xl border border-dashed border-slate-300 bg-white/90 px-3 py-2 text-xs text-slate-700 shadow-sm">
                                 <span class="inline-flex h-2 w-2 shrink-0 animate-pulse rounded-full bg-brand-500" aria-hidden="true"></span>
                                 Gerando miniatura do mapa do setor…
                             </p>
-                            <p class="pointer-events-none mt-3 max-w-sm text-sm text-slate-700">Após salvar o setor, a imagem será atualizada.</p>
+                            <p class="pointer-events-none mx-auto mt-3 max-w-lg text-center text-sm text-slate-700">Após salvar o setor, a imagem será atualizada.</p>
                         </div>
                         <span class="pointer-events-none absolute bottom-2 left-2 right-2 rounded-xl bg-slate-900/70 px-3 py-2 text-center text-xs font-semibold text-white backdrop-blur-sm sm:text-sm">
                             Editar perímetro no mapa
@@ -260,7 +260,7 @@
                     {% else %}
                     <button
                         type="button"
-                        class="group relative mx-auto mt-4 flex w-full max-w-3xl min-h-[280px] overflow-hidden rounded-2xl border border-slate-200 text-left shadow-sm transition hover:border-brand-400 hover:shadow-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500"
+                        class="group relative mx-auto mt-4 flex w-full max-w-3xl min-h-[280px] overflow-hidden rounded-2xl border border-slate-200 text-center shadow-sm transition hover:border-brand-400 hover:shadow-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500"
                         title="Editar perímetro no mapa"
                         aria-label="Desenhar perímetro do setor no mapa — {{ edit_plot.name | e }}"
                         data-plots-map-open
@@ -272,9 +272,9 @@
                         <div class="pointer-events-none absolute inset-0 bg-slate-200/90" aria-hidden="true"></div>
                         {% endif %}
                         <div class="pointer-events-none absolute inset-0 bg-white/55 backdrop-blur-[1px]" aria-hidden="true"></div>
-                        <div class="pointer-events-none relative z-10 flex min-h-[260px] flex-col items-center justify-center px-4 py-8 text-center">
-                            <p class="text-sm font-semibold text-slate-900">Não há polígono cadastrado para este setor no mapa.</p>
-                            <p class="mt-2 max-w-md text-sm text-slate-600">Importe um GeoJSON abaixo ou toque na tarja para desenhar no mapa.</p>
+                        <div class="pointer-events-none relative z-10 flex w-full min-h-[260px] flex-col items-center justify-center px-4 py-8 text-center">
+                            <p class="mx-auto max-w-lg text-sm font-semibold text-slate-900">Não há polígono cadastrado para este setor no mapa.</p>
+                            <p class="mx-auto mt-2 max-w-lg text-sm text-slate-600">Importe um GeoJSON abaixo ou toque na tarja para desenhar no mapa.</p>
                         </div>
                         <span class="pointer-events-none absolute bottom-2 left-2 right-2 rounded-xl bg-slate-900/70 px-3 py-2 text-center text-xs font-semibold text-white backdrop-blur-sm sm:text-sm">
                             Editar perímetro no mapa
@@ -361,10 +361,15 @@
         </div>
 
         <div class="mt-4 space-y-4" data-plots-map-modal-view-image>
-            <div class="overflow-hidden rounded-2xl border border-slate-200 bg-slate-100">
-                <img data-plots-map-modal-img src="" alt="" class="mx-auto max-h-[min(72vh,600px)] w-full object-contain">
+            <div class="overflow-hidden rounded-2xl border border-slate-200 bg-slate-100 aspect-video max-h-[min(72vh,600px)] w-full">
+                <img data-plots-map-modal-img src="" alt="" class="hidden h-full w-full object-cover">
             </div>
             <p class="hidden text-center text-sm text-slate-500" data-plots-map-modal-no-preview>Nenhuma imagem de referência disponível; você ainda pode editar o perímetro no mapa.</p>
+            <div class="flex flex-wrap gap-2" data-plots-map-modal-enter-edit-wrap>
+                <button type="button" class="rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50" data-plots-map-modal-start-edit>
+                    Editar perímetro no mapa
+                </button>
+            </div>
         </div>
 
         <div class="mt-4 hidden flex flex-col gap-4 max-md:gap-2" data-plots-map-modal-view-editor>
@@ -446,6 +451,7 @@
         const headerIntro = stickyHeader?.querySelector('[data-stock-header-intro]');
         const fadingPanels = Array.from(document.querySelectorAll('[data-stock-fade-panel]'));
         const isEditing = {{ 'true' if edit_plot else 'false' }};
+        const openPlotMapModalOnLoad = {{ open_plot_map_modal | tojson }};
 
         const plotsForm = document.getElementById('plots-form');
         const isEditMode = plotsForm?.dataset.plotsEditMode === '1';
@@ -468,6 +474,7 @@
         const plotsMapModalNoPreview = plotsMapModal?.querySelector('[data-plots-map-modal-no-preview]');
         const plotsMapModalCancelEdit = plotsMapModal?.querySelector('[data-plots-map-modal-cancel-edit]');
         const plotsMapModalDoneEdit = plotsMapModal?.querySelector('[data-plots-map-modal-done-edit]');
+        const plotsMapModalStartEdit = plotsMapModal?.querySelector('[data-plots-map-modal-start-edit]');
         const plotsModalRemovePointBtn = plotsMapModal?.querySelector('[data-plots-modal-remove-point]');
         const plotsPreviewVerticesEl = plotsMapModal?.querySelector('[data-plots-preview-editor-vertices]');
         const plotsPreviewAreaEl = plotsMapModal?.querySelector('[data-plots-preview-editor-area]');
@@ -611,13 +618,7 @@
             closePlotsMapHintOverlay();
         };
 
-        const closePlotsMapModal = () => {
-            plotsMapModalEditor?.syncToHidden();
-            teardownPlotsMapModalEditor();
-            boundarySnapshotBeforeMapEdit = null;
-            plotsMapViewImage?.classList.remove('hidden');
-            plotsMapViewEditor?.classList.add('hidden');
-            closePlotsMapHintOverlay();
+        const finishClosePlotsMapModal = () => {
             plotsMapModal?.close();
             if (plotsMapModalImg) {
                 plotsMapModalImg.removeAttribute('src');
@@ -625,6 +626,16 @@
                 plotsMapModalImg.classList.add('hidden');
             }
             plotsMapModalNoPreview?.classList.add('hidden');
+            plotsMapViewImage?.classList.remove('hidden');
+            plotsMapViewEditor?.classList.add('hidden');
+        };
+
+        const closePlotsMapModal = () => {
+            plotsMapModalEditor?.syncToHidden();
+            teardownPlotsMapModalEditor();
+            boundarySnapshotBeforeMapEdit = null;
+            closePlotsMapHintOverlay();
+            finishClosePlotsMapModal();
         };
 
         const openPlotsMapModal = (options = {}) => {
@@ -693,12 +704,25 @@
         };
 
         plotsMapModalCancelEdit?.addEventListener('click', () => {
-            resetPlotsMapModalLayout({ discardEdits: true });
+            teardownPlotsMapModalEditor();
+            if (plotBoundaryHidden && boundarySnapshotBeforeMapEdit !== null) {
+                plotBoundaryHidden.value = boundarySnapshotBeforeMapEdit;
+            }
+            boundarySnapshotBeforeMapEdit = null;
+            closePlotsMapHintOverlay();
+            finishClosePlotsMapModal();
         });
 
         plotsMapModalDoneEdit?.addEventListener('click', () => {
             plotsMapModalEditor?.syncToHidden();
-            resetPlotsMapModalLayout({ discardEdits: false });
+            teardownPlotsMapModalEditor();
+            boundarySnapshotBeforeMapEdit = null;
+            closePlotsMapHintOverlay();
+            finishClosePlotsMapModal();
+        });
+
+        plotsMapModalStartEdit?.addEventListener('click', () => {
+            void startPlotsMapPolygonEdit();
         });
 
         plotsMapModalCloseBtns.forEach((btn) => btn.addEventListener('click', () => closePlotsMapModal()));
@@ -767,8 +791,14 @@
 
         if (isEditing) {
             seedPlotBoundaryHidden();
-            launchModal?.showModal();
-            afterPlotsModalOpen();
+            if (openPlotMapModalOnLoad) {
+                window.requestAnimationFrame(() => {
+                    openPlotsMapModal({ directEdit: false });
+                });
+            } else {
+                launchModal?.showModal();
+                afterPlotsModalOpen();
+            }
         }
 
         launchModal?.addEventListener('close', () => {

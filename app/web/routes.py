@@ -1510,6 +1510,7 @@ def plots_page(
     q: str | None = None,
     sort: str = "name",
     edit_id: int | None = None,
+    plot_map: int | None = None,
     selected_farm_id: int | None = None,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user_web),
@@ -1524,6 +1525,7 @@ def plots_page(
     if not variety_ids and scope["active_season"] and scope["active_season"].variety_id:
         variety_ids = [scope["active_season"].variety_id]
     edit_plot = repo.get_plot(edit_id) if edit_id else None
+    open_plot_map_modal = bool(plot_map and edit_plot)
     farms, varieties = repo.list_plot_filter_options(farm_ids or None, variety_ids or None)
     plots_list = repo.list_plots(search=q, farm_ids=farm_ids, variety_ids=variety_ids, sort=sort)
     plot_preview_ready: dict[int, bool] = {}
@@ -1589,6 +1591,7 @@ def plots_page(
             varieties=varieties,
             filters={"q": q or "", "farm_ids": farm_ids, "variety_ids": variety_ids, "sort": sort},
             edit_plot=edit_plot,
+            open_plot_map_modal=open_plot_map_modal,
             selected_farm_id=selected_farm_id or scope["active_farm_id"],
             plot_farm_boundaries_json=plot_farm_boundaries_json,
             edit_plot_geometry_json=edit_plot_geometry_json,
