@@ -239,11 +239,53 @@
                     <input name="name" value="{{ edit_farm.name if edit_farm else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required>
                 </label>
 
-                <div class="grid gap-4 md:grid-cols-2">
-                    <label>
-                        <span class="mb-2 block text-sm font-medium">Localização</span>
-                        <input name="location" value="{{ edit_farm.location if edit_farm else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required>
-                    </label>
+                <div class="grid gap-4 md:grid-cols-2 md:items-start">
+                    <div class="space-y-2">
+                        <label>
+                            <span class="mb-2 block text-sm font-medium">Localização</span>
+                            <input
+                                name="location"
+                                value="{{ edit_farm.location if edit_farm else '' }}"
+                                placeholder="Ex.: Viçosa, MG, Brasil — ou distrito, Fazenda Nome + cidade"
+                                autocomplete="address-level2"
+                                class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50"
+                                required
+                            >
+                        </label>
+                        {% if not edit_farm %}
+                        <details class="group rounded-xl border border-slate-200 bg-slate-50/80 open:bg-white">
+                            <summary class="cursor-pointer list-none px-3 py-2.5 text-sm font-medium text-brand-700 outline-none marker:content-[''] [&::-webkit-details-marker]:hidden">
+                                <span class="underline decoration-brand-500/30 group-open:no-underline">Coordenadas no mapa (opcional)</span>
+                                <span class="ml-1 text-xs font-normal text-slate-500">— latitude e longitude</span>
+                            </summary>
+                            <div class="grid gap-3 border-t border-slate-100 px-3 pb-3 pt-2 sm:grid-cols-2">
+                                <label>
+                                    <span class="mb-1 block text-xs font-medium text-slate-600">Latitude (°)</span>
+                                    <input
+                                        type="text"
+                                        inputmode="decimal"
+                                        data-farms-optional-lat
+                                        placeholder="-20,7553"
+                                        class="min-h-[2.75rem] w-full rounded-xl border-slate-200 bg-white px-3 text-sm"
+                                        autocomplete="off"
+                                    >
+                                </label>
+                                <label>
+                                    <span class="mb-1 block text-xs font-medium text-slate-600">Longitude (°)</span>
+                                    <input
+                                        type="text"
+                                        inputmode="decimal"
+                                        data-farms-optional-lng
+                                        placeholder="-42,8721"
+                                        class="min-h-[2.75rem] w-full rounded-xl border-slate-200 bg-white px-3 text-sm"
+                                        autocomplete="off"
+                                    >
+                                </label>
+                                <p class="sm:col-span-2 text-xs text-slate-500">Se ambas forem preenchidas, o mapa abre nesse ponto (prioridade sobre o texto de localização). Use ponto ou vírgula decimal.</p>
+                            </div>
+                        </details>
+                        {% endif %}
+                    </div>
                     <label>
                         <span class="mb-2 block text-sm font-medium">Área total (ha)</span>
                         <input type="number" step="0.01" name="total_area" value="{{ edit_farm.total_area if edit_farm else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required>
@@ -280,13 +322,13 @@
                         </button>
                     </div>
                     {% elif not edit_farm %}
-                    <p class="mt-2 text-sm text-slate-600">Desenhe o polígono clicando no mapa. Arraste os pontos para ajustar.</p>
-                    <p class="mt-2 text-sm text-slate-500">Preencha <span class="font-medium text-slate-700">Localização</span> (cidade, região ou endereço) e use <span class="font-medium text-slate-700">Carregar mapa</span>. O mapa só é carregado depois disso, centrado na região encontrada — assim evitamos chamadas à API de mapas enquanto você só navega no formulário.</p>
+                    <p class="mt-2 text-sm text-slate-500">Preencha <span class="font-medium text-slate-700">Localização</span> (cidade, região ou endereço) e clique em carregar mapa.</p>
                     <div class="mt-3 space-y-3" data-farms-new-map-gate>
                         <div data-farms-map-prompt class="rounded-2xl border border-dashed border-slate-200 bg-white p-4">
                             <button type="button" class="w-full rounded-2xl bg-brand-500 py-3 text-sm font-semibold text-white hover:bg-brand-700 sm:w-auto sm:px-8" data-farms-load-map>Carregar mapa</button>
                         </div>
                         <div data-farms-map-editor-wrap class="hidden space-y-2">
+                            <p class="text-sm text-slate-600">Desenhe o polígono clicando no mapa. Arraste os pontos para ajustar.</p>
                             {% if google_maps_web_key %}
                             <p class="text-xs text-emerald-700">Mapa em modo satélite (Google Maps).</p>
                             {% else %}
@@ -528,6 +570,17 @@
             }
         };
 
+        const parseOptionalLatLngInput = (input) => {
+            if (!input) return null;
+            const t = String(input.value || '')
+                .trim()
+                .replace(/\s/g, '')
+                .replace(',', '.');
+            if (t === '') return null;
+            const n = parseFloat(t);
+            return Number.isFinite(n) ? n : null;
+        };
+
         const resetNewFarmMapGate = () => {
             if (!farmFormNewMapGate) return;
             destroyFarmFormBoundaryEditor();
@@ -539,6 +592,10 @@
             }
             const hi = form?.querySelector('[data-farms-boundary-input]');
             if (hi) hi.value = '';
+            const olat = form?.querySelector('[data-farms-optional-lat]');
+            const olng = form?.querySelector('[data-farms-optional-lng]');
+            if (olat) olat.value = '';
+            if (olng) olng.value = '';
         };
 
         const showFarmGeocodeDialog = (message) => {
@@ -566,8 +623,11 @@
                 typeof initialCenter.lat === 'number' &&
                 typeof initialCenter.lng === 'number'
             ) {
-                editorOpts.initialCenter = initialCenter;
-                editorOpts.initialZoom = 13;
+                editorOpts.initialCenter = { lat: initialCenter.lat, lng: initialCenter.lng };
+                editorOpts.initialZoom =
+                    typeof initialCenter.zoom === 'number' && initialCenter.zoom > 0
+                        ? initialCenter.zoom
+                        : 13;
             }
             try {
                 farmFormBoundaryEditor = await window.initFarmBoundaryEditor(editorOpts);
@@ -582,6 +642,45 @@
         farmFormLoadMapBtn?.addEventListener('click', async () => {
             const locInput = form?.querySelector('input[name="location"]');
             const q = (locInput?.value || '').trim();
+            const latEl = form?.querySelector('[data-farms-optional-lat]');
+            const lngEl = form?.querySelector('[data-farms-optional-lng]');
+            const oLat = parseOptionalLatLngInput(latEl);
+            const oLng = parseOptionalLatLngInput(lngEl);
+            const hasLat = oLat !== null;
+            const hasLng = oLng !== null;
+
+            if (hasLat !== hasLng) {
+                showFarmGeocodeDialog(
+                    'Preencha latitude e longitude juntos, ou deixe os dois em branco para usar só o texto de localização.',
+                );
+                return;
+            }
+            if (hasLat && hasLng) {
+                if (oLat < -90 || oLat > 90 || oLng < -180 || oLng > 180) {
+                    showFarmGeocodeDialog(
+                        'Latitude deve estar entre -90 e 90 graus e longitude entre -180 e 180 graus.',
+                    );
+                    return;
+                }
+                if (q.length < 2) {
+                    showFarmGeocodeDialog(
+                        'O campo Localização continua obrigatório para o cadastro. Informe pelo menos cidade e estado.',
+                    );
+                    return;
+                }
+                farmFormLoadMapBtn.disabled = true;
+                farmFormLoadMapBtn.textContent = 'Carregando...';
+                try {
+                    farmFormMapPrompt?.classList.add('hidden');
+                    farmFormMapEditorWrap?.classList.remove('hidden');
+                    await setupFarmFormBoundaryEditor({ lat: oLat, lng: oLng, zoom: 15 });
+                } finally {
+                    farmFormLoadMapBtn.disabled = false;
+                    farmFormLoadMapBtn.textContent = 'Carregar mapa';
+                }
+                return;
+            }
+
             if (q.length < 2) {
                 showFarmGeocodeDialog(
                     'Informe a localização (por exemplo cidade e estado) antes de carregar o mapa.',
@@ -603,7 +702,7 @@
                 if (!data || !data.ok) {
                     if (data?.code === 'not_found') {
                         showFarmGeocodeDialog(
-                            'Não foi possível localizar essa região. Confira o campo Localização, tente outra forma de escrever (cidade, estado, bairro) ou, após carregar o mapa, navegue até o local desejado.',
+                            'Não foi possível localizar essa região. Confira o campo Localização, tente outra forma de escrever (cidade, estado, bairro), use coordenadas opcionais ou, após carregar o mapa, navegue até o local desejado.',
                         );
                     } else if (data?.code === 'empty') {
                         showFarmGeocodeDialog(
@@ -618,7 +717,7 @@
                 }
                 farmFormMapPrompt?.classList.add('hidden');
                 farmFormMapEditorWrap?.classList.remove('hidden');
-                await setupFarmFormBoundaryEditor({ lat: data.lat, lng: data.lng });
+                await setupFarmFormBoundaryEditor({ lat: data.lat, lng: data.lng, zoom: 13 });
             } catch {
                 showFarmGeocodeDialog(
                     'Não foi possível consultar o serviço de localização. Tente novamente em instantes.',

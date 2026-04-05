@@ -1763,7 +1763,18 @@ def geocode_farm_location(
     query = (q or "").strip()
     if len(query) < 2:
         return JSONResponse({"ok": False, "code": "empty"}, status_code=400)
-    params = urlencode({"format": "json", "limit": "1", "q": query})
+    q_lower = query.lower()
+    search_q = query
+    if "brasil" not in q_lower and "brazil" not in q_lower:
+        search_q = f"{query}, Brasil"
+    params = urlencode(
+        {
+            "format": "json",
+            "limit": "1",
+            "q": search_q,
+            "countrycodes": "br",
+        }
+    )
     url = f"https://nominatim.openstreetmap.org/search?{params}"
     req = urllib.request.Request(
         url,
