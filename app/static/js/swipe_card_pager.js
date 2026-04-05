@@ -30,6 +30,11 @@
         let currentTotalPages = 1;
         let intersectionObserver = null;
         let resizeRaf = null;
+        let programmaticScroll = false;
+        let carouselUserInput = false;
+        let gestureStartPage = 0;
+        let scrollSettleTimer = null;
+        let touchSettleTimer = null;
 
         root.classList.add('swipe-card-pager-surface');
         root.style.touchAction = 'pan-y';
@@ -64,14 +69,116 @@
             });
         };
 
+        const getNearestPageIndex = () => {
+            if (!isScrollCarousel()) return currentPage;
+            const left = scrollViewport.scrollLeft;
+            let best = 0;
+            let bestDist = Infinity;
+            items.forEach((el, i) => {
+                const d = Math.abs(el.offsetLeft - left);
+                if (d < bestDist) {
+                    bestDist = d;
+                    best = i;
+                }
+            });
+            return best;
+        };
+
         const scrollToPageIndex = (pageIndex, smooth) => {
             if (!isScrollCarousel()) return;
             const el = items[pageIndex];
             if (!el) return;
+            programmaticScroll = true;
             const left = el.offsetLeft;
             scrollViewport.scrollTo({
                 left,
                 behavior: smooth ? 'smooth' : 'auto',
+            });
+            if (!smooth) {
+                window.requestAnimationFrame(() => {
+                    window.requestAnimationFrame(() => {
+                        programmaticScroll = false;
+                        if (isScrollCarousel()) bindScrollObserver();
+                    });
+                });
+            } else {
+                const clearProgrammaticScroll = () => {
+                    if (!programmaticScroll) return;
+                    programmaticScroll = false;
+                    if (isScrollCarousel() && !carouselUserInput) bindScrollObserver();
+                };
+                scrollViewport.addEventListener('scrollend', clearProgrammaticScroll, { once: true, passive: true });
+                window.setTimeout(clearProgrammaticScroll, 650);
+            }
+        };
+
+        const runCarouselDotsTransition = (fromPage, toPage, afterPhase1) => {
+            if (!(dotsContainer instanceof HTMLElement)) return;
+            if (isTransitioning) return;
+            const direction = toPage > fromPage ? 'next' : 'prev';
+            isTransitioning = true;
+            currentPage = fromPage;
+            syncDots();
+            clearDotsAnimation();
+            window.clearTimeout(dotsAnimationTimer);
+            void dotsContainer.offsetWidth;
+            dotsContainer.classList.add(direction === 'next' ? 'is-transitioning-next' : 'is-transitioning-prev');
+
+            dotsAnimationTimer = window.setTimeout(() => {
+                currentPage = toPage;
+                syncDots();
+                afterPhase1(direction);
+                clearDotsAnimation();
+                void dotsContainer.offsetWidth;
+                dotsContainer.classList.add(direction === 'next' ? 'is-settling-next' : 'is-settling-prev');
+                dotsAnimationTimer = window.setTimeout(() => {
+                    clearDotsAnimation();
+                    isTransitioning = false;
+                }, 440);
+            }, 180);
+        };
+
+        const flushCarouselScrollSettled = () => {
+            if (!isScrollCarousel()) return;
+            window.clearTimeout(scrollSettleTimer);
+            window.clearTimeout(touchSettleTimer);
+            if (programmaticScroll) {
+                programmaticScroll = false;
+                carouselUserInput = false;
+                bindScrollObserver();
+                return;
+            }
+            if (!carouselUserInput) return;
+            carouselUserInput = false;
+
+            const finalPage = getNearestPageIndex();
+            if (finalPage === gestureStartPage) {
+                currentPage = finalPage;
+                syncDots();
+                bindScrollObserver();
+                return;
+            }
+
+            const targetEl = items[finalPage];
+            if (!targetEl) {
+                currentPage = finalPage;
+                syncDots();
+                bindScrollObserver();
+                return;
+            }
+
+            runCarouselDotsTransition(gestureStartPage, finalPage, (dir) => {
+                layoutScrollSlides();
+                window.requestAnimationFrame(() => {
+                    layoutScrollSlides();
+                    scrollViewport.scrollTo({
+                        left: targetEl.offsetLeft,
+                        behavior: 'auto',
+                    });
+                    programmaticScroll = false;
+                    animate(dir);
+                    bindScrollObserver();
+                });
             });
         };
 
@@ -232,25 +339,11 @@
                 }
 
                 if (isTransitioning) return;
-                isTransitioning = true;
-                clearDotsAnimation();
-                window.clearTimeout(dotsAnimationTimer);
-                void dotsContainer.offsetWidth;
-                dotsContainer.classList.add(direction === 'next' ? 'is-transitioning-next' : 'is-transitioning-prev');
-
-                dotsAnimationTimer = window.setTimeout(() => {
-                    currentPage = nextPage;
-                    syncDots();
+                const fromPage = currentPage;
+                runCarouselDotsTransition(fromPage, nextPage, (dir) => {
                     finishScroll(true);
-                    animate(direction);
-                    clearDotsAnimation();
-                    void dotsContainer.offsetWidth;
-                    dotsContainer.classList.add(direction === 'next' ? 'is-settling-next' : 'is-settling-prev');
-                    dotsAnimationTimer = window.setTimeout(() => {
-                        clearDotsAnimation();
-                        isTransitioning = false;
-                    }, 440);
-                }, 180);
+                    animate(dir);
+                });
                 return;
             }
 
@@ -376,6 +469,43 @@
             setPage(currentPage);
         });
         setPage(0);
+
+        if (scrollViewport instanceof HTMLElement) {
+            scrollViewport.addEventListener(
+                'touchstart',
+                () => {
+                    if (!isScrollCarousel() || isTransitioning || programmaticScroll) return;
+                    carouselUserInput = true;
+                    gestureStartPage = getNearestPageIndex();
+                    currentPage = gestureStartPage;
+                    syncDots();
+                    disconnectObserver();
+                },
+                { passive: true },
+            );
+
+            scrollViewport.addEventListener(
+                'scroll',
+                () => {
+                    if (!isScrollCarousel() || programmaticScroll || !carouselUserInput) return;
+                    window.clearTimeout(scrollSettleTimer);
+                    scrollSettleTimer = window.setTimeout(flushCarouselScrollSettled, 130);
+                },
+                { passive: true },
+            );
+
+            scrollViewport.addEventListener('scrollend', flushCarouselScrollSettled, { passive: true });
+
+            scrollViewport.addEventListener(
+                'touchend',
+                () => {
+                    if (!isScrollCarousel() || programmaticScroll) return;
+                    window.clearTimeout(touchSettleTimer);
+                    touchSettleTimer = window.setTimeout(flushCarouselScrollSettled, 480);
+                },
+                { passive: true },
+            );
+        }
 
         return {
             setPage,
