@@ -41,11 +41,10 @@
                         </svg>
                         <input type="search" name="search" value="{{ request.query_params.get('search', '') }}" placeholder="Buscar setor, data, volume ou observação" data-module-history-search>
                     </div>
-                    <div class="module-filter-date-field">
-                        <span class="module-filter-date-label">Setor</span>
-                        <select name="plot_id" class="module-filter-date-input min-h-[3rem]">
-                            <option value="">Todos os setores</option>
-                            {% for plot in plots %}
+                    <div class="module-filter-date-field !gap-0">
+                        <select name="plot_id" class="module-filter-date-input min-h-[3rem] w-full min-w-[11rem]" aria-label="Filtrar por setor">
+                            <option value="" {% if not selected_irrigation_plot_id %}selected{% endif %}>Filtrar por setor (todos com registro)</option>
+                            {% for plot in plots_for_irrigation_filter %}
                             <option value="{{ plot.id }}" {% if selected_irrigation_plot_id == plot.id %}selected{% endif %}>{{ plot.name }}</option>
                             {% endfor %}
                         </select>

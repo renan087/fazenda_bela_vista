@@ -5659,11 +5659,22 @@ def irrigation_page(
     )
     irrigation_after_edit_close_url = _url_with_query(request, edit_id=None)
     search_q = (request.query_params.get("search") or "").strip() or None
-    irrigations = [
+    irrigations_in_period = [
         irrigation
         for irrigation in repo.list_irrigations()
         if irrigation.plot_id in plot_ids and _within_scope(irrigation.irrigation_date, start_date, end_date)
     ]
+    plot_ids_with_irrigation = {item.plot_id for item in irrigations_in_period}
+    plots_for_irrigation_filter = sorted(
+        (p for p in plots if p.id in plot_ids_with_irrigation),
+        key=lambda p: (p.name or "").lower(),
+    )
+    if plot_id_filter is not None and plot_id_filter not in plot_ids_with_irrigation:
+        orphan = next((p for p in plots if p.id == plot_id_filter), None)
+        if orphan:
+            plots_for_irrigation_filter = [orphan, *plots_for_irrigation_filter]
+
+    irrigations = list(irrigations_in_period)
     if plot_id_filter is not None:
         irrigations = [item for item in irrigations if item.plot_id == plot_id_filter]
     if search_q:
@@ -5701,6 +5712,7 @@ def irrigation_page(
             "irrigation",
             _repo=repo,
             plots=plots,
+            plots_for_irrigation_filter=plots_for_irrigation_filter,
             irrigations=irrigations_pagination["items"],
             irrigations_pagination=irrigations_pagination,
             irrigation_filter_start_date=filter_start_str or None,
