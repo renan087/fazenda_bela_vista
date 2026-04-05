@@ -1681,6 +1681,9 @@ def plots_page(
         except json.JSONDecodeError:
             edit_plot_geometry_json = "null"
     google_maps_web_key = (get_settings().google_maps_api_key or "").strip()
+    plots_filters_active = bool(
+        (q or "").strip() or bool(farm_ids) or bool(variety_ids) or sort != "name"
+    )
     return templates.TemplateResponse(
         "plots.html",
         _base_context(
@@ -1692,6 +1695,7 @@ def plots_page(
             farms=farms,
             varieties=varieties,
             filters={"q": q or "", "farm_ids": farm_ids, "variety_ids": variety_ids, "sort": sort},
+            plots_filters_active=plots_filters_active,
             edit_plot=edit_plot,
             open_plot_map_modal=open_plot_map_modal,
             selected_farm_id=selected_farm_id or scope["active_farm_id"],

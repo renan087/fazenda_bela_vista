@@ -22,43 +22,66 @@
     </section>
 
     <section class="stock-panel rounded-[2rem] bg-white p-6 shadow-panel" data-stock-fade-panel>
-        <div class="module-filter-toolbar">
-            <form method="get" action="/setores" class="grid gap-3 xl:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)_minmax(0,0.9fr)_minmax(0,0.7fr)_auto]">
-                <label>
-                    <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Buscar</span>
-                    <input name="q" value="{{ filters.q }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" placeholder="Nome do setor">
-                </label>
-                <label>
-                    <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Fazenda</span>
-                    <select name="farm_id" data-filter-farms class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50">
-                        <option value="">Todas</option>
-                        {% for farm in farms %}
-                        <option value="{{ farm.id }}" {% if filters.farm_ids and filters.farm_ids[0] == farm.id %}selected{% endif %}>{{ farm.name }}</option>
-                        {% endfor %}
-                    </select>
-                </label>
-                <label>
-                    <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Variedade</span>
-                    <select name="variety_id" data-filter-varieties class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50">
-                        <option value="">Todas</option>
-                        {% for variety in varieties %}
-                        <option value="{{ variety.id }}" {% if filters.variety_ids and filters.variety_ids[0] == variety.id %}selected{% endif %}>{{ variety.name }}</option>
-                        {% endfor %}
-                    </select>
-                </label>
-                <label>
-                    <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Ordenar</span>
-                    <select name="sort" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50">
-                        <option value="name" {% if filters.sort == 'name' %}selected{% endif %}>Nome</option>
-                        <option value="area_desc" {% if filters.sort == 'area_desc' %}selected{% endif %}>Maior área</option>
-                        <option value="area_asc" {% if filters.sort == 'area_asc' %}selected{% endif %}>Menor área</option>
-                        <option value="planting_desc" {% if filters.sort == 'planting_desc' %}selected{% endif %}>Plantio recente</option>
-                        <option value="planting_asc" {% if filters.sort == 'planting_asc' %}selected{% endif %}>Plantio antigo</option>
-                    </select>
-                </label>
-                <div class="flex flex-wrap items-end gap-3">
-                    <button class="min-h-[3.25rem] rounded-2xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white hover:bg-slate-700">Filtrar</button>
-                    <a href="/setores" class="min-h-[3.25rem] rounded-2xl bg-white px-4 py-3 text-sm font-semibold text-slate-700 ring-1 ring-slate-200">Limpar</a>
+        <div class="stock-filter-bar {% if plots_filters_active %}is-mobile-collapsed{% endif %}">
+            <div class="stock-filter-mobile-toggle-wrap md:hidden">
+                <button
+                    type="button"
+                    class="stock-summary-toggle stock-filter-mobile-toggle {% if plots_filters_active %}is-filtered-state{% endif %}"
+                    data-stock-filter-toggle
+                    data-stock-filter-applied="{% if plots_filters_active %}true{% else %}false{% endif %}"
+                    aria-expanded="{% if plots_filters_active %}false{% else %}true{% endif %}"
+                >
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                        <path d="M5 12h14"/>
+                        <path d="M12 5v14" data-stock-filter-toggle-plus{% if plots_filters_active %} class="hidden"{% endif %}></path>
+                    </svg>
+                    <span data-stock-filter-toggle-label>{% if plots_filters_active %}Mostrar filtro aplicado{% else %}Recolher filtros{% endif %}</span>
+                </button>
+            </div>
+            <form method="get" action="/setores" class="stock-filter-grid min-w-0">
+                <div class="stock-summary-collapse {% if not plots_filters_active %}is-expanded{% endif %}" data-stock-filter-collapse>
+                    <div class="stock-summary-collapse-inner">
+                        <div class="grid gap-3 xl:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)_minmax(0,0.9fr)_minmax(0,0.7fr)_auto]">
+                            <label>
+                                <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Buscar</span>
+                                <input name="q" value="{{ filters.q }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" placeholder="Nome do setor">
+                            </label>
+                            <label>
+                                <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Fazenda</span>
+                                <select name="farm_id" data-filter-farms class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50">
+                                    <option value="">Todas</option>
+                                    {% for farm in farms %}
+                                    <option value="{{ farm.id }}" {% if filters.farm_ids and filters.farm_ids[0] == farm.id %}selected{% endif %}>{{ farm.name }}</option>
+                                    {% endfor %}
+                                </select>
+                            </label>
+                            <label>
+                                <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Variedade</span>
+                                <select name="variety_id" data-filter-varieties class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50">
+                                    <option value="">Todas</option>
+                                    {% for variety in varieties %}
+                                    <option value="{{ variety.id }}" {% if filters.variety_ids and filters.variety_ids[0] == variety.id %}selected{% endif %}>{{ variety.name }}</option>
+                                    {% endfor %}
+                                </select>
+                            </label>
+                            <label>
+                                <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Ordenar</span>
+                                <select name="sort" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50">
+                                    <option value="name" {% if filters.sort == 'name' %}selected{% endif %}>Nome</option>
+                                    <option value="area_desc" {% if filters.sort == 'area_desc' %}selected{% endif %}>Maior área</option>
+                                    <option value="area_asc" {% if filters.sort == 'area_asc' %}selected{% endif %}>Menor área</option>
+                                    <option value="planting_desc" {% if filters.sort == 'planting_desc' %}selected{% endif %}>Plantio recente</option>
+                                    <option value="planting_asc" {% if filters.sort == 'planting_asc' %}selected{% endif %}>Plantio antigo</option>
+                                </select>
+                            </label>
+                            <div class="flex flex-wrap items-end gap-3">
+                                <button type="submit" class="min-h-[3.25rem] rounded-2xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white hover:bg-slate-700">Filtrar</button>
+                                {% if plots_filters_active %}
+                                <a href="/setores" class="min-h-[3.25rem] rounded-2xl bg-white px-4 py-3 text-sm font-semibold text-slate-700 ring-1 ring-slate-200 hover:bg-slate-100">Limpar</a>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </form>
         </div>
@@ -1303,6 +1326,45 @@
             farmSelect.addEventListener('change', syncCascade);
             varietySelect.addEventListener('change', syncCascade);
             syncCascade();
+        }
+
+        const plotsFilterToggle = document.querySelector('[data-stock-filter-toggle]');
+        const plotsFilterCollapse = document.querySelector('[data-stock-filter-collapse]');
+        const plotsFilterToggleLabel = document.querySelector('[data-stock-filter-toggle-label]');
+        const plotsFilterTogglePlus = document.querySelector('[data-stock-filter-toggle-plus]');
+        const plotsFilterMobileMq = window.matchMedia('(max-width: 899px)');
+        const plotsFilterBar = document.querySelector('.stock-filter-bar');
+        if (plotsFilterToggle && plotsFilterCollapse && plotsFilterToggleLabel) {
+            const hasAppliedPlotsFilters = plotsFilterToggle.dataset.stockFilterApplied === 'true';
+            const setPlotsFilterExpanded = (expanded) => {
+                plotsFilterCollapse.classList.toggle('is-expanded', expanded);
+                plotsFilterToggle.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+                plotsFilterToggleLabel.textContent = expanded
+                    ? 'Recolher filtros'
+                    : hasAppliedPlotsFilters
+                      ? 'Mostrar filtro aplicado'
+                      : 'Mostrar filtros';
+                plotsFilterTogglePlus?.classList.toggle('hidden', expanded);
+                plotsFilterBar?.classList.toggle('is-mobile-collapsed', plotsFilterMobileMq.matches && !expanded);
+            };
+
+            const syncPlotsFilterCollapseForViewport = () => {
+                if (!plotsFilterMobileMq.matches) {
+                    plotsFilterCollapse.classList.add('is-expanded');
+                    plotsFilterToggle.setAttribute('aria-expanded', 'true');
+                    plotsFilterBar?.classList.remove('is-mobile-collapsed');
+                    return;
+                }
+                const expanded = plotsFilterToggle.getAttribute('aria-expanded') === 'true';
+                setPlotsFilterExpanded(expanded);
+            };
+
+            syncPlotsFilterCollapseForViewport();
+            plotsFilterToggle.addEventListener('click', () => {
+                const expanded = plotsFilterToggle.getAttribute('aria-expanded') === 'true';
+                setPlotsFilterExpanded(!expanded);
+            });
+            plotsFilterMobileMq.addEventListener('change', syncPlotsFilterCollapseForViewport);
         }
 
         const mobileCompactMq = window.matchMedia('(max-width: 899px)');
