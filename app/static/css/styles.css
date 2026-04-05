@@ -407,13 +407,13 @@ body {
 [data-stock-catalog-dots] {
     position: relative;
     display: block;
-    width: 4rem;
+    width: 3.25rem;
     height: 0.75rem;
     margin-inline: auto;
 }
 
 .swipe-card-pager-dot[data-role="prev"] {
-    left: 0;
+    left: 0.06rem;
     transform: translateY(-50%);
 }
 
@@ -423,13 +423,29 @@ body {
 }
 
 .swipe-card-pager-dot[data-role="next"] {
-    right: 0;
+    right: 0.06rem;
     transform: translateY(-50%);
 }
 
-[data-stock-catalog-dots].swipe-carousel-dots-linked .swipe-card-pager-dot[data-role="current"].is-active {
+[data-stock-catalog-dots].swipe-carousel-dots-linked.swipe-carousel-pull-next .swipe-card-pager-dot[data-role="current"].is-active {
+    right: auto;
     width: calc(1.55rem + var(--carousel-dot-stretch, 0) * 0.65rem);
-    transform: translateY(-50%) translateX(calc(var(--carousel-dot-shift, 0) * 0.55rem));
+    left: calc(50% - 0.775rem);
+    transform: translateY(-50%);
+    transition:
+        width 0ms linear,
+        background-color 180ms ease,
+        opacity 180ms ease,
+        transform 0ms linear,
+        left 0ms linear,
+        right 0ms linear;
+}
+
+[data-stock-catalog-dots].swipe-carousel-dots-linked.swipe-carousel-pull-prev .swipe-card-pager-dot[data-role="current"].is-active {
+    right: auto;
+    width: calc(1.55rem + var(--carousel-dot-stretch, 0) * 0.65rem);
+    left: calc(50% - 0.775rem - var(--carousel-dot-stretch, 0) * 0.65rem);
+    transform: translateY(-50%);
     transition:
         width 0ms linear,
         background-color 180ms ease,

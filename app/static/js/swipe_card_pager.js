@@ -32,6 +32,8 @@
         let resizeRaf = null;
         let programmaticScroll = false;
         let scrollDotsRaf = null;
+        let lastCarouselScrollLeft = null;
+        let lastCarouselPullNext = true;
 
         root.classList.add('swipe-card-pager-surface');
         root.style.touchAction = 'pan-y';
@@ -94,17 +96,22 @@
             }
         };
 
-        const setCarouselDotsLinkedVars = (stretch, shift) => {
+        const setCarouselDotsLinkedVars = (stretch, pullNext) => {
             if (!(dotsContainer instanceof HTMLElement)) return;
             dotsContainer.style.setProperty('--carousel-dot-stretch', String(stretch));
-            dotsContainer.style.setProperty('--carousel-dot-shift', String(shift));
+            dotsContainer.classList.toggle('swipe-carousel-pull-next', pullNext);
+            dotsContainer.classList.toggle('swipe-carousel-pull-prev', !pullNext);
         };
 
         const clearCarouselDotsLinkedVars = () => {
             if (!(dotsContainer instanceof HTMLElement)) return;
-            dotsContainer.classList.remove('swipe-carousel-dots-linked');
+            dotsContainer.classList.remove(
+                'swipe-carousel-dots-linked',
+                'swipe-carousel-pull-next',
+                'swipe-carousel-pull-prev',
+            );
             dotsContainer.style.removeProperty('--carousel-dot-stretch');
-            dotsContainer.style.removeProperty('--carousel-dot-shift');
+            lastCarouselScrollLeft = null;
         };
 
         const updateDotsFromScroll = () => {
@@ -117,10 +124,20 @@
             if (n <= 1) {
                 currentPage = 0;
                 dotsContainer.classList.add('swipe-carousel-dots-linked');
-                setCarouselDotsLinkedVars(0, 0);
+                setCarouselDotsLinkedVars(0, lastCarouselPullNext);
                 syncDots();
                 return;
             }
+
+            let pullNext = lastCarouselPullNext;
+            if (lastCarouselScrollLeft !== null) {
+                const delta = left - lastCarouselScrollLeft;
+                if (Math.abs(delta) > 0.35) {
+                    pullNext = delta > 0;
+                    lastCarouselPullNext = pullNext;
+                }
+            }
+            lastCarouselScrollLeft = left;
 
             let i = 0;
             for (; i < n - 1; i += 1) {
@@ -133,11 +150,10 @@
             const span = end - start;
             const t = span > 0 ? clamp((left - start) / span, 0, 1) : 0;
             const stretchMag = 1 - Math.abs(t - 0.5) * 2;
-            const shift = (t - 0.5) * 1.85;
             currentPage = clamp(Math.round(i + t), 0, n - 1);
 
             dotsContainer.classList.add('swipe-carousel-dots-linked');
-            setCarouselDotsLinkedVars(stretchMag, shift);
+            setCarouselDotsLinkedVars(stretchMag, pullNext);
             syncDots();
         };
 
