@@ -32,6 +32,7 @@ from app.models import (
     PasswordResetToken,
     PestIncident,
     Plot,
+    PlotAttachment,
     PurchasedInput,
     PurchasedInputAttachment,
     RainfallRecord,
@@ -193,6 +194,16 @@ def _sync_schema() -> None:
         CREATE TABLE IF NOT EXISTS purchased_input_attachments (
             id SERIAL PRIMARY KEY,
             purchased_input_id INTEGER NOT NULL REFERENCES purchased_inputs(id) ON DELETE CASCADE,
+            filename VARCHAR(255) NOT NULL,
+            content_type VARCHAR(120) NOT NULL,
+            file_data BYTEA NOT NULL,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS plot_attachments (
+            id SERIAL PRIMARY KEY,
+            plot_id INTEGER NOT NULL REFERENCES plots(id) ON DELETE CASCADE,
             filename VARCHAR(255) NOT NULL,
             content_type VARCHAR(120) NOT NULL,
             file_data BYTEA NOT NULL,
@@ -429,6 +440,7 @@ def _sync_schema() -> None:
         connection.execute(text("CREATE INDEX IF NOT EXISTS ix_password_change_verifications_expires_at ON password_change_verifications(expires_at)"))
         connection.execute(text("CREATE INDEX IF NOT EXISTS ix_purchased_input_attachments_input_id ON purchased_input_attachments(purchased_input_id)"))
         connection.execute(text("CREATE INDEX IF NOT EXISTS ix_equipment_asset_attachments_asset_id ON equipment_asset_attachments(equipment_asset_id)"))
+        connection.execute(text("CREATE INDEX IF NOT EXISTS ix_plot_attachments_plot_id ON plot_attachments(plot_id)"))
         connection.execute(text("CREATE INDEX IF NOT EXISTS ix_backup_runs_started_at ON backup_runs(started_at DESC)"))
         connection.execute(text("CREATE INDEX IF NOT EXISTS ix_backup_runs_user_id ON backup_runs(initiated_by_user_id)"))
         connection.execute(text("UPDATE plots SET irrigation_type = 'none' WHERE irrigation_type IS NULL"))

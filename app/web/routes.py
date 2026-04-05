@@ -1,5 +1,5 @@
 from collections import defaultdict
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from io import BytesIO
 from pathlib import Path
@@ -48,6 +48,7 @@ from app.models import (
     IrrigationRecord,
     PestIncident,
     Plot,
+    PlotAttachment,
     PurchasedInput,
     PurchasedInputAttachment,
     RainfallRecord,
@@ -1068,15 +1069,25 @@ def _normalize_irrigation_type(value: str | None) -> str:
     return normalized if normalized in {"none", "gotejo", "aspersor"} else "none"
 
 
-def _resolve_geojson(upload: UploadFile | None, fallback_text: str | None, current_value: str | None = None) -> tuple[str | None, bool]:
+def _resolve_geojson(
+    upload: UploadFile | None,
+    fallback_text: str | None,
+    current_value: str | None = None,
+) -> tuple[str | None, bool, bytes | None, str | None]:
+    """
+    Retorna (geometria texto, sucesso parcial conforme legado, bytes do upload para anexo, nome do arquivo).
+    Quando o upload falha na validação, retorna (None, False, None, None).
+    """
     if upload and upload.filename:
         raw_bytes = upload.file.read()
         parsed = extract_geojson_file(raw_bytes)
-        return parsed, parsed is not None
+        if parsed is None:
+            return None, False, None, None
+        return parsed, True, raw_bytes, _clean_attachment_filename(upload.filename)
     normalized = normalize_geojson(fallback_text)
     if normalized is not None:
-        return normalized, True
-    return current_value, False
+        return normalized, True, None, None
+    return current_value, False, None, None
 
 
 def _farm_boundary_for_plot_preview(plot) -> str | None:
@@ -1253,6 +1264,8 @@ _ALLOWED_ATTACHMENT_EXTENSIONS = {
     ".xlsx",
     ".odt",
     ".ods",
+    ".json",
+    ".geojson",
 }
 _MAX_ATTACHMENT_SIZE_BYTES = 10 * 1024 * 1024
 
@@ -1329,6 +1342,70 @@ def _save_equipment_asset_attachments(
         raise
     repo.db.refresh(asset)
     return len(attachments)
+
+
+def _pretty_geojson_file_bytes(geojson_text: str) -> bytes:
+    try:
+        obj = json.loads(geojson_text)
+        return json.dumps(obj, ensure_ascii=False, indent=2).encode("utf-8")
+    except (json.JSONDecodeError, TypeError):
+        return (geojson_text or "").encode("utf-8")
+
+
+def _persist_plot_geojson_attachment(
+    repo: FarmRepository,
+    plot: Plot,
+    payload: bytes,
+    filename: str,
+    content_type: str = "application/geo+json",
+) -> bool:
+    if not payload or len(payload) > _MAX_ATTACHMENT_SIZE_BYTES:
+        return False
+    try:
+        repo.db.add(
+            PlotAttachment(
+                plot_id=plot.id,
+                filename=_clean_attachment_filename(filename),
+                content_type=(content_type or "application/geo+json")[:120],
+                file_data=payload,
+            )
+        )
+        repo.db.commit()
+        repo.db.refresh(plot)
+        return True
+    except Exception:
+        repo.db.rollback()
+        logging.getLogger(__name__).exception("Falha ao gravar anexo GeoJSON do setor %s", plot.id)
+        return False
+
+
+def _maybe_record_plot_boundary_attachments(
+    repo: FarmRepository,
+    plot: Plot,
+    geometry: str | None,
+    upload_payload: bytes | None,
+    upload_filename: str | None,
+    old_geometry: str | None,
+    *,
+    is_new_plot: bool,
+) -> None:
+    if not geometry or not str(geometry).strip():
+        return
+    if upload_payload and upload_filename:
+        ok = _persist_plot_geojson_attachment(repo, plot, upload_payload, upload_filename, "application/geo+json")
+        if not ok:
+            logging.getLogger(__name__).warning("Anexo GeoJSON enviado pelo usuario nao foi persistido (setor %s)", plot.id)
+        return
+    old_n = normalize_geojson(old_geometry) if (old_geometry or "").strip() else None
+    new_n = normalize_geojson(geometry) if geometry else None
+    if not is_new_plot and old_n == new_n:
+        return
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+    fn = f"perimetro-setor-{plot.id}-{stamp}.geojson"
+    body = _pretty_geojson_file_bytes(geometry)
+    ok = _persist_plot_geojson_attachment(repo, plot, body, fn, "application/geo+json")
+    if not ok:
+        logging.getLogger(__name__).warning("GeoJSON gerado automaticamente nao foi persistido (setor %s)", plot.id)
 
 
 async def _request_attachments(request: Request, field_name: str = "attachments") -> list[UploadFile]:
@@ -1664,7 +1741,7 @@ def create_plot_action(
     if not farm:
         _flash(request, "error", "A fazenda selecionada nao foi encontrada.")
         return _redirect("/setores")
-    geometry, geometry_ok = _resolve_geojson(boundary_geojson_file, boundary_geojson)
+    geometry, geometry_ok, upload_payload, upload_filename = _resolve_geojson(boundary_geojson_file, boundary_geojson)
     if boundary_geojson_file and boundary_geojson_file.filename and not geometry_ok:
         _flash(request, "error", "O arquivo GeoJSON do setor nao e valido.")
         return _redirect_with_query("/setores", selected_farm_id=selected_farm_id)
@@ -1699,8 +1776,17 @@ def create_plot_action(
             generate_plot_preview_image(new_plot.id, geometry, farm_gj)
         except Exception:
             logging.getLogger(__name__).exception("Falha ao gerar imagem de satelite do setor %s", new_plot.id)
+    _maybe_record_plot_boundary_attachments(
+        repo,
+        new_plot,
+        geometry,
+        upload_payload,
+        upload_filename,
+        None,
+        is_new_plot=True,
+    )
     _flash(request, "success", "Setor salvo com sucesso.")
-    return _redirect("/setores")
+    return _redirect_with_query("/setores", edit_id=new_plot.id)
 
 
 @router.post("/talhoes/{plot_id}/editar", include_in_schema=False)
@@ -1740,11 +1826,14 @@ def update_plot_action(
     if not plot:
         _flash(request, "error", "Setor nao encontrado.")
         return _redirect("/setores")
+    old_geometry = plot.boundary_geojson
     farm = repo.get_farm(farm_id)
     if not farm:
         _flash(request, "error", "A fazenda selecionada nao foi encontrada.")
         return _redirect("/setores")
-    geometry, geometry_ok = _resolve_geojson(boundary_geojson_file, boundary_geojson, plot.boundary_geojson)
+    geometry, geometry_ok, upload_payload, upload_filename = _resolve_geojson(
+        boundary_geojson_file, boundary_geojson, plot.boundary_geojson
+    )
     if boundary_geojson_file and boundary_geojson_file.filename and not geometry_ok:
         _flash(request, "error", "O arquivo GeoJSON do setor nao e valido.")
         return _redirect_with_query("/setores", edit_id=plot_id)
@@ -1781,8 +1870,71 @@ def update_plot_action(
         logging.getLogger(__name__).exception("Falha ao atualizar imagem de satelite do setor %s", plot_id)
     finally:
         remove_plot_preview_draft(plot_id)
+    _maybe_record_plot_boundary_attachments(
+        repo,
+        plot,
+        geometry,
+        upload_payload,
+        upload_filename,
+        old_geometry,
+        is_new_plot=False,
+    )
     _flash(request, "success", "Setor atualizado com sucesso.")
-    return _redirect("/setores")
+    return _redirect_with_query("/setores", edit_id=plot_id)
+
+
+@router.get("/talhoes/anexos/{attachment_id}", include_in_schema=False)
+@router.get("/setores/anexos/{attachment_id}")
+def open_plot_attachment(
+    attachment_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    del user
+    repo = _repository(db)
+    attachment = repo.get_plot_attachment(attachment_id)
+    if not attachment or not attachment.plot:
+        _flash(request, "error", "Anexo nao encontrado.")
+        return _redirect("/setores")
+    scope = _global_scope_context(request, repo)
+    if not _farm_matches_scope(attachment.plot.farm_id, scope):
+        _flash(request, "error", "Este anexo nao pertence ao contexto ativo.")
+        return _redirect("/setores")
+    return _attachment_response(attachment.filename, attachment.content_type, attachment.file_data)
+
+
+@router.post("/talhoes/{plot_id}/anexos/{attachment_id}/excluir", include_in_schema=False)
+@router.post("/setores/{plot_id}/anexos/{attachment_id}/excluir")
+def delete_plot_attachment_action(
+    plot_id: int,
+    attachment_id: int,
+    request: Request,
+    csrf_token: str = Form(...),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    del user
+    validate_csrf(request, csrf_token)
+    repo = _repository(db)
+    plot = repo.get_plot(plot_id)
+    if not plot:
+        _flash(request, "error", "Setor nao encontrado.")
+        return _redirect("/setores")
+    scope = _global_scope_context(request, repo)
+    if not _farm_matches_scope(plot.farm_id, scope):
+        _flash(request, "error", "Este setor nao pertence ao contexto ativo.")
+        return _redirect_with_query("/setores", edit_id=plot_id)
+    attachment = repo.get_plot_attachment(attachment_id)
+    if not attachment or attachment.plot_id != plot.id:
+        _flash(request, "error", "Anexo nao encontrado.")
+        return _redirect_with_query("/setores", edit_id=plot_id)
+    repo.delete(attachment)
+    if repo.get_plot_attachment(attachment_id):
+        _flash(request, "error", "Nao foi possivel remover o anexo agora. Tente novamente.")
+        return _redirect_with_query("/setores", edit_id=plot_id)
+    _flash(request, "success", "Anexo removido com sucesso.")
+    return _redirect_with_query("/setores", edit_id=plot_id)
 
 
 @router.post("/talhoes/{plot_id}/preview-rascunho", include_in_schema=False)
@@ -2018,7 +2170,7 @@ def create_farm_action(
 ):
     del user
     validate_csrf(request, csrf_token)
-    geometry, geometry_ok = _resolve_geojson(boundary_geojson_file, boundary_geojson)
+    geometry, geometry_ok, _, _ = _resolve_geojson(boundary_geojson_file, boundary_geojson)
     if boundary_geojson_file and boundary_geojson_file.filename and not geometry_ok:
         _flash(request, "error", "O arquivo GeoJSON da fazenda nao e valido.")
         return _redirect("/setores") if redirect_to == "/setores" else _redirect("/fazendas")
@@ -2064,7 +2216,7 @@ def update_farm_action(
     if not farm:
         _flash(request, "error", "Fazenda nao encontrada.")
         return _redirect("/fazendas")
-    geometry, geometry_ok = _resolve_geojson(boundary_geojson_file, boundary_geojson, farm.boundary_geojson)
+    geometry, geometry_ok, _, _ = _resolve_geojson(boundary_geojson_file, boundary_geojson, farm.boundary_geojson)
     if boundary_geojson_file and boundary_geojson_file.filename and not geometry_ok:
         _flash(request, "error", "O arquivo GeoJSON da fazenda nao e valido.")
         return _redirect_with_query("/fazendas", edit_id=farm_id)

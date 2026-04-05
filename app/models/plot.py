@@ -42,3 +42,4 @@ class Plot(Base):
     input_recommendations = relationship("InputRecommendation", back_populates="plot")
     fertilization_schedules = relationship("FertilizationSchedule", back_populates="plot", cascade="all, delete-orphan")
     stock_outputs = relationship("StockOutput", back_populates="plot", cascade="all, delete-orphan")
+    attachments = relationship("PlotAttachment", back_populates="plot", cascade="all, delete-orphan")

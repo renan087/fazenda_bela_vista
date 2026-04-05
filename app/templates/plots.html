@@ -388,6 +388,12 @@
 
                 <label><span class="mb-2 block text-sm font-medium">Observações</span><textarea name="notes" rows="3" class="w-full rounded-2xl border-slate-200 bg-slate-50">{{ edit_plot.notes if edit_plot else '' }}</textarea></label>
             </form>
+            {% if edit_plot %}
+            {% set attachment_owner = edit_plot %}
+            {% set attachment_view_base = '/setores/anexos' %}
+            {% set attachment_delete_base = '/setores/' ~ edit_plot.id ~ '/anexos' %}
+            <div class="mt-4">{% include "partials/attachment_list.html" %}</div>
+            {% endif %}
         </div>
     </div>
 </dialog>
@@ -486,6 +492,7 @@
 
 <script type="application/json" id="plots-farm-preview-urls">{{ plots_farm_preview_urls|tojson }}</script>
 <script type="application/json" id="plot-farm-boundaries-data">{{ plot_farm_boundaries_json|safe }}</script>
+{% include "partials/attachment_manager_script.html" %}
 <script src="{{ url_for('static', path='js/farm_boundary_editor.js') }}?v=6"></script>
 <script>
     (() => {

@@ -20,6 +20,7 @@ from app.models.password_reset_token import PasswordResetToken
 from app.models.password_change_verification import PasswordChangeVerification
 from app.models.pesticide import PestIncident
 from app.models.plot import Plot
+from app.models.plot_attachment import PlotAttachment
 from app.models.purchased_input import PurchasedInput
 from app.models.purchased_input_attachment import PurchasedInputAttachment
 from app.models.rainfall import RainfallRecord
@@ -51,6 +52,7 @@ __all__ = [
     "PasswordChangeVerification",
     "PestIncident",
     "Plot",
+    "PlotAttachment",
     "PurchasedInput",
     "PurchasedInputAttachment",
     "RainfallRecord",

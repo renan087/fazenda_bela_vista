@@ -23,6 +23,7 @@ from app.models import (
     IrrigationRecord,
     PestIncident,
     Plot,
+    PlotAttachment,
     PurchasedInput,
     PurchasedInputAttachment,
     RainfallRecord,
@@ -130,8 +131,16 @@ class FarmRepository:
     def get_plot(self, plot_id: int) -> Plot | None:
         return (
             self.db.query(Plot)
-            .options(joinedload(Plot.variety), joinedload(Plot.farm))
+            .options(joinedload(Plot.variety), joinedload(Plot.farm), joinedload(Plot.attachments))
             .filter(Plot.id == plot_id)
+            .first()
+        )
+
+    def get_plot_attachment(self, attachment_id: int) -> PlotAttachment | None:
+        return (
+            self.db.query(PlotAttachment)
+            .options(joinedload(PlotAttachment.plot).joinedload(Plot.farm))
+            .filter(PlotAttachment.id == attachment_id)
             .first()
         )
 
