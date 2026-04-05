@@ -88,11 +88,10 @@
                 return L.geoJSON(geometry, {
                     interactive: false,
                     style: {
-                        color: '#1e3a5f',
+                        color: '#418436',
                         weight: 2,
-                        dashArray: '8 7',
-                        fillColor: '#475569',
-                        fillOpacity: 0.14,
+                        fillColor: '#5BB34A',
+                        fillOpacity: 0.37,
                     },
                 });
             }
@@ -102,11 +101,10 @@
                     {
                         interactive: false,
                         style: {
-                            color: '#1e3a5f',
+                            color: '#418436',
                             weight: 2,
-                            dashArray: '8 7',
-                            fillColor: '#475569',
-                            fillOpacity: 0.14,
+                            fillColor: '#5BB34A',
+                            fillOpacity: 0.37,
                         },
                     },
                 );
@@ -318,11 +316,11 @@
         if (refPts.length >= 3) {
             referencePolygon = new google.maps.Polygon({
                 paths: refPts.map((p) => ({ lat: p.lat, lng: p.lng })),
-                strokeColor: '#1e3a5f',
+                strokeColor: '#418436',
                 strokeOpacity: 1,
                 strokeWeight: 2,
-                fillColor: '#475569',
-                fillOpacity: 0.14,
+                fillColor: '#5BB34A',
+                fillOpacity: 0.37,
                 clickable: false,
                 editable: false,
                 draggable: false,

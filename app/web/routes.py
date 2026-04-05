@@ -64,6 +64,13 @@ from app.services.farm_preview_image import (
     generate_farm_preview_image,
     remove_farm_preview_image,
 )
+from app.services.plot_preview_image import (
+    ensure_plot_preview_thumb,
+    generate_plot_preview_image,
+    plot_preview_fs_path,
+    plot_preview_thumb_fs_path,
+    remove_plot_preview_image,
+)
 from app.services.forms import (
     calculate_geojson_area_hectares,
     calculate_irrigation_volume,
@@ -1499,6 +1506,7 @@ def dashboard(
 @router.get("/setores")
 def plots_page(
     request: Request,
+    background_tasks: BackgroundTasks,
     q: str | None = None,
     sort: str = "name",
     edit_id: int | None = None,
@@ -1517,6 +1525,22 @@ def plots_page(
         variety_ids = [scope["active_season"].variety_id]
     edit_plot = repo.get_plot(edit_id) if edit_id else None
     farms, varieties = repo.list_plot_filter_options(farm_ids or None, variety_ids or None)
+    plots_list = repo.list_plots(search=q, farm_ids=farm_ids, variety_ids=variety_ids, sort=sort)
+    plot_preview_ready: dict[int, bool] = {}
+    plot_preview_fingerprint: dict[int, str] = {}
+    for plot in plots_list:
+        if not plot.boundary_geojson:
+            continue
+        plot_preview_fingerprint[plot.id] = hashlib.sha256(plot.boundary_geojson.encode("utf-8")).hexdigest()[:14]
+        full_path = plot_preview_fs_path(plot.id)
+        thumb_path = plot_preview_thumb_fs_path(plot.id)
+        full_ok = full_path.is_file() and full_path.stat().st_size > 0
+        thumb_ok = thumb_path.is_file() and thumb_path.stat().st_size > 0
+        plot_preview_ready[plot.id] = full_ok and thumb_ok
+        if not full_ok:
+            background_tasks.add_task(generate_plot_preview_image, plot.id, plot.boundary_geojson)
+        elif not thumb_ok:
+            background_tasks.add_task(ensure_plot_preview_thumb, plot.id)
     plot_farm_boundary_by_id: dict[str, object] = {}
     for farm in farms:
         if not farm.boundary_geojson:
@@ -1540,7 +1564,7 @@ def plots_page(
             user,
             csrf_token,
             "plots",
-            plots=repo.list_plots(search=q, farm_ids=farm_ids, variety_ids=variety_ids, sort=sort),
+            plots=plots_list,
             farms=farms,
             varieties=varieties,
             filters={"q": q or "", "farm_ids": farm_ids, "variety_ids": variety_ids, "sort": sort},
@@ -1549,6 +1573,8 @@ def plots_page(
             plot_farm_boundaries_json=plot_farm_boundaries_json,
             edit_plot_geometry_json=edit_plot_geometry_json,
             google_maps_web_key=google_maps_web_key,
+            plot_preview_ready=plot_preview_ready,
+            plot_preview_fingerprint=plot_preview_fingerprint,
             filter_links=[
                 {"farm_id": plot.farm_id, "variety_id": plot.variety_id}
                 for plot in repo.list_plots(farm_ids=farm_ids or None, variety_ids=variety_ids or None)
@@ -1603,7 +1629,7 @@ def create_plot_action(
     if boundary_geojson_file and boundary_geojson_file.filename and not geometry_ok:
         _flash(request, "error", "O arquivo GeoJSON do setor nao e valido.")
         return _redirect_with_query("/setores", selected_farm_id=selected_farm_id)
-    create_plot(
+    new_plot = create_plot(
         repo,
         _build_plot_payload(
             farm=farm,
@@ -1628,6 +1654,11 @@ def create_plot_action(
             sprinkler_liters_per_hour=sprinkler_liters_per_hour,
         ),
     )
+    if geometry:
+        try:
+            generate_plot_preview_image(new_plot.id, geometry)
+        except Exception:
+            logging.getLogger(__name__).exception("Falha ao gerar imagem de satelite do setor %s", new_plot.id)
     _flash(request, "success", "Setor salvo com sucesso.")
     return _redirect("/setores")
 
@@ -1703,6 +1734,10 @@ def update_plot_action(
             sprinkler_liters_per_hour=sprinkler_liters_per_hour,
         ),
     )
+    try:
+        generate_plot_preview_image(plot_id, geometry or "")
+    except Exception:
+        logging.getLogger(__name__).exception("Falha ao atualizar imagem de satelite do setor %s", plot_id)
     _flash(request, "success", "Setor atualizado com sucesso.")
     return _redirect("/setores")
 
@@ -1723,6 +1758,7 @@ def delete_plot_action(
     if not plot:
         _flash(request, "error", "Setor nao encontrado.")
         return _redirect("/setores")
+    remove_plot_preview_image(plot_id)
     repo.delete(plot)
     _flash(request, "success", "Setor excluido com sucesso.")
     return _redirect("/setores")
@@ -6835,6 +6871,10 @@ def save_plot_map_geometry(
             "centroid_lng": centroid_lng if centroid_lng is not None else plot.centroid_lng,
         },
     )
+    try:
+        generate_plot_preview_image(plot_id, normalized)
+    except Exception:
+        logging.getLogger(__name__).exception("Falha ao gerar preview do setor %s apos mapa", plot_id)
     _flash(request, "success", "Poligono do setor atualizado com sucesso no mapa.")
     return _redirect_with_query("/mapa", edit_plot_id=plot_id)
 

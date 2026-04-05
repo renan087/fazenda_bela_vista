@@ -68,15 +68,14 @@ def _resample_lanczos():
         return Image.LANCZOS
 
 
-def _save_preview_thumbnail(full_rgb: Image.Image, farm_id: int) -> bool:
+def save_preview_thumbnail_at(full_rgb: Image.Image, thumb_path: Path) -> bool:
     """Redimensiona e grava JPEG para uso nos cards (arquivo pequeno)."""
     thumb = full_rgb.copy()
     thumb.thumbnail((THUMB_MAX_WIDTH, THUMB_MAX_HEIGHT), _resample_lanczos())
-    thumb_path = farm_preview_thumb_fs_path(farm_id)
     tmp_path: Path | None = None
     try:
-        PREVIEW_DIR.mkdir(parents=True, exist_ok=True)
-        with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False, dir=PREVIEW_DIR) as tmp:
+        thumb_path.parent.mkdir(parents=True, exist_ok=True)
+        with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False, dir=thumb_path.parent) as tmp:
             tmp_path = Path(tmp.name)
         thumb.save(
             tmp_path,
@@ -88,7 +87,7 @@ def _save_preview_thumbnail(full_rgb: Image.Image, farm_id: int) -> bool:
         tmp_path.replace(thumb_path)
         return True
     except OSError as exc:
-        logger.exception("Falha ao salvar miniatura da fazenda %s: %s", farm_id, exc)
+        logger.exception("Falha ao salvar miniatura %s: %s", thumb_path, exc)
         if tmp_path is not None:
             try:
                 tmp_path.unlink(missing_ok=True)
@@ -105,7 +104,7 @@ def ensure_farm_preview_thumb(farm_id: int) -> bool:
     try:
         with Image.open(png_path) as im:
             rgb = im.convert("RGB")
-            return _save_preview_thumbnail(rgb, farm_id)
+            return save_preview_thumbnail_at(rgb, farm_preview_thumb_fs_path(farm_id))
     except OSError as exc:
         logger.warning("Nao foi possivel abrir PNG do preview da fazenda %s: %s", farm_id, exc)
         return False
@@ -316,7 +315,7 @@ def _try_google_static_preview(
 
 
 def _try_esri_tile_preview(
-    farm_id: int,
+    log_entity_id: int,
     rings: list[list[tuple[float, float]]],
     lon_min: float,
     lat_min: float,
@@ -325,7 +324,7 @@ def _try_esri_tile_preview(
 ) -> Image.Image | None:
     z = _pick_zoom(lon_min, lat_min, lon_max, lat_max)
     if z is None:
-        logger.warning("Nao foi possivel escolher zoom (Esri) para preview da fazenda %s", farm_id)
+        logger.warning("Nao foi possivel escolher zoom (Esri) para preview geografico id=%s", log_entity_id)
         return None
 
     wx0, wy0, wx1, wy1 = _bbox_world_rect(lon_min, lat_min, lon_max, lat_max, z)
@@ -362,7 +361,7 @@ def _try_esri_tile_preview(
                     oy = (ty - ty0) * TILE_SIZE
                     mosaic.paste(tile, (ox, oy))
     except Exception as exc:
-        logger.exception("Falha ao montar mosaic Esri para fazenda %s: %s", farm_id, exc)
+        logger.exception("Falha ao montar mosaic Esri para preview id=%s: %s", log_entity_id, exc)
         return None
 
     crop_x0 = int(wx0 - tx0 * TILE_SIZE)
@@ -408,6 +407,42 @@ def _try_esri_tile_preview(
     return Image.alpha_composite(base, overlay).convert("RGB")
 
 
+def build_satellite_preview_from_geojson(
+    boundary_geojson: str,
+    *,
+    log_entity_id: int = 0,
+) -> Image.Image | None:
+    """
+    Monta imagem RGB (satélite + polígono verde) a partir de GeoJSON de perímetro.
+    Não grava em disco. Usado por previews de fazenda e de setor.
+    """
+    text = (boundary_geojson or "").strip()
+    if not text:
+        return None
+    geometry = _parse_geometry(text)
+    if not geometry:
+        logger.warning("GeoJSON invalido para preview geografico id=%s", log_entity_id)
+        return None
+    rings = _exterior_rings(geometry)
+    bbox = _rings_bbox(rings)
+    if not bbox:
+        return None
+    lon_min, lat_min, lon_max, lat_max = bbox
+    final_img: Image.Image | None = None
+    api_key = (get_settings().google_maps_api_key or "").strip()
+    if api_key:
+        final_img = _try_google_static_preview(rings, bbox, api_key)
+        if final_img is not None and log_entity_id:
+            logger.info("Preview id=%s gerado via Google Static Maps", log_entity_id)
+    if final_img is None:
+        final_img = _try_esri_tile_preview(log_entity_id, rings, lon_min, lat_min, lon_max, lat_max)
+        if final_img is not None and api_key and log_entity_id:
+            logger.info("Preview id=%s gerado via fallback Esri", log_entity_id)
+        elif final_img is not None and log_entity_id:
+            logger.info("Preview id=%s gerado via Esri", log_entity_id)
+    return final_img
+
+
 def generate_farm_preview_image(farm_id: int, boundary_geojson: str | None) -> bool:
     """
     Gera PNG em disco. Prefere Google Maps Static API (satélite + path) se
@@ -417,32 +452,7 @@ def generate_farm_preview_image(farm_id: int, boundary_geojson: str | None) -> b
         remove_farm_preview_image(farm_id)
         return False
 
-    geometry = _parse_geometry(boundary_geojson)
-    if not geometry:
-        logger.warning("GeoJSON invalido para preview da fazenda %s", farm_id)
-        return False
-
-    rings = _exterior_rings(geometry)
-    bbox = _rings_bbox(rings)
-    if not bbox:
-        return False
-
-    lon_min, lat_min, lon_max, lat_max = bbox
-    final_img: Image.Image | None = None
-
-    api_key = (get_settings().google_maps_api_key or "").strip()
-    if api_key:
-        final_img = _try_google_static_preview(rings, bbox, api_key)
-        if final_img is not None:
-            logger.info("Preview fazenda %s gerado via Google Static Maps", farm_id)
-
-    if final_img is None:
-        final_img = _try_esri_tile_preview(farm_id, rings, lon_min, lat_min, lon_max, lat_max)
-        if final_img is not None and api_key:
-            logger.info("Preview fazenda %s gerado via fallback Esri (Google indisponivel ou sem chave)", farm_id)
-        elif final_img is not None:
-            logger.info("Preview fazenda %s gerado via Esri", farm_id)
-
+    final_img = build_satellite_preview_from_geojson(boundary_geojson.strip(), log_entity_id=farm_id)
     if final_img is None:
         return False
 
@@ -463,7 +473,7 @@ def generate_farm_preview_image(farm_id: int, boundary_geojson: str | None) -> b
                 pass
         return False
 
-    if not _save_preview_thumbnail(final_img.copy(), farm_id):
+    if not save_preview_thumbnail_at(final_img.copy(), farm_preview_thumb_fs_path(farm_id)):
         logger.warning("Preview PNG salvo mas miniatura JPEG falhou para fazenda %s", farm_id)
 
     return True

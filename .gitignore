@@ -7,3 +7,5 @@ __pycache__/
 .DS_Store
 app/static/generated/farm_previews/*.png
 app/static/generated/farm_previews/*_thumb.jpg
+app/static/generated/plot_previews/*.png
+app/static/generated/plot_previews/*_thumb.jpg
