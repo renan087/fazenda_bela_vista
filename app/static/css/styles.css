@@ -131,38 +131,33 @@ body {
     body:not(.erp-sidebar-collapsed):not(.erp-sidebar-collapsing) .erp-sidebar-nav [data-submenu-group] > .erp-sidebar-link {
         min-height: 2.75rem;
         box-sizing: border-box;
-        border: 1px solid transparent;
-        transition: background-color 220ms ease, border-color 220ms ease, color 220ms ease, box-shadow 220ms ease;
+        border: none;
+        transition: background-color 220ms ease, color 220ms ease, box-shadow 220ms ease;
     }
 
     body:not(.erp-sidebar-collapsed):not(.erp-sidebar-collapsing) .erp-sidebar-nav .erp-sidebar-link.bg-brand-500 {
-        border-color: #3d5f31;
         box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.2);
     }
 
     body:not(.erp-sidebar-collapsed):not(.erp-sidebar-collapsing) .erp-sidebar-nav .erp-sidebar-link.bg-brand-500:hover {
         background-color: #4f7a3e !important;
-        border-color: #547d42;
         box-shadow: 0 12px 18px -3px rgb(0 0 0 / 0.22);
     }
 
     body:not(.erp-sidebar-collapsed):not(.erp-sidebar-collapsing) .erp-sidebar-nav .erp-sidebar-link.text-slate-300:hover,
     body:not(.erp-sidebar-collapsed):not(.erp-sidebar-collapsing) .erp-sidebar-nav [data-submenu-parent].text-slate-300:hover {
         background-color: rgba(68, 106, 54, 0.16) !important;
-        border-color: rgba(111, 154, 87, 0.52);
         color: #f8fafc !important;
         box-shadow: none;
     }
 
     body:not(.erp-sidebar-collapsed):not(.erp-sidebar-collapsing) .erp-sidebar-nav [data-submenu-parent].text-white {
         background-color: rgba(68, 106, 54, 0.12) !important;
-        border-color: rgba(111, 154, 87, 0.38);
         color: #f8fafc !important;
     }
 
     body:not(.erp-sidebar-collapsed):not(.erp-sidebar-collapsing) .erp-sidebar-nav [data-submenu-parent].text-white:hover {
         background-color: rgba(68, 106, 54, 0.2) !important;
-        border-color: rgba(111, 154, 87, 0.55);
         color: #fff !important;
     }
 
