@@ -1,15 +1,34 @@
 {% extends "base.html" %}
 {% block content %}
+{% from "partials/module_history_filter_toolbar.html" import module_period_picker_inline with context %}
 <div class="stock-page-shell space-y-6" data-modal-single-pane>
     <section class="stock-page-header rounded-[2rem] p-5 shadow-panel">
         <div class="flex flex-wrap items-start justify-between gap-4">
             <div class="min-w-0 stock-page-header-intro" data-stock-header-intro>
                 <div class="stock-page-header-intro-inner">
                     <h2 class="stock-page-card-title">Pluviometria</h2>
-                    <p class="stock-page-card-subtitle">Consolide chuvas por fazenda, período e origem com a mesma linguagem visual dos módulos mais refinados do sistema.</p>
+                    <p class="stock-page-card-subtitle">Consolide chuvas pela fazenda ativa, período e origem com o mesmo padrão visual dos módulos do sistema.</p>
                 </div>
             </div>
             <div class="stock-header-actions stock-header-actions-top max-[899px]:mx-auto max-[899px]:flex max-[899px]:w-full max-[899px]:justify-center">
+                <a href="/pluviometria/exportar.pdf" class="stock-action-button stock-export-button stock-export-button-pdf" data-rainfall-export-link data-base-href="/pluviometria/exportar.pdf">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true">
+                        <path d="M7 3h7l5 5v13a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z"/>
+                        <path d="M14 3v6h6"/>
+                        <path d="M8 13h8"/>
+                        <path d="M8 17h6"/>
+                    </svg>
+                    <span class="stock-action-button-label">Exportar PDF</span>
+                </a>
+                <a href="/pluviometria/exportar.xlsx" class="stock-action-button stock-export-button stock-export-button-xlsx" data-rainfall-export-link data-base-href="/pluviometria/exportar.xlsx">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true">
+                        <path d="M7 3h7l5 5v13a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z"/>
+                        <path d="M14 3v6h6"/>
+                        <path d="m10 12 4 6"/>
+                        <path d="m14 12-4 6"/>
+                    </svg>
+                    <span class="stock-action-button-label">Exportar Excel</span>
+                </a>
                 <button type="button" class="stock-action-button stock-action-button-primary" data-rainfall-launch-open>
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
                         <path d="M12 5v14"/>
@@ -21,45 +40,36 @@
         </div>
     </section>
 
-    <section class="stock-panel rounded-[2rem] bg-white p-6 shadow-panel" data-stock-fade-panel>
-        <div class="module-filter-toolbar">
-            <form method="get" action="/pluviometria" class="grid gap-3 sm:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_minmax(0,0.8fr)_minmax(0,0.8fr)_auto]">
-                <label>
-                    <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Fazenda</span>
-                    <select name="farm_id" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50">
-                        <option value="">Todas</option>
-                        {% for farm in farms %}
-                        <option value="{{ farm.id }}" {% if filters.farm_id == farm.id %}selected{% endif %}>{{ farm.name }}</option>
-                        {% endfor %}
-                    </select>
-                </label>
-                <label>
-                    <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Início</span>
-                    <input type="date" name="start_date" value="{{ filters.start_date }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50">
-                </label>
-                <label>
-                    <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Fim</span>
-                    <input type="date" name="end_date" value="{{ filters.end_date }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50">
-                </label>
-                <div class="flex flex-wrap items-end gap-3">
-                    <button class="min-h-[3.25rem] rounded-2xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white hover:bg-slate-700">Aplicar</button>
-                    <a href="/pluviometria" class="min-h-[3.25rem] rounded-2xl bg-white px-4 py-3 text-sm font-semibold text-slate-700 ring-1 ring-slate-200">Limpar</a>
-                </div>
-            </form>
-        </div>
-
-        <div class="mt-6 flex flex-wrap items-start justify-between gap-4">
+    <section class="stock-panel rounded-[2rem] bg-white p-6 shadow-panel" data-stock-fade-panel data-rainfall-history-shell>
+        <div class="flex flex-wrap items-start justify-between gap-4">
             <div class="min-w-0">
                 <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Histórico climático</p>
                 <h3 class="mt-2 text-2xl font-semibold">Registros de chuva</h3>
             </div>
-            <div class="stock-search-field">
-                <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
-                    <circle cx="8.5" cy="8.5" r="5.75"></circle>
-                    <path d="M13 13l4 4"></path>
-                </svg>
-                <input type="search" placeholder="Buscar fazenda, data, origem ou observação" data-rainfall-search>
-            </div>
+        </div>
+
+        <div class="module-filter-toolbar mt-6">
+            <form method="get" action="/pluviometria" class="module-filter-toolbar-grid" data-module-period-filter-root data-module-range-default="last_10_days" data-module-range-placeholder="Filtre por período" data-module-custom-auto-apply="false">
+                {% if edit_rainfall %}<input type="hidden" name="edit_id" value="{{ edit_rainfall.id }}">{% endif %}
+                <div class="module-filter-toolbar-main">
+                    <div class="stock-search-field module-filter-search">
+                        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+                            <circle cx="8.5" cy="8.5" r="5.75"></circle>
+                            <path d="M13 13l4 4"></path>
+                        </svg>
+                        <input type="search" name="search" value="{{ request.query_params.get('search', '') }}" placeholder="Buscar fazenda, data, origem ou observação" data-module-history-search>
+                    </div>
+                    <div class="module-filter-period-row">
+                        {{ module_period_picker_inline(selected_rainfall_range, rainfall_filter_start_date or '', rainfall_filter_end_date or '', 'past', 'Filtre por período') }}
+                    </div>
+                </div>
+                <div class="module-filter-toolbar-actions">
+                    <button type="submit" class="module-filter-action border-0 bg-slate-900 text-white hover:bg-slate-800">Filtrar</button>
+                    {% if rainfall_filters_active %}
+                    <a href="{{ rainfall_filter_clear_url }}" class="module-filter-action module-filter-action-secondary">Limpar</a>
+                    {% endif %}
+                </div>
+            </form>
         </div>
 
         <div class="stock-table-shell mt-5 overflow-hidden rounded-[1.5rem] border border-slate-200">
@@ -78,7 +88,7 @@
                         {% for item in rainfalls %}
                         <tr data-rainfall-row data-rainfall-search-text="{{ item.farm.name if item.farm else '' }} {{ item.rainfall_date }} {{ item.millimeters }} {{ item.source or '' }} {{ item.notes or '' }}">
                             <td class="px-4 py-3 font-semibold text-slate-900">
-                                <button type="button" class="text-left transition hover:text-brand-700" data-history-view-trigger data-history-view-kicker="Pluviometria" data-history-view-title="{{ item.farm.name if item.farm else 'Fazenda removida' }}" data-history-view-subtitle="{{ item.rainfall_date.strftime('%d-%m-%Y') if item.rainfall_date else '-' }}" data-history-view-source="rainfall-view-{{ item.id }}" data-history-view-edit-url="/pluviometria?edit_id={{ item.id }}">{{ item.farm.name if item.farm else "Fazenda removida" }}</button>
+                                <button type="button" class="text-left transition hover:text-brand-700" data-history-view-trigger data-history-view-kicker="Pluviometria" data-history-view-title="{{ item.farm.name if item.farm else 'Fazenda removida' }}" data-history-view-subtitle="{{ item.rainfall_date.strftime('%d-%m-%Y') if item.rainfall_date else '-' }}" data-history-view-source="rainfall-view-{{ item.id }}" data-history-view-edit-url="{{ rainfall_edit_urls[item.id] }}">{{ item.farm.name if item.farm else "Fazenda removida" }}</button>
                                 <template id="rainfall-view-{{ item.id }}">
                                     <div class="grid gap-3 sm:grid-cols-2">
                                         <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Fazenda</p><p class="mt-2 text-sm font-medium text-slate-800">{{ item.farm.name if item.farm else "Fazenda removida" }}</p></div>
@@ -97,7 +107,7 @@
                             <td class="px-4 py-3">{{ item.source or "-" }}</td>
                             <td class="px-4 py-3">
                                 <div class="flex items-center justify-end gap-2">
-                                    <a href="/pluviometria?edit_id={{ item.id }}" class="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-100" title="Editar">
+                                    <a href="{{ rainfall_edit_urls[item.id] }}" class="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-100" title="Editar">
                                         <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                             <path d="M12 20h9"/>
                                             <path d="M16.5 3.5a2.1 2.1 0 1 1 3 3L7 19l-4 1 1-4Z"/>
@@ -202,22 +212,46 @@
 </dialog>
 
 {% include "partials/history_view_modal.html" %}
+<script src="{{ url_for('static', path='js/module_period_filters.js') }}?v=6"></script>
 <script>
     (() => {
         const launchModal = document.getElementById('rainfall-launch-modal');
         const openButtons = Array.from(document.querySelectorAll('[data-rainfall-launch-open]'));
         const closeButtons = Array.from(document.querySelectorAll('[data-rainfall-launch-close]'));
-        const searchInput = document.querySelector('[data-rainfall-search]');
-        const rows = Array.from(document.querySelectorAll('[data-rainfall-row]'));
+        const historyShell = document.querySelector('[data-rainfall-history-shell]');
+        const searchInput = historyShell?.querySelector('[data-module-history-search]');
+        const rows = Array.from(historyShell?.querySelectorAll('[data-rainfall-row]') || []);
         const emptyState = document.querySelector('[data-rainfall-search-empty]');
+        const exportLinks = Array.from(document.querySelectorAll('[data-rainfall-export-link]'));
+        const afterEditCloseUrl = {{ rainfall_after_edit_close_url|tojson }};
         const stickyHeader = document.querySelector('.stock-page-header');
         const headerIntro = stickyHeader?.querySelector('[data-stock-header-intro]');
         const fadingPanels = Array.from(document.querySelectorAll('[data-stock-fade-panel]'));
         const isEditing = {{ 'true' if edit_rainfall else 'false' }};
 
+        const syncRainfallExportLinks = () => {
+            const filterStartInput = historyShell?.querySelector('[data-module-filter-start]');
+            const filterEndInput = historyShell?.querySelector('[data-module-filter-end]');
+            const rangeInput = historyShell?.querySelector('[data-module-range-input]');
+            exportLinks.forEach((link) => {
+                const baseHref = link.dataset.baseHref;
+                if (!baseHref) return;
+                const params = new URLSearchParams();
+                const query = (searchInput?.value || '').trim();
+                if (query) params.set('search', query);
+                const startDate = (filterStartInput?.value || '').trim();
+                if (startDate) params.set('start_date', startDate);
+                const endDate = (filterEndInput?.value || '').trim();
+                if (endDate) params.set('end_date', endDate);
+                const rangeValue = (rangeInput?.value || '').trim();
+                if (rangeValue) params.set('schedule_range', rangeValue);
+                link.href = params.toString() ? `${baseHref}?${params.toString()}` : baseHref;
+            });
+        };
+
         const closeModal = () => {
             if (isEditing) {
-                window.location.href = '/pluviometria';
+                window.location.href = afterEditCloseUrl;
                 return;
             }
             launchModal?.close();
@@ -260,6 +294,7 @@
 
         const normalizeText = (value) => (value || '').toString().normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
         const applyLocalSearch = () => {
+            syncRainfallExportLinks();
             const query = normalizeText(searchInput?.value || '');
             let visible = 0;
             rows.forEach((row) => {
@@ -268,10 +303,17 @@
                 row.classList.toggle('hidden', !matches);
                 if (matches) visible += 1;
             });
-            emptyState?.classList.toggle('hidden', visible !== 0);
+            emptyState?.classList.toggle('hidden', visible !== 0 || rows.length === 0);
         };
         searchInput?.addEventListener('input', applyLocalSearch);
         applyLocalSearch();
+
+        historyShell?.querySelectorAll('form[data-module-period-filter-root]').forEach((form) => {
+            window.ModulePeriodFilters?.bind(form, {
+                onSync: () => syncRainfallExportLinks(),
+            });
+        });
+        syncRainfallExportLinks();
 
         const mobileCompactMq = window.matchMedia('(max-width: 899px)');
         const parseStickyTopPx = (el) => {

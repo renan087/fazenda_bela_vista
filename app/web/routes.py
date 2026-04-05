@@ -6144,29 +6144,98 @@ def delete_irrigation_action(
     return _redirect("/irrigacao")
 
 
+def _rainfall_history_dataset(
+    request: Request,
+    repo: FarmRepository,
+    *,
+    flash_invalid: bool,
+) -> dict:
+    """Listagem de pluviometria: fazenda ativa, período (safra + filtro) e busca."""
+    scope = _global_scope_context(request, repo)
+    farm_scope_id = _active_farm_id(request)
+    start_date, end_date, filter_start_str, filter_end_str = _schedule_filter_date_bounds(
+        request, scope["active_season"], flash_invalid=flash_invalid
+    )
+    selected_rainfall_range = (
+        _fertilization_filter_range_preset(
+            request.query_params.get("schedule_range"),
+            filter_start_str,
+            filter_end_str,
+        )
+        if _period_filter_explicit_in_query(request)
+        else ""
+    )
+    search_q = (request.query_params.get("search") or "").strip() or None
+    rainfalls = repo.list_rainfalls(
+        farm_id=farm_scope_id,
+        start_date=start_date,
+        end_date=end_date,
+    )
+    if search_q:
+        query_norm = _normalize_search_value(search_q)
+        rainfalls = [
+            item
+            for item in rainfalls
+            if query_norm
+            in _normalize_search_value(
+                f"{item.farm.name if item.farm else ''} "
+                f"{item.rainfall_date or ''} "
+                f"{item.millimeters or ''} "
+                f"{item.source or ''} "
+                f"{item.notes or ''}"
+            )
+        ]
+    rainfalls = _sort_collection_desc(
+        rainfalls,
+        lambda item: item.rainfall_date,
+        lambda item: item.id,
+    )
+    return {
+        "scope": scope,
+        "farm_scope_id": farm_scope_id,
+        "filter_start_str": filter_start_str,
+        "filter_end_str": filter_end_str,
+        "selected_rainfall_range": selected_rainfall_range,
+        "search_q": search_q,
+        "rainfalls_filtered": rainfalls,
+    }
+
+
 @router.get("/pluviometria")
 def rainfall_page(
     request: Request,
-    farm_id: int | None = None,
-    start_date: str | None = None,
-    end_date: str | None = None,
     edit_id: int | None = None,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user_web),
     csrf_token: str = Depends(get_csrf_token),
 ):
     repo = _repository(db)
-    effective_farm_id = farm_id or _active_farm_id(request)
-    rainfalls = _sort_collection_desc(
-        repo.list_rainfalls(
-            farm_id=effective_farm_id,
-            start_date=_date_or_none(start_date),
-            end_date=_date_or_none(end_date),
-        ),
-        lambda item: item.rainfall_date,
-        lambda item: item.id,
+    data = _rainfall_history_dataset(request, repo, flash_invalid=True)
+    scope = data["scope"]
+    filter_start_str = data["filter_start_str"]
+    filter_end_str = data["filter_end_str"]
+    selected_rainfall_range = data["selected_rainfall_range"]
+    search_q = data["search_q"]
+    rainfalls = data["rainfalls_filtered"]
+
+    rainfall_filter_clear_url = _url_with_query(
+        request,
+        start_date=None,
+        end_date=None,
+        schedule_range=None,
+        rainfalls_page=None,
+        search=None,
+        edit_id=None,
     )
+    rainfall_after_edit_close_url = _url_with_query(request, edit_id=None)
+
     rainfalls_pagination = _paginate_collection(request, rainfalls, "rainfalls_page")
+    rainfall_edit_urls = {
+        item.id: _url_with_query(request, edit_id=item.id) for item in rainfalls_pagination["items"]
+    }
+    rainfall_filters_active = bool(
+        _period_filter_explicit_in_query(request) or bool(search_q)
+    )
     return templates.TemplateResponse(
         "rainfall.html",
         _base_context(
@@ -6175,15 +6244,16 @@ def rainfall_page(
             csrf_token,
             "rainfall",
             _repo=repo,
-            farms=repo.list_farms(),
             rainfalls=rainfalls_pagination["items"],
             rainfalls_pagination=rainfalls_pagination,
+            rainfall_filter_start_date=filter_start_str or None,
+            rainfall_filter_end_date=filter_end_str or None,
+            rainfall_filter_clear_url=rainfall_filter_clear_url,
+            rainfall_after_edit_close_url=rainfall_after_edit_close_url,
+            selected_rainfall_range=selected_rainfall_range,
+            rainfall_filters_active=rainfall_filters_active,
+            rainfall_edit_urls=rainfall_edit_urls,
             edit_rainfall=repo.get_rainfall(edit_id) if edit_id else None,
-            filters={
-                "farm_id": effective_farm_id,
-                "start_date": start_date or "",
-                "end_date": end_date or "",
-            },
         ),
     )
 
@@ -6277,6 +6347,235 @@ def delete_rainfall_action(
     repo.delete(rainfall)
     _flash(request, "success", "Pluviometria excluida com sucesso.")
     return _redirect("/pluviometria")
+
+
+@router.get("/pluviometria/exportar.xlsx")
+def export_rainfall_xlsx(
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    del user
+    repo = _repository(db)
+    data = _rainfall_history_dataset(request, repo, flash_invalid=False)
+    rainfalls = data["rainfalls_filtered"]
+
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = "Pluviometria"
+    sheet.append(["Fazenda", "Data", "Chuva (mm)", "Origem", "Observações"])
+    for item in rainfalls:
+        sheet.append([
+            item.farm.name if item.farm else "Fazenda removida",
+            item.rainfall_date.isoformat() if item.rainfall_date else "",
+            _format_decimal_br(float(item.millimeters or 0), 2),
+            item.source or "",
+            item.notes or "",
+        ])
+    for index, width in enumerate([28, 14, 14, 28, 48], start=1):
+        sheet.column_dimensions[get_column_letter(index)].width = width
+
+    output = BytesIO()
+    workbook.save(output)
+    output.seek(0)
+    return StreamingResponse(
+        output,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": 'attachment; filename="pluviometria.xlsx"'},
+    )
+
+
+@router.get("/pluviometria/exportar.pdf")
+def export_rainfall_pdf(
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    repo = _repository(db)
+    data = _rainfall_history_dataset(request, repo, flash_invalid=False)
+    rainfalls = data["rainfalls_filtered"]
+    scope = data["scope"]
+    raw_start = data["filter_start_str"]
+    raw_end = data["filter_end_str"]
+    farm_scope_id = data["farm_scope_id"]
+    search_q = data["search_q"]
+
+    generated_at = app_now()
+    generated_by = user.display_name or user.name or user.email
+    farm_name = scope["active_farm"].name if scope.get("active_farm") else "Fazenda Bela Vista"
+    season_label = scope["active_season"].name if scope.get("active_season") else "Safra ativa"
+    period_label = "Safra ativa"
+    if raw_start or raw_end:
+        period_label = f"{_format_iso_date_br(raw_start)} a {_format_iso_date_br(raw_end)}"
+    scope_farm_label = (
+        farm_name
+        if farm_scope_id
+        else "Todas as fazendas (sem fazenda ativa no contexto)"
+    )
+    search_label = (search_q or "").strip() or "—"
+    total_mm = sum(float(item.millimeters or 0) for item in rainfalls)
+
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=landscape(A4), leftMargin=28, rightMargin=28, topMargin=32, bottomMargin=34)
+    styles = getSampleStyleSheet()
+    farm_header_style = ParagraphStyle(
+        "RainfallPdfFarmHeader",
+        parent=styles["Title"],
+        fontName="Helvetica-Bold",
+        fontSize=18,
+        leading=22,
+        alignment=TA_RIGHT,
+        textColor=colors.HexColor("#1e293b"),
+    )
+    meta_label_style = ParagraphStyle(
+        "RainfallPdfMetaLabel",
+        parent=styles["BodyText"],
+        fontName="Helvetica-Bold",
+        fontSize=8,
+        leading=10,
+        textColor=colors.HexColor("#446a36"),
+        spaceAfter=2,
+    )
+    meta_value_style = ParagraphStyle(
+        "RainfallPdfMetaValue",
+        parent=styles["BodyText"],
+        fontName="Helvetica",
+        fontSize=10,
+        leading=13,
+        textColor=colors.HexColor("#334155"),
+    )
+    cell_style = ParagraphStyle(
+        "RainfallPdfCell",
+        parent=styles["BodyText"],
+        fontName="Helvetica",
+        fontSize=8.2,
+        leading=10.4,
+        textColor=colors.HexColor("#0f172a"),
+    )
+    cell_muted_style = ParagraphStyle("RainfallPdfCellMuted", parent=cell_style, textColor=colors.HexColor("#475569"))
+    summary_value_style = ParagraphStyle(
+        "RainfallPdfSummaryValue",
+        parent=styles["BodyText"],
+        fontName="Helvetica-Bold",
+        fontSize=11,
+        leading=14,
+        textColor=colors.HexColor("#0f172a"),
+    )
+
+    logo_path = Path("app/static/images/logo.png")
+    logo_flowable = Image(str(logo_path), width=92.8, height=73.6) if logo_path.exists() else Spacer(92.8, 73.6)
+    header_table = Table([[logo_flowable, Paragraph(farm_name, farm_header_style)]], colWidths=[76, doc.width - 76], hAlign="LEFT")
+    header_table.setStyle(TableStyle([
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("ALIGN", (1, 0), (1, 0), "RIGHT"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 0),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+        ("TOPPADDING", (0, 0), (-1, -1), 0),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
+    ]))
+
+    summary_table = Table([
+        [
+            [Paragraph("FAZENDA (FILTRO)", meta_label_style), Paragraph(scope_farm_label, meta_value_style)],
+            [Paragraph("SAFRA", meta_label_style), Paragraph(season_label, meta_value_style)],
+            [Paragraph("PERÍODO", meta_label_style), Paragraph(period_label, meta_value_style)],
+        ],
+        [
+            [Paragraph("BUSCA", meta_label_style), Paragraph(search_label, meta_value_style)],
+            [Paragraph("REGISTROS", meta_label_style), Paragraph(str(len(rainfalls)), summary_value_style)],
+            [Paragraph("CHUVA TOTAL (mm)", meta_label_style), Paragraph(_format_decimal_br(total_mm, 2), summary_value_style)],
+        ],
+    ], colWidths=[doc.width / 3] * 3, hAlign="LEFT")
+    summary_table.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#f8fafc")),
+        ("BOX", (0, 0), (-1, -1), 0.8, colors.HexColor("#dbe5dd")),
+        ("INNERGRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#e2e8f0")),
+        ("LEFTPADDING", (0, 0), (-1, -1), 12),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 12),
+        ("TOPPADDING", (0, 0), (-1, -1), 10),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 10),
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+    ]))
+
+    title_style = ParagraphStyle(
+        "RainfallPdfTitle",
+        parent=styles["Heading2"],
+        fontName="Helvetica-Bold",
+        fontSize=13,
+        leading=16,
+        textColor=colors.HexColor("#0f172a"),
+        spaceAfter=6,
+    )
+    elements = [header_table, Spacer(1, 16), summary_table, Spacer(1, 12), Paragraph("Histórico de pluviometria", title_style), Spacer(1, 8)]
+    data_rows = [["Fazenda", "Data", "Chuva (mm)", "Origem", "Observações"]]
+    for item in rainfalls:
+        data_rows.append([
+            Paragraph(item.farm.name if item.farm else "Fazenda removida", cell_style),
+            Paragraph(item.rainfall_date.strftime("%d/%m/%Y") if item.rainfall_date else "-", cell_style),
+            Paragraph(_format_decimal_br(float(item.millimeters or 0), 2), cell_style),
+            Paragraph(item.source or "-", cell_style),
+            Paragraph(item.notes or "-", cell_muted_style),
+        ])
+
+    table = Table(data_rows, colWidths=[110, 72, 80, 100, doc.width - 362], repeatRows=1, hAlign="LEFT")
+    table.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#446a36")),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("FONTSIZE", (0, 0), (-1, -1), 8.5),
+        ("LEADING", (0, 0), (-1, -1), 10),
+        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f8fafc")]),
+        ("BOX", (0, 0), (-1, -1), 0.6, colors.HexColor("#dbe5dd")),
+        ("INNERGRID", (0, 0), (-1, -1), 0.35, colors.HexColor("#e2e8f0")),
+        ("LEFTPADDING", (0, 0), (-1, -1), 8),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+        ("TOPPADDING", (0, 0), (-1, -1), 7),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 7),
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+    ]))
+    elements.append(table)
+    elements.append(Spacer(1, 14))
+
+    footer_summary = Table([
+        ["Registros", str(len(rainfalls))],
+        ["Chuva total (mm)", _format_decimal_br(total_mm, 2)],
+    ], colWidths=[doc.width * 0.28, doc.width * 0.18], hAlign="LEFT")
+    footer_summary.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#f8fafc")),
+        ("BOX", (0, 0), (-1, -1), 0.8, colors.HexColor("#dbe5dd")),
+        ("INNERGRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#e2e8f0")),
+        ("FONTNAME", (0, 0), (-1, -1), "Helvetica-Bold"),
+        ("TEXTCOLOR", (0, 0), (-1, -1), colors.HexColor("#0f172a")),
+        ("LEFTPADDING", (0, 0), (-1, -1), 10),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 10),
+        ("TOPPADDING", (0, 0), (-1, -1), 8),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
+    ]))
+    elements.append(footer_summary)
+
+    generated_at_label = format_app_datetime(generated_at)
+
+    def _draw_footer(canvas, doc):
+        canvas.saveState()
+        canvas.setStrokeColor(colors.HexColor("#e2e8f0"))
+        canvas.line(doc.leftMargin, 22, landscape(A4)[0] - doc.rightMargin, 22)
+        canvas.setFont("Helvetica", 8.2)
+        canvas.setFillColor(colors.HexColor("#64748b"))
+        canvas.drawString(doc.leftMargin, 10, f"Gerado por: {generated_by}")
+        canvas.drawRightString(
+            landscape(A4)[0] - doc.rightMargin,
+            10,
+            f"Emitido em {generated_at_label} • Página {canvas.getPageNumber()}",
+        )
+        canvas.restoreState()
+
+    doc.build(elements, onFirstPage=_draw_footer, onLaterPages=_draw_footer)
+    buffer.seek(0)
+    return StreamingResponse(
+        buffer,
+        media_type="application/pdf",
+        headers={"Content-Disposition": 'attachment; filename="pluviometria.pdf"'},
+    )
 
 
 @router.get("/fertilizacao")
