@@ -1,67 +1,151 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="grid gap-6 xl:grid-cols-[0.85fr_1.15fr]">
-    <section class="rounded-[2rem] bg-white p-6 shadow-panel">
-        <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Mapa da Fazenda</p>
-        <h3 class="mt-2 text-2xl font-semibold">Fazendas e setores georreferenciados</h3>
-        <p class="mt-2 text-sm text-slate-500">Visualizacao operacional com base em OpenStreetMap e geometrias em GeoJSON enviadas no cadastro.</p>
-
-        <div class="mt-6 space-y-3">
-            {% for plot in plots %}
-            <a href="/mapa?edit_plot_id={{ plot.id }}" class="flex items-center justify-between rounded-2xl border px-4 py-3 transition {% if edit_plot and edit_plot.id == plot.id %}border-brand-300 bg-brand-50{% else %}border-slate-200 bg-slate-50 hover:border-brand-200 hover:bg-brand-50/40{% endif %}">
-                <div>
-                    <p class="font-medium text-slate-900">{{ plot.name }}</p>
-                    <p class="text-sm text-slate-500">{{ plot.farm.name if plot.farm else "Sem fazenda" }} • {{ plot.area_hectares }} ha</p>
-                </div>
-                <span class="text-sm font-semibold text-brand-700">{% if edit_plot and edit_plot.id == plot.id %}Editando{% else %}Editar no mapa{% endif %}</span>
-            </a>
-            {% else %}
-            <p class="text-sm text-slate-500">Sem setores com geometria cadastrada.</p>
-            {% endfor %}
-        </div>
-
-        {% if edit_plot %}
-        <div class="mt-6 rounded-[1.5rem] border border-brand-100 bg-brand-50/40 p-5">
-            <div class="flex flex-wrap items-start justify-between gap-3">
-                <div>
-                    <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Edicao de poligono</p>
-                    <h4 class="mt-2 text-xl font-semibold">{{ edit_plot.name }}</h4>
-                    <p class="mt-2 text-sm text-slate-600">Arraste os pontos para editar, clique no mapa para adicionar novos vertices e use o botao abaixo para remover o ponto selecionado.</p>
-                </div>
-                <a href="/setores?edit_id={{ edit_plot.id }}" class="rounded-xl bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-700">Abrir setor</a>
-            </div>
-            <div class="mt-4 grid gap-3 md:grid-cols-3">
-                <div class="rounded-2xl bg-white p-4">
-                    <p class="text-xs uppercase tracking-[0.25em] text-slate-400">Area recalculada</p>
-                    <p class="mt-2 text-2xl font-semibold text-slate-900"><span data-area-hectares>{{ edit_plot.area_hectares }}</span> ha</p>
-                </div>
-                <div class="rounded-2xl bg-white p-4">
-                    <p class="text-xs uppercase tracking-[0.25em] text-slate-400">Vertices</p>
-                    <p class="mt-2 text-2xl font-semibold text-slate-900" data-point-count>0</p>
-                </div>
-                <div class="rounded-2xl bg-white p-4">
-                    <p class="text-xs uppercase tracking-[0.25em] text-slate-400">Ponto selecionado</p>
-                    <p class="mt-2 text-2xl font-semibold text-slate-900" data-selected-point>Nenhum</p>
+<div class="stock-page-shell space-y-6">
+    <section class="stock-page-header rounded-[2rem] p-5 shadow-panel">
+        <div class="flex flex-wrap items-start justify-between gap-4">
+            <div class="min-w-0 stock-page-header-intro" data-stock-header-intro>
+                <div class="stock-page-header-intro-inner">
+                    <h2 class="stock-page-card-title">Mapa da Fazenda</h2>
+                    <p class="stock-page-card-subtitle">Visualize fazendas e setores georreferenciados com edição de polígonos no mesmo padrão operacional das páginas mais refinadas.</p>
                 </div>
             </div>
-            <form method="post" action="/mapa/setores/{{ edit_plot.id }}/salvar" class="mt-4 flex flex-wrap gap-3" id="map-editor-form">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                <input type="hidden" name="boundary_geojson" data-boundary-input>
-                <button class="rounded-2xl bg-brand-500 px-4 py-3 font-semibold text-white hover:bg-brand-700">Salvar edicao</button>
-                <a href="/mapa" class="rounded-2xl bg-slate-100 px-4 py-3 font-semibold text-slate-700 hover:bg-slate-200">Cancelar edicao</a>
-                <button type="button" class="rounded-2xl bg-rose-600 px-4 py-3 font-semibold text-white hover:bg-rose-700" data-remove-point>Remover ponto</button>
-            </form>
+            <div class="stock-header-actions stock-header-actions-top">
+                {% if edit_plot %}
+                <a href="/setores?edit_id={{ edit_plot.id }}" class="stock-action-button">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                        <path d="M9 18l6-6-6-6"/>
+                    </svg>
+                    <span class="stock-action-button-label">Abrir setor</span>
+                </a>
+                {% endif %}
+            </div>
         </div>
-        {% endif %}
     </section>
 
-    <section class="rounded-[2rem] bg-white p-6 shadow-panel">
-        <div id="farmMap" class="h-[720px] overflow-hidden rounded-[1.5rem]"></div>
-    </section>
+    <div class="grid gap-6 xl:grid-cols-[0.92fr_1.08fr]">
+        <section class="stock-panel rounded-[2rem] bg-white p-6 shadow-panel" data-stock-fade-panel>
+            <div class="flex flex-wrap items-start justify-between gap-4">
+                <div class="min-w-0">
+                    <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Setores georreferenciados</p>
+                    <h3 class="mt-2 text-2xl font-semibold">Navegação territorial</h3>
+                    <p class="mt-2 text-sm text-slate-500">Escolha um setor para abrir a geometria no mapa e, quando necessário, editar o perímetro diretamente na tela.</p>
+                </div>
+                <div class="stock-search-field">
+                    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+                        <circle cx="8.5" cy="8.5" r="5.75"></circle>
+                        <path d="M13 13l4 4"></path>
+                    </svg>
+                    <input type="search" placeholder="Buscar setor ou fazenda" data-map-search>
+                </div>
+            </div>
+
+            <div class="mt-6 space-y-3">
+                {% for plot in plots %}
+                <a href="/mapa?edit_plot_id={{ plot.id }}" class="flex items-center justify-between rounded-2xl border px-4 py-4 transition {% if edit_plot and edit_plot.id == plot.id %}border-brand-300 bg-brand-50{% else %}border-slate-200 bg-slate-50 hover:border-brand-200 hover:bg-brand-50/40{% endif %}" data-map-plot-card data-map-plot-search-text="{{ plot.name }} {{ plot.farm.name if plot.farm else '' }} {{ plot.area_hectares }}">
+                    <div class="min-w-0">
+                        <p class="font-medium text-slate-900">{{ plot.name }}</p>
+                        <p class="text-sm text-slate-500">{{ plot.farm.name if plot.farm else "Sem fazenda" }} • {{ plot.area_hectares }} ha</p>
+                    </div>
+                    <span class="text-sm font-semibold text-brand-700 whitespace-nowrap">{% if edit_plot and edit_plot.id == plot.id %}Editando{% else %}Abrir no mapa{% endif %}</span>
+                </a>
+                {% else %}
+                <p class="text-sm text-slate-500">Sem setores com geometria cadastrada.</p>
+                {% endfor %}
+            </div>
+            <p class="stock-search-empty mt-4 hidden text-sm text-slate-500" data-map-search-empty>Nenhum setor corresponde à busca digitada.</p>
+
+            {% if edit_plot %}
+            <div class="mt-6 rounded-[1.5rem] border border-brand-100 bg-brand-50/40 p-5">
+                <div class="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                        <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Edição de polígono</p>
+                        <h4 class="mt-2 text-xl font-semibold">{{ edit_plot.name }}</h4>
+                        <p class="mt-2 text-sm text-slate-600">Arraste os pontos para editar, clique no mapa para adicionar novos vértices e use o botão abaixo para remover o ponto selecionado.</p>
+                    </div>
+                </div>
+                <div class="mt-4 grid gap-3 md:grid-cols-3">
+                    <div class="rounded-2xl bg-white p-4">
+                        <p class="text-xs uppercase tracking-[0.25em] text-slate-400">Área recalculada</p>
+                        <p class="mt-2 text-2xl font-semibold text-slate-900"><span data-area-hectares>{{ edit_plot.area_hectares }}</span> ha</p>
+                    </div>
+                    <div class="rounded-2xl bg-white p-4">
+                        <p class="text-xs uppercase tracking-[0.25em] text-slate-400">Vértices</p>
+                        <p class="mt-2 text-2xl font-semibold text-slate-900" data-point-count>0</p>
+                    </div>
+                    <div class="rounded-2xl bg-white p-4">
+                        <p class="text-xs uppercase tracking-[0.25em] text-slate-400">Ponto selecionado</p>
+                        <p class="mt-2 text-2xl font-semibold text-slate-900" data-selected-point>Nenhum</p>
+                    </div>
+                </div>
+                <form method="post" action="/mapa/setores/{{ edit_plot.id }}/salvar" class="mt-4 flex flex-wrap gap-3" id="map-editor-form">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    <input type="hidden" name="boundary_geojson" data-boundary-input>
+                    <button class="rounded-2xl bg-brand-500 px-4 py-3 font-semibold text-white hover:bg-brand-700">Salvar edição</button>
+                    <a href="/mapa" class="rounded-2xl bg-slate-100 px-4 py-3 font-semibold text-slate-700 hover:bg-slate-200">Cancelar edição</a>
+                    <button type="button" class="rounded-2xl bg-rose-600 px-4 py-3 font-semibold text-white hover:bg-rose-700" data-remove-point>Remover ponto</button>
+                </form>
+            </div>
+            {% endif %}
+        </section>
+
+        <section class="stock-panel rounded-[2rem] bg-white p-6 shadow-panel">
+            <div id="farmMap" class="h-[720px] overflow-hidden rounded-[1.5rem]"></div>
+        </section>
+    </div>
 </div>
 
 <script>
     (() => {
+        const searchInput = document.querySelector('[data-map-search]');
+        const cards = Array.from(document.querySelectorAll('[data-map-plot-card]'));
+        const emptyState = document.querySelector('[data-map-search-empty]');
+        const stickyHeader = document.querySelector('.stock-page-header');
+        const headerIntro = stickyHeader?.querySelector('[data-stock-header-intro]');
+        const fadingPanels = Array.from(document.querySelectorAll('[data-stock-fade-panel]'));
+        const normalizeText = (value) => (value || '').toString().normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+        const applyLocalSearch = () => {
+            const query = normalizeText(searchInput?.value || '');
+            let visible = 0;
+            cards.forEach((card) => {
+                const haystack = normalizeText(card.dataset.mapPlotSearchText || card.textContent);
+                const matches = !query || haystack.includes(query);
+                card.classList.toggle('hidden', !matches);
+                if (matches) visible += 1;
+            });
+            emptyState?.classList.toggle('hidden', visible !== 0);
+        };
+        searchInput?.addEventListener('input', applyLocalSearch);
+        applyLocalSearch();
+
+        const mobileCompactMq = window.matchMedia('(max-width: 899px)');
+        const parseStickyTopPx = (el) => {
+            const raw = getComputedStyle(el).top;
+            if (!raw || raw === 'auto') return 0;
+            const pxMatch = /^([\d.]+)px$/.exec(raw);
+            if (pxMatch) return parseFloat(pxMatch[1]);
+            return 0;
+        };
+        const syncHeaderFade = () => {
+            if (!stickyHeader || !headerIntro || !fadingPanels.length) return;
+            const compact = mobileCompactMq.matches;
+            const stickyTop = parseStickyTopPx(stickyHeader);
+            const introRect = headerIntro.getBoundingClientRect();
+            const activePanel = fadingPanels[0];
+            const panelRect = activePanel.getBoundingClientRect();
+            const overlap = compact ? Math.max(0, (stickyTop + introRect.height) - panelRect.top) : 0;
+            const fadeDistance = compact ? Math.max(introRect.height * 0.95, 1) : 1;
+            const progress = compact ? Math.min(overlap / fadeDistance, 1) : 0;
+            stickyHeader.style.setProperty('--stock-header-progress', progress.toFixed(3));
+            activePanel.style.setProperty('--stock-header-progress', progress.toFixed(3));
+            activePanel.classList.toggle('stock-panel-under-header', compact && progress > 0.02);
+        };
+        const requestHeaderSync = () => window.requestAnimationFrame(syncHeaderFade);
+        window.addEventListener('scroll', requestHeaderSync, { passive: true });
+        window.addEventListener('resize', requestHeaderSync);
+        if (mobileCompactMq.addEventListener) mobileCompactMq.addEventListener('change', requestHeaderSync);
+        else if (mobileCompactMq.addListener) mobileCompactMq.addListener(requestHeaderSync);
+        requestHeaderSync();
+
         const mapData = {{ map_geojson|safe }};
         const editPlot = {{ edit_plot_geometry|safe if edit_plot_geometry else 'null' }};
         const farmMap = L.map('farmMap').setView([-20.7442, -42.8721], 14);

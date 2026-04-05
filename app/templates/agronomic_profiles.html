@@ -1,57 +1,230 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
-    <section class="rounded-[2rem] bg-white p-6 shadow-panel">
-        <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Perfil Agronomico</p>
-        <h3 class="mt-2 text-2xl font-semibold">Contexto tecnico da fazenda</h3>
-        <form method="post" action="/perfil-agronomico" class="mt-6 grid gap-4">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-            {% include "partials/launch_context.html" %}
-            <label><span class="mb-2 block text-sm font-medium">Cultura</span><input name="culture" value="{{ edit_profile.culture if edit_profile else 'Cafe arabica' }}" class="w-full rounded-2xl border-slate-200 bg-slate-50" required></label>
-            <label><span class="mb-2 block text-sm font-medium">Regiao</span><input name="region" value="{{ edit_profile.region if edit_profile else 'Bahia - Brasil' }}" class="w-full rounded-2xl border-slate-200 bg-slate-50" required></label>
-            <label><span class="mb-2 block text-sm font-medium">Clima</span><input name="climate" value="{{ edit_profile.climate if edit_profile else '' }}" class="w-full rounded-2xl border-slate-200 bg-slate-50"></label>
-            <label><span class="mb-2 block text-sm font-medium">Tipo de solo</span><input name="soil_type" value="{{ edit_profile.soil_type if edit_profile else '' }}" class="w-full rounded-2xl border-slate-200 bg-slate-50"></label>
-            <label><span class="mb-2 block text-sm font-medium">Sistema de irrigacao</span><input name="irrigation_system" value="{{ edit_profile.irrigation_system if edit_profile else '' }}" class="w-full rounded-2xl border-slate-200 bg-slate-50"></label>
-            <label><span class="mb-2 block text-sm font-medium">Espacamento entre plantas</span><input name="plant_spacing" value="{{ edit_profile.plant_spacing if edit_profile else '' }}" class="w-full rounded-2xl border-slate-200 bg-slate-50"></label>
-            <label><span class="mb-2 block text-sm font-medium">Espacamento entre gotejos</span><input name="drip_spacing" value="{{ edit_profile.drip_spacing if edit_profile else '' }}" class="w-full rounded-2xl border-slate-200 bg-slate-50"></label>
-            <label><span class="mb-2 block text-sm font-medium">Fertilizantes utilizados</span><textarea name="fertilizers_used" rows="4" class="w-full rounded-2xl border-slate-200 bg-slate-50" placeholder="Um item por linha">{{ edit_profile.fertilizers_used if edit_profile else '' }}</textarea></label>
-            <label><span class="mb-2 block text-sm font-medium">Fase da lavoura</span><textarea name="crop_stage" rows="4" class="w-full rounded-2xl border-slate-200 bg-slate-50" placeholder="Um item por linha">{{ edit_profile.crop_stage if edit_profile else '' }}</textarea></label>
-            <label><span class="mb-2 block text-sm font-medium">Pragas comuns</span><textarea name="common_pests" rows="4" class="w-full rounded-2xl border-slate-200 bg-slate-50" placeholder="Um item por linha">{{ edit_profile.common_pests if edit_profile else '' }}</textarea></label>
-            <div class="flex gap-3">
-                <button class="rounded-2xl bg-brand-500 px-4 py-3 font-semibold text-white hover:bg-brand-700">Salvar perfil</button>
+<div class="stock-page-shell space-y-6" data-modal-single-pane>
+    <section class="stock-page-header rounded-[2rem] p-5 shadow-panel">
+        <div class="flex flex-wrap items-start justify-between gap-4">
+            <div class="min-w-0 stock-page-header-intro" data-stock-header-intro>
+                <div class="stock-page-header-intro-inner">
+                    <h2 class="stock-page-card-title">Perfil Agronômico</h2>
+                    <p class="stock-page-card-subtitle">Centralize o contexto técnico das fazendas e mantenha a base usada pela IA no mesmo padrão visual dos módulos mais recentes.</p>
+                </div>
             </div>
-        </form>
-        {% if edit_farm and edit_profile %}
-        <form method="post" action="/perfil-agronomico/{{ edit_farm.id }}/excluir" class="mt-3" onsubmit="return confirm('Remover o perfil agronomico desta fazenda?');">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-            <button class="rounded-2xl bg-rose-600 px-4 py-3 font-semibold text-white hover:bg-rose-700">Excluir perfil</button>
-        </form>
-        {% endif %}
+            <div class="stock-header-actions stock-header-actions-top max-[899px]:mx-auto max-[899px]:flex max-[899px]:w-full max-[899px]:justify-center">
+                <button type="button" class="stock-action-button stock-action-button-primary" data-profile-launch-open>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                        <path d="M12 5v14"/>
+                        <path d="M5 12h14"/>
+                    </svg>
+                    <span class="stock-action-button-label"><span class="sm:hidden">Novo</span><span class="hidden sm:inline">Gerenciar perfil</span></span>
+                </button>
+            </div>
+        </div>
     </section>
-    <section class="rounded-[2rem] bg-white p-6 shadow-panel">
-        <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Perfis salvos</p>
-        <h3 class="mt-2 text-2xl font-semibold">Contextos usados pela IA</h3>
+
+    <section class="stock-panel rounded-[2rem] bg-white p-6 shadow-panel" data-stock-fade-panel>
+        <div class="flex flex-wrap items-start justify-between gap-4">
+            <div class="min-w-0">
+                <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Perfis salvos</p>
+                <h3 class="mt-2 text-2xl font-semibold">Contextos usados pela IA</h3>
+            </div>
+            <div class="stock-search-field">
+                <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+                    <circle cx="8.5" cy="8.5" r="5.75"></circle>
+                    <path d="M13 13l4 4"></path>
+                </svg>
+                <input type="search" placeholder="Buscar fazenda, cultura, região, solo ou irrigação" data-profile-search>
+            </div>
+        </div>
+
         <div class="mt-6 space-y-4">
             {% for item in profiles %}
-            <article class="rounded-[1.5rem] border border-slate-100 bg-slate-50 p-5">
-                <div class="flex items-start justify-between gap-4">
-                    <div>
-                        <h4 class="text-lg font-semibold">{{ item.farm.name if item.farm else "Fazenda removida" }}</h4>
+            <article class="rounded-[1.5rem] border border-slate-200 bg-slate-50/80 p-5 transition hover:border-brand-200 hover:bg-brand-50/40" data-profile-card data-profile-search-text="{{ item.farm.name if item.farm else '' }} {{ item.culture }} {{ item.region }} {{ item.soil_type or '' }} {{ item.irrigation_system or '' }} {{ item.common_pests or '' }} {{ item.crop_stage or '' }}">
+                <div class="flex flex-wrap items-start justify-between gap-4">
+                    <div class="min-w-0">
+                        <h4 class="text-lg font-semibold text-slate-900">{{ item.farm.name if item.farm else "Fazenda removida" }}</h4>
                         <p class="mt-1 text-sm text-slate-500">{{ item.culture }} • {{ item.region }}</p>
                     </div>
-                    <a href="/perfil-agronomico?edit_farm_id={{ item.farm_id }}" class="rounded-xl bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-700">Editar</a>
+                    <a href="/perfil-agronomico?edit_farm_id={{ item.farm_id }}" class="inline-flex h-9 items-center justify-center rounded-xl border border-slate-200 px-4 text-sm font-medium text-slate-700 hover:bg-slate-100">Editar</a>
                 </div>
-                <div class="mt-4 grid gap-3 text-sm text-slate-600 sm:grid-cols-2">
-                    <p>Solo: <strong>{{ item.soil_type or "-" }}</strong></p>
-                    <p>Irrigacao: <strong>{{ item.irrigation_system or "-" }}</strong></p>
-                    <p>Plantas: <strong>{{ item.plant_spacing or "-" }}</strong></p>
-                    <p>Gotejo: <strong>{{ item.drip_spacing or "-" }}</strong></p>
+                <div class="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                    <div class="rounded-2xl bg-white px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Solo</p><p class="mt-2 text-sm font-medium text-slate-800">{{ item.soil_type or "-" }}</p></div>
+                    <div class="rounded-2xl bg-white px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Irrigação</p><p class="mt-2 text-sm font-medium text-slate-800">{{ item.irrigation_system or "-" }}</p></div>
+                    <div class="rounded-2xl bg-white px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Plantas</p><p class="mt-2 text-sm font-medium text-slate-800">{{ item.plant_spacing or "-" }}</p></div>
+                    <div class="rounded-2xl bg-white px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Gotejo</p><p class="mt-2 text-sm font-medium text-slate-800">{{ item.drip_spacing or "-" }}</p></div>
                 </div>
             </article>
             {% else %}
-            <p class="text-sm text-slate-500">Nenhum perfil agronomico cadastrado.</p>
+            <p class="text-sm text-slate-500">Nenhum perfil agronômico cadastrado.</p>
             {% endfor %}
         </div>
+        <p class="stock-search-empty mt-4 hidden text-sm text-slate-500" data-profile-search-empty>Nenhum perfil corresponde à busca digitada.</p>
     </section>
 </div>
+
+<dialog id="agronomic-profile-modal" class="app-modal rounded-[2rem] p-0 shadow-2xl w-full max-w-5xl overflow-hidden">
+    <div class="bg-white p-6 sm:p-8">
+        <div class="flex items-start justify-between gap-4">
+            <div class="min-w-0">
+                <p class="text-xs uppercase tracking-[0.35em] text-slate-400">{% if edit_profile %}Editar perfil{% else %}Gerenciar perfil{% endif %}</p>
+                <h3 class="mt-2 text-2xl font-semibold purchased-modal-heading">Perfil agronômico da fazenda ativa</h3>
+                <p class="mt-2 text-sm text-slate-500 purchased-modal-subtitle">Consolide cultura, clima, solo, irrigação e referências técnicas usadas pela IA em uma única base operacional.</p>
+            </div>
+            <button type="button" class="modal-close-button" aria-label="Fechar" data-profile-launch-close>
+                <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M18 6 6 18"/>
+                    <path d="m6 6 12 12"/>
+                </svg>
+            </button>
+        </div>
+        <div class="mt-6 max-h-[72vh] overflow-y-auto pr-1" data-modal-scroll>
+            <form method="post" action="/perfil-agronomico" class="grid gap-4" id="agronomic-profile-form">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+
+                <div class="sticky top-0 z-10 -mx-1 bg-white/95 px-1 py-1 backdrop-blur">
+                    <div class="flex flex-wrap justify-end gap-3 rounded-[1.5rem] px-2 py-2 sm:px-3">
+                        <button type="button" class="rounded-2xl bg-slate-100 px-4 py-3 font-semibold text-slate-700 hover:bg-slate-200" data-profile-launch-close>Cancelar</button>
+                        <button class="rounded-2xl bg-brand-500 px-4 py-3 font-semibold text-white hover:bg-brand-700">Salvar perfil</button>
+                    </div>
+                </div>
+
+                <div class="rounded-[1.5rem] border border-brand-100 bg-brand-50/50 p-4">
+                    <div class="flex flex-wrap items-start justify-between gap-4">
+                        <div class="min-w-0">
+                            <p class="text-xs uppercase tracking-[0.3em] text-slate-400">Contexto do lançamento</p>
+                            <p class="mt-2 text-sm text-slate-500">Use este bloco para confirmar a fazenda e a safra ativas antes de salvar.</p>
+                        </div>
+                        <button type="button" class="stock-summary-toggle" data-profile-context-toggle aria-expanded="false">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                                <path d="M5 12h14"/>
+                                <path d="M12 5v14" data-profile-context-toggle-plus></path>
+                            </svg>
+                            <span data-profile-context-toggle-label>Expandir</span>
+                        </button>
+                    </div>
+                    <div class="stock-summary-collapse" data-profile-context-collapse>
+                        <div class="stock-summary-collapse-inner">
+                            <div class="mt-4">
+                                {% include "partials/launch_context.html" %}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="grid gap-4 md:grid-cols-2">
+                    <label><span class="mb-2 block text-sm font-medium">Cultura</span><input name="culture" value="{{ edit_profile.culture if edit_profile else 'Cafe arabica' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required></label>
+                    <label><span class="mb-2 block text-sm font-medium">Região</span><input name="region" value="{{ edit_profile.region if edit_profile else 'Bahia - Brasil' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required></label>
+                    <label><span class="mb-2 block text-sm font-medium">Clima</span><input name="climate" value="{{ edit_profile.climate if edit_profile else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50"></label>
+                    <label><span class="mb-2 block text-sm font-medium">Tipo de solo</span><input name="soil_type" value="{{ edit_profile.soil_type if edit_profile else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50"></label>
+                    <label><span class="mb-2 block text-sm font-medium">Sistema de irrigação</span><input name="irrigation_system" value="{{ edit_profile.irrigation_system if edit_profile else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50"></label>
+                    <label><span class="mb-2 block text-sm font-medium">Espaçamento entre plantas</span><input name="plant_spacing" value="{{ edit_profile.plant_spacing if edit_profile else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50"></label>
+                    <label><span class="mb-2 block text-sm font-medium">Espaçamento entre gotejos</span><input name="drip_spacing" value="{{ edit_profile.drip_spacing if edit_profile else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50 md:col-span-2"></label>
+                </div>
+
+                <div class="grid gap-4 md:grid-cols-3">
+                    <label><span class="mb-2 block text-sm font-medium">Fertilizantes utilizados</span><textarea name="fertilizers_used" rows="5" class="w-full rounded-2xl border-slate-200 bg-slate-50" placeholder="Um item por linha">{{ edit_profile.fertilizers_used if edit_profile else '' }}</textarea></label>
+                    <label><span class="mb-2 block text-sm font-medium">Fase da lavoura</span><textarea name="crop_stage" rows="5" class="w-full rounded-2xl border-slate-200 bg-slate-50" placeholder="Um item por linha">{{ edit_profile.crop_stage if edit_profile else '' }}</textarea></label>
+                    <label><span class="mb-2 block text-sm font-medium">Pragas comuns</span><textarea name="common_pests" rows="5" class="w-full rounded-2xl border-slate-200 bg-slate-50" placeholder="Um item por linha">{{ edit_profile.common_pests if edit_profile else '' }}</textarea></label>
+                </div>
+            </form>
+            {% if edit_farm and edit_profile %}
+            <form method="post" action="/perfil-agronomico/{{ edit_farm.id }}/excluir" class="mt-4" onsubmit="return confirm('Remover o perfil agronômico desta fazenda?');">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <button class="rounded-2xl bg-rose-600 px-4 py-3 font-semibold text-white hover:bg-rose-700">Excluir perfil</button>
+            </form>
+            {% endif %}
+        </div>
+    </div>
+</dialog>
+
+<script>
+(() => {
+    const launchModal = document.getElementById('agronomic-profile-modal');
+    const openButtons = Array.from(document.querySelectorAll('[data-profile-launch-open]'));
+    const closeButtons = Array.from(document.querySelectorAll('[data-profile-launch-close]'));
+    const searchInput = document.querySelector('[data-profile-search]');
+    const cards = Array.from(document.querySelectorAll('[data-profile-card]'));
+    const emptyState = document.querySelector('[data-profile-search-empty]');
+    const stickyHeader = document.querySelector('.stock-page-header');
+    const headerIntro = stickyHeader?.querySelector('[data-stock-header-intro]');
+    const fadingPanels = Array.from(document.querySelectorAll('[data-stock-fade-panel]'));
+    const isEditing = {{ 'true' if edit_profile else 'false' }};
+
+    const closeModal = () => {
+        if (isEditing) {
+            window.location.href = '/perfil-agronomico';
+            return;
+        }
+        launchModal?.close();
+    };
+
+    openButtons.forEach((button) => button.addEventListener('click', () => launchModal?.showModal()));
+    closeButtons.forEach((button) => button.addEventListener('click', closeModal));
+    launchModal?.addEventListener('cancel', (event) => {
+        event.preventDefault();
+        closeModal();
+    });
+    if (isEditing) launchModal?.showModal();
+
+    const contextToggle = document.querySelector('[data-profile-context-toggle]');
+    const contextCollapse = document.querySelector('[data-profile-context-collapse]');
+    const contextToggleLabel = document.querySelector('[data-profile-context-toggle-label]');
+    const contextTogglePlus = document.querySelector('[data-profile-context-toggle-plus]');
+    const syncContextToggle = (expanded) => {
+        if (!contextCollapse || !contextToggle) return;
+        contextCollapse.classList.toggle('is-expanded', expanded);
+        contextToggle.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+        if (contextToggleLabel) contextToggleLabel.textContent = expanded ? 'Recolher' : 'Expandir';
+        if (contextTogglePlus) contextTogglePlus.classList.toggle('hidden', expanded);
+    };
+    syncContextToggle(false);
+    contextToggle?.addEventListener('click', () => {
+        const expanded = !contextCollapse?.classList.contains('is-expanded');
+        syncContextToggle(!!expanded);
+    });
+
+    const normalizeText = (value) => (value || '').toString().normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+    const applyLocalSearch = () => {
+        const query = normalizeText(searchInput?.value || '');
+        let visible = 0;
+        cards.forEach((card) => {
+            const haystack = normalizeText(card.dataset.profileSearchText || card.textContent);
+            const matches = !query || haystack.includes(query);
+            card.classList.toggle('hidden', !matches);
+            if (matches) visible += 1;
+        });
+        emptyState?.classList.toggle('hidden', visible !== 0);
+    };
+    searchInput?.addEventListener('input', applyLocalSearch);
+    applyLocalSearch();
+
+    const mobileCompactMq = window.matchMedia('(max-width: 899px)');
+    const parseStickyTopPx = (el) => {
+        const raw = getComputedStyle(el).top;
+        if (!raw || raw === 'auto') return 0;
+        const pxMatch = /^([\d.]+)px$/.exec(raw);
+        if (pxMatch) return parseFloat(pxMatch[1]);
+        return 0;
+    };
+    const syncHeaderFade = () => {
+        if (!stickyHeader || !headerIntro || !fadingPanels.length) return;
+        const compact = mobileCompactMq.matches;
+        const stickyTop = parseStickyTopPx(stickyHeader);
+        const introRect = headerIntro.getBoundingClientRect();
+        const activePanel = fadingPanels[0];
+        const panelRect = activePanel.getBoundingClientRect();
+        const overlap = compact ? Math.max(0, (stickyTop + introRect.height) - panelRect.top) : 0;
+        const fadeDistance = compact ? Math.max(introRect.height * 0.95, 1) : 1;
+        const progress = compact ? Math.min(overlap / fadeDistance, 1) : 0;
+        stickyHeader.style.setProperty('--stock-header-progress', progress.toFixed(3));
+        activePanel.style.setProperty('--stock-header-progress', progress.toFixed(3));
+        activePanel.classList.toggle('stock-panel-under-header', compact && progress > 0.02);
+    };
+    const requestHeaderSync = () => window.requestAnimationFrame(syncHeaderFade);
+    window.addEventListener('scroll', requestHeaderSync, { passive: true });
+    window.addEventListener('resize', requestHeaderSync);
+    if (mobileCompactMq.addEventListener) mobileCompactMq.addEventListener('change', requestHeaderSync);
+    else if (mobileCompactMq.addListener) mobileCompactMq.addListener(requestHeaderSync);
+    requestHeaderSync();
+})();
+</script>
 {% endblock %}
