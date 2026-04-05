@@ -5764,6 +5764,9 @@ def irrigation_page(
     irrigation_filters_active = bool(
         _period_filter_explicit_in_query(request) or (plot_id_filter is not None) or bool(search_q)
     )
+    raw_plot_lower = raw_plot.lower()
+    irrigation_plot_filter_hint = raw_plot == ""
+    selected_irrigation_plot_all = bool(raw_plot) and raw_plot_lower in {"all", "todos", "todas"}
     return templates.TemplateResponse(
         "irrigation.html",
         _base_context(
@@ -5782,6 +5785,8 @@ def irrigation_page(
             irrigation_after_edit_close_url=irrigation_after_edit_close_url,
             selected_irrigation_range=selected_irrigation_range,
             selected_irrigation_plot_id=plot_id_filter,
+            irrigation_plot_filter_hint=irrigation_plot_filter_hint,
+            selected_irrigation_plot_all=selected_irrigation_plot_all,
             irrigation_filters_active=irrigation_filters_active,
             irrigation_edit_urls=irrigation_edit_urls,
             edit_irrigation=repo.get_irrigation(edit_id) if edit_id else None,
