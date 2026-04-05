@@ -1,3 +1,4 @@
+import unicodedata
 from datetime import date
 
 from sqlalchemy import distinct, func, or_
@@ -33,6 +34,16 @@ from app.models import (
 )
 
 MANUAL_STOCK_OUTPUT_ALLOCATION = "manual_stock_output_allocation"
+
+
+def _normalize_plot_search_text(value: object) -> str:
+    """Minusculas e sem acentos (mesma ideia de _normalize_search_value em routes)."""
+    return (
+        unicodedata.normalize("NFD", str(value or ""))
+        .encode("ascii", "ignore")
+        .decode("ascii")
+        .lower()
+    )
 
 
 class FarmRepository:
@@ -86,8 +97,6 @@ class FarmRepository:
         sort: str = "name",
     ) -> list[Plot]:
         query = self.db.query(Plot).options(joinedload(Plot.variety), joinedload(Plot.farm))
-        if search:
-            query = query.filter(Plot.name.ilike(f"%{search}%"))
         if farm_ids:
             query = query.filter(Plot.farm_id.in_(farm_ids))
         if variety_ids:
@@ -100,7 +109,10 @@ class FarmRepository:
             "planting_asc": Plot.planting_date.asc(),
         }
         query = query.order_by(order_map.get(sort, Plot.name.asc()))
-        return query.all()
+        rows = query.all()
+        if search and (needle := _normalize_plot_search_text(search).strip()):
+            rows = [p for p in rows if needle in _normalize_plot_search_text(p.name)]
+        return rows
 
     def list_plots_with_boundary_geojson(self, farm_ids: list[int] | None = None) -> list[Plot]:
         """Setores com perímetro salvo, para contexto visual no mapa (sem filtros de busca/variedade)."""
