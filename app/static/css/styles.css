@@ -1187,6 +1187,58 @@ body {
     color: rgb(100 116 139);
 }
 
+/* Irrigação: select de setor como «Filtre por período» — ícone à esquerda, seta à direita */
+.module-filter-plot-select-wrap {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.7rem;
+    box-sizing: border-box;
+    min-height: 3rem;
+    padding: 0 0.85rem 0 1rem;
+    border: 1px solid rgba(203, 213, 225, 0.95);
+    border-radius: 1rem;
+    background: #fff;
+    color: rgb(51 65 85);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.96);
+}
+
+.module-filter-plot-select-wrap:focus-within {
+    border-color: rgba(68, 106, 54, 0.32);
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.96),
+        0 0 0 2px rgba(68, 106, 54, 0.12);
+}
+
+.module-filter-plot-select-lead-icon {
+    width: 1rem;
+    height: 1rem;
+    flex-shrink: 0;
+    color: rgb(68 106 54);
+}
+
+.module-filter-plot-select-control {
+    flex: 1 1 auto;
+    min-width: 0;
+    min-height: 2.75rem;
+    border: 0;
+    margin: 0;
+    padding: 0.5rem 1.85rem 0.5rem 0;
+    background-color: transparent;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none' stroke='%2364748b' stroke-width='1.8'%3E%3Cpath d='m5 7 5 5 5-5'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 0.05rem center;
+    background-size: 0.95rem 0.95rem;
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: inherit;
+    appearance: none;
+    cursor: pointer;
+}
+
+.module-filter-plot-select-control:focus {
+    outline: none;
+}
+
 .module-filter-preset-menu {
     position: absolute;
     z-index: 40;
@@ -2095,6 +2147,7 @@ body {
     .module-filter-preset,
     .module-filter-search,
     .module-filter-date-field,
+    .module-filter-plot-select-wrap,
     .module-filter-action {
         width: 100%;
         min-width: 0;

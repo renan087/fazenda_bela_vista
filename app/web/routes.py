@@ -1184,6 +1184,26 @@ def _format_decimal_br(value, places: int = 2) -> str:
     return f"{numeric:,.{places}f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
 
+def _format_iso_date_br(value: str | None) -> str:
+    raw = (value or "").strip()
+    if not raw:
+        return "--"
+    try:
+        return date.fromisoformat(raw).strftime("%d/%m/%Y")
+    except ValueError:
+        return raw
+
+
+def _format_duration_hours_minutes(total_minutes: int) -> str:
+    t = max(0, int(total_minutes or 0))
+    hours, minutes = divmod(t, 60)
+    if hours and minutes:
+        return f"{hours} h {minutes} min"
+    if hours:
+        return f"{hours} h"
+    return f"{minutes} min"
+
+
 def _stock_report_totals(rows: list[dict]) -> dict:
     entries_total = sum(float(row.get("total_cost") or 0) for row in rows if row.get("kind") == "entrada")
     outputs_total = sum(float(row.get("total_cost") or 0) for row in rows if row.get("kind") == "saida")
@@ -5836,14 +5856,16 @@ def export_irrigation_pdf(
     season_label = scope["active_season"].name if scope.get("active_season") else "Safra ativa"
     period_label = "Safra ativa"
     if raw_start or raw_end:
-        period_label = f"{(raw_start or '--').replace('-', '/')} a {(raw_end or '--').replace('-', '/')}"
+        period_label = f"{_format_iso_date_br(raw_start)} a {_format_iso_date_br(raw_end)}"
     plot_filter_label = "Todos os setores"
     if plot_id_filter:
         sel_plot = next((p for p in plots if p.id == plot_id_filter), None)
         plot_filter_label = sel_plot.name if sel_plot else f"Setor #{plot_id_filter}"
     search_label = (search_q or "").strip() or "—"
-    total_volume = sum(float(item.volume_liters or 0) for item in irrigations)
+    total_volume_liters = sum(float(item.volume_liters or 0) for item in irrigations)
+    total_volume_m3 = total_volume_liters / 1000.0
     total_duration = sum(int(item.duration_minutes or 0) for item in irrigations)
+    duration_total_label = _format_duration_hours_minutes(total_duration)
 
     buffer = BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=landscape(A4), leftMargin=28, rightMargin=28, topMargin=32, bottomMargin=34)
@@ -5968,8 +5990,8 @@ def export_irrigation_pdf(
 
     footer_summary = Table([
         ["Registros", str(len(irrigations))],
-        ["Volume total (L)", _format_decimal_br(total_volume, 2)],
-        ["Duração total (min)", str(total_duration)],
+        ["Volume total (m³)", _format_decimal_br(total_volume_m3, 3)],
+        ["Duração total", duration_total_label],
     ], colWidths=[doc.width * 0.28, doc.width * 0.18], hAlign="LEFT")
     footer_summary.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#f8fafc")),

@@ -59,13 +59,19 @@
                         </svg>
                         <input type="search" name="search" value="{{ request.query_params.get('search', '') }}" placeholder="Buscar setor, data, volume ou observação" data-module-history-search>
                     </div>
-                    <div class="module-filter-date-field !gap-0">
-                        <select name="plot_id" class="module-filter-date-input min-h-[3rem] w-full min-w-[11rem]" aria-label="Filtrar por setor" data-irrigation-filter-plot>
-                            <option value="" {% if not selected_irrigation_plot_id %}selected{% endif %}>Filtre por setor</option>
-                            {% for plot in plots_for_irrigation_filter %}
-                            <option value="{{ plot.id }}" {% if selected_irrigation_plot_id == plot.id %}selected{% endif %}>{{ plot.name }}</option>
-                            {% endfor %}
-                        </select>
+                    <div class="module-filter-date-field !gap-0 min-w-[11rem] flex-1">
+                        <div class="module-filter-plot-select-wrap w-full max-w-full">
+                            <svg class="module-filter-plot-select-lead-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true">
+                                <path d="M12 21s-8-4.5-8-11a8 8 0 1 1 16 0c0 6.5-8 11-8 11Z"/>
+                                <circle cx="12" cy="10" r="2.5" fill="none"/>
+                            </svg>
+                            <select name="plot_id" class="module-filter-plot-select-control w-full min-w-0" aria-label="Filtrar por setor" data-irrigation-filter-plot>
+                                <option value="" {% if not selected_irrigation_plot_id %}selected{% endif %}>Filtre por setor</option>
+                                {% for plot in plots_for_irrigation_filter %}
+                                <option value="{{ plot.id }}" {% if selected_irrigation_plot_id == plot.id %}selected{% endif %}>{{ plot.name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
                     </div>
                     <div class="module-filter-period-row">
                         {{ module_period_picker_inline(selected_irrigation_range, irrigation_filter_start_date or '', irrigation_filter_end_date or '', 'past', 'Filtre por período') }}
