@@ -1541,6 +1541,26 @@ def plots_page(
             background_tasks.add_task(generate_plot_preview_image, plot.id, plot.boundary_geojson)
         elif not thumb_ok:
             background_tasks.add_task(ensure_plot_preview_thumb, plot.id)
+    farm_preview_ready: dict[int, bool] = {}
+    farm_preview_fingerprint: dict[int, str] = {}
+    plots_farm_preview_urls: dict[str, str] = {}
+    for farm in farms:
+        if not farm.boundary_geojson:
+            continue
+        farm_preview_fingerprint[farm.id] = hashlib.sha256(farm.boundary_geojson.encode("utf-8")).hexdigest()[:14]
+        full_path = farm_preview_fs_path(farm.id)
+        thumb_path = farm_preview_thumb_fs_path(farm.id)
+        full_ok = full_path.is_file() and full_path.stat().st_size > 0
+        thumb_ok = thumb_path.is_file() and thumb_path.stat().st_size > 0
+        farm_preview_ready[farm.id] = full_ok and thumb_ok
+        if not full_ok:
+            background_tasks.add_task(generate_farm_preview_image, farm.id, farm.boundary_geojson)
+        elif not thumb_ok:
+            background_tasks.add_task(ensure_farm_preview_thumb, farm.id)
+        if farm_preview_ready[farm.id]:
+            plots_farm_preview_urls[str(farm.id)] = (
+                f"/static/generated/farm_previews/{farm.id}.png?v={farm_preview_fingerprint[farm.id]}"
+            )
     plot_farm_boundary_by_id: dict[str, object] = {}
     for farm in farms:
         if not farm.boundary_geojson:
@@ -1575,6 +1595,9 @@ def plots_page(
             google_maps_web_key=google_maps_web_key,
             plot_preview_ready=plot_preview_ready,
             plot_preview_fingerprint=plot_preview_fingerprint,
+            farm_preview_ready=farm_preview_ready,
+            farm_preview_fingerprint=farm_preview_fingerprint,
+            plots_farm_preview_urls=plots_farm_preview_urls,
             filter_links=[
                 {"farm_id": plot.farm_id, "variety_id": plot.variety_id}
                 for plot in repo.list_plots(farm_ids=farm_ids or None, variety_ids=variety_ids or None)
