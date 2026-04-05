@@ -102,6 +102,15 @@ class FarmRepository:
         query = query.order_by(order_map.get(sort, Plot.name.asc()))
         return query.all()
 
+    def list_plots_with_boundary_geojson(self, farm_ids: list[int] | None = None) -> list[Plot]:
+        """Setores com perímetro salvo, para contexto visual no mapa (sem filtros de busca/variedade)."""
+        query = self.db.query(Plot).filter(Plot.boundary_geojson.isnot(None))
+        if farm_ids:
+            query = query.filter(Plot.farm_id.in_(farm_ids))
+        query = query.order_by(Plot.farm_id.asc(), Plot.name.asc())
+        rows = query.all()
+        return [p for p in rows if (p.boundary_geojson or "").strip()]
+
     def list_plot_filter_options(
         self,
         selected_farm_ids: list[int] | None = None,

@@ -81,18 +81,41 @@
         return googleMapsLoadPromise;
     }
 
-    function leafletGeoJsonLayer(geometry) {
+    /** Estilos para outros setores (somente leitura), distintos do limite da fazenda (verde) e do polígono em edição (rosa). */
+    const CONTEXT_PLOT_LEAFLET_STYLES = [
+        { color: '#0369a1', weight: 2, fillColor: '#38bdf8', fillOpacity: 0.32 },
+        { color: '#6d28d9', weight: 2, fillColor: '#a78bfa', fillOpacity: 0.3 },
+        { color: '#b45309', weight: 2, fillColor: '#fbbf24', fillOpacity: 0.3 },
+        { color: '#0f766e', weight: 2, fillColor: '#2dd4bf', fillOpacity: 0.28 },
+        { color: '#1d4ed8', weight: 2, fillColor: '#60a5fa', fillOpacity: 0.28 },
+        { color: '#a21caf', weight: 2, fillColor: '#e879f9', fillOpacity: 0.26 },
+    ];
+
+    const CONTEXT_PLOT_GOOGLE_STYLES = [
+        { strokeColor: '#0369a1', fillColor: '#38bdf8', fillOpacity: 0.32 },
+        { strokeColor: '#6d28d9', fillColor: '#a78bfa', fillOpacity: 0.3 },
+        { strokeColor: '#b45309', fillColor: '#fbbf24', fillOpacity: 0.3 },
+        { strokeColor: '#0f766e', fillColor: '#2dd4bf', fillOpacity: 0.28 },
+        { strokeColor: '#1d4ed8', fillColor: '#60a5fa', fillOpacity: 0.28 },
+        { strokeColor: '#a21caf', fillColor: '#e879f9', fillOpacity: 0.26 },
+    ];
+
+    /** @param {object} [styleOverride] opções de estilo Leaflet (interactive sempre false) */
+    function leafletGeoJsonLayer(geometry, styleOverride) {
         if (!geometry || typeof geometry !== 'object') return null;
+        const baseStyle = {
+            color: '#418436',
+            weight: 2,
+            fillColor: '#5BB34A',
+            fillOpacity: 0.37,
+            interactive: false,
+        };
+        const style = styleOverride ? { ...baseStyle, ...styleOverride, interactive: false } : baseStyle;
         try {
             if (geometry.type === 'Feature' || geometry.type === 'FeatureCollection') {
                 return L.geoJSON(geometry, {
                     interactive: false,
-                    style: {
-                        color: '#418436',
-                        weight: 2,
-                        fillColor: '#5BB34A',
-                        fillOpacity: 0.37,
-                    },
+                    style,
                 });
             }
             if (geometry.type === 'Polygon' || geometry.type === 'MultiPolygon') {
@@ -100,12 +123,7 @@
                     { type: 'Feature', properties: {}, geometry },
                     {
                         interactive: false,
-                        style: {
-                            color: '#418436',
-                            weight: 2,
-                            fillColor: '#5BB34A',
-                            fillOpacity: 0.37,
-                        },
+                        style,
                     },
                 );
             }
@@ -121,11 +139,13 @@
             hiddenInput,
             initialGeometry,
             referenceBoundaryGeometry,
+            contextPlotGeometries,
             removePointButton,
             onStats,
             initialCenter,
             initialZoom,
         } = options;
+        const contextGeoms = Array.isArray(contextPlotGeometries) ? contextPlotGeometries : [];
         const el = document.getElementById(containerId);
         if (!el || typeof L === 'undefined') {
             return nullStub();
@@ -150,9 +170,19 @@
             attribution: '&copy; OpenStreetMap',
         }).addTo(map);
 
-        let referenceLayer = leafletGeoJsonLayer(referenceBoundaryGeometry);
-        if (referenceLayer) {
-            referenceLayer.addTo(map);
+        const contextLayers = [];
+        contextGeoms.forEach((geom, idx) => {
+            if (!geom || typeof geom !== 'object') return;
+            const layer = leafletGeoJsonLayer(geom, CONTEXT_PLOT_LEAFLET_STYLES[idx % CONTEXT_PLOT_LEAFLET_STYLES.length]);
+            if (layer) contextLayers.push(layer);
+        });
+        const referenceLayer = leafletGeoJsonLayer(referenceBoundaryGeometry);
+        const underlayParts = [...contextLayers];
+        if (referenceLayer) underlayParts.push(referenceLayer);
+        let underlayGroup = null;
+        if (underlayParts.length) {
+            underlayGroup = L.layerGroup(underlayParts);
+            underlayGroup.addTo(map);
         }
 
         let points = extractPoints(initialGeometry);
@@ -213,9 +243,6 @@
                 marker.on('dragend', () => renderEditor());
             });
             syncToHidden();
-            if (referenceLayer) {
-                referenceLayer.bringToBack();
-            }
         };
 
         map.on('click', (event) => {
@@ -239,7 +266,11 @@
         const fitInitialBounds = () => {
             const refLatLngs = refPoints.map((p) => L.latLng(p.lat, p.lng));
             const editLatLngs = points.map((p) => L.latLng(p.lat, p.lng));
-            const combined = [...refLatLngs, ...editLatLngs];
+            const contextLatLngs = [];
+            contextGeoms.forEach((geom) => {
+                extractPoints(geom).forEach((p) => contextLatLngs.push(L.latLng(p.lat, p.lng)));
+            });
+            const combined = [...contextLatLngs, ...refLatLngs, ...editLatLngs];
             if (!combined.length) return;
             const b = L.latLngBounds(combined);
             if (b.isValid()) map.fitBounds(b.pad(0.14));
@@ -258,7 +289,7 @@
                 if (removePointButton && removeHandler) {
                     removePointButton.removeEventListener('click', removeHandler);
                 }
-                referenceLayer = null;
+                underlayGroup = null;
                 try {
                     map.off();
                     map.remove();
@@ -276,11 +307,13 @@
             hiddenInput,
             initialGeometry,
             referenceBoundaryGeometry,
+            contextPlotGeometries,
             removePointButton,
             onStats,
             initialCenter,
             initialZoom,
         } = options;
+        const contextGeoms = Array.isArray(contextPlotGeometries) ? contextPlotGeometries : [];
         const el = document.getElementById(containerId);
         if (!el) {
             return nullStub();
@@ -312,6 +345,28 @@
             fullscreenControl: true,
         });
 
+        const contextPolygons = [];
+        contextGeoms.forEach((geom, idx) => {
+            const pts = extractPoints(geom);
+            if (pts.length < 3) return;
+            const st = CONTEXT_PLOT_GOOGLE_STYLES[idx % CONTEXT_PLOT_GOOGLE_STYLES.length];
+            contextPolygons.push(
+                new google.maps.Polygon({
+                    paths: pts.map((p) => ({ lat: p.lat, lng: p.lng })),
+                    strokeColor: st.strokeColor,
+                    strokeOpacity: 1,
+                    strokeWeight: 2,
+                    fillColor: st.fillColor,
+                    fillOpacity: st.fillOpacity,
+                    clickable: false,
+                    editable: false,
+                    draggable: false,
+                    zIndex: 10,
+                    map,
+                }),
+            );
+        });
+
         let referencePolygon = null;
         if (refPts.length >= 3) {
             referencePolygon = new google.maps.Polygon({
@@ -324,6 +379,7 @@
                 clickable: false,
                 editable: false,
                 draggable: false,
+                zIndex: 20,
                 map,
             });
         }
@@ -361,6 +417,7 @@
                     strokeWeight: 3,
                     fillColor: '#fb7185',
                     fillOpacity: 0.18,
+                    zIndex: 100,
                     map,
                 });
             }
@@ -438,8 +495,11 @@
 
         renderAll();
         const fitInitialGoogleBounds = () => {
-            if (!refPts.length && !points.length) return;
+            if (!refPts.length && !points.length && !contextGeoms.length) return;
             const bounds = new google.maps.LatLngBounds();
+            contextGeoms.forEach((geom) => {
+                extractPoints(geom).forEach((p) => bounds.extend(p));
+            });
             refPts.forEach((p) => bounds.extend(p));
             points.forEach((p) => bounds.extend(p));
             try {
@@ -472,6 +532,8 @@
                     referencePolygon.setMap(null);
                     referencePolygon = null;
                 }
+                contextPolygons.forEach((p) => p.setMap(null));
+                contextPolygons.length = 0;
                 if (removePointButton && removeHandler) {
                     removePointButton.removeEventListener('click', removeHandler);
                 }
@@ -481,6 +543,8 @@
     }
 
     /**
+     * @param {object} options
+     * @param {object[]} [options.contextPlotGeometries] GeoJSON de outros setores (somente visualização).
      * @returns {Promise<{ destroy: function, syncToHidden: function, invalidate: function }>}
      */
     window.initFarmBoundaryEditor = async function initFarmBoundaryEditor(options) {

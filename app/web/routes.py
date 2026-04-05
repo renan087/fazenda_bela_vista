@@ -1662,6 +1662,18 @@ def plots_page(
         except json.JSONDecodeError:
             pass
     plot_farm_boundaries_json = json.dumps(plot_farm_boundary_by_id)
+    farm_ids_for_plot_context = [f.id for f in farms]
+    plots_context_by_farm: dict[str, list[dict[str, object]]] = {}
+    if farm_ids_for_plot_context:
+        for plot in repo.list_plots_with_boundary_geojson(farm_ids=farm_ids_for_plot_context):
+            if not plot.farm_id:
+                continue
+            try:
+                gj_obj = json.loads(plot.boundary_geojson)
+            except json.JSONDecodeError:
+                continue
+            plots_context_by_farm.setdefault(str(plot.farm_id), []).append({"id": plot.id, "geometry": gj_obj})
+    plots_context_boundaries_json = json.dumps(plots_context_by_farm)
     edit_plot_geometry_json = "null"
     if edit_plot and edit_plot.boundary_geojson:
         try:
@@ -1684,6 +1696,7 @@ def plots_page(
             open_plot_map_modal=open_plot_map_modal,
             selected_farm_id=selected_farm_id or scope["active_farm_id"],
             plot_farm_boundaries_json=plot_farm_boundaries_json,
+            plots_context_boundaries_json=plots_context_boundaries_json,
             edit_plot_geometry_json=edit_plot_geometry_json,
             google_maps_web_key=google_maps_web_key,
             plot_preview_ready=plot_preview_ready,
