@@ -115,6 +115,7 @@
                     {% set nav = [
                         ('dashboard', '/dashboard', 'Dashboard'),
                         ('farms', '/fazendas', 'Fazendas'),
+                        ('plots', '/setores', 'Setores'),
                     ] %}
                     {% for key, href, label in nav %}
                     <a href="{{ href }}" class="flex items-center gap-3 rounded-2xl px-4 py-3 transition {% if page == key %}bg-brand-500 text-white shadow-lg{% else %}text-slate-300 hover:bg-slate-900 hover:text-white{% endif %}">
@@ -138,7 +139,6 @@
                         </div>
                     </div>
                     {% set nav = [
-                        ('plots', '/setores', 'Setores'),
                         ('varieties', '/variedades', 'Variedades'),
                         ('seasons', '/safras', 'Safras'),
                         ('irrigation', '/irrigacao', 'Irrigacao'),

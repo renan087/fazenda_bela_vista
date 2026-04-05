@@ -3040,8 +3040,14 @@ def purchased_inputs_page(
     )
     purchase_entries_pagination = _paginate_collection(request, purchase_entries, "entries_page")
     stock_outputs_pagination = _paginate_collection(request, stock_outputs, "outputs_page")
+    extract_rows = _sort_collection_desc(
+        stock_context["extract_rows"],
+        lambda row: row.get("date"),
+        lambda row: row.get("reference"),
+    )
+    extract_rows_pagination = _paginate_collection(request, extract_rows, "extract_page")
     selected_purchased_tab = str(request.query_params.get("purchased_tab") or purchased_tab or "entries")
-    if selected_purchased_tab not in {"entries", "outputs"}:
+    if selected_purchased_tab not in {"entries", "outputs", "extract"}:
         selected_purchased_tab = "entries"
     return templates.TemplateResponse(
         "purchased_inputs.html",
@@ -3061,6 +3067,8 @@ def purchased_inputs_page(
             input_stock=stock_context["input_stock"],
             stock_outputs=stock_outputs_pagination["items"],
             stock_outputs_pagination=stock_outputs_pagination,
+            extract_rows=extract_rows_pagination["items"],
+            extract_rows_pagination=extract_rows_pagination,
             purchased_inputs_export_query=_purchased_inputs_export_query(
                 farm_id=effective_farm_id,
                 item_type=selected_item_type,
@@ -3070,6 +3078,7 @@ def purchased_inputs_page(
             purchased_tab_urls={
                 "entries": _url_with_query(request, purchased_tab="entries"),
                 "outputs": _url_with_query(request, purchased_tab="outputs"),
+                "extract": _url_with_query(request, purchased_tab="extract"),
             },
         ),
     )

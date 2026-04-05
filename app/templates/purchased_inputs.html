@@ -69,6 +69,7 @@
                 <div class="stock-segmented-indicator" aria-hidden="true" data-segmented-indicator></div>
                 <a href="{{ purchased_tab_urls.entries }}" class="stock-tab-link {% if selected_purchased_tab == 'entries' %}is-active{% endif %}" data-purchased-tab-button="entries">Entradas</a>
                 <a href="{{ purchased_tab_urls.outputs }}" class="stock-tab-link {% if selected_purchased_tab == 'outputs' %}is-active{% endif %}" data-purchased-tab-button="outputs">Saídas</a>
+                <a href="{{ purchased_tab_urls.extract }}" class="stock-tab-link {% if selected_purchased_tab == 'extract' %}is-active{% endif %}" data-purchased-tab-button="extract">Extrato</a>
             </div>
             <div class="stock-search-field">
                 <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
@@ -239,6 +240,51 @@
             </div>
             <p class="stock-search-empty mt-4 hidden text-sm text-slate-500" data-purchased-search-empty>Nenhuma saída corresponde à busca digitada.</p>
             {% with pagination=stock_outputs_pagination %}{% include "partials/history_pagination.html" %}{% endwith %}
+        </div>
+
+        <div class="stock-history-stage mt-4 {% if selected_purchased_tab != 'extract' %}hidden{% endif %}" data-purchased-tab="extract">
+            <div class="stock-table-shell overflow-hidden rounded-[1.5rem] border border-slate-200">
+                <div class="overflow-x-auto">
+                    <table class="stock-history-table min-w-full divide-y divide-slate-200 text-sm">
+                        <thead class="bg-slate-50 text-left text-slate-500">
+                            <tr>
+                                <th class="px-4 py-3 font-medium">Mov.</th>
+                                <th class="px-4 py-3 font-medium">Data</th>
+                                <th class="px-4 py-3 font-medium">Insumo</th>
+                                <th class="px-4 py-3 font-medium">Origem / Ref.</th>
+                                <th class="px-4 py-3 font-medium">Quantidade</th>
+                                <th class="px-4 py-3 font-medium">Custo unit.</th>
+                                <th class="px-4 py-3 font-medium">Custo total</th>
+                                <th class="px-4 py-3 font-medium">Saldo</th>
+                                <th class="px-4 py-3 font-medium">Observações</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-100 bg-white">
+                            {% for row in extract_rows %}
+                            <tr data-purchased-history-row data-purchased-kind="{{ row.kind }}" data-purchased-search-text="{{ (row.date or '') ~ ' ' ~ row.input_name ~ ' ' ~ row.kind ~ ' ' ~ row.origin ~ ' ' ~ row.reference ~ ' ' ~ (row.farm.name if row.farm else '') ~ ' ' ~ (row.notes or '') }}">
+                                <td class="px-4 py-3">
+                                    <span class="stock-movement-chip {% if row.kind == 'entrada' %}stock-movement-chip-entry{% else %}stock-movement-chip-output{% endif %}">
+                                        {{ row.kind }}
+                                    </span>
+                                </td>
+                                <td class="px-4 py-3 whitespace-nowrap font-semibold text-slate-900">{{ row.date.strftime('%d-%m-%Y') if row.date else "-" }}</td>
+                                <td class="px-4 py-3 font-semibold text-slate-900">{{ row.input_name }}</td>
+                                <td class="px-4 py-3">{{ row.origin }} • {{ row.reference }}</td>
+                                <td class="px-4 py-3 whitespace-nowrap">{{ row.quantity }} {{ row.unit }}</td>
+                                <td class="px-4 py-3 whitespace-nowrap">{% if row.unit_cost is not none %}R$ {{ row.unit_cost }}{% else %}-{% endif %}</td>
+                                <td class="px-4 py-3 whitespace-nowrap">{% if row.total_cost is not none %}R$ {{ row.total_cost }}{% else %}-{% endif %}</td>
+                                <td class="px-4 py-3 whitespace-nowrap">{{ row.balance_after }} {{ row.unit }}</td>
+                                <td class="px-4 py-3 text-slate-500"><span class="stock-history-note-clamp" title="{{ row.notes or '-' }}">{{ row.notes or '-' }}</span></td>
+                            </tr>
+                            {% else %}
+                            <tr><td colspan="9" class="px-4 py-6 text-center text-slate-500">Nenhuma movimentação encontrada.</td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            <p class="stock-search-empty mt-4 hidden text-sm text-slate-500" data-purchased-search-empty>Nenhuma movimentação corresponde à busca digitada.</p>
+            {% with pagination=extract_rows_pagination %}{% include "partials/history_pagination.html" %}{% endwith %}
         </div>
     </section>
 </div>
