@@ -57,6 +57,7 @@
         </div>
         <div class="stock-summary-collapse is-expanded" data-stock-summary-collapse>
         <div class="stock-summary-collapse-inner">
+        <div class="stock-catalog-carousel-viewport min-w-0 w-full" data-stock-catalog-viewport>
         <div class="stock-summary-grid mt-6" data-stock-catalog-grid>
             {% for item in stock_catalog_rows %}
             {% set has_threshold = item.low_stock_threshold and item.low_stock_threshold > 0 %}
@@ -110,6 +111,7 @@
             {% else %}
             <p class="text-sm text-slate-500 md:col-span-2">Nenhum insumo encontrado para os filtros informados.</p>
             {% endfor %}
+        </div>
         </div>
         {% if stock_catalog_rows|length > 4 %}
         <div class="mt-5" data-stock-catalog-dots></div>
@@ -614,7 +616,7 @@
 {% include "partials/history_view_modal.html" %}
 
     <script src="{{ url_for('static', path='js/module_period_filters.js') }}?v=4"></script>
-    <script src="{{ url_for('static', path='js/swipe_card_pager.js') }}?v=4"></script>
+    <script src="{{ url_for('static', path='js/swipe_card_pager.js') }}?v=5"></script>
     <script>
         (() => {
             const getTabs = () => Array.from(document.querySelectorAll('[data-stock-tab]'));
@@ -1050,11 +1052,19 @@
             const catalogCards = Array.from(document.querySelectorAll('[data-stock-catalog-card]'));
             const catalogDots = document.querySelector('[data-stock-catalog-dots]');
             const catalogGrid = document.querySelector('[data-stock-catalog-grid]');
+            const catalogViewport = document.querySelector('[data-stock-catalog-viewport]');
             const cardsPerPageDesktop = 4;
             const cardsPerPageMobile = 1;
-            if (catalogCards.length > cardsPerPageMobile && catalogDots && catalogGrid && window.SiSFarmSwipePager) {
+            if (
+                catalogCards.length > cardsPerPageMobile &&
+                catalogDots &&
+                catalogGrid &&
+                catalogViewport &&
+                window.SiSFarmSwipePager
+            ) {
                 window.SiSFarmSwipePager.create({
                     root: catalogGrid,
+                    scrollViewport: catalogViewport,
                     items: catalogCards,
                     dotsContainer: catalogDots,
                     itemsPerPageDesktop: cardsPerPageDesktop,

@@ -305,6 +305,12 @@ body {
     min-width: 0;
 }
 
+@media (min-width: 900px) {
+    .stock-catalog-carousel-viewport {
+        display: contents;
+    }
+}
+
 .stock-summary-grid {
     display: grid;
     gap: 1rem;
@@ -335,6 +341,38 @@ body {
 
 .swipe-card-pager-surface.is-page-transition-prev {
     animation-name: swipeCardPagerPrev;
+}
+
+.swipe-card-pager-scroll-viewport.is-carousel-active {
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+    scroll-snap-type: x mandatory;
+    overscroll-behavior-x: contain;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+    width: 100%;
+    min-width: 0;
+}
+
+.swipe-card-pager-scroll-viewport.is-carousel-active::-webkit-scrollbar {
+    display: none;
+}
+
+.swipe-card-pager-scroll-track.swipe-card-pager-scroll-active {
+    display: flex;
+    flex-direction: row;
+    flex-wrap: nowrap;
+    align-items: stretch;
+    width: max-content;
+    min-width: 100%;
+    gap: 0.85rem;
+    margin: 0;
+}
+
+.swipe-card-pager-scroll-track.swipe-card-pager-scroll-active > .stock-summary-card {
+    scroll-snap-align: start;
+    scroll-snap-stop: always;
 }
 
 .swipe-card-pager-dot {

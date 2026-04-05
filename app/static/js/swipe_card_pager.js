@@ -5,6 +5,7 @@
         root,
         items = [],
         dotsContainer = null,
+        scrollViewport = null,
         itemsPerPage = 1,
         itemsPerPageMobile = null,
         itemsPerPageDesktop = null,
@@ -27,16 +28,95 @@
         let isTransitioning = false;
         let currentPageSize = 1;
         let currentTotalPages = 1;
+        let intersectionObserver = null;
+        let resizeRaf = null;
 
         root.classList.add('swipe-card-pager-surface');
         root.style.touchAction = 'pan-y';
 
         const shouldHandleSwipe = () => !mobileOnly || mediaQuery.matches;
+        const isScrollCarousel = () =>
+            scrollViewport instanceof HTMLElement && shouldHandleSwipe();
+
         const getPageSize = () => {
             const fallback = Math.max(1, Number(itemsPerPage) || 1);
             const mobileSize = Math.max(1, Number(itemsPerPageMobile) || fallback);
             const desktopSize = Math.max(1, Number(itemsPerPageDesktop) || fallback);
             return mediaQuery.matches ? mobileSize : desktopSize;
+        };
+
+        const disconnectObserver = () => {
+            if (intersectionObserver) {
+                intersectionObserver.disconnect();
+                intersectionObserver = null;
+            }
+        };
+
+        const layoutScrollSlides = () => {
+            if (!isScrollCarousel()) return;
+            const w = scrollViewport.clientWidth;
+            if (w <= 0) return;
+            items.forEach((el) => {
+                el.style.flex = `0 0 ${w}px`;
+                el.style.width = `${w}px`;
+                el.style.maxWidth = `${w}px`;
+                el.style.boxSizing = 'border-box';
+            });
+        };
+
+        const scrollToPageIndex = (pageIndex, smooth) => {
+            if (!isScrollCarousel()) return;
+            const el = items[pageIndex];
+            if (!el) return;
+            const left = el.offsetLeft;
+            scrollViewport.scrollTo({
+                left,
+                behavior: smooth ? 'smooth' : 'auto',
+            });
+        };
+
+        const bindScrollObserver = () => {
+            disconnectObserver();
+            if (!isScrollCarousel()) return;
+            intersectionObserver = new IntersectionObserver(
+                (entries) => {
+                    const candidates = entries
+                        .filter((e) => e.isIntersecting && e.intersectionRatio >= 0.45)
+                        .sort((a, b) => b.intersectionRatio - a.intersectionRatio);
+                    if (!candidates.length) return;
+                    const idx = items.indexOf(candidates[0].target);
+                    if (idx >= 0 && idx !== currentPage) {
+                        currentPage = idx;
+                        syncDots();
+                    }
+                },
+                { root: scrollViewport, rootMargin: '0px', threshold: [0.45, 0.55, 0.65] },
+            );
+            items.forEach((el) => intersectionObserver.observe(el));
+        };
+
+        const applyCarouselMode = () => {
+            disconnectObserver();
+            if (isScrollCarousel()) {
+                root.classList.remove('swipe-card-pager-surface');
+                root.classList.add('swipe-card-pager-scroll-track', 'swipe-card-pager-scroll-active');
+                root.style.touchAction = 'pan-x';
+                scrollViewport.classList.add(
+                    'swipe-card-pager-scroll-viewport',
+                    'is-carousel-active',
+                );
+                items.forEach((item) => item.classList.remove('hidden'));
+            } else {
+                scrollViewport?.classList.remove('swipe-card-pager-scroll-viewport', 'is-carousel-active');
+                root.classList.remove('swipe-card-pager-scroll-track', 'swipe-card-pager-scroll-active');
+                root.classList.add('swipe-card-pager-surface');
+                root.style.touchAction = 'pan-y';
+                items.forEach((el) => {
+                    el.style.flex = '';
+                    el.style.width = '';
+                    el.style.maxWidth = '';
+                });
+            }
         };
 
         const animate = (direction) => {
@@ -111,6 +191,15 @@
             });
         };
 
+        const renderPageDesktop = (targetPage) => {
+            currentPage = targetPage;
+            items.forEach((item, index) => {
+                const page = Math.floor(index / currentPageSize);
+                item.classList.toggle('hidden', page !== currentPage);
+            });
+            syncDots();
+        };
+
         const setPage = (pageIndex, direction = null) => {
             const pageSize = getPageSize();
             if (pageSize !== currentPageSize) {
@@ -121,17 +210,23 @@
             const nextPage = clamp(pageIndex, 0, currentTotalPages - 1);
             if (nextPage === currentPage && direction) return;
 
-            const renderPage = (targetPage) => {
-                currentPage = targetPage;
-                items.forEach((item, index) => {
-                    const page = Math.floor(index / currentPageSize);
-                    item.classList.toggle('hidden', page !== currentPage);
-                });
+            applyCarouselMode();
+
+            if (isScrollCarousel()) {
+                currentPage = nextPage;
                 syncDots();
-            };
+                layoutScrollSlides();
+                window.requestAnimationFrame(() => {
+                    layoutScrollSlides();
+                    scrollToPageIndex(nextPage, Boolean(direction));
+                    bindScrollObserver();
+                });
+                if (direction) animate(direction);
+                return;
+            }
 
             if (!direction || !(dotsContainer instanceof HTMLElement) || !shouldHandleSwipe()) {
-                renderPage(nextPage);
+                renderPageDesktop(nextPage);
                 animate(direction);
                 return;
             }
@@ -144,7 +239,7 @@
             dotsContainer.classList.add(direction === 'next' ? 'is-transitioning-next' : 'is-transitioning-prev');
 
             dotsAnimationTimer = window.setTimeout(() => {
-                renderPage(nextPage);
+                renderPageDesktop(nextPage);
                 animate(direction);
                 clearDotsAnimation();
                 void dotsContainer.offsetWidth;
@@ -169,38 +264,53 @@
             lastY = 0;
         };
 
-        root.addEventListener('touchstart', (event) => {
-            if (!shouldHandleSwipe() || isTransitioning || event.touches.length !== 1) return;
-            if (event.target instanceof Element && event.target.closest('a, button, input, select, textarea, label')) return;
-            const touch = event.touches[0];
-            tracking = true;
-            lockDirection = null;
-            startX = touch.clientX;
-            startY = touch.clientY;
-            lastX = touch.clientX;
-            lastY = touch.clientY;
-        }, { passive: true });
+        root.addEventListener(
+            'touchstart',
+            (event) => {
+                if (isScrollCarousel()) return;
+                if (!shouldHandleSwipe() || isTransitioning || event.touches.length !== 1) return;
+                if (event.target instanceof Element && event.target.closest('a, button, input, select, textarea, label'))
+                    return;
+                const touch = event.touches[0];
+                tracking = true;
+                lockDirection = null;
+                startX = touch.clientX;
+                startY = touch.clientY;
+                lastX = touch.clientX;
+                lastY = touch.clientY;
+            },
+            { passive: true },
+        );
 
-        root.addEventListener('touchmove', (event) => {
-            if (!tracking || !shouldHandleSwipe() || event.touches.length !== 1) return;
-            const touch = event.touches[0];
-            lastX = touch.clientX;
-            lastY = touch.clientY;
-            const deltaX = lastX - startX;
-            const deltaY = lastY - startY;
-            if (!lockDirection) {
-                if (Math.abs(deltaX) > 10 && Math.abs(deltaX) > Math.abs(deltaY) + 6) {
-                    lockDirection = 'horizontal';
-                } else if (Math.abs(deltaY) > 10) {
-                    lockDirection = 'vertical';
+        root.addEventListener(
+            'touchmove',
+            (event) => {
+                if (isScrollCarousel()) return;
+                if (!tracking || !shouldHandleSwipe() || event.touches.length !== 1) return;
+                const touch = event.touches[0];
+                lastX = touch.clientX;
+                lastY = touch.clientY;
+                const deltaX = lastX - startX;
+                const deltaY = lastY - startY;
+                if (!lockDirection) {
+                    if (Math.abs(deltaX) > 10 && Math.abs(deltaX) > Math.abs(deltaY) + 6) {
+                        lockDirection = 'horizontal';
+                    } else if (Math.abs(deltaY) > 10) {
+                        lockDirection = 'vertical';
+                    }
                 }
-            }
-            if (lockDirection === 'horizontal') {
-                event.preventDefault();
-            }
-        }, { passive: false });
+                if (lockDirection === 'horizontal') {
+                    event.preventDefault();
+                }
+            },
+            { passive: false },
+        );
 
         root.addEventListener('touchend', () => {
+            if (isScrollCarousel()) {
+                resetTracking();
+                return;
+            }
             if (!tracking || !shouldHandleSwipe()) {
                 resetTracking();
                 return;
@@ -219,6 +329,19 @@
         });
 
         root.addEventListener('touchcancel', resetTracking);
+
+        const scheduleLayout = () => {
+            if (!isScrollCarousel()) return;
+            if (resizeRaf !== null) return;
+            resizeRaf = window.requestAnimationFrame(() => {
+                resizeRaf = null;
+                layoutScrollSlides();
+                scrollToPageIndex(currentPage, false);
+            });
+        };
+
+        window.addEventListener('resize', scheduleLayout, { passive: true });
+
         mediaQuery.addEventListener('change', () => {
             if (isTransitioning) return;
             setPage(currentPage);
