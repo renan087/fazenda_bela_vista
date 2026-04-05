@@ -1910,7 +1910,7 @@ def update_farm_geometry_only(
     if not normalized:
         _flash(request, "error", "A geometria enviada nao e valida.")
         return _redirect("/fazendas")
-    update_farm(repo, farm, {"boundary_geojson": normalized})
+    repo.update(farm, {"boundary_geojson": normalized})
     try:
         generate_farm_preview_image(farm.id, normalized)
     except Exception:
