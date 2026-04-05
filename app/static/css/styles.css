@@ -640,12 +640,15 @@ body {
     transition: grid-template-rows 0.28s ease, opacity 0.22s ease, margin-top 0.22s ease;
     opacity: 0;
     margin-top: 0;
+    /* Evita que selects/inputs invisíveis capturem cliques (ex.: busca do estoque sob o filtro recolhido). */
+    pointer-events: none;
 }
 
 .stock-summary-collapse.is-expanded {
     grid-template-rows: 1fr;
     opacity: 1;
     margin-top: 1.5rem;
+    pointer-events: auto;
 }
 
 .stock-summary-collapse-inner {
