@@ -7,29 +7,57 @@ body {
 }
 
 @media (min-width: 1024px) {
-    --erp-sidebar-ease: cubic-bezier(0.22, 1, 0.36, 1);
+    :root {
+        --erp-sidebar-ease: cubic-bezier(0.22, 1, 0.36, 1);
+        --erp-sidebar-expanded-width: 18rem;
+        --erp-sidebar-collapsed-width: 5.75rem;
+        --erp-sidebar-shell-duration: 430ms;
+        --erp-sidebar-content-duration: 190ms;
+        --erp-sidebar-stage-delay: 150ms;
+    }
 
-    /* Desktop: animar largura da sidebar e margem do main (mobile usa só transform no HTML). */
     .erp-sidebar {
-        width: 18rem;
-        min-width: 18rem;
-        transition: width 420ms var(--erp-sidebar-ease), min-width 420ms var(--erp-sidebar-ease);
-        /* Visível na horizontal para o toggle ficar metade fora, na borda com o conteúdo. */
+        width: var(--erp-sidebar-expanded-width);
+        min-width: var(--erp-sidebar-expanded-width);
         overflow-x: visible;
         overflow-y: hidden;
+        transition: width var(--erp-sidebar-shell-duration) var(--erp-sidebar-ease), min-width var(--erp-sidebar-shell-duration) var(--erp-sidebar-ease);
     }
 
     .erp-main-shell {
-        margin-left: 18rem;
-        transition: margin-left 420ms var(--erp-sidebar-ease);
-    }
-
-    .erp-sidebar-inner {
-        transition: opacity 280ms var(--erp-sidebar-ease);
+        margin-left: var(--erp-sidebar-expanded-width);
+        transition: margin-left var(--erp-sidebar-shell-duration) var(--erp-sidebar-ease);
     }
 
     .erp-sidebar-header {
-        transition: padding 420ms var(--erp-sidebar-ease);
+        transition: padding var(--erp-sidebar-shell-duration) var(--erp-sidebar-ease);
+    }
+
+    .erp-sidebar-link {
+        position: relative;
+        overflow: hidden;
+    }
+
+    .erp-sidebar-brand-mobile {
+        display: none !important;
+    }
+
+    .erp-sidebar-icon {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        flex: 0 0 auto;
+        width: 2.5rem;
+        min-width: 2.5rem;
+    }
+
+    .erp-sidebar-icon > svg {
+        flex-shrink: 0;
+    }
+
+    .erp-sidebar-label {
+        white-space: nowrap;
+        transform-origin: left center;
     }
 
     .erp-sidebar-brand,
@@ -37,14 +65,10 @@ body {
     .erp-sidebar-session-wrap,
     .erp-sidebar-label,
     .erp-sidebar-parent-indicator,
-    .erp-sidebar-icon,
     .sidebar-submenu-panel {
-        transition: opacity 240ms ease, transform 300ms var(--erp-sidebar-ease), max-height 280ms var(--erp-sidebar-ease),
-            width 300ms var(--erp-sidebar-ease), height 280ms ease, margin 280ms ease, padding 280ms ease,
-            background-color 220ms ease, box-shadow 220ms ease, border-color 220ms ease;
+        transition: opacity var(--erp-sidebar-content-duration) ease, transform 260ms var(--erp-sidebar-ease), max-height 260ms var(--erp-sidebar-ease), margin 240ms ease, padding 240ms ease;
     }
 
-    /* Toggle minimalista: centro vertical da sidebar, levemente fora da borda direita. */
     .toggle-sidebar-btn.erp-sidebar-toggle {
         position: absolute;
         top: 50%;
@@ -101,99 +125,72 @@ body {
         display: block;
     }
 
-    .erp-sidebar-brand-mobile {
-        display: none !important;
-    }
-
-    .erp-sidebar-link {
-        position: relative;
-        overflow: hidden;
-    }
-
-    .erp-sidebar-icon {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        flex: 0 0 auto;
-        width: 2.5rem;
-        min-width: 2.5rem;
-    }
-
-    .erp-sidebar-icon > svg {
-        flex-shrink: 0;
-    }
-
-    .erp-sidebar-label {
-        white-space: nowrap;
-        transform-origin: left center;
-    }
-
-    /*
-     * Menu expandido: hover e ativo compartilham a mesma moldura (min-altura, borda 1px, rounded-2xl no HTML).
-     * Prévia do ativo = fundo/borda marca mais suaves; ativo = contraste máximo.
-     */
-    body:not(.erp-sidebar-collapsed) .erp-sidebar-nav > a.erp-sidebar-link,
-    body:not(.erp-sidebar-collapsed) .erp-sidebar-nav [data-submenu-group] > .erp-sidebar-link {
+    body:not(.erp-sidebar-collapsed):not(.erp-sidebar-collapsing) .erp-sidebar-nav > a.erp-sidebar-link,
+    body:not(.erp-sidebar-collapsed):not(.erp-sidebar-collapsing) .erp-sidebar-nav [data-submenu-group] > .erp-sidebar-link {
         min-height: 2.75rem;
         box-sizing: border-box;
         border: 1px solid transparent;
         transition: background-color 220ms ease, border-color 220ms ease, color 220ms ease, box-shadow 220ms ease;
     }
 
-    body:not(.erp-sidebar-collapsed) .erp-sidebar-nav .erp-sidebar-link.bg-brand-500 {
+    body:not(.erp-sidebar-collapsed):not(.erp-sidebar-collapsing) .erp-sidebar-nav .erp-sidebar-link.bg-brand-500 {
         border-color: #3d5f31;
         box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.2);
     }
 
-    body:not(.erp-sidebar-collapsed) .erp-sidebar-nav .erp-sidebar-link.bg-brand-500:hover {
+    body:not(.erp-sidebar-collapsed):not(.erp-sidebar-collapsing) .erp-sidebar-nav .erp-sidebar-link.bg-brand-500:hover {
         background-color: #4f7a3e !important;
         border-color: #547d42;
         box-shadow: 0 12px 18px -3px rgb(0 0 0 / 0.22);
     }
 
-    body:not(.erp-sidebar-collapsed) .erp-sidebar-nav .erp-sidebar-link.text-slate-300:hover,
-    body:not(.erp-sidebar-collapsed) .erp-sidebar-nav [data-submenu-parent].text-slate-300:hover {
+    body:not(.erp-sidebar-collapsed):not(.erp-sidebar-collapsing) .erp-sidebar-nav .erp-sidebar-link.text-slate-300:hover,
+    body:not(.erp-sidebar-collapsed):not(.erp-sidebar-collapsing) .erp-sidebar-nav [data-submenu-parent].text-slate-300:hover {
         background-color: rgba(68, 106, 54, 0.16) !important;
         border-color: rgba(111, 154, 87, 0.52);
         color: #f8fafc !important;
         box-shadow: none;
     }
 
-    body:not(.erp-sidebar-collapsed) .erp-sidebar-nav [data-submenu-parent].text-white {
+    body:not(.erp-sidebar-collapsed):not(.erp-sidebar-collapsing) .erp-sidebar-nav [data-submenu-parent].text-white {
         background-color: rgba(68, 106, 54, 0.12) !important;
         border-color: rgba(111, 154, 87, 0.38);
         color: #f8fafc !important;
     }
 
-    body:not(.erp-sidebar-collapsed) .erp-sidebar-nav [data-submenu-parent].text-white:hover {
+    body:not(.erp-sidebar-collapsed):not(.erp-sidebar-collapsing) .erp-sidebar-nav [data-submenu-parent].text-white:hover {
         background-color: rgba(68, 106, 54, 0.2) !important;
         border-color: rgba(111, 154, 87, 0.55);
         color: #fff !important;
     }
 
-    body.erp-sidebar-collapsed .erp-sidebar {
-        width: 5.75rem;
-        min-width: 5.75rem;
-        /* Permite a seta do toggle ficar metade para fora da barra. */
+    body.erp-sidebar-collapsed .erp-sidebar,
+    body.erp-sidebar-collapsing .erp-sidebar {
+        width: var(--erp-sidebar-collapsed-width);
+        min-width: var(--erp-sidebar-collapsed-width);
         overflow: visible;
     }
 
-    body.erp-sidebar-collapsed .erp-main-shell {
-        margin-left: 5.75rem;
+    body.erp-sidebar-collapsed .erp-main-shell,
+    body.erp-sidebar-collapsing .erp-main-shell {
+        margin-left: var(--erp-sidebar-collapsed-width);
     }
 
-    body.erp-sidebar-collapsed .erp-sidebar-header {
+    body.erp-sidebar-collapsed .erp-sidebar-header,
+    body.erp-sidebar-collapsing .erp-sidebar-header {
         padding-left: 0.375rem;
         padding-right: 0.375rem;
         padding-top: 1rem;
         padding-bottom: 1rem;
     }
 
-    body.erp-sidebar-collapsed .erp-sidebar-header-row {
+    body.erp-sidebar-collapsed .erp-sidebar-header-row,
+    body.erp-sidebar-collapsing .erp-sidebar-header-row {
         min-height: 3.25rem;
     }
 
-    body.erp-sidebar-collapsed .erp-sidebar-brand {
+    body.erp-sidebar-collapsed .erp-sidebar-brand,
+    body.erp-sidebar-collapsing .erp-sidebar-brand {
         width: 0 !important;
         height: 0 !important;
         min-height: 0 !important;
@@ -207,7 +204,8 @@ body {
         transform: scale(0.92);
     }
 
-    body.erp-sidebar-collapsed .erp-sidebar-brand-mobile {
+    body.erp-sidebar-collapsed .erp-sidebar-brand-mobile,
+    body.erp-sidebar-collapsing .erp-sidebar-brand-mobile {
         display: inline-flex !important;
         position: absolute;
         left: 50%;
@@ -219,18 +217,43 @@ body {
 
     body.erp-sidebar-collapsed .erp-sidebar-copy,
     body.erp-sidebar-collapsed .erp-sidebar-session-wrap,
-    body.erp-sidebar-collapsed .sidebar-submenu-panel {
+    body.erp-sidebar-collapsed .sidebar-submenu-panel,
+    body.erp-sidebar-collapsing .erp-sidebar-copy,
+    body.erp-sidebar-collapsing .erp-sidebar-session-wrap,
+    body.erp-sidebar-collapsing .sidebar-submenu-panel,
+    body.erp-sidebar-expanding .erp-sidebar-copy,
+    body.erp-sidebar-expanding .erp-sidebar-session-wrap,
+    body.erp-sidebar-expanding .sidebar-submenu-panel {
         opacity: 0;
         transform: translateX(-8px);
         pointer-events: none;
     }
 
-    /* Sair do fluxo: justify-between deixava o ícone de Insumos/Configuração deslocado. */
-    body.erp-sidebar-collapsed .erp-sidebar-parent-indicator {
+    body.erp-sidebar-collapsed .erp-sidebar-copy,
+    body.erp-sidebar-collapsed .erp-sidebar-session-wrap,
+    body.erp-sidebar-collapsed .sidebar-submenu-panel,
+    body.erp-sidebar-collapsing .erp-sidebar-copy,
+    body.erp-sidebar-collapsing .erp-sidebar-session-wrap,
+    body.erp-sidebar-collapsing .sidebar-submenu-panel,
+    body.erp-sidebar-expanding .erp-sidebar-copy,
+    body.erp-sidebar-expanding .erp-sidebar-session-wrap,
+    body.erp-sidebar-expanding .sidebar-submenu-panel {
+        max-height: 0;
+        margin: 0;
+        padding-top: 0;
+        padding-bottom: 0;
+        overflow: hidden;
+    }
+
+    body.erp-sidebar-collapsed .erp-sidebar-parent-indicator,
+    body.erp-sidebar-collapsing .erp-sidebar-parent-indicator,
+    body.erp-sidebar-expanding .erp-sidebar-parent-indicator {
         display: none !important;
     }
 
-    body.erp-sidebar-collapsed .erp-sidebar .erp-sidebar-label {
+    body.erp-sidebar-collapsed .erp-sidebar .erp-sidebar-label,
+    body.erp-sidebar-collapsing .erp-sidebar .erp-sidebar-label,
+    body.erp-sidebar-expanding .erp-sidebar .erp-sidebar-label {
         position: absolute;
         width: 1px;
         height: 1px;
@@ -243,10 +266,9 @@ body {
         opacity: 0;
         transform: translateX(-6px);
         pointer-events: none;
-        transition: opacity 220ms ease, transform 300ms var(--erp-sidebar-ease);
     }
 
-    body:not(.erp-sidebar-collapsed) .erp-sidebar .erp-sidebar-label {
+    body:not(.erp-sidebar-collapsed):not(.erp-sidebar-collapsing):not(.erp-sidebar-expanding) .erp-sidebar .erp-sidebar-label {
         position: static;
         width: auto;
         height: auto;
@@ -259,20 +281,10 @@ body {
         opacity: 1;
         transform: translateX(0);
         pointer-events: auto;
-        transition: opacity 220ms ease 25ms, transform 300ms var(--erp-sidebar-ease) 20ms;
     }
 
-    body.erp-sidebar-collapsed .erp-sidebar-copy,
-    body.erp-sidebar-collapsed .erp-sidebar-session-wrap,
-    body.erp-sidebar-collapsed .sidebar-submenu-panel {
-        max-height: 0;
-        margin: 0;
-        padding-top: 0;
-        padding-bottom: 0;
-        overflow: hidden;
-    }
-
-    body.erp-sidebar-collapsed .erp-sidebar-nav {
+    body.erp-sidebar-collapsed .erp-sidebar-nav,
+    body.erp-sidebar-collapsing .erp-sidebar-nav {
         display: flex;
         flex-direction: column;
         align-items: stretch;
@@ -283,13 +295,15 @@ body {
         padding-bottom: 0.5rem;
     }
 
-    /* Neutraliza space-y-* do Tailwind para não somar com flex gap. */
-    body.erp-sidebar-collapsed .erp-sidebar-nav > :not([hidden]) ~ :not([hidden]) {
+    body.erp-sidebar-collapsed .erp-sidebar-nav > :not([hidden]) ~ :not([hidden]),
+    body.erp-sidebar-collapsing .erp-sidebar-nav > :not([hidden]) ~ :not([hidden]) {
         margin-top: 0 !important;
     }
 
     body.erp-sidebar-collapsed .erp-sidebar-link,
-    body.erp-sidebar-collapsed .erp-sidebar [data-submenu-parent] {
+    body.erp-sidebar-collapsing .erp-sidebar-link,
+    body.erp-sidebar-collapsed .erp-sidebar [data-submenu-parent],
+    body.erp-sidebar-collapsing .erp-sidebar [data-submenu-parent] {
         justify-content: center;
         align-items: center;
         gap: 0;
@@ -298,18 +312,19 @@ body {
         padding-top: 0.125rem;
         padding-bottom: 0.125rem;
         overflow: visible;
-        /* Sem animar borda/sombra ao colapsar — só cor/opacidade/transform. */
         transition-property: background-color, color, opacity, transform;
         transition-duration: 200ms;
         transition-timing-function: ease;
     }
 
-    body.erp-sidebar-collapsed .erp-sidebar [data-submenu-parent] {
+    body.erp-sidebar-collapsed .erp-sidebar [data-submenu-parent],
+    body.erp-sidebar-collapsing .erp-sidebar [data-submenu-parent] {
         width: 100%;
         max-width: 100%;
     }
 
-    body.erp-sidebar-collapsed .erp-sidebar [data-submenu-parent] > span:first-child {
+    body.erp-sidebar-collapsed .erp-sidebar [data-submenu-parent] > span:first-child,
+    body.erp-sidebar-collapsing .erp-sidebar [data-submenu-parent] > span:first-child {
         display: flex;
         justify-content: center;
         align-items: center;
@@ -321,8 +336,8 @@ body {
         margin-right: auto;
     }
 
-    /* Slot fixo 44×44 / raio 14px: hover e ativo mesma caixa; só mudam cor e borda. */
-    body.erp-sidebar-collapsed .erp-sidebar .erp-sidebar-icon {
+    body.erp-sidebar-collapsed .erp-sidebar .erp-sidebar-icon,
+    body.erp-sidebar-collapsing .erp-sidebar .erp-sidebar-icon {
         width: 2.75rem;
         min-width: 2.75rem;
         min-height: 2.75rem;
@@ -334,7 +349,8 @@ body {
         transition-timing-function: ease;
     }
 
-    body.erp-sidebar-collapsed .erp-sidebar [data-submenu-group] {
+    body.erp-sidebar-collapsed .erp-sidebar [data-submenu-group],
+    body.erp-sidebar-collapsing .erp-sidebar [data-submenu-group] {
         padding-left: 0 !important;
         padding-right: 0 !important;
         margin-left: 0 !important;
@@ -342,74 +358,77 @@ body {
         background: transparent !important;
     }
 
-    body.erp-sidebar-collapsed .erp-sidebar-link.bg-brand-500 {
+    body.erp-sidebar-collapsed .erp-sidebar-link.bg-brand-500,
+    body.erp-sidebar-collapsing .erp-sidebar-link.bg-brand-500 {
         background-color: transparent !important;
         box-shadow: none !important;
     }
 
-    body.erp-sidebar-collapsed .erp-sidebar-link.bg-brand-500 .erp-sidebar-icon {
+    body.erp-sidebar-collapsed .erp-sidebar-link.bg-brand-500 .erp-sidebar-icon,
+    body.erp-sidebar-collapsing .erp-sidebar-link.bg-brand-500 .erp-sidebar-icon {
         background-color: #446a36;
         color: #fff;
         border-color: #3d5f31;
         box-shadow: 0 8px 14px -2px rgb(0 0 0 / 0.2);
     }
 
-    body.erp-sidebar-collapsed .erp-sidebar [data-submenu-parent].text-white {
+    body.erp-sidebar-collapsed .erp-sidebar [data-submenu-parent].text-white,
+    body.erp-sidebar-collapsing .erp-sidebar [data-submenu-parent].text-white {
         background: transparent !important;
     }
 
-    body.erp-sidebar-collapsed .erp-sidebar [data-submenu-parent].text-white .erp-sidebar-icon {
+    body.erp-sidebar-collapsed .erp-sidebar [data-submenu-parent].text-white .erp-sidebar-icon,
+    body.erp-sidebar-collapsing .erp-sidebar [data-submenu-parent].text-white .erp-sidebar-icon {
         background-color: rgba(68, 106, 54, 0.48);
         color: #fff;
         border-color: rgba(111, 154, 87, 0.55);
     }
 
-    body.erp-sidebar-collapsed .erp-sidebar-link:not(.bg-brand-500):hover {
+    body.erp-sidebar-collapsed .erp-sidebar-link:not(.bg-brand-500):hover,
+    body.erp-sidebar-collapsing .erp-sidebar-link:not(.bg-brand-500):hover {
         background-color: transparent !important;
     }
 
-    body.erp-sidebar-collapsed .erp-sidebar-link:not(.bg-brand-500):hover .erp-sidebar-icon {
+    body.erp-sidebar-collapsed .erp-sidebar-link:not(.bg-brand-500):hover .erp-sidebar-icon,
+    body.erp-sidebar-collapsing .erp-sidebar-link:not(.bg-brand-500):hover .erp-sidebar-icon,
+    body.erp-sidebar-collapsed .erp-sidebar [data-submenu-parent].text-slate-300:hover .erp-sidebar-icon,
+    body.erp-sidebar-collapsing .erp-sidebar [data-submenu-parent].text-slate-300:hover .erp-sidebar-icon {
         background-color: rgba(68, 106, 54, 0.22);
         color: #f8fafc;
         border-color: rgba(111, 154, 87, 0.5);
     }
 
-    body.erp-sidebar-collapsed .erp-sidebar [data-submenu-parent].text-slate-300:hover {
+    body.erp-sidebar-collapsed .erp-sidebar [data-submenu-parent].text-slate-300:hover,
+    body.erp-sidebar-collapsing .erp-sidebar [data-submenu-parent].text-slate-300:hover,
+    body.erp-sidebar-collapsed .erp-sidebar [data-submenu-parent].text-white:hover,
+    body.erp-sidebar-collapsing .erp-sidebar [data-submenu-parent].text-white:hover,
+    body.erp-sidebar-collapsed .erp-sidebar-link.bg-brand-500:hover,
+    body.erp-sidebar-collapsing .erp-sidebar-link.bg-brand-500:hover {
         background-color: transparent !important;
     }
 
-    body.erp-sidebar-collapsed .erp-sidebar [data-submenu-parent].text-slate-300:hover .erp-sidebar-icon {
-        background-color: rgba(68, 106, 54, 0.22);
-        color: #f8fafc;
-        border-color: rgba(111, 154, 87, 0.5);
-    }
-
-    body.erp-sidebar-collapsed .erp-sidebar [data-submenu-parent].text-white:hover {
-        background-color: transparent !important;
-    }
-
-    body.erp-sidebar-collapsed .erp-sidebar [data-submenu-parent].text-white:hover .erp-sidebar-icon {
+    body.erp-sidebar-collapsed .erp-sidebar [data-submenu-parent].text-white:hover .erp-sidebar-icon,
+    body.erp-sidebar-collapsing .erp-sidebar [data-submenu-parent].text-white:hover .erp-sidebar-icon {
         background-color: rgba(68, 106, 54, 0.58);
         color: #fff;
         border-color: rgba(130, 175, 100, 0.65);
     }
 
-    body.erp-sidebar-collapsed .erp-sidebar-link.bg-brand-500:hover {
-        background-color: transparent !important;
-    }
-
-    body.erp-sidebar-collapsed .erp-sidebar-link.bg-brand-500:hover .erp-sidebar-icon {
+    body.erp-sidebar-collapsed .erp-sidebar-link.bg-brand-500:hover .erp-sidebar-icon,
+    body.erp-sidebar-collapsing .erp-sidebar-link.bg-brand-500:hover .erp-sidebar-icon {
         background-color: #527a42;
         border-color: #5c8649;
         box-shadow: 0 8px 16px -2px rgb(0 0 0 / 0.24);
     }
 
-    body.erp-sidebar-collapsed .erp-sidebar [data-submenu-parent][data-parent-active="true"] {
+    body.erp-sidebar-collapsed .erp-sidebar [data-submenu-parent][data-parent-active="true"],
+    body.erp-sidebar-collapsing .erp-sidebar [data-submenu-parent][data-parent-active="true"] {
         background: transparent !important;
         box-shadow: none !important;
     }
 
-    body.erp-sidebar-collapsed .erp-sidebar [data-submenu-parent][data-parent-active="true"]:hover {
+    body.erp-sidebar-collapsed .erp-sidebar [data-submenu-parent][data-parent-active="true"]:hover,
+    body.erp-sidebar-collapsing .erp-sidebar [data-submenu-parent][data-parent-active="true"]:hover {
         background: transparent !important;
     }
 }

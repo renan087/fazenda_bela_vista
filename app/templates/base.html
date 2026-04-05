@@ -377,11 +377,39 @@
             const menuButton = document.querySelector('[data-mobile-menu-button]');
             const desktopSidebarMq = window.matchMedia('(min-width: 1024px)');
             const desktopSidebarStorageKey = 'sisfarm.desktopSidebarCollapsed';
+            const desktopSidebarStageDelay = 150;
+            const desktopSidebarShellDuration = 430;
+            let desktopSidebarTransitionTimer = null;
             const applyDesktopSidebarState = (collapsed) => {
                 if (!document.body || !desktopSidebarMq.matches) return;
+                document.body.classList.remove('erp-sidebar-collapsing', 'erp-sidebar-expanding');
                 document.body.classList.toggle('erp-sidebar-collapsed', collapsed);
                 desktopSidebarToggle?.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
                 desktopSidebarToggle?.setAttribute('aria-label', collapsed ? 'Expandir menu' : 'Recolher menu');
+            };
+            const transitionDesktopSidebarState = (collapsed) => {
+                if (!document.body || !desktopSidebarMq.matches) return;
+                window.clearTimeout(desktopSidebarTransitionTimer);
+                if (collapsed) {
+                    document.body.classList.remove('erp-sidebar-expanding');
+                    document.body.classList.add('erp-sidebar-collapsing');
+                    desktopSidebarToggle?.setAttribute('aria-expanded', 'false');
+                    desktopSidebarToggle?.setAttribute('aria-label', 'Expandir menu');
+                    desktopSidebarTransitionTimer = window.setTimeout(() => {
+                        document.body.classList.add('erp-sidebar-collapsed');
+                        window.setTimeout(() => {
+                            document.body.classList.remove('erp-sidebar-collapsing');
+                        }, desktopSidebarShellDuration);
+                    }, desktopSidebarStageDelay);
+                    return;
+                }
+                document.body.classList.remove('erp-sidebar-collapsed', 'erp-sidebar-collapsing');
+                document.body.classList.add('erp-sidebar-expanding');
+                desktopSidebarToggle?.setAttribute('aria-expanded', 'true');
+                desktopSidebarToggle?.setAttribute('aria-label', 'Recolher menu');
+                desktopSidebarTransitionTimer = window.setTimeout(() => {
+                    document.body.classList.remove('erp-sidebar-expanding');
+                }, desktopSidebarShellDuration + desktopSidebarStageDelay);
             };
             const readDesktopSidebarPreference = () => {
                 try {
@@ -399,7 +427,7 @@
             };
             const syncDesktopSidebar = () => {
                 if (!desktopSidebarMq.matches) {
-                    document.body.classList.remove('erp-sidebar-collapsed');
+                    document.body.classList.remove('erp-sidebar-collapsed', 'erp-sidebar-collapsing', 'erp-sidebar-expanding');
                     return;
                 }
                 applyDesktopSidebarState(readDesktopSidebarPreference());
@@ -424,7 +452,7 @@
             overlay?.addEventListener('click', closeMenu);
             desktopSidebarToggle?.addEventListener('click', () => {
                 const nextCollapsed = !document.body.classList.contains('erp-sidebar-collapsed');
-                applyDesktopSidebarState(nextCollapsed);
+                transitionDesktopSidebarState(nextCollapsed);
                 persistDesktopSidebarPreference(nextCollapsed);
             });
             if (desktopSidebarMq.addEventListener) desktopSidebarMq.addEventListener('change', syncDesktopSidebar);
@@ -451,7 +479,7 @@
 
                 button?.addEventListener('click', () => {
                     if (desktopSidebarMq.matches && document.body.classList.contains('erp-sidebar-collapsed')) {
-                        applyDesktopSidebarState(false);
+                        transitionDesktopSidebarState(false);
                         persistDesktopSidebarPreference(false);
                         panel?.classList.remove('hidden');
                         setParentActive(button, true);
