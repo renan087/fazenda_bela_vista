@@ -1503,7 +1503,6 @@ def plots_page(
     sort: str = "name",
     edit_id: int | None = None,
     selected_farm_id: int | None = None,
-    open_farm_modal: int | None = None,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user_web),
     csrf_token: str = Depends(get_csrf_token),
@@ -1531,7 +1530,6 @@ def plots_page(
             filters={"q": q or "", "farm_ids": farm_ids, "variety_ids": variety_ids, "sort": sort},
             edit_plot=edit_plot,
             selected_farm_id=selected_farm_id or scope["active_farm_id"],
-            open_farm_modal=bool(open_farm_modal),
             filter_links=[
                 {"farm_id": plot.farm_id, "variety_id": plot.variety_id}
                 for plot in repo.list_plots(farm_ids=farm_ids or None, variety_ids=variety_ids or None)
@@ -1850,7 +1848,7 @@ def create_farm_action(
     geometry, geometry_ok = _resolve_geojson(boundary_geojson_file, boundary_geojson)
     if boundary_geojson_file and boundary_geojson_file.filename and not geometry_ok:
         _flash(request, "error", "O arquivo GeoJSON da fazenda nao e valido.")
-        return _redirect_with_query("/setores", open_farm_modal=1) if redirect_to == "/setores" else _redirect("/fazendas")
+        return _redirect("/setores") if redirect_to == "/setores" else _redirect("/fazendas")
     farm = create_farm(
         _repository(db),
         {

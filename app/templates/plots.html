@@ -170,18 +170,15 @@
 
                 <div class="grid gap-4 md:grid-cols-2">
                     <label><span class="mb-2 block text-sm font-medium">Área (ha)</span><input type="number" step="0.01" name="area_hectares" value="{{ edit_plot.area_hectares if edit_plot else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required></label>
-                    <div>
-                        <div class="mb-2 flex items-center justify-between gap-3">
-                            <span class="block text-sm font-medium">Fazenda</span>
-                            <button type="button" data-open-farm-modal class="text-sm font-semibold text-brand-700 hover:text-brand-500">Nova fazenda</button>
-                        </div>
+                    <label>
+                        <span class="mb-2 block text-sm font-medium">Fazenda</span>
                         <select name="farm_id" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required>
                             <option value="">Selecione</option>
                             {% for farm in farms %}
                             <option value="{{ farm.id }}" {% if edit_plot and edit_plot.farm_id == farm.id %}selected{% elif selected_farm_id == farm.id %}selected{% endif %}>{{ farm.name }}</option>
                             {% endfor %}
                         </select>
-                    </div>
+                    </label>
                     <label><span class="mb-2 block text-sm font-medium">Data de plantio</span><input type="date" name="planting_date" value="{{ edit_plot.planting_date.isoformat() if edit_plot and edit_plot.planting_date else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50"></label>
                     <label><span class="mb-2 block text-sm font-medium">Número de plantas</span><input type="number" name="plant_count" value="{{ edit_plot.plant_count if edit_plot else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required></label>
                     <label><span class="mb-2 block text-sm font-medium">Espaçamento entre linhas (m)</span><input type="number" step="0.01" name="spacing_row_meters" value="{{ edit_plot.spacing_row_meters if edit_plot else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50"></label>
@@ -229,68 +226,6 @@
                 </div>
 
                 <label><span class="mb-2 block text-sm font-medium">Observações</span><textarea name="notes" rows="3" class="w-full rounded-2xl border-slate-200 bg-slate-50">{{ edit_plot.notes if edit_plot else '' }}</textarea></label>
-            </form>
-        </div>
-    </div>
-</dialog>
-
-<dialog id="farm-modal" class="app-modal rounded-[2rem] p-0 shadow-2xl w-full max-w-3xl overflow-hidden">
-    <div class="bg-white p-6 sm:p-8">
-        <div class="flex items-start justify-between gap-4">
-            <div class="min-w-0">
-                <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Nova fazenda</p>
-                <h3 class="mt-2 text-2xl font-semibold purchased-modal-heading">Cadastrar fazenda sem sair da tela</h3>
-                <p class="mt-2 text-sm text-slate-500 purchased-modal-subtitle">Crie a fazenda e volte direto para o cadastro do setor, sem perder o contexto atual.</p>
-            </div>
-            <button type="button" data-close-farm-modal class="modal-close-button" aria-label="Fechar">
-                <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                    <path d="M18 6 6 18"/>
-                    <path d="m6 6 12 12"/>
-                </svg>
-            </button>
-        </div>
-
-        <div class="mt-6 max-h-[72vh] overflow-y-auto pr-1" data-modal-scroll>
-            <form id="plots-farm-form" method="post" enctype="multipart/form-data" action="/fazendas" class="grid gap-4">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                <input type="hidden" name="redirect_to" value="/setores">
-
-                <div class="sticky top-0 z-10 -mx-1 bg-white/95 px-1 py-1 backdrop-blur">
-                    <div class="flex flex-wrap justify-end gap-3 rounded-[1.5rem] px-2 py-2 sm:px-3">
-                        <button type="button" class="rounded-2xl bg-slate-100 px-4 py-3 font-semibold text-slate-700 hover:bg-slate-200" data-close-farm-modal>Cancelar</button>
-                        <button form="plots-farm-form" class="rounded-2xl bg-brand-500 px-4 py-3 font-semibold text-white hover:bg-brand-700">Salvar fazenda</button>
-                    </div>
-                </div>
-
-                <label>
-                    <span class="mb-2 block text-sm font-medium">Nome</span>
-                    <input name="name" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required>
-                </label>
-
-                <div class="grid gap-4 md:grid-cols-2 md:items-start">
-                    <label>
-                        <span class="mb-2 block text-sm font-medium">Localização</span>
-                        <input name="location" placeholder="Ex.: Vitória da Conquista, BA" autocomplete="address-level2" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required>
-                    </label>
-                    <label>
-                        <span class="mb-2 block text-sm font-medium">Área total (ha)</span>
-                        <input type="number" step="0.01" name="total_area" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required>
-                    </label>
-                </div>
-
-                <div class="rounded-[1.25rem] border border-slate-200 bg-slate-50/80 p-4">
-                    <p class="text-xs uppercase tracking-[0.25em] text-slate-400">Perímetro no mapa</p>
-                    <p class="mt-3 text-sm text-slate-600">Se já tiver o arquivo da geometria, envie o GeoJSON da fazenda. Você também pode cadastrar agora sem perímetro e complementar depois.</p>
-                    <label class="mt-4 block">
-                        <span class="mb-2 block text-sm font-medium">GeoJSON da fazenda (.json)</span>
-                        <input type="file" name="boundary_geojson_file" accept=".json,.geojson,application/json" class="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm">
-                    </label>
-                </div>
-
-                <label>
-                    <span class="mb-2 block text-sm font-medium">Observações</span>
-                    <textarea name="notes" rows="3" class="w-full rounded-2xl border-slate-200 bg-slate-50"></textarea>
-                </label>
             </form>
         </div>
     </div>
@@ -363,19 +298,6 @@
 
         plotSearchInput?.addEventListener('input', applyLocalSearch);
         applyLocalSearch();
-
-        const dialog = document.getElementById('farm-modal');
-        if (dialog) {
-            document.querySelectorAll('[data-open-farm-modal]').forEach((button) => {
-                button.addEventListener('click', () => dialog.showModal());
-            });
-            document.querySelectorAll('[data-close-farm-modal]').forEach((button) => {
-                button.addEventListener('click', () => dialog.close());
-            });
-            {% if open_farm_modal %}
-            dialog.showModal();
-            {% endif %}
-        }
 
         const irrigationType = document.querySelector('[data-irrigation-type]');
         const irrigationGroups = document.querySelectorAll('[data-irrigation-group]');
