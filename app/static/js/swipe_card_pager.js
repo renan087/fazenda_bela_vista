@@ -31,10 +31,7 @@
         let intersectionObserver = null;
         let resizeRaf = null;
         let programmaticScroll = false;
-        let carouselUserInput = false;
-        let gestureStartPage = 0;
-        let scrollSettleTimer = null;
-        let touchSettleTimer = null;
+        let scrollDotsRaf = null;
 
         root.classList.add('swipe-card-pager-surface');
         root.style.touchAction = 'pan-y';
@@ -69,21 +66,6 @@
             });
         };
 
-        const getNearestPageIndex = () => {
-            if (!isScrollCarousel()) return currentPage;
-            const left = scrollViewport.scrollLeft;
-            let best = 0;
-            let bestDist = Infinity;
-            items.forEach((el, i) => {
-                const d = Math.abs(el.offsetLeft - left);
-                if (d < bestDist) {
-                    bestDist = d;
-                    best = i;
-                }
-            });
-            return best;
-        };
-
         const scrollToPageIndex = (pageIndex, smooth) => {
             if (!isScrollCarousel()) return;
             const el = items[pageIndex];
@@ -98,109 +80,75 @@
                 window.requestAnimationFrame(() => {
                     window.requestAnimationFrame(() => {
                         programmaticScroll = false;
-                        if (isScrollCarousel()) bindScrollObserver();
+                        if (isScrollCarousel()) updateDotsFromScroll();
                     });
                 });
             } else {
                 const clearProgrammaticScroll = () => {
                     if (!programmaticScroll) return;
                     programmaticScroll = false;
-                    if (isScrollCarousel() && !carouselUserInput) bindScrollObserver();
+                    if (isScrollCarousel()) updateDotsFromScroll();
                 };
                 scrollViewport.addEventListener('scrollend', clearProgrammaticScroll, { once: true, passive: true });
                 window.setTimeout(clearProgrammaticScroll, 650);
             }
         };
 
-        const runCarouselDotsTransition = (fromPage, toPage, afterPhase1) => {
+        const setCarouselDotsLinkedVars = (stretch, shift) => {
             if (!(dotsContainer instanceof HTMLElement)) return;
+            dotsContainer.style.setProperty('--carousel-dot-stretch', String(stretch));
+            dotsContainer.style.setProperty('--carousel-dot-shift', String(shift));
+        };
+
+        const clearCarouselDotsLinkedVars = () => {
+            if (!(dotsContainer instanceof HTMLElement)) return;
+            dotsContainer.classList.remove('swipe-carousel-dots-linked');
+            dotsContainer.style.removeProperty('--carousel-dot-stretch');
+            dotsContainer.style.removeProperty('--carousel-dot-shift');
+        };
+
+        const updateDotsFromScroll = () => {
+            if (!isScrollCarousel() || !(dotsContainer instanceof HTMLElement)) return;
             if (isTransitioning) return;
-            const direction = toPage > fromPage ? 'next' : 'prev';
-            isTransitioning = true;
-            currentPage = fromPage;
+
+            const n = items.length;
+            const left = scrollViewport.scrollLeft;
+
+            if (n <= 1) {
+                currentPage = 0;
+                dotsContainer.classList.add('swipe-carousel-dots-linked');
+                setCarouselDotsLinkedVars(0, 0);
+                syncDots();
+                return;
+            }
+
+            let i = 0;
+            for (; i < n - 1; i += 1) {
+                if (items[i + 1].offsetLeft > left + 0.5) break;
+            }
+            i = Math.min(i, n - 2);
+
+            const start = items[i].offsetLeft;
+            const end = items[i + 1].offsetLeft;
+            const span = end - start;
+            const t = span > 0 ? clamp((left - start) / span, 0, 1) : 0;
+            const stretchMag = 1 - Math.abs(t - 0.5) * 2;
+            const shift = (t - 0.5) * 1.85;
+            currentPage = clamp(Math.round(i + t), 0, n - 1);
+
+            dotsContainer.classList.add('swipe-carousel-dots-linked');
+            setCarouselDotsLinkedVars(stretchMag, shift);
             syncDots();
-            clearDotsAnimation();
-            window.clearTimeout(dotsAnimationTimer);
-            void dotsContainer.offsetWidth;
-            dotsContainer.classList.add(direction === 'next' ? 'is-transitioning-next' : 'is-transitioning-prev');
-
-            dotsAnimationTimer = window.setTimeout(() => {
-                currentPage = toPage;
-                syncDots();
-                afterPhase1(direction);
-                clearDotsAnimation();
-                void dotsContainer.offsetWidth;
-                dotsContainer.classList.add(direction === 'next' ? 'is-settling-next' : 'is-settling-prev');
-                dotsAnimationTimer = window.setTimeout(() => {
-                    clearDotsAnimation();
-                    isTransitioning = false;
-                }, 440);
-            }, 180);
         };
 
-        const flushCarouselScrollSettled = () => {
-            if (!isScrollCarousel()) return;
-            window.clearTimeout(scrollSettleTimer);
-            window.clearTimeout(touchSettleTimer);
-            if (programmaticScroll) {
-                programmaticScroll = false;
-                carouselUserInput = false;
-                bindScrollObserver();
-                return;
-            }
-            if (!carouselUserInput) return;
-            carouselUserInput = false;
-
-            const finalPage = getNearestPageIndex();
-            if (finalPage === gestureStartPage) {
-                currentPage = finalPage;
-                syncDots();
-                bindScrollObserver();
-                return;
-            }
-
-            const targetEl = items[finalPage];
-            if (!targetEl) {
-                currentPage = finalPage;
-                syncDots();
-                bindScrollObserver();
-                return;
-            }
-
-            runCarouselDotsTransition(gestureStartPage, finalPage, (dir) => {
-                layoutScrollSlides();
-                window.requestAnimationFrame(() => {
-                    layoutScrollSlides();
-                    scrollViewport.scrollTo({
-                        left: targetEl.offsetLeft,
-                        behavior: 'auto',
-                    });
-                    programmaticScroll = false;
-                    animate(dir);
-                    bindScrollObserver();
-                });
+        const scheduleDotsFromScroll = () => {
+            if (!isScrollCarousel() || isTransitioning) return;
+            if (scrollDotsRaf !== null) return;
+            scrollDotsRaf = window.requestAnimationFrame(() => {
+                scrollDotsRaf = null;
+                if (!isScrollCarousel() || isTransitioning) return;
+                updateDotsFromScroll();
             });
-        };
-
-        const bindScrollObserver = () => {
-            disconnectObserver();
-            if (!isScrollCarousel()) return;
-            intersectionObserver = new IntersectionObserver(
-                (entries) => {
-                    if (isTransitioning) return;
-                    const candidates = entries
-                        .filter((e) => e.isIntersecting && e.intersectionRatio >= 0.45)
-                        .sort((a, b) => b.intersectionRatio - a.intersectionRatio);
-                    if (!candidates.length) return;
-                    const idx = items.indexOf(candidates[0].target);
-                    if (idx >= 0 && idx !== currentPage) {
-                        currentPage = idx;
-                        syncDots();
-                    }
-                },
-                { root: scrollViewport, rootMargin: '0px', threshold: [0.45, 0.55, 0.65] },
-            );
-            items.forEach((el) => intersectionObserver.observe(el));
         };
 
         const applyCarouselMode = () => {
@@ -216,6 +164,7 @@
                 items.forEach((item) => item.classList.remove('hidden'));
             } else {
                 scrollViewport?.classList.remove('swipe-card-pager-scroll-viewport', 'is-carousel-active');
+                clearCarouselDotsLinkedVars();
                 root.classList.remove('swipe-card-pager-scroll-track', 'swipe-card-pager-scroll-active');
                 root.classList.add('swipe-card-pager-surface');
                 root.style.touchAction = 'pan-y';
@@ -327,7 +276,7 @@
                     window.requestAnimationFrame(() => {
                         layoutScrollSlides();
                         scrollToPageIndex(nextPage, smooth);
-                        bindScrollObserver();
+                        if (!smooth) updateDotsFromScroll();
                     });
                 };
 
@@ -338,12 +287,8 @@
                     return;
                 }
 
-                if (isTransitioning) return;
-                const fromPage = currentPage;
-                runCarouselDotsTransition(fromPage, nextPage, (dir) => {
-                    finishScroll(true);
-                    animate(dir);
-                });
+                clearDotsAnimation();
+                finishScroll(true);
                 return;
             }
 
@@ -459,6 +404,7 @@
                 resizeRaf = null;
                 layoutScrollSlides();
                 scrollToPageIndex(currentPage, false);
+                updateDotsFromScroll();
             });
         };
 
@@ -472,36 +418,19 @@
 
         if (scrollViewport instanceof HTMLElement) {
             scrollViewport.addEventListener(
-                'touchstart',
-                () => {
-                    if (!isScrollCarousel() || isTransitioning || programmaticScroll) return;
-                    carouselUserInput = true;
-                    gestureStartPage = getNearestPageIndex();
-                    currentPage = gestureStartPage;
-                    syncDots();
-                    disconnectObserver();
-                },
-                { passive: true },
-            );
-
-            scrollViewport.addEventListener(
                 'scroll',
                 () => {
-                    if (!isScrollCarousel() || programmaticScroll || !carouselUserInput) return;
-                    window.clearTimeout(scrollSettleTimer);
-                    scrollSettleTimer = window.setTimeout(flushCarouselScrollSettled, 130);
+                    if (!isScrollCarousel()) return;
+                    scheduleDotsFromScroll();
                 },
                 { passive: true },
             );
 
-            scrollViewport.addEventListener('scrollend', flushCarouselScrollSettled, { passive: true });
-
             scrollViewport.addEventListener(
-                'touchend',
+                'scrollend',
                 () => {
-                    if (!isScrollCarousel() || programmaticScroll) return;
-                    window.clearTimeout(touchSettleTimer);
-                    touchSettleTimer = window.setTimeout(flushCarouselScrollSettled, 480);
+                    if (!isScrollCarousel() || isTransitioning) return;
+                    updateDotsFromScroll();
                 },
                 { passive: true },
             );
