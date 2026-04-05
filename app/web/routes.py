@@ -970,6 +970,7 @@ def _stock_export_query(
     end_date: date | None = None,
     movement_type: str = "all",
     item_type: str | None = None,
+    stock_tab: str | None = None,
 ) -> str:
     params = {
         "farm_id": farm_id,
@@ -978,6 +979,7 @@ def _stock_export_query(
         "end_date": end_date.isoformat() if end_date else None,
         "movement_type": movement_type if movement_type and movement_type != "all" else None,
         "item_type": item_type,
+        "stock_tab": stock_tab if stock_tab in {"entries", "outputs", "extract"} else None,
     }
     clean = {key: value for key, value in params.items() if value not in (None, "", "all")}
     return urlencode(clean)
@@ -1062,10 +1064,114 @@ def _assets_export_query(farm_id: int | None = None, status: str | None = None) 
     return urlencode(clean)
 
 
-def _purchased_inputs_export_query(farm_id: int | None = None, item_type: str | None = None) -> str:
-    params = {"farm_id": farm_id, "item_type": item_type}
+def _purchased_inputs_export_query(
+    farm_id: int | None = None,
+    item_type: str | None = None,
+    purchased_tab: str | None = None,
+) -> str:
+    params = {
+        "farm_id": farm_id,
+        "item_type": item_type,
+        "purchased_tab": purchased_tab if purchased_tab in {"entries", "outputs", "extract"} else None,
+    }
     clean = {key: value for key, value in params.items() if value not in (None, "", "all")}
     return urlencode(clean)
+
+
+def _export_purchased_tab_param(request: Request) -> str:
+    raw = (request.query_params.get("purchased_tab") or "").strip().lower()
+    if raw in {"entries", "outputs", "extract"}:
+        return raw
+    return "entries"
+
+
+def _export_stock_tab_param(request: Request, movement_type: str) -> str:
+    raw = (request.query_params.get("stock_tab") or "").strip().lower()
+    if raw in {"entries", "outputs", "extract"}:
+        return raw
+    if movement_type == "saida":
+        return "outputs"
+    return "entries"
+
+
+def _catalog_item_type_label_pt(item_catalog) -> str:
+    if item_catalog and item_catalog.item_type == "combustivel":
+        return "Combustível"
+    return "Insumo agrícola"
+
+
+def _xlsx_apply_column_widths(sheet, widths: list[float]) -> None:
+    for index, width in enumerate(widths, start=1):
+        sheet.column_dimensions[get_column_letter(index)].width = width
+
+
+def _xlsx_write_purchase_entries(sheet, purchase_entries) -> None:
+    sheet.append(["Data", "Insumo", "Tipo", "Fazenda", "Quantidade", "Saldo", "Valor", "Observações"])
+    for item in purchase_entries:
+        sheet.append(
+            [
+                item.purchase_date.isoformat() if item.purchase_date else "",
+                item.input_catalog.name if item.input_catalog else item.name,
+                _catalog_item_type_label_pt(item.input_catalog),
+                item.farm.name if item.farm else "",
+                float(item.total_quantity or 0),
+                float(item.available_quantity or 0),
+                float(item.total_cost or 0),
+                item.notes or "",
+            ]
+        )
+    _xlsx_apply_column_widths(sheet, [14, 30, 18, 24, 16, 16, 16, 40])
+
+
+def _xlsx_write_stock_outputs(sheet, stock_outputs) -> None:
+    sheet.append(["Data", "Insumo", "Tipo", "Origem", "Fazenda / Setor", "Quantidade", "Custo", "Observações"])
+    for output in stock_outputs:
+        sheet.append(
+            [
+                output.movement_date.isoformat() if output.movement_date else "",
+                output.input_catalog.name if output.input_catalog else "Insumo removido",
+                _catalog_item_type_label_pt(output.input_catalog),
+                output.origin or "",
+                f"{output.farm.name if output.farm else ''}{(' / ' + output.plot.name) if output.plot else ''}",
+                float(output.quantity or 0),
+                float(output.total_cost or 0),
+                output.notes or "",
+            ]
+        )
+    _xlsx_apply_column_widths(sheet, [14, 30, 18, 18, 28, 16, 16, 40])
+
+
+def _xlsx_write_extract_rows(sheet, extract_rows: list[dict]) -> None:
+    sheet.append(
+        [
+            "Data",
+            "Insumo",
+            "Tipo da movimentacao",
+            "Origem",
+            "Quantidade",
+            "Unidade",
+            "Custo unitario",
+            "Custo total",
+            "Saldo apos movimentacao",
+            "Observacoes",
+        ]
+    )
+    for row in extract_rows:
+        sheet.append(
+            [
+                row["date"].isoformat() if row["date"] else "",
+                row["input_name"],
+                row["kind"],
+                row["origin"],
+                float(row["quantity"] or 0),
+                row["unit"],
+                float(row.get("unit_cost") or 0),
+                float(row.get("total_cost") or 0),
+                float(row.get("balance_after") or 0),
+                row.get("notes") or "",
+            ]
+        )
+    _xlsx_apply_column_widths(sheet, [14, 30, 18, 20, 14, 12, 16, 16, 20, 42])
 
 
 def _format_currency(value) -> str:
@@ -1087,6 +1193,117 @@ def _stock_report_totals(rows: list[dict]) -> dict:
         "grand_total": round(entries_total + outputs_total, 2),
         "movements_count": len(rows),
     }
+
+
+def _pdf_flowables_extract_detail_table(
+    doc,
+    rows: list[dict],
+    totals: dict,
+    *,
+    cell_style,
+    cell_muted_style,
+    cell_numeric_style,
+    meta_value_style,
+    summary_value_style,
+) -> list:
+    data = [
+        [
+            "Data",
+            "Insumo",
+            "Mov.",
+            "Origem / Ref.",
+            "Qtd.",
+            "Un.",
+            "Custo un.",
+            "Custo total",
+            "Saldo apos",
+            "Observacoes",
+        ]
+    ]
+    for row in rows:
+        movement_color = "#166534" if row["kind"] == "entrada" else "#be123c"
+        data.append(
+            [
+                Paragraph(row["date"].strftime("%d/%m/%Y") if row["date"] else "-", cell_style),
+                Paragraph(row["input_name"], cell_style),
+                Paragraph(f'<font color="{movement_color}"><b>{str(row["kind"]).title()}</b></font>', cell_style),
+                Paragraph(f'{row["origin"]} • {row["reference"]}', cell_muted_style),
+                Paragraph(_format_decimal_br(row["quantity"], 2), cell_numeric_style),
+                Paragraph(str(row["unit"] or "-"), cell_style),
+                Paragraph(_format_currency(row.get("unit_cost") or 0), cell_numeric_style),
+                Paragraph(_format_currency(row.get("total_cost") or 0), cell_numeric_style),
+                Paragraph(_format_decimal_br(row.get("balance_after") or 0, 2), cell_numeric_style),
+                Paragraph((row.get("notes") or "-")[:90], cell_muted_style),
+            ]
+        )
+    data.append(
+        [
+            "",
+            "",
+            "",
+            Paragraph("<b>Total geral</b>", cell_style),
+            "",
+            "",
+            "",
+            Paragraph(f"<b>{_format_currency(totals['grand_total'])}</b>", cell_numeric_style),
+            "",
+            "",
+        ]
+    )
+    column_weights = [6, 14, 6, 19, 7, 5, 9, 10, 8, 16]
+    weight_total = sum(column_weights)
+    table_col_widths = [doc.width * (weight / weight_total) for weight in column_weights[:-1]]
+    table_col_widths.append(doc.width - sum(table_col_widths))
+    table = Table(data, repeatRows=1, colWidths=table_col_widths, hAlign="LEFT")
+    table.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#446a36")),
+                ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+                ("LINEBELOW", (0, 0), (-1, 0), 0.8, colors.HexColor("#36552a")),
+                ("LINEBELOW", (0, 1), (-1, -2), 0.35, colors.HexColor("#e2e8f0")),
+                ("LINEABOVE", (0, -1), (-1, -1), 0.8, colors.HexColor("#cbd5e1")),
+                ("BACKGROUND", (0, -1), (-1, -1), colors.HexColor("#f8fafc")),
+                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                ("FONTSIZE", (0, 0), (-1, -1), 8.2),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("ROWBACKGROUNDS", (0, 1), (-1, -2), [colors.white, colors.HexColor("#f8fafc")]),
+                ("LEFTPADDING", (0, 0), (-1, -1), 7),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 7),
+                ("TOPPADDING", (0, 0), (-1, -1), 7),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 7),
+                ("ALIGN", (4, 1), (4, -1), "RIGHT"),
+                ("ALIGN", (6, 1), (8, -1), "RIGHT"),
+            ]
+        )
+    )
+    footer_col_widths = [
+        sum(table_col_widths[:4]),
+        sum(table_col_widths[4:7]),
+        sum(table_col_widths[7:]),
+    ]
+    footer_summary = Table(
+        [[
+            Paragraph(f"<b>Entradas:</b> {_format_currency(totals['entries_total'])}", meta_value_style),
+            Paragraph(f"<b>Saídas:</b> {_format_currency(totals['outputs_total'])}", meta_value_style),
+            Paragraph(f"<b>Total geral:</b> {_format_currency(totals['grand_total'])}", summary_value_style),
+        ]],
+        colWidths=footer_col_widths,
+        hAlign="LEFT",
+    )
+    footer_summary.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#eef6ee")),
+                ("BOX", (0, 0), (-1, -1), 0.7, colors.HexColor("#cfe1d0")),
+                ("LEFTPADDING", (0, 0), (-1, -1), 12),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 12),
+                ("TOPPADDING", (0, 0), (-1, -1), 10),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 10),
+            ]
+        )
+    )
+    return [table, Spacer(1, 12), footer_summary]
 
 
 def _filter_equipment_assets_by_status(assets: list[EquipmentAsset], status_value: str | None) -> list[EquipmentAsset]:
@@ -3071,7 +3288,8 @@ def purchased_inputs_page(
             extract_rows_pagination=extract_rows_pagination,
             purchased_inputs_export_query=_purchased_inputs_export_query(
                 farm_id=effective_farm_id,
-                item_type=selected_item_type,
+                item_type=selected_item_type if selected_item_type in {"insumo_agricola", "combustivel"} else None,
+                purchased_tab=selected_purchased_tab,
             ),
             edit_input=edit_input,
             selected_purchased_tab=selected_purchased_tab,
@@ -3295,6 +3513,7 @@ def export_purchased_inputs_xlsx(
     repo = _repository(db)
     selected_farm_id = _int_or_none(farm_id) or _active_farm_id(request)
     normalized_item_type = item_type if item_type in {"insumo_agricola", "combustivel"} else None
+    export_tab = _export_purchased_tab_param(request)
     stock_context = _build_stock_context(repo, farm_id=selected_farm_id, item_type=normalized_item_type)
     purchase_entries = _sort_collection_desc(
         stock_context["purchase_entries"],
@@ -3306,40 +3525,23 @@ def export_purchased_inputs_xlsx(
         lambda item: item.movement_date,
         lambda item: item.id,
     )
+    extract_rows = _sort_collection_desc(
+        stock_context["extract_rows"],
+        lambda row: row.get("date"),
+        lambda row: row.get("reference"),
+    )
 
     workbook = Workbook()
-    entries_sheet = workbook.active
-    entries_sheet.title = "Entradas"
-    entries_sheet.append(["Data", "Insumo", "Tipo", "Fazenda", "Quantidade", "Saldo", "Valor", "Observações"])
-    for item in purchase_entries:
-        entries_sheet.append([
-            item.purchase_date.isoformat() if item.purchase_date else "",
-            item.input_catalog.name if item.input_catalog else item.name,
-            "Combustível" if item.input_catalog and item.input_catalog.item_type == "combustivel" else "Insumo agrícola",
-            item.farm.name if item.farm else "",
-            float(item.total_quantity or 0),
-            float(item.available_quantity or 0),
-            float(item.total_cost or 0),
-            item.notes or "",
-        ])
-    for index, width in enumerate([14, 30, 18, 24, 16, 16, 16, 40], start=1):
-        entries_sheet.column_dimensions[get_column_letter(index)].width = width
-
-    outputs_sheet = workbook.create_sheet("Saídas")
-    outputs_sheet.append(["Data", "Insumo", "Tipo", "Origem", "Fazenda / Setor", "Quantidade", "Custo", "Observações"])
-    for output in stock_outputs:
-        outputs_sheet.append([
-            output.movement_date.isoformat() if output.movement_date else "",
-            output.input_catalog.name if output.input_catalog else "Insumo removido",
-            "Combustível" if output.input_catalog and output.input_catalog.item_type == "combustivel" else "Insumo agrícola",
-            output.origin or "",
-            f"{output.farm.name if output.farm else ''}{(' / ' + output.plot.name) if output.plot else ''}",
-            float(output.quantity or 0),
-            float(output.total_cost or 0),
-            output.notes or "",
-        ])
-    for index, width in enumerate([14, 30, 18, 18, 28, 16, 16, 40], start=1):
-        outputs_sheet.column_dimensions[get_column_letter(index)].width = width
+    sheet = workbook.active
+    if export_tab == "entries":
+        sheet.title = "Entradas"
+        _xlsx_write_purchase_entries(sheet, purchase_entries)
+    elif export_tab == "outputs":
+        sheet.title = "Saídas"
+        _xlsx_write_stock_outputs(sheet, stock_outputs)
+    else:
+        sheet.title = "Extrato"
+        _xlsx_write_extract_rows(sheet, extract_rows)
 
     output = BytesIO()
     workbook.save(output)
@@ -3360,6 +3562,7 @@ def export_purchased_inputs_pdf(
     user: User = Depends(get_current_user_web),
 ):
     repo = _repository(db)
+    export_tab = _export_purchased_tab_param(request)
     selected_farm_id = _int_or_none(farm_id) or _active_farm_id(request)
     selected_farm = repo.get_farm(selected_farm_id) if selected_farm_id else None
     normalized_item_type = item_type if item_type in {"insumo_agricola", "combustivel"} else None
@@ -3374,6 +3577,12 @@ def export_purchased_inputs_pdf(
         lambda item: item.movement_date,
         lambda item: item.id,
     )
+    extract_rows = _sort_collection_desc(
+        stock_context["extract_rows"],
+        lambda row: row.get("date"),
+        lambda row: row.get("reference"),
+    )
+    extract_totals = _stock_report_totals(extract_rows)
 
     generated_at = app_now()
     generated_by = user.display_name or user.name or user.email
@@ -3384,7 +3593,6 @@ def export_purchased_inputs_pdf(
     }.get(normalized_item_type or "", "Todos os itens")
     entries_total = sum(float(item.total_cost or 0) for item in purchase_entries)
     outputs_total = sum(float(output.total_cost or 0) for output in stock_outputs)
-    grand_total = round(entries_total + outputs_total, 2)
 
     buffer = BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=landscape(A4), leftMargin=28, rightMargin=28, topMargin=32, bottomMargin=34)
@@ -3409,18 +3617,47 @@ def export_purchased_inputs_pdf(
         ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
     ]))
 
-    summary_table = Table([
-        [
-            [Paragraph("FAZENDA", meta_label_style), Paragraph(farm_name, meta_value_style)],
-            [Paragraph("ESCOPO", meta_label_style), Paragraph(item_type_label, meta_value_style)],
-            [Paragraph("ENTRADAS", meta_label_style), Paragraph(str(len(purchase_entries)), summary_value_style)],
-        ],
-        [
-            [Paragraph("SAÍDAS", meta_label_style), Paragraph(str(len(stock_outputs)), summary_value_style)],
-            [Paragraph("TOTAL DE REGISTROS", meta_label_style), Paragraph(str(len(purchase_entries) + len(stock_outputs)), summary_value_style)],
-            [Paragraph("TOTAL FINANCEIRO", meta_label_style), Paragraph(_format_currency(grand_total), summary_value_style)],
-        ],
-    ], colWidths=[doc.width / 3] * 3, hAlign="LEFT")
+    tab_label = {"entries": "Entradas", "outputs": "Saídas", "extract": "Extrato"}.get(export_tab, "Entradas")
+    if export_tab == "extract":
+        summary_table = Table([
+            [
+                [Paragraph("FAZENDA", meta_label_style), Paragraph(farm_name, meta_value_style)],
+                [Paragraph("ESCOPO", meta_label_style), Paragraph(item_type_label, meta_value_style)],
+                [Paragraph("LISTAGEM", meta_label_style), Paragraph(tab_label, meta_value_style)],
+            ],
+            [
+                [Paragraph("LANÇAMENTOS", meta_label_style), Paragraph(str(extract_totals["movements_count"]), summary_value_style)],
+                [Paragraph("TOTAL MOVIMENTADO", meta_label_style), Paragraph(_format_currency(extract_totals["grand_total"]), summary_value_style)],
+                ["", ""],
+            ],
+        ], colWidths=[doc.width / 3] * 3, hAlign="LEFT")
+    elif export_tab == "entries":
+        summary_table = Table([
+            [
+                [Paragraph("FAZENDA", meta_label_style), Paragraph(farm_name, meta_value_style)],
+                [Paragraph("ESCOPO", meta_label_style), Paragraph(item_type_label, meta_value_style)],
+                [Paragraph("LISTAGEM", meta_label_style), Paragraph(tab_label, meta_value_style)],
+            ],
+            [
+                [Paragraph("REGISTROS", meta_label_style), Paragraph(str(len(purchase_entries)), summary_value_style)],
+                [Paragraph("TOTAL FINANCEIRO", meta_label_style), Paragraph(_format_currency(entries_total), summary_value_style)],
+                ["", ""],
+            ],
+        ], colWidths=[doc.width / 3] * 3, hAlign="LEFT")
+    else:
+        summary_table = Table([
+            [
+                [Paragraph("FAZENDA", meta_label_style), Paragraph(farm_name, meta_value_style)],
+                [Paragraph("ESCOPO", meta_label_style), Paragraph(item_type_label, meta_value_style)],
+                [Paragraph("LISTAGEM", meta_label_style), Paragraph(tab_label, meta_value_style)],
+            ],
+            [
+                [Paragraph("REGISTROS", meta_label_style), Paragraph(str(len(stock_outputs)), summary_value_style)],
+                [Paragraph("TOTAL FINANCEIRO", meta_label_style), Paragraph(_format_currency(outputs_total), summary_value_style)],
+                ["", ""],
+            ],
+        ], colWidths=[doc.width / 3] * 3, hAlign="LEFT")
+
     summary_table.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#f8fafc")),
         ("BOX", (0, 0), (-1, -1), 0.8, colors.HexColor("#dbe5dd")),
@@ -3433,84 +3670,101 @@ def export_purchased_inputs_pdf(
     ]))
 
     elements = [header_table, Spacer(1, 16), summary_table, Spacer(1, 14)]
-    table_data = [["Mov.", "Data", "Insumo", "Tipo", "Origem / Fazenda", "Quantidade", "Valor", "Observações"]]
-    report_rows = []
-    for item in purchase_entries:
-        report_rows.append({
-            "kind": "Entrada",
-            "date": item.purchase_date,
-            "name": item.input_catalog.name if item.input_catalog else item.name,
-            "type": "Combustível" if item.input_catalog and item.input_catalog.item_type == "combustivel" else "Insumo agrícola",
-            "origin": item.farm.name if item.farm else "Sem fazenda vinculada",
-            "quantity": f"{_format_decimal_br(item.total_quantity, 2)} {item.package_unit}",
-            "value": float(item.total_cost or 0),
-            "notes": item.notes or "-",
-            "sort_key": (item.purchase_date or today_in_app_timezone(), 0, item.id),
-        })
-    for output in stock_outputs:
-        report_rows.append({
-            "kind": "Saída",
-            "date": output.movement_date,
-            "name": output.input_catalog.name if output.input_catalog else "Insumo removido",
-            "type": "Combustível" if output.input_catalog and output.input_catalog.item_type == "combustivel" else "Insumo agrícola",
-            "origin": f"{output.origin} • {output.farm.name if output.farm else 'Sem fazenda'}{(' / ' + output.plot.name) if output.plot else ''}",
-            "quantity": f"{_format_decimal_br(output.quantity, 2)} {output.unit}",
-            "value": float(output.total_cost or 0),
-            "notes": output.notes or "-",
-            "sort_key": (output.movement_date or today_in_app_timezone(), 1, output.id),
-        })
-    report_rows.sort(key=lambda row: row["sort_key"], reverse=True)
 
-    for row in report_rows:
-        movement_color = "#166534" if row["kind"] == "Entrada" else "#be123c"
-        table_data.append([
-            Paragraph(f'<font color="{movement_color}"><b>{row["kind"]}</b></font>', cell_style),
-            Paragraph(row["date"].strftime("%d/%m/%Y") if row["date"] else "-", cell_style),
-            Paragraph(row["name"], cell_style),
-            Paragraph(row["type"], cell_muted_style),
-            Paragraph(row["origin"], cell_muted_style),
-            Paragraph(row["quantity"], cell_numeric_style),
-            Paragraph(_format_currency(row["value"]), cell_numeric_style),
-            Paragraph(row["notes"][:90], cell_muted_style),
-        ])
+    if export_tab == "extract":
+        elements.extend(
+            _pdf_flowables_extract_detail_table(
+                doc,
+                extract_rows,
+                extract_totals,
+                cell_style=cell_style,
+                cell_muted_style=cell_muted_style,
+                cell_numeric_style=cell_numeric_style,
+                meta_value_style=meta_value_style,
+                summary_value_style=summary_value_style,
+            )
+        )
+    else:
+        table_data = [["Mov.", "Data", "Insumo", "Tipo", "Origem / Fazenda", "Quantidade", "Valor", "Observações"]]
+        report_rows = []
+        if export_tab == "entries":
+            for item in purchase_entries:
+                report_rows.append({
+                    "kind": "Entrada",
+                    "date": item.purchase_date,
+                    "name": item.input_catalog.name if item.input_catalog else item.name,
+                    "type": _catalog_item_type_label_pt(item.input_catalog),
+                    "origin": item.farm.name if item.farm else "Sem fazenda vinculada",
+                    "quantity": f"{_format_decimal_br(item.total_quantity, 2)} {item.package_unit}",
+                    "value": float(item.total_cost or 0),
+                    "notes": item.notes or "-",
+                    "sort_key": (item.purchase_date or today_in_app_timezone(), 0, item.id),
+                })
+        else:
+            for output in stock_outputs:
+                report_rows.append({
+                    "kind": "Saída",
+                    "date": output.movement_date,
+                    "name": output.input_catalog.name if output.input_catalog else "Insumo removido",
+                    "type": _catalog_item_type_label_pt(output.input_catalog),
+                    "origin": f"{output.origin} • {output.farm.name if output.farm else 'Sem fazenda'}{(' / ' + output.plot.name) if output.plot else ''}",
+                    "quantity": f"{_format_decimal_br(output.quantity, 2)} {output.unit}",
+                    "value": float(output.total_cost or 0),
+                    "notes": output.notes or "-",
+                    "sort_key": (output.movement_date or today_in_app_timezone(), 1, output.id),
+                })
+        report_rows.sort(key=lambda row: row["sort_key"], reverse=True)
 
-    column_weights = [7, 8, 18, 12, 20, 11, 12, 20]
-    weight_total = sum(column_weights)
-    table_col_widths = [doc.width * (weight / weight_total) for weight in column_weights[:-1]]
-    table_col_widths.append(doc.width - sum(table_col_widths))
-    table = Table(table_data, repeatRows=1, colWidths=table_col_widths, hAlign="LEFT")
-    table.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#446a36")),
-        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-        ("LINEBELOW", (0, 0), (-1, 0), 0.8, colors.HexColor("#36552a")),
-        ("LINEBELOW", (0, 1), (-1, -1), 0.35, colors.HexColor("#e2e8f0")),
-        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-        ("FONTSIZE", (0, 0), (-1, -1), 8.2),
-        ("VALIGN", (0, 0), (-1, -1), "TOP"),
-        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f8fafc")]),
-        ("LEFTPADDING", (0, 0), (-1, -1), 7),
-        ("RIGHTPADDING", (0, 0), (-1, -1), 7),
-        ("TOPPADDING", (0, 0), (-1, -1), 7),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 7),
-        ("ALIGN", (5, 1), (6, -1), "RIGHT"),
-    ]))
-    elements.append(table)
-    elements.append(Spacer(1, 12))
+        for row in report_rows:
+            movement_color = "#166534" if row["kind"] == "Entrada" else "#be123c"
+            table_data.append([
+                Paragraph(f'<font color="{movement_color}"><b>{row["kind"]}</b></font>', cell_style),
+                Paragraph(row["date"].strftime("%d/%m/%Y") if row["date"] else "-", cell_style),
+                Paragraph(row["name"], cell_style),
+                Paragraph(row["type"], cell_muted_style),
+                Paragraph(row["origin"], cell_muted_style),
+                Paragraph(row["quantity"], cell_numeric_style),
+                Paragraph(_format_currency(row["value"]), cell_numeric_style),
+                Paragraph(row["notes"][:90], cell_muted_style),
+            ])
 
-    footer_summary = Table([[
-        Paragraph(f"<b>Entradas:</b> {_format_currency(entries_total)}", meta_value_style),
-        Paragraph(f"<b>Saídas:</b> {_format_currency(outputs_total)}", meta_value_style),
-        Paragraph(f"<b>Total geral:</b> {_format_currency(grand_total)}", summary_value_style),
-    ]], colWidths=[doc.width * 0.35, doc.width * 0.25, doc.width * 0.40], hAlign="LEFT")
-    footer_summary.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#eef6ee")),
-        ("BOX", (0, 0), (-1, -1), 0.7, colors.HexColor("#cfe1d0")),
-        ("LEFTPADDING", (0, 0), (-1, -1), 12),
-        ("RIGHTPADDING", (0, 0), (-1, -1), 12),
-        ("TOPPADDING", (0, 0), (-1, -1), 10),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 10),
-    ]))
-    elements.append(footer_summary)
+        column_weights = [7, 8, 18, 12, 20, 11, 12, 20]
+        weight_total = sum(column_weights)
+        table_col_widths = [doc.width * (weight / weight_total) for weight in column_weights[:-1]]
+        table_col_widths.append(doc.width - sum(table_col_widths))
+        table = Table(table_data, repeatRows=1, colWidths=table_col_widths, hAlign="LEFT")
+        table.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#446a36")),
+            ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+            ("LINEBELOW", (0, 0), (-1, 0), 0.8, colors.HexColor("#36552a")),
+            ("LINEBELOW", (0, 1), (-1, -1), 0.35, colors.HexColor("#e2e8f0")),
+            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+            ("FONTSIZE", (0, 0), (-1, -1), 8.2),
+            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f8fafc")]),
+            ("LEFTPADDING", (0, 0), (-1, -1), 7),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 7),
+            ("TOPPADDING", (0, 0), (-1, -1), 7),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 7),
+            ("ALIGN", (5, 1), (6, -1), "RIGHT"),
+        ]))
+        elements.append(table)
+        elements.append(Spacer(1, 12))
+
+        if export_tab == "entries":
+            footer_line = Paragraph(f"<b>Total (entradas):</b> {_format_currency(entries_total)}", summary_value_style)
+        else:
+            footer_line = Paragraph(f"<b>Total (saídas):</b> {_format_currency(outputs_total)}", summary_value_style)
+        footer_summary = Table([[footer_line]], colWidths=[doc.width], hAlign="LEFT")
+        footer_summary.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#eef6ee")),
+            ("BOX", (0, 0), (-1, -1), 0.7, colors.HexColor("#cfe1d0")),
+            ("LEFTPADDING", (0, 0), (-1, -1), 12),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 12),
+            ("TOPPADDING", (0, 0), (-1, -1), 10),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 10),
+        ]))
+        elements.append(footer_summary)
 
     generated_at_label = generated_at.strftime("%d/%m/%Y %H:%M")
 
@@ -3647,6 +3901,7 @@ def stock_page(
                 end_date=end,
                 movement_type=movement_type,
                 item_type=normalized_item_type,
+                stock_tab=selected_stock_tab,
             ),
             inputs_catalog=stock_context["catalog_inputs"],
             input_stock=stock_context["input_stock"],
@@ -3885,48 +4140,43 @@ def export_stock_extract_xlsx(
     repo = _repository(db)
     selected_farm_id = _int_or_none(farm_id) or _active_farm_id(request)
     selected_input_id = _int_or_none(input_id)
-    rows = _build_stock_context(
+    normalized_item_type = item_type if item_type in {"insumo_agricola", "combustivel"} else None
+    export_tab = _export_stock_tab_param(request, movement_type)
+    stock_context = _build_stock_context(
         repo,
         farm_id=selected_farm_id,
         input_id=selected_input_id,
         start_date=_date_or_none(start_date),
         end_date=_date_or_none(end_date),
         movement_type=movement_type,
-        item_type=item_type if item_type in {"insumo_agricola", "combustivel"} else None,
-    )["extract_rows"]
+        item_type=normalized_item_type,
+    )
+    purchase_entries = _sort_collection_desc(
+        stock_context["purchase_entries"],
+        lambda item: item.purchase_date,
+        lambda item: item.id,
+    )
+    stock_outputs = _sort_collection_desc(
+        stock_context["stock_outputs"],
+        lambda item: item.movement_date,
+        lambda item: item.id,
+    )
+    extract_rows = _sort_collection_desc(
+        stock_context["extract_rows"],
+        lambda row: row.get("date"),
+        lambda row: row.get("reference"),
+    )
     workbook = Workbook()
     sheet = workbook.active
-    sheet.title = "Extrato de estoque"
-    headers = [
-        "Data",
-        "Insumo",
-        "Tipo da movimentacao",
-        "Origem",
-        "Quantidade",
-        "Unidade",
-        "Custo unitario",
-        "Custo total",
-        "Saldo apos movimentacao",
-        "Observacoes",
-    ]
-    sheet.append(headers)
-    for row in rows:
-        sheet.append(
-            [
-                row["date"].isoformat() if row["date"] else "",
-                row["input_name"],
-                row["kind"],
-                row["origin"],
-                float(row["quantity"] or 0),
-                row["unit"],
-                float(row.get("unit_cost") or 0),
-                float(row.get("total_cost") or 0),
-                float(row.get("balance_after") or 0),
-                row.get("notes") or "",
-            ]
-        )
-    for index, width in enumerate([14, 30, 18, 20, 14, 12, 16, 16, 20, 42], start=1):
-        sheet.column_dimensions[get_column_letter(index)].width = width
+    if export_tab == "entries":
+        sheet.title = "Entradas"
+        _xlsx_write_purchase_entries(sheet, purchase_entries)
+    elif export_tab == "outputs":
+        sheet.title = "Saidas"
+        _xlsx_write_stock_outputs(sheet, stock_outputs)
+    else:
+        sheet.title = "Extrato de estoque"
+        _xlsx_write_extract_rows(sheet, extract_rows)
     output = BytesIO()
     workbook.save(output)
     output.seek(0)
@@ -3953,7 +4203,8 @@ def export_stock_extract_pdf(
     selected_farm_id = _int_or_none(farm_id) or _active_farm_id(request)
     selected_input_id = _int_or_none(input_id)
     normalized_item_type = item_type if item_type in {"insumo_agricola", "combustivel"} else None
-    rows = _build_stock_context(
+    export_tab = _export_stock_tab_param(request, movement_type)
+    stock_context = _build_stock_context(
         repo,
         farm_id=selected_farm_id,
         input_id=selected_input_id,
@@ -3961,30 +4212,30 @@ def export_stock_extract_pdf(
         end_date=_date_or_none(end_date),
         movement_type=movement_type,
         item_type=normalized_item_type,
-    )["extract_rows"]
-    totals = _stock_report_totals(rows)
+    )
+    purchase_entries = _sort_collection_desc(
+        stock_context["purchase_entries"],
+        lambda item: item.purchase_date,
+        lambda item: item.id,
+    )
+    stock_outputs = _sort_collection_desc(
+        stock_context["stock_outputs"],
+        lambda item: item.movement_date,
+        lambda item: item.id,
+    )
+    extract_rows = _sort_collection_desc(
+        stock_context["extract_rows"],
+        lambda row: row.get("date"),
+        lambda row: row.get("reference"),
+    )
+    entries_total_sum = sum(float(item.total_cost or 0) for item in purchase_entries)
+    outputs_total_sum = sum(float(output.total_cost or 0) for output in stock_outputs)
+    extract_totals = _stock_report_totals(extract_rows)
     selected_farm = repo.get_farm(selected_farm_id) if selected_farm_id else None
     generated_at = app_now()
     buffer = BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=landscape(A4), leftMargin=28, rightMargin=28, topMargin=32, bottomMargin=34)
     styles = getSampleStyleSheet()
-    title_style = ParagraphStyle(
-        "StockPdfTitle",
-        parent=styles["Title"],
-        fontName="Helvetica-Bold",
-        fontSize=20,
-        leading=24,
-        textColor=colors.HexColor("#1e293b"),
-        spaceAfter=2,
-    )
-    subtitle_style = ParagraphStyle(
-        "StockPdfSubtitle",
-        parent=styles["BodyText"],
-        fontName="Helvetica",
-        fontSize=10.5,
-        leading=14,
-        textColor=colors.HexColor("#64748b"),
-    )
     farm_header_style = ParagraphStyle(
         "StockPdfFarmHeader",
         parent=styles["Title"],
@@ -4053,6 +4304,7 @@ def export_stock_extract_pdf(
     period_label = "Período completo"
     if start_date or end_date:
         period_label = f"{start_date or 'Início'} até {end_date or 'Hoje'}"
+    listagem_label = {"entries": "Entradas", "outputs": "Saídas", "extract": "Extrato"}.get(export_tab, "Extrato")
 
     header_table = Table(
         [[
@@ -4075,22 +4327,72 @@ def export_stock_extract_pdf(
         )
     )
 
-    summary_table = Table(
-        [
+    if export_tab == "extract":
+        summary_table = Table(
             [
-                [Paragraph("FAZENDA", meta_label_style), Paragraph(farm_name, meta_value_style)],
-                [Paragraph("PERÍODO", meta_label_style), Paragraph(period_label, meta_value_style)],
-                [Paragraph("ESCOPO", meta_label_style), Paragraph(item_type_label, meta_value_style)],
+                [
+                    [Paragraph("FAZENDA", meta_label_style), Paragraph(farm_name, meta_value_style)],
+                    [Paragraph("PERÍODO", meta_label_style), Paragraph(period_label, meta_value_style)],
+                    [Paragraph("ESCOPO", meta_label_style), Paragraph(item_type_label, meta_value_style)],
+                ],
+                [
+                    [Paragraph("LISTAGEM", meta_label_style), Paragraph(listagem_label, meta_value_style)],
+                    [Paragraph("MOVIMENTAÇÕES", meta_label_style), Paragraph(movement_label, meta_value_style)],
+                    [Paragraph("INSUMO", meta_label_style), Paragraph("Filtrado" if selected_input_id else "Todos", meta_value_style)],
+                ],
+                [
+                    [Paragraph("LANÇAMENTOS", meta_label_style), Paragraph(str(extract_totals["movements_count"]), summary_value_style)],
+                    [Paragraph("TOTAL MOVIMENTADO", meta_label_style), Paragraph(_format_currency(extract_totals["grand_total"]), summary_value_style)],
+                    ["", ""],
+                ],
             ],
+            colWidths=[doc.width / 3] * 3,
+            hAlign="LEFT",
+        )
+    elif export_tab == "entries":
+        summary_table = Table(
             [
-                [Paragraph("MOVIMENTAÇÕES", meta_label_style), Paragraph(movement_label, meta_value_style)],
-                [Paragraph("TOTAL DE LANÇAMENTOS", meta_label_style), Paragraph(str(totals["movements_count"]), summary_value_style)],
-                [Paragraph("TOTAL MOVIMENTADO", meta_label_style), Paragraph(_format_currency(totals["grand_total"]), summary_value_style)],
+                [
+                    [Paragraph("FAZENDA", meta_label_style), Paragraph(farm_name, meta_value_style)],
+                    [Paragraph("PERÍODO", meta_label_style), Paragraph(period_label, meta_value_style)],
+                    [Paragraph("ESCOPO", meta_label_style), Paragraph(item_type_label, meta_value_style)],
+                ],
+                [
+                    [Paragraph("LISTAGEM", meta_label_style), Paragraph(listagem_label, meta_value_style)],
+                    [Paragraph("MOVIMENTAÇÕES", meta_label_style), Paragraph(movement_label, meta_value_style)],
+                    [Paragraph("INSUMO", meta_label_style), Paragraph("Filtrado" if selected_input_id else "Todos", meta_value_style)],
+                ],
+                [
+                    [Paragraph("REGISTROS", meta_label_style), Paragraph(str(len(purchase_entries)), summary_value_style)],
+                    [Paragraph("TOTAL FINANCEIRO", meta_label_style), Paragraph(_format_currency(entries_total_sum), summary_value_style)],
+                    ["", ""],
+                ],
             ],
-        ],
-        colWidths=[doc.width / 3] * 3,
-        hAlign="LEFT",
-    )
+            colWidths=[doc.width / 3] * 3,
+            hAlign="LEFT",
+        )
+    else:
+        summary_table = Table(
+            [
+                [
+                    [Paragraph("FAZENDA", meta_label_style), Paragraph(farm_name, meta_value_style)],
+                    [Paragraph("PERÍODO", meta_label_style), Paragraph(period_label, meta_value_style)],
+                    [Paragraph("ESCOPO", meta_label_style), Paragraph(item_type_label, meta_value_style)],
+                ],
+                [
+                    [Paragraph("LISTAGEM", meta_label_style), Paragraph(listagem_label, meta_value_style)],
+                    [Paragraph("MOVIMENTAÇÕES", meta_label_style), Paragraph(movement_label, meta_value_style)],
+                    [Paragraph("INSUMO", meta_label_style), Paragraph("Filtrado" if selected_input_id else "Todos", meta_value_style)],
+                ],
+                [
+                    [Paragraph("REGISTROS", meta_label_style), Paragraph(str(len(stock_outputs)), summary_value_style)],
+                    [Paragraph("TOTAL FINANCEIRO", meta_label_style), Paragraph(_format_currency(outputs_total_sum), summary_value_style)],
+                    ["", ""],
+                ],
+            ],
+            colWidths=[doc.width / 3] * 3,
+            hAlign="LEFT",
+        )
     summary_table.setStyle(
         TableStyle(
             [
@@ -4107,101 +4409,97 @@ def export_stock_extract_pdf(
     )
 
     elements = [header_table, Spacer(1, 16), summary_table, Spacer(1, 14)]
-    data = [[
-        "Data",
-        "Insumo",
-        "Mov.",
-        "Origem / Ref.",
-        "Qtd.",
-        "Un.",
-        "Custo un.",
-        "Custo total",
-        "Saldo apos",
-        "Observacoes",
-    ]]
-    for row in rows:
-        movement_color = "#166534" if row["kind"] == "entrada" else "#be123c"
-        data.append([
-            Paragraph(row["date"].strftime("%d/%m/%Y") if row["date"] else "-", cell_style),
-            Paragraph(row["input_name"], cell_style),
-            Paragraph(f'<font color="{movement_color}"><b>{str(row["kind"]).title()}</b></font>', cell_style),
-            Paragraph(f'{row["origin"]} • {row["reference"]}', cell_muted_style),
-            Paragraph(_format_decimal_br(row["quantity"], 2), cell_numeric_style),
-            Paragraph(str(row["unit"] or "-"), cell_style),
-            Paragraph(_format_currency(row.get("unit_cost") or 0), cell_numeric_style),
-            Paragraph(_format_currency(row.get("total_cost") or 0), cell_numeric_style),
-            Paragraph(_format_decimal_br(row.get("balance_after") or 0, 2), cell_numeric_style),
-            Paragraph((row.get("notes") or "-")[:90], cell_muted_style),
-        ])
-    data.append([
-        "",
-        "",
-        "",
-        Paragraph("<b>Total geral</b>", cell_style),
-        "",
-        "",
-        "",
-        Paragraph(f"<b>{_format_currency(totals['grand_total'])}</b>", cell_numeric_style),
-        "",
-        "",
-    ])
-
-    column_weights = [6, 14, 6, 19, 7, 5, 9, 10, 8, 16]
-    weight_total = sum(column_weights)
-    table_col_widths = [doc.width * (weight / weight_total) for weight in column_weights[:-1]]
-    table_col_widths.append(doc.width - sum(table_col_widths))
-    table = Table(data, repeatRows=1, colWidths=table_col_widths, hAlign="LEFT")
-    table.setStyle(
-        TableStyle(
-            [
-                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#446a36")),
-                ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-                ("LINEBELOW", (0, 0), (-1, 0), 0.8, colors.HexColor("#36552a")),
-                ("LINEBELOW", (0, 1), (-1, -2), 0.35, colors.HexColor("#e2e8f0")),
-                ("LINEABOVE", (0, -1), (-1, -1), 0.8, colors.HexColor("#cbd5e1")),
-                ("BACKGROUND", (0, -1), (-1, -1), colors.HexColor("#f8fafc")),
-                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-                ("FONTSIZE", (0, 0), (-1, -1), 8.2),
-                ("VALIGN", (0, 0), (-1, -1), "TOP"),
-                ("ROWBACKGROUNDS", (0, 1), (-1, -2), [colors.white, colors.HexColor("#f8fafc")]),
-                ("LEFTPADDING", (0, 0), (-1, -1), 7),
-                ("RIGHTPADDING", (0, 0), (-1, -1), 7),
-                ("TOPPADDING", (0, 0), (-1, -1), 7),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 7),
-                ("ALIGN", (4, 1), (4, -1), "RIGHT"),
-                ("ALIGN", (6, 1), (8, -1), "RIGHT"),
-            ]
+    if export_tab == "extract":
+        elements.extend(
+            _pdf_flowables_extract_detail_table(
+                doc,
+                extract_rows,
+                extract_totals,
+                cell_style=cell_style,
+                cell_muted_style=cell_muted_style,
+                cell_numeric_style=cell_numeric_style,
+                meta_value_style=meta_value_style,
+                summary_value_style=summary_value_style,
+            )
         )
-    )
-    elements.append(table)
-    elements.append(Spacer(1, 12))
-    footer_col_widths = [
-        sum(table_col_widths[:4]),
-        sum(table_col_widths[4:7]),
-        sum(table_col_widths[7:]),
-    ]
-    footer_summary = Table(
-        [[
-            Paragraph(f"<b>Entradas:</b> {_format_currency(totals['entries_total'])}", meta_value_style),
-            Paragraph(f"<b>Saídas:</b> {_format_currency(totals['outputs_total'])}", meta_value_style),
-            Paragraph(f"<b>Total geral:</b> {_format_currency(totals['grand_total'])}", summary_value_style),
-        ]],
-        colWidths=footer_col_widths,
-        hAlign="LEFT",
-    )
-    footer_summary.setStyle(
-        TableStyle(
-            [
-                ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#eef6ee")),
-                ("BOX", (0, 0), (-1, -1), 0.7, colors.HexColor("#cfe1d0")),
-                ("LEFTPADDING", (0, 0), (-1, -1), 12),
-                ("RIGHTPADDING", (0, 0), (-1, -1), 12),
-                ("TOPPADDING", (0, 0), (-1, -1), 10),
-                ("BOTTOMPADDING", (0, 0), (-1, -1), 10),
-            ]
-        )
-    )
-    elements.append(footer_summary)
+    else:
+        table_data = [["Mov.", "Data", "Insumo", "Tipo", "Origem / Fazenda", "Quantidade", "Valor", "Observações"]]
+        report_rows = []
+        if export_tab == "entries":
+            for item in purchase_entries:
+                report_rows.append({
+                    "kind": "Entrada",
+                    "date": item.purchase_date,
+                    "name": item.input_catalog.name if item.input_catalog else item.name,
+                    "type": _catalog_item_type_label_pt(item.input_catalog),
+                    "origin": item.farm.name if item.farm else "Sem fazenda vinculada",
+                    "quantity": f"{_format_decimal_br(item.total_quantity, 2)} {item.package_unit}",
+                    "value": float(item.total_cost or 0),
+                    "notes": item.notes or "-",
+                    "sort_key": (item.purchase_date or today_in_app_timezone(), 0, item.id),
+                })
+        else:
+            for output in stock_outputs:
+                report_rows.append({
+                    "kind": "Saída",
+                    "date": output.movement_date,
+                    "name": output.input_catalog.name if output.input_catalog else "Insumo removido",
+                    "type": _catalog_item_type_label_pt(output.input_catalog),
+                    "origin": f"{output.origin} • {output.farm.name if output.farm else 'Sem fazenda'}{(' / ' + output.plot.name) if output.plot else ''}",
+                    "quantity": f"{_format_decimal_br(output.quantity, 2)} {output.unit}",
+                    "value": float(output.total_cost or 0),
+                    "notes": output.notes or "-",
+                    "sort_key": (output.movement_date or today_in_app_timezone(), 1, output.id),
+                })
+        report_rows.sort(key=lambda row: row["sort_key"], reverse=True)
+        for row in report_rows:
+            movement_color = "#166534" if row["kind"] == "Entrada" else "#be123c"
+            table_data.append([
+                Paragraph(f'<font color="{movement_color}"><b>{row["kind"]}</b></font>', cell_style),
+                Paragraph(row["date"].strftime("%d/%m/%Y") if row["date"] else "-", cell_style),
+                Paragraph(row["name"], cell_style),
+                Paragraph(row["type"], cell_muted_style),
+                Paragraph(row["origin"], cell_muted_style),
+                Paragraph(row["quantity"], cell_numeric_style),
+                Paragraph(_format_currency(row["value"]), cell_numeric_style),
+                Paragraph(row["notes"][:90], cell_muted_style),
+            ])
+        column_weights = [7, 8, 18, 12, 20, 11, 12, 20]
+        weight_total = sum(column_weights)
+        table_col_widths = [doc.width * (weight / weight_total) for weight in column_weights[:-1]]
+        table_col_widths.append(doc.width - sum(table_col_widths))
+        table = Table(table_data, repeatRows=1, colWidths=table_col_widths, hAlign="LEFT")
+        table.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#446a36")),
+            ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+            ("LINEBELOW", (0, 0), (-1, 0), 0.8, colors.HexColor("#36552a")),
+            ("LINEBELOW", (0, 1), (-1, -1), 0.35, colors.HexColor("#e2e8f0")),
+            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+            ("FONTSIZE", (0, 0), (-1, -1), 8.2),
+            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f8fafc")]),
+            ("LEFTPADDING", (0, 0), (-1, -1), 7),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 7),
+            ("TOPPADDING", (0, 0), (-1, -1), 7),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 7),
+            ("ALIGN", (5, 1), (6, -1), "RIGHT"),
+        ]))
+        elements.append(table)
+        elements.append(Spacer(1, 12))
+        if export_tab == "entries":
+            footer_line = Paragraph(f"<b>Total (entradas):</b> {_format_currency(entries_total_sum)}", summary_value_style)
+        else:
+            footer_line = Paragraph(f"<b>Total (saídas):</b> {_format_currency(outputs_total_sum)}", summary_value_style)
+        footer_summary = Table([[footer_line]], colWidths=[doc.width], hAlign="LEFT")
+        footer_summary.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#eef6ee")),
+            ("BOX", (0, 0), (-1, -1), 0.7, colors.HexColor("#cfe1d0")),
+            ("LEFTPADDING", (0, 0), (-1, -1), 12),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 12),
+            ("TOPPADDING", (0, 0), (-1, -1), 10),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 10),
+        ]))
+        elements.append(footer_summary)
 
     generated_by = user.display_name or user.name or user.email
     generated_at_label = generated_at.strftime("%d/%m/%Y %H:%M")
