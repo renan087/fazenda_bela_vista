@@ -27,7 +27,19 @@ def plot_preview_thumb_fs_path(plot_id: int) -> Path:
     return PLOT_PREVIEW_DIR / f"{plot_id}_thumb.jpg"
 
 
+def plot_preview_draft_fs_path(plot_id: int) -> Path:
+    return PLOT_PREVIEW_DIR / f"{plot_id}_draft.png"
+
+
+def remove_plot_preview_draft(plot_id: int) -> None:
+    try:
+        plot_preview_draft_fs_path(plot_id).unlink(missing_ok=True)
+    except OSError as exc:
+        logger.warning("Nao foi possivel remover preview-rascunho do setor %s: %s", plot_id, exc)
+
+
 def remove_plot_preview_image(plot_id: int) -> None:
+    remove_plot_preview_draft(plot_id)
     for path in (plot_preview_fs_path(plot_id), plot_preview_thumb_fs_path(plot_id)):
         try:
             path.unlink(missing_ok=True)
@@ -73,4 +85,31 @@ def generate_plot_preview_image(plot_id: int, boundary_geojson: str | None) -> b
         return False
     if not save_preview_thumbnail_at(final_img.copy(), plot_preview_thumb_fs_path(plot_id)):
         logger.warning("Preview PNG do setor %s salvo mas miniatura JPEG falhou", plot_id)
+    return True
+
+
+def generate_plot_preview_draft(plot_id: int, boundary_geojson: str | None) -> bool:
+    """Grava PNG de prévia temporário ({id}_draft.png), sem alterar a miniatura oficial da lista."""
+    if not boundary_geojson or not boundary_geojson.strip():
+        remove_plot_preview_draft(plot_id)
+        return False
+    final_img = build_satellite_preview_from_geojson(boundary_geojson.strip(), log_entity_id=plot_id)
+    if final_img is None:
+        return False
+    PLOT_PREVIEW_DIR.mkdir(parents=True, exist_ok=True)
+    draft_path = plot_preview_draft_fs_path(plot_id)
+    tmp_path: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(suffix=".png", delete=False, dir=PLOT_PREVIEW_DIR) as tmp:
+            tmp_path = Path(tmp.name)
+        final_img.save(tmp_path, format="PNG", optimize=True)
+        tmp_path.replace(draft_path)
+    except OSError as exc:
+        logger.exception("Falha ao salvar preview-rascunho do setor %s: %s", plot_id, exc)
+        if tmp_path is not None:
+            try:
+                tmp_path.unlink(missing_ok=True)
+            except OSError:
+                pass
+        return False
     return True

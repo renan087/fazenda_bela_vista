@@ -215,6 +215,7 @@
                     <p class="text-xs uppercase tracking-[0.3em] text-slate-400">Perímetro do setor no mapa</p>
 
                     {% if edit_plot %}
+                    <div data-plots-perimeter-default-cards>
                     {% if edit_plot_preview_only_src %}
                     <div class="mx-auto mt-4 max-w-3xl">
                         <button
@@ -281,6 +282,23 @@
                         </span>
                     </button>
                     {% endif %}
+                    </div>
+                    <div data-plots-perimeter-draft-card class="mx-auto mt-4 hidden max-w-3xl">
+                        <button
+                            type="button"
+                            class="group relative w-full overflow-hidden rounded-2xl border-2 border-slate-200 bg-slate-100 text-left shadow-sm transition hover:border-brand-400 hover:shadow-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500"
+                            title="Editar perímetro no mapa"
+                            aria-label="Editar perímetro do setor no mapa — {{ edit_plot.name | e }}"
+                            data-plots-map-open
+                            data-plots-map-direct-edit="1"
+                        >
+                            <img data-plots-draft-preview-img src="" alt="" width="960" height="540" decoding="async" class="pointer-events-none aspect-video max-h-[min(52vh,420px)] w-full object-cover">
+                            <span class="pointer-events-none absolute inset-0 ring-inset ring-transparent transition group-hover:bg-slate-900/10" aria-hidden="true"></span>
+                            <span class="pointer-events-none absolute bottom-2 left-2 right-2 rounded-xl bg-slate-900/70 px-3 py-2 text-center text-xs font-semibold text-white backdrop-blur-sm sm:text-sm">
+                                Editar perímetro no mapa
+                            </span>
+                        </button>
+                    </div>
                     <input type="hidden" name="boundary_geojson" value="" data-plots-boundary-input>
                     <label class="mt-4 block">
                         <span class="mb-2 block text-sm font-medium">Importar GeoJSON do setor (.json) — opcional</span>
@@ -452,6 +470,8 @@
         const fadingPanels = Array.from(document.querySelectorAll('[data-stock-fade-panel]'));
         const isEditing = {{ 'true' if edit_plot else 'false' }};
         const openPlotMapModalOnLoad = {{ open_plot_map_modal | tojson }};
+        const EDIT_PLOT_ID = {% if edit_plot %}{{ edit_plot.id }}{% else %}null{% endif %};
+        const PLOTS_CSRF_TOKEN = {{ csrf_token | tojson }};
 
         const plotsForm = document.getElementById('plots-form');
         const isEditMode = plotsForm?.dataset.plotsEditMode === '1';
@@ -480,6 +500,9 @@
         const plotsPreviewAreaEl = plotsMapModal?.querySelector('[data-plots-preview-editor-area]');
         const plotsMapModalCloseBtns = plotsMapModal ? Array.from(plotsMapModal.querySelectorAll('[data-plots-map-modal-close]')) : [];
         const plotsMapOpenBtns = Array.from(document.querySelectorAll('[data-plots-map-open]'));
+        const perimeterDefaultCards = document.querySelector('[data-plots-perimeter-default-cards]');
+        const perimeterDraftCard = document.querySelector('[data-plots-perimeter-draft-card]');
+        const draftPreviewImg = document.querySelector('[data-plots-draft-preview-img]');
         const plotsMapHintOverlay = plotsMapModal?.querySelector('[data-plots-preview-map-hint-overlay]');
         const plotsMapHintOpenBtn = plotsMapModal?.querySelector('[data-plots-preview-map-hint-open]');
         const plotsMapHintBackdrop = plotsMapModal?.querySelector('[data-plots-preview-map-hint-backdrop]');
@@ -513,6 +536,72 @@
         } catch (e) {
             PLOTS_FARM_PREVIEW_URLS = {};
         }
+
+        let plotsDraftPreviewUrlBase = '';
+        let plotsDraftPreviewRevision = '';
+        let plotsDraftPreviewActive = false;
+
+        const resetPlotDraftPreviewUi = () => {
+            plotsDraftPreviewUrlBase = '';
+            plotsDraftPreviewRevision = '';
+            plotsDraftPreviewActive = false;
+            perimeterDefaultCards?.classList.remove('hidden');
+            perimeterDraftCard?.classList.add('hidden');
+            draftPreviewImg?.removeAttribute('src');
+        };
+
+        const postPlotDraftPreview = async () => {
+            if (!EDIT_PLOT_ID || !plotBoundaryHidden) return false;
+            const raw = (plotBoundaryHidden.value || '').trim();
+            if (!raw) return false;
+            const fd = new FormData();
+            fd.append('csrf_token', PLOTS_CSRF_TOKEN);
+            fd.append('boundary_geojson', raw);
+            let res;
+            try {
+                res = await fetch(`/setores/${EDIT_PLOT_ID}/preview-rascunho`, { method: 'POST', body: fd, credentials: 'same-origin' });
+            } catch (err) {
+                console.error(err);
+                return false;
+            }
+            let data = {};
+            try {
+                data = await res.json();
+            } catch {
+                return false;
+            }
+            if (!res.ok || !data.ok || !data.url) return false;
+            plotsDraftPreviewUrlBase = data.url;
+            plotsDraftPreviewRevision = String(data.revision || Date.now());
+            plotsDraftPreviewActive = true;
+            perimeterDefaultCards?.classList.add('hidden');
+            perimeterDraftCard?.classList.remove('hidden');
+            if (draftPreviewImg) {
+                draftPreviewImg.src = `${plotsDraftPreviewUrlBase}?v=${plotsDraftPreviewRevision}`;
+            }
+            return true;
+        };
+
+        const discardPlotDraftOnServer = async () => {
+            if (!EDIT_PLOT_ID) {
+                resetPlotDraftPreviewUi();
+                return;
+            }
+            if (plotsDraftPreviewActive) {
+                const fd = new FormData();
+                fd.append('csrf_token', PLOTS_CSRF_TOKEN);
+                try {
+                    await fetch(`/setores/${EDIT_PLOT_ID}/preview-rascunho/descartar`, {
+                        method: 'POST',
+                        body: fd,
+                        credentials: 'same-origin',
+                    });
+                } catch (err) {
+                    console.warn(err);
+                }
+            }
+            resetPlotDraftPreviewUi();
+        };
 
         const seedPlotBoundaryHidden = () => {
             if (!plotBoundaryHidden || plotBoundaryHidden.value.trim()) return;
@@ -580,6 +669,9 @@
 
         const resolveEditMapViewSrc = () => {
             if (!isEditMode) return '';
+            if (plotsDraftPreviewActive && plotsDraftPreviewUrlBase) {
+                return `${plotsDraftPreviewUrlBase}?v=${plotsDraftPreviewRevision}`;
+            }
             if (PLOTS_EDIT_MAP.plotPreviewSrc) return PLOTS_EDIT_MAP.plotPreviewSrc;
             const fid = farmSelectEl?.value?.trim() || PLOTS_EDIT_MAP.defaultFarmId;
             if (fid && PLOTS_FARM_PREVIEW_URLS[fid]) return PLOTS_FARM_PREVIEW_URLS[fid];
@@ -714,11 +806,26 @@
         });
 
         plotsMapModalDoneEdit?.addEventListener('click', () => {
-            plotsMapModalEditor?.syncToHidden();
-            teardownPlotsMapModalEditor();
-            boundarySnapshotBeforeMapEdit = null;
-            closePlotsMapHintOverlay();
-            finishClosePlotsMapModal();
+            void (async () => {
+                plotsMapModalEditor?.syncToHidden();
+                const raw = (plotBoundaryHidden?.value || '').trim();
+                if (!raw) {
+                    window.alert('Desenhe um polígono com pelo menos três pontos antes de concluir.');
+                    return;
+                }
+                const ok = await postPlotDraftPreview();
+                if (!ok) {
+                    window.alert('Não foi possível gerar a prévia do mapa. Tente novamente.');
+                    return;
+                }
+                teardownPlotsMapModalEditor();
+                boundarySnapshotBeforeMapEdit = null;
+                closePlotsMapHintOverlay();
+                finishClosePlotsMapModal();
+                if (launchModal && !launchModal.open) {
+                    launchModal.showModal();
+                }
+            })();
         });
 
         plotsMapModalStartEdit?.addEventListener('click', () => {
@@ -760,7 +867,9 @@
             closePlotsMapModal();
             if (isEditing) {
                 destroyPlotsBoundaryEditor();
-                window.location.href = '/setores';
+                void discardPlotDraftOnServer().finally(() => {
+                    window.location.href = '/setores';
+                });
                 return;
             }
             destroyPlotsBoundaryEditor();

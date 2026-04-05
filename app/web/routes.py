@@ -66,9 +66,11 @@ from app.services.farm_preview_image import (
 )
 from app.services.plot_preview_image import (
     ensure_plot_preview_thumb,
+    generate_plot_preview_draft,
     generate_plot_preview_image,
     plot_preview_fs_path,
     plot_preview_thumb_fs_path,
+    remove_plot_preview_draft,
     remove_plot_preview_image,
 )
 from app.services.forms import (
@@ -1764,8 +1766,55 @@ def update_plot_action(
         generate_plot_preview_image(plot_id, geometry or "")
     except Exception:
         logging.getLogger(__name__).exception("Falha ao atualizar imagem de satelite do setor %s", plot_id)
+    finally:
+        remove_plot_preview_draft(plot_id)
     _flash(request, "success", "Setor atualizado com sucesso.")
     return _redirect("/setores")
+
+
+@router.post("/talhoes/{plot_id}/preview-rascunho", include_in_schema=False)
+@router.post("/setores/{plot_id}/preview-rascunho")
+def save_plot_preview_draft(
+    plot_id: int,
+    request: Request,
+    csrf_token: str = Form(...),
+    boundary_geojson: str = Form(""),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    del user
+    validate_csrf(request, csrf_token)
+    repo = _repository(db)
+    plot = repo.get_plot(plot_id)
+    if not plot:
+        return JSONResponse({"ok": False, "error": "not_found"}, status_code=404)
+    normalized = normalize_geojson(boundary_geojson)
+    if not normalized:
+        return JSONResponse({"ok": False, "error": "invalid_geojson"}, status_code=400)
+    ok = generate_plot_preview_draft(plot_id, normalized)
+    if not ok:
+        return JSONResponse({"ok": False, "error": "generate_failed"}, status_code=400)
+    revision = hashlib.sha256(normalized.encode("utf-8")).hexdigest()[:14]
+    url = f"/static/generated/plot_previews/{plot_id}_draft.png"
+    return JSONResponse({"ok": True, "url": url, "revision": revision})
+
+
+@router.post("/talhoes/{plot_id}/preview-rascunho/descartar", include_in_schema=False)
+@router.post("/setores/{plot_id}/preview-rascunho/descartar")
+def discard_plot_preview_draft(
+    plot_id: int,
+    request: Request,
+    csrf_token: str = Form(...),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    del user
+    validate_csrf(request, csrf_token)
+    repo = _repository(db)
+    if not repo.get_plot(plot_id):
+        return JSONResponse({"ok": False, "error": "not_found"}, status_code=404)
+    remove_plot_preview_draft(plot_id)
+    return JSONResponse({"ok": True})
 
 
 @router.post("/talhoes/{plot_id}/excluir", include_in_schema=False)
