@@ -1858,7 +1858,7 @@ body {
         max-width: 100%;
     }
 
-    .stock-header-actions {
+    .stock-page-header .stock-header-actions {
         display: grid;
         width: 100%;
         grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -1867,16 +1867,16 @@ body {
         justify-content: stretch;
     }
 
-    .stock-header-actions-top {
+    .stock-page-header .stock-header-actions-top {
         width: 100%;
     }
 
-    .stock-header-actions > * {
+    .stock-page-header .stock-header-actions > * {
         min-width: 0;
         max-width: 100%;
     }
 
-    .stock-action-button {
+    .stock-page-header .stock-action-button {
         flex-direction: column;
         flex-wrap: nowrap;
         width: 100%;
@@ -1891,7 +1891,7 @@ body {
         overflow: hidden;
     }
 
-    .stock-action-button-label {
+    .stock-page-header .stock-action-button-label {
         text-align: center;
         overflow-wrap: anywhere;
         word-break: break-word;
@@ -2007,7 +2007,7 @@ body {
         word-break: break-word;
     }
 
-    .stock-header-actions {
+    .stock-page-header .stock-header-actions {
         display: grid;
         width: 100%;
         grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -2016,7 +2016,7 @@ body {
         justify-content: stretch;
     }
 
-    .stock-header-actions-top {
+    .stock-page-header .stock-header-actions-top {
         width: 100%;
         transform: translateY(0);
         transition:
@@ -2024,7 +2024,7 @@ body {
             margin 0.52s cubic-bezier(0.22, 1, 0.36, 1);
     }
 
-    .stock-header-actions > * {
+    .stock-page-header .stock-header-actions > * {
         min-width: 0;
         max-width: 100%;
     }
@@ -2037,7 +2037,7 @@ body {
         transform: translateY(-0.06rem);
     }
 
-    .stock-action-button {
+    .stock-page-header .stock-action-button {
         display: flex;
         flex-direction: column;
         flex-wrap: nowrap;
@@ -2055,11 +2055,11 @@ body {
         overflow: hidden;
     }
 
-    .stock-export-button {
+    .stock-page-header .stock-export-button {
         justify-content: center;
     }
 
-    .stock-action-button-label {
+    .stock-page-header .stock-action-button-label {
         display: block;
         flex: 0 1 auto;
         min-width: 0;
