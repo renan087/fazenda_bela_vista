@@ -1,3 +1,5 @@
+from datetime import date
+
 from sqlalchemy import distinct, func, or_
 from sqlalchemy.orm import Session, joinedload
 
@@ -328,8 +330,8 @@ class FarmRepository:
             .first()
         )
 
-    def list_input_recommendations(self) -> list[InputRecommendation]:
-        return (
+    def list_input_recommendations(self, farm_id: int | None = None) -> list[InputRecommendation]:
+        query = (
             self.db.query(InputRecommendation)
             .options(
                 joinedload(InputRecommendation.farm),
@@ -338,8 +340,10 @@ class FarmRepository:
                 joinedload(InputRecommendation.items).joinedload(InputRecommendationItem.purchased_input),
             )
             .order_by(InputRecommendation.application_name.asc(), InputRecommendation.id.desc())
-            .all()
         )
+        if farm_id is not None:
+            query = query.filter(InputRecommendation.farm_id == farm_id)
+        return query.all()
 
     def get_input_recommendation(self, recommendation_id: int) -> InputRecommendation | None:
         return (
@@ -382,6 +386,42 @@ class FarmRepository:
             .order_by(FertilizationSchedule.scheduled_date.asc(), FertilizationSchedule.id.desc())
             .all()
         )
+
+    def list_fertilization_schedules_for_scope(
+        self,
+        plot_ids: list[int] | set[int],
+        start_date: date | None = None,
+        end_date: date | None = None,
+    ) -> list[FertilizationSchedule]:
+        ids = list(plot_ids)
+        if not ids:
+            return []
+        query = (
+            self.db.query(FertilizationSchedule)
+            .options(
+                joinedload(FertilizationSchedule.plot).joinedload(Plot.farm),
+                joinedload(FertilizationSchedule.season),
+                joinedload(FertilizationSchedule.items).joinedload(FertilizationScheduleItem.input_catalog),
+                joinedload(FertilizationSchedule.items).joinedload(FertilizationScheduleItem.purchased_input),
+                joinedload(FertilizationSchedule.fertilization_record),
+            )
+            .filter(FertilizationSchedule.plot_id.in_(ids))
+        )
+        if start_date is not None:
+            query = query.filter(
+                or_(
+                    FertilizationSchedule.scheduled_date.is_(None),
+                    FertilizationSchedule.scheduled_date >= start_date,
+                )
+            )
+        if end_date is not None:
+            query = query.filter(
+                or_(
+                    FertilizationSchedule.scheduled_date.is_(None),
+                    FertilizationSchedule.scheduled_date <= end_date,
+                )
+            )
+        return query.order_by(FertilizationSchedule.scheduled_date.asc(), FertilizationSchedule.id.desc()).all()
 
     def get_fertilization_schedule(self, schedule_id: int) -> FertilizationSchedule | None:
         return (

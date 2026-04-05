@@ -1,3 +1,4 @@
+from collections import defaultdict
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 from io import BytesIO
@@ -5211,16 +5212,12 @@ def fertilization_page(
     recommendation_groups: dict[str, list[dict]] = {}
     consolidated_inputs = repo.list_input_catalog(item_type="insumo_agricola")
     purchased_inputs = repo.list_purchased_inputs()
+    avail_by_catalog = defaultdict(float)
+    for entry in purchased_inputs:
+        avail_by_catalog[entry.input_id] += float(entry.available_quantity or 0)
     input_stock = {
         item.id: {
-            "available": round(
-                sum(
-                    float(entry.available_quantity or 0)
-                    for entry in purchased_inputs
-                    if entry.input_id == item.id
-                ),
-                2,
-            ),
+            "available": round(avail_by_catalog.get(item.id, 0), 2),
             "unit": item.default_unit,
         }
         for item in consolidated_inputs
@@ -5235,18 +5232,14 @@ def fertilization_page(
     search_q = (request.query_params.get("search") or "").strip() or None
     fertilizations = _filter_fertilization_records(repo, plot_ids, start_date, end_date, search=search_q)
     fertilizations_pagination = _paginate_collection(request, fertilizations, "fertilizations_page")
-    schedules = [
-        item
-        for item in repo.list_fertilization_schedules()
-        if item.plot_id in plot_ids and _within_scope(item.scheduled_date, start_date, end_date)
-    ]
+    schedules = repo.list_fertilization_schedules_for_scope(plot_ids, start_date, end_date)
+    recs = repo.list_input_recommendations(
+        farm_id=scope["active_farm_id"] if scope["active_farm_id"] else None
+    )
     recommendations = [
         recommendation
-        for recommendation in repo.list_input_recommendations()
-        if (
-            (not scope["active_farm_id"] or recommendation.farm_id == scope["active_farm_id"])
-            and (not plot_ids or recommendation.plot_id is None or recommendation.plot_id in plot_ids)
-        )
+        for recommendation in recs
+        if (not plot_ids or recommendation.plot_id is None or recommendation.plot_id in plot_ids)
     ]
     for recommendation in recommendations:
         bucket = recommendation_groups.setdefault(recommendation.application_name, [])
@@ -5633,11 +5626,7 @@ def fertilization_schedules_page(
     plots = repo.list_plots(farm_ids=farm_ids, variety_ids=variety_ids)
     plot_ids = {plot.id for plot in plots}
     edit_schedule = repo.get_fertilization_schedule(edit_id) if edit_id else None
-    schedules = [
-        schedule
-        for schedule in repo.list_fertilization_schedules()
-        if schedule.plot_id in plot_ids and _within_scope(schedule.scheduled_date, start_date, end_date)
-    ]
+    schedules = repo.list_fertilization_schedules_for_scope(plot_ids, start_date, end_date)
     schedules.sort(key=lambda schedule: (schedule.scheduled_date, schedule.id), reverse=True)
     schedule_filter_clear_url = _url_with_query(
         request,
@@ -5652,31 +5641,29 @@ def fertilization_schedules_page(
     completed_schedules = [schedule for schedule in schedules if schedule.status == "completed"]
     active_schedules_pagination = _paginate_collection(request, active_schedules, "active_page")
     completed_schedules_pagination = _paginate_collection(request, completed_schedules, "completed_page")
+    purchased_inputs = repo.list_purchased_inputs()
     schedule_validations = {}
     for sch in active_schedules_pagination["items"]:
-        schedule_validations[sch.id] = validate_schedule_stock(repo, sch)
+        schedule_validations[sch.id] = validate_schedule_stock(
+            repo, sch, purchased_inputs_cache=purchased_inputs
+        )
     for sch in completed_schedules_pagination["items"]:
         schedule_validations[sch.id] = {"ok": True, "shortages": []}
+    recs = repo.list_input_recommendations(
+        farm_id=scope["active_farm_id"] if scope["active_farm_id"] else None
+    )
     recommendations = [
         recommendation
-        for recommendation in repo.list_input_recommendations()
-        if (
-            (not scope["active_farm_id"] or recommendation.farm_id == scope["active_farm_id"])
-            and (not plot_ids or recommendation.plot_id is None or recommendation.plot_id in plot_ids)
-        )
+        for recommendation in recs
+        if (not plot_ids or recommendation.plot_id is None or recommendation.plot_id in plot_ids)
     ]
     consolidated_inputs = repo.list_input_catalog(item_type="insumo_agricola")
-    purchased_inputs = repo.list_purchased_inputs()
+    avail_by_catalog = defaultdict(float)
+    for entry in purchased_inputs:
+        avail_by_catalog[entry.input_id] += float(entry.available_quantity or 0)
     input_stock = {
         item.id: {
-            "available": round(
-                sum(
-                    float(entry.available_quantity or 0)
-                    for entry in purchased_inputs
-                    if entry.input_id == item.id
-                ),
-                2,
-            ),
+            "available": round(avail_by_catalog.get(item.id, 0), 2),
             "unit": item.default_unit,
         }
         for item in consolidated_inputs
@@ -5761,11 +5748,7 @@ def export_fertilization_schedules_xlsx(
     start_date, end_date, _, _ = _schedule_filter_date_bounds(request, scope["active_season"], flash_invalid=False)
     plots = repo.list_plots(farm_ids=farm_ids, variety_ids=variety_ids)
     plot_ids = {plot.id for plot in plots}
-    schedules = [
-        schedule
-        for schedule in repo.list_fertilization_schedules()
-        if schedule.plot_id in plot_ids and _within_scope(schedule.scheduled_date, start_date, end_date)
-    ]
+    schedules = repo.list_fertilization_schedules_for_scope(plot_ids, start_date, end_date)
     schedules.sort(key=lambda schedule: (schedule.scheduled_date, schedule.id), reverse=True)
     selected_schedule_tab = schedule_tab if schedule_tab in {"active", "completed"} else "active"
     search_query = (search or "").strip().lower()
@@ -5825,11 +5808,7 @@ def export_fertilization_schedules_pdf(
     start_date, end_date, _, _ = _schedule_filter_date_bounds(request, scope["active_season"], flash_invalid=False)
     plots = repo.list_plots(farm_ids=farm_ids, variety_ids=variety_ids)
     plot_ids = {plot.id for plot in plots}
-    schedules = [
-        schedule
-        for schedule in repo.list_fertilization_schedules()
-        if schedule.plot_id in plot_ids and _within_scope(schedule.scheduled_date, start_date, end_date)
-    ]
+    schedules = repo.list_fertilization_schedules_for_scope(plot_ids, start_date, end_date)
     schedules.sort(key=lambda schedule: (schedule.scheduled_date, schedule.id), reverse=True)
     selected_schedule_tab = schedule_tab if schedule_tab in {"active", "completed"} else "active"
     search_query = (search or "").strip().lower()
@@ -6092,7 +6071,8 @@ def conclude_fertilization_schedule_action(
     if not schedule:
         _flash(request, "error", "Agendamento nao encontrado.")
         return _redirect(target_url)
-    validation = validate_schedule_stock(repo, schedule)
+    purchased_inputs = repo.list_purchased_inputs()
+    validation = validate_schedule_stock(repo, schedule, purchased_inputs_cache=purchased_inputs)
     if not validation["ok"]:
         first = validation["shortages"][0]
         _flash(request, "error", f"Estoque insuficiente. Necessario comprar {first['missing']} {first['unit']} de {first['name']}.")

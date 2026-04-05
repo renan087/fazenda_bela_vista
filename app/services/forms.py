@@ -325,11 +325,16 @@ def _resolve_input_catalog(
     return catalog
 
 
-def _catalog_available_stock(repository: FarmRepository, input_id: int | None, farm_id: int | None = None, unit: str | None = None) -> float:
+def _catalog_available_stock_from_entries(
+    entries,
+    input_id: int | None,
+    farm_id: int | None = None,
+    unit: str | None = None,
+) -> float:
     if not input_id:
         return 0.0
     total = 0.0
-    for entry in repository.list_purchased_inputs():
+    for entry in entries:
         if entry.input_id != input_id:
             continue
         if farm_id is not None and entry.farm_id not in (None, farm_id):
@@ -338,6 +343,15 @@ def _catalog_available_stock(repository: FarmRepository, input_id: int | None, f
             continue
         total += float(entry.available_quantity or 0)
     return round(total, 2)
+
+
+def _catalog_available_stock(repository: FarmRepository, input_id: int | None, farm_id: int | None = None, unit: str | None = None) -> float:
+    return _catalog_available_stock_from_entries(
+        repository.list_purchased_inputs(),
+        input_id,
+        farm_id,
+        unit,
+    )
 
 
 def create_purchased_input(repository: FarmRepository, form: dict) -> PurchasedInput:
@@ -799,10 +813,17 @@ def update_fertilization_schedule(repository: FarmRepository, schedule: Fertiliz
     return schedule
 
 
-def validate_schedule_stock(repository: FarmRepository, schedule: FertilizationSchedule) -> dict:
+def validate_schedule_stock(
+    repository: FarmRepository,
+    schedule: FertilizationSchedule,
+    *,
+    purchased_inputs_cache: list | None = None,
+) -> dict:
+    entries = purchased_inputs_cache if purchased_inputs_cache is not None else repository.list_purchased_inputs()
+    farm_id = schedule.plot.farm_id if schedule.plot else None
     shortages = []
     for item in schedule.items:
-        available = _catalog_available_stock(repository, item.input_id, schedule.plot.farm_id if schedule.plot else None, item.unit)
+        available = _catalog_available_stock_from_entries(entries, item.input_id, farm_id, item.unit)
         required = float(item.quantity or 0)
         if required > available:
             shortages.append(
