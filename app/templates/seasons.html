@@ -1,153 +1,244 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="grid gap-6 xl:grid-cols-[0.95fr_1.05fr]">
-    <section id="cadastro-safra" class="rounded-[2rem] bg-white p-6 shadow-panel">
-        <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Safras</p>
-        <h3 class="mt-2 text-2xl font-semibold">{% if edit_season %}Editar safra{% else %}Cadastrar safra{% endif %}</h3>
-        <form method="post" action="{% if edit_season %}/safras/{{ edit_season.id }}/editar{% else %}/safras{% endif %}" class="mt-6 grid gap-4" data-season-form>
-            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-            {% set launch_context_class = '' %}
-            {% include "partials/launch_context.html" %}
-            <div class="grid gap-4 md:grid-cols-2">
-                <label>
-                    <span class="mb-2 block text-sm font-medium">Data inicial</span>
-                    <input type="date" name="start_date" value="{{ edit_season.start_date.isoformat() if edit_season and edit_season.start_date else '' }}" class="w-full rounded-2xl border-slate-200 bg-slate-50" required data-season-start>
-                </label>
-                <label>
-                    <span class="mb-2 block text-sm font-medium">Data final</span>
-                    <input type="date" name="end_date" value="{{ edit_season.end_date.isoformat() if edit_season and edit_season.end_date else '' }}" class="w-full rounded-2xl border-slate-200 bg-slate-50" required data-season-end>
-                </label>
+<div class="stock-page-shell space-y-6" data-modal-single-pane>
+    <section class="stock-page-header rounded-[2rem] p-5 shadow-panel">
+        <div class="flex flex-wrap items-start justify-between gap-4">
+            <div class="min-w-0 stock-page-header-intro" data-stock-header-intro>
+                <div class="stock-page-header-intro-inner">
+                    <h2 class="stock-page-card-title">Safras</h2>
+                    <p class="stock-page-card-subtitle">Planeje ciclos produtivos, acompanhe custos operacionais e organize a safra no mesmo padrão visual do sistema.</p>
+                </div>
             </div>
-            <label>
-                <span class="mb-2 block text-sm font-medium">Nome/identificacao</span>
-                <input name="name" value="{{ edit_season.name if edit_season else '' }}" class="w-full rounded-2xl border-slate-200 bg-slate-50" placeholder="Safra 2026/2027" data-season-name>
-                <span class="mt-2 block text-xs text-slate-500">O sistema sugere automaticamente o nome com base nas datas, mas voce pode editar manualmente.</span>
-            </label>
-            <div class="grid gap-4 md:grid-cols-2">
-                <label>
-                    <span class="mb-2 block text-sm font-medium">Cultura</span>
-                    <input name="culture" value="{{ edit_season.culture if edit_season else 'Cafe' }}" class="w-full rounded-2xl border-slate-200 bg-slate-50" required>
-                </label>
-                <label>
-                    <span class="mb-2 block text-sm font-medium">Variedade</span>
-                    <select name="variety_id" class="w-full rounded-2xl border-slate-200 bg-slate-50">
-                        <option value="">Nao informar</option>
-                        {% for variety in varieties %}
-                        <option value="{{ variety.id }}" {% if edit_season and edit_season.variety_id == variety.id %}selected{% endif %}>{{ variety.name }}</option>
-                        {% endfor %}
-                    </select>
-                </label>
+            <div class="stock-header-actions stock-header-actions-top max-[899px]:mx-auto max-[899px]:flex max-[899px]:w-full max-[899px]:justify-center">
+                <button type="button" class="stock-action-button stock-action-button-primary {% if not active_farm_id %}pointer-events-none opacity-60{% endif %}" data-seasons-launch-open {% if not active_farm_id %}disabled{% endif %}>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                        <path d="M12 5v14"/>
+                        <path d="M5 12h14"/>
+                    </svg>
+                    <span class="stock-action-button-label"><span class="sm:hidden">Nova</span><span class="hidden sm:inline">Nova safra</span></span>
+                </button>
             </div>
-            <div class="grid gap-4 md:grid-cols-3">
-                <label class="md:col-span-2">
-                    <span class="mb-2 block text-sm font-medium">Area cultivada</span>
-                    <input type="number" step="0.01" name="cultivated_area" value="{{ edit_season.cultivated_area if edit_season else '' }}" class="w-full rounded-2xl border-slate-200 bg-slate-50" required>
-                </label>
-                <label>
-                    <span class="mb-2 block text-sm font-medium">Unidade de area</span>
-                    <select name="area_unit" class="w-full rounded-2xl border-slate-200 bg-slate-50" required>
-                        {% set selected_area_unit = edit_season.area_unit if edit_season else 'ha' %}
-                        {% for unit in ['ha', 'm2', 'alq'] %}
-                        <option value="{{ unit }}" {% if selected_area_unit == unit %}selected{% endif %}>{{ unit }}</option>
-                        {% endfor %}
-                    </select>
-                </label>
-            </div>
-            <label>
-                <span class="mb-2 block text-sm font-medium">Status</span>
-                {% set selected_status = edit_season.status if edit_season else 'planejada' %}
-                <select name="status" class="w-full rounded-2xl border-slate-200 bg-slate-50" required>
-                    <option value="planejada" {% if selected_status == 'planejada' %}selected{% endif %}>planejada</option>
-                    <option value="ativa" {% if selected_status == 'ativa' %}selected{% endif %}>ativa</option>
-                    <option value="encerrada" {% if selected_status == 'encerrada' %}selected{% endif %}>encerrada</option>
-                </select>
-            </label>
-            <label>
-                <span class="mb-2 block text-sm font-medium">Observacoes</span>
-                <textarea name="notes" rows="4" class="w-full rounded-2xl border-slate-200 bg-slate-50">{{ edit_season.notes if edit_season else '' }}</textarea>
-            </label>
-            <div class="flex gap-3">
-                <button class="rounded-2xl px-4 py-3 font-semibold text-white {% if active_farm_id %}bg-brand-500 hover:bg-brand-700{% else %}cursor-not-allowed bg-slate-300{% endif %}" {% if not active_farm_id %}disabled{% endif %}>{% if edit_season %}Salvar alteracoes{% else %}Salvar safra{% endif %}</button>
-                {% if edit_season %}
-                <a href="/safras" class="rounded-2xl bg-slate-100 px-4 py-3 font-semibold text-slate-700 hover:bg-slate-200">Cancelar</a>
-                {% endif %}
-            </div>
-        </form>
+        </div>
     </section>
-    <section class="rounded-[2rem] bg-white p-6 shadow-panel">
-        <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Planejamento agricola</p>
-        <h3 class="mt-2 text-2xl font-semibold">Safras cadastradas</h3>
-        <div class="mt-6 space-y-4">
+
+    <section class="stock-panel rounded-[2rem] bg-white p-6 shadow-panel" data-stock-fade-panel>
+        <div class="flex flex-wrap items-start justify-between gap-4">
+            <div class="min-w-0">
+                <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Planejamento agrícola</p>
+                <h3 class="mt-2 text-2xl font-semibold">Safras cadastradas</h3>
+            </div>
+            <div class="stock-search-field">
+                <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+                    <circle cx="8.5" cy="8.5" r="5.75"></circle>
+                    <path d="M13 13l4 4"></path>
+                </svg>
+                <input type="search" placeholder="Buscar safra, fazenda, cultura, variedade ou observação" data-seasons-search>
+            </div>
+        </div>
+
+        <div class="mt-5 space-y-4" data-seasons-list>
             {% for season in crop_seasons %}
-            <article class="rounded-[1.5rem] border border-slate-100 bg-slate-50 p-5">
-                <div class="flex flex-wrap items-start justify-between gap-4">
-                    <div>
-                        <h4 class="text-lg font-semibold">{{ season.name }}</h4>
-                        <p class="mt-1 text-sm text-slate-500">{{ season.farm.name if season.farm else 'Fazenda nao informada' }} • {{ season.culture }}</p>
-                        <p class="mt-2 text-sm text-slate-600">{{ season.start_date }} ate {{ season.end_date }}</p>
-                        <p class="mt-1 text-sm text-slate-600">Area cultivada: <strong>{{ season.cultivated_area }} {{ season.area_unit }}</strong>{% if season.variety %} • Variedade: <strong>{{ season.variety.name }}</strong>{% endif %}</p>
-                        <p class="mt-1 inline-flex rounded-full bg-slate-200 px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em] text-slate-700">{{ season.status }}</p>
+            {% set costs = season_costs.get(season.id, {}) %}
+            <article class="rounded-[1.5rem] border border-slate-100 bg-slate-50 p-5 lg:p-4" data-seasons-row data-seasons-search-text="{{ season.name }} {{ season.farm.name if season.farm else '' }} {{ season.culture }} {{ season.variety.name if season.variety else '' }} {{ season.status }} {{ season.notes or '' }}">
+                <div class="flex flex-wrap items-start justify-between gap-4 lg:gap-3">
+                    <div class="min-w-0 flex-1">
+                        <button type="button" class="text-left text-lg font-semibold text-slate-900 transition hover:text-brand-700 lg:text-base" data-seasons-launch-open data-seasons-edit-link="/safras?edit_id={{ season.id }}">{{ season.name }}</button>
+                        <p class="mt-1 text-sm text-slate-500 lg:mt-0.5 lg:text-[13px]">{{ season.farm.name if season.farm else "Fazenda não informada" }} • {{ season.culture }}</p>
+                        <div class="mt-3 flex flex-wrap gap-2">
+                            <span class="stock-level-badge bg-brand-50 text-brand-700 ring-1 ring-brand-100">{{ season.variety.name if season.variety else "Sem variedade" }}</span>
+                            <span class="stock-level-badge bg-white text-slate-700 ring-1 ring-slate-200/80">{{ season.start_date.strftime('%d-%m-%Y') if season.start_date else '-' }} até {{ season.end_date.strftime('%d-%m-%Y') if season.end_date else '-' }}</span>
+                            <span class="stock-level-badge {% if season.status == 'ativa' %}bg-emerald-50 text-emerald-700 ring-1 ring-emerald-100{% elif season.status == 'encerrada' %}bg-slate-200 text-slate-700{% else %}bg-amber-50 text-amber-700 ring-1 ring-amber-100{% endif %}">{{ season.status }}</span>
+                        </div>
                     </div>
-                    <div class="flex gap-2">
-                        <a href="/safras?edit_id={{ season.id }}" class="rounded-xl bg-slate-900 px-3 py-2 text-sm font-medium text-white hover:bg-slate-700">Editar</a>
+                    <div class="flex items-center gap-2 lg:gap-1.5">
+                        <a href="/safras?edit_id={{ season.id }}" class="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-100" title="Editar">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M12 20h9"/>
+                                <path d="M16.5 3.5a2.1 2.1 0 1 1 3 3L7 19l-4 1 1-4Z"/>
+                            </svg>
+                        </a>
                         <form method="post" action="/safras/{{ season.id }}/excluir" onsubmit="return confirm('Excluir a safra {{ season.name }}?');">
                             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                            <button class="rounded-xl bg-rose-600 px-3 py-2 text-sm font-medium text-white hover:bg-rose-700">Excluir</button>
+                            <button type="submit" class="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 text-rose-600 hover:bg-rose-50" title="Excluir">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M3 6h18"/>
+                                    <path d="M8 6V4h8v2"/>
+                                    <path d="M19 6l-1 14H6L5 6"/>
+                                    <path d="M10 11v6"/>
+                                    <path d="M14 11v6"/>
+                                </svg>
+                            </button>
                         </form>
                     </div>
                 </div>
-                {% if season.notes %}
-                <p class="mt-4 text-sm text-slate-500">{{ season.notes }}</p>
-                {% endif %}
-                {% set costs = season_costs.get(season.id, {}) %}
-                <div class="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                    <div class="rounded-2xl bg-white px-4 py-3">
-                        <p class="text-xs uppercase tracking-[0.25em] text-slate-400">Insumos consumidos</p>
-                        <p class="mt-2 text-lg font-semibold">R$ {{ '%.2f'|format(costs.get('input_cost', 0)) }}</p>
-                    </div>
-                    <div class="rounded-2xl bg-white px-4 py-3">
-                        <p class="text-xs uppercase tracking-[0.25em] text-slate-400">Combustivel consumido</p>
-                        <p class="mt-2 text-lg font-semibold">R$ {{ '%.2f'|format(costs.get('fuel_cost', 0)) }}</p>
-                    </div>
-                    <div class="rounded-2xl bg-white px-4 py-3">
-                        <p class="text-xs uppercase tracking-[0.25em] text-slate-400">Custo de aplicacoes</p>
-                        <p class="mt-2 text-lg font-semibold">R$ {{ '%.2f'|format(costs.get('application_cost', 0)) }}</p>
-                    </div>
-                    <div class="rounded-2xl bg-white px-4 py-3">
-                        <p class="text-xs uppercase tracking-[0.25em] text-slate-400">Insumos consumidos na safra</p>
-                        <p class="mt-2 text-lg font-semibold">R$ {{ '%.2f'|format(costs.get('consumed_inputs_cost', 0)) }}</p>
-                    </div>
-                    <div class="rounded-2xl bg-white px-4 py-3">
-                        <p class="text-xs uppercase tracking-[0.25em] text-slate-400">Custo operacional total</p>
-                        <p class="mt-2 text-lg font-semibold">R$ {{ '%.2f'|format(costs.get('operational_total', 0)) }}</p>
-                    </div>
-                    <div class="rounded-2xl bg-white px-4 py-3">
-                        <p class="text-xs uppercase tracking-[0.25em] text-slate-400">Custo por hectare</p>
-                        <p class="mt-2 text-lg font-semibold">R$ {{ '%.2f'|format(costs.get('cost_per_hectare', 0)) }}/ha</p>
-                    </div>
-                    <div class="rounded-2xl bg-white px-4 py-3">
-                        <p class="text-xs uppercase tracking-[0.25em] text-slate-400">Custo por fazenda</p>
-                        <p class="mt-2 text-lg font-semibold">R$ {{ '%.2f'|format(costs.get('farm_cost', 0)) }}</p>
-                        <p class="mt-1 text-sm text-slate-500">Cultura {{ season.culture }}: R$ {{ '%.2f'|format(costs.get('culture_cost', 0)) }}</p>
-                        {% if season.variety %}
-                        <p class="mt-1 text-sm text-slate-500">Variedade {{ season.variety.name }}: R$ {{ '%.2f'|format(costs.get('variety_cost', 0)) }}</p>
-                        {% endif %}
-                    </div>
+
+                <div class="mt-4 grid gap-3 text-sm text-slate-600 sm:grid-cols-2 xl:grid-cols-3">
+                    <p>Área cultivada: <strong>{{ season.cultivated_area }} {{ season.area_unit }}</strong></p>
+                    <p>Insumos consumidos: <strong>R$ {{ '%.2f'|format(costs.get('consumed_inputs_cost', 0)) }}</strong></p>
+                    <p>Custo operacional total: <strong>R$ {{ '%.2f'|format(costs.get('operational_total', 0)) }}</strong></p>
+                    <p>Custo por hectare: <strong>R$ {{ '%.2f'|format(costs.get('cost_per_hectare', 0)) }}/ha</strong></p>
+                    <p>Cultura: <strong>R$ {{ '%.2f'|format(costs.get('culture_cost', 0)) }}</strong></p>
+                    <p>{% if season.variety %}Variedade: <strong>R$ {{ '%.2f'|format(costs.get('variety_cost', 0)) }}</strong>{% else %}Variedade: <strong>-</strong>{% endif %}</p>
                 </div>
+
+                {% if season.notes %}
+                <p class="mt-3 text-sm text-slate-500">{{ season.notes }}</p>
+                {% endif %}
             </article>
             {% else %}
             <p class="text-sm text-slate-500">Nenhuma safra cadastrada.</p>
             {% endfor %}
         </div>
+        <p class="stock-search-empty mt-4 hidden text-sm text-slate-500" data-seasons-search-empty>Nenhuma safra corresponde à busca digitada.</p>
     </section>
 </div>
+
+<dialog id="seasons-launch-modal" class="app-modal rounded-[2rem] p-0 shadow-2xl w-full max-w-4xl overflow-hidden">
+    <div class="bg-white p-6 sm:p-8">
+        <div class="flex items-start justify-between gap-4">
+            <div class="min-w-0">
+                <p class="text-xs uppercase tracking-[0.35em] text-slate-400">{% if edit_season %}Editar safra{% else %}Nova safra{% endif %}</p>
+                <h3 class="mt-2 text-2xl font-semibold purchased-modal-heading">{% if edit_season %}Editar safra{% else %}Cadastrar nova safra{% endif %}</h3>
+                <p class="mt-2 text-sm text-slate-500 purchased-modal-subtitle">Defina período, cultura, variedade e área cultivada sem sair do fluxo atual.</p>
+            </div>
+            <button type="button" class="modal-close-button" aria-label="Fechar" data-seasons-launch-close>
+                <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M18 6 6 18"/>
+                    <path d="m6 6 12 12"/>
+                </svg>
+            </button>
+        </div>
+
+        <div class="mt-6 max-h-[72vh] overflow-y-auto pr-1" data-modal-scroll>
+            <form method="post" action="{% if edit_season %}/safras/{{ edit_season.id }}/editar{% else %}/safras{% endif %}" class="grid gap-4" id="seasons-form" data-season-form>
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+
+                <div class="sticky top-0 z-10 -mx-1 bg-white/95 px-1 py-1 backdrop-blur">
+                    <div class="flex flex-wrap justify-end gap-3 rounded-[1.5rem] px-2 py-2 sm:px-3">
+                        <button type="button" class="rounded-2xl bg-slate-100 px-4 py-3 font-semibold text-slate-700 hover:bg-slate-200" data-seasons-launch-close>Cancelar</button>
+                        <button class="rounded-2xl px-4 py-3 font-semibold text-white {% if active_farm_id %}bg-brand-500 hover:bg-brand-700{% else %}cursor-not-allowed bg-slate-300{% endif %}" {% if not active_farm_id %}disabled{% endif %}>{% if edit_season %}Salvar alterações{% else %}Salvar safra{% endif %}</button>
+                    </div>
+                </div>
+
+                {% with launch_context_class='' %}{% include "partials/launch_context.html" %}{% endwith %}
+
+                <div class="grid gap-4 md:grid-cols-2">
+                    <label>
+                        <span class="mb-2 block text-sm font-medium">Data inicial</span>
+                        <input type="date" name="start_date" value="{{ edit_season.start_date.isoformat() if edit_season and edit_season.start_date else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required data-season-start>
+                    </label>
+                    <label>
+                        <span class="mb-2 block text-sm font-medium">Data final</span>
+                        <input type="date" name="end_date" value="{{ edit_season.end_date.isoformat() if edit_season and edit_season.end_date else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required data-season-end>
+                    </label>
+                </div>
+
+                <label>
+                    <span class="mb-2 block text-sm font-medium">Nome/identificação</span>
+                    <input name="name" value="{{ edit_season.name if edit_season else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" placeholder="Safra 2026/2027" data-season-name>
+                    <span class="mt-2 block text-xs text-slate-500">O sistema sugere automaticamente o nome com base nas datas, mas você pode editar manualmente.</span>
+                </label>
+
+                <div class="grid gap-4 md:grid-cols-2">
+                    <label>
+                        <span class="mb-2 block text-sm font-medium">Cultura</span>
+                        <input name="culture" value="{{ edit_season.culture if edit_season else 'Cafe' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required>
+                    </label>
+                    <label>
+                        <span class="mb-2 block text-sm font-medium">Variedade</span>
+                        <select name="variety_id" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50">
+                            <option value="">Não informar</option>
+                            {% for variety in varieties %}
+                            <option value="{{ variety.id }}" {% if edit_season and edit_season.variety_id == variety.id %}selected{% endif %}>{{ variety.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </label>
+                </div>
+
+                <div class="grid gap-4 md:grid-cols-3">
+                    <label class="md:col-span-2">
+                        <span class="mb-2 block text-sm font-medium">Área cultivada</span>
+                        <input type="number" step="0.01" name="cultivated_area" value="{{ edit_season.cultivated_area if edit_season else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required>
+                    </label>
+                    <label>
+                        <span class="mb-2 block text-sm font-medium">Unidade de área</span>
+                        <select name="area_unit" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required>
+                            {% set selected_area_unit = edit_season.area_unit if edit_season else 'ha' %}
+                            {% for unit in ['ha', 'm2', 'alq'] %}
+                            <option value="{{ unit }}" {% if selected_area_unit == unit %}selected{% endif %}>{{ unit }}</option>
+                            {% endfor %}
+                        </select>
+                    </label>
+                </div>
+
+                <label>
+                    <span class="mb-2 block text-sm font-medium">Status</span>
+                    {% set selected_status = edit_season.status if edit_season else 'planejada' %}
+                    <select name="status" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required>
+                        <option value="planejada" {% if selected_status == 'planejada' %}selected{% endif %}>planejada</option>
+                        <option value="ativa" {% if selected_status == 'ativa' %}selected{% endif %}>ativa</option>
+                        <option value="encerrada" {% if selected_status == 'encerrada' %}selected{% endif %}>encerrada</option>
+                    </select>
+                </label>
+
+                <label>
+                    <span class="mb-2 block text-sm font-medium">Observações</span>
+                    <textarea name="notes" rows="4" class="w-full rounded-2xl border-slate-200 bg-slate-50">{{ edit_season.notes if edit_season else '' }}</textarea>
+                </label>
+            </form>
+        </div>
+    </div>
+</dialog>
+
 <script>
     (() => {
+        const launchModal = document.getElementById('seasons-launch-modal');
+        const openButtons = Array.from(document.querySelectorAll('[data-seasons-launch-open]'));
+        const closeButtons = Array.from(document.querySelectorAll('[data-seasons-launch-close]'));
+        const searchInput = document.querySelector('[data-seasons-search]');
+        const rows = Array.from(document.querySelectorAll('[data-seasons-row]'));
+        const emptyState = document.querySelector('[data-seasons-search-empty]');
+        const stickyHeader = document.querySelector('.stock-page-header');
+        const headerIntro = stickyHeader?.querySelector('[data-stock-header-intro]');
+        const fadingPanels = Array.from(document.querySelectorAll('[data-stock-fade-panel]'));
+        const isEditing = {{ 'true' if edit_season else 'false' }};
+
+        const closeModal = () => {
+            if (isEditing) {
+                window.location.href = '/safras';
+                return;
+            }
+            launchModal?.close();
+        };
+
+        openButtons.forEach((button) => {
+            button.addEventListener('click', (event) => {
+                if (button.disabled) return;
+                const editUrl = button.getAttribute('data-seasons-edit-link');
+                if (editUrl) {
+                    event.preventDefault();
+                    window.location.href = editUrl;
+                    return;
+                }
+                launchModal?.showModal();
+            });
+        });
+
+        closeButtons.forEach((button) => {
+            button.addEventListener('click', () => closeModal());
+        });
+
+        launchModal?.addEventListener('cancel', (event) => {
+            event.preventDefault();
+            closeModal();
+        });
+
+        if (isEditing) launchModal?.showModal();
+
         const form = document.querySelector('[data-season-form]');
-        if (!form) return;
-        const startInput = form.querySelector('[data-season-start]');
-        const endInput = form.querySelector('[data-season-end]');
-        const nameInput = form.querySelector('[data-season-name]');
+        const startInput = form?.querySelector('[data-season-start]');
+        const endInput = form?.querySelector('[data-season-end]');
+        const nameInput = form?.querySelector('[data-season-name]');
         let manualName = !!(nameInput?.value || '').trim();
 
         const suggestion = () => {
@@ -169,8 +260,97 @@
         });
         startInput?.addEventListener('change', syncName);
         endInput?.addEventListener('change', syncName);
-
         if (!manualName) syncName();
+
+        const normalizeText = (value) => (value || '').toString().normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+        const applyLocalSearch = () => {
+            const query = normalizeText(searchInput?.value || '');
+            let visible = 0;
+            rows.forEach((row) => {
+                const haystack = normalizeText(row.dataset.seasonsSearchText || row.textContent);
+                const matches = !query || haystack.includes(query);
+                row.classList.toggle('hidden', !matches);
+                if (matches) visible += 1;
+            });
+            emptyState?.classList.toggle('hidden', visible !== 0);
+        };
+        searchInput?.addEventListener('input', applyLocalSearch);
+        applyLocalSearch();
+
+        const mobileCompactMq = window.matchMedia('(max-width: 899px)');
+        const parseStickyTopPx = (el) => {
+            const raw = getComputedStyle(el).top;
+            if (!raw || raw === 'auto') return 0;
+            const pxMatch = /^([\d.]+)px$/.exec(raw);
+            if (pxMatch) return parseFloat(pxMatch[1]);
+            const remMatch = /^([\d.]+)rem$/.exec(raw);
+            if (remMatch) {
+                const rootPx = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
+                return parseFloat(remMatch[1]) * rootPx;
+            }
+            return 0;
+        };
+
+        let compactRaf = null;
+        const syncHeaderCompact = () => {
+            compactRaf = null;
+            if (!stickyHeader) return;
+            if (!mobileCompactMq.matches) {
+                stickyHeader.classList.remove('is-compact');
+                if (headerIntro) headerIntro.removeAttribute('aria-hidden');
+                return;
+            }
+            const topPx = parseStickyTopPx(stickyHeader);
+            const rect = stickyHeader.getBoundingClientRect();
+            const isCompact = stickyHeader.classList.contains('is-compact');
+            let nextCompact = isCompact;
+            if (rect.top <= topPx + 2) nextCompact = true;
+            else if (rect.top > topPx + 8) nextCompact = false;
+            stickyHeader.classList.toggle('is-compact', nextCompact);
+            if (headerIntro) headerIntro.setAttribute('aria-hidden', nextCompact ? 'true' : 'false');
+        };
+
+        const scheduleHeaderCompact = () => {
+            if (compactRaf !== null) return;
+            compactRaf = window.requestAnimationFrame(syncHeaderCompact);
+        };
+
+        if (stickyHeader) {
+            window.addEventListener('scroll', scheduleHeaderCompact, { passive: true });
+            window.addEventListener('resize', scheduleHeaderCompact);
+            mobileCompactMq.addEventListener('change', scheduleHeaderCompact);
+            scheduleHeaderCompact();
+        }
+
+        if (!stickyHeader || !fadingPanels.length) return;
+        let rafId = null;
+        const updateFadingPanels = () => {
+            rafId = null;
+            const stickyRect = stickyHeader.getBoundingClientRect();
+            const stickyBottom = stickyRect.bottom;
+            fadingPanels.forEach((panel) => {
+                const panelRect = panel.getBoundingClientRect();
+                const panelTop = panelRect.top;
+                const panelH = panelRect.height;
+                if (panelTop >= stickyBottom || panelH <= 1) {
+                    panel.style.setProperty('--stock-fade-cutoff', '0px');
+                    panel.style.setProperty('--stock-fade-feather-end', '0px');
+                    return;
+                }
+                const rawOverlap = Math.max(stickyBottom - panelTop, 0);
+                const overlap = Math.min(rawOverlap, panelH);
+                const featherBand = Math.min(80, Math.max(22, overlap * 0.45 + 16));
+                panel.style.setProperty('--stock-fade-cutoff', `${overlap.toFixed(2)}px`);
+                panel.style.setProperty('--stock-fade-feather-end', `${(overlap + featherBand).toFixed(2)}px`);
+            });
+        };
+        const scheduleFadeUpdate = () => {
+            if (rafId !== null) return;
+            rafId = window.requestAnimationFrame(updateFadingPanels);
+        };
+        window.addEventListener('scroll', scheduleFadeUpdate, { passive: true });
+        window.addEventListener('resize', scheduleFadeUpdate);
+        scheduleFadeUpdate();
     })();
 </script>
 {% endblock %}
