@@ -120,7 +120,28 @@
                     </div>
                 </div>
 
-                {% with launch_context_class='' %}{% include "partials/launch_context.html" %}{% endwith %}
+                <div class="rounded-[1.5rem] border border-brand-100 bg-brand-50/50 p-4">
+                    <div class="flex flex-wrap items-start justify-between gap-4">
+                        <div class="min-w-0">
+                            <p class="text-xs uppercase tracking-[0.3em] text-slate-400">Contexto do lançamento</p>
+                            <p class="mt-2 text-sm text-slate-500">Use este bloco para confirmar a fazenda e a safra ativas antes de salvar.</p>
+                        </div>
+                        <button type="button" class="stock-summary-toggle" data-seasons-context-toggle aria-expanded="false">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                                <path d="M5 12h14"/>
+                                <path d="M12 5v14" data-seasons-context-toggle-plus></path>
+                            </svg>
+                            <span data-seasons-context-toggle-label>Expandir</span>
+                        </button>
+                    </div>
+                    <div class="stock-summary-collapse" data-seasons-context-collapse>
+                        <div class="stock-summary-collapse-inner">
+                            <div class="mt-4">
+                                {% with launch_context_class='' %}{% include "partials/launch_context.html" %}{% endwith %}
+                            </div>
+                        </div>
+                    </div>
+                </div>
 
                 <div class="grid gap-4 md:grid-cols-2">
                     <label>
@@ -234,6 +255,23 @@
         });
 
         if (isEditing) launchModal?.showModal();
+
+        const contextToggle = document.querySelector('[data-seasons-context-toggle]');
+        const contextCollapse = document.querySelector('[data-seasons-context-collapse]');
+        const contextToggleLabel = document.querySelector('[data-seasons-context-toggle-label]');
+        const contextTogglePlus = document.querySelector('[data-seasons-context-toggle-plus]');
+        const syncContextToggle = (expanded) => {
+            if (!contextCollapse || !contextToggle) return;
+            contextCollapse.classList.toggle('is-expanded', expanded);
+            contextToggle.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+            if (contextToggleLabel) contextToggleLabel.textContent = expanded ? 'Recolher' : 'Expandir';
+            if (contextTogglePlus) contextTogglePlus.classList.toggle('hidden', expanded);
+        };
+        syncContextToggle(false);
+        contextToggle?.addEventListener('click', () => {
+            const expanded = !contextCollapse?.classList.contains('is-expanded');
+            syncContextToggle(!!expanded);
+        });
 
         const form = document.querySelector('[data-season-form]');
         const startInput = form?.querySelector('[data-season-start]');
