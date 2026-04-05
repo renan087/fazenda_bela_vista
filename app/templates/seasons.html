@@ -49,13 +49,6 @@
                             <span class="stock-level-badge bg-white text-slate-700 ring-1 ring-slate-200/80">{{ season.start_date.strftime('%d-%m-%Y') if season.start_date else '-' }} até {{ season.end_date.strftime('%d-%m-%Y') if season.end_date else '-' }}</span>
                             <span class="stock-level-badge {% if season.status == 'ativa' %}bg-emerald-50 text-emerald-700 ring-1 ring-emerald-100{% elif season.status == 'encerrada' %}bg-slate-200 text-slate-700{% else %}bg-amber-50 text-amber-700 ring-1 ring-amber-100{% endif %}">{{ season.status }}</span>
                         </div>
-                        <button type="button" class="stock-summary-toggle mt-3" data-seasons-detail-toggle aria-expanded="false">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-                                <path d="M5 12h14"/>
-                                <path d="M12 5v14" data-seasons-detail-toggle-plus></path>
-                            </svg>
-                            <span data-seasons-detail-toggle-label>Ver custos e detalhes</span>
-                        </button>
                     </div>
                     <div class="flex items-center gap-2 lg:gap-1.5">
                         <a href="/safras?edit_id={{ season.id }}" class="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-100" title="Editar">
@@ -77,6 +70,15 @@
                             </button>
                         </form>
                     </div>
+                </div>
+                <div class="mt-3 flex justify-center">
+                    <button type="button" class="stock-summary-toggle" data-seasons-detail-toggle aria-expanded="false">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                            <path d="M5 12h14"/>
+                            <path d="M12 5v14" data-seasons-detail-toggle-plus></path>
+                        </svg>
+                        <span data-seasons-detail-toggle-label>Ver custos e detalhes</span>
+                    </button>
                 </div>
 
                 <div class="stock-summary-collapse" data-seasons-detail-collapse>
