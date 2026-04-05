@@ -282,6 +282,12 @@ def _url_with_query(request: Request, **updates) -> str:
     return f"{request.url.path}?{query}" if query else request.url.path
 
 
+def _fertilization_schedule_tab_url(request: Request, tab: str) -> str:
+    """Apenas schedule_tab: ao trocar Ativos/Concluidos, zera busca, periodo e paginacao."""
+    safe_tab = tab if tab in {"active", "completed"} else "active"
+    return f"{request.url.path}?{urlencode({'schedule_tab': safe_tab})}"
+
+
 def _paginate_collection(
     request: Request,
     items,
@@ -5720,8 +5726,8 @@ def fertilization_schedules_page(
             completed_schedules_pagination=completed_schedules_pagination,
             selected_schedule_tab=selected_schedule_tab,
             schedule_tab_urls={
-                "active": _url_with_query(request, schedule_tab="active"),
-                "completed": _url_with_query(request, schedule_tab="completed"),
+                "active": _fertilization_schedule_tab_url(request, "active"),
+                "completed": _fertilization_schedule_tab_url(request, "completed"),
             },
             schedule_filter_start_date=filter_start_str or None,
             schedule_filter_end_date=filter_end_str or None,
