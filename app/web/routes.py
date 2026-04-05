@@ -1078,6 +1078,15 @@ def _resolve_geojson(upload: UploadFile | None, fallback_text: str | None, curre
     return current_value, False
 
 
+def _farm_boundary_for_plot_preview(plot) -> str | None:
+    """Perímetro da fazenda para sobrepor na imagem de prévia do setor (plot.farm deve estar carregado)."""
+    farm = getattr(plot, "farm", None)
+    if not farm:
+        return None
+    raw = getattr(farm, "boundary_geojson", None)
+    return raw if raw and str(raw).strip() else None
+
+
 def _parse_fertilization_items(values) -> list[dict]:
     input_ids = values.getlist("input_id")
     names = values.getlist("item_name")
@@ -1542,7 +1551,8 @@ def plots_page(
         thumb_ok = thumb_path.is_file() and thumb_path.stat().st_size > 0
         plot_preview_ready[plot.id] = full_ok and thumb_ok
         if not full_ok:
-            background_tasks.add_task(generate_plot_preview_image, plot.id, plot.boundary_geojson)
+            farm_gj = _farm_boundary_for_plot_preview(plot)
+            background_tasks.add_task(generate_plot_preview_image, plot.id, plot.boundary_geojson, farm_gj)
         elif not thumb_ok:
             background_tasks.add_task(ensure_plot_preview_thumb, plot.id)
     farm_preview_ready: dict[int, bool] = {}
@@ -1684,7 +1694,8 @@ def create_plot_action(
     )
     if geometry:
         try:
-            generate_plot_preview_image(new_plot.id, geometry)
+            farm_gj = farm.boundary_geojson if farm.boundary_geojson else None
+            generate_plot_preview_image(new_plot.id, geometry, farm_gj)
         except Exception:
             logging.getLogger(__name__).exception("Falha ao gerar imagem de satelite do setor %s", new_plot.id)
     _flash(request, "success", "Setor salvo com sucesso.")
@@ -1763,7 +1774,8 @@ def update_plot_action(
         ),
     )
     try:
-        generate_plot_preview_image(plot_id, geometry or "")
+        farm_gj = farm.boundary_geojson if farm.boundary_geojson else None
+        generate_plot_preview_image(plot_id, geometry or "", farm_gj)
     except Exception:
         logging.getLogger(__name__).exception("Falha ao atualizar imagem de satelite do setor %s", plot_id)
     finally:
@@ -1791,7 +1803,7 @@ def save_plot_preview_draft(
     normalized = normalize_geojson(boundary_geojson)
     if not normalized:
         return JSONResponse({"ok": False, "error": "invalid_geojson"}, status_code=400)
-    ok = generate_plot_preview_draft(plot_id, normalized)
+    ok = generate_plot_preview_draft(plot_id, normalized, _farm_boundary_for_plot_preview(plot))
     if not ok:
         return JSONResponse({"ok": False, "error": "generate_failed"}, status_code=400)
     revision = hashlib.sha256(normalized.encode("utf-8")).hexdigest()[:14]
@@ -6947,7 +6959,7 @@ def save_plot_map_geometry(
         },
     )
     try:
-        generate_plot_preview_image(plot_id, normalized)
+        generate_plot_preview_image(plot_id, normalized, _farm_boundary_for_plot_preview(plot))
     except Exception:
         logging.getLogger(__name__).exception("Falha ao gerar preview do setor %s apos mapa", plot_id)
     _flash(request, "success", "Poligono do setor atualizado com sucesso no mapa.")

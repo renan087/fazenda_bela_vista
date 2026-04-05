@@ -60,11 +60,20 @@ def ensure_plot_preview_thumb(plot_id: int) -> bool:
         return False
 
 
-def generate_plot_preview_image(plot_id: int, boundary_geojson: str | None) -> bool:
+def generate_plot_preview_image(
+    plot_id: int,
+    boundary_geojson: str | None,
+    farm_boundary_geojson: str | None = None,
+) -> bool:
     if not boundary_geojson or not boundary_geojson.strip():
         remove_plot_preview_image(plot_id)
         return False
-    final_img = build_satellite_preview_from_geojson(boundary_geojson.strip(), log_entity_id=plot_id)
+    farm_ref = (farm_boundary_geojson or "").strip() or None
+    final_img = build_satellite_preview_from_geojson(
+        boundary_geojson.strip(),
+        log_entity_id=plot_id,
+        reference_boundary_geojson=farm_ref,
+    )
     if final_img is None:
         return False
     PLOT_PREVIEW_DIR.mkdir(parents=True, exist_ok=True)
@@ -88,12 +97,21 @@ def generate_plot_preview_image(plot_id: int, boundary_geojson: str | None) -> b
     return True
 
 
-def generate_plot_preview_draft(plot_id: int, boundary_geojson: str | None) -> bool:
+def generate_plot_preview_draft(
+    plot_id: int,
+    boundary_geojson: str | None,
+    farm_boundary_geojson: str | None = None,
+) -> bool:
     """Grava PNG de prévia temporário ({id}_draft.png), sem alterar a miniatura oficial da lista."""
     if not boundary_geojson or not boundary_geojson.strip():
         remove_plot_preview_draft(plot_id)
         return False
-    final_img = build_satellite_preview_from_geojson(boundary_geojson.strip(), log_entity_id=plot_id)
+    farm_ref = (farm_boundary_geojson or "").strip() or None
+    final_img = build_satellite_preview_from_geojson(
+        boundary_geojson.strip(),
+        log_entity_id=plot_id,
+        reference_boundary_geojson=farm_ref,
+    )
     if final_img is None:
         return False
     PLOT_PREVIEW_DIR.mkdir(parents=True, exist_ok=True)

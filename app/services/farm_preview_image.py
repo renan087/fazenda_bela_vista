@@ -242,12 +242,14 @@ def _subsample_ring(ring: list[tuple[float, float]], max_points: int) -> list[tu
     return [pts[min(int(round(i * step)), len(pts) - 1)] for i in range(max_points)]
 
 
-def _google_static_query_pairs(
-    rings: list[list[tuple[float, float]]],
+def _google_static_build_pairs(
     bbox: tuple[float, float, float, float],
     api_key: str,
+    rings_plot: list[list[tuple[float, float]]],
+    rings_reference: list[list[tuple[float, float]]],
     max_points_per_ring: int,
 ) -> list[tuple[str, str]]:
+    """Paths da fazenda (verde) primeiro; setor por cima (laranja se houver referência)."""
     lon_min, lat_min, lon_max, lat_max = bbox
     visible = "|".join(
         [
@@ -264,9 +266,22 @@ def _google_static_query_pairs(
         ("visible", visible),
         ("key", api_key),
     ]
-    for ring in rings:
+    for ring in rings_reference:
+        if len(ring) < 3:
+            continue
         sampled = _subsample_ring(ring, max_points_per_ring)
-        parts = ["fillcolor:0x5BB34AB3", "color:0x418436", "weight:2"]
+        parts = ["fillcolor:0x5BB34A77", "color:0x418436", "weight:2"]
+        for lon, lat in sampled:
+            parts.append(f"{lat:.7f},{lon:.7f}")
+        pairs.append(("path", "|".join(parts)))
+    for ring in rings_plot:
+        if len(ring) < 3:
+            continue
+        sampled = _subsample_ring(ring, max_points_per_ring)
+        if rings_reference:
+            parts = ["fillcolor:0xF97316B3", "color:0xEA580C", "weight:3"]
+        else:
+            parts = ["fillcolor:0x5BB34AB3", "color:0x418436", "weight:2"]
         for lon, lat in sampled:
             parts.append(f"{lat:.7f},{lon:.7f}")
         pairs.append(("path", "|".join(parts)))
@@ -274,19 +289,21 @@ def _google_static_query_pairs(
 
 
 def _try_google_static_preview(
-    rings: list[list[tuple[float, float]]],
+    rings_plot: list[list[tuple[float, float]]],
     bbox: tuple[float, float, float, float],
     api_key: str,
+    rings_reference: list[list[tuple[float, float]]] | None = None,
 ) -> Image.Image | None:
+    rings_reference = rings_reference or []
     max_pts = 72
     pairs: list[tuple[str, str]] = []
     for _ in range(6):
-        pairs = _google_static_query_pairs(rings, bbox, api_key.strip(), max_pts)
+        pairs = _google_static_build_pairs(bbox, api_key.strip(), rings_plot, rings_reference, max_pts)
         if len(urlencode(pairs)) <= STATIC_MAP_MAX_URL_LEN:
             break
         max_pts = max(12, max_pts // 2)
     else:
-        pairs = _google_static_query_pairs(rings, bbox, api_key.strip(), 12)
+        pairs = _google_static_build_pairs(bbox, api_key.strip(), rings_plot, rings_reference, 12)
 
     url = f"{GOOGLE_STATIC_MAP_URL}?{urlencode(pairs)}"
     try:
@@ -316,11 +333,12 @@ def _try_google_static_preview(
 
 def _try_esri_tile_preview(
     log_entity_id: int,
-    rings: list[list[tuple[float, float]]],
+    rings_plot: list[list[tuple[float, float]]],
     lon_min: float,
     lat_min: float,
     lon_max: float,
     lat_max: float,
+    rings_reference: list[list[tuple[float, float]]] | None = None,
 ) -> Image.Image | None:
     z = _pick_zoom(lon_min, lat_min, lon_max, lat_max)
     if z is None:
@@ -385,23 +403,46 @@ def _try_esri_tile_preview(
 
     overlay = Image.new("RGBA", (OUTPUT_WIDTH, OUTPUT_HEIGHT), (0, 0, 0, 0))
     draw = ImageDraw.Draw(overlay)
-    stroke = 3
+    rings_reference = rings_reference or []
 
-    for ring in rings:
+    def _project_ring(ring: list[tuple[float, float]]) -> list[tuple[float, float]]:
         flat: list[tuple[float, float]] = []
         for lon, lat in ring:
             wx, wy = _lonlat_to_world_px(lon, lat, z)
             px = (wx - wx0) / crop_w * OUTPUT_WIDTH
             py = (wy - wy0) / crop_h * OUTPUT_HEIGHT
             flat.append((px, py))
+        return flat
+
+    for ring in rings_reference:
+        flat = _project_ring(ring)
         if len(flat) < 3:
             continue
         draw.polygon(
             flat,
-            fill=(91, 179, 74, 95),
-            outline=(65, 132, 54, 255),
-            width=stroke,
+            fill=(91, 179, 74, 55),
+            outline=(65, 132, 54, 220),
+            width=2,
         )
+
+    for ring in rings_plot:
+        flat = _project_ring(ring)
+        if len(flat) < 3:
+            continue
+        if rings_reference:
+            draw.polygon(
+                flat,
+                fill=(249, 115, 22, 120),
+                outline=(234, 88, 12, 255),
+                width=3,
+            )
+        else:
+            draw.polygon(
+                flat,
+                fill=(91, 179, 74, 95),
+                outline=(65, 132, 54, 255),
+                width=3,
+            )
 
     base = cropped.convert("RGBA")
     return Image.alpha_composite(base, overlay).convert("RGB")
@@ -411,9 +452,12 @@ def build_satellite_preview_from_geojson(
     boundary_geojson: str,
     *,
     log_entity_id: int = 0,
+    reference_boundary_geojson: str | None = None,
 ) -> Image.Image | None:
     """
-    Monta imagem RGB (satélite + polígono verde) a partir de GeoJSON de perímetro.
+    Monta imagem RGB (satélite + polígonos) a partir de GeoJSON.
+    `boundary_geojson` é o perímetro principal (setor ou fazenda).
+    `reference_boundary_geojson` opcional: perímetro da fazenda (verde), desenhado por baixo do principal.
     Não grava em disco. Usado por previews de fazenda e de setor.
     """
     text = (boundary_geojson or "").strip()
@@ -423,19 +467,32 @@ def build_satellite_preview_from_geojson(
     if not geometry:
         logger.warning("GeoJSON invalido para preview geografico id=%s", log_entity_id)
         return None
-    rings = _exterior_rings(geometry)
-    bbox = _rings_bbox(rings)
+    rings_plot = _exterior_rings(geometry)
+    if not rings_plot:
+        return None
+
+    rings_reference: list[list[tuple[float, float]]] = []
+    ref_raw = (reference_boundary_geojson or "").strip()
+    if ref_raw:
+        gref = _parse_geometry(ref_raw)
+        if gref:
+            rings_reference = _exterior_rings(gref)
+
+    all_rings = rings_reference + rings_plot
+    bbox = _rings_bbox(all_rings)
     if not bbox:
         return None
     lon_min, lat_min, lon_max, lat_max = bbox
     final_img: Image.Image | None = None
     api_key = (get_settings().google_maps_api_key or "").strip()
     if api_key:
-        final_img = _try_google_static_preview(rings, bbox, api_key)
+        final_img = _try_google_static_preview(rings_plot, bbox, api_key, rings_reference)
         if final_img is not None and log_entity_id:
             logger.info("Preview id=%s gerado via Google Static Maps", log_entity_id)
     if final_img is None:
-        final_img = _try_esri_tile_preview(log_entity_id, rings, lon_min, lat_min, lon_max, lat_max)
+        final_img = _try_esri_tile_preview(
+            log_entity_id, rings_plot, lon_min, lat_min, lon_max, lat_max, rings_reference
+        )
         if final_img is not None and api_key and log_entity_id:
             logger.info("Preview id=%s gerado via fallback Esri", log_entity_id)
         elif final_img is not None and log_entity_id:
