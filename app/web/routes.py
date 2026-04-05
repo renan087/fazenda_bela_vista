@@ -5619,19 +5619,17 @@ def delete_crop_season_action(
     return _redirect("/safras")
 
 
-@router.get("/irrigacao")
-def irrigation_page(
+def _irrigation_history_dataset(
     request: Request,
-    edit_id: int | None = None,
-    db: Session = Depends(get_db),
-    user: User = Depends(get_current_user_web),
-    csrf_token: str = Depends(get_csrf_token),
-):
-    repo = _repository(db)
+    repo: FarmRepository,
+    *,
+    flash_invalid: bool,
+) -> dict:
+    """Mesmos filtros da listagem em /irrigacao (sem paginação)."""
     scope = _global_scope_context(request, repo)
     farm_ids, variety_ids = _scoped_plot_filters(request, scope["active_season"])
     start_date, end_date, filter_start_str, filter_end_str = _schedule_filter_date_bounds(
-        request, scope["active_season"], flash_invalid=True
+        request, scope["active_season"], flash_invalid=flash_invalid
     )
     selected_irrigation_range = (
         _fertilization_filter_range_preset(
@@ -5648,17 +5646,8 @@ def irrigation_page(
     plot_id_filter = _int_or_none(raw_plot) if raw_plot else None
     if plot_id_filter is not None and plot_id_filter not in plot_ids:
         plot_id_filter = None
-    irrigation_filter_clear_url = _url_with_query(
-        request,
-        start_date=None,
-        end_date=None,
-        schedule_range=None,
-        plot_id=None,
-        irrigations_page=None,
-        search=None,
-    )
-    irrigation_after_edit_close_url = _url_with_query(request, edit_id=None)
     search_q = (request.query_params.get("search") or "").strip() or None
+
     irrigations_in_period = [
         irrigation
         for irrigation in repo.list_irrigations()
@@ -5696,6 +5685,53 @@ def irrigation_page(
         lambda item: item.irrigation_date,
         lambda item: item.id,
     )
+
+    return {
+        "scope": scope,
+        "plots": plots,
+        "plots_for_irrigation_filter": plots_for_irrigation_filter,
+        "filter_start_str": filter_start_str,
+        "filter_end_str": filter_end_str,
+        "selected_irrigation_range": selected_irrigation_range,
+        "raw_plot": raw_plot,
+        "plot_id_filter": plot_id_filter,
+        "search_q": search_q,
+        "irrigations_filtered": irrigations,
+    }
+
+
+@router.get("/irrigacao")
+def irrigation_page(
+    request: Request,
+    edit_id: int | None = None,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+    csrf_token: str = Depends(get_csrf_token),
+):
+    repo = _repository(db)
+    data = _irrigation_history_dataset(request, repo, flash_invalid=True)
+    scope = data["scope"]
+    plots = data["plots"]
+    plots_for_irrigation_filter = data["plots_for_irrigation_filter"]
+    filter_start_str = data["filter_start_str"]
+    filter_end_str = data["filter_end_str"]
+    selected_irrigation_range = data["selected_irrigation_range"]
+    raw_plot = data["raw_plot"]
+    plot_id_filter = data["plot_id_filter"]
+    search_q = data["search_q"]
+    irrigations = data["irrigations_filtered"]
+
+    irrigation_filter_clear_url = _url_with_query(
+        request,
+        start_date=None,
+        end_date=None,
+        schedule_range=None,
+        plot_id=None,
+        irrigations_page=None,
+        search=None,
+    )
+    irrigation_after_edit_close_url = _url_with_query(request, edit_id=None)
+
     irrigations_pagination = _paginate_collection(request, irrigations, "irrigations_page")
     irrigation_edit_urls = {
         item.id: _url_with_query(request, edit_id=item.id) for item in irrigations_pagination["items"]
@@ -5739,6 +5775,237 @@ def irrigation_page(
                 for plot in plots
             ],
         ),
+    )
+
+
+@router.get("/irrigacao/exportar.xlsx")
+def export_irrigation_xlsx(
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    del user
+    repo = _repository(db)
+    data = _irrigation_history_dataset(request, repo, flash_invalid=False)
+    irrigations = data["irrigations_filtered"]
+
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = "Irrigacao"
+    sheet.append(["Setor", "Data", "Volume (L)", "Duração (min)", "Observações"])
+    for item in irrigations:
+        sheet.append([
+            item.plot.name if item.plot else "Setor removido",
+            item.irrigation_date.isoformat() if item.irrigation_date else "",
+            _format_decimal_br(float(item.volume_liters or 0), 2),
+            int(item.duration_minutes or 0),
+            item.notes or "",
+        ])
+    for index, width in enumerate([28, 14, 16, 16, 48], start=1):
+        sheet.column_dimensions[get_column_letter(index)].width = width
+
+    output = BytesIO()
+    workbook.save(output)
+    output.seek(0)
+    return StreamingResponse(
+        output,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": 'attachment; filename="irrigacao.xlsx"'},
+    )
+
+
+@router.get("/irrigacao/exportar.pdf")
+def export_irrigation_pdf(
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    repo = _repository(db)
+    data = _irrigation_history_dataset(request, repo, flash_invalid=False)
+    irrigations = data["irrigations_filtered"]
+    scope = data["scope"]
+    raw_start = data["filter_start_str"]
+    raw_end = data["filter_end_str"]
+    plot_id_filter = data["plot_id_filter"]
+    plots = data["plots"]
+    search_q = data["search_q"]
+
+    generated_at = app_now()
+    generated_by = user.display_name or user.name or user.email
+    farm_name = scope["active_farm"].name if scope.get("active_farm") else "Fazenda Bela Vista"
+    season_label = scope["active_season"].name if scope.get("active_season") else "Safra ativa"
+    period_label = "Safra ativa"
+    if raw_start or raw_end:
+        period_label = f"{(raw_start or '--').replace('-', '/')} a {(raw_end or '--').replace('-', '/')}"
+    plot_filter_label = "Todos os setores"
+    if plot_id_filter:
+        sel_plot = next((p for p in plots if p.id == plot_id_filter), None)
+        plot_filter_label = sel_plot.name if sel_plot else f"Setor #{plot_id_filter}"
+    search_label = (search_q or "").strip() or "—"
+    total_volume = sum(float(item.volume_liters or 0) for item in irrigations)
+    total_duration = sum(int(item.duration_minutes or 0) for item in irrigations)
+
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=landscape(A4), leftMargin=28, rightMargin=28, topMargin=32, bottomMargin=34)
+    styles = getSampleStyleSheet()
+    farm_header_style = ParagraphStyle(
+        "IrrigationPdfFarmHeader",
+        parent=styles["Title"],
+        fontName="Helvetica-Bold",
+        fontSize=18,
+        leading=22,
+        alignment=TA_RIGHT,
+        textColor=colors.HexColor("#1e293b"),
+    )
+    meta_label_style = ParagraphStyle(
+        "IrrigationPdfMetaLabel",
+        parent=styles["BodyText"],
+        fontName="Helvetica-Bold",
+        fontSize=8,
+        leading=10,
+        textColor=colors.HexColor("#446a36"),
+        spaceAfter=2,
+    )
+    meta_value_style = ParagraphStyle(
+        "IrrigationPdfMetaValue",
+        parent=styles["BodyText"],
+        fontName="Helvetica",
+        fontSize=10,
+        leading=13,
+        textColor=colors.HexColor("#334155"),
+    )
+    cell_style = ParagraphStyle(
+        "IrrigationPdfCell",
+        parent=styles["BodyText"],
+        fontName="Helvetica",
+        fontSize=8.2,
+        leading=10.4,
+        textColor=colors.HexColor("#0f172a"),
+    )
+    cell_muted_style = ParagraphStyle("IrrigationPdfCellMuted", parent=cell_style, textColor=colors.HexColor("#475569"))
+    summary_value_style = ParagraphStyle(
+        "IrrigationPdfSummaryValue",
+        parent=styles["BodyText"],
+        fontName="Helvetica-Bold",
+        fontSize=11,
+        leading=14,
+        textColor=colors.HexColor("#0f172a"),
+    )
+
+    logo_path = Path("app/static/images/logo.png")
+    logo_flowable = Image(str(logo_path), width=92.8, height=73.6) if logo_path.exists() else Spacer(92.8, 73.6)
+    header_table = Table([[logo_flowable, Paragraph(farm_name, farm_header_style)]], colWidths=[76, doc.width - 76], hAlign="LEFT")
+    header_table.setStyle(TableStyle([
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("ALIGN", (1, 0), (1, 0), "RIGHT"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 0),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+        ("TOPPADDING", (0, 0), (-1, -1), 0),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
+    ]))
+
+    summary_table = Table([
+        [
+            [Paragraph("FAZENDA", meta_label_style), Paragraph(farm_name, meta_value_style)],
+            [Paragraph("SAFRA", meta_label_style), Paragraph(season_label, meta_value_style)],
+            [Paragraph("PERÍODO", meta_label_style), Paragraph(period_label, meta_value_style)],
+        ],
+        [
+            [Paragraph("SETOR (FILTRO)", meta_label_style), Paragraph(plot_filter_label, meta_value_style)],
+            [Paragraph("BUSCA", meta_label_style), Paragraph(search_label, meta_value_style)],
+            [Paragraph("REGISTROS", meta_label_style), Paragraph(str(len(irrigations)), summary_value_style)],
+        ],
+    ], colWidths=[doc.width / 3] * 3, hAlign="LEFT")
+    summary_table.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#f8fafc")),
+        ("BOX", (0, 0), (-1, -1), 0.8, colors.HexColor("#dbe5dd")),
+        ("INNERGRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#e2e8f0")),
+        ("LEFTPADDING", (0, 0), (-1, -1), 12),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 12),
+        ("TOPPADDING", (0, 0), (-1, -1), 10),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 10),
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+    ]))
+
+    title_style = ParagraphStyle(
+        "IrrigationPdfTitle",
+        parent=styles["Heading2"],
+        fontName="Helvetica-Bold",
+        fontSize=13,
+        leading=16,
+        textColor=colors.HexColor("#0f172a"),
+        spaceAfter=6,
+    )
+    elements = [header_table, Spacer(1, 16), summary_table, Spacer(1, 12), Paragraph("Histórico de irrigação", title_style), Spacer(1, 8)]
+    data_rows = [["Setor", "Data", "Volume (L)", "Duração (min)", "Observações"]]
+    for item in irrigations:
+        data_rows.append([
+            Paragraph(item.plot.name if item.plot else "Setor removido", cell_style),
+            Paragraph(item.irrigation_date.strftime("%d/%m/%Y") if item.irrigation_date else "-", cell_style),
+            Paragraph(_format_decimal_br(float(item.volume_liters or 0), 2), cell_style),
+            Paragraph(str(int(item.duration_minutes or 0)), cell_style),
+            Paragraph(item.notes or "-", cell_muted_style),
+        ])
+
+    table = Table(data_rows, colWidths=[120, 72, 88, 88, doc.width - 368], repeatRows=1, hAlign="LEFT")
+    table.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#446a36")),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("FONTSIZE", (0, 0), (-1, -1), 8.5),
+        ("LEADING", (0, 0), (-1, -1), 10),
+        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f8fafc")]),
+        ("BOX", (0, 0), (-1, -1), 0.6, colors.HexColor("#dbe5dd")),
+        ("INNERGRID", (0, 0), (-1, -1), 0.35, colors.HexColor("#e2e8f0")),
+        ("LEFTPADDING", (0, 0), (-1, -1), 8),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+        ("TOPPADDING", (0, 0), (-1, -1), 7),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 7),
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+    ]))
+    elements.append(table)
+    elements.append(Spacer(1, 14))
+
+    footer_summary = Table([
+        ["Registros", str(len(irrigations))],
+        ["Volume total (L)", _format_decimal_br(total_volume, 2)],
+        ["Duração total (min)", str(total_duration)],
+    ], colWidths=[doc.width * 0.28, doc.width * 0.18], hAlign="LEFT")
+    footer_summary.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#f8fafc")),
+        ("BOX", (0, 0), (-1, -1), 0.8, colors.HexColor("#dbe5dd")),
+        ("INNERGRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#e2e8f0")),
+        ("FONTNAME", (0, 0), (-1, -1), "Helvetica-Bold"),
+        ("TEXTCOLOR", (0, 0), (-1, -1), colors.HexColor("#0f172a")),
+        ("LEFTPADDING", (0, 0), (-1, -1), 10),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 10),
+        ("TOPPADDING", (0, 0), (-1, -1), 8),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
+    ]))
+    elements.append(footer_summary)
+
+    generated_at_label = format_app_datetime(generated_at)
+
+    def _draw_footer(canvas, doc):
+        canvas.saveState()
+        canvas.setStrokeColor(colors.HexColor("#e2e8f0"))
+        canvas.line(doc.leftMargin, 22, landscape(A4)[0] - doc.rightMargin, 22)
+        canvas.setFont("Helvetica", 8.2)
+        canvas.setFillColor(colors.HexColor("#64748b"))
+        canvas.drawString(doc.leftMargin, 10, f"Gerado por: {generated_by}")
+        canvas.drawRightString(
+            landscape(A4)[0] - doc.rightMargin,
+            10,
+            f"Emitido em {generated_at_label} • Página {canvas.getPageNumber()}",
+        )
+        canvas.restoreState()
+
+    doc.build(elements, onFirstPage=_draw_footer, onLaterPages=_draw_footer)
+    buffer.seek(0)
+    return StreamingResponse(
+        buffer,
+        media_type="application/pdf",
+        headers={"Content-Disposition": 'attachment; filename="irrigacao.pdf"'},
     )
 
 
