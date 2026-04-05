@@ -38,35 +38,55 @@
                     <span data-stock-filter-toggle-label>{% if plots_filters_active %}Mostrar filtro aplicado{% else %}Recolher filtros{% endif %}</span>
                 </button>
             </div>
-            <form method="get" action="/setores" class="stock-filter-grid min-w-0">
+            <form
+                method="get"
+                action="/setores"
+                class="stock-filter-grid min-w-0"
+                data-plots-filter-form
+                {% if plots_farm_scope_locked %}data-plots-fixed-farm-id="{{ plots_scope_active_farm_id }}"{% endif %}
+            >
                 <div class="stock-summary-collapse {% if not plots_filters_active %}is-expanded{% endif %}" data-stock-filter-collapse>
                     <div class="stock-summary-collapse-inner">
                         <div class="grid gap-3 xl:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)_minmax(0,0.9fr)_minmax(0,0.7fr)_auto]">
-                            <label>
+                            <label class="stock-filter-field min-w-0 {% if plots_field_q_filtered %}is-filtered{% endif %}">
                                 <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Buscar</span>
-                                <input name="q" value="{{ filters.q }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" placeholder="Nome do setor">
+                                <input name="q" value="{{ filters.q }}" class="w-full rounded-xl border-slate-200 bg-white px-3 py-3 text-sm" placeholder="Nome do setor">
                             </label>
-                            <label>
+                            {% if plots_farm_scope_locked %}
+                            <input type="hidden" name="farm_id" value="{{ plots_scope_active_farm_id }}">
+                            <label class="stock-filter-field stock-filter-field-farm min-w-0 is-filtered">
                                 <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Fazenda</span>
-                                <select name="farm_id" data-filter-farms class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50">
+                                <select
+                                    disabled
+                                    class="w-full cursor-not-allowed rounded-xl border-slate-200 bg-white px-3 py-3 text-sm"
+                                    aria-label="Fazenda do contexto (fixa)"
+                                >
+                                    <option selected>{{ plots_locked_farm_name }}</option>
+                                </select>
+                            </label>
+                            {% else %}
+                            <label class="stock-filter-field stock-filter-field-farm min-w-0 {% if filters.farm_ids %}is-filtered{% endif %}">
+                                <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Fazenda</span>
+                                <select name="farm_id" data-filter-farms class="w-full rounded-xl border-slate-200 bg-white px-3 py-3 text-sm">
                                     <option value="">Todas</option>
                                     {% for farm in farms %}
                                     <option value="{{ farm.id }}" {% if filters.farm_ids and filters.farm_ids[0] == farm.id %}selected{% endif %}>{{ farm.name }}</option>
                                     {% endfor %}
                                 </select>
                             </label>
-                            <label>
+                            {% endif %}
+                            <label class="stock-filter-field min-w-0 {% if plots_field_variety_filtered %}is-filtered{% endif %}">
                                 <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Variedade</span>
-                                <select name="variety_id" data-filter-varieties class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50">
+                                <select name="variety_id" data-filter-varieties class="w-full rounded-xl border-slate-200 bg-white px-3 py-3 text-sm">
                                     <option value="">Todas</option>
                                     {% for variety in varieties %}
                                     <option value="{{ variety.id }}" {% if filters.variety_ids and filters.variety_ids[0] == variety.id %}selected{% endif %}>{{ variety.name }}</option>
                                     {% endfor %}
                                 </select>
                             </label>
-                            <label>
+                            <label class="stock-filter-field min-w-0 {% if plots_field_sort_filtered %}is-filtered{% endif %}">
                                 <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Ordenar</span>
-                                <select name="sort" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50">
+                                <select name="sort" class="w-full rounded-xl border-slate-200 bg-white px-3 py-3 text-sm">
                                     <option value="name" {% if filters.sort == 'name' %}selected{% endif %}>Nome</option>
                                     <option value="area_desc" {% if filters.sort == 'area_desc' %}selected{% endif %}>Maior área</option>
                                     <option value="area_asc" {% if filters.sort == 'area_asc' %}selected{% endif %}>Menor área</option>
@@ -74,10 +94,10 @@
                                     <option value="planting_asc" {% if filters.sort == 'planting_asc' %}selected{% endif %}>Plantio antigo</option>
                                 </select>
                             </label>
-                            <div class="flex flex-wrap items-end gap-3">
-                                <button type="submit" class="min-h-[3.25rem] rounded-2xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white hover:bg-slate-700">Filtrar</button>
+                            <div class="stock-filter-field-actions flex flex-wrap items-end gap-3">
+                                <button type="submit" class="rounded-xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white hover:bg-slate-700">Filtrar</button>
                                 {% if plots_filters_active %}
-                                <a href="/setores" class="min-h-[3.25rem] rounded-2xl bg-white px-4 py-3 text-sm font-semibold text-slate-700 ring-1 ring-slate-200 hover:bg-slate-100">Limpar</a>
+                                <a href="/setores" class="rounded-xl bg-white px-4 py-3 text-sm font-semibold text-slate-700 ring-1 ring-slate-200 hover:bg-slate-100">Limpar</a>
                                 {% endif %}
                             </div>
                         </div>
@@ -1280,8 +1300,20 @@
         }
 
         const links = {{ filter_links|tojson }};
+        const plotsFilterFormEl = document.querySelector('[data-plots-filter-form]');
         const farmSelect = document.querySelector('[data-filter-farms]');
         const varietySelect = document.querySelector('[data-filter-varieties]');
+        const plotsFixedFarmId = () => {
+            const raw = plotsFilterFormEl?.dataset?.plotsFixedFarmId;
+            if (raw === undefined || raw === '') return null;
+            const n = Number(raw);
+            return Number.isFinite(n) ? n : null;
+        };
+        const getPlotsFilterFarmId = () => {
+            const fixed = plotsFixedFarmId();
+            if (fixed !== null) return fixed;
+            return selectedValue(farmSelect);
+        };
         const uniqueValues = (items) => [...new Set(items.filter((item) => item !== null && item !== undefined))];
         const selectedValue = (select) => {
             if (!select || !select.value) return null;
@@ -1307,7 +1339,7 @@
             }
         };
         const syncCascade = () => {
-            const selectedFarm = selectedValue(farmSelect);
+            const selectedFarm = getPlotsFilterFarmId();
             const selectedVariety = selectedValue(varietySelect);
             const allowedVarieties = uniqueValues(
                 links
@@ -1320,10 +1352,14 @@
                     .map((item) => item.farm_id)
             );
             toggleSelectOptions(varietySelect, allowedVarieties);
-            toggleSelectOptions(farmSelect, allowedFarms);
+            if (farmSelect) {
+                toggleSelectOptions(farmSelect, allowedFarms);
+            }
         };
-        if (farmSelect && varietySelect) {
-            farmSelect.addEventListener('change', syncCascade);
+        if (varietySelect && (farmSelect || plotsFixedFarmId() !== null)) {
+            if (farmSelect) {
+                farmSelect.addEventListener('change', syncCascade);
+            }
             varietySelect.addEventListener('change', syncCascade);
             syncCascade();
         }

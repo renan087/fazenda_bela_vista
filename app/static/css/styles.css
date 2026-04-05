@@ -985,6 +985,12 @@ body {
         0 8px 18px -18px rgba(68, 106, 54, 0.35);
 }
 
+.stock-filter-field.is-filtered select:disabled {
+    opacity: 1;
+    cursor: not-allowed;
+    color: rgb(56 84 46);
+}
+
 /* Período (preset): mesma altura visual dos selects do card de estoque */
 .stock-filter-bar .stock-filter-field-period .module-filter-preset-button {
     box-sizing: border-box;

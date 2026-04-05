@@ -1015,6 +1015,27 @@ def _stock_page_filters_active(
     return False
 
 
+def _plots_farm_query_is_user_filter(request: Request, active_farm_id: int | None) -> bool:
+    raw_farm = request.query_params.get("farm_id")
+    if raw_farm is None or str(raw_farm).strip() == "":
+        return False
+    try:
+        return int(raw_farm) != int(active_farm_id or 0)
+    except (TypeError, ValueError):
+        return True
+
+
+def _plots_variety_query_is_user_filter(request: Request, active_season_variety_id: int | None) -> bool:
+    raw_variety = request.query_params.get("variety_id")
+    if raw_variety is None or str(raw_variety).strip() == "":
+        return False
+    try:
+        vid = int(raw_variety)
+    except (TypeError, ValueError):
+        return True
+    return active_season_variety_id is None or vid != int(active_season_variety_id)
+
+
 def _plots_page_filters_active(
     request: Request,
     *,
@@ -1028,21 +1049,10 @@ def _plots_page_filters_active(
         return True
     if sort != "name":
         return True
-    raw_farm = request.query_params.get("farm_id")
-    if raw_farm is not None and str(raw_farm).strip() != "":
-        try:
-            if int(raw_farm) != int(active_farm_id or 0):
-                return True
-        except (TypeError, ValueError):
-            return True
-    raw_variety = request.query_params.get("variety_id")
-    if raw_variety is not None and str(raw_variety).strip() != "":
-        try:
-            vid = int(raw_variety)
-            if active_season_variety_id is None or vid != int(active_season_variety_id):
-                return True
-        except (TypeError, ValueError):
-            return True
+    if _plots_farm_query_is_user_filter(request, active_farm_id):
+        return True
+    if _plots_variety_query_is_user_filter(request, active_season_variety_id):
+        return True
     return False
 
 
@@ -1713,13 +1723,25 @@ def plots_page(
             edit_plot_geometry_json = "null"
     google_maps_web_key = (get_settings().google_maps_api_key or "").strip()
     _plot_scope_season = scope.get("active_season")
+    _plots_active_season_variety_id = (
+        _plot_scope_season.variety_id if _plot_scope_season and _plot_scope_season.variety_id else None
+    )
     plots_filters_active = _plots_page_filters_active(
         request,
         active_farm_id=scope["active_farm_id"],
-        active_season_variety_id=(_plot_scope_season.variety_id if _plot_scope_season and _plot_scope_season.variety_id else None),
+        active_season_variety_id=_plots_active_season_variety_id,
         q=q,
         sort=sort,
     )
+    plots_scope_active_farm_id = scope.get("active_farm_id")
+    plots_farm_scope_locked = plots_scope_active_farm_id is not None
+    plots_locked_farm_name = None
+    if plots_farm_scope_locked:
+        _locked = next((f for f in farms if f.id == plots_scope_active_farm_id), None)
+        plots_locked_farm_name = _locked.name if _locked else f"Fazenda #{plots_scope_active_farm_id}"
+    plots_field_q_filtered = bool((q or "").strip())
+    plots_field_sort_filtered = sort != "name"
+    plots_field_variety_filtered = _plots_variety_query_is_user_filter(request, _plots_active_season_variety_id)
     return templates.TemplateResponse(
         "plots.html",
         _base_context(
@@ -1732,6 +1754,12 @@ def plots_page(
             varieties=varieties,
             filters={"q": q or "", "farm_ids": farm_ids, "variety_ids": variety_ids, "sort": sort},
             plots_filters_active=plots_filters_active,
+            plots_farm_scope_locked=plots_farm_scope_locked,
+            plots_scope_active_farm_id=plots_scope_active_farm_id,
+            plots_locked_farm_name=plots_locked_farm_name,
+            plots_field_q_filtered=plots_field_q_filtered,
+            plots_field_variety_filtered=plots_field_variety_filtered,
+            plots_field_sort_filtered=plots_field_sort_filtered,
             edit_plot=edit_plot,
             open_plot_map_modal=open_plot_map_modal,
             selected_farm_id=selected_farm_id or scope["active_farm_id"],
