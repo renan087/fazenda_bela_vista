@@ -58,7 +58,9 @@ from app.repositories.farm import FarmRepository
 from app.services.backup_service import delete_backup_run, execute_backup
 from app.services.dashboard import build_dashboard_context
 from app.services.farm_preview_image import (
+    ensure_farm_preview_thumb,
     farm_preview_fs_path,
+    farm_preview_thumb_fs_path,
     generate_farm_preview_image,
     remove_farm_preview_image,
 )
@@ -1727,10 +1729,15 @@ def farms_page(
         if not farm.boundary_geojson:
             continue
         farm_preview_fingerprint[farm.id] = hashlib.sha256(farm.boundary_geojson.encode("utf-8")).hexdigest()[:14]
-        preview_path = farm_preview_fs_path(farm.id)
-        farm_preview_ready[farm.id] = preview_path.is_file() and preview_path.stat().st_size > 0
-        if not farm_preview_ready[farm.id]:
+        full_path = farm_preview_fs_path(farm.id)
+        thumb_path = farm_preview_thumb_fs_path(farm.id)
+        full_ok = full_path.is_file() and full_path.stat().st_size > 0
+        thumb_ok = thumb_path.is_file() and thumb_path.stat().st_size > 0
+        farm_preview_ready[farm.id] = full_ok and thumb_ok
+        if not full_ok:
             background_tasks.add_task(generate_farm_preview_image, farm.id, farm.boundary_geojson)
+        elif not thumb_ok:
+            background_tasks.add_task(ensure_farm_preview_thumb, farm.id)
     farm_boundary_by_id: dict[str, object] = {}
     for farm in farms:
         if not farm.boundary_geojson:

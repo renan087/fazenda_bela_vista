@@ -21,6 +21,10 @@ TILE_SIZE = 256
 MAX_TILES = 40
 OUTPUT_WIDTH = 960
 OUTPUT_HEIGHT = 540
+# Miniatura para cards (≈96×54 lógico × retina; JPEG leve)
+THUMB_MAX_WIDTH = 240
+THUMB_MAX_HEIGHT = 136
+THUMB_JPEG_QUALITY = 82
 ESRI_IMAGERY_URL = (
     "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
 )
@@ -37,16 +41,74 @@ def farm_preview_relative_path(farm_id: int) -> str:
     return f"generated/farm_previews/{farm_id}.png"
 
 
+def farm_preview_thumb_relative_path(farm_id: int) -> str:
+    return f"generated/farm_previews/{farm_id}_thumb.jpg"
+
+
 def farm_preview_fs_path(farm_id: int) -> Path:
     return PREVIEW_DIR / f"{farm_id}.png"
 
 
+def farm_preview_thumb_fs_path(farm_id: int) -> Path:
+    return PREVIEW_DIR / f"{farm_id}_thumb.jpg"
+
+
 def remove_farm_preview_image(farm_id: int) -> None:
-    path = farm_preview_fs_path(farm_id)
+    for path in (farm_preview_fs_path(farm_id), farm_preview_thumb_fs_path(farm_id)):
+        try:
+            path.unlink(missing_ok=True)
+        except OSError as exc:
+            logger.warning("Nao foi possivel remover preview da fazenda %s (%s): %s", farm_id, path.name, exc)
+
+
+def _resample_lanczos():
     try:
-        path.unlink(missing_ok=True)
+        return Image.Resampling.LANCZOS
+    except AttributeError:
+        return Image.LANCZOS
+
+
+def _save_preview_thumbnail(full_rgb: Image.Image, farm_id: int) -> bool:
+    """Redimensiona e grava JPEG para uso nos cards (arquivo pequeno)."""
+    thumb = full_rgb.copy()
+    thumb.thumbnail((THUMB_MAX_WIDTH, THUMB_MAX_HEIGHT), _resample_lanczos())
+    thumb_path = farm_preview_thumb_fs_path(farm_id)
+    tmp_path: Path | None = None
+    try:
+        PREVIEW_DIR.mkdir(parents=True, exist_ok=True)
+        with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False, dir=PREVIEW_DIR) as tmp:
+            tmp_path = Path(tmp.name)
+        thumb.save(
+            tmp_path,
+            format="JPEG",
+            quality=THUMB_JPEG_QUALITY,
+            optimize=True,
+            progressive=True,
+        )
+        tmp_path.replace(thumb_path)
+        return True
     except OSError as exc:
-        logger.warning("Nao foi possivel remover preview da fazenda %s: %s", farm_id, exc)
+        logger.exception("Falha ao salvar miniatura da fazenda %s: %s", farm_id, exc)
+        if tmp_path is not None:
+            try:
+                tmp_path.unlink(missing_ok=True)
+            except OSError:
+                pass
+        return False
+
+
+def ensure_farm_preview_thumb(farm_id: int) -> bool:
+    """Gera só a miniatura a partir do PNG já existente (migração / reparo)."""
+    png_path = farm_preview_fs_path(farm_id)
+    if not png_path.is_file() or png_path.stat().st_size <= 0:
+        return False
+    try:
+        with Image.open(png_path) as im:
+            rgb = im.convert("RGB")
+            return _save_preview_thumbnail(rgb, farm_id)
+    except OSError as exc:
+        logger.warning("Nao foi possivel abrir PNG do preview da fazenda %s: %s", farm_id, exc)
+        return False
 
 
 def _lonlat_to_world_px(lon: float, lat: float, z: int) -> tuple[float, float]:
@@ -400,5 +462,8 @@ def generate_farm_preview_image(farm_id: int, boundary_geojson: str | None) -> b
             except OSError:
                 pass
         return False
+
+    if not _save_preview_thumbnail(final_img.copy(), farm_id):
+        logger.warning("Preview PNG salvo mas miniatura JPEG falhou para fazenda %s", farm_id)
 
     return True

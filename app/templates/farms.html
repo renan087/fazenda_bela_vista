@@ -49,7 +49,8 @@
                                 {% if farm.boundary_geojson %}Georreferenciada{% else %}Sem geometria{% endif %}
                             </span>
                             {% if farm.boundary_geojson %}
-                            {% set farm_map_src = url_for('static', path='generated/farm_previews/' ~ farm.id ~ '.png') ~ '?v=' ~ farm_preview_fingerprint.get(farm.id, '') %}
+                            {% set farm_map_thumb_src = url_for('static', path='generated/farm_previews/' ~ farm.id ~ '_thumb.jpg') ~ '?v=' ~ farm_preview_fingerprint.get(farm.id, '') %}
+                            {% set farm_map_full_src = url_for('static', path='generated/farm_previews/' ~ farm.id ~ '.png') ~ '?v=' ~ farm_preview_fingerprint.get(farm.id, '') %}
                             {% if farm_preview_ready.get(farm.id) %}
                             <button
                                 type="button"
@@ -57,12 +58,12 @@
                                 title="Ampliar mapa da fazenda"
                                 aria-label="Abrir mapa ampliado — {{ farm.name }}"
                                 data-farms-map-open
-                                data-map-src="{{ farm_map_src }}"
+                                data-map-src="{{ farm_map_full_src }}"
                                 data-map-farm-name="{{ farm.name | e }}"
                                 data-map-farm-id="{{ farm.id }}"
                             >
                                 <img
-                                    src="{{ farm_map_src }}"
+                                    src="{{ farm_map_thumb_src }}"
                                     alt=""
                                     width="96"
                                     height="54"
