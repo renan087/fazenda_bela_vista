@@ -99,28 +99,28 @@
     <div class="min-h-screen min-w-0 lg:flex">
         <div class="fixed inset-0 z-30 hidden bg-slate-950/50 lg:hidden" data-mobile-overlay></div>
         <aside class="erp-sidebar fixed inset-y-0 left-0 z-40 w-72 -translate-x-full bg-slate-950 text-slate-100 transition-transform duration-200 lg:fixed lg:inset-y-0 lg:translate-x-0" data-desktop-sidebar>
-            <div class="flex h-full flex-col">
-                <div class="border-b border-slate-800 px-6 py-6">
-                    <div class="flex items-start justify-between gap-3">
-                        <a href="/dashboard" class="erp-sidebar-brand mx-auto flex h-[88px] w-[122px] items-center justify-center lg:mx-0 lg:h-[126px] lg:w-[174px]" aria-label="Ir para o dashboard">
+            <div class="erp-sidebar-inner flex h-full min-h-0 flex-col">
+                <div class="erp-sidebar-header border-b border-slate-800 px-6 py-6">
+                    <div class="erp-sidebar-header-row relative flex min-h-[5.5rem] items-center justify-between gap-2 lg:min-h-[7rem]">
+                        <a href="/dashboard" class="erp-sidebar-brand mx-auto flex h-[88px] w-[122px] shrink-0 items-center justify-center lg:mx-0 lg:min-h-0 lg:h-[126px] lg:w-[174px] lg:flex-1" aria-label="Ir para o dashboard">
                             <img src="{{ url_for('static', path='images/logo-icon.png') }}" alt="SiSFarm" class="erp-sidebar-logo-icon relative z-10 h-full w-full object-contain lg:hidden lg:h-12 lg:w-12">
                             <img src="{{ url_for('static', path='images/logo.png') }}" alt="SiSFarm" class="erp-sidebar-logo-full relative z-10 hidden h-full w-full object-contain lg:block">
                         </a>
-                        <button type="button" class="erp-sidebar-toggle hidden lg:inline-flex" data-desktop-sidebar-toggle aria-label="Recolher menu" aria-expanded="true">
+                        <div class="erp-sidebar-brand-mobile mx-auto hidden h-12 w-12 shrink-0 items-center justify-center rounded-full bg-white/5 ring-1 ring-white/10 lg:flex" aria-hidden="true">
+                            <img src="{{ url_for('static', path='images/logo-icon.png') }}" alt="" class="h-8 w-8 object-contain">
+                        </div>
+                        <button type="button" class="erp-sidebar-toggle hidden shrink-0 lg:inline-flex" data-desktop-sidebar-toggle aria-label="Recolher menu" aria-expanded="true">
                             <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                                 <path d="m15 18-6-6 6-6"/>
                             </svg>
                         </button>
-                    </div>
-                    <div class="erp-sidebar-brand-mobile mx-auto mt-0 hidden h-12 w-12 items-center justify-center rounded-2xl bg-white/5 lg:flex">
-                        <img src="{{ url_for('static', path='images/logo-icon.png') }}" alt="SiSFarm" class="h-8 w-8 object-contain">
                     </div>
                     <div class="erp-sidebar-copy mt-3 space-y-1 text-left text-slate-300">
                         <p class="text-sm italic leading-6 text-slate-300/95">"O Senhor &eacute; o meu pastor; nada me faltar&aacute;."</p>
                         <p class="text-xs italic leading-5 text-slate-400">Salmos 23:1</p>
                     </div>
                 </div>
-                <nav class="flex-1 space-y-1 overflow-y-auto px-4 py-6 text-sm">
+                <nav class="erp-sidebar-nav min-h-0 flex-1 space-y-1 overflow-y-auto overflow-x-hidden px-4 py-6 text-sm transition-all duration-300 ease-in-out">
                     {% set menu_visibility = menu_visibility or {} %}
                     {% set nav = [
                         ('dashboard', '/dashboard', 'Dashboard'),
@@ -128,14 +128,14 @@
                         ('plots', '/setores', 'Setores'),
                     ] %}
                     {% for key, href, label in nav %}
-                    <a href="{{ href }}" class="erp-sidebar-link flex items-center gap-3 rounded-2xl px-4 py-3 transition {% if page == key %}bg-brand-500 text-white shadow-lg{% else %}text-slate-300 hover:bg-slate-900 hover:text-white{% endif %}">
+                    <a href="{{ href }}" class="erp-sidebar-link flex items-center justify-start gap-3 rounded-2xl px-4 py-3 transition-all duration-300 ease-in-out {% if page == key %}bg-brand-500 text-white shadow-lg{% else %}text-slate-300 hover:bg-slate-900 hover:text-white{% endif %}">
                         <span class="erp-sidebar-icon">{{ nav_icon(key) }}</span>
                         <span class="erp-sidebar-label">{{ label }}</span>
                     </a>
                     {% endfor %}
                     {% set inputs_pages = ['fertilization', 'fertilization_schedules', 'input_recommendations', 'purchased_inputs', 'stock', 'assets'] %}
                     <div class="rounded-2xl {% if page in inputs_pages %}bg-slate-900/80{% endif %}" data-submenu-group>
-                        <button type="button" class="erp-sidebar-link flex w-full items-center justify-between rounded-2xl px-4 py-3 text-left transition {% if page in inputs_pages %}text-white{% else %}text-slate-300 hover:bg-slate-900 hover:text-white{% endif %}" data-submenu-toggle="inputs-menu" data-submenu-parent>
+                        <button type="button" class="erp-sidebar-link flex w-full items-center justify-between rounded-2xl px-4 py-3 text-left transition-all duration-300 ease-in-out {% if page in inputs_pages %}text-white{% else %}text-slate-300 hover:bg-slate-900 hover:text-white{% endif %}" data-submenu-toggle="inputs-menu" data-submenu-parent>
                             <span class="flex items-center gap-3"><span class="erp-sidebar-icon">{{ nav_icon('inputs') }}</span><span class="erp-sidebar-label">Insumos</span></span>
                             <span class="erp-sidebar-parent-indicator text-xs uppercase tracking-[0.2em]">+</span>
                         </button>
@@ -161,7 +161,7 @@
                         ('mobile', '/mobile', 'Campo Mobile')
                     ] %}
                     {% for key, href, label in nav %}
-                    <a href="{{ href }}" class="erp-sidebar-link flex items-center gap-3 rounded-2xl px-4 py-3 transition {% if page == key %}bg-brand-500 text-white shadow-lg{% else %}text-slate-300 hover:bg-slate-900 hover:text-white{% endif %}">
+                    <a href="{{ href }}" class="erp-sidebar-link flex items-center justify-start gap-3 rounded-2xl px-4 py-3 transition-all duration-300 ease-in-out {% if page == key %}bg-brand-500 text-white shadow-lg{% else %}text-slate-300 hover:bg-slate-900 hover:text-white{% endif %}">
                         <span class="erp-sidebar-icon">{{ nav_icon(key) }}</span>
                         <span class="erp-sidebar-label">{{ label }}</span>
                     </a>
@@ -174,7 +174,7 @@
                         {% set config_pages = config_pages + ['backups'] %}
                     {% endif %}
                     <div class="rounded-2xl {% if page in config_pages %}bg-slate-900/80{% endif %}" data-submenu-group>
-                        <button type="button" class="erp-sidebar-link flex w-full items-center justify-between rounded-2xl px-4 py-3 text-left transition {% if page in config_pages %}text-white{% else %}text-slate-300 hover:bg-slate-900 hover:text-white{% endif %}" data-submenu-toggle="config-menu" data-submenu-parent>
+                        <button type="button" class="erp-sidebar-link flex w-full items-center justify-between rounded-2xl px-4 py-3 text-left transition-all duration-300 ease-in-out {% if page in config_pages %}text-white{% else %}text-slate-300 hover:bg-slate-900 hover:text-white{% endif %}" data-submenu-toggle="config-menu" data-submenu-parent>
                             <span class="flex items-center gap-3"><span class="erp-sidebar-icon">{{ nav_icon('config') }}</span><span class="erp-sidebar-label">Configuracao</span></span>
                             <span class="erp-sidebar-parent-indicator text-xs uppercase tracking-[0.2em]">+</span>
                         </button>
