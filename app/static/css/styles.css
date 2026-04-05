@@ -455,6 +455,28 @@ body {
         right 0ms linear;
 }
 
+[data-stock-catalog-dots].swipe-carousel-hide-adjacent-next .swipe-card-pager-dot[data-role="next"]:not(.hidden) {
+    opacity: 0;
+    transform: translateY(-50%) scale(0.35);
+    pointer-events: none;
+    transition:
+        opacity 95ms ease,
+        transform 95ms ease,
+        width 180ms ease,
+        background-color 180ms ease;
+}
+
+[data-stock-catalog-dots].swipe-carousel-hide-adjacent-prev .swipe-card-pager-dot[data-role="prev"]:not(.hidden) {
+    opacity: 0;
+    transform: translateY(-50%) scale(0.35);
+    pointer-events: none;
+    transition:
+        opacity 95ms ease,
+        transform 95ms ease,
+        width 180ms ease,
+        background-color 180ms ease;
+}
+
 [data-stock-catalog-dots].is-transitioning-next .swipe-card-pager-dot[data-role="next"] {
     opacity: 0;
     transform: translateY(-50%) scale(0.55);

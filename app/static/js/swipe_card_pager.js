@@ -96,11 +96,16 @@
             }
         };
 
+        const CAROUSEL_SIDE_DOT_HIDE_STRETCH = 0.26;
+
         const setCarouselDotsLinkedVars = (stretch, pullNext) => {
             if (!(dotsContainer instanceof HTMLElement)) return;
             dotsContainer.style.setProperty('--carousel-dot-stretch', String(stretch));
             dotsContainer.classList.toggle('swipe-carousel-pull-next', pullNext);
             dotsContainer.classList.toggle('swipe-carousel-pull-prev', !pullNext);
+            const hideAdjacent = stretch >= CAROUSEL_SIDE_DOT_HIDE_STRETCH;
+            dotsContainer.classList.toggle('swipe-carousel-hide-adjacent-next', hideAdjacent && pullNext);
+            dotsContainer.classList.toggle('swipe-carousel-hide-adjacent-prev', hideAdjacent && !pullNext);
         };
 
         const clearCarouselDotsLinkedVars = () => {
@@ -109,6 +114,8 @@
                 'swipe-carousel-dots-linked',
                 'swipe-carousel-pull-next',
                 'swipe-carousel-pull-prev',
+                'swipe-carousel-hide-adjacent-next',
+                'swipe-carousel-hide-adjacent-prev',
             );
             dotsContainer.style.removeProperty('--carousel-dot-stretch');
             lastCarouselScrollLeft = null;
