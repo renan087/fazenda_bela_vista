@@ -1517,6 +1517,22 @@ def plots_page(
         variety_ids = [scope["active_season"].variety_id]
     edit_plot = repo.get_plot(edit_id) if edit_id else None
     farms, varieties = repo.list_plot_filter_options(farm_ids or None, variety_ids or None)
+    plot_farm_boundary_by_id: dict[str, object] = {}
+    for farm in farms:
+        if not farm.boundary_geojson:
+            continue
+        try:
+            plot_farm_boundary_by_id[str(farm.id)] = json.loads(farm.boundary_geojson)
+        except json.JSONDecodeError:
+            pass
+    plot_farm_boundaries_json = json.dumps(plot_farm_boundary_by_id)
+    edit_plot_geometry_json = "null"
+    if edit_plot and edit_plot.boundary_geojson:
+        try:
+            edit_plot_geometry_json = json.dumps(json.loads(edit_plot.boundary_geojson))
+        except json.JSONDecodeError:
+            edit_plot_geometry_json = "null"
+    google_maps_web_key = (get_settings().google_maps_api_key or "").strip()
     return templates.TemplateResponse(
         "plots.html",
         _base_context(
@@ -1530,6 +1546,9 @@ def plots_page(
             filters={"q": q or "", "farm_ids": farm_ids, "variety_ids": variety_ids, "sort": sort},
             edit_plot=edit_plot,
             selected_farm_id=selected_farm_id or scope["active_farm_id"],
+            plot_farm_boundaries_json=plot_farm_boundaries_json,
+            edit_plot_geometry_json=edit_plot_geometry_json,
+            google_maps_web_key=google_maps_web_key,
             filter_links=[
                 {"farm_id": plot.farm_id, "variety_id": plot.variety_id}
                 for plot in repo.list_plots(farm_ids=farm_ids or None, variety_ids=variety_ids or None)

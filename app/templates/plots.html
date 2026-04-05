@@ -156,7 +156,7 @@
         </div>
 
         <div class="mt-6 max-h-[72vh] overflow-y-auto pr-1" data-modal-scroll>
-            <form method="post" enctype="multipart/form-data" action="{% if edit_plot %}/setores/{{ edit_plot.id }}/editar{% else %}/setores{% endif %}" class="grid gap-4" id="plots-form">
+            <form method="post" enctype="multipart/form-data" action="{% if edit_plot %}/setores/{{ edit_plot.id }}/editar{% else %}/setores{% endif %}" class="grid gap-4" id="plots-form" data-plots-boundary-form>
                 <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
 
                 <div class="sticky top-0 z-10 -mx-1 bg-white/95 px-1 py-1 backdrop-blur">
@@ -196,10 +196,31 @@
                     <label><span class="mb-2 block text-sm font-medium">Longitude</span><input type="number" step="0.000001" name="centroid_lng" value="{{ edit_plot.centroid_lng if edit_plot else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" placeholder="Opcional"></label>
                 </div>
 
-                <label><span class="mb-2 block text-sm font-medium">GeoJSON do setor (.json)</span><input type="file" name="boundary_geojson_file" accept=".json,.geojson,application/json" class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm"></label>
-                {% if edit_plot and edit_plot.boundary_geojson %}
-                <p class="-mt-2 text-sm text-slate-500">Este setor já possui geometria salva no mapa. Envie um novo arquivo apenas se quiser substituir.</p>
-                {% endif %}
+                <div class="rounded-[1.5rem] border border-slate-200 bg-slate-50 p-4">
+                    <p class="text-xs uppercase tracking-[0.3em] text-slate-400">Perímetro do setor no mapa</p>
+                    <p class="mt-2 text-sm text-slate-600">Clique no mapa para adicionar vértices e arraste os pontos para ajustar. O polígono <span class="font-medium text-slate-800">tracejado</span> mostra o limite da fazenda (somente leitura).</p>
+                    {% if google_maps_web_key %}
+                    <p class="mt-1 text-xs text-emerald-700">Mapa em satélite (Google Maps).</p>
+                    {% else %}
+                    <p class="mt-1 text-xs text-slate-500">Sem <code class="rounded bg-slate-200 px-1 py-0.5 text-[11px]">GOOGLE_MAPS_API_KEY</code> no servidor, o mapa usa OpenStreetMap.</p>
+                    {% endif %}
+                    <p class="mt-2 hidden text-sm text-amber-900" data-plots-no-farm-boundary-warning>
+                        Esta fazenda ainda não tem perímetro georreferenciado. Cadastre-o em <a href="/fazendas" class="font-semibold text-brand-800 underline decoration-brand-500/40 hover:text-brand-950">Fazendas</a> para ver os limites aqui; você ainda pode desenhar o setor no mapa.
+                    </p>
+                    <p class="mt-2 text-sm text-slate-500" data-plots-map-pick-farm-msg>Selecione a <span class="font-medium text-slate-700">fazenda</span> no formulário para carregar o mapa com o limite da propriedade.</p>
+                    <input type="hidden" name="boundary_geojson" value="" data-plots-boundary-input>
+                    <div id="plots-form-boundary-map" class="relative z-0 mt-3 hidden h-[min(52vh,360px)] min-h-[240px] overflow-hidden rounded-2xl border border-slate-200 bg-white sm:h-[320px]"></div>
+                    <div class="mt-3 hidden flex flex-wrap items-center gap-x-4 gap-y-2" data-plots-map-toolbar>
+                        <button type="button" class="rounded-xl bg-slate-200 px-3 py-2 text-xs font-semibold text-slate-800 hover:bg-slate-300" data-plots-form-remove-point>Remover ponto selecionado</button>
+                    </div>
+                    <label class="mt-4 block">
+                        <span class="mb-2 block text-sm font-medium">Importar GeoJSON do setor (.json) — opcional</span>
+                        <input type="file" name="boundary_geojson_file" accept=".json,.geojson,application/json" class="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm">
+                    </label>
+                    {% if edit_plot and edit_plot.boundary_geojson %}
+                    <p class="mt-2 text-sm text-slate-500">A geometria atual pode ser alterada no mapa ou substituída por um novo arquivo.</p>
+                    {% endif %}
+                </div>
 
                 <div class="rounded-[1.5rem] border border-slate-200 bg-slate-50 p-4">
                     <p class="text-xs uppercase tracking-[0.3em] text-slate-400">Configuração de irrigação</p>
@@ -231,8 +252,13 @@
     </div>
 </dialog>
 
+<script type="application/json" id="plot-farm-boundaries-data">{{ plot_farm_boundaries_json|safe }}</script>
+<script src="{{ url_for('static', path='js/farm_boundary_editor.js') }}?v=5"></script>
 <script>
     (() => {
+        window.__GOOGLE_MAPS_API_KEY = {{ google_maps_web_key | tojson }};
+        const EDIT_PLOT_GEOMETRY = {{ edit_plot_geometry_json|safe }};
+
         const launchModal = document.getElementById('plots-launch-modal');
         const openButtons = Array.from(document.querySelectorAll('[data-plots-launch-open]'));
         const closeButtons = Array.from(document.querySelectorAll('[data-plots-launch-close]'));
@@ -244,11 +270,109 @@
         const fadingPanels = Array.from(document.querySelectorAll('[data-stock-fade-panel]'));
         const isEditing = {{ 'true' if edit_plot else 'false' }};
 
+        const plotsForm = document.getElementById('plots-form');
+        const farmSelectEl = plotsForm?.querySelector('select[name="farm_id"]');
+        const plotBoundaryHidden = plotsForm?.querySelector('[data-plots-boundary-input]');
+        const plotMapEl = document.getElementById('plots-form-boundary-map');
+        const plotMapToolbar = document.querySelector('[data-plots-map-toolbar]');
+        const plotMapPickFarmMsg = document.querySelector('[data-plots-map-pick-farm-msg]');
+        const plotNoFarmBoundaryWarning = document.querySelector('[data-plots-no-farm-boundary-warning]');
+        const plotRemovePointBtn = plotsForm?.querySelector('[data-plots-form-remove-point]');
+        let plotsBoundaryEditor = null;
+        let PLOT_FARM_BOUNDARIES = {};
+        try {
+            const boundariesEl = document.getElementById('plot-farm-boundaries-data');
+            if (boundariesEl && boundariesEl.textContent.trim()) {
+                PLOT_FARM_BOUNDARIES = JSON.parse(boundariesEl.textContent);
+            }
+        } catch (e) {
+            PLOT_FARM_BOUNDARIES = {};
+        }
+
+        const seedPlotBoundaryHidden = () => {
+            if (!plotBoundaryHidden || plotBoundaryHidden.value.trim()) return;
+            if (EDIT_PLOT_GEOMETRY && typeof EDIT_PLOT_GEOMETRY === 'object' && EDIT_PLOT_GEOMETRY.type) {
+                plotBoundaryHidden.value = JSON.stringify(EDIT_PLOT_GEOMETRY);
+            }
+        };
+
+        const destroyPlotsBoundaryEditor = () => {
+            if (plotsBoundaryEditor) {
+                plotsBoundaryEditor.destroy();
+                plotsBoundaryEditor = null;
+            }
+        };
+
+        const setPlotMapVisible = (visible) => {
+            plotMapEl?.classList.toggle('hidden', !visible);
+            plotMapToolbar?.classList.toggle('hidden', !visible);
+            plotMapPickFarmMsg?.classList.toggle('hidden', visible);
+        };
+
+        const syncNoFarmBoundaryWarning = (farmId) => {
+            if (!plotNoFarmBoundaryWarning) return;
+            const ref = farmId && PLOT_FARM_BOUNDARIES[String(farmId)];
+            plotNoFarmBoundaryWarning.classList.toggle('hidden', Boolean(ref));
+        };
+
+        const rebuildPlotsBoundaryEditor = async () => {
+            destroyPlotsBoundaryEditor();
+            seedPlotBoundaryHidden();
+            const farmId = farmSelectEl?.value?.trim();
+            if (!farmId || !plotMapEl || typeof window.initFarmBoundaryEditor !== 'function') {
+                setPlotMapVisible(false);
+                plotNoFarmBoundaryWarning?.classList.add('hidden');
+                return;
+            }
+            setPlotMapVisible(true);
+            syncNoFarmBoundaryWarning(farmId);
+            const referenceBoundaryGeometry = PLOT_FARM_BOUNDARIES[String(farmId)] || null;
+            let initialGeometry = null;
+            const raw = (plotBoundaryHidden?.value || '').trim();
+            if (raw) {
+                try {
+                    initialGeometry = JSON.parse(raw);
+                } catch {
+                    initialGeometry = null;
+                }
+            }
+            try {
+                plotsBoundaryEditor = await window.initFarmBoundaryEditor({
+                    containerId: 'plots-form-boundary-map',
+                    hiddenInput: plotBoundaryHidden,
+                    initialGeometry,
+                    referenceBoundaryGeometry,
+                    removePointButton: plotRemovePointBtn,
+                });
+            } catch (err) {
+                console.error(err);
+                return;
+            }
+            window.setTimeout(() => plotsBoundaryEditor?.invalidate(), 200);
+            window.setTimeout(() => plotsBoundaryEditor?.invalidate(), 550);
+        };
+
+        plotsForm?.addEventListener('submit', () => {
+            plotsBoundaryEditor?.syncToHidden();
+        });
+
+        farmSelectEl?.addEventListener('change', () => {
+            void rebuildPlotsBoundaryEditor();
+        });
+
+        const afterPlotsModalOpen = () => {
+            window.requestAnimationFrame(() => {
+                window.setTimeout(() => void rebuildPlotsBoundaryEditor(), 30);
+            });
+        };
+
         const closePlotsModal = () => {
             if (isEditing) {
+                destroyPlotsBoundaryEditor();
                 window.location.href = '/setores';
                 return;
             }
+            destroyPlotsBoundaryEditor();
             launchModal?.close();
         };
 
@@ -261,6 +385,7 @@
                     return;
                 }
                 launchModal?.showModal();
+                afterPlotsModalOpen();
             });
         });
 
@@ -275,7 +400,15 @@
 
         if (isEditing) {
             launchModal?.showModal();
+            afterPlotsModalOpen();
         }
+
+        launchModal?.addEventListener('close', () => {
+            if (!isEditing) {
+                destroyPlotsBoundaryEditor();
+                setPlotMapVisible(false);
+            }
+        });
 
         const normalizeText = (value) => (value || '')
             .toString()

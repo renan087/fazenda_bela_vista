@@ -8,6 +8,12 @@
 
     function extractPoints(geometry) {
         if (!geometry || typeof geometry !== 'object') return [];
+        if (geometry.type === 'Feature' && geometry.geometry) {
+            return extractPoints(geometry.geometry);
+        }
+        if (geometry.type === 'FeatureCollection' && geometry.features && geometry.features[0]) {
+            return extractPoints(geometry.features[0]);
+        }
         if (geometry.type === 'Polygon' && geometry.coordinates && geometry.coordinates[0]) {
             const ring = geometry.coordinates[0];
             return ring.slice(0, -1).map((c) => ({ lat: c[1], lng: c[0] }));
@@ -75,21 +81,81 @@
         return googleMapsLoadPromise;
     }
 
+    function leafletGeoJsonLayer(geometry) {
+        if (!geometry || typeof geometry !== 'object') return null;
+        try {
+            if (geometry.type === 'Feature' || geometry.type === 'FeatureCollection') {
+                return L.geoJSON(geometry, {
+                    interactive: false,
+                    style: {
+                        color: '#1e3a5f',
+                        weight: 2,
+                        dashArray: '8 7',
+                        fillColor: '#475569',
+                        fillOpacity: 0.14,
+                    },
+                });
+            }
+            if (geometry.type === 'Polygon' || geometry.type === 'MultiPolygon') {
+                return L.geoJSON(
+                    { type: 'Feature', properties: {}, geometry },
+                    {
+                        interactive: false,
+                        style: {
+                            color: '#1e3a5f',
+                            weight: 2,
+                            dashArray: '8 7',
+                            fillColor: '#475569',
+                            fillOpacity: 0.14,
+                        },
+                    },
+                );
+            }
+        } catch (e) {
+            console.warn('[farm_boundary_editor] GeoJSON de referência inválido', e);
+        }
+        return null;
+    }
+
     function initLeafletEditor(options) {
-        const { containerId, hiddenInput, initialGeometry, removePointButton, onStats, initialCenter, initialZoom } =
-            options;
+        const {
+            containerId,
+            hiddenInput,
+            initialGeometry,
+            referenceBoundaryGeometry,
+            removePointButton,
+            onStats,
+            initialCenter,
+            initialZoom,
+        } = options;
         const el = document.getElementById(containerId);
         if (!el || typeof L === 'undefined') {
             return nullStub();
         }
 
-        const lat0 = initialCenter && typeof initialCenter.lat === 'number' ? initialCenter.lat : -20.7442;
-        const lng0 = initialCenter && typeof initialCenter.lng === 'number' ? initialCenter.lng : -42.8721;
+        const refPoints = extractPoints(referenceBoundaryGeometry);
+        const lat0 =
+            initialCenter && typeof initialCenter.lat === 'number'
+                ? initialCenter.lat
+                : refPoints[0]
+                  ? refPoints[0].lat
+                  : -20.7442;
+        const lng0 =
+            initialCenter && typeof initialCenter.lng === 'number'
+                ? initialCenter.lng
+                : refPoints[0]
+                  ? refPoints[0].lng
+                  : -42.8721;
         const zoom0 = typeof initialZoom === 'number' && initialZoom > 0 ? initialZoom : 14;
         const map = L.map(el, { scrollWheelZoom: true }).setView([lat0, lng0], zoom0);
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
             attribution: '&copy; OpenStreetMap',
         }).addTo(map);
+
+        let referenceLayer = leafletGeoJsonLayer(referenceBoundaryGeometry);
+        if (referenceLayer) {
+            referenceLayer.addTo(map);
+        }
 
         let points = extractPoints(initialGeometry);
         let selectedIndex = null;
@@ -149,6 +215,9 @@
                 marker.on('dragend', () => renderEditor());
             });
             syncToHidden();
+            if (referenceLayer) {
+                referenceLayer.bringToBack();
+            }
         };
 
         map.on('click', (event) => {
@@ -169,10 +238,15 @@
         }
 
         renderEditor();
-        if (points.length) {
-            const bounds = L.latLngBounds(points);
-            if (bounds.isValid()) map.fitBounds(bounds.pad(0.28));
-        }
+        const fitInitialBounds = () => {
+            const refLatLngs = refPoints.map((p) => L.latLng(p.lat, p.lng));
+            const editLatLngs = points.map((p) => L.latLng(p.lat, p.lng));
+            const combined = [...refLatLngs, ...editLatLngs];
+            if (!combined.length) return;
+            const b = L.latLngBounds(combined);
+            if (b.isValid()) map.fitBounds(b.pad(0.14));
+        };
+        fitInitialBounds();
 
         return {
             map,
@@ -186,6 +260,7 @@
                 if (removePointButton && removeHandler) {
                     removePointButton.removeEventListener('click', removeHandler);
                 }
+                referenceLayer = null;
                 try {
                     map.off();
                     map.remove();
@@ -198,8 +273,16 @@
     }
 
     async function initGoogleEditor(options, apiKey) {
-        const { containerId, hiddenInput, initialGeometry, removePointButton, onStats, initialCenter, initialZoom } =
-            options;
+        const {
+            containerId,
+            hiddenInput,
+            initialGeometry,
+            referenceBoundaryGeometry,
+            removePointButton,
+            onStats,
+            initialCenter,
+            initialZoom,
+        } = options;
         const el = document.getElementById(containerId);
         if (!el) {
             return nullStub();
@@ -207,8 +290,19 @@
 
         await loadGoogleMapsScript(apiKey);
 
-        const lat0 = initialCenter && typeof initialCenter.lat === 'number' ? initialCenter.lat : -20.7442;
-        const lng0 = initialCenter && typeof initialCenter.lng === 'number' ? initialCenter.lng : -42.8721;
+        const refPts = extractPoints(referenceBoundaryGeometry);
+        const lat0 =
+            initialCenter && typeof initialCenter.lat === 'number'
+                ? initialCenter.lat
+                : refPts[0]
+                  ? refPts[0].lat
+                  : -20.7442;
+        const lng0 =
+            initialCenter && typeof initialCenter.lng === 'number'
+                ? initialCenter.lng
+                : refPts[0]
+                  ? refPts[0].lng
+                  : -42.8721;
         const zoom0 = typeof initialZoom === 'number' && initialZoom > 0 ? initialZoom : 14;
         const map = new google.maps.Map(el, {
             center: { lat: lat0, lng: lng0 },
@@ -219,6 +313,22 @@
             rotateControl: false,
             fullscreenControl: true,
         });
+
+        let referencePolygon = null;
+        if (refPts.length >= 3) {
+            referencePolygon = new google.maps.Polygon({
+                paths: refPts.map((p) => ({ lat: p.lat, lng: p.lng })),
+                strokeColor: '#1e3a5f',
+                strokeOpacity: 1,
+                strokeWeight: 2,
+                fillColor: '#475569',
+                fillOpacity: 0.14,
+                clickable: false,
+                editable: false,
+                draggable: false,
+                map,
+            });
+        }
 
         let points = extractPoints(initialGeometry).map((p) => ({ lat: p.lat, lng: p.lng }));
         let selectedIndex = null;
@@ -329,11 +439,18 @@
         }
 
         renderAll();
-        if (points.length) {
+        const fitInitialGoogleBounds = () => {
+            if (!refPts.length && !points.length) return;
             const bounds = new google.maps.LatLngBounds();
+            refPts.forEach((p) => bounds.extend(p));
             points.forEach((p) => bounds.extend(p));
-            map.fitBounds(bounds, 48);
-        }
+            try {
+                map.fitBounds(bounds, 48);
+            } catch (e) {
+                /* ignore */
+            }
+        };
+        fitInitialGoogleBounds();
 
         return {
             map,
@@ -352,6 +469,10 @@
                 if (polygon) {
                     polygon.setMap(null);
                     polygon = null;
+                }
+                if (referencePolygon) {
+                    referencePolygon.setMap(null);
+                    referencePolygon = null;
                 }
                 if (removePointButton && removeHandler) {
                     removePointButton.removeEventListener('click', removeHandler);
