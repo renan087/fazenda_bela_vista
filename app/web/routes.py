@@ -5630,20 +5630,68 @@ def irrigation_page(
     repo = _repository(db)
     scope = _global_scope_context(request, repo)
     farm_ids, variety_ids = _scoped_plot_filters(request, scope["active_season"])
-    start_date, end_date = _scoped_dates(scope["active_season"])
+    start_date, end_date, filter_start_str, filter_end_str = _schedule_filter_date_bounds(
+        request, scope["active_season"], flash_invalid=True
+    )
+    selected_irrigation_range = (
+        _fertilization_filter_range_preset(
+            request.query_params.get("schedule_range"),
+            filter_start_str,
+            filter_end_str,
+        )
+        if _period_filter_explicit_in_query(request)
+        else ""
+    )
     plots = repo.list_plots(farm_ids=farm_ids, variety_ids=variety_ids)
     plot_ids = {plot.id for plot in plots}
+    raw_plot = (request.query_params.get("plot_id") or "").strip()
+    plot_id_filter = _int_or_none(raw_plot) if raw_plot else None
+    if plot_id_filter is not None and plot_id_filter not in plot_ids:
+        plot_id_filter = None
+    irrigation_filter_clear_url = _url_with_query(
+        request,
+        start_date=None,
+        end_date=None,
+        schedule_range=None,
+        plot_id=None,
+        irrigations_page=None,
+        search=None,
+    )
+    irrigation_after_edit_close_url = _url_with_query(request, edit_id=None)
+    search_q = (request.query_params.get("search") or "").strip() or None
     irrigations = [
         irrigation
         for irrigation in repo.list_irrigations()
         if irrigation.plot_id in plot_ids and _within_scope(irrigation.irrigation_date, start_date, end_date)
     ]
+    if plot_id_filter is not None:
+        irrigations = [item for item in irrigations if item.plot_id == plot_id_filter]
+    if search_q:
+        query_norm = _normalize_search_value(search_q)
+        irrigations = [
+            item
+            for item in irrigations
+            if query_norm
+            in _normalize_search_value(
+                f"{item.plot.name if item.plot else ''} "
+                f"{item.irrigation_date or ''} "
+                f"{item.volume_liters or ''} "
+                f"{item.duration_minutes or ''} "
+                f"{item.notes or ''}"
+            )
+        ]
     irrigations = _sort_collection_desc(
         irrigations,
         lambda item: item.irrigation_date,
         lambda item: item.id,
     )
     irrigations_pagination = _paginate_collection(request, irrigations, "irrigations_page")
+    irrigation_edit_urls = {
+        item.id: _url_with_query(request, edit_id=item.id) for item in irrigations_pagination["items"]
+    }
+    irrigation_filters_active = bool(
+        _period_filter_explicit_in_query(request) or bool(raw_plot) or bool(search_q)
+    )
     return templates.TemplateResponse(
         "irrigation.html",
         _base_context(
@@ -5655,6 +5703,14 @@ def irrigation_page(
             plots=plots,
             irrigations=irrigations_pagination["items"],
             irrigations_pagination=irrigations_pagination,
+            irrigation_filter_start_date=filter_start_str or None,
+            irrigation_filter_end_date=filter_end_str or None,
+            irrigation_filter_clear_url=irrigation_filter_clear_url,
+            irrigation_after_edit_close_url=irrigation_after_edit_close_url,
+            selected_irrigation_range=selected_irrigation_range,
+            selected_irrigation_plot_id=plot_id_filter,
+            irrigation_filters_active=irrigation_filters_active,
+            irrigation_edit_urls=irrigation_edit_urls,
             edit_irrigation=repo.get_irrigation(edit_id) if edit_id else None,
             plot_irrigation_configs=[
                 {
