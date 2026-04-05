@@ -377,8 +377,8 @@
             const menuButton = document.querySelector('[data-mobile-menu-button]');
             const desktopSidebarMq = window.matchMedia('(min-width: 1024px)');
             const desktopSidebarStorageKey = 'sisfarm.desktopSidebarCollapsed';
-            const desktopSidebarStageDelay = 150;
-            const desktopSidebarShellDuration = 430;
+            const desktopSidebarStageDelay = 70;
+            const desktopSidebarShellDuration = 380;
             let desktopSidebarTransitionTimer = null;
             const applyDesktopSidebarState = (collapsed) => {
                 if (!document.body || !desktopSidebarMq.matches) return;
