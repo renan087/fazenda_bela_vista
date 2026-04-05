@@ -80,6 +80,7 @@
             if (!isScrollCarousel()) return;
             intersectionObserver = new IntersectionObserver(
                 (entries) => {
+                    if (isTransitioning) return;
                     const candidates = entries
                         .filter((e) => e.isIntersecting && e.intersectionRatio >= 0.45)
                         .sort((a, b) => b.intersectionRatio - a.intersectionRatio);
@@ -213,15 +214,43 @@
             applyCarouselMode();
 
             if (isScrollCarousel()) {
-                currentPage = nextPage;
-                syncDots();
                 layoutScrollSlides();
-                window.requestAnimationFrame(() => {
-                    layoutScrollSlides();
-                    scrollToPageIndex(nextPage, Boolean(direction));
-                    bindScrollObserver();
-                });
-                if (direction) animate(direction);
+
+                const finishScroll = (smooth) => {
+                    window.requestAnimationFrame(() => {
+                        layoutScrollSlides();
+                        scrollToPageIndex(nextPage, smooth);
+                        bindScrollObserver();
+                    });
+                };
+
+                if (!direction || !(dotsContainer instanceof HTMLElement)) {
+                    currentPage = nextPage;
+                    syncDots();
+                    finishScroll(Boolean(direction));
+                    return;
+                }
+
+                if (isTransitioning) return;
+                isTransitioning = true;
+                clearDotsAnimation();
+                window.clearTimeout(dotsAnimationTimer);
+                void dotsContainer.offsetWidth;
+                dotsContainer.classList.add(direction === 'next' ? 'is-transitioning-next' : 'is-transitioning-prev');
+
+                dotsAnimationTimer = window.setTimeout(() => {
+                    currentPage = nextPage;
+                    syncDots();
+                    finishScroll(true);
+                    animate(direction);
+                    clearDotsAnimation();
+                    void dotsContainer.offsetWidth;
+                    dotsContainer.classList.add(direction === 'next' ? 'is-settling-next' : 'is-settling-prev');
+                    dotsAnimationTimer = window.setTimeout(() => {
+                        clearDotsAnimation();
+                        isTransitioning = false;
+                    }, 440);
+                }, 180);
                 return;
             }
 
