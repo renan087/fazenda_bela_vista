@@ -222,8 +222,8 @@
         </div>
 
         <div class="mt-6 max-h-[72vh] overflow-y-auto pr-1" data-modal-scroll>
-            {% set edit_mobile_preview_src = (url_for('static', path='generated/farm_previews/' ~ edit_farm.id ~ '.png') ~ '?v=' ~ farm_preview_fingerprint.get(edit_farm.id, '')) if edit_farm and edit_farm.boundary_geojson and farm_preview_ready.get(edit_farm.id) else none %}
-            <form id="farms-form" method="post" enctype="multipart/form-data" action="{% if edit_farm %}/fazendas/{{ edit_farm.id }}/editar{% else %}/fazendas{% endif %}" class="grid gap-4" data-farms-form{% if edit_mobile_preview_src %} data-farms-edit-mobile-preview="1"{% endif %}>
+            {% set edit_farm_preview_only_src = (url_for('static', path='generated/farm_previews/' ~ edit_farm.id ~ '.png') ~ '?v=' ~ farm_preview_fingerprint.get(edit_farm.id, '')) if edit_farm and edit_farm.boundary_geojson and farm_preview_ready.get(edit_farm.id) else none %}
+            <form id="farms-form" method="post" enctype="multipart/form-data" action="{% if edit_farm %}/fazendas/{{ edit_farm.id }}/editar{% else %}/fazendas{% endif %}" class="grid gap-4" data-farms-form{% if edit_farm_preview_only_src %} data-farms-defer-inline-map="1"{% endif %}>
                 <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                 <input type="hidden" name="boundary_geojson" value="" data-farms-boundary-input>
 
@@ -252,38 +252,29 @@
 
                 <div class="rounded-[1.25rem] border border-slate-200 bg-slate-50/80 p-4">
                     <p class="text-xs uppercase tracking-[0.25em] text-slate-400">Perímetro no mapa</p>
-                    {% if edit_mobile_preview_src %}
-                    <p class="mt-2 hidden text-sm text-slate-600 max-md:block">Toque na imagem para abrir o mapa e editar o perímetro.</p>
-                    <p class="mt-2 text-sm text-slate-600 max-md:hidden">Desenhe o polígono clicando no mapa (não é necessário enviar arquivo antes). Arraste os pontos para ajustar. Envie um arquivo GeoJSON abaixo apenas se preferir importar de outra ferramenta.</p>
-                    {% else %}
+                    {% if not edit_farm_preview_only_src %}
                     <p class="mt-2 text-sm text-slate-600">Desenhe o polígono clicando no mapa (não é necessário enviar arquivo antes). Arraste os pontos para ajustar. Envie um arquivo GeoJSON abaixo apenas se preferir importar de outra ferramenta.</p>
-                    {% endif %}
                     {% if google_maps_web_key %}
-                    <p class="mt-2 text-xs text-emerald-700{% if edit_mobile_preview_src %} max-md:hidden{% endif %}">Mapa em modo satélite (Google Maps).</p>
+                    <p class="mt-2 text-xs text-emerald-700">Mapa em modo satélite (Google Maps).</p>
                     {% else %}
-                    <p class="mt-2 text-xs text-slate-500{% if edit_mobile_preview_src %} max-md:hidden{% endif %}">Configure <code class="rounded bg-slate-200 px-1 py-0.5 text-[11px]">GOOGLE_MAPS_API_KEY</code> no servidor para usar imagens de satélite do Google ao desenhar; sem chave, o mapa usa OpenStreetMap.</p>
+                    <p class="mt-2 text-xs text-slate-500">Configure <code class="rounded bg-slate-200 px-1 py-0.5 text-[11px]">GOOGLE_MAPS_API_KEY</code> no servidor para usar imagens de satélite do Google ao desenhar; sem chave, o mapa usa OpenStreetMap.</p>
                     {% endif %}
-                    {% if edit_mobile_preview_src %}
-                    <div class="mt-3 hidden md:block">
-                        <div id="farms-form-boundary-map" class="relative z-0 h-[280px] overflow-hidden rounded-2xl border border-slate-200 bg-white sm:h-[320px]"></div>
-                        <div class="mt-3 flex flex-wrap gap-2">
-                            <button type="button" class="rounded-xl bg-slate-200 px-3 py-2 text-xs font-semibold text-slate-800 hover:bg-slate-300" data-farms-form-remove-point>Remover ponto selecionado</button>
-                        </div>
-                    </div>
-                    <div class="mt-3 md:hidden">
+                    {% endif %}
+                    {% if edit_farm_preview_only_src %}
+                    <div class="mt-3">
                         <button
                             type="button"
-                            class="group relative w-full overflow-hidden rounded-2xl border-2 border-slate-200 bg-slate-100 text-left shadow-sm transition hover:border-brand-400 hover:shadow-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500"
+                            class="group relative w-full max-w-2xl overflow-hidden rounded-2xl border-2 border-slate-200 bg-slate-100 text-left shadow-sm transition hover:border-brand-400 hover:shadow-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500"
                             title="Editar perímetro no mapa"
                             aria-label="Abrir mapa para editar o perímetro — {{ edit_farm.name | e }}"
                             data-farms-map-open
-                            data-map-src="{{ edit_mobile_preview_src }}"
+                            data-map-src="{{ edit_farm_preview_only_src }}"
                             data-map-farm-name="{{ edit_farm.name | e }}"
                             data-map-farm-id="{{ edit_farm.id }}"
                         >
-                            <img src="{{ edit_mobile_preview_src }}" alt="" width="640" height="360" loading="lazy" decoding="async" class="aspect-video w-full object-cover">
+                            <img src="{{ edit_farm_preview_only_src }}" alt="" width="640" height="360" loading="lazy" decoding="async" class="aspect-video w-full object-cover">
                             <span class="pointer-events-none absolute inset-0 ring-inset ring-transparent transition group-hover:bg-slate-900/10" aria-hidden="true"></span>
-                            <span class="pointer-events-none absolute bottom-2 left-2 right-2 rounded-xl bg-slate-900/70 px-3 py-2 text-center text-xs font-semibold text-white backdrop-blur-sm">
+                            <span class="pointer-events-none absolute bottom-2 left-2 right-2 rounded-xl bg-slate-900/70 px-3 py-2 text-center text-xs font-semibold text-white backdrop-blur-sm sm:text-sm">
                                 Editar perímetro no mapa
                             </span>
                         </button>
@@ -355,9 +346,7 @@
         const openButtons = Array.from(document.querySelectorAll('[data-farms-launch-open]'));
         const closeButtons = Array.from(document.querySelectorAll('[data-farms-launch-close]'));
         const form = document.querySelector('[data-farms-form]');
-        const deferFormMapOnMobile = form?.dataset.farmsEditMobilePreview === '1';
-        const formMapDesktopMq = window.matchMedia('(min-width: 768px)');
-        const shouldSkipFormBoundaryMapInit = () => deferFormMapOnMobile && !formMapDesktopMq.matches;
+        const deferFarmFormInlineMap = form?.dataset.farmsDeferInlineMap === '1';
         const searchInput = document.querySelector('[data-farms-search]');
         const rows = Array.from(document.querySelectorAll('[data-farms-row]'));
         const emptyState = document.querySelector('[data-farms-search-empty]');
@@ -503,7 +492,7 @@
         const setupFarmFormBoundaryEditor = async () => {
             destroyFarmFormBoundaryEditor();
             if (typeof window.initFarmBoundaryEditor !== 'function' || !form) return;
-            if (shouldSkipFormBoundaryMapInit()) return;
+            if (deferFarmFormInlineMap) return;
             const mapEl = document.getElementById('farms-form-boundary-map');
             const hiddenInput = form.querySelector('[data-farms-boundary-input]');
             const removeBtn = document.querySelector('[data-farms-form-remove-point]');
@@ -522,16 +511,6 @@
             window.setTimeout(() => farmFormBoundaryEditor?.invalidate(), 200);
             window.setTimeout(() => farmFormBoundaryEditor?.invalidate(), 500);
         };
-
-        if (deferFormMapOnMobile) {
-            formMapDesktopMq.addEventListener('change', () => {
-                if (formMapDesktopMq.matches) void setupFarmFormBoundaryEditor();
-                else {
-                    farmFormBoundaryEditor?.syncToHidden();
-                    destroyFarmFormBoundaryEditor();
-                }
-            });
-        }
 
         openButtons.forEach((button) => {
             button.addEventListener('click', (event) => {
