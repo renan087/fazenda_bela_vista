@@ -643,6 +643,19 @@
                     control._segmentedSync = sync;
                 });
             };
+            const syncStockExportLinks = () => {
+                const pdf = document.querySelector('a.stock-export-button-pdf');
+                const xlsx = document.querySelector('a.stock-export-button-xlsx');
+                if (!(pdf instanceof HTMLAnchorElement) || !(xlsx instanceof HTMLAnchorElement)) return;
+                const params = new URLSearchParams(window.location.search);
+                params.set('stock_tab', activeTab);
+                ['entries_page', 'outputs_page', 'extract_page'].forEach((key) => params.delete(key));
+                const qs = params.toString();
+                const suffix = qs ? `?${qs}` : `?stock_tab=${encodeURIComponent(activeTab)}`;
+                pdf.href = `/insumos/estoque/exportar.pdf${suffix}`;
+                xlsx.href = `/insumos/estoque/exportar.xlsx${suffix}`;
+            };
+
             const setActiveTabView = (tabName) => {
                 activeTab = tabName;
                 getTabs().forEach((tab) => {
@@ -668,6 +681,7 @@
             );
 
             setActiveTabView(activeTab);
+            syncStockExportLinks();
             bindSegmentedControls();
 
             const clearTabSearchState = () => {
@@ -884,6 +898,7 @@
                 const extractTab = getTabs().find((tab) => tab.dataset.stockTab === 'extract');
                 if (!extractTab) return;
                 setActiveTabView('extract');
+                syncStockExportLinks();
                 filterTabRows(extractTab, query);
             };
 
@@ -929,6 +944,7 @@
                     bindStockListShell();
                     setActiveTabView(parsed.querySelector('[data-stock-tab-button].is-active')?.dataset.stockTabButton || activeTab);
                     window.history.replaceState({}, '', url);
+                    syncStockExportLinks();
                 } catch (error) {
                     console.error(error);
                     window.location.href = url;
@@ -949,6 +965,7 @@
                 if (link.hasAttribute('data-stock-tab-button')) {
                     setActiveTabView(link.dataset.stockTabButton || 'entries');
                     window.history.replaceState({}, '', href);
+                    syncStockExportLinks();
                     return;
                 }
 
