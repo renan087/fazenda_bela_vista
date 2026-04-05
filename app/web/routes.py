@@ -5663,9 +5663,14 @@ def _irrigation_history_dataset(
     plots = repo.list_plots(farm_ids=farm_ids, variety_ids=variety_ids)
     plot_ids = {plot.id for plot in plots}
     raw_plot = (request.query_params.get("plot_id") or "").strip()
-    plot_id_filter = _int_or_none(raw_plot) if raw_plot else None
-    if plot_id_filter is not None and plot_id_filter not in plot_ids:
+    raw_plot_lower = raw_plot.lower()
+    # Todos / sem filtro por setor: vazio ou valores explícitos (URL, export, API)
+    if not raw_plot or raw_plot_lower in {"all", "todos", "todas"}:
         plot_id_filter = None
+    else:
+        plot_id_filter = _int_or_none(raw_plot)
+        if plot_id_filter is not None and plot_id_filter not in plot_ids:
+            plot_id_filter = None
     search_q = (request.query_params.get("search") or "").strip() or None
 
     irrigations_in_period = [
@@ -5757,7 +5762,7 @@ def irrigation_page(
         item.id: _url_with_query(request, edit_id=item.id) for item in irrigations_pagination["items"]
     }
     irrigation_filters_active = bool(
-        _period_filter_explicit_in_query(request) or bool(raw_plot) or bool(search_q)
+        _period_filter_explicit_in_query(request) or (plot_id_filter is not None) or bool(search_q)
     )
     return templates.TemplateResponse(
         "irrigation.html",

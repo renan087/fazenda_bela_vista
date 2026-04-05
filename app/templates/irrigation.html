@@ -66,7 +66,7 @@
                                 <circle cx="12" cy="10" r="2.5" fill="none"/>
                             </svg>
                             <select name="plot_id" class="module-filter-plot-select-control w-full min-w-0" aria-label="Filtrar por setor" data-irrigation-filter-plot>
-                                <option value="" {% if not selected_irrigation_plot_id %}selected{% endif %}>Filtre por setor</option>
+                                <option value="" {% if not selected_irrigation_plot_id %}selected{% endif %}>Todos</option>
                                 {% for plot in plots_for_irrigation_filter %}
                                 <option value="{{ plot.id }}" {% if selected_irrigation_plot_id == plot.id %}selected{% endif %}>{{ plot.name }}</option>
                                 {% endfor %}
@@ -271,7 +271,10 @@
                 const rangeValue = (rangeInput?.value || '').trim();
                 if (rangeValue) params.set('schedule_range', rangeValue);
                 const plotValue = (filterPlotSelect?.value || '').trim();
-                if (plotValue) params.set('plot_id', plotValue);
+                const plotNorm = plotValue.toLowerCase();
+                if (plotValue && !['all', 'todos', 'todas'].includes(plotNorm)) {
+                    params.set('plot_id', plotValue);
+                }
                 link.href = params.toString() ? `${baseHref}?${params.toString()}` : baseHref;
             });
         };
