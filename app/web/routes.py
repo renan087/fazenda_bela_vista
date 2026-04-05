@@ -5639,7 +5639,6 @@ def fertilization_schedules_page(
         if schedule.plot_id in plot_ids and _within_scope(schedule.scheduled_date, start_date, end_date)
     ]
     schedules.sort(key=lambda schedule: (schedule.scheduled_date, schedule.id), reverse=True)
-    schedule_validations = {schedule.id: validate_schedule_stock(repo, schedule) for schedule in schedules}
     schedule_filter_clear_url = _url_with_query(
         request,
         start_date=None,
@@ -5653,6 +5652,11 @@ def fertilization_schedules_page(
     completed_schedules = [schedule for schedule in schedules if schedule.status == "completed"]
     active_schedules_pagination = _paginate_collection(request, active_schedules, "active_page")
     completed_schedules_pagination = _paginate_collection(request, completed_schedules, "completed_page")
+    schedule_validations = {}
+    for sch in active_schedules_pagination["items"]:
+        schedule_validations[sch.id] = validate_schedule_stock(repo, sch)
+    for sch in completed_schedules_pagination["items"]:
+        schedule_validations[sch.id] = {"ok": True, "shortages": []}
     recommendations = [
         recommendation
         for recommendation in repo.list_input_recommendations()

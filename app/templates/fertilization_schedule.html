@@ -795,7 +795,7 @@
             searchInput?.addEventListener('input', applyScheduleHistorySearch);
             scheduleListShell.addEventListener('click', async (event) => {
                 const link = event.target instanceof Element
-                    ? event.target.closest('[data-schedule-tab-button], [data-stock-pagination-link]')
+                    ? event.target.closest('[data-stock-pagination-link]')
                     : null;
                 if (!(link instanceof HTMLAnchorElement)) return;
                 const href = link.getAttribute('href');
