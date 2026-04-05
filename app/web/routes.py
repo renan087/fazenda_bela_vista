@@ -66,6 +66,7 @@ from app.services.farm_preview_image import (
 )
 from app.services.plot_preview_image import (
     ensure_plot_preview_thumb,
+    generate_plot_geometry_session_preview,
     generate_plot_preview_draft,
     generate_plot_preview_image,
     plot_preview_fs_path,
@@ -1808,6 +1809,36 @@ def save_plot_preview_draft(
         return JSONResponse({"ok": False, "error": "generate_failed"}, status_code=400)
     revision = hashlib.sha256(normalized.encode("utf-8")).hexdigest()[:14]
     url = f"/static/generated/plot_previews/{plot_id}_draft.png"
+    return JSONResponse({"ok": True, "url": url, "revision": revision})
+
+
+@router.post("/talhoes/preview-geometria", include_in_schema=False)
+@router.post("/setores/preview-geometria")
+def preview_plot_geometry_session(
+    request: Request,
+    csrf_token: str = Form(...),
+    farm_id: str = Form(...),
+    boundary_geojson: str = Form(...),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    """Prévia de satélite para geometria ainda sem setor persistido (cadastro novo)."""
+    del user
+    validate_csrf(request, csrf_token)
+    repo = _repository(db)
+    fid = _int_or_none(farm_id)
+    if not fid:
+        return JSONResponse({"ok": False, "error": "farm_required"}, status_code=400)
+    farm = repo.get_farm(fid)
+    if not farm:
+        return JSONResponse({"ok": False, "error": "farm_not_found"}, status_code=404)
+    normalized = normalize_geojson(boundary_geojson)
+    if not normalized:
+        return JSONResponse({"ok": False, "error": "invalid_geojson"}, status_code=400)
+    farm_gj = farm.boundary_geojson if farm.boundary_geojson and str(farm.boundary_geojson).strip() else None
+    url, revision = generate_plot_geometry_session_preview(normalized, farm_gj)
+    if not url or not revision:
+        return JSONResponse({"ok": False, "error": "generate_failed"}, status_code=400)
     return JSONResponse({"ok": True, "url": url, "revision": revision})
 
 

@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import hashlib
 import logging
+import secrets
 import tempfile
 from pathlib import Path
 
@@ -131,3 +133,44 @@ def generate_plot_preview_draft(
                 pass
         return False
     return True
+
+
+def generate_plot_geometry_session_preview(
+    boundary_geojson: str,
+    farm_boundary_geojson: str | None,
+) -> tuple[str | None, str | None]:
+    """
+    PNG temporário para pré-visualizar geometria antes de existir setor (cadastro novo).
+    Retorna (URL path a partir de /static/..., revision) ou (None, None).
+    """
+    raw = (boundary_geojson or "").strip()
+    if not raw:
+        return None, None
+    farm_ref = (farm_boundary_geojson or "").strip() or None
+    final_img = build_satellite_preview_from_geojson(
+        raw,
+        log_entity_id=0,
+        reference_boundary_geojson=farm_ref,
+    )
+    if final_img is None:
+        return None, None
+    token = secrets.token_hex(16)
+    PLOT_PREVIEW_DIR.mkdir(parents=True, exist_ok=True)
+    rel_name = f"_sess_{token}.png"
+    final_path = PLOT_PREVIEW_DIR / rel_name
+    tmp_path: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(suffix=".png", delete=False, dir=PLOT_PREVIEW_DIR) as tmp:
+            tmp_path = Path(tmp.name)
+        final_img.save(tmp_path, format="PNG", optimize=True)
+        tmp_path.replace(final_path)
+    except OSError as exc:
+        logger.exception("Falha ao salvar preview de sessao de geometria: %s", exc)
+        if tmp_path is not None:
+            try:
+                tmp_path.unlink(missing_ok=True)
+            except OSError:
+                pass
+        return None, None
+    revision = hashlib.sha256(raw.encode("utf-8")).hexdigest()[:14]
+    return f"/static/generated/plot_previews/{rel_name}", revision

@@ -313,13 +313,7 @@
                         </button>
                     </div>
                     <input type="hidden" name="boundary_geojson" value="" data-plots-boundary-input>
-                    <div class="mt-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm" data-plots-geojson-card>
-                        <button type="button" class="inline-flex w-full items-center justify-center rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-700 transition hover:border-slate-300 hover:bg-slate-100 sm:w-auto" data-plots-geojson-pick aria-label="Procurar arquivo GeoJSON do setor">
-                            Procurar arquivo
-                        </button>
-                        <input type="file" name="boundary_geojson_file" accept=".json,.geojson,application/json" class="sr-only" data-plots-geojson-file>
-                        <p class="mt-2.5 text-[11px] leading-relaxed text-slate-400/90">Importar GeoJSON do setor (.json ou .geojson) — opcional</p>
-                    </div>
+                    {% include "partials/plot_geojson_upload_field.html" %}
                     {% if edit_plot.boundary_geojson %}
                     <p class="mt-2 text-sm text-slate-500">A geometria atual pode ser alterada no mapa ou substituída por um novo arquivo.</p>
                     {% endif %}
@@ -341,13 +335,29 @@
                         <div class="mt-3 hidden flex flex-wrap items-center gap-x-4 gap-y-2" data-plots-map-toolbar>
                             <button type="button" class="rounded-xl bg-slate-200 px-3 py-2 text-xs font-semibold text-slate-800 hover:bg-slate-300" data-plots-form-remove-point>Remover ponto selecionado</button>
                         </div>
-                        <div class="mt-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm" data-plots-geojson-card>
-                            <button type="button" class="inline-flex w-full items-center justify-center rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-700 transition hover:border-slate-300 hover:bg-slate-100 sm:w-auto" data-plots-geojson-pick aria-label="Procurar arquivo GeoJSON do setor">
-                                Procurar arquivo
+                        <div data-plots-new-preview-card class="mx-auto mt-4 hidden max-w-3xl">
+                            <p class="mb-2 text-center text-[11px] text-slate-400">Prévia a partir do GeoJSON importado ou do desenho no mapa. A miniatura da lista é gerada ao salvar o setor.</p>
+                            <button
+                                type="button"
+                                data-plot-preview-wrap
+                                class="group relative w-full overflow-hidden rounded-2xl border-2 border-slate-200 bg-slate-100 text-left shadow-sm transition hover:border-brand-400 hover:shadow-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500"
+                                title="Abrir mapa do setor"
+                                aria-label="Abrir mapa do setor"
+                                data-plots-map-open
+                                data-plots-map-direct-edit="0"
+                            >
+                                <img data-plots-new-preview-img src="" alt="" width="960" height="540" decoding="async" class="pointer-events-none aspect-video max-h-[min(52vh,420px)] w-full object-cover">
+                                <div class="pointer-events-none absolute inset-0 z-[4] hidden flex-col items-center justify-center gap-2 bg-slate-100/88 backdrop-blur-[2px]" data-plot-preview-loading aria-hidden="true">
+                                    <span class="h-8 w-8 shrink-0 animate-spin rounded-full border-2 border-slate-200 border-t-brand-500" aria-hidden="true"></span>
+                                    <span class="text-[11px] font-medium uppercase tracking-wide text-slate-500">Carregando mapa</span>
+                                </div>
+                                <span class="pointer-events-none absolute inset-0 z-[5] ring-inset ring-transparent transition group-hover:bg-slate-900/10" aria-hidden="true"></span>
+                                <span class="pointer-events-none absolute bottom-2 left-2 right-2 z-[6] rounded-xl bg-slate-900/70 px-3 py-2 text-center text-xs font-semibold text-white backdrop-blur-sm sm:text-sm">
+                                    Ver mapa do setor
+                                </span>
                             </button>
-                            <input type="file" name="boundary_geojson_file" accept=".json,.geojson,application/json" class="sr-only" data-plots-geojson-file>
-                            <p class="mt-2.5 text-[11px] leading-relaxed text-slate-400/90">Importar GeoJSON do setor (.json ou .geojson) — opcional</p>
                         </div>
+                        {% include "partials/plot_geojson_upload_field.html" %}
                     </div>
                     {% endif %}
                 </div>
@@ -527,6 +537,8 @@
         const perimeterDefaultCards = document.querySelector('[data-plots-perimeter-default-cards]');
         const perimeterDraftCard = document.querySelector('[data-plots-perimeter-draft-card]');
         const draftPreviewImg = document.querySelector('[data-plots-draft-preview-img]');
+        const newPreviewCard = document.querySelector('[data-plots-new-preview-card]');
+        const newPreviewImg = document.querySelector('[data-plots-new-preview-img]');
         const plotsMapHintOverlay = plotsMapModal?.querySelector('[data-plots-preview-map-hint-overlay]');
         const plotsMapHintOpenBtn = plotsMapModal?.querySelector('[data-plots-preview-map-hint-open]');
         const plotsMapHintBackdrop = plotsMapModal?.querySelector('[data-plots-preview-map-hint-backdrop]');
@@ -599,6 +611,23 @@
         let plotsDraftPreviewUrlBase = '';
         let plotsDraftPreviewRevision = '';
         let plotsDraftPreviewActive = false;
+        let plotsNewPreviewUrlBase = '';
+        let plotsNewPreviewRevision = '';
+        let plotsNewPreviewActive = false;
+        let plotGeojsonClearSelection = null;
+
+        const resetNewPlotGeometryPreviewUi = () => {
+            plotsNewPreviewUrlBase = '';
+            plotsNewPreviewRevision = '';
+            plotsNewPreviewActive = false;
+            newPreviewCard?.classList.add('hidden');
+            newPreviewImg?.removeAttribute('src');
+            if (newPreviewImg) {
+                delete newPreviewImg.dataset.plotPreviewWired;
+                const ov = newPreviewImg.closest('[data-plot-preview-wrap]')?.querySelector('[data-plot-preview-loading]');
+                hidePlotPreviewLoading(ov);
+            }
+        };
 
         const resetPlotDraftPreviewUi = () => {
             plotsDraftPreviewUrlBase = '';
@@ -613,16 +642,34 @@
             }
         };
 
-        const postPlotDraftPreview = async () => {
-            if (!EDIT_PLOT_ID || !plotBoundaryHidden) return false;
-            const raw = (plotBoundaryHidden.value || '').trim();
+        const postPlotBoundaryPreview = async (boundaryOverride) => {
+            if (!plotBoundaryHidden) return false;
+            const raw = (
+                boundaryOverride !== undefined && boundaryOverride !== null
+                    ? String(boundaryOverride)
+                    : plotBoundaryHidden.value || ''
+            ).trim();
             if (!raw) return false;
+            const farmId = farmSelectEl?.value?.trim();
+            if (!farmId) {
+                window.alert('Selecione a fazenda antes de gerar ou importar a prévia do mapa.');
+                return false;
+            }
             const fd = new FormData();
             fd.append('csrf_token', PLOTS_CSRF_TOKEN);
             fd.append('boundary_geojson', raw);
             let res;
             try {
-                res = await fetch(`/setores/${EDIT_PLOT_ID}/preview-rascunho`, { method: 'POST', body: fd, credentials: 'same-origin' });
+                if (EDIT_PLOT_ID) {
+                    res = await fetch(`/setores/${EDIT_PLOT_ID}/preview-rascunho`, {
+                        method: 'POST',
+                        body: fd,
+                        credentials: 'same-origin',
+                    });
+                } else {
+                    fd.append('farm_id', farmId);
+                    res = await fetch('/setores/preview-geometria', { method: 'POST', body: fd, credentials: 'same-origin' });
+                }
             } catch (err) {
                 console.error(err);
                 return false;
@@ -634,15 +681,30 @@
                 return false;
             }
             if (!res.ok || !data.ok || !data.url) return false;
-            plotsDraftPreviewUrlBase = data.url;
-            plotsDraftPreviewRevision = String(data.revision || Date.now());
-            plotsDraftPreviewActive = true;
-            perimeterDefaultCards?.classList.add('hidden');
-            perimeterDraftCard?.classList.remove('hidden');
-            if (draftPreviewImg) {
-                const ov = draftPreviewImg.closest('[data-plot-preview-wrap]')?.querySelector('[data-plot-preview-loading]');
-                showPlotPreviewLoading(ov);
-                draftPreviewImg.src = `${plotsDraftPreviewUrlBase}?v=${plotsDraftPreviewRevision}`;
+            const revision = String(data.revision || Date.now());
+            if (EDIT_PLOT_ID) {
+                plotsDraftPreviewUrlBase = data.url;
+                plotsDraftPreviewRevision = revision;
+                plotsDraftPreviewActive = true;
+                perimeterDefaultCards?.classList.add('hidden');
+                perimeterDraftCard?.classList.remove('hidden');
+                if (draftPreviewImg) {
+                    const ov = draftPreviewImg.closest('[data-plot-preview-wrap]')?.querySelector('[data-plot-preview-loading]');
+                    showPlotPreviewLoading(ov);
+                    draftPreviewImg.src = `${plotsDraftPreviewUrlBase}?v=${plotsDraftPreviewRevision}`;
+                }
+            } else {
+                plotsNewPreviewUrlBase = data.url;
+                plotsNewPreviewRevision = revision;
+                plotsNewPreviewActive = true;
+                newPreviewCard?.classList.remove('hidden');
+                if (newPreviewImg) {
+                    delete newPreviewImg.dataset.plotPreviewWired;
+                    wirePlotSatelliteImage(newPreviewImg);
+                    const ov = newPreviewImg.closest('[data-plot-preview-wrap]')?.querySelector('[data-plot-preview-loading]');
+                    showPlotPreviewLoading(ov);
+                    newPreviewImg.src = `${plotsNewPreviewUrlBase}?v=${plotsNewPreviewRevision}`;
+                }
             }
             return true;
         };
@@ -732,14 +794,144 @@
             window.setTimeout(() => plotsBoundaryEditor?.invalidate(), 550);
         };
 
-        const resolveEditMapViewSrc = () => {
-            if (!isEditMode) return '';
-            if (plotsDraftPreviewActive && plotsDraftPreviewUrlBase) {
-                return `${plotsDraftPreviewUrlBase}?v=${plotsDraftPreviewRevision}`;
+        const initPlotGeojsonUpload = () => {
+            if (!plotsForm) return;
+            const manager = plotsForm.querySelector('[data-plot-geojson-manager]');
+            if (!manager) return;
+            const picker = manager.querySelector('[data-plot-geojson-picker]');
+            const submitInput = manager.querySelector('[data-plot-geojson-submit-input]');
+            const pendingBox = manager.querySelector('[data-plot-geojson-pending]');
+            const pendingList = manager.querySelector('[data-plot-geojson-pending-list]');
+            const clearBtn = manager.querySelector('[data-plot-geojson-clear]');
+            if (!picker || !submitInput || !pendingBox || !pendingList) return;
+
+            const formatKb = (size) => `${Math.max(1, Math.round((size || 0) / 1024))} KB`;
+
+            let selectedFile = null;
+
+            const refreshPendingUi = () => {
+                if (!selectedFile) {
+                    pendingBox.classList.add('hidden');
+                    pendingList.innerHTML = '';
+                    return;
+                }
+                pendingList.innerHTML = '';
+                const row = document.createElement('div');
+                row.className = 'flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-white px-4 py-3';
+                const content = document.createElement('div');
+                content.className = 'min-w-0';
+                const title = document.createElement('p');
+                title.className = 'truncate text-sm font-medium text-slate-900';
+                title.textContent = selectedFile.name;
+                const meta = document.createElement('p');
+                meta.className = 'mt-1 text-xs text-slate-500';
+                meta.textContent = `${selectedFile.type || 'application/json'} • ${formatKb(selectedFile.size)}`;
+                const removeButton = document.createElement('button');
+                removeButton.type = 'button';
+                removeButton.className =
+                    'rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-100';
+                removeButton.textContent = 'Remover';
+                removeButton.addEventListener('click', () => {
+                    clearSelection();
+                });
+                content.appendChild(title);
+                content.appendChild(meta);
+                row.appendChild(content);
+                row.appendChild(removeButton);
+                pendingList.appendChild(row);
+                pendingBox.classList.remove('hidden');
+            };
+
+            const clearSelection = (opts) => {
+                const skipRebuild = opts && opts.skipRebuild === true;
+                selectedFile = null;
+                submitInput.value = '';
+                picker.value = '';
+                if (plotBoundaryHidden) plotBoundaryHidden.value = '';
+                refreshPendingUi();
+                resetNewPlotGeometryPreviewUi();
+                if (EDIT_PLOT_ID && plotsDraftPreviewActive) {
+                    void discardPlotDraftOnServer();
+                } else {
+                    resetPlotDraftPreviewUi();
+                }
+                if (!isEditMode && !skipRebuild) void rebuildPlotsBoundaryEditor();
+            };
+
+            plotGeojsonClearSelection = (opts) => clearSelection(opts);
+
+            picker.addEventListener('change', () => {
+                void (async () => {
+                    const file = picker.files?.[0];
+                    picker.value = '';
+                    if (!file) return;
+                    let text;
+                    try {
+                        text = await file.text();
+                    } catch (err) {
+                        console.warn(err);
+                        window.alert('Não foi possível ler o arquivo.');
+                        return;
+                    }
+                    const trimmed = text.trim();
+                    if (!trimmed) {
+                        window.alert('O arquivo está vazio.');
+                        return;
+                    }
+                    try {
+                        JSON.parse(trimmed);
+                    } catch {
+                        window.alert('O arquivo não contém JSON válido.');
+                        return;
+                    }
+                    const ok = await postPlotBoundaryPreview(trimmed);
+                    if (!ok) {
+                        window.alert(
+                            'Não foi possível gerar a prévia do mapa. Verifique o GeoJSON, se a fazenda está selecionada e se o polígono é válido.',
+                        );
+                        return;
+                    }
+                    if (!plotBoundaryHidden) return;
+                    plotBoundaryHidden.value = trimmed;
+                    const dt = new DataTransfer();
+                    dt.items.add(file);
+                    submitInput.files = dt.files;
+                    selectedFile = file;
+                    if (!isEditMode) await rebuildPlotsBoundaryEditor();
+                    refreshPendingUi();
+                })();
+            });
+
+            clearBtn?.addEventListener('click', () => {
+                clearSelection();
+            });
+
+            plotsForm.addEventListener('submit', () => {
+                if (selectedFile) {
+                    const dt = new DataTransfer();
+                    dt.items.add(selectedFile);
+                    submitInput.files = dt.files;
+                }
+            });
+        };
+
+        initPlotGeojsonUpload();
+
+        const resolvePlotsMapViewSrc = () => {
+            if (isEditMode) {
+                if (plotsDraftPreviewActive && plotsDraftPreviewUrlBase) {
+                    return `${plotsDraftPreviewUrlBase}?v=${plotsDraftPreviewRevision}`;
+                }
+                if (PLOTS_EDIT_MAP.plotPreviewSrc) return PLOTS_EDIT_MAP.plotPreviewSrc;
+                const fid = farmSelectEl?.value?.trim() || PLOTS_EDIT_MAP.defaultFarmId;
+                if (fid && PLOTS_FARM_PREVIEW_URLS[fid]) return PLOTS_FARM_PREVIEW_URLS[fid];
+                return '';
             }
-            if (PLOTS_EDIT_MAP.plotPreviewSrc) return PLOTS_EDIT_MAP.plotPreviewSrc;
-            const fid = farmSelectEl?.value?.trim() || PLOTS_EDIT_MAP.defaultFarmId;
-            if (fid && PLOTS_FARM_PREVIEW_URLS[fid]) return PLOTS_FARM_PREVIEW_URLS[fid];
+            if (plotsNewPreviewActive && plotsNewPreviewUrlBase) {
+                return `${plotsNewPreviewUrlBase}?v=${plotsNewPreviewRevision}`;
+            }
+            const fidNew = farmSelectEl?.value?.trim();
+            if (fidNew && PLOTS_FARM_PREVIEW_URLS[fidNew]) return PLOTS_FARM_PREVIEW_URLS[fidNew];
             return '';
         };
 
@@ -800,7 +992,7 @@
             if (!plotsMapModal || !plotsMapModalImg) return;
             const directEdit = options.directEdit === true;
             resetPlotsMapModalLayout({ discardEdits: false });
-            const viewSrc = isEditMode ? resolveEditMapViewSrc() : '';
+            const viewSrc = resolvePlotsMapViewSrc();
             if (viewSrc) {
                 plotsMapModalImg.classList.remove('hidden');
                 showPlotPreviewLoading(plotsMapModalImgLoading);
@@ -881,7 +1073,7 @@
                     window.alert('Desenhe um polígono com pelo menos três pontos antes de concluir.');
                     return;
                 }
-                const ok = await postPlotDraftPreview();
+                const ok = await postPlotBoundaryPreview();
                 if (!ok) {
                     window.alert('Não foi possível gerar a prévia do mapa. Tente novamente.');
                     return;
@@ -921,7 +1113,11 @@
         });
 
         farmSelectEl?.addEventListener('change', () => {
-            if (!isEditMode) void rebuildPlotsBoundaryEditor();
+            if (!isEditMode) {
+                plotGeojsonClearSelection?.();
+                resetNewPlotGeometryPreviewUi();
+                void rebuildPlotsBoundaryEditor();
+            }
         });
 
         const afterPlotsModalOpen = () => {
@@ -933,6 +1129,7 @@
 
         const closePlotsModal = () => {
             closePlotsMapModal();
+            resetNewPlotGeometryPreviewUi();
             if (isEditing) {
                 destroyPlotsBoundaryEditor();
                 void discardPlotDraftOnServer().finally(() => {
@@ -961,45 +1158,19 @@
             button.addEventListener('click', () => closePlotsModal());
         });
 
-        let plotsLaunchModalFileChooserActive = false;
-        let plotsLaunchModalFileChooserClearTimer = 0;
-
-        const clearPlotsLaunchModalFileChooserGuard = () => {
-            plotsLaunchModalFileChooserActive = false;
-            window.clearTimeout(plotsLaunchModalFileChooserClearTimer);
-        };
-
-        const armPlotsLaunchModalFileChooserGuard = () => {
-            plotsLaunchModalFileChooserActive = true;
-            window.clearTimeout(plotsLaunchModalFileChooserClearTimer);
-            plotsLaunchModalFileChooserClearTimer = window.setTimeout(clearPlotsLaunchModalFileChooserGuard, 30000);
-        };
-
-        plotsForm?.querySelectorAll('[data-plots-geojson-file]').forEach((input) => {
-            input.addEventListener('click', armPlotsLaunchModalFileChooserGuard);
-            input.addEventListener('change', clearPlotsLaunchModalFileChooserGuard);
-            input.addEventListener('cancel', clearPlotsLaunchModalFileChooserGuard);
-        });
-
-        plotsForm?.querySelectorAll('[data-plots-geojson-pick]').forEach((btn) => {
-            btn.addEventListener('click', () => {
-                const card = btn.closest('[data-plots-geojson-card]');
-                const input = card?.querySelector('[data-plots-geojson-file]');
-                if (input) input.click();
-            });
-        });
-
-        window.addEventListener('focus', () => {
-            if (!plotsLaunchModalFileChooserActive) return;
-            window.clearTimeout(plotsLaunchModalFileChooserClearTimer);
-            plotsLaunchModalFileChooserClearTimer = window.setTimeout(clearPlotsLaunchModalFileChooserGuard, 320);
-        });
-
         launchModal?.addEventListener('cancel', (event) => {
             event.preventDefault();
-            if (plotsLaunchModalFileChooserActive) return;
-            closePlotsModal();
         });
+
+        const onPlotsLaunchModalEscapeKeydown = (event) => {
+            if (event.key !== 'Escape') return;
+            if (!launchModal?.open) return;
+            if (plotsMapModal?.open) return;
+            event.preventDefault();
+            event.stopPropagation();
+            closePlotsModal();
+        };
+        window.addEventListener('keydown', onPlotsLaunchModalEscapeKeydown, true);
 
         if (isEditing) {
             seedPlotBoundaryHidden();
@@ -1017,6 +1188,8 @@
             if (!isEditing) {
                 destroyPlotsBoundaryEditor();
                 setPlotMapVisible(false);
+                resetNewPlotGeometryPreviewUi();
+                plotGeojsonClearSelection?.({ skipRebuild: true });
             }
         });
 

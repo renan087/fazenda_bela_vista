@@ -1,0 +1,34 @@
+{# Mesmo padrão visual de partials/attachment_upload_field.html (gestão de compras — Nova entrada): input tracejado + bloco "Arquivo selecionado". #}
+<div class="mt-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm" data-plots-geojson-card data-plot-geojson-manager>
+    <label class="block">
+        <span class="mb-1.5 block text-sm font-medium">Importar GeoJSON do setor</span>
+        <div data-plot-geojson-picker-slot>
+            <input
+                type="file"
+                accept=".json,.geojson,application/json"
+                class="w-full cursor-pointer rounded-xl border border-dashed border-slate-300 bg-slate-50 px-3 py-2 text-sm text-slate-600 file:mr-2 file:cursor-pointer file:rounded-lg file:border-0 file:bg-brand-50 file:px-2.5 file:py-1 file:text-xs file:font-semibold file:text-brand-800 hover:border-slate-400"
+                data-plot-geojson-picker
+            >
+        </div>
+        <span class="mt-2 block text-xs text-slate-500">Arquivos .json ou .geojson — opcional. A prévia é gerada ao escolher o arquivo; o envio definitivo ocorre ao salvar o setor.</span>
+    </label>
+    <input
+        type="file"
+        name="boundary_geojson_file"
+        accept=".json,.geojson,application/json"
+        class="sr-only"
+        tabindex="-1"
+        aria-hidden="true"
+        data-plot-geojson-submit-input
+    >
+    <div class="hidden rounded-[1.5rem] border border-slate-200 bg-slate-50 p-4" data-plot-geojson-pending>
+        <div class="flex flex-wrap items-center justify-between gap-3">
+            <div>
+                <p class="text-xs uppercase tracking-[0.3em] text-slate-400">Arquivo selecionado</p>
+                <h4 class="mt-2 text-sm font-semibold text-slate-900">GeoJSON do perímetro</h4>
+            </div>
+            <button type="button" class="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-100" data-plot-geojson-clear>Limpar seleção</button>
+        </div>
+        <div class="mt-4 space-y-3" data-plot-geojson-pending-list></div>
+    </div>
+</div>
