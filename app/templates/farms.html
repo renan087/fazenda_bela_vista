@@ -308,6 +308,7 @@
                             title="Editar perímetro no mapa"
                             aria-label="Abrir mapa para editar o perímetro — {{ edit_farm.name | e }}"
                             data-farms-map-open
+                            data-farms-map-direct-edit="1"
                             data-map-src="{{ edit_farm_preview_only_src }}"
                             data-map-farm-name="{{ edit_farm.name | e }}"
                             data-map-farm-id="{{ edit_farm.id }}"
@@ -536,6 +537,7 @@
                 const src = button.getAttribute('data-map-src') || '';
                 const farmName = button.getAttribute('data-map-farm-name') || '';
                 const farmId = button.getAttribute('data-map-farm-id');
+                const directEdit = button.getAttribute('data-farms-map-direct-edit') === '1';
                 if (!mapPreviewModal || !mapPreviewImg) return;
                 resetPreviewModalLayout();
                 previewMapFarmId = farmId ? String(farmId) : null;
@@ -543,6 +545,11 @@
                 mapPreviewImg.alt = farmName ? `Mapa de satélite — ${farmName}` : 'Mapa de satélite da fazenda';
                 if (mapPreviewName) mapPreviewName.textContent = farmName;
                 mapPreviewModal.showModal();
+                if (directEdit) {
+                    mapPreviewViewImage?.classList.add('hidden');
+                    mapPreviewViewEditor?.classList.remove('hidden');
+                    void startPreviewPolygonEdit();
+                }
             });
         });
 
