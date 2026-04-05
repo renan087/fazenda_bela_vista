@@ -1233,10 +1233,17 @@ body {
     color: inherit;
     appearance: none;
     cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
 }
 
-.module-filter-plot-select-control:focus {
+/* Sem anel de foco no <select>: o destaque fica no .module-filter-plot-select-wrap:focus-within */
+.module-filter-plot-select-control:focus,
+.module-filter-plot-select-control:focus-visible,
+.module-filter-plot-select-control:active {
     outline: none;
+    outline-offset: 0;
+    border: 0;
+    box-shadow: none;
 }
 
 .module-filter-preset-menu {
