@@ -109,11 +109,6 @@
                         <div class="erp-sidebar-brand-mobile mx-auto hidden h-12 w-12 shrink-0 items-center justify-center rounded-full bg-white/5 ring-1 ring-white/10" aria-hidden="true">
                             <img src="{{ url_for('static', path='images/logo-icon.png') }}" alt="" class="h-8 w-8 object-contain">
                         </div>
-                        <button type="button" class="erp-sidebar-toggle hidden shrink-0 lg:inline-flex" data-desktop-sidebar-toggle aria-label="Recolher menu" aria-expanded="true">
-                            <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                                <path d="m15 18-6-6 6-6"/>
-                            </svg>
-                        </button>
                     </div>
                     <div class="erp-sidebar-copy mt-3 space-y-1 text-left text-slate-300">
                         <p class="text-sm italic leading-6 text-slate-300/95">"O Senhor &eacute; o meu pastor; nada me faltar&aacute;."</p>
@@ -212,6 +207,10 @@
                     </div>
                 </div>
             </div>
+            <button type="button" class="toggle-sidebar-btn erp-sidebar-toggle hidden lg:flex" data-desktop-sidebar-toggle aria-label="Recolher menu" aria-expanded="true">
+                <svg class="erp-sidebar-toggle-chevron erp-sidebar-toggle-chevron--expanded" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>
+                <svg class="erp-sidebar-toggle-chevron erp-sidebar-toggle-chevron--collapsed" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg>
+            </button>
         </aside>
         <main class="erp-main-shell flex min-h-screen min-w-0 flex-1 flex-col lg:ml-72">
             <div class="sticky top-0 z-20 border-b border-slate-200 bg-white/95 shadow-sm backdrop-blur">
