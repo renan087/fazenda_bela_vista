@@ -9,15 +9,11 @@ body {
 @media (min-width: 1024px) {
     --erp-sidebar-ease: cubic-bezier(0.22, 1, 0.36, 1);
 
-    .erp-sidebar,
-    .erp-main-shell {
-        transition: width 320ms var(--erp-sidebar-ease), margin-left 320ms var(--erp-sidebar-ease),
-            min-width 320ms var(--erp-sidebar-ease);
-    }
-
+    /* Desktop: animar largura da sidebar e margem do main (mobile usa só transform no HTML). */
     .erp-sidebar {
         width: 18rem;
         min-width: 18rem;
+        transition: width 420ms var(--erp-sidebar-ease), min-width 420ms var(--erp-sidebar-ease);
         /* Visível na horizontal para o toggle ficar metade fora, na borda com o conteúdo. */
         overflow-x: visible;
         overflow-y: hidden;
@@ -25,6 +21,7 @@ body {
 
     .erp-main-shell {
         margin-left: 18rem;
+        transition: margin-left 420ms var(--erp-sidebar-ease);
     }
 
     .erp-sidebar-inner {
@@ -32,7 +29,7 @@ body {
     }
 
     .erp-sidebar-header {
-        transition: padding 300ms var(--erp-sidebar-ease);
+        transition: padding 420ms var(--erp-sidebar-ease);
     }
 
     .erp-sidebar-brand,
