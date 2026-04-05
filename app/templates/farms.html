@@ -140,43 +140,44 @@
             </div>
         </div>
 
-        <div class="mt-4 hidden flex flex-col gap-4" data-farms-map-modal-view-editor>
+        <div class="mt-4 hidden flex flex-col gap-4 max-md:gap-2" data-farms-map-modal-view-editor>
             <p class="hidden text-sm text-slate-600 md:order-1 md:block">
                 Clique no mapa para adicionar vértices, arraste os pontos para ajustar e use <span class="font-medium">Remover ponto</span> no vértice selecionado (mínimo de três pontos).
             </p>
 
-            <div class="order-1 flex flex-wrap gap-2 md:order-4">
-                <button type="button" class="rounded-2xl bg-slate-100 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-200" data-preview-remove-point>Remover ponto</button>
-                <button type="button" class="rounded-2xl bg-slate-100 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-200" data-farms-map-modal-cancel-edit>Cancelar edição</button>
-                <form method="post" class="inline" id="farms-preview-geometry-form" data-preview-geometry-form>
-                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                    <input type="hidden" name="boundary_geojson" value="" data-preview-geometry-input>
-                    <button type="submit" class="rounded-2xl bg-brand-500 px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-700">Salvar geometria</button>
-                </form>
+            <div class="order-1 max-md:flex max-md:flex-row max-md:items-start max-md:gap-2 md:order-4 md:flex md:flex-wrap md:gap-2">
+                <div class="max-md:flex max-md:min-w-0 max-md:flex-1 max-md:flex-wrap max-md:gap-2 md:contents">
+                    <button type="button" class="rounded-2xl bg-slate-100 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-200" data-preview-remove-point>Remover ponto</button>
+                    <button type="button" class="rounded-2xl bg-slate-100 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-200" data-farms-map-modal-cancel-edit>Cancelar edição</button>
+                    <form method="post" class="inline" id="farms-preview-geometry-form" data-preview-geometry-form>
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                        <input type="hidden" name="boundary_geojson" value="" data-preview-geometry-input>
+                        <button type="submit" class="rounded-2xl bg-brand-500 px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-700">Salvar geometria</button>
+                    </form>
+                </div>
+                <details class="relative z-10 shrink-0 md:hidden" data-preview-map-hint-details>
+                    <summary class="flex cursor-pointer list-none items-center justify-end gap-2 rounded-xl text-slate-600 outline-none [&::-webkit-details-marker]:hidden">
+                        <span class="sr-only">Como editar o polígono no mapa</span>
+                        <span class="inline-flex h-10 w-10 animate-pulse items-center justify-center rounded-full border border-slate-200 bg-white text-brand-600 shadow-sm ring-2 ring-brand-500/15" aria-hidden="true">
+                            <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <circle cx="12" cy="12" r="10"/>
+                                <path d="M12 16v-4"/>
+                                <path d="M12 8h.01"/>
+                            </svg>
+                        </span>
+                    </summary>
+                    <div class="absolute right-0 top-full z-20 mt-2 max-w-[min(100%,20rem)] rounded-2xl border border-slate-200 bg-white p-4 text-sm leading-snug text-slate-700 shadow-lg" data-preview-map-hint-panel>
+                        Clique no mapa para adicionar vértices, arraste os pontos para ajustar e use Remover ponto no vértice selecionado (mínimo de três pontos).
+                    </div>
+                </details>
             </div>
 
-            <details class="relative z-10 max-md:order-2 md:hidden" data-preview-map-hint-details>
-                <summary class="flex cursor-pointer list-none items-center justify-end gap-2 rounded-xl text-slate-600 outline-none [&::-webkit-details-marker]:hidden">
-                    <span class="sr-only">Como editar o polígono no mapa</span>
-                    <span class="inline-flex h-11 w-11 animate-pulse items-center justify-center rounded-full border border-slate-200 bg-white text-brand-600 shadow-sm ring-2 ring-brand-500/15" aria-hidden="true">
-                        <svg class="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <circle cx="12" cy="12" r="10"/>
-                            <path d="M12 16v-4"/>
-                            <path d="M12 8h.01"/>
-                        </svg>
-                    </span>
-                </summary>
-                <div class="absolute right-0 top-full z-20 mt-2 max-w-[min(100%,20rem)] rounded-2xl border border-slate-200 bg-white p-4 text-sm leading-snug text-slate-700 shadow-lg" data-preview-map-hint-panel>
-                    Clique no mapa para adicionar vértices, arraste os pontos para ajustar e use Remover ponto no vértice selecionado (mínimo de três pontos).
-                </div>
-            </details>
-
-            <div class="grid gap-2 text-sm text-slate-600 max-md:order-3 sm:grid-cols-2 md:order-2">
+            <div class="grid gap-2 text-sm text-slate-600 max-md:order-2 sm:grid-cols-2 md:order-2">
                 <p>Vértices: <span class="font-semibold text-slate-900" data-preview-editor-vertices>0</span></p>
                 <p>Área aproximada: <span class="font-semibold text-slate-900" data-preview-editor-area>0,00</span> ha</p>
             </div>
 
-            <div id="farms-preview-boundary-map" class="relative z-0 max-md:order-4 h-[min(52vh,440px)] min-h-[220px] overflow-hidden rounded-2xl border border-slate-200 md:order-3"></div>
+            <div id="farms-preview-boundary-map" class="relative z-0 max-md:order-3 max-md:h-[min(58vh,520px)] max-md:min-h-[240px] h-[min(52vh,440px)] min-h-[220px] overflow-hidden rounded-2xl border border-slate-200 md:order-3"></div>
         </div>
     </div>
 </dialog>
