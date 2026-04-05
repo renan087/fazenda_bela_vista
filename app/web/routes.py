@@ -1786,7 +1786,7 @@ def create_plot_action(
         is_new_plot=True,
     )
     _flash(request, "success", "Setor salvo com sucesso.")
-    return _redirect_with_query("/setores", edit_id=new_plot.id)
+    return _redirect("/setores")
 
 
 @router.post("/talhoes/{plot_id}/editar", include_in_schema=False)
@@ -1880,7 +1880,7 @@ def update_plot_action(
         is_new_plot=False,
     )
     _flash(request, "success", "Setor atualizado com sucesso.")
-    return _redirect_with_query("/setores", edit_id=plot_id)
+    return _redirect("/setores")
 
 
 @router.get("/talhoes/anexos/{attachment_id}", include_in_schema=False)
