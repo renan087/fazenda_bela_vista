@@ -8,6 +8,8 @@ import hashlib
 import json
 import logging
 import unicodedata
+import urllib.error
+import urllib.request
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, Request, Response, UploadFile, status
 from fastapi.responses import JSONResponse, RedirectResponse, StreamingResponse
@@ -1749,6 +1751,50 @@ def farms_page(
             _repo=repo,
         ),
     )
+
+
+@router.get("/fazendas/geocodificar")
+def geocode_farm_location(
+    q: str = "",
+    user: User = Depends(get_current_user_web),
+):
+    """Geocodifica texto de localização (Nominatim/OSM) para centralizar o mapa do cadastro."""
+    del user
+    query = (q or "").strip()
+    if len(query) < 2:
+        return JSONResponse({"ok": False, "code": "empty"}, status_code=400)
+    params = urlencode({"format": "json", "limit": "1", "q": query})
+    url = f"https://nominatim.openstreetmap.org/search?{params}"
+    req = urllib.request.Request(
+        url,
+        headers={
+            "User-Agent": "FazendaBelaVista/1.0 (+https://github.com/renan087/fazenda_bela_vista)",
+            "Accept-Language": "pt-BR,pt;q=0.9",
+        },
+        method="GET",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=12) as resp:
+            raw = resp.read().decode("utf-8")
+    except urllib.error.HTTPError as exc:
+        logging.getLogger(__name__).warning("Nominatim HTTP %s", exc.code)
+        return JSONResponse({"ok": False, "code": "upstream"}, status_code=502)
+    except Exception:
+        logging.getLogger(__name__).exception("geocode nominatim")
+        return JSONResponse({"ok": False, "code": "upstream"}, status_code=502)
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError:
+        return JSONResponse({"ok": False, "code": "upstream"}, status_code=502)
+    if not data:
+        return JSONResponse({"ok": False, "code": "not_found"})
+    row = data[0]
+    try:
+        lat = float(row["lat"])
+        lng = float(row["lon"])
+    except (KeyError, TypeError, ValueError):
+        return JSONResponse({"ok": False, "code": "not_found"})
+    return JSONResponse({"ok": True, "lat": lat, "lng": lng})
 
 
 @router.post("/fazendas")

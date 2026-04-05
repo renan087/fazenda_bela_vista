@@ -76,13 +76,17 @@
     }
 
     function initLeafletEditor(options) {
-        const { containerId, hiddenInput, initialGeometry, removePointButton, onStats } = options;
+        const { containerId, hiddenInput, initialGeometry, removePointButton, onStats, initialCenter, initialZoom } =
+            options;
         const el = document.getElementById(containerId);
         if (!el || typeof L === 'undefined') {
             return nullStub();
         }
 
-        const map = L.map(el, { scrollWheelZoom: true }).setView([-20.7442, -42.8721], 14);
+        const lat0 = initialCenter && typeof initialCenter.lat === 'number' ? initialCenter.lat : -20.7442;
+        const lng0 = initialCenter && typeof initialCenter.lng === 'number' ? initialCenter.lng : -42.8721;
+        const zoom0 = typeof initialZoom === 'number' && initialZoom > 0 ? initialZoom : 14;
+        const map = L.map(el, { scrollWheelZoom: true }).setView([lat0, lng0], zoom0);
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
             attribution: '&copy; OpenStreetMap',
         }).addTo(map);
@@ -194,7 +198,8 @@
     }
 
     async function initGoogleEditor(options, apiKey) {
-        const { containerId, hiddenInput, initialGeometry, removePointButton, onStats } = options;
+        const { containerId, hiddenInput, initialGeometry, removePointButton, onStats, initialCenter, initialZoom } =
+            options;
         const el = document.getElementById(containerId);
         if (!el) {
             return nullStub();
@@ -202,9 +207,12 @@
 
         await loadGoogleMapsScript(apiKey);
 
+        const lat0 = initialCenter && typeof initialCenter.lat === 'number' ? initialCenter.lat : -20.7442;
+        const lng0 = initialCenter && typeof initialCenter.lng === 'number' ? initialCenter.lng : -42.8721;
+        const zoom0 = typeof initialZoom === 'number' && initialZoom > 0 ? initialZoom : 14;
         const map = new google.maps.Map(el, {
-            center: { lat: -20.7442, lng: -42.8721 },
-            zoom: 14,
+            center: { lat: lat0, lng: lng0 },
+            zoom: zoom0,
             mapTypeId: 'satellite',
             mapTypeControl: true,
             streetViewControl: false,

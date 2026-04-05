@@ -211,7 +211,7 @@
             <div class="min-w-0">
                 <p class="text-xs uppercase tracking-[0.35em] text-slate-400">{% if edit_farm %}Editar fazenda{% else %}Nova fazenda{% endif %}</p>
                 <h3 class="mt-2 text-2xl font-semibold purchased-modal-heading">{% if edit_farm %}Editar fazenda{% else %}Cadastrar nova fazenda{% endif %}</h3>
-                <p class="mt-2 text-sm text-slate-500 purchased-modal-subtitle">Centralize dados de localização, área total e geometria em um formulário único.</p>
+                <p class="mt-2 text-sm text-slate-500 purchased-modal-subtitle">Centralize dados de localização, área total e geometria.</p>
             </div>
             <button type="button" class="modal-close-button" aria-label="Fechar" data-farms-launch-close>
                 <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -252,7 +252,7 @@
 
                 <div class="rounded-[1.25rem] border border-slate-200 bg-slate-50/80 p-4">
                     <p class="text-xs uppercase tracking-[0.25em] text-slate-400">Perímetro no mapa</p>
-                    {% if not edit_farm_preview_only_src %}
+                    {% if edit_farm and not edit_farm_preview_only_src %}
                     <p class="mt-2 text-sm text-slate-600">Desenhe o polígono clicando no mapa (não é necessário enviar arquivo antes). Arraste os pontos para ajustar. Envie um arquivo GeoJSON abaixo apenas se preferir importar de outra ferramenta.</p>
                     {% if google_maps_web_key %}
                     <p class="mt-2 text-xs text-emerald-700">Mapa em modo satélite (Google Maps).</p>
@@ -278,6 +278,26 @@
                                 Editar perímetro no mapa
                             </span>
                         </button>
+                    </div>
+                    {% elif not edit_farm %}
+                    <p class="mt-2 text-sm text-slate-600">Desenhe o polígono clicando no mapa. Arraste os pontos para ajustar.</p>
+                    <p class="mt-2 text-sm text-slate-500">Preencha <span class="font-medium text-slate-700">Localização</span> (cidade, região ou endereço) e use <span class="font-medium text-slate-700">Carregar mapa</span>. O mapa só é carregado depois disso, centrado na região encontrada — assim evitamos chamadas à API de mapas enquanto você só navega no formulário.</p>
+                    <div class="mt-3 space-y-3" data-farms-new-map-gate>
+                        <div data-farms-map-prompt class="rounded-2xl border border-dashed border-slate-200 bg-white p-4">
+                            <button type="button" class="w-full rounded-2xl bg-brand-500 py-3 text-sm font-semibold text-white hover:bg-brand-700 sm:w-auto sm:px-8" data-farms-load-map>Carregar mapa</button>
+                        </div>
+                        <div data-farms-map-editor-wrap class="hidden space-y-2">
+                            {% if google_maps_web_key %}
+                            <p class="text-xs text-emerald-700">Mapa em modo satélite (Google Maps).</p>
+                            {% else %}
+                            <p class="text-xs text-slate-500">Sem <code class="rounded bg-slate-200 px-1 py-0.5 text-[11px]">GOOGLE_MAPS_API_KEY</code> no servidor, o mapa usa OpenStreetMap.</p>
+                            {% endif %}
+                            <div id="farms-form-boundary-map" class="relative z-0 h-[280px] overflow-hidden rounded-2xl border border-slate-200 bg-white sm:h-[320px]"></div>
+                            <div class="flex flex-wrap items-center gap-x-4 gap-y-2">
+                                <button type="button" class="rounded-xl bg-slate-200 px-3 py-2 text-xs font-semibold text-slate-800 hover:bg-slate-300" data-farms-form-remove-point>Remover ponto selecionado</button>
+                                <button type="button" class="text-xs font-semibold text-brand-700 underline decoration-brand-500/40 hover:text-brand-900" data-farms-map-change-region>Trocar região do mapa</button>
+                            </div>
+                        </div>
                     </div>
                     {% else %}
                     <div class="mt-3">
@@ -306,12 +326,22 @@
     </div>
 </dialog>
 
+<dialog id="farms-geocode-dialog" class="app-modal w-full max-w-md rounded-[1.5rem] border-0 bg-white p-0 shadow-2xl">
+    <div class="p-6 sm:p-7">
+        <h3 class="text-lg font-semibold text-slate-900">Localização não encontrada</h3>
+        <p class="mt-3 text-sm leading-relaxed text-slate-600" data-farms-geocode-dialog-msg>
+            Não foi possível localizar essa região. Confira o campo Localização, tente outra forma de escrever (cidade, estado, bairro) ou, após carregar o mapa, navegue até o local desejado.
+        </p>
+        <button type="button" class="mt-5 w-full rounded-2xl bg-brand-500 py-3 text-sm font-semibold text-white hover:bg-brand-700" data-farms-geocode-dialog-ok>Entendi</button>
+    </div>
+</dialog>
+
 <script type="application/json" id="farm-boundary-geometries-data">{{ farm_boundary_geometries_json|safe }}</script>
 <script>
     const EDIT_FARM_GEOMETRY = {{ edit_farm_geometry_json|safe }};
     window.__GOOGLE_MAPS_API_KEY = {{ google_maps_web_key | tojson }};
 </script>
-<script src="{{ url_for('static', path='js/farm_boundary_editor.js') }}?v=3"></script>
+<script src="{{ url_for('static', path='js/farm_boundary_editor.js') }}?v=4"></script>
 <script>
     (() => {
         let FARM_BOUNDARY_DATA = {};
@@ -347,6 +377,14 @@
         const closeButtons = Array.from(document.querySelectorAll('[data-farms-launch-close]'));
         const form = document.querySelector('[data-farms-form]');
         const deferFarmFormInlineMap = form?.dataset.farmsDeferInlineMap === '1';
+        const farmFormNewMapGate = document.querySelector('[data-farms-new-map-gate]');
+        const farmFormMapPrompt = document.querySelector('[data-farms-map-prompt]');
+        const farmFormMapEditorWrap = document.querySelector('[data-farms-map-editor-wrap]');
+        const farmFormLoadMapBtn = document.querySelector('[data-farms-load-map]');
+        const farmFormChangeRegionBtn = document.querySelector('[data-farms-map-change-region]');
+        const geocodeDialog = document.getElementById('farms-geocode-dialog');
+        const geocodeDialogMsg = document.querySelector('[data-farms-geocode-dialog-msg]');
+        const geocodeDialogOk = document.querySelector('[data-farms-geocode-dialog-ok]');
         const searchInput = document.querySelector('[data-farms-search]');
         const rows = Array.from(document.querySelectorAll('[data-farms-row]'));
         const emptyState = document.querySelector('[data-farms-search-empty]');
@@ -366,6 +404,7 @@
                 window.location.href = '/fazendas';
                 return;
             }
+            resetNewFarmMapGate();
             destroyFarmFormBoundaryEditor();
             resetForm();
             launchModal?.close();
@@ -489,21 +528,49 @@
             }
         };
 
-        const setupFarmFormBoundaryEditor = async () => {
+        const resetNewFarmMapGate = () => {
+            if (!farmFormNewMapGate) return;
+            destroyFarmFormBoundaryEditor();
+            farmFormMapPrompt?.classList.remove('hidden');
+            farmFormMapEditorWrap?.classList.add('hidden');
+            if (farmFormLoadMapBtn) {
+                farmFormLoadMapBtn.disabled = false;
+                farmFormLoadMapBtn.textContent = 'Carregar mapa';
+            }
+            const hi = form?.querySelector('[data-farms-boundary-input]');
+            if (hi) hi.value = '';
+        };
+
+        const showFarmGeocodeDialog = (message) => {
+            if (geocodeDialogMsg && message) geocodeDialogMsg.textContent = message;
+            geocodeDialog?.showModal();
+        };
+
+        const setupFarmFormBoundaryEditor = async (initialCenter) => {
             destroyFarmFormBoundaryEditor();
             if (typeof window.initFarmBoundaryEditor !== 'function' || !form) return;
             if (deferFarmFormInlineMap) return;
+            if (farmFormNewMapGate && !initialCenter) return;
             const mapEl = document.getElementById('farms-form-boundary-map');
             const hiddenInput = form.querySelector('[data-farms-boundary-input]');
-            const removeBtn = document.querySelector('[data-farms-form-remove-point]');
+            const removeBtn = form.querySelector('[data-farms-form-remove-point]');
             if (!mapEl || !hiddenInput) return;
+            const editorOpts = {
+                containerId: 'farms-form-boundary-map',
+                hiddenInput,
+                initialGeometry: EDIT_FARM_GEOMETRY || null,
+                removePointButton: removeBtn,
+            };
+            if (
+                initialCenter &&
+                typeof initialCenter.lat === 'number' &&
+                typeof initialCenter.lng === 'number'
+            ) {
+                editorOpts.initialCenter = initialCenter;
+                editorOpts.initialZoom = 13;
+            }
             try {
-                farmFormBoundaryEditor = await window.initFarmBoundaryEditor({
-                    containerId: 'farms-form-boundary-map',
-                    hiddenInput,
-                    initialGeometry: EDIT_FARM_GEOMETRY || null,
-                    removePointButton: removeBtn,
-                });
+                farmFormBoundaryEditor = await window.initFarmBoundaryEditor(editorOpts);
             } catch (err) {
                 console.error(err);
                 return;
@@ -511,6 +578,64 @@
             window.setTimeout(() => farmFormBoundaryEditor?.invalidate(), 200);
             window.setTimeout(() => farmFormBoundaryEditor?.invalidate(), 500);
         };
+
+        farmFormLoadMapBtn?.addEventListener('click', async () => {
+            const locInput = form?.querySelector('input[name="location"]');
+            const q = (locInput?.value || '').trim();
+            if (q.length < 2) {
+                showFarmGeocodeDialog(
+                    'Informe a localização (por exemplo cidade e estado) antes de carregar o mapa.',
+                );
+                return;
+            }
+            farmFormLoadMapBtn.disabled = true;
+            farmFormLoadMapBtn.textContent = 'Carregando...';
+            try {
+                const res = await fetch(`/fazendas/geocodificar?q=${encodeURIComponent(q)}`, {
+                    credentials: 'same-origin',
+                });
+                let data = null;
+                try {
+                    data = await res.json();
+                } catch {
+                    data = { ok: false, code: 'upstream' };
+                }
+                if (!data || !data.ok) {
+                    if (data?.code === 'not_found') {
+                        showFarmGeocodeDialog(
+                            'Não foi possível localizar essa região. Confira o campo Localização, tente outra forma de escrever (cidade, estado, bairro) ou, após carregar o mapa, navegue até o local desejado.',
+                        );
+                    } else if (data?.code === 'empty') {
+                        showFarmGeocodeDialog(
+                            'Informe a localização (por exemplo cidade e estado) antes de carregar o mapa.',
+                        );
+                    } else {
+                        showFarmGeocodeDialog(
+                            'Não foi possível consultar o serviço de localização. Tente novamente em instantes.',
+                        );
+                    }
+                    return;
+                }
+                farmFormMapPrompt?.classList.add('hidden');
+                farmFormMapEditorWrap?.classList.remove('hidden');
+                await setupFarmFormBoundaryEditor({ lat: data.lat, lng: data.lng });
+            } catch {
+                showFarmGeocodeDialog(
+                    'Não foi possível consultar o serviço de localização. Tente novamente em instantes.',
+                );
+            } finally {
+                farmFormLoadMapBtn.disabled = false;
+                farmFormLoadMapBtn.textContent = 'Carregar mapa';
+            }
+        });
+
+        farmFormChangeRegionBtn?.addEventListener('click', () => resetNewFarmMapGate());
+
+        geocodeDialogOk?.addEventListener('click', () => geocodeDialog?.close());
+        geocodeDialog?.addEventListener('cancel', (e) => {
+            e.preventDefault();
+            geocodeDialog.close();
+        });
 
         openButtons.forEach((button) => {
             button.addEventListener('click', (event) => {
@@ -521,6 +646,7 @@
                     return;
                 }
                 resetForm();
+                resetNewFarmMapGate();
                 destroyFarmFormBoundaryEditor();
                 launchModal?.showModal();
                 window.requestAnimationFrame(() => {
@@ -547,8 +673,8 @@
             farmFormBoundaryEditor?.syncToHidden();
             if (!isEditing) {
                 window.setTimeout(() => {
+                    resetNewFarmMapGate();
                     resetForm();
-                    destroyFarmFormBoundaryEditor();
                     launchModal?.close();
                 }, 0);
             }
