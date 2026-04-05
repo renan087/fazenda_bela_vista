@@ -5387,6 +5387,7 @@ def delete_variety_action(
 def crop_seasons_page(
     request: Request,
     edit_id: int | None = None,
+    view_id: int | None = None,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user_web),
     csrf_token: str = Depends(get_csrf_token),
@@ -5401,6 +5402,12 @@ def crop_seasons_page(
     if edit_season and not _farm_matches_scope(edit_season.farm_id, scope):
         _flash(request, "error", "Esta safra nao pertence ao contexto ativo.")
         edit_season = None
+    view_season = None
+    if not edit_season and view_id:
+        view_season = repo.get_crop_season(view_id)
+        if view_season and not _farm_matches_scope(view_season.farm_id, scope):
+            _flash(request, "error", "Esta safra nao pertence ao contexto ativo.")
+            view_season = None
     season_costs: dict[int, dict] = {}
     for season in crop_seasons:
         season_outputs = [output for output in stock_outputs if output.season_id == season.id]
@@ -5450,6 +5457,7 @@ def crop_seasons_page(
             crop_seasons=crop_seasons,
             season_costs=season_costs,
             edit_season=edit_season,
+            view_season=view_season,
         ),
     )
 
