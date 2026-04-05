@@ -348,6 +348,7 @@ body {
     overflow-y: hidden;
     -webkit-overflow-scrolling: touch;
     scroll-snap-type: x mandatory;
+    touch-action: pan-x pan-y;
     overscroll-behavior-x: contain;
     scrollbar-width: none;
     -ms-overflow-style: none;
@@ -368,6 +369,7 @@ body {
     min-width: 100%;
     gap: 0.85rem;
     margin: 0;
+    touch-action: pan-x pan-y;
 }
 
 .swipe-card-pager-scroll-track.swipe-card-pager-scroll-active > .stock-summary-card {

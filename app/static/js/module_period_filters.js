@@ -334,7 +334,7 @@
                 syncCustomVisibility();
                 closeMenu();
                 if (value !== 'custom') {
-                    form.requestSubmit();
+                    ownerForm.requestSubmit();
                 } else {
                     openCustomRange();
                 }

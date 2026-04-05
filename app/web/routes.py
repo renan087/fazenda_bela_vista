@@ -623,6 +623,12 @@ def _fertilization_filter_range_preset(raw_preset: str | None, raw_start: str, r
     return "last_10_days"
 
 
+def _period_filter_explicit_in_query(request: Request) -> bool:
+    """True se o usuario passou periodo na URL (igual convencao da pagina estoque)."""
+    qp = request.query_params
+    return bool((qp.get("schedule_range") or "").strip() or (qp.get("start_date") or "").strip() or (qp.get("end_date") or "").strip())
+
+
 def _schedule_tab_filter_range_preset(
     raw_preset: str | None,
     raw_start: str,
@@ -5184,10 +5190,14 @@ def fertilization_page(
     start_date, end_date, filter_start_str, filter_end_str = _schedule_filter_date_bounds(
         request, scope["active_season"], flash_invalid=True
     )
-    selected_fertilization_range = _fertilization_filter_range_preset(
-        request.query_params.get("schedule_range"),
-        filter_start_str,
-        filter_end_str,
+    selected_fertilization_range = (
+        _fertilization_filter_range_preset(
+            request.query_params.get("schedule_range"),
+            filter_start_str,
+            filter_end_str,
+        )
+        if _period_filter_explicit_in_query(request)
+        else ""
     )
     plots = repo.list_plots(farm_ids=farm_ids, variety_ids=variety_ids)
     plot_ids = {plot.id for plot in plots}
@@ -5604,11 +5614,15 @@ def fertilization_schedules_page(
     start_date, end_date, filter_start_str, filter_end_str = _schedule_filter_date_bounds(
         request, scope["active_season"], flash_invalid=True
     )
-    selected_schedule_range = _schedule_tab_filter_range_preset(
-        request.query_params.get("schedule_range"),
-        filter_start_str,
-        filter_end_str,
-        schedule_tab=selected_schedule_tab,
+    selected_schedule_range = (
+        _schedule_tab_filter_range_preset(
+            request.query_params.get("schedule_range"),
+            filter_start_str,
+            filter_end_str,
+            schedule_tab=selected_schedule_tab,
+        )
+        if _period_filter_explicit_in_query(request)
+        else ""
     )
     plots = repo.list_plots(farm_ids=farm_ids, variety_ids=variety_ids)
     plot_ids = {plot.id for plot in plots}

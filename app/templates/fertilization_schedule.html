@@ -184,6 +184,7 @@
                 [{'name': 'schedule_tab', 'value': selected_schedule_tab}] + ([{'name': 'edit_id', 'value': edit_schedule.id|string}] if edit_schedule else []),
                 request.query_params.get('search', ''),
                 preset_variant=schedule_filter_preset_variant,
+                period_placeholder='Filtre por período',
                 mobile_icon_clear=True
             ) }}
         </div>
@@ -461,7 +462,7 @@
     </div>
 </template>
 
-<script src="{{ url_for('static', path='js/module_period_filters.js') }}?v=3"></script>
+<script src="{{ url_for('static', path='js/module_period_filters.js') }}?v=5"></script>
 <script>
     (() => {
         const launchModal = document.getElementById('schedule-launch-modal');

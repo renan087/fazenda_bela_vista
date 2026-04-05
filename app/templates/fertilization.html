@@ -149,6 +149,7 @@
                 ([{'name': 'edit_id', 'value': edit_fertilization.id|string}] if edit_fertilization else []),
                 request.query_params.get('search', ''),
                 preset_variant='past',
+                period_placeholder='Filtre por período',
                 mobile_icon_clear=True
             ) }}
         </div>
@@ -365,7 +366,7 @@
     </div>
 </template>
 
-<script src="{{ url_for('static', path='js/module_period_filters.js') }}?v=3"></script>
+<script src="{{ url_for('static', path='js/module_period_filters.js') }}?v=5"></script>
 <script>
     (() => {
         const launchModal = document.getElementById('fertilization-launch-modal');

@@ -179,7 +179,8 @@
             if (isScrollCarousel()) {
                 root.classList.remove('swipe-card-pager-surface');
                 root.classList.add('swipe-card-pager-scroll-track', 'swipe-card-pager-scroll-active');
-                root.style.touchAction = 'pan-x';
+                root.style.touchAction = 'pan-x pan-y';
+                scrollViewport.style.touchAction = 'pan-x pan-y';
                 scrollViewport.classList.add(
                     'swipe-card-pager-scroll-viewport',
                     'is-carousel-active',
@@ -187,6 +188,7 @@
                 items.forEach((item) => item.classList.remove('hidden'));
             } else {
                 scrollViewport?.classList.remove('swipe-card-pager-scroll-viewport', 'is-carousel-active');
+                scrollViewport?.style.removeProperty('touch-action');
                 clearCarouselDotsLinkedVars();
                 root.classList.remove('swipe-card-pager-scroll-track', 'swipe-card-pager-scroll-active');
                 root.classList.add('swipe-card-pager-surface');
