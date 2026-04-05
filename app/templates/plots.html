@@ -92,9 +92,9 @@
                             {% if plot.boundary_geojson %}
                             {% set plot_list_thumb_src = url_for('static', path='generated/plot_previews/' ~ plot.id ~ '_thumb.jpg') ~ '?v=' ~ plot_preview_fingerprint.get(plot.id, '') %}
                             {% if plot_preview_ready.get(plot.id) %}
-                            <span class="relative ml-0 aspect-video w-20 shrink-0 overflow-hidden rounded-xl border-2 border-slate-200 bg-slate-100 shadow-sm sm:w-24" title="Prévia do perímetro do setor">
+                            <a href="/setores?edit_id={{ plot.id }}" class="relative ml-0 inline-block aspect-video w-20 shrink-0 overflow-hidden rounded-xl border-2 border-slate-200 bg-slate-100 shadow-sm transition hover:border-brand-400 hover:shadow-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500 sm:w-24" title="Abrir setor — {{ plot.name }}">
                                 <img src="{{ plot_list_thumb_src }}" alt="" width="96" height="54" loading="lazy" decoding="async" class="h-full w-full object-cover">
-                            </span>
+                            </a>
                             {% else %}
                             <span class="inline-flex max-w-[14rem] items-center gap-2 rounded-xl border border-dashed border-slate-200 bg-white px-2.5 py-1.5 text-left text-xs text-slate-600 sm:ml-1">
                                 <span class="inline-flex h-2 w-2 shrink-0 animate-pulse rounded-full bg-brand-500" aria-hidden="true"></span>
@@ -213,60 +213,73 @@
 
                 <div class="rounded-[1.5rem] border border-slate-200 bg-slate-50 p-4">
                     <p class="text-xs uppercase tracking-[0.3em] text-slate-400">Perímetro do setor no mapa</p>
-                    {% if google_maps_web_key %}
-                    <p class="mt-2 text-xs text-emerald-700">Mapa em satélite (Google Maps).</p>
-                    {% else %}
-                    <p class="mt-2 text-xs text-slate-500">Sem <code class="rounded bg-slate-200 px-1 py-0.5 text-[11px]">GOOGLE_MAPS_API_KEY</code> no servidor, o mapa usa OpenStreetMap.</p>
-                    {% endif %}
 
                     {% if edit_plot %}
-                    <p class="mt-2 text-sm text-slate-600">O editor abre em um <span class="font-medium text-slate-800">painel separado</span>, como na página Fazendas. No mapa, o polígono <span class="font-medium text-slate-800">verde</span> é o limite da fazenda (somente leitura).</p>
                     {% if edit_plot_preview_only_src %}
-                    <div class="mx-auto mt-4 flex w-full max-w-3xl justify-center">
-                        <div class="w-full overflow-hidden rounded-2xl border-2 border-slate-200 bg-slate-100 shadow-sm">
-                            <img src="{{ edit_plot_preview_only_src }}" alt="Prévia do perímetro do setor" width="960" height="540" loading="lazy" decoding="async" class="mx-auto block max-h-[min(52vh,420px)] w-full object-contain">
-                        </div>
-                    </div>
-                    <p class="mt-3 text-center text-sm text-slate-600">Use o botão abaixo para abrir o mapa e ajustar o perímetro.</p>
-                    <div class="mt-4 flex justify-center">
-                        <button type="button" class="rounded-2xl bg-brand-500 px-5 py-3 text-sm font-semibold text-white shadow-sm hover:bg-brand-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500" data-plots-map-open aria-label="Editar perímetro do setor no mapa — {{ edit_plot.name | e }}">
-                            Editar perímetro no mapa
+                    <div class="mx-auto mt-4 max-w-3xl">
+                        <button
+                            type="button"
+                            class="group relative w-full overflow-hidden rounded-2xl border-2 border-slate-200 bg-slate-100 text-left shadow-sm transition hover:border-brand-400 hover:shadow-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500"
+                            title="Editar perímetro no mapa"
+                            aria-label="Editar perímetro do setor no mapa — {{ edit_plot.name | e }}"
+                            data-plots-map-open
+                            data-plots-map-direct-edit="1"
+                        >
+                            <img src="{{ edit_plot_preview_only_src }}" alt="" width="960" height="540" loading="lazy" decoding="async" class="pointer-events-none mx-auto block max-h-[min(52vh,420px)] w-full object-contain">
+                            <span class="pointer-events-none absolute inset-0 ring-inset ring-transparent transition group-hover:bg-slate-900/10" aria-hidden="true"></span>
+                            <span class="pointer-events-none absolute bottom-2 left-2 right-2 rounded-xl bg-slate-900/70 px-3 py-2 text-center text-xs font-semibold text-white backdrop-blur-sm sm:text-sm">
+                                Editar perímetro no mapa
+                            </span>
                         </button>
                     </div>
                     {% elif edit_plot.boundary_geojson %}
-                    <div class="relative mx-auto mt-4 max-w-3xl overflow-hidden rounded-2xl border border-slate-200 min-h-[260px]">
+                    <button
+                        type="button"
+                        class="group relative mx-auto mt-4 flex w-full max-w-3xl min-h-[260px] overflow-hidden rounded-2xl border border-slate-200 text-left shadow-sm transition hover:border-brand-400 hover:shadow-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500"
+                        title="Editar perímetro no mapa"
+                        aria-label="Editar perímetro do setor no mapa — {{ edit_plot.name | e }}"
+                        data-plots-map-open
+                        data-plots-map-direct-edit="1"
+                    >
                         {% if edit_farm_bg_src %}
-                        <img src="{{ edit_farm_bg_src }}" alt="" class="absolute inset-0 h-full w-full object-cover opacity-35" aria-hidden="true">
+                        <img src="{{ edit_farm_bg_src }}" alt="" class="pointer-events-none absolute inset-0 h-full w-full object-cover opacity-35" aria-hidden="true">
                         {% else %}
-                        <div class="absolute inset-0 bg-gradient-to-br from-slate-200 to-slate-100" aria-hidden="true"></div>
+                        <div class="pointer-events-none absolute inset-0 bg-gradient-to-br from-slate-200 to-slate-100" aria-hidden="true"></div>
                         {% endif %}
-                        <div class="relative z-10 flex min-h-[260px] flex-col items-center justify-center px-4 py-8 text-center">
-                            <p class="inline-flex items-center gap-2 rounded-xl border border-dashed border-slate-300 bg-white/90 px-3 py-2 text-xs text-slate-700 shadow-sm">
+                        <div class="relative z-10 flex min-h-[240px] flex-col items-center justify-center px-4 py-10 text-center">
+                            <p class="pointer-events-none inline-flex items-center gap-2 rounded-xl border border-dashed border-slate-300 bg-white/90 px-3 py-2 text-xs text-slate-700 shadow-sm">
                                 <span class="inline-flex h-2 w-2 shrink-0 animate-pulse rounded-full bg-brand-500" aria-hidden="true"></span>
                                 Gerando miniatura do mapa do setor…
                             </p>
-                            <p class="mt-3 max-w-sm text-sm text-slate-700">Você já pode abrir o mapa para editar o perímetro; após salvar o setor, a imagem será atualizada.</p>
-                            <button type="button" class="mt-5 rounded-2xl bg-brand-500 px-5 py-3 text-sm font-semibold text-white shadow-sm hover:bg-brand-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500" data-plots-map-open aria-label="Abrir mapa do setor — {{ edit_plot.name | e }}">
-                                Abrir mapa do setor
-                            </button>
+                            <p class="pointer-events-none mt-3 max-w-sm text-sm text-slate-700">Após salvar o setor, a imagem será atualizada.</p>
                         </div>
-                    </div>
+                        <span class="pointer-events-none absolute bottom-2 left-2 right-2 rounded-xl bg-slate-900/70 px-3 py-2 text-center text-xs font-semibold text-white backdrop-blur-sm sm:text-sm">
+                            Editar perímetro no mapa
+                        </span>
+                    </button>
                     {% else %}
-                    <div class="relative mx-auto mt-4 max-w-3xl overflow-hidden rounded-2xl border border-slate-200 min-h-[280px]">
+                    <button
+                        type="button"
+                        class="group relative mx-auto mt-4 flex w-full max-w-3xl min-h-[280px] overflow-hidden rounded-2xl border border-slate-200 text-left shadow-sm transition hover:border-brand-400 hover:shadow-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500"
+                        title="Editar perímetro no mapa"
+                        aria-label="Desenhar perímetro do setor no mapa — {{ edit_plot.name | e }}"
+                        data-plots-map-open
+                        data-plots-map-direct-edit="1"
+                    >
                         {% if edit_farm_bg_src %}
-                        <img src="{{ edit_farm_bg_src }}" alt="" class="absolute inset-0 h-full w-full object-cover opacity-40" aria-hidden="true">
+                        <img src="{{ edit_farm_bg_src }}" alt="" class="pointer-events-none absolute inset-0 h-full w-full object-cover opacity-40" aria-hidden="true">
                         {% else %}
-                        <div class="absolute inset-0 bg-slate-200/90" aria-hidden="true"></div>
+                        <div class="pointer-events-none absolute inset-0 bg-slate-200/90" aria-hidden="true"></div>
                         {% endif %}
-                        <div class="absolute inset-0 bg-white/55 backdrop-blur-[1px]" aria-hidden="true"></div>
-                        <div class="relative z-10 flex min-h-[280px] flex-col items-center justify-center px-4 py-8 text-center">
+                        <div class="pointer-events-none absolute inset-0 bg-white/55 backdrop-blur-[1px]" aria-hidden="true"></div>
+                        <div class="pointer-events-none relative z-10 flex min-h-[260px] flex-col items-center justify-center px-4 py-8 text-center">
                             <p class="text-sm font-semibold text-slate-900">Não há polígono cadastrado para este setor no mapa.</p>
-                            <p class="mt-2 max-w-md text-sm text-slate-600">Desenhe o perímetro sobre a imagem da fazenda ou importe um arquivo GeoJSON abaixo.</p>
-                            <button type="button" class="mt-5 rounded-2xl bg-brand-500 px-5 py-3 text-sm font-semibold text-white shadow-sm hover:bg-brand-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500" data-plots-map-open aria-label="Desenhar perímetro no mapa — {{ edit_plot.name | e }}">
-                                Desenhar perímetro no mapa
-                            </button>
+                            <p class="mt-2 max-w-md text-sm text-slate-600">Importe um GeoJSON abaixo ou toque na tarja para desenhar no mapa.</p>
                         </div>
-                    </div>
+                        <span class="pointer-events-none absolute bottom-2 left-2 right-2 rounded-xl bg-slate-900/70 px-3 py-2 text-center text-xs font-semibold text-white backdrop-blur-sm sm:text-sm">
+                            Editar perímetro no mapa
+                        </span>
+                    </button>
                     {% endif %}
                     <input type="hidden" name="boundary_geojson" value="" data-plots-boundary-input>
                     <label class="mt-4 block">
@@ -278,6 +291,11 @@
                     {% endif %}
 
                     {% else %}
+                    {% if google_maps_web_key %}
+                    <p class="mt-2 text-xs text-emerald-700">Mapa em satélite (Google Maps).</p>
+                    {% else %}
+                    <p class="mt-2 text-xs text-slate-500">Sem <code class="rounded bg-slate-200 px-1 py-0.5 text-[11px]">GOOGLE_MAPS_API_KEY</code> no servidor, o mapa usa OpenStreetMap.</p>
+                    {% endif %}
                     <p class="mt-2 text-sm text-slate-600">Clique no mapa para adicionar vértices e arraste os pontos para ajustar. O polígono <span class="font-medium text-slate-800">verde</span> mostra o limite da fazenda (somente leitura), como na página Fazendas.</p>
                     <div data-plots-boundary-map-section>
                         <p class="mt-2 hidden text-sm text-amber-900" data-plots-no-farm-boundary-warning>
@@ -347,11 +365,6 @@
                 <img data-plots-map-modal-img src="" alt="" class="mx-auto max-h-[min(72vh,600px)] w-full object-contain">
             </div>
             <p class="hidden text-center text-sm text-slate-500" data-plots-map-modal-no-preview>Nenhuma imagem de referência disponível; você ainda pode editar o perímetro no mapa.</p>
-            <div class="flex flex-wrap gap-2">
-                <button type="button" class="rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50" data-plots-map-modal-start-edit>
-                    Editar polígono no mapa
-                </button>
-            </div>
         </div>
 
         <div class="mt-4 hidden flex flex-col gap-4 max-md:gap-2" data-plots-map-modal-view-editor>
@@ -453,7 +466,6 @@
         const plotsMapViewImage = plotsMapModal?.querySelector('[data-plots-map-modal-view-image]');
         const plotsMapViewEditor = plotsMapModal?.querySelector('[data-plots-map-modal-view-editor]');
         const plotsMapModalNoPreview = plotsMapModal?.querySelector('[data-plots-map-modal-no-preview]');
-        const plotsMapModalStartEdit = plotsMapModal?.querySelector('[data-plots-map-modal-start-edit]');
         const plotsMapModalCancelEdit = plotsMapModal?.querySelector('[data-plots-map-modal-cancel-edit]');
         const plotsMapModalDoneEdit = plotsMapModal?.querySelector('[data-plots-map-modal-done-edit]');
         const plotsModalRemovePointBtn = plotsMapModal?.querySelector('[data-plots-modal-remove-point]');
@@ -615,8 +627,9 @@
             plotsMapModalNoPreview?.classList.add('hidden');
         };
 
-        const openPlotsMapModal = () => {
+        const openPlotsMapModal = (options = {}) => {
             if (!plotsMapModal || !plotsMapModalImg) return;
+            const directEdit = options.directEdit === true;
             resetPlotsMapModalLayout({ discardEdits: false });
             const viewSrc = isEditMode ? resolveEditMapViewSrc() : '';
             if (viewSrc) {
@@ -632,6 +645,13 @@
             }
             if (plotsMapModalName) plotsMapModalName.textContent = PLOTS_EDIT_MAP.plotName || '';
             plotsMapModal.showModal();
+            if (directEdit) {
+                plotsMapViewImage?.classList.add('hidden');
+                plotsMapViewEditor?.classList.remove('hidden');
+                window.requestAnimationFrame(() => {
+                    void startPlotsMapPolygonEdit();
+                });
+            }
         };
 
         const startPlotsMapPolygonEdit = async () => {
@@ -672,10 +692,6 @@
             window.setTimeout(() => plotsMapModalEditor?.invalidate(), 600);
         };
 
-        plotsMapModalStartEdit?.addEventListener('click', () => {
-            void startPlotsMapPolygonEdit();
-        });
-
         plotsMapModalCancelEdit?.addEventListener('click', () => {
             resetPlotsMapModalLayout({ discardEdits: true });
         });
@@ -687,7 +703,9 @@
 
         plotsMapModalCloseBtns.forEach((btn) => btn.addEventListener('click', () => closePlotsMapModal()));
 
-        plotsMapOpenBtns.forEach((btn) => btn.addEventListener('click', () => openPlotsMapModal()));
+        plotsMapOpenBtns.forEach((btn) =>
+            btn.addEventListener('click', () => openPlotsMapModal({ directEdit: btn.dataset.plotsMapDirectEdit === '1' })),
+        );
 
         plotsMapHintOpenBtn?.addEventListener('click', () => openPlotsMapHintOverlay());
         plotsMapHintBackdrop?.addEventListener('click', () => closePlotsMapHintOverlay());
