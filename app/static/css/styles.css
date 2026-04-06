@@ -622,12 +622,9 @@ body {
             transform var(--erp-flyout-close-duration) var(--erp-flyout-close-ease);
     }
 
+    /* Submenu: leve deslocamento ao fechar; sessão no header: só fade no mesmo sítio (sem transform). */
     .erp-sidebar-submenu-flyout:not(.is-open):not(.erp-header-session-flyout) {
         transform: translateX(-8px);
-    }
-
-    .erp-header-session-flyout.erp-sidebar-submenu-flyout:not(.is-open) {
-        transform: translateY(10px) scale(0.98);
     }
 
     .erp-sidebar-submenu-flyout.is-open {
@@ -639,6 +636,14 @@ body {
             opacity var(--erp-flyout-open-duration) var(--erp-sidebar-ease),
             visibility 0s,
             transform var(--erp-flyout-open-duration) var(--erp-sidebar-ease);
+    }
+
+    /* Perfil no header: fade no mesmo lugar — sem animar transform. */
+    .erp-header-session-flyout.erp-sidebar-submenu-flyout.is-open {
+        transform: none;
+        transition:
+            opacity var(--erp-flyout-open-duration) var(--erp-sidebar-ease),
+            visibility 0s;
     }
 
     .erp-sidebar-submenu-flyout:not(.erp-header-session-flyout) a {
@@ -675,6 +680,10 @@ body {
         background: #020617;
         border: 1px solid rgba(51, 65, 85, 0.85);
         box-shadow: 0 18px 45px rgba(15, 23, 42, 0.45);
+        transform: none;
+        transition:
+            opacity var(--erp-flyout-close-duration) var(--erp-flyout-close-ease),
+            visibility 0s linear var(--erp-flyout-close-duration);
     }
 
     .erp-header-session-flyout .erp-header-session-flyout-body {
