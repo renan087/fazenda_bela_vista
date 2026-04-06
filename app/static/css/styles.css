@@ -657,14 +657,14 @@ body {
         color: #fff !important;
     }
 
-    /* Flyout de sessão no header (cartão: avatar + nome, e-mail, ações) */
+    /* Flyout de sessão no header — mesma linha visual do menu / submenu flyout */
     .erp-header-session-flyout.erp-sidebar-submenu-flyout {
         min-width: 17.5rem;
         max-width: min(22rem, calc(100vw - 1.5rem));
         padding: 1rem 1.125rem;
-        background: #3c4043;
-        border: none;
-        box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
+        background: #020617;
+        border: 1px solid rgba(51, 65, 85, 0.85);
+        box-shadow: 0 18px 45px rgba(15, 23, 42, 0.45);
     }
 
     .erp-header-session-flyout .erp-header-session-flyout-body {
@@ -692,10 +692,11 @@ body {
         width: 60px;
         height: 60px;
         border-radius: 9999px;
-        background: rgba(255, 255, 255, 0.12);
+        background: rgba(68, 106, 54, 0.35);
         font-size: 1.25rem;
         font-weight: 600;
-        color: #e8eaed;
+        color: #f8fafc;
+        border: 1px solid rgba(111, 154, 87, 0.45);
     }
 
     .erp-header-session-flyout .erp-header-session-flyout-meta {
@@ -706,7 +707,7 @@ body {
     .erp-header-session-flyout .erp-header-session-flyout-name {
         font-size: 0.9375rem;
         font-weight: 600;
-        color: #fff;
+        color: #f1f5f9;
         line-height: 1.35;
         word-wrap: break-word;
     }
@@ -715,7 +716,7 @@ body {
         margin-top: 0.25rem;
         font-size: 0.8125rem;
         line-height: 1.4;
-        color: #bdc1c6;
+        color: #94a3b8;
         word-break: break-word;
     }
 
@@ -742,29 +743,30 @@ body {
     }
 
     .erp-header-session-flyout a.erp-header-session-flyout-btn--primary {
-        background: #8ab4f8;
-        color: #202124;
-        border: none;
+        background: #446a36;
+        color: #fff;
+        border: 1px solid #3d5f31;
     }
 
     .erp-header-session-flyout a.erp-header-session-flyout-btn--primary:hover {
-        background: #a8c7fa;
-        color: #0f172a;
+        background: #4f7a3e;
+        color: #fff;
     }
 
     .erp-header-session-flyout a.erp-header-session-flyout-btn--primary.is-current {
-        box-shadow: 0 0 0 2px #e8eaed;
+        box-shadow: 0 0 0 2px rgba(217, 236, 212, 0.45);
     }
 
     .erp-header-session-flyout a.erp-header-session-flyout-btn--secondary {
         background: transparent;
-        color: #e8eaed;
-        border: 1px solid #5f6368;
+        color: #cbd5e1;
+        border: 1px solid rgba(71, 85, 105, 0.9);
     }
 
     .erp-header-session-flyout a.erp-header-session-flyout-btn--secondary:hover {
-        background: rgba(255, 255, 255, 0.08);
-        border-color: #80868b;
+        background: rgba(30, 41, 59, 0.95);
+        border-color: #64748b;
+        color: #f8fafc;
     }
 }
 

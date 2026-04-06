@@ -511,6 +511,11 @@
                     headerSessionEscapeHandler = null;
                 }
                 repositionHeaderSessionFlyout = null;
+                if (headerSessionFlyout) {
+                    headerSessionFlyout.style.left = '';
+                    headerSessionFlyout.style.right = '';
+                    headerSessionFlyout.style.top = '';
+                }
                 headerSessionFlyout?.classList.remove('is-open');
                 headerSessionFlyout?.setAttribute('aria-hidden', 'true');
                 headerSessionToggle?.setAttribute('aria-expanded', 'false');
@@ -520,15 +525,25 @@
                 if (!headerSessionFlyout || !headerSessionToggle) return;
                 const br = headerSessionToggle.getBoundingClientRect();
                 const gap = 8;
+                const vw = window.innerWidth;
+                const vh = window.innerHeight;
                 const fw = headerSessionFlyout.offsetWidth;
                 const fh = headerSessionFlyout.offsetHeight;
-                let left = Math.round(br.right - fw);
+                const margin = 8;
+                /* Borda direita do flyout alinhada à borda direita do avatar (fixed: usa `right` em relação à viewport). */
+                let rightPx = Math.round(vw - br.right);
                 let top = Math.round(br.bottom + gap);
-                if (left < 8) left = 8;
-                if (left + fw > window.innerWidth - 8) left = Math.max(8, window.innerWidth - fw - 8);
-                if (top + fh > window.innerHeight - 8) top = Math.round(br.top - fh - gap);
-                if (top < 8) top = 8;
-                headerSessionFlyout.style.left = `${left}px`;
+                if (rightPx < margin) rightPx = margin;
+                const leftIfAligned = vw - rightPx - fw;
+                if (leftIfAligned < margin) {
+                    headerSessionFlyout.style.right = 'auto';
+                    headerSessionFlyout.style.left = `${margin}px`;
+                } else {
+                    headerSessionFlyout.style.left = 'auto';
+                    headerSessionFlyout.style.right = `${rightPx}px`;
+                }
+                if (top + fh > vh - margin) top = Math.round(br.top - fh - gap);
+                if (top < margin) top = margin;
                 headerSessionFlyout.style.top = `${top}px`;
             };
 
