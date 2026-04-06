@@ -45,6 +45,17 @@
     </style>
 </head>
 <body class="bg-slate-100 text-slate-800" data-modal-mode="{% if modal_mode %}1{% else %}0{% endif %}">
+    {# Evita flash expandido→recolhido: aplica preferência antes de parsear a sidebar (desktop). #}
+    <script>
+        (function () {
+            try {
+                if (typeof matchMedia === 'function' && matchMedia('(min-width: 1024px)').matches
+                    && localStorage.getItem('sisfarm.desktopSidebarCollapsed') === '1') {
+                    document.body.classList.add('erp-sidebar-collapsed');
+                }
+            } catch (e) { /* storage indisponível */ }
+        })();
+    </script>
     {% macro nav_icon(name) -%}
         {% if name == 'dashboard' %}
         <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="4" rx="1.5"/><rect x="14" y="10" width="7" height="11" rx="1.5"/><rect x="3" y="13" width="7" height="8" rx="1.5"/></svg>
