@@ -269,13 +269,12 @@
                             </label>
                         </div>
                     </form>
-                    <a href="/meu-perfil" class="erp-header-user-chip items-center gap-2 rounded-2xl border border-slate-200/90 bg-white/95 py-1 pl-1 pr-2.5 text-left no-underline shadow-sm transition hover:border-slate-300 hover:bg-white hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/35 focus-visible:ring-offset-2 focus-visible:ring-offset-white {% if page == 'profile' %}ring-2 ring-brand-500/25{% endif %}" aria-label="Meu perfil — {{ session_display_name }}" title="{{ session_display_name }}">
+                    <a href="/meu-perfil" class="erp-header-user-chip inline-flex shrink-0 items-center justify-center rounded-full no-underline outline-none transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40 focus-visible:ring-offset-2 focus-visible:ring-offset-white {% if page == 'profile' %}ring-2 ring-brand-500/30 ring-offset-2 ring-offset-white{% endif %}" aria-label="Meu perfil — {{ session_display_name }}" title="{{ session_display_name }}">
                         {% if user.avatar_data %}
-                        <img src="/meu-perfil/avatar" alt="" class="h-9 w-9 shrink-0 rounded-full object-cover ring-1 ring-slate-200/80" width="36" height="36" decoding="async">
+                        <img src="/meu-perfil/avatar" alt="" class="h-9 w-9 shrink-0 rounded-full object-cover" width="36" height="36" decoding="async">
                         {% else %}
-                        <span class="erp-header-user-chip-fallback flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand-100 text-sm font-semibold text-brand-700 ring-1 ring-slate-200/60" aria-hidden="true">{{ header_avatar_initial }}</span>
+                        <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand-100 text-sm font-semibold text-brand-700" aria-hidden="true">{{ header_avatar_initial }}</span>
                         {% endif %}
-                        <span class="erp-header-user-chip-name hidden max-w-[9rem] truncate text-sm font-medium text-slate-800 min-[1280px]:inline">{{ session_display_name }}</span>
                     </a>
                     </div>
                 </div>
