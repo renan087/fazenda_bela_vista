@@ -31,6 +31,18 @@ body {
         }
     }
 
+    @keyframes erp-sidebar-brand-reveal {
+        from {
+            opacity: 0;
+            transform: translateY(-10px) scale(0.94);
+        }
+
+        to {
+            opacity: 1;
+            transform: translateY(0) scale(1);
+        }
+    }
+
     .erp-sidebar {
         width: var(--erp-sidebar-expanded-width);
         min-width: var(--erp-sidebar-expanded-width);
@@ -232,12 +244,9 @@ body {
     body.erp-sidebar-collapsed .sidebar-submenu-panel,
     body.erp-sidebar-collapsing .erp-sidebar-copy,
     body.erp-sidebar-collapsing .erp-sidebar-session-wrap,
-    body.erp-sidebar-collapsing .sidebar-submenu-panel,
-    body.erp-sidebar-expanding .erp-sidebar-copy,
-    body.erp-sidebar-expanding .erp-sidebar-session-wrap,
-    body.erp-sidebar-expanding .sidebar-submenu-panel {
+    body.erp-sidebar-collapsing .sidebar-submenu-panel {
         opacity: 0;
-        transform: translateX(-8px);
+        transform: translateY(-8px);
         pointer-events: none;
     }
 
@@ -246,10 +255,7 @@ body {
     body.erp-sidebar-collapsed .sidebar-submenu-panel,
     body.erp-sidebar-collapsing .erp-sidebar-copy,
     body.erp-sidebar-collapsing .erp-sidebar-session-wrap,
-    body.erp-sidebar-collapsing .sidebar-submenu-panel,
-    body.erp-sidebar-expanding .erp-sidebar-copy,
-    body.erp-sidebar-expanding .erp-sidebar-session-wrap,
-    body.erp-sidebar-expanding .sidebar-submenu-panel {
+    body.erp-sidebar-collapsing .sidebar-submenu-panel {
         max-height: 0;
         margin: 0;
         padding-top: 0;
@@ -312,15 +318,57 @@ body {
             var(--erp-sidebar-label-fade-delay) forwards;
     }
 
+    /* Logo, versículo e sessão: abrem em paralelo à largura da barra (sem atraso extra). */
+    body.erp-sidebar-expanding .erp-sidebar-brand {
+        opacity: 0;
+        animation: erp-sidebar-brand-reveal var(--erp-sidebar-shell-duration) var(--erp-sidebar-ease) forwards;
+    }
+
+    body:not(.erp-sidebar-expanding) .erp-sidebar .erp-sidebar-brand {
+        animation: none;
+    }
+
+    body.erp-sidebar-expanding .erp-sidebar-header-row {
+        transition: min-height var(--erp-sidebar-shell-duration) var(--erp-sidebar-ease);
+    }
+
     body.erp-sidebar-expanding .erp-sidebar-copy,
     body.erp-sidebar-expanding .erp-sidebar-session-wrap,
     body.erp-sidebar-expanding .sidebar-submenu-panel {
         opacity: 1;
-        transform: translateX(0);
+        transform: translateY(0);
         pointer-events: auto;
-        max-height: 24rem;
+        max-height: 28rem;
         overflow: hidden;
-        transition-delay: calc(var(--erp-sidebar-label-fade-delay) + 40ms);
+        margin-top: 0;
+        margin-bottom: 0;
+        padding-top: 0;
+        padding-bottom: 0;
+        transition:
+            opacity var(--erp-sidebar-shell-duration) var(--erp-sidebar-ease),
+            transform var(--erp-sidebar-shell-duration) var(--erp-sidebar-ease),
+            max-height var(--erp-sidebar-shell-duration) var(--erp-sidebar-ease),
+            margin var(--erp-sidebar-shell-duration) var(--erp-sidebar-ease),
+            padding var(--erp-sidebar-shell-duration) var(--erp-sidebar-ease);
+        transition-delay: 0ms;
+    }
+
+    /* Restaura paddings naturais do bloco de sessão enquanto expande (evita “salto” só no fim). */
+    body.erp-sidebar-expanding .erp-sidebar-session-wrap {
+        padding-left: 1.5rem;
+        padding-right: 1.5rem;
+        padding-top: 1.25rem;
+        padding-bottom: 1.25rem;
+    }
+
+    body.erp-sidebar-expanding .erp-sidebar-copy {
+        margin-top: 0.75rem;
+    }
+
+    body.erp-sidebar-expanding .sidebar-submenu-panel {
+        padding-left: 0.75rem;
+        padding-right: 0.75rem;
+        padding-bottom: 0.75rem;
     }
 
     body.erp-sidebar-collapsed .erp-sidebar-nav,
