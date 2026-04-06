@@ -2816,6 +2816,31 @@ body {
         max-width: 100%;
     }
 
+    /* Fazendas, Setores, Safras, Produção, Pragas/Doenças: mobile — 1 botão = linha inteira; 2+ = lado a lado */
+    .stock-page-header .stock-header-actions.stock-actions-row-mobile-adaptive,
+    .stock-page-shell .stock-filter-field-actions.stock-actions-row-mobile-adaptive {
+        display: flex;
+        flex-wrap: nowrap;
+        width: 100%;
+        max-width: 100%;
+        box-sizing: border-box;
+        grid-template-columns: none;
+        justify-content: stretch;
+    }
+
+    .stock-page-header .stock-header-actions.stock-actions-row-mobile-adaptive > *,
+    .stock-page-shell .stock-filter-field-actions.stock-actions-row-mobile-adaptive > * {
+        flex: 1 1 0;
+        min-width: 0;
+        max-width: none;
+    }
+
+    .stock-page-header .stock-header-actions.stock-actions-row-mobile-adaptive > *:only-child,
+    .stock-page-shell .stock-filter-field-actions.stock-actions-row-mobile-adaptive > *:only-child {
+        flex: 1 1 100%;
+        max-width: 100%;
+    }
+
     .stock-page-header.is-compact > div {
         gap: 0.58rem;
     }

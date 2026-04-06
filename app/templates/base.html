@@ -269,7 +269,7 @@
                             </label>
                         </div>
                     </form>
-                    <div class="erp-header-user-group relative shrink-0">
+                    <div class="erp-header-user-group relative hidden shrink-0 lg:block">
                         <button type="button" class="erp-header-user-chip inline-flex items-center justify-center rounded-full border-0 bg-transparent p-0 outline-none transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40 focus-visible:ring-offset-2 focus-visible:ring-offset-white {% if page == 'profile' %}ring-2 ring-brand-500/30 ring-offset-2 ring-offset-white{% endif %}" data-header-session-toggle aria-expanded="false" aria-haspopup="true" aria-controls="erp-header-session-flyout" title="{{ session_display_name }}" aria-label="Menu da sessao — {{ session_display_name }}">
                             {% if user.avatar_data %}
                             <img src="/meu-perfil/avatar" alt="" class="h-[60px] w-[60px] shrink-0 rounded-full object-cover" width="60" height="60" decoding="async">
