@@ -141,7 +141,7 @@
                     {% endfor %}
                     {% set inputs_pages = ['fertilization', 'fertilization_schedules', 'input_recommendations', 'purchased_inputs', 'stock', 'assets'] %}
                     <div class="rounded-2xl {% if page in inputs_pages %}bg-slate-900/80{% endif %}" data-submenu-group>
-                        <button type="button" class="erp-sidebar-link flex w-full items-center justify-between rounded-2xl px-4 py-3 text-left transition-all duration-300 ease-in-out {% if page in inputs_pages %}text-white{% else %}text-slate-300 hover:bg-slate-900 hover:text-white{% endif %}" data-submenu-toggle="inputs-menu" data-submenu-parent>
+                        <button type="button" class="erp-sidebar-link flex w-full items-center justify-between rounded-2xl px-4 py-3 text-left transition-all duration-300 ease-in-out {% if page in inputs_pages %}text-white{% else %}text-slate-300 hover:bg-slate-900 hover:text-white{% endif %}" data-submenu-toggle="inputs-menu" data-submenu-parent aria-haspopup="true" aria-expanded="{% if page in inputs_pages %}true{% else %}false{% endif %}">
                             <span class="flex items-center gap-3"><span class="erp-sidebar-icon">{{ nav_icon('inputs') }}</span><span class="erp-sidebar-label">Insumos</span></span>
                             <span class="erp-sidebar-parent-indicator text-xs uppercase tracking-[0.2em]">+</span>
                         </button>
@@ -180,7 +180,7 @@
                         {% set config_pages = config_pages + ['backups'] %}
                     {% endif %}
                     <div class="rounded-2xl {% if page in config_pages %}bg-slate-900/80{% endif %}" data-submenu-group>
-                        <button type="button" class="erp-sidebar-link flex w-full items-center justify-between rounded-2xl px-4 py-3 text-left transition-all duration-300 ease-in-out {% if page in config_pages %}text-white{% else %}text-slate-300 hover:bg-slate-900 hover:text-white{% endif %}" data-submenu-toggle="config-menu" data-submenu-parent>
+                        <button type="button" class="erp-sidebar-link flex w-full items-center justify-between rounded-2xl px-4 py-3 text-left transition-all duration-300 ease-in-out {% if page in config_pages %}text-white{% else %}text-slate-300 hover:bg-slate-900 hover:text-white{% endif %}" data-submenu-toggle="config-menu" data-submenu-parent aria-haspopup="true" aria-expanded="{% if page in config_pages %}true{% else %}false{% endif %}">
                             <span class="flex items-center gap-3"><span class="erp-sidebar-icon">{{ nav_icon('config') }}</span><span class="erp-sidebar-label">Configuracao</span></span>
                             <span class="erp-sidebar-parent-indicator text-xs uppercase tracking-[0.2em]">+</span>
                         </button>
@@ -222,6 +222,10 @@
                 <svg class="erp-sidebar-toggle-chevron erp-sidebar-toggle-chevron--expanded" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>
                 <svg class="erp-sidebar-toggle-chevron erp-sidebar-toggle-chevron--collapsed" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg>
             </button>
+            <div id="erp-nav-tooltip" class="erp-nav-tooltip" role="tooltip" aria-hidden="true"></div>
+            <div id="erp-submenu-flyout" class="erp-sidebar-submenu-flyout" role="dialog" aria-hidden="true">
+                <div class="erp-sidebar-submenu-flyout-inner space-y-0.5" data-erp-submenu-flyout-inner></div>
+            </div>
         </aside>
         <main class="erp-main-shell flex min-h-screen min-w-0 flex-1 flex-col lg:ml-72">
             <div class="sticky top-0 z-20 border-b border-slate-200 bg-white/95 shadow-sm backdrop-blur">
@@ -391,6 +395,162 @@
             const desktopSidebarStageDelay = 80;
             const desktopSidebarShellDuration = 620;
             let desktopSidebarTransitionTimer = null;
+            const navTooltipEl = document.getElementById('erp-nav-tooltip');
+            const submenuFlyoutEl = document.getElementById('erp-submenu-flyout');
+            const submenuFlyoutInner = submenuFlyoutEl?.querySelector('[data-erp-submenu-flyout-inner]');
+            const navEl = sidebar?.querySelector('.erp-sidebar-nav');
+            const TOOLTIP_DELAY_MS = 220;
+            let navTooltipTimer = null;
+            let flyoutAnchorButton = null;
+            let flyoutPointerDownHandler = null;
+            let flyoutEscapeHandler = null;
+            let repositionSubmenuFlyout = null;
+
+            const isCollapsedDesktopNav = () =>
+                desktopSidebarMq.matches &&
+                !document.body.classList.contains('erp-sidebar-expanding') &&
+                (document.body.classList.contains('erp-sidebar-collapsed') ||
+                    document.body.classList.contains('erp-sidebar-collapsing'));
+
+            const hideNavTooltip = () => {
+                window.clearTimeout(navTooltipTimer);
+                navTooltipTimer = null;
+                if (!navTooltipEl) return;
+                navTooltipEl.classList.remove('is-visible');
+                navTooltipEl.textContent = '';
+                navTooltipEl.setAttribute('aria-hidden', 'true');
+            };
+
+            const scheduleNavTooltip = (targetEl) => {
+                if (!navTooltipEl || !targetEl) return;
+                window.clearTimeout(navTooltipTimer);
+                navTooltipTimer = window.setTimeout(() => {
+                    if (!isCollapsedDesktopNav()) return;
+                    const labelEl = targetEl.querySelector('.erp-sidebar-label');
+                    const text = (labelEl?.textContent || '').trim();
+                    if (!text) return;
+                    const iconEl = targetEl.querySelector('.erp-sidebar-icon');
+                    const ref = iconEl || targetEl;
+                    const rect = ref.getBoundingClientRect();
+                    const gap = 10;
+                    navTooltipEl.textContent = text;
+                    navTooltipEl.style.left = `${Math.round(rect.right + gap)}px`;
+                    navTooltipEl.style.top = `${Math.round(rect.top + rect.height / 2)}px`;
+                    navTooltipEl.style.transform = 'translateY(-50%)';
+                    navTooltipEl.classList.add('is-visible');
+                    navTooltipEl.setAttribute('aria-hidden', 'false');
+                }, TOOLTIP_DELAY_MS);
+            };
+
+            const closeSubmenuFlyout = () => {
+                if (flyoutPointerDownHandler) {
+                    document.removeEventListener('pointerdown', flyoutPointerDownHandler, true);
+                    flyoutPointerDownHandler = null;
+                }
+                if (flyoutEscapeHandler) {
+                    document.removeEventListener('keydown', flyoutEscapeHandler, true);
+                    flyoutEscapeHandler = null;
+                }
+                repositionSubmenuFlyout = null;
+                submenuFlyoutEl?.classList.remove('is-open');
+                submenuFlyoutEl?.setAttribute('aria-hidden', 'true');
+                if (flyoutAnchorButton) {
+                    const grp = flyoutAnchorButton.closest('[data-submenu-group]');
+                    const pnl = grp?.querySelector('[data-submenu-panel]');
+                    const panelOpen = Boolean(pnl && !pnl.classList.contains('hidden'));
+                    flyoutAnchorButton.setAttribute('aria-expanded', panelOpen ? 'true' : 'false');
+                    flyoutAnchorButton = null;
+                }
+                submenuFlyoutInner?.replaceChildren();
+            };
+
+            const openSubmenuFlyout = (button, panel) => {
+                if (!submenuFlyoutEl || !submenuFlyoutInner || !panel || !sidebar) return;
+                hideNavTooltip();
+                const wasThisOpen =
+                    flyoutAnchorButton === button && submenuFlyoutEl.classList.contains('is-open');
+                closeSubmenuFlyout();
+                if (wasThisOpen) return;
+
+                const linkNodes = panel.querySelectorAll(':scope > a[href]');
+                if (!linkNodes.length) return;
+
+                linkNodes.forEach((a) => {
+                    const clone = a.cloneNode(true);
+                    clone.addEventListener('click', () => {
+                        window.setTimeout(closeSubmenuFlyout, 0);
+                    });
+                    submenuFlyoutInner.appendChild(clone);
+                });
+
+                flyoutAnchorButton = button;
+                button.setAttribute('aria-expanded', 'true');
+                submenuFlyoutEl.classList.add('is-open');
+                submenuFlyoutEl.setAttribute('aria-hidden', 'false');
+
+                const positionSubmenuFlyout = () => {
+                    const sb = sidebar.getBoundingClientRect();
+                    const br = button.getBoundingClientRect();
+                    const gap = 8;
+                    submenuFlyoutEl.style.left = `${Math.round(sb.right + gap)}px`;
+                    let top = Math.round(br.top);
+                    const fh = submenuFlyoutEl.offsetHeight;
+                    const maxTop = window.innerHeight - fh - 8;
+                    if (top > maxTop) top = Math.max(8, maxTop);
+                    if (top < 8) top = 8;
+                    submenuFlyoutEl.style.top = `${top}px`;
+                };
+
+                repositionSubmenuFlyout = positionSubmenuFlyout;
+                positionSubmenuFlyout();
+                window.requestAnimationFrame(() => positionSubmenuFlyout());
+
+                flyoutPointerDownHandler = (e) => {
+                    const t = e.target;
+                    if (submenuFlyoutEl.contains(t) || button.contains(t)) return;
+                    closeSubmenuFlyout();
+                };
+                document.addEventListener('pointerdown', flyoutPointerDownHandler, true);
+
+                flyoutEscapeHandler = (e) => {
+                    if (e.key === 'Escape') closeSubmenuFlyout();
+                };
+                document.addEventListener('keydown', flyoutEscapeHandler, true);
+            };
+
+            const bindCollapsedNavTooltips = () => {
+                if (!navEl) return;
+                const targets = [
+                    ...navEl.querySelectorAll(':scope > a.erp-sidebar-link'),
+                    ...navEl.querySelectorAll(':scope > [data-submenu-group] > button[data-submenu-parent]'),
+                ];
+                targets.forEach((el) => {
+                    el.addEventListener('mouseenter', () => {
+                        if (isCollapsedDesktopNav()) scheduleNavTooltip(el);
+                    });
+                    el.addEventListener('mouseleave', hideNavTooltip);
+                    el.addEventListener('focus', () => {
+                        if (isCollapsedDesktopNav()) scheduleNavTooltip(el);
+                    });
+                    el.addEventListener('blur', hideNavTooltip);
+                });
+            };
+            bindCollapsedNavTooltips();
+
+            window.addEventListener('resize', () => {
+                hideNavTooltip();
+                if (!desktopSidebarMq.matches) {
+                    closeSubmenuFlyout();
+                    return;
+                }
+                if (repositionSubmenuFlyout) repositionSubmenuFlyout();
+            });
+
+            navEl?.addEventListener('scroll', () => {
+                hideNavTooltip();
+                if (repositionSubmenuFlyout) repositionSubmenuFlyout();
+            });
+
             const applyDesktopSidebarState = (collapsed) => {
                 if (!document.body || !desktopSidebarMq.matches) return;
                 document.body.classList.remove('erp-sidebar-collapsing', 'erp-sidebar-expanding');
@@ -400,6 +560,8 @@
             };
             const transitionDesktopSidebarState = (collapsed) => {
                 if (!document.body || !desktopSidebarMq.matches) return;
+                closeSubmenuFlyout();
+                hideNavTooltip();
                 window.clearTimeout(desktopSidebarTransitionTimer);
                 if (collapsed) {
                     document.body.classList.remove('erp-sidebar-expanding');
@@ -438,6 +600,8 @@
             };
             const syncDesktopSidebar = () => {
                 if (!desktopSidebarMq.matches) {
+                    closeSubmenuFlyout();
+                    hideNavTooltip();
                     document.body.classList.remove('erp-sidebar-collapsed', 'erp-sidebar-collapsing', 'erp-sidebar-expanding');
                     return;
                 }
@@ -490,11 +654,7 @@
 
                 button?.addEventListener('click', () => {
                     if (desktopSidebarMq.matches && document.body.classList.contains('erp-sidebar-collapsed')) {
-                        transitionDesktopSidebarState(false);
-                        persistDesktopSidebarPreference(false);
-                        panel?.classList.remove('hidden');
-                        setParentActive(button, true);
-                        group.classList.add('bg-slate-900/80');
+                        if (panel) openSubmenuFlyout(button, panel);
                         return;
                     }
                     const isHidden = panel?.classList.contains('hidden');
