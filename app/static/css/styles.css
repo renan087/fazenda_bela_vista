@@ -48,8 +48,8 @@ body {
     .erp-sidebar {
         width: var(--erp-sidebar-expanded-width);
         min-width: var(--erp-sidebar-expanded-width);
-        overflow-x: visible;
-        overflow-y: hidden;
+        /* visible: o botão à direita (right negativo) fica fora da caixa; hidden em um eixo forçava clip no outro. */
+        overflow: visible;
         transition: width var(--erp-sidebar-shell-duration) var(--erp-sidebar-ease), min-width var(--erp-sidebar-shell-duration) var(--erp-sidebar-ease);
     }
 
@@ -98,12 +98,12 @@ body {
         transition: opacity var(--erp-sidebar-content-duration) ease, transform 260ms var(--erp-sidebar-ease), max-height 260ms var(--erp-sidebar-ease), margin 240ms ease, padding 240ms ease;
     }
 
-    /* Aba integrada: metade dentro da sidebar (sem borda à esquerda → fundo contínuo), metade para fora com borda só na face externa. */
+    /* Aba integrada: metade dentro da sidebar, metade para fora; sem borda (evita contorno indesejado / verde de tema). */
     .toggle-sidebar-btn.erp-sidebar-toggle {
         position: absolute;
         top: 50%;
         right: -1rem;
-        z-index: 50;
+        z-index: 60;
         transform: translateY(-50%);
         box-sizing: border-box;
         width: 2rem;
@@ -111,10 +111,6 @@ body {
         padding: 0;
         margin: 0;
         border: none;
-        border-left: none;
-        border-top: 1px solid rgba(51, 65, 85, 0.65);
-        border-right: 1px solid rgba(51, 65, 85, 0.65);
-        border-bottom: 1px solid rgba(51, 65, 85, 0.65);
         border-radius: 0 0.625rem 0.625rem 0;
         display: flex;
         align-items: center;
@@ -123,10 +119,10 @@ body {
         color: #94a3b8;
         box-shadow: 2px 0 14px rgba(15, 23, 42, 0.12);
         cursor: pointer;
+        outline: none;
         transition:
             background-color 200ms ease,
             color 200ms ease,
-            border-color 200ms ease,
             box-shadow 200ms ease,
             transform 200ms var(--erp-sidebar-ease);
         -webkit-tap-highlight-color: transparent;
@@ -135,15 +131,13 @@ body {
     .toggle-sidebar-btn.erp-sidebar-toggle:hover {
         background: var(--erp-sidebar-surface);
         color: #e2e8f0;
-        border-top-color: rgba(71, 85, 105, 0.85);
-        border-right-color: rgba(71, 85, 105, 0.85);
-        border-bottom-color: rgba(71, 85, 105, 0.85);
         box-shadow: 3px 0 18px rgba(15, 23, 42, 0.16);
     }
 
     .toggle-sidebar-btn.erp-sidebar-toggle:focus-visible {
-        outline: 2px solid rgba(148, 163, 184, 0.5);
+        outline: 2px solid rgba(148, 163, 184, 0.55);
         outline-offset: 3px;
+        box-shadow: 3px 0 18px rgba(15, 23, 42, 0.16);
     }
 
     .toggle-sidebar-btn.erp-sidebar-toggle:active {
