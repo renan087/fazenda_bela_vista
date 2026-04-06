@@ -265,6 +265,11 @@ body {
         transform: translate(-50%, -50%);
         margin: 0;
         z-index: 1;
+        background: none;
+        border-radius: 0;
+        box-shadow: none;
+        text-decoration: none;
+        color: inherit;
     }
 
     body.erp-sidebar-collapsed .erp-sidebar-copy,
