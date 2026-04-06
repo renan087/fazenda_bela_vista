@@ -66,13 +66,14 @@ body {
         transition: max-width var(--erp-sidebar-shell-duration) var(--erp-sidebar-ease);
     }
 
-    body:not(.erp-sidebar-collapsed):not(.erp-sidebar-collapsing):not(.erp-sidebar-expanding) main.erp-main-shell .max-w-7xl {
+    /* Estreito: menu expandido ou a expandir (max-width acompanha o alargamento da sidebar desde o início). */
+    body:not(.erp-sidebar-collapsed):not(.erp-sidebar-collapsing) main.erp-main-shell .max-w-7xl {
         max-width: var(--erp-main-content-max-expanded);
     }
 
+    /* Largo: só com menu recolhido ou a recolher — não incluir erp-sidebar-expanding. */
     body.erp-sidebar-collapsed main.erp-main-shell .max-w-7xl,
-    body.erp-sidebar-collapsing main.erp-main-shell .max-w-7xl,
-    body.erp-sidebar-expanding main.erp-main-shell .max-w-7xl {
+    body.erp-sidebar-collapsing main.erp-main-shell .max-w-7xl {
         max-width: var(--erp-main-content-max-collapsed);
     }
 
