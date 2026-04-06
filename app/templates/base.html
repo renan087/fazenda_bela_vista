@@ -277,25 +277,6 @@
                             <span class="flex h-[60px] w-[60px] shrink-0 items-center justify-center rounded-full bg-brand-100 text-xl font-semibold text-brand-700" aria-hidden="true">{{ header_avatar_initial }}</span>
                             {% endif %}
                         </button>
-                        <div id="erp-header-session-flyout" class="erp-sidebar-submenu-flyout erp-header-session-flyout" role="dialog" aria-modal="false" aria-labelledby="erp-header-session-name" aria-hidden="true">
-                            <div class="erp-header-session-flyout-body">
-                                <div class="erp-header-session-flyout-avatar" aria-hidden="true">
-                                    {% if user.avatar_data %}
-                                    <img src="/meu-perfil/avatar" alt="" width="60" height="60" decoding="async">
-                                    {% else %}
-                                    <span>{{ header_avatar_initial }}</span>
-                                    {% endif %}
-                                </div>
-                                <div class="erp-header-session-flyout-meta">
-                                    <p id="erp-header-session-name" class="erp-header-session-flyout-name">{{ session_display_name }}</p>
-                                    <p class="erp-header-session-flyout-email">{{ user.email }}</p>
-                                    <div class="erp-header-session-flyout-actions">
-                                        <a href="/meu-perfil" class="erp-header-session-flyout-btn erp-header-session-flyout-btn--primary{% if page == 'profile' %} is-current{% endif %}">Meu perfil</a>
-                                        <a href="/logout" class="erp-header-session-flyout-btn erp-header-session-flyout-btn--secondary">Sair</a>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
                     </div>
                     </div>
                 </div>
@@ -353,6 +334,26 @@
                 </div>
             </footer>
         </main>
+    </div>
+    {# Fora do header com backdrop-blur: fixed deve ancorar na viewport (evita overflow/scrollbars estranhos). #}
+    <div id="erp-header-session-flyout" class="erp-sidebar-submenu-flyout erp-header-session-flyout" role="dialog" aria-modal="false" aria-labelledby="erp-header-session-name" aria-hidden="true">
+        <div class="erp-header-session-flyout-body">
+            <div class="erp-header-session-flyout-avatar" aria-hidden="true">
+                {% if user.avatar_data %}
+                <img src="/meu-perfil/avatar" alt="" width="60" height="60" decoding="async">
+                {% else %}
+                <span>{{ header_avatar_initial }}</span>
+                {% endif %}
+            </div>
+            <div class="erp-header-session-flyout-meta">
+                <p id="erp-header-session-name" class="erp-header-session-flyout-name">{{ session_display_name }}</p>
+                <p class="erp-header-session-flyout-email">{{ user.email }}</p>
+                <div class="erp-header-session-flyout-actions">
+                    <a href="/meu-perfil" class="erp-header-session-flyout-btn erp-header-session-flyout-btn--primary{% if page == 'profile' %} is-current{% endif %}">Meu perfil</a>
+                    <a href="/logout" class="erp-header-session-flyout-btn erp-header-session-flyout-btn--secondary">Sair</a>
+                </div>
+            </div>
+        </div>
     </div>
     {% if context_selection_blocking %}
     <div class="fixed inset-0 z-[70] bg-slate-950/40 backdrop-blur-[2px]"></div>
