@@ -27,6 +27,9 @@ body {
         /* Largura máxima da coluna de conteúdo (equivalente a max-w-7xl / ~screen-2xl). */
         --erp-main-content-max-expanded: 80rem;
         --erp-main-content-max-collapsed: min(100%, 96rem);
+        --erp-flyout-close-duration: 280ms;
+        --erp-flyout-close-ease: cubic-bezier(0.22, 1, 0.36, 1);
+        --erp-flyout-open-duration: 200ms;
     }
 
     @keyframes erp-sidebar-label-fade-in {
@@ -596,7 +599,7 @@ body {
             visibility 0s;
     }
 
-    /* Flyout de submenu (menu recolhido) */
+    /* Flyout de submenu (menu recolhido) + sessão no header — saída: fade-out longo; entrada: mais rápida */
     .erp-sidebar-submenu-flyout {
         position: fixed;
         z-index: 95;
@@ -613,22 +616,29 @@ body {
         opacity: 0;
         visibility: hidden;
         pointer-events: none;
-        transform: translateX(-4px);
         transition:
-            opacity 140ms var(--erp-sidebar-ease),
-            visibility 0s linear 140ms,
-            transform 140ms var(--erp-sidebar-ease);
+            opacity var(--erp-flyout-close-duration) var(--erp-flyout-close-ease),
+            visibility 0s linear var(--erp-flyout-close-duration),
+            transform var(--erp-flyout-close-duration) var(--erp-flyout-close-ease);
+    }
+
+    .erp-sidebar-submenu-flyout:not(.is-open):not(.erp-header-session-flyout) {
+        transform: translateX(-8px);
+    }
+
+    .erp-header-session-flyout.erp-sidebar-submenu-flyout:not(.is-open) {
+        transform: translateY(10px) scale(0.98);
     }
 
     .erp-sidebar-submenu-flyout.is-open {
         opacity: 1;
         visibility: visible;
         pointer-events: auto;
-        transform: translateX(0);
+        transform: translate(0, 0) scale(1);
         transition:
-            opacity 160ms var(--erp-sidebar-ease),
+            opacity var(--erp-flyout-open-duration) var(--erp-sidebar-ease),
             visibility 0s,
-            transform 160ms var(--erp-sidebar-ease);
+            transform var(--erp-flyout-open-duration) var(--erp-sidebar-ease);
     }
 
     .erp-sidebar-submenu-flyout:not(.erp-header-session-flyout) a {
