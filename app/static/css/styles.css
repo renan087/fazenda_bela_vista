@@ -17,6 +17,8 @@ body {
         --erp-sidebar-label-fade-duration: 520ms;
         --erp-sidebar-label-fade-delay: 100ms;
         --erp-sidebar-stage-delay: 80ms;
+        /* Igual a bg-slate-950 da sidebar (Tailwind). */
+        --erp-sidebar-surface: #020617;
     }
 
     @keyframes erp-sidebar-label-fade-in {
@@ -96,43 +98,56 @@ body {
         transition: opacity var(--erp-sidebar-content-duration) ease, transform 260ms var(--erp-sidebar-ease), max-height 260ms var(--erp-sidebar-ease), margin 240ms ease, padding 240ms ease;
     }
 
+    /* Aba integrada: metade dentro da sidebar (sem borda à esquerda → fundo contínuo), metade para fora com borda só na face externa. */
     .toggle-sidebar-btn.erp-sidebar-toggle {
         position: absolute;
         top: 50%;
-        right: -12px;
+        right: -1rem;
         z-index: 50;
         transform: translateY(-50%);
         box-sizing: border-box;
-        width: 28px;
-        height: 28px;
+        width: 2rem;
+        height: 2.75rem;
         padding: 0;
         margin: 0;
         border: none;
-        border-radius: 50%;
+        border-left: none;
+        border-top: 1px solid rgba(51, 65, 85, 0.65);
+        border-right: 1px solid rgba(51, 65, 85, 0.65);
+        border-bottom: 1px solid rgba(51, 65, 85, 0.65);
+        border-radius: 0 0.625rem 0.625rem 0;
         display: flex;
         align-items: center;
         justify-content: center;
-        background: rgba(68, 106, 54, 0.22);
-        color: #d9ecd4;
-        box-shadow: 0 8px 22px rgba(15, 23, 42, 0.18), inset 0 0 0 1px rgba(217, 236, 212, 0.22);
+        background: var(--erp-sidebar-surface);
+        color: #94a3b8;
+        box-shadow: 2px 0 14px rgba(15, 23, 42, 0.12);
         cursor: pointer;
-        transition: background-color 220ms ease, color 220ms ease, transform 220ms var(--erp-sidebar-ease), box-shadow 220ms ease;
+        transition:
+            background-color 200ms ease,
+            color 200ms ease,
+            border-color 200ms ease,
+            box-shadow 200ms ease,
+            transform 200ms var(--erp-sidebar-ease);
         -webkit-tap-highlight-color: transparent;
     }
 
     .toggle-sidebar-btn.erp-sidebar-toggle:hover {
-        background: rgba(68, 106, 54, 0.34);
-        color: #f8fafc;
-        box-shadow: 0 10px 24px rgba(15, 23, 42, 0.22), inset 0 0 0 1px rgba(217, 236, 212, 0.32);
+        background: var(--erp-sidebar-surface);
+        color: #e2e8f0;
+        border-top-color: rgba(71, 85, 105, 0.85);
+        border-right-color: rgba(71, 85, 105, 0.85);
+        border-bottom-color: rgba(71, 85, 105, 0.85);
+        box-shadow: 3px 0 18px rgba(15, 23, 42, 0.16);
     }
 
     .toggle-sidebar-btn.erp-sidebar-toggle:focus-visible {
-        outline: 2px solid rgba(148, 163, 184, 0.45);
-        outline-offset: 2px;
+        outline: 2px solid rgba(148, 163, 184, 0.5);
+        outline-offset: 3px;
     }
 
     .toggle-sidebar-btn.erp-sidebar-toggle:active {
-        transform: translateY(-50%) scale(0.92);
+        transform: translateY(-50%) scale(0.97);
     }
 
     .toggle-sidebar-btn.erp-sidebar-toggle .erp-sidebar-toggle-chevron {
