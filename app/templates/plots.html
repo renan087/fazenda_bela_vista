@@ -235,8 +235,8 @@
                         <span class="mb-2 block text-sm font-medium">Fazenda</span>
                         {% if not edit_plot and plots_farm_scope_locked %}
                         <input type="hidden" name="farm_id" value="{{ plots_scope_active_farm_id }}">
-                        <select class="min-h-[3.25rem] w-full cursor-not-allowed rounded-2xl border-slate-200 bg-slate-50 opacity-80" aria-label="Fazenda do contexto (fixa)" disabled>
-                            <option selected>{{ plots_locked_farm_name }}</option>
+                        <select name="farm_id" class="min-h-[3.25rem] w-full cursor-not-allowed rounded-2xl border-slate-200 bg-slate-50 opacity-80" aria-label="Fazenda do contexto (fixa)" disabled>
+                            <option value="{{ plots_scope_active_farm_id }}" selected>{{ plots_locked_farm_name }}</option>
                         </select>
                         {% else %}
                         <select name="farm_id" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required>
@@ -255,7 +255,7 @@
                     <label><span class="mb-2 block text-sm font-medium">Variedade</span>
                         <select name="variety_id" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50">
                             <option value="">Selecione</option>
-                            {% for variety in varieties %}
+                            {% for variety in form_varieties %}
                             <option value="{{ variety.id }}" {% if edit_plot and edit_plot.variety_id == variety.id %}selected{% endif %}>{{ variety.name }}</option>
                             {% endfor %}
                         </select>
@@ -642,7 +642,7 @@
         const PLOTS_EDIT_MAP = {
             plotPreviewSrc: {{ edit_plot_preview_only_src | tojson }},
             hasPolygon: {{ (edit_plot and edit_plot.boundary_geojson) | tojson }},
-            defaultFarmId: {% if edit_plot and edit_plot.farm_id %}{{ edit_plot.farm_id | string | tojson }}{% else %}""{% endif %},
+            defaultFarmId: {% if edit_plot and edit_plot.farm_id %}{{ edit_plot.farm_id | string | tojson }}{% elif plots_farm_scope_locked %}{{ plots_scope_active_farm_id | string | tojson }}{% else %}""{% endif %},
             plotName: {% if edit_plot %}{{ edit_plot.name | tojson }}{% else %}""{% endif %},
         };
 

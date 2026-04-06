@@ -1937,6 +1937,9 @@ def plots_page(
     edit_plot = repo.get_plot(edit_id) if edit_id else None
     open_plot_map_modal = bool(plot_map and edit_plot)
     farms, varieties = repo.list_plot_filter_options(farm_ids or None, variety_ids or None)
+    # Para o cadastro/edição do setor, a lista de variedades não deve ser limitada pelo filtro da página.
+    # Caso contrário, o select "Variedade" fica preso à variedade da safra ativa (ex.: apenas 1 opção).
+    form_varieties = repo.list_varieties()
     plots_list = repo.list_plots(search=q, farm_ids=farm_ids, variety_ids=variety_ids, sort=sort)
     plot_preview_ready: dict[int, bool] = {}
     plot_preview_fingerprint: dict[int, str] = {}
@@ -2034,6 +2037,7 @@ def plots_page(
             plots=plots_list,
             farms=farms,
             varieties=varieties,
+            form_varieties=form_varieties,
             filters={"q": q or "", "farm_ids": farm_ids, "variety_ids": variety_ids, "sort": sort},
             plots_filters_active=plots_filters_active,
             plots_farm_scope_locked=plots_farm_scope_locked,
