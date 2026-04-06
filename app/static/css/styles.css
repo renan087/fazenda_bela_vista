@@ -249,8 +249,7 @@ body {
     }
 
     body.erp-sidebar-collapsed .erp-sidebar .erp-sidebar-label,
-    body.erp-sidebar-collapsing .erp-sidebar .erp-sidebar-label,
-    body.erp-sidebar-expanding .erp-sidebar .erp-sidebar-label {
+    body.erp-sidebar-collapsing .erp-sidebar .erp-sidebar-label {
         position: absolute;
         width: 1px;
         height: 1px;
@@ -293,7 +292,7 @@ body {
         opacity: 1;
         transform: translateX(0);
         pointer-events: auto;
-        transition-delay: 110ms;
+        transition-delay: 0ms;
     }
 
     body.erp-sidebar-expanding .erp-sidebar-copy,
