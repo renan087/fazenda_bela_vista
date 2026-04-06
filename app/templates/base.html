@@ -497,9 +497,12 @@
 
             const headerSessionToggle = document.querySelector('[data-header-session-toggle]');
             const headerSessionFlyout = document.getElementById('erp-header-session-flyout');
+            /* Após fechar o flyout de sessão: tempo para o fade (280ms) + margem antes de limpar inline position. */
+            const headerSessionFlyoutLayoutClearDelayMs = 320;
             let headerSessionPointerDownHandler = null;
             let headerSessionEscapeHandler = null;
             let repositionHeaderSessionFlyout = null;
+            let headerSessionCloseLayoutTimer = null;
 
             const closeHeaderSessionFlyout = () => {
                 if (headerSessionPointerDownHandler) {
@@ -511,14 +514,21 @@
                     headerSessionEscapeHandler = null;
                 }
                 repositionHeaderSessionFlyout = null;
-                if (headerSessionFlyout) {
-                    headerSessionFlyout.style.left = '';
-                    headerSessionFlyout.style.right = '';
-                    headerSessionFlyout.style.top = '';
-                }
+                window.clearTimeout(headerSessionCloseLayoutTimer);
+                headerSessionCloseLayoutTimer = null;
                 headerSessionFlyout?.classList.remove('is-open');
                 headerSessionFlyout?.setAttribute('aria-hidden', 'true');
                 headerSessionToggle?.setAttribute('aria-expanded', 'false');
+                if (headerSessionFlyout) {
+                    headerSessionCloseLayoutTimer = window.setTimeout(() => {
+                        headerSessionCloseLayoutTimer = null;
+                        if (!headerSessionFlyout.classList.contains('is-open')) {
+                            headerSessionFlyout.style.left = '';
+                            headerSessionFlyout.style.right = '';
+                            headerSessionFlyout.style.top = '';
+                        }
+                    }, headerSessionFlyoutLayoutClearDelayMs);
+                }
             };
 
             const positionHeaderSessionFlyout = () => {
@@ -553,6 +563,8 @@
                     closeHeaderSessionFlyout();
                     return;
                 }
+                window.clearTimeout(headerSessionCloseLayoutTimer);
+                headerSessionCloseLayoutTimer = null;
                 closeSubmenuFlyout();
                 hideNavTooltip();
                 headerSessionFlyout.classList.add('is-open');

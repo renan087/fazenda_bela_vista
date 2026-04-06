@@ -641,9 +641,9 @@ body {
     /* Perfil no header: fade no mesmo lugar — sem animar transform. */
     .erp-header-session-flyout.erp-sidebar-submenu-flyout.is-open {
         transform: none;
-        transition:
-            opacity var(--erp-flyout-open-duration) var(--erp-sidebar-ease),
-            visibility 0s;
+        transition-property: opacity, visibility;
+        transition-duration: var(--erp-flyout-open-duration), 0s;
+        transition-timing-function: var(--erp-sidebar-ease), linear;
     }
 
     .erp-sidebar-submenu-flyout:not(.erp-header-session-flyout) a {
@@ -681,9 +681,10 @@ body {
         border: 1px solid rgba(51, 65, 85, 0.85);
         box-shadow: 0 18px 45px rgba(15, 23, 42, 0.45);
         transform: none;
-        transition:
-            opacity var(--erp-flyout-close-duration) var(--erp-flyout-close-ease),
-            visibility 0s linear var(--erp-flyout-close-duration);
+        transition-property: opacity, visibility;
+        transition-duration: var(--erp-flyout-close-duration), 0s;
+        transition-timing-function: var(--erp-flyout-close-ease), linear;
+        transition-delay: 0s, var(--erp-flyout-close-duration);
     }
 
     .erp-header-session-flyout .erp-header-session-flyout-body {
