@@ -780,10 +780,7 @@
                     resetLaunchContextPanels();
                 };
 
-                launchForm?.addEventListener('submit', () => {
-                    resetLaunchForm();
-                    launchModal.close();
-                });
+                /* Não resetar no submit: isso apaga campos antes do POST e quebra validação no backend. */
                 launchInputSelect?.addEventListener('change', syncLaunchUnit);
                 openLaunchButton?.addEventListener('click', () => {
                     resetLaunchForm();

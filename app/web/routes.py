@@ -151,6 +151,7 @@ EQUIPMENT_ASSET_CATEGORY_OPTIONS = [
 ]
 PENDING_PASSWORD_CHANGE_SESSION_KEY = "pending_password_change_user_id"
 PENDING_SUPER_ADMIN_2FA_DISABLE_SESSION_KEY = "pending_super_admin_2fa_disable"
+PREVIOUS_CONTEXT_SESSION_KEY = "previous_context"
 HISTORY_PAGE_SIZE = 10
 MENU_ITEM_VISIBILITY_RULES = {
     "users": has_admin_access,
@@ -203,6 +204,7 @@ def _base_context(request: Request, user: User, csrf_token: str, page: str, **kw
         context.update(scope_context)
         context["context_lock_exempt"] = page in {"farms", "seasons", "profile"}
         context["context_selection_blocking"] = scope_context["context_selection_required"] and not context["context_lock_exempt"]
+        context["context_previous_available"] = bool(scope_context.get("previous_context_available"))
     context.update(kwargs)
     return context
 
@@ -526,14 +528,28 @@ def _global_scope_context(request: Request, repo: FarmRepository, user: User | N
     active_farm = repo.get_farm(active_farm_id) if active_farm_id else None
     active_season = repo.get_crop_season(active_season_id) if active_season_id else None
 
+    # Contexto anterior (para permitir cancelar o modal obrigatório quando houver algo para voltar).
+    previous_payload = request.session.get(PREVIOUS_CONTEXT_SESSION_KEY)
+    prev_farm_id = _int_or_none(previous_payload.get("farm_id")) if isinstance(previous_payload, dict) else None
+    prev_season_id = _int_or_none(previous_payload.get("season_id")) if isinstance(previous_payload, dict) else None
+    prev_farm = repo.get_farm(prev_farm_id) if prev_farm_id else None
+    prev_season = repo.get_crop_season(prev_season_id) if prev_season_id else None
+    previous_context_available = bool(prev_farm and prev_season and prev_season.farm_id == prev_farm.id)
+
     if active_farm_id and not active_farm:
+        if active_farm_id and active_season_id:
+            request.session[PREVIOUS_CONTEXT_SESSION_KEY] = {"farm_id": active_farm_id, "season_id": active_season_id}
         request.session.pop("active_farm_id", None)
         active_farm_id = None
     if active_season_id and not active_season:
+        if active_farm_id and active_season_id:
+            request.session[PREVIOUS_CONTEXT_SESSION_KEY] = {"farm_id": active_farm_id, "season_id": active_season_id}
         request.session.pop("active_season_id", None)
         active_season_id = None
 
     if active_season and active_farm_id and active_season.farm_id != active_farm_id:
+        if active_farm_id and active_season_id:
+            request.session[PREVIOUS_CONTEXT_SESSION_KEY] = {"farm_id": active_farm_id, "season_id": active_season_id}
         request.session.pop("active_season_id", None)
         active_season = None
         active_season_id = None
@@ -562,6 +578,9 @@ def _global_scope_context(request: Request, repo: FarmRepository, user: User | N
         "context_missing_farm": not active_farm_id,
         "context_missing_season": not active_season_id,
         "current_url": current_url,
+        "previous_context_available": previous_context_available,
+        "previous_context_farm_id": prev_farm_id if previous_context_available else None,
+        "previous_context_season_id": prev_season_id if previous_context_available else None,
     }
 
 
@@ -1802,8 +1821,32 @@ def update_global_context(
     user: User = Depends(get_current_user_web),
 ):
     validate_csrf(request, csrf_token)
+    # Guarda o contexto atual completo como "anterior" antes de alterar.
+    current_farm_id = _active_farm_id(request)
+    current_season_id = _active_season_id(request)
+    if current_farm_id and current_season_id:
+        request.session[PREVIOUS_CONTEXT_SESSION_KEY] = {"farm_id": current_farm_id, "season_id": current_season_id}
     persist_user_context(request, db, user, _int_or_none(farm_id), _int_or_none(season_id))
 
+    if not redirect_to or not redirect_to.startswith("/"):
+        redirect_to = "/dashboard"
+    return _redirect(redirect_to)
+
+
+@router.post("/contexto/reverter")
+def revert_global_context(
+    request: Request,
+    csrf_token: str = Form(...),
+    redirect_to: str | None = Form(None),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    validate_csrf(request, csrf_token)
+    payload = request.session.get(PREVIOUS_CONTEXT_SESSION_KEY)
+    farm_id = _int_or_none(payload.get("farm_id")) if isinstance(payload, dict) else None
+    season_id = _int_or_none(payload.get("season_id")) if isinstance(payload, dict) else None
+    if farm_id and season_id:
+        persist_user_context(request, db, user, farm_id, season_id)
     if not redirect_to or not redirect_to.startswith("/"):
         redirect_to = "/dashboard"
     return _redirect(redirect_to)
@@ -1974,7 +2017,9 @@ def plots_page(
     plots_farm_scope_locked = plots_scope_active_farm_id is not None
     plots_locked_farm_name = None
     if plots_farm_scope_locked:
-        _locked = next((f for f in farms if f.id == plots_scope_active_farm_id), None)
+        # A lista `farms` pode vir filtrada por safra/variedade e não incluir a fazenda do contexto.
+        # Para evitar o fallback "Fazenda #id", busca sempre o nome real direto do repositório.
+        _locked = repo.get_farm(plots_scope_active_farm_id)
         plots_locked_farm_name = _locked.name if _locked else f"Fazenda #{plots_scope_active_farm_id}"
     plots_field_q_filtered = bool((q or "").strip())
     plots_field_sort_filtered = sort != "name"
