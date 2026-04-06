@@ -795,6 +795,13 @@ body {
     }
 }
 
+/* Flyout de perfil: CSS completo só acima (≥lg). Sem isso o nó entra no fluxo e aparece no fim da página no mobile. */
+@media (max-width: 1023px) {
+    #erp-header-session-flyout {
+        display: none !important;
+    }
+}
+
 .erp-sidebar nav {
     scrollbar-width: thin;
     scrollbar-color: rgba(0, 0, 0, 0.3) transparent;
