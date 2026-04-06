@@ -8,6 +8,7 @@ body {
 
 .erp-header-user-chip {
     display: none;
+    cursor: pointer;
 }
 
 @media (min-width: 1024px) {

@@ -269,13 +269,21 @@
                             </label>
                         </div>
                     </form>
-                    <a href="/meu-perfil" class="erp-header-user-chip inline-flex shrink-0 items-center justify-center rounded-full no-underline outline-none transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40 focus-visible:ring-offset-2 focus-visible:ring-offset-white {% if page == 'profile' %}ring-2 ring-brand-500/30 ring-offset-2 ring-offset-white{% endif %}" aria-label="Meu perfil — {{ session_display_name }}" title="{{ session_display_name }}">
-                        {% if user.avatar_data %}
-                        <img src="/meu-perfil/avatar" alt="" class="h-9 w-9 shrink-0 rounded-full object-cover" width="36" height="36" decoding="async">
-                        {% else %}
-                        <span class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand-100 text-sm font-semibold text-brand-700" aria-hidden="true">{{ header_avatar_initial }}</span>
-                        {% endif %}
-                    </a>
+                    <div class="erp-header-user-group relative shrink-0">
+                        <button type="button" class="erp-header-user-chip inline-flex items-center justify-center rounded-full border-0 bg-transparent p-0 outline-none transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40 focus-visible:ring-offset-2 focus-visible:ring-offset-white {% if page == 'profile' %}ring-2 ring-brand-500/30 ring-offset-2 ring-offset-white{% endif %}" data-header-session-toggle aria-expanded="false" aria-haspopup="true" aria-controls="erp-header-session-flyout" title="{{ session_display_name }}" aria-label="Menu da sessao — {{ session_display_name }}">
+                            {% if user.avatar_data %}
+                            <img src="/meu-perfil/avatar" alt="" class="h-[60px] w-[60px] shrink-0 rounded-full object-cover" width="60" height="60" decoding="async">
+                            {% else %}
+                            <span class="flex h-[60px] w-[60px] shrink-0 items-center justify-center rounded-full bg-brand-100 text-xl font-semibold text-brand-700" aria-hidden="true">{{ header_avatar_initial }}</span>
+                            {% endif %}
+                        </button>
+                        <div id="erp-header-session-flyout" class="erp-sidebar-submenu-flyout erp-header-session-flyout" role="menu" aria-hidden="true">
+                            <div class="space-y-0.5 px-0.5 py-0.5">
+                                <a href="/meu-perfil" role="menuitem" class="{% if page == 'profile' %}bg-brand-500 text-white{% endif %}">Meu perfil</a>
+                                <a href="/logout" role="menuitem">Sair</a>
+                            </div>
+                        </div>
+                    </div>
                     </div>
                 </div>
             </div>
@@ -474,9 +482,83 @@
                 submenuFlyoutInner?.replaceChildren();
             };
 
+            const headerSessionToggle = document.querySelector('[data-header-session-toggle]');
+            const headerSessionFlyout = document.getElementById('erp-header-session-flyout');
+            let headerSessionPointerDownHandler = null;
+            let headerSessionEscapeHandler = null;
+            let repositionHeaderSessionFlyout = null;
+
+            const closeHeaderSessionFlyout = () => {
+                if (headerSessionPointerDownHandler) {
+                    document.removeEventListener('pointerdown', headerSessionPointerDownHandler, true);
+                    headerSessionPointerDownHandler = null;
+                }
+                if (headerSessionEscapeHandler) {
+                    document.removeEventListener('keydown', headerSessionEscapeHandler, true);
+                    headerSessionEscapeHandler = null;
+                }
+                repositionHeaderSessionFlyout = null;
+                headerSessionFlyout?.classList.remove('is-open');
+                headerSessionFlyout?.setAttribute('aria-hidden', 'true');
+                headerSessionToggle?.setAttribute('aria-expanded', 'false');
+            };
+
+            const positionHeaderSessionFlyout = () => {
+                if (!headerSessionFlyout || !headerSessionToggle) return;
+                const br = headerSessionToggle.getBoundingClientRect();
+                const gap = 8;
+                const fw = headerSessionFlyout.offsetWidth;
+                const fh = headerSessionFlyout.offsetHeight;
+                let left = Math.round(br.right - fw);
+                let top = Math.round(br.bottom + gap);
+                if (left < 8) left = 8;
+                if (left + fw > window.innerWidth - 8) left = Math.max(8, window.innerWidth - fw - 8);
+                if (top + fh > window.innerHeight - 8) top = Math.round(br.top - fh - gap);
+                if (top < 8) top = 8;
+                headerSessionFlyout.style.left = `${left}px`;
+                headerSessionFlyout.style.top = `${top}px`;
+            };
+
+            const toggleHeaderSessionFlyout = () => {
+                if (!headerSessionFlyout || !headerSessionToggle) return;
+                if (headerSessionFlyout.classList.contains('is-open')) {
+                    closeHeaderSessionFlyout();
+                    return;
+                }
+                closeSubmenuFlyout();
+                hideNavTooltip();
+                headerSessionFlyout.classList.add('is-open');
+                headerSessionFlyout.setAttribute('aria-hidden', 'false');
+                headerSessionToggle.setAttribute('aria-expanded', 'true');
+                repositionHeaderSessionFlyout = positionHeaderSessionFlyout;
+                positionHeaderSessionFlyout();
+                window.requestAnimationFrame(() => positionHeaderSessionFlyout());
+
+                headerSessionPointerDownHandler = (e) => {
+                    const t = e.target;
+                    if (headerSessionFlyout.contains(t) || headerSessionToggle.contains(t)) return;
+                    closeHeaderSessionFlyout();
+                };
+                document.addEventListener('pointerdown', headerSessionPointerDownHandler, true);
+
+                headerSessionEscapeHandler = (e) => {
+                    if (e.key === 'Escape') closeHeaderSessionFlyout();
+                };
+                document.addEventListener('keydown', headerSessionEscapeHandler, true);
+            };
+
+            headerSessionToggle?.addEventListener('click', (e) => {
+                e.stopPropagation();
+                toggleHeaderSessionFlyout();
+            });
+            headerSessionFlyout?.querySelectorAll('a[href]').forEach((a) => {
+                a.addEventListener('click', () => window.setTimeout(closeHeaderSessionFlyout, 0));
+            });
+
             const openSubmenuFlyout = (button, panel) => {
                 if (!submenuFlyoutEl || !submenuFlyoutInner || !panel || !sidebar) return;
                 hideNavTooltip();
+                closeHeaderSessionFlyout();
                 const wasThisOpen =
                     flyoutAnchorButton === button && submenuFlyoutEl.classList.contains('is-open');
                 closeSubmenuFlyout();
@@ -551,9 +633,11 @@
                 hideNavTooltip();
                 if (!desktopSidebarMq.matches) {
                     closeSubmenuFlyout();
+                    closeHeaderSessionFlyout();
                     return;
                 }
                 if (repositionSubmenuFlyout) repositionSubmenuFlyout();
+                if (repositionHeaderSessionFlyout) repositionHeaderSessionFlyout();
             });
 
             navEl?.addEventListener('scroll', () => {
@@ -571,6 +655,7 @@
             const transitionDesktopSidebarState = (collapsed) => {
                 if (!document.body || !desktopSidebarMq.matches) return;
                 closeSubmenuFlyout();
+                closeHeaderSessionFlyout();
                 hideNavTooltip();
                 window.clearTimeout(desktopSidebarTransitionTimer);
                 if (collapsed) {
@@ -611,6 +696,7 @@
             const syncDesktopSidebar = () => {
                 if (!desktopSidebarMq.matches) {
                     closeSubmenuFlyout();
+                    closeHeaderSessionFlyout();
                     hideNavTooltip();
                     document.body.classList.remove('erp-sidebar-collapsed', 'erp-sidebar-collapsing', 'erp-sidebar-expanding');
                     return;
