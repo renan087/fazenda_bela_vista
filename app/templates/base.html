@@ -107,6 +107,9 @@
         </div>
     </main>
     {% elif user %}
+    {% set session_name_parts = (user.name or '').split() %}
+    {% set session_display_name = user.display_name or ((session_name_parts[0] ~ ' ' ~ session_name_parts[-1]) if session_name_parts|length > 1 else (session_name_parts[0] if session_name_parts else user.email)) %}
+    {% set header_avatar_initial = (user.display_name or user.name or user.email or 'U')[:1]|upper %}
     <div class="min-h-screen min-w-0 lg:flex">
         <div class="fixed inset-0 z-30 hidden bg-slate-950/50 lg:hidden" data-mobile-overlay></div>
         <aside class="erp-sidebar fixed inset-y-0 left-0 z-40 w-72 -translate-x-full bg-slate-950 text-slate-100 max-lg:transition-transform max-lg:duration-200 lg:fixed lg:inset-y-0 lg:translate-x-0" data-desktop-sidebar>
@@ -197,8 +200,6 @@
                 </nav>
                 <div class="erp-sidebar-session-wrap border-t border-slate-800 px-6 py-5">
                     <div class="rounded-2xl bg-slate-900 px-4 py-4">
-                        {% set session_name_parts = (user.name or '').split() %}
-                        {% set session_display_name = user.display_name or ((session_name_parts[0] ~ ' ' ~ session_name_parts[-1]) if session_name_parts|length > 1 else (session_name_parts[0] if session_name_parts else user.email)) %}
                         <button type="button" class="flex w-full items-center justify-between gap-3 text-left" data-session-toggle aria-expanded="false">
                             <div class="min-w-0">
                                 <p class="text-xs uppercase tracking-[0.3em] text-slate-500">Sessao</p>
@@ -243,6 +244,7 @@
                         <h2 class="text-2xl font-semibold leading-tight">{{ title or "Painel da Fazenda" }}</h2>
                         </div>
                     </div>
+                    <div class="flex min-w-0 shrink-0 items-center gap-3 md:gap-4">
                     <form method="post" action="/contexto" class="hidden min-w-[20rem] rounded-2xl border border-slate-200 bg-mist/80 px-4 py-3 md:block" data-global-context-form data-season-options='{{ context_season_options|tojson|safe }}'>
                         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                         <input type="hidden" name="redirect_to" value="{{ current_url or request.url.path }}">
@@ -267,6 +269,15 @@
                             </label>
                         </div>
                     </form>
+                    <a href="/meu-perfil" class="erp-header-user-chip items-center gap-2 rounded-2xl border border-slate-200/90 bg-white/95 py-1 pl-1 pr-2.5 text-left no-underline shadow-sm transition hover:border-slate-300 hover:bg-white hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/35 focus-visible:ring-offset-2 focus-visible:ring-offset-white {% if page == 'profile' %}ring-2 ring-brand-500/25{% endif %}" aria-label="Meu perfil — {{ session_display_name }}" title="{{ session_display_name }}">
+                        {% if user.avatar_data %}
+                        <img src="/meu-perfil/avatar" alt="" class="h-9 w-9 shrink-0 rounded-full object-cover ring-1 ring-slate-200/80" width="36" height="36" decoding="async">
+                        {% else %}
+                        <span class="erp-header-user-chip-fallback flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand-100 text-sm font-semibold text-brand-700 ring-1 ring-slate-200/60" aria-hidden="true">{{ header_avatar_initial }}</span>
+                        {% endif %}
+                        <span class="erp-header-user-chip-name hidden max-w-[9rem] truncate text-sm font-medium text-slate-800 min-[1280px]:inline">{{ session_display_name }}</span>
+                    </a>
+                    </div>
                 </div>
             </div>
             <div class="mx-auto w-full min-w-0 max-w-7xl px-4 pt-4 sm:px-6 md:hidden">

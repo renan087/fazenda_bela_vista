@@ -6,6 +6,10 @@ body {
     z-index: 30;
 }
 
+.erp-header-user-chip {
+    display: none;
+}
+
 @media (min-width: 1024px) {
     :root {
         --erp-sidebar-ease: cubic-bezier(0.22, 1, 0.36, 1);
@@ -75,6 +79,12 @@ body {
     body.erp-sidebar-collapsed main.erp-main-shell .max-w-7xl,
     body.erp-sidebar-collapsing main.erp-main-shell .max-w-7xl {
         max-width: var(--erp-main-content-max-collapsed);
+    }
+
+    /* Chip de perfil no header: visível só com menu recolhido (desktop). */
+    body.erp-sidebar-collapsed .erp-header-user-chip,
+    body.erp-sidebar-collapsing .erp-header-user-chip {
+        display: inline-flex;
     }
 
     .erp-sidebar-header {
