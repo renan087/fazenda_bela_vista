@@ -147,12 +147,14 @@
     const stickyHeader = document.querySelector('.stock-page-header');
     const headerIntro = stickyHeader?.querySelector('[data-stock-header-intro]');
     const fadingPanels = Array.from(document.querySelectorAll('[data-stock-fade-panel]'));
-    const isEditing = {{ 'true' if edit_profile else 'false' }};
+    const autoOpenModal = {{ 'true' if auto_open_profile_modal else 'false' }};
 
     const closeModal = () => {
-        if (isEditing) {
-            window.location.href = '/perfil-agronomico';
-            return;
+        const url = new URL(window.location.href);
+        if (url.searchParams.has('edit_farm_id')) {
+            url.searchParams.delete('edit_farm_id');
+            const next = url.pathname + (url.searchParams.toString() ? `?${url.searchParams}` : '') + url.hash;
+            window.history.replaceState({}, '', next);
         }
         launchModal?.close();
     };
@@ -163,7 +165,7 @@
         event.preventDefault();
         closeModal();
     });
-    if (isEditing) launchModal?.showModal();
+    if (autoOpenModal) launchModal?.showModal();
 
     const contextToggle = document.querySelector('[data-profile-context-toggle]');
     const contextCollapse = document.querySelector('[data-profile-context-collapse]');

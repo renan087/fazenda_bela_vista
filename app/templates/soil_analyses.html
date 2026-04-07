@@ -1,5 +1,38 @@
 {% extends "base.html" %}
 {% block content %}
+{% macro soil_recommendations_modal(item, dialog_id) %}
+<dialog id="{{ dialog_id }}" class="app-modal soil-recommendations-dialog rounded-[2rem] border-0 p-0 shadow-2xl w-full max-w-3xl overflow-hidden" data-soil-recommendations-dialog>
+    <div class="bg-white p-6 sm:p-8">
+        <div class="flex items-start justify-between gap-4">
+            <div class="min-w-0">
+                <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Recomendações</p>
+                <h3 class="mt-2 text-2xl font-semibold purchased-modal-heading">Sistema e IA</h3>
+                <p class="mt-2 text-sm text-slate-500">{{ item.plot.name if item.plot else "Setor removido" }} • {{ item.analysis_date.strftime('%d-%m-%Y') if item.analysis_date else "-" }} • {{ item.laboratory }}</p>
+            </div>
+            <button type="button" class="modal-close-button" aria-label="Fechar" data-soil-recommendations-close>
+                <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M18 6 6 18"/>
+                    <path d="m6 6 12 12"/>
+                </svg>
+            </button>
+        </div>
+        <div class="mt-6 max-h-[72vh] overflow-y-auto pr-1 space-y-6">
+            <section class="rounded-2xl bg-slate-50 p-4">
+                <p class="text-xs uppercase tracking-[0.25em] text-slate-400">Recomendação do sistema</p>
+                <p class="mt-3 text-sm text-slate-600">Calcário: <strong>{{ item.liming_need_t_ha or 0 }}</strong> t/ha</p>
+                <p class="mt-2 text-sm text-slate-700 whitespace-pre-wrap">{{ item.npk_recommendation or "Sem recomendação calculada." }}</p>
+                {% if item.micronutrient_recommendation %}
+                <p class="mt-3 text-sm text-slate-600 whitespace-pre-wrap">{{ item.micronutrient_recommendation }}</p>
+                {% endif %}
+            </section>
+            <section class="rounded-2xl bg-brand-50/60 p-4 ring-1 ring-brand-100">
+                <p class="text-xs uppercase tracking-[0.25em] text-brand-800">IA</p>
+                <p class="mt-3 text-sm text-slate-700 whitespace-pre-wrap">{{ item.ai_recommendation or item.ai_error or "Sem recomendação da IA ainda." }}</p>
+            </section>
+        </div>
+    </div>
+</dialog>
+{% endmacro %}
 <div class="stock-page-shell space-y-6" data-modal-single-pane>
     <section class="stock-page-header rounded-[2rem] p-5 shadow-panel">
         <div class="flex flex-wrap items-start justify-between gap-4">
@@ -109,14 +142,11 @@
                     <div class="rounded-2xl bg-white px-4 py-3 text-sm text-slate-600">V%: <strong>{{ item.base_saturation or "-" }}</strong></div>
                 </div>
 
-                <div class="mt-4 rounded-2xl bg-white p-4">
-                    <p class="text-sm font-semibold text-slate-900">Recomendação base</p>
-                    <p class="mt-2 text-sm text-slate-600">Calcário: {{ item.liming_need_t_ha or 0 }} t/ha</p>
-                    <p class="mt-2 text-sm text-slate-600">{{ item.npk_recommendation or "Sem recomendação calculada." }}</p>
-                    <p class="mt-2 text-sm text-slate-500">{{ item.micronutrient_recommendation or "" }}</p>
-                    <p class="mt-3 text-xs uppercase tracking-[0.25em] text-slate-400">IA</p>
-                    <p class="mt-2 text-sm text-slate-600">{{ item.ai_recommendation or item.ai_error or "Sem recomendação da IA ainda." }}</p>
-                </div>
+                <button type="button" class="soil-rec-open-button mt-4 flex w-full flex-col items-start gap-1 rounded-2xl border border-slate-200 bg-white p-4 text-left transition hover:border-brand-300 hover:bg-brand-50/40" data-soil-recommendations-open="soil-recommendations-{{ item.id }}">
+                    <span class="text-sm font-semibold text-slate-900">Ver recomendações</span>
+                    <span class="text-xs text-slate-500">Texto gerado pelo sistema e pela IA</span>
+                </button>
+                {{ soil_recommendations_modal(item, 'soil-recommendations-' ~ item.id) }}
 
                 <template id="soil-analysis-view-{{ item.id }}">
                     <div class="grid gap-3 sm:grid-cols-2">
@@ -168,9 +198,13 @@
         <h3 class="mt-2 text-2xl font-semibold">Histórico de recomendações</h3>
         <div class="mt-6 space-y-4">
             {% for item in latest_recommendations %}
-            <article class="rounded-[1.5rem] bg-slate-50 p-4">
+            <article class="rounded-[1.5rem] border border-slate-200 bg-slate-50 p-4">
                 <p class="font-medium text-slate-900">{{ item.plot.name if item.plot else "Setor removido" }} • {{ item.analysis_date.strftime('%d-%m-%Y') if item.analysis_date else "-" }}</p>
-                <p class="mt-2 text-sm text-slate-600">{{ item.ai_recommendation }}</p>
+                <button type="button" class="soil-rec-open-button mt-3 flex w-full flex-col items-start gap-1 rounded-2xl border border-slate-200 bg-white px-4 py-3 text-left transition hover:border-brand-300 hover:bg-brand-50/40" data-soil-recommendations-open="soil-recommendations-hist-{{ item.id }}">
+                    <span class="text-sm font-semibold text-slate-900">Ver recomendações</span>
+                    <span class="text-xs text-slate-500">Sistema e IA</span>
+                </button>
+                {{ soil_recommendations_modal(item, 'soil-recommendations-hist-' ~ item.id) }}
             </article>
             {% else %}
             <p class="text-sm text-slate-500">Sem recomendações agronômicas geradas.</p>
@@ -280,6 +314,22 @@
         closeModal();
     });
     if (isEditing) launchModal?.showModal();
+
+    document.querySelectorAll('[data-soil-recommendations-dialog]').forEach((dlg) => {
+        dlg.querySelectorAll('[data-soil-recommendations-close]').forEach((btn) => {
+            btn.addEventListener('click', () => dlg.close());
+        });
+        dlg.addEventListener('cancel', (event) => {
+            event.preventDefault();
+            dlg.close();
+        });
+    });
+    document.querySelectorAll('[data-soil-recommendations-open]').forEach((btn) => {
+        btn.addEventListener('click', () => {
+            const id = btn.getAttribute('data-soil-recommendations-open');
+            document.getElementById(id)?.showModal();
+        });
+    });
 
     const contextToggle = document.querySelector('[data-soil-context-toggle]');
     const contextCollapse = document.querySelector('[data-soil-context-collapse]');

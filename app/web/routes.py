@@ -7835,9 +7835,12 @@ def agronomic_profiles_page(
     csrf_token: str = Depends(get_csrf_token),
 ):
     repo = _repository(db)
-    del edit_farm_id
     scope = _global_scope_context(request, repo)
+    active_farm_id = scope["active_farm_id"]
     selected_farm = scope["active_farm"]
+    auto_open_profile_modal = bool(
+        edit_farm_id is not None and active_farm_id is not None and edit_farm_id == active_farm_id
+    )
     return templates.TemplateResponse(
         "agronomic_profiles.html",
         _base_context(
@@ -7851,10 +7854,11 @@ def agronomic_profiles_page(
             profiles=[
                 profile
                 for profile in repo.list_agronomic_profiles()
-                if not scope["active_farm_id"] or profile.farm_id == scope["active_farm_id"]
+                if not active_farm_id or profile.farm_id == active_farm_id
             ],
             edit_farm=selected_farm,
-            edit_profile=repo.get_agronomic_profile_by_farm(scope["active_farm_id"]) if scope["active_farm_id"] else None,
+            edit_profile=repo.get_agronomic_profile_by_farm(active_farm_id) if active_farm_id else None,
+            auto_open_profile_modal=auto_open_profile_modal,
         ),
     )
 
