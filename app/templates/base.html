@@ -61,6 +61,8 @@
         <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="4" rx="1.5"/><rect x="14" y="10" width="7" height="11" rx="1.5"/><rect x="3" y="13" width="7" height="8" rx="1.5"/></svg>
         {% elif name == 'farms' %}
         <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-6-4.35-6-10a6 6 0 1 1 12 0c0 5.65-6 10-6 10Z"/><circle cx="12" cy="11" r="2.5"/></svg>
+        {% elif name == 'productive_unit' %}
+        <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 2 7l10 5 10-5-10-5Z"/><path d="m2 12 10 5 10-5"/><path d="m2 17 10 5 10-5"/></svg>
         {% elif name == 'inputs' %}
         <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M16.5 9.4 7.5 4.2"/><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="M3.3 7 12 12l8.7-5"/><path d="M12 22V12"/></svg>
         {% elif name == 'plots' %}
@@ -131,17 +133,22 @@
                 </div>
                 <nav class="erp-sidebar-nav min-h-0 flex-1 space-y-1 overflow-y-auto overflow-x-hidden px-4 py-6 text-sm">
                     {% set menu_visibility = menu_visibility or {} %}
-                    {% set nav = [
-                        ('dashboard', '/dashboard', 'Dashboard'),
-                        ('farms', '/fazendas', 'Fazendas'),
-                        ('plots', '/setores', 'Setores'),
-                    ] %}
-                    {% for key, href, label in nav %}
-                    <a href="{{ href }}" class="erp-sidebar-link flex items-center justify-start gap-3 rounded-2xl px-4 py-3 transition-all duration-300 ease-in-out {% if page == key %}bg-brand-500 text-white shadow-lg{% else %}text-slate-300 hover:bg-slate-900 hover:text-white{% endif %}">
-                        <span class="erp-sidebar-icon">{{ nav_icon(key) }}</span>
-                        <span class="erp-sidebar-label">{{ label }}</span>
+                    <a href="/dashboard" class="erp-sidebar-link flex items-center justify-start gap-3 rounded-2xl px-4 py-3 transition-all duration-300 ease-in-out {% if page == 'dashboard' %}bg-brand-500 text-white shadow-lg{% else %}text-slate-300 hover:bg-slate-900 hover:text-white{% endif %}">
+                        <span class="erp-sidebar-icon">{{ nav_icon('dashboard') }}</span>
+                        <span class="erp-sidebar-label">Dashboard</span>
                     </a>
-                    {% endfor %}
+                    {% set productive_unit_pages = ['farms', 'seasons', 'plots'] %}
+                    <div class="rounded-2xl {% if page in productive_unit_pages %}bg-slate-900/80{% endif %}" data-submenu-group>
+                        <button type="button" class="erp-sidebar-link flex w-full items-center justify-between rounded-2xl px-4 py-3 text-left transition-all duration-300 ease-in-out {% if page in productive_unit_pages %}text-white{% else %}text-slate-300 hover:bg-slate-900 hover:text-white{% endif %}" data-submenu-toggle="productive-unit-menu" data-submenu-parent aria-haspopup="true" aria-expanded="{% if page in productive_unit_pages %}true{% else %}false{% endif %}">
+                            <span class="flex items-center gap-3"><span class="erp-sidebar-icon">{{ nav_icon('productive_unit') }}</span><span class="erp-sidebar-label">Unidade Produtiva</span></span>
+                            <span class="erp-sidebar-parent-indicator text-xs uppercase tracking-[0.2em]">+</span>
+                        </button>
+                        <div id="productive-unit-menu" class="sidebar-submenu-panel {% if page not in productive_unit_pages %}hidden {% endif %}space-y-1 px-3 pb-3" data-submenu-panel>
+                            <a href="/fazendas" class="sidebar-submenu-link block rounded-xl px-3 py-2 text-sm {% if page == 'farms' %}bg-brand-500 text-white{% else %}text-slate-300 hover:bg-slate-800 hover:text-white{% endif %}" data-submenu-link>Fazendas</a>
+                            <a href="/safras" class="sidebar-submenu-link block rounded-xl px-3 py-2 text-sm {% if page == 'seasons' %}bg-brand-500 text-white{% else %}text-slate-300 hover:bg-slate-800 hover:text-white{% endif %}" data-submenu-link>Safras</a>
+                            <a href="/setores" class="sidebar-submenu-link block rounded-xl px-3 py-2 text-sm {% if page == 'plots' %}bg-brand-500 text-white{% else %}text-slate-300 hover:bg-slate-800 hover:text-white{% endif %}" data-submenu-link>Setores</a>
+                        </div>
+                    </div>
                     {% set inputs_pages = ['fertilization', 'fertilization_schedules', 'input_recommendations', 'purchased_inputs', 'stock', 'assets'] %}
                     <div class="rounded-2xl {% if page in inputs_pages %}bg-slate-900/80{% endif %}" data-submenu-group>
                         <button type="button" class="erp-sidebar-link flex w-full items-center justify-between rounded-2xl px-4 py-3 text-left transition-all duration-300 ease-in-out {% if page in inputs_pages %}text-white{% else %}text-slate-300 hover:bg-slate-900 hover:text-white{% endif %}" data-submenu-toggle="inputs-menu" data-submenu-parent aria-haspopup="true" aria-expanded="{% if page in inputs_pages %}true{% else %}false{% endif %}">
@@ -159,7 +166,6 @@
                     </div>
                     {% set nav = [
                         ('varieties', '/variedades', 'Variedades'),
-                        ('seasons', '/safras', 'Safras'),
                         ('irrigation', '/irrigacao', 'Irrigacao'),
                         ('rainfall', '/pluviometria', 'Pluviometria'),
                         ('production', '/producao', 'Producao'),
