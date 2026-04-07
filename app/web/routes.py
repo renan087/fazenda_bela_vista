@@ -7515,6 +7515,9 @@ def conclude_fertilization_schedule_action(
     if not schedule:
         _flash(request, "error", "Agendamento nao encontrado.")
         return _redirect(target_url)
+    if schedule.status == "completed" or schedule.fertilization_record_id:
+        _flash(request, "info", "Este agendamento ja foi concluido.")
+        return _redirect(target_url)
     purchased_inputs = repo.list_purchased_inputs()
     validation = validate_schedule_stock(repo, schedule, purchased_inputs_cache=purchased_inputs)
     if not validation["ok"]:

@@ -839,6 +839,10 @@ def validate_schedule_stock(
 
 
 def conclude_fertilization_schedule(repository: FarmRepository, schedule: FertilizationSchedule, application_date: str | None = None) -> FertilizationRecord:
+    if schedule.status == "completed" and schedule.fertilization_record_id:
+        existing = repository.get_fertilization(schedule.fertilization_record_id)
+        if existing:
+            return existing
     if not schedule.items:
         raise ValueError("Adicione ao menos um insumo no agendamento.")
     schedule_items = [
