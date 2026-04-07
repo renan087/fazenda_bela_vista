@@ -131,6 +131,9 @@
                             </td>
                             <td class="px-4 py-3">
                                 <div class="flex items-center justify-end gap-2">
+                                    {% if item.origin == 'fertilizacao' %}
+                                    <span class="text-xs text-slate-500">Gerado via Fertilização (alterar/excluir no módulo de origem)</span>
+                                    {% else %}
                                     <a href="{{ irrigation_edit_urls[item.id] }}" class="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-100" title="Editar">
                                         <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                             <path d="M12 20h9"/>
@@ -149,6 +152,7 @@
                                             </svg>
                                         </button>
                                     </form>
+                                    {% endif %}
                                 </div>
                             </td>
                         </tr>

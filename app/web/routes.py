@@ -6150,6 +6150,13 @@ def update_irrigation_action(
     if not irrigation:
         _flash(request, "error", "Registro de irrigacao nao encontrado.")
         return _redirect_for_request(request, "/irrigacao")
+    if (irrigation.origin or "") == "fertilizacao":
+        _flash(
+            request,
+            "info",
+            "Este lancamento foi gerado via Fertilizacao. A alteracao deve ser feita no modulo de origem (Agendamentos/Fertilizacao).",
+        )
+        return _redirect_for_request(request, "/irrigacao")
     plot, scope, denied = _resolve_plot_in_scope(request, repo, plot_id, "/irrigacao")
     if denied:
         return denied
@@ -6190,6 +6197,13 @@ def delete_irrigation_action(
     irrigation = repo.get_irrigation(record_id)
     if not irrigation:
         _flash(request, "error", "Registro de irrigacao nao encontrado.")
+        return _redirect("/irrigacao")
+    if (irrigation.origin or "") == "fertilizacao":
+        _flash(
+            request,
+            "info",
+            "Este lancamento foi gerado via Fertilizacao. A exclusao deve ser feita no modulo de origem (Agendamentos/Fertilizacao).",
+        )
         return _redirect("/irrigacao")
     repo.delete(irrigation)
     _flash(request, "success", "Irrigacao excluida com sucesso.")
