@@ -864,6 +864,8 @@ body {
 }
 
 .dashboard-executive-panel {
+    width: 100%;
+    min-height: 0;
     border: 1px solid rgba(226, 232, 240, 0.95);
     background:
         radial-gradient(circle at top right, rgba(217, 236, 212, 0.14), transparent 24%),
@@ -918,11 +920,13 @@ body {
     color: white;
     flex: 0 0 auto;
     box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.15);
+    background: currentColor;
 }
 
 .dashboard-executive-icon svg {
     width: 1.15rem;
     height: 1.15rem;
+    color: white;
 }
 
 .dashboard-executive-sparkline {
