@@ -62,6 +62,15 @@ def fertilization_application_method_label(code: str | None) -> str:
     return "Fertirrigação"
 
 
+def _resolve_fertilization_duration_minutes(application_method: str, raw_duration) -> int | None:
+    if application_method == FERTILIZATION_METHOD_FERTIRRIGACAO:
+        duration = _int_or_none(raw_duration)
+        if not duration or duration < 1:
+            raise ValueError("Informe a duracao da fertilizacao em minutos (modo Fertirrigacao).")
+        return duration
+    return None
+
+
 def _suggest_crop_season_name(start_date_value: str | date | None, end_date_value: str | date | None) -> str:
     if not start_date_value or not end_date_value:
         return ""
@@ -792,13 +801,15 @@ def update_fertilization(repository: FarmRepository, fertilization: Fertilizatio
 def create_fertilization_schedule(repository: FarmRepository, form: dict) -> FertilizationSchedule:
     plot = repository.get_plot(form["plot_id"])
     scheduled_date = date.fromisoformat(form["scheduled_date"])
+    application_method = _normalize_fertilization_application_method(form.get("application_method"))
+    duration_minutes = _resolve_fertilization_duration_minutes(application_method, form.get("duration_minutes"))
     schedule = FertilizationSchedule(
         plot_id=form["plot_id"],
         season_id=_resolve_season_for_plot(repository, plot, scheduled_date, form.get("season_id")),
         scheduled_date=scheduled_date,
         status=form.get("status") or "scheduled",
-        duration_minutes=_int_or_none(form.get("duration_minutes")),
-        application_method=_normalize_fertilization_application_method(form.get("application_method")),
+        duration_minutes=duration_minutes,
+        application_method=application_method,
         notes=form.get("notes"),
     )
     repository.db.add(schedule)
@@ -839,8 +850,9 @@ def update_fertilization_schedule(repository: FarmRepository, schedule: Fertiliz
     schedule.season_id = _resolve_season_for_plot(repository, plot, scheduled_date, form.get("season_id"))
     schedule.scheduled_date = scheduled_date
     schedule.status = next_status
-    schedule.duration_minutes = _int_or_none(form.get("duration_minutes"))
-    schedule.application_method = _normalize_fertilization_application_method(form.get("application_method"))
+    application_method = _normalize_fertilization_application_method(form.get("application_method"))
+    schedule.application_method = application_method
+    schedule.duration_minutes = _resolve_fertilization_duration_minutes(application_method, form.get("duration_minutes"))
     schedule.notes = form.get("notes")
     schedule.items.clear()
     repository.db.flush()
@@ -910,6 +922,10 @@ def conclude_fertilization_schedule(repository: FarmRepository, schedule: Fertil
     ]
     if not schedule_items:
         raise ValueError("Adicione ao menos um insumo valido no agendamento antes de concluir.")
+    app_method = _normalize_fertilization_application_method(schedule.application_method)
+    if app_method == FERTILIZATION_METHOD_FERTIRRIGACAO:
+        if not schedule.duration_minutes or int(schedule.duration_minutes) < 1:
+            raise ValueError("Informe a duracao do agendamento (modo Fertirrigacao) antes de concluir.")
     record = create_fertilization(
         repository,
         {
@@ -1212,8 +1228,8 @@ def _save_fertilization(repository: FarmRepository, fertilization: Fertilization
     application_date = date.fromisoformat(form["application_date"])
     season_id = _resolve_season_for_plot(repository, plot, application_date, form.get("season_id"))
     product, dose = _fertilization_summary(items)
-    duration_minutes = _int_or_none(form.get("duration_minutes"))
     application_method = _normalize_fertilization_application_method(form.get("application_method"))
+    duration_minutes = _resolve_fertilization_duration_minutes(application_method, form.get("duration_minutes"))
     record = fertilization or FertilizationRecord(
         plot_id=form["plot_id"],
         season_id=season_id,

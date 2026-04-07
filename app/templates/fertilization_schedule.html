@@ -26,7 +26,7 @@
                     <p><strong>Data:</strong> {{ schedule.scheduled_date }}</p>
                     <p><strong>Status:</strong> {{ schedule_status_label }}</p>
                     <p><strong>Modo:</strong> {% if schedule.application_method == 'adubacao_solida' %}Adubação sólida{% else %}Fertirrigação{% endif %}</p>
-                    <p><strong>Duração:</strong> {% if schedule.duration_minutes %}{{ schedule.duration_minutes }} min{% else %}-{% endif %}</p>
+                    <p><strong>Duração:</strong> {% if schedule.application_method == 'adubacao_solida' %}-{% elif schedule.duration_minutes %}{{ schedule.duration_minutes }} min{% else %}-{% endif %}</p>
                 </div>
             </div>
             <div class="flex items-center gap-2 lg:gap-1.5">
@@ -100,7 +100,7 @@
                 <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Status</p><p class="mt-2 text-sm font-medium text-slate-800">{{ schedule_status_label }}</p></div>
                 <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Estoque</p><p class="mt-2 text-sm font-medium text-slate-800">{% if validation.ok %}Disponível{% else %}Insuficiente{% endif %}</p></div>
                 <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Modo</p><p class="mt-2 text-sm font-medium text-slate-800">{% if schedule.application_method == 'adubacao_solida' %}Adubação sólida{% else %}Fertirrigação{% endif %}</p></div>
-                <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Duração</p><p class="mt-2 text-sm font-medium text-slate-800">{% if schedule.duration_minutes %}{{ schedule.duration_minutes }} min{% else %}-{% endif %}</p></div>
+                <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Duração</p><p class="mt-2 text-sm font-medium text-slate-800">{% if schedule.application_method == 'adubacao_solida' %}-{% elif schedule.duration_minutes %}{{ schedule.duration_minutes }} min{% else %}-{% endif %}</p></div>
             </div>
             <div class="rounded-2xl bg-slate-50 px-4 py-4">
                 <p class="text-xs uppercase tracking-[0.2em] text-slate-400">Itens programados</p>
@@ -360,16 +360,18 @@
                     </label>
                     <label>
                         <span class="mb-2 block text-sm font-medium">Modo de aplicação</span>
-                        <select name="application_method" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required>
+                        <select name="application_method" data-schedule-application-method class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required>
                             <option value="fertirrigacao" {% if not edit_schedule or edit_schedule.application_method != 'adubacao_solida' %}selected{% endif %}>Fertirrigação</option>
                             <option value="adubacao_solida" {% if edit_schedule and edit_schedule.application_method == 'adubacao_solida' %}selected{% endif %}>Adubação sólida</option>
                         </select>
                     </label>
-                    <label>
-                        <span class="mb-2 block text-sm font-medium">Duração da fertilização (minutos)</span>
-                        <input type="number" name="duration_minutes" value="{{ edit_schedule.duration_minutes if edit_schedule and edit_schedule.duration_minutes is not none else '' }}" min="1" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" placeholder="Opcional">
-                        <span class="mt-2 block text-xs text-slate-500">Em <strong>Fertirrigação</strong>, ao concluir, com duração e setor de gotejo configurado, o sistema registra irrigação automática.</span>
-                    </label>
+                    <div class="{% if edit_schedule and edit_schedule.application_method == 'adubacao_solida' %}hidden{% endif %}" data-schedule-duration-block>
+                        <label>
+                            <span class="mb-2 block text-sm font-medium">Duração da fertilização (minutos)</span>
+                            <input type="number" name="duration_minutes" data-schedule-duration-minutes value="{{ edit_schedule.duration_minutes if edit_schedule and edit_schedule.duration_minutes is not none else '' }}" min="1" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" {% if not edit_schedule or edit_schedule.application_method != 'adubacao_solida' %}required{% endif %}>
+                            <span class="mt-2 block text-xs text-slate-500">Obrigatório em <strong>Fertirrigação</strong>. Ao concluir o agendamento, com setor de gotejo configurado, o sistema registra irrigação automática.</span>
+                        </label>
+                    </div>
                 </div>
 
                 <label>
@@ -484,6 +486,18 @@
     (() => {
         const launchModal = document.getElementById('schedule-launch-modal');
         const scheduleForm = document.getElementById('schedule-form');
+        const syncScheduleDurationField = () => {
+            if (!scheduleForm) return;
+            const am = scheduleForm.querySelector('[data-schedule-application-method]');
+            const block = scheduleForm.querySelector('[data-schedule-duration-block]');
+            const input = scheduleForm.querySelector('[data-schedule-duration-minutes]');
+            if (!am || !block || !input) return;
+            const isFert = am.value === 'fertirrigacao';
+            block.classList.toggle('hidden', !isFert);
+            input.toggleAttribute('required', isFert);
+            input.disabled = !isFert;
+            if (!isFert) input.value = '';
+        };
         const openLaunchButton = document.querySelector('[data-schedule-launch-open]');
         const closeLaunchButtons = Array.from(document.querySelectorAll('[data-schedule-launch-close]'));
         const contextToggle = document.querySelector('[data-schedule-context-toggle]');
@@ -580,6 +594,7 @@
                 wrapper.appendChild(buildScheduleItemRow());
             }
             syncPlotSelectionState();
+            syncScheduleDurationField();
         };
 
         const openScheduleModal = () => {
@@ -607,6 +622,9 @@
             launchModal.showModal();
             {% endif %}
         }
+
+        scheduleForm?.querySelector('[data-schedule-application-method]')?.addEventListener('change', syncScheduleDurationField);
+        syncScheduleDurationField();
 
         if (contextToggle && contextCollapse && contextToggleLabel) {
             const setContextExpanded = (expanded) => {

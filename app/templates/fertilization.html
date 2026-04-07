@@ -69,7 +69,7 @@
             <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Produto</p><p class="mt-2 text-sm font-medium text-slate-800">{{ item.product }}</p></div>
             <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Custo</p><p class="mt-2 text-sm font-medium text-slate-800">R$ {{ item.cost }}</p></div>
             <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Modo</p><p class="mt-2 text-sm font-medium text-slate-800">{% if item.application_method == 'adubacao_solida' %}Adubação sólida{% else %}Fertirrigação{% endif %}</p></div>
-            <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Duração</p><p class="mt-2 text-sm font-medium text-slate-800">{% if item.duration_minutes %}{{ item.duration_minutes }} min{% else %}-{% endif %}</p></div>
+            <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Duração</p><p class="mt-2 text-sm font-medium text-slate-800">{% if item.application_method == 'adubacao_solida' %}-{% elif item.duration_minutes %}{{ item.duration_minutes }} min{% else %}-{% endif %}</p></div>
         </div>
         <div class="rounded-2xl bg-slate-50 px-4 py-4">
             <p class="text-xs uppercase tracking-[0.2em] text-slate-400">Insumos aplicados</p>
@@ -277,16 +277,18 @@
                     </label>
                     <label>
                         <span class="mb-2 block text-sm font-medium text-slate-700">Modo de aplicação</span>
-                        <select name="application_method" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50 px-4" required>
+                        <select name="application_method" data-fertilization-application-method class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50 px-4" required>
                             <option value="fertirrigacao" {% if not edit_fertilization or edit_fertilization.application_method != 'adubacao_solida' %}selected{% endif %}>Fertirrigação</option>
                             <option value="adubacao_solida" {% if edit_fertilization and edit_fertilization.application_method == 'adubacao_solida' %}selected{% endif %}>Adubação sólida</option>
                         </select>
                     </label>
-                    <label>
-                        <span class="mb-2 block text-sm font-medium text-slate-700">Duração da fertilização (minutos)</span>
-                        <input type="number" name="duration_minutes" value="{{ edit_fertilization.duration_minutes if edit_fertilization and edit_fertilization.duration_minutes is not none else '' }}" min="1" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50 px-4" placeholder="Opcional">
-                        <span class="mt-2 block text-xs text-slate-500">Em <strong>Fertirrigação</strong>, com duração e setor de gotejo configurado, o sistema registra irrigação automática. Em adubação sólida a duração é só informativa.</span>
-                    </label>
+                    <div class="{% if edit_fertilization and edit_fertilization.application_method == 'adubacao_solida' %}hidden{% endif %}" data-fertilization-duration-block>
+                        <label>
+                            <span class="mb-2 block text-sm font-medium text-slate-700">Duração da fertilização (minutos)</span>
+                            <input type="number" name="duration_minutes" data-fertilization-duration-minutes value="{{ edit_fertilization.duration_minutes if edit_fertilization and edit_fertilization.duration_minutes is not none else '' }}" min="1" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50 px-4" {% if not edit_fertilization or edit_fertilization.application_method != 'adubacao_solida' %}required{% endif %}>
+                            <span class="mt-2 block text-xs text-slate-500">Obrigatório em <strong>Fertirrigação</strong>. Com setor de gotejo configurado, o sistema calcula e registra a irrigação automaticamente.</span>
+                        </label>
+                    </div>
                 </div>
 
                 <label>
@@ -399,6 +401,19 @@
         const plotSelectionCount = document.querySelector('[data-fertilization-plot-selection-count]');
         const initialPlotOptionsHtml = plotSelect?.innerHTML || '';
         const fertilizationRenderedInEditMode = {% if edit_fertilization %}true{% else %}false{% endif %};
+        const syncFertilizationDurationField = () => {
+            const formEl = document.querySelector('[data-fertilization-form]');
+            if (!formEl) return;
+            const am = formEl.querySelector('[data-fertilization-application-method]');
+            const block = formEl.querySelector('[data-fertilization-duration-block]');
+            const input = formEl.querySelector('[data-fertilization-duration-minutes]');
+            if (!am || !block || !input) return;
+            const isFert = am.value === 'fertirrigacao';
+            block.classList.toggle('hidden', !isFert);
+            input.toggleAttribute('required', isFert);
+            input.disabled = !isFert;
+            if (!isFert) input.value = '';
+        };
         const getFertilizationCleanUrl = () => {
             const url = new URL(window.location.href);
             url.searchParams.delete('edit_id');
@@ -503,6 +518,7 @@
             }
             plotHiddenInputs?.replaceChildren();
             syncFertilizationPlotSelectionState();
+            syncFertilizationDurationField();
         };
 
         const fertilizationItemsMobileQuery = window.matchMedia('(max-width: 639px)');
@@ -574,6 +590,8 @@
 
         const form = document.querySelector('[data-fertilization-form]');
         if (!form) return;
+        form.querySelector('[data-fertilization-application-method]')?.addEventListener('change', syncFertilizationDurationField);
+        syncFertilizationDurationField();
         const wrapper = form.querySelector('[data-items-wrapper]');
         const template = document.getElementById('fertilization-item-template');
         const addButton = form.querySelector('[data-add-item]');

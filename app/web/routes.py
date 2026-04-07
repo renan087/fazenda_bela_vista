@@ -7445,20 +7445,24 @@ async def create_fertilization_schedule_action(
     if not selected_plots or not items:
         _flash(request, "error", "Selecione ao menos um setor e adicione ao menos um insumo.")
         return _redirect("/fertilizacao/agendamentos")
-    for plot in selected_plots:
-        create_fertilization_schedule(
-            repo,
-            {
-                "plot_id": plot.id,
-                "scheduled_date": str(form.get("scheduled_date") or ""),
-                "season_id": scope["active_season_id"],
-                "status": str(form.get("status") or "scheduled"),
-                "duration_minutes": form.get("duration_minutes"),
-                "application_method": form.get("application_method"),
-                "notes": str(form.get("notes") or "") or None,
-                "items": items,
-            },
-        )
+    try:
+        for plot in selected_plots:
+            create_fertilization_schedule(
+                repo,
+                {
+                    "plot_id": plot.id,
+                    "scheduled_date": str(form.get("scheduled_date") or ""),
+                    "season_id": scope["active_season_id"],
+                    "status": str(form.get("status") or "scheduled"),
+                    "duration_minutes": form.get("duration_minutes"),
+                    "application_method": form.get("application_method"),
+                    "notes": str(form.get("notes") or "") or None,
+                    "items": items,
+                },
+            )
+    except ValueError as exc:
+        _flash(request, "error", str(exc))
+        return _redirect("/fertilizacao/agendamentos")
     if len(selected_plots) == 1:
         _flash(request, "success", "Agendamento salvo com sucesso.")
     else:
@@ -7496,20 +7500,24 @@ async def update_fertilization_schedule_action(
     if not items:
         _flash(request, "error", "Adicione ao menos um insumo ao agendamento.")
         return _redirect_for_request(request, "/fertilizacao/agendamentos", edit_id=schedule_id)
-    update_fertilization_schedule(
-        repo,
-        schedule,
-        {
-            "plot_id": plot.id,
-            "scheduled_date": str(form.get("scheduled_date") or ""),
-            "season_id": scope["active_season_id"],
-            "status": str(form.get("status") or schedule.status),
-            "duration_minutes": form.get("duration_minutes"),
-            "application_method": form.get("application_method"),
-            "notes": str(form.get("notes") or "") or None,
-            "items": items,
-        },
-    )
+    try:
+        update_fertilization_schedule(
+            repo,
+            schedule,
+            {
+                "plot_id": plot.id,
+                "scheduled_date": str(form.get("scheduled_date") or ""),
+                "season_id": scope["active_season_id"],
+                "status": str(form.get("status") or schedule.status),
+                "duration_minutes": form.get("duration_minutes"),
+                "application_method": form.get("application_method"),
+                "notes": str(form.get("notes") or "") or None,
+                "items": items,
+            },
+        )
+    except ValueError as exc:
+        _flash(request, "error", str(exc))
+        return _redirect_for_request(request, "/fertilizacao/agendamentos", edit_id=schedule_id)
     _flash(request, "success", "Agendamento atualizado com sucesso.")
     return _redirect_for_request(request, "/fertilizacao/agendamentos")
 
