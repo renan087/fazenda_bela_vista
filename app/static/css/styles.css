@@ -3037,14 +3037,23 @@ body {
 }
 
 /* Estoque: evitar vazamento do botão Filtrar em telas intermediárias (ex.: 13") */
-@media (max-width: 1360px) {
+@media (min-width: 1180px) and (max-width: 1360px) {
+    .stock-filter-fields-row {
+        --stock-filter-col-actions: minmax(0, 1fr);
+    }
+
     .stock-filter-field-actions {
+        white-space: normal;
         flex-wrap: wrap;
         justify-content: stretch;
     }
 
+    .stock-filter-field-actions .shrink-0 {
+        flex-shrink: 1;
+    }
+
     .stock-filter-field-actions > * {
-        flex: 1 1 0%;
+        flex: 1 1 10rem;
         min-width: 0;
     }
 }
@@ -3058,13 +3067,24 @@ body {
     table-layout: fixed;
 }
 
-.purchased-table-scroll th,
-.purchased-table-scroll td {
-    overflow-wrap: anywhere;
-}
-
 .purchased-table-scroll td:last-child {
     white-space: nowrap;
+}
+
+.purchased-table-scroll th:first-child,
+.purchased-table-scroll td:first-child {
+    white-space: nowrap;
+    width: 7.25rem;
+}
+
+.purchased-table-scroll th:nth-child(9),
+.purchased-table-scroll td:nth-child(9) {
+    width: 13.5rem;
+}
+
+.purchased-table-scroll td:nth-child(9) {
+    white-space: normal;
+    overflow-wrap: anywhere;
 }
 
 @media (max-width: 899px) {
