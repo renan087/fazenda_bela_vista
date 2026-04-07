@@ -157,7 +157,7 @@
             ) }}
         </div>
         <div class="mt-4 space-y-4" data-fertilization-history-list>
-            {% for group in fertilizations|groupby('application_date') %}
+            {% for group in fertilizations|groupby('application_date')|reverse %}
             <section class="rounded-[1.75rem] border border-slate-200 bg-slate-50/70 p-4 shadow-sm" data-fertilization-group>
                 <div class="flex flex-wrap items-center justify-between gap-3">
                     <div class="min-w-0">
