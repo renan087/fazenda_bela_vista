@@ -3036,6 +3036,48 @@ body {
     }
 }
 
+/* Estoque: evitar vazamento do botão Filtrar em telas intermediárias (ex.: 13") */
+@media (max-width: 1360px) {
+    .stock-filter-field-actions {
+        flex-wrap: wrap;
+        justify-content: stretch;
+    }
+
+    .stock-filter-field-actions > * {
+        flex: 1 1 0%;
+        min-width: 0;
+    }
+}
+
+/* Gestão de compras: scroll horizontal apenas no mobile */
+.purchased-table-scroll {
+    overflow-x: visible;
+}
+
+.purchased-table-scroll table {
+    table-layout: fixed;
+}
+
+.purchased-table-scroll th,
+.purchased-table-scroll td {
+    overflow-wrap: anywhere;
+}
+
+.purchased-table-scroll td:last-child {
+    white-space: nowrap;
+}
+
+@media (max-width: 899px) {
+    .purchased-table-scroll {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    .purchased-table-scroll table {
+        table-layout: auto;
+    }
+}
+
 /* Campos numéricos: sem setas de incremento do navegador */
 input[type="number"]::-webkit-outer-spin-button,
 input[type="number"]::-webkit-inner-spin-button {
