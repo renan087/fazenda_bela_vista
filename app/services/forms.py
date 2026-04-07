@@ -36,6 +36,31 @@ from app.repositories.farm import FarmRepository
 MANUAL_STOCK_OUTPUT_REFERENCE = "manual_stock_output"
 MANUAL_STOCK_OUTPUT_ALLOCATION = "manual_stock_output_allocation"
 
+FERTILIZATION_METHOD_FERTIRRIGACAO = "fertirrigacao"
+FERTILIZATION_METHOD_ADUBACAO_SOLIDA = "adubacao_solida"
+
+
+def _int_or_none(value: str | int | None) -> int | None:
+    if value in (None, ""):
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _normalize_fertilization_application_method(raw: str | None) -> str:
+    v = (raw or "").strip().lower().replace(" ", "_")
+    if v == FERTILIZATION_METHOD_ADUBACAO_SOLIDA:
+        return FERTILIZATION_METHOD_ADUBACAO_SOLIDA
+    return FERTILIZATION_METHOD_FERTIRRIGACAO
+
+
+def fertilization_application_method_label(code: str | None) -> str:
+    if (code or "") == FERTILIZATION_METHOD_ADUBACAO_SOLIDA:
+        return "Adubação sólida"
+    return "Fertirrigação"
+
 
 def _suggest_crop_season_name(start_date_value: str | date | None, end_date_value: str | date | None) -> str:
     if not start_date_value or not end_date_value:
@@ -773,6 +798,7 @@ def create_fertilization_schedule(repository: FarmRepository, form: dict) -> Fer
         scheduled_date=scheduled_date,
         status=form.get("status") or "scheduled",
         duration_minutes=_int_or_none(form.get("duration_minutes")),
+        application_method=_normalize_fertilization_application_method(form.get("application_method")),
         notes=form.get("notes"),
     )
     repository.db.add(schedule)
@@ -814,6 +840,7 @@ def update_fertilization_schedule(repository: FarmRepository, schedule: Fertiliz
     schedule.scheduled_date = scheduled_date
     schedule.status = next_status
     schedule.duration_minutes = _int_or_none(form.get("duration_minutes"))
+    schedule.application_method = _normalize_fertilization_application_method(form.get("application_method"))
     schedule.notes = form.get("notes")
     schedule.items.clear()
     repository.db.flush()
@@ -891,6 +918,7 @@ def conclude_fertilization_schedule(repository: FarmRepository, schedule: Fertil
             "season_id": schedule.season_id,
             "notes": schedule.notes,
             "duration_minutes": schedule.duration_minutes,
+            "application_method": schedule.application_method,
             "items": schedule_items,
         },
     )
@@ -1185,6 +1213,7 @@ def _save_fertilization(repository: FarmRepository, fertilization: Fertilization
     season_id = _resolve_season_for_plot(repository, plot, application_date, form.get("season_id"))
     product, dose = _fertilization_summary(items)
     duration_minutes = _int_or_none(form.get("duration_minutes"))
+    application_method = _normalize_fertilization_application_method(form.get("application_method"))
     record = fertilization or FertilizationRecord(
         plot_id=form["plot_id"],
         season_id=season_id,
@@ -1193,6 +1222,7 @@ def _save_fertilization(repository: FarmRepository, fertilization: Fertilization
         dose=dose,
         cost=0,
         duration_minutes=duration_minutes,
+        application_method=application_method,
         notes=form.get("notes"),
     )
     record.plot_id = form["plot_id"]
@@ -1201,6 +1231,7 @@ def _save_fertilization(repository: FarmRepository, fertilization: Fertilization
     record.product = product
     record.dose = dose
     record.duration_minutes = duration_minutes
+    record.application_method = application_method
     record.notes = form.get("notes")
     if fertilization:
         record.items.clear()
@@ -1233,7 +1264,7 @@ def _save_fertilization(repository: FarmRepository, fertilization: Fertilization
     record.cost = round(float(total_cost), 2)
     repository.db.add(record)
 
-    if duration_minutes:
+    if application_method == FERTILIZATION_METHOD_FERTIRRIGACAO and duration_minutes:
         calculated_volume = calculate_irrigation_volume(plot, duration_minutes)
         if calculated_volume is not None:
             repository.db.add(

@@ -419,6 +419,8 @@ def _sync_schema() -> None:
         "ALTER TABLE fertilization_schedules ADD COLUMN IF NOT EXISTS season_id INTEGER",
         "ALTER TABLE fertilization_records ADD COLUMN IF NOT EXISTS duration_minutes INTEGER",
         "ALTER TABLE fertilization_schedules ADD COLUMN IF NOT EXISTS duration_minutes INTEGER",
+        "ALTER TABLE fertilization_records ADD COLUMN IF NOT EXISTS application_method VARCHAR(40) NOT NULL DEFAULT 'fertirrigacao'",
+        "ALTER TABLE fertilization_schedules ADD COLUMN IF NOT EXISTS application_method VARCHAR(40) NOT NULL DEFAULT 'fertirrigacao'",
         "ALTER TABLE stock_outputs ADD COLUMN IF NOT EXISTS season_id INTEGER",
         "ALTER TABLE input_recommendations ADD COLUMN IF NOT EXISTS plot_id INTEGER",
         "ALTER TABLE fertilization_items ADD COLUMN IF NOT EXISTS purchased_input_id INTEGER",

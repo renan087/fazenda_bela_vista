@@ -118,6 +118,7 @@ from app.services.forms import (
     conclude_fertilization_schedule,
     delete_fertilization,
     delete_fertilization_schedule,
+    fertilization_application_method_label,
     delete_manual_stock_output,
     validate_schedule_stock,
     update_manual_stock_output,
@@ -4156,6 +4157,8 @@ async def update_stock_output_entry_action(
                     "plot_id": plot.id,
                     "application_date": str(form.get("movement_date") or fertilization.application_date.isoformat()),
                     "season_id": scope["active_season_id"],
+                    "application_method": fertilization.application_method,
+                    "duration_minutes": fertilization.duration_minutes,
                     "notes": str(form.get("notes") or "") or None,
                     "items": items,
                 },
@@ -6766,6 +6769,7 @@ async def create_fertilization_action(
                     "application_date": str(form.get("application_date") or ""),
                     "season_id": scope["active_season_id"],
                     "duration_minutes": form.get("duration_minutes"),
+                    "application_method": form.get("application_method"),
                     "notes": str(form.get("notes") or "") or None,
                     "items": items,
                 },
@@ -6818,6 +6822,7 @@ async def update_fertilization_action(
                 "application_date": str(form.get("application_date") or ""),
                 "season_id": scope["active_season_id"],
                 "duration_minutes": form.get("duration_minutes"),
+                "application_method": form.get("application_method"),
                 "notes": str(form.get("notes") or "") or None,
                 "items": items,
             },
@@ -6868,11 +6873,12 @@ def export_fertilization_xlsx(
     workbook = Workbook()
     sheet = workbook.active
     sheet.title = "Fertilizacao"
-    sheet.append(["Data", "Setor", "Produto", "Custo", "Insumos Aplicados", "Observações"])
+    sheet.append(["Data", "Setor", "Modo", "Produto", "Custo", "Insumos Aplicados", "Observações"])
     for item in fertilizations:
         sheet.append([
             item.application_date.isoformat() if item.application_date else "",
             item.plot.name if item.plot else "Setor removido",
+            fertilization_application_method_label(getattr(item, "application_method", None)),
             item.product or "",
             _format_currency(item.cost),
             " | ".join(
@@ -6881,7 +6887,7 @@ def export_fertilization_xlsx(
             ) or (item.dose or ""),
             item.notes or "",
         ])
-    for index, width in enumerate([14, 28, 26, 16, 54, 40], start=1):
+    for index, width in enumerate([14, 28, 18, 26, 16, 54, 40], start=1):
         sheet.column_dimensions[get_column_letter(index)].width = width
 
     output = BytesIO()
@@ -6965,7 +6971,7 @@ def export_fertilization_pdf(
     ]))
 
     elements = [header_table, Spacer(1, 16), summary_table, Spacer(1, 14)]
-    data = [["Data", "Setor", "Produto", "Custo", "Insumos Aplicados", "Observações"]]
+    data = [["Data", "Setor", "Modo", "Produto", "Custo", "Insumos Aplicados", "Observações"]]
     for item in fertilizations:
         items_label = " • ".join(
             f"{detail.name} ({_format_decimal_br(detail.total_quantity, 2)} {detail.unit})"
@@ -6974,13 +6980,14 @@ def export_fertilization_pdf(
         data.append([
             Paragraph(item.application_date.strftime("%d/%m/%Y") if item.application_date else "-", cell_style),
             Paragraph(item.plot.name if item.plot else "Setor removido", cell_style),
+            Paragraph(fertilization_application_method_label(getattr(item, "application_method", None)), cell_style),
             Paragraph(item.product or "-", cell_style),
             Paragraph(_format_currency(item.cost), cell_style),
             Paragraph(items_label, cell_muted_style),
             Paragraph(item.notes or "-", cell_muted_style),
         ])
 
-    table = Table(data, colWidths=[60, 110, 110, 76, 260, doc.width - 616], repeatRows=1, hAlign="LEFT")
+    table = Table(data, colWidths=[56, 100, 72, 96, 70, 210, doc.width - 604], repeatRows=1, hAlign="LEFT")
     table.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#446a36")),
         ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
@@ -7207,6 +7214,7 @@ def export_fertilization_schedules_xlsx(
                 f"{schedule.scheduled_date or ''} "
                 f"{schedule.status or ''} "
                 f"{schedule.notes or ''} "
+                f"{fertilization_application_method_label(getattr(schedule, 'application_method', None))} "
                 + " ".join(item.input_catalog.name if item.input_catalog else item.name for item in schedule.items)
             ).lower()
         ]
@@ -7215,11 +7223,12 @@ def export_fertilization_schedules_xlsx(
     workbook = Workbook()
     sheet = workbook.active
     sheet.title = "Concluídos" if selected_schedule_tab == "completed" else "Ativos"
-    sheet.append(["Data", "Setor", "Status", "Itens Programados", "Observações"])
+    sheet.append(["Data", "Setor", "Modo", "Status", "Itens Programados", "Observações"])
     for schedule in filtered_schedules:
         sheet.append([
             schedule.scheduled_date.isoformat() if schedule.scheduled_date else "",
             schedule.plot.name if schedule.plot else "Setor removido",
+            fertilization_application_method_label(getattr(schedule, "application_method", None)),
             "Concluído" if schedule.status == "completed" else "Agendado",
             " | ".join(
                 f"{item.input_catalog.name if item.input_catalog else item.name} ({_format_decimal_br(item.quantity, 2)} {item.unit})"
@@ -7227,7 +7236,7 @@ def export_fertilization_schedules_xlsx(
             ),
             schedule.notes or "",
         ])
-    for index, width in enumerate([14, 28, 16, 54, 40], start=1):
+    for index, width in enumerate([14, 28, 18, 16, 54, 40], start=1):
         sheet.column_dimensions[get_column_letter(index)].width = width
 
     output = BytesIO()
@@ -7267,6 +7276,7 @@ def export_fertilization_schedules_pdf(
                 f"{schedule.scheduled_date or ''} "
                 f"{schedule.status or ''} "
                 f"{schedule.notes or ''} "
+                f"{fertilization_application_method_label(getattr(schedule, 'application_method', None))} "
                 + " ".join(item.input_catalog.name if item.input_catalog else item.name for item in schedule.items)
             ).lower()
         ]
@@ -7327,14 +7337,14 @@ def export_fertilization_schedules_pdf(
     ]))
 
     elements = [header_table, Spacer(1, 16), summary_table, Spacer(1, 14)]
-    column_weights = [10, 18, 12, 34, 26]
+    column_weights = [9, 16, 10, 11, 30, 24]
     weight_total = sum(column_weights)
     table_col_widths = [doc.width * (weight / weight_total) for weight in column_weights[:-1]]
     table_col_widths.append(doc.width - sum(table_col_widths))
     notes_col_width = table_col_widths[-1] - 14
     notes_max_height = cell_muted_style.leading * 4 + 2
 
-    data = [["Data", "Setor", "Situação", "Itens Programados", "Observações"]]
+    data = [["Data", "Setor", "Modo", "Situação", "Itens Programados", "Observações"]]
     for schedule in schedules:
         items_label = " • ".join(
             f"{item.input_catalog.name if item.input_catalog else item.name} ({_format_decimal_br(item.quantity, 2)} {item.unit})"
@@ -7345,6 +7355,7 @@ def export_fertilization_schedules_pdf(
         data.append([
             Paragraph(schedule.scheduled_date.strftime("%d/%m/%Y") if schedule.scheduled_date else "-", cell_style),
             Paragraph(schedule.plot.name if schedule.plot else "Setor removido", cell_style),
+            Paragraph(fertilization_application_method_label(getattr(schedule, "application_method", None)), cell_style),
             Paragraph(f'<font color="{status_color}"><b>{status_label}</b></font>', cell_style),
             Paragraph(items_label, cell_muted_style),
             KeepInFrame(notes_col_width, notes_max_height, [Paragraph(schedule.notes or "-", cell_muted_style)], mode="truncate"),
@@ -7443,6 +7454,7 @@ async def create_fertilization_schedule_action(
                 "season_id": scope["active_season_id"],
                 "status": str(form.get("status") or "scheduled"),
                 "duration_minutes": form.get("duration_minutes"),
+                "application_method": form.get("application_method"),
                 "notes": str(form.get("notes") or "") or None,
                 "items": items,
             },
@@ -7493,6 +7505,7 @@ async def update_fertilization_schedule_action(
             "season_id": scope["active_season_id"],
             "status": str(form.get("status") or schedule.status),
             "duration_minutes": form.get("duration_minutes"),
+            "application_method": form.get("application_method"),
             "notes": str(form.get("notes") or "") or None,
             "items": items,
         },

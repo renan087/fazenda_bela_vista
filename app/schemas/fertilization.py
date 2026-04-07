@@ -9,6 +9,7 @@ class FertilizationBase(BaseModel):
     product: str
     dose: str
     cost: float
+    application_method: str | None = "fertirrigacao"
     notes: str | None = None
 
 
