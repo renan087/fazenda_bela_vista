@@ -1,12 +1,12 @@
 {% extends "base.html" %}
 {% block content %}
 {% macro pager(section) -%}
-<div class="mt-4 border-t border-slate-100 pt-4">
+<div class="mt-4 border-t border-slate-100 pt-4" data-dashboard-pager-shell="{{ section }}">
     <div class="flex items-center justify-center gap-2" data-dashboard-dots="{{ section }}"></div>
 </div>
 {%- endmacro %}
 
-<section class="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
+<section class="grid gap-6 xl:grid-cols-[1.45fr_0.55fr]">
     <div class="dashboard-executive-panel rounded-[2rem] p-6 shadow-panel">
         <div class="dashboard-executive-head">
             <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Resumo Executivo</p>
@@ -30,7 +30,6 @@
                 </div>
                 <p class="dashboard-executive-label">Area total plantada</p>
                 <p class="dashboard-executive-value">{{ kpis.area_total }} ha</p>
-                <p class="dashboard-executive-note"><span>Base ativa</span> area produtiva consolidada</p>
             </a>
             <a href="/setores" class="dashboard-executive-card is-green">
                 <div class="dashboard-executive-card-top">
@@ -48,7 +47,6 @@
                 </div>
                 <p class="dashboard-executive-label">Numero de setores</p>
                 <p class="dashboard-executive-value">{{ kpis.plot_count }}</p>
-                <p class="dashboard-executive-note"><span>Estrutura ativa</span> setores mapeados no sistema</p>
             </a>
             <a href="/producao" class="dashboard-executive-card is-orange">
                 <div class="dashboard-executive-card-top">
@@ -64,7 +62,6 @@
                 </div>
                 <p class="dashboard-executive-label">Producao estimada</p>
                 <p class="dashboard-executive-value">{{ kpis.estimated_production }} sacas</p>
-                <p class="dashboard-executive-note"><span>Forecast atual</span> previsao consolidada da safra</p>
             </a>
             <a href="/producao" class="dashboard-executive-card is-violet">
                 <div class="dashboard-executive-card-top">
@@ -81,7 +78,6 @@
                 </div>
                 <p class="dashboard-executive-label">Producao total</p>
                 <p class="dashboard-executive-value">{{ kpis.total_production }} sacas</p>
-                <p class="dashboard-executive-note"><span>Historico atual</span> total efetivamente registrado</p>
             </a>
             <a href="#produtividade-area" class="dashboard-executive-card is-pink">
                 <div class="dashboard-executive-card-top">
@@ -97,7 +93,6 @@
                 </div>
                 <p class="dashboard-executive-label">Produtividade media</p>
                 <p class="dashboard-executive-value">{{ kpis.productivity_per_hectare }} sc/ha</p>
-                <p class="dashboard-executive-note"><span>Desempenho medio</span> rendimento por hectare</p>
             </a>
             <a href="/pluviometria" class="dashboard-executive-card is-cyan">
                 <div class="dashboard-executive-card-top">
@@ -115,14 +110,28 @@
                 </div>
                 <p class="dashboard-executive-label">Chuva no mes</p>
                 <p class="dashboard-executive-value">{{ kpis.monthly_rainfall }} mm</p>
-                <p class="dashboard-executive-note"><span>Clima recente</span> acumulado mensal da fazenda</p>
             </a>
         </div>
-        <div class="dashboard-executive-secondary">
-            <a href="/producao" class="dashboard-executive-chip">Previsao pelo historico <strong>{{ kpis.forecast_production }} sacas</strong></a>
-            <a href="/fertilizacao" class="dashboard-executive-chip">Custo por hectare <strong>R$ {{ kpis.cost_per_hectare }}</strong></a>
-            <a href="/insumos/comprados" class="dashboard-executive-chip">Insumos em alerta <strong>{{ kpis.low_stock_count }}</strong></a>
-            <a href="/fertilizacao/agendamentos" class="dashboard-executive-chip">Aplicacoes atrasadas <strong>{{ kpis.late_schedule_count }}</strong></a>
+        <div class="mt-6" data-dashboard-card="executive_secondary" data-dashboard-per-page="6">
+            <div class="dashboard-executive-secondary-grid" data-dashboard-list>
+                <a href="/producao" class="dashboard-executive-secondary-card" data-dashboard-item>
+                    <p class="dashboard-executive-secondary-label">Previsao pelo historico</p>
+                    <p class="dashboard-executive-secondary-value">{{ kpis.forecast_production }} sacas</p>
+                </a>
+                <a href="/fertilizacao" class="dashboard-executive-secondary-card" data-dashboard-item>
+                    <p class="dashboard-executive-secondary-label">Custo por hectare</p>
+                    <p class="dashboard-executive-secondary-value">R$ {{ kpis.cost_per_hectare }}</p>
+                </a>
+                <a href="/insumos/comprados" class="dashboard-executive-secondary-card" data-dashboard-item>
+                    <p class="dashboard-executive-secondary-label">Insumos em alerta</p>
+                    <p class="dashboard-executive-secondary-value">{{ kpis.low_stock_count }}</p>
+                </a>
+                <a href="/fertilizacao/agendamentos" class="dashboard-executive-secondary-card" data-dashboard-item>
+                    <p class="dashboard-executive-secondary-label">Aplicacoes atrasadas</p>
+                    <p class="dashboard-executive-secondary-value">{{ kpis.late_schedule_count }}</p>
+                </a>
+            </div>
+            {{ pager('executive_secondary') }}
         </div>
     </div>
     <article class="overflow-hidden rounded-[2rem] bg-white p-6 shadow-panel" data-dashboard-card="schedules">
@@ -543,9 +552,13 @@
     document.querySelectorAll('[data-dashboard-card]').forEach((card) => {
         const items = Array.from(card.querySelectorAll('[data-dashboard-item]'));
         const dotsContainer = card.querySelector('[data-dashboard-dots]');
-        const perPage = 4;
+        const perPage = Number(card.dataset.dashboardPerPage || 4);
+        const pagerShell = card.querySelector('[data-dashboard-pager-shell]');
         if (!dotsContainer || items.length <= perPage) {
             items.forEach((item) => item.classList.remove('hidden'));
+            if (pagerShell) {
+                pagerShell.classList.add('hidden');
+            }
             return;
         }
 
