@@ -67,6 +67,7 @@
             <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Data</p><p class="mt-2 text-sm font-medium text-slate-800">{{ item.application_date }}</p></div>
             <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Produto</p><p class="mt-2 text-sm font-medium text-slate-800">{{ item.product }}</p></div>
             <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Custo</p><p class="mt-2 text-sm font-medium text-slate-800">R$ {{ item.cost }}</p></div>
+            <div class="rounded-2xl bg-slate-50 px-4 py-3 sm:col-span-2"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Duração</p><p class="mt-2 text-sm font-medium text-slate-800">{% if item.duration_minutes %}{{ item.duration_minutes }} min{% else %}-{% endif %}</p></div>
         </div>
         <div class="rounded-2xl bg-slate-50 px-4 py-4">
             <p class="text-xs uppercase tracking-[0.2em] text-slate-400">Insumos aplicados</p>
@@ -271,6 +272,11 @@
                     <label>
                         <span class="mb-2 block text-sm font-medium text-slate-700">Data</span>
                         <input type="date" name="application_date" value="{{ edit_fertilization.application_date.isoformat() if edit_fertilization else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50 px-4" required>
+                    </label>
+                    <label>
+                        <span class="mb-2 block text-sm font-medium text-slate-700">Duração da fertilização (minutos)</span>
+                        <input type="number" name="duration_minutes" value="{{ edit_fertilization.duration_minutes if edit_fertilization and edit_fertilization.duration_minutes is not none else '' }}" min="1" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50 px-4" placeholder="Opcional">
+                        <span class="mt-2 block text-xs text-slate-500">Usado para calcular e registrar automaticamente a irrigação por gotejo, quando o setor tiver configuração preenchida.</span>
                     </label>
                 </div>
 

@@ -96,12 +96,13 @@
                             <th class="px-4 py-3 font-medium">Data</th>
                             <th class="px-4 py-3 font-medium">Volume</th>
                             <th class="px-4 py-3 font-medium">Duração</th>
+                            <th class="px-4 py-3 font-medium">Origem</th>
                             <th class="px-4 py-3 font-medium text-right">Ações</th>
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-slate-100 bg-white">
                         {% for item in irrigations %}
-                        <tr data-irrigation-row data-irrigation-search-text="{{ item.plot.name if item.plot else '' }} {{ item.irrigation_date }} {{ item.volume_liters }} {{ item.duration_minutes }} {{ item.notes or '' }}">
+                        <tr data-irrigation-row data-irrigation-search-text="{{ item.plot.name if item.plot else '' }} {{ item.irrigation_date }} {{ item.volume_liters }} {{ item.duration_minutes }} {{ item.origin or '' }} {{ item.notes or '' }}">
                             <td class="px-4 py-3 font-semibold text-slate-900">
                                 <button type="button" class="text-left transition hover:text-brand-700" data-history-view-trigger data-history-view-kicker="Irrigação" data-history-view-title="{{ item.plot.name if item.plot else 'Setor removido' }}" data-history-view-subtitle="{{ item.irrigation_date.strftime('%d-%m-%Y') if item.irrigation_date else '-' }}" data-history-view-source="irrigation-view-{{ item.id }}" data-history-view-edit-url="{{ irrigation_edit_urls[item.id] }}">{{ item.plot.name if item.plot else "Setor removido" }}</button>
                                 <template id="irrigation-view-{{ item.id }}">
@@ -110,6 +111,7 @@
                                         <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Data</p><p class="mt-2 text-sm font-medium text-slate-800">{{ item.irrigation_date.strftime('%d-%m-%Y') if item.irrigation_date else "-" }}</p></div>
                                         <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Volume</p><p class="mt-2 text-sm font-medium text-slate-800">{{ item.volume_liters }} L</p></div>
                                         <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Duração</p><p class="mt-2 text-sm font-medium text-slate-800">{{ item.duration_minutes }} min</p></div>
+                                        <div class="rounded-2xl bg-slate-50 px-4 py-3 sm:col-span-2"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Origem</p><p class="mt-2 text-sm font-medium text-slate-800">{% if item.origin == 'fertilizacao' %}Fertilizacao{% else %}Manual{% endif %}</p></div>
                                     </div>
                                     <div class="rounded-2xl bg-slate-50 px-4 py-4">
                                         <p class="text-xs uppercase tracking-[0.2em] text-slate-400">Observações</p>
@@ -120,6 +122,13 @@
                             <td class="px-4 py-3 whitespace-nowrap">{{ item.irrigation_date.strftime('%d-%m-%Y') if item.irrigation_date else "-" }}</td>
                             <td class="px-4 py-3 whitespace-nowrap">{{ item.volume_liters }} L</td>
                             <td class="px-4 py-3 whitespace-nowrap">{{ item.duration_minutes }} min</td>
+                            <td class="px-4 py-3 whitespace-nowrap">
+                                {% if item.origin == 'fertilizacao' %}
+                                <span class="stock-level-badge bg-brand-50 text-brand-700 ring-1 ring-brand-100">Fertilizacao</span>
+                                {% else %}
+                                <span class="stock-level-badge bg-slate-100 text-slate-700 ring-1 ring-slate-200">Manual</span>
+                                {% endif %}
+                            </td>
                             <td class="px-4 py-3">
                                 <div class="flex items-center justify-end gap-2">
                                     <a href="{{ irrigation_edit_urls[item.id] }}" class="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-100" title="Editar">
@@ -144,7 +153,7 @@
                             </td>
                         </tr>
                         {% else %}
-                        <tr><td colspan="5" class="px-4 py-6 text-center text-slate-500">Sem registros.</td></tr>
+                        <tr><td colspan="6" class="px-4 py-6 text-center text-slate-500">Sem registros.</td></tr>
                         {% endfor %}
                     </tbody>
                 </table>

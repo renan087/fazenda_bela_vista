@@ -24,6 +24,7 @@
                 <div class="mt-2 grid gap-1 text-sm text-slate-600 lg:grid-cols-2 lg:gap-x-5 lg:gap-y-1 lg:text-[13px] lg:leading-5">
                     <p><strong>Data:</strong> {{ schedule.scheduled_date }}</p>
                     <p><strong>Status:</strong> {{ schedule_status_label }}</p>
+                    <p><strong>Duração:</strong> {% if schedule.duration_minutes %}{{ schedule.duration_minutes }} min{% else %}-{% endif %}</p>
                 </div>
             </div>
             <div class="flex items-center gap-2 lg:gap-1.5">
@@ -96,6 +97,7 @@
                 <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Data prevista</p><p class="mt-2 text-sm font-medium text-slate-800">{{ schedule.scheduled_date }}</p></div>
                 <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Status</p><p class="mt-2 text-sm font-medium text-slate-800">{{ schedule_status_label }}</p></div>
                 <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Estoque</p><p class="mt-2 text-sm font-medium text-slate-800">{% if validation.ok %}Disponível{% else %}Insuficiente{% endif %}</p></div>
+                <div class="rounded-2xl bg-slate-50 px-4 py-3 sm:col-span-2"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Duração</p><p class="mt-2 text-sm font-medium text-slate-800">{% if schedule.duration_minutes %}{{ schedule.duration_minutes }} min{% else %}-{% endif %}</p></div>
             </div>
             <div class="rounded-2xl bg-slate-50 px-4 py-4">
                 <p class="text-xs uppercase tracking-[0.2em] text-slate-400">Itens programados</p>
@@ -352,6 +354,11 @@
                     <label>
                         <span class="mb-2 block text-sm font-medium">Data prevista</span>
                         <input type="date" name="scheduled_date" value="{{ edit_schedule.scheduled_date.isoformat() if edit_schedule else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required>
+                    </label>
+                    <label>
+                        <span class="mb-2 block text-sm font-medium">Duração da fertilização (minutos)</span>
+                        <input type="number" name="duration_minutes" value="{{ edit_schedule.duration_minutes if edit_schedule and edit_schedule.duration_minutes is not none else '' }}" min="1" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" placeholder="Opcional">
+                        <span class="mt-2 block text-xs text-slate-500">Ao concluir, o sistema usa esta duração para registrar a irrigação automática por gotejo (se o setor estiver configurado).</span>
                     </label>
                 </div>
 

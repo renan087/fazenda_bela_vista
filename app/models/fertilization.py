@@ -1,6 +1,6 @@
 from datetime import date
 
-from sqlalchemy import Date, ForeignKey, Numeric, String, Text
+from sqlalchemy import Date, ForeignKey, Integer, Numeric, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -16,6 +16,7 @@ class FertilizationRecord(Base):
     product: Mapped[str] = mapped_column(String(120), nullable=False)
     dose: Mapped[str] = mapped_column(String(80), nullable=False)
     cost: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False)
+    duration_minutes: Mapped[int] = mapped_column(Integer, nullable=True)
     notes: Mapped[str] = mapped_column(Text, nullable=True)
 
     plot = relationship("Plot", back_populates="fertilizations")

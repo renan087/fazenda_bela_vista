@@ -193,6 +193,9 @@ def create_irrigation(repository: FarmRepository, form: dict) -> IrrigationRecor
             irrigation_date=date.fromisoformat(form["irrigation_date"]),
             volume_liters=form["volume_liters"],
             duration_minutes=form["duration_minutes"],
+            origin=form.get("origin") or "manual",
+            reference_type=form.get("reference_type"),
+            reference_id=form.get("reference_id"),
             notes=form.get("notes"),
         )
     )
@@ -206,6 +209,9 @@ def update_irrigation(repository: FarmRepository, irrigation: IrrigationRecord, 
             "irrigation_date": date.fromisoformat(form["irrigation_date"]),
             "volume_liters": form["volume_liters"],
             "duration_minutes": form["duration_minutes"],
+            "origin": form.get("origin") or irrigation.origin or "manual",
+            "reference_type": form.get("reference_type") if "reference_type" in form else irrigation.reference_type,
+            "reference_id": form.get("reference_id") if "reference_id" in form else irrigation.reference_id,
             "notes": form.get("notes"),
         },
     )
@@ -748,6 +754,11 @@ def update_input_recommendation(repository: FarmRepository, recommendation: Inpu
 
 
 def update_fertilization(repository: FarmRepository, fertilization: FertilizationRecord, form: dict) -> FertilizationRecord:
+    repository.db.query(IrrigationRecord).filter(
+        IrrigationRecord.reference_type == "fertilization_record",
+        IrrigationRecord.reference_id == fertilization.id,
+        IrrigationRecord.origin == "fertilizacao",
+    ).delete(synchronize_session=False)
     _restore_fertilization_stock(repository, fertilization)
     repository.db.flush()
     return _save_fertilization(repository, fertilization, form)
@@ -761,6 +772,7 @@ def create_fertilization_schedule(repository: FarmRepository, form: dict) -> Fer
         season_id=_resolve_season_for_plot(repository, plot, scheduled_date, form.get("season_id")),
         scheduled_date=scheduled_date,
         status=form.get("status") or "scheduled",
+        duration_minutes=_int_or_none(form.get("duration_minutes")),
         notes=form.get("notes"),
     )
     repository.db.add(schedule)
@@ -801,6 +813,7 @@ def update_fertilization_schedule(repository: FarmRepository, schedule: Fertiliz
     schedule.season_id = _resolve_season_for_plot(repository, plot, scheduled_date, form.get("season_id"))
     schedule.scheduled_date = scheduled_date
     schedule.status = next_status
+    schedule.duration_minutes = _int_or_none(form.get("duration_minutes"))
     schedule.notes = form.get("notes")
     schedule.items.clear()
     repository.db.flush()
@@ -877,6 +890,7 @@ def conclude_fertilization_schedule(repository: FarmRepository, schedule: Fertil
             "application_date": application_date or schedule.scheduled_date.isoformat(),
             "season_id": schedule.season_id,
             "notes": schedule.notes,
+            "duration_minutes": schedule.duration_minutes,
             "items": schedule_items,
         },
     )
@@ -889,6 +903,11 @@ def conclude_fertilization_schedule(repository: FarmRepository, schedule: Fertil
 
 
 def delete_fertilization(repository: FarmRepository, fertilization: FertilizationRecord) -> None:
+    repository.db.query(IrrigationRecord).filter(
+        IrrigationRecord.reference_type == "fertilization_record",
+        IrrigationRecord.reference_id == fertilization.id,
+        IrrigationRecord.origin == "fertilizacao",
+    ).delete(synchronize_session=False)
     _restore_fertilization_stock(repository, fertilization)
     repository.db.delete(fertilization)
     repository.db.commit()
@@ -1165,6 +1184,7 @@ def _save_fertilization(repository: FarmRepository, fertilization: Fertilization
     application_date = date.fromisoformat(form["application_date"])
     season_id = _resolve_season_for_plot(repository, plot, application_date, form.get("season_id"))
     product, dose = _fertilization_summary(items)
+    duration_minutes = _int_or_none(form.get("duration_minutes"))
     record = fertilization or FertilizationRecord(
         plot_id=form["plot_id"],
         season_id=season_id,
@@ -1172,6 +1192,7 @@ def _save_fertilization(repository: FarmRepository, fertilization: Fertilization
         product=product,
         dose=dose,
         cost=0,
+        duration_minutes=duration_minutes,
         notes=form.get("notes"),
     )
     record.plot_id = form["plot_id"]
@@ -1179,6 +1200,7 @@ def _save_fertilization(repository: FarmRepository, fertilization: Fertilization
     record.application_date = application_date
     record.product = product
     record.dose = dose
+    record.duration_minutes = duration_minutes
     record.notes = form.get("notes")
     if fertilization:
         record.items.clear()
@@ -1210,6 +1232,23 @@ def _save_fertilization(repository: FarmRepository, fertilization: Fertilization
 
     record.cost = round(float(total_cost), 2)
     repository.db.add(record)
+
+    if duration_minutes:
+        calculated_volume = calculate_irrigation_volume(plot, duration_minutes)
+        if calculated_volume is not None:
+            repository.db.add(
+                IrrigationRecord(
+                    plot_id=plot.id,
+                    irrigation_date=application_date,
+                    volume_liters=calculated_volume,
+                    duration_minutes=duration_minutes,
+                    origin="fertilizacao",
+                    reference_type="fertilization_record",
+                    reference_id=record.id,
+                    notes=f"Irrigacao automatica durante fertilizacao ({record.product}).",
+                )
+            )
+
     repository.db.commit()
     repository.db.refresh(record)
     return record
