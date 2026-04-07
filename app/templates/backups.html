@@ -4,6 +4,16 @@
     .app-hint-popover::backdrop {
         background: rgba(15, 23, 42, 0.35);
     }
+    .app-hint-popover:popover-open {
+        position: fixed;
+        inset: 0;
+        width: min(22rem, calc(100vw - 2rem));
+        max-width: min(22rem, calc(100vw - 2rem));
+        height: fit-content;
+        max-height: min(80vh, calc(100dvh - 2rem));
+        margin: auto;
+        overflow-y: auto;
+    }
 </style>
 <div class="space-y-6">
     <section class="rounded-[2rem] bg-white p-6 shadow-panel">
@@ -45,7 +55,7 @@
             <div
                 id="backup-coverage-hint"
                 popover="auto"
-                class="app-hint-popover m-4 w-[min(22rem,calc(100vw-2rem))] max-w-[min(22rem,calc(100vw-2rem))] rounded-2xl border border-slate-200 bg-white p-4 text-sm leading-relaxed text-slate-600 shadow-2xl"
+                class="app-hint-popover rounded-2xl border border-slate-200 bg-white p-4 text-sm leading-relaxed text-slate-600 shadow-2xl"
             >
                 <p class="m-0 text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">Cobertura</p>
                 <p class="mt-2 mb-0 font-medium text-slate-900">Cobertura atual do backup</p>
