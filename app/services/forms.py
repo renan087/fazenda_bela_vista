@@ -785,12 +785,22 @@ def create_fertilization_schedule(repository: FarmRepository, form: dict) -> Fer
 
 
 def update_fertilization_schedule(repository: FarmRepository, schedule: FertilizationSchedule, form: dict) -> FertilizationSchedule:
+    previous_status = schedule.status
+    previous_record_id = schedule.fertilization_record_id
+    next_status = form.get("status") or schedule.status
+
+    if previous_record_id and next_status != "completed":
+        existing_record = repository.get_fertilization(previous_record_id)
+        if existing_record:
+            delete_fertilization(repository, existing_record)
+        schedule.fertilization_record_id = None
+
     plot = repository.get_plot(form["plot_id"])
     scheduled_date = date.fromisoformat(form["scheduled_date"])
     schedule.plot_id = form["plot_id"]
     schedule.season_id = _resolve_season_for_plot(repository, plot, scheduled_date, form.get("season_id"))
     schedule.scheduled_date = scheduled_date
-    schedule.status = form.get("status") or schedule.status
+    schedule.status = next_status
     schedule.notes = form.get("notes")
     schedule.items.clear()
     repository.db.flush()
@@ -885,6 +895,10 @@ def delete_fertilization(repository: FarmRepository, fertilization: Fertilizatio
 
 
 def delete_fertilization_schedule(repository: FarmRepository, schedule: FertilizationSchedule) -> None:
+    if schedule.fertilization_record_id:
+        existing_record = repository.get_fertilization(schedule.fertilization_record_id)
+        if existing_record:
+            delete_fertilization(repository, existing_record)
     repository.db.delete(schedule)
     repository.db.commit()
 
