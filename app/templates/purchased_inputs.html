@@ -100,7 +100,7 @@
                         </thead>
                         <tbody class="divide-y divide-slate-100 bg-white">
                             {% for item in inputs %}
-                            <tr data-purchased-history-row data-purchased-kind="entrada" data-purchased-search-text="{{ (item.purchase_date or '') ~ ' ' ~ (item.input_catalog.name if item.input_catalog else item.name) ~ ' ' ~ (item.farm.name if item.farm else '') ~ ' ' ~ (item.notes or '') ~ ' ' ~ ('Combustivel' if item.input_catalog and item.input_catalog.item_type == 'combustivel' else 'Insumo agricola') }}">
+                            <tr data-purchased-history-row data-purchased-kind="entrada" data-stock-kind="entrada" data-purchased-search-text="{{ (item.purchase_date or '') ~ ' ' ~ (item.input_catalog.name if item.input_catalog else item.name) ~ ' ' ~ (item.farm.name if item.farm else '') ~ ' ' ~ (item.notes or '') ~ ' ' ~ ('Combustivel' if item.input_catalog and item.input_catalog.item_type == 'combustivel' else 'Insumo agricola') }}">
                                 <td class="px-4 py-3">
                                     <span class="stock-movement-chip stock-movement-chip-entry">Entrada</span>
                                 </td>
@@ -200,7 +200,7 @@
                         </thead>
                         <tbody class="divide-y divide-slate-100 bg-white">
                             {% for output in stock_outputs %}
-                            <tr data-purchased-history-row data-purchased-kind="saida" data-purchased-search-text="{{ output.movement_date ~ ' ' ~ (output.input_catalog.name if output.input_catalog else '') ~ ' ' ~ output.origin ~ ' ' ~ (output.farm.name if output.farm else '') ~ ' ' ~ (output.plot.name if output.plot else '') ~ ' ' ~ (output.notes or '') }}">
+                            <tr data-purchased-history-row data-purchased-kind="saida" data-stock-kind="saida" data-purchased-search-text="{{ output.movement_date ~ ' ' ~ (output.input_catalog.name if output.input_catalog else '') ~ ' ' ~ output.origin ~ ' ' ~ (output.farm.name if output.farm else '') ~ ' ' ~ (output.plot.name if output.plot else '') ~ ' ' ~ (output.notes or '') }}">
                                 <td class="px-4 py-3">
                                     <span class="stock-movement-chip stock-movement-chip-output">Saída</span>
                                 </td>
@@ -261,7 +261,7 @@
                         </thead>
                         <tbody class="divide-y divide-slate-100 bg-white">
                             {% for row in extract_rows %}
-                            <tr data-purchased-history-row data-purchased-kind="{{ row.kind }}" data-purchased-search-text="{{ (row.date or '') ~ ' ' ~ row.input_name ~ ' ' ~ row.kind ~ ' ' ~ row.origin ~ ' ' ~ row.reference ~ ' ' ~ (row.farm.name if row.farm else '') ~ ' ' ~ (row.notes or '') }}">
+                            <tr data-purchased-history-row data-purchased-kind="{{ row.kind }}" data-stock-kind="{{ row.kind }}" data-purchased-search-text="{{ (row.date or '') ~ ' ' ~ row.input_name ~ ' ' ~ row.kind ~ ' ' ~ row.origin ~ ' ' ~ row.reference ~ ' ' ~ (row.farm.name if row.farm else '') ~ ' ' ~ (row.notes or '') }}">
                                 <td class="px-4 py-3">
                                     <span class="stock-movement-chip {% if row.kind == 'entrada' %}stock-movement-chip-entry{% else %}stock-movement-chip-output{% endif %}">
                                         {{ row.kind }}

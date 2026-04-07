@@ -337,7 +337,7 @@ class FarmRepository:
     def list_equipment_assets(self, farm_id: int | None = None) -> list[EquipmentAsset]:
         query = (
             self.db.query(EquipmentAsset)
-            .options(joinedload(EquipmentAsset.farm))
+            .options(joinedload(EquipmentAsset.farm), joinedload(EquipmentAsset.attachments))
             .order_by(EquipmentAsset.name.asc(), EquipmentAsset.id.desc())
         )
         if farm_id:
