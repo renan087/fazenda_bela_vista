@@ -52,11 +52,9 @@
             transform: rotate(180deg);
         }
 
+        /* Sem colapso por padrão: evita flash “fecha/abre” no carregamento (SSR já usa .hidden nos fechados). */
         .sidebar-submenu-panel {
             overflow: hidden;
-            max-height: 0px;
-            opacity: 0;
-            pointer-events: none;
             transition: max-height 240ms ease, opacity 240ms ease;
         }
 
@@ -856,20 +854,30 @@
                         }
                     }, 260);
                 };
-                const syncPanelLayout = () => {
+                const syncPanelLayout = ({ instant = false } = {}) => {
                     if (!panel) return;
                     const open = !panel.classList.contains('hidden');
                     panel.classList.toggle('is-open', open);
-                    panel.style.maxHeight = open ? `${panel.scrollHeight}px` : '0px';
-                    panel.style.opacity = open ? '1' : '0';
-                    panel.style.pointerEvents = open ? 'auto' : 'none';
+                    if (instant) {
+                        const prevTransition = panel.style.transition;
+                        panel.style.transition = 'none';
+                        panel.style.maxHeight = open ? `${panel.scrollHeight}px` : '0px';
+                        panel.style.opacity = open ? '1' : '0';
+                        panel.style.pointerEvents = open ? 'auto' : 'none';
+                        void panel.offsetHeight;
+                        panel.style.transition = prevTransition;
+                    } else {
+                        panel.style.maxHeight = open ? `${panel.scrollHeight}px` : '0px';
+                        panel.style.opacity = open ? '1' : '0';
+                        panel.style.pointerEvents = open ? 'auto' : 'none';
+                    }
                     button?.setAttribute('aria-expanded', open ? 'true' : 'false');
                     updateGroupBackground();
                 };
 
                 setParentActive(button, false);
                 links.forEach((link) => setSubmenuLinkActive(link, link.classList.contains('bg-brand-500')));
-                syncPanelLayout();
+                syncPanelLayout({ instant: true });
 
                 button?.addEventListener('click', () => {
                     if (desktopSidebarMq.matches && document.body.classList.contains('erp-sidebar-collapsed')) {
@@ -890,15 +898,6 @@
 
                     closePanel();
                     setParentActive(button, hasActiveSubmenu);
-                });
-
-                links.forEach((link) => {
-                    link.addEventListener('click', () => {
-                        links.forEach((otherLink) => setSubmenuLinkActive(otherLink, false));
-                        setSubmenuLinkActive(link, true);
-                        setParentActive(button, false);
-                        openPanel();
-                    });
                 });
             });
 
