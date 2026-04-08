@@ -1349,6 +1349,37 @@ body.dashboard-schedule-modal-open {
     max-width: 100%;
 }
 
+/* Gestão financeira: período + safra em uma linha; rótulo do preset sem quebra */
+.finance-extract-filter-row {
+    flex-wrap: nowrap;
+    align-items: flex-end;
+    gap: 1rem;
+    min-width: 0;
+    overflow-x: auto;
+    overflow-y: visible;
+    padding-bottom: 0.125rem;
+    -webkit-overflow-scrolling: touch;
+}
+
+.finance-extract-filter-row .stock-filter-field {
+    flex: 0 0 auto;
+}
+
+.finance-extract-filter-row .module-filter-period-row {
+    flex: 0 0 auto;
+    min-width: min(100%, 22rem);
+}
+
+.finance-extract-filter-row .module-filter-preset {
+    max-width: min(100%, 22rem);
+}
+
+.finance-extract-filter-row .module-filter-preset-button {
+    max-width: 100%;
+    white-space: nowrap;
+}
+
+
 .stock-panel {
     background:
         linear-gradient(180deg, rgba(255, 255, 255, 0.99), rgba(248, 250, 252, 0.98));
@@ -1395,7 +1426,8 @@ body.dashboard-schedule-modal-open {
 .stock-page-header {
     position: sticky;
     top: 8.6rem;
-    z-index: 12;
+    /* Acima de .module-filter-preset (18) para o conteúdo rolar por baixo do título, como nos outros módulos */
+    z-index: 25;
     overflow: hidden;
     width: 100%;
     box-sizing: border-box;

@@ -184,6 +184,7 @@ def build_finance_extract_rows(
 
     Não inclui saídas de estoque nem fertilizações (custos operacionais fora do extrato).
     Receitas: ver `_collect_finance_revenue_rows`.
+    Saldo acumulado por linha: soma de (crédito − débito) até a linha.
     """
     if not farm_id:
         return [], False
@@ -249,12 +250,13 @@ def build_finance_extract_rows(
     truncated = len(raw) > limit
     raw = raw[:limit]
 
+    # Saldo acumulado = créditos − débitos (despesas reduzem o saldo; só débitos → saldo negativo).
     balance = 0.0
     out: list[dict] = []
     for r in raw:
         deb = float(r["debit"] or 0)
         cre = float(r["credit"] or 0)
-        balance += deb - cre
+        balance += cre - deb
         out.append(
             {
                 **r,
