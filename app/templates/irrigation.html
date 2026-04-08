@@ -178,6 +178,7 @@
                                     </a>
                                     <form method="post" action="/irrigacao/{{ item.id }}/excluir" onsubmit="return confirm('Excluir este registro de irrigação?');">
                                         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                                        <input type="hidden" name="redirect_to" value="{{ current_url or request.url.path }}">
                                         <button type="submit" class="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 text-rose-600 hover:bg-rose-50" title="Excluir">
                                             <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                                 <path d="M3 6h18"/>
@@ -223,6 +224,7 @@
         <div class="mt-6 max-h-[72vh] overflow-y-auto pr-1" data-modal-scroll>
             <form method="post" action="{% if edit_irrigation %}/irrigacao/{{ edit_irrigation.id }}/editar{% else %}/irrigacao{% endif %}" class="grid gap-4" id="irrigation-form">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                {% if edit_irrigation %}<input type="hidden" name="redirect_to" value="{{ current_url or request.url.path }}">{% endif %}
 
                 <div class="sticky top-0 z-10 -mx-1 bg-white/95 px-1 py-1 backdrop-blur">
                     <div class="flex flex-wrap justify-end gap-3 rounded-[1.5rem] px-2 py-2 sm:px-3">

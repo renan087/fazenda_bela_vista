@@ -222,8 +222,8 @@
             <div class="flex items-start justify-between gap-4">
                 <div class="min-w-0">
                     <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Agenda</p>
-                    <h3 class="mt-2 text-2xl font-semibold" data-dashboard-schedule-modal-title>Agendamentos do dia</h3>
-                    <p class="mt-2 text-sm text-slate-500">Confira os compromissos programados e conclua as demandas sem sair do dashboard.</p>
+                    <h3 class="mt-2 text-2xl font-semibold" data-dashboard-schedule-modal-title>Agendamentos</h3>
+                    <p class="mt-1 text-sm text-slate-500 whitespace-nowrap" data-dashboard-schedule-modal-date>Selecione uma data com agendamento.</p>
                 </div>
                 <button type="button" class="modal-close-button" aria-label="Fechar" data-dashboard-schedule-modal-close>
                     <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -590,6 +590,7 @@
         const next = root.querySelector('[data-dashboard-schedule-next]');
         const modal = document.getElementById('dashboard-schedule-modal');
         const modalTitle = document.querySelector('[data-dashboard-schedule-modal-title]');
+        const modalDate = document.querySelector('[data-dashboard-schedule-modal-date]');
         const modalContent = document.querySelector('[data-dashboard-schedule-modal-content]');
         const modalCloseButtons = document.querySelectorAll('[data-dashboard-schedule-modal-close]');
         const emptyTemplate = document.querySelector('[data-dashboard-schedule-empty]');
@@ -644,7 +645,10 @@
                 return;
             }
             if (modalTitle instanceof HTMLElement) {
-                modalTitle.textContent = `Agendamentos de ${formatDateLabel(selectedDate)}`;
+                modalTitle.textContent = 'Agendamentos';
+            }
+            if (modalDate instanceof HTMLElement) {
+                modalDate.textContent = formatDateLabel(selectedDate);
             }
             modalContent.innerHTML = `
                 <div class="flex items-center justify-between gap-3">
@@ -725,7 +729,9 @@
                     renderCalendar();
                     if (scheduleMap.has(iso)) {
                         renderDetails();
-                        openModal();
+                        window.setTimeout(() => {
+                            openModal();
+                        }, 60);
                     }
                 });
                 grid.appendChild(button);

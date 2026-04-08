@@ -6136,6 +6136,7 @@ def update_irrigation_action(
     record_id: int,
     request: Request,
     csrf_token: str = Form(...),
+    redirect_to: str | None = Form(None),
     plot_id: int = Form(...),
     irrigation_date: str = Form(...),
     volume_liters: str | None = Form(None),
@@ -6146,29 +6147,31 @@ def update_irrigation_action(
 ):
     del user
     validate_csrf(request, csrf_token)
+    target_url = redirect_to if redirect_to and redirect_to.startswith("/") else "/irrigacao"
     repo = _repository(db)
     irrigation = repo.get_irrigation(record_id)
     if not irrigation:
         _flash(request, "error", "Registro de irrigacao nao encontrado.")
-        return _redirect_for_request(request, "/irrigacao")
+        return _redirect(target_url)
     if (irrigation.origin or "") == "fertilizacao":
         _flash(
             request,
             "info",
             "Este lancamento foi gerado via Fertilizacao. A alteracao deve ser feita no modulo de origem (Agendamentos/Fertilizacao).",
         )
-        return _redirect_for_request(request, "/irrigacao")
+        return _redirect(target_url)
     plot, scope, denied = _resolve_plot_in_scope(request, repo, plot_id, "/irrigacao")
     if denied:
         return denied
     if not _plot_matches_scope(irrigation.plot, scope):
         _flash(request, "error", "Este registro de irrigacao nao pertence ao contexto ativo.")
-        return _redirect_for_request(request, "/irrigacao")
+        return _redirect(target_url)
     calculated_volume = calculate_irrigation_volume(plot, duration_minutes)
     manual_volume = _float_or_none(volume_liters)
     if calculated_volume is None and manual_volume is None:
         _flash(request, "error", "Informe o volume manual em litros ou cadastre os dados de irrigacao no setor.")
-        return _redirect_for_request(request, "/irrigacao", edit_id=record_id)
+        separator = "&" if "?" in target_url else "?"
+        return _redirect(f"{target_url}{separator}edit_id={record_id}")
     update_irrigation(
         repo,
         irrigation,
@@ -6181,7 +6184,7 @@ def update_irrigation_action(
         },
     )
     _flash(request, "success", "Irrigacao atualizada com sucesso.")
-    return _redirect_for_request(request, "/irrigacao")
+    return _redirect(target_url)
 
 
 @router.post("/irrigacao/{record_id}/excluir")
@@ -6189,26 +6192,28 @@ def delete_irrigation_action(
     record_id: int,
     request: Request,
     csrf_token: str = Form(...),
+    redirect_to: str | None = Form(None),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user_web),
 ):
     del user
     validate_csrf(request, csrf_token)
+    target_url = redirect_to if redirect_to and redirect_to.startswith("/") else "/irrigacao"
     repo = _repository(db)
     irrigation = repo.get_irrigation(record_id)
     if not irrigation:
         _flash(request, "error", "Registro de irrigacao nao encontrado.")
-        return _redirect("/irrigacao")
+        return _redirect(target_url)
     if (irrigation.origin or "") == "fertilizacao":
         _flash(
             request,
             "info",
             "Este lancamento foi gerado via Fertilizacao. A exclusao deve ser feita no modulo de origem (Agendamentos/Fertilizacao).",
         )
-        return _redirect("/irrigacao")
+        return _redirect(target_url)
     repo.delete(irrigation)
     _flash(request, "success", "Irrigacao excluida com sucesso.")
-    return _redirect("/irrigacao")
+    return _redirect(target_url)
 
 
 def _rainfall_history_dataset(
