@@ -1099,6 +1099,12 @@ body {
     gap: 0.85rem;
 }
 
+.dashboard-agenda-modal-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.85rem;
+}
+
 .dashboard-agenda-item {
     border: 1px solid rgba(226, 232, 240, 0.92);
     border-radius: 1rem;
@@ -1121,6 +1127,14 @@ body {
     border-radius: 1rem;
     padding: 1rem;
     background: rgba(248, 250, 252, 0.82);
+}
+
+@media (max-width: 640px) {
+    #dashboard-schedule-modal {
+        width: calc(100vw - 1rem);
+        max-width: calc(100vw - 1rem);
+        border-radius: 1.35rem;
+    }
 }
 
 @media (min-width: 768px) {

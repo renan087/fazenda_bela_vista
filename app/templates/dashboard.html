@@ -200,7 +200,6 @@
                 </div>
                 <div class="module-filter-calendar-grid" data-dashboard-schedule-grid></div>
             </div>
-            <div class="dashboard-agenda-day-list" data-dashboard-schedule-details></div>
             <template data-dashboard-schedule-empty>
                 <div class="dashboard-agenda-empty-state">
                     <p class="text-sm text-slate-500">Nenhum agendamento para a data selecionada.</p>
@@ -218,6 +217,24 @@
             </template>
         </div>
     </article>
+    <dialog id="dashboard-schedule-modal" class="app-modal rounded-[2rem] p-0 shadow-2xl w-full max-w-3xl overflow-hidden">
+        <div class="bg-white p-6 sm:p-8">
+            <div class="flex items-start justify-between gap-4">
+                <div class="min-w-0">
+                    <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Agenda</p>
+                    <h3 class="mt-2 text-2xl font-semibold" data-dashboard-schedule-modal-title>Agendamentos do dia</h3>
+                    <p class="mt-2 text-sm text-slate-500">Confira os compromissos programados e conclua as demandas sem sair do dashboard.</p>
+                </div>
+                <button type="button" class="modal-close-button" aria-label="Fechar" data-dashboard-schedule-modal-close>
+                    <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <path d="M18 6 6 18"/>
+                        <path d="m6 6 12 12"/>
+                    </svg>
+                </button>
+            </div>
+            <div class="mt-6 max-h-[72vh] overflow-y-auto pr-1 dashboard-agenda-modal-list" data-dashboard-schedule-modal-content></div>
+        </div>
+    </dialog>
     <script type="application/json" id="dashboardScheduleData">{{ schedule_alerts|tojson }}</script>
     <script type="application/json" id="dashboardScheduleMeta">{{ {"csrfToken": csrf_token, "redirectTo": current_url or request.url.path}|tojson }}</script>
 </section>
@@ -571,11 +588,14 @@
         const grid = root.querySelector('[data-dashboard-schedule-grid]');
         const prev = root.querySelector('[data-dashboard-schedule-prev]');
         const next = root.querySelector('[data-dashboard-schedule-next]');
-        const details = document.querySelector('[data-dashboard-schedule-details]');
+        const modal = document.getElementById('dashboard-schedule-modal');
+        const modalTitle = document.querySelector('[data-dashboard-schedule-modal-title]');
+        const modalContent = document.querySelector('[data-dashboard-schedule-modal-content]');
+        const modalCloseButtons = document.querySelectorAll('[data-dashboard-schedule-modal-close]');
         const emptyTemplate = document.querySelector('[data-dashboard-schedule-empty]');
         const idleTemplate = document.querySelector('[data-dashboard-schedule-idle]');
         const noDataTemplate = document.querySelector('[data-dashboard-schedule-no-data]');
-        if (!(title instanceof HTMLElement) || !(grid instanceof HTMLElement) || !(details instanceof HTMLElement)) return;
+        if (!(title instanceof HTMLElement) || !(grid instanceof HTMLElement) || !(modalContent instanceof HTMLElement)) return;
 
         const monthNames = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
         const scheduleMap = new Map();
@@ -612,14 +632,17 @@
         const renderDetails = () => {
             const source = selectedDate ? (scheduleMap.get(selectedDate) || []) : [];
             if (!selectedDate) {
-                details.innerHTML = idleTemplate instanceof HTMLTemplateElement ? idleTemplate.innerHTML : '';
+                modalContent.innerHTML = idleTemplate instanceof HTMLTemplateElement ? idleTemplate.innerHTML : '';
                 return;
             }
             if (!source.length) {
-                details.innerHTML = emptyTemplate instanceof HTMLTemplateElement ? emptyTemplate.innerHTML : '';
+                modalContent.innerHTML = emptyTemplate instanceof HTMLTemplateElement ? emptyTemplate.innerHTML : '';
                 return;
             }
-            details.innerHTML = `
+            if (modalTitle instanceof HTMLElement) {
+                modalTitle.textContent = `Agendamentos de ${formatDateLabel(selectedDate)}`;
+            }
+            modalContent.innerHTML = `
                 <div class="flex items-center justify-between gap-3">
                     <p class="text-sm font-semibold text-slate-800">${escapeHtml(formatDateLabel(selectedDate))}</p>
                     <span class="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">${source.length} agendamento(s)</span>
@@ -652,6 +675,18 @@
             `;
         };
 
+        const openModal = () => {
+            if (!(modal instanceof HTMLDialogElement)) return;
+            if (!modal.open) {
+                modal.showModal();
+            }
+        };
+
+        const closeModal = () => {
+            if (!(modal instanceof HTMLDialogElement) || !modal.open) return;
+            modal.close();
+        };
+
         const renderCalendar = () => {
             title.textContent = `${monthNames[currentMonth.getMonth()]} ${currentMonth.getFullYear()}`;
             grid.innerHTML = '';
@@ -674,7 +709,10 @@
                 button.addEventListener('click', () => {
                     selectedDate = iso;
                     renderCalendar();
-                    renderDetails();
+                    if (scheduleMap.has(iso)) {
+                        renderDetails();
+                        openModal();
+                    }
                 });
                 grid.appendChild(button);
             }
@@ -690,8 +728,20 @@
             renderCalendar();
         });
 
+        modalCloseButtons.forEach((button) => {
+            button.addEventListener('click', closeModal);
+        });
+
+        if (modal instanceof HTMLDialogElement) {
+            modal.addEventListener('click', (event) => {
+                const rect = modal.getBoundingClientRect();
+                const clickedInside = rect.top <= event.clientY && event.clientY <= rect.bottom && rect.left <= event.clientX && event.clientX <= rect.right;
+                if (!clickedInside) closeModal();
+            });
+        }
+
         if (!schedules.length) {
-            details.innerHTML = noDataTemplate instanceof HTMLTemplateElement ? noDataTemplate.innerHTML : '';
+            modalContent.innerHTML = noDataTemplate instanceof HTMLTemplateElement ? noDataTemplate.innerHTML : '';
         } else {
             renderDetails();
         }
