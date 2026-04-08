@@ -3450,7 +3450,7 @@ async def create_purchased_input_action(
         return _redirect_with_query("/insumos/comprados", edit_id=item.id, item_type=item_type)
     if saved_attachments:
         _flash(request, "success", f"Insumo comprado cadastrado com sucesso. {saved_attachments} anexo(s) salvo(s).")
-        return _redirect_with_query("/insumos/comprados", edit_id=item.id, item_type=item_type)
+        return _redirect_with_query("/insumos/comprados", item_type=item_type)
     _flash(request, "success", "Insumo comprado cadastrado com sucesso.")
     return _redirect_with_query("/insumos/comprados", item_type=item_type)
 
