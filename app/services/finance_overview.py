@@ -51,6 +51,19 @@ def _in_date_range(d, start, end) -> bool:
     return True
 
 
+def _in_extract_period(d: date | None, period_start: date | None, period_end: date | None) -> bool:
+    """Filtro de datas do extrato; sem início e fim, aceita qualquer data (exceto None quando há filtro)."""
+    if period_start is None and period_end is None:
+        return True
+    if d is None:
+        return False
+    if period_start and d < period_start:
+        return False
+    if period_end and d > period_end:
+        return False
+    return True
+
+
 def build_finance_overview_context(
     repo: FarmRepository,
     *,
@@ -139,10 +152,8 @@ def _collect_finance_revenue_rows(
     repo: FarmRepository,
     *,
     farm_id: int,
-    active_season: CropSeason | None,
-    season_start,
-    season_end,
-    date_ok,
+    period_start: date | None,
+    period_end: date | None,
 ) -> list[dict]:
     """
     Receitas no extrato (coluna Crédito).
@@ -151,9 +162,11 @@ def _collect_finance_revenue_rows(
     retornar linhas no formato:
       { date, sort_group, ref_id, module, description, detail, debit: None, credit: float }
 
+    Filtrar cada lançamento com `_in_extract_period(date, period_start, period_end)`.
+
     Por enquanto retorna lista vazia — mantém o extrato preparado para créditos.
     """
-    _ = (repo, farm_id, active_season, season_start, season_end, date_ok)
+    _ = (repo, farm_id, period_start, period_end)
     return []
 
 
@@ -161,10 +174,13 @@ def build_finance_extract_rows(
     repo: FarmRepository,
     *,
     farm_id: int | None,
-    active_season: CropSeason | None,
+    period_start: date | None = None,
+    period_end: date | None = None,
     limit: int = EXTRACT_MAX_ROWS,
 ) -> tuple[list[dict], bool]:
     """Extrato: despesas = entradas em Gestão de compras, entradas em Suprimentos, patrimônio adquirido.
+
+    `period_start` / `period_end`: filtro opcional (independente da safra ativa). Sem ambos vazios, inclui todo o histórico da fazenda.
 
     Não inclui saídas de estoque nem fertilizações (custos operacionais fora do extrato).
     Receitas: ver `_collect_finance_revenue_rows`.
@@ -172,20 +188,11 @@ def build_finance_extract_rows(
     if not farm_id:
         return [], False
 
-    season_start, season_end = _season_bounds(active_season)
-
-    def _date_ok(d: date | None) -> bool:
-        if not active_season:
-            return True
-        if d is None:
-            return False
-        return _in_date_range(d, season_start, season_end)
-
     raw: list[dict] = []
 
     for entry in _filter_entries_by_farm(repo.list_purchased_inputs(), farm_id):
         pd = entry.purchase_date
-        if not _date_ok(pd):
+        if not _in_extract_period(pd, period_start, period_end):
             continue
         it = _item_type(entry)
         is_suprimento = it == "suprimento"
@@ -204,7 +211,7 @@ def build_finance_extract_rows(
 
     for asset in repo.list_equipment_assets(farm_id=farm_id):
         ad = asset.acquisition_date
-        if not _date_ok(ad):
+        if not _in_extract_period(ad, period_start, period_end):
             continue
         av = _f(asset.acquisition_value)
         if av <= 0:
@@ -226,10 +233,8 @@ def build_finance_extract_rows(
         _collect_finance_revenue_rows(
             repo,
             farm_id=farm_id,
-            active_season=active_season,
-            season_start=season_start,
-            season_end=season_end,
-            date_ok=_date_ok,
+            period_start=period_start,
+            period_end=period_end,
         )
     )
 

@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "partials/module_history_filter_toolbar.html" import module_period_picker_inline %}
 {% block content %}
 <div class="stock-page-shell space-y-6">
     <section class="stock-page-header rounded-[2rem] p-5 shadow-panel">
@@ -6,7 +7,7 @@
             <div class="min-w-0 stock-page-header-intro" data-stock-header-intro>
                 <div class="stock-page-header-intro-inner">
                     <h2 class="stock-page-card-title">Gestão financeira</h2>
-                    <p class="stock-page-card-subtitle">Extrato de despesas: entradas registradas em <strong>Gestão de compras</strong> e em <strong>Suprimentos</strong>, mais <strong>aquisições de patrimônio</strong>. Saídas de estoque e outros custos operacionais não entram aqui. Com fazenda e safra ativas, o período segue as datas da safra. Receitas (créditos) serão incluídas quando definidas.</p>
+                    <p class="stock-page-card-subtitle">Extrato de despesas: entradas em <strong>Gestão de compras</strong> e <strong>Suprimentos</strong>, e <strong>aquisições de patrimônio</strong>. Use o filtro de período abaixo para qualquer intervalo (independente da safra ativa). Receitas em crédito serão incluídas quando existirem.</p>
                 </div>
             </div>
         </div>
@@ -14,13 +15,13 @@
 
     {% if context_selection_required %}
     <div class="rounded-[1.5rem] border border-amber-200 bg-amber-50/90 px-4 py-3 text-sm text-amber-900">
-        Selecione <strong>fazenda</strong> e <strong>safra</strong> no topo para filtrar o extrato pelo período da safra e pelos setores vinculados.
+        Os <strong>indicadores de safra</strong> no topo desta página dependem de fazenda e safra ativas. O <strong>extrato</strong> usa só a fazenda selecionada e o período que você definir no filtro (pode ser fora da safra).
     </div>
     {% endif %}
 
     {% if not active_farm_id %}
     <div class="rounded-[1.5rem] border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600">
-        Escolha uma <strong>fazenda</strong> no contexto global para exibir o extrato.
+        Escolha uma <strong>fazenda</strong> no contexto global para exibir o extrato e os totais.
     </div>
     {% else %}
 
@@ -45,10 +46,28 @@
         </div>
     </div>
 
+    <section class="stock-panel rounded-[2rem] bg-white p-5 shadow-panel">
+        <p class="text-xs font-semibold uppercase tracking-[0.25em] text-slate-500">Período do extrato</p>
+        <p class="mt-2 text-sm text-slate-600">Mesmo padrão de outras telas: presets (últimos dias, mês passado) ou período personalizado. Sem filtro aplicado, o extrato mostra <strong>todo o histórico</strong> da fazenda.</p>
+        <form method="get" action="/gestao-financeira" class="module-filter-toolbar-grid mt-4" data-module-period-filter-root data-module-range-default="last_10_days" data-module-range-placeholder="Filtre por período" data-module-custom-auto-apply="false">
+            <div class="module-filter-toolbar-main">
+                <div class="module-filter-period-row max-w-xl">
+                    {{ module_period_picker_inline(selected_finance_range or ('custom' if finance_filter_start_date or finance_filter_end_date else ''), finance_filter_start_date, finance_filter_end_date, 'past', 'Filtre por período') }}
+                </div>
+            </div>
+            <div class="module-filter-toolbar-actions">
+                <button type="submit" class="module-filter-action border-0 bg-slate-900 text-white hover:bg-slate-800">Filtrar</button>
+                {% if finance_filters_active %}
+                <a href="{{ finance_filter_clear_url }}" class="module-filter-action module-filter-action-secondary">Limpar</a>
+                {% endif %}
+            </div>
+        </form>
+    </section>
+
     <section class="overflow-hidden rounded-[1.25rem] border border-slate-300 bg-white shadow-[0_1px_0_rgba(15,23,42,0.06)]">
         <div class="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-slate-50 px-4 py-3"><div>
                 <p class="text-xs font-semibold uppercase tracking-[0.25em] text-slate-500">Extrato</p>
-                <p class="mt-0.5 text-sm text-slate-600">Despesas = compras/suprimentos/patrimônio · créditos reservados para receitas futuras</p>
+                <p class="mt-0.5 text-sm text-slate-600">Débito = despesa registrada · Crédito = receitas (quando houver)</p>
             </div>
             {% if finance_extract_truncated %}
             <span class="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-medium text-amber-900">Lista limitada</span>
@@ -77,18 +96,18 @@
                         </td>
                         <td class="whitespace-nowrap px-4 py-2.5 text-right tabular-nums text-rose-700">{{ row.debit_fmt }}</td>
                         <td class="whitespace-nowrap px-4 py-2.5 text-right tabular-nums text-emerald-700">{{ row.credit_fmt }}</td>
-                        <td class="whitespace-nowrap px-4 py-2.5 text-right font-semibold tabular-nums text-slate-900">{{ row.balance_fmt }}</td>
+                        <td class="whitespace-nowrap px-4 py-2.5 text-right font-semibold tabular-nums {{ row.balance_class }}">{{ row.balance_fmt }}</td>
                     </tr>
                     {% else %}
                     <tr>
-                        <td colspan="6" class="px-4 py-10 text-center text-slate-500">Nenhum lançamento no período com valor para exibir. Cadastre compras, saídas, fertilizações ou patrimônio com data e valor.</td>
+                        <td colspan="6" class="px-4 py-10 text-center text-slate-500">Nenhum lançamento no período com valor para exibir. Ajuste o filtro ou cadastre compras, suprimentos ou patrimônio com data e valor.</td>
                     </tr>
                     {% endfor %}
                 </tbody>
             </table>
         </div>
         <div class="border-t border-slate-200 bg-slate-50 px-4 py-2.5 text-xs text-slate-500">
-            <strong>Acumulado</strong> = soma dos débitos menos créditos, na ordem das datas. Este extrato não trata saídas de estoque nem fertilizações como despesa (continuam só nos módulos correspondentes). Receitas em crédito serão integradas quando o cadastro existir.
+            <strong>Acumulado</strong>: soma dos débitos menos créditos (azul se positivo, vermelho se negativo). Sem datas no filtro, considera todo o histórico da fazenda.
         </div>
     </section>
 
@@ -103,6 +122,13 @@
             <a href="/insumos/patrimonio" class="rounded-xl border border-slate-200 bg-slate-50/50 px-3 py-2 text-sm font-medium text-slate-800 transition hover:border-brand-200 hover:bg-brand-50/40">Patrimônio →</a>
         </div>
     </section>
+
+    <script src="{{ url_for('static', path='js/module_period_filters.js') }}?v=6"></script>
+    <script>
+        document.querySelectorAll('form[data-module-period-filter-root]').forEach((form) => {
+            window.ModulePeriodFilters?.bind(form);
+        });
+    </script>
     {% endif %}
 </div>
 {% endblock %}

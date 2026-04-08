@@ -692,6 +692,33 @@ def _period_filter_explicit_in_query(request: Request) -> bool:
     return bool((qp.get("schedule_range") or "").strip() or (qp.get("start_date") or "").strip() or (qp.get("end_date") or "").strip())
 
 
+def _finance_extract_period_bounds(
+    request: Request,
+    *,
+    flash_invalid: bool = False,
+) -> tuple[date | None, date | None, str, str]:
+    """Intervalo do extrato financeiro: apenas datas da query, sem limitar à safra ativa."""
+    raw_start = (request.query_params.get("start_date") or "").strip()
+    raw_end = (request.query_params.get("end_date") or "").strip()
+    user_start: date | None = None
+    user_end: date | None = None
+    if raw_start:
+        try:
+            user_start = date.fromisoformat(raw_start)
+        except ValueError:
+            raw_start = ""
+    if raw_end:
+        try:
+            user_end = date.fromisoformat(raw_end)
+        except ValueError:
+            raw_end = ""
+    if user_start and user_end and user_start > user_end:
+        if flash_invalid:
+            _flash(request, "error", "A data inicial do periodo nao pode ser posterior a data final.")
+        return None, None, "", ""
+    return user_start, user_end, raw_start, raw_end
+
+
 def _schedule_tab_filter_range_preset(
     raw_preset: str | None,
     raw_start: str,
@@ -1953,6 +1980,26 @@ def finance_management_page(
     scope = _global_scope_context(request, repo)
     farm_id = scope.get("active_farm_id")
     active_season = scope.get("active_season")
+    period_start, period_end, filter_start_str, filter_end_str = _finance_extract_period_bounds(
+        request,
+        flash_invalid=True,
+    )
+    selected_finance_range = (
+        _fertilization_filter_range_preset(
+            request.query_params.get("schedule_range"),
+            filter_start_str,
+            filter_end_str,
+        )
+        if _period_filter_explicit_in_query(request)
+        else ""
+    )
+    finance_filters_active = _period_filter_explicit_in_query(request)
+    finance_filter_clear_url = _url_with_query(
+        request,
+        start_date=None,
+        end_date=None,
+        schedule_range=None,
+    )
     finance_data = build_finance_overview_context(
         repo,
         farm_id=farm_id,
@@ -1973,21 +2020,36 @@ def finance_management_page(
     extract_rows, extract_truncated = build_finance_extract_rows(
         repo,
         farm_id=farm_id,
-        active_season=active_season,
+        period_start=period_start,
+        period_end=period_end,
     )
-    finance_data["finance_extract_rows"] = [
-        {
-            "date_label": r["date"].strftime("%d/%m/%Y"),
-            "module": r["module"],
-            "description": r["description"],
-            "detail": (r.get("detail") or "").strip(),
-            "debit_fmt": _format_currency(r["debit"]) if r.get("debit") else "—",
-            "credit_fmt": _format_currency(r["credit"]) if r.get("credit") else "—",
-            "balance_fmt": _format_currency(r["balance"]),
-        }
-        for r in extract_rows
-    ]
+    finance_data["finance_extract_rows"] = []
+    for r in extract_rows:
+        bal = float(r["balance"] or 0)
+        if bal < 0:
+            balance_class = "text-rose-600"
+        elif bal > 0:
+            balance_class = "text-blue-600"
+        else:
+            balance_class = "text-slate-600"
+        finance_data["finance_extract_rows"].append(
+            {
+                "date_label": r["date"].strftime("%d/%m/%Y"),
+                "module": r["module"],
+                "description": r["description"],
+                "detail": (r.get("detail") or "").strip(),
+                "debit_fmt": _format_currency(r["debit"]) if r.get("debit") else "—",
+                "credit_fmt": _format_currency(r["credit"]) if r.get("credit") else "—",
+                "balance_fmt": _format_currency(r["balance"]),
+                "balance_class": balance_class,
+            }
+        )
     finance_data["finance_extract_truncated"] = extract_truncated
+    finance_data["finance_filter_start_date"] = filter_start_str
+    finance_data["finance_filter_end_date"] = filter_end_str
+    finance_data["selected_finance_range"] = selected_finance_range
+    finance_data["finance_filters_active"] = finance_filters_active
+    finance_data["finance_filter_clear_url"] = finance_filter_clear_url
     return templates.TemplateResponse(
         "finance_management.html",
         _base_context(
