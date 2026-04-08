@@ -4968,6 +4968,45 @@ def equipment_assets_page(
     )
 
 
+@router.get("/insumos/suprimentos")
+def supplies_page(
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+    csrf_token: str = Depends(get_csrf_token),
+):
+    repo = _repository(db)
+    return templates.TemplateResponse(
+        "supplies.html",
+        _base_context(
+            request,
+            user,
+            csrf_token,
+            "supplies",
+            _repo=repo,
+            title="Suprimentos",
+            supplies_groups=[
+                {
+                    "name": "Mudas e material vegetal",
+                    "examples": ["Mudas de café", "Tubetes", "bandejas", "sacos para viveiro"],
+                },
+                {
+                    "name": "Materiais de manutenção",
+                    "examples": ["Lâminas de roçadeira", "linhas de roçadeira", "lubrificantes técnicos"],
+                },
+                {
+                    "name": "Hidráulica e irrigação",
+                    "examples": ["Tubos", "conexões", "registros", "adaptadores"],
+                },
+                {
+                    "name": "Peças e sobressalentes",
+                    "examples": ["Correias", "rolamentos", "filtros", "peças de reposição"],
+                },
+            ],
+        ),
+    )
+
+
 @router.post("/insumos/patrimonio")
 async def create_equipment_asset_action(
     request: Request,

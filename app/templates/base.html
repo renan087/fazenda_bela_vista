@@ -149,7 +149,7 @@
                             <a href="/setores" class="sidebar-submenu-link block rounded-xl px-3 py-2 text-sm {% if page == 'plots' %}bg-brand-500 text-white{% else %}text-slate-300 hover:bg-slate-800 hover:text-white{% endif %}" data-submenu-link>Setores</a>
                         </div>
                     </div>
-                    {% set inputs_pages = ['fertilization', 'fertilization_schedules', 'input_recommendations', 'purchased_inputs', 'stock', 'assets'] %}
+                    {% set inputs_pages = ['fertilization', 'fertilization_schedules', 'input_recommendations', 'purchased_inputs', 'stock', 'supplies', 'assets'] %}
                     <div class="rounded-2xl {% if page in inputs_pages %}bg-slate-900/80{% endif %}" data-submenu-group>
                         <button type="button" class="erp-sidebar-link flex w-full items-center justify-between rounded-2xl px-4 py-3 text-left transition-all duration-300 ease-in-out {% if page in inputs_pages %}text-white{% else %}text-slate-300 hover:bg-slate-900 hover:text-white{% endif %}" data-submenu-toggle="inputs-menu" data-submenu-parent aria-haspopup="true" aria-expanded="{% if page in inputs_pages %}true{% else %}false{% endif %}">
                             <span class="flex items-center gap-3"><span class="erp-sidebar-icon">{{ nav_icon('inputs') }}</span><span class="erp-sidebar-label">Insumos</span></span>
@@ -161,6 +161,7 @@
                             <a href="/insumos/recomendacao" class="sidebar-submenu-link block rounded-xl px-3 py-2 text-sm {% if page == 'input_recommendations' %}bg-brand-500 text-white{% else %}text-slate-300 hover:bg-slate-800 hover:text-white{% endif %}" data-submenu-link>Recomendacao</a>
                             <a href="/insumos/comprados" class="sidebar-submenu-link block rounded-xl px-3 py-2 text-sm {% if page == 'purchased_inputs' %}bg-brand-500 text-white{% else %}text-slate-300 hover:bg-slate-800 hover:text-white{% endif %}" data-submenu-link>Gestão de compras</a>
                             <a href="/insumos/estoque" class="sidebar-submenu-link block rounded-xl px-3 py-2 text-sm {% if page == 'stock' %}bg-brand-500 text-white{% else %}text-slate-300 hover:bg-slate-800 hover:text-white{% endif %}" data-submenu-link>Estoque</a>
+                            <a href="/insumos/suprimentos" class="sidebar-submenu-link block rounded-xl px-3 py-2 text-sm {% if page == 'supplies' %}bg-brand-500 text-white{% else %}text-slate-300 hover:bg-slate-800 hover:text-white{% endif %}" data-submenu-link>Suprimentos</a>
                             <a href="/insumos/patrimonio" class="sidebar-submenu-link block rounded-xl px-3 py-2 text-sm {% if page == 'assets' %}bg-brand-500 text-white{% else %}text-slate-300 hover:bg-slate-800 hover:text-white{% endif %}" data-submenu-link>Patrimonio</a>
                         </div>
                     </div>
