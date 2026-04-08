@@ -135,6 +135,28 @@ def build_finance_overview_context(
     }
 
 
+def _collect_finance_revenue_rows(
+    repo: FarmRepository,
+    *,
+    farm_id: int,
+    active_season: CropSeason | None,
+    season_start,
+    season_end,
+    date_ok,
+) -> list[dict]:
+    """
+    Receitas no extrato (coluna Crédito).
+
+    Quando existir modelo ou lançamento de receita (ex.: venda de sacas, outros),
+    retornar linhas no formato:
+      { date, sort_group, ref_id, module, description, detail, debit: None, credit: float }
+
+    Por enquanto retorna lista vazia — mantém o extrato preparado para créditos.
+    """
+    _ = (repo, farm_id, active_season, season_start, season_end, date_ok)
+    return []
+
+
 def build_finance_extract_rows(
     repo: FarmRepository,
     *,
@@ -142,20 +164,14 @@ def build_finance_extract_rows(
     active_season: CropSeason | None,
     limit: int = EXTRACT_MAX_ROWS,
 ) -> tuple[list[dict], bool]:
-    """Linhas tipo extrato: compras, saídas de estoque, fertilizações e patrimônio (custos / investimento)."""
+    """Extrato: despesas = entradas em Gestão de compras, entradas em Suprimentos, patrimônio adquirido.
+
+    Não inclui saídas de estoque nem fertilizações (custos operacionais fora do extrato).
+    Receitas: ver `_collect_finance_revenue_rows`.
+    """
     if not farm_id:
         return [], False
 
-    scope_ready = bool(farm_id and active_season)
-    plots = (
-        repo.list_plots(
-            farm_ids=[farm_id],
-            variety_ids=[active_season.variety_id] if active_season and active_season.variety_id else None,
-        )
-        if scope_ready
-        else repo.list_plots(farm_ids=[farm_id])
-    )
-    plot_ids = {p.id for p in plots}
     season_start, season_end = _season_bounds(active_season)
 
     def _date_ok(d: date | None) -> bool:
@@ -172,67 +188,16 @@ def build_finance_extract_rows(
         if not _date_ok(pd):
             continue
         it = _item_type(entry)
+        is_suprimento = it == "suprimento"
         raw.append(
             {
                 "date": pd,
-                "sort_group": 1,
+                "sort_group": 2 if is_suprimento else 1,
                 "ref_id": entry.id,
-                "module": "Compras",
-                "description": f"Compra — {entry.name}",
-                "detail": "Suprimentos" if it == "suprimento" else "Insumos",
+                "module": "Suprimentos" if is_suprimento else "Gestão de compras",
+                "description": f"Entrada — {entry.name}",
+                "detail": "Registro de compra / entrada de estoque",
                 "debit": _f(entry.total_cost),
-                "credit": None,
-            }
-        )
-
-    sid = active_season.id if active_season else None
-    for output in repo.list_stock_outputs(farm_id=farm_id):
-        tc = _f(output.total_cost)
-        if tc <= 0:
-            continue
-        md = output.movement_date
-        if not _date_ok(md):
-            continue
-        if active_season and sid is not None:
-            if output.plot_id:
-                if output.plot_id not in plot_ids:
-                    continue
-            elif output.season_id and output.season_id != sid:
-                continue
-        elif output.plot_id and output.plot_id not in plot_ids:
-            continue
-        name = output.input_catalog.name if output.input_catalog else "Insumo"
-        plot_label = output.plot.name if output.plot else ""
-        detail = f"{name}" + (f" · {plot_label}" if plot_label else "")
-        raw.append(
-            {
-                "date": md,
-                "sort_group": 4,
-                "ref_id": output.id,
-                "module": "Estoque",
-                "description": "Saída de estoque (custo)",
-                "detail": detail,
-                "debit": tc,
-                "credit": None,
-            }
-        )
-
-    for rec in repo.list_fertilizations():
-        if rec.plot_id not in plot_ids:
-            continue
-        ad = rec.application_date
-        if not _date_ok(ad):
-            continue
-        plot_name = rec.plot.name if rec.plot else ""
-        raw.append(
-            {
-                "date": ad,
-                "sort_group": 3,
-                "ref_id": rec.id,
-                "module": "Fertilização",
-                "description": rec.product or "Aplicação",
-                "detail": plot_name,
-                "debit": _f(rec.cost),
                 "credit": None,
             }
         )
@@ -247,15 +212,26 @@ def build_finance_extract_rows(
         raw.append(
             {
                 "date": ad,
-                "sort_group": 2,
+                "sort_group": 3,
                 "ref_id": asset.id,
                 "module": "Patrimônio",
                 "description": f"Aquisição — {asset.name}",
-                "detail": asset.category or "",
+                "detail": asset.category or "Bem adquirido",
                 "debit": av,
                 "credit": None,
             }
         )
+
+    raw.extend(
+        _collect_finance_revenue_rows(
+            repo,
+            farm_id=farm_id,
+            active_season=active_season,
+            season_start=season_start,
+            season_end=season_end,
+            date_ok=_date_ok,
+        )
+    )
 
     raw.sort(
         key=lambda r: (
