@@ -58,7 +58,7 @@ from app.models import (
 from app.repositories.farm import FarmRepository
 from app.services.backup_service import delete_backup_run, execute_backup
 from app.services.dashboard import build_dashboard_context
-from app.services.finance_overview import build_finance_overview_context
+from app.services.finance_overview import build_finance_extract_rows, build_finance_overview_context
 from app.services.farm_preview_image import (
     ensure_farm_preview_thumb,
     farm_preview_fs_path,
@@ -1970,6 +1970,24 @@ def finance_management_page(
         "operational_season": _format_currency(finance_data["operational_cost_season"]),
         "assets": _format_currency(finance_data["assets_acquisition_total"]),
     }
+    extract_rows, extract_truncated = build_finance_extract_rows(
+        repo,
+        farm_id=farm_id,
+        active_season=active_season,
+    )
+    finance_data["finance_extract_rows"] = [
+        {
+            "date_label": r["date"].strftime("%d/%m/%Y"),
+            "module": r["module"],
+            "description": r["description"],
+            "detail": (r.get("detail") or "").strip(),
+            "debit_fmt": _format_currency(r["debit"]) if r.get("debit") else "—",
+            "credit_fmt": _format_currency(r["credit"]) if r.get("credit") else "—",
+            "balance_fmt": _format_currency(r["balance"]),
+        }
+        for r in extract_rows
+    ]
+    finance_data["finance_extract_truncated"] = extract_truncated
     return templates.TemplateResponse(
         "finance_management.html",
         _base_context(

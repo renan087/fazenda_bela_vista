@@ -6,7 +6,7 @@
             <div class="min-w-0 stock-page-header-intro" data-stock-header-intro>
                 <div class="stock-page-header-intro-inner">
                     <h2 class="stock-page-card-title">Gestão financeira</h2>
-                    <p class="stock-page-card-subtitle">Visão consolidada a partir dos lançamentos de compras, estoque, fertilização e patrimônio. Os valores seguem o contexto de fazenda e safra ativos.</p>
+                    <p class="stock-page-card-subtitle">Extrato de movimentação de custos a partir dos lançamentos nos módulos (compras, estoque, fertilização e patrimônio). Com fazenda e safra ativas, o período segue as datas da safra.</p>
                 </div>
             </div>
         </div>
@@ -14,85 +14,95 @@
 
     {% if context_selection_required %}
     <div class="rounded-[1.5rem] border border-amber-200 bg-amber-50/90 px-4 py-3 text-sm text-amber-900">
-        Selecione <strong>fazenda</strong> e <strong>safra</strong> no topo da página para carregar os totais da safra e o valor de estoque da fazenda.
+        Selecione <strong>fazenda</strong> e <strong>safra</strong> no topo para filtrar o extrato pelo período da safra e pelos setores vinculados.
     </div>
     {% endif %}
 
-    <section class="stock-panel rounded-[2rem] bg-white p-6 shadow-panel">
-        <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Indicadores</p>
-        <h3 class="mt-2 text-xl font-semibold text-slate-900">Resumo</h3>
-        <p class="mt-2 max-w-3xl text-sm text-slate-500">Estoque: valor estimado pelo custo médio ponderado das entradas (mesma lógica do painel). Custos de safra: saídas de estoque e aplicações com data dentro da safra ativa e setores vinculados a ela.</p>
-        <div class="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-            <div class="rounded-2xl border border-slate-200 bg-slate-50/80 p-4">
-                <p class="text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Valor em estoque (total)</p>
-                <p class="mt-2 text-2xl font-semibold text-slate-900">{{ finance_currency.inventory_total }}</p>
-                <p class="mt-2 text-xs text-slate-500">Insumos {{ finance_currency.inventory_insumo }} · Suprimentos {{ finance_currency.inventory_suprimento }}</p>
+    {% if not active_farm_id %}
+    <div class="rounded-[1.5rem] border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600">
+        Escolha uma <strong>fazenda</strong> no contexto global para exibir o extrato.
+    </div>
+    {% else %}
+
+    <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <div class="rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
+            <p class="text-[0.65rem] font-semibold uppercase tracking-[0.2em] text-slate-400">Valor em estoque</p>
+            <p class="mt-1 text-lg font-semibold tabular-nums text-slate-900">{{ finance_currency.inventory_total }}</p>
+        </div>
+        <div class="rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
+            <p class="text-[0.65rem] font-semibold uppercase tracking-[0.2em] text-slate-400">Compras (histórico)</p>
+            <p class="mt-1 text-lg font-semibold tabular-nums text-slate-900">{{ finance_currency.purchase_total }}</p>
+        </div>
+        {% if finance_scope_ready %}
+        <div class="rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
+            <p class="text-[0.65rem] font-semibold uppercase tracking-[0.2em] text-slate-400">Safra · operacional</p>
+            <p class="mt-1 text-lg font-semibold tabular-nums text-slate-900">{{ finance_currency.operational_season }}</p>
+        </div>
+        {% endif %}
+        <div class="rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
+            <p class="text-[0.65rem] font-semibold uppercase tracking-[0.2em] text-slate-400">Patrimônio (aquisição)</p>
+            <p class="mt-1 text-lg font-semibold tabular-nums text-slate-900">{{ finance_currency.assets }}</p>
+        </div>
+    </div>
+
+    <section class="overflow-hidden rounded-[1.25rem] border border-slate-300 bg-white shadow-[0_1px_0_rgba(15,23,42,0.06)]">
+        <div class="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-slate-50 px-4 py-3"><div>
+                <p class="text-xs font-semibold uppercase tracking-[0.25em] text-slate-500">Extrato</p>
+                <p class="mt-0.5 text-sm text-slate-600">Movimentação cronológica · débitos = custos e investimentos registrados</p>
             </div>
-            <div class="rounded-2xl border border-slate-200 bg-slate-50/80 p-4">
-                <p class="text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Custo histórico de compras</p>
-                <p class="mt-2 text-2xl font-semibold text-slate-900">{{ finance_currency.purchase_total }}</p>
-                <p class="mt-2 text-xs text-slate-500">Insumos {{ finance_currency.purchase_insumo }} · Suprimentos {{ finance_currency.purchase_suprimento }}</p>
-            </div>
-            <div class="rounded-2xl border border-slate-200 bg-slate-50/80 p-4">
-                <p class="text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Patrimônio (valor de aquisição)</p>
-                <p class="mt-2 text-2xl font-semibold text-slate-900">{{ finance_currency.assets }}</p>
-                <p class="mt-2 text-xs text-slate-500">Soma dos bens cadastrados na fazenda ativa.</p>
-            </div>
-            {% if finance_scope_ready %}
-            <div class="rounded-2xl border border-brand-100 bg-brand-50/60 p-4 sm:col-span-2 xl:col-span-3">
-                <p class="text-xs font-medium uppercase tracking-[0.2em] text-brand-700/80">Safra ativa</p>
-                <div class="mt-4 grid gap-4 sm:grid-cols-3">
-                    <div>
-                        <p class="text-xs text-slate-500">Saídas de estoque (custo)</p>
-                        <p class="mt-1 text-lg font-semibold text-slate-900">{{ finance_currency.stock_out_season }}</p>
-                    </div>
-                    <div>
-                        <p class="text-xs text-slate-500">Fertilizações / aplicações</p>
-                        <p class="mt-1 text-lg font-semibold text-slate-900">{{ finance_currency.fertilization_season }}</p>
-                    </div>
-                    <div>
-                        <p class="text-xs text-slate-500">Operacional (saídas + aplicações)</p>
-                        <p class="mt-1 text-lg font-semibold text-slate-900">{{ finance_currency.operational_season }}</p>
-                    </div>
-                </div>
-            </div>
-            {% else %}
-            <div class="rounded-2xl border border-dashed border-slate-200 bg-white p-4 text-sm text-slate-500 sm:col-span-2 xl:col-span-3">
-                Custos da safra (saídas e fertilizações) aparecem quando fazenda e safra estão selecionadas no topo.
-            </div>
+            {% if finance_extract_truncated %}
+            <span class="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-medium text-amber-900">Lista limitada</span>
             {% endif %}
+        </div>
+        <div class="overflow-x-auto">
+            <table class="min-w-[56rem] w-full border-collapse text-left text-sm">
+                <thead>
+                    <tr class="bg-slate-900 text-[0.7rem] font-semibold uppercase tracking-[0.12em] text-white">
+                        <th class="whitespace-nowrap px-4 py-3">Data</th>
+                        <th class="whitespace-nowrap px-4 py-3">Origem</th>
+                        <th class="min-w-[14rem] px-4 py-3">Histórico</th>
+                        <th class="whitespace-nowrap px-4 py-3 text-right tabular-nums">Débito</th>
+                        <th class="whitespace-nowrap px-4 py-3 text-right tabular-nums">Crédito</th>
+                        <th class="whitespace-nowrap px-4 py-3 text-right tabular-nums">Acumulado</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-100 text-slate-800">
+                    {% for row in finance_extract_rows %}
+                    <tr class="{% if loop.index0 % 2 == 0 %}bg-white{% else %}bg-slate-50/80{% endif %} hover:bg-brand-50/30">
+                        <td class="whitespace-nowrap px-4 py-2.5 font-medium tabular-nums text-slate-900">{{ row.date_label }}</td>
+                        <td class="whitespace-nowrap px-4 py-2.5"><span class="rounded-full bg-slate-200/80 px-2 py-0.5 text-xs font-medium text-slate-700">{{ row.module }}</span></td>
+                        <td class="px-4 py-2.5">
+                            <p class="font-medium text-slate-900">{{ row.description }}</p>
+                            {% if row.detail %}<p class="mt-0.5 text-xs text-slate-500">{{ row.detail }}</p>{% endif %}
+                        </td>
+                        <td class="whitespace-nowrap px-4 py-2.5 text-right tabular-nums text-rose-700">{{ row.debit_fmt }}</td>
+                        <td class="whitespace-nowrap px-4 py-2.5 text-right tabular-nums text-emerald-700">{{ row.credit_fmt }}</td>
+                        <td class="whitespace-nowrap px-4 py-2.5 text-right font-semibold tabular-nums text-slate-900">{{ row.balance_fmt }}</td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="6" class="px-4 py-10 text-center text-slate-500">Nenhum lançamento no período com valor para exibir. Cadastre compras, saídas, fertilizações ou patrimônio com data e valor.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <div class="border-t border-slate-200 bg-slate-50 px-4 py-2.5 text-xs text-slate-500">
+            A coluna <strong>Acumulado</strong> soma débitos menos créditos na ordem cronológica (do mais antigo ao mais recente). Créditos podem ser usados no futuro para receitas, quando existirem no sistema.
         </div>
     </section>
 
     <section class="stock-panel rounded-[2rem] bg-white p-6 shadow-panel">
-        <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Módulos</p>
-        <h3 class="mt-2 text-xl font-semibold text-slate-900">Onde os dados são lançados</h3>
-        <div class="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            <a href="/insumos/comprados" class="group flex items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-slate-50/50 px-4 py-3 transition hover:border-brand-200 hover:bg-brand-50/40">
-                <span class="font-medium text-slate-800 group-hover:text-brand-800">Gestão de compras</span>
-                <span class="text-slate-400" aria-hidden="true">→</span>
-            </a>
-            <a href="/insumos/estoque" class="group flex items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-slate-50/50 px-4 py-3 transition hover:border-brand-200 hover:bg-brand-50/40">
-                <span class="font-medium text-slate-800 group-hover:text-brand-800">Estoque</span>
-                <span class="text-slate-400" aria-hidden="true">→</span>
-            </a>
-            <a href="/insumos/suprimentos" class="group flex items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-slate-50/50 px-4 py-3 transition hover:border-brand-200 hover:bg-brand-50/40">
-                <span class="font-medium text-slate-800 group-hover:text-brand-800">Suprimentos</span>
-                <span class="text-slate-400" aria-hidden="true">→</span>
-            </a>
-            <a href="/fertilizacao" class="group flex items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-slate-50/50 px-4 py-3 transition hover:border-brand-200 hover:bg-brand-50/40">
-                <span class="font-medium text-slate-800 group-hover:text-brand-800">Fertilização</span>
-                <span class="text-slate-400" aria-hidden="true">→</span>
-            </a>
-            <a href="/insumos/patrimonio" class="group flex items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-slate-50/50 px-4 py-3 transition hover:border-brand-200 hover:bg-brand-50/40">
-                <span class="font-medium text-slate-800 group-hover:text-brand-800">Patrimônio</span>
-                <span class="text-slate-400" aria-hidden="true">→</span>
-            </a>
-            <a href="/producao" class="group flex items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-slate-50/50 px-4 py-3 transition hover:border-brand-200 hover:bg-brand-50/40">
-                <span class="font-medium text-slate-800 group-hover:text-brand-800">Produção</span>
-                <span class="text-slate-400" aria-hidden="true">→</span>
-            </a>
+        <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Atalhos</p>
+        <h3 class="mt-2 text-lg font-semibold text-slate-900">Módulos</h3>
+        <div class="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            <a href="/insumos/comprados" class="rounded-xl border border-slate-200 bg-slate-50/50 px-3 py-2 text-sm font-medium text-slate-800 transition hover:border-brand-200 hover:bg-brand-50/40">Gestão de compras →</a>
+            <a href="/insumos/estoque" class="rounded-xl border border-slate-200 bg-slate-50/50 px-3 py-2 text-sm font-medium text-slate-800 transition hover:border-brand-200 hover:bg-brand-50/40">Estoque →</a>
+            <a href="/insumos/suprimentos" class="rounded-xl border border-slate-200 bg-slate-50/50 px-3 py-2 text-sm font-medium text-slate-800 transition hover:border-brand-200 hover:bg-brand-50/40">Suprimentos →</a>
+            <a href="/fertilizacao" class="rounded-xl border border-slate-200 bg-slate-50/50 px-3 py-2 text-sm font-medium text-slate-800 transition hover:border-brand-200 hover:bg-brand-50/40">Fertilização →</a>
+            <a href="/insumos/patrimonio" class="rounded-xl border border-slate-200 bg-slate-50/50 px-3 py-2 text-sm font-medium text-slate-800 transition hover:border-brand-200 hover:bg-brand-50/40">Patrimônio →</a>
         </div>
     </section>
+    {% endif %}
 </div>
 {% endblock %}
