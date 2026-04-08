@@ -719,6 +719,30 @@ def _finance_extract_period_bounds(
     return user_start, user_end, raw_start, raw_end
 
 
+def _finance_extract_apply_season_bounds(
+    repo: FarmRepository,
+    farm_id: int | None,
+    *,
+    period_start: date | None,
+    period_end: date | None,
+    extract_season_id: int | None,
+) -> tuple[date | None, date | None, int | None, bool]:
+    """Restringe o extrato ao intervalo da safra (interseção com datas do filtro). Retorna (start, end, id válido ou None, vazio)."""
+    if not farm_id or not extract_season_id:
+        return period_start, period_end, None, False
+    season = repo.get_crop_season(extract_season_id)
+    if not season or season.farm_id != farm_id:
+        return period_start, period_end, None, False
+    ss, se = season.start_date, season.end_date
+    if period_start is None and period_end is None:
+        return ss, se, extract_season_id, False
+    low = ss if period_start is None else max(period_start, ss)
+    high = se if period_end is None else min(period_end, se)
+    if low > high:
+        return period_start, period_end, extract_season_id, True
+    return low, high, extract_season_id, False
+
+
 def _schedule_tab_filter_range_preset(
     raw_preset: str | None,
     raw_start: str,
@@ -1993,13 +2017,25 @@ def finance_management_page(
         if _period_filter_explicit_in_query(request)
         else ""
     )
-    finance_filters_active = _period_filter_explicit_in_query(request)
+    extract_season_q = _int_or_none(request.query_params.get("extract_season_id"))
+    period_start_for_extract, period_end_for_extract, finance_filter_season_id, extract_range_empty = (
+        _finance_extract_apply_season_bounds(
+            repo,
+            farm_id,
+            period_start=period_start,
+            period_end=period_end,
+            extract_season_id=extract_season_q,
+        )
+    )
+    finance_filters_active = _period_filter_explicit_in_query(request) or bool(finance_filter_season_id)
     finance_filter_clear_url = _url_with_query(
         request,
         start_date=None,
         end_date=None,
         schedule_range=None,
+        extract_season_id=None,
     )
+    finance_season_options = repo.list_crop_seasons(farm_id=farm_id) if farm_id else []
     finance_data = build_finance_overview_context(
         repo,
         farm_id=farm_id,
@@ -2017,12 +2053,15 @@ def finance_management_page(
         "operational_season": _format_currency(finance_data["operational_cost_season"]),
         "assets": _format_currency(finance_data["assets_acquisition_total"]),
     }
-    extract_rows, extract_truncated = build_finance_extract_rows(
-        repo,
-        farm_id=farm_id,
-        period_start=period_start,
-        period_end=period_end,
-    )
+    if extract_range_empty:
+        extract_rows, extract_truncated = [], False
+    else:
+        extract_rows, extract_truncated = build_finance_extract_rows(
+            repo,
+            farm_id=farm_id,
+            period_start=period_start_for_extract,
+            period_end=period_end_for_extract,
+        )
     finance_data["finance_extract_rows"] = []
     for r in extract_rows:
         bal = float(r["balance"] or 0)
@@ -2050,6 +2089,8 @@ def finance_management_page(
     finance_data["selected_finance_range"] = selected_finance_range
     finance_data["finance_filters_active"] = finance_filters_active
     finance_data["finance_filter_clear_url"] = finance_filter_clear_url
+    finance_data["finance_season_options"] = finance_season_options
+    finance_data["finance_filter_season_id"] = finance_filter_season_id
     return templates.TemplateResponse(
         "finance_management.html",
         _base_context(
