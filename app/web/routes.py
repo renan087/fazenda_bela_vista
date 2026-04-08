@@ -7114,6 +7114,11 @@ def fertilization_schedules_page(
     completed_schedules = [schedule for schedule in schedules if schedule.status == "completed"]
     active_schedules_pagination = _paginate_collection(request, active_schedules, "active_page")
     completed_schedules_pagination = _paginate_collection(request, completed_schedules, "completed_page")
+    schedule_edit_urls = {
+        schedule.id: _url_with_query(request, edit_id=schedule.id)
+        for schedule in [*active_schedules_pagination["items"], *completed_schedules_pagination["items"]]
+    }
+    schedule_after_edit_close_url = _url_with_query(request, edit_id=None)
     purchased_inputs = repo.list_purchased_inputs()
     schedule_validations = {}
     for sch in active_schedules_pagination["items"]:
@@ -7198,6 +7203,8 @@ def fertilization_schedules_page(
             selected_schedule_range=selected_schedule_range,
             schedule_filter_clear_url=schedule_filter_clear_url,
             schedule_validations=schedule_validations,
+            schedule_edit_urls=schedule_edit_urls,
+            schedule_after_edit_close_url=schedule_after_edit_close_url,
             edit_schedule=edit_schedule,
             edit_schedule_items=edit_schedule_items,
             schedule_recommendations=schedule_recommendations,
@@ -7500,6 +7507,8 @@ async def update_fertilization_schedule_action(
     del user
     form = await request.form()
     validate_csrf(request, str(form.get("csrf_token") or ""))
+    redirect_to = str(form.get("redirect_to") or "")
+    target_url = redirect_to if redirect_to.startswith("/") else "/fertilizacao/agendamentos"
     repo = _repository(db)
     plot, scope, denied = _resolve_plot_in_scope(
         request,
@@ -7512,14 +7521,15 @@ async def update_fertilization_schedule_action(
     schedule = repo.get_fertilization_schedule(schedule_id)
     if not schedule:
         _flash(request, "error", "Agendamento nao encontrado.")
-        return _redirect_for_request(request, "/fertilizacao/agendamentos")
+        return _redirect(target_url)
     if not _plot_matches_scope(schedule.plot, scope):
         _flash(request, "error", "Este agendamento nao pertence ao contexto ativo.")
-        return _redirect_for_request(request, "/fertilizacao/agendamentos")
+        return _redirect(target_url)
     items = _parse_recommendation_items(form)
     if not items:
         _flash(request, "error", "Adicione ao menos um insumo ao agendamento.")
-        return _redirect_for_request(request, "/fertilizacao/agendamentos", edit_id=schedule_id)
+        separator = "&" if "?" in target_url else "?"
+        return _redirect(f"{target_url}{separator}edit_id={schedule_id}")
     try:
         update_fertilization_schedule(
             repo,
@@ -7537,9 +7547,10 @@ async def update_fertilization_schedule_action(
         )
     except ValueError as exc:
         _flash(request, "error", str(exc))
-        return _redirect_for_request(request, "/fertilizacao/agendamentos", edit_id=schedule_id)
+        separator = "&" if "?" in target_url else "?"
+        return _redirect(f"{target_url}{separator}edit_id={schedule_id}")
     _flash(request, "success", "Agendamento atualizado com sucesso.")
-    return _redirect_for_request(request, "/fertilizacao/agendamentos")
+    return _redirect(target_url)
 
 
 @router.post("/fertilizacao/agendamentos/{schedule_id}/concluir")
@@ -7583,19 +7594,21 @@ def delete_fertilization_schedule_action(
     schedule_id: int,
     request: Request,
     csrf_token: str = Form(...),
+    redirect_to: str | None = Form(None),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user_web),
 ):
     del user
     validate_csrf(request, csrf_token)
+    target_url = redirect_to if redirect_to and redirect_to.startswith("/") else "/fertilizacao/agendamentos"
     repo = _repository(db)
     schedule = repo.get_fertilization_schedule(schedule_id)
     if not schedule:
         _flash(request, "error", "Agendamento nao encontrado.")
-        return _redirect("/fertilizacao/agendamentos")
+        return _redirect(target_url)
     delete_fertilization_schedule(repo, schedule)
     _flash(request, "success", "Agendamento excluido com sucesso.")
-    return _redirect("/fertilizacao/agendamentos")
+    return _redirect(target_url)
 
 
 @router.get("/producao")
