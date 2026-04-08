@@ -1992,21 +1992,28 @@ def dashboard(
         ),
     )
 
+def _finance_export_query(request: Request) -> str:
+    allowed_keys = {"start_date", "end_date", "schedule_range", "extract_season_id"}
+    params = [
+        (key, value)
+        for key, value in request.query_params.multi_items()
+        if key in allowed_keys and str(value).strip()
+    ]
+    return urlencode(params, doseq=True)
 
-@router.get("/gestao-financeira")
-def finance_management_page(
+
+def _finance_management_dataset(
     request: Request,
-    db: Session = Depends(get_db),
-    user: User = Depends(get_current_user_web),
-    csrf_token: str = Depends(get_csrf_token),
-):
-    repo = _repository(db)
+    repo: FarmRepository,
+    *,
+    flash_invalid: bool,
+) -> dict:
     scope = _global_scope_context(request, repo)
     farm_id = scope.get("active_farm_id")
     active_season = scope.get("active_season")
     period_start, period_end, filter_start_str, filter_end_str = _finance_extract_period_bounds(
         request,
-        flash_invalid=True,
+        flash_invalid=flash_invalid,
     )
     selected_finance_range = (
         _fertilization_filter_range_preset(
@@ -2036,6 +2043,7 @@ def finance_management_page(
         extract_season_id=None,
     )
     finance_season_options = repo.list_crop_seasons(farm_id=farm_id) if farm_id else []
+    finance_filter_season = repo.get_crop_season(finance_filter_season_id) if finance_filter_season_id else None
     finance_data = build_finance_overview_context(
         repo,
         farm_id=farm_id,
@@ -2091,6 +2099,22 @@ def finance_management_page(
     finance_data["finance_filter_clear_url"] = finance_filter_clear_url
     finance_data["finance_season_options"] = finance_season_options
     finance_data["finance_filter_season_id"] = finance_filter_season_id
+    finance_data["finance_filter_season"] = finance_filter_season
+    finance_data["finance_export_query"] = _finance_export_query(request)
+    finance_data["finance_extract_rows_raw"] = extract_rows
+    finance_data["scope"] = scope
+    return finance_data
+
+
+@router.get("/gestao-financeira")
+def finance_management_page(
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+    csrf_token: str = Depends(get_csrf_token),
+):
+    repo = _repository(db)
+    finance_data = _finance_management_dataset(request, repo, flash_invalid=True)
     return templates.TemplateResponse(
         "finance_management.html",
         _base_context(
@@ -2102,6 +2126,178 @@ def finance_management_page(
             _repo=repo,
             **finance_data,
         ),
+    )
+
+
+@router.get("/gestao-financeira/exportar.xlsx")
+def export_finance_management_xlsx(
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    del user
+    repo = _repository(db)
+    finance_data = _finance_management_dataset(request, repo, flash_invalid=False)
+    rows = finance_data["finance_extract_rows_raw"]
+
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = "Extrato financeiro"
+    sheet.append(["Data", "Origem", "Historico", "Detalhe", "Debito", "Credito", "Acumulado"])
+    for row in rows:
+        sheet.append(
+            [
+                row["date"].isoformat() if row.get("date") else "",
+                row.get("module") or "",
+                row.get("description") or "",
+                (row.get("detail") or "").strip(),
+                float(row.get("debit") or 0),
+                float(row.get("credit") or 0),
+                float(row.get("balance") or 0),
+            ]
+        )
+    for index, width in enumerate([14, 18, 36, 34, 16, 16, 16], start=1):
+        sheet.column_dimensions[get_column_letter(index)].width = width
+
+    output = BytesIO()
+    workbook.save(output)
+    output.seek(0)
+    return StreamingResponse(
+        output,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": 'attachment; filename="gestao_financeira.xlsx"'},
+    )
+
+
+@router.get("/gestao-financeira/exportar.pdf")
+def export_finance_management_pdf(
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    repo = _repository(db)
+    finance_data = _finance_management_dataset(request, repo, flash_invalid=False)
+    rows = finance_data["finance_extract_rows_raw"]
+    scope = finance_data["scope"]
+
+    generated_at = app_now()
+    generated_by = user.display_name or user.name or user.email
+    farm_name = scope["active_farm"].name if scope.get("active_farm") else "Fazenda Bela Vista"
+    season_label = finance_data["finance_filter_season"].name if finance_data.get("finance_filter_season") else "Todas as safras"
+    period_label = "Histórico completo"
+    if finance_data["finance_filter_start_date"] or finance_data["finance_filter_end_date"]:
+        period_label = f"{_format_iso_date_br(finance_data['finance_filter_start_date'])} a {_format_iso_date_br(finance_data['finance_filter_end_date'])}"
+    total_debit = sum(float(row.get("debit") or 0) for row in rows)
+    total_credit = sum(float(row.get("credit") or 0) for row in rows)
+    final_balance = float(rows[-1]["balance"]) if rows else 0.0
+
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=landscape(A4), leftMargin=28, rightMargin=28, topMargin=32, bottomMargin=34)
+    styles = getSampleStyleSheet()
+    farm_header_style = ParagraphStyle("FinancePdfFarmHeader", parent=styles["Title"], fontName="Helvetica-Bold", fontSize=18, leading=22, alignment=TA_RIGHT, textColor=colors.HexColor("#1e293b"))
+    meta_label_style = ParagraphStyle("FinancePdfMetaLabel", parent=styles["BodyText"], fontName="Helvetica-Bold", fontSize=8, leading=10, textColor=colors.HexColor("#446a36"), spaceAfter=2)
+    meta_value_style = ParagraphStyle("FinancePdfMetaValue", parent=styles["BodyText"], fontName="Helvetica", fontSize=10, leading=13, textColor=colors.HexColor("#334155"))
+    cell_style = ParagraphStyle("FinancePdfCell", parent=styles["BodyText"], fontName="Helvetica", fontSize=8.2, leading=10.4, textColor=colors.HexColor("#0f172a"))
+    cell_muted_style = ParagraphStyle("FinancePdfCellMuted", parent=cell_style, textColor=colors.HexColor("#475569"))
+    cell_numeric_style = ParagraphStyle("FinancePdfCellNumeric", parent=cell_style, alignment=TA_RIGHT)
+    summary_value_style = ParagraphStyle("FinancePdfSummaryValue", parent=styles["BodyText"], fontName="Helvetica-Bold", fontSize=11, leading=14, textColor=colors.HexColor("#0f172a"))
+
+    logo_path = Path("app/static/images/logo.png")
+    logo_flowable = Image(str(logo_path), width=92.8, height=73.6) if logo_path.exists() else Spacer(92.8, 73.6)
+    header_table = Table([[logo_flowable, Paragraph(farm_name, farm_header_style)]], colWidths=[76, doc.width - 76], hAlign="LEFT")
+    header_table.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP"), ("ALIGN", (1, 0), (1, 0), "RIGHT"), ("LEFTPADDING", (0, 0), (-1, -1), 0), ("RIGHTPADDING", (0, 0), (-1, -1), 0), ("TOPPADDING", (0, 0), (-1, -1), 0), ("BOTTOMPADDING", (0, 0), (-1, -1), 0)]))
+    summary_table = Table([
+        [
+            [Paragraph("FAZENDA", meta_label_style), Paragraph(farm_name, meta_value_style)],
+            [Paragraph("SAFRA (FILTRO)", meta_label_style), Paragraph(season_label, meta_value_style)],
+            [Paragraph("PERÍODO", meta_label_style), Paragraph(period_label, meta_value_style)],
+        ],
+        [
+            [Paragraph("LANÇAMENTOS", meta_label_style), Paragraph(str(len(rows)), summary_value_style)],
+            [Paragraph("DÉBITOS", meta_label_style), Paragraph(_format_currency(total_debit), summary_value_style)],
+            [Paragraph("SALDO FINAL", meta_label_style), Paragraph(_format_currency(final_balance), summary_value_style)],
+        ],
+    ], colWidths=[doc.width / 3] * 3, hAlign="LEFT")
+    summary_table.setStyle(TableStyle([("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#f8fafc")), ("BOX", (0, 0), (-1, -1), 0.8, colors.HexColor("#dbe5dd")), ("INNERGRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#e2e8f0")), ("LEFTPADDING", (0, 0), (-1, -1), 12), ("RIGHTPADDING", (0, 0), (-1, -1), 12), ("TOPPADDING", (0, 0), (-1, -1), 10), ("BOTTOMPADDING", (0, 0), (-1, -1), 10), ("VALIGN", (0, 0), (-1, -1), "TOP")]))
+
+    title_style = ParagraphStyle("FinancePdfTitle", parent=styles["Heading2"], fontName="Helvetica-Bold", fontSize=13, leading=16, textColor=colors.HexColor("#0f172a"), spaceAfter=6)
+    elements = [header_table, Spacer(1, 16), summary_table, Spacer(1, 12), Paragraph("Extrato financeiro", title_style), Spacer(1, 8)]
+    if rows:
+        data_rows = [["Data", "Origem", "Histórico", "Débito", "Crédito", "Acumulado"]]
+        for row in rows:
+            description = row.get("description") or "-"
+            detail = (row.get("detail") or "").strip()
+            if detail:
+                description = f"{description}<br/><font color='#64748b'>{detail}</font>"
+            data_rows.append([
+                Paragraph(row["date"].strftime("%d/%m/%Y") if row.get("date") else "-", cell_style),
+                Paragraph(row.get("module") or "-", cell_style),
+                Paragraph(description, cell_muted_style),
+                Paragraph(_format_currency(row.get("debit") or 0) if row.get("debit") else "—", cell_numeric_style),
+                Paragraph(_format_currency(row.get("credit") or 0) if row.get("credit") else "—", cell_numeric_style),
+                Paragraph(_format_currency(row.get("balance") or 0), cell_numeric_style),
+            ])
+        table = Table(data_rows, colWidths=[64, 88, doc.width - 64 - 88 - 74 - 74 - 82, 74, 74, 82], repeatRows=1, hAlign="LEFT")
+        table.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#446a36")),
+            ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+            ("FONTSIZE", (0, 0), (-1, -1), 8.5),
+            ("LEADING", (0, 0), (-1, -1), 10),
+            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f8fafc")]),
+            ("BOX", (0, 0), (-1, -1), 0.6, colors.HexColor("#dbe5dd")),
+            ("INNERGRID", (0, 0), (-1, -1), 0.35, colors.HexColor("#e2e8f0")),
+            ("LEFTPADDING", (0, 0), (-1, -1), 8),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+            ("TOPPADDING", (0, 0), (-1, -1), 7),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 7),
+            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ]))
+        elements.append(table)
+    else:
+        empty_style = ParagraphStyle("FinancePdfEmpty", parent=styles["BodyText"], fontName="Helvetica", fontSize=10, leading=14, textColor=colors.HexColor("#475569"))
+        elements.append(Paragraph("Nenhum lançamento encontrado para o período selecionado.", empty_style))
+
+    elements.append(Spacer(1, 14))
+    footer_summary = Table([
+        ["Créditos", _format_currency(total_credit)],
+        ["Débitos", _format_currency(total_debit)],
+        ["Saldo final", _format_currency(final_balance)],
+    ], colWidths=[doc.width * 0.28, doc.width * 0.18], hAlign="LEFT")
+    footer_summary.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#f8fafc")),
+        ("BOX", (0, 0), (-1, -1), 0.8, colors.HexColor("#dbe5dd")),
+        ("INNERGRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#e2e8f0")),
+        ("FONTNAME", (0, 0), (-1, -1), "Helvetica-Bold"),
+        ("TEXTCOLOR", (0, 0), (-1, -1), colors.HexColor("#0f172a")),
+        ("LEFTPADDING", (0, 0), (-1, -1), 10),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 10),
+        ("TOPPADDING", (0, 0), (-1, -1), 8),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
+    ]))
+    elements.append(footer_summary)
+    generated_at_label = format_app_datetime(generated_at)
+
+    def _draw_footer(canvas, doc):
+        canvas.saveState()
+        canvas.setStrokeColor(colors.HexColor("#e2e8f0"))
+        canvas.line(doc.leftMargin, 22, landscape(A4)[0] - doc.rightMargin, 22)
+        canvas.setFont("Helvetica", 8.2)
+        canvas.setFillColor(colors.HexColor("#64748b"))
+        canvas.drawString(doc.leftMargin, 10, f"Gerado por: {generated_by}")
+        canvas.drawRightString(
+            landscape(A4)[0] - doc.rightMargin,
+            10,
+            f"Emitido em {generated_at_label} • Página {canvas.getPageNumber()}",
+        )
+        canvas.restoreState()
+
+    doc.build(elements, onFirstPage=_draw_footer, onLaterPages=_draw_footer)
+    buffer.seek(0)
+    return StreamingResponse(
+        buffer,
+        media_type="application/pdf",
+        headers={"Content-Disposition": 'attachment; filename="gestao_financeira.pdf"'},
     )
 
 

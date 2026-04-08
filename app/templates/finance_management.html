@@ -7,25 +7,47 @@
             <div class="min-w-0 stock-page-header-intro" data-stock-header-intro>
                 <div class="stock-page-header-intro-inner">
                     <h2 class="stock-page-card-title">Gestão financeira</h2>
-                    <p class="stock-page-card-subtitle">Extrato de despesas: entradas em <strong>Gestão de compras</strong> e <strong>Suprimentos</strong>, e <strong>aquisições de patrimônio</strong>. Use o filtro de período abaixo para qualquer intervalo (independente da safra ativa). Receitas em crédito serão incluídas quando existirem.</p>
+                    <p class="stock-page-card-subtitle">Extrato de receitas e despesas.</p>
                 </div>
             </div>
+            {% if active_farm_id %}
+            <div class="flex flex-wrap items-center justify-end gap-2">
+                <a href="/gestao-financeira/exportar.pdf{% if finance_export_query %}?{{ finance_export_query }}{% endif %}" class="stock-action-button stock-export-button stock-export-button-pdf">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true">
+                        <path d="M7 3.75h6.5L19.25 9.5V19A1.75 1.75 0 0 1 17.5 20.75h-11A1.75 1.75 0 0 1 4.75 19V5A1.25 1.25 0 0 1 6 3.75h1Z"/>
+                        <path d="M13 3.75V9.5h5.75"/>
+                        <path d="M8.5 14.25h7"/>
+                        <path d="M8.5 17.25h4.5"/>
+                    </svg>
+                    <span class="stock-action-button-label">Exportar PDF</span>
+                </a>
+                <a href="/gestao-financeira/exportar.xlsx{% if finance_export_query %}?{{ finance_export_query }}{% endif %}" class="stock-action-button stock-export-button stock-export-button-xlsx">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true">
+                        <path d="M7 3.75h6.5L19.25 9.5V19A1.75 1.75 0 0 1 17.5 20.75h-11A1.75 1.75 0 0 1 4.75 19V5A1.25 1.25 0 0 1 6 3.75h1Z"/>
+                        <path d="M13 3.75V9.5h5.75"/>
+                        <path d="m8.75 13.25 2 2.5-2 2.5"/>
+                        <path d="m14.75 13.25-2 2.5 2 2.5"/>
+                    </svg>
+                    <span class="stock-action-button-label">Exportar Excel</span>
+                </a>
+            </div>
+            {% endif %}
         </div>
     </section>
 
     {% if context_selection_required %}
-    <div class="rounded-[1.5rem] border border-amber-200 bg-amber-50/90 px-4 py-3 text-sm text-amber-900">
+    <div class="rounded-[1.5rem] border border-amber-200 bg-amber-50/90 px-4 py-3 text-sm text-amber-900" data-stock-fade-panel>
         Os <strong>indicadores de safra</strong> no topo desta página dependem de fazenda e safra ativas. O <strong>extrato</strong> usa só a fazenda selecionada e o período que você definir no filtro (pode ser fora da safra).
     </div>
     {% endif %}
 
     {% if not active_farm_id %}
-    <div class="rounded-[1.5rem] border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600">
+    <div class="rounded-[1.5rem] border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600" data-stock-fade-panel>
         Escolha uma <strong>fazenda</strong> no contexto global para exibir o extrato e os totais.
     </div>
     {% else %}
 
-    <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+    <section class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4" data-stock-fade-panel>
         <div class="rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
             <p class="text-[0.65rem] font-semibold uppercase tracking-[0.2em] text-slate-400">Valor em estoque</p>
             <p class="mt-1 text-lg font-semibold tabular-nums text-slate-900">{{ finance_currency.inventory_total }}</p>
@@ -44,14 +66,16 @@
             <p class="text-[0.65rem] font-semibold uppercase tracking-[0.2em] text-slate-400">Patrimônio (aquisição)</p>
             <p class="mt-1 text-lg font-semibold tabular-nums text-slate-900">{{ finance_currency.assets }}</p>
         </div>
-    </div>
+    </section>
 
-    <section class="stock-panel rounded-[2rem] bg-white p-5 shadow-panel">
-        <p class="text-xs font-semibold uppercase tracking-[0.25em] text-slate-500">Período do extrato</p>
-        <p class="mt-2 text-sm text-slate-600">Mesmo padrão de outras telas: presets (últimos dias, mês passado) ou período personalizado. Opcionalmente restrinja por <strong>safra</strong> (datas entre início e fim da safra; combinado com período, usa a <strong>interseção</strong>). Sem filtro aplicado, o extrato mostra <strong>todo o histórico</strong> da fazenda.</p>
-        <form method="get" action="/gestao-financeira" class="module-filter-toolbar-grid mt-4" data-module-period-filter-root data-module-range-default="last_10_days" data-module-range-placeholder="Filtre por período" data-module-custom-auto-apply="false">
+    <section class="stock-panel rounded-[2rem] bg-white p-5 shadow-panel" data-stock-fade-panel>
+        <form method="get" action="/gestao-financeira" class="module-filter-toolbar-grid" data-module-period-filter-root data-module-range-default="last_10_days" data-module-range-placeholder="Filtre por período" data-module-custom-auto-apply="false">
             <div class="module-filter-toolbar-main">
                 <div class="flex finance-extract-filter-row">
+                    <label class="stock-filter-field w-[min(100%,16rem)] shrink-0 is-filtered">
+                        <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Fazenda</span>
+                        <input type="text" value="{{ active_farm.name if active_farm else 'Nao selecionada' }}" disabled class="w-full cursor-not-allowed rounded-xl border-slate-200 bg-slate-100 py-2.5 text-sm font-medium text-slate-500">
+                    </label>
                     <label class="stock-filter-field w-[min(100%,14rem)] shrink-0 {% if finance_filter_season_id %}is-filtered{% endif %}">
                         <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Safra</span>
                         <select name="extract_season_id" class="w-full rounded-xl border-slate-200 bg-white py-2.5 text-sm font-medium text-slate-800">
@@ -75,54 +99,55 @@
         </form>
     </section>
 
-    <section class="overflow-hidden rounded-[1.25rem] border border-slate-300 bg-white shadow-[0_1px_0_rgba(15,23,42,0.06)]">
-        <div class="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-slate-50 px-4 py-3"><div>
+    <section class="stock-panel rounded-[2rem] bg-white p-6 shadow-panel" data-stock-fade-panel>
+        <div class="flex flex-wrap items-center justify-between gap-3"><div>
                 <p class="text-xs font-semibold uppercase tracking-[0.25em] text-slate-500">Extrato</p>
-                <p class="mt-0.5 text-sm text-slate-600">Débito = despesa registrada · Crédito = receitas (quando houver)</p>
             </div>
             {% if finance_extract_truncated %}
             <span class="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-medium text-amber-900">Lista limitada</span>
             {% endif %}
         </div>
-        <div class="overflow-x-auto">
-            <table class="min-w-[56rem] w-full border-collapse text-left text-sm">
-                <thead>
-                    <tr class="bg-slate-900 text-[0.7rem] font-semibold uppercase tracking-[0.12em] text-white">
-                        <th class="whitespace-nowrap px-4 py-3">Data</th>
-                        <th class="whitespace-nowrap px-4 py-3">Origem</th>
-                        <th class="min-w-[14rem] px-4 py-3">Histórico</th>
-                        <th class="whitespace-nowrap px-4 py-3 text-right tabular-nums">Débito</th>
-                        <th class="whitespace-nowrap px-4 py-3 text-right tabular-nums">Crédito</th>
-                        <th class="whitespace-nowrap px-4 py-3 text-right tabular-nums">Acumulado</th>
-                    </tr>
-                </thead>
-                <tbody class="divide-y divide-slate-100 text-slate-800">
+        <div class="stock-table-shell mt-4 overflow-hidden rounded-[1.5rem] border border-slate-200">
+            <div class="overflow-x-auto">
+                <table class="stock-history-table min-w-[56rem] w-full divide-y divide-slate-200 text-sm">
+                    <thead class="bg-slate-50 text-left text-slate-500">
+                        <tr>
+                            <th class="whitespace-nowrap px-4 py-3 font-medium">Data</th>
+                            <th class="whitespace-nowrap px-4 py-3 font-medium">Origem</th>
+                            <th class="min-w-[14rem] px-4 py-3 font-medium">Histórico</th>
+                            <th class="whitespace-nowrap px-4 py-3 text-right font-medium tabular-nums">Débito</th>
+                            <th class="whitespace-nowrap px-4 py-3 text-right font-medium tabular-nums">Crédito</th>
+                            <th class="whitespace-nowrap px-4 py-3 text-right font-medium tabular-nums">Acumulado</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-100 bg-white text-slate-800">
                     {% for row in finance_extract_rows %}
-                    <tr class="{% if loop.index0 % 2 == 0 %}bg-white{% else %}bg-slate-50/80{% endif %} hover:bg-brand-50/30">
-                        <td class="whitespace-nowrap px-4 py-2.5 font-medium tabular-nums text-slate-900">{{ row.date_label }}</td>
-                        <td class="whitespace-nowrap px-4 py-2.5"><span class="rounded-full bg-slate-200/80 px-2 py-0.5 text-xs font-medium text-slate-700">{{ row.module }}</span></td>
-                        <td class="px-4 py-2.5">
+                    <tr class="hover:bg-brand-50/30">
+                        <td class="whitespace-nowrap px-4 py-3 font-semibold tabular-nums text-slate-900">{{ row.date_label }}</td>
+                        <td class="whitespace-nowrap px-4 py-3"><span class="rounded-full bg-slate-200/80 px-2 py-0.5 text-xs font-medium text-slate-700">{{ row.module }}</span></td>
+                        <td class="px-4 py-3">
                             <p class="font-medium text-slate-900">{{ row.description }}</p>
                             {% if row.detail %}<p class="mt-0.5 text-xs text-slate-500">{{ row.detail }}</p>{% endif %}
                         </td>
-                        <td class="whitespace-nowrap px-4 py-2.5 text-right tabular-nums text-rose-700">{{ row.debit_fmt }}</td>
-                        <td class="whitespace-nowrap px-4 py-2.5 text-right tabular-nums text-emerald-700">{{ row.credit_fmt }}</td>
-                        <td class="whitespace-nowrap px-4 py-2.5 text-right font-semibold tabular-nums {{ row.balance_class }}">{{ row.balance_fmt }}</td>
+                        <td class="whitespace-nowrap px-4 py-3 text-right tabular-nums text-rose-700">{{ row.debit_fmt }}</td>
+                        <td class="whitespace-nowrap px-4 py-3 text-right tabular-nums text-emerald-700">{{ row.credit_fmt }}</td>
+                        <td class="whitespace-nowrap px-4 py-3 text-right font-semibold tabular-nums {{ row.balance_class }}">{{ row.balance_fmt }}</td>
                     </tr>
                     {% else %}
                     <tr>
                         <td colspan="6" class="px-4 py-10 text-center text-slate-500">Nenhum lançamento no período com valor para exibir. Ajuste o filtro ou cadastre compras, suprimentos ou patrimônio com data e valor.</td>
                     </tr>
                     {% endfor %}
-                </tbody>
-            </table>
+                    </tbody>
+                </table>
+            </div>
         </div>
-        <div class="border-t border-slate-200 bg-slate-50 px-4 py-2.5 text-xs text-slate-500">
+        <div class="mt-4 rounded-[1.25rem] border border-slate-200 bg-slate-50 px-4 py-2.5 text-xs text-slate-500">
             <strong>Acumulado</strong>: saldo progressivo (créditos − débitos; despesas deixam o saldo mais negativo). Azul se positivo, vermelho se negativo. Sem datas no filtro, considera todo o histórico da fazenda.
         </div>
     </section>
 
-    <section class="stock-panel rounded-[2rem] bg-white p-6 shadow-panel">
+    <section class="stock-panel rounded-[2rem] bg-white p-6 shadow-panel" data-stock-fade-panel>
         <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Atalhos</p>
         <h3 class="mt-2 text-lg font-semibold text-slate-900">Módulos</h3>
         <div class="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
@@ -136,9 +161,91 @@
 
     <script src="{{ url_for('static', path='js/module_period_filters.js') }}?v=6"></script>
     <script>
-        document.querySelectorAll('form[data-module-period-filter-root]').forEach((form) => {
-            window.ModulePeriodFilters?.bind(form);
-        });
+        (() => {
+            document.querySelectorAll('form[data-module-period-filter-root]').forEach((form) => {
+                window.ModulePeriodFilters?.bind(form);
+            });
+
+            const stickyHeader = document.querySelector('.stock-page-header');
+            const headerIntro = stickyHeader?.querySelector('[data-stock-header-intro]');
+            const mobileCompactMq = window.matchMedia('(max-width: 899px)');
+            const parseStickyTopPx = (el) => {
+                const raw = getComputedStyle(el).top;
+                if (!raw || raw === 'auto') return 0;
+                const pxMatch = /^([\d.]+)px$/.exec(raw);
+                if (pxMatch) return parseFloat(pxMatch[1]);
+                const remMatch = /^([\d.]+)rem$/.exec(raw);
+                if (remMatch) {
+                    const rootPx = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
+                    return parseFloat(remMatch[1]) * rootPx;
+                }
+                return 0;
+            };
+
+            let compactRaf = null;
+            const syncFinanceHeaderCompact = () => {
+                compactRaf = null;
+                if (!stickyHeader) return;
+                if (!mobileCompactMq.matches) {
+                    stickyHeader.classList.remove('is-compact');
+                    if (headerIntro) headerIntro.removeAttribute('aria-hidden');
+                    return;
+                }
+                const topPx = parseStickyTopPx(stickyHeader);
+                const rect = stickyHeader.getBoundingClientRect();
+                const isCompact = stickyHeader.classList.contains('is-compact');
+                let nextCompact = isCompact;
+                if (rect.top <= topPx + 2) nextCompact = true;
+                else if (rect.top > topPx + 8) nextCompact = false;
+                stickyHeader.classList.toggle('is-compact', nextCompact);
+                if (headerIntro) headerIntro.setAttribute('aria-hidden', nextCompact ? 'true' : 'false');
+            };
+
+            const requestFinanceHeaderCompactSync = () => {
+                if (compactRaf) return;
+                compactRaf = window.requestAnimationFrame(syncFinanceHeaderCompact);
+            };
+
+            const fadingPanels = Array.from(document.querySelectorAll('[data-stock-fade-panel]'));
+            let financeFadeRaf = null;
+            const updateFinanceFadingPanels = () => {
+                financeFadeRaf = null;
+                if (!stickyHeader || !fadingPanels.length) return;
+                const stickyRect = stickyHeader.getBoundingClientRect();
+                const stickyBottom = stickyRect.bottom;
+                fadingPanels.forEach((panel) => {
+                    const panelRect = panel.getBoundingClientRect();
+                    const panelTop = panelRect.top;
+                    const panelH = panelRect.height;
+                    if (panelTop >= stickyBottom || panelH <= 1) {
+                        panel.style.setProperty('--stock-fade-cutoff', '0px');
+                        panel.style.setProperty('--stock-fade-feather-end', '0px');
+                        return;
+                    }
+                    const rawOverlap = Math.max(stickyBottom - panelTop, 0);
+                    const overlap = Math.min(rawOverlap, panelH);
+                    const featherBand = Math.min(80, Math.max(22, overlap * 0.45 + 16));
+                    const featherEnd = overlap + featherBand;
+                    panel.style.setProperty('--stock-fade-cutoff', `${overlap.toFixed(2)}px`);
+                    panel.style.setProperty('--stock-fade-feather-end', `${featherEnd.toFixed(2)}px`);
+                });
+            };
+
+            const scheduleFinanceFadeUpdate = () => {
+                if (financeFadeRaf !== null) return;
+                financeFadeRaf = window.requestAnimationFrame(updateFinanceFadingPanels);
+            };
+
+            const syncFinanceHeaderEffects = () => {
+                requestFinanceHeaderCompactSync();
+                scheduleFinanceFadeUpdate();
+            };
+
+            syncFinanceHeaderEffects();
+            window.addEventListener('scroll', syncFinanceHeaderEffects, { passive: true });
+            window.addEventListener('resize', syncFinanceHeaderEffects);
+            mobileCompactMq.addEventListener('change', syncFinanceHeaderEffects);
+        })();
     </script>
     {% endif %}
 </div>
