@@ -141,6 +141,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")
 templates.env.filters["datetime_sp"] = format_app_datetime
+templates.env.filters["decimal_br"] = lambda value, places=2: _format_decimal_br(value, places)
 
 EQUIPMENT_ASSET_CATEGORY_OPTIONS = [
     "Benfeitoria",

@@ -218,7 +218,7 @@
         </div>
     </article>
     <dialog id="dashboard-schedule-modal" class="app-modal rounded-[2rem] p-0 shadow-2xl w-full max-w-3xl overflow-hidden">
-        <div class="bg-white p-6 sm:p-8">
+        <div class="dashboard-agenda-modal-shell bg-white p-6 sm:p-8">
             <div class="flex items-start justify-between gap-4">
                 <div class="min-w-0">
                     <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Agenda</p>
@@ -232,7 +232,7 @@
                     </svg>
                 </button>
             </div>
-            <div class="mt-6 max-h-[72vh] overflow-y-auto pr-1 dashboard-agenda-modal-list" data-dashboard-schedule-modal-content></div>
+            <div class="mt-6 min-h-0 flex-1 overflow-y-auto pr-1 dashboard-agenda-modal-list" data-dashboard-schedule-modal-content></div>
         </div>
     </dialog>
     <script type="application/json" id="dashboardScheduleData">{{ schedule_alerts|tojson }}</script>
@@ -683,12 +683,14 @@
             if (!(modal instanceof HTMLDialogElement)) return;
             if (!modal.open) {
                 modal.showModal();
+                document.body.classList.add('dashboard-schedule-modal-open');
             }
         };
 
         const closeModal = () => {
             if (!(modal instanceof HTMLDialogElement) || !modal.open) return;
             modal.close();
+            document.body.classList.remove('dashboard-schedule-modal-open');
         };
 
         const renderCalendar = () => {
@@ -713,17 +715,6 @@
                 content.appendChild(dayLabel);
                 if (lateDateSet.has(iso)) {
                     button.classList.add('is-late-event');
-                    const alertIcon = document.createElement('span');
-                    alertIcon.className = 'module-filter-calendar-day-alert';
-                    alertIcon.setAttribute('aria-hidden', 'true');
-                    alertIcon.innerHTML = `
-                        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-                            <path d="M10 3 17 16H3L10 3Z"></path>
-                            <path d="M10 7.3v3.9"></path>
-                            <path d="M10 13.8h.01"></path>
-                        </svg>
-                    `;
-                    content.appendChild(alertIcon);
                 }
                 button.appendChild(content);
                 if (cellDate.getMonth() !== currentMonth.getMonth()) button.classList.add('is-outside');
@@ -760,6 +751,9 @@
                 const rect = modal.getBoundingClientRect();
                 const clickedInside = rect.top <= event.clientY && event.clientY <= rect.bottom && rect.left <= event.clientX && event.clientX <= rect.right;
                 if (!clickedInside) closeModal();
+            });
+            modal.addEventListener('close', () => {
+                document.body.classList.remove('dashboard-schedule-modal-open');
             });
         }
 

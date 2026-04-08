@@ -124,7 +124,7 @@
                                     <div class="grid gap-3 sm:grid-cols-2">
                                         <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Setor</p><p class="mt-2 text-sm font-medium text-slate-800">{{ item.plot.name if item.plot else "Setor removido" }}</p></div>
                                         <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Data</p><p class="mt-2 text-sm font-medium text-slate-800">{{ item.irrigation_date.strftime('%d-%m-%Y') if item.irrigation_date else "-" }}</p></div>
-                                        <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Volume</p><p class="mt-2 text-sm font-medium text-slate-800">{{ item.volume_liters }} L</p></div>
+                                        <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Volume</p><p class="mt-2 text-sm font-medium text-slate-800">{{ item.volume_liters|decimal_br(0) }} L</p></div>
                                         <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Duração</p><p class="mt-2 text-sm font-medium text-slate-800">{{ item.duration_minutes }} min</p></div>
                                         <div class="rounded-2xl bg-slate-50 px-4 py-3 sm:col-span-2"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Origem</p><p class="mt-2 text-sm font-medium text-slate-800">{% if item.origin == 'fertilizacao' %}Fertilizacao{% else %}Manual{% endif %}</p></div>
                                     </div>
@@ -135,7 +135,7 @@
                                 </template>
                             </td>
                             <td class="px-4 py-3 whitespace-nowrap">{{ item.irrigation_date.strftime('%d-%m-%Y') if item.irrigation_date else "-" }}</td>
-                            <td class="px-4 py-3 whitespace-nowrap">{{ item.volume_liters }} L</td>
+                            <td class="px-4 py-3 whitespace-nowrap">{{ item.volume_liters|decimal_br(0) }} L</td>
                             <td class="px-4 py-3 whitespace-nowrap">{{ item.duration_minutes }} min</td>
                             <td class="px-4 py-3 whitespace-nowrap">
                                 {% if item.origin == 'fertilizacao' %}

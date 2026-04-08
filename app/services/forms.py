@@ -834,7 +834,6 @@ def create_fertilization_schedule(repository: FarmRepository, form: dict) -> Fer
 
 
 def update_fertilization_schedule(repository: FarmRepository, schedule: FertilizationSchedule, form: dict) -> FertilizationSchedule:
-    previous_status = schedule.status
     previous_record_id = schedule.fertilization_record_id
     next_status = form.get("status") or schedule.status
 
@@ -872,6 +871,33 @@ def update_fertilization_schedule(repository: FarmRepository, schedule: Fertiliz
     repository.db.add(schedule)
     repository.db.commit()
     repository.db.refresh(schedule)
+
+    if previous_record_id and next_status == "completed":
+        existing_record = repository.get_fertilization(previous_record_id)
+        if existing_record:
+            update_fertilization(
+                repository,
+                existing_record,
+                {
+                    "plot_id": schedule.plot_id,
+                    "application_date": schedule.scheduled_date.isoformat(),
+                    "season_id": schedule.season_id,
+                    "notes": schedule.notes,
+                    "duration_minutes": schedule.duration_minutes,
+                    "application_method": schedule.application_method,
+                    "items": [
+                        {
+                            "input_id": item.input_id,
+                            "purchased_input_id": None,
+                            "name": item.name or (item.input_catalog.name if item.input_catalog else ""),
+                            "unit": item.unit or (item.input_catalog.default_unit if item.input_catalog else ""),
+                            "quantity": float(item.quantity or 0),
+                        }
+                        for item in schedule.items
+                    ],
+                },
+            )
+            repository.db.refresh(schedule)
     return schedule
 
 
