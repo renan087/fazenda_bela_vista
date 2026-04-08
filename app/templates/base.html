@@ -42,6 +42,15 @@
         body[data-modal-mode="1"] [data-modal-single-pane] > * + * {
             display: none;
         }
+
+        [data-submenu-parent] .erp-sidebar-parent-indicator {
+            transform: rotate(0deg);
+            will-change: transform;
+        }
+
+        [data-submenu-parent][aria-expanded="true"] .erp-sidebar-parent-indicator {
+            transform: rotate(180deg);
+        }
     </style>
 </head>
 <body class="bg-slate-100 text-slate-800" data-modal-mode="{% if modal_mode %}1{% else %}0{% endif %}">
@@ -141,7 +150,9 @@
                     <div class="rounded-2xl {% if page in productive_unit_pages %}bg-slate-900/80{% endif %}" data-submenu-group>
                         <button type="button" class="erp-sidebar-link flex w-full items-center justify-between rounded-2xl px-4 py-3 text-left transition-all duration-300 ease-in-out {% if page in productive_unit_pages %}text-white{% else %}text-slate-300 hover:bg-slate-900 hover:text-white{% endif %}" data-submenu-toggle="productive-unit-menu" data-submenu-parent aria-haspopup="true" aria-expanded="{% if page in productive_unit_pages %}true{% else %}false{% endif %}">
                             <span class="flex items-center gap-3"><span class="erp-sidebar-icon">{{ nav_icon('productive_unit') }}</span><span class="erp-sidebar-label">Unidade Produtiva</span></span>
-                            <span class="erp-sidebar-parent-indicator text-xs uppercase tracking-[0.2em]">+</span>
+                            <span class="erp-sidebar-parent-indicator inline-flex h-8 w-8 items-center justify-center rounded-full bg-white/5 text-slate-300/80 transition-transform duration-200 ease-out" aria-hidden="true">
+                                <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+                            </span>
                         </button>
                         <div id="productive-unit-menu" class="sidebar-submenu-panel {% if page not in productive_unit_pages %}hidden {% endif %}space-y-1 px-3 pb-3" data-submenu-panel>
                             <a href="/fazendas" class="sidebar-submenu-link block rounded-xl px-3 py-2 text-sm {% if page == 'farms' %}bg-brand-500 text-white{% else %}text-slate-300 hover:bg-slate-800 hover:text-white{% endif %}" data-submenu-link>Fazendas</a>
@@ -153,7 +164,9 @@
                     <div class="rounded-2xl {% if page in inputs_pages %}bg-slate-900/80{% endif %}" data-submenu-group>
                         <button type="button" class="erp-sidebar-link flex w-full items-center justify-between rounded-2xl px-4 py-3 text-left transition-all duration-300 ease-in-out {% if page in inputs_pages %}text-white{% else %}text-slate-300 hover:bg-slate-900 hover:text-white{% endif %}" data-submenu-toggle="inputs-menu" data-submenu-parent aria-haspopup="true" aria-expanded="{% if page in inputs_pages %}true{% else %}false{% endif %}">
                             <span class="flex items-center gap-3"><span class="erp-sidebar-icon">{{ nav_icon('inputs') }}</span><span class="erp-sidebar-label">Insumos</span></span>
-                            <span class="erp-sidebar-parent-indicator text-xs uppercase tracking-[0.2em]">+</span>
+                            <span class="erp-sidebar-parent-indicator inline-flex h-8 w-8 items-center justify-center rounded-full bg-white/5 text-slate-300/80 transition-transform duration-200 ease-out" aria-hidden="true">
+                                <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+                            </span>
                         </button>
                         <div id="inputs-menu" class="sidebar-submenu-panel {% if page not in inputs_pages %}hidden {% endif %}space-y-1 px-3 pb-3" data-submenu-panel>
                             <a href="/fertilizacao" class="sidebar-submenu-link block rounded-xl px-3 py-2 text-sm {% if page == 'fertilization' %}bg-brand-500 text-white{% else %}text-slate-300 hover:bg-slate-800 hover:text-white{% endif %}" data-submenu-link>Fertilizacao</a>
@@ -192,7 +205,9 @@
                     <div class="rounded-2xl {% if page in config_pages %}bg-slate-900/80{% endif %}" data-submenu-group>
                         <button type="button" class="erp-sidebar-link flex w-full items-center justify-between rounded-2xl px-4 py-3 text-left transition-all duration-300 ease-in-out {% if page in config_pages %}text-white{% else %}text-slate-300 hover:bg-slate-900 hover:text-white{% endif %}" data-submenu-toggle="config-menu" data-submenu-parent aria-haspopup="true" aria-expanded="{% if page in config_pages %}true{% else %}false{% endif %}">
                             <span class="flex items-center gap-3"><span class="erp-sidebar-icon">{{ nav_icon('config') }}</span><span class="erp-sidebar-label">Configuracao</span></span>
-                            <span class="erp-sidebar-parent-indicator text-xs uppercase tracking-[0.2em]">+</span>
+                            <span class="erp-sidebar-parent-indicator inline-flex h-8 w-8 items-center justify-center rounded-full bg-white/5 text-slate-300/80 transition-transform duration-200 ease-out" aria-hidden="true">
+                                <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+                            </span>
                         </button>
                         <div id="config-menu" class="sidebar-submenu-panel {% if page not in config_pages %}hidden {% endif %}space-y-1 px-3 pb-3" data-submenu-panel>
                             {% if menu_visibility.get('users', True) %}
@@ -796,6 +811,7 @@
                 const hasActiveSubmenu = links.some((link) => link.classList.contains('bg-brand-500'));
 
                 setParentActive(button, false);
+                if (button) button.setAttribute('aria-expanded', panel && !panel.classList.contains('hidden') ? 'true' : 'false');
                 links.forEach((link) => setSubmenuLinkActive(link, link.classList.contains('bg-brand-500')));
                 group.classList.toggle('bg-slate-900/80', !panel?.classList.contains('hidden') || hasActiveSubmenu);
 
@@ -807,6 +823,7 @@
                     const isHidden = panel?.classList.contains('hidden');
                     if (isHidden) {
                         panel?.classList.remove('hidden');
+                        button?.setAttribute('aria-expanded', 'true');
                         submenuGroups.forEach((otherGroup) => {
                             if (otherGroup === group) return;
                             setParentActive(otherGroup.querySelector('[data-submenu-parent]'), false);
@@ -820,6 +837,7 @@
                     const hasAnyActiveLink = links.some((link) => link.dataset.submenuActive === 'true' || link.classList.contains('bg-brand-500'));
                     if (!hasAnyActiveLink) {
                         panel?.classList.add('hidden');
+                        button?.setAttribute('aria-expanded', 'false');
                         setParentActive(button, false);
                         group.classList.remove('bg-slate-900/80');
                         return;
@@ -827,6 +845,7 @@
 
                     links.forEach((link) => setSubmenuLinkActive(link, false));
                     setParentActive(button, true);
+                    button?.setAttribute('aria-expanded', 'true');
                 });
 
                 links.forEach((link) => {
@@ -835,6 +854,7 @@
                         setSubmenuLinkActive(link, true);
                         setParentActive(button, false);
                         panel?.classList.remove('hidden');
+                        button?.setAttribute('aria-expanded', 'true');
                         group.classList.add('bg-slate-900/80');
                     });
                 });
