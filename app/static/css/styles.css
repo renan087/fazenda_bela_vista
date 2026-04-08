@@ -1351,32 +1351,49 @@ body.dashboard-schedule-modal-open {
 
 /* Gestão financeira: período + safra em uma linha; rótulo do preset sem quebra */
 .finance-extract-filter-row {
-    flex-wrap: nowrap;
+    flex: 1 1 auto;
+    flex-wrap: wrap;
     align-items: flex-end;
     gap: 1rem;
     min-width: 0;
-    overflow-x: auto;
+    width: 100%;
+    overflow-x: hidden;
     overflow-y: visible;
-    padding-bottom: 0.125rem;
-    -webkit-overflow-scrolling: touch;
 }
 
-.finance-extract-filter-row .stock-filter-field {
+.finance-extract-filter-row .finance-extract-filter-field {
+    flex: 1 1 14rem;
+    min-width: 0;
+}
+
+.finance-extract-filter-row .finance-extract-period {
+    flex: 1.2 1 18rem;
+    min-width: 0;
+}
+
+.finance-extract-filter-row .finance-extract-period,
+.finance-extract-filter-row .finance-extract-period .module-filter-period-row {
+    width: 100%;
+}
+
+.finance-extract-filter-row .finance-extract-period .module-filter-preset {
+    flex: 1 1 auto;
+    max-width: none;
+    min-width: 0;
+}
+
+.finance-extract-filter-row .finance-extract-period .module-filter-preset-button {
+    width: 100%;
+    max-width: none;
+}
+
+.finance-extract-filter-row .finance-extract-period .module-filter-date-field {
+    flex: 1 1 10rem;
+    min-width: 0;
+}
+
+.finance-extract-filter-row + .module-filter-toolbar-actions {
     flex: 0 0 auto;
-}
-
-.finance-extract-filter-row .module-filter-period-row {
-    flex: 0 0 auto;
-    min-width: min(100%, 22rem);
-}
-
-.finance-extract-filter-row .module-filter-preset {
-    max-width: min(100%, 22rem);
-}
-
-.finance-extract-filter-row .module-filter-preset-button {
-    max-width: 100%;
-    white-space: nowrap;
 }
 
 

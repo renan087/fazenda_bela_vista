@@ -72,11 +72,11 @@
         <form method="get" action="/gestao-financeira" class="module-filter-toolbar-grid" data-module-period-filter-root data-module-range-default="last_10_days" data-module-range-placeholder="Filtre por período" data-module-custom-auto-apply="false">
             <div class="module-filter-toolbar-main">
                 <div class="flex finance-extract-filter-row">
-                    <label class="stock-filter-field w-[min(100%,16rem)] shrink-0 is-filtered">
+                    <label class="stock-filter-field finance-extract-filter-field is-filtered">
                         <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Fazenda</span>
                         <input type="text" value="{{ active_farm.name if active_farm else 'Nao selecionada' }}" disabled class="w-full cursor-not-allowed rounded-xl border-slate-200 bg-slate-100 py-2.5 text-sm font-medium text-slate-500">
                     </label>
-                    <label class="stock-filter-field w-[min(100%,14rem)] shrink-0 {% if finance_filter_season_id %}is-filtered{% endif %}">
+                    <label class="stock-filter-field finance-extract-filter-field {% if finance_filter_season_id %}is-filtered{% endif %}">
                         <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Safra</span>
                         <select name="extract_season_id" class="w-full rounded-xl border-slate-200 bg-white py-2.5 text-sm font-medium text-slate-800">
                             <option value="">Todas as safras</option>
@@ -85,7 +85,7 @@
                             {% endfor %}
                         </select>
                     </label>
-                    <div class="module-filter-period-row shrink-0">
+                    <div class="module-filter-period-row finance-extract-period">
                         {{ module_period_picker_inline(selected_finance_range or ('custom' if finance_filter_start_date or finance_filter_end_date else ''), finance_filter_start_date, finance_filter_end_date, 'past', 'Filtre por período') }}
                     </div>
                 </div>
