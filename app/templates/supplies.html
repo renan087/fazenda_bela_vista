@@ -29,7 +29,7 @@
                     </svg>
                     <span class="stock-action-button-label">Exportar Excel</span>
                 </a>
-                <button type="button" class="stock-action-button bg-white text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50" data-supplies-output-open>
+                <button type="button" class="stock-action-button bg-rose-50 text-rose-700 ring-1 ring-rose-200 hover:bg-rose-100" data-supplies-output-open>
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
                         <path d="M20 12H4"/>
                         <path d="M10 18l-6-6 6-6"/>
@@ -438,10 +438,19 @@
                     </div>
                 </div>
 
-                <label><span class="mb-2 block text-sm font-medium">Nome do suprimento</span><input type="text" name="name" value="{{ edit_supply.name if edit_supply else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required></label>
+                <label>
+                    <span class="mb-2 block text-sm font-medium">Nome do suprimento</span>
+                    <input type="text" name="name" value="{{ edit_supply.name if edit_supply else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" list="supplies-name-suggestions" autocomplete="off" required data-supply-name-input>
+                    <span class="mt-2 block text-xs text-slate-500">Se o produto já existir, ele aparece como sugestão logo abaixo.</span>
+                </label>
+                <datalist id="supplies-name-suggestions">
+                    {% for input_item in inputs_catalog %}
+                    <option value="{{ input_item.name }}"></option>
+                    {% endfor %}
+                </datalist>
                 <div class="grid gap-4 md:grid-cols-2">
-                    <label><span class="mb-2 block text-sm font-medium">Quantidade comprada</span><input type="number" step="0.01" min="0.01" name="quantity_purchased" value="{{ edit_supply.quantity_purchased if edit_supply else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required></label>
-                    <label><span class="mb-2 block text-sm font-medium">Tamanho do volume</span><input type="number" step="0.01" min="0.01" name="package_size" value="{{ edit_supply.package_size if edit_supply else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required></label>
+                    <label><span class="mb-2 block text-sm font-medium">Quantidade comprada</span><input type="number" step="0.01" min="0.01" name="quantity_purchased" value="{{ edit_supply.quantity_purchased if edit_supply else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required data-supply-quantity-input></label>
+                    <label><span class="mb-2 block text-sm font-medium">Tamanho do volume</span><input type="number" step="0.01" min="0.01" name="package_size" value="{{ edit_supply.package_size if edit_supply else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required data-supply-package-size-input></label>
                 </div>
                 <div class="grid gap-4 md:grid-cols-3">
                     <label>
@@ -453,12 +462,23 @@
                             {% endfor %}
                         </select>
                     </label>
-                    <label><span class="mb-2 block text-sm font-medium">Unidade</span><input type="text" name="package_unit" value="{{ edit_supply.package_unit if edit_supply else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" placeholder="un, m, peça, kit, cx..." required></label>
-                    <label><span class="mb-2 block text-sm font-medium">Valor unitário do volume (R$)</span><input type="number" step="0.01" min="0" name="unit_price" value="{{ edit_supply.unit_price if edit_supply else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required></label>
+                    <label>
+                        <span class="mb-2 block text-sm font-medium">Unidade</span>
+                        <select name="package_unit" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required data-supply-unit-select>
+                            {% set current_unit = edit_supply.package_unit if edit_supply else '' %}
+                            {% for unit in ['un', 'cx', 'kit', 'm', 'm²', 'm³', 'L', 'ml', 'kg', 'g', 'rolo', 'peça', 'par', 'saco'] %}
+                            <option value="{{ unit }}" {% if current_unit == unit %}selected{% endif %}>{{ unit }}</option>
+                            {% endfor %}
+                        </select>
+                    </label>
+                    <label><span class="mb-2 block text-sm font-medium">Valor unitário do volume (R$)</span><input type="number" step="0.01" min="0" name="unit_price" value="{{ edit_supply.unit_price if edit_supply else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required data-supply-unit-price-input></label>
                 </div>
                 <div class="grid gap-4 md:grid-cols-3">
                     <label><span class="mb-2 block text-sm font-medium">Data da compra</span><input type="date" name="purchase_date" value="{{ edit_supply.purchase_date.isoformat() if edit_supply and edit_supply.purchase_date else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50"></label>
-                    <label><span class="mb-2 block text-sm font-medium">Alerta de estoque baixo</span><input type="number" step="0.01" min="0" name="low_stock_threshold" value="{{ edit_supply.low_stock_threshold if edit_supply and edit_supply.low_stock_threshold is not none else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50"></label>
+                    <label><span class="mb-2 block text-sm font-medium">Alerta de estoque baixo</span><input type="number" step="0.01" min="0" name="low_stock_threshold" value="{{ edit_supply.low_stock_threshold if edit_supply and edit_supply.low_stock_threshold is not none else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" data-supply-threshold-input></label>
+                    <label><span class="mb-2 block text-sm font-medium">Valor total da compra (R$)</span><input type="text" value="" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-200 text-slate-500" readonly data-supply-total-display></label>
+                </div>
+                <div class="grid gap-4 md:grid-cols-1">
                     <label><span class="mb-2 block text-sm font-medium">Saldo disponível</span><input type="text" value="{{ edit_supply.available_quantity if edit_supply else '' }}{% if edit_supply %} {{ edit_supply.package_unit }}{% endif %}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-200 text-slate-500" readonly></label>
                 </div>
 
@@ -672,12 +692,24 @@
 
 <script>
     (() => {
+        const catalogMeta = {
+            {% for input_item in inputs_catalog %}
+            {{ input_item.name|tojson }}: {
+                unit: {{ (input_item.default_unit or '')|tojson }},
+                threshold: {{ (input_item.low_stock_threshold if input_item.low_stock_threshold is not none else '')|tojson }},
+                category: {{ (input_item.category if input_item.category else 'Geral')|tojson }},
+            },
+            {% endfor %}
+        };
         const normalizeSearchText = (value) => (
             (value || '')
                 .toString()
                 .normalize('NFD')
                 .replace(/[\u0300-\u036f]/g, '')
                 .toLowerCase()
+        );
+        const normalizedCatalogMeta = Object.fromEntries(
+            Object.entries(catalogMeta).map(([name, meta]) => [normalizeSearchText(name), meta])
         );
 
         const bindSegmentedControls = (root = document) => {
@@ -828,6 +860,48 @@
         const closeSupplyButtons = Array.from(document.querySelectorAll('[data-supplies-launch-close]'));
         const suppliesRenderedInEditMode = {% if edit_supply %}true{% else %}false{% endif %};
         const afterEditCloseUrl = {{ supplies_after_edit_close_url|tojson }};
+        const supplyForm = document.getElementById('supply-form');
+        const supplyNameInput = supplyForm?.querySelector('[data-supply-name-input]');
+        const supplyUnitSelect = supplyForm?.querySelector('[data-supply-unit-select]');
+        const supplyThresholdInput = supplyForm?.querySelector('[data-supply-threshold-input]');
+        const supplyCategorySelect = supplyForm?.querySelector('select[name="category"]');
+        const supplyQuantityInput = supplyForm?.querySelector('[data-supply-quantity-input]');
+        const supplyPackageSizeInput = supplyForm?.querySelector('[data-supply-package-size-input]');
+        const supplyUnitPriceInput = supplyForm?.querySelector('[data-supply-unit-price-input]');
+        const supplyTotalDisplay = supplyForm?.querySelector('[data-supply-total-display]');
+
+        const formatCurrencyBr = (value) => {
+            const number = Number(value || 0);
+            return number.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        };
+
+        const syncSupplyTotal = () => {
+            if (!(supplyTotalDisplay instanceof HTMLInputElement)) return;
+            const quantity = parseFloat(supplyQuantityInput?.value || '0');
+            const unitPrice = parseFloat(supplyUnitPriceInput?.value || '0');
+            const total = Math.max(quantity, 0) * Math.max(unitPrice, 0);
+            supplyTotalDisplay.value = total > 0 ? formatCurrencyBr(total) : '';
+        };
+
+        const syncSupplySuggestionState = () => {
+            const rawName = (supplyNameInput?.value || '').trim();
+            const meta = rawName ? normalizedCatalogMeta[normalizeSearchText(rawName)] : null;
+            if (meta) {
+                if (supplyUnitSelect && meta.unit) supplyUnitSelect.value = meta.unit;
+                if (supplyCategorySelect && meta.category) supplyCategorySelect.value = meta.category;
+                if (supplyThresholdInput && meta.threshold !== '' && !String(supplyThresholdInput.value || '').trim()) {
+                    supplyThresholdInput.value = meta.threshold;
+                }
+            }
+        };
+
+        supplyNameInput?.addEventListener('input', syncSupplySuggestionState);
+        supplyNameInput?.addEventListener('change', syncSupplySuggestionState);
+        supplyQuantityInput?.addEventListener('input', syncSupplyTotal);
+        supplyPackageSizeInput?.addEventListener('input', syncSupplyTotal);
+        supplyUnitPriceInput?.addEventListener('input', syncSupplyTotal);
+        syncSupplySuggestionState();
+        syncSupplyTotal();
 
         const closeSupplyModal = () => {
             if (suppliesRenderedInEditMode) {
