@@ -471,7 +471,12 @@ def _int_list(values: list[str]) -> list[int]:
 
 
 def _date_or_none(value: str | None):
-    return date.fromisoformat(value) if value not in (None, "") else None
+    if value in (None, ""):
+        return None
+    try:
+        return date.fromisoformat(value.strip())
+    except (TypeError, ValueError):
+        return None
 
 
 def _clean_text(value: str | None) -> str | None:

@@ -727,7 +727,7 @@
             {% for input_item in inputs_catalog %}
             {{ input_item.name|tojson }}: {
                 unit: {{ (input_item.default_unit or '')|tojson }},
-                threshold: {{ (input_item.low_stock_threshold if input_item.low_stock_threshold is not none else '')|tojson }},
+                threshold: {{ (input_item.low_stock_threshold|float if input_item.low_stock_threshold is not none else '')|tojson }},
                 category: {{ (input_item.category if input_item.category else 'Geral')|tojson }},
             },
             {% endfor %}
