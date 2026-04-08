@@ -1054,6 +1054,15 @@ body {
 
 .dashboard-agenda-calendar {
     gap: 0.65rem;
+    padding: 1rem;
+    border: 1px solid rgba(226, 232, 240, 0.92);
+    border-radius: 1.35rem;
+    background:
+        radial-gradient(circle at 12% 18%, rgba(188, 212, 170, 0.14), transparent 20%),
+        radial-gradient(circle at 88% 14%, rgba(68, 106, 54, 0.08), transparent 22%),
+        radial-gradient(circle at 76% 82%, rgba(188, 212, 170, 0.1), transparent 18%),
+        linear-gradient(180deg, rgba(255, 255, 255, 0.995), rgba(248, 250, 252, 0.985));
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72);
 }
 
 .dashboard-agenda-calendar .module-filter-calendar-day {
@@ -1072,6 +1081,12 @@ body {
     color: rgb(30 41 59);
 }
 
+.dashboard-agenda-calendar .module-filter-calendar-day.is-late-event {
+    background: rgba(255, 251, 235, 0.98);
+    color: rgb(146 64 14);
+    box-shadow: inset 0 0 0 1px rgba(251, 191, 36, 0.28);
+}
+
 .dashboard-agenda-calendar .module-filter-calendar-day.is-has-events::after {
     content: "";
     position: absolute;
@@ -1084,6 +1099,31 @@ body {
     transform: translateX(-50%);
 }
 
+.dashboard-agenda-calendar .module-filter-calendar-day.is-late-event::after {
+    background: rgb(217 119 6);
+}
+
+.dashboard-agenda-calendar .module-filter-calendar-day-content {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.28rem;
+}
+
+.dashboard-agenda-calendar .module-filter-calendar-day-alert {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 0.9rem;
+    height: 0.9rem;
+    color: rgb(217 119 6);
+}
+
+.dashboard-agenda-calendar .module-filter-calendar-day-alert svg {
+    width: 0.85rem;
+    height: 0.85rem;
+}
+
 .dashboard-agenda-calendar .module-filter-calendar-day.is-selected {
     background: #446a36;
     color: white;
@@ -1091,6 +1131,11 @@ body {
 
 .dashboard-agenda-calendar .module-filter-calendar-day.is-selected::after {
     background: rgba(255, 255, 255, 0.88);
+}
+
+.dashboard-agenda-calendar .module-filter-calendar-day.is-selected .dashboard-agenda-calendar-day-alert,
+.dashboard-agenda-calendar .module-filter-calendar-day.is-selected .module-filter-calendar-day-alert {
+    color: rgba(255, 255, 255, 0.92);
 }
 
 .dashboard-agenda-day-list {

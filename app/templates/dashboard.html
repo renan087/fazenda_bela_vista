@@ -599,11 +599,15 @@
 
         const monthNames = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
         const scheduleMap = new Map();
+        const lateDateSet = new Set();
         const schedules = Array.isArray(dashboardScheduleData) ? dashboardScheduleData : [];
         schedules.forEach((item) => {
             const date = typeof item.date === 'string' ? item.date : '';
             if (!scheduleMap.has(date)) scheduleMap.set(date, []);
             scheduleMap.get(date).push(item);
+            if (item.status === 'late') {
+                lateDateSet.add(date);
+            }
         });
 
         const escapeHtml = (value) => String(value ?? '')
@@ -702,7 +706,26 @@
                 const button = document.createElement('button');
                 button.type = 'button';
                 button.className = 'module-filter-calendar-day';
-                button.textContent = String(cellDate.getDate());
+                const content = document.createElement('span');
+                content.className = 'module-filter-calendar-day-content';
+                const dayLabel = document.createElement('span');
+                dayLabel.textContent = String(cellDate.getDate());
+                content.appendChild(dayLabel);
+                if (lateDateSet.has(iso)) {
+                    button.classList.add('is-late-event');
+                    const alertIcon = document.createElement('span');
+                    alertIcon.className = 'module-filter-calendar-day-alert';
+                    alertIcon.setAttribute('aria-hidden', 'true');
+                    alertIcon.innerHTML = `
+                        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M10 3 17 16H3L10 3Z"></path>
+                            <path d="M10 7.3v3.9"></path>
+                            <path d="M10 13.8h.01"></path>
+                        </svg>
+                    `;
+                    content.appendChild(alertIcon);
+                }
+                button.appendChild(content);
                 if (cellDate.getMonth() !== currentMonth.getMonth()) button.classList.add('is-outside');
                 if (scheduleMap.has(iso)) button.classList.add('is-has-events');
                 if (selectedDate === iso) button.classList.add('is-selected');
