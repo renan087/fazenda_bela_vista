@@ -142,6 +142,7 @@ router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")
 templates.env.filters["datetime_sp"] = format_app_datetime
 templates.env.filters["decimal_br"] = lambda value, places=2: _format_decimal_br(value, places)
+templates.env.filters["quantity_br"] = lambda value, unit=None: _format_quantity_br(value, unit)
 
 EQUIPMENT_ASSET_CATEGORY_OPTIONS = [
     "Benfeitoria",
@@ -1213,6 +1214,12 @@ def _format_currency(value) -> str:
 def _format_decimal_br(value, places: int = 2) -> str:
     numeric = float(value or 0)
     return f"{numeric:,.{places}f}".replace(",", "X").replace(".", ",").replace("X", ".")
+
+
+def _format_quantity_br(value, unit: str | None = None) -> str:
+    discrete_units = {"un", "un.", "peça", "peca", "par", "kit", "cx", "caixa", "rolo", "saco"}
+    places = 0 if (unit or "").strip().lower() in discrete_units else 2
+    return _format_decimal_br(value, places)
 
 
 def _format_iso_date_br(value: str | None) -> str:
@@ -5606,7 +5613,7 @@ def export_supplies_extract_pdf(
     if export_tab == "extract":
         elements.extend(_pdf_flowables_extract_detail_table(doc, extract_rows, extract_totals, cell_style=cell_style, cell_muted_style=cell_muted_style, cell_numeric_style=cell_numeric_style, meta_value_style=meta_value_style, summary_value_style=summary_value_style))
     else:
-        table_data = [["Mov.", "Data", "Produto", "Origem / Fazenda", "Quantidade", "Valor", "Observações"]]
+        table_data = [["Mov.", "Data", "Origem / Fazenda", "Produto", "Quantidade", "Valor", "Observações"]]
         report_rows = []
         if export_tab == "entries":
             for item in purchase_entries:
@@ -5615,7 +5622,7 @@ def export_supplies_extract_pdf(
                     "date": item.purchase_date,
                     "name": item.input_catalog.name if item.input_catalog else item.name,
                     "origin": item.farm.name if item.farm else "Sem fazenda vinculada",
-                    "quantity": f"{_format_decimal_br(item.total_quantity, 2)} {item.package_unit}",
+                    "quantity": f"{_format_quantity_br(item.total_quantity, item.package_unit)} {item.package_unit}",
                     "value": float(item.total_cost or 0),
                     "notes": item.notes or "-",
                     "sort_key": (item.purchase_date or today_in_app_timezone(), 0, item.id),
@@ -5627,7 +5634,7 @@ def export_supplies_extract_pdf(
                     "date": output.movement_date,
                     "name": output.input_catalog.name if output.input_catalog else "Suprimento removido",
                     "origin": f"{output.origin} • {output.farm.name if output.farm else 'Sem fazenda'}{(' / ' + output.plot.name) if output.plot else ''}",
-                    "quantity": f"{_format_decimal_br(output.quantity, 2)} {output.unit}",
+                    "quantity": f"{_format_quantity_br(output.quantity, output.unit)} {output.unit}",
                     "value": float(output.total_cost or 0),
                     "notes": output.notes or "-",
                     "sort_key": (output.movement_date or today_in_app_timezone(), 1, output.id),
@@ -5638,13 +5645,13 @@ def export_supplies_extract_pdf(
             table_data.append([
                 Paragraph(f'<font color="{movement_color}"><b>{row["kind"]}</b></font>', cell_style),
                 Paragraph(row["date"].strftime("%d/%m/%Y") if row["date"] else "-", cell_style),
-                Paragraph(row["name"], cell_style),
                 Paragraph(row["origin"], cell_muted_style),
+                Paragraph(row["name"], cell_style),
                 Paragraph(row["quantity"], cell_numeric_style),
                 Paragraph(_format_currency(row["value"]), cell_numeric_style),
                 Paragraph(row["notes"][:90], cell_muted_style),
             ])
-        column_weights = [8, 9, 22, 24, 13, 12, 18]
+        column_weights = [8, 9, 24, 22, 13, 12, 18]
         weight_total = sum(column_weights)
         table_col_widths = [doc.width * (weight / weight_total) for weight in column_weights[:-1]]
         table_col_widths.append(doc.width - sum(table_col_widths))
