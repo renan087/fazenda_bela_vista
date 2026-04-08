@@ -69,37 +69,41 @@
     </section>
 
     <section class="stock-panel rounded-[2rem] bg-white p-5 shadow-panel" data-stock-fade-panel>
-        <form method="get" action="/gestao-financeira" class="module-filter-toolbar-grid" data-module-period-filter-root data-module-range-default="last_10_days" data-module-range-placeholder="Filtre por período" data-module-custom-auto-apply="false">
-            <div class="module-filter-toolbar-main">
-                <div class="flex finance-extract-filter-row">
-                    <label class="stock-filter-field finance-extract-filter-field is-filtered">
+        <div class="stock-filter-bar">
+            <form method="get" action="/gestao-financeira" class="stock-filter-grid" data-stock-filter-form data-module-period-filter-root data-module-range-default="last_10_days" data-module-range-placeholder="Filtre por período" data-module-custom-auto-apply="false">
+                <div class="stock-summary-collapse is-expanded" data-stock-filter-collapse>
+                <div class="stock-summary-collapse-inner">
+                <div class="stock-filter-fields-row {% if finance_filters_active %}has-clear-action{% endif %}">
+                    <label class="stock-filter-field stock-filter-field-farm is-filtered">
                         <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Fazenda</span>
                         <input type="text" value="{{ active_farm.name if active_farm else 'Nao selecionada' }}" disabled class="w-full cursor-not-allowed rounded-xl border-slate-200 bg-slate-100 py-2.5 text-sm font-medium text-slate-500">
                     </label>
-                    <label class="stock-filter-field finance-extract-filter-field {% if finance_filter_season_id %}is-filtered{% endif %}">
+                    <label class="stock-filter-field stock-filter-field-input {% if finance_filter_season_id %}is-filtered{% endif %}">
                         <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Safra</span>
-                        <select name="extract_season_id" class="w-full rounded-xl border-slate-200 bg-white py-2.5 text-sm font-medium text-slate-800">
+                        <select name="extract_season_id" class="w-full rounded-xl border-slate-200 bg-white">
                             <option value="">Todas as safras</option>
                             {% for s in finance_season_options %}
                             <option value="{{ s.id }}" {% if finance_filter_season_id == s.id %}selected{% endif %}>{{ s.name }}</option>
                             {% endfor %}
                         </select>
                     </label>
-                    <div class="stock-filter-field finance-extract-filter-field {% if finance_filter_start_date or finance_filter_end_date %}is-filtered{% endif %}">
+                    <div class="stock-filter-field stock-filter-field-period {% if finance_filter_start_date or finance_filter_end_date %}is-filtered{% endif %}">
                         <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Período</span>
                         <div class="module-filter-period-row">
                             {{ module_period_picker_inline(selected_finance_range or ('custom' if finance_filter_start_date or finance_filter_end_date else ''), finance_filter_start_date, finance_filter_end_date, 'past', 'Filtre por período') }}
                         </div>
                     </div>
+                    <div class="stock-filter-field stock-filter-field-actions flex flex-nowrap items-end gap-3">
+                        <button type="submit" class="shrink-0 rounded-xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white">Filtrar</button>
+                        {% if finance_filters_active %}
+                        <a href="{{ finance_filter_clear_url }}" class="shrink-0 rounded-xl bg-white px-4 py-3 text-sm font-semibold text-slate-700 ring-1 ring-slate-200 hover:bg-slate-100">Limpar</a>
+                        {% endif %}
+                    </div>
                 </div>
-            </div>
-            <div class="module-filter-toolbar-actions">
-                <button type="submit" class="module-filter-action border-0 bg-slate-900 text-white hover:bg-slate-800">Filtrar</button>
-                {% if finance_filters_active %}
-                <a href="{{ finance_filter_clear_url }}" class="module-filter-action module-filter-action-secondary">Limpar</a>
-                {% endif %}
-            </div>
-        </form>
+                </div>
+                </div>
+            </form>
+        </div>
     </section>
 
     <section class="stock-panel rounded-[2rem] bg-white p-6 shadow-panel" data-stock-fade-panel>
@@ -147,18 +151,6 @@
         </div>
         <div class="mt-4 rounded-[1.25rem] border border-slate-200 bg-slate-50 px-4 py-2.5 text-xs text-slate-500">
             <strong>Acumulado</strong>: saldo progressivo (créditos − débitos; despesas deixam o saldo mais negativo). Azul se positivo, vermelho se negativo. Sem datas no filtro, considera todo o histórico da fazenda.
-        </div>
-    </section>
-
-    <section class="stock-panel rounded-[2rem] bg-white p-6 shadow-panel" data-stock-fade-panel>
-        <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Atalhos</p>
-        <h3 class="mt-2 text-lg font-semibold text-slate-900">Módulos</h3>
-        <div class="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-            <a href="/insumos/comprados" class="rounded-xl border border-slate-200 bg-slate-50/50 px-3 py-2 text-sm font-medium text-slate-800 transition hover:border-brand-200 hover:bg-brand-50/40">Gestão de compras →</a>
-            <a href="/insumos/estoque" class="rounded-xl border border-slate-200 bg-slate-50/50 px-3 py-2 text-sm font-medium text-slate-800 transition hover:border-brand-200 hover:bg-brand-50/40">Estoque →</a>
-            <a href="/insumos/suprimentos" class="rounded-xl border border-slate-200 bg-slate-50/50 px-3 py-2 text-sm font-medium text-slate-800 transition hover:border-brand-200 hover:bg-brand-50/40">Suprimentos →</a>
-            <a href="/fertilizacao" class="rounded-xl border border-slate-200 bg-slate-50/50 px-3 py-2 text-sm font-medium text-slate-800 transition hover:border-brand-200 hover:bg-brand-50/40">Fertilização →</a>
-            <a href="/insumos/patrimonio" class="rounded-xl border border-slate-200 bg-slate-50/50 px-3 py-2 text-sm font-medium text-slate-800 transition hover:border-brand-200 hover:bg-brand-50/40">Patrimônio →</a>
         </div>
     </section>
 
@@ -224,7 +216,7 @@
                 const topPx = parseStickyTopPx(stickyHeader);
                 const headerGap = mobileCompactMq.matches ? 10 : 12;
                 const summaryHeight = stickySummary ? stickySummary.offsetHeight : 0;
-                const stickyTop = topPx + stickyHeader.offsetHeight + headerGap + summaryHeight + 8;
+                const stickyTop = topPx + stickyHeader.offsetHeight + headerGap + summaryHeight;
                 financeExtractTable.style.setProperty('--finance-extract-head-top', `${stickyTop}px`);
             };
             const updateFinanceFadingPanels = () => {
