@@ -47,7 +47,7 @@
     </div>
     {% else %}
 
-    <section class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4" data-stock-fade-panel>
+    <section class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 finance-summary-sticky-row" data-finance-summary-sticky>
         <div class="rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
             <p class="text-[0.65rem] font-semibold uppercase tracking-[0.2em] text-slate-400">Valor em estoque</p>
             <p class="mt-1 text-lg font-semibold tabular-nums text-slate-900">{{ finance_currency.inventory_total }}</p>
@@ -85,8 +85,11 @@
                             {% endfor %}
                         </select>
                     </label>
-                    <div class="module-filter-period-row finance-extract-period">
-                        {{ module_period_picker_inline(selected_finance_range or ('custom' if finance_filter_start_date or finance_filter_end_date else ''), finance_filter_start_date, finance_filter_end_date, 'past', 'Filtre por período') }}
+                    <div class="stock-filter-field finance-extract-filter-field {% if finance_filter_start_date or finance_filter_end_date %}is-filtered{% endif %}">
+                        <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Período</span>
+                        <div class="module-filter-period-row">
+                            {{ module_period_picker_inline(selected_finance_range or ('custom' if finance_filter_start_date or finance_filter_end_date else ''), finance_filter_start_date, finance_filter_end_date, 'past', 'Filtre por período') }}
+                        </div>
                     </div>
                 </div>
             </div>
@@ -109,7 +112,7 @@
         </div>
         <div class="stock-table-shell mt-4 overflow-hidden rounded-[1.5rem] border border-slate-200">
             <div class="overflow-x-auto">
-                <table class="stock-history-table min-w-[56rem] w-full divide-y divide-slate-200 text-sm">
+                <table class="stock-history-table finance-extract-table min-w-[56rem] w-full divide-y divide-slate-200 text-sm" data-finance-extract-table>
                     <thead class="bg-slate-50 text-left text-slate-500">
                         <tr>
                             <th class="whitespace-nowrap px-4 py-3 font-medium">Data</th>
@@ -206,13 +209,35 @@
                 compactRaf = window.requestAnimationFrame(syncFinanceHeaderCompact);
             };
 
+            const stickySummary = document.querySelector('[data-finance-summary-sticky]');
+            const financeExtractTable = document.querySelector('[data-finance-extract-table]');
             const fadingPanels = Array.from(document.querySelectorAll('[data-stock-fade-panel]'));
             let financeFadeRaf = null;
+            const syncFinanceStickySummary = () => {
+                if (!stickyHeader || !stickySummary) return;
+                const topPx = parseStickyTopPx(stickyHeader);
+                const headerGap = mobileCompactMq.matches ? 10 : 12;
+                stickySummary.style.top = `${topPx + stickyHeader.offsetHeight + headerGap}px`;
+            };
+            const syncFinanceExtractHead = () => {
+                if (!stickyHeader || !financeExtractTable) return;
+                const topPx = parseStickyTopPx(stickyHeader);
+                const headerGap = mobileCompactMq.matches ? 10 : 12;
+                const summaryHeight = stickySummary ? stickySummary.offsetHeight : 0;
+                const stickyTop = topPx + stickyHeader.offsetHeight + headerGap + summaryHeight + 8;
+                financeExtractTable.style.setProperty('--finance-extract-head-top', `${stickyTop}px`);
+            };
             const updateFinanceFadingPanels = () => {
                 financeFadeRaf = null;
                 if (!stickyHeader || !fadingPanels.length) return;
                 const stickyRect = stickyHeader.getBoundingClientRect();
-                const stickyBottom = stickyRect.bottom;
+                let stickyBottom = stickyRect.bottom;
+                if (stickySummary) {
+                    const summaryRect = stickySummary.getBoundingClientRect();
+                    if (summaryRect.top <= stickyBottom + 2) {
+                        stickyBottom = Math.max(stickyBottom, summaryRect.bottom);
+                    }
+                }
                 fadingPanels.forEach((panel) => {
                     const panelRect = panel.getBoundingClientRect();
                     const panelTop = panelRect.top;
@@ -238,6 +263,8 @@
 
             const syncFinanceHeaderEffects = () => {
                 requestFinanceHeaderCompactSync();
+                syncFinanceStickySummary();
+                syncFinanceExtractHead();
                 scheduleFinanceFadeUpdate();
             };
 

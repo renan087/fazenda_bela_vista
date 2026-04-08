@@ -1366,34 +1366,39 @@ body.dashboard-schedule-modal-open {
     min-width: 0;
 }
 
-.finance-extract-filter-row .finance-extract-period {
-    flex: 1.2 1 18rem;
-    min-width: 0;
-}
-
-.finance-extract-filter-row .finance-extract-period,
-.finance-extract-filter-row .finance-extract-period .module-filter-period-row {
-    width: 100%;
-}
-
-.finance-extract-filter-row .finance-extract-period .module-filter-preset {
+.finance-extract-filter-row .module-filter-preset {
     flex: 1 1 auto;
     max-width: none;
     min-width: 0;
 }
 
-.finance-extract-filter-row .finance-extract-period .module-filter-preset-button {
+.finance-extract-filter-row .module-filter-preset-button {
     width: 100%;
     max-width: none;
 }
 
-.finance-extract-filter-row .finance-extract-period .module-filter-date-field {
+.finance-extract-filter-row .module-filter-date-field {
     flex: 1 1 10rem;
     min-width: 0;
 }
 
 .finance-extract-filter-row + .module-filter-toolbar-actions {
     flex: 0 0 auto;
+}
+
+.finance-summary-sticky-row {
+    position: sticky;
+    top: 0;
+    z-index: 24;
+    padding-block: 0.15rem;
+}
+
+.finance-extract-table thead th {
+    position: sticky;
+    top: var(--finance-extract-head-top, 0px);
+    z-index: 18;
+    background: rgb(248 250 252);
+    box-shadow: inset 0 -1px 0 rgba(226, 232, 240, 0.95);
 }
 
 
