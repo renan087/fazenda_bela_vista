@@ -338,6 +338,7 @@ def _resolve_input_catalog(
     name: str,
     default_unit: str,
     item_type: str = "insumo_agricola",
+    category: str | None = None,
     low_stock_threshold: float | None = None,
 ) -> InputCatalog:
     normalized_name = _normalize_input_name(name)
@@ -347,6 +348,8 @@ def _resolve_input_catalog(
             existing.item_type = existing.item_type or item_type
         if default_unit and existing.default_unit != default_unit:
             existing.default_unit = existing.default_unit or default_unit
+        if category and (not getattr(existing, "category", None) or existing.category == "Geral"):
+            existing.category = category
         if low_stock_threshold is not None and low_stock_threshold > 0:
             existing.low_stock_threshold = low_stock_threshold
         repository.db.add(existing)
@@ -356,6 +359,7 @@ def _resolve_input_catalog(
         name=" ".join((name or "").strip().split()),
         normalized_name=normalized_name,
         item_type=item_type or "insumo_agricola",
+        category=(category or "Geral").strip() or "Geral",
         default_unit=default_unit or "kg",
         low_stock_threshold=low_stock_threshold if low_stock_threshold is not None else None,
         is_active=True,
@@ -406,6 +410,7 @@ def create_purchased_input(repository: FarmRepository, form: dict) -> PurchasedI
         form["name"],
         form["package_unit"],
         item_type,
+        form.get("category"),
         low_stock_threshold if low_stock_threshold > 0 else None,
     )
     item = PurchasedInput(
@@ -444,6 +449,7 @@ def update_purchased_input(repository: FarmRepository, item: PurchasedInput, for
         form["name"],
         form["package_unit"],
         item_type,
+        form.get("category"),
         low_stock_threshold if low_stock_threshold > 0 else None,
     )
     return repository.update(

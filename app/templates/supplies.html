@@ -6,11 +6,36 @@
             <div class="min-w-0 stock-page-header-intro" data-stock-header-intro>
                 <div class="stock-page-header-intro-inner">
                     <h2 class="stock-page-card-title">Suprimentos</h2>
-                    <p class="stock-page-card-subtitle">Centralize mudas, materiais de almoxarifado, peças e sobressalentes sem misturar esse controle com insumos agrícolas e combustíveis.</p>
+                    <p class="stock-page-card-subtitle">Gerencie mudas, materiais de almoxarifado, tubos, conexões, peças e sobressalentes com entradas, saídas e extrato no mesmo fluxo do sistema.</p>
                 </div>
             </div>
             <div class="stock-header-actions stock-header-actions-top w-full justify-center sm:w-auto sm:justify-end">
-                <button type="button" class="stock-action-button stock-action-button-primary">
+                <a href="/insumos/suprimentos/exportar.pdf{% if supplies_export_query %}?{{ supplies_export_query }}{% endif %}" class="stock-action-button stock-export-button stock-export-button-pdf">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true">
+                        <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/>
+                        <path d="M14 3v5h5"/>
+                        <path d="M8 13h8"/>
+                        <path d="M8 17h6"/>
+                    </svg>
+                    <span class="stock-action-button-label">Exportar PDF</span>
+                </a>
+                <a href="/insumos/suprimentos/exportar.xlsx{% if supplies_export_query %}?{{ supplies_export_query }}{% endif %}" class="stock-action-button stock-export-button stock-export-button-xlsx">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true">
+                        <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/>
+                        <path d="M14 3v5h5"/>
+                        <path d="m9 17 6-6"/>
+                        <path d="m9 11 6 6"/>
+                    </svg>
+                    <span class="stock-action-button-label">Exportar Excel</span>
+                </a>
+                <button type="button" class="stock-action-button" data-supplies-output-open>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                        <path d="M20 12H4"/>
+                        <path d="M10 18l-6-6 6-6"/>
+                    </svg>
+                    <span class="stock-action-button-label">Registrar saída</span>
+                </button>
+                <button type="button" class="stock-action-button stock-action-button-primary" data-supplies-launch-open>
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
                         <path d="M12 5v14"/>
                         <path d="M5 12h14"/>
@@ -21,34 +46,865 @@
         </div>
     </section>
 
-    <section class="stock-panel rounded-[2rem] bg-white p-6 shadow-panel" data-stock-fade-panel>
+    <article class="stock-panel rounded-[2rem] bg-white p-6 shadow-panel" data-stock-summary-panel data-stock-fade-panel>
         <div class="flex flex-wrap items-start justify-between gap-4">
-            <div>
-                <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Estrutura inicial</p>
-                <h3 class="mt-2 text-2xl font-semibold">Escopo do módulo</h3>
-                <p class="mt-2 max-w-3xl text-sm text-slate-500">Esta área foi preparada para receber itens que não entram como insumo agrícola de aplicação na lavoura, mas que precisam de controle operacional, compra e reposição.</p>
+            <div class="min-w-0">
+                <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Visão consolidada</p>
+                <h3 class="mt-2 text-xl font-semibold">Saldo atual dos suprimentos</h3>
+                <p class="mt-2 max-w-3xl text-sm text-slate-500">Acompanhe rapidamente materiais com saldo saudável, atenção preventiva e nível crítico para reposição.</p>
             </div>
+            <button type="button" class="stock-summary-toggle" data-supplies-summary-toggle aria-expanded="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                    <path d="M5 12h14"/>
+                    <path d="M12 5v14" data-supplies-summary-toggle-plus></path>
+                </svg>
+                <span data-supplies-summary-toggle-label>Recolher</span>
+            </button>
         </div>
-
-        <div class="mt-6 grid gap-4 lg:grid-cols-2">
-            {% for group in supplies_groups %}
-            <article class="rounded-[1.5rem] border border-slate-200 bg-slate-50/90 p-5">
-                <p class="text-xs uppercase tracking-[0.3em] text-slate-400">Categoria</p>
-                <h4 class="mt-2 text-lg font-semibold text-slate-900">{{ group.name }}</h4>
-                <div class="mt-4 flex flex-wrap gap-2">
-                    {% for example in group.examples %}
-                    <span class="rounded-full bg-white px-3 py-2 text-sm text-slate-700 ring-1 ring-slate-200">{{ example }}</span>
+        <div class="stock-summary-collapse is-expanded" data-supplies-summary-collapse>
+            <div class="stock-summary-collapse-inner">
+                <div class="stock-summary-grid mt-6">
+                    {% for item in stock_catalog_rows %}
+                    {% set has_threshold = item.low_stock_threshold and item.low_stock_threshold > 0 %}
+                    {% set is_critical = has_threshold and item.available_quantity <= (item.low_stock_threshold * 0.4) %}
+                    {% set is_low = has_threshold and item.available_quantity <= item.low_stock_threshold %}
+                    {% if not has_threshold %}
+                        {% set level_width = 100 %}
+                    {% elif item.available_quantity >= item.low_stock_threshold %}
+                        {% set level_width = 100 %}
+                    {% elif item.available_quantity <= 0 %}
+                        {% set level_width = 6 %}
+                    {% else %}
+                        {% set level_width = (item.available_quantity / item.low_stock_threshold * 100) %}
+                    {% endif %}
+                    <div class="stock-summary-card" data-stock-level="{% if is_critical %}critical{% elif is_low %}low{% else %}ok{% endif %}">
+                        <div class="flex items-start justify-between gap-3">
+                            <div class="min-w-0">
+                                <p class="truncate text-lg font-semibold text-slate-900">{{ item.name }}</p>
+                                <p class="mt-1 text-xs uppercase tracking-[0.2em] text-slate-400">{{ item.category if item.category else "Suprimento operacional" }}</p>
+                            </div>
+                            {% if is_critical %}
+                            <span class="stock-level-badge stock-level-badge-critical">Crítico</span>
+                            {% elif is_low %}
+                            <span class="stock-level-badge stock-level-badge-low">Baixo</span>
+                            {% else %}
+                            <span class="stock-level-badge stock-level-badge-ok">OK</span>
+                            {% endif %}
+                        </div>
+                        <div class="mt-5">
+                            <p class="text-xs uppercase tracking-[0.18em] text-slate-400">Saldo disponível</p>
+                            <p class="mt-2 text-2xl font-semibold text-slate-900">{{ item.available_quantity|decimal_br }} <span class="text-base font-medium text-slate-500">{{ item.unit }}</span></p>
+                            <div class="stock-level-meter mt-4">
+                                <span style="width: {{ level_width if level_width <= 100 else 100 }}%"></span>
+                            </div>
+                        </div>
+                        <div class="mt-4 grid gap-3 text-sm text-slate-600 sm:grid-cols-2">
+                            <p>Total recebido <strong>{{ item.total_quantity|decimal_br }} {{ item.unit }}</strong></p>
+                            <p>Custo médio <strong>R$ {{ item.average_cost|decimal_br }}</strong></p>
+                            <p>Entradas <strong>{{ item.entries_count }}</strong></p>
+                            <p>Saídas <strong>{{ item.outputs_count }}</strong></p>
+                        </div>
+                        <div class="mt-4 flex flex-wrap gap-2 text-xs text-slate-500">
+                            <span class="rounded-full bg-white px-3 py-1.5 ring-1 ring-slate-200/80">Min.: {% if item.low_stock_threshold %}{{ item.low_stock_threshold|decimal_br }} {{ item.unit }}{% else %}não configurado{% endif %}</span>
+                            {% if item.last_movement_date %}
+                            <span class="rounded-full bg-white px-3 py-1.5 ring-1 ring-slate-200/80">Última mov.: {{ item.last_movement_date.strftime('%d-%m-%Y') if item.last_movement_date else '-' }}</span>
+                            {% endif %}
+                        </div>
+                    </div>
+                    {% else %}
+                    <p class="text-sm text-slate-500 md:col-span-2">Nenhum suprimento encontrado para os filtros informados.</p>
                     {% endfor %}
                 </div>
-            </article>
-            {% endfor %}
+            </div>
+        </div>
+    </article>
+
+    <section class="stock-panel rounded-[2rem] bg-white p-6 shadow-panel" data-stock-fade-panel>
+        <div class="stock-filter-bar">
+            <form method="get" action="/insumos/suprimentos" class="grid gap-3 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_auto]" data-supplies-filter-form>
+                <input type="hidden" name="supplies_tab" value="{{ selected_supplies_tab }}" data-supplies-tab-hidden>
+                <label>
+                    <span class="mb-2 block text-sm font-medium">Fazenda</span>
+                    <select name="farm_id" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50 px-4">
+                        {% for farm in farms %}
+                        <option value="{{ farm.id }}" {% if selected_farm_id == farm.id %}selected{% endif %}>{{ farm.name }}</option>
+                        {% endfor %}
+                    </select>
+                </label>
+                <label>
+                    <span class="mb-2 block text-sm font-medium">Produto</span>
+                    <select name="input_id" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50 px-4">
+                        <option value="">Todos os suprimentos</option>
+                        {% for input_item in inputs_catalog %}
+                        <option value="{{ input_item.id }}" {% if selected_input_id == input_item.id %}selected{% endif %}>{{ input_item.name }}</option>
+                        {% endfor %}
+                    </select>
+                </label>
+                <label>
+                    <span class="mb-2 block text-sm font-medium">Categoria</span>
+                    <select name="category" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50 px-4">
+                        <option value="">Todas as categorias</option>
+                        {% for option in supply_category_options %}
+                        <option value="{{ option }}" {% if selected_category == option %}selected{% endif %}>{{ option }}</option>
+                        {% endfor %}
+                    </select>
+                </label>
+                <label>
+                    <span class="mb-2 block text-sm font-medium">Início</span>
+                    <input type="date" name="start_date" value="{{ selected_start_date or '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50 px-4">
+                </label>
+                <label>
+                    <span class="mb-2 block text-sm font-medium">Fim</span>
+                    <input type="date" name="end_date" value="{{ selected_end_date or '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50 px-4">
+                </label>
+                <label>
+                    <span class="mb-2 block text-sm font-medium">Movimentação</span>
+                    <select name="movement_type" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50 px-4">
+                        <option value="all" {% if selected_movement_type == 'all' %}selected{% endif %}>Todas</option>
+                        <option value="entrada" {% if selected_movement_type == 'entrada' %}selected{% endif %}>Entrada</option>
+                        <option value="saida" {% if selected_movement_type == 'saida' %}selected{% endif %}>Saída</option>
+                    </select>
+                </label>
+                <div class="flex items-end gap-3">
+                    <button class="min-h-[3.25rem] rounded-2xl bg-slate-900 px-5 py-3 text-sm font-semibold text-white hover:bg-slate-700">Filtrar</button>
+                    {% if selected_input_id or selected_category or selected_start_date or selected_end_date or (selected_movement_type and selected_movement_type != 'all') %}
+                    <a href="/insumos/suprimentos" class="min-h-[3.25rem] rounded-2xl bg-white px-5 py-3 text-sm font-semibold text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50">Limpar</a>
+                    {% endif %}
+                </div>
+            </form>
         </div>
 
-        <div class="mt-6 rounded-[1.5rem] border border-brand-100 bg-brand-50/60 p-5">
-            <p class="text-xs uppercase tracking-[0.3em] text-slate-400">Próxima evolução</p>
-            <h4 class="mt-2 text-lg font-semibold text-slate-900">Cadastro, compras e movimentação</h4>
-            <p class="mt-2 text-sm text-slate-600">O menu e a página já estão posicionados no sistema para evoluirmos este módulo com cadastro de itens, entradas, saídas, saldo e histórico, seguindo o mesmo padrão visual dos outros controles.</p>
+        <div data-supplies-list-shell>
+            <div class="stock-history-toolbar mt-5">
+                <div class="stock-tab-nav stock-segmented-control" data-segmented-control>
+                    <div class="stock-segmented-indicator" aria-hidden="true" data-segmented-indicator></div>
+                    <a href="{{ supplies_tab_urls.entries }}" class="stock-tab-link {% if selected_supplies_tab == 'entries' %}is-active{% endif %}" data-supplies-tab-button="entries">Entradas</a>
+                    <a href="{{ supplies_tab_urls.outputs }}" class="stock-tab-link {% if selected_supplies_tab == 'outputs' %}is-active{% endif %}" data-supplies-tab-button="outputs">Saídas</a>
+                    <a href="{{ supplies_tab_urls.extract }}" class="stock-tab-link {% if selected_supplies_tab == 'extract' %}is-active{% endif %}" data-supplies-tab-button="extract">Extrato</a>
+                </div>
+                <div class="stock-search-field">
+                    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+                        <circle cx="8.5" cy="8.5" r="5.75"></circle>
+                        <path d="M13 13l4 4"></path>
+                    </svg>
+                    <input type="search" placeholder="Buscar produto, fazenda, origem ou observação" data-supplies-history-search>
+                </div>
+            </div>
+
+            <div class="stock-history-stage mt-4 {% if selected_supplies_tab != 'entries' %}hidden{% endif %}" data-supplies-tab="entries">
+                <div class="stock-table-shell overflow-hidden rounded-[1.5rem] border border-slate-200">
+                    <div class="purchased-table-scroll">
+                        <table class="stock-history-table min-w-full divide-y divide-slate-200 text-sm">
+                            <thead class="bg-slate-50 text-left text-slate-500">
+                                <tr>
+                                    <th class="px-4 py-3 font-medium">Mov.</th>
+                                    <th class="px-4 py-3 font-medium">Data</th>
+                                    <th class="px-4 py-3 font-medium">Produto</th>
+                                    <th class="px-4 py-3 font-medium">Fazenda</th>
+                                    <th class="px-4 py-3 font-medium">Compra</th>
+                                    <th class="px-4 py-3 font-medium">Saldo</th>
+                                    <th class="px-4 py-3 font-medium">Custo</th>
+                                    <th class="px-4 py-3 font-medium text-right">Ações</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-slate-100 bg-white">
+                                {% for item in purchase_entries %}
+                                <tr data-supplies-history-row data-supplies-search-text="{{ (item.name or '') ~ ' ' ~ (item.input_catalog.category if item.input_catalog and item.input_catalog.category else 'Geral') ~ ' ' ~ (item.farm.name if item.farm else '') ~ ' ' ~ (item.notes or '') ~ ' entrada' }}">
+                                    <td class="px-4 py-3"><span class="stock-movement-chip stock-movement-chip-entry">Entrada</span></td>
+                                    <td class="px-4 py-3 whitespace-nowrap">{{ item.purchase_date.strftime('%d-%m-%Y') if item.purchase_date else '-' }}</td>
+                                    <td class="px-4 py-3 font-semibold text-slate-900">
+                                        <button type="button" class="text-left transition hover:text-brand-700" data-history-view-trigger data-history-view-kicker="Suprimento" data-history-view-title="{{ item.name }}" data-history-view-subtitle="{{ item.farm.name if item.farm else 'Sem fazenda vinculada' }}" data-history-view-source="supply-view-{{ item.id }}" data-history-view-edit-url="{{ supplies_edit_urls[item.id] }}">{{ item.name }}</button>
+                                        <template id="supply-view-{{ item.id }}">
+                                            <div class="grid gap-3 sm:grid-cols-2">
+                                                <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Produto</p><p class="mt-2 text-sm font-medium text-slate-800">{{ item.name }}</p></div>
+                                                <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Fazenda</p><p class="mt-2 text-sm font-medium text-slate-800">{{ item.farm.name if item.farm else "Sem fazenda vinculada" }}</p></div>
+                                                <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Categoria</p><p class="mt-2 text-sm font-medium text-slate-800">{{ item.input_catalog.category if item.input_catalog and item.input_catalog.category else "Geral" }}</p></div>
+                                                <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Compra</p><p class="mt-2 text-sm font-medium text-slate-800">{{ item.quantity_purchased }} volume(s) x {{ item.package_size }} {{ item.package_unit }}</p></div>
+                                                <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Saldo</p><p class="mt-2 text-sm font-medium text-slate-800">{{ item.available_quantity }} {{ item.package_unit }}</p></div>
+                                                <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Custo unitário</p><p class="mt-2 text-sm font-medium text-slate-800">R$ {{ item.unit_price|decimal_br }}</p></div>
+                                                <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Custo total</p><p class="mt-2 text-sm font-medium text-slate-800">R$ {{ item.total_cost|decimal_br }}</p></div>
+                                            </div>
+                                            <div class="rounded-2xl bg-slate-50 px-4 py-4">
+                                                <p class="text-xs uppercase tracking-[0.2em] text-slate-400">Observações</p>
+                                                <p class="mt-2 text-sm text-slate-600">{{ item.notes or "Sem observações." }}</p>
+                                            </div>
+                                        </template>
+                                    </td>
+                                    <td class="px-4 py-3">{{ item.farm.name if item.farm else "Sem vínculo" }}</td>
+                                    <td class="px-4 py-3 whitespace-nowrap">{{ item.quantity_purchased }} x {{ item.package_size }} {{ item.package_unit }}</td>
+                                    <td class="px-4 py-3 whitespace-nowrap">{{ item.available_quantity }} {{ item.package_unit }}</td>
+                                    <td class="px-4 py-3 whitespace-nowrap">R$ {{ item.total_cost|decimal_br }}</td>
+                                    <td class="px-4 py-3">
+                                        <div class="flex items-center justify-end gap-2">
+                                            <a href="{{ supplies_edit_urls[item.id] }}" class="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-100" title="Editar">
+                                                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                                    <path d="M12 20h9"/>
+                                                    <path d="M16.5 3.5a2.1 2.1 0 1 1 3 3L7 19l-4 1 1-4Z"/>
+                                                </svg>
+                                            </a>
+                                            <form method="post" action="/insumos/suprimentos/{{ item.id }}/excluir" onsubmit="return confirm('Excluir este suprimento?');">
+                                                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                                                <input type="hidden" name="redirect_to" value="{{ current_supplies_url }}">
+                                                <button type="submit" class="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 text-rose-600 hover:bg-rose-50" title="Excluir">
+                                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                                        <path d="M3 6h18"/>
+                                                        <path d="M8 6V4h8v2"/>
+                                                        <path d="M19 6l-1 14H6L5 6"/>
+                                                        <path d="M10 11v6"/>
+                                                        <path d="M14 11v6"/>
+                                                    </svg>
+                                                </button>
+                                            </form>
+                                        </div>
+                                    </td>
+                                </tr>
+                                {% else %}
+                                <tr><td colspan="8" class="px-4 py-6 text-center text-slate-500">Nenhuma entrada de suprimento encontrada.</td></tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                <p class="stock-search-empty mt-4 hidden text-sm text-slate-500" data-supplies-search-empty>Nenhum lançamento corresponde à busca digitada.</p>
+                {% with pagination=purchase_entries_pagination %}{% include "partials/history_pagination.html" %}{% endwith %}
+            </div>
+
+            <div class="stock-history-stage mt-4 {% if selected_supplies_tab != 'outputs' %}hidden{% endif %}" data-supplies-tab="outputs">
+                <div class="stock-table-shell overflow-hidden rounded-[1.5rem] border border-slate-200">
+                    <div class="overflow-x-auto">
+                        <table class="stock-history-table min-w-full divide-y divide-slate-200 text-sm">
+                            <thead class="bg-slate-50 text-left text-slate-500">
+                                <tr>
+                                    <th class="px-4 py-3 font-medium">Mov.</th>
+                                    <th class="px-4 py-3 font-medium">Data</th>
+                                    <th class="px-4 py-3 font-medium">Produto</th>
+                                    <th class="px-4 py-3 font-medium">Origem</th>
+                                    <th class="px-4 py-3 font-medium">Fazenda / Setor</th>
+                                    <th class="px-4 py-3 font-medium">Quantidade</th>
+                                    <th class="px-4 py-3 font-medium">Custo</th>
+                                    <th class="px-4 py-3 font-medium text-right">Ações</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-slate-100 bg-white">
+                                {% for output in stock_outputs %}
+                                <tr data-supplies-history-row data-supplies-search-text="{{ (output.input_catalog.name if output.input_catalog else '') ~ ' ' ~ (output.input_catalog.category if output.input_catalog and output.input_catalog.category else 'Geral') ~ ' ' ~ output.origin ~ ' ' ~ (output.farm.name if output.farm else '') ~ ' ' ~ (output.plot.name if output.plot else '') ~ ' ' ~ (output.notes or '') ~ ' saida' }}">
+                                    <td class="px-4 py-3"><span class="stock-movement-chip stock-movement-chip-output">Saída</span></td>
+                                    <td class="px-4 py-3 whitespace-nowrap">{{ output.movement_date.strftime('%d-%m-%Y') if output.movement_date else '-' }}</td>
+                                    <td class="px-4 py-3 font-semibold text-slate-900">
+                                        <button type="button" class="text-left transition hover:text-brand-700" data-history-view-trigger data-history-view-kicker="Saída de suprimento" data-history-view-title="{{ output.input_catalog.name if output.input_catalog else '-' }}" data-history-view-subtitle="{{ output.movement_date.strftime('%d-%m-%Y') if output.movement_date else '-' }}" data-history-view-source="supply-output-view-{{ output.id }}" data-history-view-edit-url="{{ output_edit_urls[output.id] }}">{{ output.input_catalog.name if output.input_catalog else "-" }}</button>
+                                        <template id="supply-output-view-{{ output.id }}">
+                                            <div class="grid gap-3 sm:grid-cols-2">
+                                                <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Data</p><p class="mt-2 text-sm font-medium text-slate-800">{{ output.movement_date.strftime('%d-%m-%Y') if output.movement_date else "-" }}</p></div>
+                                                <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Origem</p><p class="mt-2 text-sm font-medium text-slate-800">{{ output.origin }}</p></div>
+                                                <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Categoria</p><p class="mt-2 text-sm font-medium text-slate-800">{{ output.input_catalog.category if output.input_catalog and output.input_catalog.category else "Geral" }}</p></div>
+                                                <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Fazenda / Setor</p><p class="mt-2 text-sm font-medium text-slate-800">{{ output.farm.name if output.farm else "Sem vínculo" }}{% if output.plot %} / {{ output.plot.name }}{% endif %}</p></div>
+                                                <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Quantidade</p><p class="mt-2 text-sm font-medium text-slate-800">{{ output.quantity }} {{ output.unit }}</p></div>
+                                                <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Custo unitário</p><p class="mt-2 text-sm font-medium text-slate-800">R$ {{ output.unit_cost|decimal_br(4) }}</p></div>
+                                                <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Custo total</p><p class="mt-2 text-sm font-medium text-slate-800">R$ {{ output.total_cost|decimal_br }}</p></div>
+                                            </div>
+                                            <div class="rounded-2xl bg-slate-50 px-4 py-4"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Observações</p><p class="mt-2 text-sm text-slate-600">{{ output.notes or "Sem observações." }}</p></div>
+                                        </template>
+                                    </td>
+                                    <td class="px-4 py-3">{{ output.origin }}</td>
+                                    <td class="px-4 py-3">{{ output.farm.name if output.farm else "Sem vínculo" }}{% if output.plot %} / {{ output.plot.name }}{% endif %}</td>
+                                    <td class="px-4 py-3 whitespace-nowrap">{{ output.quantity }} {{ output.unit }}</td>
+                                    <td class="px-4 py-3 whitespace-nowrap">R$ {{ output.total_cost|decimal_br }}</td>
+                                    <td class="px-4 py-3">
+                                        <div class="flex items-center justify-end gap-2">
+                                            <a href="{{ output_edit_urls[output.id] }}" class="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-100" title="Editar">
+                                                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                                    <path d="M12 20h9"/>
+                                                    <path d="M16.5 3.5a2.1 2.1 0 1 1 3 3L7 19l-4 1 1-4Z"/>
+                                                </svg>
+                                            </a>
+                                            <form method="post" action="/insumos/suprimentos/saidas/{{ output.id }}/excluir" onsubmit="return confirm('Confirma a exclusão deste lançamento de saída?');">
+                                                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                                                <input type="hidden" name="redirect_to" value="{{ supplies_after_output_edit_close_url }}">
+                                                <button type="submit" class="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 text-rose-600 hover:bg-rose-50" title="Excluir">
+                                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                                        <path d="M3 6h18"/>
+                                                        <path d="M8 6V4h8v2"/>
+                                                        <path d="M19 6l-1 14H6L5 6"/>
+                                                        <path d="M10 11v6"/>
+                                                        <path d="M14 11v6"/>
+                                                    </svg>
+                                                </button>
+                                            </form>
+                                        </div>
+                                    </td>
+                                </tr>
+                                {% else %}
+                                <tr><td colspan="8" class="px-4 py-6 text-center text-slate-500">Nenhuma saída de suprimento encontrada.</td></tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                <p class="stock-search-empty mt-4 hidden text-sm text-slate-500" data-supplies-search-empty>Nenhum lançamento corresponde à busca digitada.</p>
+                {% with pagination=stock_outputs_pagination %}{% include "partials/history_pagination.html" %}{% endwith %}
+            </div>
+
+            <div class="stock-history-stage mt-4 {% if selected_supplies_tab != 'extract' %}hidden{% endif %}" data-supplies-tab="extract">
+                <div class="stock-table-shell overflow-hidden rounded-[1.5rem] border border-slate-200">
+                    <div class="overflow-x-auto">
+                        <table class="stock-history-table min-w-full divide-y divide-slate-200 text-sm">
+                            <thead class="bg-slate-50 text-left text-slate-500">
+                                <tr>
+                                    <th class="px-4 py-3 font-medium">Mov.</th>
+                                    <th class="px-4 py-3 font-medium">Data</th>
+                                    <th class="px-4 py-3 font-medium">Produto</th>
+                                    <th class="px-4 py-3 font-medium">Origem / Ref.</th>
+                                    <th class="px-4 py-3 font-medium">Quantidade</th>
+                                    <th class="px-4 py-3 font-medium">Custo unit.</th>
+                                    <th class="px-4 py-3 font-medium">Custo total</th>
+                                    <th class="px-4 py-3 font-medium">Saldo</th>
+                                </tr>
+                            </thead>
+                            <tbody class="divide-y divide-slate-100 bg-white">
+                                {% for row in extract_rows %}
+                                <tr data-supplies-history-row data-supplies-search-text="{{ row.input_name ~ ' ' ~ row.kind ~ ' ' ~ row.origin ~ ' ' ~ row.reference ~ ' ' ~ (row.notes or '') }}">
+                                    <td class="px-4 py-3"><span class="stock-movement-chip {% if row.kind == 'entrada' %}stock-movement-chip-entry{% else %}stock-movement-chip-output{% endif %}">{{ row.kind }}</span></td>
+                                    <td class="px-4 py-3 whitespace-nowrap">{{ row.date.strftime('%d-%m-%Y') if row.date else "-" }}</td>
+                                    <td class="px-4 py-3 font-semibold text-slate-900">{{ row.input_name }}</td>
+                                    <td class="px-4 py-3">{{ row.origin }} • {{ row.reference }}</td>
+                                    <td class="px-4 py-3 whitespace-nowrap">{{ row.quantity }} {{ row.unit }}</td>
+                                    <td class="px-4 py-3 whitespace-nowrap">R$ {{ row.unit_cost|decimal_br(4) }}</td>
+                                    <td class="px-4 py-3 whitespace-nowrap">R$ {{ row.total_cost|decimal_br }}</td>
+                                    <td class="px-4 py-3 whitespace-nowrap">{{ row.balance_after }} {{ row.unit }}</td>
+                                </tr>
+                                {% else %}
+                                <tr><td colspan="8" class="px-4 py-6 text-center text-slate-500">Nenhuma movimentação encontrada.</td></tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                <p class="stock-search-empty mt-4 hidden text-sm text-slate-500" data-supplies-search-empty>Nenhum lançamento corresponde à busca digitada.</p>
+                {% with pagination=extract_rows_pagination %}{% include "partials/history_pagination.html" %}{% endwith %}
+            </div>
         </div>
     </section>
 </div>
+
+{% include "partials/history_view_modal.html" %}
+
+<dialog id="supplies-launch-modal" class="app-modal rounded-[2rem] p-0 shadow-2xl w-full max-w-4xl overflow-hidden">
+    <div class="bg-white p-6 sm:p-8">
+        <div class="flex items-start justify-between gap-4">
+            <div class="min-w-0">
+                <p class="text-xs uppercase tracking-[0.35em] text-slate-400">{% if edit_supply %}Editar suprimento{% else %}Novo suprimento{% endif %}</p>
+                <h3 class="mt-2 text-2xl font-semibold purchased-modal-heading">{% if edit_supply %}Editar entrada de suprimento{% else %}Novo lançamento de suprimento{% endif %}</h3>
+                <p class="mt-2 text-sm text-slate-500 purchased-modal-subtitle">Registre mudas, peças, conexões e materiais de almoxarifado no mesmo fluxo operacional dos outros módulos.</p>
+            </div>
+            <button type="button" class="modal-close-button" aria-label="Fechar" data-supplies-launch-close>
+                <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M18 6 6 18"/>
+                    <path d="m6 6 12 12"/>
+                </svg>
+            </button>
+        </div>
+
+        <div class="mt-6 max-h-[72vh] overflow-y-auto pr-1" data-modal-scroll>
+            <form id="supply-form" method="post" action="{% if edit_supply %}/insumos/suprimentos/{{ edit_supply.id }}/editar{% else %}/insumos/suprimentos{% endif %}" enctype="multipart/form-data" class="grid gap-4">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                {% if edit_supply %}<input type="hidden" name="redirect_to" value="{{ supplies_after_edit_close_url }}">{% endif %}
+                <div class="sticky top-0 z-10 -mx-1 bg-white/95 px-1 py-1 backdrop-blur">
+                    <div class="flex flex-wrap justify-end gap-3 rounded-[1.5rem] px-2 py-2 sm:px-3">
+                        <button type="button" class="rounded-2xl bg-slate-100 px-4 py-3 font-semibold text-slate-700 hover:bg-slate-200" data-supplies-launch-close>Cancelar</button>
+                        <button class="rounded-2xl bg-brand-500 px-4 py-3 font-semibold text-white hover:bg-brand-700">{% if edit_supply %}Salvar alterações{% else %}Salvar suprimento{% endif %}</button>
+                    </div>
+                </div>
+
+                <div class="rounded-[1.5rem] border border-brand-100 bg-brand-50/50 p-4">
+                    <div class="flex flex-wrap items-start justify-between gap-4">
+                        <div class="min-w-0">
+                            <p class="text-xs uppercase tracking-[0.3em] text-slate-400">Contexto do lançamento</p>
+                            <p class="mt-2 text-sm text-slate-500">Use este bloco para confirmar a fazenda e a safra ativas antes de salvar.</p>
+                        </div>
+                        <button type="button" class="stock-summary-toggle" data-supplies-context-toggle aria-expanded="false">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                                <path d="M5 12h14"/>
+                                <path d="M12 5v14" data-supplies-context-toggle-plus></path>
+                            </svg>
+                            <span data-supplies-context-toggle-label>Expandir</span>
+                        </button>
+                    </div>
+                    <div class="stock-summary-collapse" data-supplies-context-collapse>
+                        <div class="stock-summary-collapse-inner">
+                            <div class="mt-4">{% include "partials/launch_context.html" %}</div>
+                        </div>
+                    </div>
+                </div>
+
+                <label><span class="mb-2 block text-sm font-medium">Nome do suprimento</span><input type="text" name="name" value="{{ edit_supply.name if edit_supply else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required></label>
+                <div class="grid gap-4 md:grid-cols-2">
+                    <label><span class="mb-2 block text-sm font-medium">Quantidade comprada</span><input type="number" step="0.01" min="0.01" name="quantity_purchased" value="{{ edit_supply.quantity_purchased if edit_supply else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required></label>
+                    <label><span class="mb-2 block text-sm font-medium">Tamanho do volume</span><input type="number" step="0.01" min="0.01" name="package_size" value="{{ edit_supply.package_size if edit_supply else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required></label>
+                </div>
+                <div class="grid gap-4 md:grid-cols-3">
+                    <label>
+                        <span class="mb-2 block text-sm font-medium">Categoria</span>
+                        <select name="category" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required>
+                            {% for option in supply_category_options %}
+                            {% set current_category = edit_supply.input_catalog.category if edit_supply and edit_supply.input_catalog and edit_supply.input_catalog.category else 'Almoxarifado' %}
+                            <option value="{{ option }}" {% if current_category == option %}selected{% endif %}>{{ option }}</option>
+                            {% endfor %}
+                        </select>
+                    </label>
+                    <label><span class="mb-2 block text-sm font-medium">Unidade</span><input type="text" name="package_unit" value="{{ edit_supply.package_unit if edit_supply else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" placeholder="un, m, peça, kit, cx..." required></label>
+                    <label><span class="mb-2 block text-sm font-medium">Valor unitário do volume (R$)</span><input type="number" step="0.01" min="0" name="unit_price" value="{{ edit_supply.unit_price if edit_supply else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required></label>
+                </div>
+                <div class="grid gap-4 md:grid-cols-3">
+                    <label><span class="mb-2 block text-sm font-medium">Data da compra</span><input type="date" name="purchase_date" value="{{ edit_supply.purchase_date.isoformat() if edit_supply and edit_supply.purchase_date else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50"></label>
+                    <label><span class="mb-2 block text-sm font-medium">Alerta de estoque baixo</span><input type="number" step="0.01" min="0" name="low_stock_threshold" value="{{ edit_supply.low_stock_threshold if edit_supply and edit_supply.low_stock_threshold is not none else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50"></label>
+                    <label><span class="mb-2 block text-sm font-medium">Saldo disponível</span><input type="text" value="{{ edit_supply.available_quantity if edit_supply else '' }}{% if edit_supply %} {{ edit_supply.package_unit }}{% endif %}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-200 text-slate-500" readonly></label>
+                </div>
+
+                {% set attachment_label = 'Anexos' %}
+                {% set attachment_help_text = 'Envie imagens, PDF ou documentos do suprimento. O envio só acontece quando você salvar.' %}
+                {% include "partials/attachment_upload_field.html" %}
+
+                <label><span class="mb-2 block text-sm font-medium">Observações</span><textarea name="notes" rows="4" class="w-full rounded-2xl border-slate-200 bg-slate-50">{{ edit_supply.notes if edit_supply else '' }}</textarea></label>
+            </form>
+
+            {% if edit_supply %}
+            <div class="mt-4 rounded-[1.5rem] border border-slate-200 bg-slate-50 p-4">
+                <div class="flex items-start justify-between gap-3">
+                    <div>
+                        <p class="text-xs uppercase tracking-[0.3em] text-slate-400">Anexos</p>
+                        <h4 class="mt-2 text-sm font-semibold text-slate-900">Arquivos vinculados ao suprimento</h4>
+                    </div>
+                    <span class="rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate-600">{{ edit_supply.attachments|length }} arquivo(s)</span>
+                </div>
+                <div class="mt-4 space-y-3">
+                    {% for attachment in edit_supply.attachments|sort(attribute='id', reverse=True) %}
+                    <div class="flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-white px-4 py-3">
+                        <div class="min-w-0">
+                            <a href="/insumos/suprimentos/anexos/{{ attachment.id }}" target="_blank" class="block truncate text-sm font-medium text-brand-700 hover:text-brand-500">{{ attachment.filename }}</a>
+                            <p class="mt-1 text-xs text-slate-500">{{ attachment.content_type }}</p>
+                        </div>
+                        <form method="post" action="/insumos/suprimentos/{{ edit_supply.id }}/anexos/{{ attachment.id }}/excluir" data-attachment-delete-form data-attachment-name="{{ attachment.filename }}">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                            <input type="hidden" name="redirect_to" value="{{ supplies_after_edit_close_url }}">
+                            <button class="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-medium text-rose-700 hover:bg-rose-100">Excluir anexo</button>
+                        </form>
+                    </div>
+                    {% else %}
+                    <p class="text-sm text-slate-500">Nenhum anexo salvo para este suprimento.</p>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</dialog>
+
+{% if edit_output %}
+<dialog id="supplies-output-edit-modal" class="app-modal rounded-[2rem] p-0 shadow-2xl w-full max-w-3xl">
+    <div class="bg-white p-6 sm:p-8">
+        <div class="flex items-start justify-between gap-4">
+            <div>
+                <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Editar saída</p>
+                <h3 class="mt-2 text-2xl font-semibold">Editar consumo avulso</h3>
+                <p class="mt-2 text-sm text-slate-500">Atualize os dados da saída manual sem sair de Suprimentos.</p>
+            </div>
+            <a href="{{ supplies_after_output_edit_close_url }}" class="modal-close-button" aria-label="Fechar">
+                <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M18 6 6 18"/>
+                    <path d="m6 6 12 12"/>
+                </svg>
+            </a>
+        </div>
+
+        <form method="post" action="/insumos/suprimentos/saidas/{{ edit_output.id }}/editar" class="mt-6 grid gap-4">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <input type="hidden" name="redirect_to" value="{{ supplies_after_output_edit_close_url }}">
+            <div class="rounded-[1.5rem] border border-brand-100 bg-brand-50/50 p-4">
+                <div class="flex flex-wrap items-start justify-between gap-4">
+                    <div class="min-w-0">
+                        <p class="text-xs uppercase tracking-[0.3em] text-slate-400">Contexto do lançamento</p>
+                        <p class="mt-2 text-sm text-slate-500">Use este bloco para confirmar a fazenda e a safra ativas antes de salvar.</p>
+                    </div>
+                    <button type="button" class="stock-summary-toggle" data-supplies-output-context-toggle aria-expanded="false">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                            <path d="M5 12h14"/>
+                            <path d="M12 5v14" data-supplies-output-context-toggle-plus></path>
+                        </svg>
+                        <span data-supplies-output-context-toggle-label>Expandir</span>
+                    </button>
+                </div>
+                <div class="stock-summary-collapse" data-supplies-output-context-collapse>
+                    <div class="stock-summary-collapse-inner">
+                        <div class="mt-4">{% include "partials/launch_context.html" %}</div>
+                    </div>
+                </div>
+            </div>
+            <label>
+                <span class="mb-2 block text-sm font-medium">Setor</span>
+                <select name="plot_id" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50">
+                    <option value="">Sem setor</option>
+                    {% for plot in plots %}
+                    <option value="{{ plot.id }}" {% if edit_output.plot_id == plot.id %}selected{% endif %}>{{ plot.name }}{% if plot.farm %} • {{ plot.farm.name }}{% endif %}</option>
+                    {% endfor %}
+                </select>
+            </label>
+            <div class="grid gap-4 md:grid-cols-2">
+                <label>
+                    <span class="mb-2 block text-sm font-medium">Produto</span>
+                    <input type="text" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-200 text-slate-500" value="{{ edit_output.input_catalog.name if edit_output.input_catalog else '' }}" readonly>
+                </label>
+                <label>
+                    <span class="mb-2 block text-sm font-medium">Data</span>
+                    <input type="date" name="movement_date" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" value="{{ edit_output.movement_date.isoformat() if edit_output.movement_date else '' }}">
+                </label>
+            </div>
+            <div class="grid gap-4 md:grid-cols-2">
+                <label>
+                    <span class="mb-2 block text-sm font-medium">Quantidade</span>
+                    <input type="number" step="0.01" min="0" name="quantity" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required value="{{ edit_output.quantity }}">
+                </label>
+                <label>
+                    <span class="mb-2 block text-sm font-medium">Unidade</span>
+                    <input type="text" name="unit" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required value="{{ edit_output.unit }}">
+                </label>
+            </div>
+            <label>
+                <span class="mb-2 block text-sm font-medium">Observações</span>
+                <textarea name="notes" rows="4" class="w-full rounded-2xl border-slate-200 bg-slate-50">{{ edit_output.notes or '' }}</textarea>
+            </label>
+            <div class="flex flex-wrap justify-end gap-3">
+                <a href="{{ supplies_after_output_edit_close_url }}" class="rounded-2xl bg-slate-100 px-4 py-3 font-semibold text-slate-700 hover:bg-slate-200">Cancelar</a>
+                <button class="rounded-2xl bg-brand-500 px-4 py-3 font-semibold text-white hover:bg-brand-700">Salvar alterações</button>
+            </div>
+        </form>
+    </div>
+</dialog>
+{% endif %}
+
+<dialog id="supplies-output-modal" class="app-modal rounded-[2rem] p-0 shadow-2xl w-full max-w-3xl">
+    <div class="bg-white p-6 sm:p-8">
+        <div class="flex items-start justify-between gap-4">
+            <div>
+                <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Registrar saída</p>
+                <h3 class="mt-2 text-2xl font-semibold">Lançar consumo avulso</h3>
+                <p class="mt-2 text-sm text-slate-500">Registre retiradas de mudas, peças e materiais sem sair do histórico de Suprimentos.</p>
+            </div>
+            <button type="button" class="modal-close-button" aria-label="Fechar" data-supplies-output-close>
+                <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M18 6 6 18"/>
+                    <path d="m6 6 12 12"/>
+                </svg>
+            </button>
+        </div>
+
+        <form method="post" action="/insumos/suprimentos/saida-manual" class="mt-6 grid gap-4" data-supplies-output-form>
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <div class="rounded-[1.5rem] border border-brand-100 bg-brand-50/50 p-4">
+                <div class="flex flex-wrap items-start justify-between gap-4">
+                    <div class="min-w-0">
+                        <p class="text-xs uppercase tracking-[0.3em] text-slate-400">Contexto do lançamento</p>
+                        <p class="mt-2 text-sm text-slate-500">Use este bloco para confirmar a fazenda e a safra ativas antes de salvar.</p>
+                    </div>
+                    <button type="button" class="stock-summary-toggle" data-supplies-output-create-context-toggle aria-expanded="false">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                            <path d="M5 12h14"/>
+                            <path d="M12 5v14" data-supplies-output-create-context-toggle-plus></path>
+                        </svg>
+                        <span data-supplies-output-create-context-toggle-label>Expandir</span>
+                    </button>
+                </div>
+                <div class="stock-summary-collapse" data-supplies-output-create-context-collapse>
+                    <div class="stock-summary-collapse-inner">
+                        <div class="mt-4">{% include "partials/launch_context.html" %}</div>
+                    </div>
+                </div>
+            </div>
+            <label>
+                <span class="mb-2 block text-sm font-medium">Setor</span>
+                <select name="plot_id" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50">
+                    <option value="">Sem setor</option>
+                    {% for plot in plots %}
+                    <option value="{{ plot.id }}">{{ plot.name }}{% if plot.farm %} • {{ plot.farm.name }}{% endif %}</option>
+                    {% endfor %}
+                </select>
+            </label>
+            <div class="grid gap-4 md:grid-cols-2">
+                <label>
+                    <span class="mb-2 block text-sm font-medium">Produto</span>
+                    <select name="input_id" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required data-supplies-output-input-select>
+                        <option value="">Selecione</option>
+                        {% for input_item in inputs_catalog %}
+                        {% set stock = input_stock.get(input_item.id, {}) %}
+                        <option value="{{ input_item.id }}" data-default-unit="{{ input_item.default_unit }}">{{ input_item.name }} — disponível: {{ stock.get('available', 0) }} {{ stock.get('unit', input_item.default_unit) }}</option>
+                        {% endfor %}
+                    </select>
+                </label>
+                <label>
+                    <span class="mb-2 block text-sm font-medium">Data</span>
+                    <input type="date" name="movement_date" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50">
+                </label>
+            </div>
+            <div class="grid gap-4 md:grid-cols-2">
+                <label>
+                    <span class="mb-2 block text-sm font-medium">Quantidade</span>
+                    <input type="number" step="0.01" min="0" name="quantity" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required>
+                </label>
+                <label>
+                    <span class="mb-2 block text-sm font-medium">Unidade</span>
+                    <input type="text" name="unit" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-200 text-slate-500" readonly data-supplies-output-unit-field>
+                </label>
+            </div>
+            <label>
+                <span class="mb-2 block text-sm font-medium">Observações</span>
+                <textarea name="notes" rows="4" class="w-full rounded-2xl border-slate-200 bg-slate-50"></textarea>
+            </label>
+            <div class="flex flex-wrap justify-end gap-3">
+                <button type="button" class="rounded-2xl bg-slate-100 px-4 py-3 font-semibold text-slate-700 hover:bg-slate-200" data-supplies-output-close>Cancelar</button>
+                <button class="rounded-2xl bg-brand-500 px-4 py-3 font-semibold text-white hover:bg-brand-700">Registrar saída</button>
+            </div>
+        </form>
+    </div>
+</dialog>
+
+{% include "partials/attachment_manager_script.html" %}
+
+<script>
+    (() => {
+        const normalizeSearchText = (value) => (
+            (value || '')
+                .toString()
+                .normalize('NFD')
+                .replace(/[\u0300-\u036f]/g, '')
+                .toLowerCase()
+        );
+
+        const bindSegmentedControls = (root = document) => {
+            root.querySelectorAll('[data-segmented-control]').forEach((control) => {
+                const indicator = control.querySelector('[data-segmented-indicator]');
+                const sync = () => {
+                    const active = control.querySelector('.stock-tab-link.is-active');
+                    if (!(active instanceof HTMLElement) || !(indicator instanceof HTMLElement)) return;
+                    const indicatorLeft = parseFloat(getComputedStyle(indicator).left || '0') || 0;
+                    indicator.style.width = `${active.offsetWidth}px`;
+                    indicator.style.transform = `translateX(${Math.max(active.offsetLeft - indicatorLeft, 0)}px)`;
+                    control.classList.add('is-ready');
+                };
+                sync();
+                control._segmentedSync = sync;
+            });
+        };
+        const syncSupplyExportLinks = () => {
+            const pdf = document.querySelector('a.stock-export-button-pdf');
+            const xlsx = document.querySelector('a.stock-export-button-xlsx');
+            if (!(pdf instanceof HTMLAnchorElement) || !(xlsx instanceof HTMLAnchorElement)) return;
+            const params = new URLSearchParams(window.location.search);
+            params.set('stock_tab', activeTab);
+            params.set('supplies_tab', activeTab);
+            ['entries_page', 'outputs_page', 'extract_page'].forEach((key) => params.delete(key));
+            const qs = params.toString();
+            const suffix = qs ? `?${qs}` : `?supplies_tab=${encodeURIComponent(activeTab)}`;
+            pdf.href = `/insumos/suprimentos/exportar.pdf${suffix}`;
+            xlsx.href = `/insumos/suprimentos/exportar.xlsx${suffix}`;
+        };
+
+        const setupCollapse = ({toggleSelector, collapseSelector, labelSelector, plusSelector}) => {
+            const toggle = document.querySelector(toggleSelector);
+            const collapse = document.querySelector(collapseSelector);
+            const label = document.querySelector(labelSelector);
+            const plus = document.querySelector(plusSelector);
+            if (!toggle || !collapse || !label) return;
+            const setExpanded = (expanded) => {
+                collapse.classList.toggle('is-expanded', expanded);
+                toggle.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+                label.textContent = expanded ? 'Recolher' : 'Expandir';
+                plus?.classList.toggle('hidden', expanded);
+            };
+            setExpanded(false);
+            toggle.addEventListener('click', () => setExpanded(toggle.getAttribute('aria-expanded') !== 'true'));
+        };
+
+        let activeTab = {% if edit_output %}'outputs'{% else %}{{ selected_supplies_tab|tojson }}{% endif %};
+        const tabHidden = document.querySelector('[data-supplies-tab-hidden]');
+        const getTabs = () => Array.from(document.querySelectorAll('[data-supplies-tab]'));
+        const getButtons = () => Array.from(document.querySelectorAll('[data-supplies-tab-button]'));
+        const setActiveTabView = (tabName) => {
+            activeTab = tabName;
+            getTabs().forEach((tab) => tab.classList.toggle('hidden', tab.dataset.suppliesTab !== tabName));
+            getButtons().forEach((button) => button.classList.toggle('is-active', button.dataset.suppliesTabButton === tabName));
+            document.querySelectorAll('[data-segmented-control]').forEach((control) => control._segmentedSync?.());
+            if (tabHidden) tabHidden.value = tabName;
+        };
+        bindSegmentedControls();
+        setActiveTabView(activeTab);
+        syncSupplyExportLinks();
+
+        document.addEventListener('click', (event) => {
+            const button = event.target.closest('[data-supplies-tab-button], [data-stock-pagination-link]');
+            if (!button) return;
+            event.preventDefault();
+            const href = button.getAttribute('href');
+            if (!href) return;
+            if (button.hasAttribute('data-supplies-tab-button')) {
+                history.replaceState({}, '', href);
+                setActiveTabView(button.dataset.suppliesTabButton || 'entries');
+                syncSupplyExportLinks();
+                return;
+            }
+            syncSuppliesListFromUrl(href);
+        });
+
+        const suppliesFilterForm = document.querySelector('[data-supplies-filter-form]');
+        const suppliesMovementTypeField = suppliesFilterForm?.querySelector('select[name="movement_type"]');
+        let suppliesListShell = document.querySelector('[data-supplies-list-shell]');
+        let searchInput = suppliesListShell?.querySelector('[data-supplies-history-search]') || null;
+        const applySearch = () => {
+            const query = normalizeSearchText(searchInput?.value || '');
+            getTabs().forEach((tab) => {
+                let visible = 0;
+                tab.querySelectorAll('[data-supplies-history-row]').forEach((row) => {
+                    const haystack = normalizeSearchText(row.dataset.suppliesSearchText || '');
+                    const matches = !query || haystack.includes(query);
+                    row.classList.toggle('hidden', !matches);
+                    if (matches) visible += 1;
+                });
+                tab.querySelector('[data-supplies-search-empty]')?.classList.toggle('hidden', visible > 0 || !query);
+            });
+        };
+        searchInput?.addEventListener('input', applySearch);
+        const bindSuppliesListShell = () => {
+            if (!suppliesListShell) return;
+            searchInput = suppliesListShell.querySelector('[data-supplies-history-search]');
+            searchInput?.addEventListener('input', applySearch);
+            bindSegmentedControls(suppliesListShell);
+            applySearch();
+        };
+        const syncSuppliesListFromUrl = async (url) => {
+            if (!suppliesListShell) {
+                window.location.href = url;
+                return;
+            }
+            const currentQuery = searchInput?.value || '';
+            suppliesListShell.classList.add('is-loading');
+            try {
+                const response = await window.fetch(url, {
+                    credentials: 'same-origin',
+                    headers: { 'X-Requested-With': 'XMLHttpRequest' },
+                });
+                if (!response.ok) throw new Error(`Falha ao carregar paginação (${response.status})`);
+                const html = await response.text();
+                const parsed = new window.DOMParser().parseFromString(html, 'text/html');
+                const nextShell = parsed.querySelector('[data-supplies-list-shell]');
+                if (!nextShell) throw new Error('Bloco da listagem não encontrado na resposta.');
+                suppliesListShell.replaceWith(nextShell);
+                suppliesListShell = nextShell;
+                searchInput = suppliesListShell.querySelector('[data-supplies-history-search]');
+                if (searchInput) searchInput.value = currentQuery;
+                bindSuppliesListShell();
+                setActiveTabView(parsed.querySelector('[data-supplies-tab-button].is-active')?.dataset.suppliesTabButton || activeTab);
+                window.history.replaceState({}, '', url);
+                syncSupplyExportLinks();
+            } catch (error) {
+                console.error(error);
+                window.location.href = url;
+            }
+        };
+        bindSuppliesListShell();
+        suppliesFilterForm?.addEventListener('submit', () => {
+            const selectedMovementType = suppliesMovementTypeField?.value || 'all';
+            if (tabHidden) {
+                if (selectedMovementType === 'entrada') tabHidden.value = 'entries';
+                else if (selectedMovementType === 'saida') tabHidden.value = 'outputs';
+                else tabHidden.value = activeTab;
+            }
+            suppliesFilterForm.querySelectorAll('select[name="input_id"], select[name="category"], input[name="start_date"], input[name="end_date"]').forEach((field) => {
+                if (!field.value) field.disabled = true;
+            });
+        });
+
+        const suppliesModal = document.getElementById('supplies-launch-modal');
+        const openSupplyButton = document.querySelector('[data-supplies-launch-open]');
+        const closeSupplyButtons = Array.from(document.querySelectorAll('[data-supplies-launch-close]'));
+        const suppliesRenderedInEditMode = {% if edit_supply %}true{% else %}false{% endif %};
+        const afterEditCloseUrl = {{ supplies_after_edit_close_url|tojson }};
+
+        const closeSupplyModal = () => {
+            if (suppliesRenderedInEditMode) {
+                window.location.href = afterEditCloseUrl;
+                return;
+            }
+            suppliesModal?.close();
+        };
+        openSupplyButton?.addEventListener('click', () => suppliesModal?.showModal());
+        closeSupplyButtons.forEach((button) => button.addEventListener('click', closeSupplyModal));
+        suppliesModal?.addEventListener('cancel', (event) => {
+            event.preventDefault();
+            closeSupplyModal();
+        });
+        {% if edit_supply %}
+        suppliesModal?.showModal();
+        {% endif %}
+
+        const outputModal = document.getElementById('supplies-output-modal');
+        const openOutputButton = document.querySelector('[data-supplies-output-open]');
+        const closeOutputButtons = Array.from(document.querySelectorAll('[data-supplies-output-close]'));
+        const outputForm = document.querySelector('[data-supplies-output-form]');
+        const outputInputSelect = document.querySelector('[data-supplies-output-input-select]');
+        const outputUnitField = document.querySelector('[data-supplies-output-unit-field]');
+        const syncOutputUnit = () => {
+            if (!(outputInputSelect instanceof HTMLSelectElement) || !(outputUnitField instanceof HTMLInputElement)) return;
+            const unit = (outputInputSelect.selectedOptions[0]?.dataset.defaultUnit || '').trim();
+            outputUnitField.value = unit;
+        };
+        openOutputButton?.addEventListener('click', () => {
+            syncOutputUnit();
+            outputModal?.showModal();
+        });
+        outputInputSelect?.addEventListener('change', syncOutputUnit);
+        closeOutputButtons.forEach((button) => button.addEventListener('click', () => outputModal?.close()));
+        outputModal?.addEventListener('cancel', (event) => {
+            event.preventDefault();
+            outputModal.close();
+        });
+        outputForm?.addEventListener('reset', () => window.requestAnimationFrame(syncOutputUnit));
+        syncOutputUnit();
+
+        const outputEditModal = document.getElementById('supplies-output-edit-modal');
+        {% if edit_output %}
+        outputEditModal?.showModal();
+        outputEditModal?.addEventListener('cancel', (event) => {
+            event.preventDefault();
+            window.location.href = {{ supplies_after_output_edit_close_url|tojson }};
+        });
+        {% endif %}
+
+        setupCollapse({
+            toggleSelector: '[data-supplies-context-toggle]',
+            collapseSelector: '[data-supplies-context-collapse]',
+            labelSelector: '[data-supplies-context-toggle-label]',
+            plusSelector: '[data-supplies-context-toggle-plus]',
+        });
+        setupCollapse({
+            toggleSelector: '[data-supplies-output-context-toggle]',
+            collapseSelector: '[data-supplies-output-context-collapse]',
+            labelSelector: '[data-supplies-output-context-toggle-label]',
+            plusSelector: '[data-supplies-output-context-toggle-plus]',
+        });
+        setupCollapse({
+            toggleSelector: '[data-supplies-output-create-context-toggle]',
+            collapseSelector: '[data-supplies-output-create-context-collapse]',
+            labelSelector: '[data-supplies-output-create-context-toggle-label]',
+            plusSelector: '[data-supplies-output-create-context-toggle-plus]',
+        });
+        setupCollapse({
+            toggleSelector: '[data-supplies-summary-toggle]',
+            collapseSelector: '[data-supplies-summary-collapse]',
+            labelSelector: '[data-supplies-summary-toggle-label]',
+            plusSelector: '[data-supplies-summary-toggle-plus]',
+        });
+
+        window.addEventListener('resize', () => {
+            document.querySelectorAll('[data-segmented-control]').forEach((control) => control._segmentedSync?.());
+        });
+    })();
+</script>
 {% endblock %}

@@ -155,6 +155,16 @@ PENDING_PASSWORD_CHANGE_SESSION_KEY = "pending_password_change_user_id"
 PENDING_SUPER_ADMIN_2FA_DISABLE_SESSION_KEY = "pending_super_admin_2fa_disable"
 PREVIOUS_CONTEXT_SESSION_KEY = "previous_context"
 HISTORY_PAGE_SIZE = 10
+SUPPLY_CATEGORY_OPTIONS = [
+    "Mudas",
+    "Materiais de manutenção",
+    "Hidráulica e irrigação",
+    "Peças e sobressalentes",
+    "Almoxarifado",
+    "Ferramentas e consumíveis",
+    "EPIs",
+    "Outros",
+]
 MENU_ITEM_VISIBILITY_RULES = {
     "users": has_admin_access,
     "backups": has_admin_access,
@@ -4971,11 +4981,86 @@ def equipment_assets_page(
 @router.get("/insumos/suprimentos")
 def supplies_page(
     request: Request,
+    edit_id: int | None = None,
+    edit_output_id: int | None = None,
+    farm_id: int | None = None,
+    input_id: int | None = None,
+    category: str | None = None,
+    start_date: str | None = None,
+    end_date: str | None = None,
+    movement_type: str = "all",
+    supplies_tab: str | None = None,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user_web),
     csrf_token: str = Depends(get_csrf_token),
 ):
     repo = _repository(db)
+    scope = _global_scope_context(request, repo)
+    effective_farm_id = farm_id or scope["active_farm_id"]
+    selected_input_id = input_id
+    start = _date_or_none(start_date)
+    end = _date_or_none(end_date)
+    stock_context = _build_stock_context(
+        repo,
+        farm_id=effective_farm_id,
+        input_id=selected_input_id,
+        start_date=start,
+        end_date=end,
+        movement_type=movement_type,
+        item_type="suprimento",
+    )
+    purchase_entries = _sort_collection_desc(
+        stock_context["purchase_entries"],
+        lambda item: item.purchase_date,
+        lambda item: item.id,
+    )
+    stock_outputs = _sort_collection_desc(
+        stock_context["stock_outputs"],
+        lambda item: item.movement_date,
+        lambda item: item.id,
+    )
+    extract_rows = _sort_collection_desc(
+        stock_context["extract_rows"],
+        lambda row: row.get("date"),
+        lambda row: row.get("reference"),
+    )
+    selected_category = (category or "").strip()
+    if selected_category:
+        purchase_entries = [item for item in purchase_entries if (item.input_catalog.category if item.input_catalog and item.input_catalog.category else "Geral") == selected_category]
+        stock_outputs = [item for item in stock_outputs if (item.input_catalog.category if item.input_catalog and item.input_catalog.category else "Geral") == selected_category]
+        allowed_input_ids = {
+            item.id
+            for item in stock_context["catalog_inputs"]
+            if ((item.category if getattr(item, "category", None) else "Geral") == selected_category)
+        }
+        extract_rows = [row for row in extract_rows if row.get("input_id") in allowed_input_ids]
+        stock_context["catalog_inputs"] = [item for item in stock_context["catalog_inputs"] if item.id in allowed_input_ids]
+        stock_context["stock_catalog_rows"] = [row for row in stock_context["stock_catalog_rows"] if row.get("id") in allowed_input_ids]
+    purchase_entries_pagination = _paginate_collection(request, purchase_entries, "entries_page")
+    stock_outputs_pagination = _paginate_collection(request, stock_outputs, "outputs_page")
+    extract_rows_pagination = _paginate_collection(request, extract_rows, "extract_page")
+    edit_supply = repo.get_purchased_input(edit_id) if edit_id else None
+    edit_output = repo.get_stock_output(edit_output_id) if edit_output_id else None
+    if edit_output and (
+        edit_output.reference_type != "manual_stock_output"
+        or not edit_output.input_catalog
+        or edit_output.input_catalog.item_type != "suprimento"
+    ):
+        edit_output = None
+    selected_supplies_tab = supplies_tab if supplies_tab in {"entries", "outputs", "extract"} else "entries"
+    if edit_output:
+        selected_supplies_tab = "outputs"
+    supplies_edit_urls = {
+        item.id: _url_with_query(request, edit_id=item.id)
+        for item in purchase_entries_pagination["items"]
+    }
+    supplies_after_edit_close_url = _url_with_query(request, edit_id=None)
+    output_edit_urls = {
+        item.id: _url_with_query(request, edit_output_id=item.id)
+        for item in stock_outputs_pagination["items"]
+    }
+    supplies_after_output_edit_close_url = _url_with_query(request, edit_output_id=None)
+    farm_ids, variety_ids = _scoped_plot_filters(request, scope["active_season"])
     return templates.TemplateResponse(
         "supplies.html",
         _base_context(
@@ -4985,26 +5070,606 @@ def supplies_page(
             "supplies",
             _repo=repo,
             title="Suprimentos",
-            supplies_groups=[
-                {
-                    "name": "Mudas e material vegetal",
-                    "examples": ["Mudas de café", "Tubetes", "bandejas", "sacos para viveiro"],
-                },
-                {
-                    "name": "Materiais de manutenção",
-                    "examples": ["Lâminas de roçadeira", "linhas de roçadeira", "lubrificantes técnicos"],
-                },
-                {
-                    "name": "Hidráulica e irrigação",
-                    "examples": ["Tubos", "conexões", "registros", "adaptadores"],
-                },
-                {
-                    "name": "Peças e sobressalentes",
-                    "examples": ["Correias", "rolamentos", "filtros", "peças de reposição"],
-                },
-            ],
+            farms=repo.list_farms(),
+            plots=repo.list_plots(farm_ids=farm_ids, variety_ids=variety_ids),
+            selected_farm_id=effective_farm_id,
+            selected_input_id=selected_input_id,
+            selected_category=selected_category,
+            selected_start_date=start_date,
+            selected_end_date=end_date,
+            selected_movement_type=movement_type,
+            selected_supplies_tab=selected_supplies_tab,
+            supplies_tab_urls={
+                "entries": _url_with_query(request, supplies_tab="entries"),
+                "outputs": _url_with_query(request, supplies_tab="outputs"),
+                "extract": _url_with_query(request, supplies_tab="extract"),
+            },
+            supplies_export_query=_stock_export_query(
+                farm_id=effective_farm_id,
+                input_id=selected_input_id,
+                start_date=start,
+                end_date=end,
+                movement_type=movement_type,
+                item_type="suprimento",
+                stock_tab=selected_supplies_tab,
+            ),
+            supply_category_options=SUPPLY_CATEGORY_OPTIONS,
+            supplies=purchase_entries_pagination["items"],
+            supplies_pagination=purchase_entries_pagination,
+            purchase_entries=purchase_entries_pagination["items"],
+            purchase_entries_pagination=purchase_entries_pagination,
+            stock_outputs=stock_outputs_pagination["items"],
+            stock_outputs_pagination=stock_outputs_pagination,
+            extract_rows=extract_rows_pagination["items"],
+            extract_rows_pagination=extract_rows_pagination,
+            inputs_catalog=stock_context["catalog_inputs"],
+            input_stock=stock_context["input_stock"],
+            stock_catalog_rows=stock_context["stock_catalog_rows"],
+            edit_supply=edit_supply,
+            edit_output=edit_output,
+            supplies_edit_urls=supplies_edit_urls,
+            supplies_after_edit_close_url=supplies_after_edit_close_url,
+            output_edit_urls=output_edit_urls,
+            supplies_after_output_edit_close_url=supplies_after_output_edit_close_url,
+            current_supplies_url=_url_with_query(request),
         ),
     )
+
+
+@router.post("/insumos/suprimentos")
+async def create_supply_action(
+    request: Request,
+    csrf_token: str = Form(...),
+    name: str = Form(...),
+    quantity_purchased: float = Form(...),
+    package_size: float = Form(...),
+    package_unit: str = Form(...),
+    category: str | None = Form(None),
+    unit_price: float = Form(...),
+    purchase_date: str | None = Form(None),
+    low_stock_threshold: str | None = Form(None),
+    notes: str | None = Form(None),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    del user
+    validate_csrf(request, csrf_token)
+    repo = _repository(db)
+    scope, denied = _launch_scope_or_redirect(request, repo, "/insumos/suprimentos")
+    if denied:
+        return denied
+    target_base = f"/insumos/suprimentos?{urlencode({'farm_id': scope['active_farm_id']})}" if scope["active_farm_id"] else "/insumos/suprimentos"
+    try:
+        attachment_payloads = _read_attachments(await _request_attachments(request))
+    except ValueError as exc:
+        _flash(request, "error", str(exc))
+        return _redirect(target_base)
+    item = create_purchased_input(
+        repo,
+        {
+            "farm_id": scope["active_farm_id"],
+            "item_type": "suprimento",
+            "name": name,
+            "quantity_purchased": quantity_purchased,
+            "package_size": package_size,
+            "package_unit": package_unit,
+            "category": category,
+            "unit_price": unit_price,
+            "purchase_date": purchase_date,
+            "low_stock_threshold": low_stock_threshold,
+            "notes": notes,
+        },
+    )
+    try:
+        saved_attachments = _save_purchased_input_attachments(repo, item, attachment_payloads)
+    except Exception:
+        _flash(request, "error", "O suprimento foi salvo, mas nao foi possivel gravar os anexos agora.")
+        return _redirect_with_query("/insumos/suprimentos", farm_id=scope["active_farm_id"], edit_id=item.id)
+    if saved_attachments:
+        _flash(request, "success", f"Suprimento cadastrado com sucesso. {saved_attachments} anexo(s) salvo(s).")
+        return _redirect_with_query("/insumos/suprimentos", farm_id=scope["active_farm_id"], edit_id=item.id)
+    _flash(request, "success", "Suprimento cadastrado com sucesso.")
+    return _redirect(target_base)
+
+
+@router.post("/insumos/suprimentos/{input_id}/editar")
+async def update_supply_action(
+    input_id: int,
+    request: Request,
+    csrf_token: str = Form(...),
+    redirect_to: str | None = Form(None),
+    name: str = Form(...),
+    quantity_purchased: float = Form(...),
+    package_size: float = Form(...),
+    package_unit: str = Form(...),
+    category: str | None = Form(None),
+    unit_price: float = Form(...),
+    purchase_date: str | None = Form(None),
+    low_stock_threshold: str | None = Form(None),
+    notes: str | None = Form(None),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    del user
+    validate_csrf(request, csrf_token)
+    repo = _repository(db)
+    target_url = redirect_to if redirect_to and redirect_to.startswith("/") else "/insumos/suprimentos"
+    scope, denied = _launch_scope_or_redirect(request, repo, "/insumos/suprimentos")
+    if denied:
+        return denied
+    item = repo.get_purchased_input(input_id)
+    if not item:
+        _flash(request, "error", "Suprimento nao encontrado.")
+        return _redirect(target_url)
+    if not _farm_matches_scope(item.farm_id, scope):
+        _flash(request, "error", "Este lancamento nao pertence ao contexto ativo.")
+        return _redirect(target_url)
+    try:
+        attachment_payloads = _read_attachments(await _request_attachments(request))
+    except ValueError as exc:
+        _flash(request, "error", str(exc))
+        separator = "&" if "?" in target_url else "?"
+        return _redirect(f"{target_url}{separator}edit_id={input_id}")
+    update_purchased_input(
+        repo,
+        item,
+        {
+            "farm_id": scope["active_farm_id"],
+            "item_type": "suprimento",
+            "name": name,
+            "quantity_purchased": quantity_purchased,
+            "package_size": package_size,
+            "package_unit": package_unit,
+            "category": category,
+            "unit_price": unit_price,
+            "purchase_date": purchase_date,
+            "low_stock_threshold": low_stock_threshold,
+            "notes": notes,
+        },
+    )
+    try:
+        saved_attachments = _save_purchased_input_attachments(repo, item, attachment_payloads)
+    except Exception:
+        _flash(request, "error", "As alteracoes foram salvas, mas nao foi possivel incluir os novos anexos.")
+        separator = "&" if "?" in target_url else "?"
+        return _redirect(f"{target_url}{separator}edit_id={input_id}")
+    if saved_attachments:
+        _flash(request, "success", f"Alteracoes salvas com sucesso. {saved_attachments} novo(s) anexo(s) adicionado(s).")
+        separator = "&" if "?" in target_url else "?"
+        return _redirect(f"{target_url}{separator}edit_id={input_id}")
+    _flash(request, "success", "Suprimento atualizado com sucesso.")
+    return _redirect(target_url)
+
+
+@router.post("/insumos/suprimentos/{input_id}/excluir")
+def delete_supply_action(
+    input_id: int,
+    request: Request,
+    csrf_token: str = Form(...),
+    redirect_to: str | None = Form(None),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    del user
+    validate_csrf(request, csrf_token)
+    repo = _repository(db)
+    target_url = redirect_to if redirect_to and redirect_to.startswith("/") else "/insumos/suprimentos"
+    item = repo.get_purchased_input(input_id)
+    if not item:
+        _flash(request, "error", "Suprimento nao encontrado.")
+        return _redirect(target_url)
+    repo.delete(item)
+    _flash(request, "success", "Suprimento excluido com sucesso.")
+    return _redirect(target_url)
+
+
+@router.get("/insumos/suprimentos/anexos/{attachment_id}")
+def open_supply_attachment(
+    attachment_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    del user
+    repo = _repository(db)
+    attachment = repo.get_purchased_input_attachment(attachment_id)
+    if not attachment or not attachment.purchased_input:
+        _flash(request, "error", "Anexo nao encontrado.")
+        return _redirect("/insumos/suprimentos")
+    scope = _global_scope_context(request, repo)
+    item = attachment.purchased_input
+    if not _farm_matches_scope(item.farm_id, scope):
+        _flash(request, "error", "Este anexo nao pertence ao contexto ativo.")
+        return _redirect("/insumos/suprimentos")
+    return _attachment_response(attachment.filename, attachment.content_type, attachment.file_data)
+
+
+@router.post("/insumos/suprimentos/{input_id}/anexos/{attachment_id}/excluir")
+def delete_supply_attachment_action(
+    input_id: int,
+    attachment_id: int,
+    request: Request,
+    csrf_token: str = Form(...),
+    redirect_to: str | None = Form(None),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    del user
+    validate_csrf(request, csrf_token)
+    repo = _repository(db)
+    target_url = redirect_to if redirect_to and redirect_to.startswith("/") else "/insumos/suprimentos"
+    item = repo.get_purchased_input(input_id)
+    if not item:
+        _flash(request, "error", "Suprimento nao encontrado.")
+        return _redirect(target_url)
+    scope = _global_scope_context(request, repo)
+    if not _farm_matches_scope(item.farm_id, scope):
+        _flash(request, "error", "Este lancamento nao pertence ao contexto ativo.")
+        return _redirect(target_url)
+    attachment = repo.get_purchased_input_attachment(attachment_id)
+    if not attachment or attachment.purchased_input_id != item.id:
+        _flash(request, "error", "Anexo nao encontrado.")
+        separator = "&" if "?" in target_url else "?"
+        return _redirect(f"{target_url}{separator}edit_id={input_id}")
+    repo.delete(attachment)
+    _flash(request, "success", "Anexo removido com sucesso.")
+    separator = "&" if "?" in target_url else "?"
+    return _redirect(f"{target_url}{separator}edit_id={input_id}")
+
+
+@router.post("/insumos/suprimentos/saida-manual")
+def create_supply_output_action(
+    request: Request,
+    csrf_token: str = Form(...),
+    plot_id: str | None = Form(None),
+    input_id: int = Form(...),
+    movement_date: str | None = Form(None),
+    quantity: float = Form(...),
+    unit: str = Form(...),
+    notes: str | None = Form(None),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    del user
+    validate_csrf(request, csrf_token)
+    repo = _repository(db)
+    plot, scope, denied = _resolve_optional_plot_in_scope(
+        request,
+        repo,
+        _int_or_none(plot_id),
+        "/insumos/suprimentos",
+    )
+    if denied:
+        return denied
+    try:
+        create_manual_stock_output(
+            repo,
+            {
+                "farm_id": scope["active_farm_id"],
+                "plot_id": plot.id if plot else None,
+                "input_id": input_id,
+                "season_id": scope["active_season_id"],
+                "movement_date": movement_date,
+                "quantity": quantity,
+                "unit": unit,
+                "notes": notes,
+            },
+        )
+    except ValueError as exc:
+        _flash(request, "error", str(exc))
+        return _redirect_with_query("/insumos/suprimentos", supplies_tab="outputs")
+    _flash(request, "success", "Saida manual registrada com sucesso.")
+    return _redirect_with_query("/insumos/suprimentos", supplies_tab="outputs")
+
+
+@router.get("/insumos/suprimentos/saidas/{output_id}/editar")
+def edit_supply_output_entry(
+    output_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    del user
+    repo = _repository(db)
+    output = repo.get_stock_output(output_id)
+    if not output:
+        _flash(request, "error", "Lancamento de saida nao encontrado.")
+        return _redirect("/insumos/suprimentos")
+    if output.reference_type != "manual_stock_output" or not output.input_catalog or output.input_catalog.item_type != "suprimento":
+        _flash(request, "error", "Este lancamento nao possui edicao integrada em Suprimentos.")
+        return _redirect("/insumos/suprimentos")
+    return _redirect_with_query("/insumos/suprimentos", supplies_tab="outputs", edit_output_id=output_id)
+
+
+@router.post("/insumos/suprimentos/saidas/{output_id}/editar")
+async def update_supply_output_entry_action(
+    output_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    del user
+    form = await request.form()
+    csrf_token = str(form.get("csrf_token") or "")
+    validate_csrf(request, csrf_token)
+    repo = _repository(db)
+    output = repo.get_stock_output(output_id)
+    redirect_to = str(form.get("redirect_to") or "")
+    fallback_url = "/insumos/suprimentos?supplies_tab=outputs"
+    target_url = redirect_to if redirect_to.startswith("/") else fallback_url
+    if not output:
+        _flash(request, "error", "Lancamento de saida nao encontrado.")
+        return _redirect(target_url)
+    if output.reference_type != "manual_stock_output" or not output.input_catalog or output.input_catalog.item_type != "suprimento":
+        _flash(request, "error", "Este lancamento nao pode ser editado por aqui.")
+        return _redirect(target_url)
+    try:
+        scope, denied = _launch_scope_or_redirect(request, repo, "/insumos/suprimentos")
+        if denied:
+            return denied
+        if not _farm_matches_scope(output.farm_id, scope) or (output.plot_id and not _plot_matches_scope(output.plot, scope)):
+            _flash(request, "error", "Este lancamento de saida nao pertence ao contexto ativo.")
+            return _redirect(target_url)
+        plot, _, invalid_plot = _resolve_optional_plot_in_scope(
+            request,
+            repo,
+            _int_or_none(form.get("plot_id")),
+            "/insumos/suprimentos",
+        )
+        if invalid_plot:
+            return invalid_plot
+        update_manual_stock_output(
+            repo,
+            output,
+            {
+                "farm_id": scope["active_farm_id"],
+                "plot_id": plot.id if plot else None,
+                "movement_date": str(form.get("movement_date") or ""),
+                "quantity": float(form.get("quantity") or 0),
+                "unit": str(form.get("unit") or ""),
+                "notes": str(form.get("notes") or "") or None,
+            },
+        )
+    except ValueError as exc:
+        _flash(request, "error", str(exc))
+        separator = "&" if "?" in target_url else "?"
+        return _redirect(f"{target_url}{separator}edit_output_id={output_id}")
+    _flash(request, "success", "Saida atualizada com sucesso.")
+    return _redirect(target_url)
+
+
+@router.post("/insumos/suprimentos/saidas/{output_id}/excluir")
+def delete_supply_output_entry_action(
+    output_id: int,
+    request: Request,
+    csrf_token: str = Form(...),
+    redirect_to: str | None = Form(None),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    del user
+    validate_csrf(request, csrf_token)
+    repo = _repository(db)
+    fallback_url = "/insumos/suprimentos?supplies_tab=outputs"
+    target_url = redirect_to if redirect_to and redirect_to.startswith("/") else fallback_url
+    output = repo.get_stock_output(output_id)
+    if not output:
+        _flash(request, "error", "Lancamento de saida nao encontrado.")
+        return _redirect(target_url)
+    if output.reference_type != "manual_stock_output" or not output.input_catalog or output.input_catalog.item_type != "suprimento":
+        _flash(request, "error", "Este lancamento esta vinculado a outro modulo e nao pode ser excluido por aqui.")
+        return _redirect(target_url)
+    try:
+        delete_manual_stock_output(repo, output)
+    except ValueError as exc:
+        _flash(request, "error", str(exc))
+        return _redirect(target_url)
+    _flash(request, "success", "Saida manual excluida com sucesso.")
+    return _redirect(target_url)
+
+
+@router.get("/insumos/suprimentos/exportar.xlsx")
+def export_supplies_extract_xlsx(
+    request: Request,
+    farm_id: str | None = None,
+    input_id: str | None = None,
+    category: str | None = None,
+    start_date: str | None = None,
+    end_date: str | None = None,
+    movement_type: str = "all",
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    del user
+    repo = _repository(db)
+    selected_farm_id = _int_or_none(farm_id) or _active_farm_id(request)
+    selected_input_id = _int_or_none(input_id)
+    export_tab = _export_stock_tab_param(request, movement_type)
+    stock_context = _build_stock_context(
+        repo,
+        farm_id=selected_farm_id,
+        input_id=selected_input_id,
+        start_date=_date_or_none(start_date),
+        end_date=_date_or_none(end_date),
+        movement_type=movement_type,
+        item_type="suprimento",
+    )
+    purchase_entries = _sort_collection_desc(stock_context["purchase_entries"], lambda item: item.purchase_date, lambda item: item.id)
+    stock_outputs = _sort_collection_desc(stock_context["stock_outputs"], lambda item: item.movement_date, lambda item: item.id)
+    extract_rows = _sort_collection_desc(stock_context["extract_rows"], lambda row: row.get("date"), lambda row: row.get("reference"))
+    selected_category = (category or "").strip()
+    if selected_category:
+        purchase_entries = [item for item in purchase_entries if (item.input_catalog.category if item.input_catalog and item.input_catalog.category else "Geral") == selected_category]
+        stock_outputs = [item for item in stock_outputs if (item.input_catalog.category if item.input_catalog and item.input_catalog.category else "Geral") == selected_category]
+        allowed_input_ids = {item.id for item in stock_context["catalog_inputs"] if ((item.category if getattr(item, "category", None) else "Geral") == selected_category)}
+        extract_rows = [row for row in extract_rows if row.get("input_id") in allowed_input_ids]
+    workbook = Workbook()
+    sheet = workbook.active
+    if export_tab == "entries":
+        sheet.title = "Entradas"
+        _xlsx_write_purchase_entries(sheet, purchase_entries)
+    elif export_tab == "outputs":
+        sheet.title = "Saidas"
+        _xlsx_write_stock_outputs(sheet, stock_outputs)
+    else:
+        sheet.title = "Extrato de suprimentos"
+        _xlsx_write_extract_rows(sheet, extract_rows)
+    output = BytesIO()
+    workbook.save(output)
+    output.seek(0)
+    return StreamingResponse(
+        output,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": 'attachment; filename="extrato_suprimentos.xlsx"'},
+    )
+
+
+@router.get("/insumos/suprimentos/exportar.pdf")
+def export_supplies_extract_pdf(
+    request: Request,
+    farm_id: str | None = None,
+    input_id: str | None = None,
+    category: str | None = None,
+    start_date: str | None = None,
+    end_date: str | None = None,
+    movement_type: str = "all",
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    del user
+    repo = _repository(db)
+    selected_farm_id = _int_or_none(farm_id) or _active_farm_id(request)
+    selected_input_id = _int_or_none(input_id)
+    export_tab = _export_stock_tab_param(request, movement_type)
+    stock_context = _build_stock_context(
+        repo,
+        farm_id=selected_farm_id,
+        input_id=selected_input_id,
+        start_date=_date_or_none(start_date),
+        end_date=_date_or_none(end_date),
+        movement_type=movement_type,
+        item_type="suprimento",
+    )
+    purchase_entries = _sort_collection_desc(stock_context["purchase_entries"], lambda item: item.purchase_date, lambda item: item.id)
+    stock_outputs = _sort_collection_desc(stock_context["stock_outputs"], lambda item: item.movement_date, lambda item: item.id)
+    extract_rows = _sort_collection_desc(stock_context["extract_rows"], lambda row: row.get("date"), lambda row: row.get("reference"))
+    selected_category = (category or "").strip()
+    if selected_category:
+        purchase_entries = [item for item in purchase_entries if (item.input_catalog.category if item.input_catalog and item.input_catalog.category else "Geral") == selected_category]
+        stock_outputs = [item for item in stock_outputs if (item.input_catalog.category if item.input_catalog and item.input_catalog.category else "Geral") == selected_category]
+        allowed_input_ids = {item.id for item in stock_context["catalog_inputs"] if ((item.category if getattr(item, "category", None) else "Geral") == selected_category)}
+        extract_rows = [row for row in extract_rows if row.get("input_id") in allowed_input_ids]
+    entries_total_sum = sum(float(item.total_cost or 0) for item in purchase_entries)
+    outputs_total_sum = sum(float(output.total_cost or 0) for output in stock_outputs)
+    extract_totals = _stock_report_totals(extract_rows)
+    selected_farm = repo.get_farm(selected_farm_id) if selected_farm_id else None
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=landscape(A4), leftMargin=28, rightMargin=28, topMargin=32, bottomMargin=34)
+    styles = getSampleStyleSheet()
+    farm_header_style = ParagraphStyle("SupplyPdfFarmHeader", parent=styles["Title"], fontName="Helvetica-Bold", fontSize=18, leading=22, alignment=TA_RIGHT, textColor=colors.HexColor("#1e293b"))
+    meta_label_style = ParagraphStyle("SupplyPdfMetaLabel", parent=styles["BodyText"], fontName="Helvetica-Bold", fontSize=8, leading=10, textColor=colors.HexColor("#446a36"), spaceAfter=2)
+    meta_value_style = ParagraphStyle("SupplyPdfMetaValue", parent=styles["BodyText"], fontName="Helvetica", fontSize=10, leading=13, textColor=colors.HexColor("#334155"))
+    cell_style = ParagraphStyle("SupplyPdfCell", parent=styles["BodyText"], fontName="Helvetica", fontSize=8.3, leading=10.5, textColor=colors.HexColor("#0f172a"))
+    cell_muted_style = ParagraphStyle("SupplyPdfCellMuted", parent=cell_style, textColor=colors.HexColor("#475569"))
+    cell_numeric_style = ParagraphStyle("SupplyPdfCellNumeric", parent=cell_style, alignment=TA_RIGHT)
+    summary_value_style = ParagraphStyle("SupplyPdfSummaryValue", parent=styles["BodyText"], fontName="Helvetica-Bold", fontSize=11, leading=14, textColor=colors.HexColor("#0f172a"))
+    logo_path = Path("app/static/images/logo.png")
+    logo_flowable = Image(str(logo_path), width=92.8, height=73.6) if logo_path.exists() else Spacer(92.8, 73.6)
+    farm_name = selected_farm.name if selected_farm else "Fazenda Bela Vista"
+    movement_label = {"entrada": "Somente entradas", "saida": "Somente saídas", "all": "Entradas, saídas e extrato consolidado"}.get(movement_type, "Entradas, saídas e extrato consolidado")
+    period_label = "Período completo"
+    if start_date or end_date:
+        period_label = f"{start_date or 'Início'} até {end_date or 'Hoje'}"
+    listagem_label = {"entries": "Entradas", "outputs": "Saídas", "extract": "Extrato"}.get(export_tab, "Extrato")
+    header_table = Table([[logo_flowable, Paragraph(farm_name, farm_header_style)]], colWidths=[76, doc.width - 76], hAlign="LEFT")
+    header_table.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP"), ("ALIGN", (1, 0), (1, 0), "RIGHT"), ("LEFTPADDING", (0, 0), (-1, -1), 0), ("RIGHTPADDING", (0, 0), (-1, -1), 0), ("TOPPADDING", (0, 0), (-1, -1), 0), ("BOTTOMPADDING", (0, 0), (-1, -1), 0)]))
+    if export_tab == "extract":
+        summary_table = Table([
+            [[Paragraph("FAZENDA", meta_label_style), Paragraph(farm_name, meta_value_style)], [Paragraph("PERÍODO", meta_label_style), Paragraph(period_label, meta_value_style)], [Paragraph("ESCOPO", meta_label_style), Paragraph("Suprimentos", meta_value_style)]],
+            [[Paragraph("LISTAGEM", meta_label_style), Paragraph(listagem_label, meta_value_style)], [Paragraph("MOVIMENTAÇÕES", meta_label_style), Paragraph(movement_label, meta_value_style)], [Paragraph("CATEGORIA", meta_label_style), Paragraph(selected_category or "Todas", meta_value_style)]],
+            [[Paragraph("LANÇAMENTOS", meta_label_style), Paragraph(str(extract_totals["movements_count"]), summary_value_style)], [Paragraph("TOTAL MOVIMENTADO", meta_label_style), Paragraph(_format_currency(extract_totals["grand_total"]), summary_value_style)], [Paragraph("", meta_value_style), Paragraph("", meta_value_style)]],
+        ], colWidths=[doc.width / 3] * 3, hAlign="LEFT")
+    elif export_tab == "entries":
+        summary_table = Table([
+            [[Paragraph("FAZENDA", meta_label_style), Paragraph(farm_name, meta_value_style)], [Paragraph("PERÍODO", meta_label_style), Paragraph(period_label, meta_value_style)], [Paragraph("ESCOPO", meta_label_style), Paragraph("Suprimentos", meta_value_style)]],
+            [[Paragraph("LISTAGEM", meta_label_style), Paragraph(listagem_label, meta_value_style)], [Paragraph("MOVIMENTAÇÕES", meta_label_style), Paragraph(movement_label, meta_value_style)], [Paragraph("CATEGORIA", meta_label_style), Paragraph(selected_category or "Todas", meta_value_style)]],
+            [[Paragraph("REGISTROS", meta_label_style), Paragraph(str(len(purchase_entries)), summary_value_style)], [Paragraph("TOTAL FINANCEIRO", meta_label_style), Paragraph(_format_currency(entries_total_sum), summary_value_style)], [Paragraph("", meta_value_style), Paragraph("", meta_value_style)]],
+        ], colWidths=[doc.width / 3] * 3, hAlign="LEFT")
+    else:
+        summary_table = Table([
+            [[Paragraph("FAZENDA", meta_label_style), Paragraph(farm_name, meta_value_style)], [Paragraph("PERÍODO", meta_label_style), Paragraph(period_label, meta_value_style)], [Paragraph("ESCOPO", meta_label_style), Paragraph("Suprimentos", meta_value_style)]],
+            [[Paragraph("LISTAGEM", meta_label_style), Paragraph(listagem_label, meta_value_style)], [Paragraph("MOVIMENTAÇÕES", meta_label_style), Paragraph(movement_label, meta_value_style)], [Paragraph("CATEGORIA", meta_label_style), Paragraph(selected_category or "Todas", meta_value_style)]],
+            [[Paragraph("REGISTROS", meta_label_style), Paragraph(str(len(stock_outputs)), summary_value_style)], [Paragraph("TOTAL FINANCEIRO", meta_label_style), Paragraph(_format_currency(outputs_total_sum), summary_value_style)], [Paragraph("", meta_value_style), Paragraph("", meta_value_style)]],
+        ], colWidths=[doc.width / 3] * 3, hAlign="LEFT")
+    summary_table.setStyle(TableStyle([("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#f8fafc")), ("BOX", (0, 0), (-1, -1), 0.8, colors.HexColor("#dbe5dd")), ("INNERGRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#e2e8f0")), ("LEFTPADDING", (0, 0), (-1, -1), 12), ("RIGHTPADDING", (0, 0), (-1, -1), 12), ("TOPPADDING", (0, 0), (-1, -1), 10), ("BOTTOMPADDING", (0, 0), (-1, -1), 10), ("VALIGN", (0, 0), (-1, -1), "TOP")]))
+    elements = [header_table, Spacer(1, 16), summary_table, Spacer(1, 14)]
+    if export_tab == "extract":
+        elements.extend(_pdf_flowables_extract_detail_table(doc, extract_rows, extract_totals, cell_style=cell_style, cell_muted_style=cell_muted_style, cell_numeric_style=cell_numeric_style, meta_value_style=meta_value_style, summary_value_style=summary_value_style))
+    else:
+        table_data = [["Mov.", "Data", "Produto", "Origem / Fazenda", "Quantidade", "Valor", "Observações"]]
+        report_rows = []
+        if export_tab == "entries":
+            for item in purchase_entries:
+                report_rows.append({
+                    "kind": "Entrada",
+                    "date": item.purchase_date,
+                    "name": item.input_catalog.name if item.input_catalog else item.name,
+                    "origin": item.farm.name if item.farm else "Sem fazenda vinculada",
+                    "quantity": f"{_format_decimal_br(item.total_quantity, 2)} {item.package_unit}",
+                    "value": float(item.total_cost or 0),
+                    "notes": item.notes or "-",
+                    "sort_key": (item.purchase_date or today_in_app_timezone(), 0, item.id),
+                })
+        else:
+            for output in stock_outputs:
+                report_rows.append({
+                    "kind": "Saída",
+                    "date": output.movement_date,
+                    "name": output.input_catalog.name if output.input_catalog else "Suprimento removido",
+                    "origin": f"{output.origin} • {output.farm.name if output.farm else 'Sem fazenda'}{(' / ' + output.plot.name) if output.plot else ''}",
+                    "quantity": f"{_format_decimal_br(output.quantity, 2)} {output.unit}",
+                    "value": float(output.total_cost or 0),
+                    "notes": output.notes or "-",
+                    "sort_key": (output.movement_date or today_in_app_timezone(), 1, output.id),
+                })
+        report_rows.sort(key=lambda row: row["sort_key"], reverse=True)
+        for row in report_rows:
+            movement_color = "#166534" if row["kind"] == "Entrada" else "#be123c"
+            table_data.append([
+                Paragraph(f'<font color="{movement_color}"><b>{row["kind"]}</b></font>', cell_style),
+                Paragraph(row["date"].strftime("%d/%m/%Y") if row["date"] else "-", cell_style),
+                Paragraph(row["name"], cell_style),
+                Paragraph(row["origin"], cell_muted_style),
+                Paragraph(row["quantity"], cell_numeric_style),
+                Paragraph(_format_currency(row["value"]), cell_numeric_style),
+                Paragraph(row["notes"][:90], cell_muted_style),
+            ])
+        column_weights = [8, 9, 22, 24, 13, 12, 18]
+        weight_total = sum(column_weights)
+        table_col_widths = [doc.width * (weight / weight_total) for weight in column_weights[:-1]]
+        table_col_widths.append(doc.width - sum(table_col_widths))
+        table = Table(table_data, repeatRows=1, colWidths=table_col_widths, hAlign="LEFT")
+        table.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#446a36")),
+            ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+            ("FONTSIZE", (0, 0), (-1, 0), 8.2),
+            ("BOTTOMPADDING", (0, 0), (-1, 0), 9),
+            ("TOPPADDING", (0, 0), (-1, 0), 9),
+            ("BACKGROUND", (0, 1), (-1, -1), colors.white),
+            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f8fafc")]),
+            ("BOX", (0, 0), (-1, -1), 0.8, colors.HexColor("#dbe5dd")),
+            ("INNERGRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#e2e8f0")),
+            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ("LEFTPADDING", (0, 0), (-1, -1), 8),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+            ("TOPPADDING", (0, 1), (-1, -1), 7),
+            ("BOTTOMPADDING", (0, 1), (-1, -1), 7),
+        ]))
+        elements.append(table)
+    doc.build(elements)
+    buffer.seek(0)
+    return StreamingResponse(buffer, media_type="application/pdf", headers={"Content-Disposition": 'attachment; filename="extrato_suprimentos.pdf"'})
 
 
 @router.post("/insumos/patrimonio")

@@ -140,6 +140,7 @@ def _sync_schema() -> None:
             name VARCHAR(160) NOT NULL,
             normalized_name VARCHAR(180) UNIQUE NOT NULL,
             item_type VARCHAR(40) NOT NULL DEFAULT 'insumo_agricola',
+            category VARCHAR(120) NOT NULL DEFAULT 'Geral',
             default_unit VARCHAR(20) NOT NULL DEFAULT 'kg',
             low_stock_threshold NUMERIC(10,2),
             is_active BOOLEAN NOT NULL DEFAULT TRUE
@@ -380,6 +381,7 @@ def _sync_schema() -> None:
         "ALTER TABLE equipment_assets ADD COLUMN IF NOT EXISTS manufacturer VARCHAR(180)",
         "ALTER TABLE equipment_assets ADD COLUMN IF NOT EXISTS manufacture_year INTEGER",
         "ALTER TABLE input_catalog ADD COLUMN IF NOT EXISTS item_type VARCHAR(40) DEFAULT 'insumo_agricola'",
+        "ALTER TABLE input_catalog ADD COLUMN IF NOT EXISTS category VARCHAR(120) DEFAULT 'Geral'",
         "ALTER TABLE purchased_inputs ADD COLUMN IF NOT EXISTS input_id INTEGER",
         "ALTER TABLE purchased_inputs ADD COLUMN IF NOT EXISTS normalized_name VARCHAR(180)",
         "ALTER TABLE input_recommendation_items ADD COLUMN IF NOT EXISTS input_id INTEGER",
@@ -456,6 +458,7 @@ def _sync_schema() -> None:
         connection.execute(text("UPDATE purchased_inputs SET available_quantity = total_quantity WHERE available_quantity IS NULL"))
         connection.execute(text("UPDATE purchased_inputs SET low_stock_threshold = 0 WHERE low_stock_threshold IS NULL"))
         connection.execute(text("UPDATE input_catalog SET item_type = 'insumo_agricola' WHERE item_type IS NULL OR item_type = ''"))
+        connection.execute(text("UPDATE input_catalog SET category = 'Geral' WHERE category IS NULL OR category = ''"))
         connection.execute(
             text(
                 """

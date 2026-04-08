@@ -11,6 +11,7 @@ class InputCatalog(Base):
     name: Mapped[str] = mapped_column(String(160), nullable=False)
     normalized_name: Mapped[str] = mapped_column(String(180), unique=True, index=True, nullable=False)
     item_type: Mapped[str] = mapped_column(String(40), nullable=False, default="insumo_agricola")
+    category: Mapped[str] = mapped_column(String(120), nullable=False, default="Geral")
     default_unit: Mapped[str] = mapped_column(String(20), nullable=False, default="kg")
     low_stock_threshold: Mapped[float] = mapped_column(Numeric(10, 2), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
