@@ -1,6 +1,7 @@
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from fastapi import Request
 from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
 
@@ -15,6 +16,24 @@ from app.routers.auth import router as auth_router
 from app.web.routes import router as web_router
 
 settings = get_settings()
+
+
+def _build_csp_header() -> str:
+    directives = {
+        "default-src": ["'self'"],
+        "style-src": ["'self'", "'unsafe-inline'", "https://unpkg.com"],
+        "script-src": [
+            "'self'",
+            "'unsafe-inline'",
+            "https://cdn.tailwindcss.com",
+            "https://cdn.jsdelivr.net",
+            "https://unpkg.com",
+        ],
+        "img-src": ["'self'", "data:", "https:"],
+        "font-src": ["'self'", "data:", "https:"],
+        "connect-src": ["'self'", "https:"],
+    }
+    return "; ".join(f"{name} {' '.join(values)}" for name, values in directives.items())
 
 
 @asynccontextmanager
@@ -36,6 +55,15 @@ app.add_middleware(
     https_only=settings.is_production,
 )
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
+
+if settings.enable_csp:
+    csp_header = _build_csp_header()
+
+    @app.middleware("http")
+    async def add_content_security_policy(request: Request, call_next):
+        response = await call_next(request)
+        response.headers["Content-Security-Policy"] = csp_header
+        return response
 
 app.include_router(auth_router)
 app.include_router(web_router)
