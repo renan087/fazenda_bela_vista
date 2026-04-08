@@ -51,6 +51,19 @@
         [data-submenu-parent][aria-expanded="true"] .erp-sidebar-parent-indicator {
             transform: rotate(180deg);
         }
+
+        .sidebar-submenu-panel {
+            overflow: hidden;
+            max-height: 0px;
+            opacity: 0;
+            pointer-events: none;
+            transition: max-height 240ms ease, opacity 240ms ease;
+        }
+
+        .sidebar-submenu-panel.is-open {
+            opacity: 1;
+            pointer-events: auto;
+        }
     </style>
 </head>
 <body class="bg-slate-100 text-slate-800" data-modal-mode="{% if modal_mode %}1{% else %}0{% endif %}">
@@ -809,11 +822,54 @@
                 const panel = group.querySelector('[data-submenu-panel]');
                 const links = Array.from(group.querySelectorAll('[data-submenu-link]'));
                 const hasActiveSubmenu = links.some((link) => link.classList.contains('bg-brand-500'));
+                const updateGroupBackground = () => {
+                    const hidden = panel?.classList.contains('hidden');
+                    group.classList.toggle('bg-slate-900/80', !hidden || hasActiveSubmenu);
+                };
+                const openPanel = () => {
+                    if (!panel) return;
+                    panel.classList.remove('hidden');
+                    panel.classList.add('is-open');
+                    panel.style.maxHeight = '0px';
+                    panel.style.opacity = '0';
+                    panel.style.pointerEvents = 'none';
+                    window.requestAnimationFrame(() => {
+                        panel.classList.add('is-open');
+                        panel.style.maxHeight = `${panel.scrollHeight}px`;
+                        panel.style.opacity = '1';
+                        panel.style.pointerEvents = 'auto';
+                    });
+                    button?.setAttribute('aria-expanded', 'true');
+                    updateGroupBackground();
+                };
+                const closePanel = () => {
+                    if (!panel) return;
+                    panel.style.maxHeight = '0px';
+                    panel.style.opacity = '0';
+                    panel.style.pointerEvents = 'none';
+                    panel.classList.remove('is-open');
+                    button?.setAttribute('aria-expanded', 'false');
+                    window.setTimeout(() => {
+                        if (panel.style.maxHeight === '0px' && panel.style.opacity === '0') {
+                            panel.classList.add('hidden');
+                            updateGroupBackground();
+                        }
+                    }, 260);
+                };
+                const syncPanelLayout = () => {
+                    if (!panel) return;
+                    const open = !panel.classList.contains('hidden');
+                    panel.classList.toggle('is-open', open);
+                    panel.style.maxHeight = open ? `${panel.scrollHeight}px` : '0px';
+                    panel.style.opacity = open ? '1' : '0';
+                    panel.style.pointerEvents = open ? 'auto' : 'none';
+                    button?.setAttribute('aria-expanded', open ? 'true' : 'false');
+                    updateGroupBackground();
+                };
 
                 setParentActive(button, false);
-                if (button) button.setAttribute('aria-expanded', panel && !panel.classList.contains('hidden') ? 'true' : 'false');
                 links.forEach((link) => setSubmenuLinkActive(link, link.classList.contains('bg-brand-500')));
-                group.classList.toggle('bg-slate-900/80', !panel?.classList.contains('hidden') || hasActiveSubmenu);
+                syncPanelLayout();
 
                 button?.addEventListener('click', () => {
                     if (desktopSidebarMq.matches && document.body.classList.contains('erp-sidebar-collapsed')) {
@@ -822,30 +878,18 @@
                     }
                     const isHidden = panel?.classList.contains('hidden');
                     if (isHidden) {
-                        panel?.classList.remove('hidden');
-                        button?.setAttribute('aria-expanded', 'true');
+                        openPanel();
                         submenuGroups.forEach((otherGroup) => {
                             if (otherGroup === group) return;
                             setParentActive(otherGroup.querySelector('[data-submenu-parent]'), false);
                         });
                         links.forEach((link) => setSubmenuLinkActive(link, false));
                         setParentActive(button, true);
-                        group.classList.add('bg-slate-900/80');
                         return;
                     }
 
-                    const hasAnyActiveLink = links.some((link) => link.dataset.submenuActive === 'true' || link.classList.contains('bg-brand-500'));
-                    if (!hasAnyActiveLink) {
-                        panel?.classList.add('hidden');
-                        button?.setAttribute('aria-expanded', 'false');
-                        setParentActive(button, false);
-                        group.classList.remove('bg-slate-900/80');
-                        return;
-                    }
-
-                    links.forEach((link) => setSubmenuLinkActive(link, false));
-                    setParentActive(button, true);
-                    button?.setAttribute('aria-expanded', 'true');
+                    closePanel();
+                    setParentActive(button, false);
                 });
 
                 links.forEach((link) => {
@@ -853,10 +897,17 @@
                         links.forEach((otherLink) => setSubmenuLinkActive(otherLink, false));
                         setSubmenuLinkActive(link, true);
                         setParentActive(button, false);
-                        panel?.classList.remove('hidden');
-                        button?.setAttribute('aria-expanded', 'true');
-                        group.classList.add('bg-slate-900/80');
+                        openPanel();
                     });
+                });
+            });
+
+            window.addEventListener('resize', () => {
+                submenuGroups.forEach((group) => {
+                    const panel = group.querySelector('[data-submenu-panel]');
+                    if (panel && !panel.classList.contains('hidden')) {
+                        panel.style.maxHeight = `${panel.scrollHeight}px`;
+                    }
                 });
             });
             const sessionToggle = document.querySelector('[data-session-toggle]');
