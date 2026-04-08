@@ -200,7 +200,17 @@
                 </label>
                 <label>
                     <span class="mb-2 block text-sm font-medium">Origem</span>
-                    <input type="text" name="source" value="{{ edit_rainfall.source if edit_rainfall else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" placeholder="Pluviômetro, estação, apontamento manual">
+                    {% set source_options = ['Pluviômetro', 'Estação meteorológica', 'INMET', 'Apontamento manual', 'Outro'] %}
+                    {% set current_source = (edit_rainfall.source if edit_rainfall and edit_rainfall.source else '') %}
+                    <select name="source" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required>
+                        <option value="">Selecione</option>
+                        {% if current_source and current_source not in source_options %}
+                        <option value="{{ current_source }}" selected>{{ current_source }}</option>
+                        {% endif %}
+                        {% for option in source_options %}
+                        <option value="{{ option }}" {% if current_source == option %}selected{% endif %}>{{ option }}</option>
+                        {% endfor %}
+                    </select>
                 </label>
                 <label>
                     <span class="mb-2 block text-sm font-medium">Observações</span>
