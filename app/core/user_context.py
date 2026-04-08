@@ -5,7 +5,12 @@ from app.models import CropSeason, Farm, User
 
 
 def _int_or_none(value) -> int | None:
-    return int(value) if value not in (None, "") else None
+    if value in (None, ""):
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
 
 
 def normalize_user_context(

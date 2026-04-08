@@ -270,7 +270,12 @@ def _float_or_none(value: str | None):
 
 
 def _int_or_none(value: str | None):
-    return int(value) if value not in (None, "") else None
+    if value in (None, ""):
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
 
 
 def _positive_int(value: str | None, default: int = 1) -> int:
