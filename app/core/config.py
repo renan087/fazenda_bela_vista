@@ -9,7 +9,6 @@ class Settings(BaseSettings):
     access_token_expire_minutes: int = 60
     session_idle_timeout_hours: int = 4
     environment: str = "development"
-    enable_csp: bool = False
     port: int = 8000
     app_timezone: str = "America/Sao_Paulo"
     session_cookie_name: str = "fazenda_session"
