@@ -3198,6 +3198,31 @@ body.dashboard-schedule-modal-open {
         max-width: 100%;
     }
 
+    /* Suprimentos: mobile — ícones compactos, sem rótulo, quatro ações em uma linha */
+    .stock-page-header .stock-header-actions.supplies-mobile-header-actions {
+        gap: 0.35rem;
+    }
+
+    .stock-page-header .stock-header-actions.supplies-mobile-header-actions .supplies-action-label-desktop {
+        display: none !important;
+    }
+
+    .stock-page-header .stock-header-actions.supplies-mobile-header-actions .stock-action-button {
+        flex-direction: row;
+        align-items: center;
+        justify-content: center;
+        gap: 0;
+        padding: 0.45rem 0.2rem;
+        min-height: 2.35rem;
+        line-height: 1;
+        font-size: 0.92rem;
+    }
+
+    .stock-page-header .stock-header-actions.supplies-mobile-header-actions .stock-action-button svg {
+        width: 1.125rem;
+        height: 1.125rem;
+    }
+
     .stock-page-header.is-compact > div {
         gap: 0.58rem;
     }
