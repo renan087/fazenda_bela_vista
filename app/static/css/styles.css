@@ -848,6 +848,12 @@ body {
     color: #fff;
 }
 
+/* Página atual (SSR): mantém destaque mesmo se data-submenu-active ficar inconsistente */
+.erp-sidebar .sidebar-submenu-link.bg-brand-500[data-submenu-active="false"] {
+    background: #446a36;
+    color: #fff;
+}
+
 .erp-sidebar .sidebar-submenu-link[data-submenu-active="false"] {
     background: transparent;
     color: rgb(203 213 225);

@@ -31,7 +31,7 @@
         }
     </script>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-    <link rel="stylesheet" href="{{ url_for('static', path='css/styles.css') }}?v=20260404b">
+    <link rel="stylesheet" href="{{ url_for('static', path='css/styles.css') }}?v=20260408a">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <style>
@@ -883,13 +883,13 @@
                             if (otherGroup === group) return;
                             setParentActive(otherGroup.querySelector('[data-submenu-parent]'), false);
                         });
-                        links.forEach((link) => setSubmenuLinkActive(link, false));
+                        links.forEach((link) => setSubmenuLinkActive(link, link.classList.contains('bg-brand-500')));
                         setParentActive(button, true);
                         return;
                     }
 
                     closePanel();
-                    setParentActive(button, false);
+                    setParentActive(button, hasActiveSubmenu);
                 });
 
                 links.forEach((link) => {
