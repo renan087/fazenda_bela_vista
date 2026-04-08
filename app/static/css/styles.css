@@ -1046,6 +1046,83 @@ body {
     color: #6b7280;
 }
 
+.dashboard-agenda-shell {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.dashboard-agenda-calendar {
+    gap: 0.65rem;
+}
+
+.dashboard-agenda-calendar .module-filter-calendar-day {
+    position: relative;
+    min-height: 2.65rem;
+    border-radius: 0.85rem;
+    transition: background 160ms ease, color 160ms ease, transform 160ms ease;
+}
+
+.dashboard-agenda-calendar .module-filter-calendar-day:hover {
+    background: rgba(68, 106, 54, 0.08);
+}
+
+.dashboard-agenda-calendar .module-filter-calendar-day.is-has-events {
+    background: rgba(68, 106, 54, 0.12);
+    color: rgb(30 41 59);
+}
+
+.dashboard-agenda-calendar .module-filter-calendar-day.is-has-events::after {
+    content: "";
+    position: absolute;
+    bottom: 0.35rem;
+    left: 50%;
+    width: 0.34rem;
+    height: 0.34rem;
+    border-radius: 999px;
+    background: #446a36;
+    transform: translateX(-50%);
+}
+
+.dashboard-agenda-calendar .module-filter-calendar-day.is-selected {
+    background: #446a36;
+    color: white;
+}
+
+.dashboard-agenda-calendar .module-filter-calendar-day.is-selected::after {
+    background: rgba(255, 255, 255, 0.88);
+}
+
+.dashboard-agenda-day-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.85rem;
+}
+
+.dashboard-agenda-item {
+    border: 1px solid rgba(226, 232, 240, 0.92);
+    border-radius: 1rem;
+    padding: 1rem;
+    background: rgba(248, 250, 252, 0.92);
+}
+
+.dashboard-agenda-item.is-late {
+    border-color: rgba(251, 191, 36, 0.28);
+    background: rgba(255, 251, 235, 0.95);
+}
+
+.dashboard-agenda-item.is-scheduled {
+    border-color: rgba(125, 211, 252, 0.34);
+    background: rgba(240, 249, 255, 0.95);
+}
+
+.dashboard-agenda-empty-state {
+    border: 1px dashed rgba(203, 213, 225, 0.95);
+    border-radius: 1rem;
+    padding: 1rem;
+    background: rgba(248, 250, 252, 0.82);
+}
+
 @media (min-width: 768px) {
     .dashboard-executive-grid {
         grid-template-columns: repeat(2, minmax(0, 1fr));
