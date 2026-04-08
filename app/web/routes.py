@@ -58,6 +58,7 @@ from app.models import (
 from app.repositories.farm import FarmRepository
 from app.services.backup_service import delete_backup_run, execute_backup
 from app.services.dashboard import build_dashboard_context
+from app.services.finance_overview import build_finance_overview_context
 from app.services.farm_preview_image import (
     ensure_farm_preview_thumb,
     farm_preview_fs_path,
@@ -1937,6 +1938,48 @@ def dashboard(
             },
             _repo=repo,
             **data,
+        ),
+    )
+
+
+@router.get("/gestao-financeira")
+def finance_management_page(
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+    csrf_token: str = Depends(get_csrf_token),
+):
+    repo = _repository(db)
+    scope = _global_scope_context(request, repo)
+    farm_id = scope.get("active_farm_id")
+    active_season = scope.get("active_season")
+    finance_data = build_finance_overview_context(
+        repo,
+        farm_id=farm_id,
+        active_season=active_season,
+    )
+    finance_data["finance_currency"] = {
+        "inventory_total": _format_currency(finance_data["inventory_value_total"]),
+        "inventory_insumo": _format_currency(finance_data["inventory_value_insumo"]),
+        "inventory_suprimento": _format_currency(finance_data["inventory_value_suprimento"]),
+        "purchase_insumo": _format_currency(finance_data["historical_purchase_cost_insumo"]),
+        "purchase_suprimento": _format_currency(finance_data["historical_purchase_cost_suprimento"]),
+        "purchase_total": _format_currency(finance_data["historical_purchase_cost_total"]),
+        "stock_out_season": _format_currency(finance_data["stock_output_cost_season"]),
+        "fertilization_season": _format_currency(finance_data["fertilization_cost_season"]),
+        "operational_season": _format_currency(finance_data["operational_cost_season"]),
+        "assets": _format_currency(finance_data["assets_acquisition_total"]),
+    }
+    return templates.TemplateResponse(
+        "finance_management.html",
+        _base_context(
+            request,
+            user,
+            csrf_token,
+            "finance_management",
+            title="Gestao financeira",
+            _repo=repo,
+            **finance_data,
         ),
     )
 
