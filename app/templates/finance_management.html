@@ -48,21 +48,21 @@
     {% else %}
 
     <section class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 finance-summary-sticky-row" data-finance-summary-sticky>
-        <div class="rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
+        <div class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
             <p class="text-[0.65rem] font-semibold uppercase tracking-[0.2em] text-slate-400">Valor em estoque</p>
             <p class="mt-1 text-lg font-semibold tabular-nums text-slate-900">{{ finance_currency.inventory_total }}</p>
         </div>
-        <div class="rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
+        <div class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
             <p class="text-[0.65rem] font-semibold uppercase tracking-[0.2em] text-slate-400">Compras (histórico)</p>
             <p class="mt-1 text-lg font-semibold tabular-nums text-slate-900">{{ finance_currency.purchase_total }}</p>
         </div>
         {% if finance_scope_ready %}
-        <div class="rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
+        <div class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
             <p class="text-[0.65rem] font-semibold uppercase tracking-[0.2em] text-slate-400">Safra · operacional</p>
             <p class="mt-1 text-lg font-semibold tabular-nums text-slate-900">{{ finance_currency.operational_season }}</p>
         </div>
         {% endif %}
-        <div class="rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
+        <div class="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
             <p class="text-[0.65rem] font-semibold uppercase tracking-[0.2em] text-slate-400">Patrimônio (aquisição)</p>
             <p class="mt-1 text-lg font-semibold tabular-nums text-slate-900">{{ finance_currency.assets }}</p>
         </div>
