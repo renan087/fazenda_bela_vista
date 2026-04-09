@@ -267,9 +267,9 @@
                 let stickyBottom = stickyRect.bottom;
                 if (stickySummary) {
                     const summaryRect = stickySummary.getBoundingClientRect();
-                    if (summaryRect.top <= stickyBottom + 2) {
-                        stickyBottom = Math.max(stickyBottom, summaryRect.bottom);
-                    }
+                    // A área de ocultação precisa considerar sempre os cards de resumo,
+                    // que formam a camada sticky logo abaixo do cabeçalho principal.
+                    stickyBottom = Math.max(stickyBottom, summaryRect.bottom);
                 }
                 fadingPanels.forEach((panel) => {
                     const panelRect = panel.getBoundingClientRect();
