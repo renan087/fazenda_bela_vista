@@ -1390,7 +1390,12 @@ body.dashboard-schedule-modal-open {
 }
 
 /* .stock-panel[data-stock-fade-panel] tem especificidade 0,2,0 e sobrescreveria z-index para 1.
-   Esta regra (0,3,0) preserva z-index:20 para o dropdown do calendário continuar aparecendo acima do extrato. */
+   Esta regra (0,3,0) preserva z-index:24 do painel de resumo no desktop (sticky). */
+.finance-summary-sticky-row.stock-panel[data-stock-fade-panel] {
+    z-index: 24;
+}
+
+/* Preserva z-index:20 para o dropdown do calendário continuar aparecendo acima do extrato. */
 .finance-filter-panel.stock-panel[data-stock-fade-panel] {
     z-index: 20;
 }
