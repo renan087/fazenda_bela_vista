@@ -68,7 +68,7 @@
         </div>
     </section>
 
-    <section class="stock-panel finance-filter-panel w-full overflow-visible rounded-[2rem] bg-white p-4 shadow-panel" data-stock-fade-panel>
+    <section class="stock-panel finance-filter-panel w-full overflow-visible rounded-[2rem] bg-white p-5 shadow-panel" data-stock-fade-panel>
         <div class="stock-filter-bar {% if finance_filters_active %}is-mobile-collapsed{% endif %} w-full min-w-0">
             <div class="stock-filter-mobile-toggle-wrap md:hidden">
                 <button type="button" class="stock-summary-toggle stock-filter-mobile-toggle {% if finance_filters_active %}is-filtered-state{% endif %}" data-stock-filter-toggle data-stock-filter-applied="{% if finance_filters_active %}true{% else %}false{% endif %}" aria-expanded="{% if finance_filters_active %}false{% else %}true{% endif %}">
@@ -84,11 +84,9 @@
                 <div class="stock-summary-collapse-inner">
                 <div class="stock-filter-fields-row finance-filter-fields-row {% if finance_filters_active %}has-clear-action{% endif %}">
                     <label class="stock-filter-field stock-filter-field-farm">
-                        <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Fazenda</span>
                         <input type="text" value="{{ active_farm.name if active_farm else 'Não selecionada' }}" disabled class="w-full cursor-not-allowed rounded-xl border-slate-200 bg-slate-100 py-2.5 text-sm font-medium text-slate-500">
                     </label>
                     <label class="stock-filter-field stock-filter-field-input {% if finance_filter_season_id %}is-filtered{% endif %}">
-                        <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Safra</span>
                         <select name="extract_season_id" class="w-full rounded-xl border-slate-200 bg-white">
                             <option value="">Todas as safras</option>
                             {% for s in finance_season_options %}
@@ -97,7 +95,6 @@
                         </select>
                     </label>
                     <div class="stock-filter-field stock-filter-field-period {% if finance_filter_start_date or finance_filter_end_date %}is-filtered{% endif %}">
-                        <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Período</span>
                         <div class="module-filter-period-row">
                             {{ module_period_picker_inline(selected_finance_range or ('custom' if finance_filter_start_date or finance_filter_end_date else ''), finance_filter_start_date, finance_filter_end_date, 'past', 'Filtre por período') }}
                         </div>
