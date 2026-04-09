@@ -1417,7 +1417,8 @@ body.dashboard-schedule-modal-open {
 
 @media (max-width: 899px) {
     .finance-summary-sticky-row {
-        top: calc(7.1rem + 4.5rem + 0.625rem);
+        position: relative;
+        top: auto;
     }
 
     .finance-summary-grid-mobile {
