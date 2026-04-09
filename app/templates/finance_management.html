@@ -11,7 +11,7 @@
                 </div>
             </div>
             {% if active_farm_id %}
-            <div class="flex flex-wrap items-center justify-end gap-2">
+            <div class="stock-header-actions stock-header-actions-top">
                 <a href="/gestao-financeira/exportar.pdf{% if finance_export_query %}?{{ finance_export_query }}{% endif %}" class="stock-action-button stock-export-button stock-export-button-pdf">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true">
                         <path d="M7 3.75h6.5L19.25 9.5V19A1.75 1.75 0 0 1 17.5 20.75h-11A1.75 1.75 0 0 1 4.75 19V5A1.25 1.25 0 0 1 6 3.75h1Z"/>
@@ -36,13 +36,13 @@
     </section>
 
     {% if context_selection_required %}
-    <div class="rounded-[1.5rem] border border-amber-200 bg-amber-50/90 px-4 py-3 text-sm text-amber-900" data-stock-fade-panel>
+    <div class="rounded-[1.5rem] border border-amber-200 bg-amber-50/90 px-4 py-3 text-sm text-amber-900">
         Os <strong>indicadores de safra</strong> no topo desta página dependem de fazenda e safra ativas. O <strong>extrato</strong> usa só a fazenda selecionada e o período que você definir no filtro (pode ser fora da safra).
     </div>
     {% endif %}
 
     {% if not active_farm_id %}
-    <div class="rounded-[1.5rem] border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600" data-stock-fade-panel>
+    <div class="rounded-[1.5rem] border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600">
         Escolha uma <strong>fazenda</strong> no contexto global para exibir o extrato e os totais.
     </div>
     {% else %}
@@ -68,15 +68,24 @@
         </div>
     </section>
 
-    <section class="stock-panel finance-filter-panel w-full overflow-visible rounded-[2rem] bg-white p-5 shadow-panel">
-        <div class="stock-filter-bar w-full min-w-0">
+    <section class="stock-panel finance-filter-panel w-full overflow-visible rounded-[2rem] bg-white p-6 shadow-panel">
+        <div class="stock-filter-bar {% if finance_filters_active %}is-mobile-collapsed{% endif %} w-full min-w-0">
+            <div class="stock-filter-mobile-toggle-wrap md:hidden">
+                <button type="button" class="stock-summary-toggle stock-filter-mobile-toggle {% if finance_filters_active %}is-filtered-state{% endif %}" data-stock-filter-toggle data-stock-filter-applied="{% if finance_filters_active %}true{% else %}false{% endif %}" aria-expanded="{% if finance_filters_active %}false{% else %}true{% endif %}">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                        <path d="M5 12h14"/>
+                        <path d="M12 5v14" data-stock-filter-toggle-plus{% if finance_filters_active %} class="hidden"{% endif %}></path>
+                    </svg>
+                    <span data-stock-filter-toggle-label>{% if finance_filters_active %}Mostrar filtro aplicado{% else %}Recolher filtros{% endif %}</span>
+                </button>
+            </div>
             <form method="get" action="/gestao-financeira" class="stock-filter-grid w-full min-w-0" data-stock-filter-form data-module-period-filter-root data-module-range-default="last_10_days" data-module-range-placeholder="Filtre por período" data-module-custom-auto-apply="false">
-                <div class="stock-summary-collapse is-expanded" data-stock-filter-collapse>
+                <div class="stock-summary-collapse {% if not finance_filters_active %}is-expanded{% endif %}" data-stock-filter-collapse>
                 <div class="stock-summary-collapse-inner">
                 <div class="stock-filter-fields-row finance-filter-fields-row {% if finance_filters_active %}has-clear-action{% endif %}">
-                    <label class="stock-filter-field stock-filter-field-farm is-filtered">
+                    <label class="stock-filter-field stock-filter-field-farm">
                         <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Fazenda</span>
-                        <input type="text" value="{{ active_farm.name if active_farm else 'Nao selecionada' }}" disabled class="w-full cursor-not-allowed rounded-xl border-slate-200 bg-slate-100 py-2.5 text-sm font-medium text-slate-500">
+                        <input type="text" value="{{ active_farm.name if active_farm else 'Não selecionada' }}" disabled class="w-full cursor-not-allowed rounded-xl border-slate-200 bg-slate-100 py-2.5 text-sm font-medium text-slate-500">
                     </label>
                     <label class="stock-filter-field stock-filter-field-input {% if finance_filter_season_id %}is-filtered{% endif %}">
                         <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Safra</span>
@@ -114,7 +123,7 @@
         {% endif %}
         <div class="stock-table-shell overflow-hidden rounded-[1.5rem] border border-slate-200">
             <div class="overflow-x-auto">
-                <table class="stock-history-table finance-extract-table min-w-[56rem] w-full divide-y divide-slate-200 text-sm" data-finance-extract-table>
+                <table class="stock-history-table finance-extract-table min-w-full w-full divide-y divide-slate-200 text-sm" data-finance-extract-table>
                     <thead class="bg-slate-50 text-left text-slate-500">
                         <tr>
                             <th class="whitespace-nowrap px-4 py-3 font-medium">Data</th>
@@ -125,9 +134,9 @@
                             <th class="whitespace-nowrap px-4 py-3 text-right font-medium tabular-nums">Acumulado</th>
                         </tr>
                     </thead>
-                    <tbody class="divide-y divide-slate-100 bg-white text-slate-800">
+                    <tbody class="divide-y divide-slate-100 bg-white">
                     {% for row in finance_extract_rows %}
-                    <tr class="hover:bg-brand-50/30">
+                    <tr>
                         <td class="whitespace-nowrap px-4 py-3 font-semibold tabular-nums text-slate-900">{{ row.date_label }}</td>
                         <td class="whitespace-nowrap px-4 py-3"><span class="rounded-full bg-slate-200/80 px-2 py-0.5 text-xs font-medium text-slate-700">{{ row.module }}</span></td>
                         <td class="px-4 py-3">
@@ -199,7 +208,44 @@
             const stickySummary = document.querySelector('[data-finance-summary-sticky]');
             const financeExtractTable = document.querySelector('[data-finance-extract-table]');
             const fadingPanels = Array.from(document.querySelectorAll('[data-stock-fade-panel]'));
+            const filterToggle = document.querySelector('[data-stock-filter-toggle]');
+            const filterCollapse = document.querySelector('[data-stock-filter-collapse]');
+            const filterToggleLabel = document.querySelector('[data-stock-filter-toggle-label]');
+            const filterTogglePlus = document.querySelector('[data-stock-filter-toggle-plus]');
+            const filterMobileMq = window.matchMedia('(max-width: 899px)');
+            const filterBar = document.querySelector('.finance-filter-panel .stock-filter-bar');
             let financeFadeRaf = null;
+            if (filterToggle && filterCollapse && filterToggleLabel) {
+                const hasAppliedFilters = filterToggle.dataset.stockFilterApplied === 'true';
+                const setFilterExpanded = (expanded) => {
+                    filterCollapse.classList.toggle('is-expanded', expanded);
+                    filterToggle.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+                    filterToggleLabel.textContent = expanded
+                        ? 'Recolher filtros'
+                        : (hasAppliedFilters ? 'Mostrar filtro aplicado' : 'Mostrar filtros');
+                    filterTogglePlus?.classList.toggle('hidden', expanded);
+                    filterBar?.classList.toggle('is-mobile-collapsed', filterMobileMq.matches && !expanded);
+                };
+
+                const syncFilterCollapseForViewport = () => {
+                    if (!filterMobileMq.matches) {
+                        filterCollapse.classList.add('is-expanded');
+                        filterToggle.setAttribute('aria-expanded', 'true');
+                        filterBar?.classList.remove('is-mobile-collapsed');
+                        return;
+                    }
+                    const expanded = filterToggle.getAttribute('aria-expanded') === 'true';
+                    setFilterExpanded(expanded);
+                };
+
+                syncFilterCollapseForViewport();
+                filterToggle.addEventListener('click', () => {
+                    const expanded = filterToggle.getAttribute('aria-expanded') === 'true';
+                    setFilterExpanded(!expanded);
+                });
+                filterMobileMq.addEventListener('change', syncFilterCollapseForViewport);
+            }
+
             const syncFinanceStickySummary = () => {
                 if (!stickyHeader || !stickySummary) return;
                 const topPx = parseStickyTopPx(stickyHeader);

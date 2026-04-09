@@ -1351,7 +1351,7 @@ body.dashboard-schedule-modal-open {
 
 .finance-summary-sticky-row {
     position: sticky;
-    top: 0;
+    top: calc(8.6rem + 5.75rem + 0.75rem);
     z-index: 24;
     padding-block: 0.15rem;
 }
@@ -1359,7 +1359,7 @@ body.dashboard-schedule-modal-open {
 /* Gestão financeira: card de filtros ocupa a largura e fica acima do extrato (calendário/presets do período) */
 .finance-filter-panel {
     position: relative;
-    z-index: 30;
+    z-index: 20;
     overflow: visible;
 }
 
@@ -1382,10 +1382,20 @@ body.dashboard-schedule-modal-open {
 
 .finance-extract-table thead th {
     position: sticky;
-    top: var(--finance-extract-head-top, 0px);
+    top: var(--finance-extract-head-top, calc(8.6rem + 11rem));
     z-index: 18;
     background: rgb(248 250 252);
     box-shadow: inset 0 -1px 0 rgba(226, 232, 240, 0.95);
+}
+
+@media (max-width: 899px) {
+    .finance-summary-sticky-row {
+        top: calc(7.1rem + 4.5rem + 0.625rem);
+    }
+
+    .finance-extract-table thead th {
+        top: var(--finance-extract-head-top, calc(7.1rem + 8.5rem));
+    }
 }
 
 
