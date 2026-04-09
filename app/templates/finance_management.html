@@ -107,13 +107,12 @@
     </section>
 
     <section class="stock-panel finance-extract-section relative z-0 rounded-[2rem] bg-white p-6 shadow-panel" data-stock-fade-panel>
+        {% if finance_extract_truncated %}
+        <div class="mb-3 flex justify-end">
+            <span class="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-medium text-amber-900">Lista limitada</span>
+        </div>
+        {% endif %}
         <div class="stock-table-shell overflow-hidden rounded-[1.5rem] border border-slate-200">
-            <div class="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-slate-50 px-4 py-3">
-                <p class="text-xs font-semibold uppercase tracking-[0.25em] text-slate-500">Extrato</p>
-                {% if finance_extract_truncated %}
-                <span class="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-medium text-amber-900">Lista limitada</span>
-                {% endif %}
-            </div>
             <div class="overflow-x-auto">
                 <table class="stock-history-table finance-extract-table min-w-[56rem] w-full divide-y divide-slate-200 text-sm" data-finance-extract-table>
                     <thead class="bg-slate-50 text-left text-slate-500">
