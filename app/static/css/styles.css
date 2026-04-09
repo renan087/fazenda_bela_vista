@@ -1359,6 +1359,21 @@ body.dashboard-schedule-modal-open {
     border-radius: 1rem;
 }
 
+.finance-summary-panel {
+    border: 1px solid rgba(226, 232, 240, 0.95);
+}
+
+.finance-summary-panel .finance-summary-card {
+    border-color: rgba(203, 213, 225, 0.98);
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.94),
+        0 14px 28px -26px rgba(15, 23, 42, 0.28);
+}
+
+.finance-summary-collapse {
+    margin-top: 0;
+}
+
 /* Gestão financeira: card de filtros ocupa a largura e fica acima do extrato (calendário/presets do período) */
 .finance-filter-panel {
     position: relative;
@@ -1370,6 +1385,10 @@ body.dashboard-schedule-modal-open {
    Esta regra (0,3,0) preserva z-index:20 para o dropdown do calendário continuar aparecendo acima do extrato. */
 .finance-filter-panel.stock-panel[data-stock-fade-panel] {
     z-index: 20;
+}
+
+.finance-filter-panel [data-stock-filter-collapse].is-expanded {
+    margin-top: 0;
 }
 
 .finance-extract-section {
@@ -1399,6 +1418,10 @@ body.dashboard-schedule-modal-open {
 @media (max-width: 899px) {
     .finance-summary-sticky-row {
         top: calc(7.1rem + 4.5rem + 0.625rem);
+    }
+
+    .finance-summary-grid-mobile {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 }
 
@@ -3282,6 +3305,18 @@ body.dashboard-schedule-modal-open {
     .stock-page-header .stock-header-actions.supplies-mobile-header-actions .stock-action-button svg {
         width: 1.125rem;
         height: 1.125rem;
+    }
+
+    .stock-page-header .stock-header-actions.finance-mobile-header-actions {
+        display: flex;
+        flex-wrap: nowrap;
+        justify-content: flex-end;
+        width: 100%;
+        gap: 0.5rem;
+    }
+
+    .stock-page-header .stock-header-actions.finance-mobile-header-actions > * {
+        flex: 0 0 auto;
     }
 
     .stock-page-header.is-compact > div {
