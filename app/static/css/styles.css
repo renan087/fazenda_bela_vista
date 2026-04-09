@@ -3313,11 +3313,20 @@ body.dashboard-schedule-modal-open {
         flex-wrap: nowrap;
         justify-content: flex-end;
         width: 100%;
+        max-width: 100%;
         gap: 0.5rem;
+        box-sizing: border-box;
     }
 
     .stock-page-header .stock-header-actions.finance-mobile-header-actions > * {
-        flex: 0 0 auto;
+        flex: 1 1 0;
+        min-width: 0;
+        max-width: none;
+    }
+
+    .stock-page-header .stock-header-actions.finance-mobile-header-actions .stock-action-button {
+        width: 100%;
+        justify-content: center;
     }
 
     .stock-page-header.is-compact > div {
