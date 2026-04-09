@@ -1356,6 +1356,7 @@ body.dashboard-schedule-modal-open {
     padding-block: 0.15rem;
     /* Fundo sólido necessário para cobrir o conteúdo que rola pelas lacunas do grid */
     background: white;
+    border-radius: 1rem;
 }
 
 /* Gestão financeira: card de filtros ocupa a largura e fica acima do extrato (calendário/presets do período) */
