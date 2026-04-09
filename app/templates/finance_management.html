@@ -253,12 +253,7 @@
                 stickySummary.style.top = `${topPx + stickyHeader.offsetHeight + headerGap}px`;
             };
             const syncFinanceExtractHead = () => {
-                if (!stickyHeader || !financeExtractTable) return;
-                const topPx = parseStickyTopPx(stickyHeader);
-                const headerGap = mobileCompactMq.matches ? 10 : 12;
-                const summaryHeight = stickySummary ? stickySummary.offsetHeight : 0;
-                const stickyTop = topPx + stickyHeader.offsetHeight + headerGap + summaryHeight;
-                financeExtractTable.style.setProperty('--finance-extract-head-top', `${stickyTop}px`);
+                // thead sem sticky — variável não utilizada
             };
             const updateFinanceFadingPanels = () => {
                 financeFadeRaf = null;

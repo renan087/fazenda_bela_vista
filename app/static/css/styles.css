@@ -1380,10 +1380,9 @@ body.dashboard-schedule-modal-open {
     }
 }
 
+/* position:sticky em th dentro de overflow-x:auto cria contexto de scroll próprio
+   e causa desalinhamento do header em alguns ambientes — removido intencionalmente */
 .finance-extract-table thead th {
-    position: sticky;
-    top: var(--finance-extract-head-top, calc(8.6rem + 11rem));
-    z-index: 18;
     background: rgb(248 250 252);
     box-shadow: inset 0 -1px 0 rgba(226, 232, 240, 0.95);
 }
@@ -1391,10 +1390,6 @@ body.dashboard-schedule-modal-open {
 @media (max-width: 899px) {
     .finance-summary-sticky-row {
         top: calc(7.1rem + 4.5rem + 0.625rem);
-    }
-
-    .finance-extract-table thead th {
-        top: var(--finance-extract-head-top, calc(7.1rem + 8.5rem));
     }
 }
 
