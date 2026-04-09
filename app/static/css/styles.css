@@ -1353,7 +1353,7 @@ body.dashboard-schedule-modal-open {
     position: sticky;
     top: calc(8.6rem + 5.75rem + 0.75rem);
     z-index: 24;
-    padding-block: 1.25rem;
+    /* Padding vertical/horizontal: usar só a classe p-5 do HTML no desktop (evita competir com mt-4 / wrapper do toggle). */
     /* Fundo sólido necessário para cobrir o conteúdo que rola pelas lacunas do grid */
     background: white;
     border-radius: 1rem;
