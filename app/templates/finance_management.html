@@ -47,8 +47,8 @@
     </div>
     {% else %}
 
-    <section class="stock-panel finance-summary-panel finance-summary-sticky-row rounded-[2rem] bg-white px-5 py-2 shadow-panel" data-finance-summary-sticky data-stock-fade-panel>
-        <div class="mb-1 flex flex-wrap items-start justify-end gap-4 md:hidden">
+    <section class="stock-panel finance-summary-panel finance-summary-sticky-row rounded-[2rem] bg-white p-5 shadow-panel" data-finance-summary-sticky data-stock-fade-panel>
+        <div class="mb-1 flex flex-wrap items-start justify-end gap-4">
             <button type="button" class="stock-summary-toggle md:hidden" data-finance-summary-toggle aria-expanded="false">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
                     <path d="M5 12h14"/>
@@ -59,7 +59,7 @@
         </div>
         <div class="stock-summary-collapse finance-summary-collapse" data-finance-summary-collapse>
         <div class="stock-summary-collapse-inner">
-        <div class="grid gap-3 finance-summary-grid-mobile sm:grid-cols-2 lg:grid-cols-4 mt-4 md:mt-0">
+        <div class="grid gap-3 finance-summary-grid-mobile sm:grid-cols-2 lg:grid-cols-4 mt-4">
         <div class="finance-summary-card rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
             <p class="text-[0.65rem] font-semibold uppercase tracking-[0.2em] text-slate-400">Valor em estoque</p>
             <p class="mt-1 text-lg font-semibold tabular-nums text-slate-900">{{ finance_currency.inventory_total }}</p>

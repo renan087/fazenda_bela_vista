@@ -1389,9 +1389,10 @@ body.dashboard-schedule-modal-open {
     overflow: visible;
 }
 
-/* .stock-panel[data-stock-fade-panel] tem especificidade 0,2,0 e sobrescreveria z-index para 1.
-   Esta regra (0,3,0) preserva z-index:24 do painel de resumo no desktop (sticky). */
+/* .stock-panel[data-stock-fade-panel] aplica position:relative e z-index:1 (especificidade 0,2,0).
+   No desktop o painel de resumo precisa manter position:sticky e z-index:24. */
 .finance-summary-sticky-row.stock-panel[data-stock-fade-panel] {
+    position: sticky;
     z-index: 24;
 }
 
