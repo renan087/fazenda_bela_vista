@@ -68,12 +68,12 @@
         </div>
     </section>
 
-    <section class="stock-panel rounded-[2rem] bg-white p-5 shadow-panel" data-stock-fade-panel>
-        <div class="stock-filter-bar">
-            <form method="get" action="/gestao-financeira" class="stock-filter-grid" data-stock-filter-form data-module-period-filter-root data-module-range-default="last_10_days" data-module-range-placeholder="Filtre por período" data-module-custom-auto-apply="false">
+    <section class="stock-panel finance-filter-panel w-full overflow-visible rounded-[2rem] bg-white p-5 shadow-panel">
+        <div class="stock-filter-bar w-full min-w-0">
+            <form method="get" action="/gestao-financeira" class="stock-filter-grid w-full min-w-0" data-stock-filter-form data-module-period-filter-root data-module-range-default="last_10_days" data-module-range-placeholder="Filtre por período" data-module-custom-auto-apply="false">
                 <div class="stock-summary-collapse is-expanded" data-stock-filter-collapse>
                 <div class="stock-summary-collapse-inner">
-                <div class="stock-filter-fields-row {% if finance_filters_active %}has-clear-action{% endif %}">
+                <div class="stock-filter-fields-row finance-filter-fields-row {% if finance_filters_active %}has-clear-action{% endif %}">
                     <label class="stock-filter-field stock-filter-field-farm is-filtered">
                         <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Fazenda</span>
                         <input type="text" value="{{ active_farm.name if active_farm else 'Nao selecionada' }}" disabled class="w-full cursor-not-allowed rounded-xl border-slate-200 bg-slate-100 py-2.5 text-sm font-medium text-slate-500">
@@ -106,15 +106,14 @@
         </div>
     </section>
 
-    <section class="stock-panel rounded-[2rem] bg-white p-6 shadow-panel" data-stock-fade-panel>
-        <div class="flex flex-wrap items-center justify-between gap-3"><div>
+    <section class="stock-panel finance-extract-section relative z-0 rounded-[2rem] bg-white p-6 shadow-panel" data-stock-fade-panel>
+        <div class="stock-table-shell overflow-hidden rounded-[1.5rem] border border-slate-200">
+            <div class="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-slate-50 px-4 py-3">
                 <p class="text-xs font-semibold uppercase tracking-[0.25em] text-slate-500">Extrato</p>
+                {% if finance_extract_truncated %}
+                <span class="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-medium text-amber-900">Lista limitada</span>
+                {% endif %}
             </div>
-            {% if finance_extract_truncated %}
-            <span class="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-medium text-amber-900">Lista limitada</span>
-            {% endif %}
-        </div>
-        <div class="stock-table-shell mt-4 overflow-hidden rounded-[1.5rem] border border-slate-200">
             <div class="overflow-x-auto">
                 <table class="stock-history-table finance-extract-table min-w-[56rem] w-full divide-y divide-slate-200 text-sm" data-finance-extract-table>
                     <thead class="bg-slate-50 text-left text-slate-500">
@@ -148,9 +147,6 @@
                     </tbody>
                 </table>
             </div>
-        </div>
-        <div class="mt-4 rounded-[1.25rem] border border-slate-200 bg-slate-50 px-4 py-2.5 text-xs text-slate-500">
-            <strong>Acumulado</strong>: saldo progressivo (créditos − débitos; despesas deixam o saldo mais negativo). Azul se positivo, vermelho se negativo. Sem datas no filtro, considera todo o histórico da fazenda.
         </div>
     </section>
 
