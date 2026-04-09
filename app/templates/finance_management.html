@@ -68,7 +68,7 @@
         </div>
     </section>
 
-    <section class="stock-panel finance-filter-panel w-full overflow-visible rounded-[2rem] bg-white p-6 shadow-panel">
+    <section class="stock-panel finance-filter-panel w-full overflow-visible rounded-[2rem] bg-white p-6 shadow-panel" data-stock-fade-panel>
         <div class="stock-filter-bar {% if finance_filters_active %}is-mobile-collapsed{% endif %} w-full min-w-0">
             <div class="stock-filter-mobile-toggle-wrap md:hidden">
                 <button type="button" class="stock-summary-toggle stock-filter-mobile-toggle {% if finance_filters_active %}is-filtered-state{% endif %}" data-stock-filter-toggle data-stock-filter-applied="{% if finance_filters_active %}true{% else %}false{% endif %}" aria-expanded="{% if finance_filters_active %}false{% else %}true{% endif %}">

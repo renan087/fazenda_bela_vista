@@ -1354,6 +1354,8 @@ body.dashboard-schedule-modal-open {
     top: calc(8.6rem + 5.75rem + 0.75rem);
     z-index: 24;
     padding-block: 0.15rem;
+    /* Fundo sólido necessário para cobrir o conteúdo que rola pelas lacunas do grid */
+    background: white;
 }
 
 /* Gestão financeira: card de filtros ocupa a largura e fica acima do extrato (calendário/presets do período) */
@@ -1361,6 +1363,12 @@ body.dashboard-schedule-modal-open {
     position: relative;
     z-index: 20;
     overflow: visible;
+}
+
+/* .stock-panel[data-stock-fade-panel] tem especificidade 0,2,0 e sobrescreveria z-index para 1.
+   Esta regra (0,3,0) preserva z-index:20 para o dropdown do calendário continuar aparecendo acima do extrato. */
+.finance-filter-panel.stock-panel[data-stock-fade-panel] {
+    z-index: 20;
 }
 
 .finance-extract-section {
