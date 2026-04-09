@@ -1374,6 +1374,10 @@ body.dashboard-schedule-modal-open {
     margin-top: 0;
 }
 
+.finance-summary-collapse.is-expanded {
+    margin-top: 0;
+}
+
 /* Gestão financeira: card de filtros ocupa a largura e fica acima do extrato (calendário/presets do período) */
 .finance-filter-panel {
     position: relative;

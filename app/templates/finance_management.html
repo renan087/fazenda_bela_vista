@@ -292,8 +292,12 @@
 
             const syncFinanceStickySummary = () => {
                 if (!stickyHeader || !stickySummary) return;
+                if (mobileCompactMq.matches) {
+                    stickySummary.style.removeProperty('top');
+                    return;
+                }
                 const topPx = parseStickyTopPx(stickyHeader);
-                const headerGap = mobileCompactMq.matches ? 10 : 12;
+                const headerGap = 12;
                 stickySummary.style.top = `${topPx + stickyHeader.offsetHeight + headerGap}px`;
             };
             const syncFinanceExtractHead = () => {
@@ -304,10 +308,8 @@
                 if (!stickyHeader || !fadingPanels.length) return;
                 const stickyRect = stickyHeader.getBoundingClientRect();
                 let stickyBottom = stickyRect.bottom;
-                if (stickySummary) {
+                if (stickySummary && !mobileCompactMq.matches) {
                     const summaryRect = stickySummary.getBoundingClientRect();
-                    // A área de ocultação precisa considerar sempre os cards de resumo,
-                    // que formam a camada sticky logo abaixo do cabeçalho principal.
                     stickyBottom = Math.max(stickyBottom, summaryRect.bottom);
                 }
                 fadingPanels.forEach((panel) => {
