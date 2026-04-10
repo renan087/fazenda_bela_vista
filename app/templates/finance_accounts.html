@@ -16,6 +16,66 @@
 .finance-default-star-trigger.is-activating svg {
     animation: financeStarIgnite 260ms ease-out forwards;
 }
+
+.finance-attachments-popover {
+    position: fixed;
+    z-index: 80;
+    min-width: 18rem;
+    max-width: min(24rem, calc(100vw - 2rem));
+    border: 1px solid rgba(203, 213, 225, 0.9);
+    border-radius: 1.1rem;
+    background: rgba(255, 255, 255, 0.97);
+    box-shadow: 0 24px 48px rgba(15, 23, 42, 0.16);
+    backdrop-filter: blur(14px);
+}
+
+.finance-attachments-popover[hidden] {
+    display: none;
+}
+
+.finance-attachments-popover-list {
+    max-height: min(18rem, 50vh);
+    overflow-y: auto;
+    padding: 0.5rem;
+}
+
+.finance-attachments-popover-link {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    width: 100%;
+    border-radius: 0.95rem;
+    padding: 0.75rem 0.85rem;
+    color: #1e293b;
+    font-size: 0.92rem;
+    font-weight: 500;
+    line-height: 1.25rem;
+    transition: background-color 140ms ease, color 140ms ease;
+}
+
+.finance-attachments-popover-link:hover {
+    background: rgba(241, 245, 249, 0.95);
+    color: #0f172a;
+}
+
+.finance-attachments-popover-icon {
+    display: inline-flex;
+    height: 2rem;
+    width: 2rem;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: center;
+    border-radius: 999px;
+    background: rgba(239, 246, 255, 0.92);
+    color: #2563eb;
+}
+
+.finance-attachments-popover-filename {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
 </style>
 <div class="stock-page-shell space-y-6">
     <section class="stock-page-header rounded-[2rem] p-5 shadow-panel">
@@ -237,11 +297,23 @@
                             <td>
                                 <div class="flex items-center justify-end gap-2">
                                     {% if transaction.attachments %}
-                                    <a href="/gestao-financeira/contas/lancamentos/anexos/{{ ((transaction.attachments or [])|sort(attribute='id', reverse=True)|first).id }}" target="_blank" rel="noopener" class="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-100" title="Abrir anexo">
+                                    <button type="button" class="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-100" title="Ver anexos" aria-label="Ver anexos" data-finance-attachments-trigger data-finance-attachments-source="finance-attachments-list-{{ transaction.id }}">
                                         <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                             <path d="M21.44 11.05 12.25 20.24a6 6 0 0 1-8.49-8.49l9.9-9.9a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
                                         </svg>
-                                    </a>
+                                    </button>
+                                    <template id="finance-attachments-list-{{ transaction.id }}">
+                                        {% for attachment in transaction.attachments %}
+                                        <a href="/gestao-financeira/contas/lancamentos/anexos/{{ attachment.id }}" target="_blank" rel="noopener" class="finance-attachments-popover-link">
+                                            <span class="finance-attachments-popover-icon">
+                                                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                                                    <path d="M21.44 11.05 12.25 20.24a6 6 0 0 1-8.49-8.49l9.9-9.9a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
+                                                </svg>
+                                            </span>
+                                            <span class="finance-attachments-popover-filename">{{ attachment.filename }}</span>
+                                        </a>
+                                        {% endfor %}
+                                    </template>
                                     {% endif %}
                                     <a href="/gestao-financeira/contas?finance_tab=transactions&transaction_edit_id={{ transaction.id }}" class="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-100" title="Editar">
                                         <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -544,6 +616,10 @@
 {% include "partials/attachment_manager_script.html" %}
 {% include "partials/history_view_modal.html" %}
 
+<div class="finance-attachments-popover" data-finance-attachments-popover hidden>
+    <div class="finance-attachments-popover-list" data-finance-attachments-popover-list></div>
+</div>
+
 <script>
 (() => {
     const searchInput = document.querySelector('[data-finance-accounts-search]');
@@ -552,6 +628,9 @@
     const financeTabButtons = Array.from(document.querySelectorAll('[data-finance-tab-button]'));
     const financeTabs = Array.from(document.querySelectorAll('[data-finance-tab]'));
     const financeTabSearches = Array.from(document.querySelectorAll('[data-finance-tab-search]'));
+    const attachmentTriggers = Array.from(document.querySelectorAll('[data-finance-attachments-trigger]'));
+    const attachmentPopover = document.querySelector('[data-finance-attachments-popover]');
+    const attachmentPopoverList = document.querySelector('[data-finance-attachments-popover-list]');
     const accountModal = document.getElementById('finance-account-modal');
     const accountOpenButton = document.querySelector('[data-finance-account-open]');
     const accountCloseButtons = Array.from(document.querySelectorAll('[data-finance-account-close]'));
@@ -591,6 +670,9 @@
         receita: {{ finance_transaction_revenue_categories|tojson }},
     };
     let activeFinanceTab = new URL(window.location.href).searchParams.get('finance_tab') || ({% if finance_open_transaction_modal %}'transactions'{% elif finance_open_launch_modal %}'accounts'{% else %}'accounts'{% endif %});
+    let attachmentPopoverPinned = false;
+    let attachmentPopoverTrigger = null;
+    let attachmentHideTimer = null;
     const existingFinanceAccounts = [
         {% for account in finance_accounts %}
         {
@@ -608,6 +690,72 @@
 
     const normalize = (value) => (value || '').toString().normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
     const normalizeAccountIdentity = (value) => (value || '').toString().replace(/[^0-9A-Za-z]/g, '').toUpperCase();
+
+    const clearAttachmentHideTimer = () => {
+        if (attachmentHideTimer) {
+            window.clearTimeout(attachmentHideTimer);
+            attachmentHideTimer = null;
+        }
+    };
+
+    const hideAttachmentPopover = () => {
+        clearAttachmentHideTimer();
+        attachmentPopoverPinned = false;
+        attachmentPopoverTrigger?.setAttribute('aria-expanded', 'false');
+        attachmentPopoverTrigger = null;
+        if (attachmentPopover) attachmentPopover.hidden = true;
+    };
+
+    const scheduleAttachmentPopoverHide = () => {
+        clearAttachmentHideTimer();
+        attachmentHideTimer = window.setTimeout(() => {
+            if (!attachmentPopoverPinned) hideAttachmentPopover();
+        }, 140);
+    };
+
+    const renderAttachmentPopover = (trigger) => {
+        if (!(attachmentPopover instanceof HTMLElement) || !(attachmentPopoverList instanceof HTMLElement)) return;
+        const sourceId = trigger.dataset.financeAttachmentsSource;
+        const source = sourceId ? document.getElementById(sourceId) : null;
+        if (!(source instanceof HTMLTemplateElement) || !source.innerHTML.trim()) {
+            hideAttachmentPopover();
+            return;
+        }
+        attachmentPopoverList.innerHTML = source.innerHTML;
+    };
+
+    const positionAttachmentPopover = (trigger) => {
+        if (!(attachmentPopover instanceof HTMLElement)) return;
+        const rect = trigger.getBoundingClientRect();
+        attachmentPopover.style.visibility = 'hidden';
+        attachmentPopover.hidden = false;
+        const margin = 12;
+        const popoverRect = attachmentPopover.getBoundingClientRect();
+        let left = rect.right - popoverRect.width;
+        left = Math.max(margin, Math.min(left, window.innerWidth - popoverRect.width - margin));
+        let top = rect.bottom + 10;
+        if (top + popoverRect.height > window.innerHeight - margin) {
+            top = rect.top - popoverRect.height - 10;
+        }
+        top = Math.max(margin, Math.min(top, window.innerHeight - popoverRect.height - margin));
+        attachmentPopover.style.left = `${left}px`;
+        attachmentPopover.style.top = `${top}px`;
+        attachmentPopover.style.visibility = 'visible';
+    };
+
+    const showAttachmentPopover = (trigger, { pinned = false } = {}) => {
+        if (!(trigger instanceof HTMLElement)) return;
+        clearAttachmentHideTimer();
+        renderAttachmentPopover(trigger);
+        if (!(attachmentPopover instanceof HTMLElement) || attachmentPopover.hidden) return;
+        if (attachmentPopoverTrigger && attachmentPopoverTrigger !== trigger) {
+            attachmentPopoverTrigger.setAttribute('aria-expanded', 'false');
+        }
+        attachmentPopoverPinned = pinned;
+        attachmentPopoverTrigger = trigger;
+        trigger.setAttribute('aria-expanded', 'true');
+        positionAttachmentPopover(trigger);
+    };
 
     const parseStickyTopPx = (el) => {
         const raw = getComputedStyle(el).top;
@@ -678,6 +826,47 @@
         button.addEventListener('click', () => {
             setActiveFinanceTab(button.dataset.financeTabButton || 'accounts');
         });
+    });
+
+    attachmentTriggers.forEach((trigger) => {
+        trigger.setAttribute('aria-expanded', 'false');
+        trigger.addEventListener('mouseenter', () => showAttachmentPopover(trigger, { pinned: false }));
+        trigger.addEventListener('mouseleave', () => scheduleAttachmentPopoverHide());
+        trigger.addEventListener('focus', () => showAttachmentPopover(trigger, { pinned: true }));
+        trigger.addEventListener('blur', () => scheduleAttachmentPopoverHide());
+        trigger.addEventListener('click', (event) => {
+            event.preventDefault();
+            if (attachmentPopoverTrigger === trigger && !attachmentPopover.hidden && attachmentPopoverPinned) {
+                hideAttachmentPopover();
+                return;
+            }
+            showAttachmentPopover(trigger, { pinned: true });
+        });
+    });
+
+    attachmentPopover?.addEventListener('mouseenter', () => clearAttachmentHideTimer());
+    attachmentPopover?.addEventListener('mouseleave', () => scheduleAttachmentPopoverHide());
+    attachmentPopover?.addEventListener('click', () => {
+        attachmentPopoverPinned = true;
+    });
+
+    document.addEventListener('click', (event) => {
+        const target = event.target;
+        if (!(target instanceof Node)) return;
+        if (attachmentPopover?.contains(target)) return;
+        if (attachmentTriggers.some((trigger) => trigger.contains(target))) return;
+        hideAttachmentPopover();
+    });
+
+    window.addEventListener('scroll', () => {
+        if (attachmentPopoverTrigger && !attachmentPopover.hidden) {
+            positionAttachmentPopover(attachmentPopoverTrigger);
+        }
+    }, { passive: true });
+    window.addEventListener('resize', () => {
+        if (attachmentPopoverTrigger && !attachmentPopover.hidden) {
+            positionAttachmentPopover(attachmentPopoverTrigger);
+        }
     });
 
     document.querySelectorAll('[data-finance-default-trigger]').forEach((button) => {
