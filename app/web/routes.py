@@ -2884,10 +2884,16 @@ def finance_accounts_page(
     transactions_pagination = _paginate_collection(request, transactions, "transactions_page") if active_farm else _paginate_collection(request, [], "transactions_page")
     payables_start_date, payables_end_date, payables_filter_start_date, payables_filter_end_date, selected_payables_range = _finance_payables_period_bounds(request)
     payables_search = (request.query_params.get("payables_search") or "").strip()
-    payables_status = (request.query_params.get("payables_status") or "open").strip().lower()
-    if payables_status not in {"open", "paid", "overdue", "all"}:
-        payables_status = "open"
-    finance_payables_filters_active = bool(payables_search or request.query_params.get("schedule_range") or request.query_params.get("start_date") or request.query_params.get("end_date") or payables_status != "open")
+    payables_status = (request.query_params.get("payables_status") or "").strip().lower()
+    if payables_status not in {"", "open", "paid", "overdue", "all"}:
+        payables_status = ""
+    finance_payables_filters_active = bool(
+        payables_search
+        or request.query_params.get("schedule_range")
+        or request.query_params.get("start_date")
+        or request.query_params.get("end_date")
+        or bool(payables_status)
+    )
     payables_clear_params = dict(request.query_params)
     for key in ("payables_search", "schedule_range", "start_date", "end_date", "payables_page", "payables_status"):
         payables_clear_params.pop(key, None)
@@ -2912,6 +2918,8 @@ def finance_accounts_page(
             elif due_date and due_date == today:
                 payable_status = "today"
                 payable_label = "Vence hoje"
+            if not payables_status and payable_status == "paid":
+                continue
             if payables_status == "open" and payable_status not in {"open", "today"}:
                 continue
             if payables_status == "paid" and payable_status != "paid":

@@ -1424,6 +1424,14 @@ body.dashboard-schedule-modal-open {
     margin-top: 0 !important;
 }
 
+.finance-accounts-summary-panel .stock-summary-collapse {
+    margin-top: 0;
+}
+
+.finance-accounts-summary-panel .stock-summary-collapse.is-expanded {
+    margin-top: 0;
+}
+
 /* Gestão financeira: card de filtros ocupa a largura e fica acima do extrato (calendário/presets do período) */
 .finance-filter-panel {
     position: relative;
@@ -1472,6 +1480,31 @@ body.dashboard-schedule-modal-open {
         min-width: 0;
         width: 100%;
     }
+
+    .stock-filter-fields-row.finance-payables-filter-fields-row {
+        grid-template-columns:
+            minmax(9rem, 0.72fr)
+            minmax(12rem, 0.96fr)
+            minmax(0, 1.32fr)
+            max-content;
+        column-gap: 0.85rem;
+        width: 100%;
+        align-items: end;
+    }
+
+    .stock-filter-fields-row.finance-payables-filter-fields-row > .stock-filter-field,
+    .stock-filter-fields-row.finance-payables-filter-fields-row > .stock-filter-field-period {
+        min-width: 0;
+    }
+
+    .stock-filter-fields-row.finance-payables-filter-fields-row > .finance-payables-filter-search .stock-search-field {
+        width: 100%;
+    }
+
+    .stock-filter-fields-row.finance-payables-filter-fields-row > .stock-filter-field-actions {
+        white-space: nowrap;
+        justify-content: flex-end;
+    }
 }
 
 /* position:sticky em th dentro de overflow-x:auto cria contexto de scroll próprio
@@ -1492,6 +1525,10 @@ body.dashboard-schedule-modal-open {
 
     .finance-summary-grid-mobile {
         grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .finance-accounts-summary-panel .stock-summary-collapse:not(.is-expanded) {
+        margin-top: 0;
     }
 }
 

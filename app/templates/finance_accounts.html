@@ -158,8 +158,19 @@
         Escolha uma <strong>fazenda</strong> no contexto global para cadastrar e visualizar as contas bancárias.
     </div>
     {% else %}
-    <section class="stock-panel rounded-[2rem] bg-white p-5 shadow-panel" data-stock-fade-panel>
-        <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+    <section class="stock-panel finance-accounts-summary-panel rounded-[2rem] bg-white p-5 shadow-panel" data-stock-fade-panel>
+        <div class="mb-1 flex flex-wrap items-start justify-end gap-4 md:hidden">
+            <button type="button" class="stock-summary-toggle md:hidden" data-finance-accounts-summary-toggle aria-expanded="false">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                    <path d="M5 12h14"/>
+                    <path d="M12 5v14" data-finance-accounts-summary-toggle-plus></path>
+                </svg>
+                <span data-finance-accounts-summary-toggle-label>Mostrar resumo</span>
+            </button>
+        </div>
+        <div class="stock-summary-collapse" data-finance-accounts-summary-collapse>
+        <div class="stock-summary-collapse-inner">
+        <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-3 mt-4 md:mt-0">
             <div class="finance-summary-card finance-summary-card-neutral rounded-2xl border p-4 shadow-sm">
                 <p class="text-[0.65rem] font-semibold uppercase tracking-[0.2em]">Fazenda ativa</p>
                 <p class="mt-1 text-lg font-semibold text-slate-900">{{ active_farm.name }}</p>
@@ -172,6 +183,8 @@
                 <p class="text-[0.65rem] font-semibold uppercase tracking-[0.2em]">Conta padrão</p>
                 <p class="mt-1 text-lg font-semibold text-slate-900">{{ finance_account_default.account_name if finance_account_default else "Não definida" }}</p>
             </div>
+        </div>
+        </div>
         </div>
     </section>
 
@@ -417,19 +430,36 @@
         </div>
 
         <div class="stock-history-stage mt-4 hidden" data-finance-tab="payables">
-        <div class="stock-filter-bar mb-4">
+        <div class="stock-filter-bar mb-4 {% if finance_payables_filters_active %}is-mobile-collapsed{% endif %}">
+            <div class="stock-filter-mobile-toggle-wrap md:hidden">
+                <button type="button" class="stock-summary-toggle stock-filter-mobile-toggle {% if finance_payables_filters_active %}is-filtered-state{% endif %}" data-finance-payables-filter-toggle data-stock-filter-applied="{% if finance_payables_filters_active %}true{% else %}false{% endif %}" aria-expanded="{% if finance_payables_filters_active %}false{% else %}true{% endif %}">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                        <path d="M5 12h14"/>
+                        <path d="M12 5v14" data-finance-payables-filter-toggle-plus{% if finance_payables_filters_active %} class="hidden"{% endif %}></path>
+                    </svg>
+                    <span data-finance-payables-filter-toggle-label>{% if finance_payables_filters_active %}Mostrar filtro aplicado{% else %}Recolher filtros{% endif %}</span>
+                </button>
+            </div>
             <form method="get" action="/gestao-financeira/contas" class="stock-filter-grid" data-finance-payables-filter-form data-module-period-filter-root data-module-range-default="current_month" data-module-range-placeholder="Filtre por período" data-module-custom-auto-apply="true">
                 <input type="hidden" name="finance_tab" value="payables">
-                <div class="stock-filter-fields-row {% if finance_payables_filters_active %}has-clear-action{% endif %}">
-                    <label class="stock-filter-field stock-filter-field-input {% if finance_payables_status != 'open' %}is-filtered{% endif %}">
+                <div class="stock-summary-collapse {% if not finance_payables_filters_active %}is-expanded{% endif %}" data-finance-payables-filter-collapse>
+                <div class="stock-summary-collapse-inner">
+                <div class="stock-filter-fields-row finance-payables-filter-fields-row {% if finance_payables_filters_active %}has-clear-action{% endif %}">
+                    <label class="stock-filter-field stock-filter-field-input {% if finance_payables_status %}is-filtered{% endif %}">
                         <select name="payables_status" class="w-full rounded-xl border-slate-200 bg-white" data-finance-payables-status>
+                            <option value="" {% if not finance_payables_status %}selected{% endif %}>Status</option>
                             <option value="open" {% if finance_payables_status == 'open' %}selected{% endif %}>Em aberto</option>
                             <option value="paid" {% if finance_payables_status == 'paid' %}selected{% endif %}>Pago</option>
                             <option value="overdue" {% if finance_payables_status == 'overdue' %}selected{% endif %}>Atrasado</option>
                             <option value="all" {% if finance_payables_status == 'all' %}selected{% endif %}>Todos</option>
                         </select>
                     </label>
-                    <label class="stock-filter-field stock-filter-field-input">
+                    <div class="stock-filter-field stock-filter-field-period {% if finance_payables_filter_start_date or finance_payables_filter_end_date %}is-filtered{% endif %}">
+                        <div class="module-filter-period-row">
+                            {{ module_period_picker_inline(finance_payables_selected_range or 'current_month', finance_payables_filter_start_date, finance_payables_filter_end_date, 'past', 'Filtre por período') }}
+                        </div>
+                    </div>
+                    <label class="stock-filter-field stock-filter-field-input finance-payables-filter-search {% if finance_payables_search %}is-filtered{% endif %}">
                         <div class="stock-search-field">
                             <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
                                 <circle cx="8.5" cy="8.5" r="5.75"></circle>
@@ -438,16 +468,13 @@
                             <input type="search" name="payables_search" value="{{ finance_payables_search or '' }}" placeholder="Buscar conta, categoria ou produto" data-finance-payables-search>
                         </div>
                     </label>
-                    <div class="stock-filter-field stock-filter-field-period {% if finance_payables_filter_start_date or finance_payables_filter_end_date %}is-filtered{% endif %}">
-                        <div class="module-filter-period-row">
-                            {{ module_period_picker_inline(finance_payables_selected_range or 'current_month', finance_payables_filter_start_date, finance_payables_filter_end_date, 'past', 'Filtre por período') }}
-                        </div>
-                    </div>
                     <div class="stock-filter-field stock-filter-field-actions flex flex-nowrap items-end gap-3">
                         {% if finance_payables_filters_active %}
                         <a href="{{ finance_payables_clear_url }}" class="shrink-0 rounded-xl bg-white px-4 py-3 text-sm font-semibold text-slate-700 ring-1 ring-slate-200 hover:bg-slate-100">Limpar</a>
                         {% endif %}
                     </div>
+                </div>
+                </div>
                 </div>
             </form>
         </div>
@@ -506,9 +533,7 @@
                                 </form>
                                 {% else %}
                                 <button type="button" class="finance-payables-check" title="Marcar como pago" data-finance-payable-settle-trigger data-installment-id="{{ installment.id }}" data-installment-label="{{ payable.installment_label }}" data-transaction-title="{{ transaction.product_service }}" data-installment-due-date="{{ installment.due_date.strftime('%d/%m/%Y') if installment.due_date else '-' }}" data-paid-date-default="{{ today.isoformat() }}">
-                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4">
-                                        <path d="m5 13 4 4L19 7"/>
-                                    </svg>
+                                    <span class="sr-only">Marcar como pago</span>
                                 </button>
                                 {% endif %}
                             </td>
@@ -921,6 +946,11 @@
     const payablesFilterForm = document.querySelector('[data-finance-payables-filter-form]');
     const payablesSearchInput = document.querySelector('[data-finance-payables-search]');
     const payablesStatusSelect = document.querySelector('[data-finance-payables-status]');
+    const payablesFilterToggle = document.querySelector('[data-finance-payables-filter-toggle]');
+    const payablesFilterCollapse = document.querySelector('[data-finance-payables-filter-collapse]');
+    const payablesFilterToggleLabel = document.querySelector('[data-finance-payables-filter-toggle-label]');
+    const payablesFilterTogglePlus = document.querySelector('[data-finance-payables-filter-toggle-plus]');
+    const payablesFilterBar = document.querySelector('[data-finance-tab="payables"] .stock-filter-bar');
     const payableSettleModal = document.getElementById('finance-payable-settle-modal');
     const payableSettleForm = document.querySelector('[data-finance-payable-settle-form]');
     const payableSettleCloseButtons = Array.from(document.querySelectorAll('[data-finance-payable-settle-close]'));
@@ -942,6 +972,10 @@
     const headerIntro = stickyHeader?.querySelector('[data-stock-header-intro]');
     const fadingPanels = Array.from(document.querySelectorAll('[data-stock-fade-panel]'));
     const mobileCompactMq = window.matchMedia('(max-width: 899px)');
+    const financeAccountsSummaryToggle = document.querySelector('[data-finance-accounts-summary-toggle]');
+    const financeAccountsSummaryCollapse = document.querySelector('[data-finance-accounts-summary-collapse]');
+    const financeAccountsSummaryToggleLabel = document.querySelector('[data-finance-accounts-summary-toggle-label]');
+    const financeAccountsSummaryTogglePlus = document.querySelector('[data-finance-accounts-summary-toggle-plus]');
     const formInitialState = form ? new FormData(form) : null;
     const transactionFormInitialState = transactionForm ? new FormData(transactionForm) : null;
     const createFormAction = '/gestao-financeira/contas';
@@ -1217,6 +1251,64 @@
         requestFinanceHeaderCompactSync();
         scheduleFinanceFadeUpdate();
     };
+
+    if (financeAccountsSummaryToggle && financeAccountsSummaryCollapse && financeAccountsSummaryToggleLabel) {
+        const setFinanceAccountsSummaryExpanded = (expanded) => {
+            financeAccountsSummaryCollapse.classList.toggle('is-expanded', expanded);
+            financeAccountsSummaryToggle.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+            financeAccountsSummaryToggleLabel.textContent = expanded ? 'Recolher resumo' : 'Mostrar resumo';
+            financeAccountsSummaryTogglePlus?.classList.toggle('hidden', expanded);
+        };
+
+        const syncFinanceAccountsSummaryForViewport = () => {
+            if (!mobileCompactMq.matches) {
+                financeAccountsSummaryCollapse.classList.add('is-expanded');
+                financeAccountsSummaryToggle.setAttribute('aria-expanded', 'true');
+                return;
+            }
+            const expanded = financeAccountsSummaryToggle.getAttribute('aria-expanded') === 'true';
+            setFinanceAccountsSummaryExpanded(expanded);
+        };
+
+        setFinanceAccountsSummaryExpanded(false);
+        syncFinanceAccountsSummaryForViewport();
+        financeAccountsSummaryToggle.addEventListener('click', () => {
+            const expanded = financeAccountsSummaryToggle.getAttribute('aria-expanded') === 'true';
+            setFinanceAccountsSummaryExpanded(!expanded);
+        });
+        mobileCompactMq.addEventListener('change', syncFinanceAccountsSummaryForViewport);
+    }
+
+    if (payablesFilterToggle && payablesFilterCollapse && payablesFilterToggleLabel) {
+        const hasAppliedPayablesFilters = payablesFilterToggle.dataset.stockFilterApplied === 'true';
+        const setPayablesFilterExpanded = (expanded) => {
+            payablesFilterCollapse.classList.toggle('is-expanded', expanded);
+            payablesFilterToggle.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+            payablesFilterToggleLabel.textContent = expanded
+                ? 'Recolher filtros'
+                : (hasAppliedPayablesFilters ? 'Mostrar filtro aplicado' : 'Mostrar filtros');
+            payablesFilterTogglePlus?.classList.toggle('hidden', expanded);
+            payablesFilterBar?.classList.toggle('is-mobile-collapsed', mobileCompactMq.matches && !expanded);
+        };
+
+        const syncPayablesFilterForViewport = () => {
+            if (!mobileCompactMq.matches) {
+                payablesFilterCollapse.classList.add('is-expanded');
+                payablesFilterToggle.setAttribute('aria-expanded', 'true');
+                payablesFilterBar?.classList.remove('is-mobile-collapsed');
+                return;
+            }
+            const expanded = payablesFilterToggle.getAttribute('aria-expanded') === 'true';
+            setPayablesFilterExpanded(expanded);
+        };
+
+        syncPayablesFilterForViewport();
+        payablesFilterToggle.addEventListener('click', () => {
+            const expanded = payablesFilterToggle.getAttribute('aria-expanded') === 'true';
+            setPayablesFilterExpanded(!expanded);
+        });
+        mobileCompactMq.addEventListener('change', syncPayablesFilterForViewport);
+    }
 
     const setupCollapse = ({ toggleSelector, collapseSelector, labelSelector, plusSelector }) => {
         const toggle = document.querySelector(toggleSelector);
