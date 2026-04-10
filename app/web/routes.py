@@ -3085,9 +3085,9 @@ async def create_finance_transaction_action(
         return _redirect(_finance_transactions_modal_query(request, edit_id=transaction.id))
     if saved_attachments:
         _flash(request, "success", f"Lançamento salvo com sucesso. {saved_attachments} anexo(s) salvo(s).")
-        return _redirect("/gestao-financeira/contas")
+        return _redirect("/gestao-financeira/contas?finance_tab=transactions")
     _flash(request, "success", "Lançamento salvo com sucesso.")
-    return _redirect("/gestao-financeira/contas")
+    return _redirect("/gestao-financeira/contas?finance_tab=transactions")
 
 
 @router.post("/gestao-financeira/contas/lancamentos/{transaction_id}/editar")
@@ -3150,9 +3150,9 @@ async def update_finance_transaction_action(
         return _redirect(_finance_transactions_modal_query(request, edit_id=transaction_id))
     if saved_attachments:
         _flash(request, "success", f"Lançamento atualizado com sucesso. {saved_attachments} novo(s) anexo(s) adicionado(s).")
-        return _redirect("/gestao-financeira/contas")
+        return _redirect("/gestao-financeira/contas?finance_tab=transactions")
     _flash(request, "success", "Lançamento atualizado com sucesso.")
-    return _redirect("/gestao-financeira/contas")
+    return _redirect("/gestao-financeira/contas?finance_tab=transactions")
 
 
 @router.post("/gestao-financeira/contas/lancamentos/{transaction_id}/excluir")
@@ -3177,7 +3177,7 @@ def delete_finance_transaction_action(
         return _redirect("/gestao-financeira/contas")
     repo.delete(transaction)
     _flash(request, "success", "Lançamento excluído com sucesso.")
-    return _redirect("/gestao-financeira/contas")
+    return _redirect("/gestao-financeira/contas?finance_tab=transactions")
 
 
 @router.get("/gestao-financeira/contas/lancamentos/anexos/{attachment_id}")

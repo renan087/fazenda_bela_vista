@@ -60,6 +60,8 @@
             const url = new URL(window.location.href);
             url.searchParams.delete('edit_id');
             url.searchParams.delete('edit_output_id');
+            url.searchParams.delete('transaction_edit_id');
+            url.searchParams.delete('transaction_launch');
             url.searchParams.delete('modal');
             return `${url.pathname}${url.search}${url.hash}`;
         };

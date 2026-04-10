@@ -174,8 +174,8 @@
                 <table class="stock-history-table min-w-full">
                     <thead>
                         <tr>
-                            <th>Data</th>
                             <th>Tipo</th>
+                            <th>Data</th>
                             <th>Conta</th>
                             <th>Categoria</th>
                             <th>Produto / serviço</th>
@@ -185,18 +185,18 @@
                     </thead>
                     <tbody>
                         {% for transaction in finance_transactions %}
-                        <tr>
-                            <td class="font-semibold text-slate-900">
-                                <button type="button" class="text-left font-semibold text-slate-900 transition hover:text-brand-700 whitespace-nowrap" data-history-view-trigger data-history-view-kicker="Lançamento financeiro" data-history-view-title="{{ transaction.product_service }}" data-history-view-subtitle="{{ transaction.launch_date.strftime('%d/%m/%Y') if transaction.launch_date else '-' }} • {{ 'Receita' if transaction.operation_type == 'receita' else 'Despesa' }}" data-history-view-source="finance-transaction-view-{{ transaction.id }}" data-history-view-edit-url="/gestao-financeira/contas?finance_tab=transactions&transaction_edit_id={{ transaction.id }}">{{ transaction.launch_date.strftime('%d/%m/%Y') if transaction.launch_date else '-' }}</button>
-                            </td>
+                        <tr data-stock-kind="{% if transaction.operation_type == 'receita' %}entrada{% else %}saida{% endif %}">
                             <td>
-                                <span class="inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold {% if transaction.operation_type == 'receita' %}bg-emerald-50 text-emerald-700 ring-1 ring-emerald-100{% else %}bg-rose-50 text-rose-700 ring-1 ring-rose-100{% endif %}">
+                                <span class="stock-movement-chip {% if transaction.operation_type == 'receita' %}stock-movement-chip-entry{% else %}stock-movement-chip-output{% endif %}">
                                     {{ 'Receita' if transaction.operation_type == 'receita' else 'Despesa' }}
                                 </span>
                             </td>
+                            <td class="font-semibold text-slate-900 whitespace-nowrap">
+                                <button type="button" class="text-left font-semibold text-slate-900 transition hover:text-brand-700 whitespace-nowrap" data-history-view-trigger data-history-view-kicker="Lançamento financeiro" data-history-view-title="{{ transaction.product_service }}" data-history-view-subtitle="{{ transaction.launch_date.strftime('%d/%m/%Y') if transaction.launch_date else '-' }} • {{ 'Receita' if transaction.operation_type == 'receita' else 'Despesa' }}" data-history-view-source="finance-transaction-view-{{ transaction.id }}" data-history-view-edit-url="/gestao-financeira/contas?finance_tab=transactions&transaction_edit_id={{ transaction.id }}">{{ transaction.launch_date.strftime('%d/%m/%Y') if transaction.launch_date else '-' }}</button>
+                            </td>
                             <td>{{ transaction.finance_account.account_name if transaction.finance_account else '-' }}</td>
                             <td>
-                                <button type="button" class="text-left font-medium text-slate-700 transition hover:text-brand-700" data-history-view-trigger data-history-view-kicker="Lançamento financeiro" data-history-view-title="{{ transaction.product_service }}" data-history-view-subtitle="{{ transaction.launch_date.strftime('%d/%m/%Y') if transaction.launch_date else '-' }} • {{ 'Receita' if transaction.operation_type == 'receita' else 'Despesa' }}" data-history-view-source="finance-transaction-view-{{ transaction.id }}" data-history-view-edit-url="/gestao-financeira/contas?finance_tab=transactions&transaction_edit_id={{ transaction.id }}">{{ transaction.category }}</button>
+                                <button type="button" class="text-left font-semibold text-slate-900 transition hover:text-brand-700" data-history-view-trigger data-history-view-kicker="Lançamento financeiro" data-history-view-title="{{ transaction.product_service }}" data-history-view-subtitle="{{ transaction.launch_date.strftime('%d/%m/%Y') if transaction.launch_date else '-' }} • {{ 'Receita' if transaction.operation_type == 'receita' else 'Despesa' }}" data-history-view-source="finance-transaction-view-{{ transaction.id }}" data-history-view-edit-url="/gestao-financeira/contas?finance_tab=transactions&transaction_edit_id={{ transaction.id }}">{{ transaction.category }}</button>
                             </td>
                             <td>
                                 <div class="flex flex-col gap-1">
