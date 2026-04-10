@@ -2150,6 +2150,18 @@ body.dashboard-schedule-modal-open {
     background: #36552a;
 }
 
+.finance-transaction-action-button {
+    border: 1px solid rgba(251, 113, 133, 0.35);
+    background: rgba(255, 241, 242, 0.96);
+    color: rgb(190 24 93);
+    box-shadow: 0 14px 28px -24px rgba(190, 24, 93, 0.65);
+}
+
+.finance-transaction-action-button:hover {
+    background: rgba(255, 228, 230, 0.98);
+    border-color: rgba(244, 63, 94, 0.4);
+}
+
 .stock-export-button {
     border: 1px solid rgba(226, 232, 240, 0.95);
     background: rgba(255, 255, 255, 0.98);

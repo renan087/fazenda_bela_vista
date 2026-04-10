@@ -28,7 +28,7 @@
             </div>
             {% if active_farm %}
             <div class="stock-header-actions stock-header-actions-top stock-actions-row-mobile-adaptive finance-mobile-header-actions w-full max-[899px]:w-full">
-                <button type="button" class="stock-action-button stock-action-button-outline" data-finance-transaction-open>
+                <button type="button" class="stock-action-button finance-transaction-action-button" data-finance-transaction-open>
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
                         <path d="M4 12h16"/>
                         <path d="M12 4v16"/>
@@ -168,15 +168,8 @@
         </div>
 
         <div class="stock-history-stage mt-4 hidden" data-finance-tab="transactions">
-        <div class="stock-history-header">
-            <div>
-                <p class="stock-history-kicker">Lançamentos manuais</p>
-                <h3 class="stock-history-title">Movimentações das contas</h3>
-            </div>
-            <p class="text-sm text-slate-500">{{ finance_transaction_total }} lançamento(s) registrado(s).</p>
-        </div>
         {% if finance_transactions %}
-        <div class="stock-table-shell mt-5">
+        <div class="stock-table-shell">
             <div class="overflow-x-auto">
                 <table class="stock-history-table min-w-full">
                     <thead>
@@ -212,12 +205,6 @@
                             <td class="font-semibold {% if transaction.operation_type == 'receita' %}text-emerald-700{% else %}text-rose-600{% endif %}">R$ {{ transaction.amount|decimal_br }}</td>
                             <td>
                                 <div class="flex items-center justify-end gap-2">
-                                    <a href="/gestao-financeira/contas?finance_tab=transactions&transaction_edit_id={{ transaction.id }}" class="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-100" title="Editar">
-                                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                            <path d="M12 20h9"/>
-                                            <path d="M16.5 3.5a2.1 2.1 0 1 1 3 3L7 19l-4 1 1-4Z"/>
-                                        </svg>
-                                    </a>
                                     {% if transaction.attachments %}
                                     <div class="group relative">
                                         <button type="button" class="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-100" title="Anexos">
@@ -235,6 +222,12 @@
                                         </div>
                                     </div>
                                     {% endif %}
+                                    <a href="/gestao-financeira/contas?finance_tab=transactions&transaction_edit_id={{ transaction.id }}" class="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-100" title="Editar">
+                                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                            <path d="M12 20h9"/>
+                                            <path d="M16.5 3.5a2.1 2.1 0 1 1 3 3L7 19l-4 1 1-4Z"/>
+                                        </svg>
+                                    </a>
                                     <form method="post" action="/gestao-financeira/contas/lancamentos/{{ transaction.id }}/excluir" onsubmit="return confirm('Excluir este lançamento?');">
                                         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                                         <button type="submit" class="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 text-rose-600 hover:bg-rose-50" title="Excluir">
@@ -255,8 +248,9 @@
                 </table>
             </div>
         </div>
+        {% with pagination=finance_transactions_pagination %}{% include "partials/history_pagination.html" %}{% endwith %}
         {% else %}
-        <div class="mt-5 rounded-[1.5rem] border border-dashed border-slate-200 bg-slate-50/80 px-6 py-10 text-center text-slate-500">
+        <div class="rounded-[1.5rem] border border-dashed border-slate-200 bg-slate-50/80 px-6 py-10 text-center text-slate-500">
             Nenhum lançamento manual registrado para as contas da fazenda ativa.
         </div>
         {% endif %}
@@ -508,42 +502,25 @@
                         <span class="mb-2 block text-sm font-medium">Observações</span>
                         <textarea name="notes" rows="3" class="w-full rounded-2xl border-slate-200 bg-slate-50">{{ edit_finance_transaction.notes if edit_finance_transaction else '' }}</textarea>
                     </label>
-                    <label>
-                        <span class="mb-2 block text-sm font-medium">Anexos</span>
-                        <input type="file" name="attachments" multiple class="block w-full rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-4 text-sm text-slate-500 file:mr-3 file:rounded-xl file:border-0 file:bg-brand-50 file:px-3 file:py-2 file:font-medium file:text-brand-700 hover:file:bg-brand-100">
-                    </label>
-                    {% if edit_finance_transaction %}
-                    <div class="rounded-[1.5rem] border border-slate-200 bg-slate-50 p-4">
-                        <p class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Anexos vinculados</p>
-                        {% if edit_finance_transaction.attachments %}
-                        <ul class="mt-3 space-y-3">
-                            {% for attachment in edit_finance_transaction.attachments %}
-                            <li class="flex items-center justify-between gap-3 rounded-2xl bg-white px-4 py-3 ring-1 ring-slate-200/80">
-                                <a href="/gestao-financeira/contas/lancamentos/anexos/{{ attachment.id }}" target="_blank" rel="noopener" class="min-w-0 truncate text-sm font-medium text-slate-700 hover:text-brand-700 hover:underline">{{ attachment.filename }}</a>
-                                <form method="post" action="/gestao-financeira/contas/lancamentos/{{ edit_finance_transaction.id }}/anexos/{{ attachment.id }}/excluir">
-                                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                                    <button type="submit" class="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 text-rose-600 hover:bg-rose-50" title="Excluir anexo">
-                                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                            <path d="M3 6h18"/>
-                                            <path d="M8 6V4h8v2"/>
-                                            <path d="M19 6l-1 14H6L5 6"/>
-                                        </svg>
-                                    </button>
-                                </form>
-                            </li>
-                            {% endfor %}
-                        </ul>
-                        {% else %}
-                        <p class="mt-3 text-sm text-slate-500">Nenhum anexo vinculado.</p>
-                        {% endif %}
-                    </div>
-                    {% endif %}
+                    {% set attachment_label = 'Anexos' %}
+                    {% set attachment_help_text = 'Envie imagens, PDF ou documentos do lançamento. Você pode adicionar mais arquivos em etapas antes de salvar.' %}
+                    {% include "partials/attachment_upload_field.html" %}
                 </form>
+                {% if edit_finance_transaction %}
+                {% set attachment_owner = edit_finance_transaction %}
+                {% set attachment_view_base = '/gestao-financeira/contas/lancamentos/anexos' %}
+                {% set attachment_delete_base = '/gestao-financeira/contas/lancamentos/' ~ edit_finance_transaction.id ~ '/anexos' %}
+                <div class="mt-4">
+                    {% include "partials/attachment_list.html" %}
+                </div>
+                {% endif %}
             </div>
         </div>
     </dialog>
     {% endif %}
 </div>
+
+{% include "partials/attachment_manager_script.html" %}
 
 <script>
 (() => {

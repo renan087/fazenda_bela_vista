@@ -2731,6 +2731,7 @@ def finance_accounts_page(
     active_farm = scope.get("active_farm")
     accounts = repo.list_finance_accounts(farm_id=active_farm.id) if active_farm else []
     transactions = repo.list_finance_transactions(farm_id=active_farm.id) if active_farm else []
+    transactions_pagination = _paginate_collection(request, transactions, "transactions_page") if active_farm else _paginate_collection(request, [], "transactions_page")
     edit_account = repo.get_finance_account(edit_id) if edit_id else None
     edit_transaction = repo.get_finance_transaction(transaction_edit_id) if transaction_edit_id else None
     bank_options = _finance_bank_choice_options(repo)
@@ -2761,8 +2762,9 @@ def finance_accounts_page(
             finance_account_total=len(accounts),
             finance_account_default=next((item for item in accounts if item.is_default), None),
             edit_finance_account=edit_account,
-            finance_transactions=transactions,
+            finance_transactions=transactions_pagination["items"],
             finance_transaction_total=len(transactions),
+            finance_transactions_pagination=transactions_pagination,
             edit_finance_transaction=edit_transaction,
             finance_bank_options=bank_options,
             finance_open_launch_modal=bool(launch or edit_account),
