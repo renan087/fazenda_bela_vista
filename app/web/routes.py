@@ -23,7 +23,7 @@ from reportlab.lib.enums import TA_LEFT, TA_RIGHT
 from reportlab.lib.pagesizes import A4, landscape
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.platypus import Image, KeepInFrame, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from starlette.datastructures import UploadFile as StarletteUploadFile
 
 from app.core.config import get_settings
@@ -45,7 +45,6 @@ from app.models import (
     FinanceCustomBank,
     FinanceTransaction,
     FinanceTransactionAttachment,
-    FinanceTransactionInstallment,
     FinanceTransactionInstallment,
     FertilizationItem,
     FertilizationSchedule,
