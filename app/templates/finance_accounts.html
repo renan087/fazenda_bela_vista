@@ -111,16 +111,16 @@
     width: 2.25rem;
     height: 2.25rem;
     border-radius: 0.9rem;
-    border: 1px solid rgba(34, 197, 94, 0.22);
-    background: rgba(240, 253, 244, 0.88);
-    color: #16a34a;
+    border: 1px solid rgba(203, 213, 225, 0.95);
+    background: rgba(255, 255, 255, 0.98);
+    color: #94a3b8;
     transition: transform 160ms ease, box-shadow 160ms ease, background-color 160ms ease;
 }
 
 .finance-payables-check:hover {
     transform: translateY(-1px);
-    box-shadow: 0 10px 18px -16px rgba(22, 163, 74, 0.45);
-    background: rgba(220, 252, 231, 0.98);
+    box-shadow: 0 10px 18px -16px rgba(148, 163, 184, 0.35);
+    background: rgba(248, 250, 252, 0.98);
 }
 </style>
 <div class="stock-page-shell space-y-6">
@@ -459,7 +459,7 @@
                             {{ module_period_picker_inline(finance_payables_selected_range or 'current_month', finance_payables_filter_start_date, finance_payables_filter_end_date, 'past', 'Filtre por período') }}
                         </div>
                     </div>
-                    <label class="stock-filter-field stock-filter-field-input finance-payables-filter-search {% if finance_payables_search %}is-filtered{% endif %}">
+                    <div class="stock-filter-field stock-filter-field-input finance-payables-filter-search {% if finance_payables_search %}is-filtered{% endif %}">
                         <div class="stock-search-field">
                             <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
                                 <circle cx="8.5" cy="8.5" r="5.75"></circle>
@@ -467,7 +467,7 @@
                             </svg>
                             <input type="search" name="payables_search" value="{{ finance_payables_search or '' }}" placeholder="Buscar conta, categoria ou produto" data-finance-payables-search>
                         </div>
-                    </label>
+                    </div>
                     <div class="stock-filter-field stock-filter-field-actions flex flex-nowrap items-end gap-3">
                         {% if finance_payables_filters_active %}
                         <a href="{{ finance_payables_clear_url }}" class="shrink-0 rounded-xl bg-white px-4 py-3 text-sm font-semibold text-slate-700 ring-1 ring-slate-200 hover:bg-slate-100">Limpar</a>

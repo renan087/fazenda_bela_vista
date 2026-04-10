@@ -1497,8 +1497,29 @@ body.dashboard-schedule-modal-open {
         min-width: 0;
     }
 
+    .stock-filter-fields-row.finance-payables-filter-fields-row > .stock-filter-field-period {
+        position: relative;
+        z-index: 18;
+    }
+
     .stock-filter-fields-row.finance-payables-filter-fields-row > .finance-payables-filter-search .stock-search-field {
         width: 100%;
+        min-height: 3.2rem;
+        background: rgba(248, 250, 252, 0.92);
+        box-sizing: border-box;
+    }
+
+    .stock-filter-fields-row.finance-payables-filter-fields-row > .finance-payables-filter-search .stock-search-field input[type="search"] {
+        background: transparent !important;
+        -webkit-appearance: none;
+        appearance: none;
+    }
+
+    .stock-history-stage[data-finance-tab="payables"],
+    .stock-history-stage[data-finance-tab="payables"] .stock-filter-bar,
+    .stock-history-stage[data-finance-tab="payables"] .stock-filter-grid,
+    .stock-history-stage[data-finance-tab="payables"] [data-finance-payables-filter-collapse] {
+        overflow: visible;
     }
 
     .stock-filter-fields-row.finance-payables-filter-fields-row > .stock-filter-field-actions {
