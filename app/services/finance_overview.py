@@ -154,6 +154,7 @@ def _collect_finance_revenue_rows(
     farm_id: int,
     period_start: date | None,
     period_end: date | None,
+    finance_account_id: int | None = None,
 ) -> list[dict]:
     """
     Receitas no extrato (coluna Crédito).
@@ -169,6 +170,8 @@ def _collect_finance_revenue_rows(
     raw: list[dict] = []
 
     for account in repo.list_finance_accounts(farm_id=farm_id):
+        if finance_account_id and account.id != finance_account_id:
+            continue
         balance_date = account.initial_balance_date
         initial_balance = _f(account.initial_balance)
         if initial_balance == 0:
@@ -197,9 +200,12 @@ def _collect_finance_transaction_rows(
     farm_id: int,
     period_start: date | None,
     period_end: date | None,
+    finance_account_id: int | None = None,
 ) -> list[dict]:
     raw: list[dict] = []
     for transaction in repo.list_finance_transactions(farm_id=farm_id):
+        if finance_account_id and transaction.finance_account_id != finance_account_id:
+            continue
         if not _in_extract_period(transaction.launch_date, period_start, period_end):
             continue
         amount = abs(_f(transaction.amount))
@@ -239,6 +245,7 @@ def build_finance_extract_rows(
     farm_id: int | None,
     period_start: date | None = None,
     period_end: date | None = None,
+    finance_account_id: int | None = None,
     limit: int = EXTRACT_MAX_ROWS,
 ) -> tuple[list[dict], bool]:
     """Extrato: despesas = entradas em Gestão de compras, entradas em Suprimentos, patrimônio adquirido.
@@ -255,6 +262,8 @@ def build_finance_extract_rows(
     raw: list[dict] = []
 
     for entry in _filter_entries_by_farm(repo.list_purchased_inputs(), farm_id):
+        if finance_account_id and entry.finance_account_id != finance_account_id:
+            continue
         pd = entry.purchase_date
         if not _in_extract_period(pd, period_start, period_end):
             continue
@@ -267,13 +276,18 @@ def build_finance_extract_rows(
                 "ref_id": entry.id,
                 "module": "Suprimentos" if is_suprimento else "Gestão de compras",
                 "description": f"Entrada — {entry.name}",
-                "detail": "Registro de compra / entrada de estoque",
+                "detail": " • ".join(part for part in [
+                    "Registro de compra / entrada de estoque",
+                    entry.finance_account.account_name if getattr(entry, "finance_account", None) else None,
+                ] if part),
                 "debit": _f(entry.total_cost),
                 "credit": None,
             }
         )
 
     for asset in repo.list_equipment_assets(farm_id=farm_id):
+        if finance_account_id and asset.finance_account_id != finance_account_id:
+            continue
         ad = asset.acquisition_date
         if not _in_extract_period(ad, period_start, period_end):
             continue
@@ -287,7 +301,10 @@ def build_finance_extract_rows(
                 "ref_id": asset.id,
                 "module": "Patrimônio",
                 "description": f"Aquisição — {asset.name}",
-                "detail": asset.category or "Bem adquirido",
+                "detail": " • ".join(part for part in [
+                    asset.category or "Bem adquirido",
+                    asset.finance_account.account_name if getattr(asset, "finance_account", None) else None,
+                ] if part),
                 "debit": av,
                 "credit": None,
             }
@@ -299,6 +316,7 @@ def build_finance_extract_rows(
             farm_id=farm_id,
             period_start=period_start,
             period_end=period_end,
+            finance_account_id=finance_account_id,
         )
     )
     raw.extend(
@@ -307,6 +325,7 @@ def build_finance_extract_rows(
             farm_id=farm_id,
             period_start=period_start,
             period_end=period_end,
+            finance_account_id=finance_account_id,
         )
     )
 

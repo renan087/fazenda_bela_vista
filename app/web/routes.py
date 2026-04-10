@@ -2088,7 +2088,7 @@ def dashboard(
     )
 
 def _finance_export_query(request: Request) -> str:
-    allowed_keys = {"start_date", "end_date", "schedule_range", "extract_season_id"}
+    allowed_keys = {"start_date", "end_date", "schedule_range", "extract_season_id", "extract_finance_account_id"}
     params = [
         (key, value)
         for key, value in request.query_params.multi_items()
@@ -2120,6 +2120,7 @@ def _finance_management_dataset(
         else ""
     )
     extract_season_q = _int_or_none(request.query_params.get("extract_season_id"))
+    extract_finance_account_id = _int_or_none(request.query_params.get("extract_finance_account_id"))
     period_start_for_extract, period_end_for_extract, finance_filter_season_id, extract_range_empty = (
         _finance_extract_apply_season_bounds(
             repo,
@@ -2129,16 +2130,21 @@ def _finance_management_dataset(
             extract_season_id=extract_season_q,
         )
     )
-    finance_filters_active = _period_filter_explicit_in_query(request) or bool(finance_filter_season_id)
+    finance_filters_active = _period_filter_explicit_in_query(request) or bool(finance_filter_season_id) or bool(extract_finance_account_id)
     finance_filter_clear_url = _url_with_query(
         request,
         start_date=None,
         end_date=None,
         schedule_range=None,
         extract_season_id=None,
+        extract_finance_account_id=None,
     )
     finance_season_options = repo.list_crop_seasons(farm_id=farm_id) if farm_id else []
     finance_filter_season = repo.get_crop_season(finance_filter_season_id) if finance_filter_season_id else None
+    finance_account_options = repo.list_finance_accounts(farm_id=farm_id) if farm_id else []
+    finance_filter_account = next((item for item in finance_account_options if item.id == extract_finance_account_id), None)
+    if extract_finance_account_id and not finance_filter_account:
+        extract_finance_account_id = None
     finance_data = build_finance_overview_context(
         repo,
         farm_id=farm_id,
@@ -2164,6 +2170,7 @@ def _finance_management_dataset(
             farm_id=farm_id,
             period_start=period_start_for_extract,
             period_end=period_end_for_extract,
+            finance_account_id=extract_finance_account_id,
         )
     summary_credit_total = round(sum(float(row.get("credit") or 0) for row in extract_rows), 2)
     summary_debit_total = round(sum(float(row.get("debit") or 0) for row in extract_rows), 2)
@@ -2198,6 +2205,9 @@ def _finance_management_dataset(
     finance_data["finance_season_options"] = finance_season_options
     finance_data["finance_filter_season_id"] = finance_filter_season_id
     finance_data["finance_filter_season"] = finance_filter_season
+    finance_data["finance_account_options"] = finance_account_options
+    finance_data["finance_filter_account_id"] = extract_finance_account_id
+    finance_data["finance_filter_account"] = finance_filter_account
     finance_data["finance_export_query"] = _finance_export_query(request)
     finance_data["finance_extract_rows_raw"] = extract_rows
     finance_data["finance_summary"] = {
@@ -2344,6 +2354,23 @@ def _resolve_finance_transaction_account(
     if account.farm_id != active_farm.id:
         raise ValueError("A conta selecionada não pertence à fazenda ativa.")
     return account
+
+
+def _resolve_optional_finance_account(
+    repo: FarmRepository,
+    *,
+    active_farm: Farm | None,
+    account_id: str | int | None,
+) -> FinanceAccount | None:
+    if not active_farm:
+        return None
+    resolved_id = _int_or_none(account_id)
+    if resolved_id:
+        account = repo.get_finance_account(resolved_id)
+        if not account or account.farm_id != active_farm.id:
+            raise ValueError("A conta selecionada não pertence à fazenda ativa.")
+        return account
+    return next((item for item in repo.list_finance_accounts(farm_id=active_farm.id) if item.is_default), None)
 
 
 def _finance_transaction_payload(
@@ -4623,6 +4650,7 @@ def purchased_inputs_page(
     repo = _repository(db)
     scope = _global_scope_context(request, repo)
     effective_farm_id = farm_id or scope["active_farm_id"]
+    finance_accounts = repo.list_finance_accounts(farm_id=effective_farm_id) if effective_farm_id else []
     edit_input = repo.get_purchased_input(edit_id) if edit_id else None
     selected_item_type = item_type if item_type in {"insumo_agricola", "combustivel", "all"} else None
     normalized_item_type = item_type if item_type in {"insumo_agricola", "combustivel"} else None
@@ -4668,6 +4696,8 @@ def purchased_inputs_page(
             inputs_pagination=purchase_entries_pagination,
             inputs_catalog=stock_context["catalog_inputs"],
             inputs_catalog_all=repo.list_input_catalog(),
+            finance_account_options=finance_accounts,
+            finance_account_default=next((item for item in finance_accounts if item.is_default), None),
             input_stock=stock_context["input_stock"],
             stock_outputs=stock_outputs_pagination["items"],
             stock_outputs_pagination=stock_outputs_pagination,
@@ -4700,6 +4730,7 @@ async def create_purchased_input_action(
     package_size: float = Form(...),
     package_unit: str = Form(...),
     unit_price: float = Form(...),
+    finance_account_id: str | None = Form(None),
     purchase_date: str | None = Form(None),
     low_stock_threshold: str | None = Form(None),
     notes: str | None = Form(None),
@@ -4712,6 +4743,11 @@ async def create_purchased_input_action(
     scope, denied = _launch_scope_or_redirect(request, repo, "/insumos/comprados")
     if denied:
         return denied
+    try:
+        finance_account = _resolve_optional_finance_account(repo, active_farm=scope["active_farm"], account_id=finance_account_id)
+    except ValueError as exc:
+        _flash(request, "error", str(exc))
+        return _redirect_with_query("/insumos/comprados", item_type=item_type)
     try:
         attachment_payloads = _read_attachments(await _request_attachments(request))
     except ValueError as exc:
@@ -4727,6 +4763,7 @@ async def create_purchased_input_action(
             "package_size": package_size,
             "package_unit": package_unit,
             "unit_price": unit_price,
+            "finance_account_id": finance_account.id if finance_account else None,
             "purchase_date": purchase_date,
             "low_stock_threshold": low_stock_threshold,
             "notes": notes,
@@ -4756,6 +4793,7 @@ async def update_purchased_input_action(
     package_size: float = Form(...),
     package_unit: str = Form(...),
     unit_price: float = Form(...),
+    finance_account_id: str | None = Form(None),
     purchase_date: str | None = Form(None),
     low_stock_threshold: str | None = Form(None),
     notes: str | None = Form(None),
@@ -4776,6 +4814,11 @@ async def update_purchased_input_action(
         _flash(request, "error", "Este lancamento de entrada nao pertence ao contexto ativo.")
         return _redirect_for_request(request, "/insumos/comprados")
     try:
+        finance_account = _resolve_optional_finance_account(repo, active_farm=scope["active_farm"], account_id=finance_account_id)
+    except ValueError as exc:
+        _flash(request, "error", str(exc))
+        return _redirect_for_request(request, "/insumos/comprados", edit_id=input_id, item_type=item_type)
+    try:
         attachment_payloads = _read_attachments(await _request_attachments(request))
     except ValueError as exc:
         _flash(request, "error", str(exc))
@@ -4791,6 +4834,7 @@ async def update_purchased_input_action(
             "package_size": package_size,
             "package_unit": package_unit,
             "unit_price": unit_price,
+            "finance_account_id": finance_account.id if finance_account else None,
             "purchase_date": purchase_date,
             "low_stock_threshold": low_stock_threshold,
             "notes": notes,
@@ -6255,6 +6299,7 @@ def equipment_assets_page(
 ):
     repo = _repository(db)
     effective_farm_id = farm_id or _active_farm_id(request)
+    finance_accounts = repo.list_finance_accounts(farm_id=effective_farm_id) if effective_farm_id else []
     selected_status = status if status in {"ativo", "em_manutencao", "baixado"} else None
     assets = _sort_collection_desc(
         _filter_equipment_assets_by_status(repo.list_equipment_assets(farm_id=effective_farm_id), selected_status),
@@ -6276,6 +6321,8 @@ def equipment_assets_page(
             selected_asset_status=selected_status or "",
             assets_export_query=_assets_export_query(farm_id=effective_farm_id, status=selected_status),
             asset_category_options=EQUIPMENT_ASSET_CATEGORY_OPTIONS,
+            finance_account_options=finance_accounts,
+            finance_account_default=next((item for item in finance_accounts if item.is_default), None),
             current_year=today_in_app_timezone().year,
             assets=assets_pagination["items"],
             assets_pagination=assets_pagination,
@@ -6303,6 +6350,7 @@ def supplies_page(
     repo = _repository(db)
     scope = _global_scope_context(request, repo)
     effective_farm_id = farm_id or scope["active_farm_id"]
+    finance_accounts = repo.list_finance_accounts(farm_id=effective_farm_id) if effective_farm_id else []
     selected_input_id = input_id
     start = _date_or_none(start_date)
     end = _date_or_none(end_date)
@@ -6400,6 +6448,8 @@ def supplies_page(
                 stock_tab=selected_supplies_tab,
             ),
             supply_category_options=SUPPLY_CATEGORY_OPTIONS,
+            finance_account_options=finance_accounts,
+            finance_account_default=next((item for item in finance_accounts if item.is_default), None),
             supplies=purchase_entries_pagination["items"],
             supplies_pagination=purchase_entries_pagination,
             purchase_entries=purchase_entries_pagination["items"],
@@ -6432,6 +6482,7 @@ async def create_supply_action(
     package_unit: str = Form(...),
     category: str | None = Form(None),
     unit_price: float = Form(...),
+    finance_account_id: str | None = Form(None),
     purchase_date: str | None = Form(None),
     low_stock_threshold: str | None = Form(None),
     notes: str | None = Form(None),
@@ -6445,6 +6496,11 @@ async def create_supply_action(
     if denied:
         return denied
     target_base = f"/insumos/suprimentos?{urlencode({'farm_id': scope['active_farm_id']})}" if scope["active_farm_id"] else "/insumos/suprimentos"
+    try:
+        finance_account = _resolve_optional_finance_account(repo, active_farm=scope["active_farm"], account_id=finance_account_id)
+    except ValueError as exc:
+        _flash(request, "error", str(exc))
+        return _redirect(target_base)
     try:
         attachment_payloads = _read_attachments(await _request_attachments(request))
     except ValueError as exc:
@@ -6461,6 +6517,7 @@ async def create_supply_action(
             "package_unit": package_unit,
             "category": category,
             "unit_price": unit_price,
+            "finance_account_id": finance_account.id if finance_account else None,
             "purchase_date": purchase_date,
             "low_stock_threshold": low_stock_threshold,
             "notes": notes,
@@ -6490,6 +6547,7 @@ async def update_supply_action(
     package_unit: str = Form(...),
     category: str | None = Form(None),
     unit_price: float = Form(...),
+    finance_account_id: str | None = Form(None),
     purchase_date: str | None = Form(None),
     low_stock_threshold: str | None = Form(None),
     notes: str | None = Form(None),
@@ -6511,6 +6569,12 @@ async def update_supply_action(
         _flash(request, "error", "Este lancamento nao pertence ao contexto ativo.")
         return _redirect(target_url)
     try:
+        finance_account = _resolve_optional_finance_account(repo, active_farm=scope["active_farm"], account_id=finance_account_id)
+    except ValueError as exc:
+        _flash(request, "error", str(exc))
+        separator = "&" if "?" in target_url else "?"
+        return _redirect(f"{target_url}{separator}edit_id={input_id}")
+    try:
         attachment_payloads = _read_attachments(await _request_attachments(request))
     except ValueError as exc:
         _flash(request, "error", str(exc))
@@ -6528,6 +6592,7 @@ async def update_supply_action(
             "package_unit": package_unit,
             "category": category,
             "unit_price": unit_price,
+            "finance_account_id": finance_account.id if finance_account else None,
             "purchase_date": purchase_date,
             "low_stock_threshold": low_stock_threshold,
             "notes": notes,
@@ -6991,6 +7056,7 @@ async def create_equipment_asset_action(
     asset_code: str | None = Form(None),
     acquisition_date: str | None = Form(None),
     acquisition_value: str | None = Form(None),
+    finance_account_id: str | None = Form(None),
     status_value: str = Form("ativo", alias="status"),
     notes: str | None = Form(None),
     db: Session = Depends(get_db),
@@ -7002,6 +7068,11 @@ async def create_equipment_asset_action(
     scope, denied = _launch_scope_or_redirect(request, repo, "/insumos/patrimonio")
     if denied:
         return denied
+    try:
+        finance_account = _resolve_optional_finance_account(repo, active_farm=scope["active_farm"], account_id=finance_account_id)
+    except ValueError as exc:
+        _flash(request, "error", str(exc))
+        return _redirect("/insumos/patrimonio")
     normalized_category = _clean_text(category)
     if normalized_category not in EQUIPMENT_ASSET_CATEGORY_OPTIONS:
         _flash(request, "error", "Selecione uma categoria valida para o patrimonio.")
@@ -7028,6 +7099,7 @@ async def create_equipment_asset_action(
             "asset_code": _clean_text(asset_code),
             "acquisition_date": acquisition_date,
             "acquisition_value": _float_or_none(acquisition_value),
+            "finance_account_id": finance_account.id if finance_account else None,
             "status": status_value,
             "notes": notes,
         },
@@ -7058,6 +7130,7 @@ async def update_equipment_asset_action(
     asset_code: str | None = Form(None),
     acquisition_date: str | None = Form(None),
     acquisition_value: str | None = Form(None),
+    finance_account_id: str | None = Form(None),
     status_value: str = Form("ativo", alias="status"),
     notes: str | None = Form(None),
     db: Session = Depends(get_db),
@@ -7076,6 +7149,11 @@ async def update_equipment_asset_action(
     if not _farm_matches_scope(asset.farm_id, scope):
         _flash(request, "error", "Este patrimonio nao pertence ao contexto ativo.")
         return _redirect_for_request(request, "/insumos/patrimonio")
+    try:
+        finance_account = _resolve_optional_finance_account(repo, active_farm=scope["active_farm"], account_id=finance_account_id)
+    except ValueError as exc:
+        _flash(request, "error", str(exc))
+        return _redirect_for_request(request, "/insumos/patrimonio", edit_id=asset_id)
     normalized_category = _clean_text(category)
     if normalized_category not in EQUIPMENT_ASSET_CATEGORY_OPTIONS and normalized_category != asset.category:
         _flash(request, "error", "Selecione uma categoria valida para o patrimonio.")
@@ -7103,6 +7181,7 @@ async def update_equipment_asset_action(
             "asset_code": _clean_text(asset_code),
             "acquisition_date": acquisition_date,
             "acquisition_value": _float_or_none(acquisition_value),
+            "finance_account_id": finance_account.id if finance_account else None,
             "status": status_value,
             "notes": notes,
         },

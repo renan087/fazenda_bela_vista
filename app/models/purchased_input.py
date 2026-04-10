@@ -12,6 +12,7 @@ class PurchasedInput(Base):
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
     input_id: Mapped[int] = mapped_column(ForeignKey("input_catalog.id"), nullable=True)
     farm_id: Mapped[int] = mapped_column(ForeignKey("farms.id"), nullable=True)
+    finance_account_id: Mapped[int] = mapped_column(ForeignKey("finance_accounts.id"), nullable=True)
     name: Mapped[str] = mapped_column(String(160), nullable=False)
     normalized_name: Mapped[str] = mapped_column(String(180), nullable=True)
     quantity_purchased: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False)
@@ -27,6 +28,7 @@ class PurchasedInput(Base):
 
     input_catalog = relationship("InputCatalog", back_populates="purchase_entries")
     farm = relationship("Farm", back_populates="purchased_inputs")
+    finance_account = relationship("FinanceAccount", back_populates="purchased_inputs")
     recommendations = relationship("InputRecommendation", back_populates="purchased_input")
     recommendation_items = relationship("InputRecommendationItem", back_populates="purchased_input")
     schedule_items = relationship("FertilizationScheduleItem", back_populates="purchased_input")

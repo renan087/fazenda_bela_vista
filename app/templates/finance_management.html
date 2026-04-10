@@ -107,6 +107,14 @@
                             {% endfor %}
                         </select>
                     </label>
+                    <label class="stock-filter-field stock-filter-field-input {% if finance_filter_account_id %}is-filtered{% endif %}">
+                        <select name="extract_finance_account_id" class="w-full rounded-xl border-slate-200 bg-white">
+                            <option value="">Todas as contas</option>
+                            {% for account in finance_account_options %}
+                            <option value="{{ account.id }}" {% if finance_filter_account_id == account.id %}selected{% endif %}>{{ account.account_name }}</option>
+                            {% endfor %}
+                        </select>
+                    </label>
                     <div class="stock-filter-field stock-filter-field-period {% if finance_filter_start_date or finance_filter_end_date %}is-filtered{% endif %}">
                         <div class="module-filter-period-row">
                             {{ module_period_picker_inline(selected_finance_range or ('custom' if finance_filter_start_date or finance_filter_end_date else ''), finance_filter_start_date, finance_filter_end_date, 'past', 'Filtre por período') }}

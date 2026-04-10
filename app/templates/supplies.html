@@ -504,6 +504,19 @@
                     <label><span class="mb-2 block text-sm font-medium">Alerta de estoque baixo</span><input type="number" step="0.01" min="0" name="low_stock_threshold" value="{{ edit_supply.low_stock_threshold if edit_supply and edit_supply.low_stock_threshold is not none else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" data-supply-threshold-input></label>
                     <label><span class="mb-2 block text-sm font-medium">Valor total da compra (R$)</span><input type="text" value="" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-200 text-slate-500" readonly data-supply-total-display></label>
                 </div>
+                <div class="grid gap-4 md:grid-cols-2">
+                    <label>
+                        <span class="mb-2 block text-sm font-medium">Conta bancária</span>
+                        {% set supply_selected_finance_account_id = edit_supply.finance_account_id if edit_supply and edit_supply.finance_account_id else (finance_account_default.id if finance_account_default else None) %}
+                        <select name="finance_account_id" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50">
+                            <option value="">Sem vínculo bancário</option>
+                            {% for account in finance_account_options %}
+                            <option value="{{ account.id }}" {% if supply_selected_finance_account_id == account.id %}selected{% endif %}>{{ account.account_name }}{% if account.bank_name %} • {{ account.bank_name }}{% endif %}</option>
+                            {% endfor %}
+                        </select>
+                        <span class="mt-2 block text-xs text-slate-500">Use a conta bancária que financiou esta compra. Quando houver conta padrão, ela já vem marcada.</span>
+                    </label>
+                </div>
                 <div class="grid gap-4 md:grid-cols-1">
                     <label><span class="mb-2 block text-sm font-medium">Saldo disponível</span><input type="text" value="{{ edit_supply.available_quantity if edit_supply else '' }}{% if edit_supply %} {{ edit_supply.package_unit }}{% endif %}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-200 text-slate-500" readonly></label>
                 </div>

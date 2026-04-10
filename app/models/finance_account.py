@@ -25,3 +25,5 @@ class FinanceAccount(Base):
     farm = relationship("Farm", back_populates="finance_accounts")
     custom_bank = relationship("FinanceCustomBank", back_populates="accounts")
     transactions = relationship("FinanceTransaction", back_populates="finance_account", cascade="all, delete-orphan")
+    purchased_inputs = relationship("PurchasedInput", back_populates="finance_account")
+    equipment_assets = relationship("EquipmentAsset", back_populates="finance_account")

@@ -416,6 +416,7 @@ def create_purchased_input(repository: FarmRepository, form: dict) -> PurchasedI
     item = PurchasedInput(
         input_id=catalog.id,
         farm_id=form.get("farm_id"),
+        finance_account_id=form.get("finance_account_id"),
         name=catalog.name,
         normalized_name=catalog.normalized_name,
         quantity_purchased=quantity_purchased,
@@ -457,6 +458,7 @@ def update_purchased_input(repository: FarmRepository, item: PurchasedInput, for
         {
             "input_id": catalog.id,
             "farm_id": form.get("farm_id"),
+            "finance_account_id": form.get("finance_account_id"),
             "name": catalog.name,
             "normalized_name": catalog.normalized_name,
             "quantity_purchased": quantity_purchased,
@@ -477,6 +479,7 @@ def create_equipment_asset(repository: FarmRepository, form: dict) -> EquipmentA
     return repository.create(
         EquipmentAsset(
             farm_id=form.get("farm_id"),
+            finance_account_id=form.get("finance_account_id"),
             name=form["name"],
             category=form["category"],
             manufacturer=form.get("manufacturer"),
@@ -496,6 +499,7 @@ def update_equipment_asset(repository: FarmRepository, asset: EquipmentAsset, fo
         asset,
         {
             "farm_id": form.get("farm_id"),
+            "finance_account_id": form.get("finance_account_id"),
             "name": form["name"],
             "category": form["category"],
             "manufacturer": form.get("manufacturer"),

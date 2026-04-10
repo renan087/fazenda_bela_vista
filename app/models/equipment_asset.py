@@ -11,6 +11,7 @@ class EquipmentAsset(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
     farm_id: Mapped[int] = mapped_column(ForeignKey("farms.id"), nullable=True)
+    finance_account_id: Mapped[int] = mapped_column(ForeignKey("finance_accounts.id"), nullable=True)
     name: Mapped[str] = mapped_column(String(180), nullable=False)
     category: Mapped[str] = mapped_column(String(120), nullable=False)
     manufacturer: Mapped[str] = mapped_column(String(180), nullable=True)
@@ -23,4 +24,5 @@ class EquipmentAsset(Base):
     notes: Mapped[str] = mapped_column(Text, nullable=True)
 
     farm = relationship("Farm", back_populates="equipment_assets")
+    finance_account = relationship("FinanceAccount", back_populates="equipment_assets")
     attachments = relationship("EquipmentAssetAttachment", back_populates="equipment_asset", cascade="all, delete-orphan")
