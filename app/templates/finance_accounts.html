@@ -181,7 +181,7 @@
                     <div class="sticky top-0 z-10 -mx-1 bg-white/95 px-1 py-1 backdrop-blur">
                         <div class="flex flex-wrap justify-end gap-3 rounded-[1.5rem] px-2 py-2 sm:px-3">
                             <button type="button" class="rounded-2xl bg-slate-100 px-4 py-3 font-semibold text-slate-700 hover:bg-slate-200" data-finance-account-close>Cancelar</button>
-                            <button form="finance-account-form" class="rounded-2xl bg-brand-500 px-4 py-3 font-semibold text-white hover:bg-brand-700">Salvar</button>
+                            <button form="finance-account-form" class="rounded-2xl bg-brand-500 px-4 py-3 font-semibold text-white hover:bg-brand-700 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-100" data-finance-account-save>Salvar</button>
                         </div>
                     </div>
                     <div class="grid gap-4 md:grid-cols-2">
@@ -243,13 +243,14 @@
                     <div class="grid gap-4 md:grid-cols-2">
                         <label>
                             <span class="mb-2 block text-sm font-medium">Agência</span>
-                            <input type="text" name="branch_number" value="{{ edit_finance_account.branch_number if edit_finance_account else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50">
+                            <input type="text" name="branch_number" value="{{ edit_finance_account.branch_number if edit_finance_account else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" data-finance-branch-input>
                         </label>
                         <label>
                             <span class="mb-2 block text-sm font-medium">Número da conta</span>
-                            <input type="text" name="account_number" value="{{ edit_finance_account.account_number if edit_finance_account else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50">
+                            <input type="text" name="account_number" value="{{ edit_finance_account.account_number if edit_finance_account else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" data-finance-account-number-input>
                         </label>
                     </div>
+                    <p class="hidden -mt-1 text-xs font-medium text-rose-600" data-finance-duplicate-feedback>Já existe uma conta cadastrada com a mesma agência e número da conta.</p>
                     <label class="flex items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
                         <input type="checkbox" name="is_default" value="true" class="rounded border-slate-300 text-brand-600 focus:ring-brand-500" {% if edit_finance_account and edit_finance_account.is_default %}checked{% endif %}>
                         <span class="text-sm font-medium text-slate-700">Definir como conta padrão da fazenda</span>
@@ -275,10 +276,24 @@
     const balanceDisplayInput = document.querySelector('[data-finance-balance-display]');
     const modeLabel = document.querySelector('[data-finance-account-mode-label]');
     const modalTitle = document.querySelector('[data-finance-account-title]');
+    const saveButton = document.querySelector('[data-finance-account-save]');
+    const branchInput = document.querySelector('[data-finance-branch-input]');
+    const accountNumberInput = document.querySelector('[data-finance-account-number-input]');
+    const duplicateFeedback = document.querySelector('[data-finance-duplicate-feedback]');
     const formInitialState = form ? new FormData(form) : null;
     const createFormAction = '/gestao-financeira/contas';
+    const existingFinanceAccounts = [
+        {% for account in finance_accounts %}
+        {
+            id: {{ account.id }},
+            branch: {{ (account.branch_number or '')|tojson }},
+            account: {{ (account.account_number or '')|tojson }},
+        },
+        {% endfor %}
+    ];
 
     const normalize = (value) => (value || '').toString().normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+    const normalizeAccountIdentity = (value) => (value || '').toString().replace(/[^0-9A-Za-z]/g, '').toUpperCase();
 
     if (searchInput && rows.length) {
         searchInput.addEventListener('input', () => {
@@ -362,6 +377,7 @@
         setBankPickerPlaceholder();
         if (balanceRawInput) balanceRawInput.value = '0.00';
         if (balanceDisplayInput) balanceDisplayInput.value = 'R$ 0,00';
+        validateFinanceAccountDuplicate();
     };
 
     const syncFinanceAccountFormState = () => {
@@ -413,6 +429,31 @@
         document.querySelectorAll('[data-custom-bank-fields]').forEach((element) => {
             element.classList.toggle('hidden', !(document.querySelector('[data-bank-code-input]')?.value === '__other__'));
         });
+        validateFinanceAccountDuplicate();
+    };
+
+    const currentEditingId = () => {
+        const match = form?.action.match(/\/contas\/(\d+)\/editar$/);
+        return match ? Number(match[1]) : null;
+    };
+
+    const validateFinanceAccountDuplicate = () => {
+        if (!branchInput || !accountNumberInput || !duplicateFeedback || !saveButton) return false;
+        const normalizedBranch = normalizeAccountIdentity(branchInput.value);
+        const normalizedAccount = normalizeAccountIdentity(accountNumberInput.value);
+        if (!normalizedBranch || !normalizedAccount) {
+            duplicateFeedback.classList.add('hidden');
+            saveButton.disabled = false;
+            return false;
+        }
+        const editingId = currentEditingId();
+        const isDuplicate = existingFinanceAccounts.some((item) => {
+            if (editingId && item.id === editingId) return false;
+            return normalizeAccountIdentity(item.branch) === normalizedBranch && normalizeAccountIdentity(item.account) === normalizedAccount;
+        });
+        duplicateFeedback.classList.toggle('hidden', !isDuplicate);
+        saveButton.disabled = isDuplicate;
+        return isDuplicate;
     };
 
     const closeModal = () => {
@@ -436,6 +477,7 @@
     if (shouldOpenModal) {
         modal?.showModal();
         lockBackgroundScroll();
+        validateFinanceAccountDuplicate();
     }
 
     const centsDigitsFromRaw = (rawValue) => {
@@ -533,6 +575,14 @@
             syncCurrencyFields();
         });
     }
+
+    branchInput?.addEventListener('input', validateFinanceAccountDuplicate);
+    accountNumberInput?.addEventListener('input', validateFinanceAccountDuplicate);
+    form?.addEventListener('submit', (event) => {
+        if (validateFinanceAccountDuplicate()) {
+            event.preventDefault();
+        }
+    });
 
     document.querySelectorAll('[data-bank-picker-root]').forEach((root) => {
         const trigger = root.querySelector('[data-bank-picker-trigger]');
