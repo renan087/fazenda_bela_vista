@@ -171,7 +171,7 @@ def _collect_finance_revenue_rows(
     for account in repo.list_finance_accounts(farm_id=farm_id):
         balance_date = account.initial_balance_date
         initial_balance = _f(account.initial_balance)
-        if initial_balance <= 0:
+        if initial_balance == 0:
             continue
         if not _in_extract_period(balance_date, period_start, period_end):
             continue
@@ -183,8 +183,8 @@ def _collect_finance_revenue_rows(
                 "module": "Contas",
                 "description": f"Saldo inicial — {account.account_name}",
                 "detail": f"({account.bank_code}) {account.bank_name}",
-                "debit": None,
-                "credit": initial_balance,
+                "debit": abs(initial_balance) if initial_balance < 0 else None,
+                "credit": initial_balance if initial_balance > 0 else None,
             }
         )
 

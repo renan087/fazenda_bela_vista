@@ -2203,6 +2203,32 @@ def _cleanup_custom_bank_if_unused(repo: FarmRepository, custom_bank_id: int | N
         repo.delete(custom_bank)
 
 
+def _normalize_finance_account_identity(value: str | None) -> str:
+    return "".join(char for char in str(value or "").strip() if char.isalnum()).upper()
+
+
+def _validate_finance_account_uniqueness(
+    repo: FarmRepository,
+    *,
+    farm_id: int,
+    branch_number: str | None,
+    account_number: str | None,
+    ignore_id: int | None = None,
+) -> None:
+    normalized_branch = _normalize_finance_account_identity(branch_number)
+    normalized_account = _normalize_finance_account_identity(account_number)
+    if not normalized_branch or not normalized_account:
+        return
+    for account in repo.list_finance_accounts(farm_id=farm_id):
+        if ignore_id is not None and account.id == ignore_id:
+            continue
+        if (
+            _normalize_finance_account_identity(account.branch_number) == normalized_branch
+            and _normalize_finance_account_identity(account.account_number) == normalized_account
+        ):
+            raise ValueError("Já existe uma conta cadastrada com a mesma agência e número da conta.")
+
+
 def _find_matching_custom_bank(repo: FarmRepository, bank_code: str, bank_name: str) -> FinanceCustomBank | None:
     normalized_code = (bank_code or "").strip()
     normalized_name = unicodedata.normalize("NFD", (bank_name or "").strip())
@@ -2565,6 +2591,16 @@ def create_finance_account_action(
     except ValueError as exc:
         _flash(request, "error", str(exc))
         return _redirect(_finance_accounts_modal_query(request, launch=True))
+    try:
+        _validate_finance_account_uniqueness(
+            repo,
+            farm_id=active_farm.id,
+            branch_number=payload["branch_number"],
+            account_number=payload["account_number"],
+        )
+    except ValueError as exc:
+        _flash(request, "error", str(exc))
+        return _redirect(_finance_accounts_modal_query(request, launch=True))
 
     if payload["is_default"]:
         _finance_accounts_set_default(repo, active_farm.id)
@@ -2642,6 +2678,17 @@ def update_finance_account_action(
             account_number,
             is_default,
             repo,
+        )
+    except ValueError as exc:
+        _flash(request, "error", str(exc))
+        return _redirect(_finance_accounts_modal_query(request, edit_id=account_id))
+    try:
+        _validate_finance_account_uniqueness(
+            repo,
+            farm_id=active_farm.id,
+            branch_number=payload["branch_number"],
+            account_number=payload["account_number"],
+            ignore_id=account.id,
         )
     except ValueError as exc:
         _flash(request, "error", str(exc))
@@ -2730,6 +2777,8 @@ def set_default_finance_account_action(
         return _redirect("/gestao-financeira/contas")
     if not active_farm or account.farm_id != active_farm.id:
         _flash(request, "error", "Esta conta não pertence à fazenda ativa.")
+        return _redirect("/gestao-financeira/contas")
+    if account.is_default:
         return _redirect("/gestao-financeira/contas")
     _finance_accounts_set_default(repo, active_farm.id, keep_id=account.id)
     repo.update(account, {"is_default": True})
