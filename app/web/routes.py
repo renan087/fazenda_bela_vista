@@ -40,6 +40,7 @@ from app.models import (
     EquipmentAsset,
     EquipmentAssetAttachment,
     Farm,
+    FinanceAccount,
     FertilizationItem,
     FertilizationSchedule,
     FertilizationRecord,
@@ -166,6 +167,19 @@ SUPPLY_CATEGORY_OPTIONS = [
     "Ferramentas e consumíveis",
     "EPIs",
     "Outros",
+]
+FINANCE_BANK_OPTIONS = [
+    {"code": "001", "name": "Banco do Brasil S.A.", "mark": "BB", "bg": "#fde047", "fg": "#1d4ed8"},
+    {"code": "237", "name": "Banco Bradesco S.A.", "mark": "B", "bg": "#e11d48", "fg": "#ffffff"},
+    {"code": "341", "name": "Itaú Unibanco S.A.", "mark": "I", "bg": "#f97316", "fg": "#ffffff"},
+    {"code": "104", "name": "Caixa Econômica Federal", "mark": "CA", "bg": "#2563eb", "fg": "#ffffff"},
+    {"code": "033", "name": "Banco Santander (Brasil) S.A.", "mark": "S", "bg": "#dc2626", "fg": "#ffffff"},
+    {"code": "756", "name": "Banco Cooperativo do Brasil S.A. (Sicoob)", "mark": "SC", "bg": "#16a34a", "fg": "#ffffff"},
+    {"code": "748", "name": "Banco Cooperativo Sicredi S.A.", "mark": "SI", "bg": "#22c55e", "fg": "#ffffff"},
+    {"code": "077", "name": "Banco Inter S.A.", "mark": "IN", "bg": "#f97316", "fg": "#ffffff"},
+    {"code": "260", "name": "Nu Pagamentos S.A. (Nubank)", "mark": "NU", "bg": "#7c3aed", "fg": "#ffffff"},
+    {"code": "336", "name": "Banco C6 S.A.", "mark": "C6", "bg": "#111827", "fg": "#ffffff"},
+    {"code": "422", "name": "Banco Safra S.A.", "mark": "SA", "bg": "#0f766e", "fg": "#ffffff"},
 ]
 MENU_ITEM_VISIBILITY_RULES = {
     "users": has_admin_access,
@@ -2131,6 +2145,69 @@ def _finance_management_dataset(
     return finance_data
 
 
+def _finance_bank_option_map() -> dict[str, dict]:
+    return {item["code"]: item for item in FINANCE_BANK_OPTIONS}
+
+
+def _finance_accounts_modal_query(request: Request, *, edit_id: int | None = None, launch: bool | None = None) -> str:
+    params = dict(request.query_params)
+    if edit_id is None:
+        params.pop("edit_id", None)
+    else:
+        params["edit_id"] = str(edit_id)
+    if launch:
+        params["launch"] = "1"
+    else:
+        params.pop("launch", None)
+    if params:
+        return f"/gestao-financeira/contas?{urlencode(params)}"
+    return "/gestao-financeira/contas"
+
+
+def _finance_accounts_set_default(repo: FarmRepository, farm_id: int, keep_id: int | None = None) -> None:
+    for account in repo.list_finance_accounts(farm_id=farm_id):
+        if keep_id is not None and account.id == keep_id:
+            continue
+        if account.is_default:
+            account.is_default = False
+            repo.db.add(account)
+
+
+def _finance_accounts_parse_form(
+    account_name: str,
+    initial_balance_date: str,
+    initial_balance: str,
+    bank_code: str,
+    bank_name: str,
+    branch_number: str | None,
+    account_number: str | None,
+    is_default: bool,
+) -> dict:
+    bank_map = _finance_bank_option_map()
+    normalized_bank_code = (bank_code or "").strip()
+    selected_bank = bank_map.get(normalized_bank_code)
+    if not account_name.strip():
+        raise ValueError("Informe o nome da conta bancária.")
+    if not initial_balance_date:
+        raise ValueError("Informe a data do saldo inicial.")
+    try:
+        parsed_initial_balance = round(float(initial_balance or 0), 2)
+    except (TypeError, ValueError):
+        raise ValueError("Informe um saldo inicial válido.")
+    if not selected_bank:
+        raise ValueError("Selecione um banco da lista.")
+    return {
+        "account_name": account_name.strip(),
+        "initial_balance_date": date.fromisoformat(initial_balance_date),
+        "initial_balance": parsed_initial_balance,
+        "bank_code": selected_bank["code"],
+        "bank_name": selected_bank["name"] if not (bank_name or "").strip() else bank_name.strip(),
+        "branch_number": (branch_number or "").strip(),
+        "account_number": (account_number or "").strip(),
+        "is_default": bool(is_default),
+    }
+
+
 @router.get("/gestao-financeira")
 def finance_management_page(
     request: Request,
@@ -2324,6 +2401,190 @@ def export_finance_management_pdf(
         media_type="application/pdf",
         headers={"Content-Disposition": 'attachment; filename="gestao_financeira.pdf"'},
     )
+
+
+@router.get("/gestao-financeira/contas")
+def finance_accounts_page(
+    request: Request,
+    edit_id: int | None = None,
+    launch: int | None = None,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+    csrf_token: str = Depends(get_csrf_token),
+):
+    repo = _repository(db)
+    scope = _global_scope_context(request, repo)
+    active_farm = scope.get("active_farm")
+    accounts = repo.list_finance_accounts(farm_id=active_farm.id) if active_farm else []
+    edit_account = repo.get_finance_account(edit_id) if edit_id else None
+    if edit_account and (not active_farm or edit_account.farm_id != active_farm.id):
+        _flash(request, "error", "Esta conta não pertence à fazenda ativa.")
+        return _redirect("/gestao-financeira/contas")
+    return templates.TemplateResponse(
+        "finance_accounts.html",
+        _base_context(
+            request,
+            user,
+            csrf_token,
+            "finance_accounts",
+            title="Contas",
+            _repo=repo,
+            active_farm=active_farm,
+            finance_accounts=accounts,
+            finance_account_total=len(accounts),
+            finance_account_default=next((item for item in accounts if item.is_default), None),
+            edit_finance_account=edit_account,
+            finance_bank_options=FINANCE_BANK_OPTIONS,
+            finance_open_launch_modal=bool(launch or edit_account),
+        ),
+    )
+
+
+@router.post("/gestao-financeira/contas")
+def create_finance_account_action(
+    request: Request,
+    csrf_token: str = Form(...),
+    account_name: str = Form(...),
+    initial_balance_date: str = Form(...),
+    initial_balance: str = Form("0"),
+    bank_code: str = Form(...),
+    bank_name: str = Form(""),
+    branch_number: str | None = Form(None),
+    account_number: str | None = Form(None),
+    is_default: bool = Form(False),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    del user
+    validate_csrf(request, csrf_token)
+    repo = _repository(db)
+    scope = _global_scope_context(request, repo)
+    active_farm = scope.get("active_farm")
+    if not active_farm:
+        _flash(request, "error", "Selecione uma fazenda ativa antes de cadastrar uma conta.")
+        return _redirect("/gestao-financeira/contas")
+    try:
+        payload = _finance_accounts_parse_form(
+            account_name,
+            initial_balance_date,
+            initial_balance,
+            bank_code,
+            bank_name,
+            branch_number,
+            account_number,
+            is_default,
+        )
+    except ValueError as exc:
+        _flash(request, "error", str(exc))
+        return _redirect(_finance_accounts_modal_query(request, launch=True))
+
+    if payload["is_default"]:
+        _finance_accounts_set_default(repo, active_farm.id)
+
+    account = FinanceAccount(
+        farm_id=active_farm.id,
+        account_name=payload["account_name"],
+        initial_balance_date=payload["initial_balance_date"],
+        initial_balance=payload["initial_balance"],
+        bank_code=payload["bank_code"],
+        bank_name=payload["bank_name"],
+        branch_number=payload["branch_number"],
+        account_number=payload["account_number"],
+        is_default=payload["is_default"],
+        created_at=app_now(),
+    )
+    repo.db.add(account)
+    repo.db.commit()
+    _flash(request, "success", "Conta bancária cadastrada com sucesso.")
+    return _redirect("/gestao-financeira/contas")
+
+
+@router.post("/gestao-financeira/contas/{account_id}/editar")
+def update_finance_account_action(
+    request: Request,
+    account_id: int,
+    csrf_token: str = Form(...),
+    account_name: str = Form(...),
+    initial_balance_date: str = Form(...),
+    initial_balance: str = Form("0"),
+    bank_code: str = Form(...),
+    bank_name: str = Form(""),
+    branch_number: str | None = Form(None),
+    account_number: str | None = Form(None),
+    is_default: bool = Form(False),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    del user
+    validate_csrf(request, csrf_token)
+    repo = _repository(db)
+    scope = _global_scope_context(request, repo)
+    active_farm = scope.get("active_farm")
+    account = repo.get_finance_account(account_id)
+    if not account:
+        _flash(request, "error", "Conta bancária não encontrada.")
+        return _redirect("/gestao-financeira/contas")
+    if not active_farm or account.farm_id != active_farm.id:
+        _flash(request, "error", "Esta conta não pertence à fazenda ativa.")
+        return _redirect("/gestao-financeira/contas")
+    try:
+        payload = _finance_accounts_parse_form(
+            account_name,
+            initial_balance_date,
+            initial_balance,
+            bank_code,
+            bank_name,
+            branch_number,
+            account_number,
+            is_default,
+        )
+    except ValueError as exc:
+        _flash(request, "error", str(exc))
+        return _redirect(_finance_accounts_modal_query(request, edit_id=account_id))
+
+    if payload["is_default"]:
+        _finance_accounts_set_default(repo, active_farm.id, keep_id=account.id)
+
+    repo.update(
+        account,
+        {
+            "account_name": payload["account_name"],
+            "initial_balance_date": payload["initial_balance_date"],
+            "initial_balance": payload["initial_balance"],
+            "bank_code": payload["bank_code"],
+            "bank_name": payload["bank_name"],
+            "branch_number": payload["branch_number"],
+            "account_number": payload["account_number"],
+            "is_default": payload["is_default"],
+        },
+    )
+    _flash(request, "success", "Conta bancária atualizada com sucesso.")
+    return _redirect("/gestao-financeira/contas")
+
+
+@router.post("/gestao-financeira/contas/{account_id}/excluir")
+def delete_finance_account_action(
+    request: Request,
+    account_id: int,
+    csrf_token: str = Form(...),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    del user
+    validate_csrf(request, csrf_token)
+    repo = _repository(db)
+    scope = _global_scope_context(request, repo)
+    active_farm = scope.get("active_farm")
+    account = repo.get_finance_account(account_id)
+    if not account:
+        _flash(request, "error", "Conta bancária não encontrada.")
+        return _redirect("/gestao-financeira/contas")
+    if not active_farm or account.farm_id != active_farm.id:
+        _flash(request, "error", "Esta conta não pertence à fazenda ativa.")
+        return _redirect("/gestao-financeira/contas")
+    repo.delete(account)
+    _flash(request, "success", "Conta bancária excluída com sucesso.")
+    return _redirect("/gestao-financeira/contas")
 
 
 @router.get("/talhoes", include_in_schema=False)

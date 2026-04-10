@@ -12,6 +12,7 @@ from app.models import (
     EquipmentAsset,
     EquipmentAssetAttachment,
     Farm,
+    FinanceAccount,
     FertilizationItem,
     FertilizationSchedule,
     FertilizationScheduleItem,
@@ -209,6 +210,24 @@ class FarmRepository:
             self.db.query(CropSeason)
             .options(joinedload(CropSeason.farm), joinedload(CropSeason.variety))
             .filter(CropSeason.id == season_id)
+            .first()
+        )
+
+    def list_finance_accounts(self, farm_id: int | None = None) -> list[FinanceAccount]:
+        query = (
+            self.db.query(FinanceAccount)
+            .options(joinedload(FinanceAccount.farm))
+            .order_by(FinanceAccount.is_default.desc(), FinanceAccount.account_name.asc(), FinanceAccount.id.desc())
+        )
+        if farm_id:
+            query = query.filter(FinanceAccount.farm_id == farm_id)
+        return query.all()
+
+    def get_finance_account(self, account_id: int) -> FinanceAccount | None:
+        return (
+            self.db.query(FinanceAccount)
+            .options(joinedload(FinanceAccount.farm))
+            .filter(FinanceAccount.id == account_id)
             .first()
         )
 

@@ -208,16 +208,17 @@
                         <span class="erp-sidebar-label">{{ label }}</span>
                     </a>
                     {% endfor %}
-                    {% set finance_pages = ['finance_management'] %}
+                    {% set finance_pages = ['finance_management', 'finance_accounts'] %}
                     <div class="rounded-2xl {% if page in finance_pages %}bg-slate-900/80{% endif %}" data-submenu-group>
                         <button type="button" class="erp-sidebar-link flex w-full items-center justify-between rounded-2xl px-4 py-3 text-left transition-all duration-300 ease-in-out {% if page in finance_pages %}text-white{% else %}text-slate-300 hover:bg-slate-900 hover:text-white{% endif %}" data-submenu-toggle="finance-menu" data-submenu-parent aria-haspopup="true" aria-expanded="{% if page in finance_pages %}true{% else %}false{% endif %}">
-                            <span class="flex items-center gap-3"><span class="erp-sidebar-icon">{{ nav_icon('finance_management') }}</span><span class="erp-sidebar-label">Gestao financeira</span></span>
+                            <span class="flex items-center gap-3"><span class="erp-sidebar-icon">{{ nav_icon('finance_management') }}</span><span class="erp-sidebar-label">Gestão Financeira</span></span>
                             <span class="erp-sidebar-parent-indicator inline-flex h-8 w-8 items-center justify-center rounded-full bg-white/5 text-slate-300/80 transition-transform duration-200 ease-out" aria-hidden="true">
                                 <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
                             </span>
                         </button>
                         <div id="finance-menu" class="sidebar-submenu-panel {% if page not in finance_pages %}hidden {% endif %}space-y-1 px-3 pb-3" data-submenu-panel>
                             <a href="/gestao-financeira" class="sidebar-submenu-link block rounded-xl px-3 py-2 text-sm {% if page == 'finance_management' %}bg-brand-500 text-white{% else %}text-slate-300 hover:bg-slate-800 hover:text-white{% endif %}" data-submenu-link>Extrato</a>
+                            <a href="/gestao-financeira/contas" class="sidebar-submenu-link block rounded-xl px-3 py-2 text-sm {% if page == 'finance_accounts' %}bg-brand-500 text-white{% else %}text-slate-300 hover:bg-slate-800 hover:text-white{% endif %}" data-submenu-link>Contas</a>
                         </div>
                     </div>
                     {% set config_pages = [] %}

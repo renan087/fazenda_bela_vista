@@ -23,3 +23,4 @@ class Farm(Base):
     input_recommendations = relationship("InputRecommendation", back_populates="farm", cascade="all, delete-orphan")
     stock_outputs = relationship("StockOutput", back_populates="farm", cascade="all, delete-orphan")
     equipment_assets = relationship("EquipmentAsset", back_populates="farm", cascade="all, delete-orphan")
+    finance_accounts = relationship("FinanceAccount", back_populates="farm", cascade="all, delete-orphan")

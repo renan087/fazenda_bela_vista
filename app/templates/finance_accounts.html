@@ -1,0 +1,329 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="stock-page-shell space-y-6">
+    <section class="stock-page-header rounded-[2rem] p-5 shadow-panel">
+        <div class="flex flex-wrap items-start justify-between gap-4">
+            <div class="min-w-0 stock-page-header-intro" data-stock-header-intro>
+                <div class="stock-page-header-intro-inner">
+                    <h2 class="stock-page-card-title">Contas</h2>
+                    <p class="stock-page-card-subtitle">Cadastre contas bancárias da fazenda ativa e defina a conta padrão operacional.</p>
+                </div>
+            </div>
+            {% if active_farm %}
+            <div class="stock-header-actions stock-header-actions-top">
+                <button type="button" class="stock-action-button stock-action-button-primary" data-finance-account-open>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                        <path d="M12 5v14"/>
+                        <path d="M5 12h14"/>
+                    </svg>
+                    <span class="stock-action-button-label">Nova conta</span>
+                </button>
+            </div>
+            {% endif %}
+        </div>
+    </section>
+
+    {% if not active_farm %}
+    <div class="rounded-[1.5rem] border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600">
+        Escolha uma <strong>fazenda</strong> no contexto global para cadastrar e visualizar as contas bancárias.
+    </div>
+    {% else %}
+    <section class="stock-panel rounded-[2rem] bg-white p-5 shadow-panel" data-stock-fade-panel>
+        <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+            <div class="finance-summary-card finance-summary-card-neutral rounded-2xl border p-4 shadow-sm">
+                <p class="text-[0.65rem] font-semibold uppercase tracking-[0.2em]">Fazenda ativa</p>
+                <p class="mt-1 text-lg font-semibold text-slate-900">{{ active_farm.name }}</p>
+            </div>
+            <div class="finance-summary-card finance-summary-card-positive rounded-2xl border p-4 shadow-sm">
+                <p class="text-[0.65rem] font-semibold uppercase tracking-[0.2em]">Contas cadastradas</p>
+                <p class="mt-1 text-lg font-semibold text-slate-900">{{ finance_account_total }}</p>
+            </div>
+            <div class="finance-summary-card finance-summary-card-neutral rounded-2xl border p-4 shadow-sm">
+                <p class="text-[0.65rem] font-semibold uppercase tracking-[0.2em]">Conta padrão</p>
+                <p class="mt-1 text-lg font-semibold text-slate-900">{{ finance_account_default.account_name if finance_account_default else "Não definida" }}</p>
+            </div>
+        </div>
+    </section>
+
+    <section class="stock-panel rounded-[2rem] bg-white p-6 shadow-panel" data-stock-fade-panel>
+        <div class="stock-history-toolbar">
+            <div class="stock-search-field">
+                <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+                    <circle cx="8.5" cy="8.5" r="5.75"></circle>
+                    <path d="M13 13l4 4"></path>
+                </svg>
+                <input type="search" placeholder="Buscar conta, banco, agência ou número" data-finance-accounts-search>
+            </div>
+        </div>
+        <div class="mt-5 grid gap-4 lg:grid-cols-2 2xl:grid-cols-3">
+            {% for account in finance_accounts %}
+            {% set bank = (finance_bank_options | selectattr('code', 'equalto', account.bank_code) | list | first) %}
+            <article class="rounded-[1.5rem] border border-slate-200 bg-slate-50/80 p-5 shadow-sm transition hover:border-brand-200 hover:bg-white" data-finance-account-row data-finance-account-search="{{ (account.account_name or '') ~ ' ' ~ (account.bank_name or '') ~ ' ' ~ (account.branch_number or '') ~ ' ' ~ (account.account_number or '') }}">
+                <div class="flex items-start justify-between gap-3">
+                    <div class="min-w-0">
+                        <div class="flex flex-wrap items-center gap-2">
+                            <span class="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-sm font-bold" style="background: {{ bank.bg if bank else '#e2e8f0' }}; color: {{ bank.fg if bank else '#334155' }};">
+                                {{ bank.mark if bank else account.bank_code }}
+                            </span>
+                            <div class="min-w-0">
+                                <p class="truncate text-lg font-semibold text-slate-900">{{ account.account_name }}</p>
+                                <p class="truncate text-sm text-slate-500">({{ account.bank_code }}) {{ account.bank_name }}</p>
+                            </div>
+                        </div>
+                    </div>
+                    {% if account.is_default %}
+                    <span class="rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-700">Padrão</span>
+                    {% endif %}
+                </div>
+                <div class="mt-4 grid gap-3 sm:grid-cols-2">
+                    <div class="rounded-2xl bg-white px-4 py-3 ring-1 ring-slate-200/80">
+                        <p class="text-xs uppercase tracking-[0.18em] text-slate-400">Saldo inicial</p>
+                        <p class="mt-2 text-base font-semibold text-slate-900">R$ {{ account.initial_balance|decimal_br }}</p>
+                    </div>
+                    <div class="rounded-2xl bg-white px-4 py-3 ring-1 ring-slate-200/80">
+                        <p class="text-xs uppercase tracking-[0.18em] text-slate-400">Data base</p>
+                        <p class="mt-2 text-base font-semibold text-slate-900">{{ account.initial_balance_date.strftime('%d/%m/%Y') if account.initial_balance_date else "-" }}</p>
+                    </div>
+                    <div class="rounded-2xl bg-white px-4 py-3 ring-1 ring-slate-200/80">
+                        <p class="text-xs uppercase tracking-[0.18em] text-slate-400">Agência</p>
+                        <p class="mt-2 text-sm font-semibold text-slate-900">{{ account.branch_number or "-" }}</p>
+                    </div>
+                    <div class="rounded-2xl bg-white px-4 py-3 ring-1 ring-slate-200/80">
+                        <p class="text-xs uppercase tracking-[0.18em] text-slate-400">Conta</p>
+                        <p class="mt-2 text-sm font-semibold text-slate-900">{{ account.account_number or "-" }}</p>
+                    </div>
+                </div>
+                <div class="mt-4 flex items-center justify-end gap-2">
+                    <a href="/gestao-financeira/contas?edit_id={{ account.id }}" class="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-100" title="Editar">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M12 20h9"/>
+                            <path d="M16.5 3.5a2.1 2.1 0 1 1 3 3L7 19l-4 1 1-4Z"/>
+                        </svg>
+                    </a>
+                    <form method="post" action="/gestao-financeira/contas/{{ account.id }}/excluir" onsubmit="return confirm('Excluir a conta {{ account.account_name }}?');">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                        <button type="submit" class="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 text-rose-600 hover:bg-rose-50" title="Excluir">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M3 6h18"/>
+                                <path d="M8 6V4h8v2"/>
+                                <path d="M19 6l-1 14H6L5 6"/>
+                                <path d="M10 11v6"/>
+                                <path d="M14 11v6"/>
+                            </svg>
+                        </button>
+                    </form>
+                </div>
+            </article>
+            {% else %}
+            <div class="rounded-[1.5rem] border border-dashed border-slate-200 bg-slate-50/80 px-6 py-10 text-center text-slate-500 lg:col-span-2 2xl:col-span-3">
+                Nenhuma conta bancária cadastrada para a fazenda ativa.
+            </div>
+            {% endfor %}
+        </div>
+        <p class="stock-search-empty mt-4 hidden text-sm text-slate-500" data-finance-accounts-empty>Nenhuma conta corresponde à busca digitada.</p>
+    </section>
+
+    <dialog id="finance-account-modal" class="app-modal rounded-[2rem] p-0 shadow-2xl w-full max-w-4xl overflow-hidden">
+        <div class="bg-white p-6 sm:p-8">
+            <div class="flex items-start justify-between gap-4">
+                <div class="min-w-0">
+                    <p class="text-xs uppercase tracking-[0.35em] text-slate-400">{% if edit_finance_account %}Editar conta{% else %}Nova conta{% endif %}</p>
+                    <h3 class="mt-2 text-2xl font-semibold purchased-modal-heading">{% if edit_finance_account %}Editar conta bancária{% else %}Nova conta bancária{% endif %}</h3>
+                    <p class="mt-2 text-sm text-slate-500 purchased-modal-subtitle">Centralize os dados bancários da fazenda no mesmo padrão visual e operacional do restante do sistema.</p>
+                </div>
+                <button type="button" class="modal-close-button" aria-label="Fechar" data-finance-account-close>
+                    <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <path d="M18 6 6 18"/>
+                        <path d="m6 6 12 12"/>
+                    </svg>
+                </button>
+            </div>
+
+            <div class="mt-6 max-h-[72vh] overflow-y-auto pr-1" data-modal-scroll>
+                <form id="finance-account-form" method="post" action="{% if edit_finance_account %}/gestao-financeira/contas/{{ edit_finance_account.id }}/editar{% else %}/gestao-financeira/contas{% endif %}" class="grid gap-4" data-finance-account-form>
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    <div class="rounded-[1.5rem] border border-brand-100 bg-brand-50/50 p-4">
+                        <div class="flex flex-wrap items-start justify-between gap-4">
+                            <div class="min-w-0">
+                                <p class="text-xs uppercase tracking-[0.3em] text-slate-400">Contexto do lançamento</p>
+                                <p class="mt-2 text-sm text-slate-500">A conta será vinculada à fazenda ativa do sistema.</p>
+                            </div>
+                        </div>
+                        <div class="mt-4">
+                            <label>
+                                <span class="mb-2 block text-sm font-medium">Fazenda ativa</span>
+                                <input type="text" value="{{ active_farm.name }}" disabled class="min-h-[3.25rem] w-full cursor-not-allowed rounded-2xl border-slate-200 bg-slate-100 text-slate-500">
+                            </label>
+                        </div>
+                    </div>
+                    <div class="sticky top-0 z-10 -mx-1 bg-white/95 px-1 py-1 backdrop-blur">
+                        <div class="flex flex-wrap justify-end gap-3 rounded-[1.5rem] px-2 py-2 sm:px-3">
+                            <button type="button" class="rounded-2xl bg-slate-100 px-4 py-3 font-semibold text-slate-700 hover:bg-slate-200" data-finance-account-close>Cancelar</button>
+                            <button form="finance-account-form" class="rounded-2xl bg-brand-500 px-4 py-3 font-semibold text-white hover:bg-brand-700">Salvar</button>
+                        </div>
+                    </div>
+                    <div class="grid gap-4 md:grid-cols-2">
+                        <label>
+                            <span class="mb-2 block text-sm font-medium">Nome da conta bancária</span>
+                            <input type="text" name="account_name" value="{{ edit_finance_account.account_name if edit_finance_account else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required>
+                        </label>
+                        <label>
+                            <span class="mb-2 block text-sm font-medium">Data do saldo inicial</span>
+                            <input type="date" name="initial_balance_date" value="{{ edit_finance_account.initial_balance_date.isoformat() if edit_finance_account and edit_finance_account.initial_balance_date else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required>
+                        </label>
+                    </div>
+                    <div class="grid gap-4 md:grid-cols-2">
+                        <label>
+                            <span class="mb-2 block text-sm font-medium">Saldo inicial</span>
+                            <input type="number" step="0.01" name="initial_balance" value="{{ edit_finance_account.initial_balance if edit_finance_account else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required>
+                        </label>
+                        <div class="relative" data-bank-picker-root>
+                            <span class="mb-2 block text-sm font-medium">Banco</span>
+                            <input type="hidden" name="bank_code" value="{{ edit_finance_account.bank_code if edit_finance_account else '' }}" data-bank-code-input required>
+                            <input type="hidden" name="bank_name" value="{{ edit_finance_account.bank_name if edit_finance_account else '' }}" data-bank-name-input required>
+                            {% set selected_bank = (finance_bank_options | selectattr('code', 'equalto', (edit_finance_account.bank_code if edit_finance_account else '')) | list | first) %}
+                            <button type="button" class="flex min-h-[3.25rem] w-full items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-left" data-bank-picker-trigger aria-expanded="false">
+                                <span class="flex min-w-0 items-center gap-3" data-bank-picker-display>
+                                    {% if selected_bank %}
+                                    <span class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-xs font-bold" style="background: {{ selected_bank.bg }}; color: {{ selected_bank.fg }};">{{ selected_bank.mark }}</span>
+                                    <span class="truncate text-sm font-medium text-slate-900">({{ selected_bank.code }}) {{ selected_bank.name }}</span>
+                                    {% else %}
+                                    <span class="text-sm font-medium text-slate-500">Selecione o banco</span>
+                                    {% endif %}
+                                </span>
+                                <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true" class="h-4 w-4 shrink-0 text-slate-500">
+                                    <path d="m5 7 5 5 5-5"/>
+                                </svg>
+                            </button>
+                            <div class="absolute left-0 right-0 top-[calc(100%+0.5rem)] z-30 hidden overflow-hidden rounded-[1.5rem] border border-slate-200 bg-white shadow-2xl" data-bank-picker-menu>
+                                <div class="max-h-72 overflow-y-auto py-2">
+                                    {% for bank in finance_bank_options %}
+                                    <button type="button" class="flex w-full items-center gap-3 px-4 py-3 text-left transition hover:bg-slate-50" data-bank-option data-bank-code="{{ bank.code }}" data-bank-name="{{ bank.name }}" data-bank-mark="{{ bank.mark }}" data-bank-bg="{{ bank.bg }}" data-bank-fg="{{ bank.fg }}">
+                                        <span class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-xs font-bold" style="background: {{ bank.bg }}; color: {{ bank.fg }};">{{ bank.mark }}</span>
+                                        <span class="text-sm font-medium text-slate-800">({{ bank.code }}) {{ bank.name }}</span>
+                                    </button>
+                                    {% endfor %}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="grid gap-4 md:grid-cols-2">
+                        <label>
+                            <span class="mb-2 block text-sm font-medium">Agência</span>
+                            <input type="text" name="branch_number" value="{{ edit_finance_account.branch_number if edit_finance_account else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50">
+                        </label>
+                        <label>
+                            <span class="mb-2 block text-sm font-medium">Número da conta</span>
+                            <input type="text" name="account_number" value="{{ edit_finance_account.account_number if edit_finance_account else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50">
+                        </label>
+                    </div>
+                    <label class="flex items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                        <input type="checkbox" name="is_default" value="true" class="rounded border-slate-300 text-brand-600 focus:ring-brand-500" {% if edit_finance_account and edit_finance_account.is_default %}checked{% endif %}>
+                        <span class="text-sm font-medium text-slate-700">Definir como conta padrão da fazenda</span>
+                    </label>
+                </form>
+            </div>
+        </div>
+    </dialog>
+    {% endif %}
+</div>
+
+<script>
+(() => {
+    const searchInput = document.querySelector('[data-finance-accounts-search]');
+    const rows = Array.from(document.querySelectorAll('[data-finance-account-row]'));
+    const emptyState = document.querySelector('[data-finance-accounts-empty]');
+    const modal = document.getElementById('finance-account-modal');
+    const openButton = document.querySelector('[data-finance-account-open]');
+    const closeButtons = Array.from(document.querySelectorAll('[data-finance-account-close]'));
+    const shouldOpenModal = {% if finance_open_launch_modal %}true{% else %}false{% endif %};
+
+    const normalize = (value) => (value || '').toString().normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+
+    if (searchInput && rows.length) {
+        searchInput.addEventListener('input', () => {
+            const needle = normalize(searchInput.value);
+            let visible = 0;
+            rows.forEach((row) => {
+                const match = !needle || normalize(row.dataset.financeAccountSearch).includes(needle);
+                row.classList.toggle('hidden', !match);
+                if (match) visible += 1;
+            });
+            emptyState?.classList.toggle('hidden', visible > 0);
+        });
+    }
+
+    const cleanUrl = () => {
+        const url = new URL(window.location.href);
+        url.searchParams.delete('edit_id');
+        url.searchParams.delete('launch');
+        return `${url.pathname}${url.search}${url.hash}`;
+    };
+
+    const closeModal = () => {
+        if (!modal) return;
+        modal.close();
+        window.history.replaceState({}, '', cleanUrl());
+    };
+
+    openButton?.addEventListener('click', () => modal?.showModal());
+    closeButtons.forEach((button) => button.addEventListener('click', closeModal));
+    modal?.addEventListener('click', (event) => {
+        const rect = modal.getBoundingClientRect();
+        const inside = event.clientX >= rect.left && event.clientX <= rect.right && event.clientY >= rect.top && event.clientY <= rect.bottom;
+        if (!inside) closeModal();
+    });
+
+    if (shouldOpenModal) {
+        modal?.showModal();
+    }
+
+    document.querySelectorAll('[data-bank-picker-root]').forEach((root) => {
+        const trigger = root.querySelector('[data-bank-picker-trigger]');
+        const menu = root.querySelector('[data-bank-picker-menu]');
+        const display = root.querySelector('[data-bank-picker-display]');
+        const codeInput = root.querySelector('[data-bank-code-input]');
+        const nameInput = root.querySelector('[data-bank-name-input]');
+        const options = Array.from(root.querySelectorAll('[data-bank-option]'));
+
+        const closeMenu = () => {
+            menu?.classList.add('hidden');
+            trigger?.setAttribute('aria-expanded', 'false');
+        };
+
+        trigger?.addEventListener('click', () => {
+            const willOpen = menu?.classList.contains('hidden');
+            document.querySelectorAll('[data-bank-picker-menu]').forEach((other) => other.classList.add('hidden'));
+            document.querySelectorAll('[data-bank-picker-trigger]').forEach((other) => other.setAttribute('aria-expanded', 'false'));
+            if (willOpen) {
+                menu?.classList.remove('hidden');
+                trigger.setAttribute('aria-expanded', 'true');
+            }
+        });
+
+        options.forEach((option) => {
+            option.addEventListener('click', () => {
+                const code = option.dataset.bankCode || '';
+                const name = option.dataset.bankName || '';
+                const mark = option.dataset.bankMark || code;
+                const bg = option.dataset.bankBg || '#e2e8f0';
+                const fg = option.dataset.bankFg || '#334155';
+                codeInput.value = code;
+                nameInput.value = name;
+                if (display) {
+                    display.innerHTML = `
+                        <span class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-xs font-bold" style="background: ${bg}; color: ${fg};">${mark}</span>
+                        <span class="truncate text-sm font-medium text-slate-900">(${code}) ${name}</span>
+                    `;
+                }
+                closeMenu();
+            });
+        });
+
+        document.addEventListener('click', (event) => {
+            if (!root.contains(event.target)) closeMenu();
+        });
+    });
+})();
+</script>
+{% endblock %}
