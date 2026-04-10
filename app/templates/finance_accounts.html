@@ -459,15 +459,9 @@
                             {{ module_period_picker_inline(finance_payables_selected_range or 'current_month', finance_payables_filter_start_date, finance_payables_filter_end_date, 'past', 'Filtre por período') }}
                         </div>
                     </div>
-                    <div class="stock-filter-field stock-filter-field-input finance-payables-filter-search {% if finance_payables_search %}is-filtered{% endif %}">
-                        <div class="stock-search-field">
-                            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
-                                <circle cx="8.5" cy="8.5" r="5.75"></circle>
-                                <path d="M13 13l4 4"></path>
-                            </svg>
-                            <input type="search" name="payables_search" value="{{ finance_payables_search or '' }}" placeholder="Buscar conta, categoria ou produto" data-finance-payables-search>
-                        </div>
-                    </div>
+                    <label class="stock-filter-field stock-filter-field-input {% if finance_payables_search %}is-filtered{% endif %}">
+                        <input type="search" name="payables_search" value="{{ finance_payables_search or '' }}" placeholder="Buscar conta, categoria ou produto" class="w-full rounded-xl border-slate-200 bg-white" data-finance-payables-search>
+                    </label>
                     <div class="stock-filter-field stock-filter-field-actions flex flex-nowrap items-end gap-3">
                         {% if finance_payables_filters_active %}
                         <a href="{{ finance_payables_clear_url }}" class="shrink-0 rounded-xl bg-white px-4 py-3 text-sm font-semibold text-slate-700 ring-1 ring-slate-200 hover:bg-slate-100">Limpar</a>

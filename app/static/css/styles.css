@@ -1514,18 +1514,7 @@ body.dashboard-schedule-modal-open {
         z-index: 18;
     }
 
-    .stock-filter-fields-row.finance-payables-filter-fields-row > .finance-payables-filter-search .stock-search-field {
-        width: 100%;
-        /* Mesma altura do select padrão do sistema (~42px) */
-        min-height: 2.625rem;
-        padding-top: 0.5rem;
-        padding-bottom: 0.5rem;
-        background: rgba(248, 250, 252, 0.92);
-        box-sizing: border-box;
-    }
-
-    .stock-filter-fields-row.finance-payables-filter-fields-row > .finance-payables-filter-search .stock-search-field input[type="search"] {
-        background: transparent !important;
+    .stock-filter-fields-row.finance-payables-filter-fields-row > .stock-filter-field-input input[type="search"] {
         -webkit-appearance: none;
         appearance: none;
     }
@@ -2025,7 +2014,8 @@ body.dashboard-schedule-modal-open {
     min-width: 0;
 }
 
-[data-stock-filter-collapse] > .stock-summary-collapse-inner {
+[data-stock-filter-collapse] > .stock-summary-collapse-inner,
+[data-finance-payables-filter-collapse] > .stock-summary-collapse-inner {
     overflow: visible;
 }
 
