@@ -904,11 +904,18 @@ def _build_stock_context(
                 return (1, available, row["name"].lower())
         return (2, available, row["name"].lower())
 
+    def _is_inventory_item(catalog_item) -> bool:
+        return bool(catalog_item and getattr(catalog_item, "item_type", None) in {"insumo_agricola", "combustivel"})
+
     catalog_inputs = repo.list_input_catalog(item_type=item_type)
+    if not item_type:
+        catalog_inputs = [item for item in catalog_inputs if _is_inventory_item(item)]
     if input_id:
         catalog_inputs = [item for item in catalog_inputs if item.id == input_id]
 
     purchase_entries = repo.list_purchased_inputs(item_type=item_type)
+    if not item_type:
+        purchase_entries = [entry for entry in purchase_entries if _is_inventory_item(entry.input_catalog)]
     if input_id:
         purchase_entries = [entry for entry in purchase_entries if entry.input_id == input_id]
     if farm_id:
@@ -921,6 +928,8 @@ def _build_stock_context(
         stock_outputs = [output for output in stock_outputs if output.farm_id in (None, farm_id)]
     if item_type:
         stock_outputs = [output for output in stock_outputs if output.input_catalog and output.input_catalog.item_type == item_type]
+    else:
+        stock_outputs = [output for output in stock_outputs if _is_inventory_item(output.input_catalog)]
 
     input_stock = {
         item.id: {
