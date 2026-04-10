@@ -248,8 +248,10 @@
     const openButton = document.querySelector('[data-finance-account-open]');
     const closeButtons = Array.from(document.querySelectorAll('[data-finance-account-close]'));
     const shouldOpenModal = {% if finance_open_launch_modal %}true{% else %}false{% endif %};
+    const form = document.querySelector('[data-finance-account-form]');
     const balanceRawInput = document.querySelector('[data-finance-balance-raw]');
     const balanceDisplayInput = document.querySelector('[data-finance-balance-display]');
+    const formInitialState = form ? new FormData(form) : null;
 
     const normalize = (value) => (value || '').toString().normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
 
@@ -273,13 +275,66 @@
         return `${url.pathname}${url.search}${url.hash}`;
     };
 
+    const syncFinanceAccountFormState = () => {
+        if (!form || !formInitialState) return;
+        form.reset();
+        Array.from(form.elements).forEach((element) => {
+            if (!(element instanceof HTMLInputElement || element instanceof HTMLSelectElement || element instanceof HTMLTextAreaElement)) return;
+            const name = element.name;
+            if (!name) return;
+            if (element.type === 'checkbox' || element.type === 'radio') {
+                element.checked = formInitialState.getAll(name).includes(element.value);
+                return;
+            }
+            element.value = formInitialState.get(name) || '';
+        });
+        if (balanceRawInput && balanceDisplayInput) {
+            balanceDisplayInput.value = formatCurrencyDisplay(balanceRawInput.value || '');
+        }
+        document.querySelectorAll('[data-bank-picker-root]').forEach((root) => {
+            const trigger = root.querySelector('[data-bank-picker-trigger]');
+            const menu = root.querySelector('[data-bank-picker-menu]');
+            const display = root.querySelector('[data-bank-picker-display]');
+            const codeInput = root.querySelector('[data-bank-code-input]');
+            const nameInput = root.querySelector('[data-bank-name-input]');
+            const option = root.querySelector(`[data-bank-option][data-bank-code="${CSS.escape(codeInput?.value || '')}"]`);
+            menu?.classList.add('hidden');
+            trigger?.setAttribute('aria-expanded', 'false');
+            const optionCode = option?.dataset.bankCode || '';
+            const optionName = option?.dataset.bankName || '';
+            const optionMark = option?.dataset.bankMark || '';
+            const optionBg = option?.dataset.bankBg || '#e2e8f0';
+            const optionFg = option?.dataset.bankFg || '#334155';
+            if (display) {
+                if (optionCode && optionName) {
+                    display.innerHTML = `
+                        <span class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-xs font-bold" style="background: ${optionBg}; color: ${optionFg};">${optionMark || optionCode}</span>
+                        <span class="truncate text-sm font-medium text-slate-900">(${optionCode}) ${optionName}</span>
+                    `;
+                } else {
+                    display.innerHTML = '<span class="text-sm font-medium text-slate-500">Selecione o banco</span>';
+                }
+            }
+            if (codeInput?.value !== '__other__' && nameInput && !nameInput.value) {
+                nameInput.value = optionName;
+            }
+        });
+        document.querySelectorAll('[data-custom-bank-fields]').forEach((element) => {
+            element.classList.toggle('hidden', !(document.querySelector('[data-bank-code-input]')?.value === '__other__'));
+        });
+    };
+
     const closeModal = () => {
         if (!modal) return;
+        syncFinanceAccountFormState();
         modal.close();
         window.history.replaceState({}, '', cleanUrl());
     };
 
-    openButton?.addEventListener('click', () => modal?.showModal());
+    openButton?.addEventListener('click', () => {
+        syncFinanceAccountFormState();
+        modal?.showModal();
+    });
     closeButtons.forEach((button) => button.addEventListener('click', closeModal));
     modal?.addEventListener('click', (event) => {
         const rect = modal.getBoundingClientRect();
