@@ -71,7 +71,12 @@
 
     <section class="stock-panel rounded-[2rem] bg-white p-6 shadow-panel" data-stock-fade-panel>
         <div class="stock-history-toolbar">
-            <div class="stock-search-field">
+            <div class="stock-tab-nav stock-segmented-control" data-segmented-control>
+                <div class="stock-segmented-indicator" aria-hidden="true" data-segmented-indicator></div>
+                <button type="button" class="stock-tab-link is-active" data-finance-tab-button="accounts">Contas</button>
+                <button type="button" class="stock-tab-link" data-finance-tab-button="transactions">Lançamentos</button>
+            </div>
+            <div class="stock-search-field" data-finance-tab-search="accounts">
                 <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
                     <circle cx="8.5" cy="8.5" r="5.75"></circle>
                     <path d="M13 13l4 4"></path>
@@ -79,6 +84,8 @@
                 <input type="search" placeholder="Buscar conta, banco, agência ou número" data-finance-accounts-search>
             </div>
         </div>
+
+        <div class="stock-history-stage mt-4" data-finance-tab="accounts">
         <div class="mt-5 grid gap-4 lg:grid-cols-2 2xl:grid-cols-3">
             {% for account in finance_accounts %}
             {% set bank = (finance_bank_options | selectattr('code', 'equalto', account.bank_code) | list | first) %}
@@ -131,7 +138,7 @@
                     </div>
                 </div>
                 <div class="mt-4 flex items-center justify-end gap-2">
-                    <a href="/gestao-financeira/contas?edit_id={{ account.id }}" class="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-100" title="Editar">
+                    <a href="/gestao-financeira/contas?finance_tab=accounts&edit_id={{ account.id }}" class="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-100" title="Editar">
                         <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <path d="M12 20h9"/>
                             <path d="M16.5 3.5a2.1 2.1 0 1 1 3 3L7 19l-4 1 1-4Z"/>
@@ -158,9 +165,9 @@
             {% endfor %}
         </div>
         <p class="stock-search-empty mt-4 hidden text-sm text-slate-500" data-finance-accounts-empty>Nenhuma conta corresponde à busca digitada.</p>
-    </section>
+        </div>
 
-    <section class="stock-panel rounded-[2rem] bg-white p-6 shadow-panel" data-stock-fade-panel>
+        <div class="stock-history-stage mt-4 hidden" data-finance-tab="transactions">
         <div class="stock-history-header">
             <div>
                 <p class="stock-history-kicker">Lançamentos manuais</p>
@@ -205,7 +212,7 @@
                             <td class="font-semibold {% if transaction.operation_type == 'receita' %}text-emerald-700{% else %}text-rose-600{% endif %}">R$ {{ transaction.amount|decimal_br }}</td>
                             <td>
                                 <div class="flex items-center justify-end gap-2">
-                                    <a href="/gestao-financeira/contas?transaction_edit_id={{ transaction.id }}" class="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-100" title="Editar">
+                                    <a href="/gestao-financeira/contas?finance_tab=transactions&transaction_edit_id={{ transaction.id }}" class="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-100" title="Editar">
                                         <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                             <path d="M12 20h9"/>
                                             <path d="M16.5 3.5a2.1 2.1 0 1 1 3 3L7 19l-4 1 1-4Z"/>
@@ -253,6 +260,7 @@
             Nenhum lançamento manual registrado para as contas da fazenda ativa.
         </div>
         {% endif %}
+        </div>
     </section>
 
     <dialog id="finance-account-modal" class="app-modal rounded-[2rem] p-0 shadow-2xl w-full max-w-4xl overflow-hidden">
@@ -542,6 +550,9 @@
     const searchInput = document.querySelector('[data-finance-accounts-search]');
     const rows = Array.from(document.querySelectorAll('[data-finance-account-row]'));
     const emptyState = document.querySelector('[data-finance-accounts-empty]');
+    const financeTabButtons = Array.from(document.querySelectorAll('[data-finance-tab-button]'));
+    const financeTabs = Array.from(document.querySelectorAll('[data-finance-tab]'));
+    const financeTabSearches = Array.from(document.querySelectorAll('[data-finance-tab-search]'));
     const accountModal = document.getElementById('finance-account-modal');
     const accountOpenButton = document.querySelector('[data-finance-account-open]');
     const accountCloseButtons = Array.from(document.querySelectorAll('[data-finance-account-close]'));
@@ -580,6 +591,7 @@
         despesa: {{ finance_transaction_expense_categories|tojson }},
         receita: {{ finance_transaction_revenue_categories|tojson }},
     };
+    let activeFinanceTab = new URL(window.location.href).searchParams.get('finance_tab') || ({% if finance_open_transaction_modal %}'transactions'{% elif finance_open_launch_modal %}'accounts'{% else %}'accounts'{% endif %});
     const existingFinanceAccounts = [
         {% for account in finance_accounts %}
         {
@@ -611,6 +623,45 @@
         return 0;
     };
 
+    const bindSegmentedControls = (root = document) => {
+        root.querySelectorAll('[data-segmented-control]').forEach((control) => {
+            const indicator = control.querySelector('[data-segmented-indicator]');
+            const sync = () => {
+                const active = control.querySelector('.stock-tab-link.is-active');
+                if (!(active instanceof HTMLElement) || !(indicator instanceof HTMLElement)) return;
+                const indicatorLeft = parseFloat(getComputedStyle(indicator).left || '0') || 0;
+                indicator.style.width = `${active.offsetWidth}px`;
+                indicator.style.transform = `translateX(${Math.max(active.offsetLeft - indicatorLeft, 0)}px)`;
+                control.classList.add('is-ready');
+            };
+            sync();
+            control._segmentedSync = sync;
+        });
+    };
+
+    const syncFinanceTabQuery = () => {
+        const url = new URL(window.location.href);
+        url.searchParams.set('finance_tab', activeFinanceTab);
+        window.history.replaceState({}, '', `${url.pathname}${url.search}${url.hash}`);
+    };
+
+    const setActiveFinanceTab = (tabName) => {
+        activeFinanceTab = tabName === 'transactions' ? 'transactions' : 'accounts';
+        financeTabs.forEach((tab) => {
+            tab.classList.toggle('hidden', tab.dataset.financeTab !== activeFinanceTab);
+        });
+        financeTabButtons.forEach((button) => {
+            button.classList.toggle('is-active', button.dataset.financeTabButton === activeFinanceTab);
+        });
+        financeTabSearches.forEach((search) => {
+            search.classList.toggle('hidden', search.dataset.financeTabSearch !== activeFinanceTab);
+        });
+        document.querySelectorAll('[data-segmented-control]').forEach((control) => {
+            control._segmentedSync?.();
+        });
+        syncFinanceTabQuery();
+    };
+
     if (searchInput && rows.length) {
         searchInput.addEventListener('input', () => {
             const needle = normalize(searchInput.value);
@@ -623,6 +674,12 @@
             emptyState?.classList.toggle('hidden', visible > 0);
         });
     }
+
+    financeTabButtons.forEach((button) => {
+        button.addEventListener('click', () => {
+            setActiveFinanceTab(button.dataset.financeTabButton || 'accounts');
+        });
+    });
 
     document.querySelectorAll('[data-finance-default-trigger]').forEach((button) => {
         button.addEventListener('click', (event) => {
@@ -868,10 +925,12 @@
         prepareFinanceAccountCreateMode();
         accountModal.close();
         unlockBackgroundScroll();
+        setActiveFinanceTab('accounts');
         window.history.replaceState({}, '', cleanUrl());
     };
 
     accountOpenButton?.addEventListener('click', () => {
+        setActiveFinanceTab('accounts');
         prepareFinanceAccountCreateMode();
         accountModal?.showModal();
         lockBackgroundScroll();
@@ -882,6 +941,7 @@
     });
 
     if (shouldOpenAccountModal) {
+        setActiveFinanceTab('accounts');
         accountModal?.showModal();
         lockBackgroundScroll();
         validateFinanceAccountDuplicate();
@@ -1062,10 +1122,12 @@
         prepareFinanceTransactionCreateMode();
         transactionModal.close();
         unlockBackgroundScroll();
+        setActiveFinanceTab('transactions');
         window.history.replaceState({}, '', cleanUrl());
     };
 
     transactionOpenButton?.addEventListener('click', () => {
+        setActiveFinanceTab('transactions');
         prepareFinanceTransactionCreateMode();
         transactionModal?.showModal();
         lockBackgroundScroll();
@@ -1076,6 +1138,7 @@
     });
 
     if (shouldOpenTransactionModal) {
+        setActiveFinanceTab('transactions');
         transactionModal?.showModal();
         lockBackgroundScroll();
         if (transactionAmountMask) {
@@ -1166,6 +1229,8 @@
         syncCustomBankFields();
     });
 
+    bindSegmentedControls();
+    setActiveFinanceTab(activeFinanceTab);
     syncFinanceHeaderEffects();
     window.addEventListener('scroll', syncFinanceHeaderEffects, { passive: true });
     window.addEventListener('resize', syncFinanceHeaderEffects);
