@@ -1370,6 +1370,48 @@ body.dashboard-schedule-modal-open {
         0 14px 28px -26px rgba(15, 23, 42, 0.28);
 }
 
+.finance-summary-card.finance-summary-card-positive {
+    border-color: rgba(167, 243, 208, 0.95);
+    background: linear-gradient(180deg, rgba(240, 253, 244, 0.98), rgba(236, 253, 245, 0.98));
+    color: rgb(22 101 52);
+}
+
+.finance-summary-card.finance-summary-card-positive p:first-child {
+    color: rgb(74 122 94);
+}
+
+.finance-summary-card.finance-summary-card-positive p:last-child {
+    color: rgb(22 101 52);
+}
+
+.finance-summary-card.finance-summary-card-negative {
+    border-color: rgba(254, 202, 202, 0.95);
+    background: linear-gradient(180deg, rgba(254, 242, 242, 0.98), rgba(254, 226, 226, 0.98));
+    color: rgb(153 27 27);
+}
+
+.finance-summary-card.finance-summary-card-negative p:first-child {
+    color: rgb(153 27 27 / 0.72);
+}
+
+.finance-summary-card.finance-summary-card-negative p:last-child {
+    color: rgb(153 27 27);
+}
+
+.finance-summary-card.finance-summary-card-neutral {
+    border-color: rgba(226, 232, 240, 0.98);
+    background: linear-gradient(180deg, rgba(248, 250, 252, 0.98), rgba(241, 245, 249, 0.98));
+    color: rgb(71 85 105);
+}
+
+.finance-summary-card.finance-summary-card-neutral p:first-child {
+    color: rgb(100 116 139);
+}
+
+.finance-summary-card.finance-summary-card-neutral p:last-child {
+    color: rgb(51 65 85);
+}
+
 .finance-summary-collapse {
     margin-top: 0;
 }

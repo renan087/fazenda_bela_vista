@@ -60,23 +60,21 @@
         <div class="stock-summary-collapse finance-summary-collapse" data-finance-summary-collapse>
         <div class="stock-summary-collapse-inner">
         <div class="grid gap-3 finance-summary-grid-mobile sm:grid-cols-2 lg:grid-cols-4 mt-4 md:mt-0">
-        <div class="finance-summary-card rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-            <p class="text-[0.65rem] font-semibold uppercase tracking-[0.2em] text-slate-400">Valor em estoque</p>
-            <p class="mt-1 text-lg font-semibold tabular-nums text-slate-900">{{ finance_currency.inventory_total }}</p>
+        <div class="finance-summary-card finance-summary-card-{% if finance_summary.balance_tone == 'positive' %}positive{% else %}negative{% endif %} rounded-2xl border p-4 shadow-sm">
+            <p class="text-[0.65rem] font-semibold uppercase tracking-[0.2em]">Saldo</p>
+            <p class="mt-1 text-lg font-semibold tabular-nums">{{ finance_summary.balance_fmt }}</p>
         </div>
-        <div class="finance-summary-card rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-            <p class="text-[0.65rem] font-semibold uppercase tracking-[0.2em] text-slate-400">Compras (histórico)</p>
-            <p class="mt-1 text-lg font-semibold tabular-nums text-slate-900">{{ finance_currency.purchase_total }}</p>
+        <div class="finance-summary-card finance-summary-card-positive rounded-2xl border p-4 shadow-sm">
+            <p class="text-[0.65rem] font-semibold uppercase tracking-[0.2em]">Crédito</p>
+            <p class="mt-1 text-lg font-semibold tabular-nums">{{ finance_summary.credit_fmt }}</p>
         </div>
-        {% if finance_scope_ready %}
-        <div class="finance-summary-card rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-            <p class="text-[0.65rem] font-semibold uppercase tracking-[0.2em] text-slate-400">Safra · operacional</p>
-            <p class="mt-1 text-lg font-semibold tabular-nums text-slate-900">{{ finance_currency.operational_season }}</p>
+        <div class="finance-summary-card finance-summary-card-negative rounded-2xl border p-4 shadow-sm">
+            <p class="text-[0.65rem] font-semibold uppercase tracking-[0.2em]">Débito</p>
+            <p class="mt-1 text-lg font-semibold tabular-nums">{{ finance_summary.debit_fmt }}</p>
         </div>
-        {% endif %}
-        <div class="finance-summary-card rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-            <p class="text-[0.65rem] font-semibold uppercase tracking-[0.2em] text-slate-400">Patrimônio (aquisição)</p>
-            <p class="mt-1 text-lg font-semibold tabular-nums text-slate-900">{{ finance_currency.assets }}</p>
+        <div class="finance-summary-card finance-summary-card-neutral rounded-2xl border p-4 shadow-sm">
+            <p class="text-[0.65rem] font-semibold uppercase tracking-[0.2em]">Lançamentos futuros</p>
+            <p class="mt-1 text-lg font-semibold tabular-nums">{{ finance_summary.future_fmt }}</p>
         </div>
         </div>
         </div>

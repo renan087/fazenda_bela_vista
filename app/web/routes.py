@@ -2072,6 +2072,9 @@ def _finance_management_dataset(
             period_start=period_start_for_extract,
             period_end=period_end_for_extract,
         )
+    summary_credit_total = round(sum(float(row.get("credit") or 0) for row in extract_rows), 2)
+    summary_debit_total = round(sum(float(row.get("debit") or 0) for row in extract_rows), 2)
+    summary_balance_total = round(summary_credit_total - summary_debit_total, 2)
     finance_data["finance_extract_rows"] = []
     for r in extract_rows:
         bal = float(r["balance"] or 0)
@@ -2104,6 +2107,17 @@ def _finance_management_dataset(
     finance_data["finance_filter_season"] = finance_filter_season
     finance_data["finance_export_query"] = _finance_export_query(request)
     finance_data["finance_extract_rows_raw"] = extract_rows
+    finance_data["finance_summary"] = {
+        "balance_total": summary_balance_total,
+        "credit_total": summary_credit_total,
+        "debit_total": summary_debit_total,
+        "future_total": 0.0,
+        "balance_fmt": _format_currency(summary_balance_total),
+        "credit_fmt": _format_currency(summary_credit_total),
+        "debit_fmt": _format_currency(summary_debit_total),
+        "future_fmt": _format_currency(0),
+        "balance_tone": "positive" if summary_balance_total >= 0 else "negative",
+    }
     finance_data["scope"] = scope
     return finance_data
 
