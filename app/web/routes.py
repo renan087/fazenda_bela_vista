@@ -2150,6 +2150,10 @@ def _finance_bank_option_map() -> dict[str, dict]:
     return {item["code"]: item for item in FINANCE_BANK_OPTIONS}
 
 
+def _finance_builtin_bank_codes() -> set[str]:
+    return {str(item["code"]).strip() for item in FINANCE_BANK_OPTIONS}
+
+
 def _finance_bank_choice_options(repo: FarmRepository) -> list[dict]:
     options = [dict(item, source="builtin") for item in FINANCE_BANK_OPTIONS]
     for custom in repo.list_finance_custom_banks():
@@ -2281,6 +2285,8 @@ def _finance_accounts_parse_form(
             raise ValueError("Informe o código do outro banco.")
         if not resolved_custom_name:
             raise ValueError("Informe o nome do outro banco.")
+        if resolved_custom_code in _finance_builtin_bank_codes():
+            raise ValueError("O código informado já existe na lista de bancos padrão.")
         existing_custom_bank = _find_matching_custom_bank(repo, resolved_custom_code, resolved_custom_name)
         if existing_custom_bank:
             payload.update(

@@ -27,7 +27,7 @@
                 </div>
             </div>
             {% if active_farm %}
-            <div class="stock-header-actions stock-header-actions-top">
+            <div class="stock-header-actions stock-header-actions-top stock-actions-row-mobile-adaptive finance-mobile-header-actions w-full max-[899px]:w-full">
                 <button type="button" class="stock-action-button stock-action-button-primary" data-finance-account-open>
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
                         <path d="M12 5v14"/>
@@ -170,12 +170,21 @@
                                 <p class="text-xs uppercase tracking-[0.3em] text-slate-400">Contexto do lançamento</p>
                                 <p class="mt-2 text-sm text-slate-500">A conta será vinculada à fazenda ativa do sistema.</p>
                             </div>
+                            <button type="button" class="stock-summary-toggle" data-finance-context-toggle aria-expanded="false">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                                    <path d="M5 12h14"/>
+                                    <path d="M12 5v14" data-finance-context-toggle-plus/>
+                                </svg>
+                                <span data-finance-context-toggle-label>Expandir</span>
+                            </button>
                         </div>
-                        <div class="mt-4">
-                            <label>
-                                <span class="mb-2 block text-sm font-medium">Fazenda ativa</span>
-                                <input type="text" value="{{ active_farm.name }}" disabled class="min-h-[3.25rem] w-full cursor-not-allowed rounded-2xl border-slate-200 bg-slate-100 text-slate-500">
-                            </label>
+                        <div class="stock-summary-collapse mt-4" data-finance-context-collapse>
+                            <div class="stock-summary-collapse-inner">
+                                <label>
+                                    <span class="mb-2 block text-sm font-medium">Fazenda ativa</span>
+                                    <input type="text" value="{{ active_farm.name }}" disabled class="min-h-[3.25rem] w-full cursor-not-allowed rounded-2xl border-slate-200 bg-slate-100 text-slate-500">
+                                </label>
+                            </div>
                         </div>
                     </div>
                     <div class="sticky top-0 z-10 -mx-1 bg-white/95 px-1 py-1 backdrop-blur">
@@ -209,7 +218,7 @@
                                 <span class="flex min-w-0 items-center gap-3" data-bank-picker-display>
                                     {% if selected_bank %}
                                     <span class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-xs font-bold" style="background: {{ selected_bank.bg }}; color: {{ selected_bank.fg }};">{{ selected_bank.mark }}</span>
-                                    <span class="truncate text-sm font-medium text-slate-900">({{ selected_bank.code }}) {{ selected_bank.name }}</span>
+                                    <span class="truncate text-sm font-medium text-slate-900">{% if selected_bank.code == '__other__' %}{{ selected_bank.name }}{% else %}({{ selected_bank.code }}) {{ selected_bank.name }}{% endif %}</span>
                                     {% else %}
                                     <span class="text-sm font-medium text-slate-500">Selecione o banco</span>
                                     {% endif %}
@@ -223,7 +232,7 @@
                                     {% for bank in finance_bank_options %}
                                     <button type="button" class="flex w-full items-center gap-3 px-4 py-3 text-left transition hover:bg-slate-50" data-bank-option data-bank-code="{{ bank.code }}" data-bank-name="{{ bank.name }}" data-bank-mark="{{ bank.mark }}" data-bank-bg="{{ bank.bg }}" data-bank-fg="{{ bank.fg }}" data-bank-source="{{ bank.source }}">
                                         <span class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-xs font-bold" style="background: {{ bank.bg }}; color: {{ bank.fg }};">{{ bank.mark }}</span>
-                                        <span class="text-sm font-medium text-slate-800">({{ bank.code }}) {{ bank.name }}</span>
+                                        <span class="text-sm font-medium text-slate-800">{% if bank.code == '__other__' %}{{ bank.name }}{% else %}({{ bank.code }}) {{ bank.name }}{% endif %}</span>
                                     </button>
                                     {% endfor %}
                                 </div>
@@ -240,6 +249,7 @@
                             <input type="text" name="custom_bank_name" value="{{ edit_finance_account.bank_name if edit_finance_account and edit_finance_account.custom_bank_id else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" data-custom-bank-name>
                         </label>
                     </div>
+                    <p class="hidden -mt-1 text-xs font-medium text-rose-600" data-finance-bank-code-feedback>O código informado já existe na lista de bancos padrão.</p>
                     <div class="grid gap-4 md:grid-cols-2">
                         <label>
                             <span class="mb-2 block text-sm font-medium">Agência</span>
@@ -280,6 +290,12 @@
     const branchInput = document.querySelector('[data-finance-branch-input]');
     const accountNumberInput = document.querySelector('[data-finance-account-number-input]');
     const duplicateFeedback = document.querySelector('[data-finance-duplicate-feedback]');
+    const customBankCodeInput = document.querySelector('[data-custom-bank-code]');
+    const bankCodeFeedback = document.querySelector('[data-finance-bank-code-feedback]');
+    const stickyHeader = document.querySelector('.stock-page-header');
+    const headerIntro = stickyHeader?.querySelector('[data-stock-header-intro]');
+    const fadingPanels = Array.from(document.querySelectorAll('[data-stock-fade-panel]'));
+    const mobileCompactMq = window.matchMedia('(max-width: 899px)');
     const formInitialState = form ? new FormData(form) : null;
     const createFormAction = '/gestao-financeira/contas';
     const existingFinanceAccounts = [
@@ -291,9 +307,27 @@
         },
         {% endfor %}
     ];
+    const builtinBankCodes = new Set([
+        {% for bank in finance_bank_options if bank.source == 'builtin' %}
+        {{ bank.code|tojson }},
+        {% endfor %}
+    ]);
 
     const normalize = (value) => (value || '').toString().normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
     const normalizeAccountIdentity = (value) => (value || '').toString().replace(/[^0-9A-Za-z]/g, '').toUpperCase();
+
+    const parseStickyTopPx = (el) => {
+        const raw = getComputedStyle(el).top;
+        if (!raw || raw === 'auto') return 0;
+        const pxMatch = /^([\d.]+)px$/.exec(raw);
+        if (pxMatch) return parseFloat(pxMatch[1]);
+        const remMatch = /^([\d.]+)rem$/.exec(raw);
+        if (remMatch) {
+            const rootPx = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
+            return parseFloat(remMatch[1]) * rootPx;
+        }
+        return 0;
+    };
 
     if (searchInput && rows.length) {
         searchInput.addEventListener('input', () => {
@@ -316,6 +350,80 @@
             window.setTimeout(() => form?.requestSubmit(), 220);
         });
     });
+
+    let compactRaf = null;
+    const syncFinanceHeaderCompact = () => {
+        compactRaf = null;
+        if (!stickyHeader) return;
+        if (!mobileCompactMq.matches) {
+            stickyHeader.classList.remove('is-compact');
+            if (headerIntro) headerIntro.removeAttribute('aria-hidden');
+            return;
+        }
+        const topPx = parseStickyTopPx(stickyHeader);
+        const rect = stickyHeader.getBoundingClientRect();
+        const isCompact = stickyHeader.classList.contains('is-compact');
+        let nextCompact = isCompact;
+        if (rect.top <= topPx + 2) nextCompact = true;
+        else if (rect.top > topPx + 8) nextCompact = false;
+        stickyHeader.classList.toggle('is-compact', nextCompact);
+        if (headerIntro) headerIntro.setAttribute('aria-hidden', nextCompact ? 'true' : 'false');
+    };
+
+    const requestFinanceHeaderCompactSync = () => {
+        if (compactRaf) return;
+        compactRaf = window.requestAnimationFrame(syncFinanceHeaderCompact);
+    };
+
+    let financeFadeRaf = null;
+    const updateFinanceFadingPanels = () => {
+        financeFadeRaf = null;
+        if (!stickyHeader || !fadingPanels.length) return;
+        const stickyRect = stickyHeader.getBoundingClientRect();
+        const stickyBottom = stickyRect.bottom;
+        fadingPanels.forEach((panel) => {
+            const panelRect = panel.getBoundingClientRect();
+            const panelTop = panelRect.top;
+            const panelH = panelRect.height;
+            if (panelTop >= stickyBottom || panelH <= 1) {
+                panel.style.setProperty('--stock-fade-cutoff', '0px');
+                panel.style.setProperty('--stock-fade-feather-end', '0px');
+                return;
+            }
+            const rawOverlap = Math.max(stickyBottom - panelTop, 0);
+            const overlap = Math.min(rawOverlap, panelH);
+            const featherBand = Math.min(80, Math.max(22, overlap * 0.45 + 16));
+            const featherEnd = overlap + featherBand;
+            panel.style.setProperty('--stock-fade-cutoff', `${overlap.toFixed(2)}px`);
+            panel.style.setProperty('--stock-fade-feather-end', `${featherEnd.toFixed(2)}px`);
+        });
+    };
+
+    const scheduleFinanceFadeUpdate = () => {
+        if (financeFadeRaf !== null) return;
+        financeFadeRaf = window.requestAnimationFrame(updateFinanceFadingPanels);
+    };
+
+    const syncFinanceHeaderEffects = () => {
+        requestFinanceHeaderCompactSync();
+        scheduleFinanceFadeUpdate();
+    };
+
+    const setupCollapse = ({ toggleSelector, collapseSelector, labelSelector, plusSelector }) => {
+        const toggle = document.querySelector(toggleSelector);
+        const collapse = document.querySelector(collapseSelector);
+        const label = document.querySelector(labelSelector);
+        const plus = document.querySelector(plusSelector);
+        if (!toggle || !collapse || !label) return;
+        const sync = (expanded) => {
+            toggle.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+            collapse.classList.toggle('is-expanded', expanded);
+            label.textContent = expanded ? 'Recolher' : 'Expandir';
+            if (plus) plus.style.display = expanded ? 'none' : '';
+        };
+        sync(false);
+        toggle.addEventListener('click', () => sync(toggle.getAttribute('aria-expanded') !== 'true'));
+    };
 
     const lockBackgroundScroll = () => {
         document.documentElement.style.overflow = 'hidden';
@@ -377,6 +485,7 @@
         setBankPickerPlaceholder();
         if (balanceRawInput) balanceRawInput.value = '0.00';
         if (balanceDisplayInput) balanceDisplayInput.value = 'R$ 0,00';
+        if (bankCodeFeedback) bankCodeFeedback.classList.add('hidden');
         validateFinanceAccountDuplicate();
     };
 
@@ -416,7 +525,7 @@
                 if (optionCode && optionName) {
                     display.innerHTML = `
                         <span class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-xs font-bold" style="background: ${optionBg}; color: ${optionFg};">${optionMark || optionCode}</span>
-                        <span class="truncate text-sm font-medium text-slate-900">(${optionCode}) ${optionName}</span>
+                        <span class="truncate text-sm font-medium text-slate-900">${optionCode === '__other__' ? optionName : `(${optionCode}) ${optionName}`}</span>
                     `;
                 } else {
                     display.innerHTML = '<span class="text-sm font-medium text-slate-500">Selecione o banco</span>';
@@ -429,6 +538,7 @@
         document.querySelectorAll('[data-custom-bank-fields]').forEach((element) => {
             element.classList.toggle('hidden', !(document.querySelector('[data-bank-code-input]')?.value === '__other__'));
         });
+        validateBuiltinBankCodeConflict();
         validateFinanceAccountDuplicate();
     };
 
@@ -443,7 +553,7 @@
         const normalizedAccount = normalizeAccountIdentity(accountNumberInput.value);
         if (!normalizedBranch || !normalizedAccount) {
             duplicateFeedback.classList.add('hidden');
-            saveButton.disabled = false;
+            saveButton.disabled = validateBuiltinBankCodeConflict();
             return false;
         }
         const editingId = currentEditingId();
@@ -452,8 +562,21 @@
             return normalizeAccountIdentity(item.branch) === normalizedBranch && normalizeAccountIdentity(item.account) === normalizedAccount;
         });
         duplicateFeedback.classList.toggle('hidden', !isDuplicate);
-        saveButton.disabled = isDuplicate;
+        saveButton.disabled = isDuplicate || validateBuiltinBankCodeConflict();
         return isDuplicate;
+    };
+
+    const validateBuiltinBankCodeConflict = () => {
+        if (!customBankCodeInput || !bankCodeFeedback || !saveButton) return false;
+        const usingOtherBank = document.querySelector('[data-bank-code-input]')?.value === '__other__';
+        if (!usingOtherBank) {
+            bankCodeFeedback.classList.add('hidden');
+            return false;
+        }
+        const code = (customBankCodeInput.value || '').trim();
+        const isConflict = !!code && builtinBankCodes.has(code);
+        bankCodeFeedback.classList.toggle('hidden', !isConflict);
+        return isConflict;
     };
 
     const closeModal = () => {
@@ -479,6 +602,13 @@
         lockBackgroundScroll();
         validateFinanceAccountDuplicate();
     }
+
+    setupCollapse({
+        toggleSelector: '[data-finance-context-toggle]',
+        collapseSelector: '[data-finance-context-collapse]',
+        labelSelector: '[data-finance-context-toggle-label]',
+        plusSelector: '[data-finance-context-toggle-plus]',
+    });
 
     const centsDigitsFromRaw = (rawValue) => {
         const normalized = (rawValue || '').toString().replace(/[^\d]/g, '');
@@ -578,8 +708,12 @@
 
     branchInput?.addEventListener('input', validateFinanceAccountDuplicate);
     accountNumberInput?.addEventListener('input', validateFinanceAccountDuplicate);
+    customBankCodeInput?.addEventListener('input', () => {
+        validateBuiltinBankCodeConflict();
+        validateFinanceAccountDuplicate();
+    });
     form?.addEventListener('submit', (event) => {
-        if (validateFinanceAccountDuplicate()) {
+        if (validateFinanceAccountDuplicate() || validateBuiltinBankCodeConflict()) {
             event.preventDefault();
         }
     });
@@ -632,7 +766,7 @@
                 if (display) {
                     display.innerHTML = `
                         <span class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-xs font-bold" style="background: ${bg}; color: ${fg};">${mark}</span>
-                        <span class="truncate text-sm font-medium text-slate-900">(${code}) ${name}</span>
+                        <span class="truncate text-sm font-medium text-slate-900">${code === '__other__' ? name : `(${code}) ${name}`}</span>
                     `;
                 }
                 if (source === 'other') {
@@ -651,6 +785,11 @@
         });
         syncCustomBankFields();
     });
+
+    syncFinanceHeaderEffects();
+    window.addEventListener('scroll', syncFinanceHeaderEffects, { passive: true });
+    window.addEventListener('resize', syncFinanceHeaderEffects);
+    mobileCompactMq.addEventListener('change', syncFinanceHeaderEffects);
 })();
 </script>
 {% endblock %}
