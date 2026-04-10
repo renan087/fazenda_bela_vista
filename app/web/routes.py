@@ -2884,9 +2884,12 @@ def finance_accounts_page(
     transactions_pagination = _paginate_collection(request, transactions, "transactions_page") if active_farm else _paginate_collection(request, [], "transactions_page")
     payables_start_date, payables_end_date, payables_filter_start_date, payables_filter_end_date, selected_payables_range = _finance_payables_period_bounds(request)
     payables_search = (request.query_params.get("payables_search") or "").strip()
-    finance_payables_filters_active = bool(payables_search or request.query_params.get("schedule_range") or request.query_params.get("start_date") or request.query_params.get("end_date"))
+    payables_status = (request.query_params.get("payables_status") or "open").strip().lower()
+    if payables_status not in {"open", "paid", "overdue", "all"}:
+        payables_status = "open"
+    finance_payables_filters_active = bool(payables_search or request.query_params.get("schedule_range") or request.query_params.get("start_date") or request.query_params.get("end_date") or payables_status != "open")
     payables_clear_params = dict(request.query_params)
-    for key in ("payables_search", "schedule_range", "start_date", "end_date", "payables_page"):
+    for key in ("payables_search", "schedule_range", "start_date", "end_date", "payables_page", "payables_status"):
         payables_clear_params.pop(key, None)
     payables_clear_params["finance_tab"] = "payables"
     finance_payables_clear_url = f"/gestao-financeira/contas?{urlencode(payables_clear_params)}" if payables_clear_params else "/gestao-financeira/contas?finance_tab=payables"
@@ -2897,17 +2900,24 @@ def finance_accounts_page(
             continue
         for installment in sorted(transaction.installments or [], key=lambda item: (item.due_date or date.max, item.installment_number or 0)):
             status = (installment.status or "pendente").strip().lower()
-            if status == "pago":
-                continue
             due_date = installment.due_date
             payable_status = "open"
             payable_label = "Em aberto"
-            if due_date and due_date < today:
+            if status == "pago":
+                payable_status = "paid"
+                payable_label = "Pago"
+            elif due_date and due_date < today:
                 payable_status = "overdue"
                 payable_label = "Atrasado"
             elif due_date and due_date == today:
                 payable_status = "today"
                 payable_label = "Vence hoje"
+            if payables_status == "open" and payable_status not in {"open", "today"}:
+                continue
+            if payables_status == "paid" and payable_status != "paid":
+                continue
+            if payables_status == "overdue" and payable_status != "overdue":
+                continue
             if payables_start_date and due_date and due_date < payables_start_date:
                 continue
             if payables_end_date and due_date and due_date > payables_end_date:
@@ -2930,7 +2940,18 @@ def finance_accounts_page(
                     "installment": installment,
                     "status": payable_status,
                     "status_label": payable_label,
-                    "status_class": "stock-movement-chip-output" if payable_status == "overdue" else ("stock-movement-chip-warning" if payable_status == "today" else "stock-movement-chip-neutral"),
+                    "status_chip_class": {
+                        "paid": "stock-movement-chip-entry",
+                        "overdue": "stock-movement-chip-output",
+                        "today": "stock-movement-chip-warning",
+                        "open": "stock-movement-chip-info",
+                    }.get(payable_status, "stock-movement-chip-info"),
+                    "row_kind": {
+                        "paid": "entrada",
+                        "overdue": "saida",
+                        "today": "warning",
+                        "open": "info",
+                    }.get(payable_status, "info"),
                     "installment_label": f"{installment.installment_number}/{transaction.installment_count or 1}",
                     "search_text": searchable,
                 }
@@ -2977,6 +2998,7 @@ def finance_accounts_page(
             finance_payables_filter_end_date=payables_filter_end_date,
             finance_payables_selected_range=selected_payables_range,
             finance_payables_search=payables_search,
+            finance_payables_status=payables_status,
             finance_payables_filters_active=finance_payables_filters_active,
             finance_payables_clear_url=finance_payables_clear_url,
             edit_finance_transaction=edit_transaction,
@@ -3473,6 +3495,47 @@ def settle_finance_transaction_installment_action(
         },
     )
     _flash(request, "success", "Parcela marcada como paga.")
+    return _redirect("/gestao-financeira/contas?finance_tab=payables")
+
+
+@router.post("/gestao-financeira/contas/parcelas/{installment_id}/cancelar-pagamento")
+def revert_finance_transaction_installment_payment_action(
+    request: Request,
+    installment_id: int,
+    csrf_token: str = Form(...),
+    redirect_to: str | None = Form(None),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    del user
+    validate_csrf(request, csrf_token)
+    repo = _repository(db)
+    scope = _global_scope_context(request, repo)
+    active_farm = scope.get("active_farm")
+    installment = (
+        repo.db.query(FinanceTransactionInstallment)
+        .options(joinedload(FinanceTransactionInstallment.transaction))
+        .filter(FinanceTransactionInstallment.id == installment_id)
+        .first()
+    )
+    if not installment or not installment.transaction:
+        _flash(request, "error", "Parcela não encontrada.")
+        return _redirect("/gestao-financeira/contas?finance_tab=payables")
+    if not active_farm or installment.transaction.farm_id != active_farm.id:
+        _flash(request, "error", "Esta parcela não pertence à fazenda ativa.")
+        return _redirect("/gestao-financeira/contas?finance_tab=payables")
+    repo.update(
+        installment,
+        {
+            "status": "pendente",
+            "paid_at": None,
+            "payment_notes": None,
+        },
+    )
+    _flash(request, "success", "Pagamento cancelado. A parcela voltou para pendente.")
+    safe_redirect = (redirect_to or "").strip()
+    if safe_redirect.startswith("/"):
+        return _redirect(safe_redirect)
     return _redirect("/gestao-financeira/contas?finance_tab=payables")
 
 

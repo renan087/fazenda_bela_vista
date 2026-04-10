@@ -3076,6 +3076,14 @@ body.dashboard-schedule-modal-open {
     box-shadow: inset 3px 0 0 rgba(244, 63, 94, 0.35);
 }
 
+.stock-history-table tbody tr[data-stock-kind="info"] td:first-child {
+    box-shadow: inset 3px 0 0 rgba(59, 130, 246, 0.35);
+}
+
+.stock-history-table tbody tr[data-stock-kind="warning"] td:first-child {
+    box-shadow: inset 3px 0 0 rgba(245, 158, 11, 0.38);
+}
+
 .stock-movement-chip {
     display: inline-flex;
     align-items: center;
@@ -3095,6 +3103,16 @@ body.dashboard-schedule-modal-open {
 .stock-movement-chip-output {
     background: rgba(255, 228, 230, 1);
     color: rgb(190 24 93);
+}
+
+.stock-movement-chip-info {
+    background: rgba(219, 234, 254, 1);
+    color: rgb(29 78 216);
+}
+
+.stock-movement-chip-warning {
+    background: rgba(254, 243, 199, 1);
+    color: rgb(180 83 9);
 }
 
 .stock-search-empty {

@@ -421,6 +421,14 @@
             <form method="get" action="/gestao-financeira/contas" class="stock-filter-grid" data-finance-payables-filter-form data-module-period-filter-root data-module-range-default="current_month" data-module-range-placeholder="Filtre por período" data-module-custom-auto-apply="true">
                 <input type="hidden" name="finance_tab" value="payables">
                 <div class="stock-filter-fields-row {% if finance_payables_filters_active %}has-clear-action{% endif %}">
+                    <label class="stock-filter-field stock-filter-field-input {% if finance_payables_status != 'open' %}is-filtered{% endif %}">
+                        <select name="payables_status" class="w-full rounded-xl border-slate-200 bg-white" data-finance-payables-status>
+                            <option value="open" {% if finance_payables_status == 'open' %}selected{% endif %}>Em aberto</option>
+                            <option value="paid" {% if finance_payables_status == 'paid' %}selected{% endif %}>Pago</option>
+                            <option value="overdue" {% if finance_payables_status == 'overdue' %}selected{% endif %}>Atrasado</option>
+                            <option value="all" {% if finance_payables_status == 'all' %}selected{% endif %}>Todos</option>
+                        </select>
+                    </label>
                     <label class="stock-filter-field stock-filter-field-input">
                         <div class="stock-search-field">
                             <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
@@ -464,9 +472,9 @@
                         {% for payable in finance_payables %}
                         {% set transaction = payable.transaction %}
                         {% set installment = payable.installment %}
-                        <tr data-stock-kind="{% if payable.status == 'overdue' %}saida{% else %}entrada{% endif %}">
+                        <tr data-stock-kind="{{ payable.row_kind }}">
                             <td class="px-4 py-3">
-                                <span class="stock-movement-chip finance-payable-chip-{{ payable.status }}">{{ payable.status_label }}</span>
+                                <span class="stock-movement-chip {{ payable.status_chip_class }}">{{ payable.status_label }}</span>
                             </td>
                             <td class="px-4 py-3 whitespace-nowrap font-semibold text-slate-900">
                                 <button type="button" class="text-left font-semibold text-slate-900 transition hover:text-brand-700 whitespace-nowrap" data-history-view-trigger data-history-view-kicker="Conta a pagar" data-history-view-title="{{ transaction.product_service }}" data-history-view-subtitle="{{ installment.due_date.strftime('%d/%m/%Y') if installment.due_date else '-' }} • {{ payable.installment_label }}" data-history-view-source="finance-transaction-view-{{ transaction.id }}" data-history-view-edit-url="/gestao-financeira/contas?finance_tab=transactions&transaction_edit_id={{ transaction.id }}">{{ installment.due_date.strftime('%d/%m/%Y') if installment.due_date else '-' }}</button>
@@ -484,13 +492,25 @@
                                 </div>
                             </td>
                             <td class="px-4 py-3 whitespace-nowrap font-medium text-slate-700">{{ payable.installment_label }}</td>
-                            <td class="px-4 py-3 whitespace-nowrap font-semibold text-rose-600">R$ {{ installment.amount|decimal_br }}</td>
+                            <td class="px-4 py-3 whitespace-nowrap font-semibold {% if payable.status == 'paid' %}text-emerald-700{% else %}text-rose-600{% endif %}">R$ {{ installment.amount|decimal_br }}</td>
                             <td class="px-4 py-3">
+                                {% if payable.status == 'paid' %}
+                                <form method="post" action="/gestao-financeira/contas/parcelas/{{ installment.id }}/cancelar-pagamento" onsubmit="return confirm('Cancelar o pagamento desta parcela?');">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                                    <input type="hidden" name="redirect_to" value="{{ request.url.path }}{% if request.url.query %}?{{ request.url.query }}{% endif %}">
+                                    <button type="submit" class="finance-payables-check cursor-pointer border-emerald-200 bg-emerald-50 text-emerald-600" title="Cancelar pagamento">
+                                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4">
+                                            <path d="m5 13 4 4L19 7"/>
+                                        </svg>
+                                    </button>
+                                </form>
+                                {% else %}
                                 <button type="button" class="finance-payables-check" title="Marcar como pago" data-finance-payable-settle-trigger data-installment-id="{{ installment.id }}" data-installment-label="{{ payable.installment_label }}" data-transaction-title="{{ transaction.product_service }}" data-installment-due-date="{{ installment.due_date.strftime('%d/%m/%Y') if installment.due_date else '-' }}" data-paid-date-default="{{ today.isoformat() }}">
                                     <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4">
                                         <path d="m5 13 4 4L19 7"/>
                                     </svg>
                                 </button>
+                                {% endif %}
                             </td>
                             <td class="px-4 py-3">
                                 <div class="flex items-center justify-end gap-2">
@@ -900,6 +920,7 @@
     const transactionInstallmentsEmpty = document.querySelector('[data-finance-installments-empty]');
     const payablesFilterForm = document.querySelector('[data-finance-payables-filter-form]');
     const payablesSearchInput = document.querySelector('[data-finance-payables-search]');
+    const payablesStatusSelect = document.querySelector('[data-finance-payables-status]');
     const payableSettleModal = document.getElementById('finance-payable-settle-modal');
     const payableSettleForm = document.querySelector('[data-finance-payable-settle-form]');
     const payableSettleCloseButtons = Array.from(document.querySelectorAll('[data-finance-payable-settle-close]'));
@@ -1714,6 +1735,9 @@
         payablesSearchTimer = window.setTimeout(() => {
             payablesFilterForm.requestSubmit();
         }, 260);
+    });
+    payablesStatusSelect?.addEventListener('change', () => {
+        payablesFilterForm?.requestSubmit();
     });
 
     const closePayableSettleModal = () => {
