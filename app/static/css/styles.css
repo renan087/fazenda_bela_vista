@@ -1460,6 +1460,18 @@ body.dashboard-schedule-modal-open {
     z-index: 0;
 }
 
+/* Dropdown de período na aba A Pagar precisa de overflow:visible em todos os ancestrais
+   para aparecer acima do conteúdo independente do tamanho de tela.
+   Inclui o stock-panel pai (finance-accounts-summary-panel) que no mobile recebe
+   overflow-x:hidden via regra global — o override aqui tem especificidade maior. */
+.stock-history-stage[data-finance-tab="payables"],
+.stock-history-stage[data-finance-tab="payables"] .stock-filter-bar,
+.stock-history-stage[data-finance-tab="payables"] .stock-filter-grid,
+.stock-history-stage[data-finance-tab="payables"] [data-finance-payables-filter-collapse],
+.finance-accounts-summary-panel {
+    overflow: visible;
+}
+
 @media (min-width: 900px) {
     .stock-filter-fields-row.finance-filter-fields-row {
         grid-template-columns:
@@ -1504,7 +1516,10 @@ body.dashboard-schedule-modal-open {
 
     .stock-filter-fields-row.finance-payables-filter-fields-row > .finance-payables-filter-search .stock-search-field {
         width: 100%;
-        min-height: 3.2rem;
+        /* Mesma altura do select padrão do sistema (~42px) */
+        min-height: 2.625rem;
+        padding-top: 0.5rem;
+        padding-bottom: 0.5rem;
         background: rgba(248, 250, 252, 0.92);
         box-sizing: border-box;
     }
