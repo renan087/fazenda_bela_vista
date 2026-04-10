@@ -276,8 +276,28 @@
                                         <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Favorecido / pagador</p><p class="mt-2 text-sm font-medium text-slate-800">{{ transaction.counterparty_name or '-' }}</p></div>
                                         <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Documento</p><p class="mt-2 text-sm font-medium text-slate-800">{{ transaction.document_number or '-' }}</p></div>
                                         <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Forma de pagamento</p><p class="mt-2 text-sm font-medium text-slate-800">{{ transaction.payment_method or '-' }}</p></div>
+                                        <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Condição de pagamento</p><p class="mt-2 text-sm font-medium text-slate-800">{{ 'À prazo' if transaction.payment_condition == 'a_prazo' else 'À vista' }}</p></div>
+                                        {% if transaction.payment_condition == 'a_prazo' %}
+                                        <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Parcelas</p><p class="mt-2 text-sm font-medium text-slate-800">{{ transaction.installment_count or '-' }}</p></div>
+                                        <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Periodicidade</p><p class="mt-2 text-sm font-medium text-slate-800">{{ 'Anual' if transaction.installment_frequency == 'anual' else 'Mensal' }}</p></div>
+                                        <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Primeira parcela</p><p class="mt-2 text-sm font-medium text-slate-800">{{ transaction.first_installment_date.strftime('%d/%m/%Y') if transaction.first_installment_date else '-' }}</p></div>
+                                        {% endif %}
                                     </div>
                                     <div class="rounded-2xl bg-slate-50 px-4 py-4"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Descrição / histórico</p><p class="mt-2 text-sm text-slate-600">{{ transaction.description or 'Sem descrição.' }}</p></div>
+                                    {% if transaction.installments %}
+                                    <div class="rounded-2xl bg-slate-50 px-4 py-4">
+                                        <p class="text-xs uppercase tracking-[0.2em] text-slate-400">Parcelas</p>
+                                        <div class="mt-3 grid gap-2 sm:grid-cols-2">
+                                            {% for installment in transaction.installments|sort(attribute='installment_number') %}
+                                            <div class="rounded-xl bg-white px-3 py-3 ring-1 ring-slate-200/80">
+                                                <p class="text-xs font-semibold uppercase tracking-[0.15em] text-slate-400">{{ installment.installment_number }}ª parcela</p>
+                                                <p class="mt-1 text-sm font-semibold text-slate-900">{{ installment.due_date.strftime('%d/%m/%Y') if installment.due_date else '-' }}</p>
+                                                <p class="mt-1 text-sm {% if transaction.operation_type == 'receita' %}text-emerald-700{% else %}text-rose-600{% endif %}">R$ {{ installment.amount|decimal_br }}</p>
+                                            </div>
+                                            {% endfor %}
+                                        </div>
+                                    </div>
+                                    {% endif %}
                                     <div class="rounded-2xl bg-slate-50 px-4 py-4"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Observações</p><p class="mt-2 text-sm text-slate-600">{{ transaction.notes or 'Sem observações.' }}</p></div>
                                     <div class="rounded-2xl bg-slate-50 px-4 py-4">
                                         <p class="text-xs uppercase tracking-[0.2em] text-slate-400">Anexos</p>
@@ -564,6 +584,41 @@
                     </div>
                     <div class="grid gap-4 md:grid-cols-2">
                         <label>
+                            <span class="mb-2 block text-sm font-medium">Condição de pagamento</span>
+                            {% set transaction_payment_condition = edit_finance_transaction.payment_condition if edit_finance_transaction and edit_finance_transaction.payment_condition else 'a_vista' %}
+                            <select name="payment_condition" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required data-finance-payment-condition>
+                                <option value="a_vista" {% if transaction_payment_condition == 'a_vista' %}selected{% endif %}>À vista</option>
+                                <option value="a_prazo" {% if transaction_payment_condition == 'a_prazo' %}selected{% endif %}>À prazo</option>
+                            </select>
+                        </label>
+                    </div>
+                    <div class="hidden rounded-[1.5rem] border border-slate-200 bg-slate-50/80 p-4" data-finance-installments-section>
+                        <div class="grid gap-4 md:grid-cols-3">
+                            <label>
+                                <span class="mb-2 block text-sm font-medium">Quantidade de parcelas</span>
+                                <input type="number" min="2" step="1" name="installment_count" value="{{ edit_finance_transaction.installment_count if edit_finance_transaction and edit_finance_transaction.payment_condition == 'a_prazo' else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-white" data-finance-installment-count>
+                            </label>
+                            <label>
+                                <span class="mb-2 block text-sm font-medium">Periodicidade</span>
+                                {% set current_frequency = edit_finance_transaction.installment_frequency if edit_finance_transaction and edit_finance_transaction.installment_frequency else 'mensal' %}
+                                <select name="installment_frequency" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-white" data-finance-installment-frequency>
+                                    <option value="mensal" {% if current_frequency == 'mensal' %}selected{% endif %}>Mensal</option>
+                                    <option value="anual" {% if current_frequency == 'anual' %}selected{% endif %}>Anual</option>
+                                </select>
+                            </label>
+                            <label>
+                                <span class="mb-2 block text-sm font-medium">Data da primeira parcela</span>
+                                <input type="date" name="first_installment_date" value="{{ edit_finance_transaction.first_installment_date.isoformat() if edit_finance_transaction and edit_finance_transaction.first_installment_date and edit_finance_transaction.payment_condition == 'a_prazo' else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-white" data-finance-first-installment-date>
+                            </label>
+                        </div>
+                        <div class="mt-4">
+                            <p class="text-xs uppercase tracking-[0.25em] text-slate-400">Prévia das parcelas</p>
+                            <div class="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3" data-finance-installments-preview></div>
+                            <p class="mt-3 text-xs text-slate-500" data-finance-installments-empty>Informe quantidade, periodicidade e a data da primeira parcela para visualizar o cronograma.</p>
+                        </div>
+                    </div>
+                    <div class="grid gap-4 md:grid-cols-2">
+                        <label>
                             <span class="mb-2 block text-sm font-medium">Produto ou serviço</span>
                             <input type="text" name="product_service" value="{{ edit_finance_transaction.product_service if edit_finance_transaction else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required>
                         </label>
@@ -647,6 +702,13 @@
     const transactionAmountDisplayInput = document.querySelector('[data-finance-transaction-amount-display]');
     const transactionTypeSelect = document.querySelector('[data-finance-transaction-type]');
     const transactionCategorySelect = document.querySelector('[data-finance-transaction-category]');
+    const transactionPaymentConditionSelect = document.querySelector('[data-finance-payment-condition]');
+    const transactionInstallmentsSection = document.querySelector('[data-finance-installments-section]');
+    const transactionInstallmentCountInput = document.querySelector('[data-finance-installment-count]');
+    const transactionInstallmentFrequencySelect = document.querySelector('[data-finance-installment-frequency]');
+    const transactionFirstInstallmentDateInput = document.querySelector('[data-finance-first-installment-date]');
+    const transactionInstallmentsPreview = document.querySelector('[data-finance-installments-preview]');
+    const transactionInstallmentsEmpty = document.querySelector('[data-finance-installments-empty]');
     const balanceRawInput = document.querySelector('[data-finance-balance-raw]');
     const balanceDisplayInput = document.querySelector('[data-finance-balance-display]');
     const modeLabel = document.querySelector('[data-finance-account-mode-label]');
@@ -1284,6 +1346,90 @@
         }
     };
 
+    const formatCurrencyLabel = (rawValue) => {
+        const value = Number.parseFloat(rawValue || '0');
+        if (!Number.isFinite(value)) return 'R$ 0,00';
+        return value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+    };
+
+    const formatDateLabel = (isoValue) => {
+        if (!isoValue) return '-';
+        const [year, month, day] = isoValue.split('-');
+        if (!year || !month || !day) return isoValue;
+        return `${day}/${month}/${year}`;
+    };
+
+    const addInstallmentMonths = (baseDate, months) => {
+        const year = baseDate.getFullYear() + Math.floor((baseDate.getMonth() + months) / 12);
+        const month = (baseDate.getMonth() + months) % 12;
+        const lastDay = new Date(year, month + 1, 0).getDate();
+        const day = Math.min(baseDate.getDate(), lastDay);
+        return new Date(year, month, day);
+    };
+
+    const addInstallmentYears = (baseDate, years) => {
+        const year = baseDate.getFullYear() + years;
+        const month = baseDate.getMonth();
+        const lastDay = new Date(year, month + 1, 0).getDate();
+        const day = Math.min(baseDate.getDate(), lastDay);
+        return new Date(year, month, day);
+    };
+
+    const syncFinanceInstallmentSection = () => {
+        const isPrazo = transactionPaymentConditionSelect?.value === 'a_prazo';
+        transactionInstallmentsSection?.classList.toggle('hidden', !isPrazo);
+        if (!isPrazo) {
+            if (transactionInstallmentCountInput) transactionInstallmentCountInput.value = '';
+            if (transactionFirstInstallmentDateInput) transactionFirstInstallmentDateInput.value = '';
+            if (transactionInstallmentFrequencySelect) transactionInstallmentFrequencySelect.value = 'mensal';
+        }
+    };
+
+    const renderFinanceInstallmentPreview = () => {
+        if (!(transactionInstallmentsPreview instanceof HTMLElement) || !(transactionInstallmentsEmpty instanceof HTMLElement)) return;
+        transactionInstallmentsPreview.innerHTML = '';
+        const isPrazo = transactionPaymentConditionSelect?.value === 'a_prazo';
+        if (!isPrazo) {
+            transactionInstallmentsEmpty.textContent = 'Selecione "À prazo" para visualizar o cronograma das parcelas.';
+            transactionInstallmentsEmpty.classList.remove('hidden');
+            return;
+        }
+        const count = Number.parseInt(transactionInstallmentCountInput?.value || '', 10);
+        const frequency = transactionInstallmentFrequencySelect?.value || 'mensal';
+        const firstDateValue = transactionFirstInstallmentDateInput?.value || '';
+        const amount = Number.parseFloat(transactionAmountRawInput?.value || '0');
+        if (!Number.isFinite(count) || count < 2 || !firstDateValue || !Number.isFinite(amount) || amount <= 0) {
+            transactionInstallmentsEmpty.textContent = 'Informe quantidade, periodicidade e a data da primeira parcela para visualizar o cronograma.';
+            transactionInstallmentsEmpty.classList.remove('hidden');
+            return;
+        }
+        const firstDate = new Date(`${firstDateValue}T12:00:00`);
+        if (Number.isNaN(firstDate.getTime())) {
+            transactionInstallmentsEmpty.textContent = 'Informe uma data válida para a primeira parcela.';
+            transactionInstallmentsEmpty.classList.remove('hidden');
+            return;
+        }
+        transactionInstallmentsEmpty.classList.add('hidden');
+        const totalCents = Math.round(amount * 100);
+        const baseCents = Math.floor(totalCents / count);
+        const remainder = totalCents % count;
+        for (let index = 0; index < count; index += 1) {
+            const currentCents = baseCents + (index < remainder ? 1 : 0);
+            const dueDate = frequency === 'anual'
+                ? addInstallmentYears(firstDate, index)
+                : addInstallmentMonths(firstDate, index);
+            const dueIso = `${dueDate.getFullYear()}-${String(dueDate.getMonth() + 1).padStart(2, '0')}-${String(dueDate.getDate()).padStart(2, '0')}`;
+            const card = document.createElement('div');
+            card.className = 'rounded-xl bg-white px-3 py-3 ring-1 ring-slate-200/80';
+            card.innerHTML = `
+                <p class="text-xs font-semibold uppercase tracking-[0.15em] text-slate-400">${index + 1}ª parcela</p>
+                <p class="mt-1 text-sm font-semibold text-slate-900">${formatDateLabel(dueIso)}</p>
+                <p class="mt-1 text-sm text-slate-600">${formatCurrencyLabel((currentCents / 100).toFixed(2))}</p>
+            `;
+            transactionInstallmentsPreview.appendChild(card);
+        }
+    };
+
     const prepareFinanceTransactionCreateMode = () => {
         if (!transactionForm) return;
         transactionForm.action = createTransactionFormAction;
@@ -1301,10 +1447,13 @@
         if (transactionModeLabel) transactionModeLabel.textContent = 'Novo lançamento';
         if (transactionTitle) transactionTitle.textContent = 'Novo lançamento financeiro';
         if (transactionTypeSelect) transactionTypeSelect.value = 'despesa';
+        if (transactionPaymentConditionSelect) transactionPaymentConditionSelect.value = 'a_vista';
         const accountSelect = transactionForm.querySelector('select[name="finance_account_id"]');
         if (accountSelect) accountSelect.value = accountSelect.dataset.defaultAccountId || '';
         populateTransactionCategories(transactionTypeSelect?.value || 'despesa');
         if (transactionAmountMask) transactionAmountMask.reset('0.00');
+        syncFinanceInstallmentSection();
+        renderFinanceInstallmentPreview();
     };
 
     const closeTransactionModal = () => {
@@ -1338,11 +1487,21 @@
             transactionTypeSelect?.value || 'despesa',
             {{ (edit_finance_transaction.category if edit_finance_transaction else '')|tojson }},
         );
+        syncFinanceInstallmentSection();
+        renderFinanceInstallmentPreview();
     }
 
     transactionTypeSelect?.addEventListener('change', () => {
         populateTransactionCategories(transactionTypeSelect.value);
     });
+    transactionPaymentConditionSelect?.addEventListener('change', () => {
+        syncFinanceInstallmentSection();
+        renderFinanceInstallmentPreview();
+    });
+    transactionInstallmentCountInput?.addEventListener('input', renderFinanceInstallmentPreview);
+    transactionInstallmentFrequencySelect?.addEventListener('change', renderFinanceInstallmentPreview);
+    transactionFirstInstallmentDateInput?.addEventListener('input', renderFinanceInstallmentPreview);
+    transactionAmountDisplayInput?.addEventListener('input', renderFinanceInstallmentPreview);
 
     setupCollapse({
         toggleSelector: '[data-finance-transaction-context-toggle]',

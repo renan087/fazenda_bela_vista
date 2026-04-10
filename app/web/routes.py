@@ -4,6 +4,7 @@ from decimal import Decimal
 from io import BytesIO
 from pathlib import Path
 from urllib.parse import urlencode
+import calendar
 
 import hashlib
 import json
@@ -44,6 +45,7 @@ from app.models import (
     FinanceCustomBank,
     FinanceTransaction,
     FinanceTransactionAttachment,
+    FinanceTransactionInstallment,
     FertilizationItem,
     FertilizationSchedule,
     FertilizationRecord,
@@ -2381,6 +2383,10 @@ def _finance_transaction_payload(
     launch_date: str,
     amount: str,
     finance_account_id: str | None,
+    payment_condition: str | None,
+    installment_count: str | None,
+    installment_frequency: str | None,
+    first_installment_date: str | None,
     category: str,
     product_service: str,
     description: str | None,
@@ -2405,12 +2411,40 @@ def _finance_transaction_payload(
     if not product_service_value:
         raise ValueError("Informe o produto ou serviço.")
     account = _resolve_finance_transaction_account(repo, active_farm=active_farm, account_id=finance_account_id)
+    normalized_condition = (payment_condition or "a_vista").strip().lower()
+    if normalized_condition not in {"a_vista", "a_prazo"}:
+        raise ValueError("Selecione uma condição de pagamento válida.")
+    resolved_installment_count = 1
+    resolved_frequency = None
+    resolved_first_installment_date = None
+    if normalized_condition == "a_prazo":
+        try:
+            resolved_installment_count = int(str(installment_count or "").strip())
+        except ValueError:
+            raise ValueError("Informe a quantidade de parcelas para pagamento a prazo.")
+        if resolved_installment_count < 2:
+            raise ValueError("Para pagamento a prazo, informe ao menos 2 parcelas.")
+        resolved_frequency = (installment_frequency or "").strip().lower()
+        if resolved_frequency not in {"mensal", "anual"}:
+            raise ValueError("Selecione a periodicidade das parcelas.")
+        if not first_installment_date:
+            raise ValueError("Informe a data da primeira parcela.")
+        try:
+            resolved_first_installment_date = date.fromisoformat(first_installment_date)
+        except ValueError:
+            raise ValueError("Informe uma data válida para a primeira parcela.")
+    else:
+        resolved_first_installment_date = parsed_launch_date
     return {
         "farm_id": active_farm.id,
         "finance_account_id": account.id,
         "operation_type": normalized_type,
         "launch_date": parsed_launch_date,
         "amount": _parse_finance_transaction_amount(amount),
+        "payment_condition": normalized_condition,
+        "installment_count": resolved_installment_count,
+        "installment_frequency": resolved_frequency,
+        "first_installment_date": resolved_first_installment_date,
         "category": category_value,
         "product_service": product_service_value,
         "description": _clean_text(description),
@@ -2419,6 +2453,69 @@ def _finance_transaction_payload(
         "payment_method": _clean_text(payment_method),
         "notes": _clean_text(notes),
     }
+
+
+def _finance_add_months(base_date: date, months: int) -> date:
+    year = base_date.year + ((base_date.month - 1 + months) // 12)
+    month = ((base_date.month - 1 + months) % 12) + 1
+    day = min(base_date.day, calendar.monthrange(year, month)[1])
+    return date(year, month, day)
+
+
+def _finance_add_years(base_date: date, years: int) -> date:
+    target_year = base_date.year + years
+    day = min(base_date.day, calendar.monthrange(target_year, base_date.month)[1])
+    return date(target_year, base_date.month, day)
+
+
+def _build_finance_transaction_installments(
+    *,
+    amount: float,
+    payment_condition: str,
+    installment_count: int,
+    installment_frequency: str | None,
+    first_installment_date: date | None,
+) -> list[dict]:
+    if payment_condition != "a_prazo" or installment_count <= 1 or not first_installment_date:
+        return []
+    total_cents = int((Decimal(str(amount)) * 100).quantize(Decimal("1")))
+    base_cents = total_cents // installment_count
+    remainder = total_cents % installment_count
+    installments: list[dict] = []
+    for index in range(installment_count):
+        current_cents = base_cents + (1 if index < remainder else 0)
+        if installment_frequency == "anual":
+            due_date = _finance_add_years(first_installment_date, index)
+        else:
+            due_date = _finance_add_months(first_installment_date, index)
+        installments.append(
+            {
+                "installment_number": index + 1,
+                "due_date": due_date,
+                "amount": round(current_cents / 100, 2),
+                "status": "pendente",
+            }
+        )
+    return installments
+
+
+def _replace_finance_transaction_installments(
+    repo: FarmRepository,
+    transaction: FinanceTransaction,
+    installment_rows: list[dict],
+) -> None:
+    for installment in list(transaction.installments or []):
+        repo.delete(installment)
+    for row in installment_rows:
+        repo.create(
+            FinanceTransactionInstallment(
+                finance_transaction_id=transaction.id,
+                installment_number=row["installment_number"],
+                due_date=row["due_date"],
+                amount=row["amount"],
+                status=row["status"],
+            )
+        )
 
 
 def _cleanup_custom_bank_if_unused(repo: FarmRepository, custom_bank_id: int | None) -> None:
@@ -3049,6 +3146,10 @@ async def create_finance_transaction_action(
     launch_date: str = Form(...),
     amount: str = Form(...),
     finance_account_id: str | None = Form(None),
+    payment_condition: str | None = Form("a_vista"),
+    installment_count: str | None = Form(None),
+    installment_frequency: str | None = Form(None),
+    first_installment_date: str | None = Form(None),
     category: str = Form(...),
     product_service: str = Form(...),
     description: str | None = Form(None),
@@ -3075,6 +3176,10 @@ async def create_finance_transaction_action(
             launch_date=launch_date,
             amount=amount,
             finance_account_id=finance_account_id,
+            payment_condition=payment_condition,
+            installment_count=installment_count,
+            installment_frequency=installment_frequency,
+            first_installment_date=first_installment_date,
             category=category,
             product_service=product_service,
             description=description,
@@ -3101,9 +3206,24 @@ async def create_finance_transaction_action(
             counterparty_name=payload["counterparty_name"],
             document_number=payload["document_number"],
             payment_method=payload["payment_method"],
+            payment_condition=payload["payment_condition"],
+            installment_count=payload["installment_count"],
+            installment_frequency=payload["installment_frequency"],
+            first_installment_date=payload["first_installment_date"],
             notes=payload["notes"],
             created_at=app_now(),
         )
+    )
+    _replace_finance_transaction_installments(
+        repo,
+        transaction,
+        _build_finance_transaction_installments(
+            amount=payload["amount"],
+            payment_condition=payload["payment_condition"],
+            installment_count=payload["installment_count"],
+            installment_frequency=payload["installment_frequency"],
+            first_installment_date=payload["first_installment_date"],
+        ),
     )
     try:
         saved_attachments = _save_finance_transaction_attachments(repo, transaction, attachment_payloads)
@@ -3126,6 +3246,10 @@ async def update_finance_transaction_action(
     launch_date: str = Form(...),
     amount: str = Form(...),
     finance_account_id: str | None = Form(None),
+    payment_condition: str | None = Form("a_vista"),
+    installment_count: str | None = Form(None),
+    installment_frequency: str | None = Form(None),
+    first_installment_date: str | None = Form(None),
     category: str = Form(...),
     product_service: str = Form(...),
     description: str | None = Form(None),
@@ -3156,6 +3280,10 @@ async def update_finance_transaction_action(
             launch_date=launch_date,
             amount=amount,
             finance_account_id=finance_account_id,
+            payment_condition=payment_condition,
+            installment_count=installment_count,
+            installment_frequency=installment_frequency,
+            first_installment_date=first_installment_date,
             category=category,
             product_service=product_service,
             description=description,
@@ -3170,6 +3298,17 @@ async def update_finance_transaction_action(
         return _redirect(_finance_transactions_modal_query(request, edit_id=transaction_id))
 
     repo.update(transaction, payload)
+    _replace_finance_transaction_installments(
+        repo,
+        transaction,
+        _build_finance_transaction_installments(
+            amount=payload["amount"],
+            payment_condition=payload["payment_condition"],
+            installment_count=payload["installment_count"],
+            installment_frequency=payload["installment_frequency"],
+            first_installment_date=payload["first_installment_date"],
+        ),
+    )
     try:
         saved_attachments = _save_finance_transaction_attachments(repo, transaction, attachment_payloads)
     except Exception:

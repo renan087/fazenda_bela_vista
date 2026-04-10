@@ -215,7 +215,22 @@ def _sync_schema() -> None:
             counterparty_name VARCHAR(180),
             document_number VARCHAR(120),
             payment_method VARCHAR(80),
+            payment_condition VARCHAR(20) NOT NULL DEFAULT 'a_vista',
+            installment_count INTEGER NOT NULL DEFAULT 1,
+            installment_frequency VARCHAR(20),
+            first_installment_date DATE,
             notes TEXT,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS finance_transaction_installments (
+            id SERIAL PRIMARY KEY,
+            finance_transaction_id INTEGER NOT NULL REFERENCES finance_transactions(id) ON DELETE CASCADE,
+            installment_number INTEGER NOT NULL,
+            due_date DATE NOT NULL,
+            amount NUMERIC(14,2) NOT NULL,
+            status VARCHAR(30) NOT NULL DEFAULT 'pendente',
             created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
         )
         """,
@@ -461,8 +476,18 @@ def _sync_schema() -> None:
         "ALTER TABLE finance_transactions ADD COLUMN IF NOT EXISTS counterparty_name VARCHAR(180)",
         "ALTER TABLE finance_transactions ADD COLUMN IF NOT EXISTS document_number VARCHAR(120)",
         "ALTER TABLE finance_transactions ADD COLUMN IF NOT EXISTS payment_method VARCHAR(80)",
+        "ALTER TABLE finance_transactions ADD COLUMN IF NOT EXISTS payment_condition VARCHAR(20) DEFAULT 'a_vista'",
+        "ALTER TABLE finance_transactions ADD COLUMN IF NOT EXISTS installment_count INTEGER DEFAULT 1",
+        "ALTER TABLE finance_transactions ADD COLUMN IF NOT EXISTS installment_frequency VARCHAR(20)",
+        "ALTER TABLE finance_transactions ADD COLUMN IF NOT EXISTS first_installment_date DATE",
         "ALTER TABLE finance_transactions ADD COLUMN IF NOT EXISTS notes TEXT",
         "ALTER TABLE finance_transactions ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW()",
+        "ALTER TABLE finance_transaction_installments ADD COLUMN IF NOT EXISTS finance_transaction_id INTEGER",
+        "ALTER TABLE finance_transaction_installments ADD COLUMN IF NOT EXISTS installment_number INTEGER",
+        "ALTER TABLE finance_transaction_installments ADD COLUMN IF NOT EXISTS due_date DATE",
+        "ALTER TABLE finance_transaction_installments ADD COLUMN IF NOT EXISTS amount NUMERIC(14,2) DEFAULT 0",
+        "ALTER TABLE finance_transaction_installments ADD COLUMN IF NOT EXISTS status VARCHAR(30) DEFAULT 'pendente'",
+        "ALTER TABLE finance_transaction_installments ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW()",
         "ALTER TABLE finance_transaction_attachments ADD COLUMN IF NOT EXISTS finance_transaction_id INTEGER",
         "ALTER TABLE finance_transaction_attachments ADD COLUMN IF NOT EXISTS filename VARCHAR(255)",
         "ALTER TABLE finance_transaction_attachments ADD COLUMN IF NOT EXISTS content_type VARCHAR(120)",
