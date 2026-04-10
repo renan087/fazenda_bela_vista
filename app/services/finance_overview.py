@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import date
 
-from app.models import CropSeason, PurchasedInput
+from app.models import CropSeason, FinanceAccount, PurchasedInput
 from app.repositories.farm import FarmRepository
 
 EXTRACT_MAX_ROWS = 500
@@ -166,8 +166,29 @@ def _collect_finance_revenue_rows(
 
     Por enquanto retorna lista vazia — mantém o extrato preparado para créditos.
     """
-    _ = (repo, farm_id, period_start, period_end)
-    return []
+    raw: list[dict] = []
+
+    for account in repo.list_finance_accounts(farm_id=farm_id):
+        balance_date = account.initial_balance_date
+        initial_balance = _f(account.initial_balance)
+        if initial_balance <= 0:
+            continue
+        if not _in_extract_period(balance_date, period_start, period_end):
+            continue
+        raw.append(
+            {
+                "date": balance_date,
+                "sort_group": 0,
+                "ref_id": account.id,
+                "module": "Contas",
+                "description": f"Saldo inicial — {account.account_name}",
+                "detail": f"({account.bank_code}) {account.bank_name}",
+                "debit": None,
+                "credit": initial_balance,
+            }
+        )
+
+    return raw
 
 
 def build_finance_extract_rows(

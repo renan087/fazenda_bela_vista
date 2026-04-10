@@ -13,6 +13,7 @@ from app.models import (
     EquipmentAssetAttachment,
     Farm,
     FinanceAccount,
+    FinanceCustomBank,
     FertilizationItem,
     FertilizationSchedule,
     FertilizationScheduleItem,
@@ -216,7 +217,7 @@ class FarmRepository:
     def list_finance_accounts(self, farm_id: int | None = None) -> list[FinanceAccount]:
         query = (
             self.db.query(FinanceAccount)
-            .options(joinedload(FinanceAccount.farm))
+            .options(joinedload(FinanceAccount.farm), joinedload(FinanceAccount.custom_bank))
             .order_by(FinanceAccount.is_default.desc(), FinanceAccount.account_name.asc(), FinanceAccount.id.desc())
         )
         if farm_id:
@@ -226,10 +227,16 @@ class FarmRepository:
     def get_finance_account(self, account_id: int) -> FinanceAccount | None:
         return (
             self.db.query(FinanceAccount)
-            .options(joinedload(FinanceAccount.farm))
+            .options(joinedload(FinanceAccount.farm), joinedload(FinanceAccount.custom_bank))
             .filter(FinanceAccount.id == account_id)
             .first()
         )
+
+    def list_finance_custom_banks(self) -> list[FinanceCustomBank]:
+        return self.db.query(FinanceCustomBank).order_by(FinanceCustomBank.bank_name.asc(), FinanceCustomBank.id.desc()).all()
+
+    def get_finance_custom_bank(self, bank_id: int) -> FinanceCustomBank | None:
+        return self.db.query(FinanceCustomBank).filter(FinanceCustomBank.id == bank_id).first()
 
     def list_irrigations(self, limit: int | None = None) -> list[IrrigationRecord]:
         query = (

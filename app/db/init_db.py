@@ -18,6 +18,7 @@ from app.models import (
     EquipmentAssetAttachment,
     Farm,
     FinanceAccount,
+    FinanceCustomBank,
     FertilizationItem,
     FertilizationSchedule,
     FertilizationScheduleItem,
@@ -174,6 +175,14 @@ def _sync_schema() -> None:
         )
         """,
         """
+        CREATE TABLE IF NOT EXISTS finance_custom_banks (
+            id SERIAL PRIMARY KEY,
+            bank_code VARCHAR(12) NOT NULL,
+            bank_name VARCHAR(180) NOT NULL,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+        """,
+        """
         CREATE TABLE IF NOT EXISTS finance_accounts (
             id SERIAL PRIMARY KEY,
             farm_id INTEGER NOT NULL REFERENCES farms(id) ON DELETE CASCADE,
@@ -182,6 +191,7 @@ def _sync_schema() -> None:
             initial_balance NUMERIC(14,2) NOT NULL DEFAULT 0,
             bank_code VARCHAR(12) NOT NULL,
             bank_name VARCHAR(180) NOT NULL,
+            custom_bank_id INTEGER REFERENCES finance_custom_banks(id) ON DELETE SET NULL,
             branch_number VARCHAR(30),
             account_number VARCHAR(60),
             is_default BOOLEAN NOT NULL DEFAULT FALSE,
@@ -401,10 +411,14 @@ def _sync_schema() -> None:
         "ALTER TABLE finance_accounts ADD COLUMN IF NOT EXISTS initial_balance NUMERIC(14,2) DEFAULT 0",
         "ALTER TABLE finance_accounts ADD COLUMN IF NOT EXISTS bank_code VARCHAR(12)",
         "ALTER TABLE finance_accounts ADD COLUMN IF NOT EXISTS bank_name VARCHAR(180)",
+        "ALTER TABLE finance_accounts ADD COLUMN IF NOT EXISTS custom_bank_id INTEGER",
         "ALTER TABLE finance_accounts ADD COLUMN IF NOT EXISTS branch_number VARCHAR(30)",
         "ALTER TABLE finance_accounts ADD COLUMN IF NOT EXISTS account_number VARCHAR(60)",
         "ALTER TABLE finance_accounts ADD COLUMN IF NOT EXISTS is_default BOOLEAN NOT NULL DEFAULT FALSE",
         "ALTER TABLE finance_accounts ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW()",
+        "ALTER TABLE finance_custom_banks ADD COLUMN IF NOT EXISTS bank_code VARCHAR(12)",
+        "ALTER TABLE finance_custom_banks ADD COLUMN IF NOT EXISTS bank_name VARCHAR(180)",
+        "ALTER TABLE finance_custom_banks ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW()",
         "ALTER TABLE input_catalog ADD COLUMN IF NOT EXISTS item_type VARCHAR(40) DEFAULT 'insumo_agricola'",
         "ALTER TABLE input_catalog ADD COLUMN IF NOT EXISTS category VARCHAR(120) DEFAULT 'Geral'",
         "ALTER TABLE purchased_inputs ADD COLUMN IF NOT EXISTS input_id INTEGER",

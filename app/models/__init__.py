@@ -6,6 +6,7 @@ from app.models.equipment_asset import EquipmentAsset
 from app.models.equipment_asset_attachment import EquipmentAssetAttachment
 from app.models.farm import Farm
 from app.models.finance_account import FinanceAccount
+from app.models.finance_custom_bank import FinanceCustomBank
 from app.models.fertilization_item import FertilizationItem
 from app.models.fertilization_schedule import FertilizationSchedule
 from app.models.fertilization_schedule_item import FertilizationScheduleItem
@@ -39,6 +40,7 @@ __all__ = [
     "EquipmentAssetAttachment",
     "Farm",
     "FinanceAccount",
+    "FinanceCustomBank",
     "FertilizationItem",
     "FertilizationSchedule",
     "FertilizationScheduleItem",

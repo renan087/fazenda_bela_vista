@@ -41,6 +41,7 @@ from app.models import (
     EquipmentAssetAttachment,
     Farm,
     FinanceAccount,
+    FinanceCustomBank,
     FertilizationItem,
     FertilizationSchedule,
     FertilizationRecord,
@@ -2149,6 +2150,24 @@ def _finance_bank_option_map() -> dict[str, dict]:
     return {item["code"]: item for item in FINANCE_BANK_OPTIONS}
 
 
+def _finance_bank_choice_options(repo: FarmRepository) -> list[dict]:
+    options = [dict(item, source="builtin") for item in FINANCE_BANK_OPTIONS]
+    for custom in repo.list_finance_custom_banks():
+        options.append(
+            {
+                "code": custom.bank_code,
+                "name": custom.bank_name,
+                "mark": "OT",
+                "bg": "#94a3b8",
+                "fg": "#ffffff",
+                "source": "custom",
+                "custom_id": custom.id,
+            }
+        )
+    options.append({"code": "__other__", "name": "Outro banco", "mark": "+", "bg": "#e2e8f0", "fg": "#334155", "source": "other"})
+    return options
+
+
 def _finance_accounts_modal_query(request: Request, *, edit_id: int | None = None, launch: bool | None = None) -> str:
     params = dict(request.query_params)
     if edit_id is None:
@@ -2173,15 +2192,41 @@ def _finance_accounts_set_default(repo: FarmRepository, farm_id: int, keep_id: i
             repo.db.add(account)
 
 
+def _cleanup_custom_bank_if_unused(repo: FarmRepository, custom_bank_id: int | None) -> None:
+    if not custom_bank_id:
+        return
+    custom_bank = repo.get_finance_custom_bank(custom_bank_id)
+    if not custom_bank:
+        return
+    remaining = [item for item in repo.list_finance_accounts() if item.custom_bank_id == custom_bank_id]
+    if not remaining:
+        repo.delete(custom_bank)
+
+
+def _find_matching_custom_bank(repo: FarmRepository, bank_code: str, bank_name: str) -> FinanceCustomBank | None:
+    normalized_code = (bank_code or "").strip()
+    normalized_name = unicodedata.normalize("NFD", (bank_name or "").strip())
+    normalized_name = "".join(char for char in normalized_name if unicodedata.category(char) != "Mn").lower()
+    for custom_bank in repo.list_finance_custom_banks():
+        current_name = unicodedata.normalize("NFD", custom_bank.bank_name or "")
+        current_name = "".join(char for char in current_name if unicodedata.category(char) != "Mn").lower()
+        if (custom_bank.bank_code or "").strip() == normalized_code and current_name == normalized_name:
+            return custom_bank
+    return None
+
+
 def _finance_accounts_parse_form(
     account_name: str,
     initial_balance_date: str,
     initial_balance: str,
     bank_code: str,
     bank_name: str,
+    custom_bank_code: str | None,
+    custom_bank_name: str | None,
     branch_number: str | None,
     account_number: str | None,
     is_default: bool,
+    repo: FarmRepository,
 ) -> dict:
     bank_map = _finance_bank_option_map()
     normalized_bank_code = (bank_code or "").strip()
@@ -2194,17 +2239,54 @@ def _finance_accounts_parse_form(
         parsed_initial_balance = round(float(initial_balance or 0), 2)
     except (TypeError, ValueError):
         raise ValueError("Informe um saldo inicial válido.")
-    if not selected_bank:
-        raise ValueError("Selecione um banco da lista.")
-    return {
+    payload = {
         "account_name": account_name.strip(),
         "initial_balance_date": date.fromisoformat(initial_balance_date),
         "initial_balance": parsed_initial_balance,
-        "bank_code": selected_bank["code"],
-        "bank_name": selected_bank["name"] if not (bank_name or "").strip() else bank_name.strip(),
         "branch_number": (branch_number or "").strip(),
         "account_number": (account_number or "").strip(),
         "is_default": bool(is_default),
+        "custom_bank": None,
+    }
+    if normalized_bank_code == "__other__":
+        resolved_custom_code = (custom_bank_code or "").strip()
+        resolved_custom_name = (custom_bank_name or "").strip()
+        if not resolved_custom_code:
+            raise ValueError("Informe o código do outro banco.")
+        if not resolved_custom_name:
+            raise ValueError("Informe o nome do outro banco.")
+        existing_custom_bank = _find_matching_custom_bank(repo, resolved_custom_code, resolved_custom_name)
+        if existing_custom_bank:
+            payload.update(
+                {
+                    "bank_code": existing_custom_bank.bank_code,
+                    "bank_name": existing_custom_bank.bank_name,
+                    "custom_bank": existing_custom_bank,
+                }
+            )
+            return payload
+        payload.update(
+            {
+                "bank_code": resolved_custom_code,
+                "bank_name": resolved_custom_name,
+                "custom_bank": {"bank_code": resolved_custom_code, "bank_name": resolved_custom_name},
+            }
+        )
+        return payload
+
+    if selected_bank:
+        payload.update({"bank_code": selected_bank["code"], "bank_name": selected_bank["name"]})
+        return payload
+
+    normalized_bank_name = (bank_name or "").strip()
+    custom_bank = _find_matching_custom_bank(repo, normalized_bank_code, normalized_bank_name)
+    if not custom_bank:
+        raise ValueError("Selecione um banco da lista.")
+    return {
+        **payload,
+        "bank_code": custom_bank.bank_code,
+        "bank_name": custom_bank.bank_name,
+        "custom_bank": custom_bank,
     }
 
 
@@ -2417,6 +2499,7 @@ def finance_accounts_page(
     active_farm = scope.get("active_farm")
     accounts = repo.list_finance_accounts(farm_id=active_farm.id) if active_farm else []
     edit_account = repo.get_finance_account(edit_id) if edit_id else None
+    bank_options = _finance_bank_choice_options(repo)
     if edit_account and (not active_farm or edit_account.farm_id != active_farm.id):
         _flash(request, "error", "Esta conta não pertence à fazenda ativa.")
         return _redirect("/gestao-financeira/contas")
@@ -2434,7 +2517,7 @@ def finance_accounts_page(
             finance_account_total=len(accounts),
             finance_account_default=next((item for item in accounts if item.is_default), None),
             edit_finance_account=edit_account,
-            finance_bank_options=FINANCE_BANK_OPTIONS,
+            finance_bank_options=bank_options,
             finance_open_launch_modal=bool(launch or edit_account),
         ),
     )
@@ -2449,6 +2532,8 @@ def create_finance_account_action(
     initial_balance: str = Form("0"),
     bank_code: str = Form(...),
     bank_name: str = Form(""),
+    custom_bank_code: str | None = Form(None),
+    custom_bank_name: str | None = Form(None),
     branch_number: str | None = Form(None),
     account_number: str | None = Form(None),
     is_default: bool = Form(False),
@@ -2470,9 +2555,12 @@ def create_finance_account_action(
             initial_balance,
             bank_code,
             bank_name,
+            custom_bank_code,
+            custom_bank_name,
             branch_number,
             account_number,
             is_default,
+            repo,
         )
     except ValueError as exc:
         _flash(request, "error", str(exc))
@@ -2481,6 +2569,17 @@ def create_finance_account_action(
     if payload["is_default"]:
         _finance_accounts_set_default(repo, active_farm.id)
 
+    custom_bank = payload.get("custom_bank")
+    custom_bank_id = None
+    if isinstance(custom_bank, dict):
+        custom_bank_record = FinanceCustomBank(
+            bank_code=custom_bank["bank_code"],
+            bank_name=custom_bank["bank_name"],
+            created_at=app_now(),
+        )
+        repo.create(custom_bank_record)
+        custom_bank_id = custom_bank_record.id
+
     account = FinanceAccount(
         farm_id=active_farm.id,
         account_name=payload["account_name"],
@@ -2488,6 +2587,7 @@ def create_finance_account_action(
         initial_balance=payload["initial_balance"],
         bank_code=payload["bank_code"],
         bank_name=payload["bank_name"],
+        custom_bank_id=custom_bank_id if isinstance(custom_bank, dict) else (custom_bank.id if custom_bank else None),
         branch_number=payload["branch_number"],
         account_number=payload["account_number"],
         is_default=payload["is_default"],
@@ -2509,6 +2609,8 @@ def update_finance_account_action(
     initial_balance: str = Form("0"),
     bank_code: str = Form(...),
     bank_name: str = Form(""),
+    custom_bank_code: str | None = Form(None),
+    custom_bank_name: str | None = Form(None),
     branch_number: str | None = Form(None),
     account_number: str | None = Form(None),
     is_default: bool = Form(False),
@@ -2534,9 +2636,12 @@ def update_finance_account_action(
             initial_balance,
             bank_code,
             bank_name,
+            custom_bank_code,
+            custom_bank_name,
             branch_number,
             account_number,
             is_default,
+            repo,
         )
     except ValueError as exc:
         _flash(request, "error", str(exc))
@@ -2544,6 +2649,20 @@ def update_finance_account_action(
 
     if payload["is_default"]:
         _finance_accounts_set_default(repo, active_farm.id, keep_id=account.id)
+
+    previous_custom_bank_id = account.custom_bank_id
+    custom_bank = payload.get("custom_bank")
+    next_custom_bank_id = None
+    if isinstance(custom_bank, dict):
+        custom_bank_record = FinanceCustomBank(
+            bank_code=custom_bank["bank_code"],
+            bank_name=custom_bank["bank_name"],
+            created_at=app_now(),
+        )
+        repo.create(custom_bank_record)
+        next_custom_bank_id = custom_bank_record.id
+    elif custom_bank:
+        next_custom_bank_id = custom_bank.id
 
     repo.update(
         account,
@@ -2553,11 +2672,14 @@ def update_finance_account_action(
             "initial_balance": payload["initial_balance"],
             "bank_code": payload["bank_code"],
             "bank_name": payload["bank_name"],
+            "custom_bank_id": next_custom_bank_id,
             "branch_number": payload["branch_number"],
             "account_number": payload["account_number"],
             "is_default": payload["is_default"],
         },
     )
+    if previous_custom_bank_id and previous_custom_bank_id != next_custom_bank_id:
+        _cleanup_custom_bank_if_unused(repo, previous_custom_bank_id)
     _flash(request, "success", "Conta bancária atualizada com sucesso.")
     return _redirect("/gestao-financeira/contas")
 
@@ -2582,7 +2704,9 @@ def delete_finance_account_action(
     if not active_farm or account.farm_id != active_farm.id:
         _flash(request, "error", "Esta conta não pertence à fazenda ativa.")
         return _redirect("/gestao-financeira/contas")
+    previous_custom_bank_id = account.custom_bank_id
     repo.delete(account)
+    _cleanup_custom_bank_if_unused(repo, previous_custom_bank_id)
     _flash(request, "success", "Conta bancária excluída com sucesso.")
     return _redirect("/gestao-financeira/contas")
 

@@ -175,7 +175,8 @@
                     <div class="grid gap-4 md:grid-cols-2">
                         <label>
                             <span class="mb-2 block text-sm font-medium">Saldo inicial</span>
-                            <input type="number" step="0.01" name="initial_balance" value="{{ edit_finance_account.initial_balance if edit_finance_account else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required>
+                            <input type="hidden" name="initial_balance" value="{{ edit_finance_account.initial_balance if edit_finance_account else '' }}" data-finance-balance-raw>
+                            <input type="text" value="" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required inputmode="decimal" placeholder="R$ 0,00" data-finance-balance-display>
                         </label>
                         <div class="relative" data-bank-picker-root>
                             <span class="mb-2 block text-sm font-medium">Banco</span>
@@ -198,7 +199,7 @@
                             <div class="absolute left-0 right-0 top-[calc(100%+0.5rem)] z-30 hidden overflow-hidden rounded-[1.5rem] border border-slate-200 bg-white shadow-2xl" data-bank-picker-menu>
                                 <div class="max-h-72 overflow-y-auto py-2">
                                     {% for bank in finance_bank_options %}
-                                    <button type="button" class="flex w-full items-center gap-3 px-4 py-3 text-left transition hover:bg-slate-50" data-bank-option data-bank-code="{{ bank.code }}" data-bank-name="{{ bank.name }}" data-bank-mark="{{ bank.mark }}" data-bank-bg="{{ bank.bg }}" data-bank-fg="{{ bank.fg }}">
+                                    <button type="button" class="flex w-full items-center gap-3 px-4 py-3 text-left transition hover:bg-slate-50" data-bank-option data-bank-code="{{ bank.code }}" data-bank-name="{{ bank.name }}" data-bank-mark="{{ bank.mark }}" data-bank-bg="{{ bank.bg }}" data-bank-fg="{{ bank.fg }}" data-bank-source="{{ bank.source }}">
                                         <span class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-xs font-bold" style="background: {{ bank.bg }}; color: {{ bank.fg }};">{{ bank.mark }}</span>
                                         <span class="text-sm font-medium text-slate-800">({{ bank.code }}) {{ bank.name }}</span>
                                     </button>
@@ -206,6 +207,16 @@
                                 </div>
                             </div>
                         </div>
+                    </div>
+                    <div class="grid hidden gap-4 md:grid-cols-2" data-custom-bank-fields>
+                        <label>
+                            <span class="mb-2 block text-sm font-medium">Código do banco</span>
+                            <input type="text" name="custom_bank_code" value="{{ edit_finance_account.bank_code if edit_finance_account and edit_finance_account.custom_bank_id else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" data-custom-bank-code>
+                        </label>
+                        <label>
+                            <span class="mb-2 block text-sm font-medium">Nome do banco</span>
+                            <input type="text" name="custom_bank_name" value="{{ edit_finance_account.bank_name if edit_finance_account and edit_finance_account.custom_bank_id else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" data-custom-bank-name>
+                        </label>
                     </div>
                     <div class="grid gap-4 md:grid-cols-2">
                         <label>
@@ -237,6 +248,8 @@
     const openButton = document.querySelector('[data-finance-account-open]');
     const closeButtons = Array.from(document.querySelectorAll('[data-finance-account-close]'));
     const shouldOpenModal = {% if finance_open_launch_modal %}true{% else %}false{% endif %};
+    const balanceRawInput = document.querySelector('[data-finance-balance-raw]');
+    const balanceDisplayInput = document.querySelector('[data-finance-balance-display]');
 
     const normalize = (value) => (value || '').toString().normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
 
@@ -278,6 +291,43 @@
         modal?.showModal();
     }
 
+    const formatCurrencyDisplay = (rawValue) => {
+        const normalized = (rawValue || '').toString().replace(/[^\d,.-]/g, '').replace(/\.(?=.*\.)/g, '');
+        const hasComma = normalized.includes(',');
+        const parts = normalized.split(',');
+        const integerDigits = (parts[0] || '').replace(/\D/g, '') || '0';
+        const decimalDigits = hasComma ? (parts[1] || '').replace(/\D/g, '').slice(0, 2) : '';
+        const integerNumber = Number(integerDigits || '0');
+        const integerFormatted = integerNumber.toLocaleString('pt-BR');
+        const decimalFormatted = hasComma ? decimalDigits.padEnd(2, '0') : '00';
+        return `R$ ${integerFormatted},${decimalFormatted}`;
+    };
+
+    const normalizeCurrencyRaw = (displayValue) => {
+        const normalized = (displayValue || '').toString().replace(/[^\d,.-]/g, '');
+        const hasComma = normalized.includes(',');
+        const parts = normalized.split(',');
+        const integerDigits = (parts[0] || '').replace(/\D/g, '') || '0';
+        const decimalDigits = hasComma ? (parts[1] || '').replace(/\D/g, '').slice(0, 2).padEnd(2, '0') : '00';
+        return `${Number(integerDigits || '0')}.${decimalDigits}`;
+    };
+
+    if (balanceRawInput && balanceDisplayInput) {
+        const initialRaw = balanceRawInput.value || '';
+        balanceDisplayInput.value = formatCurrencyDisplay(initialRaw);
+        balanceDisplayInput.addEventListener('input', () => {
+            const formatted = formatCurrencyDisplay(balanceDisplayInput.value);
+            balanceDisplayInput.value = formatted;
+            balanceRawInput.value = normalizeCurrencyRaw(formatted);
+        });
+        balanceDisplayInput.addEventListener('focus', () => {
+            if (!balanceDisplayInput.value.trim()) {
+                balanceDisplayInput.value = 'R$ 0,00';
+                balanceRawInput.value = '0.00';
+            }
+        });
+    }
+
     document.querySelectorAll('[data-bank-picker-root]').forEach((root) => {
         const trigger = root.querySelector('[data-bank-picker-trigger]');
         const menu = root.querySelector('[data-bank-picker-menu]');
@@ -285,6 +335,18 @@
         const codeInput = root.querySelector('[data-bank-code-input]');
         const nameInput = root.querySelector('[data-bank-name-input]');
         const options = Array.from(root.querySelectorAll('[data-bank-option]'));
+        const customFields = document.querySelector('[data-custom-bank-fields]');
+        const customCodeInput = document.querySelector('[data-custom-bank-code]');
+        const customNameInput = document.querySelector('[data-custom-bank-name]');
+
+        const syncCustomBankFields = () => {
+            const shouldShow = codeInput?.value === '__other__';
+            customFields?.classList.toggle('hidden', !shouldShow);
+            if (!shouldShow) {
+                if (customCodeInput) customCodeInput.value = '';
+                if (customNameInput) customNameInput.value = '';
+            }
+        };
 
         const closeMenu = () => {
             menu?.classList.add('hidden');
@@ -308,6 +370,7 @@
                 const mark = option.dataset.bankMark || code;
                 const bg = option.dataset.bankBg || '#e2e8f0';
                 const fg = option.dataset.bankFg || '#334155';
+                const source = option.dataset.bankSource || 'builtin';
                 codeInput.value = code;
                 nameInput.value = name;
                 if (display) {
@@ -316,6 +379,13 @@
                         <span class="truncate text-sm font-medium text-slate-900">(${code}) ${name}</span>
                     `;
                 }
+                if (source === 'other') {
+                    codeInput.value = '__other__';
+                    nameInput.value = 'Outro banco';
+                    if (customCodeInput && !customCodeInput.value) customCodeInput.value = '';
+                    if (customNameInput && !customNameInput.value) customNameInput.value = '';
+                }
+                syncCustomBankFields();
                 closeMenu();
             });
         });
@@ -323,6 +393,7 @@
         document.addEventListener('click', (event) => {
             if (!root.contains(event.target)) closeMenu();
         });
+        syncCustomBankFields();
     });
 })();
 </script>
