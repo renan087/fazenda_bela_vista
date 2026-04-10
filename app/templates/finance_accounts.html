@@ -229,40 +229,40 @@
 
         <div class="stock-history-stage mt-4 hidden" data-finance-tab="transactions">
         {% if finance_transactions %}
-        <div class="stock-table-shell">
-            <div class="overflow-x-auto overflow-y-hidden">
-                <table class="stock-history-table min-w-full">
-                    <thead>
+        <div class="stock-table-shell overflow-hidden rounded-[1.5rem] border border-slate-200">
+            <div class="overflow-x-auto">
+                <table class="stock-history-table min-w-full divide-y divide-slate-200 text-sm">
+                    <thead class="bg-slate-50 text-left text-slate-500">
                         <tr>
-                            <th>Tipo</th>
-                            <th>Data</th>
-                            <th>Conta</th>
-                            <th>Categoria</th>
-                            <th>Produto / serviço</th>
-                            <th>Valor</th>
-                            <th class="text-right">Ações</th>
+                            <th class="px-4 py-3 font-medium">Mov.</th>
+                            <th class="px-4 py-3 font-medium">Data</th>
+                            <th class="px-4 py-3 font-medium">Conta</th>
+                            <th class="px-4 py-3 font-medium">Categoria</th>
+                            <th class="px-4 py-3 font-medium">Produto / serviço</th>
+                            <th class="px-4 py-3 font-medium">Valor</th>
+                            <th class="px-4 py-3 font-medium text-right">Ações</th>
                         </tr>
                     </thead>
-                    <tbody>
+                    <tbody class="divide-y divide-slate-100 bg-white">
                         {% for transaction in finance_transactions %}
                         <tr data-stock-kind="{% if transaction.operation_type == 'receita' %}entrada{% else %}saida{% endif %}">
-                            <td>
+                            <td class="px-4 py-3">
                                 <span class="stock-movement-chip {% if transaction.operation_type == 'receita' %}stock-movement-chip-entry{% else %}stock-movement-chip-output{% endif %}">
                                     {{ 'Receita' if transaction.operation_type == 'receita' else 'Despesa' }}
                                 </span>
                             </td>
-                            <td class="font-semibold text-slate-900 whitespace-nowrap">
+                            <td class="px-4 py-3 whitespace-nowrap">
                                 <button type="button" class="text-left font-semibold text-slate-900 transition hover:text-brand-700 whitespace-nowrap" data-history-view-trigger data-history-view-kicker="Lançamento financeiro" data-history-view-title="{{ transaction.product_service }}" data-history-view-subtitle="{{ transaction.launch_date.strftime('%d/%m/%Y') if transaction.launch_date else '-' }} • {{ 'Receita' if transaction.operation_type == 'receita' else 'Despesa' }}" data-history-view-source="finance-transaction-view-{{ transaction.id }}" data-history-view-edit-url="/gestao-financeira/contas?finance_tab=transactions&transaction_edit_id={{ transaction.id }}">{{ transaction.launch_date.strftime('%d/%m/%Y') if transaction.launch_date else '-' }}</button>
                             </td>
-                            <td>{{ transaction.finance_account.account_name if transaction.finance_account else '-' }}</td>
-                            <td>
+                            <td class="px-4 py-3">{{ transaction.finance_account.account_name if transaction.finance_account else '-' }}</td>
+                            <td class="px-4 py-3 font-semibold text-slate-900">
                                 <button type="button" class="text-left font-semibold text-slate-900 transition hover:text-brand-700" data-history-view-trigger data-history-view-kicker="Lançamento financeiro" data-history-view-title="{{ transaction.product_service }}" data-history-view-subtitle="{{ transaction.launch_date.strftime('%d/%m/%Y') if transaction.launch_date else '-' }} • {{ 'Receita' if transaction.operation_type == 'receita' else 'Despesa' }}" data-history-view-source="finance-transaction-view-{{ transaction.id }}" data-history-view-edit-url="/gestao-financeira/contas?finance_tab=transactions&transaction_edit_id={{ transaction.id }}">{{ transaction.category }}</button>
                             </td>
-                            <td>
+                            <td class="px-4 py-3">
                                 <div class="flex flex-col gap-1">
-                                    <button type="button" class="text-left font-medium text-slate-900 transition hover:text-brand-700" data-history-view-trigger data-history-view-kicker="Lançamento financeiro" data-history-view-title="{{ transaction.product_service }}" data-history-view-subtitle="{{ transaction.launch_date.strftime('%d/%m/%Y') if transaction.launch_date else '-' }} • {{ 'Receita' if transaction.operation_type == 'receita' else 'Despesa' }}" data-history-view-source="finance-transaction-view-{{ transaction.id }}" data-history-view-edit-url="/gestao-financeira/contas?finance_tab=transactions&transaction_edit_id={{ transaction.id }}">{{ transaction.product_service }}</button>
+                                    <button type="button" class="text-left font-semibold text-slate-900 transition hover:text-brand-700" data-history-view-trigger data-history-view-kicker="Lançamento financeiro" data-history-view-title="{{ transaction.product_service }}" data-history-view-subtitle="{{ transaction.launch_date.strftime('%d/%m/%Y') if transaction.launch_date else '-' }} • {{ 'Receita' if transaction.operation_type == 'receita' else 'Despesa' }}" data-history-view-source="finance-transaction-view-{{ transaction.id }}" data-history-view-edit-url="/gestao-financeira/contas?finance_tab=transactions&transaction_edit_id={{ transaction.id }}">{{ transaction.product_service }}</button>
                                     {% if transaction.description %}
-                                    <span class="text-xs text-slate-500">{{ transaction.description }}</span>
+                                    <span class="stock-history-note-clamp text-slate-500" title="{{ transaction.description }}">{{ transaction.description }}</span>
                                     {% endif %}
                                 </div>
                                 <template id="finance-transaction-view-{{ transaction.id }}">
@@ -293,11 +293,11 @@
                                     </div>
                                 </template>
                             </td>
-                            <td class="font-semibold {% if transaction.operation_type == 'receita' %}text-emerald-700{% else %}text-rose-600{% endif %}">R$ {{ transaction.amount|decimal_br }}</td>
-                            <td>
+                            <td class="px-4 py-3 whitespace-nowrap font-semibold {% if transaction.operation_type == 'receita' %}text-emerald-700{% else %}text-rose-600{% endif %}">R$ {{ transaction.amount|decimal_br }}</td>
+                            <td class="px-4 py-3">
                                 <div class="flex items-center justify-end gap-2">
                                     {% if transaction.attachments %}
-                                    <button type="button" class="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-100" title="Ver anexos" aria-label="Ver anexos" data-finance-attachments-trigger data-finance-attachments-source="finance-attachments-list-{{ transaction.id }}">
+                                    <button type="button" class="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-100" title="Ver anexos" aria-label="Ver anexos" aria-haspopup="true" data-finance-attachments-trigger data-finance-attachments-source="finance-attachments-list-{{ transaction.id }}">
                                         <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                             <path d="M21.44 11.05 12.25 20.24a6 6 0 0 1-8.49-8.49l9.9-9.9a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
                                         </svg>
@@ -717,11 +717,11 @@
         if (!(attachmentPopover instanceof HTMLElement) || !(attachmentPopoverList instanceof HTMLElement)) return;
         const sourceId = trigger.dataset.financeAttachmentsSource;
         const source = sourceId ? document.getElementById(sourceId) : null;
-        if (!(source instanceof HTMLTemplateElement) || !source.innerHTML.trim()) {
+        if (!(source instanceof HTMLTemplateElement) || !(source.content instanceof DocumentFragment) || !source.content.childNodes.length) {
             hideAttachmentPopover();
             return;
         }
-        attachmentPopoverList.innerHTML = source.innerHTML;
+        attachmentPopoverList.replaceChildren(source.content.cloneNode(true));
     };
 
     const positionAttachmentPopover = (trigger) => {
