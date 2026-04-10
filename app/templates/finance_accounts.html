@@ -1,5 +1,22 @@
 {% extends "base.html" %}
 {% block content %}
+<style>
+@keyframes financeStarIgnite {
+    0% { transform: scale(1); filter: drop-shadow(0 0 0 rgba(245, 158, 11, 0)); }
+    35% { transform: scale(1.18); filter: drop-shadow(0 0 0.65rem rgba(245, 158, 11, 0.45)); }
+    100% { transform: scale(1); filter: drop-shadow(0 0 0 rgba(245, 158, 11, 0)); }
+}
+
+.finance-default-star-trigger.is-activating {
+    border-color: rgba(245, 158, 11, 0.35);
+    background: rgba(254, 243, 199, 0.75);
+    color: #f59e0b;
+}
+
+.finance-default-star-trigger.is-activating svg {
+    animation: financeStarIgnite 260ms ease-out forwards;
+}
+</style>
 <div class="stock-page-shell space-y-6">
     <section class="stock-page-header rounded-[2rem] p-5 shadow-panel">
         <div class="flex flex-wrap items-start justify-between gap-4">
@@ -71,9 +88,14 @@
                             </div>
                         </div>
                     </div>
-                    {% if account.is_default %}
-                    <span class="rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-700">Padrão</span>
-                    {% endif %}
+                    <form method="post" action="/gestao-financeira/contas/{{ account.id }}/definir-padrao">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                        <button type="submit" class="finance-default-star-trigger inline-flex h-10 w-10 items-center justify-center rounded-full border transition {% if account.is_default %}border-amber-200 bg-amber-50 text-amber-500 hover:bg-amber-100{% else %}border-slate-200 bg-white text-slate-300 hover:border-amber-200 hover:bg-amber-50 hover:text-amber-400{% endif %}" title="{% if account.is_default %}Conta padrão{% else %}Definir como padrão{% endif %}" aria-label="{% if account.is_default %}Conta padrão{% else %}Definir como padrão{% endif %}" {% if not account.is_default %}data-finance-default-trigger{% endif %}>
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 24 24" fill="{% if account.is_default %}currentColor{% else %}none{% endif %}" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                <path d="m12 3.5 2.63 5.33 5.88.86-4.25 4.14 1 5.84L12 17.1l-5.26 2.57 1-5.84L3.5 9.69l5.88-.86L12 3.5z"/>
+                            </svg>
+                        </button>
+                    </form>
                 </div>
                 <div class="mt-4 grid gap-3 sm:grid-cols-2">
                     <div class="rounded-2xl bg-white px-4 py-3 ring-1 ring-slate-200/80">
@@ -268,6 +290,15 @@
         });
     }
 
+    document.querySelectorAll('[data-finance-default-trigger]').forEach((button) => {
+        button.addEventListener('click', (event) => {
+            event.preventDefault();
+            button.classList.add('is-activating');
+            const form = button.closest('form');
+            window.setTimeout(() => form?.requestSubmit(), 220);
+        });
+    });
+
     const cleanUrl = () => {
         const url = new URL(window.location.href);
         url.searchParams.delete('edit_id');
@@ -289,7 +320,9 @@
             element.value = formInitialState.get(name) || '';
         });
         if (balanceRawInput && balanceDisplayInput) {
-            balanceDisplayInput.value = formatCurrencyDisplay(balanceRawInput.value || '');
+            const resetDigits = centsDigitsFromRaw(balanceRawInput.value || '0.00');
+            balanceDisplayInput.value = formatCurrencyDisplayFromDigits(resetDigits);
+            balanceRawInput.value = rawFromCurrencyDigits(resetDigits);
         }
         document.querySelectorAll('[data-bank-picker-root]').forEach((root) => {
             const trigger = root.querySelector('[data-bank-picker-trigger]');
@@ -336,50 +369,91 @@
         modal?.showModal();
     });
     closeButtons.forEach((button) => button.addEventListener('click', closeModal));
-    modal?.addEventListener('click', (event) => {
-        const rect = modal.getBoundingClientRect();
-        const inside = event.clientX >= rect.left && event.clientX <= rect.right && event.clientY >= rect.top && event.clientY <= rect.bottom;
-        if (!inside) closeModal();
+    modal?.addEventListener('cancel', (event) => {
+        event.preventDefault();
     });
 
     if (shouldOpenModal) {
         modal?.showModal();
     }
 
-    const formatCurrencyDisplay = (rawValue) => {
-        const normalized = (rawValue || '').toString().replace(/[^\d,.-]/g, '').replace(/\.(?=.*\.)/g, '');
-        const hasComma = normalized.includes(',');
-        const parts = normalized.split(',');
-        const integerDigits = (parts[0] || '').replace(/\D/g, '') || '0';
-        const decimalDigits = hasComma ? (parts[1] || '').replace(/\D/g, '').slice(0, 2) : '';
-        const integerNumber = Number(integerDigits || '0');
-        const integerFormatted = integerNumber.toLocaleString('pt-BR');
-        const decimalFormatted = hasComma ? decimalDigits.padEnd(2, '0') : '00';
-        return `R$ ${integerFormatted},${decimalFormatted}`;
+    const centsDigitsFromRaw = (rawValue) => {
+        const normalized = (rawValue || '').toString().replace(/[^\d]/g, '');
+        return normalized ? normalized.replace(/^0+(?=\d)/, '') || '0' : '0';
     };
 
-    const normalizeCurrencyRaw = (displayValue) => {
-        const normalized = (displayValue || '').toString().replace(/[^\d,.-]/g, '');
-        const hasComma = normalized.includes(',');
-        const parts = normalized.split(',');
-        const integerDigits = (parts[0] || '').replace(/\D/g, '') || '0';
-        const decimalDigits = hasComma ? (parts[1] || '').replace(/\D/g, '').slice(0, 2).padEnd(2, '0') : '00';
-        return `${Number(integerDigits || '0')}.${decimalDigits}`;
+    const formatCurrencyDisplayFromDigits = (digits) => {
+        const normalizedDigits = (digits || '0').replace(/[^\d]/g, '') || '0';
+        const padded = normalizedDigits.padStart(3, '0');
+        const cents = padded.slice(-2);
+        const integerDigits = padded.slice(0, -2) || '0';
+        const integerFormatted = Number(integerDigits).toLocaleString('pt-BR');
+        return `R$ ${integerFormatted},${cents}`;
+    };
+
+    const rawFromCurrencyDigits = (digits) => {
+        const normalizedDigits = (digits || '0').replace(/[^\d]/g, '') || '0';
+        const padded = normalizedDigits.padStart(3, '0');
+        return `${String(Number(padded.slice(0, -2) || '0'))}.${padded.slice(-2)}`;
     };
 
     if (balanceRawInput && balanceDisplayInput) {
-        const initialRaw = balanceRawInput.value || '';
-        balanceDisplayInput.value = formatCurrencyDisplay(initialRaw);
-        balanceDisplayInput.addEventListener('input', () => {
-            const formatted = formatCurrencyDisplay(balanceDisplayInput.value);
-            balanceDisplayInput.value = formatted;
-            balanceRawInput.value = normalizeCurrencyRaw(formatted);
-        });
-        balanceDisplayInput.addEventListener('focus', () => {
-            if (!balanceDisplayInput.value.trim()) {
-                balanceDisplayInput.value = 'R$ 0,00';
-                balanceRawInput.value = '0.00';
+        let currencyDigits = centsDigitsFromRaw(balanceRawInput.value || '0.00');
+
+        const syncCurrencyFields = () => {
+            balanceDisplayInput.value = formatCurrencyDisplayFromDigits(currencyDigits);
+            balanceRawInput.value = rawFromCurrencyDigits(currencyDigits);
+        };
+
+        syncCurrencyFields();
+
+        balanceDisplayInput.addEventListener('beforeinput', (event) => {
+            const nativeEvent = event;
+            const inputType = nativeEvent.inputType || '';
+            if (inputType === 'deleteContentBackward') {
+                event.preventDefault();
+                currencyDigits = currencyDigits.length > 1 ? currencyDigits.slice(0, -1) : '0';
+                syncCurrencyFields();
+                return;
             }
+            if (inputType === 'deleteContentForward') {
+                event.preventDefault();
+                currencyDigits = '0';
+                syncCurrencyFields();
+                return;
+            }
+            if (inputType.startsWith('insert')) {
+                const inserted = (nativeEvent.data || '').replace(/[^\d]/g, '');
+                if (!inserted) {
+                    event.preventDefault();
+                    return;
+                }
+                event.preventDefault();
+                currencyDigits = `${currencyDigits === '0' ? '' : currencyDigits}${inserted}`.replace(/^0+(?=\d)/, '') || '0';
+                syncCurrencyFields();
+            }
+        });
+
+        balanceDisplayInput.addEventListener('keydown', (event) => {
+            const allowedKeys = ['Tab', 'ArrowLeft', 'ArrowRight', 'Home', 'End'];
+            if (allowedKeys.includes(event.key)) return;
+            if (event.key === 'Backspace') return;
+            if (/^\d$/.test(event.key)) return;
+            event.preventDefault();
+        });
+
+        balanceDisplayInput.addEventListener('focus', () => {
+            requestAnimationFrame(() => {
+                balanceDisplayInput.setSelectionRange(balanceDisplayInput.value.length, balanceDisplayInput.value.length);
+            });
+        });
+
+        balanceDisplayInput.addEventListener('paste', (event) => {
+            event.preventDefault();
+            const pasted = (event.clipboardData?.getData('text') || '').replace(/[^\d]/g, '');
+            if (!pasted) return;
+            currencyDigits = `${currencyDigits === '0' ? '' : currencyDigits}${pasted}`.replace(/^0+(?=\d)/, '') || '0';
+            syncCurrencyFields();
         });
     }
 

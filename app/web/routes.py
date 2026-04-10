@@ -2711,6 +2711,32 @@ def delete_finance_account_action(
     return _redirect("/gestao-financeira/contas")
 
 
+@router.post("/gestao-financeira/contas/{account_id}/definir-padrao")
+def set_default_finance_account_action(
+    request: Request,
+    account_id: int,
+    csrf_token: str = Form(...),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    del user
+    validate_csrf(request, csrf_token)
+    repo = _repository(db)
+    scope = _global_scope_context(request, repo)
+    active_farm = scope.get("active_farm")
+    account = repo.get_finance_account(account_id)
+    if not account:
+        _flash(request, "error", "Conta bancária não encontrada.")
+        return _redirect("/gestao-financeira/contas")
+    if not active_farm or account.farm_id != active_farm.id:
+        _flash(request, "error", "Esta conta não pertence à fazenda ativa.")
+        return _redirect("/gestao-financeira/contas")
+    _finance_accounts_set_default(repo, active_farm.id, keep_id=account.id)
+    repo.update(account, {"is_default": True})
+    _flash(request, "success", f"{account.account_name} definida como conta padrão.")
+    return _redirect("/gestao-financeira/contas")
+
+
 @router.get("/talhoes", include_in_schema=False)
 @router.get("/setores")
 def plots_page(
