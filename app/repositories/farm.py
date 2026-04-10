@@ -14,6 +14,8 @@ from app.models import (
     Farm,
     FinanceAccount,
     FinanceCustomBank,
+    FinanceTransaction,
+    FinanceTransactionAttachment,
     FertilizationItem,
     FertilizationSchedule,
     FertilizationScheduleItem,
@@ -237,6 +239,42 @@ class FarmRepository:
 
     def get_finance_custom_bank(self, bank_id: int) -> FinanceCustomBank | None:
         return self.db.query(FinanceCustomBank).filter(FinanceCustomBank.id == bank_id).first()
+
+    def list_finance_transactions(self, farm_id: int | None = None, finance_account_id: int | None = None) -> list[FinanceTransaction]:
+        query = (
+            self.db.query(FinanceTransaction)
+            .options(
+                joinedload(FinanceTransaction.farm),
+                joinedload(FinanceTransaction.finance_account),
+                joinedload(FinanceTransaction.attachments),
+            )
+            .order_by(FinanceTransaction.launch_date.desc(), FinanceTransaction.id.desc())
+        )
+        if farm_id:
+            query = query.filter(FinanceTransaction.farm_id == farm_id)
+        if finance_account_id:
+            query = query.filter(FinanceTransaction.finance_account_id == finance_account_id)
+        return query.all()
+
+    def get_finance_transaction(self, transaction_id: int) -> FinanceTransaction | None:
+        return (
+            self.db.query(FinanceTransaction)
+            .options(
+                joinedload(FinanceTransaction.farm),
+                joinedload(FinanceTransaction.finance_account),
+                joinedload(FinanceTransaction.attachments),
+            )
+            .filter(FinanceTransaction.id == transaction_id)
+            .first()
+        )
+
+    def get_finance_transaction_attachment(self, attachment_id: int) -> FinanceTransactionAttachment | None:
+        return (
+            self.db.query(FinanceTransactionAttachment)
+            .options(joinedload(FinanceTransactionAttachment.transaction).joinedload(FinanceTransaction.farm))
+            .filter(FinanceTransactionAttachment.id == attachment_id)
+            .first()
+        )
 
     def list_irrigations(self, limit: int | None = None) -> list[IrrigationRecord]:
         query = (

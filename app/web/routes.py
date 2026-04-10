@@ -42,6 +42,8 @@ from app.models import (
     Farm,
     FinanceAccount,
     FinanceCustomBank,
+    FinanceTransaction,
+    FinanceTransactionAttachment,
     FertilizationItem,
     FertilizationSchedule,
     FertilizationRecord,
@@ -181,6 +183,73 @@ FINANCE_BANK_OPTIONS = [
     {"code": "260", "name": "Nu Pagamentos S.A. (Nubank)", "mark": "NU", "bg": "#7c3aed", "fg": "#ffffff"},
     {"code": "336", "name": "Banco C6 S.A.", "mark": "C6", "bg": "#111827", "fg": "#ffffff"},
     {"code": "422", "name": "Banco Safra S.A.", "mark": "SA", "bg": "#0f766e", "fg": "#ffffff"},
+]
+FINANCE_TRANSACTION_EXPENSE_CATEGORIES = [
+    "Acaricida",
+    "Adjuvante",
+    "Amortizaçao de Empréstimos",
+    "Aquisiçao de Imóveis",
+    "Aquisiçao de Máquinas e Implementos",
+    "Aquisiçao de Veículos",
+    "Arrendamento de Terra",
+    "Combustíveis",
+    "Comercializaçao",
+    "Compra de Água",
+    "Compra de Animais",
+    "Comunicação (Telefone, Intenert)",
+    "Construção de Benfeitorias",
+    "Corretivos de Solo",
+    "Dedução de Receita de Venda",
+    "Despesas com Viagens",
+    "Despesas Diversas",
+    "Devoluçao/Cancelamento de Venda",
+    "Encargos Financeiros (Juros, Taxas e Multas)",
+    "Encargos Sociais",
+    "Energia Elétrica",
+    "Feritlizantes",
+    "Financiamentos",
+    "Fretes",
+    "Fungicida",
+    "Herbicida",
+    "Impostos (IPTU, ITR, etc.)",
+    "Inseticida",
+    "IRPF, IRPJ ou CSLL",
+    "Irrigação",
+    "Lubrificantes",
+    "Manutenção de Máquinas e Equipamentos",
+    "Manutenção de Benfeitorias",
+    "Outras Despesas Administrativas",
+    "Outros Custos de Insumos",
+    "Outros Custos de Máquinas",
+    "Outros Defensivos",
+    "Outros Investimentos",
+    "Outros Itens",
+    "Peças de Máquinas e Equipamentos",
+    "Secagem de Grãos",
+    "Seguros",
+    "Sementes e Mudas",
+    "Serviços Terceirizados",
+    "Taxas",
+    "Transportes Internos",
+]
+FINANCE_TRANSACTION_REVENUE_CATEGORIES = [
+    "Outras Receitas Operacionais",
+    "Receita de Aluguel ou Arrendamento",
+    "Recita de Juros, Dividendos e Lucros",
+    "Receitas de Estoque",
+    "Venda Agrícola",
+    "Venda Pecuária",
+]
+FINANCE_TRANSACTION_PAYMENT_METHODS = [
+    "PIX",
+    "TED",
+    "DOC",
+    "Boleto",
+    "Cartão",
+    "Dinheiro",
+    "Débito automático",
+    "Cheque",
+    "Outro",
 ]
 MENU_ITEM_VISIBILITY_RULES = {
     "users": has_admin_access,
@@ -2187,6 +2256,26 @@ def _finance_accounts_modal_query(request: Request, *, edit_id: int | None = Non
     return "/gestao-financeira/contas"
 
 
+def _finance_transactions_modal_query(
+    request: Request,
+    *,
+    edit_id: int | None = None,
+    launch: bool | None = None,
+) -> str:
+    params = dict(request.query_params)
+    if edit_id is None:
+        params.pop("transaction_edit_id", None)
+    else:
+        params["transaction_edit_id"] = str(edit_id)
+    if launch:
+        params["transaction_launch"] = "1"
+    else:
+        params.pop("transaction_launch", None)
+    if params:
+        return f"/gestao-financeira/contas?{urlencode(params)}"
+    return "/gestao-financeira/contas"
+
+
 def _finance_accounts_set_default(repo: FarmRepository, farm_id: int, keep_id: int | None = None) -> None:
     for account in repo.list_finance_accounts(farm_id=farm_id):
         if keep_id is not None and account.id == keep_id:
@@ -2194,6 +2283,115 @@ def _finance_accounts_set_default(repo: FarmRepository, farm_id: int, keep_id: i
         if account.is_default:
             account.is_default = False
             repo.db.add(account)
+
+
+def _save_finance_transaction_attachments(
+    repo: FarmRepository,
+    transaction: FinanceTransaction,
+    attachments: list[tuple[str, str, bytes]],
+) -> int:
+    if not attachments:
+        return 0
+    repo.db.add_all(
+        [
+            FinanceTransactionAttachment(
+                finance_transaction_id=transaction.id,
+                filename=filename,
+                content_type=content_type,
+                file_data=payload,
+            )
+            for filename, content_type, payload in attachments
+        ]
+    )
+    try:
+        repo.db.commit()
+    except Exception:
+        repo.db.rollback()
+        raise
+    repo.db.refresh(transaction)
+    return len(attachments)
+
+
+def _finance_transaction_category_options(operation_type: str | None) -> list[str]:
+    normalized = (operation_type or "").strip().lower()
+    if normalized == "receita":
+        return FINANCE_TRANSACTION_REVENUE_CATEGORIES
+    return FINANCE_TRANSACTION_EXPENSE_CATEGORIES
+
+
+def _parse_finance_transaction_amount(raw_value: str | None) -> float:
+    try:
+        amount = round(abs(float(raw_value or 0)), 2)
+    except (TypeError, ValueError):
+        raise ValueError("Informe um valor válido para o lançamento.")
+    if amount <= 0:
+        raise ValueError("Informe um valor maior que zero para o lançamento.")
+    return amount
+
+
+def _resolve_finance_transaction_account(
+    repo: FarmRepository,
+    *,
+    active_farm: Farm,
+    account_id: str | None,
+) -> FinanceAccount:
+    resolved_id = int(account_id) if str(account_id or "").strip().isdigit() else None
+    account = repo.get_finance_account(resolved_id) if resolved_id else None
+    if not account:
+        account = next((item for item in repo.list_finance_accounts(farm_id=active_farm.id) if item.is_default), None)
+    if not account:
+        raise ValueError("Selecione a conta de lançamento.")
+    if account.farm_id != active_farm.id:
+        raise ValueError("A conta selecionada não pertence à fazenda ativa.")
+    return account
+
+
+def _finance_transaction_payload(
+    repo: FarmRepository,
+    *,
+    active_farm: Farm,
+    operation_type: str,
+    launch_date: str,
+    amount: str,
+    finance_account_id: str | None,
+    category: str,
+    product_service: str,
+    description: str | None,
+    counterparty_name: str | None,
+    document_number: str | None,
+    payment_method: str | None,
+    notes: str | None,
+) -> dict:
+    normalized_type = (operation_type or "").strip().lower()
+    if normalized_type not in {"despesa", "receita"}:
+        raise ValueError("Selecione o tipo de operação financeira.")
+    if not launch_date:
+        raise ValueError("Informe a data do lançamento.")
+    try:
+        parsed_launch_date = date.fromisoformat(launch_date)
+    except ValueError:
+        raise ValueError("Informe uma data válida para o lançamento.")
+    category_value = _clean_text(category)
+    if category_value not in _finance_transaction_category_options(normalized_type):
+        raise ValueError("Selecione uma categoria válida para o lançamento.")
+    product_service_value = _clean_text(product_service)
+    if not product_service_value:
+        raise ValueError("Informe o produto ou serviço.")
+    account = _resolve_finance_transaction_account(repo, active_farm=active_farm, account_id=finance_account_id)
+    return {
+        "farm_id": active_farm.id,
+        "finance_account_id": account.id,
+        "operation_type": normalized_type,
+        "launch_date": parsed_launch_date,
+        "amount": _parse_finance_transaction_amount(amount),
+        "category": category_value,
+        "product_service": product_service_value,
+        "description": _clean_text(description),
+        "counterparty_name": _clean_text(counterparty_name),
+        "document_number": _clean_text(document_number),
+        "payment_method": _clean_text(payment_method),
+        "notes": _clean_text(notes),
+    }
 
 
 def _cleanup_custom_bank_if_unused(repo: FarmRepository, custom_bank_id: int | None) -> None:
@@ -2522,6 +2720,8 @@ def finance_accounts_page(
     request: Request,
     edit_id: int | None = None,
     launch: int | None = None,
+    transaction_edit_id: int | None = None,
+    transaction_launch: int | None = None,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user_web),
     csrf_token: str = Depends(get_csrf_token),
@@ -2530,11 +2730,23 @@ def finance_accounts_page(
     scope = _global_scope_context(request, repo)
     active_farm = scope.get("active_farm")
     accounts = repo.list_finance_accounts(farm_id=active_farm.id) if active_farm else []
+    transactions = repo.list_finance_transactions(farm_id=active_farm.id) if active_farm else []
     edit_account = repo.get_finance_account(edit_id) if edit_id else None
+    edit_transaction = repo.get_finance_transaction(transaction_edit_id) if transaction_edit_id else None
     bank_options = _finance_bank_choice_options(repo)
     if edit_account and (not active_farm or edit_account.farm_id != active_farm.id):
         _flash(request, "error", "Esta conta não pertence à fazenda ativa.")
         return _redirect("/gestao-financeira/contas")
+    if edit_transaction and (not active_farm or edit_transaction.farm_id != active_farm.id):
+        _flash(request, "error", "Este lançamento não pertence à fazenda ativa.")
+        return _redirect("/gestao-financeira/contas")
+    account_balances: dict[int, float] = {item.id: round(float(item.initial_balance or 0), 2) for item in accounts}
+    for transaction in transactions:
+        amount = round(abs(float(transaction.amount or 0)), 2)
+        if (transaction.operation_type or "").strip().lower() == "receita":
+            account_balances[transaction.finance_account_id] = round(account_balances.get(transaction.finance_account_id, 0.0) + amount, 2)
+        else:
+            account_balances[transaction.finance_account_id] = round(account_balances.get(transaction.finance_account_id, 0.0) - amount, 2)
     return templates.TemplateResponse(
         "finance_accounts.html",
         _base_context(
@@ -2549,8 +2761,16 @@ def finance_accounts_page(
             finance_account_total=len(accounts),
             finance_account_default=next((item for item in accounts if item.is_default), None),
             edit_finance_account=edit_account,
+            finance_transactions=transactions,
+            finance_transaction_total=len(transactions),
+            edit_finance_transaction=edit_transaction,
             finance_bank_options=bank_options,
             finance_open_launch_modal=bool(launch or edit_account),
+            finance_open_transaction_modal=bool(transaction_launch or edit_transaction),
+            finance_transaction_expense_categories=FINANCE_TRANSACTION_EXPENSE_CATEGORIES,
+            finance_transaction_revenue_categories=FINANCE_TRANSACTION_REVENUE_CATEGORIES,
+            finance_transaction_payment_methods=FINANCE_TRANSACTION_PAYMENT_METHODS,
+            finance_account_balances=account_balances,
         ),
     )
 
@@ -2790,6 +3010,221 @@ def set_default_finance_account_action(
     repo.update(account, {"is_default": True})
     _flash(request, "success", f"{account.account_name} definida como conta padrão.")
     return _redirect("/gestao-financeira/contas")
+
+
+@router.post("/gestao-financeira/contas/lancamentos")
+async def create_finance_transaction_action(
+    request: Request,
+    csrf_token: str = Form(...),
+    operation_type: str = Form(...),
+    launch_date: str = Form(...),
+    amount: str = Form(...),
+    finance_account_id: str | None = Form(None),
+    category: str = Form(...),
+    product_service: str = Form(...),
+    description: str | None = Form(None),
+    counterparty_name: str | None = Form(None),
+    document_number: str | None = Form(None),
+    payment_method: str | None = Form(None),
+    notes: str | None = Form(None),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    del user
+    validate_csrf(request, csrf_token)
+    repo = _repository(db)
+    scope = _global_scope_context(request, repo)
+    active_farm = scope.get("active_farm")
+    if not active_farm:
+        _flash(request, "error", "Selecione uma fazenda ativa antes de cadastrar um lançamento.")
+        return _redirect("/gestao-financeira/contas")
+    try:
+        payload = _finance_transaction_payload(
+            repo,
+            active_farm=active_farm,
+            operation_type=operation_type,
+            launch_date=launch_date,
+            amount=amount,
+            finance_account_id=finance_account_id,
+            category=category,
+            product_service=product_service,
+            description=description,
+            counterparty_name=counterparty_name,
+            document_number=document_number,
+            payment_method=payment_method,
+            notes=notes,
+        )
+        attachment_payloads = _read_attachments(await _request_attachments(request))
+    except ValueError as exc:
+        _flash(request, "error", str(exc))
+        return _redirect(_finance_transactions_modal_query(request, launch=True))
+
+    transaction = repo.create(
+        FinanceTransaction(
+            farm_id=payload["farm_id"],
+            finance_account_id=payload["finance_account_id"],
+            operation_type=payload["operation_type"],
+            launch_date=payload["launch_date"],
+            amount=payload["amount"],
+            category=payload["category"],
+            product_service=payload["product_service"],
+            description=payload["description"],
+            counterparty_name=payload["counterparty_name"],
+            document_number=payload["document_number"],
+            payment_method=payload["payment_method"],
+            notes=payload["notes"],
+            created_at=app_now(),
+        )
+    )
+    try:
+        saved_attachments = _save_finance_transaction_attachments(repo, transaction, attachment_payloads)
+    except Exception:
+        _flash(request, "error", "O lançamento foi salvo, mas não foi possível gravar os anexos agora.")
+        return _redirect(_finance_transactions_modal_query(request, edit_id=transaction.id))
+    if saved_attachments:
+        _flash(request, "success", f"Lançamento salvo com sucesso. {saved_attachments} anexo(s) salvo(s).")
+        return _redirect("/gestao-financeira/contas")
+    _flash(request, "success", "Lançamento salvo com sucesso.")
+    return _redirect("/gestao-financeira/contas")
+
+
+@router.post("/gestao-financeira/contas/lancamentos/{transaction_id}/editar")
+async def update_finance_transaction_action(
+    request: Request,
+    transaction_id: int,
+    csrf_token: str = Form(...),
+    operation_type: str = Form(...),
+    launch_date: str = Form(...),
+    amount: str = Form(...),
+    finance_account_id: str | None = Form(None),
+    category: str = Form(...),
+    product_service: str = Form(...),
+    description: str | None = Form(None),
+    counterparty_name: str | None = Form(None),
+    document_number: str | None = Form(None),
+    payment_method: str | None = Form(None),
+    notes: str | None = Form(None),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    del user
+    validate_csrf(request, csrf_token)
+    repo = _repository(db)
+    scope = _global_scope_context(request, repo)
+    active_farm = scope.get("active_farm")
+    transaction = repo.get_finance_transaction(transaction_id)
+    if not transaction:
+        _flash(request, "error", "Lançamento não encontrado.")
+        return _redirect("/gestao-financeira/contas")
+    if not active_farm or transaction.farm_id != active_farm.id:
+        _flash(request, "error", "Este lançamento não pertence à fazenda ativa.")
+        return _redirect("/gestao-financeira/contas")
+    try:
+        payload = _finance_transaction_payload(
+            repo,
+            active_farm=active_farm,
+            operation_type=operation_type,
+            launch_date=launch_date,
+            amount=amount,
+            finance_account_id=finance_account_id,
+            category=category,
+            product_service=product_service,
+            description=description,
+            counterparty_name=counterparty_name,
+            document_number=document_number,
+            payment_method=payment_method,
+            notes=notes,
+        )
+        attachment_payloads = _read_attachments(await _request_attachments(request))
+    except ValueError as exc:
+        _flash(request, "error", str(exc))
+        return _redirect(_finance_transactions_modal_query(request, edit_id=transaction_id))
+
+    repo.update(transaction, payload)
+    try:
+        saved_attachments = _save_finance_transaction_attachments(repo, transaction, attachment_payloads)
+    except Exception:
+        _flash(request, "error", "As alterações foram salvas, mas não foi possível incluir os novos anexos.")
+        return _redirect(_finance_transactions_modal_query(request, edit_id=transaction_id))
+    if saved_attachments:
+        _flash(request, "success", f"Lançamento atualizado com sucesso. {saved_attachments} novo(s) anexo(s) adicionado(s).")
+        return _redirect("/gestao-financeira/contas")
+    _flash(request, "success", "Lançamento atualizado com sucesso.")
+    return _redirect("/gestao-financeira/contas")
+
+
+@router.post("/gestao-financeira/contas/lancamentos/{transaction_id}/excluir")
+def delete_finance_transaction_action(
+    request: Request,
+    transaction_id: int,
+    csrf_token: str = Form(...),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    del user
+    validate_csrf(request, csrf_token)
+    repo = _repository(db)
+    scope = _global_scope_context(request, repo)
+    active_farm = scope.get("active_farm")
+    transaction = repo.get_finance_transaction(transaction_id)
+    if not transaction:
+        _flash(request, "error", "Lançamento não encontrado.")
+        return _redirect("/gestao-financeira/contas")
+    if not active_farm or transaction.farm_id != active_farm.id:
+        _flash(request, "error", "Este lançamento não pertence à fazenda ativa.")
+        return _redirect("/gestao-financeira/contas")
+    repo.delete(transaction)
+    _flash(request, "success", "Lançamento excluído com sucesso.")
+    return _redirect("/gestao-financeira/contas")
+
+
+@router.get("/gestao-financeira/contas/lancamentos/anexos/{attachment_id}")
+def open_finance_transaction_attachment(
+    request: Request,
+    attachment_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    del user
+    repo = _repository(db)
+    attachment = repo.get_finance_transaction_attachment(attachment_id)
+    if not attachment or not attachment.transaction:
+        _flash(request, "error", "Anexo não encontrado.")
+        return _redirect("/gestao-financeira/contas")
+    scope = _global_scope_context(request, repo)
+    if not _farm_matches_scope(attachment.transaction.farm_id, scope):
+        _flash(request, "error", "Este anexo não pertence ao contexto ativo.")
+        return _redirect("/gestao-financeira/contas")
+    return _attachment_response(attachment.filename, attachment.content_type, attachment.file_data)
+
+
+@router.post("/gestao-financeira/contas/lancamentos/{transaction_id}/anexos/{attachment_id}/excluir")
+def delete_finance_transaction_attachment_action(
+    request: Request,
+    transaction_id: int,
+    attachment_id: int,
+    csrf_token: str = Form(...),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    del user
+    validate_csrf(request, csrf_token)
+    repo = _repository(db)
+    transaction = repo.get_finance_transaction(transaction_id)
+    if not transaction:
+        _flash(request, "error", "Lançamento não encontrado.")
+        return _redirect("/gestao-financeira/contas")
+    scope = _global_scope_context(request, repo)
+    if not _farm_matches_scope(transaction.farm_id, scope):
+        _flash(request, "error", "Este lançamento não pertence ao contexto ativo.")
+        return _redirect(_finance_transactions_modal_query(request))
+    attachment = repo.get_finance_transaction_attachment(attachment_id)
+    if not attachment or attachment.finance_transaction_id != transaction.id:
+        _flash(request, "error", "Anexo não encontrado.")
+        return _redirect(_finance_transactions_modal_query(request, edit_id=transaction_id))
+    repo.delete(attachment)
+    _flash(request, "success", "Anexo excluído com sucesso.")
+    return _redirect(_finance_transactions_modal_query(request, edit_id=transaction_id))
 
 
 @router.get("/talhoes", include_in_schema=False)

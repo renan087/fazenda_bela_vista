@@ -19,6 +19,8 @@ from app.models import (
     Farm,
     FinanceAccount,
     FinanceCustomBank,
+    FinanceTransaction,
+    FinanceTransactionAttachment,
     FertilizationItem,
     FertilizationSchedule,
     FertilizationScheduleItem,
@@ -195,6 +197,34 @@ def _sync_schema() -> None:
             branch_number VARCHAR(30),
             account_number VARCHAR(60),
             is_default BOOLEAN NOT NULL DEFAULT FALSE,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS finance_transactions (
+            id SERIAL PRIMARY KEY,
+            farm_id INTEGER NOT NULL REFERENCES farms(id) ON DELETE CASCADE,
+            finance_account_id INTEGER NOT NULL REFERENCES finance_accounts(id) ON DELETE CASCADE,
+            operation_type VARCHAR(20) NOT NULL,
+            launch_date DATE NOT NULL,
+            amount NUMERIC(14,2) NOT NULL,
+            category VARCHAR(160) NOT NULL,
+            product_service VARCHAR(180) NOT NULL,
+            description TEXT,
+            counterparty_name VARCHAR(180),
+            document_number VARCHAR(120),
+            payment_method VARCHAR(80),
+            notes TEXT,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS finance_transaction_attachments (
+            id SERIAL PRIMARY KEY,
+            finance_transaction_id INTEGER NOT NULL REFERENCES finance_transactions(id) ON DELETE CASCADE,
+            filename VARCHAR(255) NOT NULL,
+            content_type VARCHAR(120) NOT NULL,
+            file_data BYTEA NOT NULL,
             created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
         )
         """,
@@ -416,6 +446,24 @@ def _sync_schema() -> None:
         "ALTER TABLE finance_accounts ADD COLUMN IF NOT EXISTS account_number VARCHAR(60)",
         "ALTER TABLE finance_accounts ADD COLUMN IF NOT EXISTS is_default BOOLEAN NOT NULL DEFAULT FALSE",
         "ALTER TABLE finance_accounts ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW()",
+        "ALTER TABLE finance_transactions ADD COLUMN IF NOT EXISTS farm_id INTEGER",
+        "ALTER TABLE finance_transactions ADD COLUMN IF NOT EXISTS finance_account_id INTEGER",
+        "ALTER TABLE finance_transactions ADD COLUMN IF NOT EXISTS operation_type VARCHAR(20)",
+        "ALTER TABLE finance_transactions ADD COLUMN IF NOT EXISTS launch_date DATE",
+        "ALTER TABLE finance_transactions ADD COLUMN IF NOT EXISTS amount NUMERIC(14,2) DEFAULT 0",
+        "ALTER TABLE finance_transactions ADD COLUMN IF NOT EXISTS category VARCHAR(160)",
+        "ALTER TABLE finance_transactions ADD COLUMN IF NOT EXISTS product_service VARCHAR(180)",
+        "ALTER TABLE finance_transactions ADD COLUMN IF NOT EXISTS description TEXT",
+        "ALTER TABLE finance_transactions ADD COLUMN IF NOT EXISTS counterparty_name VARCHAR(180)",
+        "ALTER TABLE finance_transactions ADD COLUMN IF NOT EXISTS document_number VARCHAR(120)",
+        "ALTER TABLE finance_transactions ADD COLUMN IF NOT EXISTS payment_method VARCHAR(80)",
+        "ALTER TABLE finance_transactions ADD COLUMN IF NOT EXISTS notes TEXT",
+        "ALTER TABLE finance_transactions ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW()",
+        "ALTER TABLE finance_transaction_attachments ADD COLUMN IF NOT EXISTS finance_transaction_id INTEGER",
+        "ALTER TABLE finance_transaction_attachments ADD COLUMN IF NOT EXISTS filename VARCHAR(255)",
+        "ALTER TABLE finance_transaction_attachments ADD COLUMN IF NOT EXISTS content_type VARCHAR(120)",
+        "ALTER TABLE finance_transaction_attachments ADD COLUMN IF NOT EXISTS file_data BYTEA",
+        "ALTER TABLE finance_transaction_attachments ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW()",
         "ALTER TABLE finance_custom_banks ADD COLUMN IF NOT EXISTS bank_code VARCHAR(12)",
         "ALTER TABLE finance_custom_banks ADD COLUMN IF NOT EXISTS bank_name VARCHAR(180)",
         "ALTER TABLE finance_custom_banks ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW()",

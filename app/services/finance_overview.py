@@ -191,6 +191,48 @@ def _collect_finance_revenue_rows(
     return raw
 
 
+def _collect_finance_transaction_rows(
+    repo: FarmRepository,
+    *,
+    farm_id: int,
+    period_start: date | None,
+    period_end: date | None,
+) -> list[dict]:
+    raw: list[dict] = []
+    for transaction in repo.list_finance_transactions(farm_id=farm_id):
+        if not _in_extract_period(transaction.launch_date, period_start, period_end):
+            continue
+        amount = abs(_f(transaction.amount))
+        if amount <= 0:
+            continue
+        operation_type = (transaction.operation_type or "").lower()
+        is_revenue = operation_type == "receita"
+        detail_parts = []
+        if transaction.category:
+            detail_parts.append(transaction.category)
+        if transaction.finance_account:
+            detail_parts.append(transaction.finance_account.account_name)
+        if transaction.counterparty_name:
+            detail_parts.append(transaction.counterparty_name)
+        if transaction.document_number:
+            detail_parts.append(f"Doc. {transaction.document_number}")
+        if transaction.payment_method:
+            detail_parts.append(transaction.payment_method)
+        raw.append(
+            {
+                "date": transaction.launch_date,
+                "sort_group": 0,
+                "ref_id": transaction.id,
+                "module": "Contas",
+                "description": f"{'Receita' if is_revenue else 'Despesa'} — {transaction.product_service}",
+                "detail": " • ".join(detail_parts),
+                "debit": amount if not is_revenue else None,
+                "credit": amount if is_revenue else None,
+            }
+        )
+    return raw
+
+
 def build_finance_extract_rows(
     repo: FarmRepository,
     *,
@@ -253,6 +295,14 @@ def build_finance_extract_rows(
 
     raw.extend(
         _collect_finance_revenue_rows(
+            repo,
+            farm_id=farm_id,
+            period_start=period_start,
+            period_end=period_end,
+        )
+    )
+    raw.extend(
+        _collect_finance_transaction_rows(
             repo,
             farm_id=farm_id,
             period_start=period_start,
