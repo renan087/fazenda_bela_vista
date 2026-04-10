@@ -22,6 +22,11 @@
             start.setDate(start.getDate() - 10);
             return { start: formatIsoDate(start), end: formatIsoDate(today) };
         }
+        if (preset === 'current_month') {
+            const start = new Date(today.getFullYear(), today.getMonth(), 1);
+            const end = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+            return { start: formatIsoDate(start), end: formatIsoDate(end) };
+        }
         if (preset === 'last_20_days') {
             const start = new Date(today);
             start.setDate(start.getDate() - 20);
@@ -66,6 +71,7 @@
     };
 
     const getPresetRangeTitle = (preset) => {
+        if (preset === 'current_month') return 'Mês atual';
         if (preset === 'last_20_days') return 'Últimos 20 dias';
         if (preset === 'last_month') return 'Mês passado';
         if (preset === 'last_10_days') return 'Últimos 10 dias';

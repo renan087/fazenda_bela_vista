@@ -231,6 +231,8 @@ def _sync_schema() -> None:
             due_date DATE NOT NULL,
             amount NUMERIC(14,2) NOT NULL,
             status VARCHAR(30) NOT NULL DEFAULT 'pendente',
+            paid_at DATE,
+            payment_notes TEXT,
             created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
         )
         """,
@@ -487,6 +489,8 @@ def _sync_schema() -> None:
         "ALTER TABLE finance_transaction_installments ADD COLUMN IF NOT EXISTS due_date DATE",
         "ALTER TABLE finance_transaction_installments ADD COLUMN IF NOT EXISTS amount NUMERIC(14,2) DEFAULT 0",
         "ALTER TABLE finance_transaction_installments ADD COLUMN IF NOT EXISTS status VARCHAR(30) DEFAULT 'pendente'",
+        "ALTER TABLE finance_transaction_installments ADD COLUMN IF NOT EXISTS paid_at DATE",
+        "ALTER TABLE finance_transaction_installments ADD COLUMN IF NOT EXISTS payment_notes TEXT",
         "ALTER TABLE finance_transaction_installments ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW()",
         "ALTER TABLE finance_transaction_attachments ADD COLUMN IF NOT EXISTS finance_transaction_id INTEGER",
         "ALTER TABLE finance_transaction_attachments ADD COLUMN IF NOT EXISTS filename VARCHAR(255)",

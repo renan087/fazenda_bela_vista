@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "partials/module_history_filter_toolbar.html" import module_period_picker_inline %}
 {% block content %}
 <style>
 @keyframes financeStarIgnite {
@@ -101,6 +102,25 @@
 .finance-payable-chip-overdue {
     background: rgba(ffe4e6, 0.95);
     color: #e11d48;
+}
+
+.finance-payables-check {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.25rem;
+    height: 2.25rem;
+    border-radius: 0.9rem;
+    border: 1px solid rgba(34, 197, 94, 0.22);
+    background: rgba(240, 253, 244, 0.88);
+    color: #16a34a;
+    transition: transform 160ms ease, box-shadow 160ms ease, background-color 160ms ease;
+}
+
+.finance-payables-check:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 10px 18px -16px rgba(22, 163, 74, 0.45);
+    background: rgba(220, 252, 231, 0.98);
 }
 </style>
 <div class="stock-page-shell space-y-6">
@@ -397,6 +417,32 @@
         </div>
 
         <div class="stock-history-stage mt-4 hidden" data-finance-tab="payables">
+        <div class="stock-filter-bar mb-4">
+            <form method="get" action="/gestao-financeira/contas" class="stock-filter-grid" data-finance-payables-filter-form data-module-period-filter-root data-module-range-default="current_month" data-module-range-placeholder="Filtre por período" data-module-custom-auto-apply="true">
+                <input type="hidden" name="finance_tab" value="payables">
+                <div class="stock-filter-fields-row {% if finance_payables_filters_active %}has-clear-action{% endif %}">
+                    <label class="stock-filter-field stock-filter-field-input">
+                        <div class="stock-search-field">
+                            <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+                                <circle cx="8.5" cy="8.5" r="5.75"></circle>
+                                <path d="M13 13l4 4"></path>
+                            </svg>
+                            <input type="search" name="payables_search" value="{{ finance_payables_search or '' }}" placeholder="Buscar conta, categoria ou produto" data-finance-payables-search>
+                        </div>
+                    </label>
+                    <div class="stock-filter-field stock-filter-field-period {% if finance_payables_filter_start_date or finance_payables_filter_end_date %}is-filtered{% endif %}">
+                        <div class="module-filter-period-row">
+                            {{ module_period_picker_inline(finance_payables_selected_range or 'current_month', finance_payables_filter_start_date, finance_payables_filter_end_date, 'past', 'Filtre por período') }}
+                        </div>
+                    </div>
+                    <div class="stock-filter-field stock-filter-field-actions flex flex-nowrap items-end gap-3">
+                        {% if finance_payables_filters_active %}
+                        <a href="{{ finance_payables_clear_url }}" class="shrink-0 rounded-xl bg-white px-4 py-3 text-sm font-semibold text-slate-700 ring-1 ring-slate-200 hover:bg-slate-100">Limpar</a>
+                        {% endif %}
+                    </div>
+                </div>
+            </form>
+        </div>
         {% if finance_payables %}
         <div class="stock-table-shell overflow-hidden rounded-[1.5rem] border border-slate-200">
             <div class="overflow-x-auto">
@@ -410,6 +456,7 @@
                             <th class="px-4 py-3 font-medium">Produto / serviço</th>
                             <th class="px-4 py-3 font-medium">Parcela</th>
                             <th class="px-4 py-3 font-medium">Valor</th>
+                            <th class="px-4 py-3 font-medium">Pago</th>
                             <th class="px-4 py-3 font-medium text-right">Ações</th>
                         </tr>
                     </thead>
@@ -439,6 +486,13 @@
                             <td class="px-4 py-3 whitespace-nowrap font-medium text-slate-700">{{ payable.installment_label }}</td>
                             <td class="px-4 py-3 whitespace-nowrap font-semibold text-rose-600">R$ {{ installment.amount|decimal_br }}</td>
                             <td class="px-4 py-3">
+                                <button type="button" class="finance-payables-check" title="Marcar como pago" data-finance-payable-settle-trigger data-installment-id="{{ installment.id }}" data-installment-label="{{ payable.installment_label }}" data-transaction-title="{{ transaction.product_service }}" data-installment-due-date="{{ installment.due_date.strftime('%d/%m/%Y') if installment.due_date else '-' }}" data-paid-date-default="{{ today.isoformat() }}">
+                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4">
+                                        <path d="m5 13 4 4L19 7"/>
+                                    </svg>
+                                </button>
+                            </td>
+                            <td class="px-4 py-3">
                                 <div class="flex items-center justify-end gap-2">
                                     <a href="/gestao-financeira/contas?finance_tab=transactions&transaction_edit_id={{ transaction.id }}" class="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-100" title="Editar lançamento">
                                         <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -462,6 +516,47 @@
         {% endif %}
         </div>
     </section>
+
+    <dialog id="finance-payable-settle-modal" class="app-modal rounded-[2rem] p-0 shadow-2xl w-full max-w-xl overflow-hidden">
+        <div class="bg-white p-6 sm:p-8">
+            <div class="flex items-start justify-between gap-4">
+                <div class="min-w-0">
+                    <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Pagamento da parcela</p>
+                    <h3 class="mt-2 text-2xl font-semibold">Marcar como paga</h3>
+                    <p class="mt-2 text-sm text-slate-500" data-finance-payable-settle-subtitle>Confirme a data do pagamento e, se quiser, registre uma observação.</p>
+                </div>
+                <button type="button" class="modal-close-button" aria-label="Fechar" data-finance-payable-settle-close>
+                    <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <path d="M18 6 6 18"/>
+                        <path d="m6 6 12 12"/>
+                    </svg>
+                </button>
+            </div>
+            <div class="mt-6">
+                <form method="post" action="" class="grid gap-4" data-finance-payable-settle-form>
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    <div class="rounded-[1.5rem] border border-slate-200 bg-slate-50/80 px-4 py-4 text-sm text-slate-600">
+                        <p class="font-semibold text-slate-900" data-finance-payable-settle-title>-</p>
+                        <p class="mt-1" data-finance-payable-settle-meta>-</p>
+                    </div>
+                    <div class="grid gap-4 md:grid-cols-2">
+                        <label>
+                            <span class="mb-2 block text-sm font-medium">Data do pagamento</span>
+                            <input type="date" name="paid_at" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" value="{{ today.isoformat() }}" required data-finance-payable-settle-date>
+                        </label>
+                    </div>
+                    <label>
+                        <span class="mb-2 block text-sm font-medium">Observação do pagamento</span>
+                        <textarea name="payment_notes" rows="3" class="w-full rounded-2xl border-slate-200 bg-slate-50" data-finance-payable-settle-notes></textarea>
+                    </label>
+                    <div class="flex flex-wrap justify-end gap-3 rounded-[1.5rem] px-1 py-1">
+                        <button type="button" class="rounded-2xl bg-slate-100 px-4 py-3 font-semibold text-slate-700 hover:bg-slate-200" data-finance-payable-settle-close>Cancelar</button>
+                        <button class="rounded-2xl bg-brand-500 px-4 py-3 font-semibold text-white hover:bg-brand-700">Confirmar pagamento</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </dialog>
 
     <dialog id="finance-account-modal" class="app-modal rounded-[2rem] p-0 shadow-2xl w-full max-w-4xl overflow-hidden">
         <div class="bg-white p-6 sm:p-8">
@@ -763,6 +858,7 @@
 
 {% include "partials/attachment_manager_script.html" %}
 {% include "partials/history_view_modal.html" %}
+<script src="{{ url_for('static', path='js/module_period_filters.js') }}?v=7"></script>
 
 <div class="finance-attachments-popover" data-finance-attachments-popover hidden>
     <div class="finance-attachments-popover-list" data-finance-attachments-popover-list></div>
@@ -802,6 +898,15 @@
     const transactionFirstInstallmentDateInput = document.querySelector('[data-finance-first-installment-date]');
     const transactionInstallmentsPreview = document.querySelector('[data-finance-installments-preview]');
     const transactionInstallmentsEmpty = document.querySelector('[data-finance-installments-empty]');
+    const payablesFilterForm = document.querySelector('[data-finance-payables-filter-form]');
+    const payablesSearchInput = document.querySelector('[data-finance-payables-search]');
+    const payableSettleModal = document.getElementById('finance-payable-settle-modal');
+    const payableSettleForm = document.querySelector('[data-finance-payable-settle-form]');
+    const payableSettleCloseButtons = Array.from(document.querySelectorAll('[data-finance-payable-settle-close]'));
+    const payableSettleTitle = document.querySelector('[data-finance-payable-settle-title]');
+    const payableSettleMeta = document.querySelector('[data-finance-payable-settle-meta]');
+    const payableSettleDateInput = document.querySelector('[data-finance-payable-settle-date]');
+    const payableSettleNotesInput = document.querySelector('[data-finance-payable-settle-notes]');
     const balanceRawInput = document.querySelector('[data-finance-balance-raw]');
     const balanceDisplayInput = document.querySelector('[data-finance-balance-display]');
     const modeLabel = document.querySelector('[data-finance-account-mode-label]');
@@ -828,6 +933,7 @@
     let attachmentPopoverPinned = false;
     let attachmentPopoverTrigger = null;
     let attachmentHideTimer = null;
+    let payablesSearchTimer = null;
     const existingFinanceAccounts = [
         {% for account in finance_accounts %}
         {
@@ -1597,6 +1703,41 @@
     transactionInstallmentFrequencySelect?.addEventListener('change', renderFinanceInstallmentPreview);
     transactionFirstInstallmentDateInput?.addEventListener('input', renderFinanceInstallmentPreview);
     transactionAmountDisplayInput?.addEventListener('input', renderFinanceInstallmentPreview);
+
+    if (payablesFilterForm) {
+        window.ModulePeriodFilters?.bind(payablesFilterForm);
+    }
+
+    payablesSearchInput?.addEventListener('input', () => {
+        if (!payablesFilterForm) return;
+        if (payablesSearchTimer) window.clearTimeout(payablesSearchTimer);
+        payablesSearchTimer = window.setTimeout(() => {
+            payablesFilterForm.requestSubmit();
+        }, 260);
+    });
+
+    const closePayableSettleModal = () => {
+        payableSettleModal?.close();
+        unlockBackgroundScroll();
+    };
+
+    document.querySelectorAll('[data-finance-payable-settle-trigger]').forEach((button) => {
+        button.addEventListener('click', () => {
+            if (!(button instanceof HTMLElement) || !payableSettleForm || !payableSettleModal) return;
+            payableSettleForm.action = `/gestao-financeira/contas/parcelas/${button.dataset.installmentId}/quitar`;
+            if (payableSettleTitle) payableSettleTitle.textContent = button.dataset.transactionTitle || '-';
+            if (payableSettleMeta) payableSettleMeta.textContent = `Parcela ${button.dataset.installmentLabel || '-'} • Vencimento ${button.dataset.installmentDueDate || '-'}`;
+            if (payableSettleDateInput) payableSettleDateInput.value = button.dataset.paidDateDefault || '';
+            if (payableSettleNotesInput) payableSettleNotesInput.value = '';
+            payableSettleModal.showModal();
+            lockBackgroundScroll();
+        });
+    });
+
+    payableSettleCloseButtons.forEach((button) => button.addEventListener('click', closePayableSettleModal));
+    payableSettleModal?.addEventListener('cancel', (event) => {
+        event.preventDefault();
+    });
 
     setupCollapse({
         toggleSelector: '[data-finance-transaction-context-toggle]',

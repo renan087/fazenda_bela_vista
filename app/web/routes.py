@@ -46,6 +46,7 @@ from app.models import (
     FinanceTransaction,
     FinanceTransactionAttachment,
     FinanceTransactionInstallment,
+    FinanceTransactionInstallment,
     FertilizationItem,
     FertilizationSchedule,
     FertilizationRecord,
@@ -2518,6 +2519,31 @@ def _replace_finance_transaction_installments(
         )
 
 
+def _finance_payables_period_bounds(request: Request) -> tuple[date | None, date | None, str, str, str]:
+    qp = request.query_params
+    selected_range = (qp.get("schedule_range") or "").strip()
+    raw_start = (qp.get("start_date") or "").strip()
+    raw_end = (qp.get("end_date") or "").strip()
+    today = today_in_app_timezone()
+    if not selected_range and not raw_start and not raw_end:
+        month_end = date(today.year + (1 if today.month == 12 else 0), 1 if today.month == 12 else today.month + 1, 1) - timedelta(days=1)
+        return date(today.year, today.month, 1), month_end, "", "", "current_month"
+    if selected_range == "current_month":
+        month_end = date(today.year + (1 if today.month == 12 else 0), 1 if today.month == 12 else today.month + 1, 1) - timedelta(days=1)
+        return date(today.year, today.month, 1), month_end, "", "", "current_month"
+    if selected_range == "last_10_days":
+        return today - timedelta(days=10), today, "", "", "last_10_days"
+    if selected_range == "last_20_days":
+        return today - timedelta(days=20), today, "", "", "last_20_days"
+    if selected_range == "last_month":
+        current_month_start = date(today.year, today.month, 1)
+        previous_month_end = current_month_start - timedelta(days=1)
+        previous_month_start = date(previous_month_end.year, previous_month_end.month, 1)
+        return previous_month_start, previous_month_end, "", "", "last_month"
+    start_date, end_date, raw_start, raw_end = _finance_extract_period_bounds(request, flash_invalid=False)
+    return start_date, end_date, raw_start, raw_end, (selected_range or ("custom" if raw_start or raw_end else "current_month"))
+
+
 def _cleanup_custom_bank_if_unused(repo: FarmRepository, custom_bank_id: int | None) -> None:
     if not custom_bank_id:
         return
@@ -2856,6 +2882,14 @@ def finance_accounts_page(
     accounts = repo.list_finance_accounts(farm_id=active_farm.id) if active_farm else []
     transactions = repo.list_finance_transactions(farm_id=active_farm.id) if active_farm else []
     transactions_pagination = _paginate_collection(request, transactions, "transactions_page") if active_farm else _paginate_collection(request, [], "transactions_page")
+    payables_start_date, payables_end_date, payables_filter_start_date, payables_filter_end_date, selected_payables_range = _finance_payables_period_bounds(request)
+    payables_search = (request.query_params.get("payables_search") or "").strip()
+    finance_payables_filters_active = bool(payables_search or request.query_params.get("schedule_range") or request.query_params.get("start_date") or request.query_params.get("end_date"))
+    payables_clear_params = dict(request.query_params)
+    for key in ("payables_search", "schedule_range", "start_date", "end_date", "payables_page"):
+        payables_clear_params.pop(key, None)
+    payables_clear_params["finance_tab"] = "payables"
+    finance_payables_clear_url = f"/gestao-financeira/contas?{urlencode(payables_clear_params)}" if payables_clear_params else "/gestao-financeira/contas?finance_tab=payables"
     payable_rows: list[dict] = []
     today = today_in_app_timezone()
     for transaction in transactions:
@@ -2874,6 +2908,22 @@ def finance_accounts_page(
             elif due_date and due_date == today:
                 payable_status = "today"
                 payable_label = "Vence hoje"
+            if payables_start_date and due_date and due_date < payables_start_date:
+                continue
+            if payables_end_date and due_date and due_date > payables_end_date:
+                continue
+            searchable = " ".join(
+                [
+                    transaction.finance_account.account_name if transaction.finance_account else "",
+                    transaction.category or "",
+                    transaction.product_service or "",
+                    transaction.description or "",
+                    installment.due_date.strftime("%d/%m/%Y") if installment.due_date else "",
+                    payable_label,
+                ]
+            ).strip()
+            if payables_search and _normalize_search_value(payables_search) not in _normalize_search_value(searchable):
+                continue
             payable_rows.append(
                 {
                     "transaction": transaction,
@@ -2882,16 +2932,7 @@ def finance_accounts_page(
                     "status_label": payable_label,
                     "status_class": "stock-movement-chip-output" if payable_status == "overdue" else ("stock-movement-chip-warning" if payable_status == "today" else "stock-movement-chip-neutral"),
                     "installment_label": f"{installment.installment_number}/{transaction.installment_count or 1}",
-                    "search_text": " ".join(
-                        [
-                            transaction.finance_account.account_name if transaction.finance_account else "",
-                            transaction.category or "",
-                            transaction.product_service or "",
-                            transaction.description or "",
-                            installment.due_date.strftime("%d/%m/%Y") if installment.due_date else "",
-                            payable_label,
-                        ]
-                    ).strip(),
+                    "search_text": searchable,
                 }
             )
     payable_rows.sort(key=lambda row: (row["installment"].due_date or date.max, row["transaction"].id))
@@ -2932,6 +2973,12 @@ def finance_accounts_page(
             finance_payables=payables_pagination["items"],
             finance_payables_total=len(payable_rows),
             finance_payables_pagination=payables_pagination,
+            finance_payables_filter_start_date=payables_filter_start_date,
+            finance_payables_filter_end_date=payables_filter_end_date,
+            finance_payables_selected_range=selected_payables_range,
+            finance_payables_search=payables_search,
+            finance_payables_filters_active=finance_payables_filters_active,
+            finance_payables_clear_url=finance_payables_clear_url,
             edit_finance_transaction=edit_transaction,
             finance_bank_options=bank_options,
             finance_open_launch_modal=bool(launch or edit_account),
@@ -2940,6 +2987,7 @@ def finance_accounts_page(
             finance_transaction_revenue_categories=FINANCE_TRANSACTION_REVENUE_CATEGORIES,
             finance_transaction_payment_methods=FINANCE_TRANSACTION_PAYMENT_METHODS,
             finance_account_balances=account_balances,
+            today=today,
         ),
     )
 
@@ -3387,6 +3435,45 @@ def delete_finance_transaction_action(
     repo.delete(transaction)
     _flash(request, "success", "Lançamento excluído com sucesso.")
     return _redirect("/gestao-financeira/contas?finance_tab=transactions")
+
+
+@router.post("/gestao-financeira/contas/parcelas/{installment_id}/quitar")
+def settle_finance_transaction_installment_action(
+    request: Request,
+    installment_id: int,
+    csrf_token: str = Form(...),
+    paid_at: str = Form(...),
+    payment_notes: str | None = Form(None),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    del user
+    validate_csrf(request, csrf_token)
+    repo = _repository(db)
+    scope = _global_scope_context(request, repo)
+    active_farm = scope.get("active_farm")
+    installment = repo.db.query(FinanceTransactionInstallment).options(joinedload(FinanceTransactionInstallment.transaction)).filter(FinanceTransactionInstallment.id == installment_id).first()
+    if not installment or not installment.transaction:
+        _flash(request, "error", "Parcela não encontrada.")
+        return _redirect("/gestao-financeira/contas?finance_tab=payables")
+    if not active_farm or installment.transaction.farm_id != active_farm.id:
+        _flash(request, "error", "Esta parcela não pertence à fazenda ativa.")
+        return _redirect("/gestao-financeira/contas?finance_tab=payables")
+    try:
+        paid_date = date.fromisoformat((paid_at or "").strip())
+    except ValueError:
+        _flash(request, "error", "Informe uma data válida para o pagamento.")
+        return _redirect("/gestao-financeira/contas?finance_tab=payables")
+    repo.update(
+        installment,
+        {
+            "status": "pago",
+            "paid_at": paid_date,
+            "payment_notes": _clean_text(payment_notes),
+        },
+    )
+    _flash(request, "success", "Parcela marcada como paga.")
+    return _redirect("/gestao-financeira/contas?finance_tab=payables")
 
 
 @router.get("/gestao-financeira/contas/lancamentos/anexos/{attachment_id}")
