@@ -942,6 +942,8 @@ def _build_stock_context(
     for item in catalog_inputs:
         related_entries = [entry for entry in purchase_entries if entry.input_id == item.id]
         related_outputs = [output for output in stock_outputs if output.input_id == item.id]
+        if not related_entries:
+            continue
         total_quantity = sum(float(entry.total_quantity or 0) for entry in related_entries)
         total_value = sum(float(entry.total_cost or 0) for entry in related_entries)
         row = {
@@ -3739,6 +3741,7 @@ def purchased_inputs_page(
             inputs=purchase_entries_pagination["items"],
             inputs_pagination=purchase_entries_pagination,
             inputs_catalog=stock_context["catalog_inputs"],
+            inputs_catalog_all=repo.list_input_catalog(),
             input_stock=stock_context["input_stock"],
             stock_outputs=stock_outputs_pagination["items"],
             stock_outputs_pagination=stock_outputs_pagination,

@@ -349,12 +349,12 @@
                 </div>
                 <label>
                     <span class="mb-2 block text-sm font-medium">Nome do insumo</span>
-                    <input name="name" list="inputs-catalog-list" value="{{ edit_input.input_catalog.name if edit_input and edit_input.input_catalog else (edit_input.name if edit_input else '') }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required>
+                    <input name="name" list="inputs-catalog-list" value="{{ edit_input.input_catalog.name if edit_input and edit_input.input_catalog else (edit_input.name if edit_input else '') }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required data-purchased-name-input>
                     <span class="mt-2 block text-xs text-slate-500">Digite para reutilizar um insumo já existente. Se não aparecer, o sistema cadastra um novo automaticamente.</span>
                 </label>
                 <datalist id="inputs-catalog-list">
-                    {% for input_item in inputs_catalog %}
-                    <option value="{{ input_item.name }}"></option>
+                    {% for input_item in inputs_catalog_all %}
+                    <option value="{{ input_item.name }}" data-item-type="{{ input_item.item_type or 'insumo_agricola' }}"></option>
                     {% endfor %}
                 </datalist>
                 <div class="grid gap-4 md:grid-cols-2">
@@ -674,6 +674,13 @@
         const itemTypeField = form.querySelector('[data-item-type-select]');
         const packageUnitField = form.querySelector('select[name="package_unit"]');
         const lowStockThresholdField = form.querySelector('input[name="low_stock_threshold"]');
+        const inputCatalogList = document.getElementById('inputs-catalog-list');
+        const catalogOptionData = inputCatalogList
+            ? Array.from(inputCatalogList.querySelectorAll('option')).map((option) => ({
+                value: option.value,
+                itemType: option.dataset.itemType || 'insumo_agricola',
+            }))
+            : [];
 
         const syncTotals = () => {
             const quantity = Number(quantityField?.value || 0);
@@ -681,6 +688,24 @@
             const unitPrice = Number(unitPriceField?.value || 0);
             totalQuantityField.value = quantity && size ? (quantity * size).toFixed(2) : '';
             totalCostField.value = quantity && unitPrice ? (quantity * unitPrice).toFixed(2) : '';
+        };
+
+        const syncCatalogSuggestions = () => {
+            if (!inputCatalogList || !itemTypeField) return;
+            const selectedType = itemTypeField.value || 'insumo_agricola';
+            const seen = new Set();
+            inputCatalogList.innerHTML = '';
+            catalogOptionData
+                .filter((item) => item.itemType === selectedType)
+                .forEach((item) => {
+                    const normalizedValue = normalizeSearchText(item.value);
+                    if (!item.value || seen.has(normalizedValue)) return;
+                    seen.add(normalizedValue);
+                    const option = document.createElement('option');
+                    option.value = item.value;
+                    option.dataset.itemType = item.itemType;
+                    inputCatalogList.appendChild(option);
+                });
         };
 
         const syncItemType = () => {
@@ -698,9 +723,13 @@
         };
 
         [quantityField, sizeField, unitPriceField].forEach((field) => field?.addEventListener('input', syncTotals));
-        itemTypeField?.addEventListener('change', syncItemType);
+        itemTypeField?.addEventListener('change', () => {
+            syncItemType();
+            syncCatalogSuggestions();
+        });
         syncTotals();
         syncItemType();
+        syncCatalogSuggestions();
     })();
 </script>
 {% endblock %}
