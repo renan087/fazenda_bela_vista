@@ -1452,14 +1452,24 @@ body.dashboard-schedule-modal-open {
     z-index: 0;
 }
 
-@media (min-width: 1180px) {
+@media (min-width: 900px) {
     .stock-filter-fields-row.finance-filter-fields-row {
         grid-template-columns:
-            minmax(12rem, 1.05fr)
-            minmax(12rem, 1.05fr)
-            minmax(16rem, 1.35fr)
+            minmax(11rem, 0.9fr)
+            minmax(12rem, 1.6fr)
+            minmax(13rem, 1.05fr)
             max-content;
         column-gap: 0.85rem;
+        width: 100%;
+        align-items: end;
+    }
+
+    .stock-filter-fields-row.finance-filter-fields-row > .stock-filter-field-account {
+        min-width: 0;
+    }
+
+    .stock-filter-fields-row.finance-filter-fields-row > .stock-filter-field-account select {
+        min-width: 0;
         width: 100%;
     }
 }
