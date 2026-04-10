@@ -247,6 +247,7 @@ class FarmRepository:
                 joinedload(FinanceTransaction.farm),
                 joinedload(FinanceTransaction.finance_account),
                 joinedload(FinanceTransaction.attachments),
+                joinedload(FinanceTransaction.installments),
             )
             .order_by(FinanceTransaction.launch_date.desc(), FinanceTransaction.id.desc())
         )
@@ -263,6 +264,7 @@ class FarmRepository:
                 joinedload(FinanceTransaction.farm),
                 joinedload(FinanceTransaction.finance_account),
                 joinedload(FinanceTransaction.attachments),
+                joinedload(FinanceTransaction.installments),
             )
             .filter(FinanceTransaction.id == transaction_id)
             .first()

@@ -76,6 +76,32 @@
     text-overflow: ellipsis;
     white-space: nowrap;
 }
+
+.finance-installments-preview {
+    display: grid;
+    gap: 0.5rem;
+}
+
+.finance-installments-preview.is-scrollable {
+    max-height: 23rem;
+    overflow-y: auto;
+    padding-right: 0.25rem;
+}
+
+.finance-payable-chip-open {
+    background: rgba(219, 234, 254, 0.88);
+    color: #1d4ed8;
+}
+
+.finance-payable-chip-today {
+    background: rgba(254, 243, 199, 0.9);
+    color: #b45309;
+}
+
+.finance-payable-chip-overdue {
+    background: rgba(ffe4e6, 0.95);
+    color: #e11d48;
+}
 </style>
 <div class="stock-page-shell space-y-6">
     <section class="stock-page-header rounded-[2rem] p-5 shadow-panel">
@@ -135,6 +161,7 @@
                 <div class="stock-segmented-indicator" aria-hidden="true" data-segmented-indicator></div>
                 <button type="button" class="stock-tab-link is-active" data-finance-tab-button="accounts">Contas</button>
                 <button type="button" class="stock-tab-link" data-finance-tab-button="transactions">Lançamentos</button>
+                <button type="button" class="stock-tab-link" data-finance-tab-button="payables">A Pagar</button>
             </div>
             <div class="stock-search-field" data-finance-tab-search="accounts">
                 <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
@@ -365,6 +392,72 @@
         {% else %}
         <div class="rounded-[1.5rem] border border-dashed border-slate-200 bg-slate-50/80 px-6 py-10 text-center text-slate-500">
             Nenhum lançamento manual registrado para as contas da fazenda ativa.
+        </div>
+        {% endif %}
+        </div>
+
+        <div class="stock-history-stage mt-4 hidden" data-finance-tab="payables">
+        {% if finance_payables %}
+        <div class="stock-table-shell overflow-hidden rounded-[1.5rem] border border-slate-200">
+            <div class="overflow-x-auto">
+                <table class="stock-history-table min-w-full divide-y divide-slate-200 text-sm">
+                    <thead class="bg-slate-50 text-left text-slate-500">
+                        <tr>
+                            <th class="px-4 py-3 font-medium">Status</th>
+                            <th class="px-4 py-3 font-medium">Vencimento</th>
+                            <th class="px-4 py-3 font-medium">Conta</th>
+                            <th class="px-4 py-3 font-medium">Categoria</th>
+                            <th class="px-4 py-3 font-medium">Produto / serviço</th>
+                            <th class="px-4 py-3 font-medium">Parcela</th>
+                            <th class="px-4 py-3 font-medium">Valor</th>
+                            <th class="px-4 py-3 font-medium text-right">Ações</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-100 bg-white">
+                        {% for payable in finance_payables %}
+                        {% set transaction = payable.transaction %}
+                        {% set installment = payable.installment %}
+                        <tr data-stock-kind="{% if payable.status == 'overdue' %}saida{% else %}entrada{% endif %}">
+                            <td class="px-4 py-3">
+                                <span class="stock-movement-chip finance-payable-chip-{{ payable.status }}">{{ payable.status_label }}</span>
+                            </td>
+                            <td class="px-4 py-3 whitespace-nowrap font-semibold text-slate-900">
+                                <button type="button" class="text-left font-semibold text-slate-900 transition hover:text-brand-700 whitespace-nowrap" data-history-view-trigger data-history-view-kicker="Conta a pagar" data-history-view-title="{{ transaction.product_service }}" data-history-view-subtitle="{{ installment.due_date.strftime('%d/%m/%Y') if installment.due_date else '-' }} • {{ payable.installment_label }}" data-history-view-source="finance-transaction-view-{{ transaction.id }}" data-history-view-edit-url="/gestao-financeira/contas?finance_tab=transactions&transaction_edit_id={{ transaction.id }}">{{ installment.due_date.strftime('%d/%m/%Y') if installment.due_date else '-' }}</button>
+                            </td>
+                            <td class="px-4 py-3">{{ transaction.finance_account.account_name if transaction.finance_account else '-' }}</td>
+                            <td class="px-4 py-3 font-semibold text-slate-900">
+                                <button type="button" class="text-left font-semibold text-slate-900 transition hover:text-brand-700" data-history-view-trigger data-history-view-kicker="Conta a pagar" data-history-view-title="{{ transaction.product_service }}" data-history-view-subtitle="{{ installment.due_date.strftime('%d/%m/%Y') if installment.due_date else '-' }} • {{ payable.installment_label }}" data-history-view-source="finance-transaction-view-{{ transaction.id }}" data-history-view-edit-url="/gestao-financeira/contas?finance_tab=transactions&transaction_edit_id={{ transaction.id }}">{{ transaction.category }}</button>
+                            </td>
+                            <td class="px-4 py-3">
+                                <div class="flex flex-col gap-1">
+                                    <button type="button" class="text-left font-semibold text-slate-900 transition hover:text-brand-700" data-history-view-trigger data-history-view-kicker="Conta a pagar" data-history-view-title="{{ transaction.product_service }}" data-history-view-subtitle="{{ installment.due_date.strftime('%d/%m/%Y') if installment.due_date else '-' }} • {{ payable.installment_label }}" data-history-view-source="finance-transaction-view-{{ transaction.id }}" data-history-view-edit-url="/gestao-financeira/contas?finance_tab=transactions&transaction_edit_id={{ transaction.id }}">{{ transaction.product_service }}</button>
+                                    {% if transaction.description %}
+                                    <span class="stock-history-note-clamp text-slate-500" title="{{ transaction.description }}">{{ transaction.description }}</span>
+                                    {% endif %}
+                                </div>
+                            </td>
+                            <td class="px-4 py-3 whitespace-nowrap font-medium text-slate-700">{{ payable.installment_label }}</td>
+                            <td class="px-4 py-3 whitespace-nowrap font-semibold text-rose-600">R$ {{ installment.amount|decimal_br }}</td>
+                            <td class="px-4 py-3">
+                                <div class="flex items-center justify-end gap-2">
+                                    <a href="/gestao-financeira/contas?finance_tab=transactions&transaction_edit_id={{ transaction.id }}" class="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-100" title="Editar lançamento">
+                                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                            <path d="M12 20h9"/>
+                                            <path d="M16.5 3.5a2.1 2.1 0 1 1 3 3L7 19l-4 1 1-4Z"/>
+                                        </svg>
+                                    </a>
+                                </div>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        {% with pagination=finance_payables_pagination %}{% include "partials/history_pagination.html" %}{% endwith %}
+        {% else %}
+        <div class="rounded-[1.5rem] border border-dashed border-slate-200 bg-slate-50/80 px-6 py-10 text-center text-slate-500">
+            Nenhuma parcela pendente encontrada para a fazenda ativa.
         </div>
         {% endif %}
         </div>
@@ -613,7 +706,7 @@
                         </div>
                         <div class="mt-4">
                             <p class="text-xs uppercase tracking-[0.25em] text-slate-400">Prévia das parcelas</p>
-                            <div class="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3" data-finance-installments-preview></div>
+                            <div class="finance-installments-preview mt-3 sm:grid-cols-2 lg:grid-cols-3" data-finance-installments-preview></div>
                             <p class="mt-3 text-xs text-slate-500" data-finance-installments-empty>Informe quantidade, periodicidade e a data da primeira parcela para visualizar o cronograma.</p>
                         </div>
                     </div>
@@ -855,7 +948,7 @@
     };
 
     const setActiveFinanceTab = (tabName) => {
-        activeFinanceTab = tabName === 'transactions' ? 'transactions' : 'accounts';
+        activeFinanceTab = ['accounts', 'transactions', 'payables'].includes(tabName) ? tabName : 'accounts';
         financeTabs.forEach((tab) => {
             tab.classList.toggle('hidden', tab.dataset.financeTab !== activeFinanceTab);
         });
@@ -1388,6 +1481,7 @@
     const renderFinanceInstallmentPreview = () => {
         if (!(transactionInstallmentsPreview instanceof HTMLElement) || !(transactionInstallmentsEmpty instanceof HTMLElement)) return;
         transactionInstallmentsPreview.innerHTML = '';
+        transactionInstallmentsPreview.classList.remove('is-scrollable');
         const isPrazo = transactionPaymentConditionSelect?.value === 'a_prazo';
         if (!isPrazo) {
             transactionInstallmentsEmpty.textContent = 'Selecione "À prazo" para visualizar o cronograma das parcelas.';
@@ -1410,6 +1504,7 @@
             return;
         }
         transactionInstallmentsEmpty.classList.add('hidden');
+        transactionInstallmentsPreview.classList.toggle('is-scrollable', count > 12);
         const totalCents = Math.round(amount * 100);
         const baseCents = Math.floor(totalCents / count);
         const remainder = totalCents % count;

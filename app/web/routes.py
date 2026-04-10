@@ -2856,6 +2856,46 @@ def finance_accounts_page(
     accounts = repo.list_finance_accounts(farm_id=active_farm.id) if active_farm else []
     transactions = repo.list_finance_transactions(farm_id=active_farm.id) if active_farm else []
     transactions_pagination = _paginate_collection(request, transactions, "transactions_page") if active_farm else _paginate_collection(request, [], "transactions_page")
+    payable_rows: list[dict] = []
+    today = today_in_app_timezone()
+    for transaction in transactions:
+        if (transaction.operation_type or "").strip().lower() != "despesa":
+            continue
+        for installment in sorted(transaction.installments or [], key=lambda item: (item.due_date or date.max, item.installment_number or 0)):
+            status = (installment.status or "pendente").strip().lower()
+            if status == "pago":
+                continue
+            due_date = installment.due_date
+            payable_status = "open"
+            payable_label = "Em aberto"
+            if due_date and due_date < today:
+                payable_status = "overdue"
+                payable_label = "Atrasado"
+            elif due_date and due_date == today:
+                payable_status = "today"
+                payable_label = "Vence hoje"
+            payable_rows.append(
+                {
+                    "transaction": transaction,
+                    "installment": installment,
+                    "status": payable_status,
+                    "status_label": payable_label,
+                    "status_class": "stock-movement-chip-output" if payable_status == "overdue" else ("stock-movement-chip-warning" if payable_status == "today" else "stock-movement-chip-neutral"),
+                    "installment_label": f"{installment.installment_number}/{transaction.installment_count or 1}",
+                    "search_text": " ".join(
+                        [
+                            transaction.finance_account.account_name if transaction.finance_account else "",
+                            transaction.category or "",
+                            transaction.product_service or "",
+                            transaction.description or "",
+                            installment.due_date.strftime("%d/%m/%Y") if installment.due_date else "",
+                            payable_label,
+                        ]
+                    ).strip(),
+                }
+            )
+    payable_rows.sort(key=lambda row: (row["installment"].due_date or date.max, row["transaction"].id))
+    payables_pagination = _paginate_collection(request, payable_rows, "payables_page") if active_farm else _paginate_collection(request, [], "payables_page")
     edit_account = repo.get_finance_account(edit_id) if edit_id else None
     edit_transaction = repo.get_finance_transaction(transaction_edit_id) if transaction_edit_id else None
     bank_options = _finance_bank_choice_options(repo)
@@ -2889,6 +2929,9 @@ def finance_accounts_page(
             finance_transactions=transactions_pagination["items"],
             finance_transaction_total=len(transactions),
             finance_transactions_pagination=transactions_pagination,
+            finance_payables=payables_pagination["items"],
+            finance_payables_total=len(payable_rows),
+            finance_payables_pagination=payables_pagination,
             edit_finance_transaction=edit_transaction,
             finance_bank_options=bank_options,
             finance_open_launch_modal=bool(launch or edit_account),
