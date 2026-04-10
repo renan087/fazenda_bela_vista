@@ -185,8 +185,8 @@
                             <a href="/fertilizacao" class="sidebar-submenu-link block rounded-xl px-3 py-2 text-sm {% if page == 'fertilization' %}bg-brand-500 text-white{% else %}text-slate-300 hover:bg-slate-800 hover:text-white{% endif %}" data-submenu-link>Fertilizacao</a>
                             <a href="/fertilizacao/agendamentos" class="sidebar-submenu-link block rounded-xl px-3 py-2 text-sm {% if page == 'fertilization_schedules' %}bg-brand-500 text-white{% else %}text-slate-300 hover:bg-slate-800 hover:text-white{% endif %}" data-submenu-link>Agendamentos</a>
                             <a href="/insumos/recomendacao" class="sidebar-submenu-link block rounded-xl px-3 py-2 text-sm {% if page == 'input_recommendations' %}bg-brand-500 text-white{% else %}text-slate-300 hover:bg-slate-800 hover:text-white{% endif %}" data-submenu-link>Recomendacao</a>
-                            <a href="/insumos/comprados" class="sidebar-submenu-link block rounded-xl px-3 py-2 text-sm {% if page == 'purchased_inputs' %}bg-brand-500 text-white{% else %}text-slate-300 hover:bg-slate-800 hover:text-white{% endif %}" data-submenu-link>Gestão de compras</a>
-                            <a href="/insumos/estoque" class="sidebar-submenu-link block rounded-xl px-3 py-2 text-sm {% if page == 'stock' %}bg-brand-500 text-white{% else %}text-slate-300 hover:bg-slate-800 hover:text-white{% endif %}" data-submenu-link>Estoque</a>
+                            <a href="/insumos/comprados" class="sidebar-submenu-link block rounded-xl px-3 py-2 text-sm {% if page == 'purchased_inputs' %}bg-brand-500 text-white{% else %}text-slate-300 hover:bg-slate-800 hover:text-white{% endif %}" data-submenu-link>Compras de Insumos</a>
+                            <a href="/insumos/estoque" class="sidebar-submenu-link block rounded-xl px-3 py-2 text-sm {% if page == 'stock' %}bg-brand-500 text-white{% else %}text-slate-300 hover:bg-slate-800 hover:text-white{% endif %}" data-submenu-link>Estoque de Insumos</a>
                             <a href="/insumos/suprimentos" class="sidebar-submenu-link block rounded-xl px-3 py-2 text-sm {% if page == 'supplies' %}bg-brand-500 text-white{% else %}text-slate-300 hover:bg-slate-800 hover:text-white{% endif %}" data-submenu-link>Suprimentos</a>
                             <a href="/insumos/patrimonio" class="sidebar-submenu-link block rounded-xl px-3 py-2 text-sm {% if page == 'assets' %}bg-brand-500 text-white{% else %}text-slate-300 hover:bg-slate-800 hover:text-white{% endif %}" data-submenu-link>Patrimonio</a>
                         </div>
@@ -195,7 +195,6 @@
                         ('varieties', '/variedades', 'Variedades'),
                         ('irrigation', '/irrigacao', 'Irrigacao'),
                         ('rainfall', '/pluviometria', 'Pluviometria'),
-                        ('finance_management', '/gestao-financeira', 'Gestao financeira'),
                         ('production', '/producao', 'Producao'),
                         ('pests', '/pragas', 'Pragas e Doencas'),
                         ('soil_analyses', '/analise-solo', 'Analise de Solo'),
@@ -209,6 +208,18 @@
                         <span class="erp-sidebar-label">{{ label }}</span>
                     </a>
                     {% endfor %}
+                    {% set finance_pages = ['finance_management'] %}
+                    <div class="rounded-2xl {% if page in finance_pages %}bg-slate-900/80{% endif %}" data-submenu-group>
+                        <button type="button" class="erp-sidebar-link flex w-full items-center justify-between rounded-2xl px-4 py-3 text-left transition-all duration-300 ease-in-out {% if page in finance_pages %}text-white{% else %}text-slate-300 hover:bg-slate-900 hover:text-white{% endif %}" data-submenu-toggle="finance-menu" data-submenu-parent aria-haspopup="true" aria-expanded="{% if page in finance_pages %}true{% else %}false{% endif %}">
+                            <span class="flex items-center gap-3"><span class="erp-sidebar-icon">{{ nav_icon('finance_management') }}</span><span class="erp-sidebar-label">Gestao financeira</span></span>
+                            <span class="erp-sidebar-parent-indicator inline-flex h-8 w-8 items-center justify-center rounded-full bg-white/5 text-slate-300/80 transition-transform duration-200 ease-out" aria-hidden="true">
+                                <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+                            </span>
+                        </button>
+                        <div id="finance-menu" class="sidebar-submenu-panel {% if page not in finance_pages %}hidden {% endif %}space-y-1 px-3 pb-3" data-submenu-panel>
+                            <a href="/gestao-financeira" class="sidebar-submenu-link block rounded-xl px-3 py-2 text-sm {% if page == 'finance_management' %}bg-brand-500 text-white{% else %}text-slate-300 hover:bg-slate-800 hover:text-white{% endif %}" data-submenu-link>Extrato</a>
+                        </div>
+                    </div>
                     {% set config_pages = [] %}
                     {% if menu_visibility.get('users', True) %}
                         {% set config_pages = config_pages + ['users'] %}
