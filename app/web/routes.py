@@ -3,7 +3,7 @@ from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from io import BytesIO
 from pathlib import Path
-from urllib.parse import urlencode
+from urllib.parse import parse_qsl, urlencode, urlparse
 import calendar
 
 import hashlib
@@ -2735,6 +2735,243 @@ def _payables_redirect_url(request: Request) -> str:
     return f"{path}?{urlencode(items)}"
 
 
+FINANCE_ACCOUNTS_EXPORT_DROP_KEYS = frozenset(
+    {
+        "edit_id",
+        "launch",
+        "transaction_edit_id",
+        "transaction_launch",
+        "payables_partial",
+        "transactions_page",
+        "payables_page",
+    }
+)
+
+
+def _finance_accounts_export_query_string(request: Request) -> str:
+    items = [(k, v) for k, v in request.query_params.multi_items() if k not in FINANCE_ACCOUNTS_EXPORT_DROP_KEYS]
+    return urlencode(items, doseq=True)
+
+
+def _ensure_finance_tab_in_url(url: str, finance_tab: str) -> str:
+    parsed = urlparse(url)
+    pairs = [(k, v) for k, v in parse_qsl(parsed.query, keep_blank_values=True) if k != "finance_tab"]
+    pairs.append(("finance_tab", finance_tab))
+    q = urlencode(pairs, doseq=True)
+    return f"{parsed.path}?{q}" if q else parsed.path
+
+
+def _finance_accounts_pagination_with_tab(pagination: dict, finance_tab: str) -> dict:
+    return {
+        **pagination,
+        "first_url": _ensure_finance_tab_in_url(pagination["first_url"], finance_tab),
+        "prev_url": _ensure_finance_tab_in_url(pagination["prev_url"], finance_tab),
+        "next_url": _ensure_finance_tab_in_url(pagination["next_url"], finance_tab),
+        "last_url": _ensure_finance_tab_in_url(pagination["last_url"], finance_tab),
+    }
+
+
+def _finance_transactions_period_bounds(request: Request) -> tuple[date | None, date | None, str, str, str]:
+    """Intervalo por data de lançamento (filtro da aba Lançamentos). Vazio = sem filtro de período."""
+    qp = request.query_params
+    selected_range = (qp.get("transactions_schedule_range") or "").strip()
+    raw_start = (qp.get("transactions_start_date") or "").strip()
+    raw_end = (qp.get("transactions_end_date") or "").strip()
+    today = today_in_app_timezone()
+    if not selected_range and not raw_start and not raw_end:
+        return None, None, "", "", ""
+
+    if selected_range == "current_month":
+        month_end = date(today.year + (1 if today.month == 12 else 0), 1 if today.month == 12 else today.month + 1, 1) - timedelta(days=1)
+        return date(today.year, today.month, 1), month_end, "", "", "current_month"
+    if selected_range == "last_10_days":
+        return today - timedelta(days=10), today, "", "", "last_10_days"
+    if selected_range == "last_20_days":
+        return today - timedelta(days=20), today, "", "", "last_20_days"
+    if selected_range == "last_month":
+        current_month_start = date(today.year, today.month, 1)
+        previous_month_end = current_month_start - timedelta(days=1)
+        previous_month_start = date(previous_month_end.year, previous_month_end.month, 1)
+        return previous_month_start, previous_month_end, "", "", "last_month"
+    if selected_range == "next_10_days":
+        return today, today + timedelta(days=10), "", "", "next_10_days"
+    if selected_range == "next_20_days":
+        return today, today + timedelta(days=20), "", "", "next_20_days"
+    if selected_range == "next_month":
+        if today.month == 12:
+            nm_start = date(today.year + 1, 1, 1)
+        else:
+            nm_start = date(today.year, today.month + 1, 1)
+        nm_end = date(nm_start.year + (1 if nm_start.month == 12 else 0), 1 if nm_start.month == 12 else nm_start.month + 1, 1) - timedelta(days=1)
+        return nm_start, nm_end, "", "", "next_month"
+
+    user_start: date | None = None
+    user_end: date | None = None
+    if raw_start:
+        try:
+            user_start = date.fromisoformat(raw_start)
+        except ValueError:
+            raw_start = ""
+    if raw_end:
+        try:
+            user_end = date.fromisoformat(raw_end)
+        except ValueError:
+            raw_end = ""
+    if user_start and user_end and user_start > user_end:
+        return None, None, "", "", "custom"
+    return user_start, user_end, raw_start, raw_end, (selected_range or "custom")
+
+
+def _filtered_finance_transactions_for_accounts(
+    repo: FarmRepository,
+    *,
+    active_farm: Farm,
+    request: Request,
+    transactions: list,
+    period_start: date | None,
+    period_end: date | None,
+) -> list:
+    tx_search = (request.query_params.get("transactions_search") or "").strip()
+    tx_op = (request.query_params.get("transactions_operation") or "").strip().lower()
+    if tx_op not in {"", "receita", "despesa"}:
+        tx_op = ""
+    raw_acc = (request.query_params.get("transactions_account_id") or "").strip()
+    tx_account_id: int | None = None
+    if raw_acc:
+        try:
+            tx_account_id = int(raw_acc)
+        except ValueError:
+            tx_account_id = None
+    valid_account_ids = {a.id for a in repo.list_finance_accounts(farm_id=active_farm.id)}
+    if tx_account_id is not None and tx_account_id not in valid_account_ids:
+        tx_account_id = None
+
+    needle = _normalize_search_value(tx_search) if tx_search else ""
+    filtered: list = []
+    for transaction in transactions:
+        if tx_op and (transaction.operation_type or "").strip().lower() != tx_op:
+            continue
+        if tx_account_id is not None and transaction.finance_account_id != tx_account_id:
+            continue
+        ld = transaction.launch_date
+        if period_start and ld and ld < period_start:
+            continue
+        if period_end and ld and ld > period_end:
+            continue
+        if needle:
+            searchable = " ".join(
+                [
+                    transaction.finance_account.account_name if transaction.finance_account else "",
+                    transaction.category or "",
+                    transaction.product_service or "",
+                    transaction.description or "",
+                    transaction.source or "",
+                    transaction.counterparty_name or "",
+                    transaction.document_number or "",
+                    ld.strftime("%d/%m/%Y") if ld else "",
+                ]
+            ).strip()
+            if needle not in _normalize_search_value(searchable):
+                continue
+        filtered.append(transaction)
+    return filtered
+
+
+def _collect_finance_payable_rows(
+    repo: FarmRepository,
+    *,
+    active_farm: Farm,
+    request: Request,
+    today: date,
+) -> tuple[list[dict], date | None, date | None, str, str, str, str, str, str]:
+    """Mesma lógica da página Contas > A pagar (filtros + linhas)."""
+    transactions = repo.list_finance_transactions(farm_id=active_farm.id)
+    payables_start_date, payables_end_date, payables_filter_start_date, payables_filter_end_date, selected_payables_range = (
+        _finance_payables_period_bounds(request)
+    )
+    payables_search = (request.query_params.get("payables_search") or "").strip()
+    payables_status = (request.query_params.get("payables_status") or "").strip().lower()
+    if payables_status not in {"", "open", "paid", "overdue", "all"}:
+        payables_status = ""
+    payable_rows: list[dict] = []
+    for transaction in transactions:
+        if (transaction.operation_type or "").strip().lower() != "despesa":
+            continue
+        for installment in sorted(transaction.installments or [], key=lambda item: (item.due_date or date.max, item.installment_number or 0)):
+            status = (installment.status or "pendente").strip().lower()
+            due_date = installment.due_date
+            payable_status = "open"
+            payable_label = "Em aberto"
+            if status == "pago":
+                payable_status = "paid"
+                payable_label = "Pago"
+            elif due_date and due_date < today:
+                payable_status = "overdue"
+                payable_label = "Atrasado"
+            elif due_date and due_date == today:
+                payable_status = "today"
+                payable_label = "Vence hoje"
+            if not payables_status and payable_status == "paid":
+                continue
+            if payables_status == "open" and payable_status not in {"open", "today"}:
+                continue
+            if payables_status == "paid" and payable_status != "paid":
+                continue
+            if payables_status == "overdue" and payable_status != "overdue":
+                continue
+            if payables_start_date and due_date and due_date < payables_start_date:
+                continue
+            if payables_end_date and due_date and due_date > payables_end_date:
+                continue
+            searchable = " ".join(
+                [
+                    transaction.finance_account.account_name if transaction.finance_account else "",
+                    transaction.category or "",
+                    transaction.product_service or "",
+                    transaction.description or "",
+                    installment.due_date.strftime("%d/%m/%Y") if installment.due_date else "",
+                    payable_label,
+                ]
+            ).strip()
+            if payables_search and _normalize_search_value(payables_search) not in _normalize_search_value(searchable):
+                continue
+            payable_rows.append(
+                {
+                    "transaction": transaction,
+                    "installment": installment,
+                    "source_label": _finance_transaction_source_label(transaction.source),
+                    "edit_url": _finance_transaction_origin_edit_url(transaction),
+                    "status": payable_status,
+                    "status_label": payable_label,
+                    "status_chip_class": {
+                        "paid": "stock-movement-chip-entry",
+                        "overdue": "stock-movement-chip-output",
+                        "today": "stock-movement-chip-warning",
+                        "open": "stock-movement-chip-info",
+                    }.get(payable_status, "stock-movement-chip-info"),
+                    "row_kind": {
+                        "paid": "entrada",
+                        "overdue": "saida",
+                        "today": "warning",
+                        "open": "info",
+                    }.get(payable_status, "info"),
+                    "installment_label": f"{installment.installment_number}/{transaction.installment_count or 1}",
+                    "search_text": searchable,
+                }
+            )
+    payable_rows.sort(key=lambda row: (row["installment"].due_date or date.max, row["transaction"].id))
+    return (
+        payable_rows,
+        payables_start_date,
+        payables_end_date,
+        payables_filter_start_date,
+        payables_filter_end_date,
+        selected_payables_range,
+        payables_search,
+        payables_status,
+    )
+
+
 def _safe_finance_accounts_return_url(candidate: str | None, *, default: str) -> str:
     """Aceita apenas path+query sob /gestao-financeira/contas (evita open redirect)."""
     raw = (candidate or "").strip()
@@ -3633,13 +3870,84 @@ def finance_accounts_page(
     scope = _global_scope_context(request, repo)
     active_farm = scope.get("active_farm")
     accounts = repo.list_finance_accounts(farm_id=active_farm.id) if active_farm else []
-    transactions = repo.list_finance_transactions(farm_id=active_farm.id) if active_farm else []
-    transactions_pagination = _paginate_collection(request, transactions, "transactions_page") if active_farm else _paginate_collection(request, [], "transactions_page")
-    payables_start_date, payables_end_date, payables_filter_start_date, payables_filter_end_date, selected_payables_range = _finance_payables_period_bounds(request)
-    payables_search = (request.query_params.get("payables_search") or "").strip()
-    payables_status = (request.query_params.get("payables_status") or "").strip().lower()
-    if payables_status not in {"", "open", "paid", "overdue", "all"}:
-        payables_status = ""
+    transactions_all = repo.list_finance_transactions(farm_id=active_farm.id) if active_farm else []
+    tx_period_start, tx_period_end, tx_filter_start_date, tx_filter_end_date, tx_selected_range = (
+        _finance_transactions_period_bounds(request) if active_farm else (None, None, "", "", "")
+    )
+    transactions_filtered = (
+        _filtered_finance_transactions_for_accounts(
+            repo,
+            active_farm=active_farm,
+            request=request,
+            transactions=transactions_all,
+            period_start=tx_period_start,
+            period_end=tx_period_end,
+        )
+        if active_farm
+        else []
+    )
+    transactions_pagination = _finance_accounts_pagination_with_tab(
+        _paginate_collection(request, transactions_filtered, "transactions_page"),
+        "transactions",
+    ) if active_farm else _finance_accounts_pagination_with_tab(_paginate_collection(request, [], "transactions_page"), "transactions")
+    tx_search = (request.query_params.get("transactions_search") or "").strip()
+    tx_op = (request.query_params.get("transactions_operation") or "").strip().lower()
+    if tx_op not in {"", "receita", "despesa"}:
+        tx_op = ""
+    raw_tx_acc = (request.query_params.get("transactions_account_id") or "").strip()
+    finance_transactions_filters_active = bool(
+        tx_search
+        or tx_op
+        or raw_tx_acc
+        or request.query_params.get("transactions_schedule_range")
+        or request.query_params.get("transactions_start_date")
+        or request.query_params.get("transactions_end_date")
+    )
+    transactions_clear_params = dict(request.query_params)
+    for key in (
+        "transactions_search",
+        "transactions_operation",
+        "transactions_account_id",
+        "transactions_schedule_range",
+        "transactions_start_date",
+        "transactions_end_date",
+        "transactions_page",
+    ):
+        transactions_clear_params.pop(key, None)
+    transactions_clear_params["finance_tab"] = "transactions"
+    finance_transactions_clear_url = (
+        f"/gestao-financeira/contas?{urlencode(transactions_clear_params)}"
+        if transactions_clear_params
+        else "/gestao-financeira/contas?finance_tab=transactions"
+    )
+    export_q = _finance_accounts_export_query_string(request)
+    finance_transactions_export_xlsx_url = (
+        f"/gestao-financeira/contas/exportar/lancamentos.xlsx?{export_q}" if export_q else "/gestao-financeira/contas/exportar/lancamentos.xlsx"
+    )
+    finance_transactions_export_pdf_url = (
+        f"/gestao-financeira/contas/exportar/lancamentos.pdf?{export_q}" if export_q else "/gestao-financeira/contas/exportar/lancamentos.pdf"
+    )
+    finance_payables_export_xlsx_url = (
+        f"/gestao-financeira/contas/exportar/a-pagar.xlsx?{export_q}" if export_q else "/gestao-financeira/contas/exportar/a-pagar.xlsx"
+    )
+    finance_payables_export_pdf_url = (
+        f"/gestao-financeira/contas/exportar/a-pagar.pdf?{export_q}" if export_q else "/gestao-financeira/contas/exportar/a-pagar.pdf"
+    )
+    today = today_in_app_timezone()
+    (
+        payable_rows,
+        payables_start_date,
+        payables_end_date,
+        payables_filter_start_date,
+        payables_filter_end_date,
+        selected_payables_range,
+        payables_search,
+        payables_status,
+    ) = (
+        _collect_finance_payable_rows(repo, active_farm=active_farm, request=request, today=today)
+        if active_farm
+        else ([], None, None, "", "", "", "", "")
+    )
     finance_payables_filters_active = bool(
         payables_search
         or request.query_params.get("schedule_range")
@@ -3652,75 +3960,10 @@ def finance_accounts_page(
         payables_clear_params.pop(key, None)
     payables_clear_params["finance_tab"] = "payables"
     finance_payables_clear_url = f"/gestao-financeira/contas?{urlencode(payables_clear_params)}" if payables_clear_params else "/gestao-financeira/contas?finance_tab=payables"
-    payable_rows: list[dict] = []
-    today = today_in_app_timezone()
-    for transaction in transactions:
-        if (transaction.operation_type or "").strip().lower() != "despesa":
-            continue
-        for installment in sorted(transaction.installments or [], key=lambda item: (item.due_date or date.max, item.installment_number or 0)):
-            status = (installment.status or "pendente").strip().lower()
-            due_date = installment.due_date
-            payable_status = "open"
-            payable_label = "Em aberto"
-            if status == "pago":
-                payable_status = "paid"
-                payable_label = "Pago"
-            elif due_date and due_date < today:
-                payable_status = "overdue"
-                payable_label = "Atrasado"
-            elif due_date and due_date == today:
-                payable_status = "today"
-                payable_label = "Vence hoje"
-            if not payables_status and payable_status == "paid":
-                continue
-            if payables_status == "open" and payable_status not in {"open", "today"}:
-                continue
-            if payables_status == "paid" and payable_status != "paid":
-                continue
-            if payables_status == "overdue" and payable_status != "overdue":
-                continue
-            if payables_start_date and due_date and due_date < payables_start_date:
-                continue
-            if payables_end_date and due_date and due_date > payables_end_date:
-                continue
-            searchable = " ".join(
-                [
-                    transaction.finance_account.account_name if transaction.finance_account else "",
-                    transaction.category or "",
-                    transaction.product_service or "",
-                    transaction.description or "",
-                    installment.due_date.strftime("%d/%m/%Y") if installment.due_date else "",
-                    payable_label,
-                ]
-            ).strip()
-            if payables_search and _normalize_search_value(payables_search) not in _normalize_search_value(searchable):
-                continue
-            payable_rows.append(
-                {
-                    "transaction": transaction,
-                    "installment": installment,
-                    "source_label": _finance_transaction_source_label(transaction.source),
-                    "edit_url": _finance_transaction_origin_edit_url(transaction),
-                    "status": payable_status,
-                    "status_label": payable_label,
-                    "status_chip_class": {
-                        "paid": "stock-movement-chip-entry",
-                        "overdue": "stock-movement-chip-output",
-                        "today": "stock-movement-chip-warning",
-                        "open": "stock-movement-chip-info",
-                    }.get(payable_status, "stock-movement-chip-info"),
-                    "row_kind": {
-                        "paid": "entrada",
-                        "overdue": "saida",
-                        "today": "warning",
-                        "open": "info",
-                    }.get(payable_status, "info"),
-                    "installment_label": f"{installment.installment_number}/{transaction.installment_count or 1}",
-                    "search_text": searchable,
-                }
-            )
-    payable_rows.sort(key=lambda row: (row["installment"].due_date or date.max, row["transaction"].id))
-    payables_pagination = _paginate_collection(request, payable_rows, "payables_page") if active_farm else _paginate_collection(request, [], "payables_page")
+    payables_pagination = _finance_accounts_pagination_with_tab(
+        _paginate_collection(request, payable_rows, "payables_page"),
+        "payables",
+    ) if active_farm else _finance_accounts_pagination_with_tab(_paginate_collection(request, [], "payables_page"), "payables")
     if (request.query_params.get("payables_partial") or "").strip() == "1":
         if not active_farm:
             return HTMLResponse(content="", status_code=204)
@@ -3751,7 +3994,7 @@ def finance_accounts_page(
     if edit_transaction and (not active_farm or edit_transaction.farm_id != active_farm.id):
         _flash(request, "error", "Este lançamento não pertence à fazenda ativa.")
         return _redirect("/gestao-financeira/contas")
-    account_balances, finance_account_transaction_counts = compute_finance_account_card_balances(accounts, transactions)
+    account_balances, finance_account_transaction_counts = compute_finance_account_card_balances(accounts, transactions_all)
     response = templates.TemplateResponse(
         "finance_accounts.html",
         _base_context(
@@ -3767,8 +4010,20 @@ def finance_accounts_page(
             finance_account_default=next((item for item in accounts if item.is_default), None),
             edit_finance_account=edit_account,
             finance_transactions=transactions_pagination["items"],
-            finance_transaction_total=len(transactions),
+            finance_transaction_total=len(transactions_filtered),
             finance_transactions_pagination=transactions_pagination,
+            finance_transactions_search=tx_search,
+            finance_transactions_operation=tx_op,
+            finance_transactions_account_id=raw_tx_acc,
+            finance_transactions_filter_start_date=tx_filter_start_date,
+            finance_transactions_filter_end_date=tx_filter_end_date,
+            finance_transactions_selected_range=tx_selected_range,
+            finance_transactions_filters_active=finance_transactions_filters_active,
+            finance_transactions_clear_url=finance_transactions_clear_url,
+            finance_transactions_export_xlsx_url=finance_transactions_export_xlsx_url,
+            finance_transactions_export_pdf_url=finance_transactions_export_pdf_url,
+            finance_payables_export_xlsx_url=finance_payables_export_xlsx_url,
+            finance_payables_export_pdf_url=finance_payables_export_pdf_url,
             finance_payables=payables_pagination["items"],
             finance_payables_total=len(payable_rows),
             finance_payables_pagination=payables_pagination,
@@ -3796,6 +4051,291 @@ def finance_accounts_page(
     response.headers["Cache-Control"] = "no-store, max-age=0, must-revalidate"
     response.headers["Pragma"] = "no-cache"
     return response
+
+
+def _finance_accounts_export_transactions_rows(repo: FarmRepository, *, active_farm: Farm, request: Request) -> list:
+    transactions_all = repo.list_finance_transactions(farm_id=active_farm.id)
+    tx_period_start, tx_period_end, _, _, _ = _finance_transactions_period_bounds(request)
+    return _filtered_finance_transactions_for_accounts(
+        repo,
+        active_farm=active_farm,
+        request=request,
+        transactions=transactions_all,
+        period_start=tx_period_start,
+        period_end=tx_period_end,
+    )
+
+
+def _finance_accounts_export_payables_rows(repo: FarmRepository, *, active_farm: Farm, request: Request) -> list[dict]:
+    today = today_in_app_timezone()
+    payable_rows, *_rest = _collect_finance_payable_rows(repo, active_farm=active_farm, request=request, today=today)
+    return payable_rows
+
+
+def _finance_accounts_pdf_meta_footer(doc, generated_at_label: str, generated_by: str):
+    def _draw_footer(canvas, doc_):
+        canvas.saveState()
+        canvas.setStrokeColor(colors.HexColor("#e2e8f0"))
+        canvas.line(doc_.leftMargin, 22, landscape(A4)[0] - doc_.rightMargin, 22)
+        canvas.setFont("Helvetica", 8.2)
+        canvas.setFillColor(colors.HexColor("#64748b"))
+        canvas.drawString(doc_.leftMargin, 10, f"Gerado por: {generated_by}")
+        canvas.drawRightString(
+            landscape(A4)[0] - doc_.rightMargin,
+            10,
+            f"Emitido em {generated_at_label} • Página {canvas.getPageNumber()}",
+        )
+        canvas.restoreState()
+
+    return _draw_footer
+
+
+@router.get("/gestao-financeira/contas/exportar/lancamentos.xlsx")
+def export_finance_accounts_transactions_xlsx(
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    del user
+    repo = _repository(db)
+    scope = _global_scope_context(request, repo)
+    active_farm = scope.get("active_farm")
+    if not active_farm:
+        raise HTTPException(status_code=400, detail="Selecione uma fazenda ativa.")
+    rows = _finance_accounts_export_transactions_rows(repo, active_farm=active_farm, request=request)
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = "Lançamentos"
+    sheet.append(["Data", "Tipo", "Origem", "Conta", "Categoria", "Produto/serviço", "Valor (R$)"])
+    for tx in rows:
+        sheet.append(
+            [
+                tx.launch_date.isoformat() if tx.launch_date else "",
+                "Receita" if (tx.operation_type or "").strip().lower() == "receita" else "Despesa",
+                tx.source or "Contas",
+                tx.finance_account.account_name if tx.finance_account else "",
+                tx.category or "",
+                tx.product_service or "",
+                float(tx.amount or 0),
+            ]
+        )
+    for index, width in enumerate([14, 12, 18, 24, 22, 36, 14], start=1):
+        sheet.column_dimensions[get_column_letter(index)].width = width
+    output = BytesIO()
+    workbook.save(output)
+    output.seek(0)
+    return StreamingResponse(
+        output,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": 'attachment; filename="contas_lancamentos.xlsx"'},
+    )
+
+
+@router.get("/gestao-financeira/contas/exportar/lancamentos.pdf")
+def export_finance_accounts_transactions_pdf(
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    repo = _repository(db)
+    scope = _global_scope_context(request, repo)
+    active_farm = scope.get("active_farm")
+    if not active_farm:
+        raise HTTPException(status_code=400, detail="Selecione uma fazenda ativa.")
+    rows = _finance_accounts_export_transactions_rows(repo, active_farm=active_farm, request=request)
+    generated_at = app_now()
+    generated_by = user.display_name or user.name or user.email
+    farm_name = active_farm.name
+    generated_at_label = format_app_datetime(generated_at)
+
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=landscape(A4), leftMargin=28, rightMargin=28, topMargin=32, bottomMargin=34)
+    styles = getSampleStyleSheet()
+    title_style = ParagraphStyle("FACtxTitle", parent=styles["Heading2"], fontName="Helvetica-Bold", fontSize=13, leading=16, textColor=colors.HexColor("#0f172a"), spaceAfter=6)
+    cell_style = ParagraphStyle("FACtxCell", parent=styles["BodyText"], fontName="Helvetica", fontSize=8.2, leading=10.4, textColor=colors.HexColor("#0f172a"))
+    cell_num = ParagraphStyle("FACtxNum", parent=cell_style, alignment=TA_RIGHT)
+    meta_style = ParagraphStyle("FACtxMeta", parent=styles["BodyText"], fontName="Helvetica", fontSize=10, textColor=colors.HexColor("#334155"))
+
+    elements = [
+        Paragraph(f"<b>{farm_name}</b> — Lançamentos (Contas)", title_style),
+        Paragraph(f"Total de registros: {len(rows)}", meta_style),
+        Spacer(1, 10),
+    ]
+    if rows:
+        data_rows = [["Data", "Tipo", "Origem", "Conta", "Categoria", "Produto/serviço", "Valor"]]
+        for tx in rows:
+            tipo = "Receita" if (tx.operation_type or "").strip().lower() == "receita" else "Despesa"
+            data_rows.append(
+                [
+                    Paragraph(tx.launch_date.strftime("%d/%m/%Y") if tx.launch_date else "-", cell_style),
+                    Paragraph(tipo, cell_style),
+                    Paragraph(tx.source or "Contas", cell_style),
+                    Paragraph(tx.finance_account.account_name if tx.finance_account else "-", cell_style),
+                    Paragraph(tx.category or "-", cell_style),
+                    Paragraph(tx.product_service or "-", cell_style),
+                    Paragraph(_format_currency(tx.amount or 0), cell_num),
+                ]
+            )
+        table = Table(data_rows, colWidths=[62, 54, 70, 96, 92, 248, 72], repeatRows=1, hAlign="LEFT")
+        table.setStyle(
+            TableStyle(
+                [
+                    ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#446a36")),
+                    ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+                    ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                    ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f8fafc")]),
+                    ("BOX", (0, 0), (-1, -1), 0.6, colors.HexColor("#dbe5dd")),
+                    ("INNERGRID", (0, 0), (-1, -1), 0.35, colors.HexColor("#e2e8f0")),
+                    ("LEFTPADDING", (0, 0), (-1, -1), 6),
+                    ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+                    ("TOPPADDING", (0, 0), (-1, -1), 5),
+                    ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ]
+            )
+        )
+        elements.append(table)
+    else:
+        elements.append(Paragraph("Nenhum lançamento para os filtros aplicados.", cell_style))
+
+    doc.build(elements, onFirstPage=_finance_accounts_pdf_meta_footer(doc, generated_at_label, generated_by), onLaterPages=_finance_accounts_pdf_meta_footer(doc, generated_at_label, generated_by))
+    buffer.seek(0)
+    return StreamingResponse(
+        buffer,
+        media_type="application/pdf",
+        headers={"Content-Disposition": 'attachment; filename="contas_lancamentos.pdf"'},
+    )
+
+
+@router.get("/gestao-financeira/contas/exportar/a-pagar.xlsx")
+def export_finance_accounts_payables_xlsx(
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    del user
+    repo = _repository(db)
+    scope = _global_scope_context(request, repo)
+    active_farm = scope.get("active_farm")
+    if not active_farm:
+        raise HTTPException(status_code=400, detail="Selecione uma fazenda ativa.")
+    rows = _finance_accounts_export_payables_rows(repo, active_farm=active_farm, request=request)
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = "A pagar"
+    sheet.append(
+        ["Status", "Vencimento", "Origem", "Conta", "Categoria", "Produto/serviço", "Parcela", "Valor (R$)", "Situação"]
+    )
+    for row in rows:
+        tx = row["transaction"]
+        inst = row["installment"]
+        paid = (inst.status or "").strip().lower() == "pago"
+        sheet.append(
+            [
+                row["status_label"],
+                inst.due_date.isoformat() if inst.due_date else "",
+                row["source_label"],
+                tx.finance_account.account_name if tx.finance_account else "",
+                tx.category or "",
+                tx.product_service or "",
+                row["installment_label"],
+                float(inst.amount or 0),
+                "Pago" if paid else "Em aberto",
+            ]
+        )
+    for index, width in enumerate([14, 14, 16, 22, 20, 32, 12, 14, 12], start=1):
+        sheet.column_dimensions[get_column_letter(index)].width = width
+    output = BytesIO()
+    workbook.save(output)
+    output.seek(0)
+    return StreamingResponse(
+        output,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": 'attachment; filename="contas_a_pagar.xlsx"'},
+    )
+
+
+@router.get("/gestao-financeira/contas/exportar/a-pagar.pdf")
+def export_finance_accounts_payables_pdf(
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    repo = _repository(db)
+    scope = _global_scope_context(request, repo)
+    active_farm = scope.get("active_farm")
+    if not active_farm:
+        raise HTTPException(status_code=400, detail="Selecione uma fazenda ativa.")
+    rows = _finance_accounts_export_payables_rows(repo, active_farm=active_farm, request=request)
+    generated_at = app_now()
+    generated_by = user.display_name or user.name or user.email
+    farm_name = active_farm.name
+    generated_at_label = format_app_datetime(generated_at)
+
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=landscape(A4), leftMargin=24, rightMargin=24, topMargin=30, bottomMargin=34)
+    styles = getSampleStyleSheet()
+    title_style = ParagraphStyle("FACpayTitle", parent=styles["Heading2"], fontName="Helvetica-Bold", fontSize=13, leading=16, textColor=colors.HexColor("#0f172a"), spaceAfter=6)
+    cell_style = ParagraphStyle("FACpayCell", parent=styles["BodyText"], fontName="Helvetica", fontSize=7.5, leading=9.5, textColor=colors.HexColor("#0f172a"))
+    cell_num = ParagraphStyle("FACpayNum", parent=cell_style, alignment=TA_RIGHT)
+    meta_style = ParagraphStyle("FACpayMeta", parent=styles["BodyText"], fontName="Helvetica", fontSize=10, textColor=colors.HexColor("#334155"))
+
+    elements = [
+        Paragraph(f"<b>{farm_name}</b> — Contas a pagar (parcelas)", title_style),
+        Paragraph(f"Total de registros: {len(rows)}", meta_style),
+        Spacer(1, 10),
+    ]
+    if rows:
+        data_rows = [["Status", "Venc.", "Origem", "Conta", "Categoria", "Produto", "Parc.", "Valor", "Pago"]]
+        for row in rows:
+            tx = row["transaction"]
+            inst = row["installment"]
+            paid = (inst.status or "").strip().lower() == "pago"
+            data_rows.append(
+                [
+                    Paragraph(row["status_label"], cell_style),
+                    Paragraph(inst.due_date.strftime("%d/%m/%Y") if inst.due_date else "-", cell_style),
+                    Paragraph(row["source_label"], cell_style),
+                    Paragraph(tx.finance_account.account_name if tx.finance_account else "-", cell_style),
+                    Paragraph((tx.category or "-")[:40], cell_style),
+                    Paragraph((tx.product_service or "-")[:46], cell_style),
+                    Paragraph(row["installment_label"], cell_style),
+                    Paragraph(_format_currency(inst.amount or 0), cell_num),
+                    Paragraph("Sim" if paid else "Não", cell_style),
+                ]
+            )
+        table = Table(
+            data_rows,
+            colWidths=[50, 52, 54, 70, 66, 198, 42, 68, 34],
+            repeatRows=1,
+            hAlign="LEFT",
+        )
+        table.setStyle(
+            TableStyle(
+                [
+                    ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#446a36")),
+                    ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+                    ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                    ("FONTSIZE", (0, 0), (-1, -1), 7.5),
+                    ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f8fafc")]),
+                    ("BOX", (0, 0), (-1, -1), 0.6, colors.HexColor("#dbe5dd")),
+                    ("INNERGRID", (0, 0), (-1, -1), 0.35, colors.HexColor("#e2e8f0")),
+                    ("LEFTPADDING", (0, 0), (-1, -1), 4),
+                    ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ]
+            )
+        )
+        elements.append(table)
+    else:
+        elements.append(Paragraph("Nenhuma parcela para os filtros aplicados.", cell_style))
+
+    footer_fn = _finance_accounts_pdf_meta_footer(doc, generated_at_label, generated_by)
+    doc.build(elements, onFirstPage=footer_fn, onLaterPages=footer_fn)
+    buffer.seek(0)
+    return StreamingResponse(
+        buffer,
+        media_type="application/pdf",
+        headers={"Content-Disposition": 'attachment; filename="contas_a_pagar.pdf"'},
+    )
 
 
 @router.post("/gestao-financeira/contas")
