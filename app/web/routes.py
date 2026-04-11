@@ -313,7 +313,7 @@ def _base_context(request: Request, user: User, csrf_token: str, page: str, **kw
     if repo:
         scope_context = _global_scope_context(request, repo, user)
         context.update(scope_context)
-        context["context_lock_exempt"] = page in {"farms", "seasons", "profile"}
+        context["context_lock_exempt"] = page in {"farms", "seasons", "profile", "finance_asaas_customer"}
         context["context_selection_blocking"] = scope_context["context_selection_required"] and not context["context_lock_exempt"]
         context["context_previous_available"] = bool(scope_context.get("previous_context_available"))
     context.update(kwargs)
