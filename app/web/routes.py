@@ -1306,11 +1306,13 @@ def _purchased_inputs_export_query(
     farm_id: int | None = None,
     item_type: str | None = None,
     purchased_tab: str | None = None,
+    input_id: int | None = None,
 ) -> str:
     params = {
         "farm_id": farm_id,
         "item_type": item_type,
         "purchased_tab": purchased_tab if purchased_tab in {"entries", "outputs", "extract"} else None,
+        "input_id": input_id,
     }
     clean = {key: value for key, value in params.items() if value not in (None, "", "all")}
     return urlencode(clean)
@@ -5830,6 +5832,7 @@ def purchased_inputs_page(
     edit_id: int | None = None,
     item_type: str | None = None,
     farm_id: int | None = None,
+    input_id: int | None = None,
     purchased_tab: str | None = None,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user_web),
@@ -5842,11 +5845,12 @@ def purchased_inputs_page(
     edit_input = repo.get_purchased_input(edit_id) if edit_id else None
     selected_item_type = item_type if item_type in {"insumo_agricola", "combustivel", "all"} else None
     normalized_item_type = item_type if item_type in {"insumo_agricola", "combustivel"} else None
+    selected_input_id = input_id
     if not normalized_item_type and edit_input and edit_input.input_catalog:
         normalized_item_type = edit_input.input_catalog.item_type
     if not normalized_item_type and selected_item_type != "all":
         normalized_item_type = "insumo_agricola"
-    stock_context = _build_stock_context(repo, farm_id=effective_farm_id, item_type=normalized_item_type)
+    stock_context = _build_stock_context(repo, farm_id=effective_farm_id, item_type=normalized_item_type, input_id=selected_input_id)
     purchase_entries = _sort_collection_desc(
         stock_context["purchase_entries"],
         lambda item: item.purchase_date,
@@ -5885,6 +5889,7 @@ def purchased_inputs_page(
             inputs_pagination=purchase_entries_pagination,
             inputs_catalog=stock_context["catalog_inputs"],
             inputs_catalog_all=repo.list_input_catalog(),
+            selected_input_id=selected_input_id,
             finance_account_options=finance_accounts,
             finance_account_default=next((item for item in finance_accounts if item.is_default), None),
             input_stock=stock_context["input_stock"],
@@ -5896,6 +5901,7 @@ def purchased_inputs_page(
                 farm_id=effective_farm_id,
                 item_type=selected_item_type if selected_item_type in {"insumo_agricola", "combustivel"} else None,
                 purchased_tab=selected_purchased_tab,
+                input_id=selected_input_id,
             ),
             edit_input=edit_input,
             selected_purchased_tab=selected_purchased_tab,

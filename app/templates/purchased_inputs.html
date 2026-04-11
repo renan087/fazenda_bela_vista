@@ -45,10 +45,19 @@
                 <input type="hidden" name="purchased_tab" value="{{ selected_purchased_tab }}" data-purchased-tab-input>
                 <label>
                     <span class="mb-2 block text-sm font-medium">Tipo de item</span>
-                    <select name="item_type" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50 px-4">
+                    <select name="item_type" id="filter-item-type" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50 px-4" data-purchased-filter-item-type>
                         <option value="all" {% if selected_item_type == 'all' %}selected{% endif %}>Todos</option>
                         <option value="insumo_agricola" {% if selected_item_type == 'insumo_agricola' %}selected{% endif %}>Insumo agricola</option>
                         <option value="combustivel" {% if selected_item_type == 'combustivel' %}selected{% endif %}>Combustivel</option>
+                    </select>
+                </label>
+                <label>
+                    <span class="mb-2 block text-sm font-medium">Insumo</span>
+                    <select name="input_id" id="filter-input-id" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50 px-4" data-purchased-filter-input>
+                        <option value="" {% if not selected_input_id %}selected{% endif %}>Todos</option>
+                        {% for input in inputs_catalog_all %}
+                        <option value="{{ input.id }}" data-item-type="{{ input.item_type or 'insumo_agricola' }}" {% if selected_input_id == input.id %}selected{% endif %}>{{ input.name }}</option>
+                        {% endfor %}
                     </select>
                 </label>
                 <label>
@@ -848,6 +857,42 @@
         syncItemType();
         syncCatalogSuggestions();
         syncCategoryOptions(initialCategory);
+    })();
+
+    // Filter bar: filter Insumo options based on Tipo de item selection
+    (function () {
+        const itemTypeSelect = document.getElementById('filter-item-type');
+        const inputSelect = document.getElementById('filter-input-id');
+        if (!itemTypeSelect || !inputSelect) return;
+
+        const allOptions = Array.from(inputSelect.querySelectorAll('option[data-item-type]'));
+
+        const filterInputOptions = () => {
+            const selectedType = itemTypeSelect.value;
+            const currentValue = inputSelect.value;
+
+            // Clear and add "Todos" option
+            inputSelect.innerHTML = '<option value="">Todos</option>';
+
+            allOptions.forEach((option) => {
+                const optionType = option.dataset.itemType || 'insumo_agricola';
+                if (selectedType === 'all' || optionType === selectedType) {
+                    inputSelect.appendChild(option.cloneNode(true));
+                }
+            });
+
+            // Restore selected value if still valid, otherwise clear
+            const validValues = Array.from(inputSelect.querySelectorAll('option[data-item-type]')).map((o) => o.value);
+            if (currentValue && validValues.includes(currentValue)) {
+                inputSelect.value = currentValue;
+            } else {
+                inputSelect.value = '';
+            }
+        };
+
+        itemTypeSelect.addEventListener('change', filterInputOptions);
+        // Initial filter on page load
+        filterInputOptions();
     })();
 </script>
 {% endblock %}
