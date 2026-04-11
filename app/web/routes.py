@@ -14,7 +14,7 @@ import urllib.error
 import urllib.request
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, Request, Response, UploadFile, status
-from fastapi.responses import JSONResponse, RedirectResponse, StreamingResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
 from openpyxl import Workbook
 from openpyxl.utils import get_column_letter
@@ -2527,6 +2527,15 @@ def _finance_payables_period_ui_mode(payables_status: str) -> str:
     return "past"
 
 
+def _payables_redirect_url(request: Request) -> str:
+    """URL atual sem payables_partial (redirect após POST de cancelar pagamento)."""
+    items = [(k, v) for k, v in request.query_params.multi_items() if k != "payables_partial"]
+    path = str(request.url.path)
+    if not items:
+        return path
+    return f"{path}?{urlencode(items)}"
+
+
 def _finance_payables_period_bounds(request: Request) -> tuple[date | None, date | None, str, str, str]:
     """Retorna (start, end, raw_start, raw_end, selected_range) para filtro de vencimento em A pagar."""
     qp = request.query_params
@@ -3008,6 +3017,27 @@ def finance_accounts_page(
             )
     payable_rows.sort(key=lambda row: (row["installment"].due_date or date.max, row["transaction"].id))
     payables_pagination = _paginate_collection(request, payable_rows, "payables_page") if active_farm else _paginate_collection(request, [], "payables_page")
+    if (request.query_params.get("payables_partial") or "").strip() == "1":
+        if not active_farm:
+            return HTMLResponse(content="", status_code=204)
+        tab = (request.query_params.get("finance_tab") or "").strip()
+        if tab not in ("", "payables"):
+            return HTMLResponse(content="Invalid tab", status_code=400)
+        return templates.TemplateResponse(
+            "partials/finance_payables_list.html",
+            _base_context(
+                request,
+                user,
+                csrf_token,
+                "finance_accounts",
+                title="Contas",
+                _repo=repo,
+                finance_payables=payables_pagination["items"],
+                finance_payables_pagination=payables_pagination,
+                finance_payables_redirect_to=_payables_redirect_url(request),
+                today=today,
+            ),
+        )
     edit_account = repo.get_finance_account(edit_id) if edit_id else None
     edit_transaction = repo.get_finance_transaction(transaction_edit_id) if transaction_edit_id else None
     bank_options = _finance_bank_choice_options(repo)
@@ -3052,6 +3082,7 @@ def finance_accounts_page(
             finance_payables_status=payables_status,
             finance_payables_filters_active=finance_payables_filters_active,
             finance_payables_clear_url=finance_payables_clear_url,
+            finance_payables_redirect_to=_payables_redirect_url(request),
             edit_finance_transaction=edit_transaction,
             finance_bank_options=bank_options,
             finance_open_launch_modal=bool(launch or edit_account),
