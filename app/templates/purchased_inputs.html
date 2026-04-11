@@ -43,7 +43,7 @@
         <div class="stock-filter-bar">
             <form method="get" action="/insumos/comprados" class="stock-filter-grid">
                 <input type="hidden" name="purchased_tab" value="{{ selected_purchased_tab }}" data-purchased-tab-input>
-                <div class="stock-filter-fields-row {% if purchased_inputs_filters_active %}has-clear-action{% endif %}">
+                <div class="stock-filter-fields-row purchased-filter-fields-row {% if purchased_inputs_filters_active %}has-clear-action{% endif %}">
                     <label class="stock-filter-field stock-filter-field-type {% if selected_item_type and selected_item_type != 'all' %}is-filtered{% endif %}">
                         <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Tipo de item</span>
                         <select name="item_type" id="filter-item-type" class="w-full rounded-xl border-slate-200 bg-white" data-purchased-filter-item-type>
