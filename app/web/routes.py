@@ -64,7 +64,11 @@ from app.models import (
 from app.repositories.farm import FarmRepository
 from app.services.backup_service import delete_backup_run, execute_backup
 from app.services.dashboard import build_dashboard_context
-from app.services.finance_overview import build_finance_extract_rows, build_finance_overview_context
+from app.services.finance_overview import (
+    build_finance_extract_rows,
+    build_finance_overview_context,
+    compute_finance_account_card_balances,
+)
 from app.services.farm_preview_image import (
     ensure_farm_preview_thumb,
     farm_preview_fs_path,
@@ -2660,29 +2664,6 @@ def _safe_finance_accounts_return_url(candidate: str | None, *, default: str) ->
     return raw
 
 
-def _finance_transaction_balance_amount_chunks(transaction: FinanceTransaction) -> list[float]:
-    """
-    Montantes absolutos a aplicar no saldo do card da conta: uma parcela paga por vez se a prazo;
-    valor integral do lançamento se à vista. Alinhado ao extrato (finance_overview).
-    """
-    if (transaction.payment_condition or "").strip().lower() == "a_prazo":
-        chunks: list[float] = []
-        for inst in sorted(
-            transaction.installments or [],
-            key=lambda x: (x.installment_number or 0, x.id),
-        ):
-            if (inst.status or "").strip().lower() != "pago":
-                continue
-            amt = abs(float(inst.amount or 0))
-            if amt > 0:
-                chunks.append(round(amt, 2))
-        return chunks
-    amt = abs(float(transaction.amount or 0))
-    if amt <= 0:
-        return []
-    return [round(amt, 2)]
-
-
 def _finance_payables_period_bounds(request: Request) -> tuple[date | None, date | None, str, str, str]:
     """Retorna (start, end, raw_start, raw_end, selected_range) para filtro de vencimento em A pagar."""
     qp = request.query_params
@@ -3194,16 +3175,8 @@ def finance_accounts_page(
     if edit_transaction and (not active_farm or edit_transaction.farm_id != active_farm.id):
         _flash(request, "error", "Este lançamento não pertence à fazenda ativa.")
         return _redirect("/gestao-financeira/contas")
-    account_balances: dict[int, float] = {item.id: round(float(item.initial_balance or 0), 2) for item in accounts}
-    for transaction in transactions:
-        acc_id = transaction.finance_account_id
-        is_revenue = (transaction.operation_type or "").strip().lower() == "receita"
-        for chunk in _finance_transaction_balance_amount_chunks(transaction):
-            if is_revenue:
-                account_balances[acc_id] = round(account_balances.get(acc_id, 0.0) + chunk, 2)
-            else:
-                account_balances[acc_id] = round(account_balances.get(acc_id, 0.0) - chunk, 2)
-    return templates.TemplateResponse(
+    account_balances, finance_account_transaction_counts = compute_finance_account_card_balances(accounts, transactions)
+    response = templates.TemplateResponse(
         "finance_accounts.html",
         _base_context(
             request,
@@ -3240,9 +3213,13 @@ def finance_accounts_page(
             finance_transaction_revenue_categories=FINANCE_TRANSACTION_REVENUE_CATEGORIES,
             finance_transaction_payment_methods=FINANCE_TRANSACTION_PAYMENT_METHODS,
             finance_account_balances=account_balances,
+            finance_account_transaction_counts=finance_account_transaction_counts,
             today=today,
         ),
     )
+    response.headers["Cache-Control"] = "no-store, max-age=0, must-revalidate"
+    response.headers["Pragma"] = "no-cache"
+    return response
 
 
 @router.post("/gestao-financeira/contas")

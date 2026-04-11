@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 from datetime import date
+from decimal import Decimal
 
-from app.models import CropSeason, FinanceAccount, PurchasedInput
+from app.models import CropSeason, FinanceAccount, FinanceTransaction, PurchasedInput
 from app.repositories.farm import FarmRepository
 
 EXTRACT_MAX_ROWS = 500
@@ -391,3 +392,66 @@ def build_finance_extract_rows(
         )
 
     return out, truncated
+
+
+def finance_transaction_balance_amount_chunks(transaction: FinanceTransaction) -> list[float]:
+    """
+    Montantes absolutos a aplicar no saldo do card da conta: uma parcela paga por vez se a prazo;
+    valor integral do lançamento se à vista. Alinhado ao extrato (contas).
+    """
+    if (transaction.payment_condition or "").strip().lower() == "a_prazo":
+        chunks: list[float] = []
+        for inst in sorted(
+            transaction.installments or [],
+            key=lambda x: (x.installment_number or 0, x.id),
+        ):
+            if (inst.status or "").strip().lower() != "pago":
+                continue
+            amt = abs(float(inst.amount or 0))
+            if amt > 0:
+                chunks.append(round(amt, 2))
+        return chunks
+    amt = abs(float(transaction.amount or 0))
+    if amt <= 0:
+        return []
+    return [round(amt, 2)]
+
+
+def _account_initial_balance_float(account: FinanceAccount) -> float:
+    """Converte saldo inicial (Numeric no ORM) de forma estável para float."""
+    raw = account.initial_balance
+    if raw is None:
+        return 0.0
+    return float(Decimal(str(raw)).quantize(Decimal("0.01")))
+
+
+def compute_finance_account_card_balances(
+    accounts: list[FinanceAccount],
+    transactions: list[FinanceTransaction],
+) -> tuple[dict[int, float], dict[int, int]]:
+    """
+    Saldo atual por conta = saldo inicial + movimentos (à vista integral; a prazo só parcelas pagas).
+    Retorna também a quantidade de lançamentos por conta (mesma base usada no saldo).
+    """
+    balances: dict[int, float] = {}
+    for acc in accounts:
+        aid = int(acc.id)
+        balances[aid] = round(_account_initial_balance_float(acc), 2)
+    counts: dict[int, int] = {int(a.id): 0 for a in accounts}
+    for tx in transactions:
+        acc_id = tx.finance_account_id
+        if acc_id is None:
+            continue
+        acc_id = int(acc_id)
+        if acc_id not in balances:
+            balances[acc_id] = 0.0
+        if acc_id not in counts:
+            counts[acc_id] = 0
+        counts[acc_id] += 1
+        is_revenue = (tx.operation_type or "").strip().lower() == "receita"
+        for chunk in finance_transaction_balance_amount_chunks(tx):
+            if is_revenue:
+                balances[acc_id] = round(balances[acc_id] + chunk, 2)
+            else:
+                balances[acc_id] = round(balances[acc_id] - chunk, 2)
+    return balances, counts

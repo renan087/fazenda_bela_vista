@@ -265,7 +265,7 @@
                     </div>
                     <div class="rounded-2xl bg-white px-4 py-3 ring-1 ring-slate-200/80">
                         <p class="text-xs uppercase tracking-[0.18em] text-slate-400">Lançamentos</p>
-                        <p class="mt-2 text-sm font-semibold text-slate-900">{{ account.transactions|length }}</p>
+                        <p class="mt-2 text-sm font-semibold text-slate-900">{{ finance_account_transaction_counts.get(account.id, 0) }}</p>
                     </div>
                 </div>
                 <div class="mt-4 flex items-center justify-end gap-2">
