@@ -2503,13 +2503,23 @@ def _reject_finance_schedule_change_if_installment_paid(
     transaction: FinanceTransaction,
     payload: dict,
 ) -> None:
-    """Impede alterar condição/cronograma de parcelas via POST quando já existe parcela paga (além da UI)."""
+    """Impede alterar tipo, valor, condição ou cronograma via POST quando já existe parcela paga (além da UI)."""
     any_paid = any(
         (getattr(i, "status", None) or "").strip().lower() == "pago"
         for i in (transaction.installments or [])
     )
     if not any_paid:
         return
+    if (payload["operation_type"] or "").strip().lower() != (transaction.operation_type or "").strip().lower():
+        raise ValueError(
+            "Com parcela já quitada, o tipo de operação não pode ser alterado. Estorne os pagamentos das parcelas antes."
+        )
+    tr_amt = Decimal(str(transaction.amount))
+    pl_amt = Decimal(str(payload["amount"]))
+    if tr_amt.quantize(Decimal("0.01")) != pl_amt.quantize(Decimal("0.01")):
+        raise ValueError(
+            "Com parcela já quitada, o valor não pode ser alterado. Estorne os pagamentos das parcelas antes."
+        )
     prior_pc = (transaction.payment_condition or "a_vista").strip().lower()
     if payload["payment_condition"] != prior_pc:
         raise ValueError(

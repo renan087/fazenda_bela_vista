@@ -726,9 +726,6 @@
             <div class="mt-6 max-h-[72vh] overflow-y-auto pr-1" data-modal-scroll>
                 <form id="finance-transaction-form" method="post" action="{% if edit_finance_transaction %}/gestao-financeira/contas/lancamentos/{{ edit_finance_transaction.id }}/editar{% else %}/gestao-financeira/contas/lancamentos{% endif %}" enctype="multipart/form-data" class="grid gap-4" data-finance-transaction-form data-finance-installments-schedule-locked="{% if finance_installments_locked %}true{% else %}false{% endif %}">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                    {% if finance_installments_locked %}
-                    <p class="rounded-xl bg-amber-50 px-3 py-2 text-xs leading-snug text-amber-900 ring-1 ring-amber-200/90" data-finance-installments-lock-alert>Com parcela já paga, a condição e o parcelamento não podem ser alterados. Para mudar, estorne os pagamentos das parcelas antes.</p>
-                    {% endif %}
                     <div class="rounded-[1.5rem] border border-brand-100 bg-brand-50/50 p-4">
                         <div class="flex flex-wrap items-start justify-between gap-4">
                             <div class="min-w-0">
@@ -761,7 +758,7 @@
                     <div class="grid gap-4 md:grid-cols-3">
                         <label>
                             <span class="mb-2 block text-sm font-medium">Tipo de operação financeira</span>
-                            <select name="operation_type" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required data-finance-transaction-type>
+                            <select {% if not finance_installments_locked %}name="operation_type"{% endif %} class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 {% if finance_installments_locked %}cursor-not-allowed bg-slate-100 text-slate-600{% else %}bg-slate-50{% endif %}" {% if not finance_installments_locked %}required{% endif %} data-finance-transaction-type {% if finance_installments_locked %}disabled{% endif %}>
                                 <option value="despesa" {% if edit_finance_transaction and edit_finance_transaction.operation_type == 'despesa' %}selected{% endif %}>Despesa</option>
                                 <option value="receita" {% if edit_finance_transaction and edit_finance_transaction.operation_type == 'receita' %}selected{% endif %}>Receita</option>
                             </select>
@@ -772,8 +769,8 @@
                         </label>
                         <label>
                             <span class="mb-2 block text-sm font-medium">Valor</span>
-                            <input type="hidden" name="amount" value="{{ edit_finance_transaction.amount if edit_finance_transaction else '0' }}" data-finance-transaction-amount-raw>
-                            <input type="text" value="" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required inputmode="decimal" placeholder="R$ 0,00" data-finance-transaction-amount-display>
+                            <input type="hidden" {% if not finance_installments_locked %}name="amount"{% endif %} value="{{ edit_finance_transaction.amount if edit_finance_transaction else '0' }}" data-finance-transaction-amount-raw>
+                            <input type="text" value="" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 {% if finance_installments_locked %}cursor-not-allowed bg-slate-100 text-slate-600{% else %}bg-slate-50{% endif %}" {% if not finance_installments_locked %}required{% endif %} inputmode="decimal" placeholder="R$ 0,00" data-finance-transaction-amount-display {% if finance_installments_locked %}disabled{% endif %}>
                         </label>
                     </div>
                     <div class="grid gap-4 md:grid-cols-2">
@@ -800,6 +797,8 @@
                     {% set transaction_payment_condition = edit_finance_transaction.payment_condition if edit_finance_transaction and edit_finance_transaction.payment_condition else 'a_vista' %}
                     {% set current_frequency = edit_finance_transaction.installment_frequency if edit_finance_transaction and edit_finance_transaction.installment_frequency else 'mensal' %}
                     {% if finance_installments_locked %}
+                    <input type="hidden" name="operation_type" value="{{ edit_finance_transaction.operation_type }}" data-finance-installment-shadow>
+                    <input type="hidden" name="amount" value="{{ edit_finance_transaction.amount }}" data-finance-installment-shadow>
                     <input type="hidden" name="payment_condition" value="{{ transaction_payment_condition }}" data-finance-installment-shadow>
                     <input type="hidden" name="installment_count" value="{{ edit_finance_transaction.installment_count if edit_finance_transaction and edit_finance_transaction.payment_condition == 'a_prazo' else '' }}" data-finance-installment-shadow>
                     <input type="hidden" name="installment_frequency" value="{{ current_frequency }}" data-finance-installment-shadow>
@@ -814,7 +813,13 @@
                             </select>
                         </label>
                     </div>
+                    {% if finance_installments_locked and transaction_payment_condition == 'a_vista' %}
+                    <p class="rounded-xl bg-amber-50 px-3 py-2.5 text-xs leading-relaxed text-amber-950 ring-1 ring-amber-200/90" data-finance-installments-lock-alert-fallback role="status">Com parcela já quitada, o tipo de operação (receita ou despesa), o valor total e o parcelamento não podem ser alterados. Estorne antes os pagamentos das parcelas no extrato para liberar a edição.</p>
+                    {% endif %}
                     <div class="hidden rounded-[1.5rem] border border-slate-200 bg-slate-50/80 p-4" data-finance-installments-section>
+                        {% if finance_installments_locked and transaction_payment_condition == 'a_prazo' %}
+                        <p class="mb-4 rounded-xl bg-amber-50 px-3 py-2.5 text-xs leading-relaxed text-amber-950 ring-1 ring-amber-200/90" data-finance-installments-lock-alert role="status">Com parcela já quitada, o tipo de operação (receita ou despesa), o valor total e o parcelamento não podem ser alterados. Estorne antes os pagamentos das parcelas no extrato para liberar a edição.</p>
+                        {% endif %}
                         <div class="grid gap-4 md:grid-cols-3">
                             <label>
                                 <span class="mb-2 block text-sm font-medium">Quantidade de parcelas</span>
@@ -1691,7 +1696,27 @@
         if (transactionForm.dataset.financeInstallmentsScheduleLocked !== 'true') return;
         transactionForm.dataset.financeInstallmentsScheduleLocked = 'false';
         transactionForm.querySelector('[data-finance-installments-lock-alert]')?.remove();
+        transactionForm.querySelector('[data-finance-installments-lock-alert-fallback]')?.remove();
         transactionForm.querySelectorAll('input[data-finance-installment-shadow]').forEach((el) => el.remove());
+        const opType = transactionForm.querySelector('[data-finance-transaction-type]');
+        if (opType) {
+            opType.disabled = false;
+            opType.name = 'operation_type';
+            opType.required = true;
+            opType.classList.remove('cursor-not-allowed', 'bg-slate-100', 'text-slate-600');
+            opType.classList.add('bg-slate-50');
+        }
+        const rawAmt = transactionForm.querySelector('[data-finance-transaction-amount-raw]');
+        if (rawAmt) {
+            rawAmt.name = 'amount';
+        }
+        const dispAmt = transactionForm.querySelector('[data-finance-transaction-amount-display]');
+        if (dispAmt) {
+            dispAmt.disabled = false;
+            dispAmt.required = true;
+            dispAmt.classList.remove('cursor-not-allowed', 'bg-slate-100', 'text-slate-600');
+            dispAmt.classList.add('bg-slate-50');
+        }
         const pc = transactionForm.querySelector('[data-finance-payment-condition]');
         if (pc) {
             pc.disabled = false;
