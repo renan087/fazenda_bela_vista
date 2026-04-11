@@ -206,11 +206,6 @@ def _collect_finance_transaction_rows(
     for transaction in repo.list_finance_transactions(farm_id=farm_id):
         if finance_account_id and transaction.finance_account_id != finance_account_id:
             continue
-        if not _in_extract_period(transaction.launch_date, period_start, period_end):
-            continue
-        amount = abs(_f(transaction.amount))
-        if amount <= 0:
-            continue
         operation_type = (transaction.operation_type or "").lower()
         is_revenue = operation_type == "receita"
         detail_parts = []
@@ -224,6 +219,47 @@ def _collect_finance_transaction_rows(
             detail_parts.append(f"Doc. {transaction.document_number}")
         if transaction.payment_method:
             detail_parts.append(transaction.payment_method)
+        detail = " • ".join(detail_parts)
+
+        payment_condition = (transaction.payment_condition or "").strip().lower()
+        if payment_condition == "a_prazo":
+            installments = sorted(
+                transaction.installments or [],
+                key=lambda inst: (inst.installment_number or 0, inst.id),
+            )
+            total_parts = int(transaction.installment_count or 0) or len(installments) or 1
+            for inst in installments:
+                if (inst.status or "").strip().lower() != "pago":
+                    continue
+                paid_day = inst.paid_at
+                if paid_day is None:
+                    continue
+                if not _in_extract_period(paid_day, period_start, period_end):
+                    continue
+                amt = abs(_f(inst.amount))
+                if amt <= 0:
+                    continue
+                n = int(inst.installment_number or 0)
+                parcel_label = f"Parcela {n}/{total_parts}"
+                raw.append(
+                    {
+                        "date": paid_day,
+                        "sort_group": 1,
+                        "ref_id": inst.id,
+                        "module": "Contas",
+                        "description": f"{'Receita' if is_revenue else 'Despesa'} — {transaction.product_service} ({parcel_label})",
+                        "detail": detail,
+                        "debit": amt if not is_revenue else None,
+                        "credit": amt if is_revenue else None,
+                    }
+                )
+            continue
+
+        if not _in_extract_period(transaction.launch_date, period_start, period_end):
+            continue
+        amount = abs(_f(transaction.amount))
+        if amount <= 0:
+            continue
         raw.append(
             {
                 "date": transaction.launch_date,
@@ -231,7 +267,7 @@ def _collect_finance_transaction_rows(
                 "ref_id": transaction.id,
                 "module": "Contas",
                 "description": f"{'Receita' if is_revenue else 'Despesa'} — {transaction.product_service}",
-                "detail": " • ".join(detail_parts),
+                "detail": detail,
                 "debit": amount if not is_revenue else None,
                 "credit": amount if is_revenue else None,
             }

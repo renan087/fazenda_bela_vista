@@ -2536,6 +2536,29 @@ def _payables_redirect_url(request: Request) -> str:
     return f"{path}?{urlencode(items)}"
 
 
+def _finance_transaction_balance_amount_chunks(transaction: FinanceTransaction) -> list[float]:
+    """
+    Montantes absolutos a aplicar no saldo do card da conta: uma parcela paga por vez se a prazo;
+    valor integral do lançamento se à vista. Alinhado ao extrato (finance_overview).
+    """
+    if (transaction.payment_condition or "").strip().lower() == "a_prazo":
+        chunks: list[float] = []
+        for inst in sorted(
+            transaction.installments or [],
+            key=lambda x: (x.installment_number or 0, x.id),
+        ):
+            if (inst.status or "").strip().lower() != "pago":
+                continue
+            amt = abs(float(inst.amount or 0))
+            if amt > 0:
+                chunks.append(round(amt, 2))
+        return chunks
+    amt = abs(float(transaction.amount or 0))
+    if amt <= 0:
+        return []
+    return [round(amt, 2)]
+
+
 def _finance_payables_period_bounds(request: Request) -> tuple[date | None, date | None, str, str, str]:
     """Retorna (start, end, raw_start, raw_end, selected_range) para filtro de vencimento em A pagar."""
     qp = request.query_params
@@ -3049,11 +3072,13 @@ def finance_accounts_page(
         return _redirect("/gestao-financeira/contas")
     account_balances: dict[int, float] = {item.id: round(float(item.initial_balance or 0), 2) for item in accounts}
     for transaction in transactions:
-        amount = round(abs(float(transaction.amount or 0)), 2)
-        if (transaction.operation_type or "").strip().lower() == "receita":
-            account_balances[transaction.finance_account_id] = round(account_balances.get(transaction.finance_account_id, 0.0) + amount, 2)
-        else:
-            account_balances[transaction.finance_account_id] = round(account_balances.get(transaction.finance_account_id, 0.0) - amount, 2)
+        acc_id = transaction.finance_account_id
+        is_revenue = (transaction.operation_type or "").strip().lower() == "receita"
+        for chunk in _finance_transaction_balance_amount_chunks(transaction):
+            if is_revenue:
+                account_balances[acc_id] = round(account_balances.get(acc_id, 0.0) + chunk, 2)
+            else:
+                account_balances[acc_id] = round(account_balances.get(acc_id, 0.0) - chunk, 2)
     return templates.TemplateResponse(
         "finance_accounts.html",
         _base_context(
