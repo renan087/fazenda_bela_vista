@@ -12,6 +12,7 @@ import logging
 import unicodedata
 import urllib.error
 import urllib.request
+from xml.sax.saxutils import escape as xml_escape
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Query, Request, Response, UploadFile, status
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
@@ -4090,6 +4091,50 @@ def _finance_accounts_pdf_meta_footer(doc, generated_at_label: str, generated_by
     return _draw_footer
 
 
+def _finance_transactions_pdf_filter_summary(request: Request) -> str:
+    tx_start, tx_end, _, _, tx_sr = _finance_transactions_period_bounds(request)
+    parts: list[str] = []
+    tx_op = (request.query_params.get("transactions_operation") or "").strip().lower()
+    if tx_op == "receita":
+        parts.append("Somente receitas")
+    elif tx_op == "despesa":
+        parts.append("Somente despesas")
+    raw_acc = (request.query_params.get("transactions_account_id") or "").strip()
+    if raw_acc:
+        parts.append("Conta filtrada")
+    tx_search = (request.query_params.get("transactions_search") or "").strip()
+    if tx_search:
+        q = tx_search if len(tx_search) <= 48 else f"{tx_search[:48]}…"
+        parts.append(f"Busca: {q}")
+    if tx_start and tx_end:
+        parts.append(f"Período: {tx_start.strftime('%d/%m/%Y')} a {tx_end.strftime('%d/%m/%Y')}")
+    elif tx_sr:
+        parts.append(f"Preset: {tx_sr}")
+    else:
+        parts.append("Período: todos")
+    return " · ".join(parts)
+
+
+def _finance_payables_pdf_filter_summary(request: Request) -> str:
+    ps, pe, _, _, _ = _finance_payables_period_bounds(request)
+    payables_search = (request.query_params.get("payables_search") or "").strip()
+    payables_status = (request.query_params.get("payables_status") or "").strip().lower()
+    if payables_status not in {"", "open", "paid", "overdue", "all"}:
+        payables_status = ""
+    status_labels = {"open": "Em aberto", "paid": "Pagos", "overdue": "Atrasados", "all": "Todos"}
+    parts: list[str] = []
+    if payables_status:
+        parts.append(status_labels.get(payables_status, payables_status))
+    else:
+        parts.append("Status: em aberto (padrão)")
+    if ps and pe:
+        parts.append(f"Vencimento: {ps.strftime('%d/%m/%Y')} a {pe.strftime('%d/%m/%Y')}")
+    if payables_search:
+        q = payables_search if len(payables_search) <= 48 else f"{payables_search[:48]}…"
+        parts.append(f"Busca: {q}")
+    return " · ".join(parts)
+
+
 @router.get("/gestao-financeira/contas/exportar/lancamentos.xlsx")
 def export_finance_accounts_transactions_xlsx(
     request: Request,
@@ -4143,6 +4188,9 @@ def export_finance_accounts_transactions_pdf(
     if not active_farm:
         raise HTTPException(status_code=400, detail="Selecione uma fazenda ativa.")
     rows = _finance_accounts_export_transactions_rows(repo, active_farm=active_farm, request=request)
+    filter_summary = _finance_transactions_pdf_filter_summary(request)
+    total_rec = sum(float(tx.amount or 0) for tx in rows if (tx.operation_type or "").strip().lower() == "receita")
+    total_desp = sum(float(tx.amount or 0) for tx in rows if (tx.operation_type or "").strip().lower() == "despesa")
     generated_at = app_now()
     generated_by = user.display_name or user.name or user.email
     farm_name = active_farm.name
@@ -4151,16 +4199,51 @@ def export_finance_accounts_transactions_pdf(
     buffer = BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=landscape(A4), leftMargin=28, rightMargin=28, topMargin=32, bottomMargin=34)
     styles = getSampleStyleSheet()
+    farm_header_style = ParagraphStyle("FACtxFarmHeader", parent=styles["Title"], fontName="Helvetica-Bold", fontSize=18, leading=22, alignment=TA_RIGHT, textColor=colors.HexColor("#1e293b"))
+    meta_label_style = ParagraphStyle("FACtxMetaLabel", parent=styles["BodyText"], fontName="Helvetica-Bold", fontSize=8, leading=10, textColor=colors.HexColor("#446a36"), spaceAfter=2)
+    meta_value_style = ParagraphStyle("FACtxMetaValue", parent=styles["BodyText"], fontName="Helvetica", fontSize=10, leading=13, textColor=colors.HexColor("#334155"))
+    summary_value_style = ParagraphStyle("FACtxSummaryVal", parent=styles["BodyText"], fontName="Helvetica-Bold", fontSize=11, leading=14, textColor=colors.HexColor("#0f172a"))
     title_style = ParagraphStyle("FACtxTitle", parent=styles["Heading2"], fontName="Helvetica-Bold", fontSize=13, leading=16, textColor=colors.HexColor("#0f172a"), spaceAfter=6)
     cell_style = ParagraphStyle("FACtxCell", parent=styles["BodyText"], fontName="Helvetica", fontSize=8.2, leading=10.4, textColor=colors.HexColor("#0f172a"))
     cell_num = ParagraphStyle("FACtxNum", parent=cell_style, alignment=TA_RIGHT)
-    meta_style = ParagraphStyle("FACtxMeta", parent=styles["BodyText"], fontName="Helvetica", fontSize=10, textColor=colors.HexColor("#334155"))
+    empty_style = ParagraphStyle("FACtxEmpty", parent=styles["BodyText"], fontName="Helvetica", fontSize=10, leading=14, textColor=colors.HexColor("#475569"))
 
-    elements = [
-        Paragraph(f"<b>{farm_name}</b> — Lançamentos (Contas)", title_style),
-        Paragraph(f"Total de registros: {len(rows)}", meta_style),
-        Spacer(1, 10),
-    ]
+    logo_path = Path("app/static/images/logo.png")
+    logo_flowable = Image(str(logo_path), width=92.8, height=73.6) if logo_path.exists() else Spacer(92.8, 73.6)
+    header_table = Table([[logo_flowable, Paragraph(farm_name, farm_header_style)]], colWidths=[76, doc.width - 76], hAlign="LEFT")
+    header_table.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP"), ("ALIGN", (1, 0), (1, 0), "RIGHT"), ("LEFTPADDING", (0, 0), (-1, -1), 0), ("RIGHTPADDING", (0, 0), (-1, -1), 0), ("TOPPADDING", (0, 0), (-1, -1), 0), ("BOTTOMPADDING", (0, 0), (-1, -1), 0)]))
+    summary_table = Table(
+        [
+            [
+                [Paragraph("FAZENDA", meta_label_style), Paragraph(farm_name, meta_value_style)],
+                [Paragraph("RELATÓRIO", meta_label_style), Paragraph("Lançamentos (Contas)", meta_value_style)],
+                [Paragraph("FILTROS", meta_label_style), Paragraph(xml_escape(filter_summary), meta_value_style)],
+            ],
+            [
+                [Paragraph("REGISTROS", meta_label_style), Paragraph(str(len(rows)), summary_value_style)],
+                [Paragraph("TOTAL RECEITAS", meta_label_style), Paragraph(_format_currency(total_rec), summary_value_style)],
+                [Paragraph("TOTAL DESPESAS", meta_label_style), Paragraph(_format_currency(total_desp), summary_value_style)],
+            ],
+        ],
+        colWidths=[doc.width / 3] * 3,
+        hAlign="LEFT",
+    )
+    summary_table.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#f8fafc")),
+                ("BOX", (0, 0), (-1, -1), 0.8, colors.HexColor("#dbe5dd")),
+                ("INNERGRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#e2e8f0")),
+                ("LEFTPADDING", (0, 0), (-1, -1), 12),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 12),
+                ("TOPPADDING", (0, 0), (-1, -1), 10),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 10),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ]
+        )
+    )
+
+    elements = [header_table, Spacer(1, 16), summary_table, Spacer(1, 12), Paragraph("Lançamentos", title_style), Spacer(1, 8)]
     if rows:
         data_rows = [["Data", "Tipo", "Origem", "Conta", "Categoria", "Produto/serviço", "Valor"]]
         for tx in rows:
@@ -4183,19 +4266,49 @@ def export_finance_accounts_transactions_pdf(
                     ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#446a36")),
                     ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
                     ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                    ("FONTSIZE", (0, 0), (-1, -1), 8.5),
+                    ("LEADING", (0, 0), (-1, -1), 10),
                     ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f8fafc")]),
                     ("BOX", (0, 0), (-1, -1), 0.6, colors.HexColor("#dbe5dd")),
                     ("INNERGRID", (0, 0), (-1, -1), 0.35, colors.HexColor("#e2e8f0")),
-                    ("LEFTPADDING", (0, 0), (-1, -1), 6),
-                    ("RIGHTPADDING", (0, 0), (-1, -1), 6),
-                    ("TOPPADDING", (0, 0), (-1, -1), 5),
+                    ("LEFTPADDING", (0, 0), (-1, -1), 8),
+                    ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+                    ("TOPPADDING", (0, 0), (-1, -1), 7),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 7),
                     ("VALIGN", (0, 0), (-1, -1), "TOP"),
                 ]
             )
         )
         elements.append(table)
     else:
-        elements.append(Paragraph("Nenhum lançamento para os filtros aplicados.", cell_style))
+        elements.append(Paragraph("Nenhum lançamento encontrado para os filtros aplicados.", empty_style))
+
+    elements.append(Spacer(1, 14))
+    footer_summary = Table(
+        [
+            ["Total receitas", _format_currency(total_rec)],
+            ["Total despesas", _format_currency(total_desp)],
+            ["Registros listados", str(len(rows))],
+        ],
+        colWidths=[doc.width * 0.28, doc.width * 0.18],
+        hAlign="LEFT",
+    )
+    footer_summary.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#f8fafc")),
+                ("BOX", (0, 0), (-1, -1), 0.8, colors.HexColor("#dbe5dd")),
+                ("INNERGRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#e2e8f0")),
+                ("FONTNAME", (0, 0), (-1, -1), "Helvetica-Bold"),
+                ("TEXTCOLOR", (0, 0), (-1, -1), colors.HexColor("#0f172a")),
+                ("LEFTPADDING", (0, 0), (-1, -1), 10),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 10),
+                ("TOPPADDING", (0, 0), (-1, -1), 8),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
+            ]
+        )
+    )
+    elements.append(footer_summary)
 
     doc.build(elements, onFirstPage=_finance_accounts_pdf_meta_footer(doc, generated_at_label, generated_by), onLaterPages=_finance_accounts_pdf_meta_footer(doc, generated_at_label, generated_by))
     buffer.seek(0)
@@ -4266,24 +4379,61 @@ def export_finance_accounts_payables_pdf(
     if not active_farm:
         raise HTTPException(status_code=400, detail="Selecione uma fazenda ativa.")
     rows = _finance_accounts_export_payables_rows(repo, active_farm=active_farm, request=request)
+    filter_summary = _finance_payables_pdf_filter_summary(request)
+    total_parcelas = sum(float(row["installment"].amount or 0) for row in rows)
     generated_at = app_now()
     generated_by = user.display_name or user.name or user.email
     farm_name = active_farm.name
     generated_at_label = format_app_datetime(generated_at)
 
     buffer = BytesIO()
-    doc = SimpleDocTemplate(buffer, pagesize=landscape(A4), leftMargin=24, rightMargin=24, topMargin=30, bottomMargin=34)
+    doc = SimpleDocTemplate(buffer, pagesize=landscape(A4), leftMargin=28, rightMargin=28, topMargin=32, bottomMargin=34)
     styles = getSampleStyleSheet()
+    farm_header_style = ParagraphStyle("FACpayFarmHeader", parent=styles["Title"], fontName="Helvetica-Bold", fontSize=18, leading=22, alignment=TA_RIGHT, textColor=colors.HexColor("#1e293b"))
+    meta_label_style = ParagraphStyle("FACpayMetaLabel", parent=styles["BodyText"], fontName="Helvetica-Bold", fontSize=8, leading=10, textColor=colors.HexColor("#446a36"), spaceAfter=2)
+    meta_value_style = ParagraphStyle("FACpayMetaValue", parent=styles["BodyText"], fontName="Helvetica", fontSize=10, leading=13, textColor=colors.HexColor("#334155"))
+    summary_value_style = ParagraphStyle("FACpaySummaryVal", parent=styles["BodyText"], fontName="Helvetica-Bold", fontSize=11, leading=14, textColor=colors.HexColor("#0f172a"))
     title_style = ParagraphStyle("FACpayTitle", parent=styles["Heading2"], fontName="Helvetica-Bold", fontSize=13, leading=16, textColor=colors.HexColor("#0f172a"), spaceAfter=6)
     cell_style = ParagraphStyle("FACpayCell", parent=styles["BodyText"], fontName="Helvetica", fontSize=7.5, leading=9.5, textColor=colors.HexColor("#0f172a"))
     cell_num = ParagraphStyle("FACpayNum", parent=cell_style, alignment=TA_RIGHT)
-    meta_style = ParagraphStyle("FACpayMeta", parent=styles["BodyText"], fontName="Helvetica", fontSize=10, textColor=colors.HexColor("#334155"))
+    empty_style = ParagraphStyle("FACpayEmpty", parent=styles["BodyText"], fontName="Helvetica", fontSize=10, leading=14, textColor=colors.HexColor("#475569"))
 
-    elements = [
-        Paragraph(f"<b>{farm_name}</b> — Contas a pagar (parcelas)", title_style),
-        Paragraph(f"Total de registros: {len(rows)}", meta_style),
-        Spacer(1, 10),
-    ]
+    logo_path = Path("app/static/images/logo.png")
+    logo_flowable = Image(str(logo_path), width=92.8, height=73.6) if logo_path.exists() else Spacer(92.8, 73.6)
+    header_table = Table([[logo_flowable, Paragraph(farm_name, farm_header_style)]], colWidths=[76, doc.width - 76], hAlign="LEFT")
+    header_table.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP"), ("ALIGN", (1, 0), (1, 0), "RIGHT"), ("LEFTPADDING", (0, 0), (-1, -1), 0), ("RIGHTPADDING", (0, 0), (-1, -1), 0), ("TOPPADDING", (0, 0), (-1, -1), 0), ("BOTTOMPADDING", (0, 0), (-1, -1), 0)]))
+    summary_table = Table(
+        [
+            [
+                [Paragraph("FAZENDA", meta_label_style), Paragraph(farm_name, meta_value_style)],
+                [Paragraph("RELATÓRIO", meta_label_style), Paragraph("Contas a pagar (parcelas)", meta_value_style)],
+                [Paragraph("FILTROS", meta_label_style), Paragraph(xml_escape(filter_summary), meta_value_style)],
+            ],
+            [
+                [Paragraph("PARCELAS", meta_label_style), Paragraph(str(len(rows)), summary_value_style)],
+                [Paragraph("SOMA DOS VALORES", meta_label_style), Paragraph(_format_currency(total_parcelas), summary_value_style)],
+                [Paragraph("DETALHE", meta_label_style), Paragraph("Valores por parcela", meta_value_style)],
+            ],
+        ],
+        colWidths=[doc.width / 3] * 3,
+        hAlign="LEFT",
+    )
+    summary_table.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#f8fafc")),
+                ("BOX", (0, 0), (-1, -1), 0.8, colors.HexColor("#dbe5dd")),
+                ("INNERGRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#e2e8f0")),
+                ("LEFTPADDING", (0, 0), (-1, -1), 12),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 12),
+                ("TOPPADDING", (0, 0), (-1, -1), 10),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 10),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ]
+        )
+    )
+
+    elements = [header_table, Spacer(1, 16), summary_table, Spacer(1, 12), Paragraph("Contas a pagar", title_style), Spacer(1, 8)]
     if rows:
         data_rows = [["Status", "Venc.", "Origem", "Conta", "Categoria", "Produto", "Parc.", "Valor", "Pago"]]
         for row in rows:
@@ -4315,18 +4465,48 @@ def export_finance_accounts_payables_pdf(
                     ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#446a36")),
                     ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
                     ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-                    ("FONTSIZE", (0, 0), (-1, -1), 7.5),
+                    ("FONTSIZE", (0, 0), (-1, -1), 8.5),
+                    ("LEADING", (0, 0), (-1, -1), 10),
                     ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f8fafc")]),
                     ("BOX", (0, 0), (-1, -1), 0.6, colors.HexColor("#dbe5dd")),
                     ("INNERGRID", (0, 0), (-1, -1), 0.35, colors.HexColor("#e2e8f0")),
-                    ("LEFTPADDING", (0, 0), (-1, -1), 4),
+                    ("LEFTPADDING", (0, 0), (-1, -1), 8),
+                    ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+                    ("TOPPADDING", (0, 0), (-1, -1), 7),
+                    ("BOTTOMPADDING", (0, 0), (-1, -1), 7),
                     ("VALIGN", (0, 0), (-1, -1), "TOP"),
                 ]
             )
         )
         elements.append(table)
     else:
-        elements.append(Paragraph("Nenhuma parcela para os filtros aplicados.", cell_style))
+        elements.append(Paragraph("Nenhuma parcela encontrada para os filtros aplicados.", empty_style))
+
+    elements.append(Spacer(1, 14))
+    footer_summary = Table(
+        [
+            ["Soma dos valores", _format_currency(total_parcelas)],
+            ["Parcelas listadas", str(len(rows))],
+        ],
+        colWidths=[doc.width * 0.28, doc.width * 0.18],
+        hAlign="LEFT",
+    )
+    footer_summary.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#f8fafc")),
+                ("BOX", (0, 0), (-1, -1), 0.8, colors.HexColor("#dbe5dd")),
+                ("INNERGRID", (0, 0), (-1, -1), 0.5, colors.HexColor("#e2e8f0")),
+                ("FONTNAME", (0, 0), (-1, -1), "Helvetica-Bold"),
+                ("TEXTCOLOR", (0, 0), (-1, -1), colors.HexColor("#0f172a")),
+                ("LEFTPADDING", (0, 0), (-1, -1), 10),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 10),
+                ("TOPPADDING", (0, 0), (-1, -1), 8),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 8),
+            ]
+        )
+    )
+    elements.append(footer_summary)
 
     footer_fn = _finance_accounts_pdf_meta_footer(doc, generated_at_label, generated_by)
     doc.build(elements, onFirstPage=footer_fn, onLaterPages=footer_fn)

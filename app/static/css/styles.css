@@ -1468,6 +1468,10 @@ body.dashboard-schedule-modal-open {
 .stock-history-stage[data-finance-tab="payables"] .stock-filter-bar,
 .stock-history-stage[data-finance-tab="payables"] .stock-filter-grid,
 .stock-history-stage[data-finance-tab="payables"] [data-finance-payables-filter-collapse],
+.stock-history-stage[data-finance-tab="transactions"],
+.stock-history-stage[data-finance-tab="transactions"] .stock-filter-bar,
+.stock-history-stage[data-finance-tab="transactions"] .stock-filter-grid,
+.stock-history-stage[data-finance-tab="transactions"] [data-finance-transactions-filter-collapse],
 .finance-accounts-summary-panel {
     overflow: visible;
 }
@@ -1537,6 +1541,84 @@ body.dashboard-schedule-modal-open {
     .stock-filter-fields-row.finance-payables-filter-fields-row > .stock-filter-field-actions {
         white-space: nowrap;
         justify-content: flex-end;
+    }
+
+    .stock-filter-fields-row.finance-transactions-filter-fields-row {
+        grid-template-columns:
+            minmax(7.25rem, 0.48fr)
+            minmax(8.5rem, 0.55fr)
+            minmax(10.5rem, 0.72fr)
+            minmax(0, 1.05fr)
+            max-content;
+        column-gap: 0.75rem;
+        width: 100%;
+        align-items: end;
+    }
+
+    .stock-filter-fields-row.finance-transactions-filter-fields-row > .stock-filter-field,
+    .stock-filter-fields-row.finance-transactions-filter-fields-row > .stock-filter-field-period {
+        min-width: 0;
+    }
+
+    .stock-filter-fields-row.finance-transactions-filter-fields-row > .stock-filter-field-period {
+        position: relative;
+        z-index: 18;
+    }
+
+    .stock-filter-fields-row.finance-transactions-filter-fields-row > .stock-filter-field-actions {
+        white-space: nowrap;
+        justify-content: flex-end;
+    }
+
+    .stock-history-stage[data-finance-tab="transactions"] .stock-filter-bar,
+    .stock-history-stage[data-finance-tab="transactions"] .stock-filter-grid,
+    .stock-history-stage[data-finance-tab="transactions"] [data-finance-transactions-filter-collapse] {
+        overflow: visible;
+    }
+}
+
+@media (max-width: 899px) {
+    .stock-filter-fields-row.finance-transactions-filter-fields-row {
+        display: flex;
+        flex-direction: row;
+        flex-wrap: nowrap;
+        align-items: flex-end;
+        gap: 0.65rem;
+        overflow-x: auto;
+        overflow-y: visible;
+        -webkit-overflow-scrolling: touch;
+        padding-bottom: 0.2rem;
+        width: 100%;
+        min-width: 0;
+    }
+
+    .stock-filter-fields-row.finance-transactions-filter-fields-row > .stock-filter-field,
+    .stock-filter-fields-row.finance-transactions-filter-fields-row > .stock-filter-field-period,
+    .stock-filter-fields-row.finance-transactions-filter-fields-row > .stock-filter-field-actions {
+        flex: 0 0 auto;
+        min-width: 0;
+    }
+
+    .stock-filter-fields-row.finance-transactions-filter-fields-row > .stock-filter-field-input:nth-child(1) {
+        min-width: 7.5rem;
+        width: auto;
+    }
+
+    .stock-filter-fields-row.finance-transactions-filter-fields-row > .stock-filter-field-input:nth-child(2) {
+        min-width: 9.5rem;
+    }
+
+    .stock-filter-fields-row.finance-transactions-filter-fields-row > .stock-filter-field-period {
+        min-width: 11.5rem;
+        z-index: 18;
+    }
+
+    .stock-filter-fields-row.finance-transactions-filter-fields-row > .stock-filter-field-input:nth-child(4) {
+        min-width: 12rem;
+    }
+
+    .stock-filter-fields-row.finance-transactions-filter-fields-row > .stock-filter-field-actions {
+        margin-left: 0;
     }
 }
 
