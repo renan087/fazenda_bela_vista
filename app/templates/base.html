@@ -547,6 +547,26 @@
                 submenuFlyoutInner?.replaceChildren();
             };
 
+            /** Remove estilos inline dos painéis (abertos no menu expandido) para o CSS de recolhido voltar a valer. */
+            const closeAllExpandedSubmenuPanels = () => {
+                document.querySelectorAll('[data-submenu-group]').forEach((group) => {
+                    const panel = group.querySelector('[data-submenu-panel]');
+                    const button = group.querySelector('[data-submenu-parent]');
+                    if (!panel) return;
+                    panel.style.maxHeight = '';
+                    panel.style.opacity = '';
+                    panel.style.pointerEvents = '';
+                    panel.classList.add('hidden');
+                    panel.classList.remove('is-open');
+                    button?.setAttribute('aria-expanded', 'false');
+                    const hasActiveSubmenu = Array.from(group.querySelectorAll('[data-submenu-link]')).some((link) =>
+                        link.classList.contains('bg-brand-500'),
+                    );
+                    if (button) button.dataset.parentActive = hasActiveSubmenu ? 'true' : 'false';
+                    group.classList.toggle('bg-slate-900/80', hasActiveSubmenu);
+                });
+            };
+
             const headerSessionToggle = document.querySelector('[data-header-session-toggle]');
             const headerSessionFlyout = document.getElementById('erp-header-session-flyout');
             /* Após fechar o flyout de sessão: tempo para o fade (280ms) + margem antes de limpar inline position. */
@@ -740,6 +760,9 @@
             const applyDesktopSidebarState = (collapsed) => {
                 if (!document.body || !desktopSidebarMq.matches) return;
                 document.body.classList.remove('erp-sidebar-collapsing', 'erp-sidebar-expanding');
+                if (collapsed) {
+                    closeAllExpandedSubmenuPanels();
+                }
                 document.body.classList.toggle('erp-sidebar-collapsed', collapsed);
                 desktopSidebarToggle?.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
                 desktopSidebarToggle?.setAttribute('aria-label', collapsed ? 'Expandir menu' : 'Recolher menu');
@@ -751,6 +774,7 @@
                 hideNavTooltip();
                 window.clearTimeout(desktopSidebarTransitionTimer);
                 if (collapsed) {
+                    closeAllExpandedSubmenuPanels();
                     document.body.classList.remove('erp-sidebar-expanding');
                     document.body.classList.add('erp-sidebar-collapsing');
                     desktopSidebarToggle?.setAttribute('aria-expanded', 'false');
