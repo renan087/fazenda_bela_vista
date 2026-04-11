@@ -337,12 +337,17 @@
                         <button form="purchased-input-form" class="rounded-2xl bg-brand-500 px-4 py-3 font-semibold text-white hover:bg-brand-700">Salvar</button>
                     </div>
                 </div>
-                <div class="grid gap-4 md:grid-cols-2">
+                <div class="grid gap-4 md:grid-cols-3">
                     <label>
                         <span class="mb-2 block text-sm font-medium">Tipo de item</span>
                         <select name="item_type" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" data-item-type-select>
                             <option value="insumo_agricola" {% if selected_item_type == 'insumo_agricola' or (edit_input and edit_input.input_catalog and edit_input.input_catalog.item_type == 'insumo_agricola') %}selected{% endif %}>Insumo agricola</option>
                             <option value="combustivel" {% if selected_item_type == 'combustivel' or (edit_input and edit_input.input_catalog and edit_input.input_catalog.item_type == 'combustivel') %}selected{% endif %}>Combustivel</option>
+                        </select>
+                    </label>
+                    <label>
+                        <span class="mb-2 block text-sm font-medium">Categoria</span>
+                        <select name="category" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" data-category-select data-initial-category="{{ edit_input.input_catalog.category if edit_input and edit_input.input_catalog else '' }}" required>
                         </select>
                     </label>
                     <label><span class="mb-2 block text-sm font-medium">Data da compra</span><input type="date" name="purchase_date" value="{{ edit_input.purchase_date.isoformat() if edit_input and edit_input.purchase_date else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50"></label>
@@ -354,7 +359,7 @@
                 </label>
                 <datalist id="inputs-catalog-list">
                     {% for input_item in inputs_catalog_all %}
-                    <option value="{{ input_item.name }}" data-item-type="{{ input_item.item_type or 'insumo_agricola' }}"></option>
+                    <option value="{{ input_item.name }}" data-item-type="{{ input_item.item_type or 'insumo_agricola' }}" data-category="{{ input_item.category or '' }}"></option>
                     {% endfor %}
                 </datalist>
                 <div class="grid gap-4 md:grid-cols-2">
@@ -685,13 +690,18 @@
         const totalQuantityField = form.querySelector('[data-total-quantity]');
         const totalCostField = form.querySelector('[data-total-cost]');
         const itemTypeField = form.querySelector('[data-item-type-select]');
+        const categoryField = form.querySelector('[data-category-select]');
+        const purchasedNameInput = form.querySelector('[data-purchased-name-input]');
         const packageUnitField = form.querySelector('select[name="package_unit"]');
         const lowStockThresholdField = form.querySelector('input[name="low_stock_threshold"]');
+        const initialCategory = categoryField?.dataset.initialCategory || '';
+        const categoryOptionsByType = {{ purchase_input_category_options_by_type|tojson }};
         const inputCatalogList = document.getElementById('inputs-catalog-list');
         const catalogOptionData = inputCatalogList
             ? Array.from(inputCatalogList.querySelectorAll('option')).map((option) => ({
                 value: option.value,
                 itemType: option.dataset.itemType || 'insumo_agricola',
+                category: option.dataset.category || '',
             }))
             : [];
 
@@ -721,6 +731,35 @@
                 });
         };
 
+        const findCatalogMatch = () => {
+            const typedName = normalizeSearchText(purchasedNameInput?.value || '');
+            const selectedType = itemTypeField?.value || 'insumo_agricola';
+            if (!typedName) return null;
+            return catalogOptionData.find((item) => normalizeSearchText(item.value) === typedName && item.itemType === selectedType) || null;
+        };
+
+        const syncCategoryOptions = (preferredCategory = '') => {
+            if (!categoryField || !itemTypeField) return;
+            const selectedType = itemTypeField.value || 'insumo_agricola';
+            const allowed = categoryOptionsByType[selectedType] || categoryOptionsByType.insumo_agricola || [];
+            const currentValue = categoryField.value;
+            const catalogMatch = findCatalogMatch();
+            const inferredCategory = catalogMatch?.category || '';
+            const nextValue = [preferredCategory, currentValue, inferredCategory, initialCategory]
+                .find((value) => value && allowed.includes(value)) || allowed[0] || '';
+
+            categoryField.innerHTML = '';
+            allowed.forEach((optionValue) => {
+                const option = document.createElement('option');
+                option.value = optionValue;
+                option.textContent = optionValue;
+                if (optionValue === nextValue) {
+                    option.selected = true;
+                }
+                categoryField.appendChild(option);
+            });
+        };
+
         const syncItemType = () => {
             if (!itemTypeField || !packageUnitField) return;
             if (itemTypeField.value === 'combustivel') {
@@ -739,10 +778,14 @@
         itemTypeField?.addEventListener('change', () => {
             syncItemType();
             syncCatalogSuggestions();
+            syncCategoryOptions();
         });
+        purchasedNameInput?.addEventListener('change', () => syncCategoryOptions());
+        purchasedNameInput?.addEventListener('blur', () => syncCategoryOptions());
         syncTotals();
         syncItemType();
         syncCatalogSuggestions();
+        syncCategoryOptions(initialCategory);
     })();
 </script>
 {% endblock %}

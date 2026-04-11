@@ -186,6 +186,39 @@ SUPPLY_CATEGORY_OPTIONS = [
     "EPIs",
     "Outros",
 ]
+PURCHASE_INPUT_CATEGORY_OPTIONS = [
+    "Acaricida",
+    "Adjuvante",
+    "Combustíveis",
+    "Corretivos de Solo",
+    "Feritlizantes",
+    "Fungicida",
+    "Herbicida",
+    "Inseticida",
+    "Lubrificantes",
+    "Outros Custos de Insumos",
+    "Outros Defensivos",
+    "Outros Itens",
+]
+PURCHASE_INPUT_CATEGORY_OPTIONS_BY_TYPE = {
+    "combustivel": [
+        "Combustíveis",
+        "Lubrificantes",
+        "Outros Itens",
+    ],
+    "insumo_agricola": [
+        "Acaricida",
+        "Adjuvante",
+        "Corretivos de Solo",
+        "Feritlizantes",
+        "Fungicida",
+        "Herbicida",
+        "Inseticida",
+        "Outros Custos de Insumos",
+        "Outros Defensivos",
+        "Outros Itens",
+    ],
+}
 FINANCE_BANK_OPTIONS = [
     {"code": "001", "name": "Banco do Brasil S.A.", "mark": "BB", "bg": "#fde047", "fg": "#1d4ed8", "logo": "images/finance-banks/001.svg"},
     {"code": "237", "name": "Banco Bradesco S.A.", "mark": "B", "bg": "#e11d48", "fg": "#ffffff", "logo": "images/finance-banks/237.svg"},
@@ -2342,6 +2375,19 @@ def _finance_transaction_category_options(operation_type: str | None) -> list[st
     if normalized == "receita":
         return FINANCE_TRANSACTION_REVENUE_CATEGORIES
     return FINANCE_TRANSACTION_EXPENSE_CATEGORIES
+
+
+def _purchase_input_category_options(item_type: str | None) -> list[str]:
+    normalized = (item_type or "").strip().lower()
+    return PURCHASE_INPUT_CATEGORY_OPTIONS_BY_TYPE.get(normalized, PURCHASE_INPUT_CATEGORY_OPTIONS_BY_TYPE["insumo_agricola"])
+
+
+def _resolve_purchase_input_category(item_type: str | None, category: str | None) -> str:
+    cleaned = _clean_text(category)
+    allowed = _purchase_input_category_options(item_type)
+    if cleaned not in allowed:
+        raise ValueError("Selecione uma categoria válida para o tipo de item informado.")
+    return cleaned
 
 
 def _parse_finance_transaction_amount(raw_value: str | None) -> float:
@@ -5790,6 +5836,7 @@ def purchased_inputs_page(
             farms=repo.list_farms(),
             selected_item_type=selected_item_type or normalized_item_type or "insumo_agricola",
             selected_farm_id=effective_farm_id,
+            purchase_input_category_options_by_type=PURCHASE_INPUT_CATEGORY_OPTIONS_BY_TYPE,
             inputs=purchase_entries_pagination["items"],
             inputs_pagination=purchase_entries_pagination,
             inputs_catalog=stock_context["catalog_inputs"],
@@ -5823,6 +5870,7 @@ async def create_purchased_input_action(
     csrf_token: str = Form(...),
     farm_id: str | None = Form(None),
     item_type: str = Form("insumo_agricola"),
+    category: str = Form(...),
     name: str = Form(...),
     quantity_purchased: float = Form(...),
     package_size: float = Form(...),
@@ -5842,6 +5890,11 @@ async def create_purchased_input_action(
     if denied:
         return denied
     try:
+        resolved_category = _resolve_purchase_input_category(item_type, category)
+    except ValueError as exc:
+        _flash(request, "error", str(exc))
+        return _redirect_with_query("/insumos/comprados", item_type=item_type)
+    try:
         finance_account = _resolve_optional_finance_account(repo, active_farm=scope["active_farm"], account_id=finance_account_id)
     except ValueError as exc:
         _flash(request, "error", str(exc))
@@ -5856,6 +5909,7 @@ async def create_purchased_input_action(
         {
             "farm_id": scope["active_farm_id"],
             "item_type": item_type,
+            "category": resolved_category,
             "name": name,
             "quantity_purchased": quantity_purchased,
             "package_size": package_size,
@@ -5886,6 +5940,7 @@ async def update_purchased_input_action(
     csrf_token: str = Form(...),
     farm_id: str | None = Form(None),
     item_type: str = Form("insumo_agricola"),
+    category: str = Form(...),
     name: str = Form(...),
     quantity_purchased: float = Form(...),
     package_size: float = Form(...),
@@ -5912,6 +5967,11 @@ async def update_purchased_input_action(
         _flash(request, "error", "Este lancamento de entrada nao pertence ao contexto ativo.")
         return _redirect_for_request(request, "/insumos/comprados")
     try:
+        resolved_category = _resolve_purchase_input_category(item_type, category)
+    except ValueError as exc:
+        _flash(request, "error", str(exc))
+        return _redirect_for_request(request, "/insumos/comprados", edit_id=input_id, item_type=item_type)
+    try:
         finance_account = _resolve_optional_finance_account(repo, active_farm=scope["active_farm"], account_id=finance_account_id)
     except ValueError as exc:
         _flash(request, "error", str(exc))
@@ -5927,6 +5987,7 @@ async def update_purchased_input_action(
         {
             "farm_id": scope["active_farm_id"],
             "item_type": item_type,
+            "category": resolved_category,
             "name": name,
             "quantity_purchased": quantity_purchased,
             "package_size": package_size,
