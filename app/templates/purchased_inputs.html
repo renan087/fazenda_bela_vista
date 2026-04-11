@@ -784,6 +784,10 @@
             } else {
                 installmentsSection.classList.add('hidden');
             }
+            /* Campos ocultos continuam na validação HTML5 e podem bloquear o submit sem feedback visível. */
+            installmentsSection.querySelectorAll('input, select, textarea').forEach((el) => {
+                el.disabled = !isAtePrazo;
+            });
         };
 
         paymentConditionField?.addEventListener('change', updateInstallmentSection);

@@ -90,9 +90,13 @@
             });
 
             form.addEventListener('submit', () => {
-                const transfer = new DataTransfer();
-                pendingFiles.forEach((file) => transfer.items.add(file));
-                submitInput.files = transfer.files;
+                try {
+                    const transfer = new DataTransfer();
+                    pendingFiles.forEach((file) => transfer.items.add(file));
+                    submitInput.files = transfer.files;
+                } catch (_) {
+                    /* Alguns browsers podem falhar ao atribuir files; o POST segue sem novos anexos. */
+                }
             });
         });
 
