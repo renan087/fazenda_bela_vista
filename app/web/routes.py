@@ -31,6 +31,7 @@ from app.core.admin_access import has_admin_access, is_super_admin_email
 from app.core.csrf import validate_csrf
 from app.core.deps import get_csrf_token, get_current_user_web
 from app.core.security import get_password_hash, verify_password
+from app.core.session import clear_expired_session, touch_session_activity
 from app.core.timezone import app_now, format_app_datetime, today_in_app_timezone
 from app.core.user_context import persist_user_context, sync_user_context_from_preferences
 from app.db.session import get_db
@@ -3329,11 +3330,25 @@ def finance_asaas_test_charge(
 
 @router.get("/gestao-financeira/assinatura/cliente-asaas/pagamento-status")
 def finance_asaas_payment_status(
+    request: Request,
     payment_id: str = Query(..., min_length=1),
     db: Session = Depends(get_db),
-    user: User = Depends(get_current_user_web),
 ):
     """Polling autenticado: status da cobrança (API Asaas + cache local do webhook)."""
+    if clear_expired_session(request):
+        return JSONResponse({"error": "Sessao expirada", "paid": False}, status_code=status.HTTP_401_UNAUTHORIZED)
+
+    email = request.session.get("user_email")
+    if not email:
+        return JSONResponse({"error": "Nao autenticado", "paid": False}, status_code=status.HTTP_401_UNAUTHORIZED)
+
+    user = db.query(User).filter(User.email == email).first()
+    if not user:
+        request.session.clear()
+        return JSONResponse({"error": "Usuario nao encontrado", "paid": False}, status_code=status.HTTP_401_UNAUTHORIZED)
+
+    touch_session_activity(request)
+
     settings = get_settings()
     pid = (payment_id or "").strip()
 

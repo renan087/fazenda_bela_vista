@@ -327,35 +327,67 @@
     const statusCell = document.querySelector('[data-asaas-status-cell]');
     const url = '/gestao-financeira/assinatura/cliente-asaas/pagamento-status?payment_id=' + encodeURIComponent(pid);
     let attempts = 0;
-    const maxAttempts = 60;
+    const maxAttempts = 18;
     let currentInterval = 5000;
-    const maxInterval = 60000;
+    const maxInterval = 30000;
+    let stopped = false;
+    let pollTimer = null;
 
     const showPaid = () => {
         if (banner) banner.classList.remove('hidden');
         if (hint) hint.classList.add('hidden');
     };
 
+    const scheduleNext = () => {
+        if (stopped) return;
+        currentInterval = Math.min(currentInterval * 1.5, maxInterval);
+        if (pollTimer) window.clearTimeout(pollTimer);
+        pollTimer = window.setTimeout(poll, currentInterval);
+    };
+
     const poll = async () => {
+        if (stopped || document.hidden) {
+            scheduleNext();
+            return;
+        }
         attempts += 1;
-        if (attempts > maxAttempts) return;
+        if (attempts > maxAttempts) {
+            stopped = true;
+            return;
+        }
         try {
             const res = await fetch(url, { credentials: 'same-origin', headers: { Accept: 'application/json' } });
-            if (!res.ok) return;
+            const contentType = (res.headers.get('content-type') || '').toLowerCase();
+            if (res.redirected || res.status === 401 || res.status === 403 || !contentType.includes('application/json')) {
+                stopped = true;
+                return;
+            }
+            if (!res.ok) {
+                scheduleNext();
+                return;
+            }
             const data = await res.json();
             if (data.paid) {
                 showPaid();
                 if (statusCell && data.status) statusCell.textContent = data.status;
+                stopped = true;
+                if (pollTimer) window.clearTimeout(pollTimer);
                 return;
             }
         } catch (_) {
             /* rede */
         }
-        currentInterval = Math.min(currentInterval * 1.5, maxInterval);
-        window.setTimeout(poll, currentInterval);
+        scheduleNext();
     };
 
-    window.setTimeout(poll, 2500);
+    document.addEventListener('visibilitychange', () => {
+        if (!document.hidden && !stopped && attempts > 0 && attempts <= maxAttempts) {
+            if (pollTimer) window.clearTimeout(pollTimer);
+            pollTimer = window.setTimeout(poll, 500);
+        }
+    });
+
+    pollTimer = window.setTimeout(poll, 2500);
 })();
 </script>
 {% endblock %}
