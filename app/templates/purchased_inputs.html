@@ -389,6 +389,50 @@
                         </select>
                         <span class="mt-2 block text-xs text-slate-500">Selecione a conta usada no pagamento. A conta padrão da fazenda já vem pré-selecionada quando existir.</span>
                     </label>
+                    <label>
+                        <span class="mb-2 block text-sm font-medium">Forma de pagamento</span>
+                        <select name="payment_method" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50">
+                            <option value="">Selecione...</option>
+                            <option value="Dinheiro" {% if edit_input and edit_input.payment_method == 'Dinheiro' %}selected{% endif %}>Dinheiro</option>
+                            <option value="Pix" {% if edit_input and edit_input.payment_method == 'Pix' %}selected{% endif %}>Pix</option>
+                            <option value="Transferência" {% if edit_input and edit_input.payment_method == 'Transferência' %}selected{% endif %}>Transferência</option>
+                            <option value="Boleto" {% if edit_input and edit_input.payment_method == 'Boleto' %}selected{% endif %}>Boleto</option>
+                            <option value="Cartão de crédito" {% if edit_input and edit_input.payment_method == 'Cartão de crédito' %}selected{% endif %}>Cartão de crédito</option>
+                            <option value="Cartão de débito" {% if edit_input and edit_input.payment_method == 'Cartão de débito' %}selected{% endif %}>Cartão de débito</option>
+                            <option value="Cheque" {% if edit_input and edit_input.payment_method == 'Cheque' %}selected{% endif %}>Cheque</option>
+                            <option value="Outro" {% if edit_input and edit_input.payment_method == 'Outro' %}selected{% endif %}>Outro</option>
+                        </select>
+                    </label>
+                </div>
+                {% set input_payment_condition = edit_input.payment_condition if edit_input and edit_input.payment_condition else 'a_vista' %}
+                {% set input_frequency = edit_input.installment_frequency if edit_input and edit_input.installment_frequency else 'mensal' %}
+                <div class="grid gap-4 md:grid-cols-2">
+                    <label>
+                        <span class="mb-2 block text-sm font-medium">Condição de pagamento</span>
+                        <select name="payment_condition" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" data-purchased-payment-condition>
+                            <option value="a_vista" {% if input_payment_condition == 'a_vista' %}selected{% endif %}>À vista</option>
+                            <option value="a_prazo" {% if input_payment_condition == 'a_prazo' %}selected{% endif %}>À prazo</option>
+                        </select>
+                    </label>
+                </div>
+                <div class="hidden rounded-[1.5rem] border border-slate-200 bg-slate-50/80 p-4" data-purchased-installments-section>
+                    <div class="grid gap-4 md:grid-cols-3">
+                        <label>
+                            <span class="mb-2 block text-sm font-medium">Quantidade de parcelas</span>
+                            <input type="number" min="2" max="999" name="installment_count" value="{{ edit_input.installment_count if edit_input and edit_input.installment_count else 2 }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-white" data-purchased-installment-count>
+                        </label>
+                        <label>
+                            <span class="mb-2 block text-sm font-medium">Periodicidade</span>
+                            <select name="installment_frequency" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-white">
+                                <option value="mensal" {% if input_frequency == 'mensal' %}selected{% endif %}>Mensal</option>
+                                <option value="anual" {% if input_frequency == 'anual' %}selected{% endif %}>Anual</option>
+                            </select>
+                        </label>
+                        <label>
+                            <span class="mb-2 block text-sm font-medium">Data da primeira parcela</span>
+                            <input type="date" name="first_installment_date" value="{{ edit_input.first_installment_date.isoformat() if edit_input and edit_input.first_installment_date else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-white">
+                        </label>
+                    </div>
                 </div>
                 <div class="grid gap-4 md:grid-cols-3">
                     <label><span class="mb-2 block text-sm font-medium">Quantidade total calculada</span><input type="number" step="0.01" value="{{ edit_input.total_quantity if edit_input else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-200 text-slate-500" readonly data-total-quantity></label>
@@ -683,19 +727,15 @@
             scheduleFadeUpdate();
         }
 
-        if (!form) return;
-        const quantityField = form.querySelector('[data-quantity-purchased]');
-        const sizeField = form.querySelector('[data-package-size]');
-        const unitPriceField = form.querySelector('[data-unit-price]');
-        const totalQuantityField = form.querySelector('[data-total-quantity]');
-        const totalCostField = form.querySelector('[data-total-cost]');
-        const itemTypeField = form.querySelector('[data-item-type-select]');
-        const categoryField = form.querySelector('[data-category-select]');
-        const purchasedNameInput = form.querySelector('[data-purchased-name-input]');
-        const packageUnitField = form.querySelector('select[name="package_unit"]');
-        const lowStockThresholdField = form.querySelector('input[name="low_stock_threshold"]');
-        const initialCategory = categoryField?.dataset.initialCategory || '';
-        const categoryOptionsByType = {{ purchase_input_category_options_by_type|tojson }};
+    fadingPanels.forEach((panel) => {
+        const panelRect = panel.getBoundingClientRect();
+        const panelTop = panelRect.top;
+        const panelHeight = panelRect.height;
+        if (panelTop >= stickyBottom || panelHeight <= 1) {
+            panel.style.setProperty('--stock-fade-cutoff', '0px');
+            panel.style.setProperty('--stock-fade-feather-end', '0px');
+            return;
+        }
         const inputCatalogList = document.getElementById('inputs-catalog-list');
         const catalogOptionData = inputCatalogList
             ? Array.from(inputCatalogList.querySelectorAll('option')).map((option) => ({
@@ -712,6 +752,22 @@
             totalQuantityField.value = quantity && size ? (quantity * size).toFixed(2) : '';
             totalCostField.value = quantity && unitPrice ? (quantity * unitPrice).toFixed(2) : '';
         };
+
+        const paymentConditionField = form?.querySelector('[data-purchased-payment-condition]');
+        const installmentsSection = form?.querySelector('[data-purchased-installments-section]');
+
+        const updateInstallmentSection = () => {
+            if (!paymentConditionField || !installmentsSection) return;
+            const isAtePrazo = paymentConditionField.value === 'a_prazo';
+            if (isAtePrazo) {
+                installmentsSection.classList.remove('hidden');
+            } else {
+                installmentsSection.classList.add('hidden');
+            }
+        };
+
+        paymentConditionField?.addEventListener('change', updateInstallmentSection);
+        updateInstallmentSection();
 
         const syncCatalogSuggestions = () => {
             if (!inputCatalogList || !itemTypeField) return;

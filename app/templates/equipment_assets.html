@@ -284,6 +284,50 @@
                         </select>
                         <span class="mt-2 block text-xs text-slate-500">Selecione a conta utilizada na aquisição. A conta padrão da fazenda é sugerida automaticamente.</span>
                     </label>
+                    <label>
+                        <span class="mb-2 block text-sm font-medium">Forma de pagamento</span>
+                        <select name="payment_method" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50">
+                            <option value="">Selecione...</option>
+                            <option value="Dinheiro" {% if edit_asset and edit_asset.payment_method == 'Dinheiro' %}selected{% endif %}>Dinheiro</option>
+                            <option value="Pix" {% if edit_asset and edit_asset.payment_method == 'Pix' %}selected{% endif %}>Pix</option>
+                            <option value="Transferência" {% if edit_asset and edit_asset.payment_method == 'Transferência' %}selected{% endif %}>Transferência</option>
+                            <option value="Boleto" {% if edit_asset and edit_asset.payment_method == 'Boleto' %}selected{% endif %}>Boleto</option>
+                            <option value="Cartão de crédito" {% if edit_asset and edit_asset.payment_method == 'Cartão de crédito' %}selected{% endif %}>Cartão de crédito</option>
+                            <option value="Cartão de débito" {% if edit_asset and edit_asset.payment_method == 'Cartão de débito' %}selected{% endif %}>Cartão de débito</option>
+                            <option value="Cheque" {% if edit_asset and edit_asset.payment_method == 'Cheque' %}selected{% endif %}>Cheque</option>
+                            <option value="Outro" {% if edit_asset and edit_asset.payment_method == 'Outro' %}selected{% endif %}>Outro</option>
+                        </select>
+                    </label>
+                </div>
+                {% set asset_payment_condition = edit_asset.payment_condition if edit_asset and edit_asset.payment_condition else 'a_vista' %}
+                {% set asset_frequency = edit_asset.installment_frequency if edit_asset and edit_asset.installment_frequency else 'mensal' %}
+                <div class="grid gap-4 md:grid-cols-2">
+                    <label>
+                        <span class="mb-2 block text-sm font-medium">Condição de pagamento</span>
+                        <select name="payment_condition" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" data-assets-payment-condition>
+                            <option value="a_vista" {% if asset_payment_condition == 'a_vista' %}selected{% endif %}>À vista</option>
+                            <option value="a_prazo" {% if asset_payment_condition == 'a_prazo' %}selected{% endif %}>À prazo</option>
+                        </select>
+                    </label>
+                </div>
+                <div class="hidden rounded-[1.5rem] border border-slate-200 bg-slate-50/80 p-4" data-assets-installments-section>
+                    <div class="grid gap-4 md:grid-cols-3">
+                        <label>
+                            <span class="mb-2 block text-sm font-medium">Quantidade de parcelas</span>
+                            <input type="number" min="2" max="999" name="installment_count" value="{{ edit_asset.installment_count if edit_asset and edit_asset.installment_count else 2 }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-white" data-assets-installment-count>
+                        </label>
+                        <label>
+                            <span class="mb-2 block text-sm font-medium">Periodicidade</span>
+                            <select name="installment_frequency" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-white">
+                                <option value="mensal" {% if asset_frequency == 'mensal' %}selected{% endif %}>Mensal</option>
+                                <option value="anual" {% if asset_frequency == 'anual' %}selected{% endif %}>Anual</option>
+                            </select>
+                        </label>
+                        <label>
+                            <span class="mb-2 block text-sm font-medium">Data da primeira parcela</span>
+                            <input type="date" name="first_installment_date" value="{{ edit_asset.first_installment_date.isoformat() if edit_asset and edit_asset.first_installment_date else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-white">
+                        </label>
+                    </div>
                 </div>
                 <label>
                     <span class="mb-2 block text-sm font-medium">Status</span>
@@ -344,6 +388,23 @@
             if (!clearAssetsEditState()) return;
             launchModal?.close();
         };
+
+        const form = document.getElementById('assets-form');
+        const paymentConditionField = form?.querySelector('[data-assets-payment-condition]');
+        const installmentsSection = form?.querySelector('[data-assets-installments-section]');
+
+        const updateInstallmentSection = () => {
+            if (!paymentConditionField || !installmentsSection) return;
+            const isAtePrazo = paymentConditionField.value === 'a_prazo';
+            if (isAtePrazo) {
+                installmentsSection.classList.remove('hidden');
+            } else {
+                installmentsSection.classList.add('hidden');
+            }
+        };
+
+        paymentConditionField?.addEventListener('change', updateInstallmentSection);
+        updateInstallmentSection();
 
         if (launchModal) {
             openLaunchButton?.addEventListener('click', openAssetsModal);

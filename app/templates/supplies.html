@@ -516,6 +516,50 @@
                         </select>
                         <span class="mt-2 block text-xs text-slate-500">Use a conta bancária que financiou esta compra. Quando houver conta padrão, ela já vem marcada.</span>
                     </label>
+                    <label>
+                        <span class="mb-2 block text-sm font-medium">Forma de pagamento</span>
+                        <select name="payment_method" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50">
+                            <option value="">Selecione...</option>
+                            <option value="Dinheiro" {% if edit_supply and edit_supply.payment_method == 'Dinheiro' %}selected{% endif %}>Dinheiro</option>
+                            <option value="Pix" {% if edit_supply and edit_supply.payment_method == 'Pix' %}selected{% endif %}>Pix</option>
+                            <option value="Transferência" {% if edit_supply and edit_supply.payment_method == 'Transferência' %}selected{% endif %}>Transferência</option>
+                            <option value="Boleto" {% if edit_supply and edit_supply.payment_method == 'Boleto' %}selected{% endif %}>Boleto</option>
+                            <option value="Cartão de crédito" {% if edit_supply and edit_supply.payment_method == 'Cartão de crédito' %}selected{% endif %}>Cartão de crédito</option>
+                            <option value="Cartão de débito" {% if edit_supply and edit_supply.payment_method == 'Cartão de débito' %}selected{% endif %}>Cartão de débito</option>
+                            <option value="Cheque" {% if edit_supply and edit_supply.payment_method == 'Cheque' %}selected{% endif %}>Cheque</option>
+                            <option value="Outro" {% if edit_supply and edit_supply.payment_method == 'Outro' %}selected{% endif %}>Outro</option>
+                        </select>
+                    </label>
+                </div>
+                {% set supply_payment_condition = edit_supply.payment_condition if edit_supply and edit_supply.payment_condition else 'a_vista' %}
+                {% set supply_frequency = edit_supply.installment_frequency if edit_supply and edit_supply.installment_frequency else 'mensal' %}
+                <div class="grid gap-4 md:grid-cols-2">
+                    <label>
+                        <span class="mb-2 block text-sm font-medium">Condição de pagamento</span>
+                        <select name="payment_condition" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" data-supply-payment-condition>
+                            <option value="a_vista" {% if supply_payment_condition == 'a_vista' %}selected{% endif %}>À vista</option>
+                            <option value="a_prazo" {% if supply_payment_condition == 'a_prazo' %}selected{% endif %}>À prazo</option>
+                        </select>
+                    </label>
+                </div>
+                <div class="hidden rounded-[1.5rem] border border-slate-200 bg-slate-50/80 p-4" data-supply-installments-section>
+                    <div class="grid gap-4 md:grid-cols-3">
+                        <label>
+                            <span class="mb-2 block text-sm font-medium">Quantidade de parcelas</span>
+                            <input type="number" min="2" max="999" name="installment_count" value="{{ edit_supply.installment_count if edit_supply and edit_supply.installment_count else 2 }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-white" data-supply-installment-count>
+                        </label>
+                        <label>
+                            <span class="mb-2 block text-sm font-medium">Periodicidade</span>
+                            <select name="installment_frequency" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-white">
+                                <option value="mensal" {% if supply_frequency == 'mensal' %}selected{% endif %}>Mensal</option>
+                                <option value="anual" {% if supply_frequency == 'anual' %}selected{% endif %}>Anual</option>
+                            </select>
+                        </label>
+                        <label>
+                            <span class="mb-2 block text-sm font-medium">Data da primeira parcela</span>
+                            <input type="date" name="first_installment_date" value="{{ edit_supply.first_installment_date.isoformat() if edit_supply and edit_supply.first_installment_date else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-white">
+                        </label>
+                    </div>
                 </div>
                 <div class="grid gap-4 md:grid-cols-1">
                     <label><span class="mb-2 block text-sm font-medium">Saldo disponível</span><input type="text" value="{{ edit_supply.available_quantity if edit_supply else '' }}{% if edit_supply %} {{ edit_supply.package_unit }}{% endif %}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-200 text-slate-500" readonly></label>
