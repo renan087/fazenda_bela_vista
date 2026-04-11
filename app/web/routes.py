@@ -68,6 +68,7 @@ from app.services.asaas_customers import (
     create_asaas_customer,
     validate_asaas_customer_form,
 )
+from app.services.asaas_payments import create_asaas_payment
 from app.services.backup_service import delete_backup_run, execute_backup
 from app.services.dashboard import build_dashboard_context
 from app.services.finance_overview import (
@@ -2855,6 +2856,44 @@ def _finance_accounts_parse_form(
     }
 
 
+def _finance_asaas_customer_template_extras(
+    db: Session,
+    user: User,
+    *,
+    form_defaults: dict[str, str],
+    form_errors: list[str],
+    form_success: bool,
+    form_success_message: str,
+    asaas_customer_response: dict | None,
+    payload_preview_json: str,
+    settings,
+    payment_charge_success: bool = False,
+    payment_charge_message: str = "",
+    payment_charge_response: dict | None = None,
+    payment_payload_preview_json: str = "",
+    charge_error_message: str = "",
+) -> dict:
+    u = db.get(User, user.id)
+    saved = (u.asaas_customer_id or "").strip() if u else ""
+    return {
+        "asaas_configured": bool((settings.asaas_api_key or "").strip()),
+        "asaas_api_base_url": settings.asaas_api_base_url,
+        "form_errors": form_errors,
+        "form_success": form_success,
+        "form_success_message": form_success_message,
+        "asaas_customer_response": asaas_customer_response,
+        "payload_preview_json": payload_preview_json,
+        "form_defaults": form_defaults,
+        "saved_asaas_customer_id": saved,
+        "charge_due_date_default": today_in_app_timezone().date().isoformat(),
+        "payment_charge_success": payment_charge_success,
+        "payment_charge_message": payment_charge_message,
+        "payment_charge_response": payment_charge_response,
+        "payment_payload_preview_json": payment_payload_preview_json,
+        "charge_error_message": charge_error_message,
+    }
+
+
 @router.get("/gestao-financeira/assinatura/cliente-asaas")
 def finance_asaas_customer_page(
     request: Request,
@@ -2864,6 +2903,17 @@ def finance_asaas_customer_page(
 ):
     settings = get_settings()
     repo = _repository(db)
+    extras = _finance_asaas_customer_template_extras(
+        db,
+        user,
+        form_defaults=_finance_asaas_customer_defaults(user),
+        form_errors=[],
+        form_success=False,
+        form_success_message="",
+        asaas_customer_response=None,
+        payload_preview_json="",
+        settings=settings,
+    )
     return templates.TemplateResponse(
         "finance_asaas_customer.html",
         _base_context(
@@ -2873,14 +2923,7 @@ def finance_asaas_customer_page(
             "finance_asaas_customer",
             title="Cliente Asaas (assinatura)",
             _repo=repo,
-            asaas_configured=bool((settings.asaas_api_key or "").strip()),
-            asaas_api_base_url=settings.asaas_api_base_url,
-            form_errors=[],
-            form_success=False,
-            form_success_message="",
-            asaas_customer_response=None,
-            payload_preview_json="",
-            form_defaults=_finance_asaas_customer_defaults(user),
+            **extras,
         ),
     )
 
@@ -2946,14 +2989,17 @@ def finance_asaas_customer_submit(
                 "finance_asaas_customer",
                 title="Cliente Asaas (assinatura)",
                 _repo=repo,
-                asaas_configured=bool((settings.asaas_api_key or "").strip()),
-                asaas_api_base_url=settings.asaas_api_base_url,
-                form_errors=errors,
-                form_success=False,
-                form_success_message="",
-                asaas_customer_response=None,
-                payload_preview_json="",
-                form_defaults=form_defaults,
+                **_finance_asaas_customer_template_extras(
+                    db,
+                    user,
+                    form_defaults=form_defaults,
+                    form_errors=errors,
+                    form_success=False,
+                    form_success_message="",
+                    asaas_customer_response=None,
+                    payload_preview_json="",
+                    settings=settings,
+                ),
             ),
         )
 
@@ -2990,14 +3036,17 @@ def finance_asaas_customer_submit(
                 "finance_asaas_customer",
                 title="Cliente Asaas (assinatura)",
                 _repo=repo,
-                asaas_configured=False,
-                asaas_api_base_url=settings.asaas_api_base_url,
-                form_errors=[],
-                form_success=True,
-                form_success_message="Dados válidos. Configure ASAAS_API_KEY no ambiente para criar o cliente diretamente no Asaas. Abaixo está o JSON que seria enviado (POST /v3/customers).",
-                asaas_customer_response=None,
-                payload_preview_json=preview,
-                form_defaults=_finance_asaas_customer_defaults(user),
+                **_finance_asaas_customer_template_extras(
+                    db,
+                    user,
+                    form_defaults=_finance_asaas_customer_defaults(user),
+                    form_errors=[],
+                    form_success=True,
+                    form_success_message="Dados válidos. Configure ASAAS_API_KEY no ambiente para criar o cliente diretamente no Asaas. Abaixo está o JSON que seria enviado (POST /v3/customers).",
+                    asaas_customer_response=None,
+                    payload_preview_json=preview,
+                    settings=settings,
+                ),
             ),
         )
 
@@ -3017,16 +3066,26 @@ def finance_asaas_customer_submit(
                 "finance_asaas_customer",
                 title="Cliente Asaas (assinatura)",
                 _repo=repo,
-                asaas_configured=True,
-                asaas_api_base_url=settings.asaas_api_base_url,
-                form_errors=[],
-                form_success=False,
-                form_success_message="",
-                asaas_customer_response=None,
-                payload_preview_json=preview,
-                form_defaults=form_defaults,
+                **_finance_asaas_customer_template_extras(
+                    db,
+                    user,
+                    form_defaults=form_defaults,
+                    form_errors=[],
+                    form_success=False,
+                    form_success_message="",
+                    asaas_customer_response=None,
+                    payload_preview_json=preview,
+                    settings=settings,
+                ),
             ),
         )
+
+    new_id = (created or {}).get("id")
+    if new_id:
+        user.asaas_customer_id = str(new_id).strip()
+        db.add(user)
+        db.commit()
+        db.refresh(user)
 
     return templates.TemplateResponse(
         "finance_asaas_customer.html",
@@ -3037,14 +3096,155 @@ def finance_asaas_customer_submit(
             "finance_asaas_customer",
             title="Cliente Asaas (assinatura)",
             _repo=repo,
-            asaas_configured=True,
-            asaas_api_base_url=settings.asaas_api_base_url,
-            form_errors=[],
-            form_success=True,
-            form_success_message="Cliente criado no Asaas com sucesso. Guarde o ID retornado para vincular assinaturas e cobranças.",
-            asaas_customer_response=created,
-            payload_preview_json=preview,
-            form_defaults=_finance_asaas_customer_defaults(user),
+            **_finance_asaas_customer_template_extras(
+                db,
+                user,
+                form_defaults=_finance_asaas_customer_defaults(user),
+                form_errors=[],
+                form_success=True,
+                form_success_message="Cliente criado no Asaas com sucesso. O ID do cliente foi salvo no seu usuário para cobranças e assinaturas.",
+                asaas_customer_response=created,
+                payload_preview_json=preview,
+                settings=settings,
+            ),
+        ),
+    )
+
+
+def _parse_br_decimal(value: str) -> float | None:
+    s = (value or "").strip().replace(" ", "")
+    if not s:
+        return None
+    if "," in s:
+        left, _, right = s.rpartition(",")
+        left = left.replace(".", "")
+        s = f"{left}.{right}"
+    else:
+        s = s.replace(".", "")
+    try:
+        return float(s)
+    except ValueError:
+        return None
+
+
+@router.post("/gestao-financeira/assinatura/cobranca-teste")
+def finance_asaas_test_charge(
+    request: Request,
+    csrf_token: str = Form(...),
+    charge_value: str = Form(...),
+    billing_type: str = Form(...),
+    due_date: str = Form(...),
+    charge_description: str = Form(""),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    validate_csrf(request, csrf_token)
+    settings = get_settings()
+    repo = _repository(db)
+    u = db.get(User, user.id)
+    customer_id = (u.asaas_customer_id or "").strip() if u else ""
+    api_key = (settings.asaas_api_key or "").strip()
+    form_defaults = _finance_asaas_customer_defaults(user)
+
+    def render_charge_error(msg: str, payment_preview: str = ""):
+        return templates.TemplateResponse(
+            "finance_asaas_customer.html",
+            _base_context(
+                request,
+                user,
+                csrf_token,
+                "finance_asaas_customer",
+                title="Cliente Asaas (assinatura)",
+                _repo=repo,
+                **_finance_asaas_customer_template_extras(
+                    db,
+                    user,
+                    form_defaults=form_defaults,
+                    form_errors=[],
+                    form_success=False,
+                    form_success_message="",
+                    asaas_customer_response=None,
+                    payload_preview_json="",
+                    settings=settings,
+                    payment_payload_preview_json=payment_preview,
+                    charge_error_message=msg,
+                ),
+            ),
+        )
+
+    if not customer_id:
+        return render_charge_error(
+            "Salve um cliente no Asaas antes (formulário acima). O ID ainda não está vinculado ao seu usuário."
+        )
+    if not api_key:
+        return render_charge_error("Configure ASAAS_API_KEY para criar cobranças na API.")
+
+    bt = (billing_type or "").strip().upper()
+    if bt not in ("PIX", "CREDIT_CARD"):
+        return render_charge_error("Forma de pagamento deve ser PIX ou Cartão de crédito.")
+
+    amount = _parse_br_decimal(charge_value)
+    if amount is None or amount < 1.0:
+        return render_charge_error("Informe um valor válido (mínimo R$ 1,00).")
+
+    due_raw = (due_date or "").strip()
+    try:
+        due_d = date.fromisoformat(due_raw)
+    except ValueError:
+        return render_charge_error("Data de vencimento inválida (use AAAA-MM-DD).")
+
+    desc = (charge_description or "").strip() or "Cobrança teste SiSFarm"
+    preview_pay = json.dumps(
+        {
+            "customer": customer_id,
+            "billingType": bt,
+            "value": round(amount, 2),
+            "dueDate": due_d.isoformat(),
+            "description": desc[:500],
+            "externalReference": f"user-{user.id}-test",
+        },
+        ensure_ascii=False,
+        indent=2,
+    )
+
+    paid, err = create_asaas_payment(
+        base_url=settings.asaas_api_base_url,
+        api_key=api_key,
+        customer_id=customer_id,
+        billing_type=bt,
+        value=amount,
+        due_date=due_d,
+        description=desc,
+        external_reference=f"user-{user.id}-test",
+    )
+    if err:
+        return render_charge_error(err, payment_preview=preview_pay)
+
+    return templates.TemplateResponse(
+        "finance_asaas_customer.html",
+        _base_context(
+            request,
+            user,
+            csrf_token,
+            "finance_asaas_customer",
+            title="Cliente Asaas (assinatura)",
+            _repo=repo,
+            **_finance_asaas_customer_template_extras(
+                db,
+                user,
+                form_defaults=form_defaults,
+                form_errors=[],
+                form_success=False,
+                form_success_message="",
+                asaas_customer_response=None,
+                payload_preview_json="",
+                settings=settings,
+                payment_charge_success=True,
+                payment_charge_message="Cobrança teste criada no Asaas.",
+                payment_charge_response=paid,
+                payment_payload_preview_json=preview_pay,
+                charge_error_message="",
+            ),
         ),
     )
 
