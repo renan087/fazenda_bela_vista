@@ -41,35 +41,40 @@
 
     <section class="stock-panel rounded-[2rem] bg-white p-6 shadow-panel" data-stock-fade-panel>
         <div class="stock-filter-bar">
-            <form method="get" action="/insumos/comprados" class="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+            <form method="get" action="/insumos/comprados" class="stock-filter-grid">
                 <input type="hidden" name="purchased_tab" value="{{ selected_purchased_tab }}" data-purchased-tab-input>
-                <label>
-                    <span class="mb-2 block text-sm font-medium">Tipo de item</span>
-                    <select name="item_type" id="filter-item-type" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50 px-4" data-purchased-filter-item-type>
-                        <option value="all" {% if selected_item_type == 'all' %}selected{% endif %}>Todos</option>
-                        <option value="insumo_agricola" {% if selected_item_type == 'insumo_agricola' %}selected{% endif %}>Insumo agricola</option>
-                        <option value="combustivel" {% if selected_item_type == 'combustivel' %}selected{% endif %}>Combustivel</option>
-                    </select>
-                </label>
-                <label>
-                    <span class="mb-2 block text-sm font-medium">Insumo</span>
-                    <select name="input_id" id="filter-input-id" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50 px-4" data-purchased-filter-input>
-                        <option value="" {% if not selected_input_id %}selected{% endif %}>Todos</option>
-                        {% for input in inputs_catalog_all %}
-                        <option value="{{ input.id }}" data-item-type="{{ input.item_type or 'insumo_agricola' }}" {% if selected_input_id == input.id %}selected{% endif %}>{{ input.name }}</option>
-                        {% endfor %}
-                    </select>
-                </label>
-                <label>
-                    <span class="mb-2 block text-sm font-medium">Fazenda</span>
-                    <select name="farm_id" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50 px-4">
-                        {% for farm in farms %}
-                        <option value="{{ farm.id }}" {% if selected_farm_id == farm.id %}selected{% endif %}>{{ farm.name }}</option>
-                        {% endfor %}
-                    </select>
-                </label>
-                <div class="flex items-end">
-                    <button class="min-h-[3.25rem] w-full rounded-2xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white hover:bg-slate-700">Filtrar</button>
+                <div class="stock-filter-fields-row {% if purchased_inputs_filters_active %}has-clear-action{% endif %}">
+                    <label class="stock-filter-field stock-filter-field-type {% if selected_item_type and selected_item_type != 'all' %}is-filtered{% endif %}">
+                        <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Tipo de item</span>
+                        <select name="item_type" id="filter-item-type" class="w-full rounded-xl border-slate-200 bg-white" data-purchased-filter-item-type>
+                            <option value="all" {% if selected_item_type == 'all' %}selected{% endif %}>Todos</option>
+                            <option value="insumo_agricola" {% if selected_item_type == 'insumo_agricola' %}selected{% endif %}>Insumo agricola</option>
+                            <option value="combustivel" {% if selected_item_type == 'combustivel' %}selected{% endif %}>Combustivel</option>
+                        </select>
+                    </label>
+                    <label class="stock-filter-field stock-filter-field-input {% if selected_input_id %}is-filtered{% endif %}">
+                        <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Insumo</span>
+                        <select name="input_id" id="filter-input-id" class="w-full rounded-xl border-slate-200 bg-white" data-purchased-filter-input>
+                            <option value="" {% if not selected_input_id %}selected{% endif %}>Todos</option>
+                            {% for input in inputs_catalog_all %}
+                            <option value="{{ input.id }}" data-item-type="{{ input.item_type or 'insumo_agricola' }}" {% if selected_input_id == input.id %}selected{% endif %}>{{ input.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </label>
+                    <label class="stock-filter-field stock-filter-field-farm {% if selected_farm_id %}is-filtered{% endif %}">
+                        <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Fazenda</span>
+                        <select name="farm_id" class="w-full rounded-xl border-slate-200 bg-white">
+                            {% for farm in farms %}
+                            <option value="{{ farm.id }}" {% if selected_farm_id == farm.id %}selected{% endif %}>{{ farm.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </label>
+                    <div class="stock-filter-field stock-filter-field-actions flex flex-nowrap items-end gap-3">
+                        <button type="submit" class="shrink-0 rounded-xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white">Filtrar</button>
+                        {% if purchased_inputs_filters_active %}
+                        <a href="/insumos/comprados?purchased_tab={{ selected_purchased_tab }}" class="shrink-0 rounded-xl bg-white px-4 py-3 text-sm font-semibold text-slate-700 ring-1 ring-slate-200 hover:bg-slate-100">Limpar</a>
+                        {% endif %}
+                    </div>
                 </div>
             </form>
         </div>

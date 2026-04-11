@@ -5846,6 +5846,12 @@ def purchased_inputs_page(
     selected_item_type = item_type if item_type in {"insumo_agricola", "combustivel", "all"} else None
     normalized_item_type = item_type if item_type in {"insumo_agricola", "combustivel"} else None
     selected_input_id = input_id
+    purchased_inputs_filters_active = (
+        selected_input_id is not None
+        or (selected_item_type is not None and selected_item_type != "all")
+        or (effective_farm_id is not None and request.query_params.get("farm_id") is not None)
+        or edit_id is not None
+    )
     if not normalized_item_type and edit_input and edit_input.input_catalog:
         normalized_item_type = edit_input.input_catalog.item_type
     if not normalized_item_type and selected_item_type != "all":
@@ -5904,6 +5910,7 @@ def purchased_inputs_page(
                 input_id=selected_input_id,
             ),
             edit_input=edit_input,
+            purchased_inputs_filters_active=purchased_inputs_filters_active,
             selected_purchased_tab=selected_purchased_tab,
             purchased_tab_urls={
                 "entries": _url_with_query(request, purchased_tab="entries"),
