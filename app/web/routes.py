@@ -5971,7 +5971,12 @@ def delete_purchased_input_action(
     if item.recommendation_items or item.schedule_items or item.stock_allocations or item.stock_outputs:
         _flash(request, "error", "Nao e possivel excluir o insumo enquanto houver recomendacoes, agendamentos ou aplicacoes vinculadas.")
         return _redirect("/insumos/comprados")
+    tx_id = item.finance_transaction_id
     repo.delete(item)
+    if tx_id:
+        tx = repo.get_finance_transaction(tx_id)
+        if tx:
+            repo.delete(tx)
     _flash(request, "success", "Insumo comprado excluido com sucesso.")
     return _redirect("/insumos/comprados")
 
@@ -7727,7 +7732,12 @@ def delete_supply_action(
     if not item:
         _flash(request, "error", "Suprimento nao encontrado.")
         return _redirect(target_url)
+    tx_id = item.finance_transaction_id
     repo.delete(item)
+    if tx_id:
+        tx = repo.get_finance_transaction(tx_id)
+        if tx:
+            repo.delete(tx)
     _flash(request, "success", "Suprimento excluido com sucesso.")
     return _redirect(target_url)
 
@@ -8311,7 +8321,12 @@ def delete_equipment_asset_action(
     if not asset:
         _flash(request, "error", "Patrimonio nao encontrado.")
         return _redirect_for_request(request, "/insumos/patrimonio")
+    tx_id = asset.finance_transaction_id
     repo.delete(asset)
+    if tx_id:
+        tx = repo.get_finance_transaction(tx_id)
+        if tx:
+            repo.delete(tx)
     _flash(request, "success", "Patrimonio excluido com sucesso.")
     return _redirect("/insumos/patrimonio")
 

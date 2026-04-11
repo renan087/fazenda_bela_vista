@@ -6,7 +6,7 @@ from decimal import Decimal
 
 from app.core.admin_access import is_super_admin_email
 from app.core.security import get_password_hash
-from app.core.timezone import today_in_app_timezone
+from app.core.timezone import today_in_app_timezone, app_now
 from app.models import (
     AgronomicProfile,
     CoffeeVariety,
@@ -413,6 +413,7 @@ def create_purchased_input(repository: FarmRepository, form: dict) -> PurchasedI
         form.get("category"),
         low_stock_threshold if low_stock_threshold > 0 else None,
     )
+
     item = PurchasedInput(
         input_id=catalog.id,
         farm_id=form.get("farm_id"),
@@ -430,6 +431,24 @@ def create_purchased_input(repository: FarmRepository, form: dict) -> PurchasedI
         low_stock_threshold=low_stock_threshold,
         notes=form.get("notes"),
     )
+    if form.get("finance_account_id"):
+        tx = FinanceTransaction(
+            farm_id=form.get("farm_id"),
+            finance_account_id=form.get("finance_account_id"),
+            operation_type="despesa",
+            launch_date=item.purchase_date,
+            amount=item.total_cost,
+            category="Insumos" if item_type == "insumo_agricola" else "Suprimentos",
+            product_service=f"Compra de {catalog.name}",
+            description=form.get("notes") or "",
+            payment_condition="a_vista",
+            installment_count=1,
+            created_at=app_now(),
+        )
+        repository.db.add(tx)
+        repository.db.flush()
+        item.finance_transaction_id = tx.id
+
     repository.db.add(item)
     repository.db.commit()
     repository.db.refresh(item)
@@ -453,7 +472,8 @@ def update_purchased_input(repository: FarmRepository, item: PurchasedInput, for
         form.get("category"),
         low_stock_threshold if low_stock_threshold > 0 else None,
     )
-    return repository.update(
+
+    updated_item = repository.update(
         item,
         {
             "input_id": catalog.id,
@@ -473,29 +493,81 @@ def update_purchased_input(repository: FarmRepository, item: PurchasedInput, for
             "notes": form.get("notes"),
         },
     )
+    if form.get("finance_account_id"):
+        if updated_item.finance_transaction_id:
+            tx = repository.get_finance_transaction(updated_item.finance_transaction_id)
+            if tx:
+                tx.finance_account_id = form.get("finance_account_id")
+                tx.launch_date = updated_item.purchase_date
+                tx.amount = updated_item.total_cost
+                tx.product_service = f"Compra de {catalog.name}"
+                tx.description = form.get("notes") or ""
+                tx.category = "Insumos" if item_type == "insumo_agricola" else "Suprimentos"
+                repository.db.add(tx)
+        else:
+            tx = FinanceTransaction(
+                farm_id=form.get("farm_id"),
+                finance_account_id=form.get("finance_account_id"),
+                operation_type="despesa",
+                launch_date=updated_item.purchase_date,
+                amount=updated_item.total_cost,
+                category="Insumos" if item_type == "insumo_agricola" else "Suprimentos",
+                product_service=f"Compra de {catalog.name}",
+                description=form.get("notes") or "",
+                payment_condition="a_vista",
+                installment_count=1,
+                created_at=app_now(),
+            )
+            repository.db.add(tx)
+            repository.db.flush()
+            updated_item.finance_transaction_id = tx.id
+    elif updated_item.finance_transaction_id:
+        tx = repository.get_finance_transaction(updated_item.finance_transaction_id)
+        if tx:
+            repository.db.delete(tx)
+        updated_item.finance_transaction_id = None
+    return updated_item
 
 
 def create_equipment_asset(repository: FarmRepository, form: dict) -> EquipmentAsset:
-    return repository.create(
-        EquipmentAsset(
+
+    asset = EquipmentAsset(
+        farm_id=form.get("farm_id"),
+        finance_account_id=form.get("finance_account_id"),
+        name=form["name"],
+        category=form["category"],
+        manufacturer=form.get("manufacturer"),
+        manufacture_year=form.get("manufacture_year"),
+        brand_model=form.get("brand_model"),
+        asset_code=form.get("asset_code"),
+        acquisition_date=date.fromisoformat(form["acquisition_date"]) if form.get("acquisition_date") else None,
+        acquisition_value=form.get("acquisition_value"),
+        status=form.get("status") or "ativo",
+        notes=form.get("notes"),
+    )
+    if form.get("finance_account_id") and form.get("acquisition_value"):
+        tx = FinanceTransaction(
             farm_id=form.get("farm_id"),
             finance_account_id=form.get("finance_account_id"),
-            name=form["name"],
-            category=form["category"],
-            manufacturer=form.get("manufacturer"),
-            manufacture_year=form.get("manufacture_year"),
-            brand_model=form.get("brand_model"),
-            asset_code=form.get("asset_code"),
-            acquisition_date=date.fromisoformat(form["acquisition_date"]) if form.get("acquisition_date") else None,
-            acquisition_value=form.get("acquisition_value"),
-            status=form.get("status") or "ativo",
-            notes=form.get("notes"),
+            operation_type="despesa",
+            launch_date=asset.acquisition_date or today_in_app_timezone(),
+            amount=asset.acquisition_value,
+            category="Máquinas e Equipamentos",
+            product_service=f"Aquisição de {asset.name}",
+            description=form.get("notes") or "",
+            payment_condition="a_vista",
+            installment_count=1,
+            created_at=app_now(),
         )
-    )
+        repository.db.add(tx)
+        repository.db.flush()
+        asset.finance_transaction_id = tx.id
+    return repository.create(asset)
 
 
 def update_equipment_asset(repository: FarmRepository, asset: EquipmentAsset, form: dict) -> EquipmentAsset:
-    return repository.update(
+
+    updated_asset = repository.update(
         asset,
         {
             "farm_id": form.get("farm_id"),
@@ -512,6 +584,39 @@ def update_equipment_asset(repository: FarmRepository, asset: EquipmentAsset, fo
             "notes": form.get("notes"),
         },
     )
+    if form.get("finance_account_id") and form.get("acquisition_value"):
+        if updated_asset.finance_transaction_id:
+            tx = repository.get_finance_transaction(updated_asset.finance_transaction_id)
+            if tx:
+                tx.finance_account_id = form.get("finance_account_id")
+                tx.launch_date = updated_asset.acquisition_date or today_in_app_timezone()
+                tx.amount = updated_asset.acquisition_value
+                tx.product_service = f"Aquisição de {updated_asset.name}"
+                tx.description = form.get("notes") or ""
+                repository.db.add(tx)
+        else:
+            tx = FinanceTransaction(
+                farm_id=form.get("farm_id"),
+                finance_account_id=form.get("finance_account_id"),
+                operation_type="despesa",
+                launch_date=updated_asset.acquisition_date or today_in_app_timezone(),
+                amount=updated_asset.acquisition_value,
+                category="Máquinas e Equipamentos",
+                product_service=f"Aquisição de {updated_asset.name}",
+                description=form.get("notes") or "",
+                payment_condition="a_vista",
+                installment_count=1,
+                created_at=app_now(),
+            )
+            repository.db.add(tx)
+            repository.db.flush()
+            updated_asset.finance_transaction_id = tx.id
+    elif updated_asset.finance_transaction_id:
+        tx = repository.get_finance_transaction(updated_asset.finance_transaction_id)
+        if tx:
+            repository.db.delete(tx)
+        updated_asset.finance_transaction_id = None
+    return updated_asset
 
 
 def _manual_stock_output_allocations(repository: FarmRepository, output_id: int) -> list[StockOutput]:
