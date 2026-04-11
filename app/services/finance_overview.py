@@ -299,6 +299,8 @@ def build_finance_extract_rows(
     raw: list[dict] = []
 
     for entry in _filter_entries_by_farm(repo.list_purchased_inputs(), farm_id):
+        if entry.finance_transaction_id:
+            continue
         if finance_account_id and entry.finance_account_id != finance_account_id:
             continue
         pd = entry.purchase_date
@@ -323,6 +325,8 @@ def build_finance_extract_rows(
         )
 
     for asset in repo.list_equipment_assets(farm_id=farm_id):
+        if asset.finance_transaction_id:
+            continue
         if finance_account_id and asset.finance_account_id != finance_account_id:
             continue
         ad = asset.acquisition_date

@@ -966,6 +966,8 @@
         const supplyPackageSizeInput = supplyForm?.querySelector('[data-supply-package-size-input]');
         const supplyUnitPriceInput = supplyForm?.querySelector('[data-supply-unit-price-input]');
         const supplyTotalDisplay = supplyForm?.querySelector('[data-supply-total-display]');
+        const supplyPaymentConditionField = supplyForm?.querySelector('[data-supply-payment-condition]');
+        const supplyInstallmentsSection = supplyForm?.querySelector('[data-supply-installments-section]');
 
         const formatCurrencyBr = (value) => {
             const number = Number(value || 0);
@@ -978,6 +980,12 @@
             const unitPrice = parseFloat(supplyUnitPriceInput?.value || '0');
             const total = Math.max(quantity, 0) * Math.max(unitPrice, 0);
             supplyTotalDisplay.value = total > 0 ? formatCurrencyBr(total) : '';
+        };
+
+        const updateSupplyInstallmentSection = () => {
+            if (!supplyPaymentConditionField || !supplyInstallmentsSection) return;
+            const isAPrazo = supplyPaymentConditionField.value === 'a_prazo';
+            supplyInstallmentsSection.classList.toggle('hidden', !isAPrazo);
         };
 
         const syncSupplySuggestionState = () => {
@@ -997,8 +1005,10 @@
         supplyQuantityInput?.addEventListener('input', syncSupplyTotal);
         supplyPackageSizeInput?.addEventListener('input', syncSupplyTotal);
         supplyUnitPriceInput?.addEventListener('input', syncSupplyTotal);
+        supplyPaymentConditionField?.addEventListener('change', updateSupplyInstallmentSection);
         syncSupplySuggestionState();
         syncSupplyTotal();
+        updateSupplyInstallmentSection();
 
         const resetSupplyContextPanels = () => {
             suppliesModal?.querySelectorAll('[data-supplies-context-toggle]').forEach((toggle) => {

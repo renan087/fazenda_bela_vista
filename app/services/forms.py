@@ -107,6 +107,30 @@ def _build_installments(
     return installments
 
 
+def _normalize_finance_schedule_fields(form: dict) -> tuple[str, str | None, int, str | None, date | None]:
+    payment_condition = (str(form.get("payment_condition") or "a_vista")).strip().lower()
+    if payment_condition not in {"a_vista", "a_prazo"}:
+        raise ValueError("Selecione uma condição de pagamento válida.")
+
+    payment_method = (str(form.get("payment_method") or "")).strip() or None
+    installment_count = _int_or_none(form.get("installment_count")) or 1
+    installment_frequency = (str(form.get("installment_frequency") or "mensal")).strip().lower()
+    first_installment_date = _date_or_none(form.get("first_installment_date"))
+
+    if payment_condition == "a_prazo":
+        if not form.get("finance_account_id"):
+            raise ValueError("Selecione a conta bancária para acompanhar o pagamento a prazo.")
+        if installment_count < 2:
+            raise ValueError("Informe ao menos 2 parcelas para pagamento a prazo.")
+        if installment_frequency not in {"mensal", "anual"}:
+            raise ValueError("Selecione a periodicidade das parcelas.")
+        if not first_installment_date:
+            raise ValueError("Informe a data da primeira parcela.")
+        return payment_condition, payment_method, installment_count, installment_frequency, first_installment_date
+
+    return "a_vista", payment_method, 1, None, None
+
+
 def _replace_installments(
     repo: FarmRepository,
     transaction: FinanceTransaction,
@@ -493,11 +517,7 @@ def create_purchased_input(repository: FarmRepository, form: dict) -> PurchasedI
         low_stock_threshold if low_stock_threshold > 0 else None,
     )
 
-    payment_condition = form.get("payment_condition") or "a_vista"
-    payment_method = form.get("payment_method")
-    installment_count = int(form.get("installment_count") or 1)
-    installment_frequency = form.get("installment_frequency") or "mensal"
-    first_installment_date = _date_or_none(form.get("first_installment_date"))
+    payment_condition, payment_method, installment_count, installment_frequency, first_installment_date = _normalize_finance_schedule_fields(form)
 
     item = PurchasedInput(
         input_id=catalog.id,
@@ -570,11 +590,7 @@ def update_purchased_input(repository: FarmRepository, item: PurchasedInput, for
     available_quantity = max(round(total_quantity - consumed_quantity, 2), 0)
     low_stock_threshold = float(form.get("low_stock_threshold") or 0)
     item_type = form.get("item_type") or "insumo_agricola"
-    payment_condition = form.get("payment_condition") or "a_vista"
-    payment_method = form.get("payment_method")
-    installment_count = int(form.get("installment_count") or 1)
-    installment_frequency = form.get("installment_frequency") or "mensal"
-    first_installment_date = _date_or_none(form.get("first_installment_date"))
+    payment_condition, payment_method, installment_count, installment_frequency, first_installment_date = _normalize_finance_schedule_fields(form)
     catalog = _resolve_input_catalog(
         repository,
         form["name"],
@@ -682,11 +698,7 @@ def update_purchased_input(repository: FarmRepository, item: PurchasedInput, for
 
 
 def create_equipment_asset(repository: FarmRepository, form: dict) -> EquipmentAsset:
-    payment_condition = form.get("payment_condition") or "a_vista"
-    payment_method = form.get("payment_method")
-    installment_count = int(form.get("installment_count") or 1)
-    installment_frequency = form.get("installment_frequency") or "mensal"
-    first_installment_date = _date_or_none(form.get("first_installment_date"))
+    payment_condition, payment_method, installment_count, installment_frequency, first_installment_date = _normalize_finance_schedule_fields(form)
 
     asset = EquipmentAsset(
         farm_id=form.get("farm_id"),
@@ -743,11 +755,7 @@ def create_equipment_asset(repository: FarmRepository, form: dict) -> EquipmentA
 
 
 def update_equipment_asset(repository: FarmRepository, asset: EquipmentAsset, form: dict) -> EquipmentAsset:
-    payment_condition = form.get("payment_condition") or "a_vista"
-    payment_method = form.get("payment_method")
-    installment_count = int(form.get("installment_count") or 1)
-    installment_frequency = form.get("installment_frequency") or "mensal"
-    first_installment_date = _date_or_none(form.get("first_installment_date"))
+    payment_condition, payment_method, installment_count, installment_frequency, first_installment_date = _normalize_finance_schedule_fields(form)
 
     updated_asset = repository.update(
         asset,

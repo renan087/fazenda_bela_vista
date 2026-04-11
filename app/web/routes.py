@@ -5878,6 +5878,11 @@ async def create_purchased_input_action(
     package_unit: str = Form(...),
     unit_price: float = Form(...),
     finance_account_id: str | None = Form(None),
+    payment_method: str | None = Form(None),
+    payment_condition: str | None = Form("a_vista"),
+    installment_count: str | None = Form(None),
+    installment_frequency: str | None = Form(None),
+    first_installment_date: str | None = Form(None),
     purchase_date: str | None = Form(None),
     low_stock_threshold: str | None = Form(None),
     notes: str | None = Form(None),
@@ -5905,23 +5910,32 @@ async def create_purchased_input_action(
     except ValueError as exc:
         _flash(request, "error", str(exc))
         return _redirect_with_query("/insumos/comprados", item_type=item_type)
-    item = create_purchased_input(
-        repo,
-        {
-            "farm_id": scope["active_farm_id"],
-            "item_type": item_type,
-            "category": resolved_category,
-            "name": name,
-            "quantity_purchased": quantity_purchased,
-            "package_size": package_size,
-            "package_unit": package_unit,
-            "unit_price": unit_price,
-            "finance_account_id": finance_account.id if finance_account else None,
-            "purchase_date": purchase_date,
-            "low_stock_threshold": low_stock_threshold,
-            "notes": notes,
-        },
-    )
+    try:
+        item = create_purchased_input(
+            repo,
+            {
+                "farm_id": scope["active_farm_id"],
+                "item_type": item_type,
+                "category": resolved_category,
+                "name": name,
+                "quantity_purchased": quantity_purchased,
+                "package_size": package_size,
+                "package_unit": package_unit,
+                "unit_price": unit_price,
+                "finance_account_id": finance_account.id if finance_account else None,
+                "payment_method": payment_method,
+                "payment_condition": payment_condition,
+                "installment_count": installment_count,
+                "installment_frequency": installment_frequency,
+                "first_installment_date": first_installment_date,
+                "purchase_date": purchase_date,
+                "low_stock_threshold": low_stock_threshold,
+                "notes": notes,
+            },
+        )
+    except ValueError as exc:
+        _flash(request, "error", str(exc))
+        return _redirect_with_query("/insumos/comprados", item_type=item_type)
     try:
         saved_attachments = _save_purchased_input_attachments(repo, item, attachment_payloads)
     except Exception:
@@ -5948,6 +5962,11 @@ async def update_purchased_input_action(
     package_unit: str = Form(...),
     unit_price: float = Form(...),
     finance_account_id: str | None = Form(None),
+    payment_method: str | None = Form(None),
+    payment_condition: str | None = Form("a_vista"),
+    installment_count: str | None = Form(None),
+    installment_frequency: str | None = Form(None),
+    first_installment_date: str | None = Form(None),
     purchase_date: str | None = Form(None),
     low_stock_threshold: str | None = Form(None),
     notes: str | None = Form(None),
@@ -5982,24 +6001,33 @@ async def update_purchased_input_action(
     except ValueError as exc:
         _flash(request, "error", str(exc))
         return _redirect_for_request(request, "/insumos/comprados", edit_id=input_id, item_type=item_type)
-    update_purchased_input(
-        repo,
-        item,
-        {
-            "farm_id": scope["active_farm_id"],
-            "item_type": item_type,
-            "category": resolved_category,
-            "name": name,
-            "quantity_purchased": quantity_purchased,
-            "package_size": package_size,
-            "package_unit": package_unit,
-            "unit_price": unit_price,
-            "finance_account_id": finance_account.id if finance_account else None,
-            "purchase_date": purchase_date,
-            "low_stock_threshold": low_stock_threshold,
-            "notes": notes,
-        },
-    )
+    try:
+        update_purchased_input(
+            repo,
+            item,
+            {
+                "farm_id": scope["active_farm_id"],
+                "item_type": item_type,
+                "category": resolved_category,
+                "name": name,
+                "quantity_purchased": quantity_purchased,
+                "package_size": package_size,
+                "package_unit": package_unit,
+                "unit_price": unit_price,
+                "finance_account_id": finance_account.id if finance_account else None,
+                "payment_method": payment_method,
+                "payment_condition": payment_condition,
+                "installment_count": installment_count,
+                "installment_frequency": installment_frequency,
+                "first_installment_date": first_installment_date,
+                "purchase_date": purchase_date,
+                "low_stock_threshold": low_stock_threshold,
+                "notes": notes,
+            },
+        )
+    except ValueError as exc:
+        _flash(request, "error", str(exc))
+        return _redirect_for_request(request, "/insumos/comprados", edit_id=input_id, item_type=item_type)
     try:
         saved_attachments = _save_purchased_input_attachments(repo, item, attachment_payloads)
     except Exception:
@@ -7648,6 +7676,11 @@ async def create_supply_action(
     category: str | None = Form(None),
     unit_price: float = Form(...),
     finance_account_id: str | None = Form(None),
+    payment_method: str | None = Form(None),
+    payment_condition: str | None = Form("a_vista"),
+    installment_count: str | None = Form(None),
+    installment_frequency: str | None = Form(None),
+    first_installment_date: str | None = Form(None),
     purchase_date: str | None = Form(None),
     low_stock_threshold: str | None = Form(None),
     notes: str | None = Form(None),
@@ -7671,23 +7704,32 @@ async def create_supply_action(
     except ValueError as exc:
         _flash(request, "error", str(exc))
         return _redirect(target_base)
-    item = create_purchased_input(
-        repo,
-        {
-            "farm_id": scope["active_farm_id"],
-            "item_type": "suprimento",
-            "name": name,
-            "quantity_purchased": quantity_purchased,
-            "package_size": package_size,
-            "package_unit": package_unit,
-            "category": category,
-            "unit_price": unit_price,
-            "finance_account_id": finance_account.id if finance_account else None,
-            "purchase_date": purchase_date,
-            "low_stock_threshold": low_stock_threshold,
-            "notes": notes,
-        },
-    )
+    try:
+        item = create_purchased_input(
+            repo,
+            {
+                "farm_id": scope["active_farm_id"],
+                "item_type": "suprimento",
+                "name": name,
+                "quantity_purchased": quantity_purchased,
+                "package_size": package_size,
+                "package_unit": package_unit,
+                "category": category,
+                "unit_price": unit_price,
+                "finance_account_id": finance_account.id if finance_account else None,
+                "payment_method": payment_method,
+                "payment_condition": payment_condition,
+                "installment_count": installment_count,
+                "installment_frequency": installment_frequency,
+                "first_installment_date": first_installment_date,
+                "purchase_date": purchase_date,
+                "low_stock_threshold": low_stock_threshold,
+                "notes": notes,
+            },
+        )
+    except ValueError as exc:
+        _flash(request, "error", str(exc))
+        return _redirect(target_base)
     try:
         saved_attachments = _save_purchased_input_attachments(repo, item, attachment_payloads)
     except Exception:
@@ -7713,6 +7755,11 @@ async def update_supply_action(
     category: str | None = Form(None),
     unit_price: float = Form(...),
     finance_account_id: str | None = Form(None),
+    payment_method: str | None = Form(None),
+    payment_condition: str | None = Form("a_vista"),
+    installment_count: str | None = Form(None),
+    installment_frequency: str | None = Form(None),
+    first_installment_date: str | None = Form(None),
     purchase_date: str | None = Form(None),
     low_stock_threshold: str | None = Form(None),
     notes: str | None = Form(None),
@@ -7745,24 +7792,34 @@ async def update_supply_action(
         _flash(request, "error", str(exc))
         separator = "&" if "?" in target_url else "?"
         return _redirect(f"{target_url}{separator}edit_id={input_id}")
-    update_purchased_input(
-        repo,
-        item,
-        {
-            "farm_id": scope["active_farm_id"],
-            "item_type": "suprimento",
-            "name": name,
-            "quantity_purchased": quantity_purchased,
-            "package_size": package_size,
-            "package_unit": package_unit,
-            "category": category,
-            "unit_price": unit_price,
-            "finance_account_id": finance_account.id if finance_account else None,
-            "purchase_date": purchase_date,
-            "low_stock_threshold": low_stock_threshold,
-            "notes": notes,
-        },
-    )
+    try:
+        update_purchased_input(
+            repo,
+            item,
+            {
+                "farm_id": scope["active_farm_id"],
+                "item_type": "suprimento",
+                "name": name,
+                "quantity_purchased": quantity_purchased,
+                "package_size": package_size,
+                "package_unit": package_unit,
+                "category": category,
+                "unit_price": unit_price,
+                "finance_account_id": finance_account.id if finance_account else None,
+                "payment_method": payment_method,
+                "payment_condition": payment_condition,
+                "installment_count": installment_count,
+                "installment_frequency": installment_frequency,
+                "first_installment_date": first_installment_date,
+                "purchase_date": purchase_date,
+                "low_stock_threshold": low_stock_threshold,
+                "notes": notes,
+            },
+        )
+    except ValueError as exc:
+        _flash(request, "error", str(exc))
+        separator = "&" if "?" in target_url else "?"
+        return _redirect(f"{target_url}{separator}edit_id={input_id}")
     try:
         saved_attachments = _save_purchased_input_attachments(repo, item, attachment_payloads)
     except Exception:
@@ -8227,6 +8284,11 @@ async def create_equipment_asset_action(
     acquisition_date: str | None = Form(None),
     acquisition_value: str | None = Form(None),
     finance_account_id: str | None = Form(None),
+    payment_method: str | None = Form(None),
+    payment_condition: str | None = Form("a_vista"),
+    installment_count: str | None = Form(None),
+    installment_frequency: str | None = Form(None),
+    first_installment_date: str | None = Form(None),
     status_value: str = Form("ativo", alias="status"),
     notes: str | None = Form(None),
     db: Session = Depends(get_db),
@@ -8257,23 +8319,32 @@ async def create_equipment_asset_action(
     except ValueError as exc:
         _flash(request, "error", str(exc))
         return _redirect("/insumos/patrimonio")
-    asset = create_equipment_asset(
-        repo,
-        {
-            "farm_id": scope["active_farm_id"],
-            "name": name,
-            "category": normalized_category,
-            "manufacturer": _clean_text(manufacturer),
-            "manufacture_year": normalized_manufacture_year,
-            "brand_model": _clean_text(brand_model),
-            "asset_code": _clean_text(asset_code),
-            "acquisition_date": acquisition_date,
-            "acquisition_value": _float_or_none(acquisition_value),
-            "finance_account_id": finance_account.id if finance_account else None,
-            "status": status_value,
-            "notes": notes,
-        },
-    )
+    try:
+        asset = create_equipment_asset(
+            repo,
+            {
+                "farm_id": scope["active_farm_id"],
+                "name": name,
+                "category": normalized_category,
+                "manufacturer": _clean_text(manufacturer),
+                "manufacture_year": normalized_manufacture_year,
+                "brand_model": _clean_text(brand_model),
+                "asset_code": _clean_text(asset_code),
+                "acquisition_date": acquisition_date,
+                "acquisition_value": _float_or_none(acquisition_value),
+                "finance_account_id": finance_account.id if finance_account else None,
+                "payment_method": payment_method,
+                "payment_condition": payment_condition,
+                "installment_count": installment_count,
+                "installment_frequency": installment_frequency,
+                "first_installment_date": first_installment_date,
+                "status": status_value,
+                "notes": notes,
+            },
+        )
+    except ValueError as exc:
+        _flash(request, "error", str(exc))
+        return _redirect("/insumos/patrimonio")
     try:
         saved_attachments = _save_equipment_asset_attachments(repo, asset, attachment_payloads)
     except Exception:
@@ -8301,6 +8372,11 @@ async def update_equipment_asset_action(
     acquisition_date: str | None = Form(None),
     acquisition_value: str | None = Form(None),
     finance_account_id: str | None = Form(None),
+    payment_method: str | None = Form(None),
+    payment_condition: str | None = Form("a_vista"),
+    installment_count: str | None = Form(None),
+    installment_frequency: str | None = Form(None),
+    first_installment_date: str | None = Form(None),
     status_value: str = Form("ativo", alias="status"),
     notes: str | None = Form(None),
     db: Session = Depends(get_db),
@@ -8338,24 +8414,33 @@ async def update_equipment_asset_action(
     except ValueError as exc:
         _flash(request, "error", str(exc))
         return _redirect_for_request(request, "/insumos/patrimonio", edit_id=asset_id)
-    update_equipment_asset(
-        repo,
-        asset,
-        {
-            "farm_id": scope["active_farm_id"],
-            "name": name,
-            "category": normalized_category,
-            "manufacturer": _clean_text(manufacturer),
-            "manufacture_year": normalized_manufacture_year,
-            "brand_model": _clean_text(brand_model),
-            "asset_code": _clean_text(asset_code),
-            "acquisition_date": acquisition_date,
-            "acquisition_value": _float_or_none(acquisition_value),
-            "finance_account_id": finance_account.id if finance_account else None,
-            "status": status_value,
-            "notes": notes,
-        },
-    )
+    try:
+        update_equipment_asset(
+            repo,
+            asset,
+            {
+                "farm_id": scope["active_farm_id"],
+                "name": name,
+                "category": normalized_category,
+                "manufacturer": _clean_text(manufacturer),
+                "manufacture_year": normalized_manufacture_year,
+                "brand_model": _clean_text(brand_model),
+                "asset_code": _clean_text(asset_code),
+                "acquisition_date": acquisition_date,
+                "acquisition_value": _float_or_none(acquisition_value),
+                "finance_account_id": finance_account.id if finance_account else None,
+                "payment_method": payment_method,
+                "payment_condition": payment_condition,
+                "installment_count": installment_count,
+                "installment_frequency": installment_frequency,
+                "first_installment_date": first_installment_date,
+                "status": status_value,
+                "notes": notes,
+            },
+        )
+    except ValueError as exc:
+        _flash(request, "error", str(exc))
+        return _redirect_for_request(request, "/insumos/patrimonio", edit_id=asset_id)
     try:
         saved_attachments = _save_equipment_asset_attachments(repo, asset, attachment_payloads)
     except Exception:
