@@ -727,16 +727,20 @@
             scheduleFadeUpdate();
         }
 
-        fadingPanels.forEach((panel) => {
-            const panelRect = panel.getBoundingClientRect();
-            const panelTop = panelRect.top;
-            const panelHeight = panelRect.height;
-            if (panelTop >= stickyBottom || panelHeight <= 1) {
-                panel.style.setProperty('--stock-fade-cutoff', '0px');
-                panel.style.setProperty('--stock-fade-feather-end', '0px');
-                return;
-            }
-        });
+        if (!form) return;
+
+        const quantityField = form.querySelector('[data-quantity-purchased]');
+        const sizeField = form.querySelector('[data-package-size]');
+        const unitPriceField = form.querySelector('[data-unit-price]');
+        const totalQuantityField = form.querySelector('[data-total-quantity]');
+        const totalCostField = form.querySelector('[data-total-cost]');
+        const itemTypeField = form.querySelector('[data-item-type-select]');
+        const categoryField = form.querySelector('[data-category-select]');
+        const purchasedNameInput = form.querySelector('[data-purchased-name-input]');
+        const packageUnitField = form.querySelector('select[name="package_unit"]');
+        const lowStockThresholdField = form.querySelector('input[name="low_stock_threshold"]');
+        const initialCategory = categoryField?.dataset.initialCategory || '';
+        const categoryOptionsByType = {{ purchase_input_category_options_by_type|tojson }};
 
         const inputCatalogList = document.getElementById('inputs-catalog-list');
         const catalogOptionData = inputCatalogList
