@@ -22,14 +22,14 @@
                 {% set transaction = payable.transaction %}
                 {% set installment = payable.installment %}
                 <tr data-stock-kind="{{ payable.row_kind }}">
-                    <td class="px-4 py-3">
+                    <td class="px-4 py-3 whitespace-nowrap">
                         <span class="stock-movement-chip {{ payable.status_chip_class }}">{{ payable.status_label }}</span>
                     </td>
                     <td class="px-4 py-3 whitespace-nowrap font-semibold text-slate-900">
                         <button type="button" class="text-left font-semibold text-slate-900 transition hover:text-brand-700 whitespace-nowrap" data-history-view-trigger data-history-view-kicker="Conta a pagar" data-history-view-title="{{ transaction.product_service }}" data-history-view-subtitle="{{ installment.due_date.strftime('%d/%m/%Y') if installment.due_date else '-' }} • {{ payable.installment_label }}" data-history-view-source="finance-transaction-view-{{ transaction.id }}"{% if payable.source_label == 'Contas' %} data-history-view-edit-url="{{ payable.edit_url }}"{% endif %}>{{ installment.due_date.strftime('%d/%m/%Y') if installment.due_date else '-' }}</button>
                     </td>
                     <td class="px-4 py-3">{{ transaction.finance_account.account_name if transaction.finance_account else '-' }}</td>
-                    <td class="px-4 py-3 whitespace-nowrap">{{ payable.source_label }}</td>
+                    <td class="px-4 py-3">{{ payable.source_label }}</td>
                     <td class="px-4 py-3 font-semibold text-slate-900">
                         <button type="button" class="text-left font-semibold text-slate-900 transition hover:text-brand-700" data-history-view-trigger data-history-view-kicker="Conta a pagar" data-history-view-title="{{ transaction.product_service }}" data-history-view-subtitle="{{ installment.due_date.strftime('%d/%m/%Y') if installment.due_date else '-' }} • {{ payable.installment_label }}" data-history-view-source="finance-transaction-view-{{ transaction.id }}"{% if payable.source_label == 'Contas' %} data-history-view-edit-url="{{ payable.edit_url }}"{% endif %}>{{ transaction.category }}</button>
                     </td>
