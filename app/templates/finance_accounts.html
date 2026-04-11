@@ -901,7 +901,7 @@
                         <div class="grid gap-4 md:grid-cols-3">
                             <label>
                                 <span class="mb-2 block text-sm font-medium">Quantidade de parcelas</span>
-                                <input type="number" min="2" step="1" {% if not finance_installments_locked %}name="installment_count"{% endif %} value="{{ edit_finance_transaction.installment_count if edit_finance_transaction and edit_finance_transaction.payment_condition == 'a_prazo' else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 {% if finance_installments_locked %}cursor-not-allowed bg-slate-100 text-slate-600{% else %}bg-white{% endif %}" data-finance-installment-count {% if finance_installments_locked %}disabled{% endif %}>
+                                <input type="number" min="1" step="1" {% if not finance_installments_locked %}name="installment_count"{% endif %} value="{{ edit_finance_transaction.installment_count if edit_finance_transaction and edit_finance_transaction.payment_condition == 'a_prazo' else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 {% if finance_installments_locked %}cursor-not-allowed bg-slate-100 text-slate-600{% else %}bg-white{% endif %}" data-finance-installment-count {% if finance_installments_locked %}disabled{% endif %}>
                             </label>
                             <label>
                                 <span class="mb-2 block text-sm font-medium">Periodicidade</span>
@@ -1866,7 +1866,7 @@
         const frequency = transactionInstallmentFrequencySelect?.value || 'mensal';
         const firstDateValue = transactionFirstInstallmentDateInput?.value || '';
         const amount = Number.parseFloat(transactionAmountRawInput?.value || '0');
-        if (!Number.isFinite(count) || count < 2 || !firstDateValue || !Number.isFinite(amount) || amount <= 0) {
+        if (!Number.isFinite(count) || count < 1 || !firstDateValue || !Number.isFinite(amount) || amount <= 0) {
             transactionInstallmentsEmpty.textContent = 'Informe quantidade, periodicidade e a data da primeira parcela para visualizar o cronograma.';
             transactionInstallmentsEmpty.classList.remove('hidden');
             return;

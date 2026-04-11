@@ -433,7 +433,7 @@
                     <div class="grid gap-4 md:grid-cols-3">
                         <label>
                             <span class="mb-2 block text-sm font-medium">Quantidade de parcelas</span>
-                            <input type="number" min="2" max="999" name="installment_count" value="{{ edit_input.installment_count if edit_input and edit_input.installment_count else 2 }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-white" data-purchased-installment-count>
+                            <input type="number" min="1" max="999" name="installment_count" value="{{ edit_input.installment_count if edit_input and edit_input.installment_count else 1 }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-white" data-purchased-installment-count>
                         </label>
                         <label>
                             <span class="mb-2 block text-sm font-medium">Periodicidade</span>

@@ -84,7 +84,7 @@ def _build_installments(
     installment_frequency: str | None,
     first_installment_date: date | None,
 ) -> list[dict]:
-    if payment_condition != "a_prazo" or installment_count <= 1 or not first_installment_date:
+    if payment_condition != "a_prazo" or installment_count < 1 or not first_installment_date:
         return []
     total_cents = int((Decimal(str(amount)) * 100).quantize(Decimal("1")))
     base_cents = total_cents // installment_count
@@ -120,8 +120,8 @@ def _normalize_finance_schedule_fields(form: dict) -> tuple[str, str | None, int
     if payment_condition == "a_prazo":
         if not form.get("finance_account_id"):
             raise ValueError("Selecione a conta bancária para acompanhar o pagamento a prazo.")
-        if installment_count < 2:
-            raise ValueError("Informe ao menos 2 parcelas para pagamento a prazo.")
+        if installment_count < 1:
+            raise ValueError("Informe ao menos 1 parcela para pagamento a prazo.")
         if installment_frequency not in {"mensal", "anual"}:
             raise ValueError("Selecione a periodicidade das parcelas.")
         if not first_installment_date:
