@@ -75,6 +75,7 @@
         if (preset === 'last_20_days') return 'Últimos 20 dias';
         if (preset === 'last_month') return 'Mês passado';
         if (preset === 'last_10_days') return 'Últimos 10 dias';
+        if (preset === 'next_10_days') return 'Próximos 10 dias';
         if (preset === 'next_20_days') return 'Próximos 20 dias';
         if (preset === 'next_month') return 'Próximo mês';
         if (preset === 'custom') return 'Período personalizado';
@@ -383,6 +384,12 @@
     global.ModulePeriodFilters = {
         bind(form, options) {
             bindModulePeriodFilter(form, options || {});
+        },
+        getPresetRange(preset) {
+            return getPresetRange(preset);
+        },
+        getPresetRangeTitle(preset) {
+            return getPresetRangeTitle(preset);
         },
     };
 })(typeof window !== 'undefined' ? window : globalThis);

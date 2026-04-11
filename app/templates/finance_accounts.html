@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "partials/module_history_filter_toolbar.html" import module_period_picker_inline %}
+{% from "partials/module_history_filter_toolbar.html" import module_period_picker_inline, module_period_picker_payables_inline %}
 {% block content %}
 <style>
 @keyframes financeStarIgnite {
@@ -440,7 +440,7 @@
                     <span data-finance-payables-filter-toggle-label>{% if finance_payables_filters_active %}Mostrar filtro aplicado{% else %}Recolher filtros{% endif %}</span>
                 </button>
             </div>
-            <form method="get" action="/gestao-financeira/contas" class="stock-filter-grid" data-finance-payables-filter-form data-module-period-filter-root data-module-range-default="current_month" data-module-range-placeholder="Filtre por período" data-module-custom-auto-apply="true">
+            <form method="get" action="/gestao-financeira/contas" class="stock-filter-grid" data-finance-payables-filter-form data-module-period-filter-root data-finance-payables-period-mode="{{ finance_payables_period_ui_mode|default('past') }}" data-module-range-default="{% if (finance_payables_period_ui_mode|default('past')) == 'custom_only' %}custom{% else %}current_month{% endif %}" data-module-range-placeholder="Filtre por período" data-module-custom-auto-apply="true">
                 <input type="hidden" name="finance_tab" value="payables">
                 <div class="stock-summary-collapse {% if not finance_payables_filters_active %}is-expanded{% endif %}" data-finance-payables-filter-collapse>
                 <div class="stock-summary-collapse-inner">
@@ -456,7 +456,7 @@
                     </label>
                     <div class="stock-filter-field stock-filter-field-period {% if finance_payables_filter_start_date or finance_payables_filter_end_date %}is-filtered{% endif %}">
                         <div class="module-filter-period-row">
-                            {{ module_period_picker_inline(finance_payables_selected_range or 'current_month', finance_payables_filter_start_date, finance_payables_filter_end_date, 'past', 'Filtre por período') }}
+                            {{ module_period_picker_payables_inline(finance_payables_selected_range or ('custom' if (finance_payables_period_ui_mode|default('past')) == 'custom_only' else 'current_month'), finance_payables_filter_start_date, finance_payables_filter_end_date, finance_payables_period_ui_mode|default('past'), 'Filtre por período') }}
                         </div>
                     </div>
                     <label class="stock-filter-field stock-filter-field-input {% if finance_payables_search %}is-filtered{% endif %}">
@@ -1811,8 +1811,30 @@
     transactionFirstInstallmentDateInput?.addEventListener('input', renderFinanceInstallmentPreview);
     transactionAmountDisplayInput?.addEventListener('input', renderFinanceInstallmentPreview);
 
+    const syncPayablesPeriodMenuVisibility = () => {
+        if (!payablesFilterForm || !payablesFilterForm.querySelector('[data-module-payables-range-picker]')) return;
+        const mode = (payablesFilterForm.dataset.financePayablesPeriodMode || 'past').trim();
+        payablesFilterForm.querySelectorAll('[data-module-range-option]').forEach((btn) => {
+            const modes = (btn.getAttribute('data-show-for-payables-mode') || '').split(/\s+/).filter(Boolean);
+            btn.hidden = !modes.includes(mode);
+        });
+    };
+    const payablesStatusToMode = (status) => {
+        if (status === 'open') return 'future';
+        if (status === 'all') return 'custom_only';
+        return 'past';
+    };
+    const payablesRangeValidForMode = (range, mode) => {
+        if (mode === 'custom_only') return range === 'custom';
+        if (mode === 'future') {
+            return ['current_month', 'next_10_days', 'next_20_days', 'next_month', 'custom'].includes(range);
+        }
+        return ['current_month', 'last_10_days', 'last_20_days', 'last_month', 'custom'].includes(range);
+    };
+
     if (payablesFilterForm) {
         window.ModulePeriodFilters?.bind(payablesFilterForm);
+        syncPayablesPeriodMenuVisibility();
     }
 
     payablesSearchInput?.addEventListener('input', () => {
@@ -1823,7 +1845,28 @@
         }, 260);
     });
     payablesStatusSelect?.addEventListener('change', () => {
-        payablesFilterForm?.requestSubmit();
+        if (!payablesFilterForm) return;
+        const mode = payablesStatusToMode(payablesStatusSelect.value);
+        payablesFilterForm.dataset.financePayablesPeriodMode = mode;
+        payablesFilterForm.dataset.moduleRangeDefault = mode === 'custom_only' ? 'custom' : 'current_month';
+        const rangeInput = payablesFilterForm.querySelector('[data-module-range-input]');
+        const startInput = payablesFilterForm.querySelector('[data-module-filter-start]');
+        const endInput = payablesFilterForm.querySelector('[data-module-filter-end]');
+        const current = (rangeInput?.value || '').trim();
+        if (!payablesRangeValidForMode(current, mode)) {
+            const nextDefault = mode === 'custom_only' ? 'custom' : 'current_month';
+            if (rangeInput) rangeInput.value = nextDefault;
+            if (nextDefault === 'custom') {
+                if (startInput) startInput.value = '';
+                if (endInput) endInput.value = '';
+            } else if (window.ModulePeriodFilters?.getPresetRange) {
+                const r = window.ModulePeriodFilters.getPresetRange(nextDefault);
+                if (startInput) startInput.value = r.start;
+                if (endInput) endInput.value = r.end;
+            }
+        }
+        syncPayablesPeriodMenuVisibility();
+        payablesFilterForm.requestSubmit();
     });
 
     const closePayableSettleModal = () => {

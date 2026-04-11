@@ -2518,12 +2518,44 @@ def _replace_finance_transaction_installments(
         )
 
 
+def _finance_payables_period_ui_mode(payables_status: str) -> str:
+    """Modo do picker de período na aba A pagar: past | future | custom_only."""
+    if payables_status == "open":
+        return "future"
+    if payables_status == "all":
+        return "custom_only"
+    return "past"
+
+
 def _finance_payables_period_bounds(request: Request) -> tuple[date | None, date | None, str, str, str]:
+    """Retorna (start, end, raw_start, raw_end, selected_range) para filtro de vencimento em A pagar."""
     qp = request.query_params
     selected_range = (qp.get("schedule_range") or "").strip()
     raw_start = (qp.get("start_date") or "").strip()
     raw_end = (qp.get("end_date") or "").strip()
+    payables_status = (qp.get("payables_status") or "").strip().lower()
+    if payables_status not in {"", "open", "paid", "overdue", "all"}:
+        payables_status = ""
     today = today_in_app_timezone()
+
+    past_only = {"last_10_days", "last_20_days", "last_month"}
+    future_only = {"next_10_days", "next_20_days", "next_month"}
+    if payables_status == "open" and selected_range in past_only:
+        selected_range = "current_month"
+    if payables_status in ("paid", "overdue", "") and selected_range in future_only:
+        selected_range = "current_month"
+    if payables_status == "all" and selected_range and selected_range != "custom":
+        selected_range = "custom"
+        raw_start, raw_end = "", ""
+
+    if payables_status == "all":
+        if not selected_range and not raw_start and not raw_end:
+            return None, None, "", "", "custom"
+        if selected_range == "custom" or raw_start or raw_end:
+            start_date, end_date, raw_start, raw_end = _finance_extract_period_bounds(request, flash_invalid=False)
+            return start_date, end_date, raw_start, raw_end, "custom"
+        return None, None, "", "", "custom"
+
     if not selected_range and not raw_start and not raw_end:
         month_end = date(today.year + (1 if today.month == 12 else 0), 1 if today.month == 12 else today.month + 1, 1) - timedelta(days=1)
         return date(today.year, today.month, 1), month_end, "", "", "current_month"
@@ -2539,6 +2571,17 @@ def _finance_payables_period_bounds(request: Request) -> tuple[date | None, date
         previous_month_end = current_month_start - timedelta(days=1)
         previous_month_start = date(previous_month_end.year, previous_month_end.month, 1)
         return previous_month_start, previous_month_end, "", "", "last_month"
+    if selected_range == "next_10_days":
+        return today, today + timedelta(days=10), "", "", "next_10_days"
+    if selected_range == "next_20_days":
+        return today, today + timedelta(days=20), "", "", "next_20_days"
+    if selected_range == "next_month":
+        if today.month == 12:
+            nm_start = date(today.year + 1, 1, 1)
+        else:
+            nm_start = date(today.year, today.month + 1, 1)
+        nm_end = date(nm_start.year + (1 if nm_start.month == 12 else 0), 1 if nm_start.month == 12 else nm_start.month + 1, 1) - timedelta(days=1)
+        return nm_start, nm_end, "", "", "next_month"
     start_date, end_date, raw_start, raw_end = _finance_extract_period_bounds(request, flash_invalid=False)
     return start_date, end_date, raw_start, raw_end, (selected_range or ("custom" if raw_start or raw_end else "current_month"))
 
@@ -3004,6 +3047,7 @@ def finance_accounts_page(
             finance_payables_filter_start_date=payables_filter_start_date,
             finance_payables_filter_end_date=payables_filter_end_date,
             finance_payables_selected_range=selected_payables_range,
+            finance_payables_period_ui_mode=_finance_payables_period_ui_mode(payables_status),
             finance_payables_search=payables_search,
             finance_payables_status=payables_status,
             finance_payables_filters_active=finance_payables_filters_active,
