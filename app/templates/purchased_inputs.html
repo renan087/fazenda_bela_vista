@@ -727,15 +727,17 @@
             scheduleFadeUpdate();
         }
 
-    fadingPanels.forEach((panel) => {
-        const panelRect = panel.getBoundingClientRect();
-        const panelTop = panelRect.top;
-        const panelHeight = panelRect.height;
-        if (panelTop >= stickyBottom || panelHeight <= 1) {
-            panel.style.setProperty('--stock-fade-cutoff', '0px');
-            panel.style.setProperty('--stock-fade-feather-end', '0px');
-            return;
-        }
+        fadingPanels.forEach((panel) => {
+            const panelRect = panel.getBoundingClientRect();
+            const panelTop = panelRect.top;
+            const panelHeight = panelRect.height;
+            if (panelTop >= stickyBottom || panelHeight <= 1) {
+                panel.style.setProperty('--stock-fade-cutoff', '0px');
+                panel.style.setProperty('--stock-fade-feather-end', '0px');
+                return;
+            }
+        });
+
         const inputCatalogList = document.getElementById('inputs-catalog-list');
         const catalogOptionData = inputCatalogList
             ? Array.from(inputCatalogList.querySelectorAll('option')).map((option) => ({
