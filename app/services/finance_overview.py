@@ -221,6 +221,7 @@ def _collect_finance_transaction_rows(
         if transaction.payment_method:
             detail_parts.append(transaction.payment_method)
         detail = " • ".join(detail_parts)
+        source_label = _finance_transaction_module_label(transaction)
 
         payment_condition = (transaction.payment_condition or "").strip().lower()
         if payment_condition == "a_prazo":
@@ -247,7 +248,7 @@ def _collect_finance_transaction_rows(
                         "date": paid_day,
                         "sort_group": 1,
                         "ref_id": inst.id,
-                        "module": "Contas",
+                        "module": source_label,
                         "description": f"{'Receita' if is_revenue else 'Despesa'} — {transaction.product_service} ({parcel_label})",
                         "detail": detail,
                         "debit": amt if not is_revenue else None,
@@ -266,7 +267,7 @@ def _collect_finance_transaction_rows(
                 "date": transaction.launch_date,
                 "sort_group": 0,
                 "ref_id": transaction.id,
-                "module": "Contas",
+                "module": source_label,
                 "description": f"{'Receita' if is_revenue else 'Despesa'} — {transaction.product_service}",
                 "detail": detail,
                 "debit": amount if not is_revenue else None,
@@ -274,6 +275,17 @@ def _collect_finance_transaction_rows(
             }
         )
     return raw
+
+
+def _finance_transaction_module_label(transaction: FinanceTransaction) -> str:
+    source = (transaction.source or "").strip().lower()
+    if source == "insumos":
+        return "Compra de Insumos"
+    if source == "suprimentos":
+        return "Suprimentos"
+    if source == "patrimônio" or source == "patrimonio":
+        return "Patrimônio"
+    return "Contas"
 
 
 def build_finance_extract_rows(

@@ -62,12 +62,22 @@
                     </td>
                     <td class="px-4 py-3">
                         <div class="flex items-center justify-end gap-2">
+                            {% if payable.source_label == 'Contas' %}
                             <a href="{{ payable.edit_url }}" class="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-100" title="Editar lançamento">
                                 <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                     <path d="M12 20h9"/>
                                     <path d="M16.5 3.5a2.1 2.1 0 1 1 3 3L7 19l-4 1 1-4Z"/>
                                 </svg>
                             </a>
+                            {% else %}
+                            <span class="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-amber-200 bg-amber-50 text-amber-600" title="Edição permitida apenas na página de origem: {{ payable.source_label }}">
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M12 9v4"/>
+                                    <path d="M12 17h.01"/>
+                                    <circle cx="12" cy="12" r="10"/>
+                                </svg>
+                            </span>
+                            {% endif %}
                         </div>
                     </td>
                 </tr>
