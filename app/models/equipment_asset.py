@@ -23,6 +23,11 @@ class EquipmentAsset(Base):
     acquisition_value: Mapped[float] = mapped_column(Numeric(12, 2), nullable=True)
     status: Mapped[str] = mapped_column(String(60), nullable=False, default="ativo")
     notes: Mapped[str] = mapped_column(Text, nullable=True)
+    payment_condition: Mapped[str] = mapped_column(String(20), nullable=False, default="a_vista")
+    payment_method: Mapped[str] = mapped_column(String(80), nullable=True)
+    installment_count: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    installment_frequency: Mapped[str] = mapped_column(String(20), nullable=True)
+    first_installment_date: Mapped[date] = mapped_column(Date, nullable=True)
 
     farm = relationship("Farm", back_populates="equipment_assets")
     finance_account = relationship("FinanceAccount", back_populates="equipment_assets")

@@ -19,6 +19,7 @@ from app.models import (
     FertilizationItem,
     FertilizationRecord,
     FinanceTransaction,
+    FinanceTransactionInstallment,
     HarvestRecord,
     InputCatalog,
     InputRecommendation,
@@ -48,6 +49,83 @@ def _int_or_none(value: str | int | None) -> int | None:
         return int(value)
     except (TypeError, ValueError):
         return None
+
+
+def _date_or_none(value: str | date | None) -> date | None:
+    if value in (None, ""):
+        return None
+    if isinstance(value, date):
+        return value
+    try:
+        return date.fromisoformat(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _finance_add_months(base_date: date, months: int) -> date:
+    month = base_date.month - 1 + months
+    year = base_date.year + month // 12
+    month = month % 12 + 1
+    day = min(base_date.day, [31, 29 if (year % 4 == 0 and year % 100 != 0) or year % 400 == 0 else 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][month - 1])
+    return date(year, month, day)
+
+
+def _finance_add_years(base_date: date, years: int) -> date:
+    target_year = base_date.year + years
+    day = min(base_date.day, [31, 29 if (target_year % 4 == 0 and target_year % 100 != 0) or target_year % 400 == 0 else 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][base_date.month - 1])
+    return date(target_year, base_date.month, day)
+
+
+def _build_installments(
+    *,
+    amount: float,
+    payment_condition: str,
+    installment_count: int,
+    installment_frequency: str | None,
+    first_installment_date: date | None,
+) -> list[dict]:
+    if payment_condition != "a_prazo" or installment_count <= 1 or not first_installment_date:
+        return []
+    total_cents = int((Decimal(str(amount)) * 100).quantize(Decimal("1")))
+    base_cents = total_cents // installment_count
+    remainder = total_cents % installment_count
+    installments: list[dict] = []
+    for index in range(installment_count):
+        current_cents = base_cents + (1 if index < remainder else 0)
+        if installment_frequency == "anual":
+            due_date = _finance_add_years(first_installment_date, index)
+        else:
+            due_date = _finance_add_months(first_installment_date, index)
+        installments.append(
+            {
+                "installment_number": index + 1,
+                "due_date": due_date,
+                "amount": round(current_cents / 100, 2),
+                "status": "pendente",
+            }
+        )
+    return installments
+
+
+def _replace_installments(
+    repo: FarmRepository,
+    transaction: FinanceTransaction,
+    installment_rows: list[dict],
+) -> None:
+    for installment in list(transaction.installments or []):
+        repo.delete(installment)
+    for row in installment_rows:
+        repo.create(
+            FinanceTransactionInstallment(
+                finance_transaction_id=transaction.id,
+                installment_number=row["installment_number"],
+                due_date=row["due_date"],
+                amount=row["amount"],
+                status=row["status"],
+                paid_at=row.get("paid_at"),
+                payment_notes=row.get("payment_notes"),
+            )
+        )
 
 
 def _normalize_fertilization_application_method(raw: str | None) -> str:
@@ -415,6 +493,12 @@ def create_purchased_input(repository: FarmRepository, form: dict) -> PurchasedI
         low_stock_threshold if low_stock_threshold > 0 else None,
     )
 
+    payment_condition = form.get("payment_condition") or "a_vista"
+    payment_method = form.get("payment_method")
+    installment_count = int(form.get("installment_count") or 1)
+    installment_frequency = form.get("installment_frequency") or "mensal"
+    first_installment_date = _date_or_none(form.get("first_installment_date"))
+
     item = PurchasedInput(
         input_id=catalog.id,
         farm_id=form.get("farm_id"),
@@ -431,6 +515,11 @@ def create_purchased_input(repository: FarmRepository, form: dict) -> PurchasedI
         total_cost=round(quantity_purchased * unit_price, 2),
         low_stock_threshold=low_stock_threshold,
         notes=form.get("notes"),
+        payment_condition=payment_condition,
+        payment_method=payment_method,
+        installment_count=installment_count,
+        installment_frequency=installment_frequency,
+        first_installment_date=first_installment_date,
     )
     if form.get("finance_account_id"):
         source_value = "Insumos" if item_type == "insumo_agricola" else "Suprimentos"
@@ -443,14 +532,28 @@ def create_purchased_input(repository: FarmRepository, form: dict) -> PurchasedI
             category=form.get("category") or ("Insumos" if item_type == "insumo_agricola" else "Suprimentos"),
             product_service=f"Compra de {catalog.name}",
             description=form.get("notes") or "",
-            payment_condition="a_vista",
-            installment_count=1,
+            payment_condition=payment_condition,
+            payment_method=payment_method,
+            installment_count=installment_count,
+            installment_frequency=installment_frequency,
+            first_installment_date=first_installment_date,
             source=source_value,
             created_at=app_now(),
         )
         repository.db.add(tx)
         repository.db.flush()
         item.finance_transaction_id = tx.id
+        _replace_installments(
+            repository,
+            tx,
+            _build_installments(
+                amount=item.total_cost,
+                payment_condition=payment_condition,
+                installment_count=installment_count,
+                installment_frequency=installment_frequency,
+                first_installment_date=first_installment_date,
+            ),
+        )
 
     repository.db.add(item)
     repository.db.commit()
@@ -467,6 +570,11 @@ def update_purchased_input(repository: FarmRepository, item: PurchasedInput, for
     available_quantity = max(round(total_quantity - consumed_quantity, 2), 0)
     low_stock_threshold = float(form.get("low_stock_threshold") or 0)
     item_type = form.get("item_type") or "insumo_agricola"
+    payment_condition = form.get("payment_condition") or "a_vista"
+    payment_method = form.get("payment_method")
+    installment_count = int(form.get("installment_count") or 1)
+    installment_frequency = form.get("installment_frequency") or "mensal"
+    first_installment_date = _date_or_none(form.get("first_installment_date"))
     catalog = _resolve_input_catalog(
         repository,
         form["name"],
@@ -494,6 +602,11 @@ def update_purchased_input(repository: FarmRepository, item: PurchasedInput, for
             "total_cost": round(quantity_purchased * unit_price, 2),
             "low_stock_threshold": low_stock_threshold,
             "notes": form.get("notes"),
+            "payment_condition": payment_condition,
+            "payment_method": payment_method,
+            "installment_count": installment_count,
+            "installment_frequency": installment_frequency,
+            "first_installment_date": first_installment_date,
         },
     )
     if form.get("finance_account_id"):
@@ -507,9 +620,25 @@ def update_purchased_input(repository: FarmRepository, item: PurchasedInput, for
                 tx.product_service = f"Compra de {catalog.name}"
                 tx.description = form.get("notes") or ""
                 tx.category = form.get("category") or ("Insumos" if item_type == "insumo_agricola" else "Suprimentos")
+                tx.payment_condition = payment_condition
+                tx.payment_method = payment_method
+                tx.installment_count = installment_count
+                tx.installment_frequency = installment_frequency
+                tx.first_installment_date = first_installment_date
                 tx.source = source_value
                 repository.db.add(tx)
                 repository.db.commit()
+                _replace_installments(
+                    repository,
+                    tx,
+                    _build_installments(
+                        amount=updated_item.total_cost,
+                        payment_condition=payment_condition,
+                        installment_count=installment_count,
+                        installment_frequency=installment_frequency,
+                        first_installment_date=first_installment_date,
+                    ),
+                )
         else:
             tx = FinanceTransaction(
                 farm_id=form.get("farm_id"),
@@ -520,8 +649,11 @@ def update_purchased_input(repository: FarmRepository, item: PurchasedInput, for
                 category=form.get("category") or ("Insumos" if item_type == "insumo_agricola" else "Suprimentos"),
                 product_service=f"Compra de {catalog.name}",
                 description=form.get("notes") or "",
-                payment_condition="a_vista",
-                installment_count=1,
+                payment_condition=payment_condition,
+                payment_method=payment_method,
+                installment_count=installment_count,
+                installment_frequency=installment_frequency,
+                first_installment_date=first_installment_date,
                 source=source_value,
                 created_at=app_now(),
             )
@@ -529,6 +661,17 @@ def update_purchased_input(repository: FarmRepository, item: PurchasedInput, for
             repository.db.flush()
             updated_item.finance_transaction_id = tx.id
             repository.db.commit()
+            _replace_installments(
+                repository,
+                tx,
+                _build_installments(
+                    amount=updated_item.total_cost,
+                    payment_condition=payment_condition,
+                    installment_count=installment_count,
+                    installment_frequency=installment_frequency,
+                    first_installment_date=first_installment_date,
+                ),
+            )
     elif updated_item.finance_transaction_id:
         tx = repository.get_finance_transaction(updated_item.finance_transaction_id)
         if tx:
@@ -539,6 +682,11 @@ def update_purchased_input(repository: FarmRepository, item: PurchasedInput, for
 
 
 def create_equipment_asset(repository: FarmRepository, form: dict) -> EquipmentAsset:
+    payment_condition = form.get("payment_condition") or "a_vista"
+    payment_method = form.get("payment_method")
+    installment_count = int(form.get("installment_count") or 1)
+    installment_frequency = form.get("installment_frequency") or "mensal"
+    first_installment_date = _date_or_none(form.get("first_installment_date"))
 
     asset = EquipmentAsset(
         farm_id=form.get("farm_id"),
@@ -553,6 +701,11 @@ def create_equipment_asset(repository: FarmRepository, form: dict) -> EquipmentA
         acquisition_value=form.get("acquisition_value"),
         status=form.get("status") or "ativo",
         notes=form.get("notes"),
+        payment_condition=payment_condition,
+        payment_method=payment_method,
+        installment_count=installment_count,
+        installment_frequency=installment_frequency,
+        first_installment_date=first_installment_date,
     )
     if form.get("finance_account_id") and form.get("acquisition_value"):
         tx = FinanceTransaction(
@@ -564,18 +717,37 @@ def create_equipment_asset(repository: FarmRepository, form: dict) -> EquipmentA
             category="Máquinas e Equipamentos",
             product_service=f"Aquisição de {asset.name}",
             description=form.get("notes") or "",
-            payment_condition="a_vista",
-            installment_count=1,
+            payment_condition=payment_condition,
+            payment_method=payment_method,
+            installment_count=installment_count,
+            installment_frequency=installment_frequency,
+            first_installment_date=first_installment_date,
             source="Patrimônio",
             created_at=app_now(),
         )
         repository.db.add(tx)
         repository.db.flush()
         asset.finance_transaction_id = tx.id
+        _replace_installments(
+            repository,
+            tx,
+            _build_installments(
+                amount=asset.acquisition_value,
+                payment_condition=payment_condition,
+                installment_count=installment_count,
+                installment_frequency=installment_frequency,
+                first_installment_date=first_installment_date,
+            ),
+        )
     return repository.create(asset)
 
 
 def update_equipment_asset(repository: FarmRepository, asset: EquipmentAsset, form: dict) -> EquipmentAsset:
+    payment_condition = form.get("payment_condition") or "a_vista"
+    payment_method = form.get("payment_method")
+    installment_count = int(form.get("installment_count") or 1)
+    installment_frequency = form.get("installment_frequency") or "mensal"
+    first_installment_date = _date_or_none(form.get("first_installment_date"))
 
     updated_asset = repository.update(
         asset,
@@ -592,6 +764,11 @@ def update_equipment_asset(repository: FarmRepository, asset: EquipmentAsset, fo
             "acquisition_value": form.get("acquisition_value"),
             "status": form.get("status") or "ativo",
             "notes": form.get("notes"),
+            "payment_condition": payment_condition,
+            "payment_method": payment_method,
+            "installment_count": installment_count,
+            "installment_frequency": installment_frequency,
+            "first_installment_date": first_installment_date,
         },
     )
     if form.get("finance_account_id") and form.get("acquisition_value"):
@@ -603,9 +780,25 @@ def update_equipment_asset(repository: FarmRepository, asset: EquipmentAsset, fo
                 tx.amount = updated_asset.acquisition_value
                 tx.product_service = f"Aquisição de {updated_asset.name}"
                 tx.description = form.get("notes") or ""
+                tx.payment_condition = payment_condition
+                tx.payment_method = payment_method
+                tx.installment_count = installment_count
+                tx.installment_frequency = installment_frequency
+                tx.first_installment_date = first_installment_date
                 tx.source = "Patrimônio"
                 repository.db.add(tx)
                 repository.db.commit()
+                _replace_installments(
+                    repository,
+                    tx,
+                    _build_installments(
+                        amount=updated_asset.acquisition_value,
+                        payment_condition=payment_condition,
+                        installment_count=installment_count,
+                        installment_frequency=installment_frequency,
+                        first_installment_date=first_installment_date,
+                    ),
+                )
         else:
             tx = FinanceTransaction(
                 farm_id=form.get("farm_id"),
@@ -616,8 +809,11 @@ def update_equipment_asset(repository: FarmRepository, asset: EquipmentAsset, fo
                 category="Máquinas e Equipamentos",
                 product_service=f"Aquisição de {updated_asset.name}",
                 description=form.get("notes") or "",
-                payment_condition="a_vista",
-                installment_count=1,
+                payment_condition=payment_condition,
+                payment_method=payment_method,
+                installment_count=installment_count,
+                installment_frequency=installment_frequency,
+                first_installment_date=first_installment_date,
                 source="Patrimônio",
                 created_at=app_now(),
             )
@@ -625,6 +821,17 @@ def update_equipment_asset(repository: FarmRepository, asset: EquipmentAsset, fo
             repository.db.flush()
             updated_asset.finance_transaction_id = tx.id
             repository.db.commit()
+            _replace_installments(
+                repository,
+                tx,
+                _build_installments(
+                    amount=updated_asset.acquisition_value,
+                    payment_condition=payment_condition,
+                    installment_count=installment_count,
+                    installment_frequency=installment_frequency,
+                    first_installment_date=first_installment_date,
+                ),
+            )
     elif updated_asset.finance_transaction_id:
         tx = repository.get_finance_transaction(updated_asset.finance_transaction_id)
         if tx:

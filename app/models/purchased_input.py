@@ -1,6 +1,6 @@
 from datetime import date
 
-from sqlalchemy import Date, ForeignKey, Numeric, String, Text
+from sqlalchemy import Date, ForeignKey, Integer, Numeric, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -26,6 +26,11 @@ class PurchasedInput(Base):
     total_cost: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False)
     low_stock_threshold: Mapped[float] = mapped_column(Numeric(10, 2), nullable=True)
     notes: Mapped[str] = mapped_column(Text, nullable=True)
+    payment_condition: Mapped[str] = mapped_column(String(20), nullable=False, default="a_vista")
+    payment_method: Mapped[str] = mapped_column(String(80), nullable=True)
+    installment_count: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    installment_frequency: Mapped[str] = mapped_column(String(20), nullable=True)
+    first_installment_date: Mapped[date] = mapped_column(Date, nullable=True)
 
     input_catalog = relationship("InputCatalog", back_populates="purchase_entries")
     farm = relationship("Farm", back_populates="purchased_inputs")
