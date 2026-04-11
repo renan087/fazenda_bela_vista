@@ -1,6 +1,17 @@
 {% extends "base.html" %}
 {% from "partials/module_history_filter_toolbar.html" import module_period_picker_inline, module_period_picker_payables_inline %}
 {% block content %}
+{% macro finance_bank_avatar(bank, size_classes, text_size_class, fallback_text) -%}
+  {% if bank and bank.get('logo') %}
+  <span class="inline-flex {{ size_classes }} shrink-0 items-center justify-center overflow-hidden rounded-full bg-white ring-1 ring-slate-200/90">
+    <img src="{{ url_for('static', path=bank.get('logo')) }}" alt="" class="h-full w-full object-contain p-0.5" loading="lazy" width="40" height="40" decoding="async">
+  </span>
+  {% elif bank %}
+  <span class="inline-flex {{ size_classes }} shrink-0 items-center justify-center rounded-full {{ text_size_class }} font-bold" style="background: {{ bank.bg }}; color: {{ bank.fg }};">{{ bank.mark }}</span>
+  {% else %}
+  <span class="inline-flex {{ size_classes }} shrink-0 items-center justify-center rounded-full {{ text_size_class }} font-bold" style="background: #e2e8f0; color: #334155;">{{ fallback_text }}</span>
+  {% endif %}
+{%- endmacro %}
 <style>
 @keyframes financeStarIgnite {
     0% { transform: scale(1); filter: drop-shadow(0 0 0 rgba(245, 158, 11, 0)); }
@@ -133,10 +144,37 @@
     background: rgb(167 243 208);
     box-shadow: 0 10px 18px -14px rgba(16, 185, 129, 0.35);
 }
+
+/* Cabeçalho Contas: altura compacta (só título, subtítulo e ações + margens padrão) */
+.finance-accounts-page-header {
+    padding: 1rem 1.25rem;
+}
+.finance-accounts-page-header .stock-page-card-title {
+    margin-top: 0;
+}
+.finance-accounts-page-header .stock-page-card-subtitle {
+    margin-top: 0.35rem;
+}
+.finance-accounts-page-header > div {
+    gap: 0.75rem;
+}
+@media (min-width: 900px) {
+    .finance-accounts-page-header > div {
+        align-items: center;
+    }
+}
+@media (max-width: 899px) {
+    .finance-accounts-page-header {
+        padding: 0.75rem 1rem !important;
+    }
+    .finance-accounts-page-header > div {
+        gap: 0.65rem;
+    }
+}
 </style>
 <div class="stock-page-shell space-y-6">
-    <section class="stock-page-header rounded-[2rem] p-5 shadow-panel">
-        <div class="flex flex-wrap items-start justify-between gap-4">
+    <section class="stock-page-header finance-accounts-page-header rounded-[2rem] shadow-panel">
+        <div class="flex flex-wrap items-start justify-between gap-3 md:items-center md:gap-3">
             <div class="min-w-0 stock-page-header-intro" data-stock-header-intro>
                 <div class="stock-page-header-intro-inner">
                     <h2 class="stock-page-card-title">Contas</h2>
@@ -224,9 +262,7 @@
                 <div class="flex items-start justify-between gap-3">
                     <div class="min-w-0">
                         <div class="flex flex-wrap items-center gap-2">
-                            <span class="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-sm font-bold" style="background: {{ bank.bg if bank else '#e2e8f0' }}; color: {{ bank.fg if bank else '#334155' }};">
-                                {{ bank.mark if bank else account.bank_code }}
-                            </span>
+                            {{ finance_bank_avatar(bank, 'h-10 w-10', 'text-sm', account.bank_code) }}
                             <div class="min-w-0">
                                 <p class="truncate text-lg font-semibold text-slate-900">{{ account.account_name }}</p>
                                 <p class="truncate text-sm text-slate-500">({{ account.bank_code }}) {{ account.bank_name }}</p>
@@ -657,7 +693,7 @@
                             <button type="button" class="flex min-h-[3.25rem] w-full items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-left" data-bank-picker-trigger aria-expanded="false">
                                 <span class="flex min-w-0 items-center gap-3" data-bank-picker-display>
                                     {% if selected_bank %}
-                                    <span class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-xs font-bold" style="background: {{ selected_bank.bg }}; color: {{ selected_bank.fg }};">{{ selected_bank.mark }}</span>
+                                    {{ finance_bank_avatar(selected_bank, 'h-9 w-9', 'text-xs', selected_bank.mark) }}
                                     <span class="truncate text-sm font-medium text-slate-900">{% if selected_bank.code == '__other__' %}{{ selected_bank.name }}{% else %}({{ selected_bank.code }}) {{ selected_bank.name }}{% endif %}</span>
                                     {% else %}
                                     <span class="text-sm font-medium text-slate-500">Selecione o banco</span>
@@ -670,8 +706,8 @@
                             <div class="absolute left-0 right-0 top-[calc(100%+0.5rem)] z-30 hidden overflow-hidden rounded-[1.5rem] border border-slate-200 bg-white shadow-2xl" data-bank-picker-menu>
                                 <div class="max-h-72 overflow-y-auto py-2">
                                     {% for bank in finance_bank_options %}
-                                    <button type="button" class="flex w-full items-center gap-3 px-4 py-3 text-left transition hover:bg-slate-50" data-bank-option data-bank-code="{{ bank.code }}" data-bank-name="{{ bank.name }}" data-bank-mark="{{ bank.mark }}" data-bank-bg="{{ bank.bg }}" data-bank-fg="{{ bank.fg }}" data-bank-source="{{ bank.source }}">
-                                        <span class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-xs font-bold" style="background: {{ bank.bg }}; color: {{ bank.fg }};">{{ bank.mark }}</span>
+                                    <button type="button" class="flex w-full items-center gap-3 px-4 py-3 text-left transition hover:bg-slate-50" data-bank-option data-bank-code="{{ bank.code }}" data-bank-name="{{ bank.name }}" data-bank-mark="{{ bank.mark }}" data-bank-bg="{{ bank.bg }}" data-bank-fg="{{ bank.fg }}" data-bank-source="{{ bank.source }}" data-bank-logo="{{ url_for('static', path=bank.get('logo')) if bank.get('logo') else '' }}">
+                                        {{ finance_bank_avatar(bank, 'h-9 w-9', 'text-xs', bank.mark) }}
                                         <span class="text-sm font-medium text-slate-800">{% if bank.code == '__other__' %}{{ bank.name }}{% else %}({{ bank.code }}) {{ bank.name }}{% endif %}</span>
                                     </button>
                                     {% endfor %}
@@ -1435,10 +1471,14 @@
             const optionMark = option?.dataset.bankMark || '';
             const optionBg = option?.dataset.bankBg || '#e2e8f0';
             const optionFg = option?.dataset.bankFg || '#334155';
+            const optionLogo = option?.dataset.bankLogo || '';
             if (display) {
                 if (optionCode && optionName) {
+                    const avatarHtml = optionLogo
+                        ? `<span class="inline-flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-white ring-1 ring-slate-200/90"><img src="${optionLogo}" alt="" class="h-full w-full object-contain p-0.5" loading="lazy" decoding="async" width="40" height="40"></span>`
+                        : `<span class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-xs font-bold" style="background: ${optionBg}; color: ${optionFg};">${optionMark || optionCode}</span>`;
                     display.innerHTML = `
-                        <span class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-xs font-bold" style="background: ${optionBg}; color: ${optionFg};">${optionMark || optionCode}</span>
+                        ${avatarHtml}
                         <span class="truncate text-sm font-medium text-slate-900">${optionCode === '__other__' ? optionName : `(${optionCode}) ${optionName}`}</span>
                     `;
                 } else {
@@ -2243,12 +2283,16 @@
                 const mark = option.dataset.bankMark || code;
                 const bg = option.dataset.bankBg || '#e2e8f0';
                 const fg = option.dataset.bankFg || '#334155';
+                const logoUrl = option.dataset.bankLogo || '';
                 const source = option.dataset.bankSource || 'builtin';
                 codeInput.value = code;
                 nameInput.value = name;
                 if (display) {
+                    const avatarHtml = logoUrl
+                        ? `<span class="inline-flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-white ring-1 ring-slate-200/90"><img src="${logoUrl}" alt="" class="h-full w-full object-contain p-0.5" loading="lazy" decoding="async" width="40" height="40"></span>`
+                        : `<span class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-xs font-bold" style="background: ${bg}; color: ${fg};">${mark}</span>`;
                     display.innerHTML = `
-                        <span class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-xs font-bold" style="background: ${bg}; color: ${fg};">${mark}</span>
+                        ${avatarHtml}
                         <span class="truncate text-sm font-medium text-slate-900">${code === '__other__' ? name : `(${code}) ${name}`}</span>
                     `;
                 }

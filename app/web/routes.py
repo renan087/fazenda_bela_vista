@@ -178,17 +178,17 @@ SUPPLY_CATEGORY_OPTIONS = [
     "Outros",
 ]
 FINANCE_BANK_OPTIONS = [
-    {"code": "001", "name": "Banco do Brasil S.A.", "mark": "BB", "bg": "#fde047", "fg": "#1d4ed8"},
-    {"code": "237", "name": "Banco Bradesco S.A.", "mark": "B", "bg": "#e11d48", "fg": "#ffffff"},
-    {"code": "341", "name": "Itaú Unibanco S.A.", "mark": "I", "bg": "#f97316", "fg": "#ffffff"},
-    {"code": "104", "name": "Caixa Econômica Federal", "mark": "CA", "bg": "#2563eb", "fg": "#ffffff"},
-    {"code": "033", "name": "Banco Santander (Brasil) S.A.", "mark": "S", "bg": "#dc2626", "fg": "#ffffff"},
-    {"code": "756", "name": "Banco Cooperativo do Brasil S.A. (Sicoob)", "mark": "SC", "bg": "#16a34a", "fg": "#ffffff"},
-    {"code": "748", "name": "Banco Cooperativo Sicredi S.A.", "mark": "SI", "bg": "#22c55e", "fg": "#ffffff"},
-    {"code": "077", "name": "Banco Inter S.A.", "mark": "IN", "bg": "#f97316", "fg": "#ffffff"},
-    {"code": "260", "name": "Nu Pagamentos S.A. (Nubank)", "mark": "NU", "bg": "#7c3aed", "fg": "#ffffff"},
-    {"code": "336", "name": "Banco C6 S.A.", "mark": "C6", "bg": "#111827", "fg": "#ffffff"},
-    {"code": "422", "name": "Banco Safra S.A.", "mark": "SA", "bg": "#0f766e", "fg": "#ffffff"},
+    {"code": "001", "name": "Banco do Brasil S.A.", "mark": "BB", "bg": "#fde047", "fg": "#1d4ed8", "logo": "images/finance-banks/001.svg"},
+    {"code": "237", "name": "Banco Bradesco S.A.", "mark": "B", "bg": "#e11d48", "fg": "#ffffff", "logo": "images/finance-banks/237.svg"},
+    {"code": "341", "name": "Itaú Unibanco S.A.", "mark": "I", "bg": "#f97316", "fg": "#ffffff", "logo": "images/finance-banks/341.svg"},
+    {"code": "104", "name": "Caixa Econômica Federal", "mark": "CA", "bg": "#2563eb", "fg": "#ffffff", "logo": "images/finance-banks/104.svg"},
+    {"code": "033", "name": "Banco Santander (Brasil) S.A.", "mark": "S", "bg": "#dc2626", "fg": "#ffffff", "logo": "images/finance-banks/033.svg"},
+    {"code": "756", "name": "Banco Cooperativo do Brasil S.A. (Sicoob)", "mark": "SC", "bg": "#16a34a", "fg": "#ffffff", "logo": "images/finance-banks/756.png"},
+    {"code": "748", "name": "Banco Cooperativo Sicredi S.A.", "mark": "SI", "bg": "#22c55e", "fg": "#ffffff", "logo": "images/finance-banks/748.png"},
+    {"code": "077", "name": "Banco Inter S.A.", "mark": "IN", "bg": "#f97316", "fg": "#ffffff", "logo": "images/finance-banks/077.svg"},
+    {"code": "260", "name": "Nu Pagamentos S.A. (Nubank)", "mark": "NU", "bg": "#7c3aed", "fg": "#ffffff", "logo": "images/finance-banks/260.svg"},
+    {"code": "336", "name": "Banco C6 S.A.", "mark": "C6", "bg": "#111827", "fg": "#ffffff", "logo": "images/finance-banks/336.svg"},
+    {"code": "422", "name": "Banco Safra S.A.", "mark": "SA", "bg": "#0f766e", "fg": "#ffffff", "logo": "images/finance-banks/422.svg"},
 ]
 FINANCE_TRANSACTION_EXPENSE_CATEGORIES = [
     "Acaricida",
