@@ -13,6 +13,7 @@ from app.db.init_db import create_tables
 from app.db.init_db import seed_admin
 from app.db.init_db import seed_demo_data
 from app.db.session import SessionLocal
+from app.routers.asaas_webhook import router as asaas_webhook_router
 from app.routers.api import router as api_router
 from app.routers.auth import api_router as auth_api_router
 from app.routers.auth import router as auth_router
@@ -59,6 +60,7 @@ app.add_middleware(
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 
 app.include_router(auth_router)
+app.include_router(asaas_webhook_router)
 app.include_router(web_router)
 app.include_router(auth_api_router)
 app.include_router(api_router)

@@ -11,6 +11,7 @@ from app.db.base import Base
 from app.db.session import engine
 from app.models import (
     AgronomicProfile,
+    AsaasPayment,
     BackupRun,
     CoffeeVariety,
     CropSeason,
@@ -454,6 +455,18 @@ def _sync_schema() -> None:
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_data BYTEA",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMPTZ",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS asaas_customer_id VARCHAR(40)",
+        """
+        CREATE TABLE IF NOT EXISTS asaas_payments (
+            id SERIAL PRIMARY KEY,
+            payment_id VARCHAR(40) NOT NULL UNIQUE,
+            user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+            status VARCHAR(40),
+            paid_at TIMESTAMPTZ,
+            last_event VARCHAR(80),
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+        """,
+        "CREATE INDEX IF NOT EXISTS ix_asaas_payments_user_id ON asaas_payments(user_id)",
         "ALTER TABLE equipment_assets ADD COLUMN IF NOT EXISTS manufacturer VARCHAR(180)",
         "ALTER TABLE equipment_assets ADD COLUMN IF NOT EXISTS manufacture_year INTEGER",
         "ALTER TABLE finance_accounts ADD COLUMN IF NOT EXISTS account_name VARCHAR(180)",

@@ -36,6 +36,8 @@ services:
         fromDatabase:
           name: fazenda-bela-vista-db
           property: connectionString
+      - key: ASAAS_WEBHOOK_TOKEN
+        sync: false
 
 databases:
   - name: fazenda-bela-vista-db

@@ -1,3 +1,4 @@
+from app.models.asaas_payment import AsaasPayment
 from app.models.agronomic_profile import AgronomicProfile
 from app.models.backup_run import BackupRun
 from app.models.coffee_variety import CoffeeVariety
@@ -35,6 +36,7 @@ from app.models.trusted_browser_token import TrustedBrowserToken
 from app.models.user import User
 
 __all__ = [
+    "AsaasPayment",
     "AgronomicProfile",
     "BackupRun",
     "CoffeeVariety",

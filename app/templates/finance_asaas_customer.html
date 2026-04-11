@@ -187,12 +187,22 @@
     {% endif %}
 
     {% if payment_charge_response and payment_charge_response is mapping and payment_charge_response.get('id') %}
-    <div class="rounded-[1.5rem] border border-slate-200 bg-white p-5 shadow-sm">
+    {% set pay_status = (payment_charge_response.get('status') or '')|upper %}
+    <div class="rounded-[1.5rem] border border-slate-200 bg-white p-5 shadow-sm" data-asaas-payment-card data-payment-id="{{ payment_charge_response.get('id') }}" data-initial-status="{{ payment_charge_response.get('status') or '' }}">
         <p class="text-xs font-semibold uppercase tracking-[0.15em] text-slate-500">Cobrança criada</p>
+        {% if pay_status in ['RECEIVED', 'CONFIRMED'] %}
+        <div class="mt-3 rounded-xl border border-emerald-200 bg-emerald-50/95 px-3 py-2 text-sm font-medium text-emerald-950">
+            Pagamento confirmado no Asaas.
+        </div>
+        {% endif %}
+        <div id="asaas-payment-paid-banner" class="{% if pay_status in ['RECEIVED', 'CONFIRMED'] %}hidden{% else %}mt-3 hidden{% endif %} rounded-xl border border-emerald-200 bg-emerald-50/95 px-3 py-2 text-sm font-medium text-emerald-950" role="status" aria-live="polite">
+            Pagamento recebido — atualizamos o status automaticamente.
+        </div>
+        <p class="{% if pay_status in ['RECEIVED', 'CONFIRMED'] %}hidden{% else %}mt-2 text-xs text-slate-500{% endif %}" data-asaas-poll-hint>Aguardando confirmação do pagamento… Esta página verifica o status automaticamente (também via webhook no servidor).</p>
         <dl class="mt-3 space-y-2 text-sm">
             <div class="flex flex-wrap gap-2"><dt class="text-slate-500">ID</dt><dd class="font-mono text-slate-900">{{ payment_charge_response.get('id') }}</dd></div>
             {% if payment_charge_response.get('status') %}
-            <div class="flex flex-wrap gap-2"><dt class="text-slate-500">Status</dt><dd class="text-slate-900">{{ payment_charge_response.get('status') }}</dd></div>
+            <div class="flex flex-wrap gap-2"><dt class="text-slate-500">Status</dt><dd class="text-slate-900" data-asaas-status-cell>{{ payment_charge_response.get('status') }}</dd></div>
             {% endif %}
             {% if 'value' in payment_charge_response %}
             <div class="flex flex-wrap gap-2"><dt class="text-slate-500">Valor</dt><dd class="text-slate-900">{{ payment_charge_response.get('value') }}</dd></div>
@@ -303,6 +313,46 @@
     phoneInput?.addEventListener('input', () => { phoneInput.value = formatPhone(phoneInput.value); });
 
     syncLabels();
+})();
+
+(function () {
+    const card = document.querySelector('[data-asaas-payment-card]');
+    if (!card) return;
+    const pid = card.getAttribute('data-payment-id');
+    const initial = (card.getAttribute('data-initial-status') || '').trim().toUpperCase();
+    if (!pid || initial === 'RECEIVED' || initial === 'CONFIRMED') return;
+
+    const banner = document.getElementById('asaas-payment-paid-banner');
+    const hint = document.querySelector('[data-asaas-poll-hint]');
+    const statusCell = document.querySelector('[data-asaas-status-cell]');
+    const url = '/gestao-financeira/assinatura/cliente-asaas/pagamento-status?payment_id=' + encodeURIComponent(pid);
+    let attempts = 0;
+    const maxAttempts = 280;
+
+    const showPaid = () => {
+        if (banner) banner.classList.remove('hidden');
+        if (hint) hint.classList.add('hidden');
+    };
+
+    const poll = async () => {
+        attempts += 1;
+        if (attempts > maxAttempts) return;
+        try {
+            const res = await fetch(url, { credentials: 'same-origin', headers: { Accept: 'application/json' } });
+            if (!res.ok) return;
+            const data = await res.json();
+            if (data.paid) {
+                showPaid();
+                if (statusCell && data.status) statusCell.textContent = data.status;
+                return;
+            }
+        } catch (_) {
+            /* rede */
+        }
+        window.setTimeout(poll, 4000);
+    };
+
+    window.setTimeout(poll, 2500);
 })();
 </script>
 {% endblock %}

@@ -13,7 +13,7 @@ import unicodedata
 import urllib.error
 import urllib.request
 
-from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, Request, Response, UploadFile, status
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Query, Request, Response, UploadFile, status
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
 from openpyxl import Workbook
@@ -35,6 +35,7 @@ from app.core.timezone import app_now, format_app_datetime, today_in_app_timezon
 from app.core.user_context import persist_user_context, sync_user_context_from_preferences
 from app.db.session import get_db
 from app.models import (
+    AsaasPayment,
     AgronomicProfile,
     CoffeeVariety,
     CropSeason,
@@ -68,7 +69,8 @@ from app.services.asaas_customers import (
     create_asaas_customer,
     validate_asaas_customer_form,
 )
-from app.services.asaas_payments import create_asaas_payment
+from app.services.asaas_payment_sync import upsert_asaas_payment_row, user_owns_asaas_payment_payload
+from app.services.asaas_payments import create_asaas_payment, get_asaas_payment, is_asaas_status_paid
 from app.services.backup_service import delete_backup_run, execute_backup
 from app.services.dashboard import build_dashboard_context
 from app.services.finance_overview import (
@@ -3250,6 +3252,67 @@ def finance_asaas_test_charge(
                 charge_error_message="",
             ),
         ),
+    )
+
+
+@router.get("/gestao-financeira/assinatura/cliente-asaas/pagamento-status")
+def finance_asaas_payment_status(
+    payment_id: str = Query(..., min_length=1),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    """Polling autenticado: status da cobrança (API Asaas + cache local do webhook)."""
+    settings = get_settings()
+    pid = (payment_id or "").strip()
+
+    row = db.query(AsaasPayment).filter(AsaasPayment.payment_id == pid).first()
+    if row and row.user_id is not None and row.user_id != user.id:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Acesso negado")
+
+    if row and row.user_id == user.id and row.status and is_asaas_status_paid(row.status):
+        return JSONResponse(
+            {
+                "payment_id": pid,
+                "status": row.status,
+                "paid": True,
+                "paid_at": row.paid_at.isoformat() if row.paid_at else None,
+                "source": "database",
+            }
+        )
+
+    api_key = (settings.asaas_api_key or "").strip()
+    if not api_key:
+        return JSONResponse(
+            {"error": "ASAAS_API_KEY não configurada", "paid": False, "payment_id": pid},
+            status_code=503,
+        )
+
+    data, err = get_asaas_payment(
+        base_url=settings.asaas_api_base_url,
+        api_key=api_key,
+        payment_id=pid,
+    )
+    if err or not data:
+        return JSONResponse(
+            {"error": err or "Cobrança não encontrada", "paid": False, "payment_id": pid},
+            status_code=404,
+        )
+
+    if not user_owns_asaas_payment_payload(user, data):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Cobrança não pertence ao usuário")
+
+    upsert_asaas_payment_row(db, payment=data, last_event="POLL", commit=True)
+    row2 = db.query(AsaasPayment).filter(AsaasPayment.payment_id == pid).first()
+    st = str(data.get("status") or "").strip() or None
+
+    return JSONResponse(
+        {
+            "payment_id": pid,
+            "status": st,
+            "paid": is_asaas_status_paid(st),
+            "paid_at": row2.paid_at.isoformat() if row2 and row2.paid_at else None,
+            "source": "api",
+        }
     )
 
 

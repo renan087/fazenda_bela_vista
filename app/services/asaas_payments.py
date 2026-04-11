@@ -62,3 +62,43 @@ def create_asaas_payment(
     if not isinstance(data, dict):
         return None, "Resposta inesperada do Asaas."
     return data, None
+
+
+def get_asaas_payment(
+    *,
+    base_url: str,
+    api_key: str,
+    payment_id: str,
+) -> tuple[dict[str, Any] | None, str | None]:
+    """GET /v3/payments/{id} — usado para polling quando o webhook ainda não sincronizou."""
+    pid = (payment_id or "").strip()
+    if not pid:
+        return None, "ID da cobrança inválido."
+    url = base_url.rstrip("/") + f"/v3/payments/{pid}"
+    headers = {
+        "access_token": api_key,
+        "User-Agent": "SiSFarm/AsaasIntegration",
+    }
+    try:
+        with httpx.Client(timeout=45.0) as client:
+            response = client.get(url, headers=headers)
+    except httpx.HTTPError as exc:
+        return None, f"Erro de rede ao contatar o Asaas: {exc}"
+
+    try:
+        data = response.json()
+    except Exception:
+        return None, f"Resposta inválida do Asaas (HTTP {response.status_code})."
+
+    if response.status_code >= 400:
+        return None, f"Erro Asaas (HTTP {response.status_code})."
+
+    if not isinstance(data, dict):
+        return None, "Resposta inesperada do Asaas."
+    return data, None
+
+
+def is_asaas_status_paid(status: str | None) -> bool:
+    if not status:
+        return False
+    return status.strip().upper() in {"RECEIVED", "CONFIRMED"}

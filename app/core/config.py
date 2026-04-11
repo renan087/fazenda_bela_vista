@@ -50,6 +50,8 @@ class Settings(BaseSettings):
     # Asaas (assinaturas / clientes). Opcional: sem ASAAS_API_KEY o formulário só valida e exibe o JSON.
     asaas_api_key: str | None = None
     asaas_api_base_url: str = "https://api-sandbox.asaas.com"
+    # Token do webhook (campo "Token de autenticação" no Asaas); enviado no header asaas-access-token.
+    asaas_webhook_token: str | None = None
 
     @property
     def is_production(self) -> bool:
