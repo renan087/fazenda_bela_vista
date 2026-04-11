@@ -349,10 +349,21 @@
                                         <p class="text-xs uppercase tracking-[0.2em] text-slate-400">Parcelas</p>
                                         <div class="mt-3 grid gap-2 sm:grid-cols-2">
                                             {% for installment in transaction.installments|sort(attribute='installment_number') %}
+                                            {% set inst_paid = (installment.status or '')|lower == 'pago' %}
                                             <div class="rounded-xl bg-white px-3 py-3 ring-1 ring-slate-200/80">
-                                                <p class="text-xs font-semibold uppercase tracking-[0.15em] text-slate-400">{{ installment.installment_number }}ª parcela</p>
+                                                <div class="flex items-start justify-between gap-2">
+                                                    <p class="text-xs font-semibold uppercase tracking-[0.15em] text-slate-400">{{ installment.installment_number }}ª parcela</p>
+                                                    {% if inst_paid %}
+                                                    <span class="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-emerald-700" title="Parcela paga" aria-hidden="true">
+                                                        <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="m5 13 4 4L19 7"/></svg>
+                                                    </span>
+                                                    {% endif %}
+                                                </div>
                                                 <p class="mt-1 text-sm font-semibold text-slate-900">{{ installment.due_date.strftime('%d/%m/%Y') if installment.due_date else '-' }}</p>
-                                                <p class="mt-1 text-sm {% if transaction.operation_type == 'receita' %}text-emerald-700{% else %}text-rose-600{% endif %}">R$ {{ installment.amount|decimal_br }}</p>
+                                                <p class="mt-1 text-sm font-semibold {% if inst_paid %}text-emerald-700{% elif transaction.operation_type == 'receita' %}text-emerald-700{% else %}text-rose-600{% endif %}">R$ {{ installment.amount|decimal_br }}</p>
+                                                {% if inst_paid and installment.paid_at %}
+                                                <p class="mt-2 inline-flex items-center rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-800 ring-1 ring-emerald-200/90">Pago em {{ installment.paid_at.strftime('%d/%m/%Y') }}</p>
+                                                {% endif %}
                                             </div>
                                             {% endfor %}
                                         </div>
@@ -1586,6 +1597,15 @@
         return `${day}/${month}/${year}`;
     };
 
+    const financeEditInstallments = [
+        {% if edit_finance_transaction and edit_finance_transaction.installments %}
+        {% for i in edit_finance_transaction.installments|sort(attribute='installment_number') %}
+        { installment_number: {{ i.installment_number }}, status: {{ (i.status or '')|tojson }}, paid_at: {% if i.paid_at %}{{ i.paid_at.isoformat()|tojson }}{% else %}null{% endif %} }{% if not loop.last %},{% endif %}
+
+        {% endfor %}
+        {% endif %}
+    ];
+
     const addInstallmentMonths = (baseDate, months) => {
         const year = baseDate.getFullYear() + Math.floor((baseDate.getMonth() + months) / 12);
         const month = (baseDate.getMonth() + months) % 12;
@@ -1642,18 +1662,40 @@
         const totalCents = Math.round(amount * 100);
         const baseCents = Math.floor(totalCents / count);
         const remainder = totalCents % count;
+        const isEditingExisting = Boolean(
+            transactionForm?.action && /\/lancamentos\/\d+\/editar/.test(String(transactionForm.action)),
+        );
+        const opType = transactionTypeSelect?.value || 'despesa';
+        const unpaidAmountClass = opType === 'receita' ? 'text-emerald-700' : 'text-rose-600';
+        const checkSvg = '<svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="m5 13 4 4L19 7"/></svg>';
         for (let index = 0; index < count; index += 1) {
             const currentCents = baseCents + (index < remainder ? 1 : 0);
             const dueDate = frequency === 'anual'
                 ? addInstallmentYears(firstDate, index)
                 : addInstallmentMonths(firstDate, index);
             const dueIso = `${dueDate.getFullYear()}-${String(dueDate.getMonth() + 1).padStart(2, '0')}-${String(dueDate.getDate()).padStart(2, '0')}`;
+            const saved = isEditingExisting ? financeEditInstallments.find((row) => row.installment_number === index + 1) : undefined;
+            const isPaid = Boolean(saved && String(saved.status || '').toLowerCase() === 'pago');
+            const amountClass = isPaid ? 'text-emerald-700' : unpaidAmountClass;
+            const checkBlock = isPaid
+                ? `<span class="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-emerald-700" title="Parcela paga" aria-hidden="true">${checkSvg}</span>`
+                : '';
+            let chipBlock = '';
+            if (isPaid && saved && saved.paid_at) {
+                const raw = String(saved.paid_at);
+                const datePart = raw.includes('T') ? raw.split('T')[0] : raw;
+                chipBlock = `<p class="mt-2 inline-flex items-center rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-800 ring-1 ring-emerald-200/90">Pago em ${formatDateLabel(datePart)}</p>`;
+            }
             const card = document.createElement('div');
             card.className = 'rounded-xl bg-white px-3 py-3 ring-1 ring-slate-200/80';
             card.innerHTML = `
-                <p class="text-xs font-semibold uppercase tracking-[0.15em] text-slate-400">${index + 1}ª parcela</p>
+                <div class="flex items-start justify-between gap-2">
+                    <p class="text-xs font-semibold uppercase tracking-[0.15em] text-slate-400">${index + 1}ª parcela</p>
+                    ${checkBlock}
+                </div>
                 <p class="mt-1 text-sm font-semibold text-slate-900">${formatDateLabel(dueIso)}</p>
-                <p class="mt-1 text-sm text-slate-600">${formatCurrencyLabel((currentCents / 100).toFixed(2))}</p>
+                <p class="mt-1 text-sm font-semibold ${amountClass}">${formatCurrencyLabel((currentCents / 100).toFixed(2))}</p>
+                ${chipBlock}
             `;
             transactionInstallmentsPreview.appendChild(card);
         }
