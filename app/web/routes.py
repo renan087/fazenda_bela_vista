@@ -3621,6 +3621,63 @@ def revert_finance_transaction_installment_payment_action(
     return _redirect("/gestao-financeira/contas?finance_tab=payables")
 
 
+@router.get("/gestao-financeira/contas/parcelas/{installment_id}/observacao-pagamento")
+def read_installment_payment_notes(
+    request: Request,
+    installment_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    del user
+    repo = _repository(db)
+    scope = _global_scope_context(request, repo)
+    active_farm = scope.get("active_farm")
+    installment = (
+        repo.db.query(FinanceTransactionInstallment)
+        .options(joinedload(FinanceTransactionInstallment.transaction))
+        .filter(FinanceTransactionInstallment.id == installment_id)
+        .first()
+    )
+    if not installment or not installment.transaction:
+        return JSONResponse({"ok": False, "error": "Parcela não encontrada."}, status_code=404)
+    if not active_farm or installment.transaction.farm_id != active_farm.id:
+        return JSONResponse({"ok": False, "error": "Acesso negado."}, status_code=403)
+    if (installment.status or "").strip().lower() != "pago":
+        return JSONResponse({"ok": False, "error": "Somente parcelas pagas possuem observações de pagamento."}, status_code=400)
+    return JSONResponse({"ok": True, "payment_notes": installment.payment_notes or ""})
+
+
+@router.post("/gestao-financeira/contas/parcelas/{installment_id}/observacao-pagamento")
+def update_installment_payment_notes_action(
+    request: Request,
+    installment_id: int,
+    csrf_token: str = Form(...),
+    payment_notes: str | None = Form(None),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    del user
+    validate_csrf(request, csrf_token)
+    repo = _repository(db)
+    scope = _global_scope_context(request, repo)
+    active_farm = scope.get("active_farm")
+    installment = (
+        repo.db.query(FinanceTransactionInstallment)
+        .options(joinedload(FinanceTransactionInstallment.transaction))
+        .filter(FinanceTransactionInstallment.id == installment_id)
+        .first()
+    )
+    if not installment or not installment.transaction:
+        return JSONResponse({"ok": False, "error": "Parcela não encontrada."}, status_code=404)
+    if not active_farm or installment.transaction.farm_id != active_farm.id:
+        return JSONResponse({"ok": False, "error": "Acesso negado."}, status_code=403)
+    if (installment.status or "").strip().lower() != "pago":
+        return JSONResponse({"ok": False, "error": "Observações só podem ser editadas em parcelas já pagas."}, status_code=400)
+    cleaned = _clean_text(payment_notes)
+    repo.update(installment, {"payment_notes": cleaned})
+    return JSONResponse({"ok": True, "payment_notes": cleaned or ""})
+
+
 @router.get("/gestao-financeira/contas/lancamentos/anexos/{attachment_id}")
 def open_finance_transaction_attachment(
     request: Request,

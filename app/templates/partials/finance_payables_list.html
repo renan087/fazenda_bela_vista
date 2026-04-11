@@ -46,7 +46,7 @@
                         <form method="post" action="/gestao-financeira/contas/parcelas/{{ installment.id }}/cancelar-pagamento" onsubmit="return confirm('Cancelar o pagamento desta parcela?');">
                             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                             <input type="hidden" name="redirect_to" value="{{ finance_payables_redirect_to }}">
-                            <button type="submit" class="finance-payables-check cursor-pointer border-emerald-200 bg-emerald-50 text-emerald-600" title="Cancelar pagamento">
+                            <button type="submit" class="finance-payables-check finance-payables-check--paid cursor-pointer" title="Cancelar pagamento">
                                 <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4">
                                     <path d="m5 13 4 4L19 7"/>
                                 </svg>

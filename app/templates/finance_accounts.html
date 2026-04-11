@@ -122,6 +122,17 @@
     box-shadow: 0 10px 18px -16px rgba(148, 163, 184, 0.35);
     background: rgba(248, 250, 252, 0.98);
 }
+
+/* Parcela paga: fundo verde visível (o base .finance-payables-check sobrescrevia bg-emerald-50) */
+.finance-payables-check.finance-payables-check--paid {
+    border-color: rgba(16, 185, 129, 0.55);
+    background: rgb(209 250 229);
+    color: rgb(5 120 85);
+}
+.finance-payables-check.finance-payables-check--paid:hover {
+    background: rgb(167 243 208);
+    box-shadow: 0 10px 18px -14px rgba(16, 185, 129, 0.35);
+}
 </style>
 <div class="stock-page-shell space-y-6">
     <section class="stock-page-header rounded-[2rem] p-5 shadow-panel">
@@ -364,6 +375,11 @@
                                                 {% if inst_paid and installment.paid_at %}
                                                 <p class="mt-2 inline-flex items-center rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-800 ring-1 ring-emerald-200/90">Pago em {{ installment.paid_at.strftime('%d/%m/%Y') }}</p>
                                                 {% endif %}
+                                                {% if inst_paid %}
+                                                <p class="mt-2">
+                                                    <button type="button" class="text-xs font-semibold text-brand-700 hover:text-brand-600 hover:underline" data-finance-installment-notes-trigger data-installment-id="{{ installment.id }}" data-parcel-label="{{ installment.installment_number }}ª parcela">Observações do pagamento</button>
+                                                </p>
+                                                {% endif %}
                                             </div>
                                             {% endfor %}
                                         </div>
@@ -524,6 +540,34 @@
                         <button class="rounded-2xl bg-brand-500 px-4 py-3 font-semibold text-white hover:bg-brand-700">Confirmar pagamento</button>
                     </div>
                 </form>
+            </div>
+        </div>
+    </dialog>
+
+    <dialog id="finance-installment-payment-notes-modal" class="app-modal rounded-[2rem] p-0 shadow-2xl w-full max-w-lg overflow-hidden">
+        <div class="bg-white p-6 sm:p-8">
+            <div class="flex items-start justify-between gap-4">
+                <div class="min-w-0">
+                    <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Parcela</p>
+                    <h3 class="mt-2 text-2xl font-semibold">Observações do pagamento</h3>
+                    <p class="mt-2 text-sm text-slate-500" data-installment-notes-parcel-label>—</p>
+                </div>
+                <button type="button" class="modal-close-button" aria-label="Fechar" data-installment-notes-close>
+                    <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <path d="M18 6 6 18"/>
+                        <path d="m6 6 12 12"/>
+                    </svg>
+                </button>
+            </div>
+            <div class="mt-6 grid gap-4">
+                <label class="grid gap-2">
+                    <span class="text-sm font-medium text-slate-700">Texto</span>
+                    <textarea rows="5" class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-800 placeholder:text-slate-400 focus:border-brand-400 focus:outline-none focus:ring-2 focus:ring-brand-500/25" placeholder="Ex.: comprovante enviado, desconto acordado…" data-installment-notes-field></textarea>
+                </label>
+                <div class="flex flex-wrap justify-end gap-3">
+                    <button type="button" class="rounded-2xl bg-slate-100 px-4 py-3 font-semibold text-slate-700 hover:bg-slate-200" data-installment-notes-cancel>Cancelar</button>
+                    <button type="button" class="rounded-2xl bg-brand-500 px-4 py-3 font-semibold text-white hover:bg-brand-700" data-installment-notes-save>Salvar</button>
+                </div>
             </div>
         </div>
     </dialog>
@@ -906,6 +950,7 @@
     const transactionFormInitialState = transactionForm ? new FormData(transactionForm) : null;
     const createFormAction = '/gestao-financeira/contas';
     const createTransactionFormAction = '/gestao-financeira/contas/lancamentos';
+    const FINANCE_CSRF_TOKEN = {{ csrf_token|tojson }};
     const transactionCategoryOptions = {
         despesa: {{ finance_transaction_expense_categories|tojson }},
         receita: {{ finance_transaction_revenue_categories|tojson }},
@@ -1600,7 +1645,7 @@
     const financeEditInstallments = [
         {% if edit_finance_transaction and edit_finance_transaction.installments %}
         {% for i in edit_finance_transaction.installments|sort(attribute='installment_number') %}
-        { installment_number: {{ i.installment_number }}, status: {{ (i.status or '')|tojson }}, paid_at: {% if i.paid_at %}{{ i.paid_at.isoformat()|tojson }}{% else %}null{% endif %} }{% if not loop.last %},{% endif %}
+        { installment_number: {{ i.installment_number }}, id: {{ i.id }}, status: {{ (i.status or '')|tojson }}, paid_at: {% if i.paid_at %}{{ i.paid_at.isoformat()|tojson }}{% else %}null{% endif %}, payment_notes: {{ (i.payment_notes or '')|tojson }} }{% if not loop.last %},{% endif %}
 
         {% endfor %}
         {% endif %}
@@ -1698,8 +1743,104 @@
                 ${chipBlock}
             `;
             transactionInstallmentsPreview.appendChild(card);
+            if (isPaid && saved && saved.id) {
+                const wrap = document.createElement('p');
+                wrap.className = 'mt-2';
+                const nb = document.createElement('button');
+                nb.type = 'button';
+                nb.className = 'text-xs font-semibold text-brand-700 hover:text-brand-600 hover:underline';
+                nb.textContent = 'Observações do pagamento';
+                nb.setAttribute('data-finance-installment-notes-trigger', '');
+                nb.setAttribute('data-installment-id', String(saved.id));
+                nb.setAttribute('data-parcel-label', `${index + 1}ª parcela`);
+                wrap.appendChild(nb);
+                card.appendChild(wrap);
+            }
         }
     };
+
+    const installmentPaymentNotesModal = document.getElementById('finance-installment-payment-notes-modal');
+    const installmentNotesParcelLabel = document.querySelector('[data-installment-notes-parcel-label]');
+    const installmentNotesField = document.querySelector('[data-installment-notes-field]');
+    const installmentNotesSaveBtn = document.querySelector('[data-installment-notes-save]');
+    let installmentNotesCurrentId = null;
+
+    const closeInstallmentPaymentNotesModal = () => {
+        installmentPaymentNotesModal?.close();
+        unlockBackgroundScroll();
+        installmentNotesCurrentId = null;
+    };
+
+    const openInstallmentPaymentNotesModal = async (installmentId, parcelLabel) => {
+        if (!installmentPaymentNotesModal || !installmentNotesField) return;
+        installmentNotesCurrentId = String(installmentId);
+        if (installmentNotesParcelLabel) installmentNotesParcelLabel.textContent = parcelLabel || 'Parcela';
+        installmentNotesField.value = '';
+        try {
+            const res = await fetch(`/gestao-financeira/contas/parcelas/${encodeURIComponent(installmentId)}/observacao-pagamento`, {
+                credentials: 'same-origin',
+                headers: { Accept: 'application/json' },
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!data.ok) {
+                window.alert(data.error || 'Não foi possível carregar as observações.');
+                installmentNotesCurrentId = null;
+                return;
+            }
+            installmentNotesField.value = data.payment_notes || '';
+        } catch (e) {
+            window.alert('Erro ao carregar observações.');
+            installmentNotesCurrentId = null;
+            return;
+        }
+        installmentPaymentNotesModal.showModal();
+        lockBackgroundScroll();
+    };
+
+    document.addEventListener('click', (event) => {
+        const trigger = event.target.closest('[data-finance-installment-notes-trigger]');
+        if (!trigger) return;
+        const id = trigger.getAttribute('data-installment-id');
+        if (!id) return;
+        const label = trigger.getAttribute('data-parcel-label') || '';
+        event.preventDefault();
+        void openInstallmentPaymentNotesModal(id, label);
+    });
+
+    installmentPaymentNotesModal?.addEventListener('cancel', (event) => {
+        event.preventDefault();
+        closeInstallmentPaymentNotesModal();
+    });
+
+    document.querySelectorAll('[data-installment-notes-close], [data-installment-notes-cancel]').forEach((btn) => {
+        btn.addEventListener('click', () => closeInstallmentPaymentNotesModal());
+    });
+
+    installmentNotesSaveBtn?.addEventListener('click', async () => {
+        if (!installmentNotesCurrentId || !installmentNotesField) return;
+        const fd = new FormData();
+        fd.append('csrf_token', FINANCE_CSRF_TOKEN);
+        fd.append('payment_notes', installmentNotesField.value);
+        try {
+            const res = await fetch(`/gestao-financeira/contas/parcelas/${encodeURIComponent(installmentNotesCurrentId)}/observacao-pagamento`, {
+                method: 'POST',
+                body: fd,
+                credentials: 'same-origin',
+                headers: { Accept: 'application/json' },
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!data.ok) {
+                window.alert(data.error || 'Não foi possível salvar.');
+                return;
+            }
+            const row = financeEditInstallments.find((r) => String(r.id) === String(installmentNotesCurrentId));
+            if (row) row.payment_notes = data.payment_notes || '';
+            closeInstallmentPaymentNotesModal();
+            renderFinanceInstallmentPreview();
+        } catch (e) {
+            window.alert('Erro ao salvar observações.');
+        }
+    });
 
     const prepareFinanceTransactionCreateMode = () => {
         if (!transactionForm) return;
