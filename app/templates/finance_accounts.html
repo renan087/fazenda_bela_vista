@@ -521,6 +521,7 @@
             <div class="mt-6">
                 <form method="post" action="" class="grid gap-4" data-finance-payable-settle-form>
                     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    <input type="hidden" name="redirect_to" value="" data-finance-payable-settle-redirect>
                     <div class="rounded-[1.5rem] border border-slate-200 bg-slate-50/80 px-4 py-4 text-sm text-slate-600">
                         <p class="font-semibold text-slate-900" data-finance-payable-settle-title>-</p>
                         <p class="mt-1" data-finance-payable-settle-meta>-</p>
@@ -765,7 +766,7 @@
                         </label>
                         <label>
                             <span class="mb-2 block text-sm font-medium">Data do lançamento</span>
-                            <input type="date" name="launch_date" value="{{ edit_finance_transaction.launch_date.isoformat() if edit_finance_transaction and edit_finance_transaction.launch_date else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required>
+                            <input type="date" {% if not finance_installments_locked %}name="launch_date"{% endif %} value="{{ edit_finance_transaction.launch_date.isoformat() if edit_finance_transaction and edit_finance_transaction.launch_date else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 {% if finance_installments_locked %}cursor-not-allowed bg-slate-100 text-slate-600{% else %}bg-slate-50{% endif %}" {% if not finance_installments_locked %}required{% endif %} data-finance-launch-date {% if finance_installments_locked %}disabled{% endif %}>
                         </label>
                         <label>
                             <span class="mb-2 block text-sm font-medium">Valor</span>
@@ -799,6 +800,7 @@
                     {% if finance_installments_locked %}
                     <input type="hidden" name="operation_type" value="{{ edit_finance_transaction.operation_type }}" data-finance-installment-shadow>
                     <input type="hidden" name="amount" value="{{ edit_finance_transaction.amount }}" data-finance-installment-shadow>
+                    <input type="hidden" name="launch_date" value="{{ edit_finance_transaction.launch_date.isoformat() if edit_finance_transaction and edit_finance_transaction.launch_date else '' }}" data-finance-installment-shadow>
                     <input type="hidden" name="payment_condition" value="{{ transaction_payment_condition }}" data-finance-installment-shadow>
                     <input type="hidden" name="installment_count" value="{{ edit_finance_transaction.installment_count if edit_finance_transaction and edit_finance_transaction.payment_condition == 'a_prazo' else '' }}" data-finance-installment-shadow>
                     <input type="hidden" name="installment_frequency" value="{{ current_frequency }}" data-finance-installment-shadow>
@@ -814,11 +816,11 @@
                         </label>
                     </div>
                     {% if finance_installments_locked and transaction_payment_condition == 'a_vista' %}
-                    <p class="rounded-xl bg-amber-50 px-3 py-2.5 text-xs leading-relaxed text-amber-950 ring-1 ring-amber-200/90" data-finance-installments-lock-alert-fallback role="status">Com parcela já quitada, o tipo de operação (receita ou despesa), o valor total e o parcelamento não podem ser alterados. Estorne antes os pagamentos das parcelas no extrato para liberar a edição.</p>
+                    <p class="rounded-xl bg-amber-50 px-3 py-2.5 text-xs leading-relaxed text-amber-950 ring-1 ring-amber-200/90" data-finance-installments-lock-alert-fallback role="status">Com parcela já quitada, o tipo de operação (receita ou despesa), o valor total, a data do lançamento e o parcelamento não podem ser alterados. Estorne antes os pagamentos das parcelas no extrato para liberar a edição.</p>
                     {% endif %}
                     <div class="hidden rounded-[1.5rem] border border-slate-200 bg-slate-50/80 p-4" data-finance-installments-section>
                         {% if finance_installments_locked and transaction_payment_condition == 'a_prazo' %}
-                        <p class="mb-4 rounded-xl bg-amber-50 px-3 py-2.5 text-xs leading-relaxed text-amber-950 ring-1 ring-amber-200/90" data-finance-installments-lock-alert role="status">Com parcela já quitada, o tipo de operação (receita ou despesa), o valor total e o parcelamento não podem ser alterados. Estorne antes os pagamentos das parcelas no extrato para liberar a edição.</p>
+                        <p class="mb-4 rounded-xl bg-amber-50 px-3 py-2.5 text-xs leading-relaxed text-amber-950 ring-1 ring-amber-200/90" data-finance-installments-lock-alert role="status">Com parcela já quitada, o tipo de operação (receita ou despesa), o valor total, a data do lançamento e o parcelamento não podem ser alterados. Estorne antes os pagamentos das parcelas no extrato para liberar a edição.</p>
                         {% endif %}
                         <div class="grid gap-4 md:grid-cols-3">
                             <label>
@@ -1717,6 +1719,14 @@
             dispAmt.classList.remove('cursor-not-allowed', 'bg-slate-100', 'text-slate-600');
             dispAmt.classList.add('bg-slate-50');
         }
+        const launchDate = transactionForm.querySelector('[data-finance-launch-date]');
+        if (launchDate) {
+            launchDate.disabled = false;
+            launchDate.name = 'launch_date';
+            launchDate.required = true;
+            launchDate.classList.remove('cursor-not-allowed', 'bg-slate-100', 'text-slate-600');
+            launchDate.classList.add('bg-slate-50');
+        }
         const pc = transactionForm.querySelector('[data-finance-payment-condition]');
         if (pc) {
             pc.disabled = false;
@@ -2155,6 +2165,10 @@
         if (!button || !(payablesListRoot instanceof HTMLElement) || !payablesListRoot.contains(button)) return;
         if (!(button instanceof HTMLElement) || !payableSettleForm || !payableSettleModal) return;
         payableSettleForm.action = `/gestao-financeira/contas/parcelas/${button.dataset.installmentId}/quitar`;
+        const settleRedirectInput = payableSettleForm.querySelector('[data-finance-payable-settle-redirect]');
+        if (settleRedirectInput) {
+            settleRedirectInput.value = stripPayablesPartialFromUrl(window.location.href);
+        }
         if (payableSettleTitle) payableSettleTitle.textContent = button.dataset.transactionTitle || '-';
         if (payableSettleMeta) payableSettleMeta.textContent = `Parcela ${button.dataset.installmentLabel || '-'} • Vencimento ${button.dataset.installmentDueDate || '-'}`;
         if (payableSettleDateInput) payableSettleDateInput.value = button.dataset.paidDateDefault || '';

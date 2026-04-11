@@ -2503,7 +2503,7 @@ def _reject_finance_schedule_change_if_installment_paid(
     transaction: FinanceTransaction,
     payload: dict,
 ) -> None:
-    """Impede alterar tipo, valor, condição ou cronograma via POST quando já existe parcela paga (além da UI)."""
+    """Impede alterar tipo, valor, data do lançamento, condição ou cronograma via POST quando há parcela paga (além da UI)."""
     any_paid = any(
         (getattr(i, "status", None) or "").strip().lower() == "pago"
         for i in (transaction.installments or [])
@@ -2519,6 +2519,10 @@ def _reject_finance_schedule_change_if_installment_paid(
     if tr_amt.quantize(Decimal("0.01")) != pl_amt.quantize(Decimal("0.01")):
         raise ValueError(
             "Com parcela já quitada, o valor não pode ser alterado. Estorne os pagamentos das parcelas antes."
+        )
+    if payload["launch_date"] != transaction.launch_date:
+        raise ValueError(
+            "Com parcela já quitada, a data do lançamento não pode ser alterada. Estorne os pagamentos das parcelas antes."
         )
     prior_pc = (transaction.payment_condition or "a_vista").strip().lower()
     if payload["payment_condition"] != prior_pc:
@@ -2641,6 +2645,19 @@ def _payables_redirect_url(request: Request) -> str:
     if not items:
         return path
     return f"{path}?{urlencode(items)}"
+
+
+def _safe_finance_accounts_return_url(candidate: str | None, *, default: str) -> str:
+    """Aceita apenas path+query sob /gestao-financeira/contas (evita open redirect)."""
+    raw = (candidate or "").strip()
+    if not raw.startswith("/") or raw.startswith("//"):
+        return default
+    if len(raw) > 4096:
+        return default
+    path = raw.split("?", 1)[0].split("#", 1)[0]
+    if ".." in path or not path.startswith("/gestao-financeira/contas"):
+        return default
+    return raw
 
 
 def _finance_transaction_balance_amount_chunks(transaction: FinanceTransaction) -> list[float]:
@@ -3686,26 +3703,29 @@ def settle_finance_transaction_installment_action(
     csrf_token: str = Form(...),
     paid_at: str = Form(...),
     payment_notes: str | None = Form(None),
+    redirect_to: str | None = Form(None),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user_web),
 ):
     del user
     validate_csrf(request, csrf_token)
+    default_payables = "/gestao-financeira/contas?finance_tab=payables"
+    back_url = _safe_finance_accounts_return_url(redirect_to, default=default_payables)
     repo = _repository(db)
     scope = _global_scope_context(request, repo)
     active_farm = scope.get("active_farm")
     installment = repo.db.query(FinanceTransactionInstallment).options(joinedload(FinanceTransactionInstallment.transaction)).filter(FinanceTransactionInstallment.id == installment_id).first()
     if not installment or not installment.transaction:
         _flash(request, "error", "Parcela não encontrada.")
-        return _redirect("/gestao-financeira/contas?finance_tab=payables")
+        return _redirect(back_url)
     if not active_farm or installment.transaction.farm_id != active_farm.id:
         _flash(request, "error", "Esta parcela não pertence à fazenda ativa.")
-        return _redirect("/gestao-financeira/contas?finance_tab=payables")
+        return _redirect(back_url)
     try:
         paid_date = date.fromisoformat((paid_at or "").strip())
     except ValueError:
         _flash(request, "error", "Informe uma data válida para o pagamento.")
-        return _redirect("/gestao-financeira/contas?finance_tab=payables")
+        return _redirect(back_url)
     repo.update(
         installment,
         {
@@ -3715,7 +3735,7 @@ def settle_finance_transaction_installment_action(
         },
     )
     _flash(request, "success", "Parcela marcada como paga.")
-    return _redirect("/gestao-financeira/contas?finance_tab=payables")
+    return _redirect(back_url)
 
 
 @router.post("/gestao-financeira/contas/parcelas/{installment_id}/cancelar-pagamento")
