@@ -47,6 +47,9 @@ class Settings(BaseSettings):
     supabase_bucket_db: str = "backups-db"
     supabase_bucket_files: str = "anexos"
     backup_local_dirs: str | None = None
+    # Asaas (assinaturas / clientes). Opcional: sem ASAAS_API_KEY o formulário só valida e exibe o JSON.
+    asaas_api_key: str | None = None
+    asaas_api_base_url: str = "https://api-sandbox.asaas.com"
 
     @property
     def is_production(self) -> bool:

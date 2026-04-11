@@ -62,6 +62,12 @@ from app.models import (
     User,
 )
 from app.repositories.farm import FarmRepository
+from app.services.asaas_customers import (
+    asaas_digits,
+    build_asaas_customer_payload,
+    create_asaas_customer,
+    validate_asaas_customer_form,
+)
 from app.services.backup_service import delete_backup_run, execute_backup
 from app.services.dashboard import build_dashboard_context
 from app.services.finance_overview import (
@@ -2846,6 +2852,218 @@ def _finance_accounts_parse_form(
         "bank_code": custom_bank.bank_code,
         "bank_name": custom_bank.bank_name,
         "custom_bank": custom_bank,
+    }
+
+
+@router.get("/gestao-financeira/assinatura/cliente-asaas")
+def finance_asaas_customer_page(
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+    csrf_token: str = Depends(get_csrf_token),
+):
+    settings = get_settings()
+    repo = _repository(db)
+    return templates.TemplateResponse(
+        "finance_asaas_customer.html",
+        _base_context(
+            request,
+            user,
+            csrf_token,
+            "finance_asaas_customer",
+            title="Cliente Asaas (assinatura)",
+            _repo=repo,
+            asaas_configured=bool((settings.asaas_api_key or "").strip()),
+            asaas_api_base_url=settings.asaas_api_base_url,
+            form_errors=[],
+            form_success=False,
+            form_success_message="",
+            asaas_customer_response=None,
+            payload_preview_json="",
+            form_defaults=_finance_asaas_customer_defaults(user),
+        ),
+    )
+
+
+@router.post("/gestao-financeira/assinatura/cliente-asaas")
+def finance_asaas_customer_submit(
+    request: Request,
+    csrf_token: str = Form(...),
+    person_type: str = Form("FISICA"),
+    name: str = Form(""),
+    cpf_cnpj: str = Form(""),
+    email: str = Form(""),
+    mobile_phone: str = Form(""),
+    phone: str = Form(""),
+    postal_code: str = Form(""),
+    address_number: str = Form(""),
+    complement: str = Form(""),
+    province: str = Form(""),
+    address: str = Form(""),
+    company: str = Form(""),
+    external_reference: str = Form(""),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    validate_csrf(request, csrf_token)
+    settings = get_settings()
+    repo = _repository(db)
+
+    errors = validate_asaas_customer_form(
+        name=name,
+        cpf_cnpj=cpf_cnpj,
+        email=email,
+        mobile_phone=mobile_phone,
+        postal_code=postal_code,
+        address_number=address_number,
+        person_type=person_type,
+        phone=phone or None,
+    )
+
+    form_defaults = {
+        "person_type": (person_type or "FISICA").strip().upper(),
+        "name": name,
+        "cpf_cnpj": cpf_cnpj,
+        "email": email,
+        "mobile_phone": mobile_phone,
+        "phone": phone,
+        "postal_code": postal_code,
+        "address_number": address_number,
+        "complement": complement,
+        "province": province,
+        "address": address,
+        "company": company,
+        "external_reference": external_reference,
+    }
+
+    if errors:
+        return templates.TemplateResponse(
+            "finance_asaas_customer.html",
+            _base_context(
+                request,
+                user,
+                csrf_token,
+                "finance_asaas_customer",
+                title="Cliente Asaas (assinatura)",
+                _repo=repo,
+                asaas_configured=bool((settings.asaas_api_key or "").strip()),
+                asaas_api_base_url=settings.asaas_api_base_url,
+                form_errors=errors,
+                form_success=False,
+                form_success_message="",
+                asaas_customer_response=None,
+                payload_preview_json="",
+                form_defaults=form_defaults,
+            ),
+        )
+
+    doc = asaas_digits(cpf_cnpj)
+    mobile_d = asaas_digits(mobile_phone)
+    cep = asaas_digits(postal_code)
+    phone_d = asaas_digits(phone) if phone else ""
+
+    payload = build_asaas_customer_payload(
+        name=name,
+        cpf_cnpj_digits=doc,
+        email=email,
+        mobile_phone_digits=mobile_d,
+        postal_code_digits=cep,
+        address_number=address_number,
+        complement=complement or None,
+        province=province or None,
+        address=address or None,
+        phone_digits=phone_d or None,
+        company=company or None,
+        external_reference=external_reference or None,
+    )
+
+    preview = json.dumps(payload, ensure_ascii=False, indent=2)
+    api_key = (settings.asaas_api_key or "").strip()
+
+    if not api_key:
+        return templates.TemplateResponse(
+            "finance_asaas_customer.html",
+            _base_context(
+                request,
+                user,
+                csrf_token,
+                "finance_asaas_customer",
+                title="Cliente Asaas (assinatura)",
+                _repo=repo,
+                asaas_configured=False,
+                asaas_api_base_url=settings.asaas_api_base_url,
+                form_errors=[],
+                form_success=True,
+                form_success_message="Dados válidos. Configure ASAAS_API_KEY no ambiente para criar o cliente diretamente no Asaas. Abaixo está o JSON que seria enviado (POST /v3/customers).",
+                asaas_customer_response=None,
+                payload_preview_json=preview,
+                form_defaults=_finance_asaas_customer_defaults(user),
+            ),
+        )
+
+    created, err = create_asaas_customer(
+        base_url=settings.asaas_api_base_url,
+        api_key=api_key,
+        payload=payload,
+    )
+    if err:
+        _flash(request, "error", err)
+        return templates.TemplateResponse(
+            "finance_asaas_customer.html",
+            _base_context(
+                request,
+                user,
+                csrf_token,
+                "finance_asaas_customer",
+                title="Cliente Asaas (assinatura)",
+                _repo=repo,
+                asaas_configured=True,
+                asaas_api_base_url=settings.asaas_api_base_url,
+                form_errors=[],
+                form_success=False,
+                form_success_message="",
+                asaas_customer_response=None,
+                payload_preview_json=preview,
+                form_defaults=form_defaults,
+            ),
+        )
+
+    return templates.TemplateResponse(
+        "finance_asaas_customer.html",
+        _base_context(
+            request,
+            user,
+            csrf_token,
+            "finance_asaas_customer",
+            title="Cliente Asaas (assinatura)",
+            _repo=repo,
+            asaas_configured=True,
+            asaas_api_base_url=settings.asaas_api_base_url,
+            form_errors=[],
+            form_success=True,
+            form_success_message="Cliente criado no Asaas com sucesso. Guarde o ID retornado para vincular assinaturas e cobranças.",
+            asaas_customer_response=created,
+            payload_preview_json=preview,
+            form_defaults=_finance_asaas_customer_defaults(user),
+        ),
+    )
+
+
+def _finance_asaas_customer_defaults(user: User) -> dict[str, str]:
+    return {
+        "person_type": "FISICA",
+        "name": (user.display_name or user.name or "").strip(),
+        "cpf_cnpj": "",
+        "email": (user.email or "").strip(),
+        "mobile_phone": asaas_digits(user.phone) if user.phone else "",
+        "phone": "",
+        "postal_code": "",
+        "address_number": "",
+        "complement": "",
+        "province": "",
+        "address": "",
+        "company": "",
+        "external_reference": str(user.id),
     }
 
 
