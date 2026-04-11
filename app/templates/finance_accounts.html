@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "partials/module_history_filter_toolbar.html" import module_period_picker_inline, module_period_picker_payables_inline, module_period_picker_transactions_inline %}
+{% from "partials/module_history_filter_toolbar.html" import module_period_picker_inline, module_period_picker_payables_inline %}
 {% block content %}
 {% macro finance_bank_avatar(bank, size_classes, text_size_class, fallback_text) -%}
   {% if bank and bank.get('logo') %}
@@ -399,7 +399,7 @@
                     <span data-finance-transactions-filter-toggle-label>{% if finance_transactions_filters_active %}Mostrar filtro aplicado{% else %}Recolher filtros{% endif %}</span>
                 </button>
             </div>
-            <form method="get" action="/gestao-financeira/contas" class="stock-filter-grid" data-finance-transactions-filter-form data-module-period-filter-root data-module-range-default="{% if tx_range_ui == 'past' %}current_month{% else %}next_10_days{% endif %}" data-module-range-placeholder="Data do lançamento" data-module-custom-auto-apply="true">
+            <form method="get" action="/gestao-financeira/contas" class="stock-filter-grid" data-finance-transactions-filter-form data-module-period-filter-root data-module-range-default="{% if tx_range_ui == 'past' %}current_month{% else %}next_10_days{% endif %}" data-module-range-placeholder="Filtre por período" data-module-custom-auto-apply="true">
                 <input type="hidden" name="finance_tab" value="transactions">
                 <div class="stock-summary-collapse {% if not finance_transactions_filters_active %}is-expanded{% endif %}" data-finance-transactions-filter-collapse>
                 <div class="stock-summary-collapse-inner">
@@ -424,7 +424,7 @@
                     <div class="stock-filter-field stock-filter-field-period {% if finance_transactions_filter_start_date or finance_transactions_filter_end_date %}is-filtered{% endif %}">
                         <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Período</span>
                         <div class="module-filter-period-row">
-                            {{ module_period_picker_transactions_inline(finance_transactions_selected_range or ('custom' if (finance_transactions_filter_start_date or finance_transactions_filter_end_date) else ''), finance_transactions_filter_start_date, finance_transactions_filter_end_date, tx_range_ui, 'Data do lançamento') }}
+                            {{ module_period_picker_inline(finance_transactions_selected_range or ('custom' if (finance_transactions_filter_start_date or finance_transactions_filter_end_date) else ''), finance_transactions_filter_start_date, finance_transactions_filter_end_date, tx_range_ui, 'Filtre por período') }}
                         </div>
                     </div>
                     <label class="stock-filter-field stock-filter-field-input {% if finance_transactions_search %}is-filtered{% endif %}">

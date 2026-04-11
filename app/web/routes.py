@@ -2775,9 +2775,9 @@ def _finance_accounts_pagination_with_tab(pagination: dict, finance_tab: str) ->
 def _finance_transactions_period_bounds(request: Request) -> tuple[date | None, date | None, str, str, str]:
     """Intervalo por data de lançamento (filtro da aba Lançamentos). Vazio = sem filtro de período."""
     qp = request.query_params
-    selected_range = (qp.get("transactions_schedule_range") or "").strip()
-    raw_start = (qp.get("transactions_start_date") or "").strip()
-    raw_end = (qp.get("transactions_end_date") or "").strip()
+    selected_range = (qp.get("transactions_schedule_range") or qp.get("schedule_range") or "").strip()
+    raw_start = (qp.get("transactions_start_date") or qp.get("start_date") or "").strip()
+    raw_end = (qp.get("transactions_end_date") or qp.get("end_date") or "").strip()
     today = today_in_app_timezone()
     if not selected_range and not raw_start and not raw_end:
         return None, None, "", "", ""
@@ -3903,6 +3903,9 @@ def finance_accounts_page(
         or request.query_params.get("transactions_schedule_range")
         or request.query_params.get("transactions_start_date")
         or request.query_params.get("transactions_end_date")
+        or request.query_params.get("schedule_range")
+        or request.query_params.get("start_date")
+        or request.query_params.get("end_date")
     )
     transactions_clear_params = dict(request.query_params)
     for key in (
@@ -3912,6 +3915,9 @@ def finance_accounts_page(
         "transactions_schedule_range",
         "transactions_start_date",
         "transactions_end_date",
+        "schedule_range",
+        "start_date",
+        "end_date",
         "transactions_page",
     ):
         transactions_clear_params.pop(key, None)
@@ -4259,7 +4265,8 @@ def export_finance_accounts_transactions_pdf(
                     Paragraph(_format_currency(tx.amount or 0), cell_num),
                 ]
             )
-        table = Table(data_rows, colWidths=[62, 54, 70, 96, 92, 248, 72], repeatRows=1, hAlign="LEFT")
+        transactions_table_widths = [doc.width * 0.08, doc.width * 0.07, doc.width * 0.09, doc.width * 0.12, doc.width * 0.12, doc.width * 0.43, doc.width * 0.09]
+        table = Table(data_rows, colWidths=transactions_table_widths, repeatRows=1, hAlign="LEFT")
         table.setStyle(
             TableStyle(
                 [
@@ -4453,12 +4460,8 @@ def export_finance_accounts_payables_pdf(
                     Paragraph("Sim" if paid else "Não", cell_style),
                 ]
             )
-        table = Table(
-            data_rows,
-            colWidths=[50, 52, 54, 70, 66, 198, 42, 68, 34],
-            repeatRows=1,
-            hAlign="LEFT",
-        )
+        payables_table_widths = [doc.width * 0.08, doc.width * 0.08, doc.width * 0.08, doc.width * 0.12, doc.width * 0.11, doc.width * 0.28, doc.width * 0.07, doc.width * 0.11, doc.width * 0.07]
+        table = Table(data_rows, colWidths=payables_table_widths, repeatRows=1, hAlign="LEFT")
         table.setStyle(
             TableStyle(
                 [
