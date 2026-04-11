@@ -5832,7 +5832,7 @@ def purchased_inputs_page(
     edit_id: int | None = None,
     item_type: str | None = None,
     farm_id: int | None = None,
-    input_id: int | None = None,
+    input_id: str | None = None,
     purchased_tab: str | None = None,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user_web),
@@ -5845,7 +5845,7 @@ def purchased_inputs_page(
     edit_input = repo.get_purchased_input(edit_id) if edit_id else None
     selected_item_type = item_type if item_type in {"insumo_agricola", "combustivel", "all"} else None
     normalized_item_type = item_type if item_type in {"insumo_agricola", "combustivel"} else None
-    selected_input_id = input_id
+    selected_input_id = _int_or_none(input_id)
     purchased_inputs_filters_active = (
         selected_input_id is not None
         or (selected_item_type is not None and selected_item_type != "all")
@@ -6186,7 +6186,7 @@ def export_purchased_inputs_xlsx(
     request: Request,
     farm_id: str | None = None,
     item_type: str | None = None,
-    input_id: int | None = None,
+    input_id: str | None = None,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user_web),
 ):
@@ -6194,7 +6194,7 @@ def export_purchased_inputs_xlsx(
     repo = _repository(db)
     selected_farm_id = _int_or_none(farm_id) or _active_farm_id(request)
     normalized_item_type = item_type if item_type in {"insumo_agricola", "combustivel"} else None
-    selected_input_id = input_id
+    selected_input_id = _int_or_none(input_id)
     export_tab = _export_purchased_tab_param(request)
     stock_context = _build_stock_context(repo, farm_id=selected_farm_id, item_type=normalized_item_type, input_id=selected_input_id)
     purchase_entries = _sort_collection_desc(
@@ -6240,7 +6240,7 @@ def export_purchased_inputs_pdf(
     request: Request,
     farm_id: str | None = None,
     item_type: str | None = None,
-    input_id: int | None = None,
+    input_id: str | None = None,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user_web),
 ):
@@ -6249,7 +6249,7 @@ def export_purchased_inputs_pdf(
     selected_farm_id = _int_or_none(farm_id) or _active_farm_id(request)
     selected_farm = repo.get_farm(selected_farm_id) if selected_farm_id else None
     normalized_item_type = item_type if item_type in {"insumo_agricola", "combustivel"} else None
-    selected_input_id = input_id
+    selected_input_id = _int_or_none(input_id)
     stock_context = _build_stock_context(repo, farm_id=selected_farm_id, item_type=normalized_item_type, input_id=selected_input_id)
     purchase_entries = _sort_collection_desc(
         stock_context["purchase_entries"],
