@@ -460,7 +460,7 @@
                         </div>
                     </div>
                     <label class="stock-filter-field stock-filter-field-input {% if finance_payables_search %}is-filtered{% endif %}">
-                        <input type="search" name="payables_search" value="{{ finance_payables_search or '' }}" placeholder="Buscar conta, categoria ou produto" class="w-full rounded-xl border-slate-200 bg-white focus:outline-none focus:ring-2 focus:ring-brand-500/35" data-finance-payables-search>
+                        <input type="search" name="payables_search" value="{{ finance_payables_search or '' }}" placeholder="Buscar conta, categoria ou produto" class="finance-payables-search-input w-full rounded-xl border border-slate-200 bg-white" data-finance-payables-search>
                     </label>
                     <div class="stock-filter-field stock-filter-field-actions flex flex-nowrap items-end gap-3">
                         <a href="{{ finance_payables_clear_url }}" class="{% if not finance_payables_filters_active %}hidden {% endif %}inline-flex min-h-[3.25rem] shrink-0 items-center justify-center self-center rounded-xl bg-white px-4 text-sm font-semibold text-slate-700 ring-1 ring-slate-200 hover:bg-slate-100" data-finance-payables-clear>Limpar</a>
@@ -1844,15 +1844,23 @@
             payablesFilterForm.requestSubmit();
         }, 260);
     });
+    let payablesStatusPrev = (payablesStatusSelect?.value || '').trim();
     payablesStatusSelect?.addEventListener('change', () => {
         if (!payablesFilterForm) return;
+        const newStatus = (payablesStatusSelect.value || '').trim();
+        const leavingAll = payablesStatusPrev === 'all' && newStatus !== 'all';
+        payablesStatusPrev = newStatus;
+
         syncPayablesPeriodMenuVisibility();
-        const mode = payablesStatusToMode((payablesStatusSelect.value || '').trim());
+        const mode = payablesStatusToMode(newStatus);
         const rangeInput = payablesFilterForm.querySelector('[data-module-range-input]');
         const startInput = payablesFilterForm.querySelector('[data-module-filter-start]');
         const endInput = payablesFilterForm.querySelector('[data-module-filter-end]');
         const current = (rangeInput?.value || '').trim();
-        if (!payablesRangeValidForMode(current, mode)) {
+        /* Com "Todos", o range fica "custom"; ao sair, "custom" ainda é válido para past/future,
+           mas o picker abre só o calendário — é preciso voltar a um preset (ex.: mês atual). */
+        const mustResetRange = leavingAll || !payablesRangeValidForMode(current, mode);
+        if (mustResetRange) {
             const nextDefault = mode === 'custom_only' ? 'custom' : 'current_month';
             if (rangeInput) rangeInput.value = nextDefault;
             if (nextDefault === 'custom') {

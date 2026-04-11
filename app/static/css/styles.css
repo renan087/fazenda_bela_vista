@@ -1514,9 +1514,17 @@ body.dashboard-schedule-modal-open {
         z-index: 18;
     }
 
-    .stock-filter-fields-row.finance-payables-filter-fields-row > .stock-filter-field-input input[type="search"] {
+    .stock-filter-fields-row.finance-payables-filter-fields-row > .stock-filter-field-input input[type="search"].finance-payables-search-input {
         -webkit-appearance: none;
         appearance: none;
+    }
+
+    /* Remove filete azul do navegador (outline/ring/box-shadow no foco), sem anel Tailwind */
+    .stock-filter-fields-row.finance-payables-filter-fields-row > .stock-filter-field-input input[type="search"].finance-payables-search-input:focus,
+    .stock-filter-fields-row.finance-payables-filter-fields-row > .stock-filter-field-input input[type="search"].finance-payables-search-input:focus-visible {
+        outline: none !important;
+        box-shadow: none !important;
+        border-color: rgb(226 232 240);
     }
 
     .stock-history-stage[data-finance-tab="payables"],
