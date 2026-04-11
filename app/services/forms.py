@@ -18,6 +18,7 @@ from app.models import (
     FertilizationStockAllocation,
     FertilizationItem,
     FertilizationRecord,
+    FinanceTransaction,
     HarvestRecord,
     InputCatalog,
     InputRecommendation,
