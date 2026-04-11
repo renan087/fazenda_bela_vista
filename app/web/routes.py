@@ -2499,6 +2499,65 @@ def _build_finance_transaction_installments(
     return installments
 
 
+def _snapshot_finance_installments_for_edit(transaction: FinanceTransaction) -> list[dict]:
+    """Cópia dos dados de parcelas antes de recriar linhas (evita perder pagamento ao editar)."""
+    out: list[dict] = []
+    for inst in sorted(transaction.installments or [], key=lambda x: (x.installment_number or 0, x.id)):
+        out.append(
+            {
+                "installment_number": inst.installment_number,
+                "status": inst.status,
+                "paid_at": inst.paid_at,
+                "payment_notes": inst.payment_notes,
+            }
+        )
+    return out
+
+
+def _validate_installment_edit_against_prior(
+    new_rows: list[dict],
+    prior_snapshot: list[dict],
+) -> None:
+    """
+    Impede remover parcelas já pagas ou 'apagar' parcelamento com histórico de pagamento
+    (ex.: mudar para à vista) sem estornar antes — padrão em ERPs.
+    """
+    if not prior_snapshot:
+        return
+    any_paid = any((row.get("status") or "").strip().lower() == "pago" for row in prior_snapshot)
+    if not new_rows:
+        if any_paid:
+            raise ValueError(
+                "Não é possível alterar para à vista ou remover o parcelamento enquanto houver parcelas pagas. "
+                "Estorne os pagamentos no extrato de contas a pagar ou mantenha o lançamento à prazo."
+            )
+        return
+    new_nums = {row["installment_number"] for row in new_rows}
+    for prev in prior_snapshot:
+        if (prev.get("status") or "").strip().lower() != "pago":
+            continue
+        num = prev.get("installment_number")
+        if num not in new_nums:
+            raise ValueError(
+                "A nova configuração remove parcelas que já estão pagas. "
+                "Mantenha quantidade de parcelas suficiente para incluir todas as parcelas já quitadas ou estorne pagamentos antes."
+            )
+
+
+def _merge_paid_installment_state_into_rows(new_rows: list[dict], prior_snapshot: list[dict]) -> None:
+    """Preserva status, data e observações de parcelas pagas quando o número da parcela ainda existe."""
+    prior_by_num = {row["installment_number"]: row for row in prior_snapshot}
+    for row in new_rows:
+        prior = prior_by_num.get(row["installment_number"])
+        if not prior:
+            continue
+        if (prior.get("status") or "").strip().lower() != "pago":
+            continue
+        row["status"] = "pago"
+        row["paid_at"] = prior.get("paid_at")
+        row["payment_notes"] = prior.get("payment_notes")
+
+
 def _replace_finance_transaction_installments(
     repo: FarmRepository,
     transaction: FinanceTransaction,
@@ -2514,6 +2573,8 @@ def _replace_finance_transaction_installments(
                 due_date=row["due_date"],
                 amount=row["amount"],
                 status=row["status"],
+                paid_at=row.get("paid_at"),
+                payment_notes=row.get("payment_notes"),
             )
         )
 
@@ -3492,6 +3553,7 @@ async def update_finance_transaction_action(
     if not active_farm or transaction.farm_id != active_farm.id:
         _flash(request, "error", "Este lançamento não pertence à fazenda ativa.")
         return _redirect("/gestao-financeira/contas")
+    prior_installment_snapshot = _snapshot_finance_installments_for_edit(transaction)
     try:
         payload = _finance_transaction_payload(
             repo,
@@ -3518,17 +3580,21 @@ async def update_finance_transaction_action(
         return _redirect(_finance_transactions_modal_query(request, edit_id=transaction_id))
 
     repo.update(transaction, payload)
-    _replace_finance_transaction_installments(
-        repo,
-        transaction,
-        _build_finance_transaction_installments(
-            amount=payload["amount"],
-            payment_condition=payload["payment_condition"],
-            installment_count=payload["installment_count"],
-            installment_frequency=payload["installment_frequency"],
-            first_installment_date=payload["first_installment_date"],
-        ),
+    new_installment_rows = _build_finance_transaction_installments(
+        amount=payload["amount"],
+        payment_condition=payload["payment_condition"],
+        installment_count=payload["installment_count"],
+        installment_frequency=payload["installment_frequency"],
+        first_installment_date=payload["first_installment_date"],
     )
+    try:
+        _validate_installment_edit_against_prior(new_installment_rows, prior_installment_snapshot)
+        _merge_paid_installment_state_into_rows(new_installment_rows, prior_installment_snapshot)
+    except ValueError as exc:
+        _flash(request, "error", str(exc))
+        return _redirect(_finance_transactions_modal_query(request, edit_id=transaction_id))
+
+    _replace_finance_transaction_installments(repo, transaction, new_installment_rows)
     try:
         saved_attachments = _save_finance_transaction_attachments(repo, transaction, attachment_payloads)
     except Exception:
