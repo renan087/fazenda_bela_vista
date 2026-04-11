@@ -713,9 +713,22 @@
                 </button>
             </div>
 
+            {% set ns_paid = namespace(found=false) %}
+            {% if edit_finance_transaction and edit_finance_transaction.installments %}
+            {% for inst in edit_finance_transaction.installments %}
+            {% if (inst.status or '')|lower == 'pago' %}
+            {% set ns_paid.found = true %}
+            {% endif %}
+            {% endfor %}
+            {% endif %}
+            {% set finance_installments_locked = ns_paid.found %}
+
             <div class="mt-6 max-h-[72vh] overflow-y-auto pr-1" data-modal-scroll>
-                <form id="finance-transaction-form" method="post" action="{% if edit_finance_transaction %}/gestao-financeira/contas/lancamentos/{{ edit_finance_transaction.id }}/editar{% else %}/gestao-financeira/contas/lancamentos{% endif %}" enctype="multipart/form-data" class="grid gap-4" data-finance-transaction-form>
+                <form id="finance-transaction-form" method="post" action="{% if edit_finance_transaction %}/gestao-financeira/contas/lancamentos/{{ edit_finance_transaction.id }}/editar{% else %}/gestao-financeira/contas/lancamentos{% endif %}" enctype="multipart/form-data" class="grid gap-4" data-finance-transaction-form data-finance-installments-schedule-locked="{% if finance_installments_locked %}true{% else %}false{% endif %}">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    {% if finance_installments_locked %}
+                    <p class="rounded-xl bg-amber-50 px-3 py-2 text-xs leading-snug text-amber-900 ring-1 ring-amber-200/90" data-finance-installments-lock-alert>Com parcela já paga, a condição e o parcelamento não podem ser alterados. Para mudar, estorne os pagamentos das parcelas antes.</p>
+                    {% endif %}
                     <div class="rounded-[1.5rem] border border-brand-100 bg-brand-50/50 p-4">
                         <div class="flex flex-wrap items-start justify-between gap-4">
                             <div class="min-w-0">
@@ -784,11 +797,18 @@
                             </select>
                         </label>
                     </div>
+                    {% set transaction_payment_condition = edit_finance_transaction.payment_condition if edit_finance_transaction and edit_finance_transaction.payment_condition else 'a_vista' %}
+                    {% set current_frequency = edit_finance_transaction.installment_frequency if edit_finance_transaction and edit_finance_transaction.installment_frequency else 'mensal' %}
+                    {% if finance_installments_locked %}
+                    <input type="hidden" name="payment_condition" value="{{ transaction_payment_condition }}" data-finance-installment-shadow>
+                    <input type="hidden" name="installment_count" value="{{ edit_finance_transaction.installment_count if edit_finance_transaction and edit_finance_transaction.payment_condition == 'a_prazo' else '' }}" data-finance-installment-shadow>
+                    <input type="hidden" name="installment_frequency" value="{{ current_frequency }}" data-finance-installment-shadow>
+                    <input type="hidden" name="first_installment_date" value="{{ edit_finance_transaction.first_installment_date.isoformat() if edit_finance_transaction and edit_finance_transaction.first_installment_date and edit_finance_transaction.payment_condition == 'a_prazo' else '' }}" data-finance-installment-shadow>
+                    {% endif %}
                     <div class="grid gap-4 md:grid-cols-2">
                         <label>
                             <span class="mb-2 block text-sm font-medium">Condição de pagamento</span>
-                            {% set transaction_payment_condition = edit_finance_transaction.payment_condition if edit_finance_transaction and edit_finance_transaction.payment_condition else 'a_vista' %}
-                            <select name="payment_condition" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required data-finance-payment-condition>
+                            <select {% if not finance_installments_locked %}name="payment_condition"{% endif %} class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 {% if finance_installments_locked %}cursor-not-allowed bg-slate-100 text-slate-600{% else %}bg-slate-50{% endif %}" {% if not finance_installments_locked %}required{% endif %} data-finance-payment-condition {% if finance_installments_locked %}disabled{% endif %}>
                                 <option value="a_vista" {% if transaction_payment_condition == 'a_vista' %}selected{% endif %}>À vista</option>
                                 <option value="a_prazo" {% if transaction_payment_condition == 'a_prazo' %}selected{% endif %}>À prazo</option>
                             </select>
@@ -798,19 +818,18 @@
                         <div class="grid gap-4 md:grid-cols-3">
                             <label>
                                 <span class="mb-2 block text-sm font-medium">Quantidade de parcelas</span>
-                                <input type="number" min="2" step="1" name="installment_count" value="{{ edit_finance_transaction.installment_count if edit_finance_transaction and edit_finance_transaction.payment_condition == 'a_prazo' else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-white" data-finance-installment-count>
+                                <input type="number" min="2" step="1" {% if not finance_installments_locked %}name="installment_count"{% endif %} value="{{ edit_finance_transaction.installment_count if edit_finance_transaction and edit_finance_transaction.payment_condition == 'a_prazo' else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 {% if finance_installments_locked %}cursor-not-allowed bg-slate-100 text-slate-600{% else %}bg-white{% endif %}" data-finance-installment-count {% if finance_installments_locked %}disabled{% endif %}>
                             </label>
                             <label>
                                 <span class="mb-2 block text-sm font-medium">Periodicidade</span>
-                                {% set current_frequency = edit_finance_transaction.installment_frequency if edit_finance_transaction and edit_finance_transaction.installment_frequency else 'mensal' %}
-                                <select name="installment_frequency" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-white" data-finance-installment-frequency>
+                                <select {% if not finance_installments_locked %}name="installment_frequency"{% endif %} class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 {% if finance_installments_locked %}cursor-not-allowed bg-slate-100 text-slate-600{% else %}bg-white{% endif %}" data-finance-installment-frequency {% if finance_installments_locked %}disabled{% endif %}>
                                     <option value="mensal" {% if current_frequency == 'mensal' %}selected{% endif %}>Mensal</option>
                                     <option value="anual" {% if current_frequency == 'anual' %}selected{% endif %}>Anual</option>
                                 </select>
                             </label>
                             <label>
                                 <span class="mb-2 block text-sm font-medium">Data da primeira parcela</span>
-                                <input type="date" name="first_installment_date" value="{{ edit_finance_transaction.first_installment_date.isoformat() if edit_finance_transaction and edit_finance_transaction.first_installment_date and edit_finance_transaction.payment_condition == 'a_prazo' else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-white" data-finance-first-installment-date>
+                                <input type="date" {% if not finance_installments_locked %}name="first_installment_date"{% endif %} value="{{ edit_finance_transaction.first_installment_date.isoformat() if edit_finance_transaction and edit_finance_transaction.first_installment_date and edit_finance_transaction.payment_condition == 'a_prazo' else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 {% if finance_installments_locked %}cursor-not-allowed bg-slate-100 text-slate-600{% else %}bg-white{% endif %}" data-finance-first-installment-date {% if finance_installments_locked %}disabled{% endif %}>
                             </label>
                         </div>
                         <div class="mt-4">
@@ -1667,9 +1686,50 @@
         return new Date(year, month, day);
     };
 
+    const unlockFinanceInstallmentScheduleForNew = () => {
+        if (!transactionForm) return;
+        if (transactionForm.dataset.financeInstallmentsScheduleLocked !== 'true') return;
+        transactionForm.dataset.financeInstallmentsScheduleLocked = 'false';
+        transactionForm.querySelector('[data-finance-installments-lock-alert]')?.remove();
+        transactionForm.querySelectorAll('input[data-finance-installment-shadow]').forEach((el) => el.remove());
+        const pc = transactionForm.querySelector('[data-finance-payment-condition]');
+        if (pc) {
+            pc.disabled = false;
+            pc.name = 'payment_condition';
+            pc.required = true;
+            pc.classList.remove('cursor-not-allowed', 'bg-slate-100', 'text-slate-600');
+            pc.classList.add('bg-slate-50');
+        }
+        const cnt = transactionForm.querySelector('[data-finance-installment-count]');
+        if (cnt) {
+            cnt.disabled = false;
+            cnt.name = 'installment_count';
+            cnt.classList.remove('cursor-not-allowed', 'bg-slate-100', 'text-slate-600');
+            cnt.classList.add('bg-white');
+        }
+        const freq = transactionForm.querySelector('[data-finance-installment-frequency]');
+        if (freq) {
+            freq.disabled = false;
+            freq.name = 'installment_frequency';
+            freq.classList.remove('cursor-not-allowed', 'bg-slate-100', 'text-slate-600');
+            freq.classList.add('bg-white');
+        }
+        const fd = transactionForm.querySelector('[data-finance-first-installment-date]');
+        if (fd) {
+            fd.disabled = false;
+            fd.name = 'first_installment_date';
+            fd.classList.remove('cursor-not-allowed', 'bg-slate-100', 'text-slate-600');
+            fd.classList.add('bg-white');
+        }
+    };
+
     const syncFinanceInstallmentSection = () => {
+        const scheduleLocked = transactionForm?.dataset.financeInstallmentsScheduleLocked === 'true';
         const isPrazo = transactionPaymentConditionSelect?.value === 'a_prazo';
         transactionInstallmentsSection?.classList.toggle('hidden', !isPrazo);
+        if (scheduleLocked) {
+            return;
+        }
         if (!isPrazo) {
             if (transactionInstallmentCountInput) transactionInstallmentCountInput.value = '';
             if (transactionFirstInstallmentDateInput) transactionFirstInstallmentDateInput.value = '';
@@ -1844,6 +1904,7 @@
 
     const prepareFinanceTransactionCreateMode = () => {
         if (!transactionForm) return;
+        unlockFinanceInstallmentScheduleForNew();
         transactionForm.action = createTransactionFormAction;
         transactionForm.reset();
         Array.from(transactionForm.elements).forEach((element) => {

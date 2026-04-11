@@ -2499,6 +2499,42 @@ def _build_finance_transaction_installments(
     return installments
 
 
+def _reject_finance_schedule_change_if_installment_paid(
+    transaction: FinanceTransaction,
+    payload: dict,
+) -> None:
+    """Impede alterar condição/cronograma de parcelas via POST quando já existe parcela paga (além da UI)."""
+    any_paid = any(
+        (getattr(i, "status", None) or "").strip().lower() == "pago"
+        for i in (transaction.installments or [])
+    )
+    if not any_paid:
+        return
+    prior_pc = (transaction.payment_condition or "a_vista").strip().lower()
+    if payload["payment_condition"] != prior_pc:
+        raise ValueError(
+            "Com parcela já paga, a condição de pagamento não pode ser alterada. Estorne os pagamentos das parcelas antes."
+        )
+    if prior_pc != "a_prazo":
+        return
+    if payload["installment_count"] != transaction.installment_count:
+        raise ValueError(
+            "Com parcela já paga, a quantidade e o cronograma de parcelas não podem ser alterados. Estorne os pagamentos antes."
+        )
+    tr_freq = (transaction.installment_frequency or "mensal").strip().lower()
+    pl_freq = (payload["installment_frequency"] or "mensal").strip().lower()
+    if tr_freq != pl_freq:
+        raise ValueError(
+            "Com parcela já paga, a periodicidade das parcelas não pode ser alterada. Estorne os pagamentos antes."
+        )
+    tr_first = transaction.first_installment_date
+    pl_first = payload["first_installment_date"]
+    if tr_first != pl_first:
+        raise ValueError(
+            "Com parcela já paga, a data da primeira parcela não pode ser alterada. Estorne os pagamentos antes."
+        )
+
+
 def _snapshot_finance_installments_for_edit(transaction: FinanceTransaction) -> list[dict]:
     """Cópia dos dados de parcelas antes de recriar linhas (evita perder pagamento ao editar)."""
     out: list[dict] = []
@@ -3574,6 +3610,7 @@ async def update_finance_transaction_action(
             payment_method=payment_method,
             notes=notes,
         )
+        _reject_finance_schedule_change_if_installment_paid(transaction, payload)
         attachment_payloads = _read_attachments(await _request_attachments(request))
     except ValueError as exc:
         _flash(request, "error", str(exc))
