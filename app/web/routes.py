@@ -2901,31 +2901,35 @@ def finance_asaas_customer_page(
     user: User = Depends(get_current_user_web),
     csrf_token: str = Depends(get_csrf_token),
 ):
-    settings = get_settings()
-    repo = _repository(db)
-    extras = _finance_asaas_customer_template_extras(
-        db,
-        user,
-        form_defaults=_finance_asaas_customer_defaults(user),
-        form_errors=[],
-        form_success=False,
-        form_success_message="",
-        asaas_customer_response=None,
-        payload_preview_json="",
-        settings=settings,
-    )
-    return templates.TemplateResponse(
-        "finance_asaas_customer.html",
-        _base_context(
-            request,
+    try:
+        settings = get_settings()
+        repo = _repository(db)
+        extras = _finance_asaas_customer_template_extras(
+            db,
             user,
-            csrf_token,
-            "finance_asaas_customer",
-            title="Cliente Asaas (assinatura)",
-            _repo=repo,
-            **extras,
-        ),
-    )
+            form_defaults=_finance_asaas_customer_defaults(user),
+            form_errors=[],
+            form_success=False,
+            form_success_message="",
+            asaas_customer_response=None,
+            payload_preview_json="",
+            settings=settings,
+        )
+        return templates.TemplateResponse(
+            "finance_asaas_customer.html",
+            _base_context(
+                request,
+                user,
+                csrf_token,
+                "finance_asaas_customer",
+                title="Cliente Asaas (assinatura)",
+                _repo=repo,
+                **extras,
+            ),
+        )
+    except Exception:
+        logger.exception("Erro em finance_asaas_customer_page — user_id=%s", getattr(user, "id", "?"))
+        raise
 
 
 @router.post("/gestao-financeira/assinatura/cliente-asaas")
