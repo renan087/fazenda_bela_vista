@@ -433,6 +433,7 @@ def create_purchased_input(repository: FarmRepository, form: dict) -> PurchasedI
         notes=form.get("notes"),
     )
     if form.get("finance_account_id"):
+        source_value = "Insumos" if item_type == "insumo_agricola" else "Suprimentos"
         tx = FinanceTransaction(
             farm_id=form.get("farm_id"),
             finance_account_id=form.get("finance_account_id"),
@@ -444,6 +445,7 @@ def create_purchased_input(repository: FarmRepository, form: dict) -> PurchasedI
             description=form.get("notes") or "",
             payment_condition="a_vista",
             installment_count=1,
+            source=source_value,
             created_at=app_now(),
         )
         repository.db.add(tx)
@@ -495,6 +497,7 @@ def update_purchased_input(repository: FarmRepository, item: PurchasedInput, for
         },
     )
     if form.get("finance_account_id"):
+        source_value = "Insumos" if item_type == "insumo_agricola" else "Suprimentos"
         if updated_item.finance_transaction_id:
             tx = repository.get_finance_transaction(updated_item.finance_transaction_id)
             if tx:
@@ -504,6 +507,7 @@ def update_purchased_input(repository: FarmRepository, item: PurchasedInput, for
                 tx.product_service = f"Compra de {catalog.name}"
                 tx.description = form.get("notes") or ""
                 tx.category = form.get("category") or ("Insumos" if item_type == "insumo_agricola" else "Suprimentos")
+                tx.source = source_value
                 repository.db.add(tx)
         else:
             tx = FinanceTransaction(
@@ -517,6 +521,7 @@ def update_purchased_input(repository: FarmRepository, item: PurchasedInput, for
                 description=form.get("notes") or "",
                 payment_condition="a_vista",
                 installment_count=1,
+                source=source_value,
                 created_at=app_now(),
             )
             repository.db.add(tx)
@@ -558,6 +563,7 @@ def create_equipment_asset(repository: FarmRepository, form: dict) -> EquipmentA
             description=form.get("notes") or "",
             payment_condition="a_vista",
             installment_count=1,
+            source="Patrimônio",
             created_at=app_now(),
         )
         repository.db.add(tx)
@@ -594,6 +600,7 @@ def update_equipment_asset(repository: FarmRepository, asset: EquipmentAsset, fo
                 tx.amount = updated_asset.acquisition_value
                 tx.product_service = f"Aquisição de {updated_asset.name}"
                 tx.description = form.get("notes") or ""
+                tx.source = "Patrimônio"
                 repository.db.add(tx)
         else:
             tx = FinanceTransaction(
@@ -607,6 +614,7 @@ def update_equipment_asset(repository: FarmRepository, asset: EquipmentAsset, fo
                 description=form.get("notes") or "",
                 payment_condition="a_vista",
                 installment_count=1,
+                source="Patrimônio",
                 created_at=app_now(),
             )
             repository.db.add(tx)

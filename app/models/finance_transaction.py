@@ -26,6 +26,7 @@ class FinanceTransaction(Base):
     installment_frequency: Mapped[str] = mapped_column(String(20), nullable=True)
     first_installment_date: Mapped[date] = mapped_column(Date, nullable=True)
     notes: Mapped[str] = mapped_column(Text, nullable=True)
+    source: Mapped[str] = mapped_column(String(40), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
     farm = relationship("Farm", back_populates="finance_transactions")

@@ -4070,6 +4070,7 @@ async def create_finance_transaction_action(
             installment_frequency=payload["installment_frequency"],
             first_installment_date=payload["first_installment_date"],
             notes=payload["notes"],
+            source="Contas",
             created_at=app_now(),
         )
     )

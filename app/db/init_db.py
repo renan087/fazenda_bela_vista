@@ -221,6 +221,7 @@ def _sync_schema() -> None:
             installment_frequency VARCHAR(20),
             first_installment_date DATE,
             notes TEXT,
+            source VARCHAR(40),
             created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
         )
         """,
@@ -499,6 +500,7 @@ def _sync_schema() -> None:
         "ALTER TABLE finance_transactions ADD COLUMN IF NOT EXISTS installment_frequency VARCHAR(20)",
         "ALTER TABLE finance_transactions ADD COLUMN IF NOT EXISTS first_installment_date DATE",
         "ALTER TABLE finance_transactions ADD COLUMN IF NOT EXISTS notes TEXT",
+        "ALTER TABLE finance_transactions ADD COLUMN IF NOT EXISTS source VARCHAR(40)",
         "ALTER TABLE finance_transactions ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW()",
         "ALTER TABLE finance_transaction_installments ADD COLUMN IF NOT EXISTS finance_transaction_id INTEGER",
         "ALTER TABLE finance_transaction_installments ADD COLUMN IF NOT EXISTS installment_number INTEGER",

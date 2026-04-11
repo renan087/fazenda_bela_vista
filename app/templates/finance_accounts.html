@@ -358,6 +358,7 @@
                             <th class="px-4 py-3 font-medium">Conta</th>
                             <th class="px-4 py-3 font-medium">Categoria</th>
                             <th class="px-4 py-3 font-medium">Produto / serviço</th>
+                            <th class="px-4 py-3 font-medium">Origem</th>
                             <th class="px-4 py-3 font-medium">Valor</th>
                             <th class="px-4 py-3 font-medium text-right">Ações</th>
                         </tr>
@@ -391,7 +392,8 @@
                                         <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Conta</p><p class="mt-2 text-sm font-medium text-slate-800">{{ transaction.finance_account.account_name if transaction.finance_account else '-' }}</p></div>
                                         <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Categoria</p><p class="mt-2 text-sm font-medium text-slate-800">{{ transaction.category }}</p></div>
                                         <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Produto / serviço</p><p class="mt-2 text-sm font-medium text-slate-800">{{ transaction.product_service }}</p></div>
-                                        <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Valor</p><p class="mt-2 text-sm font-medium {% if transaction.operation_type == 'receita' %}text-emerald-700{% else %}text-rose-600{% endif %}">R$ {{ transaction.amount|decimal_br }}</p></div>
+                                    <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Origem</p><p class="mt-2 text-sm font-medium text-slate-800">{{ transaction.source or 'Contas' }}</p></div>
+                                    <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Valor</p><p class="mt-2 text-sm font-medium {% if transaction.operation_type == 'receita' %}text-emerald-700{% else %}text-rose-600{% endif %}">R$ {{ transaction.amount|decimal_br }}</p></div>
                                         <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Favorecido / pagador</p><p class="mt-2 text-sm font-medium text-slate-800">{{ transaction.counterparty_name or '-' }}</p></div>
                                         <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Documento</p><p class="mt-2 text-sm font-medium text-slate-800">{{ transaction.document_number or '-' }}</p></div>
                                         <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Forma de pagamento</p><p class="mt-2 text-sm font-medium text-slate-800">{{ transaction.payment_method or '-' }}</p></div>
@@ -448,6 +450,7 @@
                                     </div>
                                 </template>
                             </td>
+                            <td class="px-4 py-3 whitespace-nowrap">{{ transaction.source or 'Contas' }}</td>
                             <td class="px-4 py-3 whitespace-nowrap font-semibold {% if transaction.operation_type == 'receita' %}text-emerald-700{% else %}text-rose-600{% endif %}">R$ {{ transaction.amount|decimal_br }}</td>
                             <td class="px-4 py-3">
                                 <div class="flex items-center justify-end gap-2">
