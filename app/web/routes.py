@@ -2885,7 +2885,7 @@ def _finance_asaas_customer_template_extras(
         "payload_preview_json": payload_preview_json,
         "form_defaults": form_defaults,
         "saved_asaas_customer_id": saved,
-        "charge_due_date_default": today_in_app_timezone().date().isoformat(),
+        "charge_due_date_default": today_in_app_timezone().isoformat(),
         "payment_charge_success": payment_charge_success,
         "payment_charge_message": payment_charge_message,
         "payment_charge_response": payment_charge_response,
