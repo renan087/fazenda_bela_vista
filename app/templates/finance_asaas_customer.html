@@ -327,7 +327,9 @@
     const statusCell = document.querySelector('[data-asaas-status-cell]');
     const url = '/gestao-financeira/assinatura/cliente-asaas/pagamento-status?payment_id=' + encodeURIComponent(pid);
     let attempts = 0;
-    const maxAttempts = 280;
+    const maxAttempts = 60;
+    let currentInterval = 5000;
+    const maxInterval = 60000;
 
     const showPaid = () => {
         if (banner) banner.classList.remove('hidden');
@@ -349,7 +351,8 @@
         } catch (_) {
             /* rede */
         }
-        window.setTimeout(poll, 4000);
+        currentInterval = Math.min(currentInterval * 1.5, maxInterval);
+        window.setTimeout(poll, currentInterval);
     };
 
     window.setTimeout(poll, 2500);
