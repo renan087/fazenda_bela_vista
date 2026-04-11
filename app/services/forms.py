@@ -509,6 +509,7 @@ def update_purchased_input(repository: FarmRepository, item: PurchasedInput, for
                 tx.category = form.get("category") or ("Insumos" if item_type == "insumo_agricola" else "Suprimentos")
                 tx.source = source_value
                 repository.db.add(tx)
+                repository.db.commit()
         else:
             tx = FinanceTransaction(
                 farm_id=form.get("farm_id"),
@@ -527,10 +528,12 @@ def update_purchased_input(repository: FarmRepository, item: PurchasedInput, for
             repository.db.add(tx)
             repository.db.flush()
             updated_item.finance_transaction_id = tx.id
+            repository.db.commit()
     elif updated_item.finance_transaction_id:
         tx = repository.get_finance_transaction(updated_item.finance_transaction_id)
         if tx:
             repository.db.delete(tx)
+            repository.db.commit()
         updated_item.finance_transaction_id = None
     return updated_item
 
@@ -602,6 +605,7 @@ def update_equipment_asset(repository: FarmRepository, asset: EquipmentAsset, fo
                 tx.description = form.get("notes") or ""
                 tx.source = "Patrimônio"
                 repository.db.add(tx)
+                repository.db.commit()
         else:
             tx = FinanceTransaction(
                 farm_id=form.get("farm_id"),
@@ -620,10 +624,12 @@ def update_equipment_asset(repository: FarmRepository, asset: EquipmentAsset, fo
             repository.db.add(tx)
             repository.db.flush()
             updated_asset.finance_transaction_id = tx.id
+            repository.db.commit()
     elif updated_asset.finance_transaction_id:
         tx = repository.get_finance_transaction(updated_asset.finance_transaction_id)
         if tx:
             repository.db.delete(tx)
+            repository.db.commit()
         updated_asset.finance_transaction_id = None
     return updated_asset
 
