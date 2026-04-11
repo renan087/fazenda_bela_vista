@@ -270,6 +270,13 @@ class FarmRepository:
             .first()
         )
 
+    def count_finance_transactions_for_account(self, finance_account_id: int) -> int:
+        return (
+            self.db.query(FinanceTransaction)
+            .filter(FinanceTransaction.finance_account_id == finance_account_id)
+            .count()
+        )
+
     def get_finance_transaction_attachment(self, attachment_id: int) -> FinanceTransactionAttachment | None:
         return (
             self.db.query(FinanceTransactionAttachment)

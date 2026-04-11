@@ -3424,6 +3424,13 @@ def delete_finance_account_action(
     if not active_farm or account.farm_id != active_farm.id:
         _flash(request, "error", "Esta conta não pertence à fazenda ativa.")
         return _redirect("/gestao-financeira/contas")
+    if repo.count_finance_transactions_for_account(account_id) > 0:
+        _flash(
+            request,
+            "error",
+            "Não é possível excluir a conta enquanto houver lançamentos financeiros vinculados a ela.",
+        )
+        return _redirect("/gestao-financeira/contas")
     previous_custom_bank_id = account.custom_bank_id
     repo.delete(account)
     _cleanup_custom_bank_if_unused(repo, previous_custom_bank_id)
