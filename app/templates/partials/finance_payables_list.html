@@ -8,6 +8,7 @@
                     <th class="px-4 py-3 font-medium">Status</th>
                     <th class="px-4 py-3 font-medium">Vencimento</th>
                     <th class="px-4 py-3 font-medium">Conta</th>
+                    <th class="px-4 py-3 font-medium">Origem</th>
                     <th class="px-4 py-3 font-medium">Categoria</th>
                     <th class="px-4 py-3 font-medium">Produto / serviço</th>
                     <th class="px-4 py-3 font-medium">Parcela</th>
@@ -25,15 +26,16 @@
                         <span class="stock-movement-chip {{ payable.status_chip_class }}">{{ payable.status_label }}</span>
                     </td>
                     <td class="px-4 py-3 whitespace-nowrap font-semibold text-slate-900">
-                        <button type="button" class="text-left font-semibold text-slate-900 transition hover:text-brand-700 whitespace-nowrap" data-history-view-trigger data-history-view-kicker="Conta a pagar" data-history-view-title="{{ transaction.product_service }}" data-history-view-subtitle="{{ installment.due_date.strftime('%d/%m/%Y') if installment.due_date else '-' }} • {{ payable.installment_label }}" data-history-view-source="finance-transaction-view-{{ transaction.id }}" data-history-view-edit-url="/gestao-financeira/contas?finance_tab=transactions&transaction_edit_id={{ transaction.id }}">{{ installment.due_date.strftime('%d/%m/%Y') if installment.due_date else '-' }}</button>
+                        <button type="button" class="text-left font-semibold text-slate-900 transition hover:text-brand-700 whitespace-nowrap" data-history-view-trigger data-history-view-kicker="Conta a pagar" data-history-view-title="{{ transaction.product_service }}" data-history-view-subtitle="{{ installment.due_date.strftime('%d/%m/%Y') if installment.due_date else '-' }} • {{ payable.installment_label }}" data-history-view-source="finance-transaction-view-{{ transaction.id }}"{% if payable.source_label == 'Contas' %} data-history-view-edit-url="{{ payable.edit_url }}"{% endif %}>{{ installment.due_date.strftime('%d/%m/%Y') if installment.due_date else '-' }}</button>
                     </td>
                     <td class="px-4 py-3">{{ transaction.finance_account.account_name if transaction.finance_account else '-' }}</td>
+                    <td class="px-4 py-3 whitespace-nowrap">{{ payable.source_label }}</td>
                     <td class="px-4 py-3 font-semibold text-slate-900">
-                        <button type="button" class="text-left font-semibold text-slate-900 transition hover:text-brand-700" data-history-view-trigger data-history-view-kicker="Conta a pagar" data-history-view-title="{{ transaction.product_service }}" data-history-view-subtitle="{{ installment.due_date.strftime('%d/%m/%Y') if installment.due_date else '-' }} • {{ payable.installment_label }}" data-history-view-source="finance-transaction-view-{{ transaction.id }}" data-history-view-edit-url="/gestao-financeira/contas?finance_tab=transactions&transaction_edit_id={{ transaction.id }}">{{ transaction.category }}</button>
+                        <button type="button" class="text-left font-semibold text-slate-900 transition hover:text-brand-700" data-history-view-trigger data-history-view-kicker="Conta a pagar" data-history-view-title="{{ transaction.product_service }}" data-history-view-subtitle="{{ installment.due_date.strftime('%d/%m/%Y') if installment.due_date else '-' }} • {{ payable.installment_label }}" data-history-view-source="finance-transaction-view-{{ transaction.id }}"{% if payable.source_label == 'Contas' %} data-history-view-edit-url="{{ payable.edit_url }}"{% endif %}>{{ transaction.category }}</button>
                     </td>
                     <td class="px-4 py-3">
                         <div class="flex flex-col gap-1">
-                            <button type="button" class="text-left font-semibold text-slate-900 transition hover:text-brand-700" data-history-view-trigger data-history-view-kicker="Conta a pagar" data-history-view-title="{{ transaction.product_service }}" data-history-view-subtitle="{{ installment.due_date.strftime('%d/%m/%Y') if installment.due_date else '-' }} • {{ payable.installment_label }}" data-history-view-source="finance-transaction-view-{{ transaction.id }}" data-history-view-edit-url="/gestao-financeira/contas?finance_tab=transactions&transaction_edit_id={{ transaction.id }}">{{ transaction.product_service }}</button>
+                            <button type="button" class="text-left font-semibold text-slate-900 transition hover:text-brand-700" data-history-view-trigger data-history-view-kicker="Conta a pagar" data-history-view-title="{{ transaction.product_service }}" data-history-view-subtitle="{{ installment.due_date.strftime('%d/%m/%Y') if installment.due_date else '-' }} • {{ payable.installment_label }}" data-history-view-source="finance-transaction-view-{{ transaction.id }}"{% if payable.source_label == 'Contas' %} data-history-view-edit-url="{{ payable.edit_url }}"{% endif %}>{{ transaction.product_service }}</button>
                             {% if transaction.description %}
                             <span class="stock-history-note-clamp text-slate-500" title="{{ transaction.description }}">{{ transaction.description }}</span>
                             {% endif %}
@@ -60,7 +62,7 @@
                     </td>
                     <td class="px-4 py-3">
                         <div class="flex items-center justify-end gap-2">
-                            <a href="/gestao-financeira/contas?finance_tab=transactions&transaction_edit_id={{ transaction.id }}" class="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-100" title="Editar lançamento">
+                            <a href="{{ payable.edit_url }}" class="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-100" title="Editar lançamento">
                                 <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                     <path d="M12 20h9"/>
                                     <path d="M16.5 3.5a2.1 2.1 0 1 1 3 3L7 19l-4 1 1-4Z"/>

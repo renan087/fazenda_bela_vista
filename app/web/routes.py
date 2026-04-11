@@ -2334,6 +2334,32 @@ def _finance_transactions_modal_query(
     return "/gestao-financeira/contas"
 
 
+def _finance_transaction_source_label(source: str | None) -> str:
+    normalized = (source or "").strip().lower()
+    if normalized == "insumos":
+        return "Compra de Insumos"
+    if normalized == "suprimentos":
+        return "Suprimentos"
+    if normalized in {"patrimônio", "patrimonio"}:
+        return "Patrimônio"
+    return "Contas"
+
+
+def _finance_transaction_origin_edit_url(transaction: FinanceTransaction) -> str:
+    normalized = (transaction.source or "").strip().lower()
+    if normalized == "insumos" and transaction.purchased_inputs:
+        entry = sorted(transaction.purchased_inputs, key=lambda item: item.id)[0]
+        item_type = entry.input_catalog.item_type if entry.input_catalog and entry.input_catalog.item_type in {"insumo_agricola", "combustivel"} else None
+        return _redirect_with_query("/insumos/comprados", edit_id=entry.id, item_type=item_type)
+    if normalized == "suprimentos" and transaction.purchased_inputs:
+        entry = sorted(transaction.purchased_inputs, key=lambda item: item.id)[0]
+        return _redirect_with_query("/insumos/suprimentos", farm_id=entry.farm_id, edit_id=entry.id)
+    if normalized in {"patrimônio", "patrimonio"} and transaction.equipment_assets:
+        asset = sorted(transaction.equipment_assets, key=lambda item: item.id)[0]
+        return _redirect_with_query("/insumos/patrimonio", edit_id=asset.id)
+    return f"/gestao-financeira/contas?finance_tab=transactions&transaction_edit_id={transaction.id}"
+
+
 def _finance_accounts_set_default(repo: FarmRepository, farm_id: int, keep_id: int | None = None) -> None:
     for account in repo.list_finance_accounts(farm_id=farm_id):
         if keep_id is not None and account.id == keep_id:
@@ -3656,6 +3682,8 @@ def finance_accounts_page(
                 {
                     "transaction": transaction,
                     "installment": installment,
+                    "source_label": _finance_transaction_source_label(transaction.source),
+                    "edit_url": _finance_transaction_origin_edit_url(transaction),
                     "status": payable_status,
                     "status_label": payable_label,
                     "status_chip_class": {
