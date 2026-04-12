@@ -134,6 +134,7 @@
     {% set session_name_parts = (user.name or '').split() %}
     {% set session_display_name = user.display_name or ((session_name_parts[0] ~ ' ' ~ session_name_parts[-1]) if session_name_parts|length > 1 else (session_name_parts[0] if session_name_parts else user.email)) %}
     {% set header_avatar_initial = (user.display_name or user.name or user.email or 'U')[:1]|upper %}
+    {% set global_notifications = global_notifications or {'important': [], 'operational': [], 'total': 0, 'important_count': 0} %}
     <div class="min-h-screen min-w-0 lg:flex">
         <div class="fixed inset-0 z-30 hidden bg-slate-950/50 lg:hidden" data-mobile-overlay></div>
         <aside class="erp-sidebar fixed inset-y-0 left-0 z-40 w-72 -translate-x-full bg-slate-950 text-slate-100 max-lg:transition-transform max-lg:duration-200 lg:fixed lg:inset-y-0 lg:translate-x-0" data-desktop-sidebar>
@@ -318,6 +319,28 @@
                             </label>
                         </div>
                     </form>
+                    <div class="relative shrink-0">
+                        <button
+                            type="button"
+                            class="relative inline-flex h-12 w-12 items-center justify-center rounded-2xl border border-slate-200 bg-white text-slate-600 shadow-sm transition hover:border-brand-200 hover:text-brand-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/35 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
+                            data-header-notifications-toggle
+                            aria-expanded="false"
+                            aria-haspopup="dialog"
+                            aria-controls="erp-header-notifications-flyout"
+                            aria-label="Abrir notificações"
+                            title="Notificações"
+                        >
+                            <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                <path d="M15 17h5l-1.4-1.4A2 2 0 0 1 18 14.2V11a6 6 0 0 0-4-5.66V4a2 2 0 1 0-4 0v1.34A6 6 0 0 0 6 11v3.2a2 2 0 0 1-.6 1.4L4 17h5"/>
+                                <path d="M9.5 17a2.5 2.5 0 0 0 5 0"/>
+                            </svg>
+                            {% if global_notifications.total > 0 %}
+                            <span class="absolute -right-1.5 -top-1.5 inline-flex min-h-[1.35rem] min-w-[1.35rem] items-center justify-center rounded-full bg-rose-500 px-1 text-[0.68rem] font-semibold leading-none text-white shadow-sm">
+                                {{ global_notifications.total if global_notifications.total < 100 else '99+' }}
+                            </span>
+                            {% endif %}
+                        </button>
+                    </div>
                     <div class="erp-header-user-group relative hidden shrink-0 lg:block">
                         <button type="button" class="erp-header-user-chip inline-flex items-center justify-center rounded-full border-0 bg-transparent p-0 outline-none transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40 focus-visible:ring-offset-2 focus-visible:ring-offset-white {% if page == 'profile' %}ring-2 ring-brand-500/30 ring-offset-2 ring-offset-white{% endif %}" data-header-session-toggle aria-expanded="false" aria-haspopup="true" aria-controls="erp-header-session-flyout" title="{{ session_display_name }}" aria-label="Menu da sessao — {{ session_display_name }}">
                             {% if user.avatar_data %}
@@ -402,6 +425,77 @@
                     <a href="/logout" class="erp-header-session-flyout-btn erp-header-session-flyout-btn--secondary">Sair</a>
                 </div>
             </div>
+        </div>
+    </div>
+    <div id="erp-header-notifications-flyout" class="fixed z-[65] hidden w-[24rem] max-w-[calc(100vw-1rem)] overflow-hidden rounded-[1.5rem] border border-slate-200 bg-white shadow-2xl" role="dialog" aria-modal="false" aria-labelledby="erp-header-notifications-title" aria-hidden="true">
+        <div class="border-b border-slate-200 bg-white px-4 py-4">
+            <div class="flex items-center justify-between gap-3">
+                <div>
+                    <p class="text-xs uppercase tracking-[0.28em] text-slate-400">Central de alertas</p>
+                    <h3 id="erp-header-notifications-title" class="mt-1 text-lg font-semibold text-slate-900">Notificações</h3>
+                </div>
+                <span class="inline-flex rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">{{ global_notifications.total }} alerta(s)</span>
+            </div>
+        </div>
+        <div class="max-h-[70vh] overflow-y-auto bg-white">
+            <section class="border-b border-slate-100 px-4 py-4">
+                <div class="mb-3 flex items-center justify-between gap-3">
+                    <h4 class="text-xs font-semibold uppercase tracking-[0.22em] text-slate-400">Importantes</h4>
+                    <span class="text-xs font-medium text-rose-500">{{ global_notifications.important_count }}</span>
+                </div>
+                <div class="space-y-2">
+                    {% for item in global_notifications.important %}
+                    <a href="{{ item.href }}" class="flex gap-3 rounded-2xl border border-slate-200 bg-white px-3 py-3 transition hover:border-brand-200 hover:bg-brand-50/40">
+                        <span class="mt-0.5 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl {% if item.severity == 'danger' %}bg-rose-50 text-rose-600{% elif item.severity == 'warning' %}bg-amber-50 text-amber-600{% else %}bg-sky-50 text-sky-600{% endif %}">
+                            {% if item.kind == 'stock' %}
+                            <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M16.5 9.4 7.5 4.2"/><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="M3.3 7 12 12l8.7-5"/><path d="M12 22V12"/></svg>
+                            {% elif item.kind == 'payable' %}
+                            <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M12 2.5v19"/><path d="M16.5 7.25c0-1.8-1.98-3.25-4.42-3.25S7.67 5.45 7.67 7.25c0 4.68 8.83 2.57 8.83 7.5 0 1.8-1.98 3.25-4.42 3.25s-4.41-1.45-4.41-3.25"/></svg>
+                            {% else %}
+                            <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 12h16"/><path d="M12 4v16"/></svg>
+                            {% endif %}
+                        </span>
+                        <span class="min-w-0">
+                            <span class="block text-sm font-semibold text-slate-900">{{ item.title }}</span>
+                            <span class="mt-1 block text-sm leading-5 text-slate-600">{{ item.message }}</span>
+                            {% if item.meta %}
+                            <span class="mt-1 block text-xs font-medium text-slate-400">{{ item.meta }}</span>
+                            {% endif %}
+                        </span>
+                    </a>
+                    {% else %}
+                    <div class="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-5 text-sm text-slate-500">Nenhum alerta importante no momento.</div>
+                    {% endfor %}
+                </div>
+            </section>
+            <section class="px-4 py-4">
+                <div class="mb-3 flex items-center justify-between gap-3">
+                    <h4 class="text-xs font-semibold uppercase tracking-[0.22em] text-slate-400">Operacionais</h4>
+                    <span class="text-xs font-medium text-slate-400">{{ global_notifications.operational|length }}</span>
+                </div>
+                <div class="space-y-2">
+                    {% for item in global_notifications.operational %}
+                    <a href="{{ item.href }}" class="flex gap-3 rounded-2xl border border-slate-200 bg-white px-3 py-3 transition hover:border-brand-200 hover:bg-brand-50/40">
+                        <span class="mt-0.5 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl {% if item.severity == 'warning' %}bg-amber-50 text-amber-600{% else %}bg-sky-50 text-sky-600{% endif %}">
+                            {% if item.kind == 'schedule' %}
+                            <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M8 2v4"/><path d="M16 2v4"/><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18"/></svg>
+                            {% else %}
+                            <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M16.5 9.4 7.5 4.2"/><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/></svg>
+                            {% endif %}
+                        </span>
+                        <span class="min-w-0">
+                            <span class="block text-sm font-semibold text-slate-900">{{ item.title }}</span>
+                            <span class="mt-1 block text-sm leading-5 text-slate-600">{{ item.message }}</span>
+                            {% if item.meta %}
+                            <span class="mt-1 block text-xs font-medium text-slate-400">{{ item.meta }}</span>
+                            {% endif %}
+                        </span>
+                    </a>
+                    {% else %}
+                    <div class="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-5 text-sm text-slate-500">Sem lembretes operacionais pendentes.</div>
+                    {% endfor %}
+                </div>
+            </section>
         </div>
     </div>
     {% if context_selection_blocking %}
@@ -570,12 +664,87 @@
 
             const headerSessionToggle = document.querySelector('[data-header-session-toggle]');
             const headerSessionFlyout = document.getElementById('erp-header-session-flyout');
+            const headerNotificationsToggle = document.querySelector('[data-header-notifications-toggle]');
+            const headerNotificationsFlyout = document.getElementById('erp-header-notifications-flyout');
             /* Após fechar o flyout de sessão: tempo para o fade (280ms) + margem antes de limpar inline position. */
             const headerSessionFlyoutLayoutClearDelayMs = 320;
             let headerSessionPointerDownHandler = null;
             let headerSessionEscapeHandler = null;
             let repositionHeaderSessionFlyout = null;
             let headerSessionCloseLayoutTimer = null;
+            let headerNotificationsPointerDownHandler = null;
+            let headerNotificationsEscapeHandler = null;
+
+            const closeHeaderNotificationsFlyout = () => {
+                if (headerNotificationsPointerDownHandler) {
+                    document.removeEventListener('pointerdown', headerNotificationsPointerDownHandler, true);
+                    headerNotificationsPointerDownHandler = null;
+                }
+                if (headerNotificationsEscapeHandler) {
+                    document.removeEventListener('keydown', headerNotificationsEscapeHandler, true);
+                    headerNotificationsEscapeHandler = null;
+                }
+                headerNotificationsFlyout?.classList.add('hidden');
+                headerNotificationsFlyout?.setAttribute('aria-hidden', 'true');
+                headerNotificationsToggle?.setAttribute('aria-expanded', 'false');
+                if (headerNotificationsFlyout) {
+                    headerNotificationsFlyout.style.left = '';
+                    headerNotificationsFlyout.style.right = '';
+                    headerNotificationsFlyout.style.top = '';
+                }
+            };
+
+            const positionHeaderNotificationsFlyout = () => {
+                if (!headerNotificationsFlyout || !headerNotificationsToggle) return;
+                const br = headerNotificationsToggle.getBoundingClientRect();
+                const gap = 8;
+                const vw = window.innerWidth;
+                const vh = window.innerHeight;
+                const fw = headerNotificationsFlyout.offsetWidth;
+                const fh = headerNotificationsFlyout.offsetHeight;
+                const margin = 8;
+                let rightPx = Math.round(vw - br.right);
+                let top = Math.round(br.bottom + gap);
+                if (rightPx < margin) rightPx = margin;
+                const leftIfAligned = vw - rightPx - fw;
+                if (leftIfAligned < margin) {
+                    headerNotificationsFlyout.style.right = 'auto';
+                    headerNotificationsFlyout.style.left = `${margin}px`;
+                } else {
+                    headerNotificationsFlyout.style.left = 'auto';
+                    headerNotificationsFlyout.style.right = `${rightPx}px`;
+                }
+                if (top + fh > vh - margin) top = Math.max(margin, vh - fh - margin);
+                headerNotificationsFlyout.style.top = `${top}px`;
+            };
+
+            const toggleHeaderNotificationsFlyout = () => {
+                if (!headerNotificationsFlyout || !headerNotificationsToggle) return;
+                if (!headerNotificationsFlyout.classList.contains('hidden')) {
+                    closeHeaderNotificationsFlyout();
+                    return;
+                }
+                closeHeaderSessionFlyout();
+                closeSubmenuFlyout();
+                hideNavTooltip();
+                headerNotificationsFlyout.classList.remove('hidden');
+                headerNotificationsFlyout.setAttribute('aria-hidden', 'false');
+                headerNotificationsToggle.setAttribute('aria-expanded', 'true');
+                positionHeaderNotificationsFlyout();
+                window.requestAnimationFrame(() => positionHeaderNotificationsFlyout());
+
+                headerNotificationsPointerDownHandler = (e) => {
+                    const t = e.target;
+                    if (headerNotificationsFlyout.contains(t) || headerNotificationsToggle.contains(t)) return;
+                    closeHeaderNotificationsFlyout();
+                };
+                document.addEventListener('pointerdown', headerNotificationsPointerDownHandler, true);
+
+                headerNotificationsEscapeHandler = (e) => {
+                    if (e.key === 'Escape') closeHeaderNotificationsFlyout();
+                };
+                document.addEventListener('keydown', headerNotificationsEscapeHandler, true);
+            };
 
             const closeHeaderSessionFlyout = () => {
                 if (headerSessionPointerDownHandler) {
@@ -662,16 +831,25 @@
 
             headerSessionToggle?.addEventListener('click', (e) => {
                 e.stopPropagation();
+                closeHeaderNotificationsFlyout();
                 toggleHeaderSessionFlyout();
             });
             headerSessionFlyout?.querySelectorAll('a[href]').forEach((a) => {
                 a.addEventListener('click', () => window.setTimeout(closeHeaderSessionFlyout, 0));
+            });
+            headerNotificationsToggle?.addEventListener('click', (e) => {
+                e.stopPropagation();
+                toggleHeaderNotificationsFlyout();
+            });
+            headerNotificationsFlyout?.querySelectorAll('a[href]').forEach((a) => {
+                a.addEventListener('click', () => window.setTimeout(closeHeaderNotificationsFlyout, 0));
             });
 
             const openSubmenuFlyout = (button, panel) => {
                 if (!submenuFlyoutEl || !submenuFlyoutInner || !panel || !sidebar) return;
                 hideNavTooltip();
                 closeHeaderSessionFlyout();
+                closeHeaderNotificationsFlyout();
                 const wasThisOpen =
                     flyoutAnchorButton === button && submenuFlyoutEl.classList.contains('is-open');
                 closeSubmenuFlyout();
@@ -747,10 +925,14 @@
                 if (!desktopSidebarMq.matches) {
                     closeSubmenuFlyout();
                     closeHeaderSessionFlyout();
+                    closeHeaderNotificationsFlyout();
                     return;
                 }
                 if (repositionSubmenuFlyout) repositionSubmenuFlyout();
                 if (repositionHeaderSessionFlyout) repositionHeaderSessionFlyout();
+                if (headerNotificationsFlyout && !headerNotificationsFlyout.classList.contains('hidden')) {
+                    positionHeaderNotificationsFlyout();
+                }
             });
 
             navEl?.addEventListener('scroll', () => {
@@ -772,6 +954,7 @@
                 if (!document.body || !desktopSidebarMq.matches) return;
                 closeSubmenuFlyout();
                 closeHeaderSessionFlyout();
+                closeHeaderNotificationsFlyout();
                 hideNavTooltip();
                 window.clearTimeout(desktopSidebarTransitionTimer);
                 if (collapsed) {
