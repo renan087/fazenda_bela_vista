@@ -581,7 +581,7 @@ class FarmRepository:
     def list_harvests(self, limit: int | None = None) -> list[HarvestRecord]:
         query = (
             self.db.query(HarvestRecord)
-            .options(joinedload(HarvestRecord.plot))
+            .options(joinedload(HarvestRecord.plot).joinedload(Plot.variety))
             .order_by(HarvestRecord.harvest_date.desc(), HarvestRecord.id.desc())
         )
         return query.limit(limit).all() if limit else query.all()
@@ -589,7 +589,7 @@ class FarmRepository:
     def get_harvest(self, record_id: int) -> HarvestRecord | None:
         return (
             self.db.query(HarvestRecord)
-            .options(joinedload(HarvestRecord.plot))
+            .options(joinedload(HarvestRecord.plot).joinedload(Plot.variety))
             .filter(HarvestRecord.id == record_id)
             .first()
         )

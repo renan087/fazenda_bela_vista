@@ -32,7 +32,7 @@
                     <circle cx="8.5" cy="8.5" r="5.75"></circle>
                     <path d="M13 13l4 4"></path>
                 </svg>
-                <input type="search" placeholder="Buscar setor, data, sacas ou observação" data-production-search>
+                <input type="search" placeholder="Buscar setor, tipo, estágio, sacas ou responsável" data-production-search>
             </div>
         </div>
 
@@ -50,15 +50,25 @@
                     </thead>
                     <tbody class="divide-y divide-slate-100 bg-white">
                         {% for item in harvests %}
-                        <tr data-production-row data-production-search-text="{{ item.plot.name if item.plot else '' }} {{ item.harvest_date }} {{ item.sacks_produced }} {{ item.productivity_per_hectare or 0 }} {{ item.notes or '' }}">
+                        <tr data-production-row data-production-search-text="{{ item.plot.name if item.plot else '' }} {{ item.plot.variety.name if item.plot and item.plot.variety else '' }} {{ item.harvest_date }} {{ item.sacks_produced }} {{ item.harvest_type or '' }} {{ item.coffee_stage or '' }} {{ item.initial_destination or '' }} {{ item.responsible_name or '' }} {{ item.notes or '' }}">
                             <td class="px-4 py-3 font-semibold text-slate-900">
                                 <button type="button" class="text-left transition hover:text-brand-700" data-history-view-trigger data-history-view-kicker="Colheita" data-history-view-title="{{ item.plot.name if item.plot else 'Setor removido' }}" data-history-view-subtitle="{{ item.harvest_date.strftime('%d-%m-%Y') if item.harvest_date else '-' }}" data-history-view-source="harvest-view-{{ item.id }}" data-history-view-edit-url="/producao?edit_id={{ item.id }}">{{ item.plot.name if item.plot else "Setor removido" }}</button>
                                 <template id="harvest-view-{{ item.id }}">
                                     <div class="grid gap-3 sm:grid-cols-2">
                                         <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Setor</p><p class="mt-2 text-sm font-medium text-slate-800">{{ item.plot.name if item.plot else "Setor removido" }}</p></div>
+                                        <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Variedade</p><p class="mt-2 text-sm font-medium text-slate-800">{{ item.plot.variety.name if item.plot and item.plot.variety else "Não informada" }}</p></div>
                                         <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Data</p><p class="mt-2 text-sm font-medium text-slate-800">{{ item.harvest_date.strftime('%d-%m-%Y') if item.harvest_date else "-" }}</p></div>
-                                        <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Sacas</p><p class="mt-2 text-sm font-medium text-slate-800">{{ item.sacks_produced }}</p></div>
+                                        <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Quantidade colhida</p><p class="mt-2 text-sm font-medium text-slate-800">{{ item.sacks_produced }} sacas</p></div>
+                                        <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Tipo de colheita</p><p class="mt-2 text-sm font-medium text-slate-800">{{ item.harvest_type or "-" }}</p></div>
+                                        <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Estágio do café</p><p class="mt-2 text-sm font-medium text-slate-800">{{ item.coffee_stage or "-" }}</p></div>
+                                        <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Destino inicial</p><p class="mt-2 text-sm font-medium text-slate-800">{{ item.initial_destination or "-" }}</p></div>
+                                        <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Responsável</p><p class="mt-2 text-sm font-medium text-slate-800">{{ item.responsible_name or "Não informado" }}</p></div>
+                                        <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Turno</p><p class="mt-2 text-sm font-medium text-slate-800">{{ item.work_shift or "Não informado" }}</p></div>
                                         <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Produtividade</p><p class="mt-2 text-sm font-medium text-slate-800">{{ item.productivity_per_hectare or 0 }} sc/ha</p></div>
+                                        <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Maturação</p><p class="mt-2 text-sm font-medium text-slate-800">{{ item.maturation_percentage ~ '%' if item.maturation_percentage is not none else "Não informada" }}</p></div>
+                                        <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Impureza</p><p class="mt-2 text-sm font-medium text-slate-800">{{ item.impurity_percentage ~ '%' if item.impurity_percentage is not none else "Não informada" }}</p></div>
+                                        <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Umidade na entrada</p><p class="mt-2 text-sm font-medium text-slate-800">{{ item.input_moisture_percentage ~ '%' if item.input_moisture_percentage is not none else "Não informada" }}</p></div>
+                                        <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Volumes</p><p class="mt-2 text-sm font-medium text-slate-800">{{ item.volume_count if item.volume_count is not none else "Não informado" }}</p></div>
                                     </div>
                                     <div class="rounded-2xl bg-slate-50 px-4 py-4">
                                         <p class="text-xs uppercase tracking-[0.2em] text-slate-400">Observações</p>
@@ -153,23 +163,104 @@
                     </div>
                 </div>
 
-                <label>
-                    <span class="mb-2 block text-sm font-medium">Setor</span>
-                    <select name="plot_id" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required>
-                        {% for plot in plots %}
-                        <option value="{{ plot.id }}" {% if edit_harvest and edit_harvest.plot_id == plot.id %}selected{% endif %}>{{ plot.name }}</option>
-                        {% endfor %}
-                    </select>
-                </label>
-                <div class="grid gap-4 md:grid-cols-2">
+                <div class="grid gap-4 md:grid-cols-3">
                     <label>
-                        <span class="mb-2 block text-sm font-medium">Data da colheita</span>
+                        <span class="mb-2 block text-sm font-medium">Setor <span class="text-rose-500">*</span></span>
+                        <select name="plot_id" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required data-production-plot-select>
+                            {% for plot in plots %}
+                            <option value="{{ plot.id }}" data-variety-name="{{ plot.variety.name if plot.variety else '' }}" {% if edit_harvest and edit_harvest.plot_id == plot.id %}selected{% endif %}>{{ plot.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </label>
+                    <div class="rounded-[1.5rem] border border-slate-200 bg-slate-50 px-4 py-3">
+                        <p class="text-xs uppercase tracking-[0.2em] text-slate-400">Variedade vinculada</p>
+                        <p class="mt-2 text-sm font-semibold text-slate-900" data-production-variety-display>{{ edit_harvest.plot.variety.name if edit_harvest and edit_harvest.plot and edit_harvest.plot.variety else ((plots[0].variety.name) if plots and plots[0].variety else "Não informada") }}</p>
+                    </div>
+                    <div class="rounded-[1.5rem] border border-slate-200 bg-slate-50 px-4 py-3">
+                        <p class="text-xs uppercase tracking-[0.2em] text-slate-400">Safra ativa</p>
+                        <p class="mt-2 text-sm font-semibold text-slate-900">{{ active_season.name if active_season else "Não selecionada" }}</p>
+                    </div>
+                </div>
+
+                <div class="rounded-[1.5rem] border border-slate-200 bg-slate-50/70 p-4">
+                    <p class="text-xs uppercase tracking-[0.2em] text-slate-400">Obrigatórios</p>
+                    <p class="mt-2 text-sm text-slate-600">Setor, data da colheita, quantidade colhida, tipo de colheita, estágio do café e destino inicial.</p>
+                </div>
+                <div class="grid gap-4 md:grid-cols-3">
+                    <label>
+                        <span class="mb-2 block text-sm font-medium">Data da colheita <span class="text-rose-500">*</span></span>
                         <input type="date" name="harvest_date" value="{{ edit_harvest.harvest_date.isoformat() if edit_harvest else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required>
                     </label>
                     <label>
-                        <span class="mb-2 block text-sm font-medium">Sacas produzidas</span>
+                        <span class="mb-2 block text-sm font-medium">Quantidade colhida (sacas) <span class="text-rose-500">*</span></span>
                         <input type="number" step="0.01" name="sacks_produced" value="{{ edit_harvest.sacks_produced if edit_harvest else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required>
                     </label>
+                    <label>
+                        <span class="mb-2 block text-sm font-medium">Tipo de colheita <span class="text-rose-500">*</span></span>
+                        <select name="harvest_type" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required>
+                            <option value="">Selecione</option>
+                            {% for value, label in harvest_type_options %}
+                            <option value="{{ value }}" {% if edit_harvest and edit_harvest.harvest_type == value %}selected{% endif %}>{{ label }}</option>
+                            {% endfor %}
+                        </select>
+                    </label>
+                </div>
+                <div class="grid gap-4 md:grid-cols-3">
+                    <label>
+                        <span class="mb-2 block text-sm font-medium">Estágio / condição do café <span class="text-rose-500">*</span></span>
+                        <select name="coffee_stage" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required>
+                            <option value="">Selecione</option>
+                            {% for value, label in coffee_stage_options %}
+                            <option value="{{ value }}" {% if edit_harvest and edit_harvest.coffee_stage == value %}selected{% endif %}>{{ label }}</option>
+                            {% endfor %}
+                        </select>
+                    </label>
+                    <label>
+                        <span class="mb-2 block text-sm font-medium">Destino inicial <span class="text-rose-500">*</span></span>
+                        <select name="initial_destination" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required>
+                            <option value="">Selecione</option>
+                            {% for value, label in destination_options %}
+                            <option value="{{ value }}" {% if edit_harvest and edit_harvest.initial_destination == value %}selected{% endif %}>{{ label }}</option>
+                            {% endfor %}
+                        </select>
+                    </label>
+                    <label>
+                        <span class="mb-2 block text-sm font-medium">Responsável <span class="text-slate-400">(opcional)</span></span>
+                        <input type="text" name="responsible_name" value="{{ edit_harvest.responsible_name if edit_harvest else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" placeholder="Equipe ou responsável">
+                    </label>
+                </div>
+                <div class="grid gap-4 md:grid-cols-4">
+                    <label>
+                        <span class="mb-2 block text-sm font-medium">Turno <span class="text-slate-400">(opcional)</span></span>
+                        <select name="work_shift" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50">
+                            <option value="">Selecione</option>
+                            {% for value, label in shift_options %}
+                            <option value="{{ value }}" {% if edit_harvest and edit_harvest.work_shift == value %}selected{% endif %}>{{ label }}</option>
+                            {% endfor %}
+                        </select>
+                    </label>
+                    <label>
+                        <span class="mb-2 block text-sm font-medium">Maturação (%) <span class="text-slate-400">(opcional)</span></span>
+                        <input type="number" step="0.01" min="0" max="100" name="maturation_percentage" value="{{ edit_harvest.maturation_percentage if edit_harvest and edit_harvest.maturation_percentage is not none else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" placeholder="0 a 100">
+                    </label>
+                    <label>
+                        <span class="mb-2 block text-sm font-medium">Impureza (%) <span class="text-slate-400">(opcional)</span></span>
+                        <input type="number" step="0.01" min="0" max="100" name="impurity_percentage" value="{{ edit_harvest.impurity_percentage if edit_harvest and edit_harvest.impurity_percentage is not none else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" placeholder="0 a 100">
+                    </label>
+                    <label>
+                        <span class="mb-2 block text-sm font-medium">Umidade na entrada (%) <span class="text-slate-400">(opcional)</span></span>
+                        <input type="number" step="0.01" min="0" max="100" name="input_moisture_percentage" value="{{ edit_harvest.input_moisture_percentage if edit_harvest and edit_harvest.input_moisture_percentage is not none else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" placeholder="0 a 100">
+                    </label>
+                </div>
+                <div class="grid gap-4 md:grid-cols-2">
+                    <label>
+                        <span class="mb-2 block text-sm font-medium">Número de volumes <span class="text-slate-400">(opcional)</span></span>
+                        <input type="number" min="0" step="1" name="volume_count" value="{{ edit_harvest.volume_count if edit_harvest and edit_harvest.volume_count is not none else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" placeholder="Ex.: bags, caixas ou lotes">
+                    </label>
+                    <div class="rounded-[1.5rem] border border-slate-200 bg-slate-50/70 p-4">
+                        <p class="text-xs uppercase tracking-[0.2em] text-slate-400">Campos opcionais</p>
+                        <p class="mt-2 text-sm text-slate-600">Responsável, turno, maturação, impureza, umidade e volumes ajudam na rastreabilidade e na leitura operacional da colheita.</p>
+                    </div>
                 </div>
                 <label>
                     <span class="mb-2 block text-sm font-medium">Observações</span>
@@ -224,6 +315,8 @@
     const contextCollapse = document.querySelector('[data-production-context-collapse]');
     const contextToggleLabel = document.querySelector('[data-production-context-toggle-label]');
     const contextTogglePlus = document.querySelector('[data-production-context-toggle-plus]');
+    const plotSelect = document.querySelector('[data-production-plot-select]');
+    const varietyDisplay = document.querySelector('[data-production-variety-display]');
     const syncContextToggle = (expanded) => {
         if (!contextCollapse || !contextToggle) return;
         contextCollapse.classList.toggle('is-expanded', expanded);
@@ -236,6 +329,15 @@
         const expanded = !contextCollapse?.classList.contains('is-expanded');
         syncContextToggle(!!expanded);
     });
+
+    const syncVarietyDisplay = () => {
+        if (!plotSelect || !varietyDisplay) return;
+        const option = plotSelect.options[plotSelect.selectedIndex];
+        const varietyName = option?.dataset.varietyName || '';
+        varietyDisplay.textContent = varietyName || 'Não informada';
+    };
+    plotSelect?.addEventListener('change', syncVarietyDisplay);
+    syncVarietyDisplay();
 
     const normalizeText = (value) => (value || '').toString().normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
     const applyLocalSearch = () => {

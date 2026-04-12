@@ -11768,6 +11768,29 @@ def production_page(
         lambda item: item.id,
     )
     harvests_pagination = _paginate_collection(request, harvests, "harvests_page")
+    harvest_type_options = [
+        ("Manual", "Manual"),
+        ("Semimecanizada", "Semimecanizada"),
+        ("Mecanizada", "Mecanizada"),
+    ]
+    coffee_stage_options = [
+        ("Cereja", "Cereja"),
+        ("Verde", "Verde"),
+        ("Boia", "Boia"),
+        ("Mistura", "Mistura"),
+    ]
+    destination_options = [
+        ("Terreiro", "Terreiro"),
+        ("Lavador", "Lavador"),
+        ("Secador", "Secador"),
+        ("Tulha", "Tulha"),
+    ]
+    shift_options = [
+        ("Manhã", "Manhã"),
+        ("Tarde", "Tarde"),
+        ("Integral", "Integral"),
+        ("Noturno", "Noturno"),
+    ]
     return templates.TemplateResponse(
         "production.html",
         _base_context(
@@ -11780,8 +11803,21 @@ def production_page(
             harvests=harvests_pagination["items"],
             harvests_pagination=harvests_pagination,
             edit_harvest=repo.get_harvest(edit_id) if edit_id else None,
+            harvest_type_options=harvest_type_options,
+            coffee_stage_options=coffee_stage_options,
+            destination_options=destination_options,
+            shift_options=shift_options,
         ),
     )
+
+
+def _validate_harvest_percentage(value: str | None, label: str) -> float | None:
+    parsed = _float_or_none(value)
+    if parsed is None:
+        return None
+    if parsed < 0 or parsed > 100:
+        raise ValueError(f"{label} deve estar entre 0 e 100.")
+    return parsed
 
 
 @router.post("/producao")
@@ -11791,6 +11827,15 @@ def create_harvest_action(
     plot_id: int = Form(...),
     harvest_date: str = Form(...),
     sacks_produced: float = Form(...),
+    harvest_type: str = Form(...),
+    coffee_stage: str = Form(...),
+    initial_destination: str = Form(...),
+    responsible_name: str | None = Form(None),
+    work_shift: str | None = Form(None),
+    maturation_percentage: str | None = Form(None),
+    impurity_percentage: str | None = Form(None),
+    input_moisture_percentage: str | None = Form(None),
+    volume_count: str | None = Form(None),
     notes: str | None = Form(None),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user_web),
@@ -11801,6 +11846,13 @@ def create_harvest_action(
     plot, _, denied = _resolve_plot_in_scope(request, repo, plot_id, "/producao")
     if denied:
         return denied
+    try:
+        maturation_value = _validate_harvest_percentage(maturation_percentage, "Percentual de maturação")
+        impurity_value = _validate_harvest_percentage(impurity_percentage, "Percentual de impureza")
+        moisture_value = _validate_harvest_percentage(input_moisture_percentage, "Umidade na entrada")
+    except ValueError as exc:
+        _flash(request, "error", str(exc))
+        return _redirect("/producao")
     area = float(plot.area_hectares) if plot else 0
     create_harvest(
         repo,
@@ -11808,6 +11860,15 @@ def create_harvest_action(
             "plot_id": plot.id,
             "harvest_date": harvest_date,
             "sacks_produced": sacks_produced,
+            "harvest_type": (harvest_type or "").strip(),
+            "coffee_stage": (coffee_stage or "").strip(),
+            "initial_destination": (initial_destination or "").strip(),
+            "responsible_name": (responsible_name or "").strip() or None,
+            "work_shift": (work_shift or "").strip() or None,
+            "maturation_percentage": maturation_value,
+            "impurity_percentage": impurity_value,
+            "input_moisture_percentage": moisture_value,
+            "volume_count": _int_or_none(volume_count),
             "notes": notes,
         },
         area,
@@ -11824,6 +11885,15 @@ def update_harvest_action(
     plot_id: int = Form(...),
     harvest_date: str = Form(...),
     sacks_produced: float = Form(...),
+    harvest_type: str = Form(...),
+    coffee_stage: str = Form(...),
+    initial_destination: str = Form(...),
+    responsible_name: str | None = Form(None),
+    work_shift: str | None = Form(None),
+    maturation_percentage: str | None = Form(None),
+    impurity_percentage: str | None = Form(None),
+    input_moisture_percentage: str | None = Form(None),
+    volume_count: str | None = Form(None),
     notes: str | None = Form(None),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user_web),
@@ -11841,6 +11911,13 @@ def update_harvest_action(
     if not _plot_matches_scope(harvest.plot, scope):
         _flash(request, "error", "Este registro de producao nao pertence ao contexto ativo.")
         return _redirect_for_request(request, "/producao")
+    try:
+        maturation_value = _validate_harvest_percentage(maturation_percentage, "Percentual de maturação")
+        impurity_value = _validate_harvest_percentage(impurity_percentage, "Percentual de impureza")
+        moisture_value = _validate_harvest_percentage(input_moisture_percentage, "Umidade na entrada")
+    except ValueError as exc:
+        _flash(request, "error", str(exc))
+        return _redirect_for_request(request, f"/producao?edit_id={record_id}")
     area = float(plot.area_hectares) if plot else 0
     update_harvest(
         repo,
@@ -11849,6 +11926,15 @@ def update_harvest_action(
             "plot_id": plot.id,
             "harvest_date": harvest_date,
             "sacks_produced": sacks_produced,
+            "harvest_type": (harvest_type or "").strip(),
+            "coffee_stage": (coffee_stage or "").strip(),
+            "initial_destination": (initial_destination or "").strip(),
+            "responsible_name": (responsible_name or "").strip() or None,
+            "work_shift": (work_shift or "").strip() or None,
+            "maturation_percentage": maturation_value,
+            "impurity_percentage": impurity_value,
+            "input_moisture_percentage": moisture_value,
+            "volume_count": _int_or_none(volume_count),
             "notes": notes,
         },
         area,
