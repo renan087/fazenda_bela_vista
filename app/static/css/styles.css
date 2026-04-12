@@ -1486,12 +1486,26 @@ body.dashboard-schedule-modal-open {
     overflow: visible;
 }
 
-/* Contas: a tabela/lista vem depois do bloco de filtros no DOM; sem z-index o calendário do período fica atrás da lista. */
+/* Contas: a tabela/lista vem depois do bloco de filtros no DOM; sem z-index o calendário do período fica atrás da lista.
+   O filtro precisa de z-index alto + overflow visível; a lista precisa de z-index menor para não sobrepor o dropdown. */
 .stock-history-stage[data-finance-tab="payables"] > .stock-filter-bar,
 .stock-history-stage[data-finance-tab="receivables"] > .stock-filter-bar,
 .stock-history-stage[data-finance-tab="transactions"] > .stock-filter-bar {
     position: relative;
     z-index: 30;
+    overflow: visible;
+}
+
+[data-finance-payables-list-root],
+[data-finance-receivables-list-root] {
+    position: relative;
+    z-index: 1;
+}
+
+.stock-history-stage[data-finance-tab="transactions"] > .stock-table-shell,
+.stock-history-stage[data-finance-tab="transactions"] > div:not(.stock-filter-bar) {
+    position: relative;
+    z-index: 1;
 }
 
 @media (min-width: 900px) {
@@ -2136,6 +2150,12 @@ body.dashboard-schedule-modal-open {
 [data-finance-receivables-filter-collapse] > .stock-summary-collapse-inner,
 [data-finance-transactions-filter-collapse] > .stock-summary-collapse-inner,
 [data-commercialization-filter-collapse] > .stock-summary-collapse-inner {
+    overflow: visible;
+}
+
+[data-finance-payables-filter-collapse],
+[data-finance-receivables-filter-collapse],
+[data-finance-transactions-filter-collapse] {
     overflow: visible;
 }
 
