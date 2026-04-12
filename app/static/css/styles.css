@@ -2105,7 +2105,8 @@ body.dashboard-schedule-modal-open {
 }
 
 [data-stock-filter-collapse] > .stock-summary-collapse-inner,
-[data-finance-payables-filter-collapse] > .stock-summary-collapse-inner {
+[data-finance-payables-filter-collapse] > .stock-summary-collapse-inner,
+[data-finance-transactions-filter-collapse] > .stock-summary-collapse-inner {
     overflow: visible;
 }
 
