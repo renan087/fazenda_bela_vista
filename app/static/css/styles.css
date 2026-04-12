@@ -1481,7 +1481,8 @@ body.dashboard-schedule-modal-open {
 }
 
 [data-commercialization-filter-collapse],
-[data-commercialization-filter-collapse] .stock-filter-grid {
+[data-commercialization-filter-collapse] .stock-filter-grid,
+[data-commercialization-filter-collapse] .stock-filter-bar {
     overflow: visible;
 }
 
@@ -2597,6 +2598,44 @@ body.dashboard-schedule-modal-open {
 
     .stock-filter-fields-row.purchased-filter-fields-row .stock-filter-field-actions {
         justify-content: stretch;
+    }
+
+    /* Comercialização: grid específico para 5 colunas (Lote, Status, Período, Busca, Ações) */
+    .stock-filter-fields-row.commercialization-filter-fields-row {
+        --stock-filter-col-lot: minmax(12rem, 0.85fr);
+        --stock-filter-col-status: minmax(9rem, 0.6fr);
+        --stock-filter-col-period: minmax(12rem, 0.85fr);
+        --stock-filter-col-search: minmax(0, 1.2fr);
+        --stock-filter-col-actions: max-content;
+        grid-template-columns:
+            var(--stock-filter-col-lot)
+            var(--stock-filter-col-status)
+            var(--stock-filter-col-period)
+            var(--stock-filter-col-search)
+            var(--stock-filter-col-actions);
+        column-gap: 0.85rem;
+    }
+
+    .stock-filter-fields-row.commercialization-filter-fields-row.has-clear-action {
+        --stock-filter-col-lot: minmax(11rem, 0.8fr);
+        --stock-filter-col-status: minmax(8.5rem, 0.55fr);
+        --stock-filter-col-period: minmax(11rem, 0.8fr);
+        --stock-filter-col-search: minmax(0, 1.1fr);
+    }
+
+    .stock-filter-fields-row.commercialization-filter-fields-row > .stock-filter-field,
+    .stock-filter-fields-row.commercialization-filter-fields-row > .stock-filter-field-period {
+        min-width: 0;
+    }
+
+    .stock-filter-fields-row.commercialization-filter-fields-row > .stock-filter-field-period {
+        position: relative;
+        z-index: 18;
+    }
+
+    .stock-filter-fields-row.commercialization-filter-fields-row .stock-filter-field-actions {
+        white-space: nowrap;
+        justify-content: flex-end;
     }
 }
 
