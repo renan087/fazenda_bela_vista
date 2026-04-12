@@ -1730,6 +1730,15 @@ body.dashboard-schedule-modal-open {
 .stock-panel[data-stock-fade-panel].is-filter-menu-open {
     -webkit-mask-image: none;
     mask-image: none;
+    overflow: visible !important;
+}
+
+.stock-panel.is-filter-menu-open > .stock-history-stage,
+.stock-panel.is-filter-menu-open .stock-filter-bar,
+.stock-panel.is-filter-menu-open .stock-filter-grid,
+.stock-panel.is-filter-menu-open .stock-summary-collapse,
+.stock-panel.is-filter-menu-open .stock-summary-collapse-inner {
+    overflow: visible !important;
 }
 
 .stock-page-header {
