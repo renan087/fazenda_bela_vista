@@ -285,6 +285,8 @@ def _finance_transaction_module_label(transaction: FinanceTransaction) -> str:
         return "Suprimentos"
     if source == "patrimônio" or source == "patrimonio":
         return "Patrimônio"
+    if source == "comercialização" or source == "comercializacao":
+        return "Comercialização"
     return "Contas"
 
 

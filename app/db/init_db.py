@@ -13,6 +13,7 @@ from app.models import (
     AgronomicProfile,
     AsaasPayment,
     BackupRun,
+    CoffeeCommercializationRecord,
     CoffeeVariety,
     CropSeason,
     EquipmentAsset,
@@ -117,6 +118,35 @@ def _sync_schema() -> None:
             area_unit VARCHAR(20) NOT NULL DEFAULT 'ha',
             notes TEXT,
             status VARCHAR(20) NOT NULL DEFAULT 'planejada'
+        )
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS coffee_commercialization_records (
+            id SERIAL PRIMARY KEY,
+            farm_id INTEGER NOT NULL REFERENCES farms(id) ON DELETE CASCADE,
+            harvest_id INTEGER REFERENCES harvest_records(id) ON DELETE SET NULL,
+            finance_account_id INTEGER REFERENCES finance_accounts(id) ON DELETE SET NULL,
+            finance_transaction_id INTEGER REFERENCES finance_transactions(id) ON DELETE SET NULL,
+            sale_date DATE NOT NULL,
+            buyer_name VARCHAR(180) NOT NULL,
+            lot_label VARCHAR(220) NOT NULL,
+            plot_name VARCHAR(160),
+            variety_name VARCHAR(160),
+            harvest_date_snapshot DATE,
+            coffee_type VARCHAR(60),
+            sale_unit VARCHAR(20) NOT NULL DEFAULT 'sc_60',
+            quantity_sold NUMERIC(14,2) NOT NULL,
+            equivalent_sacks NUMERIC(14,4) NOT NULL,
+            unit_price NUMERIC(14,2) NOT NULL,
+            total_value NUMERIC(14,2) NOT NULL,
+            status VARCHAR(40) NOT NULL DEFAULT 'negociado',
+            payment_method VARCHAR(80),
+            payment_condition VARCHAR(20) NOT NULL DEFAULT 'a_vista',
+            installment_count INTEGER NOT NULL DEFAULT 1,
+            installment_frequency VARCHAR(20),
+            first_installment_date DATE,
+            notes TEXT,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
         )
         """,
         """

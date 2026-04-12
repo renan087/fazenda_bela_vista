@@ -1,0 +1,559 @@
+{% extends "base.html" %}
+{% from "partials/module_history_filter_toolbar.html" import module_period_picker_inline %}
+{% block content %}
+<div class="stock-page-shell space-y-6" data-modal-single-pane>
+    <section class="stock-page-header rounded-[2rem] p-5 shadow-panel">
+        <div class="flex flex-wrap items-start justify-between gap-4">
+            <div class="min-w-0 stock-page-header-intro" data-stock-header-intro>
+                <div class="stock-page-header-intro-inner">
+                    <h2 class="stock-page-card-title">Comercialização</h2>
+                    <p class="stock-page-card-subtitle">Negocie o café colhido com saldo por lote, controle da unidade comercializada e integração financeira no padrão do sistema.</p>
+                </div>
+            </div>
+            <div class="stock-header-actions stock-header-actions-top stock-actions-row-mobile-adaptive max-[899px]:w-full">
+                <button type="button" class="stock-action-button stock-action-button-primary" data-commercialization-launch-open>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                        <path d="M12 5v14"/>
+                        <path d="M5 12h14"/>
+                    </svg>
+                    <span class="stock-action-button-label"><span class="sm:hidden">Nova</span><span class="hidden sm:inline">Nova comercialização</span></span>
+                </button>
+            </div>
+        </div>
+    </section>
+
+    <section class="grid gap-4 lg:grid-cols-4">
+        <article class="stock-summary-card" data-stock-level="ok">
+            <p class="stock-summary-label">Saldo disponível</p>
+            <p class="stock-summary-value">{{ commercialization_total_available_sacks|decimal_br }} sc</p>
+            <p class="stock-summary-note">{{ commercialization_total_available_kg|decimal_br }} kg equivalentes</p>
+        </article>
+        <article class="stock-summary-card" data-stock-level="ok">
+            <p class="stock-summary-label">Lotes disponíveis</p>
+            <p class="stock-summary-value">{{ commercialization_available_lot_count }}</p>
+            <p class="stock-summary-note">Colheitas com saldo para venda</p>
+        </article>
+        <article class="stock-summary-card" data-stock-level="warning">
+            <p class="stock-summary-label">Comercializado no período</p>
+            <p class="stock-summary-value">{{ commercialization_filtered_total_sacks|decimal_br }} sc</p>
+            <p class="stock-summary-note">{{ commercialization_filtered_total_kg|decimal_br }} kg equivalentes</p>
+        </article>
+        <article class="stock-summary-card" data-stock-level="ok">
+            <p class="stock-summary-label">Valor negociado</p>
+            <p class="stock-summary-value">R$ {{ commercialization_filtered_total_value|decimal_br }}</p>
+            <p class="stock-summary-note">Totais respeitando os filtros</p>
+        </article>
+    </section>
+
+    <section class="stock-panel rounded-[2rem] bg-white p-6 shadow-panel" data-stock-fade-panel>
+        <div class="flex flex-wrap items-start justify-between gap-4">
+            <div class="min-w-0">
+                <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Lotes comercializados</p>
+                <h3 class="mt-2 text-2xl font-semibold">Histórico de comercialização</h3>
+            </div>
+        </div>
+
+        <div class="stock-filter-bar mt-6">
+            <form method="get" action="/producao/comercializacao" class="stock-filter-grid" data-module-period-filter-root data-module-range-default="current_month" data-module-range-placeholder="Filtre por período">
+                <div class="stock-filter-fields-row {% if commercialization_filters_active %}has-clear-action{% endif %}">
+                    <label class="stock-filter-field stock-filter-field-input {% if commercialization_selected_harvest_id %}is-filtered{% endif %}">
+                        <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Lote</span>
+                        <select name="harvest_id" class="w-full rounded-xl border-slate-200 bg-white">
+                            <option value="">Todos os lotes</option>
+                            {% for option in harvest_options %}
+                            <option value="{{ option.harvest.id }}" {% if commercialization_selected_harvest_id and commercialization_selected_harvest_id|string == option.harvest.id|string %}selected{% endif %}>{{ option.lot_label }}</option>
+                            {% endfor %}
+                        </select>
+                    </label>
+                    <label class="stock-filter-field stock-filter-field-input {% if commercialization_selected_status %}is-filtered{% endif %}">
+                        <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Status</span>
+                        <select name="status" class="w-full rounded-xl border-slate-200 bg-white">
+                            <option value="">Todos</option>
+                            {% for value, label in commercialization_status_options %}
+                            <option value="{{ value }}" {% if commercialization_selected_status == value %}selected{% endif %}>{{ label }}</option>
+                            {% endfor %}
+                        </select>
+                    </label>
+                    <div class="stock-filter-field stock-filter-field-period {% if commercialization_filter_start_date or commercialization_filter_end_date %}is-filtered{% endif %}">
+                        <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Período</span>
+                        <div class="module-filter-period-row">
+                            {{ module_period_picker_inline(commercialization_selected_range or ('custom' if commercialization_filter_start_date or commercialization_filter_end_date else ''), commercialization_filter_start_date, commercialization_filter_end_date, 'past', 'Filtre por período') }}
+                        </div>
+                    </div>
+                    <label class="stock-filter-field stock-filter-field-input {% if commercialization_search %}is-filtered{% endif %}">
+                        <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Busca</span>
+                        <input type="search" name="search" value="{{ commercialization_search or '' }}" placeholder="Comprador, lote, variedade ou observação" class="w-full rounded-xl border border-slate-200 bg-white">
+                    </label>
+                    <div class="stock-filter-field stock-filter-field-actions flex flex-nowrap items-end gap-3">
+                        <button type="submit" class="inline-flex min-h-[3.25rem] shrink-0 items-center justify-center rounded-xl bg-brand-500 px-4 text-sm font-semibold text-white hover:bg-brand-700">Aplicar</button>
+                        <a href="{{ commercialization_clear_url }}" class="{% if not commercialization_filters_active %}hidden {% endif %}inline-flex min-h-[3.25rem] shrink-0 items-center justify-center rounded-xl bg-white px-4 text-sm font-semibold text-slate-700 ring-1 ring-slate-200 hover:bg-slate-100">Limpar</a>
+                    </div>
+                </div>
+            </form>
+        </div>
+
+        <div class="stock-table-shell mt-5 overflow-hidden rounded-[1.5rem] border border-slate-200">
+            <div class="overflow-x-auto">
+                <table class="stock-history-table min-w-full divide-y divide-slate-200 text-sm">
+                    <thead class="bg-slate-50 text-left text-slate-500">
+                        <tr>
+                            <th class="px-4 py-3 font-medium">Lote</th>
+                            <th class="px-4 py-3 font-medium">Data</th>
+                            <th class="px-4 py-3 font-medium">Comprador</th>
+                            <th class="px-4 py-3 font-medium">Quantidade</th>
+                            <th class="px-4 py-3 font-medium">Equiv. em sacas</th>
+                            <th class="px-4 py-3 font-medium">Valor</th>
+                            <th class="px-4 py-3 font-medium">Status</th>
+                            <th class="px-4 py-3 font-medium text-right">Ações</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-slate-100 bg-white">
+                        {% for item in commercializations %}
+                        <tr>
+                            <td class="px-4 py-3 font-semibold text-slate-900">
+                                <button type="button" class="text-left transition hover:text-brand-700" data-history-view-trigger data-history-view-kicker="Comercialização" data-history-view-title="{{ item.lot_label }}" data-history-view-subtitle="{{ item.sale_date.strftime('%d-%m-%Y') if item.sale_date else '-' }} • {{ item.buyer_name }}" data-history-view-source="commercialization-view-{{ item.id }}" data-history-view-edit-url="/producao/comercializacao?edit_id={{ item.id }}">{{ item.lot_label }}</button>
+                                <template id="commercialization-view-{{ item.id }}">
+                                    <div class="grid gap-3 sm:grid-cols-2">
+                                        <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Lote</p><p class="mt-2 text-sm font-medium text-slate-800">{{ item.lot_label }}</p></div>
+                                        <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Comprador</p><p class="mt-2 text-sm font-medium text-slate-800">{{ item.buyer_name }}</p></div>
+                                        <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Data da venda</p><p class="mt-2 text-sm font-medium text-slate-800">{{ item.sale_date.strftime('%d/%m/%Y') if item.sale_date else '-' }}</p></div>
+                                        <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Tipo do café</p><p class="mt-2 text-sm font-medium text-slate-800">{{ item.coffee_type|replace('_', ' ')|title if item.coffee_type else '-' }}</p></div>
+                                        <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Quantidade comercializada</p><p class="mt-2 text-sm font-medium text-slate-800">{{ item.quantity_sold|decimal_br }} {{ 'kg' if item.sale_unit == 'kg' else ('t' if item.sale_unit == 'ton' else 'sc') }}</p></div>
+                                        <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Equivalente</p><p class="mt-2 text-sm font-medium text-slate-800">{{ item.equivalent_sacks|decimal_br }} sc</p></div>
+                                        <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Preço unitário</p><p class="mt-2 text-sm font-medium text-slate-800">R$ {{ item.unit_price|decimal_br }}</p></div>
+                                        <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Valor total</p><p class="mt-2 text-sm font-medium text-emerald-700">R$ {{ item.total_value|decimal_br }}</p></div>
+                                        <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Forma de pagamento</p><p class="mt-2 text-sm font-medium text-slate-800">{{ item.payment_method or '-' }}</p></div>
+                                        <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Condição</p><p class="mt-2 text-sm font-medium text-slate-800">{{ 'À prazo' if item.payment_condition == 'a_prazo' else 'À vista' }}</p></div>
+                                        <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Conta</p><p class="mt-2 text-sm font-medium text-slate-800">{{ item.finance_account.account_name if item.finance_account else '-' }}</p></div>
+                                        <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Status</p><p class="mt-2 text-sm font-medium text-slate-800">{{ item.status|replace('_', ' ')|title }}</p></div>
+                                    </div>
+                                    <div class="rounded-2xl bg-slate-50 px-4 py-4">
+                                        <p class="text-xs uppercase tracking-[0.2em] text-slate-400">Observações</p>
+                                        <p class="mt-2 text-sm text-slate-600">{{ item.notes or 'Sem observações.' }}</p>
+                                    </div>
+                                </template>
+                            </td>
+                            <td class="px-4 py-3 whitespace-nowrap">{{ item.sale_date.strftime('%d-%m-%Y') if item.sale_date else '-' }}</td>
+                            <td class="px-4 py-3">{{ item.buyer_name }}</td>
+                            <td class="px-4 py-3 whitespace-nowrap">{{ item.quantity_sold|decimal_br }} {{ 'kg' if item.sale_unit == 'kg' else ('t' if item.sale_unit == 'ton' else 'sc') }}</td>
+                            <td class="px-4 py-3 whitespace-nowrap">{{ item.equivalent_sacks|decimal_br }} sc</td>
+                            <td class="px-4 py-3 whitespace-nowrap font-semibold text-emerald-700">R$ {{ item.total_value|decimal_br }}</td>
+                            <td class="px-4 py-3 whitespace-nowrap">{{ item.status|replace('_', ' ')|title }}</td>
+                            <td class="px-4 py-3">
+                                <div class="flex items-center justify-end gap-2">
+                                    <a href="/producao/comercializacao?edit_id={{ item.id }}" class="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-100" title="Editar">
+                                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                            <path d="M12 20h9"/>
+                                            <path d="M16.5 3.5a2.1 2.1 0 1 1 3 3L7 19l-4 1 1-4Z"/>
+                                        </svg>
+                                    </a>
+                                    <form method="post" action="/producao/comercializacao/{{ item.id }}/excluir" onsubmit="return confirm('Excluir esta comercialização?');">
+                                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                                        <button type="submit" class="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 text-rose-600 hover:bg-rose-50" title="Excluir">
+                                            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                                <path d="M3 6h18"/>
+                                                <path d="M8 6V4h8v2"/>
+                                                <path d="M19 6l-1 14H6L5 6"/>
+                                                <path d="M10 11v6"/>
+                                                <path d="M14 11v6"/>
+                                            </svg>
+                                        </button>
+                                    </form>
+                                </div>
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="8" class="px-4 py-6 text-center text-slate-500">Nenhuma comercialização registrada para os filtros informados.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        {% with pagination=commercialization_pagination %}{% include "partials/history_pagination.html" %}{% endwith %}
+    </section>
+</div>
+
+{% include "partials/history_view_modal.html" %}
+
+<dialog id="commercialization-launch-modal" class="app-modal rounded-[2rem] p-0 shadow-2xl w-full max-w-5xl overflow-hidden">
+    <div class="bg-white p-6 sm:p-8">
+        <div class="flex items-start justify-between gap-4">
+            <div class="min-w-0">
+                <p class="text-xs uppercase tracking-[0.35em] text-slate-400">{% if commercialization_edit %}Editar comercialização{% else %}Nova comercialização{% endif %}</p>
+                <h3 class="mt-2 text-2xl font-semibold purchased-modal-heading">{% if commercialization_edit %}Editar negociação do lote{% else %}Novo lançamento de comercialização{% endif %}</h3>
+                <p class="mt-2 text-sm text-slate-500 purchased-modal-subtitle">Venda o café colhido com conversão automática de unidade e débito do saldo disponível do lote.</p>
+            </div>
+            <button type="button" class="modal-close-button" aria-label="Fechar" data-commercialization-launch-close>
+                <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M18 6 6 18"/>
+                    <path d="m6 6 12 12"/>
+                </svg>
+            </button>
+        </div>
+        <div class="mt-6 max-h-[72vh] overflow-y-auto pr-1" data-modal-scroll>
+            <form method="post" action="{% if commercialization_edit %}/producao/comercializacao/{{ commercialization_edit.id }}/editar{% else %}/producao/comercializacao{% endif %}" class="grid gap-4" id="commercialization-form">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+
+                <div class="sticky top-0 z-10 -mx-1 bg-white/95 px-1 py-1 backdrop-blur">
+                    <div class="flex flex-wrap justify-end gap-3 rounded-[1.5rem] px-2 py-2 sm:px-3">
+                        <button type="button" class="rounded-2xl bg-slate-100 px-4 py-3 font-semibold text-slate-700 hover:bg-slate-200" data-commercialization-launch-close>Cancelar</button>
+                        <button class="rounded-2xl bg-brand-500 px-4 py-3 font-semibold text-white hover:bg-brand-700">{% if commercialization_edit %}Salvar alterações{% else %}Salvar comercialização{% endif %}</button>
+                    </div>
+                </div>
+
+                <div class="rounded-[1.5rem] border border-brand-100 bg-brand-50/50 p-4">
+                    <div class="flex flex-wrap items-start justify-between gap-4">
+                        <div class="min-w-0">
+                            <p class="text-xs uppercase tracking-[0.3em] text-slate-400">Contexto do lançamento</p>
+                            <p class="mt-2 text-sm text-slate-500">Confirme a fazenda e a safra ativas antes de registrar a venda.</p>
+                        </div>
+                        <button type="button" class="stock-summary-toggle" data-commercialization-context-toggle aria-expanded="false">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                                <path d="M5 12h14"/>
+                                <path d="M12 5v14" data-commercialization-context-toggle-plus></path>
+                            </svg>
+                            <span data-commercialization-context-toggle-label>Expandir</span>
+                        </button>
+                    </div>
+                    <div class="stock-summary-collapse" data-commercialization-context-collapse>
+                        <div class="stock-summary-collapse-inner">
+                            <div class="mt-4">
+                                {% include "partials/launch_context.html" %}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="grid gap-4 md:grid-cols-3">
+                    <label class="flex flex-col gap-2 md:col-span-2">
+                        <span class="text-sm font-medium leading-tight">Lote de origem <span class="text-rose-500">*</span></span>
+                        <select name="harvest_id" class="h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50 px-3" required data-commercialization-harvest-select>
+                            <option value="">Selecione um lote</option>
+                            {% for option in harvest_options %}
+                            <option value="{{ option.harvest.id }}" data-available-sacks="{{ option.available_sacks }}" data-available-kg="{{ option.available_kg }}" data-lot-label="{{ option.lot_label }}" data-plot-name="{{ option.harvest.plot.name if option.harvest.plot else '' }}" data-variety-name="{{ option.harvest.plot.variety.name if option.harvest.plot and option.harvest.plot.variety else '' }}" {% if commercialization_edit and commercialization_edit.harvest_id == option.harvest.id %}selected{% endif %}>{{ option.lot_label }}</option>
+                            {% endfor %}
+                        </select>
+                    </label>
+                    <div class="flex flex-col gap-2">
+                        <span class="text-sm font-medium leading-tight text-transparent select-none" aria-hidden="true">Saldo</span>
+                        <div class="flex h-[3.25rem] flex-col justify-center gap-0.5 overflow-hidden rounded-2xl border border-slate-200 bg-slate-50 px-4">
+                            <p class="text-[0.65rem] uppercase tracking-[0.2em] text-slate-400">Saldo disponível do lote</p>
+                            <p class="truncate text-sm font-semibold leading-tight text-slate-900" data-commercialization-available-display>
+                                {% if commercialization_edit %}
+                                    {{ commercialization_edit.equivalent_sacks|decimal_br }} sc + edição
+                                {% else %}
+                                    Selecione um lote
+                                {% endif %}
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="grid gap-4 md:grid-cols-4">
+                    <label class="flex flex-col gap-2">
+                        <span class="text-sm font-medium leading-tight">Data da venda <span class="text-rose-500">*</span></span>
+                        <input type="date" name="sale_date" value="{{ commercialization_edit.sale_date.isoformat() if commercialization_edit else today.isoformat() }}" class="h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50 px-3" required>
+                    </label>
+                    <label class="flex flex-col gap-2 md:col-span-2">
+                        <span class="text-sm font-medium leading-tight">Comprador <span class="text-rose-500">*</span></span>
+                        <input type="text" name="buyer_name" value="{{ commercialization_edit.buyer_name if commercialization_edit else '' }}" class="h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50 px-3" required>
+                    </label>
+                    <label class="flex flex-col gap-2">
+                        <span class="text-sm font-medium leading-tight">Tipo do café</span>
+                        <select name="coffee_type" class="h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50 px-3">
+                            <option value="">Selecione</option>
+                            {% for value, label in commercialization_coffee_type_options %}
+                            <option value="{{ value }}" {% if commercialization_edit and commercialization_edit.coffee_type == value %}selected{% endif %}>{{ label }}</option>
+                            {% endfor %}
+                        </select>
+                    </label>
+                </div>
+
+                <div class="grid gap-4 md:grid-cols-4">
+                    <label class="flex flex-col gap-2">
+                        <span class="text-sm font-medium leading-tight">Quantidade comercializada <span class="text-rose-500">*</span></span>
+                        <input type="number" step="0.01" min="0.01" name="quantity_sold" value="{{ commercialization_edit.quantity_sold if commercialization_edit else '' }}" class="h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50 px-3" required data-commercialization-quantity>
+                    </label>
+                    <label class="flex flex-col gap-2">
+                        <span class="text-sm font-medium leading-tight">Unidade <span class="text-rose-500">*</span></span>
+                        <select name="sale_unit" class="h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50 px-3" required data-commercialization-unit>
+                            {% for value, label in commercialization_unit_options %}
+                            <option value="{{ value }}" {% if commercialization_edit and commercialization_edit.sale_unit == value %}selected{% elif not commercialization_edit and value == 'sc_60' %}selected{% endif %}>{{ label }}</option>
+                            {% endfor %}
+                        </select>
+                    </label>
+                    <label class="flex flex-col gap-2">
+                        <span class="text-sm font-medium leading-tight">Preço unitário <span class="text-rose-500">*</span></span>
+                        <input type="number" step="0.01" min="0.01" name="unit_price" value="{{ commercialization_edit.unit_price if commercialization_edit else '' }}" class="h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50 px-3" required data-commercialization-unit-price>
+                    </label>
+                    <div class="flex flex-col gap-2">
+                        <span class="text-sm font-medium leading-tight text-transparent select-none" aria-hidden="true">Total</span>
+                        <div class="flex h-[3.25rem] flex-col justify-center gap-0.5 overflow-hidden rounded-2xl border border-slate-200 bg-slate-50 px-4">
+                            <p class="text-[0.65rem] uppercase tracking-[0.2em] text-slate-400">Valor total calculado</p>
+                            <p class="truncate text-sm font-semibold leading-tight text-emerald-700" data-commercialization-total-display>R$ 0,00</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="rounded-[1.5rem] border border-slate-200 bg-slate-50/70 px-4 py-4">
+                    <p class="text-xs uppercase tracking-[0.2em] text-slate-400">Conversão automática</p>
+                    <p class="mt-2 text-sm text-slate-600" data-commercialization-conversion-display>O sistema converterá automaticamente a quantidade vendida para sacas de 60kg e debitará o saldo do lote.</p>
+                </div>
+
+                <div class="grid gap-4 md:grid-cols-3">
+                    <label class="flex flex-col gap-2">
+                        <span class="text-sm font-medium leading-tight">Conta de recebimento</span>
+                        <select name="finance_account_id" class="h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50 px-3">
+                            <option value="">Sem conta vinculada</option>
+                            {% for account in finance_accounts %}
+                            {% set selected_account_id = commercialization_edit.finance_account_id if commercialization_edit and commercialization_edit.finance_account_id else commercialization_default_finance_account_id %}
+                            <option value="{{ account.id }}" {% if selected_account_id and selected_account_id|string == account.id|string %}selected{% endif %}>{{ account.account_name }}</option>
+                            {% endfor %}
+                        </select>
+                    </label>
+                    <label class="flex flex-col gap-2">
+                        <span class="text-sm font-medium leading-tight">Forma de pagamento</span>
+                        <select name="payment_method" class="h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50 px-3">
+                            <option value="">Selecione</option>
+                            {% for option in finance_transaction_payment_methods %}
+                            <option value="{{ option }}" {% if commercialization_edit and commercialization_edit.payment_method == option %}selected{% endif %}>{{ option }}</option>
+                            {% endfor %}
+                        </select>
+                    </label>
+                    <label class="flex flex-col gap-2">
+                        <span class="text-sm font-medium leading-tight">Status</span>
+                        <select name="status" class="h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50 px-3">
+                            {% for value, label in commercialization_status_options %}
+                            <option value="{{ value }}" {% if commercialization_edit and commercialization_edit.status == value %}selected{% elif not commercialization_edit and value == 'negociado' %}selected{% endif %}>{{ label }}</option>
+                            {% endfor %}
+                        </select>
+                    </label>
+                </div>
+
+                <div class="grid gap-4 md:grid-cols-2">
+                    <label class="flex flex-col gap-2">
+                        <span class="text-sm font-medium leading-tight">Condição de pagamento</span>
+                        <select name="payment_condition" class="h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50 px-3" data-commercialization-payment-condition>
+                            <option value="a_vista" {% if not commercialization_edit or commercialization_edit.payment_condition != 'a_prazo' %}selected{% endif %}>À vista</option>
+                            <option value="a_prazo" {% if commercialization_edit and commercialization_edit.payment_condition == 'a_prazo' %}selected{% endif %}>À prazo</option>
+                        </select>
+                    </label>
+                </div>
+
+                <div class="rounded-[1.5rem] border border-slate-200 bg-slate-50/70 px-4 py-4 {% if not commercialization_edit or commercialization_edit.payment_condition != 'a_prazo' %}hidden{% endif %}" data-commercialization-installments-card>
+                    <div class="grid gap-4 md:grid-cols-3">
+                        <label class="flex flex-col gap-2">
+                            <span class="text-sm font-medium leading-tight">Quantidade de parcelas</span>
+                            <input type="number" min="1" step="1" name="installment_count" value="{{ commercialization_edit.installment_count if commercialization_edit and commercialization_edit.payment_condition == 'a_prazo' else 1 }}" class="h-[3.25rem] w-full rounded-2xl border-slate-200 bg-white px-3" data-commercialization-installment-count>
+                        </label>
+                        <label class="flex flex-col gap-2">
+                            <span class="text-sm font-medium leading-tight">Periodicidade</span>
+                            <select name="installment_frequency" class="h-[3.25rem] w-full rounded-2xl border-slate-200 bg-white px-3" data-commercialization-installment-frequency>
+                                <option value="mensal" {% if not commercialization_edit or commercialization_edit.installment_frequency != 'anual' %}selected{% endif %}>Mensal</option>
+                                <option value="anual" {% if commercialization_edit and commercialization_edit.installment_frequency == 'anual' %}selected{% endif %}>Anual</option>
+                            </select>
+                        </label>
+                        <label class="flex flex-col gap-2">
+                            <span class="text-sm font-medium leading-tight">Data da primeira parcela</span>
+                            <input type="date" name="first_installment_date" value="{{ commercialization_edit.first_installment_date.isoformat() if commercialization_edit and commercialization_edit.first_installment_date else today.isoformat() }}" class="h-[3.25rem] w-full rounded-2xl border-slate-200 bg-white px-3" data-commercialization-first-installment-date>
+                        </label>
+                    </div>
+                    <div class="mt-4 rounded-2xl bg-white px-4 py-4 ring-1 ring-slate-200/80">
+                        <p class="text-xs uppercase tracking-[0.2em] text-slate-400">Prévia das parcelas</p>
+                        <div class="mt-3 space-y-2" data-commercialization-installment-preview></div>
+                    </div>
+                </div>
+
+                <label class="flex flex-col gap-2">
+                    <span class="text-sm font-medium leading-tight">Observações</span>
+                    <textarea name="notes" rows="4" class="w-full rounded-2xl border-slate-200 bg-slate-50 px-3 py-3">{{ commercialization_edit.notes if commercialization_edit else '' }}</textarea>
+                </label>
+            </form>
+        </div>
+    </div>
+</dialog>
+
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    const launchModal = document.getElementById('commercialization-launch-modal');
+    const openButtons = Array.from(document.querySelectorAll('[data-commercialization-launch-open]'));
+    const closeButtons = Array.from(document.querySelectorAll('[data-commercialization-launch-close]'));
+    const contextToggle = document.querySelector('[data-commercialization-context-toggle]');
+    const contextCollapse = document.querySelector('[data-commercialization-context-collapse]');
+    const contextToggleLabel = document.querySelector('[data-commercialization-context-toggle-label]');
+    const contextTogglePlus = document.querySelector('[data-commercialization-context-toggle-plus]');
+    const harvestSelect = document.querySelector('[data-commercialization-harvest-select]');
+    const availableDisplay = document.querySelector('[data-commercialization-available-display]');
+    const quantityField = document.querySelector('[data-commercialization-quantity]');
+    const unitField = document.querySelector('[data-commercialization-unit]');
+    const unitPriceField = document.querySelector('[data-commercialization-unit-price]');
+    const totalDisplay = document.querySelector('[data-commercialization-total-display]');
+    const conversionDisplay = document.querySelector('[data-commercialization-conversion-display]');
+    const paymentConditionField = document.querySelector('[data-commercialization-payment-condition]');
+    const installmentsCard = document.querySelector('[data-commercialization-installments-card]');
+    const installmentCountField = document.querySelector('[data-commercialization-installment-count]');
+    const installmentFrequencyField = document.querySelector('[data-commercialization-installment-frequency]');
+    const firstInstallmentDateField = document.querySelector('[data-commercialization-first-installment-date]');
+    const installmentPreview = document.querySelector('[data-commercialization-installment-preview]');
+
+    const addMonths = (baseDate, months) => {
+        const next = new Date(baseDate.getTime());
+        const day = next.getDate();
+        next.setMonth(next.getMonth() + months, 1);
+        const endOfMonth = new Date(next.getFullYear(), next.getMonth() + 1, 0).getDate();
+        next.setDate(Math.min(day, endOfMonth));
+        return next;
+    };
+    const addYears = (baseDate, years) => {
+        const next = new Date(baseDate.getTime());
+        const month = next.getMonth();
+        const day = next.getDate();
+        next.setFullYear(next.getFullYear() + years, month, 1);
+        const endOfMonth = new Date(next.getFullYear(), month + 1, 0).getDate();
+        next.setDate(Math.min(day, endOfMonth));
+        return next;
+    };
+    const formatDateBr = (value) => {
+        if (!value || Number.isNaN(value.getTime())) return '-';
+        return value.toLocaleDateString('pt-BR');
+    };
+    const formatMoneyBr = (value) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number.isFinite(value) ? value : 0);
+    const formatNumberBr = (value, suffix = '') => {
+        const text = new Intl.NumberFormat('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Number.isFinite(value) ? value : 0);
+        return suffix ? `${text} ${suffix}` : text;
+    };
+    const selectedHarvestOption = () => harvestSelect ? harvestSelect.options[harvestSelect.selectedIndex] : null;
+    const quantityToSacks = (quantity, unit) => {
+        if (unit === 'kg') return quantity / 60;
+        if (unit === 'ton') return (quantity * 1000) / 60;
+        return quantity;
+    };
+    const unitShortLabel = (unit) => {
+        if (unit === 'kg') return 'kg';
+        if (unit === 'ton') return 't';
+        return 'sc';
+    };
+
+    const updateAvailableSummary = () => {
+        const option = selectedHarvestOption();
+        if (!option || !option.value) {
+            if (availableDisplay) availableDisplay.textContent = 'Selecione um lote';
+            return { availableSacks: 0, availableKg: 0 };
+        }
+        const availableSacks = Number(option.dataset.availableSacks || 0);
+        const availableKg = Number(option.dataset.availableKg || 0);
+        if (availableDisplay) {
+            availableDisplay.textContent = `${formatNumberBr(availableSacks, 'sc')} • ${formatNumberBr(availableKg, 'kg')}`;
+        }
+        return { availableSacks, availableKg };
+    };
+
+    const updateValuePreview = () => {
+        const quantity = Number(quantityField?.value || 0);
+        const unitPrice = Number(unitPriceField?.value || 0);
+        const unit = unitField?.value || 'sc_60';
+        const total = quantity * unitPrice;
+        const { availableSacks } = updateAvailableSummary();
+        const equivalentSacks = quantityToSacks(quantity, unit);
+        if (totalDisplay) totalDisplay.textContent = formatMoneyBr(total);
+        if (conversionDisplay) {
+            const remaining = Math.max(availableSacks - equivalentSacks, 0);
+            conversionDisplay.textContent = `A venda consumirá ${formatNumberBr(equivalentSacks, 'sc')} do lote. Saldo projetado após o lançamento: ${formatNumberBr(remaining, 'sc')}.`;
+        }
+        return total;
+    };
+
+    const updateInstallmentPreview = () => {
+        if (!installmentPreview) return;
+        installmentPreview.innerHTML = '';
+        if (!installmentsCard || installmentsCard.classList.contains('hidden')) return;
+        const total = updateValuePreview();
+        const count = Math.max(1, Number(installmentCountField?.value || 1));
+        const frequency = installmentFrequencyField?.value || 'mensal';
+        const firstValue = firstInstallmentDateField?.value;
+        const firstDate = firstValue ? new Date(`${firstValue}T12:00:00`) : null;
+        if (!firstDate || Number.isNaN(firstDate.getTime())) {
+            installmentPreview.innerHTML = '<p class="text-sm text-slate-500">Informe a data da primeira parcela para visualizar a prévia.</p>';
+            return;
+        }
+        const cents = Math.round(total * 100);
+        const baseCents = Math.floor(cents / count);
+        const remainder = cents % count;
+        for (let index = 0; index < count; index += 1) {
+            const dueDate = frequency === 'anual' ? addYears(firstDate, index) : addMonths(firstDate, index);
+            const amount = (baseCents + (index < remainder ? 1 : 0)) / 100;
+            const row = document.createElement('div');
+            row.className = 'flex items-center justify-between gap-3 rounded-xl bg-slate-50 px-3 py-2 text-sm text-slate-700 ring-1 ring-slate-200/80';
+            row.innerHTML = `<span class="font-medium">${index + 1}ª parcela</span><span>${formatDateBr(dueDate)}</span><span class="font-semibold text-slate-900">${formatMoneyBr(amount)}</span>`;
+            installmentPreview.appendChild(row);
+        }
+    };
+
+    const syncInstallmentVisibility = () => {
+        const isInstallment = paymentConditionField?.value === 'a_prazo';
+        if (installmentsCard) installmentsCard.classList.toggle('hidden', !isInstallment);
+        updateInstallmentPreview();
+    };
+
+    const setContextExpanded = (expanded) => {
+        if (!contextCollapse || !contextToggle) return;
+        contextCollapse.classList.toggle('is-expanded', expanded);
+        contextToggle.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+        if (contextToggleLabel) contextToggleLabel.textContent = expanded ? 'Recolher' : 'Expandir';
+        if (contextTogglePlus) contextTogglePlus.classList.toggle('hidden', expanded);
+    };
+
+    if (contextToggle) {
+        setContextExpanded(false);
+        contextToggle.addEventListener('click', () => {
+            const expanded = !contextCollapse.classList.contains('is-expanded');
+            setContextExpanded(expanded);
+        });
+    }
+
+    if (launchModal) {
+        const openModal = () => {
+            if (typeof launchModal.showModal === 'function') launchModal.showModal();
+        };
+        const closeModal = () => launchModal.close();
+        openButtons.forEach((button) => button.addEventListener('click', openModal));
+        closeButtons.forEach((button) => button.addEventListener('click', closeModal));
+        launchModal.addEventListener('cancel', (event) => {
+            event.preventDefault();
+            closeModal();
+        });
+    }
+
+    [harvestSelect, quantityField, unitField, unitPriceField].forEach((field) => {
+        if (field) field.addEventListener('input', () => {
+            updateValuePreview();
+            updateInstallmentPreview();
+        });
+        if (field && field.tagName === 'SELECT') {
+            field.addEventListener('change', () => {
+                updateValuePreview();
+                updateInstallmentPreview();
+            });
+        }
+    });
+    [paymentConditionField, installmentCountField, installmentFrequencyField, firstInstallmentDateField].forEach((field) => {
+        if (!field) return;
+        const eventName = field.tagName === 'SELECT' ? 'change' : 'input';
+        field.addEventListener(eventName, () => {
+            if (field === paymentConditionField) syncInstallmentVisibility();
+            else updateInstallmentPreview();
+        });
+    });
+
+    updateAvailableSummary();
+    updateValuePreview();
+    syncInstallmentVisibility();
+
+    {% if commercialization_edit %}
+    if (launchModal && typeof launchModal.showModal === 'function') {
+        launchModal.showModal();
+    }
+    {% endif %}
+});
+</script>
+{% endblock %}

@@ -26,3 +26,4 @@ class HarvestRecord(Base):
     notes: Mapped[str] = mapped_column(Text, nullable=True)
 
     plot = relationship("Plot", back_populates="harvests")
+    commercializations = relationship("CoffeeCommercializationRecord", back_populates="harvest")

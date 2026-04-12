@@ -25,6 +25,7 @@ from app.models import (
     InputRecommendation,
     InputRecommendationItem,
     IrrigationRecord,
+    CoffeeCommercializationRecord,
     PestIncident,
     Plot,
     PurchasedInput,
@@ -105,6 +106,16 @@ def _build_installments(
             }
         )
     return installments
+
+
+def commercialization_quantity_to_sacks(quantity: float, unit: str | None) -> float:
+    normalized = (unit or "sc_60").strip().lower()
+    qty = float(quantity or 0)
+    if normalized == "kg":
+        return round(qty / 60.0, 4)
+    if normalized in {"ton", "tonelada"}:
+        return round((qty * 1000.0) / 60.0, 4)
+    return round(qty, 4)
 
 
 def _normalize_finance_schedule_fields(form: dict) -> tuple[str, str | None, int, str | None, date | None]:
@@ -847,6 +858,210 @@ def update_equipment_asset(repository: FarmRepository, asset: EquipmentAsset, fo
             repository.db.commit()
         updated_asset.finance_transaction_id = None
     return updated_asset
+
+
+def create_coffee_commercialization(
+    repository: FarmRepository,
+    form: dict,
+    *,
+    harvest: HarvestRecord,
+    available_sacks: float,
+) -> CoffeeCommercializationRecord:
+    quantity_sold = float(form["quantity_sold"])
+    unit_price = float(form["unit_price"])
+    equivalent_sacks = commercialization_quantity_to_sacks(quantity_sold, form.get("sale_unit"))
+    if equivalent_sacks <= 0:
+        raise ValueError("Informe uma quantidade comercializada válida.")
+    if equivalent_sacks > round(float(available_sacks or 0), 4) + 0.0001:
+        raise ValueError("A quantidade comercializada ultrapassa o saldo disponível do lote.")
+
+    payment_condition, payment_method, installment_count, installment_frequency, first_installment_date = _normalize_finance_schedule_fields(form)
+    total_value = round(quantity_sold * unit_price, 2)
+    plot = harvest.plot
+    variety_name = plot.variety.name if plot and plot.variety else None
+    plot_name = plot.name if plot else None
+    lot_label = form.get("lot_label") or f"{plot_name or 'Setor removido'} • {harvest.harvest_date.strftime('%d/%m/%Y') if harvest.harvest_date else '-'}"
+    record = CoffeeCommercializationRecord(
+        farm_id=form["farm_id"],
+        harvest_id=harvest.id,
+        finance_account_id=form.get("finance_account_id"),
+        sale_date=date.fromisoformat(form["sale_date"]) if form.get("sale_date") else today_in_app_timezone(),
+        buyer_name=form["buyer_name"],
+        lot_label=lot_label,
+        plot_name=plot_name,
+        variety_name=variety_name,
+        harvest_date_snapshot=harvest.harvest_date,
+        coffee_type=form.get("coffee_type"),
+        sale_unit=form.get("sale_unit") or "sc_60",
+        quantity_sold=quantity_sold,
+        equivalent_sacks=equivalent_sacks,
+        unit_price=unit_price,
+        total_value=total_value,
+        status=form.get("status") or "negociado",
+        payment_method=payment_method,
+        payment_condition=payment_condition,
+        installment_count=installment_count,
+        installment_frequency=installment_frequency,
+        first_installment_date=first_installment_date,
+        notes=form.get("notes"),
+    )
+    if form.get("finance_account_id"):
+        tx = FinanceTransaction(
+            farm_id=form["farm_id"],
+            finance_account_id=form.get("finance_account_id"),
+            operation_type="receita",
+            launch_date=record.sale_date,
+            amount=record.total_value,
+            category="Venda Agrícola",
+            product_service=f"Comercialização de café — {record.lot_label}",
+            description=form.get("notes") or "",
+            counterparty_name=record.buyer_name,
+            payment_condition=payment_condition,
+            payment_method=payment_method,
+            installment_count=installment_count,
+            installment_frequency=installment_frequency,
+            first_installment_date=first_installment_date,
+            source="Comercialização",
+            created_at=app_now(),
+        )
+        repository.db.add(tx)
+        repository.db.flush()
+        record.finance_transaction_id = tx.id
+        _replace_installments(
+            repository,
+            tx,
+            _build_installments(
+                amount=record.total_value,
+                payment_condition=payment_condition,
+                installment_count=installment_count,
+                installment_frequency=installment_frequency,
+                first_installment_date=first_installment_date,
+            ),
+        )
+    return repository.create(record)
+
+
+def update_coffee_commercialization(
+    repository: FarmRepository,
+    commercialization: CoffeeCommercializationRecord,
+    form: dict,
+    *,
+    harvest: HarvestRecord,
+    available_sacks: float,
+) -> CoffeeCommercializationRecord:
+    quantity_sold = float(form["quantity_sold"])
+    unit_price = float(form["unit_price"])
+    equivalent_sacks = commercialization_quantity_to_sacks(quantity_sold, form.get("sale_unit"))
+    if equivalent_sacks <= 0:
+        raise ValueError("Informe uma quantidade comercializada válida.")
+    if equivalent_sacks > round(float(available_sacks or 0), 4) + 0.0001:
+        raise ValueError("A quantidade comercializada ultrapassa o saldo disponível do lote.")
+
+    payment_condition, payment_method, installment_count, installment_frequency, first_installment_date = _normalize_finance_schedule_fields(form)
+    total_value = round(quantity_sold * unit_price, 2)
+    plot = harvest.plot
+    variety_name = plot.variety.name if plot and plot.variety else None
+    plot_name = plot.name if plot else None
+    lot_label = form.get("lot_label") or f"{plot_name or 'Setor removido'} • {harvest.harvest_date.strftime('%d/%m/%Y') if harvest.harvest_date else '-'}"
+
+    updated = repository.update(
+        commercialization,
+        {
+            "farm_id": form["farm_id"],
+            "harvest_id": harvest.id,
+            "finance_account_id": form.get("finance_account_id"),
+            "sale_date": date.fromisoformat(form["sale_date"]) if form.get("sale_date") else commercialization.sale_date,
+            "buyer_name": form["buyer_name"],
+            "lot_label": lot_label,
+            "plot_name": plot_name,
+            "variety_name": variety_name,
+            "harvest_date_snapshot": harvest.harvest_date,
+            "coffee_type": form.get("coffee_type"),
+            "sale_unit": form.get("sale_unit") or "sc_60",
+            "quantity_sold": quantity_sold,
+            "equivalent_sacks": equivalent_sacks,
+            "unit_price": unit_price,
+            "total_value": total_value,
+            "status": form.get("status") or "negociado",
+            "payment_method": payment_method,
+            "payment_condition": payment_condition,
+            "installment_count": installment_count,
+            "installment_frequency": installment_frequency,
+            "first_installment_date": first_installment_date,
+            "notes": form.get("notes"),
+        },
+    )
+    if form.get("finance_account_id"):
+        if updated.finance_transaction_id:
+            tx = repository.get_finance_transaction(updated.finance_transaction_id)
+            if tx:
+                tx.finance_account_id = form.get("finance_account_id")
+                tx.launch_date = updated.sale_date
+                tx.amount = updated.total_value
+                tx.category = "Venda Agrícola"
+                tx.product_service = f"Comercialização de café — {updated.lot_label}"
+                tx.description = form.get("notes") or ""
+                tx.counterparty_name = updated.buyer_name
+                tx.payment_condition = payment_condition
+                tx.payment_method = payment_method
+                tx.installment_count = installment_count
+                tx.installment_frequency = installment_frequency
+                tx.first_installment_date = first_installment_date
+                tx.source = "Comercialização"
+                repository.db.add(tx)
+                repository.db.commit()
+                _replace_installments(
+                    repository,
+                    tx,
+                    _build_installments(
+                        amount=updated.total_value,
+                        payment_condition=payment_condition,
+                        installment_count=installment_count,
+                        installment_frequency=installment_frequency,
+                        first_installment_date=first_installment_date,
+                    ),
+                )
+        else:
+            tx = FinanceTransaction(
+                farm_id=form["farm_id"],
+                finance_account_id=form.get("finance_account_id"),
+                operation_type="receita",
+                launch_date=updated.sale_date,
+                amount=updated.total_value,
+                category="Venda Agrícola",
+                product_service=f"Comercialização de café — {updated.lot_label}",
+                description=form.get("notes") or "",
+                counterparty_name=updated.buyer_name,
+                payment_condition=payment_condition,
+                payment_method=payment_method,
+                installment_count=installment_count,
+                installment_frequency=installment_frequency,
+                first_installment_date=first_installment_date,
+                source="Comercialização",
+                created_at=app_now(),
+            )
+            repository.db.add(tx)
+            repository.db.flush()
+            updated.finance_transaction_id = tx.id
+            repository.db.commit()
+            _replace_installments(
+                repository,
+                tx,
+                _build_installments(
+                    amount=updated.total_value,
+                    payment_condition=payment_condition,
+                    installment_count=installment_count,
+                    installment_frequency=installment_frequency,
+                    first_installment_date=first_installment_date,
+                ),
+            )
+    elif updated.finance_transaction_id:
+        tx = repository.get_finance_transaction(updated.finance_transaction_id)
+        if tx:
+            repository.db.delete(tx)
+            repository.db.commit()
+        updated.finance_transaction_id = None
+    return updated
 
 
 def _manual_stock_output_allocations(repository: FarmRepository, output_id: int) -> list[StockOutput]:

@@ -206,11 +206,23 @@
                             <a href="/gestao-financeira/assinatura/cliente-asaas" class="sidebar-submenu-link block rounded-xl px-3 py-2 text-sm {% if page == 'finance_asaas_customer' %}bg-brand-500 text-white{% else %}text-slate-300 hover:bg-slate-800 hover:text-white{% endif %}" data-submenu-link>Cliente Asaas</a>
                         </div>
                     </div>
+                    {% set production_pages = ['harvest', 'commercialization'] %}
+                    <div class="rounded-2xl {% if page in production_pages %}bg-slate-900/80{% endif %}" data-submenu-group>
+                        <button type="button" class="erp-sidebar-link flex w-full items-center justify-between rounded-2xl px-4 py-3 text-left transition-all duration-300 ease-in-out {% if page in production_pages %}text-white{% else %}text-slate-300 hover:bg-slate-900 hover:text-white{% endif %}" data-submenu-toggle="production-menu" data-submenu-parent aria-haspopup="true" aria-expanded="{% if page in production_pages %}true{% else %}false{% endif %}">
+                            <span class="flex items-center gap-3"><span class="erp-sidebar-icon">{{ nav_icon('production') }}</span><span class="erp-sidebar-label">Produção</span></span>
+                            <span class="erp-sidebar-parent-indicator inline-flex h-8 w-8 items-center justify-center rounded-full bg-white/5 text-slate-300/80 transition-transform duration-200 ease-out" aria-hidden="true">
+                                <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+                            </span>
+                        </button>
+                        <div id="production-menu" class="sidebar-submenu-panel {% if page not in production_pages %}hidden {% endif %}space-y-1 px-3 pb-3" data-submenu-panel>
+                            <a href="/producao" class="sidebar-submenu-link block rounded-xl px-3 py-2 text-sm {% if page == 'harvest' %}bg-brand-500 text-white{% else %}text-slate-300 hover:bg-slate-800 hover:text-white{% endif %}" data-submenu-link>Colheita</a>
+                            <a href="/producao/comercializacao" class="sidebar-submenu-link block rounded-xl px-3 py-2 text-sm {% if page == 'commercialization' %}bg-brand-500 text-white{% else %}text-slate-300 hover:bg-slate-800 hover:text-white{% endif %}" data-submenu-link>Comercialização</a>
+                        </div>
+                    </div>
                     {% set nav = [
                         ('varieties', '/variedades', 'Variedades'),
                         ('irrigation', '/irrigacao', 'Irrigacao'),
                         ('rainfall', '/pluviometria', 'Pluviometria'),
-                        ('production', '/producao', 'Producao'),
                         ('pests', '/pragas', 'Pragas e Doencas'),
                         ('soil_analyses', '/analise-solo', 'Analise de Solo'),
                         ('agronomic_profiles', '/perfil-agronomico', 'Perfil Agronomico'),

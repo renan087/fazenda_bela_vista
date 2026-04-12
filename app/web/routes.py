@@ -39,6 +39,7 @@ from app.db.session import get_db
 from app.models import (
     AsaasPayment,
     AgronomicProfile,
+    CoffeeCommercializationRecord,
     CoffeeVariety,
     CropSeason,
     EquipmentAsset,
@@ -103,6 +104,7 @@ from app.services.forms import (
     calculate_soil_recommendations,
     create_agronomic_profile,
     create_crop_season,
+    create_coffee_commercialization,
     create_equipment_asset,
     create_farm,
     create_fertilization,
@@ -123,6 +125,7 @@ from app.services.forms import (
     normalize_geojson,
     update_agronomic_profile,
     update_crop_season,
+    update_coffee_commercialization,
     update_equipment_asset,
     update_farm,
     update_fertilization,
@@ -144,6 +147,7 @@ from app.services.forms import (
     delete_manual_stock_output,
     validate_schedule_stock,
     update_manual_stock_output,
+    commercialization_quantity_to_sacks,
 )
 from app.services.openai_service import gerar_recomendacao_adubacao
 from app.services.password_change import (
@@ -301,6 +305,23 @@ FINANCE_TRANSACTION_PAYMENT_METHODS = [
     "Cheque",
     "Outro",
 ]
+COMMERCIALIZATION_UNIT_OPTIONS = [
+    ("sc_60", "Sacas (60kg)"),
+    ("kg", "Quilogramas"),
+    ("ton", "Toneladas"),
+]
+COMMERCIALIZATION_STATUS_OPTIONS = [
+    ("negociado", "Negociado"),
+    ("faturado", "Faturado"),
+    ("entregue", "Entregue"),
+    ("recebido", "Recebido"),
+]
+COMMERCIALIZATION_COFFEE_TYPE_OPTIONS = [
+    ("beneficiado", "Beneficiado"),
+    ("coco", "Coco"),
+    ("cereja_descascado", "Cereja descascado"),
+    ("pergaminho", "Pergaminho"),
+]
 MENU_ITEM_VISIBILITY_RULES = {
     "users": has_admin_access,
     "backups": has_admin_access,
@@ -332,6 +353,44 @@ def _redirect_for_request(request: Request, path: str, **params) -> RedirectResp
     if _is_modal_request(request):
         params["modal"] = "1"
     return _redirect_with_query(path, **params)
+
+
+def _commercialization_unit_label(unit: str | None) -> str:
+    normalized = (unit or "sc_60").strip().lower()
+    if normalized == "kg":
+        return "kg"
+    if normalized in {"ton", "tonelada"}:
+        return "t"
+    return "sc"
+
+
+def _format_commercialization_quantity(value: object, unit: str | None) -> str:
+    amount = float(value or 0)
+    return f"{_format_quantity_br(amount, _commercialization_unit_label(unit))}"
+
+
+def _commercialization_lot_label(harvest: HarvestRecord | None) -> str:
+    if not harvest:
+        return "Lote removido"
+    plot_name = harvest.plot.name if harvest.plot else "Setor removido"
+    date_label = harvest.harvest_date.strftime("%d/%m/%Y") if harvest.harvest_date else "-"
+    return f"{plot_name} • {date_label}"
+
+
+def _commercialization_available_sacks(
+    harvest: HarvestRecord,
+    commercializations: list[CoffeeCommercializationRecord],
+    *,
+    exclude_id: int | None = None,
+) -> float:
+    sold = 0.0
+    for item in commercializations:
+        if item.harvest_id != harvest.id:
+            continue
+        if exclude_id and item.id == exclude_id:
+            continue
+        sold += float(item.equivalent_sacks or 0)
+    return round(max(float(harvest.sacks_produced or 0) - sold, 0.0), 4)
 
 
 def _base_context(request: Request, user: User, csrf_token: str, page: str, **kwargs):
@@ -11949,7 +12008,7 @@ def production_page(
             request,
             user,
             csrf_token,
-            "production",
+            "harvest",
             _repo=repo,
             plots=plots,
             harvests=harvests_pagination["items"],
@@ -11970,6 +12029,14 @@ def _validate_harvest_percentage(value: str | None, label: str) -> float | None:
     if parsed < 0 or parsed > 100:
         raise ValueError(f"{label} deve estar entre 0 e 100.")
     return parsed
+
+
+def _commercialization_record_matches_scope(record: CoffeeCommercializationRecord, scope: dict) -> bool:
+    if scope.get("active_farm_id") and record.farm_id != scope["active_farm_id"]:
+        return False
+    if record.harvest and not _plot_matches_scope(record.harvest.plot, scope):
+        return False
+    return True
 
 
 @router.post("/producao")
@@ -12113,6 +12180,331 @@ def delete_harvest_action(
     repo.delete(harvest)
     _flash(request, "success", "Colheita excluida com sucesso.")
     return _redirect("/producao")
+
+
+@router.get("/producao/comercializacao")
+def commercialization_page(
+    request: Request,
+    edit_id: int | None = None,
+    harvest_id: int | None = None,
+    status: str | None = None,
+    search: str | None = None,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+    csrf_token: str = Depends(get_csrf_token),
+):
+    repo = _repository(db)
+    scope = _global_scope_context(request, repo)
+    active_farm_id = scope.get("active_farm_id")
+    active_season = scope.get("active_season")
+    farm_ids, variety_ids = _scoped_plot_filters(request, active_season)
+    scope_start, scope_end = _scoped_dates(active_season)
+    filter_start_date, filter_end_date, filter_start_str, filter_end_str = _finance_extract_period_bounds(request, flash_invalid=True)
+    selected_range = (
+        _fertilization_filter_range_preset(
+            request.query_params.get("schedule_range"),
+            filter_start_str,
+            filter_end_str,
+        )
+        if _period_filter_explicit_in_query(request)
+        else ""
+    )
+
+    plots = repo.list_plots(farm_ids=farm_ids, variety_ids=variety_ids)
+    plot_ids = {plot.id for plot in plots}
+    harvests = [
+        item
+        for item in repo.list_harvests()
+        if item.plot_id in plot_ids and _within_scope(item.harvest_date, scope_start, scope_end)
+    ]
+    harvests = _sort_collection_desc(harvests, lambda item: item.harvest_date, lambda item: item.id)
+
+    all_commercializations = [
+        item
+        for item in repo.list_coffee_commercializations(farm_id=active_farm_id)
+        if _commercialization_record_matches_scope(item, scope)
+    ] if active_farm_id else []
+
+    edit_commercialization = repo.get_coffee_commercialization(edit_id) if edit_id else None
+    if edit_commercialization and not _commercialization_record_matches_scope(edit_commercialization, scope):
+        edit_commercialization = None
+
+    harvest_options = []
+    total_available_sacks = 0.0
+    available_lot_count = 0
+    for harvest in harvests:
+        available_sacks = _commercialization_available_sacks(
+            harvest,
+            all_commercializations,
+            exclude_id=edit_commercialization.id if edit_commercialization and edit_commercialization.harvest_id == harvest.id else None,
+        )
+        total_available_sacks += max(available_sacks, 0)
+        include = available_sacks > 0 or (edit_commercialization and edit_commercialization.harvest_id == harvest.id)
+        if available_sacks > 0:
+            available_lot_count += 1
+        if include:
+            harvest_options.append(
+                {
+                    "harvest": harvest,
+                    "lot_label": _commercialization_lot_label(harvest),
+                    "available_sacks": round(available_sacks, 4),
+                    "available_kg": round(available_sacks * 60, 2),
+                }
+            )
+
+    filtered = list(all_commercializations)
+    if harvest_id:
+        filtered = [item for item in filtered if item.harvest_id == harvest_id]
+    normalized_status = (status or "").strip().lower()
+    if normalized_status:
+        filtered = [item for item in filtered if (item.status or "").strip().lower() == normalized_status]
+    if filter_start_date or filter_end_date:
+        filtered = [item for item in filtered if _in_extract_period(item.sale_date, filter_start_date, filter_end_date)]
+    search_term = _normalize_search_value((search or "").strip())
+    if search_term:
+        filtered = [
+            item
+            for item in filtered
+            if search_term in _normalize_search_value(
+                f"{item.lot_label or ''} {item.plot_name or ''} {item.variety_name or ''} "
+                f"{item.buyer_name or ''} {item.status or ''} {item.coffee_type or ''} {item.notes or ''}"
+            )
+        ]
+    filtered = _sort_collection_desc(filtered, lambda item: item.sale_date, lambda item: item.id)
+    commercialization_pagination = _paginate_collection(request, filtered, "commercialization_page")
+
+    filtered_total_value = round(sum(float(item.total_value or 0) for item in filtered), 2)
+    filtered_total_sacks = round(sum(float(item.equivalent_sacks or 0) for item in filtered), 4)
+    finance_accounts = repo.list_finance_accounts(farm_id=active_farm_id) if active_farm_id else []
+    default_finance_account_id = next((account.id for account in finance_accounts if account.is_default), None)
+    commercialization_filters_active = bool(harvest_id or normalized_status or search_term or _period_filter_explicit_in_query(request))
+    commercialization_clear_url = _url_with_query(
+        request,
+        harvest_id=None,
+        status=None,
+        search=None,
+        start_date=None,
+        end_date=None,
+        schedule_range=None,
+        commercialization_page=None,
+    )
+
+    return templates.TemplateResponse(
+        "commercialization.html",
+        _base_context(
+            request,
+            user,
+            csrf_token,
+            "commercialization",
+            _repo=repo,
+            harvest_options=harvest_options,
+            commercializations=commercialization_pagination["items"],
+            commercialization_pagination=commercialization_pagination,
+            commercialization_status_options=COMMERCIALIZATION_STATUS_OPTIONS,
+            commercialization_unit_options=COMMERCIALIZATION_UNIT_OPTIONS,
+            commercialization_coffee_type_options=COMMERCIALIZATION_COFFEE_TYPE_OPTIONS,
+            commercialization_edit=edit_commercialization,
+            commercialization_total_available_sacks=round(total_available_sacks, 2),
+            commercialization_total_available_kg=round(total_available_sacks * 60, 2),
+            commercialization_available_lot_count=available_lot_count,
+            commercialization_filtered_total_sacks=filtered_total_sacks,
+            commercialization_filtered_total_kg=round(filtered_total_sacks * 60, 2),
+            commercialization_filtered_total_value=filtered_total_value,
+            commercialization_selected_harvest_id=harvest_id,
+            commercialization_selected_status=normalized_status,
+            commercialization_search=search or "",
+            commercialization_filter_start_date=filter_start_str,
+            commercialization_filter_end_date=filter_end_str,
+            commercialization_selected_range=selected_range,
+            commercialization_filters_active=commercialization_filters_active,
+            commercialization_clear_url=commercialization_clear_url,
+            finance_accounts=finance_accounts,
+            finance_transaction_payment_methods=FINANCE_TRANSACTION_PAYMENT_METHODS,
+            commercialization_default_finance_account_id=default_finance_account_id,
+            today=today_in_app_timezone(),
+        ),
+    )
+
+
+@router.post("/producao/comercializacao")
+def create_commercialization_action(
+    request: Request,
+    csrf_token: str = Form(...),
+    harvest_id: int = Form(...),
+    sale_date: str = Form(...),
+    buyer_name: str = Form(...),
+    coffee_type: str | None = Form(None),
+    quantity_sold: float = Form(...),
+    sale_unit: str = Form("sc_60"),
+    unit_price: float = Form(...),
+    status: str = Form("negociado"),
+    finance_account_id: str | None = Form(None),
+    payment_method: str | None = Form(None),
+    payment_condition: str | None = Form("a_vista"),
+    installment_count: str | None = Form(None),
+    installment_frequency: str | None = Form(None),
+    first_installment_date: str | None = Form(None),
+    notes: str | None = Form(None),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    del user
+    validate_csrf(request, csrf_token)
+    repo = _repository(db)
+    scope, denied = _launch_scope_or_redirect(request, repo, "/producao/comercializacao")
+    if denied:
+        return denied
+    harvest = repo.get_harvest(harvest_id)
+    if not harvest or not _plot_matches_scope(harvest.plot, scope):
+        _flash(request, "error", "Selecione um lote de colheita válido para o contexto ativo.")
+        return _redirect("/producao/comercializacao")
+    finance_account_id_value = _int_or_none(finance_account_id)
+    if finance_account_id_value:
+        account = repo.get_finance_account(finance_account_id_value)
+        if not account or account.farm_id != scope.get("active_farm_id"):
+            _flash(request, "error", "Selecione uma conta bancária válida para a fazenda ativa.")
+            return _redirect("/producao/comercializacao")
+    available_sacks = _commercialization_available_sacks(
+        harvest,
+        repo.list_coffee_commercializations(farm_id=scope.get("active_farm_id")),
+    )
+    try:
+        create_coffee_commercialization(
+            repo,
+            {
+                "farm_id": scope["active_farm_id"],
+                "finance_account_id": finance_account_id_value,
+                "sale_date": sale_date,
+                "buyer_name": (buyer_name or "").strip(),
+                "coffee_type": (coffee_type or "").strip() or None,
+                "quantity_sold": quantity_sold,
+                "sale_unit": sale_unit,
+                "unit_price": unit_price,
+                "status": (status or "").strip().lower() or "negociado",
+                "payment_method": payment_method,
+                "payment_condition": payment_condition,
+                "installment_count": installment_count,
+                "installment_frequency": installment_frequency,
+                "first_installment_date": first_installment_date,
+                "notes": notes,
+                "lot_label": _commercialization_lot_label(harvest),
+            },
+            harvest=harvest,
+            available_sacks=available_sacks,
+        )
+    except ValueError as exc:
+        _flash(request, "error", str(exc))
+        return _redirect("/producao/comercializacao")
+    _flash(request, "success", "Comercialização registrada com sucesso.")
+    return _redirect("/producao/comercializacao")
+
+
+@router.post("/producao/comercializacao/{record_id}/editar")
+def update_commercialization_action(
+    record_id: int,
+    request: Request,
+    csrf_token: str = Form(...),
+    harvest_id: int = Form(...),
+    sale_date: str = Form(...),
+    buyer_name: str = Form(...),
+    coffee_type: str | None = Form(None),
+    quantity_sold: float = Form(...),
+    sale_unit: str = Form("sc_60"),
+    unit_price: float = Form(...),
+    status: str = Form("negociado"),
+    finance_account_id: str | None = Form(None),
+    payment_method: str | None = Form(None),
+    payment_condition: str | None = Form("a_vista"),
+    installment_count: str | None = Form(None),
+    installment_frequency: str | None = Form(None),
+    first_installment_date: str | None = Form(None),
+    notes: str | None = Form(None),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    del user
+    validate_csrf(request, csrf_token)
+    repo = _repository(db)
+    scope, denied = _launch_scope_or_redirect(request, repo, "/producao/comercializacao")
+    if denied:
+        return denied
+    commercialization = repo.get_coffee_commercialization(record_id)
+    if not commercialization or not _commercialization_record_matches_scope(commercialization, scope):
+        _flash(request, "error", "Lançamento de comercialização não encontrado.")
+        return _redirect("/producao/comercializacao")
+    harvest = repo.get_harvest(harvest_id)
+    if not harvest or not _plot_matches_scope(harvest.plot, scope):
+        _flash(request, "error", "Selecione um lote de colheita válido para o contexto ativo.")
+        return _redirect(f"/producao/comercializacao?edit_id={record_id}")
+    finance_account_id_value = _int_or_none(finance_account_id)
+    if finance_account_id_value:
+        account = repo.get_finance_account(finance_account_id_value)
+        if not account or account.farm_id != scope.get("active_farm_id"):
+            _flash(request, "error", "Selecione uma conta bancária válida para a fazenda ativa.")
+            return _redirect(f"/producao/comercializacao?edit_id={record_id}")
+    available_sacks = _commercialization_available_sacks(
+        harvest,
+        repo.list_coffee_commercializations(farm_id=scope.get("active_farm_id")),
+        exclude_id=record_id,
+    )
+    try:
+        update_coffee_commercialization(
+            repo,
+            commercialization,
+            {
+                "farm_id": scope["active_farm_id"],
+                "finance_account_id": finance_account_id_value,
+                "sale_date": sale_date,
+                "buyer_name": (buyer_name or "").strip(),
+                "coffee_type": (coffee_type or "").strip() or None,
+                "quantity_sold": quantity_sold,
+                "sale_unit": sale_unit,
+                "unit_price": unit_price,
+                "status": (status or "").strip().lower() or "negociado",
+                "payment_method": payment_method,
+                "payment_condition": payment_condition,
+                "installment_count": installment_count,
+                "installment_frequency": installment_frequency,
+                "first_installment_date": first_installment_date,
+                "notes": notes,
+                "lot_label": _commercialization_lot_label(harvest),
+            },
+            harvest=harvest,
+            available_sacks=available_sacks,
+        )
+    except ValueError as exc:
+        _flash(request, "error", str(exc))
+        return _redirect(f"/producao/comercializacao?edit_id={record_id}")
+    _flash(request, "success", "Comercialização atualizada com sucesso.")
+    return _redirect("/producao/comercializacao")
+
+
+@router.post("/producao/comercializacao/{record_id}/excluir")
+def delete_commercialization_action(
+    record_id: int,
+    request: Request,
+    csrf_token: str = Form(...),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    del user
+    validate_csrf(request, csrf_token)
+    repo = _repository(db)
+    scope, denied = _launch_scope_or_redirect(request, repo, "/producao/comercializacao")
+    if denied:
+        return denied
+    commercialization = repo.get_coffee_commercialization(record_id)
+    if not commercialization or not _commercialization_record_matches_scope(commercialization, scope):
+        _flash(request, "error", "Lançamento de comercialização não encontrado.")
+        return _redirect("/producao/comercializacao")
+    if commercialization.finance_transaction_id:
+        tx = repo.get_finance_transaction(commercialization.finance_transaction_id)
+        if tx:
+            repo.db.delete(tx)
+            repo.db.commit()
+    repo.delete(commercialization)
+    _flash(request, "success", "Comercialização excluída com sucesso.")
+    return _redirect("/producao/comercializacao")
 
 
 @router.get("/pragas")

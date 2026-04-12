@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session, joinedload
 from app.models import (
     AgronomicProfile,
     BackupRun,
+    CoffeeCommercializationRecord,
     CoffeeVariety,
     CropSeason,
     EquipmentAsset,
@@ -581,7 +582,7 @@ class FarmRepository:
     def list_harvests(self, limit: int | None = None) -> list[HarvestRecord]:
         query = (
             self.db.query(HarvestRecord)
-            .options(joinedload(HarvestRecord.plot).joinedload(Plot.variety))
+            .options(joinedload(HarvestRecord.plot).joinedload(Plot.variety), joinedload(HarvestRecord.plot).joinedload(Plot.farm))
             .order_by(HarvestRecord.harvest_date.desc(), HarvestRecord.id.desc())
         )
         return query.limit(limit).all() if limit else query.all()
@@ -589,8 +590,36 @@ class FarmRepository:
     def get_harvest(self, record_id: int) -> HarvestRecord | None:
         return (
             self.db.query(HarvestRecord)
-            .options(joinedload(HarvestRecord.plot).joinedload(Plot.variety))
+            .options(joinedload(HarvestRecord.plot).joinedload(Plot.variety), joinedload(HarvestRecord.plot).joinedload(Plot.farm))
             .filter(HarvestRecord.id == record_id)
+            .first()
+        )
+
+    def list_coffee_commercializations(self, farm_id: int | None = None) -> list[CoffeeCommercializationRecord]:
+        query = (
+            self.db.query(CoffeeCommercializationRecord)
+            .options(
+                joinedload(CoffeeCommercializationRecord.harvest).joinedload(HarvestRecord.plot).joinedload(Plot.variety),
+                joinedload(CoffeeCommercializationRecord.harvest).joinedload(HarvestRecord.plot).joinedload(Plot.farm),
+                joinedload(CoffeeCommercializationRecord.finance_account),
+                joinedload(CoffeeCommercializationRecord.finance_transaction),
+            )
+            .order_by(CoffeeCommercializationRecord.sale_date.desc(), CoffeeCommercializationRecord.id.desc())
+        )
+        if farm_id:
+            query = query.filter(CoffeeCommercializationRecord.farm_id == farm_id)
+        return query.all()
+
+    def get_coffee_commercialization(self, record_id: int) -> CoffeeCommercializationRecord | None:
+        return (
+            self.db.query(CoffeeCommercializationRecord)
+            .options(
+                joinedload(CoffeeCommercializationRecord.harvest).joinedload(HarvestRecord.plot).joinedload(Plot.variety),
+                joinedload(CoffeeCommercializationRecord.harvest).joinedload(HarvestRecord.plot).joinedload(Plot.farm),
+                joinedload(CoffeeCommercializationRecord.finance_account),
+                joinedload(CoffeeCommercializationRecord.finance_transaction),
+            )
+            .filter(CoffeeCommercializationRecord.id == record_id)
             .first()
         )
 
