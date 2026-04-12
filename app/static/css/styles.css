@@ -1486,6 +1486,14 @@ body.dashboard-schedule-modal-open {
     overflow: visible;
 }
 
+/* Contas: a tabela/lista vem depois do bloco de filtros no DOM; sem z-index o calendário do período fica atrás da lista. */
+.stock-history-stage[data-finance-tab="payables"] > .stock-filter-bar,
+.stock-history-stage[data-finance-tab="receivables"] > .stock-filter-bar,
+.stock-history-stage[data-finance-tab="transactions"] > .stock-filter-bar {
+    position: relative;
+    z-index: 30;
+}
+
 @media (min-width: 900px) {
     .stock-filter-fields-row.finance-filter-fields-row {
         grid-template-columns:
