@@ -294,9 +294,12 @@
                 window.clearTimeout(customRangeSubmitTimer);
                 customRangeSubmitTimer = null;
             }
+            const wasOpen = customRangeOpen || !menu.classList.contains('hidden');
             customRangeOpen = false;
             customRange?.classList.add('hidden');
-            closeMenu();
+            if (wasOpen) {
+                closeMenu();
+            }
         };
 
         trigger.addEventListener('click', (event) => {
