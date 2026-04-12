@@ -223,6 +223,26 @@
                         <span class="stock-action-button-label">Exportar Excel</span>
                     </a>
                 </div>
+                <div class="hidden flex-wrap items-center gap-2" data-finance-header-exports="receivables">
+                    <a href="{{ finance_receivables_export_pdf_url }}" class="stock-action-button stock-export-button stock-export-button-pdf">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true">
+                            <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/>
+                            <path d="M14 3v5h5"/>
+                            <path d="M8 13h8"/>
+                            <path d="M8 17h6"/>
+                        </svg>
+                        <span class="stock-action-button-label">Exportar PDF</span>
+                    </a>
+                    <a href="{{ finance_receivables_export_xlsx_url }}" class="stock-action-button stock-export-button stock-export-button-xlsx">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true">
+                            <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/>
+                            <path d="M14 3v5h5"/>
+                            <path d="m9 17 6-6"/>
+                            <path d="m9 11 6 6"/>
+                        </svg>
+                        <span class="stock-action-button-label">Exportar Excel</span>
+                    </a>
+                </div>
                 <button type="button" class="stock-action-button finance-transaction-action-button" data-finance-transaction-open>
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
                         <path d="M4 12h16"/>
@@ -284,6 +304,7 @@
                 <button type="button" class="stock-tab-link is-active" data-finance-tab-button="accounts">Contas</button>
                 <button type="button" class="stock-tab-link" data-finance-tab-button="transactions">Lançamentos</button>
                 <button type="button" class="stock-tab-link" data-finance-tab-button="payables">A Pagar</button>
+                <button type="button" class="stock-tab-link" data-finance-tab-button="receivables">A Receber</button>
             </div>
         </div>
 
@@ -669,14 +690,63 @@
         {% include "partials/finance_payables_list.html" %}
         </div>
         </div>
+
+        <div class="stock-history-stage mt-4 hidden" data-finance-tab="receivables">
+        <div class="stock-filter-bar mb-4 {% if finance_receivables_filters_active %}is-mobile-collapsed{% endif %}">
+            <div class="stock-filter-mobile-toggle-wrap md:hidden">
+                <button type="button" class="stock-summary-toggle stock-filter-mobile-toggle {% if finance_receivables_filters_active %}is-filtered-state{% endif %}" data-finance-receivables-filter-toggle data-stock-filter-applied="{% if finance_receivables_filters_active %}true{% else %}false{% endif %}" aria-expanded="{% if finance_receivables_filters_active %}false{% else %}true{% endif %}">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                        <path d="M5 12h14"/>
+                        <path d="M12 5v14" data-finance-receivables-filter-toggle-plus{% if finance_receivables_filters_active %} class="hidden"{% endif %}></path>
+                    </svg>
+                    <span data-finance-receivables-filter-toggle-label>{% if finance_receivables_filters_active %}Mostrar filtro aplicado{% else %}Recolher filtros{% endif %}</span>
+                </button>
+            </div>
+            <form method="get" action="/gestao-financeira/contas" class="stock-filter-grid" data-finance-receivables-filter-form data-module-period-filter-root data-finance-receivables-period-mode="{{ finance_receivables_period_ui_mode|default('past') }}" data-module-range-default="{% if (finance_receivables_period_ui_mode|default('past')) == 'custom_only' %}custom{% else %}current_month{% endif %}" data-module-range-placeholder="Filtre por período" data-module-custom-auto-apply="true">
+                <input type="hidden" name="finance_tab" value="receivables">
+                <div class="stock-summary-collapse {% if not finance_receivables_filters_active %}is-expanded{% endif %}" data-finance-receivables-filter-collapse>
+                <div class="stock-summary-collapse-inner">
+                <div class="stock-filter-fields-row finance-payables-filter-fields-row {% if finance_receivables_filters_active %}has-clear-action{% endif %}">
+                    <label class="stock-filter-field stock-filter-field-input {% if finance_receivables_status %}is-filtered{% endif %}">
+                        <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Status</span>
+                        <select name="receivables_status" class="w-full rounded-xl border-slate-200 bg-white" data-finance-receivables-status>
+                            <option value="" {% if not finance_receivables_status %}selected{% endif %}>Padrão (em aberto)</option>
+                            <option value="open" {% if finance_receivables_status == 'open' %}selected{% endif %}>Em aberto</option>
+                            <option value="paid" {% if finance_receivables_status == 'paid' %}selected{% endif %}>Recebido</option>
+                            <option value="overdue" {% if finance_receivables_status == 'overdue' %}selected{% endif %}>Atrasado</option>
+                            <option value="all" {% if finance_receivables_status == 'all' %}selected{% endif %}>Todos</option>
+                        </select>
+                    </label>
+                    <div class="stock-filter-field stock-filter-field-period {% if finance_receivables_filter_start_date or finance_receivables_filter_end_date %}is-filtered{% endif %}">
+                        <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Período</span>
+                        <div class="module-filter-period-row">
+                            {{ module_period_picker_payables_inline(finance_receivables_selected_range or ('custom' if (finance_receivables_period_ui_mode|default('past')) == 'custom_only' else 'current_month'), finance_receivables_filter_start_date, finance_receivables_filter_end_date, finance_receivables_period_ui_mode|default('past'), 'Filtre por período', 'receivables_') }}
+                        </div>
+                    </div>
+                    <label class="stock-filter-field stock-filter-field-input {% if finance_receivables_search %}is-filtered{% endif %}">
+                        <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Busca</span>
+                        <input type="search" name="receivables_search" value="{{ finance_receivables_search or '' }}" placeholder="Conta, categoria ou produto" class="finance-payables-search-input w-full rounded-xl border border-slate-200 bg-white" data-finance-receivables-search>
+                    </label>
+                    <div class="stock-filter-field stock-filter-field-actions flex flex-nowrap items-end gap-3">
+                        <a href="{{ finance_receivables_clear_url }}" class="{% if not finance_receivables_filters_active %}hidden {% endif %}inline-flex min-h-[3.25rem] shrink-0 items-center justify-center rounded-xl bg-white px-4 text-sm font-semibold text-slate-700 ring-1 ring-slate-200 hover:bg-slate-100" data-finance-receivables-clear>Limpar</a>
+                    </div>
+                </div>
+                </div>
+                </div>
+            </form>
+        </div>
+        <div data-finance-receivables-list-root>
+        {% include "partials/finance_receivables_list.html" %}
+        </div>
+        </div>
     </section>
 
     <dialog id="finance-payable-settle-modal" class="app-modal rounded-[2rem] p-0 shadow-2xl w-full max-w-xl overflow-hidden">
         <div class="bg-white p-6 sm:p-8">
             <div class="flex items-start justify-between gap-4">
                 <div class="min-w-0">
-                    <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Pagamento da parcela</p>
-                    <h3 class="mt-2 text-2xl font-semibold">Marcar como paga</h3>
+                    <p class="text-xs uppercase tracking-[0.35em] text-slate-400" data-finance-payable-settle-kicker>Pagamento da parcela</p>
+                    <h3 class="mt-2 text-2xl font-semibold" data-finance-payable-settle-heading>Marcar como paga</h3>
                     <p class="mt-2 text-sm text-slate-500" data-finance-payable-settle-subtitle>Confirme a data do pagamento e, se quiser, registre uma observação.</p>
                 </div>
                 <button type="button" class="modal-close-button" aria-label="Fechar" data-finance-payable-settle-close>
@@ -696,17 +766,17 @@
                     </div>
                     <div class="grid gap-4 md:grid-cols-2">
                         <label>
-                            <span class="mb-2 block text-sm font-medium">Data do pagamento</span>
+                            <span class="mb-2 block text-sm font-medium" data-finance-payable-settle-date-label>Data do pagamento</span>
                             <input type="date" name="paid_at" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" value="{{ today.isoformat() }}" required data-finance-payable-settle-date>
                         </label>
                     </div>
                     <label>
-                        <span class="mb-2 block text-sm font-medium">Observação do pagamento</span>
+                        <span class="mb-2 block text-sm font-medium" data-finance-payable-settle-notes-label>Observação do pagamento</span>
                         <textarea name="payment_notes" rows="3" class="w-full rounded-2xl border-slate-200 bg-slate-50" data-finance-payable-settle-notes></textarea>
                     </label>
                     <div class="flex flex-wrap justify-end gap-3 rounded-[1.5rem] px-1 py-1">
                         <button type="button" class="rounded-2xl bg-slate-100 px-4 py-3 font-semibold text-slate-700 hover:bg-slate-200" data-finance-payable-settle-close>Cancelar</button>
-                        <button class="rounded-2xl bg-brand-500 px-4 py-3 font-semibold text-white hover:bg-brand-700">Confirmar pagamento</button>
+                        <button class="rounded-2xl bg-brand-500 px-4 py-3 font-semibold text-white hover:bg-brand-700" data-finance-payable-settle-submit>Confirmar pagamento</button>
                     </div>
                 </form>
             </div>
@@ -1114,6 +1184,14 @@
     const payablesFilterToggleLabel = document.querySelector('[data-finance-payables-filter-toggle-label]');
     const payablesFilterTogglePlus = document.querySelector('[data-finance-payables-filter-toggle-plus]');
     const payablesFilterBar = document.querySelector('[data-finance-tab="payables"] .stock-filter-bar');
+    const receivablesFilterForm = document.querySelector('[data-finance-receivables-filter-form]');
+    const receivablesSearchInput = document.querySelector('[data-finance-receivables-search]');
+    const receivablesStatusSelect = document.querySelector('[data-finance-receivables-status]');
+    const receivablesFilterToggle = document.querySelector('[data-finance-receivables-filter-toggle]');
+    const receivablesFilterCollapse = document.querySelector('[data-finance-receivables-filter-collapse]');
+    const receivablesFilterToggleLabel = document.querySelector('[data-finance-receivables-filter-toggle-label]');
+    const receivablesFilterTogglePlus = document.querySelector('[data-finance-receivables-filter-toggle-plus]');
+    const receivablesFilterBar = document.querySelector('[data-finance-tab="receivables"] .stock-filter-bar');
     const transactionsFilterForm = document.querySelector('[data-finance-transactions-filter-form]');
     const transactionsFilterToggle = document.querySelector('[data-finance-transactions-filter-toggle]');
     const transactionsFilterCollapse = document.querySelector('[data-finance-transactions-filter-collapse]');
@@ -1121,13 +1199,20 @@
     const transactionsFilterTogglePlus = document.querySelector('[data-finance-transactions-filter-toggle-plus]');
     const transactionsFilterBar = document.querySelector('[data-finance-tab="transactions"] .stock-filter-bar');
     const payablesListRoot = document.querySelector('[data-finance-payables-list-root]');
+    const receivablesListRoot = document.querySelector('[data-finance-receivables-list-root]');
     const payableSettleModal = document.getElementById('finance-payable-settle-modal');
     const payableSettleForm = document.querySelector('[data-finance-payable-settle-form]');
     const payableSettleCloseButtons = Array.from(document.querySelectorAll('[data-finance-payable-settle-close]'));
+    const payableSettleKicker = document.querySelector('[data-finance-payable-settle-kicker]');
+    const payableSettleHeading = document.querySelector('[data-finance-payable-settle-heading]');
+    const payableSettleSubtitle = document.querySelector('[data-finance-payable-settle-subtitle]');
     const payableSettleTitle = document.querySelector('[data-finance-payable-settle-title]');
     const payableSettleMeta = document.querySelector('[data-finance-payable-settle-meta]');
+    const payableSettleDateLabel = document.querySelector('[data-finance-payable-settle-date-label]');
     const payableSettleDateInput = document.querySelector('[data-finance-payable-settle-date]');
+    const payableSettleNotesLabel = document.querySelector('[data-finance-payable-settle-notes-label]');
     const payableSettleNotesInput = document.querySelector('[data-finance-payable-settle-notes]');
+    const payableSettleSubmit = document.querySelector('[data-finance-payable-settle-submit]');
     const balanceRawInput = document.querySelector('[data-finance-balance-raw]');
     const balanceDisplayInput = document.querySelector('[data-finance-balance-display]');
     const modeLabel = document.querySelector('[data-finance-account-mode-label]');
@@ -1160,6 +1245,7 @@
     let attachmentPopoverTrigger = null;
     let attachmentHideTimer = null;
     let payablesSearchTimer = null;
+    let receivablesSearchTimer = null;
     const existingFinanceAccounts = [
         {% for account in finance_accounts %}
         {
@@ -1280,7 +1366,7 @@
     };
 
     const setActiveFinanceTab = (tabName) => {
-        activeFinanceTab = ['accounts', 'transactions', 'payables'].includes(tabName) ? tabName : 'accounts';
+        activeFinanceTab = ['accounts', 'transactions', 'payables', 'receivables'].includes(tabName) ? tabName : 'accounts';
         financeTabs.forEach((tab) => {
             tab.classList.toggle('hidden', tab.dataset.financeTab !== activeFinanceTab);
         });
@@ -1485,6 +1571,37 @@
             setPayablesFilterExpanded(!expanded);
         });
         mobileCompactMq.addEventListener('change', syncPayablesFilterForViewport);
+    }
+
+    if (receivablesFilterToggle && receivablesFilterCollapse && receivablesFilterToggleLabel) {
+        const hasAppliedReceivablesFilters = receivablesFilterToggle.dataset.stockFilterApplied === 'true';
+        const setReceivablesFilterExpanded = (expanded) => {
+            receivablesFilterCollapse.classList.toggle('is-expanded', expanded);
+            receivablesFilterToggle.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+            receivablesFilterToggleLabel.textContent = expanded
+                ? 'Recolher filtros'
+                : (hasAppliedReceivablesFilters ? 'Mostrar filtro aplicado' : 'Mostrar filtros');
+            receivablesFilterTogglePlus?.classList.toggle('hidden', expanded);
+            receivablesFilterBar?.classList.toggle('is-mobile-collapsed', mobileCompactMq.matches && !expanded);
+        };
+
+        const syncReceivablesFilterForViewport = () => {
+            if (!mobileCompactMq.matches) {
+                receivablesFilterCollapse.classList.add('is-expanded');
+                receivablesFilterToggle.setAttribute('aria-expanded', 'true');
+                receivablesFilterBar?.classList.remove('is-mobile-collapsed');
+                return;
+            }
+            const expanded = receivablesFilterToggle.getAttribute('aria-expanded') === 'true';
+            setReceivablesFilterExpanded(expanded);
+        };
+
+        syncReceivablesFilterForViewport();
+        receivablesFilterToggle.addEventListener('click', () => {
+            const expanded = receivablesFilterToggle.getAttribute('aria-expanded') === 'true';
+            setReceivablesFilterExpanded(!expanded);
+        });
+        mobileCompactMq.addEventListener('change', syncReceivablesFilterForViewport);
     }
 
     if (transactionsFilterToggle && transactionsFilterCollapse && transactionsFilterToggleLabel) {
@@ -2249,6 +2366,17 @@
         }
         return ['current_month', 'last_10_days', 'last_20_days', 'last_month', 'custom'].includes(range);
     };
+    const syncReceivablesPeriodMenuVisibility = () => {
+        if (!receivablesFilterForm || !receivablesFilterForm.querySelector('[data-module-payables-range-picker]')) return;
+        const status = (receivablesStatusSelect?.value || '').trim();
+        const mode = payablesStatusToMode(status);
+        receivablesFilterForm.dataset.financeReceivablesPeriodMode = mode;
+        receivablesFilterForm.dataset.moduleRangeDefault = mode === 'custom_only' ? 'custom' : 'current_month';
+        receivablesFilterForm.querySelectorAll('[data-module-range-option]').forEach((btn) => {
+            const modes = (btn.getAttribute('data-show-for-payables-mode') || '').split(/\s+/).filter(Boolean);
+            btn.hidden = !modes.includes(mode);
+        });
+    };
 
     const stripPayablesPartialFromUrl = (urlString) => {
         const u = new URL(urlString, window.location.origin);
@@ -2300,9 +2428,63 @@
         updatePayablesClearUi();
     };
 
+    const stripReceivablesPartialFromUrl = (url) => {
+        const u = new URL(url, window.location.origin);
+        u.searchParams.delete('receivables_partial');
+        return u.pathname + u.search + u.hash;
+    };
+    const buildReceivablesClearUrl = () => {
+        const u = new URL(window.location.href);
+        ['receivables_search', 'receivables_schedule_range', 'receivables_start_date', 'receivables_end_date', 'receivables_page', 'receivables_status', 'receivables_partial'].forEach((k) => {
+            u.searchParams.delete(k);
+        });
+        u.searchParams.set('finance_tab', 'receivables');
+        return u.pathname + u.search + u.hash;
+    };
+    const receivablesFiltersActiveFromLocation = () => {
+        const p = new URLSearchParams(window.location.search);
+        return Boolean(
+            (p.get('receivables_search') || '').trim()
+            || (p.get('receivables_schedule_range') || '').trim()
+            || (p.get('receivables_start_date') || '').trim()
+            || (p.get('receivables_end_date') || '').trim()
+            || (p.get('receivables_status') || '').trim(),
+        );
+    };
+    const updateReceivablesClearUi = () => {
+        const active = receivablesFiltersActiveFromLocation();
+        const row = receivablesFilterForm?.querySelector('.finance-payables-filter-fields-row');
+        const clearLink = receivablesFilterForm?.querySelector('[data-finance-receivables-clear]');
+        if (row) row.classList.toggle('has-clear-action', active);
+        if (clearLink) {
+            clearLink.href = buildReceivablesClearUrl();
+            clearLink.classList.toggle('hidden', !active);
+        }
+        if (receivablesFilterToggle) receivablesFilterToggle.dataset.stockFilterApplied = active ? 'true' : 'false';
+    };
+    const refreshReceivablesList = async () => {
+        if (!receivablesFilterForm || !receivablesListRoot) return;
+        const fd = new FormData(receivablesFilterForm);
+        const p = new URLSearchParams(fd);
+        p.set('finance_tab', 'receivables');
+        p.set('receivables_partial', '1');
+        const fetchUrl = `/gestao-financeira/contas?${p.toString()}`;
+        const res = await fetch(fetchUrl, { credentials: 'same-origin', headers: { Accept: 'text/html' } });
+        if (res.status === 204) return;
+        if (!res.ok) return;
+        const html = await res.text();
+        receivablesListRoot.innerHTML = html;
+        history.replaceState(null, '', stripReceivablesPartialFromUrl(fetchUrl));
+        updateReceivablesClearUi();
+    };
+
     if (payablesFilterForm) {
         window.ModulePeriodFilters?.bind(payablesFilterForm);
         syncPayablesPeriodMenuVisibility();
+    }
+    if (receivablesFilterForm) {
+        window.ModulePeriodFilters?.bind(receivablesFilterForm);
+        syncReceivablesPeriodMenuVisibility();
     }
 
     if (transactionsFilterForm) {
@@ -2328,6 +2510,10 @@
         e.preventDefault();
         void refreshPayablesList();
     });
+    receivablesFilterForm?.addEventListener('submit', (e) => {
+        e.preventDefault();
+        void refreshReceivablesList();
+    });
 
     payablesListRoot?.addEventListener('click', (e) => {
         const a = e.target.closest('a[data-stock-pagination-link]');
@@ -2349,12 +2535,39 @@
                 updatePayablesClearUi();
             });
     });
+    receivablesListRoot?.addEventListener('click', (e) => {
+        const a = e.target.closest('a[data-stock-pagination-link]');
+        if (!a || !a.href) return;
+        e.preventDefault();
+        const u = new URL(a.href, window.location.origin);
+        u.searchParams.set('finance_tab', 'receivables');
+        u.searchParams.set('receivables_partial', '1');
+        void fetch(u.toString(), { credentials: 'same-origin', headers: { Accept: 'text/html' } })
+            .then((res) => {
+                if (res.status === 204) return null;
+                if (!res.ok) return null;
+                return res.text();
+            })
+            .then((html) => {
+                if (html == null || !receivablesListRoot) return;
+                receivablesListRoot.innerHTML = html;
+                history.replaceState(null, '', stripReceivablesPartialFromUrl(u.toString()));
+                updateReceivablesClearUi();
+            });
+    });
 
     payablesSearchInput?.addEventListener('input', () => {
         if (!payablesFilterForm) return;
         if (payablesSearchTimer) window.clearTimeout(payablesSearchTimer);
         payablesSearchTimer = window.setTimeout(() => {
             payablesFilterForm.requestSubmit();
+        }, 260);
+    });
+    receivablesSearchInput?.addEventListener('input', () => {
+        if (!receivablesFilterForm) return;
+        if (receivablesSearchTimer) window.clearTimeout(receivablesSearchTimer);
+        receivablesSearchTimer = window.setTimeout(() => {
+            receivablesFilterForm.requestSubmit();
         }, 260);
     });
     let payablesStatusPrev = (payablesStatusSelect?.value || '').trim();
@@ -2388,27 +2601,73 @@
         syncPayablesPeriodMenuVisibility();
         payablesFilterForm.requestSubmit();
     });
+    let receivablesStatusPrev = (receivablesStatusSelect?.value || '').trim();
+    receivablesStatusSelect?.addEventListener('change', () => {
+        if (!receivablesFilterForm) return;
+        const newStatus = (receivablesStatusSelect.value || '').trim();
+        const leavingAll = receivablesStatusPrev === 'all' && newStatus !== 'all';
+        receivablesStatusPrev = newStatus;
+
+        syncReceivablesPeriodMenuVisibility();
+        const mode = payablesStatusToMode(newStatus);
+        const rangeInput = receivablesFilterForm.querySelector('[data-module-range-input]');
+        const startInput = receivablesFilterForm.querySelector('[data-module-filter-start]');
+        const endInput = receivablesFilterForm.querySelector('[data-module-filter-end]');
+        const current = (rangeInput?.value || '').trim();
+        const mustResetRange = leavingAll || !payablesRangeValidForMode(current, mode);
+        if (mustResetRange) {
+            const nextDefault = mode === 'custom_only' ? 'custom' : 'current_month';
+            if (rangeInput) rangeInput.value = nextDefault;
+            if (nextDefault === 'custom') {
+                if (startInput) startInput.value = '';
+                if (endInput) endInput.value = '';
+            } else if (window.ModulePeriodFilters?.getPresetRange) {
+                const r = window.ModulePeriodFilters.getPresetRange(nextDefault);
+                if (startInput) startInput.value = r.start;
+                if (endInput) endInput.value = r.end;
+            }
+        }
+        syncReceivablesPeriodMenuVisibility();
+        receivablesFilterForm.requestSubmit();
+    });
 
     const closePayableSettleModal = () => {
         payableSettleModal?.close();
         unlockBackgroundScroll();
     };
 
-    document.addEventListener('click', (event) => {
-        const button = event.target.closest('[data-finance-payable-settle-trigger]');
-        if (!button || !(payablesListRoot instanceof HTMLElement) || !payablesListRoot.contains(button)) return;
+    const openInstallmentSettleModal = (button, redirectUrl) => {
         if (!(button instanceof HTMLElement) || !payableSettleForm || !payableSettleModal) return;
+        const settleKind = button.dataset.settleKind === 'receivable' ? 'receivable' : 'payable';
         payableSettleForm.action = `/gestao-financeira/contas/parcelas/${button.dataset.installmentId}/quitar`;
         const settleRedirectInput = payableSettleForm.querySelector('[data-finance-payable-settle-redirect]');
-        if (settleRedirectInput) {
-            settleRedirectInput.value = stripPayablesPartialFromUrl(window.location.href);
-        }
+        if (settleRedirectInput) settleRedirectInput.value = redirectUrl;
+        if (payableSettleKicker) payableSettleKicker.textContent = settleKind === 'receivable' ? 'Recebimento da parcela' : 'Pagamento da parcela';
+        if (payableSettleHeading) payableSettleHeading.textContent = settleKind === 'receivable' ? 'Marcar como recebida' : 'Marcar como paga';
+        if (payableSettleSubtitle) payableSettleSubtitle.textContent = settleKind === 'receivable'
+            ? 'Confirme a data do recebimento e, se quiser, registre uma observação.'
+            : 'Confirme a data do pagamento e, se quiser, registre uma observação.';
+        if (payableSettleDateLabel) payableSettleDateLabel.textContent = settleKind === 'receivable' ? 'Data do recebimento' : 'Data do pagamento';
+        if (payableSettleNotesLabel) payableSettleNotesLabel.textContent = settleKind === 'receivable' ? 'Observação do recebimento' : 'Observação do pagamento';
+        if (payableSettleSubmit) payableSettleSubmit.textContent = settleKind === 'receivable' ? 'Confirmar recebimento' : 'Confirmar pagamento';
         if (payableSettleTitle) payableSettleTitle.textContent = button.dataset.transactionTitle || '-';
         if (payableSettleMeta) payableSettleMeta.textContent = `Parcela ${button.dataset.installmentLabel || '-'} • Vencimento ${button.dataset.installmentDueDate || '-'}`;
         if (payableSettleDateInput) payableSettleDateInput.value = button.dataset.paidDateDefault || '';
         if (payableSettleNotesInput) payableSettleNotesInput.value = '';
         payableSettleModal.showModal();
         lockBackgroundScroll();
+    };
+
+    document.addEventListener('click', (event) => {
+        const button = event.target.closest('[data-finance-payable-settle-trigger]');
+        if (!button || !(payablesListRoot instanceof HTMLElement) || !payablesListRoot.contains(button)) return;
+        openInstallmentSettleModal(button, stripPayablesPartialFromUrl(window.location.href));
+    });
+
+    document.addEventListener('click', (event) => {
+        const button = event.target.closest('[data-finance-installment-settle-trigger]');
+        if (!button || !(receivablesListRoot instanceof HTMLElement) || !receivablesListRoot.contains(button)) return;
+        openInstallmentSettleModal(button, stripReceivablesPartialFromUrl(window.location.href));
     });
 
     payableSettleCloseButtons.forEach((button) => button.addEventListener('click', closePayableSettleModal));

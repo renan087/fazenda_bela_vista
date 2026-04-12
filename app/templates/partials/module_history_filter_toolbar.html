@@ -201,7 +201,7 @@
 {% endmacro %}
 
 {# Contas > A pagar: presets condicionais ao status (past / future / só personalizado). #}
-{% macro module_period_picker_payables_inline(selected_range, start_date, end_date, period_mode, period_placeholder='Filtre por período') %}
+{% macro module_period_picker_payables_inline(selected_range, start_date, end_date, period_mode, period_placeholder='Filtre por período', field_prefix='') %}
 {% set _range_val = selected_range or '' %}
 {% set _has_period = (start_date or end_date) %}
 {% set pm = period_mode or 'past' %}
@@ -263,9 +263,9 @@
                 <span class="module-filter-preset-option-meta">Selecione data inicial e final</span>
             </button>
         </div>
-        <input type="hidden" name="schedule_range" value="{{ _range_val }}" data-module-range-input>
-        <input type="hidden" name="start_date" value="{{ start_date or '' }}" data-module-filter-start>
-        <input type="hidden" name="end_date" value="{{ end_date or '' }}" data-module-filter-end>
+        <input type="hidden" name="{{ field_prefix }}schedule_range" value="{{ _range_val }}" data-module-range-input>
+        <input type="hidden" name="{{ field_prefix }}start_date" value="{{ start_date or '' }}" data-module-filter-start>
+        <input type="hidden" name="{{ field_prefix }}end_date" value="{{ end_date or '' }}" data-module-filter-end>
         <div class="module-filter-period module-filter-custom-panel hidden" data-module-custom-range>
             <div class="module-filter-custom-head">
                 <p class="module-filter-custom-title">Período personalizado</p>
