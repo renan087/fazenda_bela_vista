@@ -1408,6 +1408,10 @@ def _build_stock_context(
             )
 
     stock_catalog_rows.sort(key=_stock_priority)
+    lots_input_ids = {entry.input_id for entry in purchase_entries}
+    consumption_catalog_inputs = [
+        item for item in catalog_inputs if item.is_active and item.id in lots_input_ids
+    ]
     filtered_entries = purchase_entries
     filtered_outputs = stock_outputs
     filtered_extract_rows = extract_rows
@@ -1429,6 +1433,7 @@ def _build_stock_context(
     filtered_extract_rows.sort(key=lambda row: row["sort_key"], reverse=True)
     return {
         "catalog_inputs": catalog_inputs,
+        "consumption_catalog_inputs": consumption_catalog_inputs,
         "purchase_entries": filtered_entries,
         "stock_outputs": filtered_outputs,
         "input_stock": input_stock,
@@ -7914,7 +7919,7 @@ def stock_page(
                 item_type=normalized_item_type,
                 stock_tab=selected_stock_tab,
             ),
-            inputs_catalog=stock_context["catalog_inputs"],
+            inputs_catalog=stock_context["consumption_catalog_inputs"],
             input_stock=stock_context["input_stock"],
             stock_catalog_rows=stock_context["stock_catalog_rows"],
             purchase_entries=purchase_entries_pagination["items"],
@@ -9044,7 +9049,7 @@ def supplies_page(
             stock_outputs_pagination=stock_outputs_pagination,
             extract_rows=extract_rows_pagination["items"],
             extract_rows_pagination=extract_rows_pagination,
-            inputs_catalog=stock_context["catalog_inputs"],
+            inputs_catalog=stock_context["consumption_catalog_inputs"],
             input_stock=stock_context["input_stock"],
             stock_catalog_rows=stock_context["stock_catalog_rows"],
             edit_supply=edit_supply,

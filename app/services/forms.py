@@ -1085,6 +1085,8 @@ def create_manual_stock_output(repository: FarmRepository, form: dict) -> StockO
     input_catalog = repository.get_input_catalog(input_id)
     if not input_catalog:
         raise ValueError("Insumo nao encontrado para a saida manual.")
+    if not input_catalog.is_active:
+        raise ValueError("Este insumo nao esta mais disponivel para lancamentos.")
 
     unit = (form.get("unit") or input_catalog.default_unit or "kg").strip()
     farm_id = form.get("farm_id")
