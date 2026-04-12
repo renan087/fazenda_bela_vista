@@ -1460,7 +1460,7 @@ body.dashboard-schedule-modal-open {
     z-index: 0;
 }
 
-/* Dropdown de período na aba A Pagar precisa de overflow:visible em todos os ancestrais
+/* Dropdown de período nas abas A Pagar e A Receber precisa de overflow:visible em todos os ancestrais
    para aparecer acima do conteúdo independente do tamanho de tela.
    Inclui o stock-panel pai (finance-accounts-summary-panel) que no mobile recebe
    overflow-x:hidden via regra global — o override aqui tem especificidade maior. */
@@ -1468,6 +1468,10 @@ body.dashboard-schedule-modal-open {
 .stock-history-stage[data-finance-tab="payables"] .stock-filter-bar,
 .stock-history-stage[data-finance-tab="payables"] .stock-filter-grid,
 .stock-history-stage[data-finance-tab="payables"] [data-finance-payables-filter-collapse],
+.stock-history-stage[data-finance-tab="receivables"],
+.stock-history-stage[data-finance-tab="receivables"] .stock-filter-bar,
+.stock-history-stage[data-finance-tab="receivables"] .stock-filter-grid,
+.stock-history-stage[data-finance-tab="receivables"] [data-finance-receivables-filter-collapse],
 .stock-history-stage[data-finance-tab="transactions"],
 .stock-history-stage[data-finance-tab="transactions"] .stock-filter-bar,
 .stock-history-stage[data-finance-tab="transactions"] .stock-filter-grid,
@@ -1537,6 +1541,13 @@ body.dashboard-schedule-modal-open {
     .stock-history-stage[data-finance-tab="payables"] .stock-filter-bar,
     .stock-history-stage[data-finance-tab="payables"] .stock-filter-grid,
     .stock-history-stage[data-finance-tab="payables"] [data-finance-payables-filter-collapse] {
+        overflow: visible;
+    }
+
+    .stock-history-stage[data-finance-tab="receivables"],
+    .stock-history-stage[data-finance-tab="receivables"] .stock-filter-bar,
+    .stock-history-stage[data-finance-tab="receivables"] .stock-filter-grid,
+    .stock-history-stage[data-finance-tab="receivables"] [data-finance-receivables-filter-collapse] {
         overflow: visible;
     }
 
@@ -2108,6 +2119,7 @@ body.dashboard-schedule-modal-open {
 
 [data-stock-filter-collapse] > .stock-summary-collapse-inner,
 [data-finance-payables-filter-collapse] > .stock-summary-collapse-inner,
+[data-finance-receivables-filter-collapse] > .stock-summary-collapse-inner,
 [data-finance-transactions-filter-collapse] > .stock-summary-collapse-inner {
     overflow: visible;
 }
