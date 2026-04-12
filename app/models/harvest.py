@@ -12,6 +12,7 @@ class HarvestRecord(Base):
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
     plot_id: Mapped[int] = mapped_column(ForeignKey("plots.id"), nullable=False)
     harvest_date: Mapped[date] = mapped_column(Date, nullable=False)
+    lot_code: Mapped[str] = mapped_column(String(40), nullable=True)
     sacks_produced: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False)
     productivity_per_hectare: Mapped[float] = mapped_column(Numeric(10, 2), nullable=True)
     harvest_type: Mapped[str] = mapped_column(String(40), nullable=True)

@@ -372,9 +372,9 @@ def _format_commercialization_quantity(value: object, unit: str | None) -> str:
 def _commercialization_lot_label(harvest: HarvestRecord | None) -> str:
     if not harvest:
         return "Lote removido"
+    lot_code = (harvest.lot_code or "").strip() or f"{harvest.harvest_date.year if harvest.harvest_date else '----'}-L{harvest.id:03d}"
     plot_name = harvest.plot.name if harvest.plot else "Setor removido"
-    date_label = harvest.harvest_date.strftime("%d/%m/%Y") if harvest.harvest_date else "-"
-    return f"{plot_name} • {date_label}"
+    return f"{lot_code} • {plot_name}"
 
 
 def _commercialization_available_sacks(

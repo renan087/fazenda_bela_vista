@@ -197,7 +197,7 @@
                 <div class="sticky top-0 z-10 -mx-1 bg-white/95 px-1 py-1 backdrop-blur">
                     <div class="flex flex-wrap justify-end gap-3 rounded-[1.5rem] px-2 py-2 sm:px-3">
                         <button type="button" class="rounded-2xl bg-slate-100 px-4 py-3 font-semibold text-slate-700 hover:bg-slate-200" data-commercialization-launch-close>Cancelar</button>
-                        <button class="rounded-2xl bg-brand-500 px-4 py-3 font-semibold text-white hover:bg-brand-700">{% if commercialization_edit %}Salvar alterações{% else %}Salvar comercialização{% endif %}</button>
+                        <button class="rounded-2xl bg-brand-500 px-4 py-3 font-semibold text-white hover:bg-brand-700 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-100" data-commercialization-submit>{% if commercialization_edit %}Salvar alterações{% else %}Salvar comercialização{% endif %}</button>
                     </div>
                 </div>
 
@@ -273,6 +273,7 @@
                     <label class="flex flex-col gap-2">
                         <span class="text-sm font-medium leading-tight">Quantidade comercializada <span class="text-rose-500">*</span></span>
                         <input type="number" step="0.01" min="0.01" name="quantity_sold" value="{{ commercialization_edit.quantity_sold if commercialization_edit else '' }}" class="h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50 px-3" required data-commercialization-quantity>
+                        <p class="hidden text-xs font-medium text-rose-600" data-commercialization-quantity-feedback></p>
                     </label>
                     <label class="flex flex-col gap-2">
                         <span class="text-sm font-medium leading-tight">Unidade <span class="text-rose-500">*</span></span>
@@ -389,6 +390,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const unitPriceField = document.querySelector('[data-commercialization-unit-price]');
     const totalDisplay = document.querySelector('[data-commercialization-total-display]');
     const conversionDisplay = document.querySelector('[data-commercialization-conversion-display]');
+    const quantityFeedback = document.querySelector('[data-commercialization-quantity-feedback]');
+    const submitButton = document.querySelector('[data-commercialization-submit]');
     const paymentConditionField = document.querySelector('[data-commercialization-payment-condition]');
     const installmentsCard = document.querySelector('[data-commercialization-installments-card]');
     const installmentCountField = document.querySelector('[data-commercialization-installment-count]');
@@ -455,10 +458,23 @@ document.addEventListener('DOMContentLoaded', () => {
         const total = quantity * unitPrice;
         const { availableSacks } = updateAvailableSummary();
         const equivalentSacks = quantityToSacks(quantity, unit);
+        const exceeds = equivalentSacks > (availableSacks + 0.0001);
         if (totalDisplay) totalDisplay.textContent = formatMoneyBr(total);
         if (conversionDisplay) {
             const remaining = Math.max(availableSacks - equivalentSacks, 0);
             conversionDisplay.textContent = `A venda consumirá ${formatNumberBr(equivalentSacks, 'sc')} do lote. Saldo projetado após o lançamento: ${formatNumberBr(remaining, 'sc')}.`;
+        }
+        if (quantityFeedback) {
+            if (exceeds) {
+                quantityFeedback.textContent = `A quantidade informada ultrapassa o saldo disponível do lote (${formatNumberBr(availableSacks, 'sc')}).`;
+                quantityFeedback.classList.remove('hidden');
+            } else {
+                quantityFeedback.textContent = '';
+                quantityFeedback.classList.add('hidden');
+            }
+        }
+        if (submitButton) {
+            submitButton.disabled = exceeds;
         }
         return total;
     };

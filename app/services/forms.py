@@ -1553,12 +1553,21 @@ def delete_fertilization_schedule(repository: FarmRepository, schedule: Fertiliz
 
 
 def create_harvest(repository: FarmRepository, form: dict, area_hectares: float) -> HarvestRecord:
+    harvest_date_value = date.fromisoformat(form["harvest_date"])
     sacks = float(form["sacks_produced"])
     productivity = sacks / area_hectares if area_hectares else 0
+    year_start = date(harvest_date_value.year, 1, 1)
+    year_end = date(harvest_date_value.year, 12, 31)
+    seq = (
+        repository.db.query(HarvestRecord)
+        .filter(HarvestRecord.harvest_date >= year_start, HarvestRecord.harvest_date <= year_end)
+        .count()
+    ) + 1
     return repository.create(
         HarvestRecord(
             plot_id=form["plot_id"],
-            harvest_date=date.fromisoformat(form["harvest_date"]),
+            harvest_date=harvest_date_value,
+            lot_code=f"{harvest_date_value.year}-L{seq:03d}",
             sacks_produced=sacks,
             productivity_per_hectare=round(productivity, 2),
             harvest_type=form.get("harvest_type"),
