@@ -22,27 +22,29 @@
         </div>
     </section>
 
-    <section class="grid gap-4 lg:grid-cols-4">
-        <article class="stock-summary-card" data-stock-level="ok">
-            <p class="stock-summary-label">Saldo disponível</p>
-            <p class="stock-summary-value">{{ commercialization_total_available_sacks|decimal_br }} sc</p>
-            <p class="stock-summary-note">{{ commercialization_total_available_kg|decimal_br }} kg equivalentes</p>
-        </article>
-        <article class="stock-summary-card" data-stock-level="ok">
-            <p class="stock-summary-label">Lotes disponíveis</p>
-            <p class="stock-summary-value">{{ commercialization_available_lot_count }}</p>
-            <p class="stock-summary-note">Colheitas com saldo para venda</p>
-        </article>
-        <article class="stock-summary-card" data-stock-level="warning">
-            <p class="stock-summary-label">Comercializado no período</p>
-            <p class="stock-summary-value">{{ commercialization_filtered_total_sacks|decimal_br }} sc</p>
-            <p class="stock-summary-note">{{ commercialization_filtered_total_kg|decimal_br }} kg equivalentes</p>
-        </article>
-        <article class="stock-summary-card" data-stock-level="ok">
-            <p class="stock-summary-label">Valor negociado</p>
-            <p class="stock-summary-value">R$ {{ commercialization_filtered_total_value|decimal_br }}</p>
-            <p class="stock-summary-note">Totais respeitando os filtros</p>
-        </article>
+    <section class="stock-panel finance-summary-panel rounded-[2rem] bg-white p-5 shadow-panel" data-stock-fade-panel>
+        <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <article class="finance-summary-card finance-summary-card-positive rounded-2xl border p-4 shadow-sm">
+                <p class="text-[0.65rem] font-semibold uppercase tracking-[0.2em]">Saldo disponível</p>
+                <p class="mt-1 text-lg font-semibold tabular-nums">{{ commercialization_total_available_sacks|decimal_br }} sc</p>
+                <p class="mt-2 text-sm leading-5 text-slate-600">{{ commercialization_total_available_kg|decimal_br }} kg equivalentes</p>
+            </article>
+            <article class="finance-summary-card finance-summary-card-neutral rounded-2xl border p-4 shadow-sm">
+                <p class="text-[0.65rem] font-semibold uppercase tracking-[0.2em]">Lotes disponíveis</p>
+                <p class="mt-1 text-lg font-semibold tabular-nums">{{ commercialization_available_lot_count }}</p>
+                <p class="mt-2 text-sm leading-5 text-slate-600">Colheitas com saldo para venda</p>
+            </article>
+            <article class="finance-summary-card finance-summary-card-neutral rounded-2xl border p-4 shadow-sm">
+                <p class="text-[0.65rem] font-semibold uppercase tracking-[0.2em]">Comercializado no período</p>
+                <p class="mt-1 text-lg font-semibold tabular-nums">{{ commercialization_filtered_total_sacks|decimal_br }} sc</p>
+                <p class="mt-2 text-sm leading-5 text-slate-600">{{ commercialization_filtered_total_kg|decimal_br }} kg equivalentes</p>
+            </article>
+            <article class="finance-summary-card finance-summary-card-positive rounded-2xl border p-4 shadow-sm">
+                <p class="text-[0.65rem] font-semibold uppercase tracking-[0.2em]">Valor negociado</p>
+                <p class="mt-1 text-lg font-semibold tabular-nums">R$ {{ commercialization_filtered_total_value|decimal_br }}</p>
+                <p class="mt-2 text-sm leading-5 text-slate-600">Totais respeitando os filtros</p>
+            </article>
+        </div>
     </section>
 
     <section class="stock-panel rounded-[2rem] bg-white p-6 shadow-panel" data-stock-fade-panel>
