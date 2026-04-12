@@ -377,6 +377,7 @@
 <script>
 document.addEventListener('DOMContentLoaded', () => {
     const launchModal = document.getElementById('commercialization-launch-modal');
+    const form = document.getElementById('commercialization-form');
     const openButtons = Array.from(document.querySelectorAll('[data-commercialization-launch-open]'));
     const closeButtons = Array.from(document.querySelectorAll('[data-commercialization-launch-close]'));
     const contextToggle = document.querySelector('[data-commercialization-context-toggle]');
@@ -398,6 +399,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const installmentFrequencyField = document.querySelector('[data-commercialization-installment-frequency]');
     const firstInstallmentDateField = document.querySelector('[data-commercialization-first-installment-date]');
     const installmentPreview = document.querySelector('[data-commercialization-installment-preview]');
+    const isEditing = {{ 'true' if commercialization_edit else 'false' }};
 
     const addMonths = (baseDate, months) => {
         const next = new Date(baseDate.getTime());
@@ -528,10 +530,31 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     if (launchModal) {
+        const resetCreateForm = () => {
+            if (!form || isEditing) return;
+            form.reset();
+            if (quantityFeedback) {
+                quantityFeedback.textContent = '';
+                quantityFeedback.classList.add('hidden');
+            }
+            if (submitButton) submitButton.disabled = false;
+            setContextExpanded(false);
+            updateAvailableSummary();
+            updateValuePreview();
+            syncInstallmentVisibility();
+        };
         const openModal = () => {
+            resetCreateForm();
             if (typeof launchModal.showModal === 'function') launchModal.showModal();
         };
-        const closeModal = () => launchModal.close();
+        const closeModal = () => {
+            if (isEditing) {
+                window.location.href = '/producao/comercializacao';
+                return;
+            }
+            resetCreateForm();
+            launchModal.close();
+        };
         openButtons.forEach((button) => button.addEventListener('click', openModal));
         closeButtons.forEach((button) => button.addEventListener('click', closeModal));
         launchModal.addEventListener('cancel', (event) => {

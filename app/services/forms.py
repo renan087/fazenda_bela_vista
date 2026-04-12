@@ -1563,11 +1563,12 @@ def create_harvest(repository: FarmRepository, form: dict, area_hectares: float)
         .filter(HarvestRecord.harvest_date >= year_start, HarvestRecord.harvest_date <= year_end)
         .count()
     ) + 1
+    lot_code = (str(form.get("lot_code") or "").strip() or f"{harvest_date_value.year}-L{seq:03d}")
     return repository.create(
         HarvestRecord(
             plot_id=form["plot_id"],
             harvest_date=harvest_date_value,
-            lot_code=f"{harvest_date_value.year}-L{seq:03d}",
+            lot_code=lot_code,
             sacks_produced=sacks,
             productivity_per_hectare=round(productivity, 2),
             harvest_type=form.get("harvest_type"),
@@ -1590,13 +1591,15 @@ def update_harvest(
     form: dict,
     area_hectares: float,
 ) -> HarvestRecord:
+    harvest_date_value = date.fromisoformat(form["harvest_date"])
     sacks = float(form["sacks_produced"])
     productivity = sacks / area_hectares if area_hectares else 0
     return repository.update(
         harvest,
         {
             "plot_id": form["plot_id"],
-            "harvest_date": date.fromisoformat(form["harvest_date"]),
+            "harvest_date": harvest_date_value,
+            "lot_code": (str(form.get("lot_code") or "").strip() or harvest.lot_code or f"{harvest_date_value.year}-L{harvest.id:03d}"),
             "sacks_produced": sacks,
             "productivity_per_hectare": round(productivity, 2),
             "harvest_type": form.get("harvest_type"),

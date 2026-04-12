@@ -12014,6 +12014,7 @@ def production_page(
             harvests=harvests_pagination["items"],
             harvests_pagination=harvests_pagination,
             edit_harvest=repo.get_harvest(edit_id) if edit_id else None,
+            new_harvest_lot_code=_suggest_next_harvest_lot_code(repo),
             harvest_type_options=harvest_type_options,
             coffee_stage_options=coffee_stage_options,
             destination_options=destination_options,
@@ -12031,6 +12032,18 @@ def _validate_harvest_percentage(value: str | None, label: str) -> float | None:
     return parsed
 
 
+def _suggest_next_harvest_lot_code(repo: FarmRepository, reference_date: date | None = None) -> str:
+    base_date = reference_date or today_in_app_timezone()
+    year_start = date(base_date.year, 1, 1)
+    year_end = date(base_date.year, 12, 31)
+    seq = (
+        repo.db.query(HarvestRecord)
+        .filter(HarvestRecord.harvest_date >= year_start, HarvestRecord.harvest_date <= year_end)
+        .count()
+    ) + 1
+    return f"{base_date.year}-L{seq:03d}"
+
+
 def _commercialization_record_matches_scope(record: CoffeeCommercializationRecord, scope: dict) -> bool:
     if scope.get("active_farm_id") and record.farm_id != scope["active_farm_id"]:
         return False
@@ -12045,6 +12058,7 @@ def create_harvest_action(
     csrf_token: str = Form(...),
     plot_id: int = Form(...),
     harvest_date: str = Form(...),
+    lot_code: str | None = Form(None),
     sacks_produced: float = Form(...),
     harvest_type: str = Form(...),
     coffee_stage: str = Form(...),
@@ -12078,6 +12092,7 @@ def create_harvest_action(
         {
             "plot_id": plot.id,
             "harvest_date": harvest_date,
+            "lot_code": lot_code,
             "sacks_produced": sacks_produced,
             "harvest_type": (harvest_type or "").strip(),
             "coffee_stage": (coffee_stage or "").strip(),
@@ -12103,6 +12118,7 @@ def update_harvest_action(
     csrf_token: str = Form(...),
     plot_id: int = Form(...),
     harvest_date: str = Form(...),
+    lot_code: str | None = Form(None),
     sacks_produced: float = Form(...),
     harvest_type: str = Form(...),
     coffee_stage: str = Form(...),
@@ -12144,6 +12160,7 @@ def update_harvest_action(
         {
             "plot_id": plot.id,
             "harvest_date": harvest_date,
+            "lot_code": lot_code,
             "sacks_produced": sacks_produced,
             "harvest_type": (harvest_type or "").strip(),
             "coffee_stage": (coffee_stage or "").strip(),

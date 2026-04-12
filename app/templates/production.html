@@ -42,6 +42,7 @@
                     <thead class="bg-slate-50 text-left text-slate-500">
                         <tr>
                             <th class="px-4 py-3 font-medium">Setor</th>
+                            <th class="px-4 py-3 font-medium">Lote</th>
                             <th class="px-4 py-3 font-medium">Data</th>
                             <th class="px-4 py-3 font-medium">Sacas</th>
                             <th class="px-4 py-3 font-medium">Produtividade</th>
@@ -50,7 +51,7 @@
                     </thead>
                     <tbody class="divide-y divide-slate-100 bg-white">
                         {% for item in harvests %}
-                        <tr data-production-row data-production-search-text="{{ item.plot.name if item.plot else '' }} {{ item.plot.variety.name if item.plot and item.plot.variety else '' }} {{ item.harvest_date }} {{ item.sacks_produced }} {{ item.harvest_type or '' }} {{ item.coffee_stage or '' }} {{ item.initial_destination or '' }} {{ item.responsible_name or '' }} {{ item.notes or '' }}">
+                        <tr data-production-row data-production-search-text="{{ item.plot.name if item.plot else '' }} {{ item.lot_code or '' }} {{ item.plot.variety.name if item.plot and item.plot.variety else '' }} {{ item.harvest_date }} {{ item.sacks_produced }} {{ item.harvest_type or '' }} {{ item.coffee_stage or '' }} {{ item.initial_destination or '' }} {{ item.responsible_name or '' }} {{ item.notes or '' }}">
                             <td class="px-4 py-3 font-semibold text-slate-900">
                                 <button type="button" class="text-left transition hover:text-brand-700" data-history-view-trigger data-history-view-kicker="Colheita" data-history-view-title="{{ item.plot.name if item.plot else 'Setor removido' }}" data-history-view-subtitle="{{ item.lot_code or ('Lote ' ~ item.id) }} • {{ item.harvest_date.strftime('%d-%m-%Y') if item.harvest_date else '-' }}" data-history-view-source="harvest-view-{{ item.id }}" data-history-view-edit-url="/producao?edit_id={{ item.id }}">{{ item.plot.name if item.plot else "Setor removido" }}</button>
                                 <template id="harvest-view-{{ item.id }}">
@@ -77,6 +78,7 @@
                                     </div>
                                 </template>
                             </td>
+                            <td class="px-4 py-3 whitespace-nowrap font-semibold text-slate-900">{{ item.lot_code or ('Lote ' ~ item.id) }}</td>
                             <td class="px-4 py-3 whitespace-nowrap">{{ item.harvest_date.strftime('%d-%m-%Y') if item.harvest_date else "-" }}</td>
                             <td class="px-4 py-3 whitespace-nowrap">{{ item.sacks_produced }}</td>
                             <td class="px-4 py-3 whitespace-nowrap">{{ item.productivity_per_hectare or 0 }} sc/ha</td>
@@ -104,7 +106,7 @@
                             </td>
                         </tr>
                         {% else %}
-                        <tr><td colspan="5" class="px-4 py-6 text-center text-slate-500">Sem registros.</td></tr>
+                        <tr><td colspan="6" class="px-4 py-6 text-center text-slate-500">Sem registros.</td></tr>
                         {% endfor %}
                     </tbody>
                 </table>
@@ -165,6 +167,10 @@
                 </div>
 
                 <div class="grid gap-4 md:grid-cols-3">
+                    <label class="flex flex-col gap-2">
+                        <span class="text-sm font-medium leading-tight">Lote</span>
+                        <input type="text" name="lot_code" value="{{ edit_harvest.lot_code if edit_harvest else new_harvest_lot_code }}" class="h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50 px-3" data-production-lot-code-input>
+                    </label>
                     <label class="flex flex-col gap-2">
                         <span class="text-sm font-medium leading-tight">Setor <span class="text-rose-500">*</span></span>
                         <select name="plot_id" class="h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50 px-3" required data-production-plot-select>
@@ -314,6 +320,10 @@
     const contextTogglePlus = document.querySelector('[data-production-context-toggle-plus]');
     const plotSelect = document.querySelector('[data-production-plot-select]');
     const varietyDisplay = document.querySelector('[data-production-variety-display]');
+    const lotCodeInput = document.querySelector('[data-production-lot-code-input]');
+    const harvestDateInput = document.querySelector('input[name="harvest_date"]');
+    const initialLotCode = lotCodeInput?.value || '';
+    let lotCodeManuallyChanged = false;
     const syncContextToggle = (expanded) => {
         if (!contextCollapse || !contextToggle) return;
         contextCollapse.classList.toggle('is-expanded', expanded);
@@ -335,6 +345,18 @@
     };
     plotSelect?.addEventListener('change', syncVarietyDisplay);
     syncVarietyDisplay();
+
+    lotCodeInput?.addEventListener('input', () => {
+        lotCodeManuallyChanged = (lotCodeInput?.value || '') !== initialLotCode;
+    });
+    if (!isEditing) {
+        harvestDateInput?.addEventListener('change', () => {
+            if (!lotCodeInput || lotCodeManuallyChanged) return;
+            const year = (harvestDateInput.value || '').slice(0, 4);
+            if (!year) return;
+            lotCodeInput.value = `${year}-L001`;
+        });
+    }
 
     const normalizeText = (value) => (value || '').toString().normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
     const applyLocalSearch = () => {
