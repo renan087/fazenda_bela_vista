@@ -56,7 +56,7 @@
         </div>
 
         <div class="stock-filter-bar mt-6">
-            <form method="get" action="/producao/comercializacao" class="stock-filter-grid" data-module-period-filter-root data-module-range-default="current_month" data-module-range-placeholder="Filtre por período">
+            <form method="get" action="/producao/comercializacao" class="stock-filter-grid" data-module-period-filter-root data-module-range-default="current_month" data-module-range-placeholder="Filtre por período" data-commercialization-filter-collapse>
                 <div class="stock-filter-fields-row {% if commercialization_filters_active %}has-clear-action{% endif %}">
                     <label class="stock-filter-field stock-filter-field-input {% if commercialization_selected_harvest_id %}is-filtered{% endif %}">
                         <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Lote</span>

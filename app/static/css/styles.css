@@ -1460,7 +1460,7 @@ body.dashboard-schedule-modal-open {
     z-index: 0;
 }
 
-/* Dropdown de período nas abas A Pagar e A Receber precisa de overflow:visible em todos os ancestrais
+/* Dropdown de período nas abas A Pagar, A Receber e Comercialização precisa de overflow:visible em todos os ancestrais
    para aparecer acima do conteúdo independente do tamanho de tela.
    Inclui o stock-panel pai (finance-accounts-summary-panel) que no mobile recebe
    overflow-x:hidden via regra global — o override aqui tem especificidade maior. */
@@ -1477,6 +1477,11 @@ body.dashboard-schedule-modal-open {
 .stock-history-stage[data-finance-tab="transactions"] .stock-filter-grid,
 .stock-history-stage[data-finance-tab="transactions"] [data-finance-transactions-filter-collapse],
 .finance-accounts-summary-panel {
+    overflow: visible;
+}
+
+[data-commercialization-filter-collapse],
+[data-commercialization-filter-collapse] .stock-filter-grid {
     overflow: visible;
 }
 
@@ -2120,7 +2125,8 @@ body.dashboard-schedule-modal-open {
 [data-stock-filter-collapse] > .stock-summary-collapse-inner,
 [data-finance-payables-filter-collapse] > .stock-summary-collapse-inner,
 [data-finance-receivables-filter-collapse] > .stock-summary-collapse-inner,
-[data-finance-transactions-filter-collapse] > .stock-summary-collapse-inner {
+[data-finance-transactions-filter-collapse] > .stock-summary-collapse-inner,
+[data-commercialization-filter-collapse] > .stock-summary-collapse-inner {
     overflow: visible;
 }
 
