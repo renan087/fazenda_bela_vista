@@ -1238,6 +1238,21 @@ def _page_number(value: str | int | None, default: int = 1) -> int:
         return default
 
 
+def _optional_query_int(value: str | int | None) -> int | None:
+    """Parse query param as int; empty string (ex.: HTML select \"Todos\") becomes None."""
+    if value is None:
+        return None
+    if isinstance(value, int):
+        return value
+    s = str(value).strip()
+    if not s:
+        return None
+    try:
+        return int(s)
+    except ValueError:
+        return None
+
+
 def _build_stock_context(
     repo: FarmRepository,
     farm_id: int | None = None,
@@ -12579,14 +12594,16 @@ def delete_harvest_action(
 @router.get("/producao/comercializacao")
 def commercialization_page(
     request: Request,
-    edit_id: int | None = None,
-    harvest_id: int | None = None,
+    edit_id: str | None = Query(None),
+    harvest_id: str | None = Query(None),
     status: str | None = None,
     search: str | None = None,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user_web),
     csrf_token: str = Depends(get_csrf_token),
 ):
+    edit_id = _optional_query_int(edit_id)
+    harvest_id = _optional_query_int(harvest_id)
     repo = _repository(db)
     scope = _global_scope_context(request, repo)
     active_farm_id = scope.get("active_farm_id")
