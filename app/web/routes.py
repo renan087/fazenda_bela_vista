@@ -510,8 +510,16 @@ def _build_global_notifications(request: Request, repo: FarmRepository, scope_co
             )
 
     for transaction in repo.list_finance_transactions(farm_id=active_farm.id):
-        if (transaction.operation_type or "").strip().lower() != "despesa":
+        operation_type = (transaction.operation_type or "").strip().lower()
+        if operation_type not in {"despesa", "receita"}:
             continue
+        is_receivable = operation_type == "receita"
+        overdue_title = "Conta a receber atrasada" if is_receivable else "Conta atrasada"
+        due_today_title = "Recebimento vence hoje" if is_receivable else "Vence hoje"
+        overdue_href = "/gestao-financeira/contas?finance_tab=receivables&receivables_status=overdue" if is_receivable else "/gestao-financeira/contas?finance_tab=payables&payables_status=overdue"
+        today_href = "/gestao-financeira/contas?finance_tab=receivables" if is_receivable else "/gestao-financeira/contas?finance_tab=payables"
+        meta_fallback = "A Receber" if is_receivable else "A Pagar"
+        value_noun = "recebimento" if is_receivable else "valor"
         for installment in transaction.installments or []:
             status = (installment.status or "pendente").strip().lower()
             if status == "pago":
@@ -524,22 +532,22 @@ def _build_global_notifications(request: Request, repo: FarmRepository, scope_co
             if due_date < today:
                 add_notification(
                     important,
-                    title="Conta atrasada",
-                    message=f"{transaction.product_service or transaction.category or 'Parcela'} ({label}) venceu em {due_date.strftime('%d/%m/%Y')} no valor de {value_label}.",
-                    href="/gestao-financeira/contas?finance_tab=payables&payables_status=overdue",
-                    kind="payable",
+                    title=overdue_title,
+                    message=f"{transaction.product_service or transaction.category or 'Parcela'} ({label}) venceu em {due_date.strftime('%d/%m/%Y')} no {value_noun} de {value_label}.",
+                    href=overdue_href,
+                    kind="receivable" if is_receivable else "payable",
                     severity="danger",
-                    meta=transaction.finance_account.account_name if transaction.finance_account else "A Pagar",
+                    meta=transaction.finance_account.account_name if transaction.finance_account else meta_fallback,
                 )
             elif due_date == today:
                 add_notification(
                     important,
-                    title="Vence hoje",
-                    message=f"{transaction.product_service or transaction.category or 'Parcela'} ({label}) vence hoje no valor de {value_label}.",
-                    href="/gestao-financeira/contas?finance_tab=payables",
-                    kind="payable",
+                    title=due_today_title,
+                    message=f"{transaction.product_service or transaction.category or 'Parcela'} ({label}) vence hoje no {value_noun} de {value_label}.",
+                    href=today_href,
+                    kind="receivable" if is_receivable else "payable",
                     severity="warning",
-                    meta=transaction.finance_account.account_name if transaction.finance_account else "A Pagar",
+                    meta=transaction.finance_account.account_name if transaction.finance_account else meta_fallback,
                 )
 
     if active_season:
