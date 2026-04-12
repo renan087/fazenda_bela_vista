@@ -77,6 +77,7 @@ from app.services.asaas_payments import create_asaas_payment, get_asaas_payment,
 from app.services.backup_service import delete_backup_run, execute_backup
 from app.services.dashboard import build_dashboard_context
 from app.services.finance_overview import (
+    _in_extract_period,
     build_finance_extract_rows,
     build_finance_overview_context,
     compute_finance_account_card_balances,
@@ -1030,7 +1031,7 @@ def _planning_filter_range_preset(raw_preset: str | None, raw_start: str, raw_en
 
 
 def _fertilization_filter_range_preset(raw_preset: str | None, raw_start: str, raw_end: str) -> str:
-    valid_presets = {"last_10_days", "last_20_days", "last_month", "custom"}
+    valid_presets = {"current_month", "last_10_days", "last_20_days", "last_month", "custom"}
     preset = (raw_preset or "").strip()
     if preset in valid_presets:
         return preset
@@ -7322,7 +7323,7 @@ async def create_purchased_input_action(
         saved_attachments = _save_purchased_input_attachments(repo, item, attachment_payloads)
     except Exception:
         _flash(request, "error", "O lancamento foi salvo, mas nao foi possivel gravar os anexos agora.")
-        return _redirect_with_query("/insumos/comprados", edit_id=item.id, item_type=item_type)
+        return _redirect_with_query("/insumos/comprados", item_type=item_type)
     if saved_attachments:
         _flash(request, "success", f"Insumo comprado cadastrado com sucesso. {saved_attachments} anexo(s) salvo(s).")
         return _redirect_with_query("/insumos/comprados", item_type=item_type)
@@ -8620,7 +8621,7 @@ def export_equipment_assets_pdf(
         lambda item: item.id,
     )
     generated_at = app_now()
-    generated_by = user.display_name or user.name or user.email
+    generated_by = xml_escape(user.display_name or user.name or user.email or "")
     total_assets = len(assets)
     total_acquisition = round(sum(float(asset.acquisition_value or 0) for asset in assets), 2)
     active_assets = sum(1 for asset in assets if asset.status == "ativo")
@@ -8683,9 +8684,14 @@ def export_equipment_assets_pdf(
     )
 
     logo_path = Path("app/static/images/logo.png")
-    logo_flowable = Image(str(logo_path), width=92.8, height=73.6) if logo_path.exists() else Spacer(92.8, 73.6)
-    farm_name = selected_farm.name if selected_farm else "Fazenda Bela Vista"
-    scope_label = selected_farm.name if selected_farm else "Todas as fazendas"
+    logo_flowable: Image | Spacer = Spacer(92.8, 73.6)
+    if logo_path.exists():
+        try:
+            logo_flowable = Image(str(logo_path), width=92.8, height=73.6)
+        except Exception:
+            logo_flowable = Spacer(92.8, 73.6)
+    farm_name = xml_escape(selected_farm.name if selected_farm else "Fazenda Bela Vista")
+    scope_label = xml_escape(selected_farm.name if selected_farm else "Todas as fazendas")
 
     header_table = Table(
         [[logo_flowable, Paragraph(farm_name, farm_header_style)]],
@@ -8763,15 +8769,16 @@ def export_equipment_assets_pdf(
         if asset.asset_code:
             year_code = f"{year_code} • {asset.asset_code}" if year_code != "-" else asset.asset_code
 
+        status_label = xml_escape((asset.status or "-").replace("_", " ").title())
         data.append([
-            Paragraph(asset.name or "-", cell_style),
-            Paragraph(category_farm, cell_muted_style),
-            Paragraph(maker_model, cell_muted_style),
-            Paragraph(year_code, cell_muted_style),
+            Paragraph(xml_escape(str(asset.name or "-")), cell_style),
+            Paragraph(xml_escape(str(category_farm)), cell_muted_style),
+            Paragraph(xml_escape(str(maker_model)), cell_muted_style),
+            Paragraph(xml_escape(str(year_code)), cell_muted_style),
             Paragraph(asset.acquisition_date.strftime("%d/%m/%Y") if asset.acquisition_date else "-", cell_style),
             Paragraph(_format_currency(asset.acquisition_value or 0), cell_numeric_style),
-            Paragraph(f'<font color="{status_color}"><b>{(asset.status or "-").replace("_", " ").title()}</b></font>', cell_style),
-            Paragraph((asset.notes or "-")[:90], cell_muted_style),
+            Paragraph(f'<font color="{status_color}"><b>{status_label}</b></font>', cell_style),
+            Paragraph(xml_escape((asset.notes or "-")[:90]), cell_muted_style),
         ])
     data.append([
         "",
@@ -9120,10 +9127,10 @@ async def create_supply_action(
         saved_attachments = _save_purchased_input_attachments(repo, item, attachment_payloads)
     except Exception:
         _flash(request, "error", "O suprimento foi salvo, mas nao foi possivel gravar os anexos agora.")
-        return _redirect_with_query("/insumos/suprimentos", farm_id=scope["active_farm_id"], edit_id=item.id)
+        return _redirect(target_base)
     if saved_attachments:
         _flash(request, "success", f"Suprimento cadastrado com sucesso. {saved_attachments} anexo(s) salvo(s).")
-        return _redirect_with_query("/insumos/suprimentos", farm_id=scope["active_farm_id"], edit_id=item.id)
+        return _redirect(target_base)
     _flash(request, "success", "Suprimento cadastrado com sucesso.")
     return _redirect(target_base)
 
@@ -9735,10 +9742,10 @@ async def create_equipment_asset_action(
         saved_attachments = _save_equipment_asset_attachments(repo, asset, attachment_payloads)
     except Exception:
         _flash(request, "error", "O patrimonio foi salvo, mas nao foi possivel gravar os anexos agora.")
-        return _redirect_with_query("/insumos/patrimonio", edit_id=asset.id)
+        return _redirect("/insumos/patrimonio")
     if saved_attachments:
         _flash(request, "success", f"Patrimonio cadastrado com sucesso. {saved_attachments} anexo(s) salvo(s).")
-        return _redirect_with_query("/insumos/patrimonio", edit_id=asset.id)
+        return _redirect("/insumos/patrimonio")
     _flash(request, "success", "Patrimonio cadastrado com sucesso.")
     return _redirect("/insumos/patrimonio")
 
