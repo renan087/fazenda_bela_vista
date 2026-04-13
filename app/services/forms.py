@@ -1593,8 +1593,14 @@ def update_harvest(
     form: dict,
     area_hectares: float,
 ) -> HarvestRecord:
+    old_sacks = float(harvest.sacks_produced or 0)
+    new_sacks = float(form["sacks_produced"])
+    if repository.harvest_has_commercializations(harvest.id) and round(old_sacks, 2) != round(new_sacks, 2):
+        raise ValueError(
+            "Nao e possivel alterar a quantidade colhida: existem registros de comercializacao vinculados a este lote."
+        )
     harvest_date_value = date.fromisoformat(form["harvest_date"])
-    sacks = float(form["sacks_produced"])
+    sacks = new_sacks
     productivity = sacks / area_hectares if area_hectares else 0
     return repository.update(
         harvest,

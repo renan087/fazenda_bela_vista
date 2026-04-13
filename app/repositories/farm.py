@@ -595,6 +595,24 @@ class FarmRepository:
             .first()
         )
 
+    def harvest_has_commercializations(self, harvest_id: int) -> bool:
+        return (
+            self.db.query(CoffeeCommercializationRecord.id)
+            .filter(CoffeeCommercializationRecord.harvest_id == harvest_id)
+            .limit(1)
+            .first()
+            is not None
+        )
+
+    def harvest_ids_linked_to_commercializations(self) -> set[int]:
+        rows = (
+            self.db.query(CoffeeCommercializationRecord.harvest_id)
+            .filter(CoffeeCommercializationRecord.harvest_id.isnot(None))
+            .distinct()
+            .all()
+        )
+        return {row[0] for row in rows}
+
     def list_coffee_commercializations(self, farm_id: int | None = None) -> list[CoffeeCommercializationRecord]:
         query = (
             self.db.query(CoffeeCommercializationRecord)

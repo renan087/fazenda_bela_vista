@@ -12418,6 +12418,7 @@ def production_page(
             harvests=harvests_pagination["items"],
             harvests_pagination=harvests_pagination,
             edit_harvest=repo.get_harvest(edit_id) if edit_id else None,
+            harvest_ids_with_commercialization=repo.harvest_ids_linked_to_commercializations(),
             new_harvest_lot_code=_suggest_next_harvest_lot_code(repo),
             harvest_type_options=harvest_type_options,
             coffee_stage_options=coffee_stage_options,
@@ -12558,27 +12559,31 @@ def update_harvest_action(
         _flash(request, "error", str(exc))
         return _redirect_for_request(request, f"/producao?edit_id={record_id}")
     area = float(plot.area_hectares) if plot else 0
-    update_harvest(
-        repo,
-        harvest,
-        {
-            "plot_id": plot.id,
-            "harvest_date": harvest_date,
-            "lot_code": lot_code,
-            "sacks_produced": sacks_produced,
-            "harvest_type": (harvest_type or "").strip(),
-            "coffee_stage": (coffee_stage or "").strip(),
-            "initial_destination": (initial_destination or "").strip(),
-            "responsible_name": (responsible_name or "").strip() or None,
-            "work_shift": (work_shift or "").strip() or None,
-            "maturation_percentage": maturation_value,
-            "impurity_percentage": impurity_value,
-            "input_moisture_percentage": moisture_value,
-            "volume_count": _int_or_none(volume_count),
-            "notes": notes,
-        },
-        area,
-    )
+    try:
+        update_harvest(
+            repo,
+            harvest,
+            {
+                "plot_id": plot.id,
+                "harvest_date": harvest_date,
+                "lot_code": lot_code,
+                "sacks_produced": sacks_produced,
+                "harvest_type": (harvest_type or "").strip(),
+                "coffee_stage": (coffee_stage or "").strip(),
+                "initial_destination": (initial_destination or "").strip(),
+                "responsible_name": (responsible_name or "").strip() or None,
+                "work_shift": (work_shift or "").strip() or None,
+                "maturation_percentage": maturation_value,
+                "impurity_percentage": impurity_value,
+                "input_moisture_percentage": moisture_value,
+                "volume_count": _int_or_none(volume_count),
+                "notes": notes,
+            },
+            area,
+        )
+    except ValueError as exc:
+        _flash(request, "error", str(exc))
+        return _redirect_for_request(request, f"/producao?edit_id={record_id}")
     _flash(request, "success", "Colheita atualizada com sucesso.")
     return _redirect_for_request(request, "/producao")
 
@@ -12594,9 +12599,20 @@ def delete_harvest_action(
     del user
     validate_csrf(request, csrf_token)
     repo = _repository(db)
+    scope = _global_scope_context(request, repo)
     harvest = repo.get_harvest(record_id)
     if not harvest:
         _flash(request, "error", "Registro de producao nao encontrado.")
+        return _redirect("/producao")
+    if not _plot_matches_scope(harvest.plot, scope):
+        _flash(request, "error", "Este registro de producao nao pertence ao contexto ativo.")
+        return _redirect("/producao")
+    if repo.harvest_has_commercializations(harvest.id):
+        _flash(
+            request,
+            "error",
+            "Nao e possivel excluir: existem registros de comercializacao vinculados a este lote.",
+        )
         return _redirect("/producao")
     repo.delete(harvest)
     _flash(request, "success", "Colheita excluida com sucesso.")

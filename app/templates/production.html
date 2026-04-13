@@ -90,6 +90,7 @@
                                             <path d="M16.5 3.5a2.1 2.1 0 1 1 3 3L7 19l-4 1 1-4Z"/>
                                         </svg>
                                     </a>
+                                    {% if item.id not in harvest_ids_with_commercialization %}
                                     <form method="post" action="/producao/{{ item.id }}/excluir" onsubmit="return confirm('Excluir este registro de produção?');">
                                         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                                         <button type="submit" class="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 text-rose-600 hover:bg-rose-50" title="Excluir">
@@ -102,6 +103,17 @@
                                             </svg>
                                         </button>
                                     </form>
+                                    {% else %}
+                                    <span class="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 text-slate-300" title="Não é possível excluir: há comercialização vinculada a este lote." aria-label="Exclusão bloqueada: comercialização vinculada">
+                                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                            <path d="M3 6h18"/>
+                                            <path d="M8 6V4h8v2"/>
+                                            <path d="M19 6l-1 14H6L5 6"/>
+                                            <path d="M10 11v6"/>
+                                            <path d="M14 11v6"/>
+                                        </svg>
+                                    </span>
+                                    {% endif %}
                                 </div>
                             </td>
                         </tr>
@@ -202,7 +214,10 @@
                     </label>
                     <label class="flex flex-col gap-2">
                         <span class="text-sm font-medium leading-tight">Quantidade colhida (sacas) <span class="text-rose-500">*</span></span>
-                        <input type="number" step="0.01" name="sacks_produced" value="{{ edit_harvest.sacks_produced if edit_harvest else '' }}" class="h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50 px-3" required>
+                        <input type="number" step="0.01" name="sacks_produced" value="{{ edit_harvest.sacks_produced if edit_harvest else '' }}" class="h-[3.25rem] w-full rounded-2xl border-slate-200 px-3 {% if edit_harvest and edit_harvest.id in harvest_ids_with_commercialization %}cursor-not-allowed bg-slate-100 text-slate-700{% else %}bg-slate-50{% endif %}" required {% if edit_harvest and edit_harvest.id in harvest_ids_with_commercialization %}readonly aria-readonly="true"{% endif %}>
+                        {% if edit_harvest and edit_harvest.id in harvest_ids_with_commercialization %}
+                        <span class="text-xs text-slate-500">Esta quantidade não pode ser alterada porque existe comercialização registrada utilizando este lote.</span>
+                        {% endif %}
                     </label>
                     <label class="flex flex-col gap-2">
                         <span class="text-sm font-medium leading-tight">Tipo de colheita <span class="text-rose-500">*</span></span>
