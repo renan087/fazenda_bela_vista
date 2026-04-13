@@ -1587,19 +1587,75 @@ def create_harvest(repository: FarmRepository, form: dict, area_hectares: float)
     )
 
 
+def _harvest_submission_unchanged(harvest: HarvestRecord, form: dict) -> bool:
+    """True se o POST reflete exatamente o registro atual (para colheita travada por comercialização)."""
+    harvest_date_value = date.fromisoformat(form["harvest_date"])
+    if int(form["plot_id"]) != harvest.plot_id:
+        return False
+    if harvest_date_value != harvest.harvest_date:
+        return False
+    new_lot = (
+        str(form.get("lot_code") or "").strip()
+        or harvest.lot_code
+        or f"{harvest_date_value.year}-L{harvest.id:03d}"
+    ) or ""
+    if new_lot != (harvest.lot_code or ""):
+        return False
+    if round(float(form["sacks_produced"]), 2) != round(float(harvest.sacks_produced or 0), 2):
+        return False
+    for key in ("harvest_type", "coffee_stage", "initial_destination"):
+        if (str(form.get(key) or "").strip()) != (str(getattr(harvest, key) or "").strip()):
+            return False
+
+    def _opt_str(v: object | None) -> str | None:
+        if v is None:
+            return None
+        s = str(v).strip()
+        return s if s else None
+
+    if _opt_str(form.get("responsible_name")) != _opt_str(harvest.responsible_name):
+        return False
+    if _opt_str(form.get("work_shift")) != _opt_str(harvest.work_shift):
+        return False
+
+    def _opt_pct(form_v: object | None, harvest_v: object | None) -> bool:
+        fv = round(float(form_v), 2) if form_v is not None else None
+        hv = round(float(harvest_v), 2) if harvest_v is not None else None
+        return fv == hv
+
+    if not _opt_pct(form.get("maturation_percentage"), harvest.maturation_percentage):
+        return False
+    if not _opt_pct(form.get("impurity_percentage"), harvest.impurity_percentage):
+        return False
+    if not _opt_pct(form.get("input_moisture_percentage"), harvest.input_moisture_percentage):
+        return False
+
+    f_vol = form.get("volume_count")
+    h_vol = harvest.volume_count
+    f_i = None if f_vol is None else int(f_vol)
+    h_i = None if h_vol is None else int(h_vol)
+    if f_i != h_i:
+        return False
+
+    if (str(form.get("notes") or "").strip()) != (str(harvest.notes or "").strip()):
+        return False
+    return True
+
+
 def update_harvest(
     repository: FarmRepository,
     harvest: HarvestRecord,
     form: dict,
     area_hectares: float,
 ) -> HarvestRecord:
-    old_sacks = float(harvest.sacks_produced or 0)
-    new_sacks = float(form["sacks_produced"])
-    if repository.harvest_has_commercializations(harvest.id) and round(old_sacks, 2) != round(new_sacks, 2):
-        raise ValueError(
-            "Nao e possivel alterar a quantidade colhida: existem registros de comercializacao vinculados a este lote."
-        )
+    if repository.harvest_has_commercializations(harvest.id):
+        if not _harvest_submission_unchanged(harvest, form):
+            raise ValueError(
+                "Este lote possui comercializacao vinculada. Nenhum dado da colheita pode ser alterado."
+            )
+        return harvest
     harvest_date_value = date.fromisoformat(form["harvest_date"])
+    new_sacks = float(form["sacks_produced"])
     sacks = new_sacks
     productivity = sacks / area_hectares if area_hectares else 0
     return repository.update(
