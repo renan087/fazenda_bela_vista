@@ -3524,6 +3524,27 @@ body.dashboard-schedule-modal-open {
     max-width: 100%;
 }
 
+@media (max-width: 767px) {
+    .history-pagination .history-pagination-actions {
+        display: flex;
+        flex-wrap: nowrap;
+        gap: 0.5rem;
+        overflow-x: auto;
+        overflow-y: hidden;
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: none;
+    }
+
+    .history-pagination .history-pagination-actions::-webkit-scrollbar {
+        display: none;
+    }
+
+    .history-pagination .history-pagination-actions > * {
+        flex: 0 0 auto;
+        white-space: nowrap;
+    }
+}
+
 @media (min-width: 900px) {
     .assets-filter-form {
         width: auto;

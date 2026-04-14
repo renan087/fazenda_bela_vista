@@ -180,7 +180,9 @@
                 <p class="text-sm text-slate-500">{% if assets_search_value %}Nenhum patrimônio corresponde à busca.{% else %}Nenhum patrimônio cadastrado para os filtros informados.{% endif %}</p>
                 {% endfor %}
             </div>
-            {% with pagination=assets_pagination %}{% include "partials/history_pagination.html" %}{% endwith %}
+            <div class="assets-pagination-shell">
+                {% with pagination=assets_pagination %}{% include "partials/history_pagination.html" %}{% endwith %}
+            </div>
             </div>
     </section>
 </div>
