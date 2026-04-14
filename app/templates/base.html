@@ -174,7 +174,20 @@
                             <a href="/setores" class="sidebar-submenu-link block rounded-xl px-3 py-2 text-sm {% if page == 'plots' %}bg-brand-500 text-white{% else %}text-slate-300 hover:bg-slate-800 hover:text-white{% endif %}" data-submenu-link>Setores</a>
                         </div>
                     </div>
-                    {% set inputs_pages = ['fertilization', 'fertilization_schedules', 'input_recommendations', 'purchased_inputs', 'stock', 'supplies', 'assets'] %}
+                    {% set operations_pages = ['fertilization', 'input_recommendations'] %}
+                    <div class="rounded-2xl {% if page in operations_pages %}bg-slate-900/80{% endif %}" data-submenu-group>
+                        <button type="button" class="erp-sidebar-link flex w-full items-center justify-between rounded-2xl px-4 py-3 text-left transition-all duration-300 ease-in-out {% if page in operations_pages %}text-white{% else %}text-slate-300 hover:bg-slate-900 hover:text-white{% endif %}" data-submenu-toggle="operations-menu" data-submenu-parent aria-haspopup="true" aria-expanded="{% if page in operations_pages %}true{% else %}false{% endif %}">
+                            <span class="flex items-center gap-3"><span class="erp-sidebar-icon">{{ nav_icon('inputs') }}</span><span class="erp-sidebar-label">Operações</span></span>
+                            <span class="erp-sidebar-parent-indicator inline-flex h-8 w-8 items-center justify-center rounded-full bg-white/5 text-slate-300/80 transition-transform duration-200 ease-out" aria-hidden="true">
+                                <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+                            </span>
+                        </button>
+                        <div id="operations-menu" class="sidebar-submenu-panel {% if page not in operations_pages %}hidden {% endif %}space-y-1 px-3 pb-3" data-submenu-panel>
+                            <a href="/fertilizacao" class="sidebar-submenu-link block rounded-xl px-3 py-2 text-sm {% if page == 'fertilization' %}bg-brand-500 text-white{% else %}text-slate-300 hover:bg-slate-800 hover:text-white{% endif %}" data-submenu-link>Fertilizacao</a>
+                            <a href="/insumos/recomendacao" class="sidebar-submenu-link block rounded-xl px-3 py-2 text-sm {% if page == 'input_recommendations' %}bg-brand-500 text-white{% else %}text-slate-300 hover:bg-slate-800 hover:text-white{% endif %}" data-submenu-link>Recomendacao</a>
+                        </div>
+                    </div>
+                    {% set inputs_pages = ['purchased_inputs', 'stock', 'supplies'] %}
                     <div class="rounded-2xl {% if page in inputs_pages %}bg-slate-900/80{% endif %}" data-submenu-group>
                         <button type="button" class="erp-sidebar-link flex w-full items-center justify-between rounded-2xl px-4 py-3 text-left transition-all duration-300 ease-in-out {% if page in inputs_pages %}text-white{% else %}text-slate-300 hover:bg-slate-900 hover:text-white{% endif %}" data-submenu-toggle="inputs-menu" data-submenu-parent aria-haspopup="true" aria-expanded="{% if page in inputs_pages %}true{% else %}false{% endif %}">
                             <span class="flex items-center gap-3"><span class="erp-sidebar-icon">{{ nav_icon('inputs') }}</span><span class="erp-sidebar-label">Insumos</span></span>
@@ -183,13 +196,33 @@
                             </span>
                         </button>
                         <div id="inputs-menu" class="sidebar-submenu-panel {% if page not in inputs_pages %}hidden {% endif %}space-y-1 px-3 pb-3" data-submenu-panel>
-                            <a href="/fertilizacao" class="sidebar-submenu-link block rounded-xl px-3 py-2 text-sm {% if page == 'fertilization' %}bg-brand-500 text-white{% else %}text-slate-300 hover:bg-slate-800 hover:text-white{% endif %}" data-submenu-link>Fertilizacao</a>
-                            <a href="/fertilizacao/agendamentos" class="sidebar-submenu-link block rounded-xl px-3 py-2 text-sm {% if page == 'fertilization_schedules' %}bg-brand-500 text-white{% else %}text-slate-300 hover:bg-slate-800 hover:text-white{% endif %}" data-submenu-link>Agendamentos</a>
-                            <a href="/insumos/recomendacao" class="sidebar-submenu-link block rounded-xl px-3 py-2 text-sm {% if page == 'input_recommendations' %}bg-brand-500 text-white{% else %}text-slate-300 hover:bg-slate-800 hover:text-white{% endif %}" data-submenu-link>Recomendacao</a>
                             <a href="/insumos/comprados" class="sidebar-submenu-link block rounded-xl px-3 py-2 text-sm {% if page == 'purchased_inputs' %}bg-brand-500 text-white{% else %}text-slate-300 hover:bg-slate-800 hover:text-white{% endif %}" data-submenu-link>Compra de Insumos</a>
                             <a href="/insumos/estoque" class="sidebar-submenu-link block rounded-xl px-3 py-2 text-sm {% if page == 'stock' %}bg-brand-500 text-white{% else %}text-slate-300 hover:bg-slate-800 hover:text-white{% endif %}" data-submenu-link>Estoque de Insumos</a>
                             <a href="/insumos/suprimentos" class="sidebar-submenu-link block rounded-xl px-3 py-2 text-sm {% if page == 'supplies' %}bg-brand-500 text-white{% else %}text-slate-300 hover:bg-slate-800 hover:text-white{% endif %}" data-submenu-link>Suprimentos</a>
-                            <a href="/insumos/patrimonio" class="sidebar-submenu-link block rounded-xl px-3 py-2 text-sm {% if page == 'assets' %}bg-brand-500 text-white{% else %}text-slate-300 hover:bg-slate-800 hover:text-white{% endif %}" data-submenu-link>Patrimonio</a>
+                        </div>
+                    </div>
+                    {% set agenda_pages = ['fertilization_schedules'] %}
+                    <div class="rounded-2xl {% if page in agenda_pages %}bg-slate-900/80{% endif %}" data-submenu-group>
+                        <button type="button" class="erp-sidebar-link flex w-full items-center justify-between rounded-2xl px-4 py-3 text-left transition-all duration-300 ease-in-out {% if page in agenda_pages %}text-white{% else %}text-slate-300 hover:bg-slate-900 hover:text-white{% endif %}" data-submenu-toggle="agenda-menu" data-submenu-parent aria-haspopup="true" aria-expanded="{% if page in agenda_pages %}true{% else %}false{% endif %}">
+                            <span class="flex items-center gap-3"><span class="erp-sidebar-icon">{{ nav_icon('seasons') }}</span><span class="erp-sidebar-label">Agenda</span></span>
+                            <span class="erp-sidebar-parent-indicator inline-flex h-8 w-8 items-center justify-center rounded-full bg-white/5 text-slate-300/80 transition-transform duration-200 ease-out" aria-hidden="true">
+                                <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+                            </span>
+                        </button>
+                        <div id="agenda-menu" class="sidebar-submenu-panel {% if page not in agenda_pages %}hidden {% endif %}space-y-1 px-3 pb-3" data-submenu-panel>
+                            <a href="/fertilizacao/agendamentos" class="sidebar-submenu-link block rounded-xl px-3 py-2 text-sm {% if page == 'fertilization_schedules' %}bg-brand-500 text-white{% else %}text-slate-300 hover:bg-slate-800 hover:text-white{% endif %}" data-submenu-link>Agendamentos</a>
+                        </div>
+                    </div>
+                    {% set asset_pages = ['assets'] %}
+                    <div class="rounded-2xl {% if page in asset_pages %}bg-slate-900/80{% endif %}" data-submenu-group>
+                        <button type="button" class="erp-sidebar-link flex w-full items-center justify-between rounded-2xl px-4 py-3 text-left transition-all duration-300 ease-in-out {% if page in asset_pages %}text-white{% else %}text-slate-300 hover:bg-slate-900 hover:text-white{% endif %}" data-submenu-toggle="assets-menu" data-submenu-parent aria-haspopup="true" aria-expanded="{% if page in asset_pages %}true{% else %}false{% endif %}">
+                            <span class="flex items-center gap-3"><span class="erp-sidebar-icon">{{ nav_icon('assets') }}</span><span class="erp-sidebar-label">Patrimônio</span></span>
+                            <span class="erp-sidebar-parent-indicator inline-flex h-8 w-8 items-center justify-center rounded-full bg-white/5 text-slate-300/80 transition-transform duration-200 ease-out" aria-hidden="true">
+                                <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+                            </span>
+                        </button>
+                        <div id="assets-menu" class="sidebar-submenu-panel {% if page not in asset_pages %}hidden {% endif %}space-y-1 px-3 pb-3" data-submenu-panel>
+                            <a href="/insumos/patrimonio" class="sidebar-submenu-link block rounded-xl px-3 py-2 text-sm {% if page == 'assets' %}bg-brand-500 text-white{% else %}text-slate-300 hover:bg-slate-800 hover:text-white{% endif %}" data-submenu-link>Patrimônio</a>
                         </div>
                     </div>
                     {% set finance_pages = ['finance_management', 'finance_accounts', 'finance_asaas_customer'] %}
