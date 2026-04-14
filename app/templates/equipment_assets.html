@@ -47,38 +47,54 @@
                 </div>
             </div>
 
-            <div class="stock-filter-bar mt-6">
-                <form method="get" action="/insumos/patrimonio" class="grid gap-3">
-                    <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                        <label>
-                            <span class="mb-2 block text-sm font-medium">Fazenda</span>
-                            <select name="farm_id" class="assets-filter-select min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50 px-4">
-                                <option value="">Todas as fazendas</option>
-                                {% for farm in farms %}
-                                <option value="{{ farm.id }}" {% if selected_farm_id == farm.id %}selected{% endif %}>{{ farm.name }}</option>
-                                {% endfor %}
-                            </select>
-                        </label>
-                        <label>
-                            <span class="mb-2 block text-sm font-medium">Status</span>
-                            <select name="status" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50 px-4">
-                                <option value="">Todos os status</option>
-                                <option value="ativo" {% if selected_asset_status == 'ativo' %}selected{% endif %}>Ativo</option>
-                                <option value="em_manutencao" {% if selected_asset_status == 'em_manutencao' %}selected{% endif %}>Em manutenção</option>
-                                <option value="baixado" {% if selected_asset_status == 'baixado' %}selected{% endif %}>Baixado</option>
-                            </select>
-                        </label>
-                        <div class="flex items-end">
-                            <button type="submit" class="min-h-[3.25rem] w-full rounded-2xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white hover:bg-slate-700">Filtrar</button>
+            <div class="stock-filter-bar mt-6 {% if assets_filters_active %}is-mobile-collapsed{% endif %}">
+                <div class="stock-filter-mobile-toggle-wrap md:hidden">
+                    <button type="button" class="stock-summary-toggle stock-filter-mobile-toggle {% if assets_filters_active %}is-filtered-state{% endif %}" data-stock-filter-toggle data-stock-filter-applied="{% if assets_filters_active %}true{% else %}false{% endif %}" aria-expanded="{% if assets_filters_active %}false{% else %}true{% endif %}">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                            <path d="M5 12h14"/>
+                            <path d="M12 5v14" data-stock-filter-toggle-plus{% if assets_filters_active %} class="hidden"{% endif %}></path>
+                        </svg>
+                        <span data-stock-filter-toggle-label>{% if assets_filters_active %}Mostrar filtro aplicado{% else %}Recolher filtros{% endif %}</span>
+                    </button>
+                </div>
+                <form method="get" action="/insumos/patrimonio">
+                    <div class="stock-summary-collapse {% if not assets_filters_active %}is-expanded{% endif %}" data-stock-filter-collapse>
+                        <div class="stock-summary-collapse-inner">
+                            <div class="grid gap-3 lg:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(10rem,0.7fr)] lg:items-end">
+                                <label class="min-w-0">
+                                    <span class="mb-2 block text-sm font-medium">Busca</span>
+                                    <div class="stock-search-field module-filter-search">
+                                        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
+                                            <circle cx="8.5" cy="8.5" r="5.75"></circle>
+                                            <path d="M13 13l4 4"></path>
+                                        </svg>
+                                        <input type="search" name="assets_search" value="{{ assets_search_value }}" autocomplete="off" placeholder="Buscar patrimônio, fazenda, fabricante, modelo ou observação" data-assets-history-search>
+                                    </div>
+                                </label>
+                                <label>
+                                    <span class="mb-2 block text-sm font-medium">Fazenda</span>
+                                    <select name="farm_id" class="assets-filter-select min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50 px-4">
+                                        <option value="">Todas as fazendas</option>
+                                        {% for farm in farms %}
+                                        <option value="{{ farm.id }}" {% if selected_farm_id == farm.id %}selected{% endif %}>{{ farm.name }}</option>
+                                        {% endfor %}
+                                    </select>
+                                </label>
+                                <label>
+                                    <span class="mb-2 block text-sm font-medium">Status</span>
+                                    <select name="status" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50 px-4">
+                                        <option value="">Todos os status</option>
+                                        <option value="ativo" {% if selected_asset_status == 'ativo' %}selected{% endif %}>Ativo</option>
+                                        <option value="em_manutencao" {% if selected_asset_status == 'em_manutencao' %}selected{% endif %}>Em manutenção</option>
+                                        <option value="baixado" {% if selected_asset_status == 'baixado' %}selected{% endif %}>Baixado</option>
+                                    </select>
+                                </label>
+                                <div class="flex items-end">
+                                    <button type="submit" class="min-h-[3.25rem] w-full rounded-2xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white hover:bg-slate-700">Filtrar</button>
+                                </div>
+                            </div>
                         </div>
                     </div>
-                    <label class="stock-search-field mt-1 w-full max-w-xl">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
-                            <circle cx="11" cy="11" r="7"></circle>
-                            <path d="m20 20-3.5-3.5"></path>
-                        </svg>
-                        <input type="search" name="assets_search" value="{{ assets_search_value }}" autocomplete="off" placeholder="Buscar patrimônio, fazenda, fabricante, modelo ou observação" data-assets-history-search>
-                    </label>
                 </form>
             </div>
 
@@ -511,6 +527,43 @@
             event.preventDefault();
             syncAssetsHistoryFromUrl(href);
         });
+
+        const filterToggle = document.querySelector('[data-stock-filter-toggle]');
+        const filterCollapse = document.querySelector('[data-stock-filter-collapse]');
+        const filterToggleLabel = document.querySelector('[data-stock-filter-toggle-label]');
+        const filterTogglePlus = document.querySelector('[data-stock-filter-toggle-plus]');
+        const filterMobileMq = window.matchMedia('(max-width: 899px)');
+        const filterBar = document.querySelector('.stock-filter-bar');
+        if (filterToggle && filterCollapse && filterToggleLabel) {
+            const hasAppliedFilters = filterToggle.dataset.stockFilterApplied === 'true';
+            const setFilterExpanded = (expanded) => {
+                filterCollapse.classList.toggle('is-expanded', expanded);
+                filterToggle.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+                filterToggleLabel.textContent = expanded
+                    ? 'Recolher filtros'
+                    : (hasAppliedFilters ? 'Mostrar filtro aplicado' : 'Mostrar filtros');
+                filterTogglePlus?.classList.toggle('hidden', expanded);
+                filterBar?.classList.toggle('is-mobile-collapsed', filterMobileMq.matches && !expanded);
+            };
+
+            const syncFilterCollapseForViewport = () => {
+                if (!filterMobileMq.matches) {
+                    filterCollapse.classList.add('is-expanded');
+                    filterToggle.setAttribute('aria-expanded', 'true');
+                    filterBar?.classList.remove('is-mobile-collapsed');
+                    return;
+                }
+                const expanded = filterToggle.getAttribute('aria-expanded') === 'true';
+                setFilterExpanded(expanded);
+            };
+
+            syncFilterCollapseForViewport();
+            filterToggle.addEventListener('click', () => {
+                const expanded = filterToggle.getAttribute('aria-expanded') === 'true';
+                setFilterExpanded(!expanded);
+            });
+            filterMobileMq.addEventListener('change', syncFilterCollapseForViewport);
+        }
 
         const stickyHeader = document.querySelector('.stock-page-header');
         const headerIntro = stickyHeader?.querySelector('[data-stock-header-intro]');

@@ -8985,6 +8985,11 @@ def equipment_assets_page(
     finance_accounts = repo.list_finance_accounts(farm_id=effective_farm_id) if effective_farm_id else []
     selected_status = status if status in {"ativo", "em_manutencao", "baixado"} else None
     assets_search_value = (request.query_params.get("assets_search") or "").strip()
+    assets_filters_active = bool(
+        (request.query_params.get("farm_id") or "").strip()
+        or selected_status
+        or assets_search_value
+    )
     preserve_filters: dict[str, str] = {}
     if effective_farm_id:
         preserve_filters["farm_id"] = str(effective_farm_id)
@@ -9015,6 +9020,7 @@ def equipment_assets_page(
             selected_farm_id=effective_farm_id,
             selected_asset_status=selected_status or "",
             assets_search_value=assets_search_value,
+            assets_filters_active=assets_filters_active,
             assets_filter_query=assets_filter_query,
             assets_export_query=_assets_export_query(
                 farm_id=effective_farm_id,
