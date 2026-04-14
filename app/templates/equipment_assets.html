@@ -88,25 +88,25 @@
             <div class="space-y-4 lg:space-y-3">
                 {% for asset in assets %}
                 <article class="rounded-[1.5rem] border border-slate-100 bg-slate-50 p-5 lg:p-4" data-assets-history-row data-assets-search-text="{{ (asset.name or '') ~ ' ' ~ (asset.category or '') ~ ' ' ~ (asset.farm.name if asset.farm else '') ~ ' ' ~ (asset.manufacturer or '') ~ ' ' ~ (asset.brand_model or '') ~ ' ' ~ (asset.asset_code or '') ~ ' ' ~ (asset.notes or '') ~ ' ' ~ (asset.status or '') }}">
-                    <div class="flex flex-wrap items-start justify-between gap-4 lg:gap-3">
-                        <div>
-                            <button type="button" class="text-left text-lg font-semibold text-slate-900 transition hover:text-brand-700 lg:text-base" data-history-view-trigger data-history-view-kicker="Patrimonio" data-history-view-title="{{ asset.name }}" data-history-view-subtitle="{{ asset.category }}{% if asset.farm %} • {{ asset.farm.name }}{% endif %}" data-history-view-source="asset-view-{{ asset.id }}" data-history-view-edit-url="/insumos/patrimonio?edit_id={{ asset.id }}{% if selected_farm_id %}&farm_id={{ selected_farm_id }}{% endif %}">{{ asset.name }}</button>
-                            <p class="mt-1 text-sm text-slate-500 lg:mt-0.5 lg:text-[13px]">{{ asset.category }}{% if asset.farm %} • {{ asset.farm.name }}{% endif %}</p>
-                            <div class="mt-2 grid gap-1 text-sm text-slate-600 lg:mt-1 lg:grid-cols-2 lg:gap-x-5 lg:gap-y-1 lg:text-[13px] lg:leading-5">
-                                <p>
+                    <div class="flex min-w-0 flex-nowrap items-start justify-between gap-3 lg:gap-4">
+                        <div class="min-w-0 flex-1 pr-1">
+                            <button type="button" class="w-full text-left text-lg font-semibold text-slate-900 transition hover:text-brand-700 break-words lg:text-base" data-history-view-trigger data-history-view-kicker="Patrimonio" data-history-view-title="{{ asset.name }}" data-history-view-subtitle="{{ asset.category }}{% if asset.farm %} • {{ asset.farm.name }}{% endif %}" data-history-view-source="asset-view-{{ asset.id }}" data-history-view-edit-url="/insumos/patrimonio?edit_id={{ asset.id }}{% if selected_farm_id %}&farm_id={{ selected_farm_id }}{% endif %}">{{ asset.name }}</button>
+                            <p class="mt-1 break-words text-sm text-slate-500 lg:mt-0.5 lg:text-[13px]">{{ asset.category }}{% if asset.farm %} • {{ asset.farm.name }}{% endif %}</p>
+                            <div class="mt-2 grid min-w-0 gap-1 text-sm text-slate-600 lg:mt-1 lg:grid-cols-2 lg:gap-x-5 lg:gap-y-1 lg:text-[13px] lg:leading-5">
+                                <p class="min-w-0 break-words">
                                     {% if asset.manufacturer %}<strong>Fabricante:</strong> {{ asset.manufacturer }}{% endif %}
                                     {% if asset.brand_model %}{% if asset.manufacturer %} • {% endif %}<strong>Modelo:</strong> {{ asset.brand_model }}{% endif %}
                                     {% if asset.manufacture_year %} • <strong>Ano:</strong> {{ asset.manufacture_year }}{% endif %}
                                     {% if asset.asset_code %} • <strong>ID:</strong> {{ asset.asset_code }}{% endif %}
                                 </p>
-                                <p>
+                                <p class="min-w-0 break-words">
                                     {% if asset.acquisition_date %}<strong>Aquisição:</strong> {{ asset.acquisition_date }}{% endif %}
                                     {% if asset.acquisition_value is not none %} • <strong>Valor:</strong> R$ {{ asset.acquisition_value }}{% endif %}
                                     • Status: <strong>{{ asset.status.replace('_', ' ')|title }}</strong>
                                 </p>
                             </div>
                         </div>
-                        <div class="flex flex-nowrap items-center gap-2 lg:gap-1.5">
+                        <div class="flex shrink-0 flex-nowrap items-center gap-2 self-start lg:gap-1.5">
                             {% if asset.attachments %}
                             <span class="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 text-slate-500 bg-slate-50" title="{{ asset.attachments|length }} anexo(s)">
                                 <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -135,7 +135,7 @@
                         </div>
                     </div>
                     {% if asset.notes %}
-                    <p class="mt-4 text-sm text-slate-500 lg:mt-2 lg:text-[13px] lg:leading-5">{{ asset.notes }}</p>
+                    <p class="mt-4 break-words text-sm text-slate-500 lg:mt-2 lg:text-[13px] lg:leading-5">{{ asset.notes }}</p>
                     {% endif %}
                     <template id="asset-view-{{ asset.id }}">
                         <div class="grid gap-3 sm:grid-cols-2">
