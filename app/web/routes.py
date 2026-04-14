@@ -3,7 +3,7 @@ from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from io import BytesIO
 from pathlib import Path
-from urllib.parse import parse_qsl, urlencode, urlparse
+from urllib.parse import parse_qsl, quote, urlencode, urlparse
 import calendar
 
 import hashlib
@@ -2044,6 +2044,39 @@ def _clean_attachment_filename(filename: str | None) -> str:
     return cleaned[:255] or "arquivo"
 
 
+def _attachment_payload_bytes(payload: object | None) -> bytes:
+    if payload is None:
+        return b""
+    if isinstance(payload, memoryview):
+        return payload.tobytes()
+    if isinstance(payload, (bytes, bytearray)):
+        return bytes(payload)
+    return bytes(payload)
+
+
+def _safe_attachment_media_type(content_type: str | None) -> str:
+    raw = (content_type or "").strip()
+    if not raw:
+        return "application/octet-stream"
+    base = raw.split(";", 1)[0].strip()
+    if not base or len(base) > 120 or "\r" in base or "\n" in base:
+        return "application/octet-stream"
+    return base
+
+
+def _content_disposition_inline_filename(filename: str | None) -> str:
+    """Cabeçalho seguro para latin-1; nomes com acentos usam filename* (RFC 5987)."""
+    safe_name = _clean_attachment_filename(filename).replace('"', "").replace("\\", "").replace("\r", "").replace("\n", "")
+    try:
+        safe_name.encode("latin-1")
+        return f'inline; filename="{safe_name}"'
+    except UnicodeEncodeError:
+        ext = Path(safe_name).suffix or ""
+        ascii_base = safe_name.encode("ascii", "ignore").decode("ascii").strip() or "arquivo"
+        ascii_name = (ascii_base + ext)[:200]
+        return f'inline; filename="{ascii_name}"; filename*=UTF-8\'\'{quote(safe_name, safe="")}'
+
+
 def _read_attachments(uploads: list[UploadFile] | None) -> list[tuple[str, str, bytes]]:
     attachments: list[tuple[str, str, bytes]] = []
     for upload in uploads or []:
@@ -2186,12 +2219,18 @@ async def _request_attachments(request: Request, field_name: str = "attachments"
     return uploads
 
 
-def _attachment_response(filename: str, content_type: str, payload: bytes) -> Response:
-    safe_name = _clean_attachment_filename(filename).replace('"', "")
+def _attachment_response(
+    filename: str,
+    content_type: str,
+    payload: bytes | bytearray | memoryview | None,
+) -> Response:
+    body = _attachment_payload_bytes(payload)
+    media = _safe_attachment_media_type(content_type)
+    cd = _content_disposition_inline_filename(filename)
     return Response(
-        content=payload,
-        media_type=content_type or "application/octet-stream",
-        headers={"Content-Disposition": f'inline; filename="{safe_name}"'},
+        content=body,
+        media_type=media,
+        headers={"Content-Disposition": cd},
     )
 
 
