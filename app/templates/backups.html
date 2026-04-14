@@ -97,10 +97,14 @@
                     {% if backup_automation.enabled %}Ativo{% else %}Inativo{% endif %}
                 </span>
             </div>
-            <div class="mt-4 grid gap-3 md:grid-cols-3">
+            <div class="mt-4 grid gap-3 md:grid-cols-4">
                 <div class="rounded-xl bg-white px-3 py-3 ring-1 ring-slate-200">
                     <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">Periodicidade</p>
                     <p class="mt-1 text-sm font-semibold text-slate-900">A cada {{ backup_automation.interval_days }} dia(s)</p>
+                </div>
+                <div class="rounded-xl bg-white px-3 py-3 ring-1 ring-slate-200">
+                    <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">Horario</p>
+                    <p class="mt-1 text-sm font-semibold text-slate-900">{{ backup_automation.scheduled_time_label }}</p>
                 </div>
                 <div class="rounded-xl bg-white px-3 py-3 ring-1 ring-slate-200">
                     <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">Ultima execucao automatica</p>
@@ -116,7 +120,7 @@
                 <span class="font-semibold">Ultimo erro automatico:</span> {{ backup_automation.last_error_message }}
             </div>
             {% endif %}
-            <form method="post" action="/backups/automatico/configurar" class="mt-4 grid gap-3 lg:grid-cols-[auto_minmax(0,12rem)_auto] lg:items-end">
+            <form method="post" action="/backups/automatico/configurar" class="mt-4 grid gap-3 lg:grid-cols-[auto_minmax(0,12rem)_minmax(0,11rem)_auto] lg:items-end">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                 <label class="inline-flex items-center gap-3 rounded-xl bg-white px-4 py-3 text-sm text-slate-700 ring-1 ring-slate-200">
                     <input type="checkbox" name="automatic_enabled" class="h-4 w-4 rounded border-slate-300 text-brand-500 focus:ring-brand-500" {% if backup_automation.enabled %}checked{% endif %}>
@@ -125,6 +129,10 @@
                 <label class="block">
                     <span class="mb-2 block text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Intervalo em dias</span>
                     <input type="number" min="1" max="365" name="interval_days" value="{{ backup_automation.interval_days }}" class="w-full rounded-xl border-slate-200 bg-white" required>
+                </label>
+                <label class="block">
+                    <span class="mb-2 block text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Hora do agendamento</span>
+                    <input type="time" name="scheduled_time" value="{{ backup_automation.scheduled_time_value }}" class="w-full rounded-xl border-slate-200 bg-white" required>
                 </label>
                 <button type="submit" class="rounded-2xl bg-slate-900 px-5 py-3 font-semibold text-white hover:bg-slate-700">
                     Salvar automacao

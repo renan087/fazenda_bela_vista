@@ -88,6 +88,8 @@ def _sync_schema() -> None:
             id INTEGER PRIMARY KEY,
             automatic_enabled BOOLEAN NOT NULL DEFAULT TRUE,
             interval_days INTEGER NOT NULL DEFAULT 5,
+            scheduled_hour INTEGER NOT NULL DEFAULT 3,
+            scheduled_minute INTEGER NOT NULL DEFAULT 0,
             next_run_at TIMESTAMPTZ,
             last_auto_run_at TIMESTAMPTZ,
             last_auto_run_status VARCHAR(20),
@@ -663,6 +665,8 @@ def _sync_schema() -> None:
         connection.execute(text("ALTER TABLE backup_runs ADD COLUMN IF NOT EXISTS deleted_from_storage_source VARCHAR(40)"))
         connection.execute(text("ALTER TABLE backup_automation_settings ADD COLUMN IF NOT EXISTS automatic_enabled BOOLEAN DEFAULT TRUE"))
         connection.execute(text("ALTER TABLE backup_automation_settings ADD COLUMN IF NOT EXISTS interval_days INTEGER DEFAULT 5"))
+        connection.execute(text("ALTER TABLE backup_automation_settings ADD COLUMN IF NOT EXISTS scheduled_hour INTEGER DEFAULT 3"))
+        connection.execute(text("ALTER TABLE backup_automation_settings ADD COLUMN IF NOT EXISTS scheduled_minute INTEGER DEFAULT 0"))
         connection.execute(text("ALTER TABLE backup_automation_settings ADD COLUMN IF NOT EXISTS next_run_at TIMESTAMPTZ"))
         connection.execute(text("ALTER TABLE backup_automation_settings ADD COLUMN IF NOT EXISTS last_auto_run_at TIMESTAMPTZ"))
         connection.execute(text("ALTER TABLE backup_automation_settings ADD COLUMN IF NOT EXISTS last_auto_run_status VARCHAR(20)"))
@@ -674,8 +678,8 @@ def _sync_schema() -> None:
         connection.execute(
             text(
                 """
-                INSERT INTO backup_automation_settings (id, automatic_enabled, interval_days, next_run_at)
-                VALUES (1, TRUE, 5, NOW() + INTERVAL '5 days')
+                INSERT INTO backup_automation_settings (id, automatic_enabled, interval_days, scheduled_hour, scheduled_minute, next_run_at)
+                VALUES (1, TRUE, 5, 3, 0, NOW() + INTERVAL '5 days')
                 ON CONFLICT (id) DO NOTHING
                 """
             )

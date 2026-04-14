@@ -15,6 +15,7 @@ from urllib.request import Request, urlopen
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
+from app.core.timezone import app_now, get_app_timezone
 from app.models import BackupAutomationSetting, BackupRun, User
 from app.repositories.farm import FarmRepository
 
@@ -31,6 +32,8 @@ AUTOMATION_DEFAULT_INTERVAL_DAYS = 5
 AUTOMATION_POLL_INTERVAL_SECONDS = 60
 AUTOMATION_LOCK_TTL = timedelta(hours=2)
 AUTOMATION_TRIGGER_SOURCE = "automatic"
+AUTOMATION_DEFAULT_SCHEDULE_HOUR = 3
+AUTOMATION_DEFAULT_SCHEDULE_MINUTE = 0
 STORAGE_LIMIT_ERROR_HINTS = (
     "limit",
     "quota",
@@ -111,8 +114,22 @@ def get_or_create_backup_automation_setting(db: Session) -> BackupAutomationSett
         if setting.interval_days != interval_days:
             setting.interval_days = interval_days
             changed = True
+        scheduled_hour, scheduled_minute = _normalize_schedule_time(
+            getattr(setting, "scheduled_hour", AUTOMATION_DEFAULT_SCHEDULE_HOUR),
+            getattr(setting, "scheduled_minute", AUTOMATION_DEFAULT_SCHEDULE_MINUTE),
+        )
+        if getattr(setting, "scheduled_hour", None) != scheduled_hour:
+            setting.scheduled_hour = scheduled_hour
+            changed = True
+        if getattr(setting, "scheduled_minute", None) != scheduled_minute:
+            setting.scheduled_minute = scheduled_minute
+            changed = True
         if setting.automatic_enabled and setting.next_run_at is None:
-            setting.next_run_at = _utc_now() + timedelta(days=setting.interval_days)
+            setting.next_run_at = _compute_next_run_at(
+                interval_days=setting.interval_days,
+                scheduled_hour=setting.scheduled_hour,
+                scheduled_minute=setting.scheduled_minute,
+            )
             changed = True
         if changed:
             db.add(setting)
@@ -123,7 +140,13 @@ def get_or_create_backup_automation_setting(db: Session) -> BackupAutomationSett
         id=1,
         automatic_enabled=True,
         interval_days=AUTOMATION_DEFAULT_INTERVAL_DAYS,
-        next_run_at=_utc_now() + timedelta(days=AUTOMATION_DEFAULT_INTERVAL_DAYS),
+        scheduled_hour=AUTOMATION_DEFAULT_SCHEDULE_HOUR,
+        scheduled_minute=AUTOMATION_DEFAULT_SCHEDULE_MINUTE,
+        next_run_at=_compute_next_run_at(
+            interval_days=AUTOMATION_DEFAULT_INTERVAL_DAYS,
+            scheduled_hour=AUTOMATION_DEFAULT_SCHEDULE_HOUR,
+            scheduled_minute=AUTOMATION_DEFAULT_SCHEDULE_MINUTE,
+        ),
     )
     db.add(setting)
     db.commit()
@@ -131,14 +154,30 @@ def get_or_create_backup_automation_setting(db: Session) -> BackupAutomationSett
     return setting
 
 
-def update_backup_automation_setting(db: Session, automatic_enabled: bool, interval_days: int) -> BackupAutomationSetting:
+def update_backup_automation_setting(
+    db: Session,
+    automatic_enabled: bool,
+    interval_days: int,
+    scheduled_hour: int,
+    scheduled_minute: int,
+) -> BackupAutomationSetting:
     setting = get_or_create_backup_automation_setting(db)
     interval_days = _normalize_interval_days(interval_days)
-    now = _utc_now()
+    scheduled_hour, scheduled_minute = _normalize_schedule_time(scheduled_hour, scheduled_minute)
     setting.automatic_enabled = automatic_enabled
     setting.interval_days = interval_days
+    setting.scheduled_hour = scheduled_hour
+    setting.scheduled_minute = scheduled_minute
     setting.scheduler_locked_at = None
-    setting.next_run_at = (now + timedelta(days=interval_days)) if automatic_enabled else None
+    setting.next_run_at = (
+        _compute_next_run_at(
+            interval_days=interval_days,
+            scheduled_hour=scheduled_hour,
+            scheduled_minute=scheduled_minute,
+        )
+        if automatic_enabled
+        else None
+    )
     db.add(setting)
     db.commit()
     db.refresh(setting)
@@ -294,6 +333,10 @@ def _claim_due_automatic_backup(db: Session) -> BackupAutomationSetting | None:
         return None
 
     setting.interval_days = _normalize_interval_days(setting.interval_days)
+    setting.scheduled_hour, setting.scheduled_minute = _normalize_schedule_time(
+        getattr(setting, "scheduled_hour", AUTOMATION_DEFAULT_SCHEDULE_HOUR),
+        getattr(setting, "scheduled_minute", AUTOMATION_DEFAULT_SCHEDULE_MINUTE),
+    )
     if not setting.automatic_enabled:
         setting.scheduler_locked_at = None
         db.add(setting)
@@ -301,7 +344,11 @@ def _claim_due_automatic_backup(db: Session) -> BackupAutomationSetting | None:
         return None
 
     if setting.next_run_at is None:
-        setting.next_run_at = now + timedelta(days=setting.interval_days)
+        setting.next_run_at = _compute_next_run_at(
+            interval_days=setting.interval_days,
+            scheduled_hour=setting.scheduled_hour,
+            scheduled_minute=setting.scheduled_minute,
+        )
         db.add(setting)
         db.commit()
         return None
@@ -333,7 +380,11 @@ def _finalize_due_automatic_backup(
     setting.last_auto_run_status = run.status if run else "failed"
     setting.last_error_message = error_message
     if setting.automatic_enabled:
-        setting.next_run_at = now + timedelta(days=_normalize_interval_days(setting.interval_days))
+        setting.next_run_at = _compute_next_run_at(
+            interval_days=_normalize_interval_days(setting.interval_days),
+            scheduled_hour=getattr(setting, "scheduled_hour", AUTOMATION_DEFAULT_SCHEDULE_HOUR),
+            scheduled_minute=getattr(setting, "scheduled_minute", AUTOMATION_DEFAULT_SCHEDULE_MINUTE),
+        )
     else:
         setting.next_run_at = None
     db.add(setting)
@@ -383,6 +434,31 @@ def _normalize_interval_days(value: int | None) -> int:
     except (TypeError, ValueError):
         parsed = AUTOMATION_DEFAULT_INTERVAL_DAYS
     return max(1, min(parsed, 365))
+
+
+def _normalize_schedule_time(hour: int | None, minute: int | None) -> tuple[int, int]:
+    try:
+        parsed_hour = int(AUTOMATION_DEFAULT_SCHEDULE_HOUR if hour is None else hour)
+    except (TypeError, ValueError):
+        parsed_hour = AUTOMATION_DEFAULT_SCHEDULE_HOUR
+    try:
+        parsed_minute = int(AUTOMATION_DEFAULT_SCHEDULE_MINUTE if minute is None else minute)
+    except (TypeError, ValueError):
+        parsed_minute = AUTOMATION_DEFAULT_SCHEDULE_MINUTE
+    return max(0, min(parsed_hour, 23)), max(0, min(parsed_minute, 59))
+
+
+def _compute_next_run_at(*, interval_days: int, scheduled_hour: int, scheduled_minute: int) -> datetime:
+    local_now = app_now()
+    local_candidate = local_now.replace(
+        hour=scheduled_hour,
+        minute=scheduled_minute,
+        second=0,
+        microsecond=0,
+    )
+    if local_candidate <= local_now:
+        local_candidate = local_candidate + timedelta(days=interval_days)
+    return local_candidate.astimezone(timezone.utc)
 
 
 def _validate_storage_configuration() -> None:

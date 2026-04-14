@@ -721,9 +721,15 @@ def _build_backup_automation_context(repo: FarmRepository, db: Session) -> dict[
     latest_auto_run = repo.get_latest_automatic_backup_run()
     next_run_at = setting.next_run_at
     last_auto_run_at = setting.last_auto_run_at
+    scheduled_hour = int(getattr(setting, "scheduled_hour", 3) or 3)
+    scheduled_minute = int(getattr(setting, "scheduled_minute", 0) or 0)
     return {
         "enabled": bool(setting.automatic_enabled),
         "interval_days": int(setting.interval_days or 5),
+        "scheduled_hour": scheduled_hour,
+        "scheduled_minute": scheduled_minute,
+        "scheduled_time_value": f"{scheduled_hour:02d}:{scheduled_minute:02d}",
+        "scheduled_time_label": f"{scheduled_hour:02d}:{scheduled_minute:02d}",
         "next_run_at": next_run_at,
         "next_run_at_label": format_app_datetime(next_run_at) if next_run_at else "-",
         "last_auto_run_at": last_auto_run_at,
@@ -7101,6 +7107,7 @@ def configure_backup_automation_action(
     csrf_token: str = Form(...),
     automatic_enabled: str | None = Form(None),
     interval_days: str = Form("5"),
+    scheduled_time: str = Form("03:00"),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user_web),
 ):
@@ -7113,14 +7120,27 @@ def configure_backup_automation_action(
     except (TypeError, ValueError):
         _flash(request, "error", "Informe um intervalo valido entre 1 e 365 dias.")
         return _redirect("/backups")
+    try:
+        raw_hour, raw_minute = (scheduled_time or "03:00").split(":", 1)
+        parsed_hour = max(0, min(int(raw_hour), 23))
+        parsed_minute = max(0, min(int(raw_minute), 59))
+    except (AttributeError, TypeError, ValueError):
+        _flash(request, "error", "Informe uma hora valida para o agendamento automatico.")
+        return _redirect("/backups")
 
     enabled = automatic_enabled == "on"
-    setting = update_backup_automation_setting(db, automatic_enabled=enabled, interval_days=parsed_interval)
+    setting = update_backup_automation_setting(
+        db,
+        automatic_enabled=enabled,
+        interval_days=parsed_interval,
+        scheduled_hour=parsed_hour,
+        scheduled_minute=parsed_minute,
+    )
     if setting.automatic_enabled:
         _flash(
             request,
             "success",
-            f"Backup automatico configurado para executar a cada {setting.interval_days} dia(s).",
+            f"Backup automatico configurado para executar a cada {setting.interval_days} dia(s), às {setting.scheduled_hour:02d}:{setting.scheduled_minute:02d}.",
         )
     else:
         _flash(request, "success", "Backup automatico desativado com sucesso.")
