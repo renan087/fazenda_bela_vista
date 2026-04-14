@@ -7013,7 +7013,16 @@ def execute_backup_action(
     if denied:
         return denied
     validate_csrf(request, csrf_token)
-    run = execute_backup(db, initiated_by=user, trigger_source="web_manual")
+    try:
+        run = execute_backup(db, initiated_by=user, trigger_source="web_manual")
+    except Exception as exc:
+        logger.exception("Falha inesperada ao executar backup manual.")
+        _flash(
+            request,
+            "error",
+            "Nao foi possivel concluir o registro do backup. Verifique os logs do servidor ou tente novamente.",
+        )
+        return _redirect("/backups")
     if run.status == "success":
         _flash(request, "success", "Backup concluido com sucesso no Supabase Storage.")
     elif run.status == "partial":

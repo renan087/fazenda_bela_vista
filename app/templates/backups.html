@@ -94,8 +94,9 @@
             {% for item in backup_history %}
             {% set run = item.run %}
             {% set details = item.details %}
-            {% set files_details = details.get('files', {}) %}
-            {% set db_details = details.get('database', {}) %}
+            {# JSON pode trazer null: .get('files', {}) ainda retorna None se a chave existir com valor null #}
+            {% set files_details = details.get('files') or {} %}
+            {% set db_details = details.get('database') or {} %}
             <article class="group px-4 py-3 transition-colors duration-150 hover:bg-white/75">
                 <div class="grid gap-3 md:grid-cols-[0.9fr_1.05fr_0.62fr_0.66fr_0.72fr_1.55fr_0.42fr] md:items-center">
                     <div class="min-w-0">
