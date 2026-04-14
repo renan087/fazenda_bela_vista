@@ -1537,8 +1537,16 @@ def _plots_page_filters_active(
     return False
 
 
-def _assets_export_query(farm_id: int | None = None, status: str | None = None) -> str:
-    params = {"farm_id": farm_id, "status": status}
+def _assets_export_query(
+    farm_id: int | None = None,
+    status: str | None = None,
+    assets_search: str | None = None,
+) -> str:
+    params = {
+        "farm_id": farm_id,
+        "status": status,
+        "assets_search": (assets_search or "").strip() or None,
+    }
     clean = {key: value for key, value in params.items() if value not in (None, "", "all")}
     return urlencode(clean)
 
@@ -1822,6 +1830,21 @@ def _filter_equipment_assets_by_status(assets: list[EquipmentAsset], status_valu
     if not normalized_status:
         return assets
     return [asset for asset in assets if asset.status == normalized_status]
+
+
+def _filter_equipment_assets_by_search(assets: list[EquipmentAsset], search: str | None) -> list[EquipmentAsset]:
+    q = _normalize_search_value((search or "").strip())
+    if not q:
+        return assets
+
+    def _haystack(asset: EquipmentAsset) -> str:
+        return _normalize_search_value(
+            f"{asset.name or ''} {asset.category or ''} {asset.farm.name if asset.farm else ''} "
+            f"{asset.manufacturer or ''} {asset.brand_model or ''} {asset.asset_code or ''} "
+            f"{asset.notes or ''} {asset.status or ''}"
+        )
+
+    return [asset for asset in assets if q in _haystack(asset)]
 
 
 def _bool_from_form(value) -> bool:
@@ -8611,6 +8634,7 @@ def export_equipment_assets_xlsx(
     request: Request,
     farm_id: str | None = None,
     status: str | None = None,
+    assets_search: str | None = None,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user_web),
 ):
@@ -8619,7 +8643,10 @@ def export_equipment_assets_xlsx(
     selected_farm_id = _int_or_none(farm_id) or _active_farm_id(request)
     selected_status = status if status in {"ativo", "em_manutencao", "baixado"} else None
     assets = _sort_collection_desc(
-        _filter_equipment_assets_by_status(repo.list_equipment_assets(farm_id=selected_farm_id), selected_status),
+        _filter_equipment_assets_by_search(
+            _filter_equipment_assets_by_status(repo.list_equipment_assets(farm_id=selected_farm_id), selected_status),
+            assets_search,
+        ),
         lambda item: item.acquisition_date,
         lambda item: item.id,
     )
@@ -8674,6 +8701,7 @@ def export_equipment_assets_pdf(
     request: Request,
     farm_id: str | None = None,
     status: str | None = None,
+    assets_search: str | None = None,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user_web),
 ):
@@ -8682,7 +8710,10 @@ def export_equipment_assets_pdf(
     selected_farm = repo.get_farm(selected_farm_id) if selected_farm_id else None
     selected_status = status if status in {"ativo", "em_manutencao", "baixado"} else None
     assets = _sort_collection_desc(
-        _filter_equipment_assets_by_status(repo.list_equipment_assets(farm_id=selected_farm_id), selected_status),
+        _filter_equipment_assets_by_search(
+            _filter_equipment_assets_by_status(repo.list_equipment_assets(farm_id=selected_farm_id), selected_status),
+            assets_search,
+        ),
         lambda item: item.acquisition_date,
         lambda item: item.id,
     )
@@ -8953,8 +8984,20 @@ def equipment_assets_page(
     effective_farm_id = farm_id or _active_farm_id(request)
     finance_accounts = repo.list_finance_accounts(farm_id=effective_farm_id) if effective_farm_id else []
     selected_status = status if status in {"ativo", "em_manutencao", "baixado"} else None
+    assets_search_value = (request.query_params.get("assets_search") or "").strip()
+    preserve_filters: dict[str, str] = {}
+    if effective_farm_id:
+        preserve_filters["farm_id"] = str(effective_farm_id)
+    if selected_status:
+        preserve_filters["status"] = selected_status
+    if assets_search_value:
+        preserve_filters["assets_search"] = assets_search_value
+    assets_filter_query = urlencode(preserve_filters)
     assets = _sort_collection_desc(
-        _filter_equipment_assets_by_status(repo.list_equipment_assets(farm_id=effective_farm_id), selected_status),
+        _filter_equipment_assets_by_search(
+            _filter_equipment_assets_by_status(repo.list_equipment_assets(farm_id=effective_farm_id), selected_status),
+            assets_search_value or None,
+        ),
         lambda item: item.acquisition_date,
         lambda item: item.id,
     )
@@ -8971,7 +9014,13 @@ def equipment_assets_page(
             farms=repo.list_farms(),
             selected_farm_id=effective_farm_id,
             selected_asset_status=selected_status or "",
-            assets_export_query=_assets_export_query(farm_id=effective_farm_id, status=selected_status),
+            assets_search_value=assets_search_value,
+            assets_filter_query=assets_filter_query,
+            assets_export_query=_assets_export_query(
+                farm_id=effective_farm_id,
+                status=selected_status,
+                assets_search=assets_search_value or None,
+            ),
             asset_category_options=EQUIPMENT_ASSET_CATEGORY_OPTIONS,
             finance_account_options=finance_accounts,
             finance_account_default=next((item for item in finance_accounts if item.is_default), None),
