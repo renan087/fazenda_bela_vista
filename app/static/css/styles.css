@@ -1520,6 +1520,15 @@ body.dashboard-schedule-modal-open {
     overflow: visible;
 }
 
+/* Compras de Insumos: overflow visível no filter-bar para o dropdown de período */
+.purchased-filter-fields-row .stock-filter-field-period,
+.purchased-filter-fields-row .stock-filter-field-period .module-filter-period-row,
+.purchased-filter-fields-row .stock-filter-field-period .module-filter-preset {
+    overflow: visible;
+    position: relative;
+    z-index: 18;
+}
+
 /* Contas: a tabela/lista vem depois do bloco de filtros no DOM; sem z-index o calendário do período fica atrás da lista.
    O filtro precisa de z-index alto + overflow visível; a lista precisa de z-index menor para não sobrepor o dropdown. */
 .stock-history-stage[data-finance-tab="payables"] > .stock-filter-bar,
