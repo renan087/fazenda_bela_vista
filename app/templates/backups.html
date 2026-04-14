@@ -123,7 +123,7 @@
                             {{ run.trigger_source }}
                         </span>
                         {% if run.error_message %}
-                        <span class="inline-flex rounded-full bg-rose-50 px-2.5 py-1 text-[11px] font-semibold text-rose-700" title="{{ run.error_message }}">
+                        <span class="inline-flex rounded-full bg-rose-50 px-2.5 py-1 text-[11px] font-semibold text-rose-700">
                             Erro
                         </span>
                         {% endif %}
@@ -180,6 +180,11 @@
                         </form>
                     </div>
                 </div>
+                {% if run.error_message %}
+                <div class="mt-2 rounded-xl bg-rose-50 px-4 py-2.5 text-[11px] leading-relaxed text-rose-700">
+                    <span class="mr-1 font-semibold">Detalhe do erro:</span>{{ run.error_message }}
+                </div>
+                {% endif %}
             </article>
             {% else %}
             <p class="px-4 py-5 text-sm text-slate-500">Nenhum backup registrado ate o momento.</p>
