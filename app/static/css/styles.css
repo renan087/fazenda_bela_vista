@@ -2602,22 +2602,22 @@ body.dashboard-schedule-modal-open {
     min-height: 3.2rem;
 }
 
-/* Search field inside filter row: same visual as stock-history-toolbar search field */
+/* Search field inside filter row: match select field height and transparent background */
 .stock-filter-field-input > .stock-search-field {
     width: 100%;
     max-width: 100%;
     min-height: 3.2rem;
-    border-radius: 1rem;
+    border-radius: 0.75rem;
     border: 1px solid rgba(226, 232, 240, 0.95);
-    background: rgba(248, 250, 252, 0.92);
-    padding: 0.72rem 1rem;
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.85);
+    background: transparent;
+    padding: 0.65rem 0.85rem;
+    box-shadow: none;
 }
 
 .stock-filter-field-input > .stock-search-field:focus-within {
     border-color: rgba(148, 163, 184, 0.8);
-    background: rgba(248, 250, 252, 0.98);
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9);
+    background: transparent;
+    box-shadow: none;
 }
 
 .stock-filter-field-input > .stock-search-field input {
