@@ -494,30 +494,24 @@ body {
     body.erp-sidebar-collapsing .erp-sidebar [data-submenu-parent]::after {
         content: "";
         position: absolute;
-        top: 0.38rem;
+        top: 50%;
         right: 0.62rem;
-        width: 0.54rem;
-        height: 0.54rem;
-        border-radius: 999px;
-        background:
-            radial-gradient(circle at center, rgba(255, 255, 255, 0.92) 0 34%, transparent 38%),
-            linear-gradient(135deg, rgba(130, 175, 100, 0.95), rgba(68, 106, 54, 0.98));
-        box-shadow:
-            0 0 0 2px rgba(2, 6, 23, 0.9),
-            0 6px 12px -7px rgba(68, 106, 54, 0.7);
-        opacity: 0.95;
+        width: 0.46rem;
+        height: 0.46rem;
+        border-top: 1.8px solid rgba(148, 163, 184, 0.92);
+        border-right: 1.8px solid rgba(148, 163, 184, 0.92);
+        transform: translateY(-50%) rotate(45deg);
+        opacity: 0.88;
         pointer-events: none;
-        transition: transform 180ms ease, box-shadow 180ms ease, opacity 180ms ease;
+        transition: transform 180ms ease, opacity 180ms ease, border-color 180ms ease;
     }
 
     body.erp-sidebar-collapsed .erp-sidebar [data-submenu-parent]:hover::after,
     body.erp-sidebar-collapsing .erp-sidebar [data-submenu-parent]:hover::after,
     body.erp-sidebar-collapsed .erp-sidebar [data-submenu-parent][data-parent-active="true"]::after,
     body.erp-sidebar-collapsing .erp-sidebar [data-submenu-parent][data-parent-active="true"]::after {
-        transform: scale(1.08);
-        box-shadow:
-            0 0 0 2px rgba(2, 6, 23, 0.92),
-            0 8px 16px -8px rgba(68, 106, 54, 0.82);
+        transform: translateY(-50%) rotate(45deg) translateX(1px);
+        border-color: rgba(226, 232, 240, 0.98);
         opacity: 1;
     }
 
