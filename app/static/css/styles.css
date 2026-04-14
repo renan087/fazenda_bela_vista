@@ -2606,22 +2606,27 @@ body.dashboard-schedule-modal-open {
 .stock-filter-field-input > .stock-search-field {
     width: 100%;
     max-width: 100%;
-    min-height: 3.2rem;
+    height: auto;
+    min-height: 0;
     border-radius: 0.75rem;
     border: 1px solid rgba(226, 232, 240, 0.95);
-    background: transparent;
-    padding: 0.65rem 0.85rem;
+    background: white;
+    padding: 0.44rem 0.75rem;
     box-shadow: none;
+    box-sizing: border-box;
 }
 
 .stock-filter-field-input > .stock-search-field:focus-within {
     border-color: rgba(148, 163, 184, 0.8);
-    background: transparent;
+    background: white;
     box-shadow: none;
 }
 
 .stock-filter-field-input > .stock-search-field input {
     font-size: 0.88rem;
+    padding-top: 0;
+    padding-bottom: 0;
+    line-height: 1.5;
 }
 
 .stock-filter-field-input.is-filtered > .stock-search-field {
