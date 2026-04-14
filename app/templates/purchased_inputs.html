@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "partials/module_history_filter_toolbar.html" import module_period_picker_inline %}
 {% block content %}
 <div class="stock-page-shell space-y-6">
     <section class="stock-page-header rounded-[2rem] p-5 shadow-panel">
@@ -41,7 +42,7 @@
 
     <section class="stock-panel rounded-[2rem] bg-white p-6 shadow-panel" data-stock-fade-panel>
         <div class="stock-filter-bar">
-            <form method="get" action="/insumos/comprados" class="stock-filter-grid">
+            <form method="get" action="/insumos/comprados" class="stock-filter-grid" data-module-period-filter-root data-module-range-default="last_10_days" data-module-range-placeholder="Filtre por período" data-module-custom-auto-apply="false">
                 <input type="hidden" name="purchased_tab" value="{{ selected_purchased_tab }}" data-purchased-tab-input>
                 <div class="stock-filter-fields-row purchased-filter-fields-row {% if purchased_inputs_filters_active %}has-clear-action{% endif %}">
                     <label class="stock-filter-field stock-filter-field-type {% if selected_item_type and selected_item_type != 'all' %}is-filtered{% endif %}">
@@ -69,6 +70,12 @@
                             {% endfor %}
                         </select>
                     </label>
+                    <div class="stock-filter-field stock-filter-field-period {% if selected_start_date or selected_end_date %}is-filtered{% endif %}">
+                        <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Período</span>
+                        <div class="module-filter-period-row">
+                            {{ module_period_picker_inline(request.query_params.get('schedule_range') or ('custom' if selected_start_date or selected_end_date else ''), selected_start_date, selected_end_date, 'past', 'Filtre por período') }}
+                        </div>
+                    </div>
                     <div class="stock-filter-field stock-filter-field-actions flex flex-nowrap items-end gap-3">
                         <button type="submit" class="flex-1 rounded-xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white">Filtrar</button>
                         {% if purchased_inputs_filters_active %}
@@ -904,4 +911,5 @@
         filterInputOptions();
     })();
 </script>
+<script src="{{ url_for('static', path='js/module_period_filters.js') }}?v=8"></script>
 {% endblock %}

@@ -2647,16 +2647,18 @@ body.dashboard-schedule-modal-open {
         align-self: end;
     }
 
-    /* Compras de Insumos: grid específico para 4 colunas (Tipo, Insumo, Fazenda, Ações) */
+    /* Compras de Insumos: grid específico para 5 colunas (Tipo, Insumo, Fazenda, Período, Ações) */
     .stock-filter-fields-row.purchased-filter-fields-row {
         --stock-filter-col-type: minmax(11rem, 0.9fr);
         --stock-filter-col-input: minmax(13rem, 1.2fr);
         --stock-filter-col-farm: minmax(14rem, 1.3fr);
+        --stock-filter-col-period: minmax(12rem, 0.85fr);
         --stock-filter-col-actions: 1fr;
         grid-template-columns:
             var(--stock-filter-col-type)
             var(--stock-filter-col-input)
             var(--stock-filter-col-farm)
+            var(--stock-filter-col-period)
             var(--stock-filter-col-actions);
         column-gap: 0.85rem;
     }
@@ -2665,6 +2667,7 @@ body.dashboard-schedule-modal-open {
         --stock-filter-col-type: minmax(10rem, 0.85fr);
         --stock-filter-col-input: minmax(12rem, 1.1fr);
         --stock-filter-col-farm: minmax(12rem, 1.1fr);
+        --stock-filter-col-period: minmax(11rem, 0.8fr);
     }
 
     .stock-filter-fields-row.purchased-filter-fields-row .stock-filter-field-actions {

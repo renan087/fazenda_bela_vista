@@ -1548,12 +1548,16 @@ def _purchased_inputs_export_query(
     item_type: str | None = None,
     purchased_tab: str | None = None,
     input_id: int | None = None,
+    start_date: date | None = None,
+    end_date: date | None = None,
 ) -> str:
     params = {
         "farm_id": farm_id,
         "item_type": item_type,
         "purchased_tab": purchased_tab if purchased_tab in {"entries", "outputs", "extract"} else None,
         "input_id": input_id,
+        "start_date": start_date.isoformat() if start_date else None,
+        "end_date": end_date.isoformat() if end_date else None,
     }
     clean = {key: value for key, value in params.items() if value not in (None, "", "all")}
     return urlencode(clean)
@@ -7166,6 +7170,8 @@ def purchased_inputs_page(
     farm_id: int | None = None,
     input_id: str | None = None,
     purchased_tab: str | None = None,
+    start_date: str | None = None,
+    end_date: str | None = None,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user_web),
     csrf_token: str = Depends(get_csrf_token),
@@ -7178,17 +7184,21 @@ def purchased_inputs_page(
     selected_item_type = item_type if item_type in {"insumo_agricola", "combustivel", "all"} else None
     normalized_item_type = item_type if item_type in {"insumo_agricola", "combustivel"} else None
     selected_input_id = _int_or_none(input_id)
+    start = _date_or_none(start_date)
+    end = _date_or_none(end_date)
     purchased_inputs_filters_active = (
         selected_input_id is not None
         or (selected_item_type is not None and selected_item_type != "all")
         or (effective_farm_id is not None and request.query_params.get("farm_id") is not None)
+        or start is not None
+        or end is not None
         or edit_id is not None
     )
     if not normalized_item_type and edit_input and edit_input.input_catalog:
         normalized_item_type = edit_input.input_catalog.item_type
     if not normalized_item_type and selected_item_type != "all":
         normalized_item_type = "insumo_agricola"
-    stock_context = _build_stock_context(repo, farm_id=effective_farm_id, item_type=normalized_item_type, input_id=selected_input_id)
+    stock_context = _build_stock_context(repo, farm_id=effective_farm_id, item_type=normalized_item_type, input_id=selected_input_id, start_date=start, end_date=end)
     purchase_entries = _sort_collection_desc(
         stock_context["purchase_entries"],
         lambda item: item.purchase_date,
@@ -7235,11 +7245,15 @@ def purchased_inputs_page(
             stock_outputs_pagination=stock_outputs_pagination,
             extract_rows=extract_rows_pagination["items"],
             extract_rows_pagination=extract_rows_pagination,
+            selected_start_date=start_date,
+            selected_end_date=end_date,
             purchased_inputs_export_query=_purchased_inputs_export_query(
                 farm_id=effective_farm_id,
                 item_type=selected_item_type if selected_item_type in {"insumo_agricola", "combustivel"} else None,
                 purchased_tab=selected_purchased_tab,
                 input_id=selected_input_id,
+                start_date=start,
+                end_date=end,
             ),
             edit_input=edit_input,
             purchased_inputs_filters_active=purchased_inputs_filters_active,
