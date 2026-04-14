@@ -133,6 +133,7 @@
             </div>
             <form method="get" action="/insumos/estoque" class="stock-filter-grid" data-stock-filter-form data-module-period-filter-root data-module-range-default="last_10_days" data-module-range-placeholder="Filtre por período" data-module-custom-auto-apply="false">
                 <input type="hidden" name="stock_tab" value="{{ selected_stock_tab }}" data-stock-tab-hidden>
+                <input type="hidden" name="stock_search" value="{{ stock_search_value }}" data-stock-search-hidden>
                 <div class="stock-summary-collapse {% if not stock_filters_active %}is-expanded{% endif %}" data-stock-filter-collapse>
                 <div class="stock-summary-collapse-inner">
                 <div class="stock-filter-fields-row {% if stock_filters_active %}has-clear-action{% endif %}">
@@ -200,7 +201,7 @@
                     <circle cx="8.5" cy="8.5" r="5.75"></circle>
                     <path d="M13 13l4 4"></path>
                 </svg>
-                <input type="search" placeholder="Buscar insumo, fazenda, origem ou observação" data-stock-history-search>
+                <input type="search" value="{{ stock_search_value }}" placeholder="Buscar insumo, fazenda, origem ou observação" data-stock-history-search>
             </div>
         </div>
 
@@ -650,6 +651,13 @@
                 const params = new URLSearchParams(window.location.search);
                 params.set('stock_tab', activeTab);
                 ['entries_page', 'outputs_page', 'extract_page'].forEach((key) => params.delete(key));
+                const searchEl = document.querySelector('[data-stock-history-search]');
+                const q = (searchEl?.value || '').trim();
+                if (q) {
+                    params.set('stock_search', q);
+                } else {
+                    params.delete('stock_search');
+                }
                 const qs = params.toString();
                 const suffix = qs ? `?${qs}` : `?stock_tab=${encodeURIComponent(activeTab)}`;
                 pdf.href = `/insumos/estoque/exportar.pdf${suffix}`;
@@ -672,49 +680,16 @@
                 }
             };
 
-            const normalizeSearchText = (value) => (
-                (value || '')
-                    .toString()
-                    .normalize('NFD')
-                    .replace(/[\u0300-\u036f]/g, '')
-                    .toLowerCase()
-            );
-
             setActiveTabView(activeTab);
             syncStockExportLinks();
             bindSegmentedControls();
 
-            const clearTabSearchState = () => {
-                getTabs().forEach((tab) => {
-                    tab.querySelectorAll('[data-stock-history-row]').forEach((row) => {
-                        row.classList.remove('hidden');
-                    });
-                    tab.querySelector('[data-stock-search-empty]')?.classList.add('hidden');
-                });
-            };
-
-            const filterTabRows = (tab, query) => {
-                const rows = Array.from(tab.querySelectorAll('[data-stock-history-row]'));
-                const emptyState = tab.querySelector('[data-stock-search-empty]');
-                if (!rows.length) {
-                    emptyState?.classList.add('hidden');
-                    return;
-                }
-
-                let visibleRows = 0;
-                rows.forEach((row) => {
-                    const haystack = normalizeSearchText(row.dataset.stockSearchText || '');
-                    const matches = !query || haystack.includes(query);
-                    row.classList.toggle('hidden', !matches);
-                    if (matches) visibleRows += 1;
-                });
-
-                emptyState?.classList.toggle('hidden', visibleRows > 0 || !query);
-            };
-
-            clearTabSearchState();
-
             stockFilterForm?.addEventListener('submit', () => {
+                const searchField = stockListShell?.querySelector('[data-stock-history-search]');
+                const searchHiddenField = stockFilterForm?.querySelector('[data-stock-search-hidden]');
+                if (searchField && searchHiddenField) {
+                    searchHiddenField.value = (searchField.value || '').trim();
+                }
                 const selectedMovementType = movementTypeField?.value || 'all';
                 if (stockTabHiddenInput) {
                     if (selectedMovementType === 'entrada') {
@@ -885,26 +860,57 @@
 
             let stockSearchInput = stockListShell?.querySelector('[data-stock-history-search]') || null;
             stockFilterForm && window.ModulePeriodFilters?.bind(stockFilterForm);
-            const applyStockHistorySearch = () => {
-                const query = normalizeSearchText((stockSearchInput?.value || '').trim());
-                clearTabSearchState();
-                if (!query) {
-                    return;
-                }
+            const stockSearchHidden = stockFilterForm?.querySelector('[data-stock-search-hidden]');
+            let stockSearchNavigateDebounce = null;
+            const STOCK_SEARCH_DEBOUNCE_MS = 350;
 
-                const extractTab = getTabs().find((tab) => tab.dataset.stockTab === 'extract');
-                if (!extractTab) return;
-                setActiveTabView('extract');
+            const syncStockSearchHidden = () => {
+                stockSearchInput = stockListShell?.querySelector('[data-stock-history-search]');
+                const raw = (stockSearchInput?.value || '').trim();
+                if (stockSearchHidden) {
+                    stockSearchHidden.value = raw;
+                }
+            };
+
+            const buildStockSearchUrl = () => {
+                const url = new URL(window.location.href);
+                stockSearchInput = stockListShell?.querySelector('[data-stock-history-search]');
+                const raw = (stockSearchInput?.value || '').trim();
+                if (raw) {
+                    url.searchParams.set('stock_search', raw);
+                } else {
+                    url.searchParams.delete('stock_search');
+                }
+                ['entries_page', 'outputs_page', 'extract_page'].forEach((key) => url.searchParams.delete(key));
+                return url.toString();
+            };
+
+            const flushStockSearchNavigation = () => {
+                stockSearchNavigateDebounce = null;
+                syncStockSearchHidden();
                 syncStockExportLinks();
-                filterTabRows(extractTab, query);
+                syncStockListFromUrl(buildStockSearchUrl());
+            };
+
+            const scheduleStockSearchNavigation = () => {
+                syncStockSearchHidden();
+                syncStockExportLinks();
+                if (stockSearchNavigateDebounce !== null) {
+                    window.clearTimeout(stockSearchNavigateDebounce);
+                }
+                stockSearchNavigateDebounce = window.setTimeout(flushStockSearchNavigation, STOCK_SEARCH_DEBOUNCE_MS);
+            };
+
+            const onStockSearchInput = () => {
+                scheduleStockSearchNavigation();
             };
 
             const bindStockListShell = () => {
                 if (!stockListShell) return;
                 stockSearchInput = stockListShell.querySelector('[data-stock-history-search]');
-                stockSearchInput?.addEventListener('input', applyStockHistorySearch);
+                stockSearchInput?.addEventListener('input', onStockSearchInput);
                 bindSegmentedControls(stockListShell);
-                applyStockHistorySearch();
+                syncStockExportLinks();
             };
 
             const syncStockListFromUrl = async (url) => {
@@ -937,6 +943,10 @@
                     stockSearchInput = stockListShell.querySelector('[data-stock-history-search]');
                     if (stockSearchInput) {
                         stockSearchInput.value = currentQuery;
+                    }
+                    const nextHidden = stockFilterForm?.querySelector('[data-stock-search-hidden]');
+                    if (nextHidden && stockSearchInput) {
+                        nextHidden.value = (stockSearchInput.value || '').trim();
                     }
                     bindStockListShell();
                     setActiveTabView(parsed.querySelector('[data-stock-tab-button].is-active')?.dataset.stockTabButton || activeTab);
@@ -1087,7 +1097,6 @@
                 });
             }
 
-            applyStockHistorySearch();
         })();
     </script>
 {% endblock %}

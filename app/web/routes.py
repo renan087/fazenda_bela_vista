@@ -1450,6 +1450,7 @@ def _stock_export_query(
     movement_type: str = "all",
     item_type: str | None = None,
     stock_tab: str | None = None,
+    stock_search: str | None = None,
 ) -> str:
     params = {
         "farm_id": farm_id,
@@ -1459,9 +1460,60 @@ def _stock_export_query(
         "movement_type": movement_type if movement_type and movement_type != "all" else None,
         "item_type": item_type,
         "stock_tab": stock_tab if stock_tab in {"entries", "outputs", "extract"} else None,
+        "stock_search": (stock_search or "").strip() or None,
     }
     clean = {key: value for key, value in params.items() if value not in (None, "", "all")}
     return urlencode(clean)
+
+
+def _stock_purchase_entry_search_haystack(item) -> str:
+    type_label = (
+        "Combustivel"
+        if item.input_catalog and getattr(item.input_catalog, "item_type", None) == "combustivel"
+        else "Insumo agricola"
+    )
+    date_s = item.purchase_date.isoformat() if item.purchase_date else ""
+    name = (item.input_catalog.name if item.input_catalog else item.name) or ""
+    farm_s = item.farm.name if item.farm else ""
+    return _normalize_search_value(f"{date_s} {name} {type_label} {farm_s} {item.notes or ''}")
+
+
+def _stock_output_search_haystack(output) -> str:
+    md = output.movement_date
+    date_s = md.isoformat() if md is not None and hasattr(md, "isoformat") else str(md or "")
+    name = (output.input_catalog.name if output.input_catalog else "") or ""
+    farm_s = output.farm.name if output.farm else ""
+    plot_s = output.plot.name if output.plot else ""
+    return _normalize_search_value(f"{date_s} {name} {output.origin or ''} {farm_s} {plot_s} {output.notes or ''}")
+
+
+def _stock_extract_row_search_haystack(row: dict) -> str:
+    d = row.get("date")
+    date_s = d.isoformat() if d is not None and hasattr(d, "isoformat") else str(d or "")
+    farm = row.get("farm")
+    farm_s = farm.name if farm is not None and hasattr(farm, "name") else ""
+    plot = row.get("plot")
+    plot_s = plot.name if plot is not None and hasattr(plot, "name") else ""
+    return _normalize_search_value(
+        f"{date_s} {row.get('input_name') or ''} {row.get('kind') or ''} "
+        f"{row.get('origin') or ''} {row.get('reference') or ''} {row.get('notes') or ''} "
+        f"{farm_s} {plot_s}"
+    )
+
+
+def _filter_stock_rows_by_search(
+    purchase_entries: list,
+    stock_outputs: list,
+    extract_rows: list,
+    search: str | None,
+) -> tuple[list, list, list]:
+    q = _normalize_search_value((search or "").strip())
+    if not q:
+        return purchase_entries, stock_outputs, extract_rows
+    pe = [item for item in purchase_entries if q in _stock_purchase_entry_search_haystack(item)]
+    so = [item for item in stock_outputs if q in _stock_output_search_haystack(item)]
+    er = [row for row in extract_rows if q in _stock_extract_row_search_haystack(row)]
+    return pe, so, er
 
 
 def _stock_page_filters_active(
@@ -1485,6 +1537,8 @@ def _stock_page_filters_active(
     if normalized_item_type:
         return True
     if (qp.get("schedule_range") or "").strip():
+        return True
+    if (qp.get("stock_search") or "").strip():
         return True
     raw_farm = qp.get("farm_id")
     if raw_farm is not None and str(raw_farm).strip() != "":
@@ -7948,6 +8002,14 @@ def stock_page(
         lambda row: row.get("date"),
         lambda row: row.get("reference"),
     )
+    stock_search_value = (request.query_params.get("stock_search") or "").strip()
+    if stock_search_value:
+        purchase_entries, stock_outputs, extract_rows = _filter_stock_rows_by_search(
+            purchase_entries,
+            stock_outputs,
+            extract_rows,
+            stock_search_value,
+        )
     purchase_entries_pagination = _paginate_collection(request, purchase_entries, "entries_page")
     stock_outputs_pagination = _paginate_collection(request, stock_outputs, "outputs_page")
     extract_rows_pagination = _paginate_collection(request, extract_rows, "extract_page")
@@ -7994,6 +8056,7 @@ def stock_page(
             selected_movement_type=movement_type,
             selected_item_type=normalized_item_type or "",
             stock_filters_active=stock_filters_active,
+            stock_search_value=stock_search_value,
             stock_export_query=_stock_export_query(
                 farm_id=selected_farm_id,
                 input_id=selected_input_id,
@@ -8002,6 +8065,7 @@ def stock_page(
                 movement_type=movement_type,
                 item_type=normalized_item_type,
                 stock_tab=selected_stock_tab,
+                stock_search=stock_search_value or None,
             ),
             inputs_catalog=stock_context["consumption_catalog_inputs"],
             input_stock=stock_context["input_stock"],
@@ -8235,6 +8299,7 @@ def export_stock_extract_xlsx(
     end_date: str | None = None,
     movement_type: str = "all",
     item_type: str | None = None,
+    stock_search: str | None = None,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user_web),
 ):
@@ -8268,6 +8333,12 @@ def export_stock_extract_xlsx(
         lambda row: row.get("date"),
         lambda row: row.get("reference"),
     )
+    purchase_entries, stock_outputs, extract_rows = _filter_stock_rows_by_search(
+        purchase_entries,
+        stock_outputs,
+        extract_rows,
+        stock_search,
+    )
     workbook = Workbook()
     sheet = workbook.active
     if export_tab == "entries":
@@ -8298,6 +8369,7 @@ def export_stock_extract_pdf(
     end_date: str | None = None,
     movement_type: str = "all",
     item_type: str | None = None,
+    stock_search: str | None = None,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user_web),
 ):
@@ -8329,6 +8401,12 @@ def export_stock_extract_pdf(
         stock_context["extract_rows"],
         lambda row: row.get("date"),
         lambda row: row.get("reference"),
+    )
+    purchase_entries, stock_outputs, extract_rows = _filter_stock_rows_by_search(
+        purchase_entries,
+        stock_outputs,
+        extract_rows,
+        stock_search,
     )
     entries_total_sum = sum(float(item.total_cost or 0) for item in purchase_entries)
     outputs_total_sum = sum(float(output.total_cost or 0) for output in stock_outputs)
