@@ -482,9 +482,6 @@
             </div>
             {% endfor %}
         </div>
-        <div class="mt-5 rounded-2xl bg-slate-50 px-4 py-3 text-sm leading-6 text-slate-500">
-            Mantenha esta página aberta até a finalização. Vamos atualizar tudo automaticamente ao concluir.
-        </div>
     </div>
 </div>
 <script>
@@ -555,6 +552,7 @@
         const finishOverlay = (progress) => {
             applyProgress(progress);
             stopPolling();
+            backupRunning = false;
             if (submitButton) {
                 submitButton.disabled = false;
                 submitButton.classList.remove('opacity-70', 'cursor-not-allowed');
@@ -595,12 +593,6 @@
                 window.alert('Não foi possível acompanhar o backup agora. Tente novamente em instantes.');
             }
         };
-
-        window.addEventListener('beforeunload', (event) => {
-            if (!backupRunning) return;
-            event.preventDefault();
-            event.returnValue = '';
-        });
 
         document.addEventListener('visibilitychange', () => {
             if (!backupRunning || !currentRunId || pollTimer) return;
