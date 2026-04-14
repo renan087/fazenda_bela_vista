@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.core.timezone import app_now, get_app_timezone
+from app.db.session import SessionLocal
 from app.models import BackupAutomationSetting, BackupRun, User
 from app.repositories.farm import FarmRepository
 
@@ -44,11 +45,33 @@ STORAGE_LIMIT_ERROR_HINTS = (
     "50 gb",
 )
 
+BACKUP_PROGRESS_STAGES = {
+    "starting": {"progress": 6, "title": "Preparando backup", "message": "Organizando a execução inicial do backup."},
+    "database_preparing": {"progress": 20, "title": "Salvando banco", "message": "Montando a cópia do banco de dados."},
+    "database_uploading": {"progress": 46, "title": "Enviando banco", "message": "Enviando a cópia principal para o storage."},
+    "files_preparing": {"progress": 64, "title": "Separando arquivos", "message": "Agrupando os arquivos complementares do sistema."},
+    "files_uploading": {"progress": 84, "title": "Enviando arquivos", "message": "Transferindo os arquivos complementares para o storage."},
+    "finalizing": {"progress": 96, "title": "Finalizando", "message": "Registrando o resultado final do backup."},
+    "success": {"progress": 100, "title": "Backup concluído", "message": "Seu backup foi concluído com sucesso."},
+    "partial": {"progress": 100, "title": "Backup parcial", "message": "O backup terminou parcialmente. Revise o histórico para os detalhes."},
+    "failed": {"progress": 100, "title": "Backup não concluído", "message": "Não foi possível concluir o backup. Revise o histórico para os detalhes."},
+}
+
 
 def execute_backup(
     db: Session,
     initiated_by: User | None = None,
     trigger_source: str = "manual",
+) -> BackupRun:
+    run = _create_backup_run(db, initiated_by=initiated_by, trigger_source=trigger_source)
+    return execute_backup_run(db, run.id)
+
+
+def _create_backup_run(
+    db: Session,
+    *,
+    initiated_by: User | None,
+    trigger_source: str,
 ) -> BackupRun:
     run = BackupRun(
         initiated_by_user_id=initiated_by.id if initiated_by else None,
@@ -63,6 +86,14 @@ def execute_backup(
     db.add(run)
     db.commit()
     db.refresh(run)
+    _update_backup_progress(db, run.id, stage="starting")
+    return run
+
+
+def execute_backup_run(db: Session, run_id: int) -> BackupRun:
+    run = db.query(BackupRun).filter(BackupRun.id == run_id).first()
+    if not run:
+        raise RuntimeError("Execução de backup não encontrada.")
 
     started_at = _utc_now()
     db_result: dict | None = None
@@ -71,14 +102,22 @@ def execute_backup(
 
     try:
         _validate_storage_configuration()
-        db_result = _backup_database_dump(started_at)
+        _update_backup_progress(db, run.id, stage="database_preparing")
+        db_result = _backup_database_dump(
+            started_at,
+            on_upload_start=lambda: _update_backup_progress(db, run.id, stage="database_uploading"),
+        )
     except Exception as exc:
         logger.exception("Falha ao gerar ou enviar backup do banco.")
         errors.append(f"Banco: {exc}")
 
     try:
         _validate_storage_configuration()
-        files_result = _backup_files_archive(started_at)
+        _update_backup_progress(db, run.id, stage="files_preparing")
+        files_result = _backup_files_archive(
+            started_at,
+            on_upload_start=lambda: _update_backup_progress(db, run.id, stage="files_uploading"),
+        )
     except Exception as exc:
         logger.exception("Falha ao gerar ou enviar backup de arquivos.")
         errors.append(f"Arquivos: {exc}")
@@ -100,10 +139,42 @@ def execute_backup(
     )
     run.error_message = "\n".join(errors) if errors else None
     run.finished_at = _utc_now()
+    progress_stage = "success" if run.status == "success" else "partial" if run.status == "partial" else "failed"
+    _update_backup_progress(
+        db,
+        run.id,
+        stage="finalizing",
+        preserve_existing=True,
+    )
     db.add(run)
     db.commit()
     db.refresh(run)
+    _update_backup_progress(
+        db,
+        run.id,
+        stage=progress_stage,
+        preserve_existing=True,
+    )
+    db.refresh(run)
     return run
+
+
+def process_backup_run_in_background(run_id: int) -> int:
+    try:
+        with SessionLocal() as db:
+            execute_backup_run(db, run_id)
+    except Exception:
+        logger.exception("Falha inesperada ao executar backup em segundo plano. run_id=%s", run_id)
+        with SessionLocal() as db:
+            _update_backup_progress(db, run_id, stage="failed", preserve_existing=True)
+            run = db.query(BackupRun).filter(BackupRun.id == run_id).first()
+            if run and not run.error_message:
+                run.error_message = "Falha inesperada ao executar o backup em segundo plano."
+                run.finished_at = _utc_now()
+                run.status = "failed"
+                db.add(run)
+                db.commit()
+    return run_id
 
 
 def get_or_create_backup_automation_setting(db: Session) -> BackupAutomationSetting:
@@ -428,6 +499,48 @@ def _with_storage_deletion_details(
     return json.dumps(parsed, ensure_ascii=False)
 
 
+def _backup_progress_payload(stage: str) -> dict[str, object]:
+    base = BACKUP_PROGRESS_STAGES.get(stage) or BACKUP_PROGRESS_STAGES["starting"]
+    return {
+        "stage": stage,
+        "progress": int(base["progress"]),
+        "title": str(base["title"]),
+        "message": str(base["message"]),
+        "updated_at": _utc_now().isoformat(),
+    }
+
+
+def _update_backup_progress(
+    db: Session,
+    run_id: int,
+    *,
+    stage: str,
+    preserve_existing: bool = False,
+) -> None:
+    run = db.query(BackupRun).filter(BackupRun.id == run_id).first()
+    if not run:
+        return
+    try:
+        parsed = json.loads(run.details_json) if run.details_json else {}
+    except json.JSONDecodeError:
+        parsed = {}
+    if not isinstance(parsed, dict):
+        parsed = {}
+    progress_payload = _backup_progress_payload(stage)
+    if preserve_existing and isinstance(parsed.get("progress_ui"), dict):
+        current = parsed["progress_ui"]
+        if int(current.get("progress", 0) or 0) > int(progress_payload["progress"]):
+            progress_payload["progress"] = int(current.get("progress", 0) or 0)
+    parsed["progress_ui"] = progress_payload
+    run.details_json = json.dumps(parsed, ensure_ascii=False)
+    if stage in {"success", "partial", "failed"}:
+        run.status = "success" if stage == "success" else "partial" if stage == "partial" else "failed"
+        if run.finished_at is None:
+            run.finished_at = _utc_now()
+    db.add(run)
+    db.commit()
+
+
 def _normalize_interval_days(value: int | None) -> int:
     try:
         parsed = int(value or AUTOMATION_DEFAULT_INTERVAL_DAYS)
@@ -472,7 +585,7 @@ def _validate_storage_configuration() -> None:
         raise RuntimeError("SUPABASE_BUCKET_FILES nao configurado.")
 
 
-def _backup_database_dump(started_at: datetime) -> dict:
+def _backup_database_dump(started_at: datetime, on_upload_start=None) -> dict:
     timestamp = started_at.strftime("%Y%m%dT%H%M%SZ")
     with tempfile.NamedTemporaryFile(prefix="backup_db_", suffix=".sql", delete=False) as temp_file:
         sql_path = Path(temp_file.name)
@@ -491,6 +604,8 @@ def _backup_database_dump(started_at: datetime) -> dict:
         subprocess.run(command, check=True, capture_output=True, text=True)
         with sql_path.open("rb") as source, gzip.open(gzip_path, "wb") as target:
             shutil.copyfileobj(source, target)
+        if callable(on_upload_start):
+            on_upload_start()
         _upload_file_to_supabase(
             bucket=settings.supabase_bucket_db,
             object_path=object_path,
@@ -516,7 +631,7 @@ def _backup_database_dump(started_at: datetime) -> dict:
         gzip_path.unlink(missing_ok=True)
 
 
-def _backup_files_archive(started_at: datetime) -> dict:
+def _backup_files_archive(started_at: datetime, on_upload_start=None) -> dict:
     timestamp = started_at.strftime("%Y%m%dT%H%M%SZ")
     with tempfile.NamedTemporaryFile(prefix="backup_files_", suffix=".zip", delete=False) as temp_file:
         archive_path = Path(temp_file.name)
@@ -544,10 +659,12 @@ def _backup_files_archive(started_at: datetime) -> dict:
 
             if not details["local_directories"]:
                 details["notes"].append("Nenhum diretorio local de upload foi encontrado no projeto atual.")
-            details["notes"].append("No estado atual do projeto, anexos operacionais permanecem cobertos pelo dump do PostgreSQL.")
-            details["notes"].append("O bucket de arquivos fica preparado para futuros diretorios locais ou migracao de storage.")
+                details["notes"].append("No estado atual do projeto, anexos operacionais permanecem cobertos pelo dump do PostgreSQL.")
+                details["notes"].append("O bucket de arquivos fica preparado para futuros diretorios locais ou migracao de storage.")
             archive.writestr("manifest.json", json.dumps(details, ensure_ascii=False, indent=2))
 
+        if callable(on_upload_start):
+            on_upload_start()
         _upload_file_to_supabase(
             bucket=settings.supabase_bucket_files,
             object_path=object_path,

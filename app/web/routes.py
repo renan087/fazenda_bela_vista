@@ -75,9 +75,11 @@ from app.services.asaas_customers import (
 from app.services.asaas_payment_sync import upsert_asaas_payment_row, user_owns_asaas_payment_payload
 from app.services.asaas_payments import create_asaas_payment, get_asaas_payment, is_asaas_status_paid
 from app.services.backup_service import (
+    _create_backup_run,
     delete_backup_run,
     execute_backup,
     get_or_create_backup_automation_setting,
+    process_backup_run_in_background,
     update_backup_automation_setting,
 )
 from app.services.dashboard import build_dashboard_context
@@ -738,6 +740,27 @@ def _build_backup_automation_context(repo: FarmRepository, db: Session) -> dict[
         "last_auto_run_status_label": _backup_status_label(setting.last_auto_run_status),
         "last_error_message": setting.last_error_message,
         "latest_auto_run_id": latest_auto_run.id if latest_auto_run else None,
+    }
+
+
+def _build_backup_progress_context(run: BackupRun | None) -> dict[str, object]:
+    details = _backup_details(run.details_json if run else None)
+    progress = details.get("progress_ui") if isinstance(details.get("progress_ui"), dict) else {}
+    progress_value = int(progress.get("progress", 0) or 0)
+    stage = str(progress.get("stage") or "")
+    title = str(progress.get("title") or "Preparando backup")
+    message = str(progress.get("message") or "Organizando a execução do backup.")
+    status_value = (run.status or "").lower() if run else "running"
+    finished = status_value in {"success", "partial", "failed"} or bool(run and run.finished_at)
+    return {
+        "run_id": run.id if run else None,
+        "status": run.status if run else "running",
+        "progress": max(0, min(progress_value, 100)),
+        "stage": stage,
+        "title": title,
+        "message": message,
+        "finished": finished,
+        "result_tone": "success" if status_value == "success" else "warning" if status_value == "partial" else "danger" if status_value == "failed" else "running",
     }
 
 
@@ -7187,6 +7210,68 @@ def execute_backup_action(
     else:
         _flash(request, "error", "Backup nao concluido. Revise o historico para ver o erro detalhado.")
     return _redirect("/backups")
+
+
+@router.post("/backups/executar/iniciar")
+def start_backup_action(
+    request: Request,
+    background_tasks: BackgroundTasks,
+    csrf_token: str = Form(...),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    denied = _require_admin(request, user)
+    if denied:
+        return JSONResponse({"ok": False, "error": "Acesso negado."}, status_code=403)
+    validate_csrf(request, csrf_token)
+    storage_usage = _build_backup_storage_usage(_repository(db))
+    if storage_usage["is_over_limit"]:
+        return JSONResponse(
+            {
+                "ok": False,
+                "error": (
+                    "O limite estimado de armazenamento para backups no Supabase foi atingido. "
+                    "Exclua backups antigos antes de tentar novamente."
+                ),
+            },
+            status_code=409,
+        )
+    running = db.query(BackupRun).filter(BackupRun.status == "running").order_by(BackupRun.started_at.desc()).first()
+    if running:
+        return JSONResponse(
+            {
+                "ok": True,
+                "run_id": running.id,
+                "already_running": True,
+                "progress": _build_backup_progress_context(running),
+            }
+        )
+    created_run = _create_backup_run(db, initiated_by=user, trigger_source="web_manual")
+    background_tasks.add_task(process_backup_run_in_background, created_run.id)
+    return JSONResponse(
+        {
+            "ok": True,
+            "run_id": int(created_run.id),
+            "already_running": False,
+            "progress": _build_backup_progress_context(created_run),
+        }
+    )
+
+
+@router.get("/backups/{backup_run_id}/status")
+def backup_status_api(
+    backup_run_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    denied = _require_admin(request, user)
+    if denied:
+        return JSONResponse({"ok": False, "error": "Acesso negado."}, status_code=403)
+    run = _repository(db).get_backup_run(backup_run_id)
+    if not run:
+        return JSONResponse({"ok": False, "error": "Backup não encontrado."}, status_code=404)
+    return JSONResponse({"ok": True, "progress": _build_backup_progress_context(run)})
 
 
 @router.post("/backups/{backup_run_id}/excluir")

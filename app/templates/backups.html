@@ -14,6 +14,93 @@
         margin: auto;
         overflow-y: auto;
     }
+    body.backup-progress-open {
+        overflow: hidden;
+    }
+    .backup-progress-overlay {
+        position: fixed;
+        inset: 0;
+        z-index: 120;
+        display: none;
+        align-items: center;
+        justify-content: center;
+        padding: 1.5rem;
+        background: rgba(241, 245, 249, 0.82);
+        backdrop-filter: blur(10px);
+    }
+    .backup-progress-overlay.is-open {
+        display: flex;
+    }
+    .backup-progress-card {
+        width: min(100%, 42rem);
+        border-radius: 2rem;
+        border: 1px solid rgba(226, 232, 240, 0.9);
+        background: rgba(255, 255, 255, 0.96);
+        box-shadow: 0 24px 80px rgba(15, 23, 42, 0.16);
+        overflow: hidden;
+    }
+    .backup-progress-bar-track {
+        height: 0.9rem;
+        overflow: hidden;
+        border-radius: 999px;
+        background: #e2e8f0;
+    }
+    .backup-progress-bar-fill {
+        position: relative;
+        height: 100%;
+        border-radius: 999px;
+        background: linear-gradient(90deg, #3b82f6 0%, #22c55e 100%);
+        transition: width 0.45s ease;
+    }
+    .backup-progress-bar-fill::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background-image: linear-gradient(
+            135deg,
+            rgba(255, 255, 255, 0.22) 25%,
+            transparent 25%,
+            transparent 50%,
+            rgba(255, 255, 255, 0.22) 50%,
+            rgba(255, 255, 255, 0.22) 75%,
+            transparent 75%,
+            transparent 100%
+        );
+        background-size: 24px 24px;
+        animation: backup-progress-stripes 1s linear infinite;
+    }
+    .backup-progress-step {
+        border: 1px solid #e2e8f0;
+        background: #f8fafc;
+        transition: all 180ms ease;
+    }
+    .backup-progress-step.is-complete {
+        border-color: #bbf7d0;
+        background: #f0fdf4;
+    }
+    .backup-progress-step.is-current {
+        border-color: #bfdbfe;
+        background: #eff6ff;
+        box-shadow: inset 0 0 0 1px rgba(59, 130, 246, 0.08);
+    }
+    .backup-progress-dot {
+        width: 0.75rem;
+        height: 0.75rem;
+        border-radius: 999px;
+        background: #cbd5e1;
+        transition: background-color 180ms ease, transform 180ms ease;
+    }
+    .backup-progress-step.is-complete .backup-progress-dot {
+        background: #22c55e;
+    }
+    .backup-progress-step.is-current .backup-progress-dot {
+        background: #3b82f6;
+        transform: scale(1.15);
+    }
+    @keyframes backup-progress-stripes {
+        from { background-position: 0 0; }
+        to { background-position: 24px 0; }
+    }
 </style>
 <div class="space-y-6">
     <section class="rounded-[2rem] bg-white p-6 shadow-panel">
@@ -365,15 +452,185 @@
         {% endif %}
     </section>
 </div>
+<div class="backup-progress-overlay" data-backup-progress-overlay aria-hidden="true">
+    <div class="backup-progress-card p-6 sm:p-7">
+        <div class="flex items-start justify-between gap-4">
+            <div>
+                <p class="text-xs font-semibold uppercase tracking-[0.28em] text-slate-400">Backup em andamento</p>
+                <h3 class="mt-2 text-2xl font-semibold text-slate-900" data-backup-progress-title>Preparando backup</h3>
+                <p class="mt-2 text-sm leading-6 text-slate-500" data-backup-progress-message>
+                    Organizando a execução do backup.
+                </p>
+            </div>
+            <span class="inline-flex rounded-full bg-slate-100 px-3 py-1.5 text-sm font-semibold text-slate-600" data-backup-progress-percent>0%</span>
+        </div>
+        <div class="mt-5 backup-progress-bar-track" aria-hidden="true">
+            <div class="backup-progress-bar-fill" data-backup-progress-fill style="width: 0%;"></div>
+        </div>
+        <div class="mt-5 grid gap-3" data-backup-progress-steps>
+            {% for step in [
+                ('starting', 'Preparando'),
+                ('database_preparing', 'Salvando banco'),
+                ('database_uploading', 'Enviando banco'),
+                ('files_preparing', 'Separando arquivos'),
+                ('files_uploading', 'Enviando arquivos'),
+                ('finalizing', 'Finalizando'),
+            ] %}
+            <div class="backup-progress-step flex items-center gap-3 rounded-2xl px-4 py-3" data-stage="{{ step[0] }}">
+                <span class="backup-progress-dot" aria-hidden="true"></span>
+                <span class="text-sm font-medium text-slate-600">{{ step[1] }}</span>
+            </div>
+            {% endfor %}
+        </div>
+        <div class="mt-5 rounded-2xl bg-slate-50 px-4 py-3 text-sm leading-6 text-slate-500">
+            Mantenha esta página aberta até a finalização. Vamos atualizar tudo automaticamente ao concluir.
+        </div>
+    </div>
+</div>
 <script>
     (() => {
         const form = document.querySelector('[data-backup-form]');
         if (!form) return;
-        form.addEventListener('submit', () => {
-            const button = form.querySelector('button[type="submit"], button:not([type])');
-            if (!button) return;
-            button.disabled = true;
-            button.classList.add('opacity-70', 'cursor-not-allowed');
+        const overlay = document.querySelector('[data-backup-progress-overlay]');
+        const title = overlay?.querySelector('[data-backup-progress-title]');
+        const message = overlay?.querySelector('[data-backup-progress-message]');
+        const percent = overlay?.querySelector('[data-backup-progress-percent]');
+        const fill = overlay?.querySelector('[data-backup-progress-fill]');
+        const stepItems = overlay ? Array.from(overlay.querySelectorAll('[data-stage]')) : [];
+        const submitButton = form.querySelector('button[type="submit"], button:not([type])');
+        const stageOrder = ['starting', 'database_preparing', 'database_uploading', 'files_preparing', 'files_uploading', 'finalizing'];
+        let currentRunId = null;
+        let pollTimer = null;
+        let backupRunning = false;
+
+        const stopPolling = () => {
+            if (pollTimer) {
+                window.clearTimeout(pollTimer);
+                pollTimer = null;
+            }
+        };
+
+        const setOverlayOpen = (open) => {
+            if (!overlay) return;
+            overlay.classList.toggle('is-open', open);
+            overlay.setAttribute('aria-hidden', open ? 'false' : 'true');
+            document.body.classList.toggle('backup-progress-open', open);
+            backupRunning = open;
+        };
+
+        const applyProgress = (progress) => {
+            if (!progress) return;
+            const stage = String(progress.stage || 'starting');
+            const value = Math.max(0, Math.min(100, Number(progress.progress || 0)));
+            if (title) title.textContent = progress.title || 'Preparando backup';
+            if (message) message.textContent = progress.message || 'Organizando a execução do backup.';
+            if (percent) percent.textContent = `${Math.round(value)}%`;
+            if (fill) fill.style.width = `${value}%`;
+
+            const stageIndex = stageOrder.indexOf(stage);
+            stepItems.forEach((item, index) => {
+                const itemStage = item.getAttribute('data-stage');
+                const itemIndex = stageOrder.indexOf(itemStage);
+                item.classList.toggle('is-current', itemStage === stage);
+                item.classList.toggle('is-complete', itemIndex !== -1 && (itemIndex < stageIndex || (progress.finished && itemIndex <= stageIndex)));
+            });
+        };
+
+        const finishOverlay = (progress) => {
+            applyProgress(progress);
+            stopPolling();
+            if (submitButton) {
+                submitButton.disabled = false;
+                submitButton.classList.remove('opacity-70', 'cursor-not-allowed');
+            }
+            window.setTimeout(() => {
+                window.location.href = '/backups';
+            }, 1200);
+        };
+
+        const pollProgress = async () => {
+            if (!currentRunId) return;
+            try {
+                const response = await fetch(`/backups/${currentRunId}/status`, {
+                    headers: { 'X-Requested-With': 'fetch' },
+                    credentials: 'same-origin',
+                    cache: 'no-store',
+                });
+                if (!response.ok) {
+                    throw new Error('Falha ao consultar o progresso do backup.');
+                }
+                const data = await response.json();
+                if (!data.ok) {
+                    throw new Error(data.error || 'Falha ao consultar o progresso do backup.');
+                }
+                applyProgress(data.progress);
+                if (data.progress?.finished) {
+                    finishOverlay(data.progress);
+                    return;
+                }
+                pollTimer = window.setTimeout(pollProgress, document.hidden ? 1800 : 1200);
+            } catch (error) {
+                stopPolling();
+                setOverlayOpen(false);
+                if (submitButton) {
+                    submitButton.disabled = false;
+                    submitButton.classList.remove('opacity-70', 'cursor-not-allowed');
+                }
+                window.alert('Não foi possível acompanhar o backup agora. Tente novamente em instantes.');
+            }
+        };
+
+        window.addEventListener('beforeunload', (event) => {
+            if (!backupRunning) return;
+            event.preventDefault();
+            event.returnValue = '';
+        });
+
+        document.addEventListener('visibilitychange', () => {
+            if (!backupRunning || !currentRunId || pollTimer) return;
+            pollTimer = window.setTimeout(pollProgress, document.hidden ? 1800 : 400);
+        });
+
+        form.addEventListener('submit', async (event) => {
+            event.preventDefault();
+            if (submitButton?.disabled) return;
+            if (submitButton) {
+                submitButton.disabled = true;
+                submitButton.classList.add('opacity-70', 'cursor-not-allowed');
+            }
+            setOverlayOpen(true);
+            applyProgress({
+                stage: 'starting',
+                progress: 6,
+                title: 'Preparando backup',
+                message: 'Organizando a execução inicial do backup.',
+                finished: false,
+            });
+
+            try {
+                const response = await fetch('/backups/executar/iniciar', {
+                    method: 'POST',
+                    body: new FormData(form),
+                    headers: { 'X-Requested-With': 'fetch' },
+                    credentials: 'same-origin',
+                });
+                const data = await response.json();
+                if (!response.ok || !data.ok || !data.run_id) {
+                    throw new Error(data?.error || 'Não foi possível iniciar o backup.');
+                }
+                currentRunId = data.run_id;
+                applyProgress(data.progress);
+                stopPolling();
+                pollTimer = window.setTimeout(pollProgress, 900);
+            } catch (error) {
+                stopPolling();
+                setOverlayOpen(false);
+                if (submitButton) {
+                    submitButton.disabled = false;
+                    submitButton.classList.remove('opacity-70', 'cursor-not-allowed');
+                }
+                window.alert(error?.message || 'Não foi possível iniciar o backup agora.');
+            }
         });
     })();
 </script>
