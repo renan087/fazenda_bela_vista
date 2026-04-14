@@ -601,6 +601,8 @@
         const monthNames = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
         const scheduleMap = new Map();
         const lateDateSet = new Set();
+        const now = new Date();
+        const todayIso = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
         const schedules = Array.isArray(dashboardScheduleData) ? dashboardScheduleData : [];
         schedules.forEach((item) => {
             const date = typeof item.date === 'string' ? item.date : '';
@@ -723,6 +725,7 @@
                 button.appendChild(content);
                 if (cellDate.getMonth() !== currentMonth.getMonth()) button.classList.add('is-outside');
                 if (scheduleMap.has(iso)) button.classList.add('is-has-events');
+                if (iso === todayIso) button.classList.add('is-today');
                 if (selectedDate === iso) button.classList.add('is-selected');
                 button.addEventListener('click', () => {
                     selectedDate = iso;
