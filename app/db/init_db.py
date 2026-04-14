@@ -12,6 +12,7 @@ from app.db.session import engine
 from app.models import (
     AgronomicProfile,
     AsaasPayment,
+    BackupAutomationSetting,
     BackupRun,
     CoffeeCommercializationRecord,
     CoffeeVariety,
@@ -74,9 +75,26 @@ def _sync_schema() -> None:
             files_size_bytes BIGINT,
             details_json TEXT,
             error_message TEXT,
+            deleted_from_storage_at TIMESTAMPTZ,
+            deleted_from_storage_reason VARCHAR(40),
+            deleted_from_storage_source VARCHAR(40),
             started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
             finished_at TIMESTAMPTZ,
             created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS backup_automation_settings (
+            id INTEGER PRIMARY KEY,
+            automatic_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+            interval_days INTEGER NOT NULL DEFAULT 5,
+            next_run_at TIMESTAMPTZ,
+            last_auto_run_at TIMESTAMPTZ,
+            last_auto_run_status VARCHAR(20),
+            last_error_message TEXT,
+            scheduler_locked_at TIMESTAMPTZ,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
         )
         """,
         """
@@ -640,6 +658,28 @@ def _sync_schema() -> None:
         connection.execute(text("CREATE INDEX IF NOT EXISTS ix_plot_attachments_plot_id ON plot_attachments(plot_id)"))
         connection.execute(text("CREATE INDEX IF NOT EXISTS ix_backup_runs_started_at ON backup_runs(started_at DESC)"))
         connection.execute(text("CREATE INDEX IF NOT EXISTS ix_backup_runs_user_id ON backup_runs(initiated_by_user_id)"))
+        connection.execute(text("ALTER TABLE backup_runs ADD COLUMN IF NOT EXISTS deleted_from_storage_at TIMESTAMPTZ"))
+        connection.execute(text("ALTER TABLE backup_runs ADD COLUMN IF NOT EXISTS deleted_from_storage_reason VARCHAR(40)"))
+        connection.execute(text("ALTER TABLE backup_runs ADD COLUMN IF NOT EXISTS deleted_from_storage_source VARCHAR(40)"))
+        connection.execute(text("ALTER TABLE backup_automation_settings ADD COLUMN IF NOT EXISTS automatic_enabled BOOLEAN DEFAULT TRUE"))
+        connection.execute(text("ALTER TABLE backup_automation_settings ADD COLUMN IF NOT EXISTS interval_days INTEGER DEFAULT 5"))
+        connection.execute(text("ALTER TABLE backup_automation_settings ADD COLUMN IF NOT EXISTS next_run_at TIMESTAMPTZ"))
+        connection.execute(text("ALTER TABLE backup_automation_settings ADD COLUMN IF NOT EXISTS last_auto_run_at TIMESTAMPTZ"))
+        connection.execute(text("ALTER TABLE backup_automation_settings ADD COLUMN IF NOT EXISTS last_auto_run_status VARCHAR(20)"))
+        connection.execute(text("ALTER TABLE backup_automation_settings ADD COLUMN IF NOT EXISTS last_error_message TEXT"))
+        connection.execute(text("ALTER TABLE backup_automation_settings ADD COLUMN IF NOT EXISTS scheduler_locked_at TIMESTAMPTZ"))
+        connection.execute(text("ALTER TABLE backup_automation_settings ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW()"))
+        connection.execute(text("ALTER TABLE backup_automation_settings ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW()"))
+        connection.execute(text("CREATE INDEX IF NOT EXISTS ix_backup_runs_deleted_from_storage_at ON backup_runs(deleted_from_storage_at)"))
+        connection.execute(
+            text(
+                """
+                INSERT INTO backup_automation_settings (id, automatic_enabled, interval_days, next_run_at)
+                VALUES (1, TRUE, 5, NOW() + INTERVAL '5 days')
+                ON CONFLICT (id) DO NOTHING
+                """
+            )
+        )
         connection.execute(text("UPDATE plots SET irrigation_type = 'none' WHERE irrigation_type IS NULL"))
         connection.execute(text("ALTER TABLE plots ALTER COLUMN irrigation_type SET DEFAULT 'none'"))
         connection.execute(text("UPDATE purchased_inputs SET purchase_date = CURRENT_DATE WHERE purchase_date IS NULL"))

@@ -18,7 +18,7 @@
 <div class="space-y-6">
     <section class="rounded-[2rem] bg-white p-6 shadow-panel">
         <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Backups</p>
-        <h3 class="mt-2 text-2xl font-semibold">Execucao manual</h3>
+        <h3 class="mt-2 text-2xl font-semibold">Execucao manual e automatica</h3>
         <p class="mt-3 text-sm leading-6 text-slate-500">
             O backup gera um dump do PostgreSQL e, quando houver diretorios locais relevantes, um pacote complementar de arquivos para o Supabase Storage, sempre pelo backend.
         </p>
@@ -35,9 +35,110 @@
                 </span>
             </div>
         </div>
+        <div class="mt-3 rounded-[1.25rem] border border-slate-200 bg-white px-4 py-4">
+            <div class="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                    <p class="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">Uso estimado do storage</p>
+                    <p class="mt-2 text-sm text-slate-500">
+                        {{ backup_storage_usage.total_label }} usados de {{ backup_storage_usage.limit_label }}
+                        {% if backup_storage_usage.is_over_limit %}
+                        <span class="font-medium text-rose-600">• limite atingido</span>
+                        {% else %}
+                        <span class="font-medium text-slate-700">• {{ backup_storage_usage.remaining_label }} livres</span>
+                        {% endif %}
+                    </p>
+                </div>
+                <span class="inline-flex rounded-full px-3 py-1.5 text-xs font-semibold {% if backup_storage_usage.tone == 'danger' %}bg-rose-100 text-rose-700{% elif backup_storage_usage.tone == 'warning' %}bg-amber-100 text-amber-700{% else %}bg-emerald-100 text-emerald-700{% endif %}">
+                    {{ backup_storage_usage.usage_percent }}%
+                </span>
+            </div>
+            <div class="mt-4 h-3 overflow-hidden rounded-full bg-slate-100">
+                <div
+                    class="h-full rounded-full transition-all {% if backup_storage_usage.tone == 'danger' %}bg-rose-500{% elif backup_storage_usage.tone == 'warning' %}bg-amber-500{% else %}bg-emerald-500{% endif %}"
+                    style="width: {{ backup_storage_usage.usage_percent }}%;"
+                    role="progressbar"
+                    aria-valuemin="0"
+                    aria-valuemax="100"
+                    aria-valuenow="{{ backup_storage_usage.usage_percent }}"
+                    aria-label="Uso estimado do storage de backup no Supabase"
+                ></div>
+            </div>
+            <div class="mt-4 grid gap-3 sm:grid-cols-3">
+                <div class="rounded-xl bg-slate-50 px-3 py-3">
+                    <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">Banco</p>
+                    <p class="mt-1 text-sm font-semibold text-slate-900">{{ backup_storage_usage.database_label }}</p>
+                </div>
+                <div class="rounded-xl bg-slate-50 px-3 py-3">
+                    <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">Arquivos</p>
+                    <p class="mt-1 text-sm font-semibold text-slate-900">{{ backup_storage_usage.files_label }}</p>
+                </div>
+                <div class="rounded-xl bg-slate-50 px-3 py-3">
+                    <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">Limite</p>
+                    <p class="mt-1 text-sm font-semibold text-slate-900">{{ backup_storage_usage.limit_label }}</p>
+                </div>
+            </div>
+            <p class="mt-3 text-xs leading-5 text-slate-400">
+                A barra considera o tamanho acumulado dos backups atualmente registrados no sistema e enviados aos buckets configurados.
+            </p>
+        </div>
+        <div class="mt-4 rounded-[1.25rem] border border-slate-200 bg-slate-50/80 px-4 py-4">
+            <div class="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                    <p class="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">Backup automatico</p>
+                    <p class="mt-2 text-sm text-slate-500">
+                        {% if backup_automation.enabled %}
+                        Proxima execucao prevista em <span class="font-semibold text-slate-800">{{ backup_automation.next_run_at_label }}</span>.
+                        {% else %}
+                        A automacao esta desativada no momento.
+                        {% endif %}
+                    </p>
+                </div>
+                <span class="inline-flex rounded-full px-3 py-1.5 text-xs font-semibold {% if backup_automation.enabled %}bg-emerald-100 text-emerald-700{% else %}bg-slate-200 text-slate-600{% endif %}">
+                    {% if backup_automation.enabled %}Ativo{% else %}Inativo{% endif %}
+                </span>
+            </div>
+            <div class="mt-4 grid gap-3 md:grid-cols-3">
+                <div class="rounded-xl bg-white px-3 py-3 ring-1 ring-slate-200">
+                    <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">Periodicidade</p>
+                    <p class="mt-1 text-sm font-semibold text-slate-900">A cada {{ backup_automation.interval_days }} dia(s)</p>
+                </div>
+                <div class="rounded-xl bg-white px-3 py-3 ring-1 ring-slate-200">
+                    <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">Ultima execucao automatica</p>
+                    <p class="mt-1 text-sm font-semibold text-slate-900">{{ backup_automation.last_auto_run_at_label }}</p>
+                </div>
+                <div class="rounded-xl bg-white px-3 py-3 ring-1 ring-slate-200">
+                    <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">Ultimo status</p>
+                    <p class="mt-1 text-sm font-semibold text-slate-900">{{ backup_automation.last_auto_run_status_label }}</p>
+                </div>
+            </div>
+            {% if backup_automation.last_error_message %}
+            <div class="mt-3 rounded-xl bg-rose-50 px-4 py-3 text-xs leading-5 text-rose-700">
+                <span class="font-semibold">Ultimo erro automatico:</span> {{ backup_automation.last_error_message }}
+            </div>
+            {% endif %}
+            <form method="post" action="/backups/automatico/configurar" class="mt-4 grid gap-3 lg:grid-cols-[auto_minmax(0,12rem)_auto] lg:items-end">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <label class="inline-flex items-center gap-3 rounded-xl bg-white px-4 py-3 text-sm text-slate-700 ring-1 ring-slate-200">
+                    <input type="checkbox" name="automatic_enabled" class="h-4 w-4 rounded border-slate-300 text-brand-500 focus:ring-brand-500" {% if backup_automation.enabled %}checked{% endif %}>
+                    <span class="font-medium">Ativar backup automatico</span>
+                </label>
+                <label class="block">
+                    <span class="mb-2 block text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Intervalo em dias</span>
+                    <input type="number" min="1" max="365" name="interval_days" value="{{ backup_automation.interval_days }}" class="w-full rounded-xl border-slate-200 bg-white" required>
+                </label>
+                <button type="submit" class="rounded-2xl bg-slate-900 px-5 py-3 font-semibold text-white hover:bg-slate-700">
+                    Salvar automacao
+                </button>
+            </form>
+        </div>
         <form method="post" action="/backups/executar" class="mt-6" data-backup-form>
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-            <button class="rounded-2xl bg-brand-500 px-5 py-3 font-semibold text-white hover:bg-brand-700">Executar backup agora</button>
+            <button
+                class="rounded-2xl px-5 py-3 font-semibold text-white {% if backup_storage_usage.is_over_limit %}cursor-not-allowed bg-slate-400{% else %}bg-brand-500 hover:bg-brand-700{% endif %}"
+                {% if backup_storage_usage.is_over_limit %}disabled{% endif %}
+            >
+                {% if backup_storage_usage.is_over_limit %}Limite de storage atingido{% else %}Executar backup agora{% endif %}
+            </button>
         </form>
         <div class="mt-4 flex items-center gap-2 text-xs text-slate-400">
             <button
@@ -97,7 +198,8 @@
             {# JSON pode trazer null: .get('files', {}) ainda retorna None se a chave existir com valor null #}
             {% set files_details = details.get('files') or {} %}
             {% set db_details = details.get('database') or {} %}
-            <article class="group px-4 py-3 transition-colors duration-150 hover:bg-white/75">
+            {% set storage_deletion = details.get('storage_deletion') or {} %}
+            <article class="group px-4 py-3 transition-colors duration-150 hover:bg-white/75 {% if run.deleted_from_storage_at %}bg-slate-50/70{% endif %}">
                 <div class="grid gap-3 md:grid-cols-[0.9fr_1.05fr_0.62fr_0.66fr_0.72fr_1.55fr_0.42fr] md:items-center">
                     <div class="min-w-0">
                         <p class="text-sm font-semibold text-slate-900">Execucao #{{ run.id }}</p>
@@ -120,8 +222,13 @@
                     </div>
                     <div class="flex flex-wrap items-center gap-2">
                         <span class="inline-flex rounded-full bg-slate-200 px-2.5 py-1 text-[11px] font-semibold text-slate-600">
-                            {{ run.trigger_source }}
+                            {{ item.trigger_source_label }}
                         </span>
+                        {% if run.deleted_from_storage_at %}
+                        <span class="inline-flex rounded-full bg-amber-100 px-2.5 py-1 text-[11px] font-semibold text-amber-700">
+                            Excluido do storage
+                        </span>
+                        {% endif %}
                         {% if run.error_message %}
                         <span class="inline-flex rounded-full bg-rose-50 px-2.5 py-1 text-[11px] font-semibold text-rose-700">
                             Erro
@@ -145,9 +252,18 @@
                     </div>
                     <div class="min-w-0">
                         <p class="break-all text-sm font-medium leading-5 text-slate-700" title="{{ run.database_object_path or 'Nao enviado' }}">
+                            {% if run.deleted_from_storage_at %}
+                            Removido do storage
+                            {% else %}
                             {{ run.database_object_path or 'Nao enviado' }}
+                            {% endif %}
                         </p>
                         <div class="mt-1 flex flex-wrap gap-1.5">
+                            {% if run.deleted_from_storage_at %}
+                            <span class="inline-flex rounded-full bg-amber-50 px-2 py-1 text-[11px] text-amber-700">
+                                {{ run.deleted_from_storage_at|datetime_sp }}
+                            </span>
+                            {% endif %}
                             {% if run.files_object_path %}
                             <span class="inline-flex max-w-full break-all rounded-full bg-white px-2 py-1 text-[11px] leading-4 text-slate-500" title="{{ run.files_object_path }}">
                                 {{ run.files_object_path }}
@@ -183,6 +299,14 @@
                 {% if run.error_message %}
                 <div class="mt-2 rounded-xl bg-rose-50 px-4 py-2.5 text-[11px] leading-relaxed text-rose-700">
                     <span class="mr-1 font-semibold">Detalhe do erro:</span>{{ run.error_message }}
+                </div>
+                {% endif %}
+                {% if run.deleted_from_storage_at %}
+                <div class="mt-2 rounded-xl bg-amber-50 px-4 py-2.5 text-[11px] leading-relaxed text-amber-700">
+                    <span class="mr-1 font-semibold">Exclusao automatica:</span>
+                    Removido do Supabase em {{ run.deleted_from_storage_at|datetime_sp }} por {{ run.deleted_from_storage_source or 'sistema' }}
+                    {% if run.deleted_from_storage_reason == 'storage_limit' %} apos atingir o limite de armazenamento.{% else %}.{% endif %}
+                    {% if storage_deletion.get('warnings') %} {{ storage_deletion.get('warnings')|join(' ') }}{% endif %}
                 </div>
                 {% endif %}
             </article>

@@ -74,7 +74,12 @@ from app.services.asaas_customers import (
 )
 from app.services.asaas_payment_sync import upsert_asaas_payment_row, user_owns_asaas_payment_payload
 from app.services.asaas_payments import create_asaas_payment, get_asaas_payment, is_asaas_status_paid
-from app.services.backup_service import delete_backup_run, execute_backup
+from app.services.backup_service import (
+    delete_backup_run,
+    execute_backup,
+    get_or_create_backup_automation_setting,
+    update_backup_automation_setting,
+)
 from app.services.dashboard import build_dashboard_context
 from app.services.finance_overview import (
     _in_extract_period,
@@ -648,6 +653,86 @@ def _backup_details(value: str | None) -> dict:
         return parsed if isinstance(parsed, dict) else {}
     except json.JSONDecodeError:
         return {}
+
+
+BACKUP_STORAGE_LIMIT_BYTES = 50 * 1024 * 1024 * 1024
+
+
+def _format_storage_bytes(value: int | float | None) -> str:
+    size = float(value or 0)
+    units = ["B", "KB", "MB", "GB", "TB"]
+    unit_index = 0
+    while size >= 1024 and unit_index < len(units) - 1:
+        size /= 1024
+        unit_index += 1
+    precision = 0 if unit_index == 0 else 2
+    return f"{size:.{precision}f} {units[unit_index]}"
+
+
+def _build_backup_storage_usage(repo: FarmRepository) -> dict[str, object]:
+    summary = repo.summarize_backup_storage_usage()
+    database_bytes = int(summary.get("database_bytes", 0) or 0)
+    files_bytes = int(summary.get("files_bytes", 0) or 0)
+    total_bytes = database_bytes + files_bytes
+    limit_bytes = BACKUP_STORAGE_LIMIT_BYTES
+    usage_ratio = (total_bytes / limit_bytes) if limit_bytes > 0 else 0.0
+    usage_percent = min(usage_ratio * 100, 100.0)
+    remaining_bytes = max(limit_bytes - total_bytes, 0)
+    is_over_limit = total_bytes >= limit_bytes
+    tone = "danger" if usage_ratio >= 0.9 else "warning" if usage_ratio >= 0.75 else "ok"
+    return {
+        "limit_bytes": limit_bytes,
+        "database_bytes": database_bytes,
+        "files_bytes": files_bytes,
+        "total_bytes": total_bytes,
+        "remaining_bytes": remaining_bytes,
+        "usage_percent": round(usage_percent, 2),
+        "usage_ratio": usage_ratio,
+        "is_over_limit": is_over_limit,
+        "limit_label": _format_storage_bytes(limit_bytes),
+        "database_label": _format_storage_bytes(database_bytes),
+        "files_label": _format_storage_bytes(files_bytes),
+        "total_label": _format_storage_bytes(total_bytes),
+        "remaining_label": _format_storage_bytes(remaining_bytes),
+        "tone": tone,
+    }
+
+
+def _backup_status_label(value: str | None) -> str:
+    return {
+        "success": "Concluido",
+        "partial": "Parcial",
+        "failed": "Falhou",
+        "running": "Em andamento",
+    }.get((value or "").lower(), value or "-")
+
+
+def _backup_trigger_source_label(value: str | None) -> str:
+    return {
+        "web_manual": "Manual (web)",
+        "automatic": "Automatico",
+        "cli": "CLI",
+        "manual": "Manual",
+    }.get((value or "").lower(), value or "-")
+
+
+def _build_backup_automation_context(repo: FarmRepository, db: Session) -> dict[str, object]:
+    setting = get_or_create_backup_automation_setting(db)
+    latest_auto_run = repo.get_latest_automatic_backup_run()
+    next_run_at = setting.next_run_at
+    last_auto_run_at = setting.last_auto_run_at
+    return {
+        "enabled": bool(setting.automatic_enabled),
+        "interval_days": int(setting.interval_days or 5),
+        "next_run_at": next_run_at,
+        "next_run_at_label": format_app_datetime(next_run_at) if next_run_at else "-",
+        "last_auto_run_at": last_auto_run_at,
+        "last_auto_run_at_label": format_app_datetime(last_auto_run_at) if last_auto_run_at else "-",
+        "last_auto_run_status": setting.last_auto_run_status,
+        "last_auto_run_status_label": _backup_status_label(setting.last_auto_run_status),
+        "last_error_message": setting.last_error_message,
+        "latest_auto_run_id": latest_auto_run.id if latest_auto_run else None,
+    }
 
 
 def _sort_collection_desc(items, *getters):
@@ -6978,9 +7063,15 @@ def backups_page(
     page = min(page, total_pages)
     offset = (page - 1) * per_page
     history = [
-        {"run": item, "details": _backup_details(item.details_json)}
+        {
+            "run": item,
+            "details": _backup_details(item.details_json),
+            "trigger_source_label": _backup_trigger_source_label(item.trigger_source),
+        }
         for item in repo.list_backup_runs(limit=per_page, offset=offset)
     ]
+    storage_usage = _build_backup_storage_usage(repo)
+    automation = _build_backup_automation_context(repo, db)
     return templates.TemplateResponse(
         "backups.html",
         _base_context(
@@ -6992,6 +7083,8 @@ def backups_page(
             backup_history=history,
             backup_db_bucket=settings.supabase_bucket_db,
             backup_files_bucket=settings.supabase_bucket_files,
+            backup_storage_usage=storage_usage,
+            backup_automation=automation,
             backup_page=page,
             backup_total_pages=total_pages,
             backup_total_runs=total_runs,
@@ -7000,6 +7093,38 @@ def backups_page(
             _repo=repo,
         ),
     )
+
+
+@router.post("/backups/automatico/configurar")
+def configure_backup_automation_action(
+    request: Request,
+    csrf_token: str = Form(...),
+    automatic_enabled: str | None = Form(None),
+    interval_days: str = Form("5"),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    denied = _require_admin(request, user)
+    if denied:
+        return denied
+    validate_csrf(request, csrf_token)
+    try:
+        parsed_interval = max(1, min(int(interval_days or "5"), 365))
+    except (TypeError, ValueError):
+        _flash(request, "error", "Informe um intervalo valido entre 1 e 365 dias.")
+        return _redirect("/backups")
+
+    enabled = automatic_enabled == "on"
+    setting = update_backup_automation_setting(db, automatic_enabled=enabled, interval_days=parsed_interval)
+    if setting.automatic_enabled:
+        _flash(
+            request,
+            "success",
+            f"Backup automatico configurado para executar a cada {setting.interval_days} dia(s).",
+        )
+    else:
+        _flash(request, "success", "Backup automatico desativado com sucesso.")
+    return _redirect("/backups")
 
 
 @router.post("/backups/executar")
@@ -7013,6 +7138,18 @@ def execute_backup_action(
     if denied:
         return denied
     validate_csrf(request, csrf_token)
+    storage_usage = _build_backup_storage_usage(_repository(db))
+    if storage_usage["is_over_limit"]:
+        _flash(
+            request,
+            "error",
+            (
+                "O limite estimado de armazenamento para backups no Supabase foi atingido "
+                f"({storage_usage['total_label']} de {storage_usage['limit_label']}). "
+                "Exclua backups antigos antes de tentar novamente."
+            ),
+        )
+        return _redirect("/backups")
     try:
         run = execute_backup(db, initiated_by=user, trigger_source="web_manual")
     except Exception as exc:

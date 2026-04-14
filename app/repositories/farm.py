@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session, joinedload
 from app.models import (
     AgronomicProfile,
     BackupRun,
+    BackupAutomationSetting,
     CoffeeCommercializationRecord,
     CoffeeVariety,
     CropSeason,
@@ -64,6 +65,16 @@ class FarmRepository:
     def count_backup_runs(self) -> int:
         return self.db.query(func.count(BackupRun.id)).scalar() or 0
 
+    def get_backup_automation_setting(self) -> BackupAutomationSetting:
+        setting = self.db.query(BackupAutomationSetting).filter(BackupAutomationSetting.id == 1).first()
+        if setting:
+            return setting
+        setting = BackupAutomationSetting(id=1, automatic_enabled=True, interval_days=5)
+        self.db.add(setting)
+        self.db.commit()
+        self.db.refresh(setting)
+        return setting
+
     def get_backup_run(self, backup_run_id: int) -> BackupRun | None:
         return (
             self.db.query(BackupRun)
@@ -81,6 +92,38 @@ class FarmRepository:
         if offset:
             query = query.offset(offset)
         return query.limit(limit).all()
+
+    def summarize_backup_storage_usage(self) -> dict[str, int]:
+        database_bytes, files_bytes = (
+            self.db.query(
+                func.coalesce(func.sum(BackupRun.database_size_bytes), 0),
+                func.coalesce(func.sum(BackupRun.files_size_bytes), 0),
+            )
+            .filter(BackupRun.deleted_from_storage_at.is_(None))
+            .one()
+        )
+        return {
+            "database_bytes": int(database_bytes or 0),
+            "files_bytes": int(files_bytes or 0),
+        }
+
+    def get_oldest_active_backup_run(self) -> BackupRun | None:
+        return (
+            self.db.query(BackupRun)
+            .filter(BackupRun.deleted_from_storage_at.is_(None))
+            .filter(or_(BackupRun.database_object_path.is_not(None), BackupRun.files_object_path.is_not(None)))
+            .order_by(BackupRun.started_at.asc(), BackupRun.id.asc())
+            .first()
+        )
+
+    def get_latest_automatic_backup_run(self) -> BackupRun | None:
+        return (
+            self.db.query(BackupRun)
+            .options(joinedload(BackupRun.initiated_by_user))
+            .filter(BackupRun.trigger_source == "automatic")
+            .order_by(BackupRun.started_at.desc(), BackupRun.id.desc())
+            .first()
+        )
 
     def get_user(self, user_id: int) -> User | None:
         return self.db.query(User).filter(User.id == user_id).first()

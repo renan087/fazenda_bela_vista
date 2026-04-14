@@ -1,5 +1,6 @@
 from app.models.asaas_payment import AsaasPayment
 from app.models.agronomic_profile import AgronomicProfile
+from app.models.backup_automation_setting import BackupAutomationSetting
 from app.models.backup_run import BackupRun
 from app.models.coffee_commercialization import CoffeeCommercializationRecord
 from app.models.coffee_variety import CoffeeVariety
@@ -39,6 +40,7 @@ from app.models.user import User
 __all__ = [
     "AsaasPayment",
     "AgronomicProfile",
+    "BackupAutomationSetting",
     "BackupRun",
     "CoffeeCommercializationRecord",
     "CoffeeVariety",

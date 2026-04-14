@@ -1,6 +1,7 @@
+import asyncio
 import logging
 import traceback
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 
 from fastapi import FastAPI, Request
 from fastapi.responses import HTMLResponse
@@ -17,6 +18,7 @@ from app.routers.asaas_webhook import router as asaas_webhook_router
 from app.routers.api import router as api_router
 from app.routers.auth import api_router as auth_api_router
 from app.routers.auth import router as auth_router
+from app.services.backup_service import run_backup_automation_loop
 from app.web.routes import router as web_router
 
 logger = logging.getLogger(__name__)
@@ -29,7 +31,13 @@ async def lifespan(app: FastAPI):
     with SessionLocal() as db:
         seed_admin(db)
         seed_demo_data(db)
-    yield
+    backup_task = asyncio.create_task(run_backup_automation_loop())
+    try:
+        yield
+    finally:
+        backup_task.cancel()
+        with suppress(asyncio.CancelledError):
+            await backup_task
 
 
 app = FastAPI(title=settings.app_name, lifespan=lifespan)

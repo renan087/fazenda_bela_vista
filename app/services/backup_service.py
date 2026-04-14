@@ -1,11 +1,12 @@
-import gzip
+import asyncio
 import json
+import gzip
 import logging
 import shutil
 import subprocess
 import tempfile
 import zipfile
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote
@@ -14,7 +15,8 @@ from urllib.request import Request, urlopen
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
-from app.models import BackupRun, User
+from app.models import BackupAutomationSetting, BackupRun, User
+from app.repositories.farm import FarmRepository
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -25,6 +27,19 @@ LOCAL_BACKUP_DIR_CANDIDATES = [
     "uploads",
     "storage/uploads",
 ]
+AUTOMATION_DEFAULT_INTERVAL_DAYS = 5
+AUTOMATION_POLL_INTERVAL_SECONDS = 60
+AUTOMATION_LOCK_TTL = timedelta(hours=2)
+AUTOMATION_TRIGGER_SOURCE = "automatic"
+STORAGE_LIMIT_ERROR_HINTS = (
+    "limit",
+    "quota",
+    "exceed",
+    "insufficient",
+    "storage",
+    "space",
+    "50 gb",
+)
 
 
 def execute_backup(
@@ -38,6 +53,9 @@ def execute_backup(
         status="running",
         database_bucket=settings.supabase_bucket_db,
         files_bucket=settings.supabase_bucket_files,
+        deleted_from_storage_at=None,
+        deleted_from_storage_reason=None,
+        deleted_from_storage_source=None,
     )
     db.add(run)
     db.commit()
@@ -85,9 +103,123 @@ def execute_backup(
     return run
 
 
-def delete_backup_run(db: Session, run: BackupRun) -> list[str]:
+def get_or_create_backup_automation_setting(db: Session) -> BackupAutomationSetting:
+    setting = db.query(BackupAutomationSetting).filter(BackupAutomationSetting.id == 1).first()
+    if setting:
+        changed = False
+        interval_days = _normalize_interval_days(setting.interval_days)
+        if setting.interval_days != interval_days:
+            setting.interval_days = interval_days
+            changed = True
+        if setting.automatic_enabled and setting.next_run_at is None:
+            setting.next_run_at = _utc_now() + timedelta(days=setting.interval_days)
+            changed = True
+        if changed:
+            db.add(setting)
+            db.commit()
+            db.refresh(setting)
+        return setting
+    setting = BackupAutomationSetting(
+        id=1,
+        automatic_enabled=True,
+        interval_days=AUTOMATION_DEFAULT_INTERVAL_DAYS,
+        next_run_at=_utc_now() + timedelta(days=AUTOMATION_DEFAULT_INTERVAL_DAYS),
+    )
+    db.add(setting)
+    db.commit()
+    db.refresh(setting)
+    return setting
+
+
+def update_backup_automation_setting(db: Session, automatic_enabled: bool, interval_days: int) -> BackupAutomationSetting:
+    setting = get_or_create_backup_automation_setting(db)
+    interval_days = _normalize_interval_days(interval_days)
+    now = _utc_now()
+    setting.automatic_enabled = automatic_enabled
+    setting.interval_days = interval_days
+    setting.scheduler_locked_at = None
+    setting.next_run_at = (now + timedelta(days=interval_days)) if automatic_enabled else None
+    db.add(setting)
+    db.commit()
+    db.refresh(setting)
+    return setting
+
+
+async def run_backup_automation_loop() -> None:
+    while True:
+        try:
+            await asyncio.to_thread(process_due_automatic_backup_tick)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.exception("Falha inesperada no loop de backup automatico.")
+        await asyncio.sleep(AUTOMATION_POLL_INTERVAL_SECONDS)
+
+
+def process_due_automatic_backup_tick() -> BackupRun | None:
+    from app.db.session import SessionLocal
+
+    with SessionLocal() as db:
+        return execute_due_automatic_backup(db)
+
+
+def execute_due_automatic_backup(db: Session) -> BackupRun | None:
+    setting = _claim_due_automatic_backup(db)
+    if not setting:
+        return None
+
+    run: BackupRun | None = None
+    error_message: str | None = None
+    try:
+        run = execute_automatic_backup_cycle(db)
+        error_message = run.error_message if run and run.error_message else None
+        return run
+    except Exception as exc:
+        logger.exception("Falha ao executar backup automatico.")
+        error_message = str(exc)
+        return None
+    finally:
+        _finalize_due_automatic_backup(db, run=run, error_message=error_message)
+
+
+def execute_automatic_backup_cycle(db: Session) -> BackupRun:
+    repo = FarmRepository(db)
+    if _is_storage_limit_reached(db):
+        oldest = repo.get_oldest_active_backup_run()
+        if oldest:
+            mark_backup_run_storage_deleted(
+                db,
+                oldest,
+                reason="storage_limit",
+                source=AUTOMATION_TRIGGER_SOURCE,
+            )
+
+    run = execute_backup(db, initiated_by=None, trigger_source=AUTOMATION_TRIGGER_SOURCE)
+    if _run_failed_due_to_storage_limit(run):
+        oldest = repo.get_oldest_active_backup_run()
+        if oldest:
+            mark_backup_run_storage_deleted(
+                db,
+                oldest,
+                reason="storage_limit",
+                source=AUTOMATION_TRIGGER_SOURCE,
+            )
+            run = execute_backup(db, initiated_by=None, trigger_source=AUTOMATION_TRIGGER_SOURCE)
+    return run
+
+
+def mark_backup_run_storage_deleted(
+    db: Session,
+    run: BackupRun,
+    *,
+    reason: str,
+    source: str,
+) -> list[str]:
     warnings: list[str] = []
     storage_errors: list[str] = []
+
+    if run.deleted_from_storage_at:
+        return warnings
 
     objects_to_delete = [
         ("banco", run.database_bucket, run.database_object_path),
@@ -115,9 +247,142 @@ def delete_backup_run(db: Session, run: BackupRun) -> list[str]:
     if storage_errors:
         raise RuntimeError(" ".join(storage_errors))
 
+    deleted_at = _utc_now()
+    run.deleted_from_storage_at = deleted_at
+    run.deleted_from_storage_reason = reason
+    run.deleted_from_storage_source = source
+    run.details_json = _with_storage_deletion_details(
+        run.details_json,
+        deleted_at=deleted_at,
+        reason=reason,
+        source=source,
+        warnings=warnings,
+    )
+    db.add(run)
+    db.commit()
+    db.refresh(run)
+    return warnings
+
+
+def delete_backup_run(db: Session, run: BackupRun) -> list[str]:
+    if run.deleted_from_storage_at:
+        db.delete(run)
+        db.commit()
+        return []
+
+    warnings = mark_backup_run_storage_deleted(
+        db,
+        run,
+        reason="manual_delete",
+        source="manual",
+    )
     db.delete(run)
     db.commit()
     return warnings
+
+
+def _claim_due_automatic_backup(db: Session) -> BackupAutomationSetting | None:
+    get_or_create_backup_automation_setting(db)
+    now = _utc_now()
+    setting = (
+        db.query(BackupAutomationSetting)
+        .filter(BackupAutomationSetting.id == 1)
+        .with_for_update()
+        .first()
+    )
+    if not setting:
+        return None
+
+    setting.interval_days = _normalize_interval_days(setting.interval_days)
+    if not setting.automatic_enabled:
+        setting.scheduler_locked_at = None
+        db.add(setting)
+        db.commit()
+        return None
+
+    if setting.next_run_at is None:
+        setting.next_run_at = now + timedelta(days=setting.interval_days)
+        db.add(setting)
+        db.commit()
+        return None
+
+    if setting.scheduler_locked_at and setting.scheduler_locked_at > now - AUTOMATION_LOCK_TTL:
+        return None
+
+    has_running = db.query(BackupRun.id).filter(BackupRun.status == "running").first() is not None
+    if has_running or setting.next_run_at > now:
+        return None
+
+    setting.scheduler_locked_at = now
+    db.add(setting)
+    db.commit()
+    db.refresh(setting)
+    return setting
+
+
+def _finalize_due_automatic_backup(
+    db: Session,
+    *,
+    run: BackupRun | None,
+    error_message: str | None,
+) -> None:
+    setting = get_or_create_backup_automation_setting(db)
+    now = _utc_now()
+    setting.scheduler_locked_at = None
+    setting.last_auto_run_at = now
+    setting.last_auto_run_status = run.status if run else "failed"
+    setting.last_error_message = error_message
+    if setting.automatic_enabled:
+        setting.next_run_at = now + timedelta(days=_normalize_interval_days(setting.interval_days))
+    else:
+        setting.next_run_at = None
+    db.add(setting)
+    db.commit()
+
+
+def _is_storage_limit_reached(db: Session) -> bool:
+    repo = FarmRepository(db)
+    usage = repo.summarize_backup_storage_usage()
+    total_bytes = int(usage.get("database_bytes", 0) or 0) + int(usage.get("files_bytes", 0) or 0)
+    return total_bytes >= 50 * 1024 * 1024 * 1024
+
+
+def _run_failed_due_to_storage_limit(run: BackupRun | None) -> bool:
+    if not run or not run.error_message:
+        return False
+    lowered = run.error_message.lower()
+    return any(hint in lowered for hint in STORAGE_LIMIT_ERROR_HINTS)
+
+
+def _with_storage_deletion_details(
+    raw_details: str | None,
+    *,
+    deleted_at: datetime,
+    reason: str,
+    source: str,
+    warnings: list[str],
+) -> str:
+    try:
+        parsed = json.loads(raw_details) if raw_details else {}
+    except json.JSONDecodeError:
+        parsed = {}
+    if not isinstance(parsed, dict):
+        parsed = {}
+    parsed["storage_deletion"] = {
+        "deleted_at": deleted_at.isoformat(),
+        "reason": reason,
+        "source": source,
+        "warnings": warnings,
+    }
+    return json.dumps(parsed, ensure_ascii=False)
+
+
+def _normalize_interval_days(value: int | None) -> int:
+    try:
+        parsed = int(value or AUTOMATION_DEFAULT_INTERVAL_DAYS)
+    except (TypeError, ValueError):
+        parsed = AUTOMATION_DEFAULT_INTERVAL_DAYS
+    return max(1, min(parsed, 365))
 
 
 def _validate_storage_configuration() -> None:
