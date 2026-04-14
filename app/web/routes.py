@@ -7220,42 +7220,52 @@ def start_backup_action(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user_web),
 ):
-    denied = _require_admin(request, user)
-    if denied:
-        return JSONResponse({"ok": False, "error": "Acesso negado."}, status_code=403)
-    validate_csrf(request, csrf_token)
-    storage_usage = _build_backup_storage_usage(_repository(db))
-    if storage_usage["is_over_limit"]:
-        return JSONResponse(
-            {
-                "ok": False,
-                "error": (
-                    "O limite estimado de armazenamento para backups no Supabase foi atingido. "
-                    "Exclua backups antigos antes de tentar novamente."
-                ),
-            },
-            status_code=409,
-        )
-    running = db.query(BackupRun).filter(BackupRun.status == "running").order_by(BackupRun.started_at.desc()).first()
-    if running:
+    try:
+        denied = _require_admin(request, user)
+        if denied:
+            return JSONResponse({"ok": False, "error": "Acesso negado."}, status_code=403)
+        validate_csrf(request, csrf_token)
+        storage_usage = _build_backup_storage_usage(_repository(db))
+        if storage_usage["is_over_limit"]:
+            return JSONResponse(
+                {
+                    "ok": False,
+                    "error": (
+                        "O limite estimado de armazenamento para backups no Supabase foi atingido. "
+                        "Exclua backups antigos antes de tentar novamente."
+                    ),
+                },
+                status_code=409,
+            )
+        running = db.query(BackupRun).filter(BackupRun.status == "running").order_by(BackupRun.started_at.desc()).first()
+        if running:
+            return JSONResponse(
+                {
+                    "ok": True,
+                    "run_id": running.id,
+                    "already_running": True,
+                    "progress": _build_backup_progress_context(running),
+                }
+            )
+        created_run = _create_backup_run(db, initiated_by=user, trigger_source="web_manual")
+        background_tasks.add_task(process_backup_run_in_background, created_run.id)
         return JSONResponse(
             {
                 "ok": True,
-                "run_id": running.id,
-                "already_running": True,
-                "progress": _build_backup_progress_context(running),
+                "run_id": int(created_run.id),
+                "already_running": False,
+                "progress": _build_backup_progress_context(created_run),
             }
         )
-    created_run = _create_backup_run(db, initiated_by=user, trigger_source="web_manual")
-    background_tasks.add_task(process_backup_run_in_background, created_run.id)
-    return JSONResponse(
-        {
-            "ok": True,
-            "run_id": int(created_run.id),
-            "already_running": False,
-            "progress": _build_backup_progress_context(created_run),
-        }
-    )
+    except HTTPException as exc:
+        detail = exc.detail if isinstance(exc.detail, str) else "Não foi possível iniciar o backup."
+        return JSONResponse({"ok": False, "error": detail}, status_code=exc.status_code)
+    except Exception:
+        logger.exception("Falha inesperada ao iniciar backup manual assíncrono.")
+        return JSONResponse(
+            {"ok": False, "error": "Não foi possível iniciar o backup agora. Tente novamente em instantes."},
+            status_code=500,
+        )
 
 
 @router.get("/backups/{backup_run_id}/status")
@@ -7265,13 +7275,23 @@ def backup_status_api(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user_web),
 ):
-    denied = _require_admin(request, user)
-    if denied:
-        return JSONResponse({"ok": False, "error": "Acesso negado."}, status_code=403)
-    run = _repository(db).get_backup_run(backup_run_id)
-    if not run:
-        return JSONResponse({"ok": False, "error": "Backup não encontrado."}, status_code=404)
-    return JSONResponse({"ok": True, "progress": _build_backup_progress_context(run)})
+    try:
+        denied = _require_admin(request, user)
+        if denied:
+            return JSONResponse({"ok": False, "error": "Acesso negado."}, status_code=403)
+        run = _repository(db).get_backup_run(backup_run_id)
+        if not run:
+            return JSONResponse({"ok": False, "error": "Backup não encontrado."}, status_code=404)
+        return JSONResponse({"ok": True, "progress": _build_backup_progress_context(run)})
+    except HTTPException as exc:
+        detail = exc.detail if isinstance(exc.detail, str) else "Não foi possível consultar o backup."
+        return JSONResponse({"ok": False, "error": detail}, status_code=exc.status_code)
+    except Exception:
+        logger.exception("Falha inesperada ao consultar o progresso do backup. run_id=%s", backup_run_id)
+        return JSONResponse(
+            {"ok": False, "error": "Não foi possível consultar o progresso do backup agora."},
+            status_code=500,
+        )
 
 
 @router.post("/backups/{backup_run_id}/excluir")

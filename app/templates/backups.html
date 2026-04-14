@@ -503,6 +503,22 @@
         let pollTimer = null;
         let backupRunning = false;
 
+        const readJsonResponse = async (response) => {
+            const contentType = String(response.headers.get('content-type') || '').toLowerCase();
+            const raw = await response.text();
+            if (response.redirected || raw.trim().startsWith('<')) {
+                throw new Error('Sua sessão foi interrompida. Atualize a página e tente novamente.');
+            }
+            if (!contentType.includes('application/json')) {
+                throw new Error('A resposta do servidor veio em um formato inesperado.');
+            }
+            try {
+                return JSON.parse(raw);
+            } catch (error) {
+                throw new Error('Não foi possível interpretar a resposta do servidor.');
+            }
+        };
+
         const stopPolling = () => {
             if (pollTimer) {
                 window.clearTimeout(pollTimer);
@@ -556,10 +572,10 @@
                     credentials: 'same-origin',
                     cache: 'no-store',
                 });
+                const data = await readJsonResponse(response);
                 if (!response.ok) {
-                    throw new Error('Falha ao consultar o progresso do backup.');
+                    throw new Error(data?.error || 'Falha ao consultar o progresso do backup.');
                 }
-                const data = await response.json();
                 if (!data.ok) {
                     throw new Error(data.error || 'Falha ao consultar o progresso do backup.');
                 }
@@ -611,10 +627,13 @@
                 const response = await fetch('/backups/executar/iniciar', {
                     method: 'POST',
                     body: new FormData(form),
-                    headers: { 'X-Requested-With': 'fetch' },
+                    headers: {
+                        'X-Requested-With': 'fetch',
+                        'Accept': 'application/json',
+                    },
                     credentials: 'same-origin',
                 });
-                const data = await response.json();
+                const data = await readJsonResponse(response);
                 if (!response.ok || !data.ok || !data.run_id) {
                     throw new Error(data?.error || 'Não foi possível iniciar o backup.');
                 }
