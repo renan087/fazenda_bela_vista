@@ -39,6 +39,7 @@ from app.db.session import get_db
 from app.models import (
     AsaasPayment,
     AgronomicProfile,
+    BackupRun,
     CoffeeCommercializationRecord,
     CoffeeVariety,
     CropSeason,
