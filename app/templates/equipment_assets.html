@@ -79,15 +79,9 @@
                                         <option value="baixado" {% if selected_asset_status == 'baixado' %}selected{% endif %}>Baixado</option>
                                     </select>
                                 </label>
-                                <label class="stock-filter-field stock-filter-field-input {% if assets_search_value %}is-filtered{% endif %}">
+                                <label class="stock-filter-field {% if assets_search_value %}is-filtered{% endif %}">
                                     <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Busca</span>
-                                    <div class="stock-search-field">
-                                        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
-                                            <circle cx="8.5" cy="8.5" r="5.75"></circle>
-                                            <path d="M13 13l4 4"></path>
-                                        </svg>
-                                        <input type="search" name="assets_search" value="{{ assets_search_value }}" autocomplete="off" placeholder="Buscar patrimônio, fazenda, fabricante, modelo ou observação" data-assets-history-search>
-                                    </div>
+                                    <input type="search" name="assets_search" value="{{ assets_search_value }}" autocomplete="off" placeholder="Buscar patrimônio, fabricante, modelo…" class="w-full rounded-xl border-slate-200 bg-white" data-assets-history-search>
                                 </label>
                                 <div class="stock-filter-field stock-filter-field-actions flex flex-nowrap items-end gap-3">
                                     <button type="submit" class="shrink-0 rounded-xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white hover:bg-slate-700">Filtrar</button>
