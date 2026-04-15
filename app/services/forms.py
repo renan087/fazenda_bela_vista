@@ -710,16 +710,21 @@ def update_purchased_input(repository: FarmRepository, item: PurchasedInput, for
 
 def create_equipment_asset(repository: FarmRepository, form: dict) -> EquipmentAsset:
     payment_condition, payment_method, installment_count, installment_frequency, first_installment_date = _normalize_finance_schedule_fields(form)
+    finance_category = form.get("finance_category") or "Máquinas e Equipamentos"
 
     asset = EquipmentAsset(
         farm_id=form.get("farm_id"),
         finance_account_id=form.get("finance_account_id"),
         name=form["name"],
         category=form["category"],
+        subtype=form.get("subtype"),
         manufacturer=form.get("manufacturer"),
         manufacture_year=form.get("manufacture_year"),
         brand_model=form.get("brand_model"),
         asset_code=form.get("asset_code"),
+        measurement_label=form.get("measurement_label"),
+        measurement_value=form.get("measurement_value"),
+        measurement_unit=form.get("measurement_unit"),
         acquisition_date=date.fromisoformat(form["acquisition_date"]) if form.get("acquisition_date") else None,
         acquisition_value=form.get("acquisition_value"),
         status=form.get("status") or "ativo",
@@ -737,7 +742,7 @@ def create_equipment_asset(repository: FarmRepository, form: dict) -> EquipmentA
             operation_type="despesa",
             launch_date=asset.acquisition_date or today_in_app_timezone(),
             amount=asset.acquisition_value,
-            category="Máquinas e Equipamentos",
+            category=finance_category,
             product_service=f"Aquisição de {asset.name}",
             description=form.get("notes") or "",
             payment_condition=payment_condition,
@@ -767,6 +772,7 @@ def create_equipment_asset(repository: FarmRepository, form: dict) -> EquipmentA
 
 def update_equipment_asset(repository: FarmRepository, asset: EquipmentAsset, form: dict) -> EquipmentAsset:
     payment_condition, payment_method, installment_count, installment_frequency, first_installment_date = _normalize_finance_schedule_fields(form)
+    finance_category = form.get("finance_category") or "Máquinas e Equipamentos"
 
     updated_asset = repository.update(
         asset,
@@ -775,10 +781,14 @@ def update_equipment_asset(repository: FarmRepository, asset: EquipmentAsset, fo
             "finance_account_id": form.get("finance_account_id"),
             "name": form["name"],
             "category": form["category"],
+            "subtype": form.get("subtype"),
             "manufacturer": form.get("manufacturer"),
             "manufacture_year": form.get("manufacture_year"),
             "brand_model": form.get("brand_model"),
             "asset_code": form.get("asset_code"),
+            "measurement_label": form.get("measurement_label"),
+            "measurement_value": form.get("measurement_value"),
+            "measurement_unit": form.get("measurement_unit"),
             "acquisition_date": date.fromisoformat(form["acquisition_date"]) if form.get("acquisition_date") else None,
             "acquisition_value": form.get("acquisition_value"),
             "status": form.get("status") or "ativo",
@@ -797,6 +807,7 @@ def update_equipment_asset(repository: FarmRepository, asset: EquipmentAsset, fo
                 tx.finance_account_id = form.get("finance_account_id")
                 tx.launch_date = updated_asset.acquisition_date or today_in_app_timezone()
                 tx.amount = updated_asset.acquisition_value
+                tx.category = finance_category
                 tx.product_service = f"Aquisição de {updated_asset.name}"
                 tx.description = form.get("notes") or ""
                 tx.payment_condition = payment_condition
@@ -825,7 +836,7 @@ def update_equipment_asset(repository: FarmRepository, asset: EquipmentAsset, fo
                 operation_type="despesa",
                 launch_date=updated_asset.acquisition_date or today_in_app_timezone(),
                 amount=updated_asset.acquisition_value,
-                category="Máquinas e Equipamentos",
+                category=finance_category,
                 product_service=f"Aquisição de {updated_asset.name}",
                 description=form.get("notes") or "",
                 payment_condition=payment_condition,

@@ -187,6 +187,165 @@ EQUIPMENT_ASSET_CATEGORY_OPTIONS = [
     "Silo",
     "Veículo",
 ]
+EQUIPMENT_ASSET_STATUS_OPTIONS = [
+    "ativo",
+    "em_manutencao",
+    "em_construcao",
+    "baixado",
+]
+EQUIPMENT_ASSET_CATEGORY_PROFILES = {
+    "Benfeitoria": {
+        "name_label": "Nome da benfeitoria",
+        "name_placeholder": "Ex.: Casa sede da fazenda",
+        "subtype_label": "Tipo de benfeitoria",
+        "brand_model_label": "Referência interna",
+        "manufacturer_label": "Construtora / responsável",
+        "manufacture_year_label": "Ano de início",
+        "acquisition_label": "Data de construção / início",
+        "measurement_field_label": "Medida da benfeitoria",
+        "show_manufacturer": False,
+        "show_brand_model": False,
+        "show_manufacture_year": False,
+        "allowed_statuses": ["ativo", "em_manutencao", "em_construcao", "baixado"],
+        "finance_category": "Construção de Benfeitorias",
+        "subtypes": [
+            {"value": "casa_sede", "label": "Casa sede", "measurement_label": "Área construída", "unit_mode": "fixed", "units": ["m2"], "default_unit": "m2"},
+            {"value": "casa_funcionario", "label": "Casa de funcionário", "measurement_label": "Área construída", "unit_mode": "fixed", "units": ["m2"], "default_unit": "m2"},
+            {"value": "deposito", "label": "Depósito", "measurement_label": "Área construída", "unit_mode": "fixed", "units": ["m2"], "default_unit": "m2"},
+            {"value": "galpao", "label": "Galpão", "measurement_label": "Área construída", "unit_mode": "fixed", "units": ["m2"], "default_unit": "m2"},
+            {"value": "armazem", "label": "Armazém", "measurement_label": "Área construída", "unit_mode": "fixed", "units": ["m2"], "default_unit": "m2"},
+            {"value": "terreiro", "label": "Terreiro", "measurement_label": "Área útil", "unit_mode": "fixed", "units": ["m2"], "default_unit": "m2"},
+            {"value": "tulha", "label": "Tulha", "measurement_label": "Área construída", "unit_mode": "fixed", "units": ["m2"], "default_unit": "m2"},
+            {"value": "curral", "label": "Curral", "measurement_label": "Área útil", "unit_mode": "fixed", "units": ["m2"], "default_unit": "m2"},
+            {"value": "oficina", "label": "Oficina", "measurement_label": "Área construída", "unit_mode": "fixed", "units": ["m2"], "default_unit": "m2"},
+            {"value": "escritorio", "label": "Escritório", "measurement_label": "Área construída", "unit_mode": "fixed", "units": ["m2"], "default_unit": "m2"},
+            {"value": "cerca_arame_liso", "label": "Cerca de arame liso", "measurement_label": "Extensão", "unit_mode": "choice", "units": ["m", "km"], "default_unit": "km"},
+            {"value": "cerca_arame_farpado", "label": "Cerca de arame farpado", "measurement_label": "Extensão", "unit_mode": "choice", "units": ["m", "km"], "default_unit": "km"},
+            {"value": "portao", "label": "Portão", "measurement_label": "Quantidade", "unit_mode": "fixed", "units": ["un"], "default_unit": "un"},
+            {"value": "rede_eletrica", "label": "Rede elétrica interna", "measurement_label": "Extensão", "unit_mode": "fixed", "units": ["m"], "default_unit": "m"},
+            {"value": "sistema_hidraulico", "label": "Sistema hidráulico", "measurement_label": "Extensão", "unit_mode": "choice", "units": ["m", "km"], "default_unit": "m"},
+            {"value": "barracao", "label": "Barracão", "measurement_label": "Área construída", "unit_mode": "fixed", "units": ["m2"], "default_unit": "m2"},
+            {"value": "outra_benfeitoria", "label": "Outra benfeitoria", "measurement_label": "Medida principal", "unit_mode": "choice", "units": ["m2", "m", "km", "un"], "default_unit": "m2"},
+        ],
+    },
+    "Máquina": {
+        "name_label": "Nome da máquina",
+        "name_placeholder": "Ex.: Trator John Deere",
+        "subtype_label": "Tipo de máquina",
+        "brand_model_label": "Modelo",
+        "manufacturer_label": "Fabricante",
+        "manufacture_year_label": "Ano de fabricação",
+        "acquisition_label": "Data de aquisição",
+        "measurement_field_label": "Quantidade",
+        "show_manufacturer": True,
+        "show_brand_model": True,
+        "show_manufacture_year": True,
+        "allowed_statuses": ["ativo", "em_manutencao", "baixado"],
+        "finance_category": "Aquisição de Máquinas e Implementos",
+        "subtypes": [
+            {"value": "trator", "label": "Trator", "measurement_label": "Quantidade", "unit_mode": "fixed", "units": ["un"], "default_unit": "un"},
+            {"value": "pulverizador", "label": "Pulverizador", "measurement_label": "Quantidade", "unit_mode": "fixed", "units": ["un"], "default_unit": "un"},
+            {"value": "adubadeira", "label": "Adubadeira", "measurement_label": "Quantidade", "unit_mode": "fixed", "units": ["un"], "default_unit": "un"},
+            {"value": "colheitadeira", "label": "Colheitadeira", "measurement_label": "Quantidade", "unit_mode": "fixed", "units": ["un"], "default_unit": "un"},
+            {"value": "rocadeira", "label": "Roçadeira", "measurement_label": "Quantidade", "unit_mode": "fixed", "units": ["un"], "default_unit": "un"},
+            {"value": "triturador", "label": "Triturador", "measurement_label": "Quantidade", "unit_mode": "fixed", "units": ["un"], "default_unit": "un"},
+            {"value": "carreta_agricola", "label": "Carreta agrícola", "measurement_label": "Quantidade", "unit_mode": "fixed", "units": ["un"], "default_unit": "un"},
+            {"value": "outra_maquina", "label": "Outra máquina", "measurement_label": "Quantidade", "unit_mode": "fixed", "units": ["un"], "default_unit": "un"},
+        ],
+    },
+    "Equipamento": {
+        "name_label": "Nome do equipamento",
+        "name_placeholder": "Ex.: Motobomba principal",
+        "subtype_label": "Tipo de equipamento",
+        "brand_model_label": "Modelo",
+        "manufacturer_label": "Fabricante",
+        "manufacture_year_label": "Ano de fabricação",
+        "acquisition_label": "Data de aquisição",
+        "measurement_field_label": "Quantidade",
+        "show_manufacturer": True,
+        "show_brand_model": True,
+        "show_manufacture_year": True,
+        "allowed_statuses": ["ativo", "em_manutencao", "baixado"],
+        "finance_category": "Aquisição de Máquinas e Implementos",
+        "subtypes": [
+            {"value": "motobomba", "label": "Motobomba", "measurement_label": "Quantidade", "unit_mode": "fixed", "units": ["un"], "default_unit": "un"},
+            {"value": "bomba", "label": "Bomba", "measurement_label": "Quantidade", "unit_mode": "fixed", "units": ["un"], "default_unit": "un"},
+            {"value": "painel_eletrico", "label": "Painel elétrico", "measurement_label": "Quantidade", "unit_mode": "fixed", "units": ["un"], "default_unit": "un"},
+            {"value": "gerador", "label": "Gerador", "measurement_label": "Quantidade", "unit_mode": "fixed", "units": ["un"], "default_unit": "un"},
+            {"value": "secador", "label": "Secador", "measurement_label": "Quantidade", "unit_mode": "fixed", "units": ["un"], "default_unit": "un"},
+            {"value": "lavador", "label": "Lavador", "measurement_label": "Quantidade", "unit_mode": "fixed", "units": ["un"], "default_unit": "un"},
+            {"value": "classificador", "label": "Classificador", "measurement_label": "Quantidade", "unit_mode": "fixed", "units": ["un"], "default_unit": "un"},
+            {"value": "balanca", "label": "Balança", "measurement_label": "Quantidade", "unit_mode": "fixed", "units": ["un"], "default_unit": "un"},
+            {"value": "outro_equipamento", "label": "Outro equipamento", "measurement_label": "Quantidade", "unit_mode": "fixed", "units": ["un"], "default_unit": "un"},
+        ],
+    },
+    "Veículo": {
+        "name_label": "Nome do veículo",
+        "name_placeholder": "Ex.: Caminhonete da fazenda",
+        "subtype_label": "Tipo de veículo",
+        "brand_model_label": "Modelo",
+        "manufacturer_label": "Fabricante",
+        "manufacture_year_label": "Ano de fabricação",
+        "acquisition_label": "Data de aquisição",
+        "measurement_field_label": "Quantidade",
+        "show_manufacturer": True,
+        "show_brand_model": True,
+        "show_manufacture_year": True,
+        "allowed_statuses": ["ativo", "em_manutencao", "baixado"],
+        "finance_category": "Aquisição de Veículos",
+        "subtypes": [
+            {"value": "caminhonete", "label": "Caminhonete", "measurement_label": "Quantidade", "unit_mode": "fixed", "units": ["un"], "default_unit": "un"},
+            {"value": "caminhao", "label": "Caminhão", "measurement_label": "Quantidade", "unit_mode": "fixed", "units": ["un"], "default_unit": "un"},
+            {"value": "moto", "label": "Moto", "measurement_label": "Quantidade", "unit_mode": "fixed", "units": ["un"], "default_unit": "un"},
+            {"value": "automovel", "label": "Automóvel", "measurement_label": "Quantidade", "unit_mode": "fixed", "units": ["un"], "default_unit": "un"},
+            {"value": "reboque", "label": "Reboque", "measurement_label": "Quantidade", "unit_mode": "fixed", "units": ["un"], "default_unit": "un"},
+            {"value": "outro_veiculo", "label": "Outro veículo", "measurement_label": "Quantidade", "unit_mode": "fixed", "units": ["un"], "default_unit": "un"},
+        ],
+    },
+    "Pivô": {
+        "name_label": "Nome do sistema",
+        "name_placeholder": "Ex.: Pivô central setor norte",
+        "subtype_label": "Tipo de sistema",
+        "brand_model_label": "Modelo",
+        "manufacturer_label": "Fabricante",
+        "manufacture_year_label": "Ano de fabricação",
+        "acquisition_label": "Data de aquisição",
+        "measurement_field_label": "Cobertura / quantidade",
+        "show_manufacturer": True,
+        "show_brand_model": True,
+        "show_manufacture_year": True,
+        "allowed_statuses": ["ativo", "em_manutencao", "baixado"],
+        "finance_category": "Aquisição de Máquinas e Implementos",
+        "subtypes": [
+            {"value": "pivo_central", "label": "Pivô central", "measurement_label": "Quantidade", "unit_mode": "fixed", "units": ["un"], "default_unit": "un"},
+            {"value": "carretel", "label": "Carretel enrolador", "measurement_label": "Quantidade", "unit_mode": "fixed", "units": ["un"], "default_unit": "un"},
+            {"value": "aspersao_fixa", "label": "Aspersão fixa", "measurement_label": "Extensão", "unit_mode": "choice", "units": ["m", "km"], "default_unit": "m"},
+            {"value": "gotejamento", "label": "Gotejamento", "measurement_label": "Extensão", "unit_mode": "choice", "units": ["m", "km"], "default_unit": "m"},
+            {"value": "outro_sistema_irrigacao", "label": "Outro sistema de irrigação", "measurement_label": "Quantidade", "unit_mode": "choice", "units": ["un", "m", "km"], "default_unit": "un"},
+        ],
+    },
+    "Silo": {
+        "name_label": "Nome da estrutura",
+        "name_placeholder": "Ex.: Silo principal",
+        "subtype_label": "Tipo de estrutura",
+        "brand_model_label": "Modelo",
+        "manufacturer_label": "Fabricante",
+        "manufacture_year_label": "Ano de fabricação",
+        "acquisition_label": "Data de aquisição",
+        "measurement_field_label": "Capacidade / quantidade",
+        "show_manufacturer": True,
+        "show_brand_model": True,
+        "show_manufacture_year": True,
+        "allowed_statuses": ["ativo", "em_manutencao", "baixado"],
+        "finance_category": "Outros Investimentos",
+        "subtypes": [
+            {"value": "silo_metalico", "label": "Silo metálico", "measurement_label": "Capacidade", "unit_mode": "choice", "units": ["sc", "kg", "t", "m3"], "default_unit": "sc"},
+            {"value": "silo_graneleiro", "label": "Silo graneleiro", "measurement_label": "Capacidade", "unit_mode": "choice", "units": ["sc", "kg", "t", "m3"], "default_unit": "sc"},
+            {"value": "moega", "label": "Moega", "measurement_label": "Capacidade", "unit_mode": "choice", "units": ["sc", "kg", "t", "m3"], "default_unit": "sc"},
+            {"value": "outro_armazenamento", "label": "Outro armazenamento", "measurement_label": "Capacidade", "unit_mode": "choice", "units": ["sc", "kg", "t", "m3", "un"], "default_unit": "sc"},
+        ],
+    },
+}
 PENDING_PASSWORD_CHANGE_SESSION_KEY = "pending_password_change_user_id"
 PENDING_SUPER_ADMIN_2FA_DISABLE_SESSION_KEY = "pending_super_admin_2fa_disable"
 PREVIOUS_CONTEXT_SESSION_KEY = "previous_context"
@@ -981,6 +1140,62 @@ def _parse_equipment_asset_manufacture_year(value: str | None) -> int | None:
     if parsed < 1900 or parsed > current_year:
         raise ValueError(f"Informe um ano de fabricacao entre 1900 e {current_year}.")
     return parsed
+
+
+def _equipment_asset_profile(category: str | None) -> dict:
+    return EQUIPMENT_ASSET_CATEGORY_PROFILES.get(category or "") or {}
+
+
+def _equipment_asset_subtype_profile(category: str | None, subtype: str | None) -> dict | None:
+    profile = _equipment_asset_profile(category)
+    subtype_value = (subtype or "").strip()
+    for item in profile.get("subtypes", []):
+        if item.get("value") == subtype_value:
+            return item
+    return None
+
+
+def _equipment_asset_finance_category(category: str | None) -> str:
+    profile = _equipment_asset_profile(category)
+    return str(profile.get("finance_category") or "Máquinas e Equipamentos")
+
+
+def _normalize_equipment_asset_status(category: str | None, status_value: str | None) -> str:
+    profile = _equipment_asset_profile(category)
+    allowed = profile.get("allowed_statuses") or ["ativo", "em_manutencao", "baixado"]
+    normalized = (status_value or "").strip()
+    return normalized if normalized in allowed else allowed[0]
+
+
+def _normalize_equipment_asset_measurement(
+    *,
+    category: str | None,
+    subtype: str | None,
+    measurement_value: str | None,
+    measurement_unit: str | None,
+) -> tuple[str | None, float | None, str | None]:
+    subtype_profile = _equipment_asset_subtype_profile(category, subtype)
+    if not subtype_profile:
+        raise ValueError("Selecione um subtipo válido para o patrimônio.")
+    label = str(subtype_profile.get("measurement_label") or "Medida principal")
+    raw_value = (measurement_value or "").strip()
+    if not raw_value:
+        raise ValueError(f"Informe {label.lower()} para o patrimônio.")
+    try:
+        parsed_value = float(raw_value.replace(",", "."))
+    except ValueError:
+        raise ValueError(f"Informe um valor válido para {label.lower()}.")
+    if parsed_value <= 0:
+        raise ValueError(f"Informe um valor maior que zero para {label.lower()}.")
+    units = [str(item) for item in subtype_profile.get("units", []) if item]
+    default_unit = str(subtype_profile.get("default_unit") or (units[0] if units else "un"))
+    unit_mode = str(subtype_profile.get("unit_mode") or "fixed")
+    normalized_unit = (measurement_unit or "").strip() or default_unit
+    if unit_mode == "fixed":
+        normalized_unit = default_unit
+    elif normalized_unit not in units:
+        raise ValueError("Selecione uma unidade de medida válida para o patrimônio.")
+    return label, parsed_value, normalized_unit
 
 
 async def _read_avatar_upload(avatar: UploadFile | None) -> tuple[dict | None, str | None]:
@@ -1995,7 +2210,7 @@ def _pdf_flowables_extract_detail_table(
 
 
 def _filter_equipment_assets_by_status(assets: list[EquipmentAsset], status_value: str | None) -> list[EquipmentAsset]:
-    normalized_status = status_value if status_value in {"ativo", "em_manutencao", "baixado"} else None
+    normalized_status = status_value if status_value in EQUIPMENT_ASSET_STATUS_OPTIONS else None
     if not normalized_status:
         return assets
     return [asset for asset in assets if asset.status == normalized_status]
@@ -2010,7 +2225,7 @@ def _filter_equipment_assets_by_search(assets: list[EquipmentAsset], search: str
         return _normalize_search_value(
             f"{asset.name or ''} {asset.category or ''} {asset.farm.name if asset.farm else ''} "
             f"{asset.manufacturer or ''} {asset.brand_model or ''} {asset.asset_code or ''} "
-            f"{asset.notes or ''} {asset.status or ''}"
+            f"{asset.notes or ''} {asset.status or ''} {asset.subtype or ''} {asset.measurement_label or ''} {asset.measurement_unit or ''}"
         )
 
     return [asset for asset in assets if q in _haystack(asset)]
@@ -9333,7 +9548,7 @@ def equipment_assets_page(
     repo = _repository(db)
     effective_farm_id = farm_id or _active_farm_id(request)
     finance_accounts = repo.list_finance_accounts(farm_id=effective_farm_id) if effective_farm_id else []
-    selected_status = status if status in {"ativo", "em_manutencao", "baixado"} else None
+    selected_status = status if status in EQUIPMENT_ASSET_STATUS_OPTIONS else None
     assets_search_value = (request.query_params.get("assets_search") or "").strip()
     assets_filters_active = bool(
         (request.query_params.get("farm_id") or "").strip()
@@ -9378,6 +9593,8 @@ def equipment_assets_page(
                 assets_search=assets_search_value or None,
             ),
             asset_category_options=EQUIPMENT_ASSET_CATEGORY_OPTIONS,
+            asset_status_options=EQUIPMENT_ASSET_STATUS_OPTIONS,
+            asset_category_profiles=EQUIPMENT_ASSET_CATEGORY_PROFILES,
             finance_account_options=finance_accounts,
             finance_account_default=next((item for item in finance_accounts if item.is_default), None),
             current_year=today_in_app_timezone().year,
@@ -10141,10 +10358,13 @@ async def create_equipment_asset_action(
     farm_id: str | None = Form(None),
     name: str = Form(...),
     category: str = Form(...),
+    subtype: str | None = Form(None),
     manufacturer: str | None = Form(None),
     manufacture_year: str | None = Form(None),
     brand_model: str | None = Form(None),
     asset_code: str | None = Form(None),
+    measurement_value: str | None = Form(None),
+    measurement_unit: str | None = Form(None),
     acquisition_date: str | None = Form(None),
     acquisition_value: str | None = Form(None),
     finance_account_id: str | None = Form(None),
@@ -10173,6 +10393,18 @@ async def create_equipment_asset_action(
     if normalized_category not in EQUIPMENT_ASSET_CATEGORY_OPTIONS:
         _flash(request, "error", "Selecione uma categoria valida para o patrimonio.")
         return _redirect("/insumos/patrimonio")
+    normalized_subtype = _clean_text(subtype)
+    try:
+        measurement_label, normalized_measurement_value, normalized_measurement_unit = _normalize_equipment_asset_measurement(
+            category=normalized_category,
+            subtype=normalized_subtype,
+            measurement_value=measurement_value,
+            measurement_unit=measurement_unit,
+        )
+    except ValueError as exc:
+        _flash(request, "error", str(exc))
+        return _redirect("/insumos/patrimonio")
+    normalized_status = _normalize_equipment_asset_status(normalized_category, status_value)
     try:
         normalized_manufacture_year = _parse_equipment_asset_manufacture_year(manufacture_year)
     except ValueError as exc:
@@ -10190,10 +10422,14 @@ async def create_equipment_asset_action(
                 "farm_id": scope["active_farm_id"],
                 "name": name,
                 "category": normalized_category,
-                "manufacturer": _clean_text(manufacturer),
-                "manufacture_year": normalized_manufacture_year,
-                "brand_model": _clean_text(brand_model),
+                "subtype": normalized_subtype,
+                "manufacturer": _clean_text(manufacturer) if _equipment_asset_profile(normalized_category).get("show_manufacturer") else None,
+                "manufacture_year": normalized_manufacture_year if _equipment_asset_profile(normalized_category).get("show_manufacture_year") else None,
+                "brand_model": _clean_text(brand_model) if _equipment_asset_profile(normalized_category).get("show_brand_model") else None,
                 "asset_code": _clean_text(asset_code),
+                "measurement_label": measurement_label,
+                "measurement_value": normalized_measurement_value,
+                "measurement_unit": normalized_measurement_unit,
                 "acquisition_date": acquisition_date,
                 "acquisition_value": _float_or_none(acquisition_value),
                 "finance_account_id": finance_account.id if finance_account else None,
@@ -10202,8 +10438,9 @@ async def create_equipment_asset_action(
                 "installment_count": installment_count,
                 "installment_frequency": installment_frequency,
                 "first_installment_date": first_installment_date,
-                "status": status_value,
+                "status": normalized_status,
                 "notes": notes,
+                "finance_category": _equipment_asset_finance_category(normalized_category),
             },
         )
     except ValueError as exc:
@@ -10229,10 +10466,13 @@ async def update_equipment_asset_action(
     farm_id: str | None = Form(None),
     name: str = Form(...),
     category: str = Form(...),
+    subtype: str | None = Form(None),
     manufacturer: str | None = Form(None),
     manufacture_year: str | None = Form(None),
     brand_model: str | None = Form(None),
     asset_code: str | None = Form(None),
+    measurement_value: str | None = Form(None),
+    measurement_unit: str | None = Form(None),
     acquisition_date: str | None = Form(None),
     acquisition_value: str | None = Form(None),
     finance_account_id: str | None = Form(None),
@@ -10268,6 +10508,18 @@ async def update_equipment_asset_action(
     if normalized_category not in EQUIPMENT_ASSET_CATEGORY_OPTIONS and normalized_category != asset.category:
         _flash(request, "error", "Selecione uma categoria valida para o patrimonio.")
         return _redirect_for_request(request, "/insumos/patrimonio", edit_id=asset_id)
+    normalized_subtype = _clean_text(subtype)
+    try:
+        measurement_label, normalized_measurement_value, normalized_measurement_unit = _normalize_equipment_asset_measurement(
+            category=normalized_category,
+            subtype=normalized_subtype,
+            measurement_value=measurement_value,
+            measurement_unit=measurement_unit,
+        )
+    except ValueError as exc:
+        _flash(request, "error", str(exc))
+        return _redirect_for_request(request, "/insumos/patrimonio", edit_id=asset_id)
+    normalized_status = _normalize_equipment_asset_status(normalized_category, status_value)
     try:
         normalized_manufacture_year = _parse_equipment_asset_manufacture_year(manufacture_year)
     except ValueError as exc:
@@ -10286,10 +10538,14 @@ async def update_equipment_asset_action(
                 "farm_id": scope["active_farm_id"],
                 "name": name,
                 "category": normalized_category,
-                "manufacturer": _clean_text(manufacturer),
-                "manufacture_year": normalized_manufacture_year,
-                "brand_model": _clean_text(brand_model),
+                "subtype": normalized_subtype,
+                "manufacturer": _clean_text(manufacturer) if _equipment_asset_profile(normalized_category).get("show_manufacturer") else None,
+                "manufacture_year": normalized_manufacture_year if _equipment_asset_profile(normalized_category).get("show_manufacture_year") else None,
+                "brand_model": _clean_text(brand_model) if _equipment_asset_profile(normalized_category).get("show_brand_model") else None,
                 "asset_code": _clean_text(asset_code),
+                "measurement_label": measurement_label,
+                "measurement_value": normalized_measurement_value,
+                "measurement_unit": normalized_measurement_unit,
                 "acquisition_date": acquisition_date,
                 "acquisition_value": _float_or_none(acquisition_value),
                 "finance_account_id": finance_account.id if finance_account else None,
@@ -10298,8 +10554,9 @@ async def update_equipment_asset_action(
                 "installment_count": installment_count,
                 "installment_frequency": installment_frequency,
                 "first_installment_date": first_installment_date,
-                "status": status_value,
+                "status": normalized_status,
                 "notes": notes,
+                "finance_category": _equipment_asset_finance_category(normalized_category),
             },
         )
     except ValueError as exc:

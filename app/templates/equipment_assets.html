@@ -74,9 +74,9 @@
                                     <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Status</span>
                                     <select name="status" class="w-full rounded-xl border-slate-200 bg-white">
                                         <option value="">Todos os status</option>
-                                        <option value="ativo" {% if selected_asset_status == 'ativo' %}selected{% endif %}>Ativo</option>
-                                        <option value="em_manutencao" {% if selected_asset_status == 'em_manutencao' %}selected{% endif %}>Em manutenção</option>
-                                        <option value="baixado" {% if selected_asset_status == 'baixado' %}selected{% endif %}>Baixado</option>
+                                        {% for option in asset_status_options %}
+                                        <option value="{{ option }}" {% if selected_asset_status == option %}selected{% endif %}>{{ option.replace('_', ' ')|title }}</option>
+                                        {% endfor %}
                                     </select>
                                 </label>
                                 <label class="stock-filter-field {% if assets_search_value %}is-filtered{% endif %}">
@@ -102,7 +102,7 @@
                     <div class="flex min-w-0 flex-nowrap items-start justify-between gap-3 lg:gap-4">
                         <div class="min-w-0 flex-1 pr-1">
                             <button type="button" class="w-full text-left text-lg font-semibold text-slate-900 transition hover:text-brand-700 break-words lg:text-base" data-history-view-trigger data-history-view-kicker="Patrimonio" data-history-view-title="{{ asset.name }}" data-history-view-subtitle="{{ asset.category }}{% if asset.farm %} • {{ asset.farm.name }}{% endif %}" data-history-view-source="asset-view-{{ asset.id }}" data-history-view-edit-url="/insumos/patrimonio?edit_id={{ asset.id }}{% if assets_filter_query %}&{{ assets_filter_query }}{% endif %}">{{ asset.name }}</button>
-                            <p class="mt-1 break-words text-sm text-slate-500 lg:mt-0.5 lg:text-[13px]">{{ asset.category }}{% if asset.farm %} • {{ asset.farm.name }}{% endif %}</p>
+                            <p class="mt-1 break-words text-sm text-slate-500 lg:mt-0.5 lg:text-[13px]">{{ asset.category }}{% if asset.subtype %} • {{ asset.subtype.replace('_', ' ')|title }}{% endif %}{% if asset.farm %} • {{ asset.farm.name }}{% endif %}</p>
                             <div class="mt-2 grid min-w-0 gap-1 text-sm text-slate-600 lg:mt-1 lg:grid-cols-2 lg:gap-x-5 lg:gap-y-1 lg:text-[13px] lg:leading-5">
                                 <p class="min-w-0 break-words">
                                     {% if asset.manufacturer %}<strong>Fabricante:</strong> {{ asset.manufacturer }}{% endif %}
@@ -113,6 +113,7 @@
                                 <p class="min-w-0 break-words">
                                     {% if asset.acquisition_date %}<strong>Aquisição:</strong> {{ asset.acquisition_date }}{% endif %}
                                     {% if asset.acquisition_value is not none %} • <strong>Valor:</strong> R$ {{ asset.acquisition_value }}{% endif %}
+                                    {% if asset.measurement_value is not none and asset.measurement_unit %} • <strong>{{ asset.measurement_label or 'Medida' }}:</strong> {{ asset.measurement_value }} {{ asset.measurement_unit }}{% endif %}
                                     • Status: <strong>{{ asset.status.replace('_', ' ')|title }}</strong>
                                 </p>
                             </div>
@@ -151,6 +152,7 @@
                     <template id="asset-view-{{ asset.id }}">
                         <div class="grid gap-3 sm:grid-cols-2">
                             <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Categoria</p><p class="mt-2 text-sm font-medium text-slate-800">{{ asset.category }}</p></div>
+                            <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Subtipo</p><p class="mt-2 text-sm font-medium text-slate-800">{{ asset.subtype.replace('_', ' ')|title if asset.subtype else "-" }}</p></div>
                             <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Fazenda</p><p class="mt-2 text-sm font-medium text-slate-800">{{ asset.farm.name if asset.farm else "Sem fazenda vinculada" }}</p></div>
                             <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Fabricante</p><p class="mt-2 text-sm font-medium text-slate-800">{{ asset.manufacturer or "-" }}</p></div>
                             <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Modelo</p><p class="mt-2 text-sm font-medium text-slate-800">{{ asset.brand_model or "-" }}</p></div>
@@ -158,6 +160,7 @@
                             <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">ID do ativo</p><p class="mt-2 text-sm font-medium text-slate-800">{{ asset.asset_code or "-" }}</p></div>
                             <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Aquisicao</p><p class="mt-2 text-sm font-medium text-slate-800">{{ asset.acquisition_date or "-" }}</p></div>
                             <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Valor</p><p class="mt-2 text-sm font-medium text-slate-800">{% if asset.acquisition_value is not none %}R$ {{ asset.acquisition_value }}{% else %}-{% endif %}</p></div>
+                            <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">{{ asset.measurement_label or 'Medida' }}</p><p class="mt-2 text-sm font-medium text-slate-800">{% if asset.measurement_value is not none and asset.measurement_unit %}{{ asset.measurement_value }} {{ asset.measurement_unit }}{% else %}-{% endif %}</p></div>
                             <div class="rounded-2xl bg-slate-50 px-4 py-3 sm:col-span-2"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Status</p><p class="mt-2 text-sm font-medium text-slate-800">{{ asset.status.replace('_', ' ')|title }}</p></div>
                         </div>
                         {% if asset.attachments %}
@@ -207,6 +210,7 @@
         <div class="mt-6 max-h-[72vh] overflow-y-auto pr-1" data-modal-scroll>
             <form id="assets-form" method="post" action="{% if edit_asset %}/insumos/patrimonio/{{ edit_asset.id }}/editar{% else %}/insumos/patrimonio{% endif %}" enctype="multipart/form-data" class="grid gap-4">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                {% set asset_profile = asset_category_profiles.get(edit_asset.category) if edit_asset else None %}
                 <div class="rounded-[1.5rem] border border-brand-100 bg-brand-50/50 p-4">
                     <div class="flex flex-wrap items-start justify-between gap-4">
                         <div class="min-w-0">
@@ -239,7 +243,7 @@
                     <label>
                         <span class="mb-2 block text-sm font-medium">Categoria</span>
                         {% set selected_category = edit_asset.category if edit_asset else '' %}
-                        <select name="category" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required>
+                        <select name="category" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required data-assets-category>
                             <option value="">Selecione uma categoria</option>
                             {% for option in asset_category_options %}
                             <option value="{{ option }}" {% if selected_category == option %}selected{% endif %}>{{ option }}</option>
@@ -249,25 +253,32 @@
                             {% endif %}
                         </select>
                     </label>
+                    <label>
+                        <span class="mb-2 block text-sm font-medium" data-assets-subtype-label>{{ asset_profile.subtype_label if asset_profile else 'Subtipo' }}</span>
+                        {% set selected_subtype = edit_asset.subtype if edit_asset else '' %}
+                        <select name="subtype" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required data-assets-subtype>
+                            <option value="">Selecione primeiro a categoria</option>
+                        </select>
+                    </label>
                 </div>
                 <div class="grid gap-4 md:grid-cols-2">
                     <label>
-                        <span class="mb-2 block text-sm font-medium">Nome do equipamento</span>
-                        <input name="name" value="{{ edit_asset.name if edit_asset else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required>
+                        <span class="mb-2 block text-sm font-medium" data-assets-name-label>{{ asset_profile.name_label if asset_profile else 'Nome do equipamento' }}</span>
+                        <input name="name" value="{{ edit_asset.name if edit_asset else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required data-assets-name-input placeholder="{{ asset_profile.name_placeholder if asset_profile else 'Ex.: Trator da fazenda' }}">
                     </label>
-                    <label>
-                        <span class="mb-2 block text-sm font-medium">Modelo</span>
-                        <input name="brand_model" value="{{ edit_asset.brand_model if edit_asset else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50">
+                    <label data-assets-brand-model-wrap>
+                        <span class="mb-2 block text-sm font-medium" data-assets-brand-model-label>{{ asset_profile.brand_model_label if asset_profile else 'Modelo' }}</span>
+                        <input name="brand_model" value="{{ edit_asset.brand_model if edit_asset else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" data-assets-brand-model-input>
                     </label>
                 </div>
                 <div class="grid gap-4 md:grid-cols-3">
-                    <label>
-                        <span class="mb-2 block text-sm font-medium">Fabricante</span>
-                        <input name="manufacturer" value="{{ edit_asset.manufacturer if edit_asset else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50">
+                    <label data-assets-manufacturer-wrap>
+                        <span class="mb-2 block text-sm font-medium" data-assets-manufacturer-label>{{ asset_profile.manufacturer_label if asset_profile else 'Fabricante' }}</span>
+                        <input name="manufacturer" value="{{ edit_asset.manufacturer if edit_asset else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" data-assets-manufacturer-input>
                     </label>
-                    <label>
-                        <span class="mb-2 block text-sm font-medium">Ano de fabricacao</span>
-                        <input type="text" name="manufacture_year" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" value="{{ edit_asset.manufacture_year if edit_asset and edit_asset.manufacture_year else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" placeholder="YYYY">
+                    <label data-assets-manufacture-year-wrap>
+                        <span class="mb-2 block text-sm font-medium" data-assets-manufacture-year-label>{{ asset_profile.manufacture_year_label if asset_profile else 'Ano de fabricacao' }}</span>
+                        <input type="text" name="manufacture_year" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" value="{{ edit_asset.manufacture_year if edit_asset and edit_asset.manufacture_year else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" placeholder="YYYY" data-assets-manufacture-year-input>
                     </label>
                     <label>
                         <span class="mb-2 block text-sm font-medium">Patrimônio / identificação</span>
@@ -276,9 +287,18 @@
                 </div>
                 <div class="grid gap-4 md:grid-cols-2">
                     <label>
-                        <span class="mb-2 block text-sm font-medium">Data de aquisição</span>
+                        <span class="mb-2 block text-sm font-medium" data-assets-measurement-label>{{ edit_asset.measurement_label if edit_asset and edit_asset.measurement_label else (asset_profile.measurement_field_label if asset_profile else 'Medida principal') }}</span>
+                        <div class="grid grid-cols-[minmax(0,1fr)_minmax(7rem,9rem)] gap-3">
+                            <input type="number" step="0.01" min="0" name="measurement_value" value="{{ edit_asset.measurement_value if edit_asset and edit_asset.measurement_value is not none else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" data-assets-measurement-value placeholder="0">
+                            <select name="measurement_unit" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" data-assets-measurement-unit></select>
+                        </div>
+                    </label>
+                    <label>
+                        <span class="mb-2 block text-sm font-medium" data-assets-acquisition-label>{{ asset_profile.acquisition_label if asset_profile else 'Data de aquisição' }}</span>
                         <input type="date" name="acquisition_date" value="{{ edit_asset.acquisition_date.isoformat() if edit_asset and edit_asset.acquisition_date else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50">
                     </label>
+                </div>
+                <div class="grid gap-4 md:grid-cols-2">
                     <label>
                         <span class="mb-2 block text-sm font-medium">Valor de aquisição (R$)</span>
                         <input type="number" step="0.01" min="0" name="acquisition_value" value="{{ edit_asset.acquisition_value if edit_asset and edit_asset.acquisition_value is not none else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50">
@@ -345,7 +365,7 @@
                     <span class="mb-2 block text-sm font-medium">Status</span>
                     <select name="status" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50">
                         {% set asset_status = edit_asset.status if edit_asset else 'ativo' %}
-                        {% for option in ['ativo', 'em_manutencao', 'baixado'] %}
+                        {% for option in asset_status_options %}
                         <option value="{{ option }}" {% if asset_status == option %}selected{% endif %}>{{ option.replace('_', ' ')|title }}</option>
                         {% endfor %}
                     </select>
@@ -404,6 +424,25 @@
         const form = document.getElementById('assets-form');
         const paymentConditionField = form?.querySelector('[data-assets-payment-condition]');
         const installmentsSection = form?.querySelector('[data-assets-installments-section]');
+        const assetProfiles = {{ asset_category_profiles|tojson }};
+        const categoryField = form?.querySelector('[data-assets-category]');
+        const subtypeField = form?.querySelector('[data-assets-subtype]');
+        const subtypeLabel = form?.querySelector('[data-assets-subtype-label]');
+        const nameLabel = form?.querySelector('[data-assets-name-label]');
+        const nameInput = form?.querySelector('[data-assets-name-input]');
+        const brandModelWrap = form?.querySelector('[data-assets-brand-model-wrap]');
+        const brandModelLabel = form?.querySelector('[data-assets-brand-model-label]');
+        const manufacturerWrap = form?.querySelector('[data-assets-manufacturer-wrap]');
+        const manufacturerLabel = form?.querySelector('[data-assets-manufacturer-label]');
+        const manufactureYearWrap = form?.querySelector('[data-assets-manufacture-year-wrap]');
+        const manufactureYearLabel = form?.querySelector('[data-assets-manufacture-year-label]');
+        const measurementLabel = form?.querySelector('[data-assets-measurement-label]');
+        const measurementValueField = form?.querySelector('[data-assets-measurement-value]');
+        const measurementUnitField = form?.querySelector('[data-assets-measurement-unit]');
+        const acquisitionLabel = form?.querySelector('[data-assets-acquisition-label]');
+        const statusField = form?.querySelector('select[name="status"]');
+        const initialSubtypeValue = {{ (edit_asset.subtype if edit_asset and edit_asset.subtype else '')|tojson }};
+        const initialMeasurementUnit = {{ (edit_asset.measurement_unit if edit_asset and edit_asset.measurement_unit else '')|tojson }};
 
         const updateInstallmentSection = () => {
             if (!paymentConditionField || !installmentsSection) return;
@@ -417,6 +456,86 @@
 
         paymentConditionField?.addEventListener('change', updateInstallmentSection);
         updateInstallmentSection();
+
+        const populateSubtypeOptions = (profile, selectedValue = '') => {
+            if (!subtypeField) return;
+            subtypeField.innerHTML = '';
+            const placeholder = document.createElement('option');
+            placeholder.value = '';
+            placeholder.textContent = profile ? 'Selecione uma opção' : 'Selecione primeiro a categoria';
+            subtypeField.appendChild(placeholder);
+            (profile?.subtypes || []).forEach((item) => {
+                const option = document.createElement('option');
+                option.value = item.value;
+                option.textContent = item.label;
+                if (selectedValue && selectedValue === item.value) option.selected = true;
+                subtypeField.appendChild(option);
+            });
+        };
+
+        const populateMeasurementUnits = (subtypeProfile, selectedUnit = '') => {
+            if (!measurementUnitField) return;
+            measurementUnitField.innerHTML = '';
+            const units = subtypeProfile?.units || [];
+            const defaultUnit = subtypeProfile?.default_unit || units[0] || 'un';
+            units.forEach((unit) => {
+                const option = document.createElement('option');
+                option.value = unit;
+                option.textContent = unit;
+                if ((selectedUnit && selectedUnit === unit) || (!selectedUnit && defaultUnit === unit)) {
+                    option.selected = true;
+                }
+                measurementUnitField.appendChild(option);
+            });
+            measurementUnitField.disabled = (subtypeProfile?.unit_mode || 'fixed') === 'fixed';
+        };
+
+        const syncAssetFields = (preferInitial = false) => {
+            const profile = assetProfiles[categoryField?.value || ''] || null;
+            if (subtypeLabel) subtypeLabel.textContent = profile?.subtype_label || 'Subtipo';
+            if (nameLabel) nameLabel.textContent = profile?.name_label || 'Nome do equipamento';
+            if (nameInput) nameInput.placeholder = profile?.name_placeholder || 'Ex.: Trator da fazenda';
+            if (brandModelLabel) brandModelLabel.textContent = profile?.brand_model_label || 'Modelo';
+            if (manufacturerLabel) manufacturerLabel.textContent = profile?.manufacturer_label || 'Fabricante';
+            if (manufactureYearLabel) manufactureYearLabel.textContent = profile?.manufacture_year_label || 'Ano de fabricacao';
+            if (acquisitionLabel) acquisitionLabel.textContent = profile?.acquisition_label || 'Data de aquisição';
+            if (brandModelWrap) brandModelWrap.classList.toggle('hidden', profile ? !profile.show_brand_model : false);
+            if (manufacturerWrap) manufacturerWrap.classList.toggle('hidden', profile ? !profile.show_manufacturer : false);
+            if (manufactureYearWrap) manufactureYearWrap.classList.toggle('hidden', profile ? !profile.show_manufacture_year : false);
+
+            const nextSubtypeValue = preferInitial ? initialSubtypeValue : '';
+            const currentSubtype = subtypeField?.value || '';
+            const subtypeValue = currentSubtype || nextSubtypeValue;
+            populateSubtypeOptions(profile, subtypeValue);
+            const subtypeProfile = (profile?.subtypes || []).find((item) => item.value === (subtypeField?.value || '')) || null;
+
+            if (measurementLabel) {
+                measurementLabel.textContent = subtypeProfile?.measurement_label || profile?.measurement_field_label || 'Medida principal';
+            }
+            populateMeasurementUnits(subtypeProfile, preferInitial ? initialMeasurementUnit : (measurementUnitField?.value || ''));
+
+            if (statusField) {
+                const allowed = profile?.allowed_statuses || ['ativo', 'em_manutencao', 'baixado'];
+                Array.from(statusField.options).forEach((option) => {
+                    option.hidden = !allowed.includes(option.value);
+                    option.disabled = !allowed.includes(option.value);
+                });
+                if (!allowed.includes(statusField.value)) {
+                    statusField.value = allowed[0];
+                }
+            }
+        };
+
+        categoryField?.addEventListener('change', () => syncAssetFields(false));
+        subtypeField?.addEventListener('change', () => {
+            const profile = assetProfiles[categoryField?.value || ''] || null;
+            const subtypeProfile = (profile?.subtypes || []).find((item) => item.value === (subtypeField?.value || '')) || null;
+            if (measurementLabel) {
+                measurementLabel.textContent = subtypeProfile?.measurement_label || profile?.measurement_field_label || 'Medida principal';
+            }
+            populateMeasurementUnits(subtypeProfile, '');
+        });
+        syncAssetFields(true);
 
         if (launchModal) {
             openLaunchButton?.addEventListener('click', openAssetsModal);
