@@ -82,6 +82,7 @@ from app.services.backup_service import (
     get_or_create_backup_automation_setting,
     process_backup_run_in_background,
     update_backup_automation_setting,
+    update_backup_storage_limit_setting,
 )
 from app.services.dashboard import build_dashboard_context
 from app.services.finance_overview import (
@@ -817,9 +818,6 @@ def _backup_details(value: str | None) -> dict:
         return {}
 
 
-BACKUP_STORAGE_LIMIT_BYTES = 50 * 1024 * 1024 * 1024
-
-
 def _format_storage_bytes(value: int | float | None) -> str:
     size = float(value or 0)
     units = ["B", "KB", "MB", "GB", "TB"]
@@ -832,11 +830,13 @@ def _format_storage_bytes(value: int | float | None) -> str:
 
 
 def _build_backup_storage_usage(repo: FarmRepository) -> dict[str, object]:
+    setting = repo.get_backup_automation_setting()
     summary = repo.summarize_backup_storage_usage()
     database_bytes = int(summary.get("database_bytes", 0) or 0)
     files_bytes = int(summary.get("files_bytes", 0) or 0)
     total_bytes = database_bytes + files_bytes
-    limit_bytes = BACKUP_STORAGE_LIMIT_BYTES
+    storage_limit_gb = max(1, int(getattr(setting, "storage_limit_gb", 1) or 1))
+    limit_bytes = storage_limit_gb * 1024 * 1024 * 1024
     usage_ratio = (total_bytes / limit_bytes) if limit_bytes > 0 else 0.0
     usage_percent = min(usage_ratio * 100, 100.0)
     remaining_bytes = max(limit_bytes - total_bytes, 0)
@@ -852,6 +852,7 @@ def _build_backup_storage_usage(repo: FarmRepository) -> dict[str, object]:
         "usage_ratio": usage_ratio,
         "is_over_limit": is_over_limit,
         "limit_label": _format_storage_bytes(limit_bytes),
+        "limit_gb": storage_limit_gb,
         "database_label": _format_storage_bytes(database_bytes),
         "files_label": _format_storage_bytes(files_bytes),
         "total_label": _format_storage_bytes(total_bytes),
@@ -888,6 +889,7 @@ def _build_backup_automation_context(repo: FarmRepository, db: Session) -> dict[
     return {
         "enabled": bool(setting.automatic_enabled),
         "interval_days": int(setting.interval_days or 5),
+        "storage_limit_gb": int(getattr(setting, "storage_limit_gb", 1) or 1),
         "scheduled_hour": scheduled_hour,
         "scheduled_minute": scheduled_minute,
         "scheduled_time_value": f"{scheduled_hour:02d}:{scheduled_minute:02d}",
@@ -7383,6 +7385,28 @@ def configure_backup_automation_action(
         )
     else:
         _flash(request, "success", "Backup automatico desativado com sucesso.")
+    return _redirect("/backups")
+
+
+@router.post("/backups/storage/configurar")
+def configure_backup_storage_limit_action(
+    request: Request,
+    csrf_token: str = Form(...),
+    storage_limit_gb: str = Form("1"),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    denied = _require_admin(request, user)
+    if denied:
+        return denied
+    validate_csrf(request, csrf_token)
+    try:
+        parsed_limit = max(1, min(int(storage_limit_gb or "1"), 1024))
+    except (TypeError, ValueError):
+        _flash(request, "error", "Informe um limite válido entre 1 GB e 1024 GB.")
+        return _redirect("/backups")
+    setting = update_backup_storage_limit_setting(db, parsed_limit)
+    _flash(request, "success", f"Limite de storage para backups atualizado para {setting.storage_limit_gb} GB.")
     return _redirect("/backups")
 
 

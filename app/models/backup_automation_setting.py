@@ -12,6 +12,7 @@ class BackupAutomationSetting(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, default=1)
     automatic_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     interval_days: Mapped[int] = mapped_column(Integer, nullable=False, default=5)
+    storage_limit_gb: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     scheduled_hour: Mapped[int] = mapped_column(Integer, nullable=False, default=3)
     scheduled_minute: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     next_run_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=True)

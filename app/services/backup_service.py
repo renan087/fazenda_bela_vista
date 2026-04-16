@@ -35,6 +35,7 @@ AUTOMATION_LOCK_TTL = timedelta(hours=2)
 AUTOMATION_TRIGGER_SOURCE = "automatic"
 AUTOMATION_DEFAULT_SCHEDULE_HOUR = 3
 AUTOMATION_DEFAULT_SCHEDULE_MINUTE = 0
+AUTOMATION_DEFAULT_STORAGE_LIMIT_GB = 1
 STORAGE_LIMIT_ERROR_HINTS = (
     "limit",
     "quota",
@@ -185,6 +186,10 @@ def get_or_create_backup_automation_setting(db: Session) -> BackupAutomationSett
         if setting.interval_days != interval_days:
             setting.interval_days = interval_days
             changed = True
+        storage_limit_gb = _normalize_storage_limit_gb(getattr(setting, "storage_limit_gb", AUTOMATION_DEFAULT_STORAGE_LIMIT_GB))
+        if getattr(setting, "storage_limit_gb", None) != storage_limit_gb:
+            setting.storage_limit_gb = storage_limit_gb
+            changed = True
         scheduled_hour, scheduled_minute = _normalize_schedule_time(
             getattr(setting, "scheduled_hour", AUTOMATION_DEFAULT_SCHEDULE_HOUR),
             getattr(setting, "scheduled_minute", AUTOMATION_DEFAULT_SCHEDULE_MINUTE),
@@ -211,6 +216,7 @@ def get_or_create_backup_automation_setting(db: Session) -> BackupAutomationSett
         id=1,
         automatic_enabled=True,
         interval_days=AUTOMATION_DEFAULT_INTERVAL_DAYS,
+        storage_limit_gb=AUTOMATION_DEFAULT_STORAGE_LIMIT_GB,
         scheduled_hour=AUTOMATION_DEFAULT_SCHEDULE_HOUR,
         scheduled_minute=AUTOMATION_DEFAULT_SCHEDULE_MINUTE,
         next_run_at=_compute_next_run_at(
@@ -249,6 +255,15 @@ def update_backup_automation_setting(
         if automatic_enabled
         else None
     )
+    db.add(setting)
+    db.commit()
+    db.refresh(setting)
+    return setting
+
+
+def update_backup_storage_limit_setting(db: Session, storage_limit_gb: int) -> BackupAutomationSetting:
+    setting = get_or_create_backup_automation_setting(db)
+    setting.storage_limit_gb = _normalize_storage_limit_gb(storage_limit_gb)
     db.add(setting)
     db.commit()
     db.refresh(setting)
@@ -464,9 +479,11 @@ def _finalize_due_automatic_backup(
 
 def _is_storage_limit_reached(db: Session) -> bool:
     repo = FarmRepository(db)
+    setting = get_or_create_backup_automation_setting(db)
     usage = repo.summarize_backup_storage_usage()
     total_bytes = int(usage.get("database_bytes", 0) or 0) + int(usage.get("files_bytes", 0) or 0)
-    return total_bytes >= 50 * 1024 * 1024 * 1024
+    limit_bytes = _normalize_storage_limit_gb(getattr(setting, "storage_limit_gb", AUTOMATION_DEFAULT_STORAGE_LIMIT_GB)) * 1024 * 1024 * 1024
+    return total_bytes >= limit_bytes
 
 
 def _run_failed_due_to_storage_limit(run: BackupRun | None) -> bool:
@@ -547,6 +564,14 @@ def _normalize_interval_days(value: int | None) -> int:
     except (TypeError, ValueError):
         parsed = AUTOMATION_DEFAULT_INTERVAL_DAYS
     return max(1, min(parsed, 365))
+
+
+def _normalize_storage_limit_gb(value: int | None) -> int:
+    try:
+        parsed = int(value or AUTOMATION_DEFAULT_STORAGE_LIMIT_GB)
+    except (TypeError, ValueError):
+        parsed = AUTOMATION_DEFAULT_STORAGE_LIMIT_GB
+    return max(1, min(parsed, 1024))
 
 
 def _normalize_schedule_time(hour: int | None, minute: int | None) -> tuple[int, int]:

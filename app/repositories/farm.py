@@ -69,7 +69,7 @@ class FarmRepository:
         setting = self.db.query(BackupAutomationSetting).filter(BackupAutomationSetting.id == 1).first()
         if setting:
             return setting
-        setting = BackupAutomationSetting(id=1, automatic_enabled=True, interval_days=5, scheduled_hour=3, scheduled_minute=0)
+        setting = BackupAutomationSetting(id=1, automatic_enabled=True, interval_days=5, storage_limit_gb=1, scheduled_hour=3, scheduled_minute=0)
         self.db.add(setting)
         self.db.commit()
         self.db.refresh(setting)

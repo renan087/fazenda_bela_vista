@@ -88,6 +88,7 @@ def _sync_schema() -> None:
             id INTEGER PRIMARY KEY,
             automatic_enabled BOOLEAN NOT NULL DEFAULT TRUE,
             interval_days INTEGER NOT NULL DEFAULT 5,
+            storage_limit_gb INTEGER NOT NULL DEFAULT 1,
             scheduled_hour INTEGER NOT NULL DEFAULT 3,
             scheduled_minute INTEGER NOT NULL DEFAULT 0,
             next_run_at TIMESTAMPTZ,
@@ -522,6 +523,7 @@ def _sync_schema() -> None:
         )
         """,
         "CREATE INDEX IF NOT EXISTS ix_asaas_payments_user_id ON asaas_payments(user_id)",
+        "ALTER TABLE backup_automation_settings ADD COLUMN IF NOT EXISTS storage_limit_gb INTEGER DEFAULT 1",
         "ALTER TABLE equipment_assets ADD COLUMN IF NOT EXISTS manufacturer VARCHAR(180)",
         "ALTER TABLE equipment_assets ADD COLUMN IF NOT EXISTS manufacture_year INTEGER",
         "ALTER TABLE equipment_assets ADD COLUMN IF NOT EXISTS subtype VARCHAR(120)",
