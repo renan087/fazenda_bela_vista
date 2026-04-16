@@ -898,7 +898,6 @@ body {
 .dashboard-executive-panel {
     width: 100%;
     min-height: 0;
-    align-self: start;
     border: 1px solid rgba(226, 232, 240, 0.95);
     background:
         radial-gradient(circle at top right, rgba(188, 212, 170, 0.16), transparent 24%),
