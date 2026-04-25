@@ -227,6 +227,8 @@
                                                 <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Saldo</p><p class="mt-2 text-sm font-medium text-slate-800">{{ item.available_quantity|quantity_br(item.package_unit) }} {{ item.package_unit }}</p></div>
                                                 <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Custo unitário</p><p class="mt-2 text-sm font-medium text-slate-800">R$ {{ item.unit_price|decimal_br }}</p></div>
                                                 <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Custo total</p><p class="mt-2 text-sm font-medium text-slate-800">R$ {{ item.total_cost|decimal_br }}</p></div>
+                                                <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Forma de pagamento</p><p class="mt-2 text-sm font-medium text-slate-800">{{ item.payment_method or "-" }}</p></div>
+                                                <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Cartão utilizado</p><p class="mt-2 text-sm font-medium text-slate-800">{{ item.finance_credit_card.card_name if item.finance_credit_card else "-" }}</p></div>
                                             </div>
                                             <div class="rounded-2xl bg-slate-50 px-4 py-4">
                                                 <p class="text-xs uppercase tracking-[0.2em] text-slate-400">Observações</p>
@@ -508,7 +510,7 @@
                     <label><span class="mb-2 block text-sm font-medium">Alerta de estoque baixo</span><input type="number" step="0.01" min="0" name="low_stock_threshold" value="{{ edit_supply.low_stock_threshold if edit_supply and edit_supply.low_stock_threshold is not none else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" data-supply-threshold-input></label>
                     <label><span class="mb-2 block text-sm font-medium">Valor total da compra (R$)</span><input type="text" value="" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-200 text-slate-500" readonly data-supply-total-display></label>
                 </div>
-                <div class="grid gap-4 md:grid-cols-2">
+                <div class="grid gap-4 md:grid-cols-3">
                     <label>
                         <span class="mb-2 block text-sm font-medium">Conta bancária</span>
                         {% set supply_selected_finance_account_id = edit_supply.finance_account_id if edit_supply and edit_supply.finance_account_id else (finance_account_default.id if finance_account_default else None) %}
@@ -522,7 +524,7 @@
                     </label>
                     <label>
                         <span class="mb-2 block text-sm font-medium">Forma de pagamento</span>
-                        <select name="payment_method" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50">
+                        <select name="payment_method" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" data-supply-payment-method>
                             <option value="">Selecione...</option>
                             <option value="Dinheiro" {% if edit_supply and edit_supply.payment_method == 'Dinheiro' %}selected{% endif %}>Dinheiro</option>
                             <option value="Pix" {% if edit_supply and edit_supply.payment_method == 'Pix' %}selected{% endif %}>Pix</option>
@@ -533,6 +535,17 @@
                             <option value="Cheque" {% if edit_supply and edit_supply.payment_method == 'Cheque' %}selected{% endif %}>Cheque</option>
                             <option value="Outro" {% if edit_supply and edit_supply.payment_method == 'Outro' %}selected{% endif %}>Outro</option>
                         </select>
+                    </label>
+                    {% set supply_selected_credit_card_id = edit_supply.credit_card_id if edit_supply and edit_supply.credit_card_id else (finance_credit_card_default.id if finance_credit_card_default else None) %}
+                    <label class="hidden" data-supply-credit-card-wrap>
+                        <span class="mb-2 block text-sm font-medium">Cartão utilizado</span>
+                        <select name="credit_card_id" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" data-supply-credit-card-select data-default-card-id="{{ finance_credit_card_default.id if finance_credit_card_default else '' }}">
+                            <option value="">{% if finance_credit_card_options %}Selecione o cartão{% else %}Cadastre um cartão em Contas{% endif %}</option>
+                            {% for card in finance_credit_card_options %}
+                            <option value="{{ card.id }}" {% if supply_selected_credit_card_id == card.id %}selected{% endif %}>{{ card.card_name }} • {{ card.issuer }}{% if card.brand %} • {{ card.brand }}{% endif %}{% if card.is_default %} • padrão{% endif %}</option>
+                            {% endfor %}
+                        </select>
+                        <span class="mt-2 block text-xs text-slate-500">Vincule o cartão para identificar corretamente a compra no controle financeiro.</span>
                     </label>
                 </div>
                 {% set supply_payment_condition = edit_supply.payment_condition if edit_supply and edit_supply.payment_condition else 'a_vista' %}
@@ -972,6 +985,9 @@
         const supplyTotalDisplay = supplyForm?.querySelector('[data-supply-total-display]');
         const supplyPaymentConditionField = supplyForm?.querySelector('[data-supply-payment-condition]');
         const supplyInstallmentsSection = supplyForm?.querySelector('[data-supply-installments-section]');
+        const supplyPaymentMethodField = supplyForm?.querySelector('[data-supply-payment-method]');
+        const supplyCreditCardWrap = supplyForm?.querySelector('[data-supply-credit-card-wrap]');
+        const supplyCreditCardSelect = supplyForm?.querySelector('[data-supply-credit-card-select]');
 
         const formatCurrencyBr = (value) => {
             const number = Number(value || 0);
@@ -992,6 +1008,20 @@
             supplyInstallmentsSection.classList.toggle('hidden', !isAPrazo);
         };
 
+        const updateSupplyCreditCardSection = () => {
+            if (!supplyPaymentMethodField || !supplyCreditCardWrap || !supplyCreditCardSelect) return;
+            const isCreditCard = supplyPaymentMethodField.value === 'Cartão de crédito';
+            supplyCreditCardWrap.classList.toggle('hidden', !isCreditCard);
+            supplyCreditCardSelect.disabled = !isCreditCard;
+            if (isCreditCard) {
+                if (!supplyCreditCardSelect.value && supplyCreditCardSelect.dataset.defaultCardId) {
+                    supplyCreditCardSelect.value = supplyCreditCardSelect.dataset.defaultCardId;
+                }
+            } else {
+                supplyCreditCardSelect.value = '';
+            }
+        };
+
         const syncSupplySuggestionState = () => {
             const rawName = (supplyNameInput?.value || '').trim();
             const meta = rawName ? normalizedCatalogMeta[normalizeSearchText(rawName)] : null;
@@ -1010,9 +1040,11 @@
         supplyPackageSizeInput?.addEventListener('input', syncSupplyTotal);
         supplyUnitPriceInput?.addEventListener('input', syncSupplyTotal);
         supplyPaymentConditionField?.addEventListener('change', updateSupplyInstallmentSection);
+        supplyPaymentMethodField?.addEventListener('change', updateSupplyCreditCardSection);
         syncSupplySuggestionState();
         syncSupplyTotal();
         updateSupplyInstallmentSection();
+        updateSupplyCreditCardSection();
 
         const resetSupplyContextPanels = () => {
             suppliesModal?.querySelectorAll('[data-supplies-context-toggle]').forEach((toggle) => {

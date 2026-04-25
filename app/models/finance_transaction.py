@@ -12,6 +12,7 @@ class FinanceTransaction(Base):
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
     farm_id: Mapped[int] = mapped_column(ForeignKey("farms.id", ondelete="CASCADE"), nullable=False, index=True)
     finance_account_id: Mapped[int] = mapped_column(ForeignKey("finance_accounts.id", ondelete="CASCADE"), nullable=False, index=True)
+    credit_card_id: Mapped[int] = mapped_column(ForeignKey("finance_credit_cards.id", ondelete="SET NULL"), nullable=True, index=True)
     operation_type: Mapped[str] = mapped_column(String(20), nullable=False)
     launch_date: Mapped[date] = mapped_column(Date, nullable=False)
     amount: Mapped[float] = mapped_column(Numeric(14, 2), nullable=False)
@@ -31,6 +32,7 @@ class FinanceTransaction(Base):
 
     farm = relationship("Farm", back_populates="finance_transactions")
     finance_account = relationship("FinanceAccount", back_populates="transactions")
+    credit_card = relationship("FinanceCreditCard", back_populates="finance_transactions")
     attachments = relationship("FinanceTransactionAttachment", back_populates="transaction", cascade="all, delete-orphan")
     installments = relationship("FinanceTransactionInstallment", back_populates="transaction", cascade="all, delete-orphan")
     purchased_inputs = relationship("PurchasedInput", back_populates="finance_transaction", cascade="all, delete-orphan")

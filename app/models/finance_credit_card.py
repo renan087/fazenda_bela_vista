@@ -25,3 +25,6 @@ class FinanceCreditCard(Base):
 
     farm = relationship("Farm", back_populates="finance_credit_cards")
     payment_account = relationship("FinanceAccount", back_populates="credit_cards")
+    purchased_inputs = relationship("PurchasedInput", back_populates="finance_credit_card")
+    equipment_assets = relationship("EquipmentAsset", back_populates="finance_credit_card")
+    finance_transactions = relationship("FinanceTransaction", back_populates="credit_card")

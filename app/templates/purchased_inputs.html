@@ -138,6 +138,8 @@
                                             <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Compra</p><p class="mt-2 text-sm font-medium text-slate-800">{{ item.purchase_date or "-" }}</p></div>
                                             <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Entrada total</p><p class="mt-2 text-sm font-medium text-slate-800">{{ item.total_quantity }} {{ item.package_unit }}</p></div>
                                             <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Saldo do lote</p><p class="mt-2 text-sm font-medium text-slate-800">{{ item.available_quantity }} {{ item.package_unit }}</p></div>
+                                            <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Forma de pagamento</p><p class="mt-2 text-sm font-medium text-slate-800">{{ item.payment_method or "-" }}</p></div>
+                                            <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Cartão utilizado</p><p class="mt-2 text-sm font-medium text-slate-800">{{ item.finance_credit_card.card_name if item.finance_credit_card else "-" }}</p></div>
                                             <div class="rounded-2xl bg-slate-50 px-4 py-3 sm:col-span-2"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Valor total</p><p class="mt-2 text-sm font-medium text-slate-800">R$ {{ item.total_cost }}</p></div>
                                         </div>
                                         {% if item.attachments %}
@@ -402,7 +404,7 @@
                         <input type="text" value="" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required inputmode="numeric" placeholder="R$ 0,00" data-currency-display>
                     </label>
                 </div>
-                <div class="grid gap-4 md:grid-cols-2">
+                <div class="grid gap-4 md:grid-cols-3">
                     <label>
                         <span class="mb-2 block text-sm font-medium">Conta bancária</span>
                         {% set purchased_selected_finance_account_id = edit_input.finance_account_id if edit_input and edit_input.finance_account_id else (finance_account_default.id if finance_account_default else None) %}
@@ -416,7 +418,7 @@
                     </label>
                     <label>
                         <span class="mb-2 block text-sm font-medium">Forma de pagamento</span>
-                        <select name="payment_method" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50">
+                        <select name="payment_method" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" data-purchased-payment-method>
                             <option value="">Selecione...</option>
                             <option value="Dinheiro" {% if edit_input and edit_input.payment_method == 'Dinheiro' %}selected{% endif %}>Dinheiro</option>
                             <option value="Pix" {% if edit_input and edit_input.payment_method == 'Pix' %}selected{% endif %}>Pix</option>
@@ -427,6 +429,17 @@
                             <option value="Cheque" {% if edit_input and edit_input.payment_method == 'Cheque' %}selected{% endif %}>Cheque</option>
                             <option value="Outro" {% if edit_input and edit_input.payment_method == 'Outro' %}selected{% endif %}>Outro</option>
                         </select>
+                    </label>
+                    {% set purchased_selected_credit_card_id = edit_input.credit_card_id if edit_input and edit_input.credit_card_id else (finance_credit_card_default.id if finance_credit_card_default else None) %}
+                    <label class="hidden" data-purchased-credit-card-wrap>
+                        <span class="mb-2 block text-sm font-medium">Cartão utilizado</span>
+                        <select name="credit_card_id" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" data-purchased-credit-card-select data-default-card-id="{{ finance_credit_card_default.id if finance_credit_card_default else '' }}">
+                            <option value="">{% if finance_credit_card_options %}Selecione o cartão{% else %}Cadastre um cartão em Contas{% endif %}</option>
+                            {% for card in finance_credit_card_options %}
+                            <option value="{{ card.id }}" {% if purchased_selected_credit_card_id == card.id %}selected{% endif %}>{{ card.card_name }} • {{ card.issuer }}{% if card.brand %} • {{ card.brand }}{% endif %}{% if card.is_default %} • padrão{% endif %}</option>
+                            {% endfor %}
+                        </select>
+                        <span class="mt-2 block text-xs text-slate-500">Use o cartão realmente utilizado nesta compra para manter o controle financeiro consistente.</span>
                     </label>
                 </div>
                 {% set input_payment_condition = edit_input.payment_condition if edit_input and edit_input.payment_condition else 'a_vista' %}
@@ -809,6 +822,9 @@
 
         const paymentConditionField = form?.querySelector('[data-purchased-payment-condition]');
         const installmentsSection = form?.querySelector('[data-purchased-installments-section]');
+        const paymentMethodField = form?.querySelector('[data-purchased-payment-method]');
+        const creditCardWrap = form?.querySelector('[data-purchased-credit-card-wrap]');
+        const creditCardSelect = form?.querySelector('[data-purchased-credit-card-select]');
 
         const updateInstallmentSection = () => {
             if (!paymentConditionField || !installmentsSection) return;
@@ -826,6 +842,23 @@
 
         paymentConditionField?.addEventListener('change', updateInstallmentSection);
         updateInstallmentSection();
+
+        const updatePurchasedCreditCardSection = () => {
+            if (!paymentMethodField || !creditCardWrap || !creditCardSelect) return;
+            const isCreditCard = paymentMethodField.value === 'Cartão de crédito';
+            creditCardWrap.classList.toggle('hidden', !isCreditCard);
+            creditCardSelect.disabled = !isCreditCard;
+            if (isCreditCard) {
+                if (!creditCardSelect.value && creditCardSelect.dataset.defaultCardId) {
+                    creditCardSelect.value = creditCardSelect.dataset.defaultCardId;
+                }
+            } else {
+                creditCardSelect.value = '';
+            }
+        };
+
+        paymentMethodField?.addEventListener('change', updatePurchasedCreditCardSection);
+        updatePurchasedCreditCardSection();
 
         const normalizeCategory = (value) => (value || '').trim();
 

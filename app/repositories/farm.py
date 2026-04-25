@@ -309,6 +309,7 @@ class FarmRepository:
             .options(
                 joinedload(FinanceTransaction.farm),
                 joinedload(FinanceTransaction.finance_account),
+                joinedload(FinanceTransaction.credit_card),
                 joinedload(FinanceTransaction.attachments),
                 joinedload(FinanceTransaction.installments),
             )
@@ -326,6 +327,7 @@ class FarmRepository:
             .options(
                 joinedload(FinanceTransaction.farm),
                 joinedload(FinanceTransaction.finance_account),
+                joinedload(FinanceTransaction.credit_card),
                 joinedload(FinanceTransaction.attachments),
                 joinedload(FinanceTransaction.installments),
             )
@@ -413,6 +415,7 @@ class FarmRepository:
             .options(
                 joinedload(PurchasedInput.farm),
                 joinedload(PurchasedInput.input_catalog),
+                joinedload(PurchasedInput.finance_credit_card),
                 joinedload(PurchasedInput.stock_allocations),
                 joinedload(PurchasedInput.attachments),
             )
@@ -428,6 +431,7 @@ class FarmRepository:
             .options(
                 joinedload(PurchasedInput.farm),
                 joinedload(PurchasedInput.input_catalog),
+                joinedload(PurchasedInput.finance_credit_card),
                 joinedload(PurchasedInput.stock_allocations),
                 joinedload(PurchasedInput.recommendation_items),
                 joinedload(PurchasedInput.schedule_items),
@@ -473,7 +477,7 @@ class FarmRepository:
     def list_equipment_assets(self, farm_id: int | None = None) -> list[EquipmentAsset]:
         query = (
             self.db.query(EquipmentAsset)
-            .options(joinedload(EquipmentAsset.farm), joinedload(EquipmentAsset.attachments))
+            .options(joinedload(EquipmentAsset.farm), joinedload(EquipmentAsset.finance_credit_card), joinedload(EquipmentAsset.attachments))
             .order_by(EquipmentAsset.name.asc(), EquipmentAsset.id.desc())
         )
         if farm_id:
@@ -483,7 +487,7 @@ class FarmRepository:
     def get_equipment_asset(self, asset_id: int) -> EquipmentAsset | None:
         return (
             self.db.query(EquipmentAsset)
-            .options(joinedload(EquipmentAsset.farm), joinedload(EquipmentAsset.attachments))
+            .options(joinedload(EquipmentAsset.farm), joinedload(EquipmentAsset.finance_credit_card), joinedload(EquipmentAsset.attachments))
             .filter(EquipmentAsset.id == asset_id)
             .first()
         )

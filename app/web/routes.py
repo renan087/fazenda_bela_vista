@@ -3383,6 +3383,38 @@ def _resolve_optional_finance_account(
     return next((item for item in repo.list_finance_accounts(farm_id=active_farm.id) if item.is_default), None)
 
 
+def _is_credit_card_payment_method(payment_method: str | None) -> bool:
+    normalized = (
+        unicodedata.normalize("NFD", str(payment_method or ""))
+        .encode("ascii", "ignore")
+        .decode("ascii")
+        .strip()
+        .lower()
+    )
+    return normalized == "cartao de credito"
+
+
+def _resolve_optional_finance_credit_card(
+    repo: FarmRepository,
+    *,
+    active_farm: Farm | None,
+    credit_card_id: str | int | None,
+    payment_method: str | None,
+) -> FinanceCreditCard | None:
+    if not active_farm or not _is_credit_card_payment_method(payment_method):
+        return None
+    resolved_id = _int_or_none(credit_card_id)
+    if resolved_id:
+        card = repo.get_finance_credit_card(resolved_id)
+        if not card or card.farm_id != active_farm.id:
+            raise ValueError("O cartão selecionado não pertence à fazenda ativa.")
+        return card
+    default_card = next((item for item in repo.list_finance_credit_cards(farm_id=active_farm.id) if item.is_default), None)
+    if default_card:
+        return default_card
+    raise ValueError("Selecione o cartão de crédito utilizado na compra.")
+
+
 def _finance_transaction_payload(
     repo: FarmRepository,
     *,
@@ -8281,6 +8313,7 @@ def purchased_inputs_page(
     scope = _global_scope_context(request, repo)
     effective_farm_id = farm_id or scope["active_farm_id"]
     finance_accounts = repo.list_finance_accounts(farm_id=effective_farm_id) if effective_farm_id else []
+    finance_credit_cards = repo.list_finance_credit_cards(farm_id=effective_farm_id) if effective_farm_id else []
     edit_input = repo.get_purchased_input(edit_id) if edit_id else None
     selected_item_type = item_type if item_type in {"insumo_agricola", "combustivel", "all"} else None
     normalized_item_type = item_type if item_type in {"insumo_agricola", "combustivel"} else None
@@ -8342,6 +8375,8 @@ def purchased_inputs_page(
             selected_input_id=selected_input_id,
             finance_account_options=finance_accounts,
             finance_account_default=next((item for item in finance_accounts if item.is_default), None),
+            finance_credit_card_options=finance_credit_cards,
+            finance_credit_card_default=next((item for item in finance_credit_cards if item.is_default), None),
             input_stock=stock_context["input_stock"],
             stock_outputs=stock_outputs_pagination["items"],
             stock_outputs_pagination=stock_outputs_pagination,
@@ -8382,6 +8417,7 @@ async def create_purchased_input_action(
     package_unit: str = Form(...),
     unit_price: float = Form(...),
     finance_account_id: str | None = Form(None),
+    credit_card_id: str | None = Form(None),
     payment_method: str | None = Form(None),
     payment_condition: str | None = Form("a_vista"),
     installment_count: str | None = Form(None),
@@ -8411,6 +8447,16 @@ async def create_purchased_input_action(
         _flash(request, "error", str(exc))
         return _redirect_with_query("/insumos/comprados", item_type=item_type)
     try:
+        finance_credit_card = _resolve_optional_finance_credit_card(
+            repo,
+            active_farm=scope["active_farm"],
+            credit_card_id=credit_card_id,
+            payment_method=payment_method,
+        )
+    except ValueError as exc:
+        _flash(request, "error", str(exc))
+        return _redirect_with_query("/insumos/comprados", item_type=item_type)
+    try:
         attachment_payloads = _read_attachments(await _request_attachments(request))
     except ValueError as exc:
         _flash(request, "error", str(exc))
@@ -8428,6 +8474,7 @@ async def create_purchased_input_action(
                 "package_unit": resolved_package_unit,
                 "unit_price": unit_price,
                 "finance_account_id": finance_account.id if finance_account else None,
+                "credit_card_id": finance_credit_card.id if finance_credit_card else None,
                 "payment_method": payment_method,
                 "payment_condition": payment_condition,
                 "installment_count": installment_count,
@@ -8467,6 +8514,7 @@ async def update_purchased_input_action(
     package_unit: str = Form(...),
     unit_price: float = Form(...),
     finance_account_id: str | None = Form(None),
+    credit_card_id: str | None = Form(None),
     payment_method: str | None = Form(None),
     payment_condition: str | None = Form("a_vista"),
     installment_count: str | None = Form(None),
@@ -8503,6 +8551,16 @@ async def update_purchased_input_action(
         _flash(request, "error", str(exc))
         return _redirect_for_request(request, "/insumos/comprados", edit_id=input_id, item_type=item_type)
     try:
+        finance_credit_card = _resolve_optional_finance_credit_card(
+            repo,
+            active_farm=scope["active_farm"],
+            credit_card_id=credit_card_id,
+            payment_method=payment_method,
+        )
+    except ValueError as exc:
+        _flash(request, "error", str(exc))
+        return _redirect_for_request(request, "/insumos/comprados", edit_id=input_id, item_type=item_type)
+    try:
         attachment_payloads = _read_attachments(await _request_attachments(request))
     except ValueError as exc:
         _flash(request, "error", str(exc))
@@ -8521,6 +8579,7 @@ async def update_purchased_input_action(
                 "package_unit": resolved_package_unit,
                 "unit_price": unit_price,
                 "finance_account_id": finance_account.id if finance_account else None,
+                "credit_card_id": finance_credit_card.id if finance_credit_card else None,
                 "payment_method": payment_method,
                 "payment_condition": payment_condition,
                 "installment_count": installment_count,
@@ -10049,6 +10108,7 @@ def equipment_assets_page(
     repo = _repository(db)
     effective_farm_id = farm_id or _active_farm_id(request)
     finance_accounts = repo.list_finance_accounts(farm_id=effective_farm_id) if effective_farm_id else []
+    finance_credit_cards = repo.list_finance_credit_cards(farm_id=effective_farm_id) if effective_farm_id else []
     selected_status = status if status in EQUIPMENT_ASSET_STATUS_OPTIONS else None
     assets_search_value = (request.query_params.get("assets_search") or "").strip()
     assets_filters_active = bool(
@@ -10098,6 +10158,8 @@ def equipment_assets_page(
             asset_category_profiles=EQUIPMENT_ASSET_CATEGORY_PROFILES,
             finance_account_options=finance_accounts,
             finance_account_default=next((item for item in finance_accounts if item.is_default), None),
+            finance_credit_card_options=finance_credit_cards,
+            finance_credit_card_default=next((item for item in finance_credit_cards if item.is_default), None),
             current_year=today_in_app_timezone().year,
             assets=assets_pagination["items"],
             assets_pagination=assets_pagination,
@@ -10190,6 +10252,7 @@ def supplies_page(
     }
     supplies_after_output_edit_close_url = _url_with_query(request, edit_output_id=None)
     farm_ids, variety_ids = _scoped_plot_filters(request, scope["active_season"])
+    finance_credit_cards = repo.list_finance_credit_cards(farm_id=effective_farm_id) if effective_farm_id else []
     return templates.TemplateResponse(
         "supplies.html",
         _base_context(
@@ -10225,6 +10288,8 @@ def supplies_page(
             supply_category_options=SUPPLY_CATEGORY_OPTIONS,
             finance_account_options=finance_accounts,
             finance_account_default=next((item for item in finance_accounts if item.is_default), None),
+            finance_credit_card_options=finance_credit_cards,
+            finance_credit_card_default=next((item for item in finance_credit_cards if item.is_default), None),
             supplies=purchase_entries_pagination["items"],
             supplies_pagination=purchase_entries_pagination,
             purchase_entries=purchase_entries_pagination["items"],
@@ -10258,6 +10323,7 @@ async def create_supply_action(
     category: str | None = Form(None),
     unit_price: float = Form(...),
     finance_account_id: str | None = Form(None),
+    credit_card_id: str | None = Form(None),
     payment_method: str | None = Form(None),
     payment_condition: str | None = Form("a_vista"),
     installment_count: str | None = Form(None),
@@ -10282,6 +10348,16 @@ async def create_supply_action(
         _flash(request, "error", str(exc))
         return _redirect(target_base)
     try:
+        finance_credit_card = _resolve_optional_finance_credit_card(
+            repo,
+            active_farm=scope["active_farm"],
+            credit_card_id=credit_card_id,
+            payment_method=payment_method,
+        )
+    except ValueError as exc:
+        _flash(request, "error", str(exc))
+        return _redirect(target_base)
+    try:
         attachment_payloads = _read_attachments(await _request_attachments(request))
     except ValueError as exc:
         _flash(request, "error", str(exc))
@@ -10299,6 +10375,7 @@ async def create_supply_action(
                 "category": category,
                 "unit_price": unit_price,
                 "finance_account_id": finance_account.id if finance_account else None,
+                "credit_card_id": finance_credit_card.id if finance_credit_card else None,
                 "payment_method": payment_method,
                 "payment_condition": payment_condition,
                 "installment_count": installment_count,
@@ -10337,6 +10414,7 @@ async def update_supply_action(
     category: str | None = Form(None),
     unit_price: float = Form(...),
     finance_account_id: str | None = Form(None),
+    credit_card_id: str | None = Form(None),
     payment_method: str | None = Form(None),
     payment_condition: str | None = Form("a_vista"),
     installment_count: str | None = Form(None),
@@ -10369,6 +10447,17 @@ async def update_supply_action(
         separator = "&" if "?" in target_url else "?"
         return _redirect(f"{target_url}{separator}edit_id={input_id}")
     try:
+        finance_credit_card = _resolve_optional_finance_credit_card(
+            repo,
+            active_farm=scope["active_farm"],
+            credit_card_id=credit_card_id,
+            payment_method=payment_method,
+        )
+    except ValueError as exc:
+        _flash(request, "error", str(exc))
+        separator = "&" if "?" in target_url else "?"
+        return _redirect(f"{target_url}{separator}edit_id={input_id}")
+    try:
         attachment_payloads = _read_attachments(await _request_attachments(request))
     except ValueError as exc:
         _flash(request, "error", str(exc))
@@ -10388,6 +10477,7 @@ async def update_supply_action(
                 "category": category,
                 "unit_price": unit_price,
                 "finance_account_id": finance_account.id if finance_account else None,
+                "credit_card_id": finance_credit_card.id if finance_credit_card else None,
                 "payment_method": payment_method,
                 "payment_condition": payment_condition,
                 "installment_count": installment_count,
@@ -10869,6 +10959,7 @@ async def create_equipment_asset_action(
     acquisition_date: str | None = Form(None),
     acquisition_value: str | None = Form(None),
     finance_account_id: str | None = Form(None),
+    credit_card_id: str | None = Form(None),
     payment_method: str | None = Form(None),
     payment_condition: str | None = Form("a_vista"),
     installment_count: str | None = Form(None),
@@ -10887,6 +10978,16 @@ async def create_equipment_asset_action(
         return denied
     try:
         finance_account = _resolve_optional_finance_account(repo, active_farm=scope["active_farm"], account_id=finance_account_id)
+    except ValueError as exc:
+        _flash(request, "error", str(exc))
+        return _redirect("/insumos/patrimonio")
+    try:
+        finance_credit_card = _resolve_optional_finance_credit_card(
+            repo,
+            active_farm=scope["active_farm"],
+            credit_card_id=credit_card_id,
+            payment_method=payment_method,
+        )
     except ValueError as exc:
         _flash(request, "error", str(exc))
         return _redirect("/insumos/patrimonio")
@@ -10934,6 +11035,7 @@ async def create_equipment_asset_action(
                 "acquisition_date": acquisition_date,
                 "acquisition_value": _float_or_none(acquisition_value),
                 "finance_account_id": finance_account.id if finance_account else None,
+                "credit_card_id": finance_credit_card.id if finance_credit_card else None,
                 "payment_method": payment_method,
                 "payment_condition": payment_condition,
                 "installment_count": installment_count,
@@ -10977,6 +11079,7 @@ async def update_equipment_asset_action(
     acquisition_date: str | None = Form(None),
     acquisition_value: str | None = Form(None),
     finance_account_id: str | None = Form(None),
+    credit_card_id: str | None = Form(None),
     payment_method: str | None = Form(None),
     payment_condition: str | None = Form("a_vista"),
     installment_count: str | None = Form(None),
@@ -11002,6 +11105,16 @@ async def update_equipment_asset_action(
         return _redirect_for_request(request, "/insumos/patrimonio")
     try:
         finance_account = _resolve_optional_finance_account(repo, active_farm=scope["active_farm"], account_id=finance_account_id)
+    except ValueError as exc:
+        _flash(request, "error", str(exc))
+        return _redirect_for_request(request, "/insumos/patrimonio", edit_id=asset_id)
+    try:
+        finance_credit_card = _resolve_optional_finance_credit_card(
+            repo,
+            active_farm=scope["active_farm"],
+            credit_card_id=credit_card_id,
+            payment_method=payment_method,
+        )
     except ValueError as exc:
         _flash(request, "error", str(exc))
         return _redirect_for_request(request, "/insumos/patrimonio", edit_id=asset_id)
@@ -11050,6 +11163,7 @@ async def update_equipment_asset_action(
                 "acquisition_date": acquisition_date,
                 "acquisition_value": _float_or_none(acquisition_value),
                 "finance_account_id": finance_account.id if finance_account else None,
+                "credit_card_id": finance_credit_card.id if finance_credit_card else None,
                 "payment_method": payment_method,
                 "payment_condition": payment_condition,
                 "installment_count": installment_count,

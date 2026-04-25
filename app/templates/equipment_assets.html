@@ -160,6 +160,8 @@
                             <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">ID do ativo</p><p class="mt-2 text-sm font-medium text-slate-800">{{ asset.asset_code or "-" }}</p></div>
                             <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Aquisicao</p><p class="mt-2 text-sm font-medium text-slate-800">{{ asset.acquisition_date or "-" }}</p></div>
                             <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Valor</p><p class="mt-2 text-sm font-medium text-slate-800">{% if asset.acquisition_value is not none %}R$ {{ asset.acquisition_value }}{% else %}-{% endif %}</p></div>
+                            <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Forma de pagamento</p><p class="mt-2 text-sm font-medium text-slate-800">{{ asset.payment_method or "-" }}</p></div>
+                            <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Cartão utilizado</p><p class="mt-2 text-sm font-medium text-slate-800">{{ asset.finance_credit_card.card_name if asset.finance_credit_card else "-" }}</p></div>
                             <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">{{ asset.measurement_label or 'Medida' }}</p><p class="mt-2 text-sm font-medium text-slate-800">{% if asset.measurement_value is not none and asset.measurement_unit %}{{ asset.measurement_value }} {{ asset.measurement_unit }}{% else %}-{% endif %}</p></div>
                             <div class="rounded-2xl bg-slate-50 px-4 py-3 sm:col-span-2"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Status</p><p class="mt-2 text-sm font-medium text-slate-800">{{ asset.status.replace('_', ' ')|title }}</p></div>
                         </div>
@@ -305,7 +307,7 @@
                         <input type="text" value="" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" inputmode="numeric" placeholder="R$ 0,00" data-currency-display>
                     </label>
                 </div>
-                <div class="grid gap-4 md:grid-cols-2">
+                <div class="grid gap-4 md:grid-cols-3">
                     <label>
                         <span class="mb-2 block text-sm font-medium">Conta bancária</span>
                         {% set asset_selected_finance_account_id = edit_asset.finance_account_id if edit_asset and edit_asset.finance_account_id else (finance_account_default.id if finance_account_default else None) %}
@@ -319,7 +321,7 @@
                     </label>
                     <label>
                         <span class="mb-2 block text-sm font-medium">Forma de pagamento</span>
-                        <select name="payment_method" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50">
+                        <select name="payment_method" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" data-assets-payment-method>
                             <option value="">Selecione...</option>
                             <option value="Dinheiro" {% if edit_asset and edit_asset.payment_method == 'Dinheiro' %}selected{% endif %}>Dinheiro</option>
                             <option value="Pix" {% if edit_asset and edit_asset.payment_method == 'Pix' %}selected{% endif %}>Pix</option>
@@ -330,6 +332,17 @@
                             <option value="Cheque" {% if edit_asset and edit_asset.payment_method == 'Cheque' %}selected{% endif %}>Cheque</option>
                             <option value="Outro" {% if edit_asset and edit_asset.payment_method == 'Outro' %}selected{% endif %}>Outro</option>
                         </select>
+                    </label>
+                    {% set asset_selected_credit_card_id = edit_asset.credit_card_id if edit_asset and edit_asset.credit_card_id else (finance_credit_card_default.id if finance_credit_card_default else None) %}
+                    <label class="hidden" data-assets-credit-card-wrap>
+                        <span class="mb-2 block text-sm font-medium">Cartão utilizado</span>
+                        <select name="credit_card_id" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" data-assets-credit-card-select data-default-card-id="{{ finance_credit_card_default.id if finance_credit_card_default else '' }}">
+                            <option value="">{% if finance_credit_card_options %}Selecione o cartão{% else %}Cadastre um cartão em Contas{% endif %}</option>
+                            {% for card in finance_credit_card_options %}
+                            <option value="{{ card.id }}" {% if asset_selected_credit_card_id == card.id %}selected{% endif %}>{{ card.card_name }} • {{ card.issuer }}{% if card.brand %} • {{ card.brand }}{% endif %}{% if card.is_default %} • padrão{% endif %}</option>
+                            {% endfor %}
+                        </select>
+                        <span class="mt-2 block text-xs text-slate-500">Informe o cartão utilizado para manter a rastreabilidade financeira da aquisição.</span>
                     </label>
                 </div>
                 {% set asset_payment_condition = edit_asset.payment_condition if edit_asset and edit_asset.payment_condition else 'a_vista' %}
@@ -442,6 +455,9 @@
         const measurementUnitField = form?.querySelector('[data-assets-measurement-unit]');
         const acquisitionLabel = form?.querySelector('[data-assets-acquisition-label]');
         const statusField = form?.querySelector('select[name="status"]');
+        const paymentMethodField = form?.querySelector('[data-assets-payment-method]');
+        const creditCardWrap = form?.querySelector('[data-assets-credit-card-wrap]');
+        const creditCardSelect = form?.querySelector('[data-assets-credit-card-select]');
         const initialSubtypeValue = {{ (edit_asset.subtype if edit_asset and edit_asset.subtype else '')|tojson }};
         const initialMeasurementUnit = {{ (edit_asset.measurement_unit if edit_asset and edit_asset.measurement_unit else '')|tojson }};
 
@@ -455,8 +471,24 @@
             }
         };
 
+        const updateAssetCreditCardSection = () => {
+            if (!paymentMethodField || !creditCardWrap || !creditCardSelect) return;
+            const isCreditCard = paymentMethodField.value === 'Cartão de crédito';
+            creditCardWrap.classList.toggle('hidden', !isCreditCard);
+            creditCardSelect.disabled = !isCreditCard;
+            if (isCreditCard) {
+                if (!creditCardSelect.value && creditCardSelect.dataset.defaultCardId) {
+                    creditCardSelect.value = creditCardSelect.dataset.defaultCardId;
+                }
+            } else {
+                creditCardSelect.value = '';
+            }
+        };
+
         paymentConditionField?.addEventListener('change', updateInstallmentSection);
+        paymentMethodField?.addEventListener('change', updateAssetCreditCardSection);
         updateInstallmentSection();
+        updateAssetCreditCardSection();
 
         const populateSubtypeOptions = (profile, selectedValue = '') => {
             if (!subtypeField) return;

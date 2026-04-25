@@ -534,6 +534,7 @@ def create_purchased_input(repository: FarmRepository, form: dict) -> PurchasedI
         input_id=catalog.id,
         farm_id=form.get("farm_id"),
         finance_account_id=form.get("finance_account_id"),
+        credit_card_id=form.get("credit_card_id"),
         name=catalog.name,
         normalized_name=catalog.normalized_name,
         quantity_purchased=quantity_purchased,
@@ -557,6 +558,7 @@ def create_purchased_input(repository: FarmRepository, form: dict) -> PurchasedI
         tx = FinanceTransaction(
             farm_id=form.get("farm_id"),
             finance_account_id=form.get("finance_account_id"),
+            credit_card_id=form.get("credit_card_id"),
             operation_type="despesa",
             launch_date=item.purchase_date,
             amount=item.total_cost,
@@ -617,6 +619,7 @@ def update_purchased_input(repository: FarmRepository, item: PurchasedInput, for
             "input_id": catalog.id,
             "farm_id": form.get("farm_id"),
             "finance_account_id": form.get("finance_account_id"),
+            "credit_card_id": form.get("credit_card_id"),
             "name": catalog.name,
             "normalized_name": catalog.normalized_name,
             "quantity_purchased": quantity_purchased,
@@ -642,6 +645,7 @@ def update_purchased_input(repository: FarmRepository, item: PurchasedInput, for
             tx = repository.get_finance_transaction(updated_item.finance_transaction_id)
             if tx:
                 tx.finance_account_id = form.get("finance_account_id")
+                tx.credit_card_id = form.get("credit_card_id")
                 tx.launch_date = updated_item.purchase_date
                 tx.amount = updated_item.total_cost
                 tx.product_service = f"Compra de {catalog.name}"
@@ -670,6 +674,7 @@ def update_purchased_input(repository: FarmRepository, item: PurchasedInput, for
             tx = FinanceTransaction(
                 farm_id=form.get("farm_id"),
                 finance_account_id=form.get("finance_account_id"),
+                credit_card_id=form.get("credit_card_id"),
                 operation_type="despesa",
                 launch_date=updated_item.purchase_date,
                 amount=updated_item.total_cost,
@@ -715,6 +720,7 @@ def create_equipment_asset(repository: FarmRepository, form: dict) -> EquipmentA
     asset = EquipmentAsset(
         farm_id=form.get("farm_id"),
         finance_account_id=form.get("finance_account_id"),
+        credit_card_id=form.get("credit_card_id"),
         name=form["name"],
         category=form["category"],
         subtype=form.get("subtype"),
@@ -739,6 +745,7 @@ def create_equipment_asset(repository: FarmRepository, form: dict) -> EquipmentA
         tx = FinanceTransaction(
             farm_id=form.get("farm_id"),
             finance_account_id=form.get("finance_account_id"),
+            credit_card_id=form.get("credit_card_id"),
             operation_type="despesa",
             launch_date=asset.acquisition_date or today_in_app_timezone(),
             amount=asset.acquisition_value,
@@ -779,6 +786,7 @@ def update_equipment_asset(repository: FarmRepository, asset: EquipmentAsset, fo
         {
             "farm_id": form.get("farm_id"),
             "finance_account_id": form.get("finance_account_id"),
+            "credit_card_id": form.get("credit_card_id"),
             "name": form["name"],
             "category": form["category"],
             "subtype": form.get("subtype"),
@@ -805,6 +813,7 @@ def update_equipment_asset(repository: FarmRepository, asset: EquipmentAsset, fo
             tx = repository.get_finance_transaction(updated_asset.finance_transaction_id)
             if tx:
                 tx.finance_account_id = form.get("finance_account_id")
+                tx.credit_card_id = form.get("credit_card_id")
                 tx.launch_date = updated_asset.acquisition_date or today_in_app_timezone()
                 tx.amount = updated_asset.acquisition_value
                 tx.category = finance_category
@@ -833,6 +842,7 @@ def update_equipment_asset(repository: FarmRepository, asset: EquipmentAsset, fo
             tx = FinanceTransaction(
                 farm_id=form.get("farm_id"),
                 finance_account_id=form.get("finance_account_id"),
+                credit_card_id=form.get("credit_card_id"),
                 operation_type="despesa",
                 launch_date=updated_asset.acquisition_date or today_in_app_timezone(),
                 amount=updated_asset.acquisition_value,
