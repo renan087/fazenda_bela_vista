@@ -9,6 +9,7 @@
                     <th class="px-4 py-3 font-medium">Vencimento</th>
                     <th class="px-4 py-3 font-medium">Origem</th>
                     <th class="px-4 py-3 font-medium">Conta</th>
+                    <th class="px-4 py-3 font-medium">Cartão</th>
                     <th class="px-4 py-3 font-medium">Categoria</th>
                     <th class="px-4 py-3 font-medium">Produto / serviço</th>
                     <th class="px-4 py-3 font-medium">Parcela</th>
@@ -30,6 +31,7 @@
                     </td>
                     <td class="px-4 py-3">{{ payable.source_label }}</td>
                     <td class="px-4 py-3">{{ transaction.finance_account.account_name if transaction.finance_account else '-' }}</td>
+                    <td class="px-4 py-3">{{ transaction.credit_card.card_name if transaction.credit_card else '-' }}</td>
                     <td class="px-4 py-3 font-semibold text-slate-900">
                         <button type="button" class="text-left font-semibold text-slate-900 transition hover:text-brand-700" data-history-view-trigger data-history-view-kicker="Conta a pagar" data-history-view-title="{{ transaction.product_service }}" data-history-view-subtitle="{{ installment.due_date.strftime('%d/%m/%Y') if installment.due_date else '-' }} • {{ payable.installment_label }}" data-history-view-source="finance-transaction-view-{{ transaction.id }}"{% if payable.source_label == 'Contas' %} data-history-view-edit-url="{{ payable.edit_url }}"{% endif %}>{{ transaction.category }}</button>
                     </td>

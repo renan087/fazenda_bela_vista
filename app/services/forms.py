@@ -77,26 +77,77 @@ def _finance_add_years(base_date: date, years: int) -> date:
     return date(target_year, base_date.month, day)
 
 
+def _normalize_payment_method(value: str | None) -> str:
+    return (
+        unicodedata.normalize("NFD", str(value or ""))
+        .encode("ascii", "ignore")
+        .decode("ascii")
+        .strip()
+        .lower()
+    )
+
+
+def _is_credit_card_payment_method(value: str | None) -> bool:
+    return _normalize_payment_method(value) == "cartao de credito"
+
+
+def _date_with_clamped_day(year: int, month: int, day: int) -> date:
+    max_day = [31, 29 if (year % 4 == 0 and year % 100 != 0) or year % 400 == 0 else 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][month - 1]
+    return date(year, month, min(max(day, 1), max_day))
+
+
+def _finance_credit_card_due_date(reference_date: date, *, closing_day: int, due_day: int) -> date:
+    closing_this_month = _date_with_clamped_day(reference_date.year, reference_date.month, closing_day)
+    if reference_date <= closing_this_month:
+        cycle_closing = closing_this_month
+    else:
+        next_month_reference = _finance_add_months(reference_date.replace(day=1), 1)
+        cycle_closing = _date_with_clamped_day(next_month_reference.year, next_month_reference.month, closing_day)
+    due_month_offset = 0 if due_day > cycle_closing.day else 1
+    due_reference = _finance_add_months(cycle_closing.replace(day=1), due_month_offset)
+    return _date_with_clamped_day(due_reference.year, due_reference.month, due_day)
+
+
 def _build_installments(
     *,
     amount: float,
     payment_condition: str,
+    payment_method: str | None = None,
+    credit_card=None,
+    reference_date: date | None = None,
     installment_count: int,
     installment_frequency: str | None,
     first_installment_date: date | None,
 ) -> list[dict]:
-    if payment_condition != "a_prazo" or installment_count < 1 or not first_installment_date:
+    is_credit_card_purchase = bool(credit_card) and _is_credit_card_payment_method(payment_method)
+    if installment_count < 1:
+        return []
+    if payment_condition != "a_prazo" and not is_credit_card_purchase:
+        return []
+    effective_first_due = first_installment_date
+    effective_frequency = installment_frequency or "mensal"
+    effective_count = installment_count
+    if is_credit_card_purchase:
+        effective_first_due = effective_first_due or _finance_credit_card_due_date(
+            reference_date or today_in_app_timezone(),
+            closing_day=int(credit_card.closing_day or 1),
+            due_day=int(credit_card.due_day or 1),
+        )
+        if payment_condition != "a_prazo":
+            effective_count = 1
+            effective_frequency = "mensal"
+    if not effective_first_due:
         return []
     total_cents = int((Decimal(str(amount)) * 100).quantize(Decimal("1")))
-    base_cents = total_cents // installment_count
-    remainder = total_cents % installment_count
+    base_cents = total_cents // effective_count
+    remainder = total_cents % effective_count
     installments: list[dict] = []
-    for index in range(installment_count):
+    for index in range(effective_count):
         current_cents = base_cents + (1 if index < remainder else 0)
-        if installment_frequency == "anual":
-            due_date = _finance_add_years(first_installment_date, index)
+        if effective_frequency == "anual":
+            due_date = _finance_add_years(effective_first_due, index)
         else:
-            due_date = _finance_add_months(first_installment_date, index)
+            due_date = _finance_add_months(effective_first_due, index)
         installments.append(
             {
                 "installment_number": index + 1,
@@ -127,9 +178,10 @@ def _normalize_finance_schedule_fields(form: dict) -> tuple[str, str | None, int
     installment_count = _int_or_none(form.get("installment_count")) or 1
     installment_frequency = (str(form.get("installment_frequency") or "mensal")).strip().lower()
     first_installment_date = _date_or_none(form.get("first_installment_date"))
+    using_credit_card = bool(form.get("credit_card_id")) and _is_credit_card_payment_method(payment_method)
 
     if payment_condition == "a_prazo":
-        if not form.get("finance_account_id"):
+        if not form.get("finance_account_id") and not using_credit_card:
             raise ValueError("Selecione a conta bancária para acompanhar o pagamento a prazo.")
         if installment_count < 1:
             raise ValueError("Informe ao menos 1 parcela para pagamento a prazo.")
@@ -161,6 +213,13 @@ def _replace_installments(
                 payment_notes=row.get("payment_notes"),
             )
         )
+
+
+def _resolve_credit_card(repository: FarmRepository, form: dict):
+    card_id = _int_or_none(form.get("credit_card_id"))
+    if not card_id:
+        return None
+    return repository.get_finance_credit_card(card_id)
 
 
 def _normalize_fertilization_application_method(raw: str | None) -> str:
@@ -529,6 +588,8 @@ def create_purchased_input(repository: FarmRepository, form: dict) -> PurchasedI
     )
 
     payment_condition, payment_method, installment_count, installment_frequency, first_installment_date = _normalize_finance_schedule_fields(form)
+    credit_card = _resolve_credit_card(repository, form)
+    should_create_financial_transaction = bool(form.get("finance_account_id") or credit_card)
 
     item = PurchasedInput(
         input_id=catalog.id,
@@ -553,7 +614,7 @@ def create_purchased_input(repository: FarmRepository, form: dict) -> PurchasedI
         installment_frequency=installment_frequency,
         first_installment_date=first_installment_date,
     )
-    if form.get("finance_account_id"):
+    if should_create_financial_transaction:
         source_value = "Insumos" if item_type == "insumo_agricola" else "Suprimentos"
         tx = FinanceTransaction(
             farm_id=form.get("farm_id"),
@@ -582,6 +643,9 @@ def create_purchased_input(repository: FarmRepository, form: dict) -> PurchasedI
             _build_installments(
                 amount=item.total_cost,
                 payment_condition=payment_condition,
+                payment_method=payment_method,
+                credit_card=credit_card,
+                reference_date=item.purchase_date,
                 installment_count=installment_count,
                 installment_frequency=installment_frequency,
                 first_installment_date=first_installment_date,
@@ -604,6 +668,8 @@ def update_purchased_input(repository: FarmRepository, item: PurchasedInput, for
     low_stock_threshold = float(form.get("low_stock_threshold") or 0)
     item_type = form.get("item_type") or "insumo_agricola"
     payment_condition, payment_method, installment_count, installment_frequency, first_installment_date = _normalize_finance_schedule_fields(form)
+    credit_card = _resolve_credit_card(repository, form)
+    should_create_financial_transaction = bool(form.get("finance_account_id") or credit_card)
     catalog = _resolve_input_catalog(
         repository,
         form["name"],
@@ -639,7 +705,7 @@ def update_purchased_input(repository: FarmRepository, item: PurchasedInput, for
             "first_installment_date": first_installment_date,
         },
     )
-    if form.get("finance_account_id"):
+    if should_create_financial_transaction:
         source_value = "Insumos" if item_type == "insumo_agricola" else "Suprimentos"
         if updated_item.finance_transaction_id:
             tx = repository.get_finance_transaction(updated_item.finance_transaction_id)
@@ -665,6 +731,9 @@ def update_purchased_input(repository: FarmRepository, item: PurchasedInput, for
                     _build_installments(
                         amount=updated_item.total_cost,
                         payment_condition=payment_condition,
+                        payment_method=payment_method,
+                        credit_card=credit_card,
+                        reference_date=updated_item.purchase_date,
                         installment_count=installment_count,
                         installment_frequency=installment_frequency,
                         first_installment_date=first_installment_date,
@@ -699,6 +768,9 @@ def update_purchased_input(repository: FarmRepository, item: PurchasedInput, for
                 _build_installments(
                     amount=updated_item.total_cost,
                     payment_condition=payment_condition,
+                    payment_method=payment_method,
+                    credit_card=credit_card,
+                    reference_date=updated_item.purchase_date,
                     installment_count=installment_count,
                     installment_frequency=installment_frequency,
                     first_installment_date=first_installment_date,
@@ -716,6 +788,8 @@ def update_purchased_input(repository: FarmRepository, item: PurchasedInput, for
 def create_equipment_asset(repository: FarmRepository, form: dict) -> EquipmentAsset:
     payment_condition, payment_method, installment_count, installment_frequency, first_installment_date = _normalize_finance_schedule_fields(form)
     finance_category = form.get("finance_category") or "Máquinas e Equipamentos"
+    credit_card = _resolve_credit_card(repository, form)
+    should_create_financial_transaction = bool(form.get("finance_account_id") or credit_card)
 
     asset = EquipmentAsset(
         farm_id=form.get("farm_id"),
@@ -741,7 +815,7 @@ def create_equipment_asset(repository: FarmRepository, form: dict) -> EquipmentA
         installment_frequency=installment_frequency,
         first_installment_date=first_installment_date,
     )
-    if form.get("finance_account_id") and form.get("acquisition_value"):
+    if should_create_financial_transaction and form.get("acquisition_value"):
         tx = FinanceTransaction(
             farm_id=form.get("farm_id"),
             finance_account_id=form.get("finance_account_id"),
@@ -769,6 +843,9 @@ def create_equipment_asset(repository: FarmRepository, form: dict) -> EquipmentA
             _build_installments(
                 amount=asset.acquisition_value,
                 payment_condition=payment_condition,
+                payment_method=payment_method,
+                credit_card=credit_card,
+                reference_date=asset.acquisition_date or today_in_app_timezone(),
                 installment_count=installment_count,
                 installment_frequency=installment_frequency,
                 first_installment_date=first_installment_date,
@@ -780,6 +857,8 @@ def create_equipment_asset(repository: FarmRepository, form: dict) -> EquipmentA
 def update_equipment_asset(repository: FarmRepository, asset: EquipmentAsset, form: dict) -> EquipmentAsset:
     payment_condition, payment_method, installment_count, installment_frequency, first_installment_date = _normalize_finance_schedule_fields(form)
     finance_category = form.get("finance_category") or "Máquinas e Equipamentos"
+    credit_card = _resolve_credit_card(repository, form)
+    should_create_financial_transaction = bool(form.get("finance_account_id") or credit_card)
 
     updated_asset = repository.update(
         asset,
@@ -808,7 +887,7 @@ def update_equipment_asset(repository: FarmRepository, asset: EquipmentAsset, fo
             "first_installment_date": first_installment_date,
         },
     )
-    if form.get("finance_account_id") and form.get("acquisition_value"):
+    if should_create_financial_transaction and form.get("acquisition_value"):
         if updated_asset.finance_transaction_id:
             tx = repository.get_finance_transaction(updated_asset.finance_transaction_id)
             if tx:
@@ -833,6 +912,9 @@ def update_equipment_asset(repository: FarmRepository, asset: EquipmentAsset, fo
                     _build_installments(
                         amount=updated_asset.acquisition_value,
                         payment_condition=payment_condition,
+                        payment_method=payment_method,
+                        credit_card=credit_card,
+                        reference_date=updated_asset.acquisition_date or today_in_app_timezone(),
                         installment_count=installment_count,
                         installment_frequency=installment_frequency,
                         first_installment_date=first_installment_date,
@@ -867,6 +949,9 @@ def update_equipment_asset(repository: FarmRepository, asset: EquipmentAsset, fo
                 _build_installments(
                     amount=updated_asset.acquisition_value,
                     payment_condition=payment_condition,
+                    payment_method=payment_method,
+                    credit_card=credit_card,
+                    reference_date=updated_asset.acquisition_date or today_in_app_timezone(),
                     installment_count=installment_count,
                     installment_frequency=installment_frequency,
                     first_installment_date=first_installment_date,

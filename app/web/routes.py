@@ -3825,6 +3825,7 @@ def _filtered_finance_transactions_for_accounts(
             searchable = " ".join(
                 [
                     transaction.finance_account.account_name if transaction.finance_account else "",
+                    transaction.credit_card.card_name if transaction.credit_card else "",
                     transaction.category or "",
                     transaction.product_service or "",
                     transaction.description or "",
