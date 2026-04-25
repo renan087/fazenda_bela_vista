@@ -497,7 +497,11 @@
                             {% endfor %}
                         </select>
                     </label>
-                    <label><span class="mb-2 block text-sm font-medium">Valor unitário do volume (R$)</span><input type="number" step="0.01" min="0" name="unit_price" value="{{ edit_supply.unit_price if edit_supply else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required data-supply-unit-price-input></label>
+                    <label>
+                        <span class="mb-2 block text-sm font-medium">Valor unitário do volume (R$)</span>
+                        <input type="hidden" name="unit_price" value="{{ edit_supply.unit_price if edit_supply else '' }}" data-supply-unit-price-input data-currency-raw>
+                        <input type="text" value="" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required inputmode="numeric" placeholder="R$ 0,00" data-currency-display>
+                    </label>
                 </div>
                 <div class="grid gap-4 md:grid-cols-3">
                     <label><span class="mb-2 block text-sm font-medium">Data da compra</span><input type="date" name="purchase_date" value="{{ edit_supply.purchase_date.isoformat() if edit_supply and edit_supply.purchase_date else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50"></label>
@@ -979,7 +983,7 @@
             const quantity = parseFloat(supplyQuantityInput?.value || '0');
             const unitPrice = parseFloat(supplyUnitPriceInput?.value || '0');
             const total = Math.max(quantity, 0) * Math.max(unitPrice, 0);
-            supplyTotalDisplay.value = total > 0 ? formatCurrencyBr(total) : '';
+            supplyTotalDisplay.value = total > 0 ? `R$ ${formatCurrencyBr(total)}` : '';
         };
 
         const updateSupplyInstallmentSection = () => {

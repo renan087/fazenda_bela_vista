@@ -789,7 +789,12 @@ def _flash(request: Request, kind: str, message: str) -> None:
 
 
 def _float_or_none(value: str | None):
-    return float(value) if value not in (None, "") else None
+    if value in (None, ""):
+        return None
+    normalized = str(value).strip().replace("R$", "").replace("\xa0", "").replace(" ", "")
+    if "," in normalized:
+        normalized = normalized.replace(".", "").replace(",", ".")
+    return float(normalized)
 
 
 def _int_or_none(value: str | None):

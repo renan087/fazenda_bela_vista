@@ -301,7 +301,8 @@
                 <div class="grid gap-4 md:grid-cols-2">
                     <label>
                         <span class="mb-2 block text-sm font-medium">Valor de aquisição (R$)</span>
-                        <input type="number" step="0.01" min="0" name="acquisition_value" value="{{ edit_asset.acquisition_value if edit_asset and edit_asset.acquisition_value is not none else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50">
+                        <input type="hidden" name="acquisition_value" value="{{ edit_asset.acquisition_value if edit_asset and edit_asset.acquisition_value is not none else '' }}" data-currency-raw>
+                        <input type="text" value="" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" inputmode="numeric" placeholder="R$ 0,00" data-currency-display>
                     </label>
                 </div>
                 <div class="grid gap-4 md:grid-cols-2">

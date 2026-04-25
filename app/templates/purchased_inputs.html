@@ -396,7 +396,11 @@
                             {% endfor %}
                         </select>
                     </label>
-                    <label><span class="mb-2 block text-sm font-medium">Valor por saco / embalagem (R$)</span><input type="number" step="0.01" min="0" name="unit_price" value="{{ edit_input.unit_price if edit_input else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required data-unit-price></label>
+                    <label>
+                        <span class="mb-2 block text-sm font-medium">Valor por saco / embalagem (R$)</span>
+                        <input type="hidden" name="unit_price" value="{{ edit_input.unit_price if edit_input else '' }}" data-unit-price data-currency-raw>
+                        <input type="text" value="" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required inputmode="numeric" placeholder="R$ 0,00" data-currency-display>
+                    </label>
                 </div>
                 <div class="grid gap-4 md:grid-cols-2">
                     <label>
@@ -457,7 +461,7 @@
                 </div>
                 <div class="grid gap-4 md:grid-cols-3">
                     <label><span class="mb-2 block text-sm font-medium">Quantidade total calculada</span><input type="number" step="0.01" value="{{ edit_input.total_quantity if edit_input else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-200 text-slate-500" readonly data-total-quantity></label>
-                    <label><span class="mb-2 block text-sm font-medium">Valor total calculado (R$)</span><input type="number" step="0.01" value="{{ edit_input.total_cost if edit_input else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-200 text-slate-500" readonly data-total-cost></label>
+                    <label><span class="mb-2 block text-sm font-medium">Valor total calculado (R$)</span><input type="text" value="{% if edit_input %}R$ {{ '%.2f'|format(edit_input.total_cost or 0)|replace('.', ',') }}{% endif %}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-200 text-slate-500" readonly data-total-cost></label>
                     <label><span class="mb-2 block text-sm font-medium">Alerta de estoque baixo</span><input type="number" step="0.01" min="0" name="low_stock_threshold" value="{{ edit_input.low_stock_threshold if edit_input and edit_input.low_stock_threshold is not none else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50"></label>
                 </div>
                 {% set attachment_label = 'Anexos' %}
@@ -777,7 +781,7 @@
             const size = Number(sizeField?.value || 0);
             const unitPrice = Number(unitPriceField?.value || 0);
             totalQuantityField.value = quantity && size ? (quantity * size).toFixed(2) : '';
-            totalCostField.value = quantity && unitPrice ? (quantity * unitPrice).toFixed(2) : '';
+            totalCostField.value = quantity && unitPrice ? (quantity * unitPrice).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) : '';
         };
 
         const paymentConditionField = form?.querySelector('[data-purchased-payment-condition]');

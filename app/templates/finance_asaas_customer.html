@@ -158,7 +158,8 @@
             <div class="grid gap-4 sm:grid-cols-2">
                 <label>
                     <span class="mb-2 block text-sm font-medium text-slate-700">Valor (R$)</span>
-                    <input type="text" name="charge_value" value="5,00" required inputmode="decimal" class="min-h-[2.75rem] w-full rounded-2xl border-slate-200 bg-slate-50 px-4 py-2.5 text-slate-900" placeholder="0,00">
+                    <input type="hidden" name="charge_value" value="5.00" data-currency-raw>
+                    <input type="text" value="" required inputmode="numeric" class="min-h-[2.75rem] w-full rounded-2xl border-slate-200 bg-slate-50 px-4 py-2.5 text-slate-900" placeholder="R$ 0,00" data-currency-display data-currency-min-cents="100">
                 </label>
                 <label>
                     <span class="mb-2 block text-sm font-medium text-slate-700">Forma de pagamento</span>
