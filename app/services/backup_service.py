@@ -36,6 +36,7 @@ AUTOMATION_TRIGGER_SOURCE = "automatic"
 AUTOMATION_DEFAULT_SCHEDULE_HOUR = 3
 AUTOMATION_DEFAULT_SCHEDULE_MINUTE = 0
 AUTOMATION_DEFAULT_STORAGE_LIMIT_GB = 1
+PG_DUMP_TIMEOUT_SECONDS = 300
 STORAGE_LIMIT_ERROR_HINTS = (
     "limit",
     "quota",
@@ -626,7 +627,13 @@ def _backup_database_dump(started_at: datetime, on_upload_start=None) -> dict:
             "--file",
             str(sql_path),
         ]
-        subprocess.run(command, check=True, capture_output=True, text=True)
+        subprocess.run(
+            command,
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=PG_DUMP_TIMEOUT_SECONDS,
+        )
         with sql_path.open("rb") as source, gzip.open(gzip_path, "wb") as target:
             shutil.copyfileobj(source, target)
         if callable(on_upload_start):
@@ -647,7 +654,15 @@ def _backup_database_dump(started_at: datetime, on_upload_start=None) -> dict:
             },
         }
     except FileNotFoundError as exc:
-        raise RuntimeError("Comando pg_dump nao encontrado no ambiente.") from exc
+        raise RuntimeError(
+            "Comando pg_dump nao encontrado no ambiente. "
+            "Verifique se o pacote postgresql-client esta instalado no container."
+        ) from exc
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError(
+            f"pg_dump excedeu o tempo limite de {PG_DUMP_TIMEOUT_SECONDS}s. "
+            "Verifique a conectividade com o banco de dados."
+        ) from exc
     except subprocess.CalledProcessError as exc:
         stderr = (exc.stderr or "").strip()
         raise RuntimeError(stderr or "pg_dump retornou erro ao gerar o dump do banco.") from exc
