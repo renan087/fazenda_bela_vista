@@ -132,6 +132,52 @@
     box-shadow: 0 12px 24px -24px rgba(37, 99, 235, 0.55);
 }
 
+.finance-credit-card-invoice-tabs-shell {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 0.75rem;
+}
+
+.finance-credit-card-invoice-tabs-track {
+    display: flex;
+    gap: 0.75rem;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scroll-behavior: smooth;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+}
+
+.finance-credit-card-invoice-tabs-track::-webkit-scrollbar {
+    display: none;
+}
+
+.finance-credit-card-invoice-tabs-shell[data-can-scroll-left="false"] [data-finance-card-invoices-nav="prev"],
+.finance-credit-card-invoice-tabs-shell[data-can-scroll-right="false"] [data-finance-card-invoices-nav="next"] {
+    opacity: 0.35;
+    pointer-events: none;
+}
+
+.finance-credit-card-invoice-nav {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.75rem;
+    height: 2.75rem;
+    border-radius: 999px;
+    border: 1px solid rgba(203, 213, 225, 0.95);
+    background: rgba(248, 250, 252, 0.98);
+    color: #475569;
+    transition: background-color 160ms ease, border-color 160ms ease, color 160ms ease, opacity 160ms ease;
+}
+
+.finance-credit-card-invoice-nav:hover {
+    border-color: rgba(148, 163, 184, 0.95);
+    background: rgba(241, 245, 249, 0.98);
+    color: #1e293b;
+}
+
 .finance-payable-chip-open {
     background: rgba(219, 234, 254, 0.88);
     color: #1d4ed8;
@@ -598,26 +644,38 @@
                     </div>
                     <div class="mt-6">
                         {% if card_overview.get('invoice_groups', []) %}
-                        <div class="flex flex-wrap gap-2" role="tablist" aria-label="Faturas de {{ card.card_name }}">
-                            {% for invoice in card_overview.get('invoice_groups', []) %}
-                            <button
-                                type="button"
-                                class="finance-credit-card-invoice-tab inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-600 transition hover:border-sky-200 hover:bg-sky-50 hover:text-sky-700 {% if loop.first %}is-active{% endif %}"
-                                role="tab"
-                                aria-selected="{% if loop.first %}true{% else %}false{% endif %}"
-                                data-finance-card-invoice-tab
-                                data-tab-group="card-{{ card.id }}"
-                                data-tab-target="card-{{ card.id }}-invoice-{{ loop.index0 }}"
-                                data-due-date="{{ invoice.due_date.isoformat() if invoice.due_date else '' }}"
-                                data-due-date-label="{{ invoice.due_date_label }}"
-                                data-reference-label="{{ invoice.reference_label }}"
-                                data-open-total="{{ invoice.open_total|decimal_br }}"
-                                data-can-pay="{% if invoice.open_total > 0 and invoice.due_date %}true{% else %}false{% endif %}"
-                            >
-                                <span>{{ invoice.reference_label }}</span>
-                                <span class="stock-movement-chip {{ invoice.status_chip_class }}">{{ invoice.status_label }}</span>
+                        <div class="finance-credit-card-invoice-tabs-shell" data-finance-card-invoice-tabs-shell data-can-scroll-left="false" data-can-scroll-right="true">
+                            <button type="button" class="finance-credit-card-invoice-nav" data-finance-card-invoices-nav="prev" aria-label="Ver faturas anteriores">
+                                <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                    <path d="m15 18-6-6 6-6"/>
+                                </svg>
                             </button>
-                            {% endfor %}
+                            <div class="finance-credit-card-invoice-tabs-track" role="tablist" aria-label="Faturas de {{ card.card_name }}" data-finance-card-invoice-tabs-track>
+                                {% for invoice in card_overview.get('invoice_groups', []) %}
+                                <button
+                                    type="button"
+                                    class="finance-credit-card-invoice-tab inline-flex shrink-0 items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-600 transition hover:border-sky-200 hover:bg-sky-50 hover:text-sky-700 {% if loop.first %}is-active{% endif %}"
+                                    role="tab"
+                                    aria-selected="{% if loop.first %}true{% else %}false{% endif %}"
+                                    data-finance-card-invoice-tab
+                                    data-tab-group="card-{{ card.id }}"
+                                    data-tab-target="card-{{ card.id }}-invoice-{{ loop.index0 }}"
+                                    data-due-date="{{ invoice.due_date.isoformat() if invoice.due_date else '' }}"
+                                    data-due-date-label="{{ invoice.due_date_label }}"
+                                    data-reference-label="{{ invoice.reference_label }}"
+                                    data-open-total="{{ invoice.open_total|decimal_br }}"
+                                    data-can-pay="{% if invoice.open_total > 0 and invoice.due_date %}true{% else %}false{% endif %}"
+                                >
+                                    <span>{{ invoice.reference_label }}</span>
+                                    <span class="stock-movement-chip {{ invoice.status_chip_class }}">{{ invoice.status_label }}</span>
+                                </button>
+                                {% endfor %}
+                            </div>
+                            <button type="button" class="finance-credit-card-invoice-nav" data-finance-card-invoices-nav="next" aria-label="Ver próximas faturas">
+                                <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                    <path d="m9 6 6 6-6 6"/>
+                                </svg>
+                            </button>
                         </div>
                         <div class="mt-5 space-y-4">
                             {% for invoice in card_overview.get('invoice_groups', []) %}
@@ -1639,6 +1697,7 @@
     const creditCardInvoiceTabs = Array.from(document.querySelectorAll('[data-finance-card-invoice-tab]'));
     const creditCardInvoicePanels = Array.from(document.querySelectorAll('[data-finance-card-invoice-panel]'));
     const creditCardInvoicePayButtons = Array.from(document.querySelectorAll('[data-finance-card-invoice-pay-trigger]'));
+    const creditCardInvoiceTabShells = Array.from(document.querySelectorAll('[data-finance-card-invoice-tabs-shell]'));
     const balanceRawInput = document.querySelector('[data-finance-balance-raw]');
     const balanceDisplayInput = document.querySelector('[data-finance-balance-display]');
     const modeLabel = document.querySelector('[data-finance-account-mode-label]');
@@ -3218,6 +3277,16 @@
             payButton.dataset.invoiceOpenTotal = button.dataset.openTotal || '0,00';
             payButton.dataset.transactionTitle = `Fatura ${button.dataset.referenceLabel || ''}`.trim();
         }
+        button.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+    };
+
+    const syncCreditCardInvoiceTabShell = (shell) => {
+        if (!(shell instanceof HTMLElement)) return;
+        const track = shell.querySelector('[data-finance-card-invoice-tabs-track]');
+        if (!(track instanceof HTMLElement)) return;
+        const maxScrollLeft = Math.max(track.scrollWidth - track.clientWidth, 0);
+        shell.dataset.canScrollLeft = track.scrollLeft > 4 ? 'true' : 'false';
+        shell.dataset.canScrollRight = track.scrollLeft < (maxScrollLeft - 4) ? 'true' : 'false';
     };
 
     const openCreditCardInvoicesModal = (button) => {
@@ -3267,6 +3336,21 @@
     });
     creditCardInvoiceTabs.forEach((button) => {
         button.addEventListener('click', () => setCreditCardInvoiceTab(button));
+    });
+    creditCardInvoiceTabShells.forEach((shell) => {
+        const track = shell.querySelector('[data-finance-card-invoice-tabs-track]');
+        const prevButton = shell.querySelector('[data-finance-card-invoices-nav="prev"]');
+        const nextButton = shell.querySelector('[data-finance-card-invoices-nav="next"]');
+        if (!(track instanceof HTMLElement)) return;
+        const scrollByAmount = () => Math.max(track.clientWidth * 0.72, 220);
+        const moveTrack = (direction) => {
+            track.scrollBy({ left: direction * scrollByAmount(), behavior: 'smooth' });
+        };
+        prevButton?.addEventListener('click', () => moveTrack(-1));
+        nextButton?.addEventListener('click', () => moveTrack(1));
+        track.addEventListener('scroll', () => syncCreditCardInvoiceTabShell(shell), { passive: true });
+        window.addEventListener('resize', () => syncCreditCardInvoiceTabShell(shell));
+        syncCreditCardInvoiceTabShell(shell);
     });
     creditCardInvoicePayButtons.forEach((button) => {
         button.dataset.settleScope = 'invoice';
