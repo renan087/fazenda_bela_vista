@@ -2,6 +2,7 @@ import asyncio
 import json
 import gzip
 import logging
+import os
 import shutil
 import subprocess
 import tempfile
@@ -37,6 +38,7 @@ AUTOMATION_DEFAULT_SCHEDULE_HOUR = 3
 AUTOMATION_DEFAULT_SCHEDULE_MINUTE = 0
 AUTOMATION_DEFAULT_STORAGE_LIMIT_GB = 1
 PG_DUMP_TIMEOUT_SECONDS = 300
+STALE_RUNNING_BACKUP_TTL = timedelta(minutes=10)
 STORAGE_LIMIT_ERROR_HINTS = (
     "limit",
     "quota",
@@ -177,6 +179,37 @@ def process_backup_run_in_background(run_id: int) -> int:
                 db.add(run)
                 db.commit()
     return run_id
+
+
+def expire_stale_running_backup_runs(db: Session, ttl: timedelta = STALE_RUNNING_BACKUP_TTL) -> int:
+    cutoff = _utc_now() - ttl
+    stale_runs = (
+        db.query(BackupRun)
+        .filter(BackupRun.status == "running")
+        .filter(BackupRun.started_at < cutoff)
+        .all()
+    )
+    if not stale_runs:
+        return 0
+
+    for run in stale_runs:
+        try:
+            parsed = json.loads(run.details_json) if run.details_json else {}
+        except json.JSONDecodeError:
+            parsed = {}
+        if not isinstance(parsed, dict):
+            parsed = {}
+        parsed["progress_ui"] = _backup_progress_payload("failed")
+        run.details_json = json.dumps(parsed, ensure_ascii=False)
+        run.status = "failed"
+        run.finished_at = _utc_now()
+        run.error_message = run.error_message or (
+            "A execução do backup foi interrompida ou excedeu o tempo esperado. "
+            "Inicie um novo backup."
+        )
+        db.add(run)
+    db.commit()
+    return len(stale_runs)
 
 
 def get_or_create_backup_automation_setting(db: Session) -> BackupAutomationSetting:
@@ -443,6 +476,7 @@ def _claim_due_automatic_backup(db: Session) -> BackupAutomationSetting | None:
     if setting.scheduler_locked_at and setting.scheduler_locked_at > now - AUTOMATION_LOCK_TTL:
         return None
 
+    expire_stale_running_backup_runs(db)
     has_running = db.query(BackupRun.id).filter(BackupRun.status == "running").first() is not None
     if has_running or setting.next_run_at > now:
         return None
@@ -621,9 +655,11 @@ def _backup_database_dump(started_at: datetime, on_upload_start=None) -> dict:
     try:
         command = [
             "pg_dump",
+            "--dbname",
             settings.database_backup_url,
             "--no-owner",
             "--no-privileges",
+            "--lock-wait-timeout=30s",
             "--file",
             str(sql_path),
         ]
@@ -633,6 +669,7 @@ def _backup_database_dump(started_at: datetime, on_upload_start=None) -> dict:
             capture_output=True,
             text=True,
             timeout=PG_DUMP_TIMEOUT_SECONDS,
+            env={**os.environ, "PGCONNECT_TIMEOUT": "15"},
         )
         with sql_path.open("rb") as source, gzip.open(gzip_path, "wb") as target:
             shutil.copyfileobj(source, target)

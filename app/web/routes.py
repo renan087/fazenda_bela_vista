@@ -80,6 +80,7 @@ from app.services.backup_service import (
     _create_backup_run,
     delete_backup_run,
     execute_backup,
+    expire_stale_running_backup_runs,
     get_or_create_backup_automation_setting,
     process_backup_run_in_background,
     update_backup_automation_setting,
@@ -8276,6 +8277,7 @@ def start_backup_action(
                 },
                 status_code=409,
             )
+        expire_stale_running_backup_runs(db)
         running = db.query(BackupRun).filter(BackupRun.status == "running").order_by(BackupRun.started_at.desc()).first()
         if running:
             return JSONResponse(
