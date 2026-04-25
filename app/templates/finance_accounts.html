@@ -250,6 +250,14 @@
                     </svg>
                     <span class="stock-action-button-label">Novo lançamento</span>
                 </button>
+                <button type="button" class="stock-action-button rounded-2xl border border-sky-200 bg-sky-50 text-sky-700 hover:bg-sky-100" data-finance-credit-card-open>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                        <rect x="3" y="6" width="18" height="12" rx="2"/>
+                        <path d="M3 10h18"/>
+                        <path d="M8 15h2"/>
+                    </svg>
+                    <span class="stock-action-button-label">Novo cartão</span>
+                </button>
                 <button type="button" class="stock-action-button stock-action-button-primary" data-finance-account-open>
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
                         <path d="M12 5v14"/>
@@ -279,7 +287,7 @@
         </div>
         <div class="stock-summary-collapse" data-finance-accounts-summary-collapse>
         <div class="stock-summary-collapse-inner">
-        <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-3 mt-4 md:mt-0">
+        <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-4 mt-4 md:mt-0">
             <div class="finance-summary-card finance-summary-card-neutral rounded-2xl border p-4 shadow-sm">
                 <p class="text-[0.65rem] font-semibold uppercase tracking-[0.2em]">Fazenda ativa</p>
                 <p class="mt-1 text-lg font-semibold text-slate-900">{{ active_farm.name }}</p>
@@ -292,6 +300,10 @@
                 <p class="text-[0.65rem] font-semibold uppercase tracking-[0.2em]">Conta padrão</p>
                 <p class="mt-1 text-lg font-semibold text-slate-900">{{ finance_account_default.account_name if finance_account_default else "Não definida" }}</p>
             </div>
+            <div class="finance-summary-card finance-summary-card-neutral rounded-2xl border p-4 shadow-sm">
+                <p class="text-[0.65rem] font-semibold uppercase tracking-[0.2em]">Cartões cadastrados</p>
+                <p class="mt-1 text-lg font-semibold text-slate-900">{{ finance_credit_card_total }}</p>
+            </div>
         </div>
         </div>
         </div>
@@ -302,6 +314,7 @@
             <div class="stock-tab-nav stock-segmented-control" data-segmented-control>
                 <div class="stock-segmented-indicator" aria-hidden="true" data-segmented-indicator></div>
                 <button type="button" class="stock-tab-link is-active" data-finance-tab-button="accounts">Contas</button>
+                <button type="button" class="stock-tab-link" data-finance-tab-button="cards">Cartões</button>
                 <button type="button" class="stock-tab-link" data-finance-tab-button="transactions">Lançamentos</button>
                 <button type="button" class="stock-tab-link" data-finance-tab-button="payables">A Pagar</button>
                 <button type="button" class="stock-tab-link" data-finance-tab-button="receivables">A Receber</button>
@@ -398,6 +411,86 @@
             {% endfor %}
         </div>
         <p class="stock-search-empty mt-4 hidden text-sm text-slate-500" data-finance-accounts-empty>Nenhuma conta corresponde à busca digitada.</p>
+        </div>
+
+        <div class="stock-history-stage mt-4 hidden" data-finance-tab="cards">
+        <div class="mt-5 grid gap-4 lg:grid-cols-2 2xl:grid-cols-3">
+            {% for card in finance_credit_cards %}
+            <article class="rounded-[1.5rem] border border-slate-200 bg-slate-50/80 p-5 shadow-sm transition hover:border-sky-200 hover:bg-white">
+                <div class="flex items-start justify-between gap-3">
+                    <div class="min-w-0">
+                        <div class="flex items-center gap-3">
+                            <span class="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-sky-50 text-sky-700 ring-1 ring-sky-100">
+                                <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                                    <rect x="3" y="6" width="18" height="12" rx="2"/>
+                                    <path d="M3 10h18"/>
+                                    <path d="M8 15h2"/>
+                                </svg>
+                            </span>
+                            <div class="min-w-0">
+                                <p class="truncate text-lg font-semibold text-slate-900">{{ card.card_name }}</p>
+                                <p class="truncate text-sm text-slate-500">{{ card.issuer }}{% if card.brand %} • {{ card.brand }}{% endif %}</p>
+                            </div>
+                        </div>
+                    </div>
+                    <form method="post" action="/gestao-financeira/cartoes/{{ card.id }}/definir-padrao">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                        <button type="{% if card.is_default %}button{% else %}submit{% endif %}" class="finance-default-star-trigger inline-flex h-10 w-10 items-center justify-center rounded-full border transition {% if card.is_default %}border-amber-200 bg-amber-50 text-amber-500 hover:bg-amber-100{% else %}border-slate-200 bg-white text-slate-300 hover:border-amber-200 hover:bg-amber-50 hover:text-amber-400{% endif %}" title="{% if card.is_default %}Cartão padrão{% else %}Definir como padrão{% endif %}" aria-label="{% if card.is_default %}Cartão padrão{% else %}Definir como padrão{% endif %}" {% if not card.is_default %}data-finance-default-trigger{% endif %}>
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 24 24" fill="{% if card.is_default %}currentColor{% else %}none{% endif %}" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                <path d="m12 3.5 2.63 5.33 5.88.86-4.25 4.14 1 5.84L12 17.1l-5.26 2.57 1-5.84L3.5 9.69l5.88-.86L12 3.5z"/>
+                            </svg>
+                        </button>
+                    </form>
+                </div>
+                <div class="mt-4 grid gap-3 sm:grid-cols-2">
+                    <div class="rounded-2xl bg-white px-4 py-3 ring-1 ring-slate-200/80">
+                        <p class="text-xs uppercase tracking-[0.18em] text-slate-400">Fechamento</p>
+                        <p class="mt-2 text-base font-semibold text-slate-900">Dia {{ card.closing_day }}</p>
+                    </div>
+                    <div class="rounded-2xl bg-white px-4 py-3 ring-1 ring-slate-200/80">
+                        <p class="text-xs uppercase tracking-[0.18em] text-slate-400">Vencimento</p>
+                        <p class="mt-2 text-base font-semibold text-slate-900">Dia {{ card.due_day }}</p>
+                    </div>
+                    <div class="rounded-2xl bg-white px-4 py-3 ring-1 ring-slate-200/80">
+                        <p class="text-xs uppercase tracking-[0.18em] text-slate-400">Limite</p>
+                        <p class="mt-2 text-base font-semibold text-slate-900">{% if card.credit_limit is not none %}R$ {{ card.credit_limit|decimal_br }}{% else %}-{% endif %}</p>
+                    </div>
+                    <div class="rounded-2xl bg-white px-4 py-3 ring-1 ring-slate-200/80">
+                        <p class="text-xs uppercase tracking-[0.18em] text-slate-400">Conta para pagamento</p>
+                        <p class="mt-2 text-sm font-semibold text-slate-900">{{ card.payment_account.account_name if card.payment_account else "Não vinculada" }}</p>
+                    </div>
+                    <div class="rounded-2xl bg-white px-4 py-3 ring-1 ring-slate-200/80 sm:col-span-2">
+                        <p class="text-xs uppercase tracking-[0.18em] text-slate-400">Status</p>
+                        <p class="mt-2 inline-flex rounded-full px-3 py-1 text-xs font-semibold {% if card.is_active %}bg-emerald-50 text-emerald-700{% else %}bg-slate-100 text-slate-500{% endif %}">{{ "Ativo" if card.is_active else "Inativo" }}</p>
+                    </div>
+                </div>
+                <div class="mt-4 flex items-center justify-end gap-2">
+                    <a href="/gestao-financeira/contas?finance_tab=cards&card_edit_id={{ card.id }}" class="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-100" title="Editar">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M12 20h9"/>
+                            <path d="M16.5 3.5a2.1 2.1 0 1 1 3 3L7 19l-4 1 1-4Z"/>
+                        </svg>
+                    </a>
+                    <form method="post" action="/gestao-financeira/cartoes/{{ card.id }}/excluir" onsubmit="return confirm('Excluir o cartão {{ card.card_name }}?');">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                        <button type="submit" class="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 text-rose-600 hover:bg-rose-50" title="Excluir">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M3 6h18"/>
+                                <path d="M8 6V4h8v2"/>
+                                <path d="M19 6l-1 14H6L5 6"/>
+                                <path d="M10 11v6"/>
+                                <path d="M14 11v6"/>
+                            </svg>
+                        </button>
+                    </form>
+                </div>
+            </article>
+            {% else %}
+            <div class="rounded-[1.5rem] border border-dashed border-slate-200 bg-slate-50/80 px-6 py-10 text-center text-slate-500 lg:col-span-2 2xl:col-span-3">
+                Nenhum cartão de crédito cadastrado para a fazenda ativa.
+            </div>
+            {% endfor %}
+        </div>
         </div>
 
         <div class="stock-history-stage mt-4 hidden" data-finance-tab="transactions">
@@ -811,6 +904,114 @@
         </div>
     </dialog>
 
+    <dialog id="finance-credit-card-modal" class="app-modal rounded-[2rem] p-0 shadow-2xl w-full max-w-4xl overflow-hidden">
+        <div class="bg-white p-6 sm:p-8">
+            <div class="flex items-start justify-between gap-4">
+                <div class="min-w-0">
+                    <p class="text-xs uppercase tracking-[0.35em] text-slate-400" data-finance-credit-card-mode-label>{% if edit_finance_credit_card %}Editar cartão{% else %}Novo cartão{% endif %}</p>
+                    <h3 class="mt-2 text-2xl font-semibold purchased-modal-heading" data-finance-credit-card-title>{% if edit_finance_credit_card %}Editar cartão de crédito{% else %}Novo cartão de crédito{% endif %}</h3>
+                    <p class="mt-2 text-sm text-slate-500 purchased-modal-subtitle">Cadastre os cartões usados pela fazenda para centralizar compras, fechamento e conta de pagamento.</p>
+                </div>
+                <button type="button" class="modal-close-button" aria-label="Fechar" data-finance-credit-card-close>
+                    <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <path d="M18 6 6 18"/>
+                        <path d="m6 6 12 12"/>
+                    </svg>
+                </button>
+            </div>
+
+            <div class="mt-6 max-h-[72vh] overflow-y-auto pr-1" data-modal-scroll>
+                <form id="finance-credit-card-form" method="post" action="{% if edit_finance_credit_card %}/gestao-financeira/cartoes/{{ edit_finance_credit_card.id }}/editar{% else %}/gestao-financeira/cartoes{% endif %}" class="grid gap-4" data-finance-credit-card-form>
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    <div class="rounded-[1.5rem] border border-brand-100 bg-brand-50/50 p-4">
+                        <div class="flex flex-wrap items-start justify-between gap-4">
+                            <div class="min-w-0">
+                                <p class="text-xs uppercase tracking-[0.3em] text-slate-400">Contexto do cartão</p>
+                                <p class="mt-2 text-sm text-slate-500">O cartão ficará disponível para a fazenda ativa e poderá ser usado nos lançamentos futuros.</p>
+                            </div>
+                        </div>
+                        <div class="mt-4">
+                            <label>
+                                <span class="mb-2 block text-sm font-medium">Fazenda ativa</span>
+                                <input type="text" value="{{ active_farm.name }}" disabled class="min-h-[3.25rem] w-full cursor-not-allowed rounded-2xl border-slate-200 bg-slate-100 text-slate-500">
+                            </label>
+                        </div>
+                    </div>
+                    <div class="sticky top-0 z-10 -mx-1 bg-white/95 px-1 py-1 backdrop-blur">
+                        <div class="flex flex-wrap justify-end gap-3 rounded-[1.5rem] px-2 py-2 sm:px-3">
+                            <button type="button" class="rounded-2xl bg-slate-100 px-4 py-3 font-semibold text-slate-700 hover:bg-slate-200" data-finance-credit-card-close>Cancelar</button>
+                            <button form="finance-credit-card-form" class="rounded-2xl bg-brand-500 px-4 py-3 font-semibold text-white hover:bg-brand-700" data-finance-credit-card-save>Salvar</button>
+                        </div>
+                    </div>
+                    <div class="grid gap-4 md:grid-cols-2">
+                        <label>
+                            <span class="mb-2 block text-sm font-medium">Nome do cartão</span>
+                            <input type="text" name="card_name" value="{{ edit_finance_credit_card.card_name if edit_finance_credit_card else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required>
+                        </label>
+                        <label>
+                            <span class="mb-2 block text-sm font-medium">Emissor</span>
+                            <select name="issuer" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required>
+                                <option value="">Selecione</option>
+                                {% for issuer in finance_credit_card_issuer_options %}
+                                <option value="{{ issuer }}" {% if edit_finance_credit_card and edit_finance_credit_card.issuer == issuer %}selected{% endif %}>{{ issuer }}</option>
+                                {% endfor %}
+                            </select>
+                        </label>
+                    </div>
+                    <div class="grid gap-4 md:grid-cols-2">
+                        <label>
+                            <span class="mb-2 block text-sm font-medium">Bandeira</span>
+                            <select name="brand" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50">
+                                <option value="">Selecione</option>
+                                {% for brand in finance_credit_card_brand_options %}
+                                <option value="{{ brand }}" {% if edit_finance_credit_card and edit_finance_credit_card.brand == brand %}selected{% endif %}>{{ brand }}</option>
+                                {% endfor %}
+                            </select>
+                        </label>
+                        <label>
+                            <span class="mb-2 block text-sm font-medium">Conta para pagamento da fatura</span>
+                            <select name="payment_account_id" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50">
+                                <option value="">Selecione depois</option>
+                                {% for account in finance_accounts %}
+                                <option value="{{ account.id }}" {% if edit_finance_credit_card and edit_finance_credit_card.payment_account_id == account.id %}selected{% endif %}>{{ account.account_name }}{% if account.is_default %} • padrão{% endif %}</option>
+                                {% endfor %}
+                            </select>
+                        </label>
+                    </div>
+                    <div class="grid gap-4 md:grid-cols-3">
+                        <label>
+                            <span class="mb-2 block text-sm font-medium">Dia de fechamento</span>
+                            <input type="number" min="1" max="31" name="closing_day" value="{{ edit_finance_credit_card.closing_day if edit_finance_credit_card else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required>
+                        </label>
+                        <label>
+                            <span class="mb-2 block text-sm font-medium">Dia de vencimento</span>
+                            <input type="number" min="1" max="31" name="due_day" value="{{ edit_finance_credit_card.due_day if edit_finance_credit_card else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required>
+                        </label>
+                        <label>
+                            <span class="mb-2 block text-sm font-medium">Limite do cartão</span>
+                            <input type="hidden" name="credit_limit" value="{{ edit_finance_credit_card.credit_limit if edit_finance_credit_card and edit_finance_credit_card.credit_limit is not none else '' }}" data-finance-credit-card-limit-raw>
+                            <input type="text" value="" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" inputmode="numeric" placeholder="R$ 0,00" data-finance-credit-card-limit-display>
+                        </label>
+                    </div>
+                    <div class="grid gap-4 md:grid-cols-2">
+                        <label class="flex items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                            <input type="checkbox" name="is_default" value="true" class="rounded border-slate-300 text-brand-600 focus:ring-brand-500" {% if edit_finance_credit_card and edit_finance_credit_card.is_default %}checked{% endif %}>
+                            <span class="text-sm font-medium text-slate-700">Definir como cartão padrão da fazenda</span>
+                        </label>
+                        <label class="flex items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                            <input type="checkbox" name="is_active" value="true" class="rounded border-slate-300 text-brand-600 focus:ring-brand-500" {% if not edit_finance_credit_card or edit_finance_credit_card.is_active %}checked{% endif %}>
+                            <span class="text-sm font-medium text-slate-700">Cartão ativo para novos lançamentos</span>
+                        </label>
+                    </div>
+                    <label>
+                        <span class="mb-2 block text-sm font-medium">Observações</span>
+                        <textarea name="notes" rows="4" class="w-full rounded-2xl border-slate-200 bg-slate-50">{{ edit_finance_credit_card.notes if edit_finance_credit_card else '' }}</textarea>
+                    </label>
+                </form>
+            </div>
+        </div>
+    </dialog>
+
     <dialog id="finance-account-modal" class="app-modal rounded-[2rem] p-0 shadow-2xl w-full max-w-4xl overflow-hidden">
         <div class="bg-white p-6 sm:p-8">
             <div class="flex items-start justify-between gap-4">
@@ -1153,6 +1354,15 @@
     const attachmentTriggers = Array.from(document.querySelectorAll('[data-finance-attachments-trigger]'));
     const attachmentPopover = document.querySelector('[data-finance-attachments-popover]');
     const attachmentPopoverList = document.querySelector('[data-finance-attachments-popover-list]');
+    const creditCardModal = document.getElementById('finance-credit-card-modal');
+    const creditCardOpenButton = document.querySelector('[data-finance-credit-card-open]');
+    const creditCardCloseButtons = Array.from(document.querySelectorAll('[data-finance-credit-card-close]'));
+    const shouldOpenCreditCardModal = {% if finance_open_credit_card_modal %}true{% else %}false{% endif %};
+    const creditCardForm = document.querySelector('[data-finance-credit-card-form]');
+    const creditCardModeLabel = document.querySelector('[data-finance-credit-card-mode-label]');
+    const creditCardTitle = document.querySelector('[data-finance-credit-card-title]');
+    const creditCardLimitRawInput = document.querySelector('[data-finance-credit-card-limit-raw]');
+    const creditCardLimitDisplayInput = document.querySelector('[data-finance-credit-card-limit-display]');
     const accountModal = document.getElementById('finance-account-modal');
     const accountOpenButton = document.querySelector('[data-finance-account-open]');
     const accountCloseButtons = Array.from(document.querySelectorAll('[data-finance-account-close]'));
@@ -1232,7 +1442,10 @@
     const financeAccountsSummaryToggleLabel = document.querySelector('[data-finance-accounts-summary-toggle-label]');
     const financeAccountsSummaryTogglePlus = document.querySelector('[data-finance-accounts-summary-toggle-plus]');
     const formInitialState = form ? new FormData(form) : null;
+    const creditCardFormInitialState = creditCardForm ? new FormData(creditCardForm) : null;
     const transactionFormInitialState = transactionForm ? new FormData(transactionForm) : null;
+    let creditCardLimitMask = null;
+    const createCreditCardFormAction = '/gestao-financeira/cartoes';
     const createFormAction = '/gestao-financeira/contas';
     const createTransactionFormAction = '/gestao-financeira/contas/lancamentos';
     const FINANCE_CSRF_TOKEN = {{ csrf_token|tojson }};
@@ -1240,7 +1453,7 @@
         despesa: {{ finance_transaction_expense_categories|tojson }},
         receita: {{ finance_transaction_revenue_categories|tojson }},
     };
-    let activeFinanceTab = new URL(window.location.href).searchParams.get('finance_tab') || ({% if finance_open_transaction_modal %}'transactions'{% elif finance_open_launch_modal %}'accounts'{% else %}'accounts'{% endif %});
+    let activeFinanceTab = new URL(window.location.href).searchParams.get('finance_tab') || ({% if finance_open_transaction_modal %}'transactions'{% elif finance_open_credit_card_modal %}'cards'{% elif finance_open_launch_modal %}'accounts'{% else %}'accounts'{% endif %});
     let attachmentPopoverPinned = false;
     let attachmentPopoverTrigger = null;
     let attachmentHideTimer = null;
@@ -1366,7 +1579,7 @@
     };
 
     const setActiveFinanceTab = (tabName) => {
-        activeFinanceTab = ['accounts', 'transactions', 'payables', 'receivables'].includes(tabName) ? tabName : 'accounts';
+        activeFinanceTab = ['accounts', 'cards', 'transactions', 'payables', 'receivables'].includes(tabName) ? tabName : 'accounts';
         financeTabs.forEach((tab) => {
             tab.classList.toggle('hidden', tab.dataset.financeTab !== activeFinanceTab);
         });
@@ -1719,6 +1932,38 @@
         validateFinanceAccountDuplicate();
     };
 
+    const prepareFinanceCreditCardCreateMode = () => {
+        if (!creditCardForm) return;
+        creditCardForm.action = createCreditCardFormAction;
+        creditCardForm.reset();
+        Array.from(creditCardForm.elements).forEach((element) => {
+            if (!(element instanceof HTMLInputElement || element instanceof HTMLSelectElement || element instanceof HTMLTextAreaElement)) return;
+            const name = element.name;
+            if (!name || name === 'csrf_token') return;
+            if (element.type === 'checkbox' || element.type === 'radio') {
+                if (name === 'is_active') {
+                    element.checked = true;
+                } else {
+                    element.checked = false;
+                }
+                return;
+            }
+            element.value = '';
+        });
+        if (creditCardModeLabel) creditCardModeLabel.textContent = 'Novo cartão';
+        if (creditCardTitle) creditCardTitle.textContent = 'Novo cartão de crédito';
+        if (creditCardLimitMask) {
+            creditCardLimitMask.reset('0.00');
+        } else {
+            if (creditCardLimitRawInput) creditCardLimitRawInput.value = '0.00';
+            if (creditCardLimitDisplayInput) {
+                creditCardLimitDisplayInput.value = window.SisfarmCurrencyMask
+                    ? window.SisfarmCurrencyMask.formatFromRaw('0.00')
+                    : 'R$ 0,00';
+            }
+        }
+    };
+
     const syncFinanceAccountFormState = () => {
         if (!form || !formInitialState) return;
         form.reset();
@@ -1776,6 +2021,28 @@
         validateFinanceAccountDuplicate();
     };
 
+    const syncFinanceCreditCardFormState = () => {
+        if (!creditCardForm || !creditCardFormInitialState) return;
+        creditCardForm.reset();
+        Array.from(creditCardForm.elements).forEach((element) => {
+            if (!(element instanceof HTMLInputElement || element instanceof HTMLSelectElement || element instanceof HTMLTextAreaElement)) return;
+            const name = element.name;
+            if (!name) return;
+            if (element.type === 'checkbox' || element.type === 'radio') {
+                element.checked = creditCardFormInitialState.getAll(name).includes(element.value);
+                return;
+            }
+            element.value = creditCardFormInitialState.get(name) || '';
+        });
+        if (creditCardLimitMask) {
+            creditCardLimitMask.reset(creditCardLimitRawInput?.value || '0.00');
+        } else if (creditCardLimitDisplayInput) {
+            creditCardLimitDisplayInput.value = window.SisfarmCurrencyMask
+                ? window.SisfarmCurrencyMask.formatFromRaw(creditCardLimitRawInput?.value || '0.00')
+                : 'R$ 0,00';
+        }
+    };
+
     const currentEditingId = () => {
         const match = form?.action.match(/\/contas\/(\d+)\/editar$/);
         return match ? Number(match[1]) : null;
@@ -1822,14 +2089,33 @@
         window.history.replaceState({}, '', cleanUrl('accounts'));
     };
 
+    const closeCreditCardModal = () => {
+        if (!creditCardModal) return;
+        prepareFinanceCreditCardCreateMode();
+        creditCardModal.close();
+        unlockBackgroundScroll();
+        setActiveFinanceTab('cards');
+        window.history.replaceState({}, '', cleanUrl('cards'));
+    };
+
     accountOpenButton?.addEventListener('click', () => {
         setActiveFinanceTab('accounts');
         prepareFinanceAccountCreateMode();
         accountModal?.showModal();
         lockBackgroundScroll();
     });
+    creditCardOpenButton?.addEventListener('click', () => {
+        setActiveFinanceTab('cards');
+        prepareFinanceCreditCardCreateMode();
+        creditCardModal?.showModal();
+        lockBackgroundScroll();
+    });
     accountCloseButtons.forEach((button) => button.addEventListener('click', closeAccountModal));
+    creditCardCloseButtons.forEach((button) => button.addEventListener('click', closeCreditCardModal));
     accountModal?.addEventListener('cancel', (event) => {
+        event.preventDefault();
+    });
+    creditCardModal?.addEventListener('cancel', (event) => {
         event.preventDefault();
     });
 
@@ -1838,6 +2124,12 @@
         accountModal?.showModal();
         lockBackgroundScroll();
         validateFinanceAccountDuplicate();
+    }
+    if (shouldOpenCreditCardModal) {
+        setActiveFinanceTab('cards');
+        syncFinanceCreditCardFormState();
+        creditCardModal?.showModal();
+        lockBackgroundScroll();
     }
 
     setupCollapse({
@@ -1959,6 +2251,11 @@
     const transactionAmountMask = bindCurrencyMask({
         rawInput: transactionAmountRawInput,
         displayInput: transactionAmountDisplayInput,
+        allowNegative: false,
+    });
+    creditCardLimitMask = bindCurrencyMask({
+        rawInput: creditCardLimitRawInput,
+        displayInput: creditCardLimitDisplayInput,
         allowNegative: false,
     });
 

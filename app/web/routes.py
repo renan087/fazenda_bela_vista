@@ -47,6 +47,7 @@ from app.models import (
     EquipmentAssetAttachment,
     Farm,
     FinanceAccount,
+    FinanceCreditCard,
     FinanceCustomBank,
     FinanceTransaction,
     FinanceTransactionAttachment,
@@ -565,6 +566,26 @@ FINANCE_BANK_OPTIONS = [
     {"code": "336", "name": "Banco C6 S.A.", "mark": "C6", "bg": "#111827", "fg": "#ffffff", "logo": "images/finance-banks/336.svg"},
     {"code": "422", "name": "Banco Safra S.A.", "mark": "SA", "bg": "#0f766e", "fg": "#ffffff", "logo": "images/finance-banks/422.svg"},
 ]
+FINANCE_CREDIT_CARD_ISSUER_OPTIONS = [
+    "Banco do Brasil / Ourocard",
+    "Nubank",
+    "Mercado Pago",
+    "Itaú / Itaucard",
+    "Bradesco",
+    "Santander",
+    "Caixa",
+    "Inter",
+    "C6 Bank",
+    "PicPay",
+    "PagBank / PagSeguro",
+    "BTG Pactual",
+    "Banco PAN",
+    "Neon",
+    "Porto Bank",
+    "XP",
+    "Outro",
+]
+FINANCE_CREDIT_CARD_BRAND_OPTIONS = ["Visa", "Mastercard", "Elo", "American Express", "Hipercard", "Outro"]
 FINANCE_TRANSACTION_EXPENSE_CATEGORIES = [
     "Acaricida",
     "Adjuvante",
@@ -3173,6 +3194,22 @@ def _finance_accounts_modal_query(request: Request, *, edit_id: int | None = Non
     return "/gestao-financeira/contas"
 
 
+def _finance_credit_cards_modal_query(request: Request, *, edit_id: int | None = None, launch: bool | None = None) -> str:
+    params = dict(request.query_params)
+    if edit_id is None:
+        params.pop("card_edit_id", None)
+    else:
+        params["card_edit_id"] = str(edit_id)
+    if launch:
+        params["card_launch"] = "1"
+    else:
+        params.pop("card_launch", None)
+    params["finance_tab"] = "cards"
+    if params:
+        return f"/gestao-financeira/contas?{urlencode(params)}"
+    return "/gestao-financeira/contas?finance_tab=cards"
+
+
 def _finance_transactions_modal_query(
     request: Request,
     *,
@@ -3231,6 +3268,15 @@ def _finance_accounts_set_default(repo: FarmRepository, farm_id: int, keep_id: i
         if account.is_default:
             account.is_default = False
             repo.db.add(account)
+
+
+def _finance_credit_cards_set_default(repo: FarmRepository, farm_id: int, keep_id: int | None = None) -> None:
+    for card in repo.list_finance_credit_cards(farm_id=farm_id):
+        if keep_id is not None and card.id == keep_id:
+            continue
+        if card.is_default:
+            card.is_default = False
+            repo.db.add(card)
 
 
 def _save_finance_transaction_attachments(
@@ -4114,6 +4160,56 @@ def _finance_accounts_parse_form(
     }
 
 
+def _finance_credit_cards_parse_form(
+    *,
+    repo: FarmRepository,
+    active_farm: Farm,
+    card_name: str,
+    issuer: str,
+    brand: str | None,
+    closing_day: str | int,
+    due_day: str | int,
+    credit_limit: str | None,
+    payment_account_id: str | None,
+    is_default: bool,
+    is_active: bool,
+    notes: str | None,
+) -> dict:
+    card_name_value = _clean_text(card_name)
+    if not card_name_value:
+        raise ValueError("Informe o nome do cartão.")
+    issuer_value = _clean_text(issuer)
+    if not issuer_value:
+        raise ValueError("Selecione o emissor do cartão.")
+    if issuer_value not in FINANCE_CREDIT_CARD_ISSUER_OPTIONS:
+        raise ValueError("Selecione um emissor válido para o cartão.")
+    brand_value = _clean_text(brand)
+    if brand_value and brand_value not in FINANCE_CREDIT_CARD_BRAND_OPTIONS:
+        raise ValueError("Selecione uma bandeira válida para o cartão.")
+    closing_day_value = _positive_int(str(closing_day or ""), default=0)
+    due_day_value = _positive_int(str(due_day or ""), default=0)
+    if closing_day_value < 1 or closing_day_value > 31:
+        raise ValueError("Informe um dia de fechamento válido entre 1 e 31.")
+    if due_day_value < 1 or due_day_value > 31:
+        raise ValueError("Informe um dia de vencimento válido entre 1 e 31.")
+    payment_account = _resolve_optional_finance_account(repo, active_farm=active_farm, account_id=payment_account_id)
+    credit_limit_value = _float_or_none(credit_limit)
+    if credit_limit_value is not None and credit_limit_value < 0:
+        raise ValueError("Informe um limite de crédito válido.")
+    return {
+        "card_name": card_name_value,
+        "issuer": issuer_value,
+        "brand": brand_value,
+        "closing_day": closing_day_value,
+        "due_day": due_day_value,
+        "credit_limit": credit_limit_value,
+        "payment_account_id": payment_account.id if payment_account else None,
+        "is_default": bool(is_default),
+        "is_active": bool(is_active),
+        "notes": _clean_text(notes),
+    }
+
+
 def _finance_asaas_customer_template_extras(
     db: Session,
     user: User,
@@ -4804,6 +4900,8 @@ def finance_accounts_page(
     request: Request,
     edit_id: int | None = None,
     launch: int | None = None,
+    card_edit_id: int | None = None,
+    card_launch: int | None = None,
     transaction_edit_id: int | None = None,
     transaction_launch: int | None = None,
     db: Session = Depends(get_db),
@@ -4814,6 +4912,7 @@ def finance_accounts_page(
     scope = _global_scope_context(request, repo)
     active_farm = scope.get("active_farm")
     accounts = repo.list_finance_accounts(farm_id=active_farm.id) if active_farm else []
+    credit_cards = repo.list_finance_credit_cards(farm_id=active_farm.id) if active_farm else []
     transactions_all = repo.list_finance_transactions(farm_id=active_farm.id) if active_farm else []
     tx_period_start, tx_period_end, tx_filter_start_date, tx_filter_end_date, tx_selected_range = (
         _finance_transactions_period_bounds(request) if active_farm else (None, None, "", "", "")
@@ -4993,11 +5092,15 @@ def finance_accounts_page(
             ),
         )
     edit_account = repo.get_finance_account(edit_id) if edit_id else None
+    edit_credit_card = repo.get_finance_credit_card(card_edit_id) if card_edit_id else None
     edit_transaction = repo.get_finance_transaction(transaction_edit_id) if transaction_edit_id else None
     bank_options = _finance_bank_choice_options(repo)
     if edit_account and (not active_farm or edit_account.farm_id != active_farm.id):
         _flash(request, "error", "Esta conta não pertence à fazenda ativa.")
         return _redirect("/gestao-financeira/contas")
+    if edit_credit_card and (not active_farm or edit_credit_card.farm_id != active_farm.id):
+        _flash(request, "error", "Este cartão não pertence à fazenda ativa.")
+        return _redirect("/gestao-financeira/contas?finance_tab=cards")
     if edit_transaction and (not active_farm or edit_transaction.farm_id != active_farm.id):
         _flash(request, "error", "Este lançamento não pertence à fazenda ativa.")
         return _redirect("/gestao-financeira/contas")
@@ -5015,7 +5118,11 @@ def finance_accounts_page(
             finance_accounts=accounts,
             finance_account_total=len(accounts),
             finance_account_default=next((item for item in accounts if item.is_default), None),
+            finance_credit_cards=credit_cards,
+            finance_credit_card_total=len(credit_cards),
+            finance_credit_card_default=next((item for item in credit_cards if item.is_default), None),
             edit_finance_account=edit_account,
+            edit_finance_credit_card=edit_credit_card,
             finance_transactions=transactions_pagination["items"],
             finance_transaction_total=len(transactions_filtered),
             finance_transactions_pagination=transactions_pagination,
@@ -5060,10 +5167,13 @@ def finance_accounts_page(
             edit_finance_transaction=edit_transaction,
             finance_bank_options=bank_options,
             finance_open_launch_modal=bool(launch or edit_account),
+            finance_open_credit_card_modal=bool(card_launch or edit_credit_card),
             finance_open_transaction_modal=bool(transaction_launch or edit_transaction),
             finance_transaction_expense_categories=FINANCE_TRANSACTION_EXPENSE_CATEGORIES,
             finance_transaction_revenue_categories=FINANCE_TRANSACTION_REVENUE_CATEGORIES,
             finance_transaction_payment_methods=FINANCE_TRANSACTION_PAYMENT_METHODS,
+            finance_credit_card_issuer_options=FINANCE_CREDIT_CARD_ISSUER_OPTIONS,
+            finance_credit_card_brand_options=FINANCE_CREDIT_CARD_BRAND_OPTIONS,
             finance_account_balances=account_balances,
             finance_account_transaction_counts=finance_account_transaction_counts,
             today=today,
@@ -5998,6 +6108,194 @@ def set_default_finance_account_action(
     repo.update(account, {"is_default": True})
     _flash(request, "success", f"{account.account_name} definida como conta padrão.")
     return _redirect("/gestao-financeira/contas")
+
+
+@router.post("/gestao-financeira/cartoes")
+def create_finance_credit_card_action(
+    request: Request,
+    csrf_token: str = Form(...),
+    card_name: str = Form(...),
+    issuer: str = Form(...),
+    brand: str | None = Form(None),
+    closing_day: str = Form(...),
+    due_day: str = Form(...),
+    credit_limit: str | None = Form(None),
+    payment_account_id: str | None = Form(None),
+    is_default: bool = Form(False),
+    is_active: bool = Form(True),
+    notes: str | None = Form(None),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    del user
+    validate_csrf(request, csrf_token)
+    repo = _repository(db)
+    scope = _global_scope_context(request, repo)
+    active_farm = scope.get("active_farm")
+    if not active_farm:
+        _flash(request, "error", "Selecione uma fazenda ativa antes de cadastrar um cartão.")
+        return _redirect("/gestao-financeira/contas?finance_tab=cards")
+    try:
+        payload = _finance_credit_cards_parse_form(
+            repo=repo,
+            active_farm=active_farm,
+            card_name=card_name,
+            issuer=issuer,
+            brand=brand,
+            closing_day=closing_day,
+            due_day=due_day,
+            credit_limit=credit_limit,
+            payment_account_id=payment_account_id,
+            is_default=is_default,
+            is_active=is_active,
+            notes=notes,
+        )
+    except ValueError as exc:
+        _flash(request, "error", str(exc))
+        return _redirect(_finance_credit_cards_modal_query(request, launch=True))
+    if payload["is_default"]:
+        _finance_credit_cards_set_default(repo, active_farm.id)
+    repo.db.add(
+        FinanceCreditCard(
+            farm_id=active_farm.id,
+            card_name=payload["card_name"],
+            issuer=payload["issuer"],
+            brand=payload["brand"],
+            closing_day=payload["closing_day"],
+            due_day=payload["due_day"],
+            credit_limit=payload["credit_limit"],
+            payment_account_id=payload["payment_account_id"],
+            is_default=payload["is_default"],
+            is_active=payload["is_active"],
+            notes=payload["notes"],
+            created_at=app_now(),
+        )
+    )
+    repo.db.commit()
+    _flash(request, "success", "Cartão de crédito cadastrado com sucesso.")
+    return _redirect("/gestao-financeira/contas?finance_tab=cards")
+
+
+@router.post("/gestao-financeira/cartoes/{card_id}/editar")
+def update_finance_credit_card_action(
+    request: Request,
+    card_id: int,
+    csrf_token: str = Form(...),
+    card_name: str = Form(...),
+    issuer: str = Form(...),
+    brand: str | None = Form(None),
+    closing_day: str = Form(...),
+    due_day: str = Form(...),
+    credit_limit: str | None = Form(None),
+    payment_account_id: str | None = Form(None),
+    is_default: bool = Form(False),
+    is_active: bool = Form(True),
+    notes: str | None = Form(None),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    del user
+    validate_csrf(request, csrf_token)
+    repo = _repository(db)
+    scope = _global_scope_context(request, repo)
+    active_farm = scope.get("active_farm")
+    card = repo.get_finance_credit_card(card_id)
+    if not card:
+        _flash(request, "error", "Cartão não encontrado.")
+        return _redirect("/gestao-financeira/contas?finance_tab=cards")
+    if not active_farm or card.farm_id != active_farm.id:
+        _flash(request, "error", "Este cartão não pertence à fazenda ativa.")
+        return _redirect("/gestao-financeira/contas?finance_tab=cards")
+    try:
+        payload = _finance_credit_cards_parse_form(
+            repo=repo,
+            active_farm=active_farm,
+            card_name=card_name,
+            issuer=issuer,
+            brand=brand,
+            closing_day=closing_day,
+            due_day=due_day,
+            credit_limit=credit_limit,
+            payment_account_id=payment_account_id,
+            is_default=is_default,
+            is_active=is_active,
+            notes=notes,
+        )
+    except ValueError as exc:
+        _flash(request, "error", str(exc))
+        return _redirect(_finance_credit_cards_modal_query(request, edit_id=card_id))
+    if payload["is_default"]:
+        _finance_credit_cards_set_default(repo, active_farm.id, keep_id=card.id)
+    repo.update(
+        card,
+        {
+            "card_name": payload["card_name"],
+            "issuer": payload["issuer"],
+            "brand": payload["brand"],
+            "closing_day": payload["closing_day"],
+            "due_day": payload["due_day"],
+            "credit_limit": payload["credit_limit"],
+            "payment_account_id": payload["payment_account_id"],
+            "is_default": payload["is_default"],
+            "is_active": payload["is_active"],
+            "notes": payload["notes"],
+        },
+    )
+    _flash(request, "success", "Cartão de crédito atualizado com sucesso.")
+    return _redirect("/gestao-financeira/contas?finance_tab=cards")
+
+
+@router.post("/gestao-financeira/cartoes/{card_id}/excluir")
+def delete_finance_credit_card_action(
+    request: Request,
+    card_id: int,
+    csrf_token: str = Form(...),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    del user
+    validate_csrf(request, csrf_token)
+    repo = _repository(db)
+    scope = _global_scope_context(request, repo)
+    active_farm = scope.get("active_farm")
+    card = repo.get_finance_credit_card(card_id)
+    if not card:
+        _flash(request, "error", "Cartão não encontrado.")
+        return _redirect("/gestao-financeira/contas?finance_tab=cards")
+    if not active_farm or card.farm_id != active_farm.id:
+        _flash(request, "error", "Este cartão não pertence à fazenda ativa.")
+        return _redirect("/gestao-financeira/contas?finance_tab=cards")
+    repo.delete(card)
+    _flash(request, "success", "Cartão de crédito excluído com sucesso.")
+    return _redirect("/gestao-financeira/contas?finance_tab=cards")
+
+
+@router.post("/gestao-financeira/cartoes/{card_id}/definir-padrao")
+def set_default_finance_credit_card_action(
+    request: Request,
+    card_id: int,
+    csrf_token: str = Form(...),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    del user
+    validate_csrf(request, csrf_token)
+    repo = _repository(db)
+    scope = _global_scope_context(request, repo)
+    active_farm = scope.get("active_farm")
+    card = repo.get_finance_credit_card(card_id)
+    if not card:
+        _flash(request, "error", "Cartão não encontrado.")
+        return _redirect("/gestao-financeira/contas?finance_tab=cards")
+    if not active_farm or card.farm_id != active_farm.id:
+        _flash(request, "error", "Este cartão não pertence à fazenda ativa.")
+        return _redirect("/gestao-financeira/contas?finance_tab=cards")
+    if card.is_default:
+        return _redirect("/gestao-financeira/contas?finance_tab=cards")
+    _finance_credit_cards_set_default(repo, active_farm.id, keep_id=card.id)
+    repo.update(card, {"is_default": True})
+    _flash(request, "success", f"{card.card_name} definido como cartão padrão.")
+    return _redirect("/gestao-financeira/contas?finance_tab=cards")
 
 
 @router.post("/gestao-financeira/contas/lancamentos")

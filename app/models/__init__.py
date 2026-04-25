@@ -9,6 +9,7 @@ from app.models.equipment_asset import EquipmentAsset
 from app.models.equipment_asset_attachment import EquipmentAssetAttachment
 from app.models.farm import Farm
 from app.models.finance_account import FinanceAccount
+from app.models.finance_credit_card import FinanceCreditCard
 from app.models.finance_custom_bank import FinanceCustomBank
 from app.models.finance_transaction import FinanceTransaction
 from app.models.finance_transaction_attachment import FinanceTransactionAttachment
@@ -49,6 +50,7 @@ __all__ = [
     "EquipmentAssetAttachment",
     "Farm",
     "FinanceAccount",
+    "FinanceCreditCard",
     "FinanceCustomBank",
     "FinanceTransaction",
     "FinanceTransactionAttachment",

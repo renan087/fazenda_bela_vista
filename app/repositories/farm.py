@@ -15,6 +15,7 @@ from app.models import (
     EquipmentAssetAttachment,
     Farm,
     FinanceAccount,
+    FinanceCreditCard,
     FinanceCustomBank,
     FinanceTransaction,
     FinanceTransactionAttachment,
@@ -275,6 +276,24 @@ class FarmRepository:
             self.db.query(FinanceAccount)
             .options(joinedload(FinanceAccount.farm), joinedload(FinanceAccount.custom_bank))
             .filter(FinanceAccount.id == account_id)
+            .first()
+        )
+
+    def list_finance_credit_cards(self, farm_id: int | None = None) -> list[FinanceCreditCard]:
+        query = (
+            self.db.query(FinanceCreditCard)
+            .options(joinedload(FinanceCreditCard.farm), joinedload(FinanceCreditCard.payment_account))
+            .order_by(FinanceCreditCard.is_default.desc(), FinanceCreditCard.is_active.desc(), FinanceCreditCard.card_name.asc(), FinanceCreditCard.id.desc())
+        )
+        if farm_id:
+            query = query.filter(FinanceCreditCard.farm_id == farm_id)
+        return query.all()
+
+    def get_finance_credit_card(self, card_id: int) -> FinanceCreditCard | None:
+        return (
+            self.db.query(FinanceCreditCard)
+            .options(joinedload(FinanceCreditCard.farm), joinedload(FinanceCreditCard.payment_account))
+            .filter(FinanceCreditCard.id == card_id)
             .first()
         )
 
