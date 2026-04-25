@@ -375,12 +375,12 @@
                 </div>
                 <label>
                     <span class="mb-2 block text-sm font-medium" data-purchased-name-label>Nome do insumo</span>
-                    <input name="name" list="inputs-catalog-list" value="{{ edit_input.input_catalog.name if edit_input and edit_input.input_catalog else (edit_input.name if edit_input else '') }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required data-purchased-name-input placeholder="Ex.: Fertilizante, diesel ou defensivo">
+                    <input name="name" list="inputs-catalog-list" value="{{ edit_input.input_catalog.name if edit_input and edit_input.input_catalog else (edit_input.name if edit_input else '') }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required autocomplete="off" data-purchased-name-input placeholder="Ex.: Fertilizante, diesel ou defensivo">
                     <span class="mt-2 block text-xs text-slate-500">Digite para reutilizar um insumo já existente. Se não aparecer, o sistema cadastra um novo automaticamente.</span>
                 </label>
                 <datalist id="inputs-catalog-list">
                     {% for input_item in inputs_catalog_all %}
-                    <option value="{{ input_item.name }}" data-item-type="{{ input_item.item_type or 'insumo_agricola' }}" data-category="{{ input_item.category or '' }}" data-package-unit="{{ input_item.default_unit or '' }}"></option>
+                    <option value="{{ input_item.name }}" data-item-type="{{ input_item.item_type or 'insumo_agricola' }}" data-category="{{ input_item.category or '' }}" data-package-unit="{{ input_item.default_unit or '' }}" data-low-stock-threshold="{{ input_item.low_stock_threshold if input_item.low_stock_threshold is not none else '' }}"></option>
                     {% endfor %}
                 </datalist>
                 <div class="grid gap-4 md:grid-cols-2">
@@ -462,7 +462,18 @@
                 <div class="grid gap-4 md:grid-cols-3">
                     <label><span class="mb-2 block text-sm font-medium">Quantidade total calculada</span><input type="number" step="0.01" value="{{ edit_input.total_quantity if edit_input else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-200 text-slate-500" readonly data-total-quantity></label>
                     <label><span class="mb-2 block text-sm font-medium" data-purchased-total-label>Valor total calculado (R$)</span><input type="text" value="{% if edit_input %}R$ {{ '%.2f'|format(edit_input.total_cost or 0)|replace('.', ',') }}{% endif %}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-200 text-slate-500" readonly data-total-cost></label>
-                    <label><span class="mb-2 block text-sm font-medium" data-purchased-low-stock-label>Alerta de estoque baixo</span><input type="number" step="0.01" min="0" name="low_stock_threshold" value="{{ edit_input.low_stock_threshold if edit_input and edit_input.low_stock_threshold is not none else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50"></label>
+                    <label>
+                        <span class="mb-2 block text-sm font-medium" data-purchased-low-stock-label>Alerta de estoque baixo</span>
+                        <span class="relative block">
+                            <input type="number" step="0.01" min="0" name="low_stock_threshold" value="{{ edit_input.low_stock_threshold if edit_input and edit_input.low_stock_threshold is not none else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50 pr-12" data-purchased-low-stock-input>
+                            <button type="button" class="absolute right-3 top-1/2 hidden -translate-y-1/2 rounded-xl p-2 text-slate-500 transition hover:bg-white hover:text-brand-700" title="Editar alerta de estoque baixo" aria-label="Editar alerta de estoque baixo" data-purchased-low-stock-edit>
+                                <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                                    <path d="M12 20h9"/>
+                                    <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/>
+                                </svg>
+                            </button>
+                        </span>
+                    </label>
                 </div>
                 {% set attachment_label = 'Anexos' %}
                 {% set attachment_help_text = 'Envie imagens, PDF ou documentos do registro. Você pode adicionar mais arquivos em etapas antes de salvar.' %}
@@ -763,7 +774,8 @@
         const categoryField = form.querySelector('[data-category-select]');
         const purchasedNameInput = form.querySelector('[data-purchased-name-input]');
         const packageUnitField = form.querySelector('select[name="package_unit"]');
-        const lowStockThresholdField = form.querySelector('input[name="low_stock_threshold"]');
+        const lowStockThresholdField = form.querySelector('[data-purchased-low-stock-input]');
+        const lowStockEditButton = form.querySelector('[data-purchased-low-stock-edit]');
         const initialCategory = categoryField?.dataset.initialCategory || '';
         const initialPackageUnit = {{ (edit_input.package_unit if edit_input else '')|tojson }};
         const categoryOptionsByType = {{ purchase_input_category_options_by_type|tojson }};
@@ -783,6 +795,7 @@
                 itemType: option.dataset.itemType || 'insumo_agricola',
                 category: option.dataset.category || '',
                 packageUnit: option.dataset.packageUnit || '',
+                lowStockThreshold: option.dataset.lowStockThreshold || '',
             }))
             : [];
 
@@ -814,13 +827,20 @@
         paymentConditionField?.addEventListener('change', updateInstallmentSection);
         updateInstallmentSection();
 
+        const normalizeCategory = (value) => (value || '').trim();
+
         const syncCatalogSuggestions = () => {
             if (!inputCatalogList || !itemTypeField) return;
             const selectedType = itemTypeField.value || 'insumo_agricola';
+            const selectedCategory = normalizeCategory(categoryField?.value || '');
             const seen = new Set();
             inputCatalogList.innerHTML = '';
             catalogOptionData
-                .filter((item) => item.itemType === selectedType)
+                .filter((item) => {
+                    if (item.itemType !== selectedType) return false;
+                    if (!selectedCategory) return true;
+                    return normalizeCategory(item.category) === selectedCategory;
+                })
                 .forEach((item) => {
                     const normalizedValue = normalizeSearchText(item.value);
                     if (!item.value || seen.has(normalizedValue)) return;
@@ -828,6 +848,9 @@
                     const option = document.createElement('option');
                     option.value = item.value;
                     option.dataset.itemType = item.itemType;
+                    option.dataset.category = item.category;
+                    option.dataset.packageUnit = item.packageUnit;
+                    option.dataset.lowStockThreshold = item.lowStockThreshold;
                     inputCatalogList.appendChild(option);
                 });
         };
@@ -835,8 +858,37 @@
         const findCatalogMatch = () => {
             const typedName = normalizeSearchText(purchasedNameInput?.value || '');
             const selectedType = itemTypeField?.value || 'insumo_agricola';
+            const selectedCategory = normalizeCategory(categoryField?.value || '');
             if (!typedName) return null;
-            return catalogOptionData.find((item) => normalizeSearchText(item.value) === typedName && item.itemType === selectedType) || null;
+            return catalogOptionData.find((item) => {
+                if (normalizeSearchText(item.value) !== typedName || item.itemType !== selectedType) return false;
+                if (!selectedCategory) return true;
+                return normalizeCategory(item.category) === selectedCategory;
+            }) || null;
+        };
+
+        const setLowStockLocked = (locked) => {
+            if (!lowStockThresholdField) return;
+            lowStockThresholdField.readOnly = locked;
+            lowStockThresholdField.classList.toggle('cursor-not-allowed', locked);
+            lowStockThresholdField.classList.toggle('bg-slate-100', locked);
+            lowStockThresholdField.classList.toggle('text-slate-500', locked);
+            lowStockThresholdField.classList.toggle('bg-slate-50', !locked);
+            lowStockEditButton?.classList.toggle('hidden', !locked);
+        };
+
+        const syncLowStockFromCatalog = (force = false) => {
+            if (!lowStockThresholdField) return;
+            const catalogMatch = findCatalogMatch();
+            const threshold = catalogMatch?.lowStockThreshold || '';
+            if (threshold) {
+                if (force || !String(lowStockThresholdField.value || '').trim()) {
+                    lowStockThresholdField.value = threshold;
+                }
+                setLowStockLocked(true);
+                return;
+            }
+            setLowStockLocked(false);
         };
 
         const selectedCategoryProfile = () => categoryProfiles[categoryField?.value || ''] || categoryProfiles['Outros Itens'] || {};
@@ -869,6 +921,8 @@
             if (lowStockLabel) lowStockLabel.textContent = profile.low_stock_label || 'Alerta de estoque baixo';
             if (lowStockThresholdField) lowStockThresholdField.placeholder = profile.low_stock_placeholder || '';
             populatePackageUnits(profile, preferredUnit);
+            syncCatalogSuggestions();
+            syncLowStockFromCatalog();
         };
 
         const syncCategoryOptions = (preferredCategory = '') => {
@@ -906,18 +960,26 @@
             syncCategoryOptions();
         });
         categoryField?.addEventListener('change', () => syncCategoryProfile());
+        lowStockEditButton?.addEventListener('click', () => {
+            setLowStockLocked(false);
+            lowStockThresholdField?.focus();
+        });
+        purchasedNameInput?.addEventListener('input', () => syncLowStockFromCatalog(true));
         purchasedNameInput?.addEventListener('change', () => {
             const catalogMatch = findCatalogMatch();
             syncCategoryOptions(catalogMatch?.category || '');
+            syncLowStockFromCatalog(true);
         });
         purchasedNameInput?.addEventListener('blur', () => {
             const catalogMatch = findCatalogMatch();
             syncCategoryOptions(catalogMatch?.category || '');
+            syncLowStockFromCatalog(true);
         });
         syncTotals();
         syncItemType();
         syncCatalogSuggestions();
         syncCategoryOptions(initialCategory);
+        syncLowStockFromCatalog();
     })();
 
     // Filter bar: filter Insumo options based on Tipo de item selection
