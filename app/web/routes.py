@@ -3279,6 +3279,148 @@ def _finance_credit_cards_set_default(repo: FarmRepository, farm_id: int, keep_i
             repo.db.add(card)
 
 
+def _finance_credit_card_invoice_reference_label(due_date: date | None) -> str:
+    if not due_date:
+        return "Sem vencimento definido"
+    month_names = (
+        "janeiro",
+        "fevereiro",
+        "março",
+        "abril",
+        "maio",
+        "junho",
+        "julho",
+        "agosto",
+        "setembro",
+        "outubro",
+        "novembro",
+        "dezembro",
+    )
+    return f"{month_names[due_date.month - 1].capitalize()}/{due_date.year}"
+
+
+def _build_finance_credit_card_overviews(
+    cards: list[FinanceCreditCard],
+    transactions: list[FinanceTransaction],
+    *,
+    today: date,
+) -> dict[int, dict]:
+    transactions_by_card: dict[int, list[FinanceTransaction]] = defaultdict(list)
+    for transaction in transactions:
+        if not transaction.credit_card_id:
+            continue
+        if (transaction.operation_type or "").strip().lower() != "despesa":
+            continue
+        transactions_by_card[int(transaction.credit_card_id)].append(transaction)
+
+    overviews: dict[int, dict] = {}
+    for card in cards:
+        card_transactions = transactions_by_card.get(int(card.id), [])
+        grouped_invoices: dict[str, dict] = {}
+        open_total = 0.0
+        overdue_total = 0.0
+        due_today_total = 0.0
+        paid_total = 0.0
+        installments_total = 0
+        open_installments = 0
+        paid_installments = 0
+
+        for transaction in card_transactions:
+            for installment in sorted(
+                transaction.installments or [],
+                key=lambda item: (item.due_date or date.max, item.installment_number or 0, item.id or 0),
+            ):
+                amount = round(float(installment.amount or 0), 2)
+                due_date = installment.due_date
+                status = (installment.status or "pendente").strip().lower()
+                is_paid = status == "pago"
+                installments_total += 1
+                invoice_key = due_date.isoformat() if due_date else f"undated-{transaction.id}-{installment.id}"
+                invoice_group = grouped_invoices.setdefault(
+                    invoice_key,
+                    {
+                        "reference_label": _finance_credit_card_invoice_reference_label(due_date),
+                        "due_date": due_date,
+                        "due_date_label": due_date.strftime("%d/%m/%Y") if due_date else "-",
+                        "total": 0.0,
+                        "open_total": 0.0,
+                        "paid_total": 0.0,
+                        "installment_count": 0,
+                        "open_count": 0,
+                        "paid_count": 0,
+                    },
+                )
+                invoice_group["total"] = round(invoice_group["total"] + amount, 2)
+                invoice_group["installment_count"] += 1
+
+                if is_paid:
+                    paid_total = round(paid_total + amount, 2)
+                    paid_installments += 1
+                    invoice_group["paid_total"] = round(invoice_group["paid_total"] + amount, 2)
+                    invoice_group["paid_count"] += 1
+                    continue
+
+                open_total = round(open_total + amount, 2)
+                open_installments += 1
+                invoice_group["open_total"] = round(invoice_group["open_total"] + amount, 2)
+                invoice_group["open_count"] += 1
+                if due_date and due_date < today:
+                    overdue_total = round(overdue_total + amount, 2)
+                elif due_date and due_date == today:
+                    due_today_total = round(due_today_total + amount, 2)
+
+        invoice_groups = sorted(
+            grouped_invoices.values(),
+            key=lambda row: (row["due_date"] or date.max, row["reference_label"]),
+        )
+        for invoice_group in invoice_groups:
+            due_date = invoice_group["due_date"]
+            if invoice_group["open_total"] <= 0:
+                status_key = "paid"
+                status_label = "Pago"
+            elif due_date and due_date < today:
+                status_key = "overdue"
+                status_label = "Atrasada"
+            elif due_date and due_date == today:
+                status_key = "today"
+                status_label = "Vence hoje"
+            else:
+                status_key = "open"
+                status_label = "Em aberto"
+            invoice_group["status_key"] = status_key
+            invoice_group["status_label"] = status_label
+            invoice_group["status_chip_class"] = {
+                "paid": "stock-movement-chip-entry",
+                "overdue": "stock-movement-chip-output",
+                "today": "stock-movement-chip-warning",
+                "open": "stock-movement-chip-info",
+            }.get(status_key, "stock-movement-chip-info")
+
+        next_open_invoice = next((item for item in invoice_groups if item["open_total"] > 0), None)
+        credit_limit = float(card.credit_limit) if card.credit_limit is not None else None
+        available_limit = round(credit_limit - open_total, 2) if credit_limit is not None else None
+        usage_percent = None
+        if credit_limit and credit_limit > 0:
+            usage_percent = max(0.0, min(round((open_total / credit_limit) * 100, 1), 100.0))
+
+        overviews[int(card.id)] = {
+            "open_total": open_total,
+            "overdue_total": overdue_total,
+            "due_today_total": due_today_total,
+            "paid_total": paid_total,
+            "credit_limit": credit_limit,
+            "available_limit": available_limit,
+            "usage_percent": usage_percent,
+            "installments_total": installments_total,
+            "open_installments": open_installments,
+            "paid_installments": paid_installments,
+            "transaction_count": len(card_transactions),
+            "next_open_invoice": next_open_invoice,
+            "invoice_groups": invoice_groups,
+        }
+    return overviews
+
+
 def _save_finance_transaction_attachments(
     repo: FarmRepository,
     transaction: FinanceTransaction,
@@ -5138,6 +5280,11 @@ def finance_accounts_page(
         _flash(request, "error", "Este lançamento não pertence à fazenda ativa.")
         return _redirect("/gestao-financeira/contas")
     account_balances, finance_account_transaction_counts = compute_finance_account_card_balances(accounts, transactions_all)
+    finance_credit_card_overviews = _build_finance_credit_card_overviews(
+        credit_cards,
+        transactions_all,
+        today=today,
+    )
     response = templates.TemplateResponse(
         "finance_accounts.html",
         _base_context(
@@ -5209,6 +5356,7 @@ def finance_accounts_page(
             finance_credit_card_brand_options=FINANCE_CREDIT_CARD_BRAND_OPTIONS,
             finance_account_balances=account_balances,
             finance_account_transaction_counts=finance_account_transaction_counts,
+            finance_credit_card_overviews=finance_credit_card_overviews,
             today=today,
         ),
     )
