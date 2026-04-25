@@ -394,6 +394,164 @@ PURCHASE_INPUT_CATEGORY_OPTIONS_BY_TYPE = {
         "Outros Itens",
     ],
 }
+PURCHASE_INPUT_CATEGORY_PROFILES = {
+    "Combustíveis": {
+        "name_label": "Nome do combustível",
+        "name_placeholder": "Ex.: Diesel S10, gasolina comum",
+        "quantity_label": "Quantidade comprada",
+        "package_size_label": "Volume por embalagem",
+        "package_unit_label": "Unidade do volume",
+        "unit_price_label": "Valor por volume / embalagem (R$)",
+        "total_label": "Valor total calculado (R$)",
+        "low_stock_label": "Alerta de estoque baixo",
+        "low_stock_placeholder": "Ex.: 200",
+        "units": ["L", "ml"],
+        "default_unit": "L",
+    },
+    "Lubrificantes": {
+        "name_label": "Nome do lubrificante",
+        "name_placeholder": "Ex.: Óleo 15W40, graxa",
+        "quantity_label": "Quantidade comprada",
+        "package_size_label": "Volume por embalagem",
+        "package_unit_label": "Unidade do volume",
+        "unit_price_label": "Valor por embalagem (R$)",
+        "total_label": "Valor total calculado (R$)",
+        "low_stock_label": "Alerta de estoque baixo",
+        "low_stock_placeholder": "Ex.: 20",
+        "units": ["L", "ml", "kg", "g"],
+        "default_unit": "L",
+    },
+    "Corretivos de Solo": {
+        "name_label": "Nome do corretivo",
+        "name_placeholder": "Ex.: Calcário dolomítico, gesso agrícola",
+        "quantity_label": "Quantidade comprada",
+        "package_size_label": "Peso por embalagem",
+        "package_unit_label": "Unidade do peso",
+        "unit_price_label": "Valor por embalagem / carga (R$)",
+        "total_label": "Valor total calculado (R$)",
+        "low_stock_label": "Alerta de estoque baixo",
+        "low_stock_placeholder": "Ex.: 1000",
+        "units": ["kg", "g", "t", "sacas"],
+        "default_unit": "kg",
+    },
+    "Feritlizantes": {
+        "name_label": "Nome do fertilizante",
+        "name_placeholder": "Ex.: NPK 20-05-20, ureia",
+        "quantity_label": "Quantidade comprada",
+        "package_size_label": "Peso por embalagem",
+        "package_unit_label": "Unidade do peso",
+        "unit_price_label": "Valor por saco / embalagem (R$)",
+        "total_label": "Valor total calculado (R$)",
+        "low_stock_label": "Alerta de estoque baixo",
+        "low_stock_placeholder": "Ex.: 500",
+        "units": ["kg", "g", "t", "sacas"],
+        "default_unit": "kg",
+    },
+    "Acaricida": {
+        "name_label": "Nome do acaricida",
+        "name_placeholder": "Ex.: Acaricida comercial",
+        "quantity_label": "Quantidade comprada",
+        "package_size_label": "Volume ou peso por embalagem",
+        "package_unit_label": "Unidade da embalagem",
+        "unit_price_label": "Valor por embalagem (R$)",
+        "total_label": "Valor total calculado (R$)",
+        "low_stock_label": "Alerta de estoque baixo",
+        "low_stock_placeholder": "Ex.: 10",
+        "units": ["L", "ml", "kg", "g"],
+        "default_unit": "L",
+    },
+    "Adjuvante": {
+        "name_label": "Nome do adjuvante",
+        "name_placeholder": "Ex.: Óleo mineral, espalhante adesivo",
+        "quantity_label": "Quantidade comprada",
+        "package_size_label": "Volume por embalagem",
+        "package_unit_label": "Unidade do volume",
+        "unit_price_label": "Valor por embalagem (R$)",
+        "total_label": "Valor total calculado (R$)",
+        "low_stock_label": "Alerta de estoque baixo",
+        "low_stock_placeholder": "Ex.: 20",
+        "units": ["L", "ml"],
+        "default_unit": "L",
+    },
+    "Fungicida": {
+        "name_label": "Nome do fungicida",
+        "name_placeholder": "Ex.: Fungicida comercial",
+        "quantity_label": "Quantidade comprada",
+        "package_size_label": "Volume ou peso por embalagem",
+        "package_unit_label": "Unidade da embalagem",
+        "unit_price_label": "Valor por embalagem (R$)",
+        "total_label": "Valor total calculado (R$)",
+        "low_stock_label": "Alerta de estoque baixo",
+        "low_stock_placeholder": "Ex.: 10",
+        "units": ["L", "ml", "kg", "g"],
+        "default_unit": "L",
+    },
+    "Herbicida": {
+        "name_label": "Nome do herbicida",
+        "name_placeholder": "Ex.: Glifosato, herbicida seletivo",
+        "quantity_label": "Quantidade comprada",
+        "package_size_label": "Volume ou peso por embalagem",
+        "package_unit_label": "Unidade da embalagem",
+        "unit_price_label": "Valor por embalagem (R$)",
+        "total_label": "Valor total calculado (R$)",
+        "low_stock_label": "Alerta de estoque baixo",
+        "low_stock_placeholder": "Ex.: 20",
+        "units": ["L", "ml", "kg", "g"],
+        "default_unit": "L",
+    },
+    "Inseticida": {
+        "name_label": "Nome do inseticida",
+        "name_placeholder": "Ex.: Inseticida comercial",
+        "quantity_label": "Quantidade comprada",
+        "package_size_label": "Volume ou peso por embalagem",
+        "package_unit_label": "Unidade da embalagem",
+        "unit_price_label": "Valor por embalagem (R$)",
+        "total_label": "Valor total calculado (R$)",
+        "low_stock_label": "Alerta de estoque baixo",
+        "low_stock_placeholder": "Ex.: 10",
+        "units": ["L", "ml", "kg", "g"],
+        "default_unit": "L",
+    },
+    "Outros Custos de Insumos": {
+        "name_label": "Nome do insumo",
+        "name_placeholder": "Ex.: Produto complementar",
+        "quantity_label": "Quantidade comprada",
+        "package_size_label": "Tamanho da embalagem",
+        "package_unit_label": "Unidade da embalagem",
+        "unit_price_label": "Valor por embalagem (R$)",
+        "total_label": "Valor total calculado (R$)",
+        "low_stock_label": "Alerta de estoque baixo",
+        "low_stock_placeholder": "Ex.: 10",
+        "units": ["un", "kg", "g", "L", "ml", "sacas"],
+        "default_unit": "un",
+    },
+    "Outros Defensivos": {
+        "name_label": "Nome do defensivo",
+        "name_placeholder": "Ex.: Defensivo não classificado",
+        "quantity_label": "Quantidade comprada",
+        "package_size_label": "Volume ou peso por embalagem",
+        "package_unit_label": "Unidade da embalagem",
+        "unit_price_label": "Valor por embalagem (R$)",
+        "total_label": "Valor total calculado (R$)",
+        "low_stock_label": "Alerta de estoque baixo",
+        "low_stock_placeholder": "Ex.: 10",
+        "units": ["L", "ml", "kg", "g"],
+        "default_unit": "L",
+    },
+    "Outros Itens": {
+        "name_label": "Nome do item",
+        "name_placeholder": "Ex.: Item operacional",
+        "quantity_label": "Quantidade comprada",
+        "package_size_label": "Tamanho da embalagem",
+        "package_unit_label": "Unidade da embalagem",
+        "unit_price_label": "Valor por embalagem (R$)",
+        "total_label": "Valor total calculado (R$)",
+        "low_stock_label": "Alerta de estoque baixo",
+        "low_stock_placeholder": "Ex.: 10",
+        "units": ["un", "kg", "g", "L", "ml", "sacas"],
+        "default_unit": "un",
+    },
+}
 FINANCE_BANK_OPTIONS = [
     {"code": "001", "name": "Banco do Brasil S.A.", "mark": "BB", "bg": "#fde047", "fg": "#1d4ed8", "logo": "images/finance-banks/001.svg"},
     {"code": "237", "name": "Banco Bradesco S.A.", "mark": "B", "bg": "#e11d48", "fg": "#ffffff", "logo": "images/finance-banks/237.svg"},
@@ -3119,6 +3277,19 @@ def _resolve_purchase_input_category(item_type: str | None, category: str | None
     allowed = _purchase_input_category_options(item_type)
     if cleaned not in allowed:
         raise ValueError("Selecione uma categoria válida para o tipo de item informado.")
+    return cleaned
+
+
+def _purchase_input_category_profile(category: str | None) -> dict:
+    return PURCHASE_INPUT_CATEGORY_PROFILES.get(category or "") or PURCHASE_INPUT_CATEGORY_PROFILES["Outros Itens"]
+
+
+def _resolve_purchase_input_package_unit(category: str | None, package_unit: str | None) -> str:
+    cleaned = _clean_text(package_unit)
+    profile = _purchase_input_category_profile(category)
+    allowed = profile.get("units") or []
+    if cleaned not in allowed:
+        raise ValueError("Selecione uma unidade compatível com a categoria informada.")
     return cleaned
 
 
@@ -7865,6 +8036,7 @@ def purchased_inputs_page(
             selected_item_type=selected_item_type or normalized_item_type or "insumo_agricola",
             selected_farm_id=effective_farm_id,
             purchase_input_category_options_by_type=PURCHASE_INPUT_CATEGORY_OPTIONS_BY_TYPE,
+            purchase_input_category_profiles=PURCHASE_INPUT_CATEGORY_PROFILES,
             inputs=purchase_entries_pagination["items"],
             inputs_pagination=purchase_entries_pagination,
             inputs_catalog=stock_context["catalog_inputs"],
@@ -7931,6 +8103,7 @@ async def create_purchased_input_action(
         return denied
     try:
         resolved_category = _resolve_purchase_input_category(item_type, category)
+        resolved_package_unit = _resolve_purchase_input_package_unit(resolved_category, package_unit)
     except ValueError as exc:
         _flash(request, "error", str(exc))
         return _redirect_with_query("/insumos/comprados", item_type=item_type)
@@ -7954,7 +8127,7 @@ async def create_purchased_input_action(
                 "name": name,
                 "quantity_purchased": quantity_purchased,
                 "package_size": package_size,
-                "package_unit": package_unit,
+                "package_unit": resolved_package_unit,
                 "unit_price": unit_price,
                 "finance_account_id": finance_account.id if finance_account else None,
                 "payment_method": payment_method,
@@ -8022,6 +8195,7 @@ async def update_purchased_input_action(
         return _redirect_for_request(request, "/insumos/comprados")
     try:
         resolved_category = _resolve_purchase_input_category(item_type, category)
+        resolved_package_unit = _resolve_purchase_input_package_unit(resolved_category, package_unit)
     except ValueError as exc:
         _flash(request, "error", str(exc))
         return _redirect_for_request(request, "/insumos/comprados", edit_id=input_id, item_type=item_type)
@@ -8046,7 +8220,7 @@ async def update_purchased_input_action(
                 "name": name,
                 "quantity_purchased": quantity_purchased,
                 "package_size": package_size,
-                "package_unit": package_unit,
+                "package_unit": resolved_package_unit,
                 "unit_price": unit_price,
                 "finance_account_id": finance_account.id if finance_account else None,
                 "payment_method": payment_method,
