@@ -125,6 +125,13 @@
     display: none;
 }
 
+.finance-credit-card-invoice-tab.is-active {
+    border-color: rgba(59, 130, 246, 0.18);
+    background: linear-gradient(135deg, rgba(239, 246, 255, 0.98), rgba(248, 250, 252, 0.98));
+    color: #1d4ed8;
+    box-shadow: 0 12px 24px -24px rgba(37, 99, 235, 0.55);
+}
+
 .finance-payable-chip-open {
     background: rgba(219, 234, 254, 0.88);
     color: #1d4ed8;
@@ -536,47 +543,18 @@
                     </div>
                 </div>
                 {% endif %}
-                <details class="finance-credit-card-invoice-summary mt-4 rounded-[1.25rem] border border-slate-200 bg-white px-4 py-4">
-                    <summary class="flex cursor-pointer list-none items-center justify-between gap-3 text-left">
+                <div class="mt-4 rounded-[1.25rem] border border-slate-200 bg-white px-4 py-4">
+                    <div class="flex items-center justify-between gap-3">
                         <div>
                             <p class="text-sm font-semibold text-slate-900">Faturas do cartão</p>
-                            <p class="mt-1 text-xs text-slate-500">Agrupadas por mês de vencimento para facilitar o acompanhamento.</p>
+                            <p class="mt-1 text-xs text-slate-500">Abra o detalhamento mensal em um modal com abas por fatura.</p>
                         </div>
                         <span class="inline-flex rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">{{ card_overview.get('invoice_groups', [])|length }}</span>
-                    </summary>
-                    <div class="finance-credit-card-invoices-list mt-4 space-y-3">
-                        {% for invoice in card_overview.get('invoice_groups', []) %}
-                        <div class="rounded-2xl bg-slate-50/90 px-4 py-4 ring-1 ring-slate-200/70">
-                            <div class="flex flex-wrap items-start justify-between gap-3">
-                                <div class="min-w-0">
-                                    <p class="text-sm font-semibold text-slate-900">{{ invoice.reference_label }}</p>
-                                    <p class="mt-1 text-xs text-slate-500">Vencimento {{ invoice.due_date_label }}</p>
-                                </div>
-                                <span class="stock-movement-chip {{ invoice.status_chip_class }}">{{ invoice.status_label }}</span>
-                            </div>
-                            <div class="mt-3 grid gap-3 sm:grid-cols-3">
-                                <div class="rounded-2xl bg-white px-3 py-3 ring-1 ring-slate-200/60">
-                                    <p class="text-[0.65rem] font-semibold uppercase tracking-[0.18em] text-slate-400">Total</p>
-                                    <p class="mt-2 text-sm font-semibold text-slate-900">R$ {{ invoice.total|decimal_br }}</p>
-                                </div>
-                                <div class="rounded-2xl bg-white px-3 py-3 ring-1 ring-slate-200/60">
-                                    <p class="text-[0.65rem] font-semibold uppercase tracking-[0.18em] text-slate-400">Em aberto</p>
-                                    <p class="mt-2 text-sm font-semibold {% if invoice.open_total > 0 %}text-sky-700{% else %}text-slate-900{% endif %}">R$ {{ invoice.open_total|decimal_br }}</p>
-                                </div>
-                                <div class="rounded-2xl bg-white px-3 py-3 ring-1 ring-slate-200/60">
-                                    <p class="text-[0.65rem] font-semibold uppercase tracking-[0.18em] text-slate-400">Parcelas</p>
-                                    <p class="mt-2 text-sm font-semibold text-slate-900">{{ invoice.installment_count }}</p>
-                                    <p class="mt-1 text-xs text-slate-500">{{ invoice.paid_count }} paga(s)</p>
-                                </div>
-                            </div>
-                        </div>
-                        {% else %}
-                        <div class="rounded-2xl border border-dashed border-slate-200 bg-slate-50/80 px-4 py-6 text-center text-sm text-slate-500">
-                            Ainda não existem parcelas vinculadas a este cartão.
-                        </div>
-                        {% endfor %}
                     </div>
-                </details>
+                    <button type="button" class="mt-4 inline-flex w-full items-center justify-center rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm font-semibold text-sky-700 transition hover:bg-sky-100" data-finance-card-invoices-open data-finance-card-modal-id="finance-credit-card-invoices-modal-{{ card.id }}">
+                        Ver faturas do cartão
+                    </button>
+                </div>
                 <div class="mt-4 flex items-center justify-end gap-2">
                     <a href="/gestao-financeira/contas?finance_tab=cards&card_edit_id={{ card.id }}" class="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-100" title="Editar">
                         <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -598,6 +576,125 @@
                     </form>
                 </div>
             </article>
+            <dialog id="finance-credit-card-invoices-modal-{{ card.id }}" class="app-modal rounded-[2rem] p-0 shadow-2xl w-full max-w-6xl overflow-hidden">
+                <div class="bg-white p-6 sm:p-8">
+                    <div class="flex items-start justify-between gap-4">
+                        <div class="min-w-0">
+                            <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Faturas do cartão</p>
+                            <h3 class="mt-2 text-2xl font-semibold">{{ card.card_name }}</h3>
+                            <p class="mt-2 text-sm text-slate-500">Navegue pelas faturas mensais, visualize as compras e quite a fatura completa quando necessário.</p>
+                        </div>
+                        <div class="flex items-center gap-3">
+                            <button type="button" class="hidden rounded-2xl bg-brand-500 px-4 py-3 text-sm font-semibold text-white hover:bg-brand-700" data-finance-card-invoice-pay-trigger data-card-id="{{ card.id }}" data-redirect-url="/gestao-financeira/contas?finance_tab=cards">
+                                Pagar fatura
+                            </button>
+                            <button type="button" class="modal-close-button" aria-label="Fechar" data-finance-card-invoices-close>
+                                <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                    <path d="M18 6 6 18"/>
+                                    <path d="m6 6 12 12"/>
+                                </svg>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="mt-6">
+                        {% if card_overview.get('invoice_groups', []) %}
+                        <div class="flex flex-wrap gap-2" role="tablist" aria-label="Faturas de {{ card.card_name }}">
+                            {% for invoice in card_overview.get('invoice_groups', []) %}
+                            <button
+                                type="button"
+                                class="finance-credit-card-invoice-tab inline-flex items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-600 transition hover:border-sky-200 hover:bg-sky-50 hover:text-sky-700 {% if loop.first %}is-active{% endif %}"
+                                role="tab"
+                                aria-selected="{% if loop.first %}true{% else %}false{% endif %}"
+                                data-finance-card-invoice-tab
+                                data-tab-group="card-{{ card.id }}"
+                                data-tab-target="card-{{ card.id }}-invoice-{{ loop.index0 }}"
+                                data-due-date="{{ invoice.due_date.isoformat() if invoice.due_date else '' }}"
+                                data-due-date-label="{{ invoice.due_date_label }}"
+                                data-reference-label="{{ invoice.reference_label }}"
+                                data-open-total="{{ invoice.open_total|decimal_br }}"
+                                data-can-pay="{% if invoice.open_total > 0 and invoice.due_date %}true{% else %}false{% endif %}"
+                            >
+                                <span>{{ invoice.reference_label }}</span>
+                                <span class="stock-movement-chip {{ invoice.status_chip_class }}">{{ invoice.status_label }}</span>
+                            </button>
+                            {% endfor %}
+                        </div>
+                        <div class="mt-5 space-y-4">
+                            {% for invoice in card_overview.get('invoice_groups', []) %}
+                            <section
+                                id="card-{{ card.id }}-invoice-{{ loop.index0 }}"
+                                class="{% if not loop.first %}hidden {% endif %}space-y-4"
+                                role="tabpanel"
+                                data-finance-card-invoice-panel
+                                data-tab-group="card-{{ card.id }}"
+                            >
+                                <div class="grid gap-3 md:grid-cols-4">
+                                    <div class="rounded-2xl bg-slate-50 px-4 py-4 ring-1 ring-slate-200/70">
+                                        <p class="text-[0.65rem] font-semibold uppercase tracking-[0.18em] text-slate-400">Fatura</p>
+                                        <p class="mt-2 text-sm font-semibold text-slate-900">{{ invoice.reference_label }}</p>
+                                    </div>
+                                    <div class="rounded-2xl bg-slate-50 px-4 py-4 ring-1 ring-slate-200/70">
+                                        <p class="text-[0.65rem] font-semibold uppercase tracking-[0.18em] text-slate-400">Vencimento</p>
+                                        <p class="mt-2 text-sm font-semibold text-slate-900">{{ invoice.due_date_label }}</p>
+                                    </div>
+                                    <div class="rounded-2xl bg-slate-50 px-4 py-4 ring-1 ring-slate-200/70">
+                                        <p class="text-[0.65rem] font-semibold uppercase tracking-[0.18em] text-slate-400">Total em aberto</p>
+                                        <p class="mt-2 text-sm font-semibold {% if invoice.open_total > 0 %}text-sky-700{% else %}text-slate-900{% endif %}">R$ {{ invoice.open_total|decimal_br }}</p>
+                                    </div>
+                                    <div class="rounded-2xl bg-slate-50 px-4 py-4 ring-1 ring-slate-200/70">
+                                        <p class="text-[0.65rem] font-semibold uppercase tracking-[0.18em] text-slate-400">Parcelas</p>
+                                        <p class="mt-2 text-sm font-semibold text-slate-900">{{ invoice.installment_count }}</p>
+                                    </div>
+                                </div>
+                                <div class="overflow-hidden rounded-[1.5rem] border border-slate-200">
+                                    <div class="overflow-x-auto">
+                                        <table class="stock-history-table min-w-full divide-y divide-slate-200 text-sm">
+                                            <thead class="bg-slate-50 text-left text-slate-500">
+                                                <tr>
+                                                    <th class="px-4 py-3 font-medium">Data</th>
+                                                    <th class="px-4 py-3 font-medium">Origem</th>
+                                                    <th class="px-4 py-3 font-medium">Categoria</th>
+                                                    <th class="px-4 py-3 font-medium">Compra</th>
+                                                    <th class="px-4 py-3 font-medium">Parcela</th>
+                                                    <th class="px-4 py-3 font-medium">Forma</th>
+                                                    <th class="px-4 py-3 font-medium">Status</th>
+                                                    <th class="px-4 py-3 font-medium">Valor</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody class="divide-y divide-slate-100 bg-white">
+                                                {% for item in invoice.line_items %}
+                                                <tr data-stock-kind="{% if item.status == 'paid' %}entrada{% else %}info{% endif %}">
+                                                    <td class="px-4 py-3 whitespace-nowrap font-semibold text-slate-900">{{ item.launch_date_label }}</td>
+                                                    <td class="px-4 py-3">{{ item.source_label }}</td>
+                                                    <td class="px-4 py-3 font-semibold text-slate-900">{{ item.category }}</td>
+                                                    <td class="px-4 py-3">
+                                                        <div class="flex flex-col gap-1">
+                                                            <span class="font-semibold text-slate-900">{{ item.product_service }}</span>
+                                                        </div>
+                                                    </td>
+                                                    <td class="px-4 py-3 whitespace-nowrap text-slate-600">{{ item.installment_label }}</td>
+                                                    <td class="px-4 py-3 whitespace-nowrap text-slate-600">{{ item.payment_method }}</td>
+                                                    <td class="px-4 py-3">
+                                                        <span class="stock-movement-chip {{ item.status_chip_class }}">{{ item.status_label }}</span>
+                                                    </td>
+                                                    <td class="px-4 py-3 whitespace-nowrap font-semibold {% if item.status == 'paid' %}text-emerald-700{% else %}text-sky-700{% endif %}">R$ {{ item.amount|decimal_br }}</td>
+                                                </tr>
+                                                {% endfor %}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </section>
+                            {% endfor %}
+                        </div>
+                        {% else %}
+                        <div class="rounded-2xl border border-dashed border-slate-200 bg-slate-50/80 px-4 py-8 text-center text-sm text-slate-500">
+                            Ainda não existem parcelas vinculadas a este cartão.
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+            </dialog>
             {% else %}
             <div class="rounded-[1.5rem] border border-dashed border-slate-200 bg-slate-50/80 px-6 py-10 text-center text-slate-500 lg:col-span-2 2xl:col-span-3">
                 Nenhum cartão de crédito cadastrado para a fazenda ativa.
@@ -1537,6 +1634,11 @@
     const payableSettleNotesLabel = document.querySelector('[data-finance-payable-settle-notes-label]');
     const payableSettleNotesInput = document.querySelector('[data-finance-payable-settle-notes]');
     const payableSettleSubmit = document.querySelector('[data-finance-payable-settle-submit]');
+    const creditCardInvoicesOpenButtons = Array.from(document.querySelectorAll('[data-finance-card-invoices-open]'));
+    const creditCardInvoicesCloseButtons = Array.from(document.querySelectorAll('[data-finance-card-invoices-close]'));
+    const creditCardInvoiceTabs = Array.from(document.querySelectorAll('[data-finance-card-invoice-tab]'));
+    const creditCardInvoicePanels = Array.from(document.querySelectorAll('[data-finance-card-invoice-panel]'));
+    const creditCardInvoicePayButtons = Array.from(document.querySelectorAll('[data-finance-card-invoice-pay-trigger]'));
     const balanceRawInput = document.querySelector('[data-finance-balance-raw]');
     const balanceDisplayInput = document.querySelector('[data-finance-balance-display]');
     const modeLabel = document.querySelector('[data-finance-account-mode-label]');
@@ -3050,23 +3152,89 @@
     const openInstallmentSettleModal = (button, redirectUrl) => {
         if (!(button instanceof HTMLElement) || !payableSettleForm || !payableSettleModal) return;
         const settleKind = button.dataset.settleKind === 'receivable' ? 'receivable' : 'payable';
-        payableSettleForm.action = `/gestao-financeira/contas/parcelas/${button.dataset.installmentId}/quitar`;
+        payableSettleForm.action = button.dataset.settleActionUrl || `/gestao-financeira/contas/parcelas/${button.dataset.installmentId}/quitar`;
         const settleRedirectInput = payableSettleForm.querySelector('[data-finance-payable-settle-redirect]');
         if (settleRedirectInput) settleRedirectInput.value = redirectUrl;
-        if (payableSettleKicker) payableSettleKicker.textContent = settleKind === 'receivable' ? 'Recebimento da parcela' : 'Pagamento da parcela';
-        if (payableSettleHeading) payableSettleHeading.textContent = settleKind === 'receivable' ? 'Marcar como recebida' : 'Marcar como paga';
+        const settleScope = button.dataset.settleScope === 'invoice' ? 'invoice' : 'installment';
+        if (payableSettleKicker) payableSettleKicker.textContent = settleScope === 'invoice'
+            ? 'Pagamento da fatura'
+            : (settleKind === 'receivable' ? 'Recebimento da parcela' : 'Pagamento da parcela');
+        if (payableSettleHeading) payableSettleHeading.textContent = settleScope === 'invoice'
+            ? 'Quitar fatura'
+            : (settleKind === 'receivable' ? 'Marcar como recebida' : 'Marcar como paga');
         if (payableSettleSubtitle) payableSettleSubtitle.textContent = settleKind === 'receivable'
             ? 'Confirme a data do recebimento e, se quiser, registre uma observação.'
-            : 'Confirme a data do pagamento e, se quiser, registre uma observação.';
+            : (settleScope === 'invoice'
+                ? 'Confirme a data do pagamento para quitar todas as parcelas em aberto desta fatura.'
+                : 'Confirme a data do pagamento e, se quiser, registre uma observação.');
         if (payableSettleDateLabel) payableSettleDateLabel.textContent = settleKind === 'receivable' ? 'Data do recebimento' : 'Data do pagamento';
-        if (payableSettleNotesLabel) payableSettleNotesLabel.textContent = settleKind === 'receivable' ? 'Observação do recebimento' : 'Observação do pagamento';
-        if (payableSettleSubmit) payableSettleSubmit.textContent = settleKind === 'receivable' ? 'Confirmar recebimento' : 'Confirmar pagamento';
+        if (payableSettleNotesLabel) payableSettleNotesLabel.textContent = settleScope === 'invoice' ? 'Observação da quitação da fatura' : (settleKind === 'receivable' ? 'Observação do recebimento' : 'Observação do pagamento');
+        if (payableSettleSubmit) payableSettleSubmit.textContent = settleScope === 'invoice'
+            ? 'Confirmar quitação'
+            : (settleKind === 'receivable' ? 'Confirmar recebimento' : 'Confirmar pagamento');
         if (payableSettleTitle) payableSettleTitle.textContent = button.dataset.transactionTitle || '-';
-        if (payableSettleMeta) payableSettleMeta.textContent = `Parcela ${button.dataset.installmentLabel || '-'} • Vencimento ${button.dataset.installmentDueDate || '-'}`;
+        if (payableSettleMeta) payableSettleMeta.textContent = settleScope === 'invoice'
+            ? `Fatura ${button.dataset.invoiceReferenceLabel || '-'} • Vencimento ${button.dataset.installmentDueDate || '-'} • Total em aberto R$ ${button.dataset.invoiceOpenTotal || '0,00'}`
+            : `Parcela ${button.dataset.installmentLabel || '-'} • Vencimento ${button.dataset.installmentDueDate || '-'}`;
         if (payableSettleDateInput) payableSettleDateInput.value = button.dataset.paidDateDefault || '';
         if (payableSettleNotesInput) payableSettleNotesInput.value = '';
+        payableSettleForm.querySelectorAll('input[name="due_date"]').forEach((input) => input.remove());
+        if (settleScope === 'invoice' && button.dataset.invoiceDueDate) {
+            const dueDateInput = document.createElement('input');
+            dueDateInput.type = 'hidden';
+            dueDateInput.name = 'due_date';
+            dueDateInput.value = button.dataset.invoiceDueDate;
+            payableSettleForm.appendChild(dueDateInput);
+        }
         payableSettleModal.showModal();
         lockBackgroundScroll();
+    };
+
+    const setCreditCardInvoiceTab = (button) => {
+        if (!(button instanceof HTMLElement)) return;
+        const group = button.dataset.tabGroup;
+        const targetId = button.dataset.tabTarget;
+        const modal = button.closest('dialog');
+        if (!group || !targetId || !(modal instanceof HTMLElement)) return;
+        const payButton = modal.querySelector('[data-finance-card-invoice-pay-trigger]');
+        creditCardInvoiceTabs
+            .filter((tab) => tab.dataset.tabGroup === group)
+            .forEach((tab) => {
+                const isActive = tab === button;
+                tab.classList.toggle('is-active', isActive);
+                tab.setAttribute('aria-selected', isActive ? 'true' : 'false');
+            });
+        creditCardInvoicePanels
+            .filter((panel) => panel.dataset.tabGroup === group)
+            .forEach((panel) => {
+                panel.classList.toggle('hidden', panel.id !== targetId);
+            });
+        if (payButton instanceof HTMLButtonElement) {
+            const canPay = button.dataset.canPay === 'true';
+            payButton.classList.toggle('hidden', !canPay);
+            payButton.dataset.invoiceDueDate = button.dataset.dueDate || '';
+            payButton.dataset.installmentDueDate = button.dataset.dueDateLabel || '-';
+            payButton.dataset.invoiceReferenceLabel = button.dataset.referenceLabel || '-';
+            payButton.dataset.invoiceOpenTotal = button.dataset.openTotal || '0,00';
+            payButton.dataset.transactionTitle = `Fatura ${button.dataset.referenceLabel || ''}`.trim();
+        }
+    };
+
+    const openCreditCardInvoicesModal = (button) => {
+        if (!(button instanceof HTMLElement)) return;
+        const modalId = button.dataset.financeCardModalId;
+        const modal = modalId ? document.getElementById(modalId) : null;
+        if (!(modal instanceof HTMLDialogElement)) return;
+        modal.showModal();
+        lockBackgroundScroll();
+        const firstTab = modal.querySelector('[data-finance-card-invoice-tab]');
+        if (firstTab instanceof HTMLElement) setCreditCardInvoiceTab(firstTab);
+    };
+
+    const closeCreditCardInvoicesModal = (modal) => {
+        if (!(modal instanceof HTMLDialogElement)) return;
+        modal.close();
+        unlockBackgroundScroll();
     };
 
     document.addEventListener('click', (event) => {
@@ -3084,6 +3252,32 @@
     payableSettleCloseButtons.forEach((button) => button.addEventListener('click', closePayableSettleModal));
     payableSettleModal?.addEventListener('cancel', (event) => {
         event.preventDefault();
+    });
+
+    creditCardInvoicesOpenButtons.forEach((button) => {
+        button.addEventListener('click', () => openCreditCardInvoicesModal(button));
+    });
+    creditCardInvoicesCloseButtons.forEach((button) => {
+        button.addEventListener('click', () => closeCreditCardInvoicesModal(button.closest('dialog')));
+    });
+    document.querySelectorAll('dialog[id^="finance-credit-card-invoices-modal-"]').forEach((modal) => {
+        modal.addEventListener('cancel', (event) => {
+            event.preventDefault();
+        });
+    });
+    creditCardInvoiceTabs.forEach((button) => {
+        button.addEventListener('click', () => setCreditCardInvoiceTab(button));
+    });
+    creditCardInvoicePayButtons.forEach((button) => {
+        button.dataset.settleScope = 'invoice';
+        button.dataset.settleActionUrl = `/gestao-financeira/cartoes/${button.dataset.cardId}/faturas/quitar`;
+        button.addEventListener('click', () => {
+            const modal = button.closest('dialog');
+            openInstallmentSettleModal(button, window.location.pathname + window.location.search);
+            if (modal instanceof HTMLDialogElement) {
+                modal.close();
+            }
+        });
     });
 
     setupCollapse({

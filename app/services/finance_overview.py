@@ -65,6 +65,27 @@ def _in_extract_period(d: date | None, period_start: date | None, period_end: da
     return True
 
 
+def _normalize_payment_method(value: str | None) -> str:
+    import unicodedata
+
+    return (
+        unicodedata.normalize("NFD", str(value or ""))
+        .encode("ascii", "ignore")
+        .decode("ascii")
+        .strip()
+        .lower()
+    )
+
+
+def _finance_transaction_uses_future_settlement(transaction: FinanceTransaction) -> bool:
+    payment_condition = (transaction.payment_condition or "").strip().lower()
+    if payment_condition == "a_prazo":
+        return True
+    if transaction.credit_card_id and _normalize_payment_method(transaction.payment_method) == "cartao de credito":
+        return True
+    return False
+
+
 def build_finance_overview_context(
     repo: FarmRepository,
     *,
@@ -223,8 +244,7 @@ def _collect_finance_transaction_rows(
         detail = " • ".join(detail_parts)
         source_label = _finance_transaction_module_label(transaction)
 
-        payment_condition = (transaction.payment_condition or "").strip().lower()
-        if payment_condition == "a_prazo":
+        if _finance_transaction_uses_future_settlement(transaction):
             installments = sorted(
                 transaction.installments or [],
                 key=lambda inst: (inst.installment_number or 0, inst.id),
@@ -417,7 +437,7 @@ def finance_transaction_balance_amount_chunks(transaction: FinanceTransaction) -
     Montantes absolutos a aplicar no saldo do card da conta: uma parcela paga por vez se a prazo;
     valor integral do lançamento se à vista. Alinhado ao extrato (contas).
     """
-    if (transaction.payment_condition or "").strip().lower() == "a_prazo":
+    if _finance_transaction_uses_future_settlement(transaction):
         chunks: list[float] = []
         for inst in sorted(
             transaction.installments or [],

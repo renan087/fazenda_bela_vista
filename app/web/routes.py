@@ -3348,10 +3348,29 @@ def _build_finance_credit_card_overviews(
                         "installment_count": 0,
                         "open_count": 0,
                         "paid_count": 0,
+                        "line_items": [],
                     },
                 )
                 invoice_group["total"] = round(invoice_group["total"] + amount, 2)
                 invoice_group["installment_count"] += 1
+                installment_label = f"{int(installment.installment_number or 0)}/{int(transaction.installment_count or 0) or 1}"
+                invoice_group["line_items"].append(
+                    {
+                        "transaction_id": transaction.id,
+                        "installment_id": installment.id,
+                        "launch_date": transaction.launch_date,
+                        "launch_date_label": transaction.launch_date.strftime("%d/%m/%Y") if transaction.launch_date else "-",
+                        "product_service": transaction.product_service,
+                        "category": transaction.category or "-",
+                        "source_label": _finance_transaction_source_label(transaction.source),
+                        "amount": amount,
+                        "status": "paid" if is_paid else "open",
+                        "status_label": "Pago" if is_paid else "Em aberto",
+                        "status_chip_class": "stock-movement-chip-entry" if is_paid else "stock-movement-chip-info",
+                        "installment_label": installment_label,
+                        "payment_method": transaction.payment_method or "-",
+                    }
+                )
 
                 if is_paid:
                     paid_total = round(paid_total + amount, 2)
@@ -3374,6 +3393,13 @@ def _build_finance_credit_card_overviews(
             key=lambda row: (row["due_date"] or date.max, row["reference_label"]),
         )
         for invoice_group in invoice_groups:
+            invoice_group["line_items"].sort(
+                key=lambda item: (
+                    item["launch_date"] or date.max,
+                    item["transaction_id"],
+                    item["installment_id"],
+                )
+            )
             due_date = invoice_group["due_date"]
             if invoice_group["open_total"] <= 0:
                 status_key = "paid"
@@ -6734,6 +6760,67 @@ def settle_finance_transaction_installment_action(
     )
     action_label = "recebida" if (installment.transaction.operation_type or "").strip().lower() == "receita" else "paga"
     _flash(request, "success", f"Parcela marcada como {action_label}.")
+    return _redirect(back_url)
+
+
+@router.post("/gestao-financeira/cartoes/{card_id}/faturas/quitar")
+def settle_finance_credit_card_invoice_action(
+    request: Request,
+    card_id: int,
+    csrf_token: str = Form(...),
+    due_date: str = Form(...),
+    paid_at: str = Form(...),
+    payment_notes: str | None = Form(None),
+    redirect_to: str | None = Form(None),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    del user
+    validate_csrf(request, csrf_token)
+    default_cards = "/gestao-financeira/contas?finance_tab=cards"
+    back_url = _safe_finance_accounts_return_url(redirect_to, default=default_cards)
+    repo = _repository(db)
+    scope = _global_scope_context(request, repo)
+    active_farm = scope.get("active_farm")
+    card = repo.get_finance_credit_card(card_id)
+    if not card:
+        _flash(request, "error", "Cartão não encontrado.")
+        return _redirect(back_url)
+    if not active_farm or card.farm_id != active_farm.id:
+        _flash(request, "error", "Este cartão não pertence à fazenda ativa.")
+        return _redirect(back_url)
+    try:
+        invoice_due_date = date.fromisoformat((due_date or "").strip())
+        paid_date = date.fromisoformat((paid_at or "").strip())
+    except ValueError:
+        _flash(request, "error", "Informe datas válidas para quitar a fatura.")
+        return _redirect(back_url)
+
+    installments = (
+        repo.db.query(FinanceTransactionInstallment)
+        .join(FinanceTransactionInstallment.transaction)
+        .options(joinedload(FinanceTransactionInstallment.transaction))
+        .filter(
+            FinanceTransaction.credit_card_id == card.id,
+            FinanceTransaction.farm_id == active_farm.id,
+            FinanceTransaction.operation_type == "despesa",
+            FinanceTransactionInstallment.due_date == invoice_due_date,
+            FinanceTransactionInstallment.status != "pago",
+        )
+        .all()
+    )
+    if not installments:
+        _flash(request, "info", "Não existem parcelas em aberto para esta fatura.")
+        return _redirect(back_url)
+
+    cleaned_notes = _clean_text(payment_notes)
+    for installment in installments:
+        installment.status = "pago"
+        installment.paid_at = paid_date
+        installment.payment_notes = cleaned_notes
+        repo.db.add(installment)
+    repo.db.commit()
+    _flash(request, "success", f"Fatura do cartão {card.card_name} quitada com sucesso ({len(installments)} parcela(s)).")
     return _redirect(back_url)
 
 
