@@ -634,6 +634,9 @@
                             <button type="button" class="hidden rounded-2xl bg-brand-500 px-4 py-3 text-sm font-semibold text-white hover:bg-brand-700" data-finance-card-invoice-pay-trigger data-card-id="{{ card.id }}" data-redirect-url="/gestao-financeira/contas?finance_tab=cards">
                                 Pagar fatura
                             </button>
+                            <button type="button" class="hidden rounded-2xl bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-700 ring-1 ring-rose-200 transition hover:bg-rose-100" data-finance-card-invoice-revert-trigger data-card-id="{{ card.id }}" data-redirect-url="/gestao-financeira/contas?finance_tab=cards">
+                                Estornar pagamento
+                            </button>
                             <button type="button" class="modal-close-button" aria-label="Fechar" data-finance-card-invoices-close>
                                 <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                                     <path d="M18 6 6 18"/>
@@ -665,6 +668,7 @@
                                     data-reference-label="{{ invoice.reference_label }}"
                                     data-open-total="{{ invoice.open_total|decimal_br }}"
                                     data-can-pay="{% if invoice.open_total > 0 and invoice.due_date %}true{% else %}false{% endif %}"
+                                    data-can-revert="{% if invoice.paid_count > 0 and invoice.due_date %}true{% else %}false{% endif %}"
                                 >
                                     <span>{{ invoice.reference_label }}</span>
                                     <span class="stock-movement-chip {{ invoice.status_chip_class }}">{{ invoice.status_label }}</span>
@@ -1697,6 +1701,7 @@
     const creditCardInvoiceTabs = Array.from(document.querySelectorAll('[data-finance-card-invoice-tab]'));
     const creditCardInvoicePanels = Array.from(document.querySelectorAll('[data-finance-card-invoice-panel]'));
     const creditCardInvoicePayButtons = Array.from(document.querySelectorAll('[data-finance-card-invoice-pay-trigger]'));
+    const creditCardInvoiceRevertButtons = Array.from(document.querySelectorAll('[data-finance-card-invoice-revert-trigger]'));
     const creditCardInvoiceTabShells = Array.from(document.querySelectorAll('[data-finance-card-invoice-tabs-shell]'));
     const balanceRawInput = document.querySelector('[data-finance-balance-raw]');
     const balanceDisplayInput = document.querySelector('[data-finance-balance-display]');
@@ -3256,6 +3261,7 @@
         const modal = button.closest('dialog');
         if (!group || !targetId || !(modal instanceof HTMLElement)) return;
         const payButton = modal.querySelector('[data-finance-card-invoice-pay-trigger]');
+        const revertButton = modal.querySelector('[data-finance-card-invoice-revert-trigger]');
         creditCardInvoiceTabs
             .filter((tab) => tab.dataset.tabGroup === group)
             .forEach((tab) => {
@@ -3276,6 +3282,13 @@
             payButton.dataset.invoiceReferenceLabel = button.dataset.referenceLabel || '-';
             payButton.dataset.invoiceOpenTotal = button.dataset.openTotal || '0,00';
             payButton.dataset.transactionTitle = `Fatura ${button.dataset.referenceLabel || ''}`.trim();
+        }
+        if (revertButton instanceof HTMLButtonElement) {
+            const canRevert = button.dataset.canRevert === 'true';
+            revertButton.classList.toggle('hidden', !canRevert);
+            revertButton.dataset.invoiceDueDate = button.dataset.dueDate || '';
+            revertButton.dataset.installmentDueDate = button.dataset.dueDateLabel || '-';
+            revertButton.dataset.invoiceReferenceLabel = button.dataset.referenceLabel || '-';
         }
         button.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
     };
@@ -3361,6 +3374,25 @@
             if (modal instanceof HTMLDialogElement) {
                 modal.close();
             }
+        });
+    });
+    creditCardInvoiceRevertButtons.forEach((button) => {
+        button.addEventListener('click', () => {
+            const dueDate = button.dataset.invoiceDueDate || '';
+            const referenceLabel = button.dataset.invoiceReferenceLabel || 'selecionada';
+            if (!dueDate) return;
+            const confirmed = window.confirm(`Estornar o pagamento da fatura ${referenceLabel}? Todas as parcelas pagas dessa fatura voltarão para pendente.`);
+            if (!confirmed) return;
+            const form = document.createElement('form');
+            form.method = 'post';
+            form.action = `/gestao-financeira/cartoes/${button.dataset.cardId}/faturas/estornar`;
+            form.innerHTML = `
+                <input type="hidden" name="csrf_token" value="${FINANCE_CSRF_TOKEN}">
+                <input type="hidden" name="due_date" value="${dueDate}">
+                <input type="hidden" name="redirect_to" value="${window.location.pathname + window.location.search}">
+            `;
+            document.body.appendChild(form);
+            form.submit();
         });
     });
 

@@ -6824,6 +6824,63 @@ def settle_finance_credit_card_invoice_action(
     return _redirect(back_url)
 
 
+@router.post("/gestao-financeira/cartoes/{card_id}/faturas/estornar")
+def revert_finance_credit_card_invoice_payment_action(
+    request: Request,
+    card_id: int,
+    csrf_token: str = Form(...),
+    due_date: str = Form(...),
+    redirect_to: str | None = Form(None),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    del user
+    validate_csrf(request, csrf_token)
+    default_cards = "/gestao-financeira/contas?finance_tab=cards"
+    back_url = _safe_finance_accounts_return_url(redirect_to, default=default_cards)
+    repo = _repository(db)
+    scope = _global_scope_context(request, repo)
+    active_farm = scope.get("active_farm")
+    card = repo.get_finance_credit_card(card_id)
+    if not card:
+        _flash(request, "error", "Cartão não encontrado.")
+        return _redirect(back_url)
+    if not active_farm or card.farm_id != active_farm.id:
+        _flash(request, "error", "Este cartão não pertence à fazenda ativa.")
+        return _redirect(back_url)
+    try:
+        invoice_due_date = date.fromisoformat((due_date or "").strip())
+    except ValueError:
+        _flash(request, "error", "Informe uma data válida para estornar a fatura.")
+        return _redirect(back_url)
+
+    installments = (
+        repo.db.query(FinanceTransactionInstallment)
+        .join(FinanceTransactionInstallment.transaction)
+        .options(joinedload(FinanceTransactionInstallment.transaction))
+        .filter(
+            FinanceTransaction.credit_card_id == card.id,
+            FinanceTransaction.farm_id == active_farm.id,
+            FinanceTransaction.operation_type == "despesa",
+            FinanceTransactionInstallment.due_date == invoice_due_date,
+            FinanceTransactionInstallment.status == "pago",
+        )
+        .all()
+    )
+    if not installments:
+        _flash(request, "info", "Não existem parcelas pagas para estornar nesta fatura.")
+        return _redirect(back_url)
+
+    for installment in installments:
+        installment.status = "pendente"
+        installment.paid_at = None
+        installment.payment_notes = None
+        repo.db.add(installment)
+    repo.db.commit()
+    _flash(request, "success", f"Pagamento da fatura do cartão {card.card_name} estornado com sucesso ({len(installments)} parcela(s)).")
+    return _redirect(back_url)
+
+
 @router.post("/gestao-financeira/contas/parcelas/{installment_id}/cancelar-pagamento")
 def revert_finance_transaction_installment_payment_action(
     request: Request,
