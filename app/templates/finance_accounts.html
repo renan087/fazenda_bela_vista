@@ -497,7 +497,7 @@
             {% for card in finance_credit_cards %}
             {% set card_overview = finance_credit_card_overviews.get(card.id, {}) %}
             {% set next_invoice = card_overview.get('next_open_invoice') %}
-            <article class="rounded-[1.5rem] border border-slate-200 bg-slate-50/80 p-5 shadow-sm transition hover:border-sky-200 hover:bg-white" data-finance-card-summary-item>
+            <article class="min-w-0 max-w-full overflow-hidden rounded-[1.5rem] border border-slate-200 bg-slate-50/80 p-5 shadow-sm transition hover:border-sky-200 hover:bg-white" data-finance-card-summary-item>
                 <div class="flex items-start justify-between gap-3">
                     <div class="min-w-0">
                         <div class="flex items-center gap-3">
