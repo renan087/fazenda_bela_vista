@@ -12,6 +12,7 @@
         mobileOnly = true,
         mobileBreakpoint = '(max-width: 899px)',
         threshold = 52,
+        allowInteractiveSwipe = false,
     }) => {
         if (!(root instanceof HTMLElement) || !items.length) return null;
 
@@ -34,6 +35,7 @@
         let scrollDotsRaf = null;
         let lastCarouselScrollLeft = null;
         let lastCarouselPullNext = true;
+        let suppressNextClick = false;
 
         root.classList.add('swipe-card-pager-surface');
         root.style.touchAction = 'pan-y';
@@ -361,7 +363,11 @@
             (event) => {
                 if (isScrollCarousel()) return;
                 if (!shouldHandleSwipe() || isTransitioning || event.touches.length !== 1) return;
-                if (event.target instanceof Element && event.target.closest('a, button, input, select, textarea, label'))
+                if (
+                    !allowInteractiveSwipe &&
+                    event.target instanceof Element &&
+                    event.target.closest('a, button, input, select, textarea, label')
+                )
                     return;
                 const touch = event.touches[0];
                 tracking = true;
@@ -412,8 +418,10 @@
             const horizontalIntent = Math.abs(deltaX) > threshold && Math.abs(deltaX) > Math.abs(deltaY) * 1.2;
             if (horizontalIntent) {
                 if (deltaX < 0 && currentPage < currentTotalPages - 1) {
+                    suppressNextClick = true;
                     setPage(currentPage + 1, 'next');
                 } else if (deltaX > 0 && currentPage > 0) {
+                    suppressNextClick = true;
                     setPage(currentPage - 1, 'prev');
                 }
             }
@@ -421,6 +429,17 @@
         });
 
         root.addEventListener('touchcancel', resetTracking);
+
+        root.addEventListener(
+            'click',
+            (event) => {
+                if (!suppressNextClick) return;
+                suppressNextClick = false;
+                event.preventDefault();
+                event.stopPropagation();
+            },
+            true,
+        );
 
         const scheduleLayout = () => {
             if (!isScrollCarousel()) return;
