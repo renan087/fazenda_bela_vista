@@ -400,6 +400,14 @@
         </div>
 
         <div class="stock-history-stage mt-4" data-finance-tab="accounts">
+        <div class="finance-card-paged-shell" data-finance-accounts-paged-shell>
+        {% if finance_accounts|length > 3 %}
+        <button type="button" class="finance-card-page-nav finance-card-page-nav-prev" data-finance-accounts-page-nav="prev" aria-label="Página anterior de contas">
+            <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="m15 18-6-6 6-6"/>
+            </svg>
+        </button>
+        {% endif %}
         <div class="finance-accounts-carousel-viewport min-w-0 w-full" data-finance-accounts-viewport>
         <div class="mt-5 grid gap-4 lg:grid-cols-2 2xl:grid-cols-3" data-finance-accounts-grid>
             {% for account in finance_accounts %}
@@ -490,6 +498,14 @@
             {% endfor %}
         </div>
         </div>
+        {% if finance_accounts|length > 3 %}
+        <button type="button" class="finance-card-page-nav finance-card-page-nav-next" data-finance-accounts-page-nav="next" aria-label="Próxima página de contas">
+            <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="m9 6 6 6-6 6"/>
+            </svg>
+        </button>
+        {% endif %}
+        </div>
         {% if finance_accounts|length > 1 %}
         <div class="mt-5" data-finance-accounts-dots></div>
         {% endif %}
@@ -497,6 +513,14 @@
         </div>
 
         <div class="stock-history-stage mt-4 hidden" data-finance-tab="cards">
+        <div class="finance-card-paged-shell" data-finance-cards-paged-shell>
+        {% if finance_credit_cards|length > 3 %}
+        <button type="button" class="finance-card-page-nav finance-card-page-nav-prev" data-finance-cards-page-nav="prev" aria-label="Página anterior de cartões">
+            <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="m15 18-6-6 6-6"/>
+            </svg>
+        </button>
+        {% endif %}
         <div class="finance-cards-carousel-viewport min-w-0 w-full" data-finance-cards-viewport>
         <div class="mt-5 grid gap-4 lg:grid-cols-2 2xl:grid-cols-3" data-finance-cards-grid>
             {% for card in finance_credit_cards %}
@@ -763,6 +787,14 @@
             </div>
             {% endfor %}
         </div>
+        </div>
+        {% if finance_credit_cards|length > 3 %}
+        <button type="button" class="finance-card-page-nav finance-card-page-nav-next" data-finance-cards-page-nav="next" aria-label="Próxima página de cartões">
+            <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="m9 6 6 6-6 6"/>
+            </svg>
+        </button>
+        {% endif %}
         </div>
         {% if finance_credit_cards|length > 1 %}
         <div class="mt-5" data-finance-cards-dots></div>
@@ -1712,10 +1744,12 @@
     const financeAccountsDots = document.querySelector('[data-finance-accounts-dots]');
     const financeAccountsGrid = document.querySelector('[data-finance-accounts-grid]');
     const financeAccountsViewport = document.querySelector('[data-finance-accounts-viewport]');
+    const financeAccountsPageNavButtons = Array.from(document.querySelectorAll('[data-finance-accounts-page-nav]'));
     const financeCardSummaryItems = Array.from(document.querySelectorAll('[data-finance-card-summary-item]'));
     const financeCardsDots = document.querySelector('[data-finance-cards-dots]');
     const financeCardsGrid = document.querySelector('[data-finance-cards-grid]');
     const financeCardsViewport = document.querySelector('[data-finance-cards-viewport]');
+    const financeCardsPageNavButtons = Array.from(document.querySelectorAll('[data-finance-cards-page-nav]'));
     const balanceRawInput = document.querySelector('[data-finance-balance-raw]');
     const balanceDisplayInput = document.querySelector('[data-finance-balance-display]');
     const modeLabel = document.querySelector('[data-finance-account-mode-label]');
@@ -3409,6 +3443,30 @@
         });
     });
 
+    const bindDesktopCardPagerNav = ({ pager, navButtons, dotsContainer }) => {
+        if (!pager || !navButtons.length) return;
+        const sync = () => {
+            const page = pager.getPage();
+            const total = pager.getTotalPages();
+            navButtons.forEach((button) => {
+                const direction = button.dataset.financeAccountsPageNav || button.dataset.financeCardsPageNav;
+                button.disabled = total <= 1 || (direction === 'prev' && page <= 0) || (direction === 'next' && page >= total - 1);
+            });
+        };
+        navButtons.forEach((button) => {
+            button.addEventListener('click', () => {
+                const direction = button.dataset.financeAccountsPageNav || button.dataset.financeCardsPageNav;
+                const page = pager.getPage();
+                pager.setPage(direction === 'next' ? page + 1 : page - 1, direction);
+                window.setTimeout(sync, 260);
+            });
+        });
+        dotsContainer?.addEventListener('click', () => window.setTimeout(sync, 260));
+        window.addEventListener('resize', sync);
+        sync();
+    };
+
+    let financeAccountsPager = null;
     if (
         financeAccountSummaryItems.length > 1 &&
         financeAccountsDots &&
@@ -3416,7 +3474,7 @@
         financeAccountsViewport &&
         window.SiSFarmSwipePager
     ) {
-        window.SiSFarmSwipePager.create({
+        financeAccountsPager = window.SiSFarmSwipePager.create({
             root: financeAccountsGrid,
             scrollViewport: financeAccountsViewport,
             items: financeAccountSummaryItems,
@@ -3425,8 +3483,14 @@
             itemsPerPageMobile: 1,
             mobileOnly: true,
         });
+        bindDesktopCardPagerNav({
+            pager: financeAccountsPager,
+            navButtons: financeAccountsPageNavButtons,
+            dotsContainer: financeAccountsDots,
+        });
     }
 
+    let financeCardsPager = null;
     if (
         financeCardSummaryItems.length > 1 &&
         financeCardsDots &&
@@ -3434,7 +3498,7 @@
         financeCardsViewport &&
         window.SiSFarmSwipePager
     ) {
-        window.SiSFarmSwipePager.create({
+        financeCardsPager = window.SiSFarmSwipePager.create({
             root: financeCardsGrid,
             scrollViewport: financeCardsViewport,
             items: financeCardSummaryItems,
@@ -3442,6 +3506,11 @@
             itemsPerPageDesktop: 3,
             itemsPerPageMobile: 1,
             mobileOnly: true,
+        });
+        bindDesktopCardPagerNav({
+            pager: financeCardsPager,
+            navButtons: financeCardsPageNavButtons,
+            dotsContainer: financeCardsDots,
         });
     }
 

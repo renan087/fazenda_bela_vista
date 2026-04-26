@@ -1974,6 +1974,55 @@ body.dashboard-schedule-modal-open {
     min-width: 100%;
 }
 
+.finance-card-paged-shell {
+    position: relative;
+    min-width: 0;
+}
+
+.finance-card-page-nav {
+    position: absolute;
+    top: calc(50% + 0.65rem);
+    z-index: 5;
+    display: none;
+    width: 2.75rem;
+    height: 2.75rem;
+    align-items: center;
+    justify-content: center;
+    border-radius: 999px;
+    border: 1px solid rgba(203, 213, 225, 0.95);
+    background: rgba(255, 255, 255, 0.96);
+    color: #334155;
+    box-shadow: 0 18px 32px -26px rgba(15, 23, 42, 0.55);
+    transform: translateY(-50%);
+    transition: opacity 160ms ease, transform 160ms ease, background-color 160ms ease, color 160ms ease;
+}
+
+.finance-card-page-nav:hover {
+    background: rgba(248, 250, 252, 0.98);
+    color: #0f172a;
+    transform: translateY(-50%) scale(1.04);
+}
+
+.finance-card-page-nav:disabled {
+    cursor: not-allowed;
+    opacity: 0.28;
+    transform: translateY(-50%);
+}
+
+.finance-card-page-nav-prev {
+    left: -1.35rem;
+}
+
+.finance-card-page-nav-next {
+    right: -1.35rem;
+}
+
+@media (min-width: 900px) {
+    .finance-card-page-nav {
+        display: inline-flex;
+    }
+}
+
 .swipe-card-pager-dot {
     width: 0.55rem;
     height: 0.55rem;
