@@ -828,6 +828,7 @@
     const executiveSummaryPages = Array.from(document.querySelectorAll('[data-dashboard-executive-page]'));
     const executiveSummaryDots = document.querySelector('[data-dashboard-dots="executive_summary"]');
     const executiveSummaryGrid = document.querySelector('[data-dashboard-executive-grid]');
+    const executiveSummaryViewport = document.querySelector('[data-dashboard-executive-viewport]');
     const isExecutiveSummaryMobile = window.matchMedia('(max-width: 899px)').matches;
     let executiveSummaryMobilePager = null;
     if (
@@ -835,10 +836,12 @@
         executiveSummaryPages.length > 1 &&
         executiveSummaryDots &&
         executiveSummaryGrid &&
+        executiveSummaryViewport &&
         window.SiSFarmSwipePager
     ) {
         executiveSummaryMobilePager = window.SiSFarmSwipePager.create({
             root: executiveSummaryGrid,
+            scrollViewport: executiveSummaryViewport,
             items: executiveSummaryPages,
             dotsContainer: executiveSummaryDots,
             itemsPerPageDesktop: 1,
