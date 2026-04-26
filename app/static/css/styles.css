@@ -1015,6 +1015,8 @@ body {
     font-weight: 800;
     color: rgb(15 23 42);
     text-align: left;
+    min-width: 0;
+    white-space: nowrap;
 }
 
 .dashboard-executive-card.is-blue {
@@ -1329,7 +1331,8 @@ body.dashboard-schedule-modal-open {
         min-width: 0;
         max-width: 100%;
         overflow: hidden;
-        padding: 0.8rem;
+        min-height: 6.8rem;
+        padding: 0.72rem;
     }
 
     .dashboard-executive-grid.swipe-card-pager-scroll-active .dashboard-executive-value-row {
@@ -1351,7 +1354,6 @@ body.dashboard-schedule-modal-open {
     .dashboard-executive-grid.swipe-card-pager-surface .dashboard-executive-label,
     .dashboard-executive-grid.swipe-card-pager-surface .dashboard-executive-value {
         max-width: 100%;
-        overflow-wrap: anywhere;
     }
 
     .dashboard-executive-grid.swipe-card-pager-scroll-active .dashboard-executive-icon {
@@ -1360,8 +1362,8 @@ body.dashboard-schedule-modal-open {
     }
 
     .dashboard-executive-grid.swipe-card-pager-surface .dashboard-executive-icon {
-        width: 2.35rem;
-        height: 2.35rem;
+        width: 2.15rem;
+        height: 2.15rem;
     }
 
     .dashboard-executive-grid.swipe-card-pager-scroll-active .dashboard-executive-value {
@@ -1369,7 +1371,15 @@ body.dashboard-schedule-modal-open {
     }
 
     .dashboard-executive-grid.swipe-card-pager-surface .dashboard-executive-value {
-        font-size: clamp(1rem, 7vw, 1.32rem);
+        font-size: clamp(0.95rem, 5.2vw, 1.16rem);
+        letter-spacing: -0.025em;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .dashboard-executive-grid.swipe-card-pager-surface .dashboard-executive-label {
+        font-size: 0.78rem;
+        line-height: 1.15;
     }
 }
 
