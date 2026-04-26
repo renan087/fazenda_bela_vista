@@ -820,7 +820,6 @@
     const executiveSummaryCard = document.querySelector('[data-dashboard-card="executive_summary"]');
     const executiveSummaryDots = document.querySelector('[data-dashboard-dots="executive_summary"]');
     const executiveSummaryGrid = document.querySelector('[data-dashboard-executive-grid]');
-    const executiveSummaryViewport = document.querySelector('[data-dashboard-executive-viewport]');
     const executiveSummaryPagerShell = executiveSummaryCard?.querySelector('[data-dashboard-pager-shell="executive_summary"]');
     let executiveSummaryPager = null;
     const executiveMobileMq = window.matchMedia('(max-width: 899px)');
@@ -860,10 +859,9 @@
                 executiveSummaryGrid.appendChild(slide);
             }
             const slides = Array.from(executiveSummaryGrid.querySelectorAll('[data-dashboard-executive-slide]'));
-            if (slides.length > 1 && executiveSummaryViewport) {
+            if (slides.length > 1) {
                 executiveSummaryPager = window.SiSFarmSwipePager.create({
                     root: executiveSummaryGrid,
-                    scrollViewport: executiveSummaryViewport,
                     items: slides,
                     dotsContainer: executiveSummaryDots,
                     itemsPerPageDesktop: 1,
