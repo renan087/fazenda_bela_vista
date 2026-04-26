@@ -828,17 +828,18 @@
     const executiveSummaryPages = Array.from(document.querySelectorAll('[data-dashboard-executive-page]'));
     const executiveSummaryDots = document.querySelector('[data-dashboard-dots="executive_summary"]');
     const executiveSummaryGrid = document.querySelector('[data-dashboard-executive-grid]');
-    const isExecutiveSummaryMobile = window.matchMedia('(max-width: 899px)').matches;
-    let executiveSummaryMobilePager = null;
+    const executiveSummaryViewport = document.querySelector('[data-dashboard-executive-viewport]');
+    let executiveSummaryPager = null;
     if (
-        isExecutiveSummaryMobile &&
         executiveSummaryPages.length > 1 &&
         executiveSummaryDots &&
         executiveSummaryGrid &&
+        executiveSummaryViewport &&
         window.SiSFarmSwipePager
     ) {
-        executiveSummaryMobilePager = window.SiSFarmSwipePager.create({
+        executiveSummaryPager = window.SiSFarmSwipePager.create({
             root: executiveSummaryGrid,
+            scrollViewport: executiveSummaryViewport,
             items: executiveSummaryPages,
             dotsContainer: executiveSummaryDots,
             itemsPerPageDesktop: 1,
@@ -851,7 +852,7 @@
     }
 
     document.querySelectorAll('[data-dashboard-card]').forEach((card) => {
-        if (card === executiveSummaryCard && executiveSummaryMobilePager) {
+        if (card === executiveSummaryCard && executiveSummaryPager) {
             return;
         }
         const items = Array.from(card.querySelectorAll('[data-dashboard-item]'));
