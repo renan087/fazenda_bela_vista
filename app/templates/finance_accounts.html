@@ -492,11 +492,12 @@
         </div>
 
         <div class="stock-history-stage mt-4 hidden" data-finance-tab="cards">
-        <div class="mt-5 grid gap-4 lg:grid-cols-2 2xl:grid-cols-3">
+        <div class="finance-cards-carousel-viewport min-w-0 w-full" data-finance-cards-viewport>
+        <div class="mt-5 grid gap-4 lg:grid-cols-2 2xl:grid-cols-3" data-finance-cards-grid>
             {% for card in finance_credit_cards %}
             {% set card_overview = finance_credit_card_overviews.get(card.id, {}) %}
             {% set next_invoice = card_overview.get('next_open_invoice') %}
-            <article class="rounded-[1.5rem] border border-slate-200 bg-slate-50/80 p-5 shadow-sm transition hover:border-sky-200 hover:bg-white">
+            <article class="rounded-[1.5rem] border border-slate-200 bg-slate-50/80 p-5 shadow-sm transition hover:border-sky-200 hover:bg-white" data-finance-card-summary-item>
                 <div class="flex items-start justify-between gap-3">
                     <div class="min-w-0">
                         <div class="flex items-center gap-3">
@@ -757,6 +758,10 @@
             </div>
             {% endfor %}
         </div>
+        </div>
+        {% if finance_credit_cards|length > 1 %}
+        <div class="mt-5" data-finance-cards-dots></div>
+        {% endif %}
         </div>
 
         <div class="stock-history-stage mt-4 hidden" data-finance-tab="transactions">
@@ -1605,6 +1610,7 @@
 {% include "partials/attachment_manager_script.html" %}
 {% include "partials/history_view_modal.html" %}
 <script src="{{ url_for('static', path='js/module_period_filters.js') }}?v=8"></script>
+<script src="{{ url_for('static', path='js/swipe_card_pager.js') }}?v=11"></script>
 
 <div class="finance-attachments-popover" data-finance-attachments-popover hidden>
     <div class="finance-attachments-popover-list" data-finance-attachments-popover-list></div>
@@ -1697,6 +1703,10 @@
     const creditCardInvoicePayButtons = Array.from(document.querySelectorAll('[data-finance-card-invoice-pay-trigger]'));
     const creditCardInvoiceRevertButtons = Array.from(document.querySelectorAll('[data-finance-card-invoice-revert-trigger]'));
     const creditCardInvoiceTabShells = Array.from(document.querySelectorAll('[data-finance-card-invoice-tabs-shell]'));
+    const financeCardSummaryItems = Array.from(document.querySelectorAll('[data-finance-card-summary-item]'));
+    const financeCardsDots = document.querySelector('[data-finance-cards-dots]');
+    const financeCardsGrid = document.querySelector('[data-finance-cards-grid]');
+    const financeCardsViewport = document.querySelector('[data-finance-cards-viewport]');
     const balanceRawInput = document.querySelector('[data-finance-balance-raw]');
     const balanceDisplayInput = document.querySelector('[data-finance-balance-display]');
     const modeLabel = document.querySelector('[data-finance-account-mode-label]');
@@ -3389,6 +3399,24 @@
             form.submit();
         });
     });
+
+    if (
+        financeCardSummaryItems.length > 1 &&
+        financeCardsDots &&
+        financeCardsGrid &&
+        financeCardsViewport &&
+        window.SiSFarmSwipePager
+    ) {
+        window.SiSFarmSwipePager.create({
+            root: financeCardsGrid,
+            scrollViewport: financeCardsViewport,
+            items: financeCardSummaryItems,
+            dotsContainer: financeCardsDots,
+            itemsPerPageDesktop: 3,
+            itemsPerPageMobile: 1,
+            mobileOnly: true,
+        });
+    }
 
     setupCollapse({
         toggleSelector: '[data-finance-transaction-context-toggle]',
