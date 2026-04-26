@@ -510,6 +510,12 @@
                             <div class="min-w-0">
                                 <p class="truncate text-lg font-semibold text-slate-900">{{ card.card_name }}</p>
                                 <p class="truncate text-sm text-slate-500">{{ card.issuer }}{% if card.brand %} • {{ card.brand }}{% endif %}</p>
+                                <div class="mt-2 flex flex-wrap items-center gap-2">
+                                    <p class="inline-flex rounded-full px-3 py-1 text-xs font-semibold {% if card.is_active %}bg-emerald-50 text-emerald-700{% else %}bg-slate-100 text-slate-500{% endif %}">{{ "Ativo" if card.is_active else "Inativo" }}</p>
+                                    {% if card_overview.get('due_today_total', 0) > 0 %}
+                                    <p class="inline-flex rounded-full bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700">Vence hoje</p>
+                                    {% endif %}
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -522,69 +528,57 @@
                         </button>
                     </form>
                 </div>
-                <div class="mt-4 grid gap-3 sm:grid-cols-2">
-                    <div class="rounded-2xl bg-white px-4 py-3 ring-1 ring-slate-200/80">
-                        <p class="text-xs uppercase tracking-[0.18em] text-slate-400">Fechamento</p>
-                        <p class="mt-2 text-base font-semibold text-slate-900">Dia {{ card.closing_day }}</p>
+                <div class="mt-4 grid gap-3 xl:grid-cols-2">
+                    <div class="rounded-[1.35rem] border border-sky-100 bg-gradient-to-br from-sky-50 to-white px-4 py-4 shadow-sm">
+                        <p class="text-[0.65rem] font-semibold uppercase tracking-[0.18em] text-slate-400">Limite do cartão</p>
+                        <p class="mt-2 text-lg font-semibold text-slate-900">{% if card.credit_limit is not none %}R$ {{ card.credit_limit|decimal_br }}{% else %}-{% endif %}</p>
+                        <p class="mt-1 text-xs text-slate-500">Disponível: {% if card_overview.get('available_limit') is not none %}R$ {{ card_overview.get('available_limit')|decimal_br }}{% else %}-{% endif %}</p>
                     </div>
-                    <div class="rounded-2xl bg-white px-4 py-3 ring-1 ring-slate-200/80">
-                        <p class="text-xs uppercase tracking-[0.18em] text-slate-400">Vencimento</p>
-                        <p class="mt-2 text-base font-semibold text-slate-900">Dia {{ card.due_day }}</p>
-                    </div>
-                    <div class="rounded-2xl bg-white px-4 py-3 ring-1 ring-slate-200/80">
-                        <p class="text-xs uppercase tracking-[0.18em] text-slate-400">Limite</p>
-                        <p class="mt-2 text-base font-semibold text-slate-900">{% if card.credit_limit is not none %}R$ {{ card.credit_limit|decimal_br }}{% else %}-{% endif %}</p>
-                    </div>
-                    <div class="rounded-2xl bg-white px-4 py-3 ring-1 ring-slate-200/80">
-                        <p class="text-xs uppercase tracking-[0.18em] text-slate-400">Disponível</p>
-                        <p class="mt-2 text-base font-semibold {% if card_overview.get('available_limit') is not none and card_overview.get('available_limit') < 0 %}text-rose-600{% else %}text-emerald-700{% endif %}">
-                            {% if card_overview.get('available_limit') is not none %}R$ {{ card_overview.get('available_limit')|decimal_br }}{% else %}-{% endif %}
-                        </p>
-                    </div>
-                    <div class="rounded-2xl bg-white px-4 py-3 ring-1 ring-slate-200/80">
-                        <p class="text-xs uppercase tracking-[0.18em] text-slate-400">Em aberto</p>
-                        <p class="mt-2 text-base font-semibold {% if card_overview.get('open_total', 0) > 0 %}text-sky-700{% else %}text-slate-900{% endif %}">R$ {{ card_overview.get('open_total', 0)|decimal_br }}</p>
-                    </div>
-                    <div class="rounded-2xl bg-white px-4 py-3 ring-1 ring-slate-200/80">
-                        <p class="text-xs uppercase tracking-[0.18em] text-slate-400">Em atraso</p>
-                        <p class="mt-2 text-base font-semibold {% if card_overview.get('overdue_total', 0) > 0 %}text-rose-600{% else %}text-slate-900{% endif %}">R$ {{ card_overview.get('overdue_total', 0)|decimal_br }}</p>
-                    </div>
-                    <div class="rounded-2xl bg-white px-4 py-3 ring-1 ring-slate-200/80">
-                        <p class="text-xs uppercase tracking-[0.18em] text-slate-400">Próxima fatura</p>
+                    <div class="rounded-[1.35rem] border border-slate-200 bg-white px-4 py-4 shadow-sm">
+                        <p class="text-[0.65rem] font-semibold uppercase tracking-[0.18em] text-slate-400">Próxima fatura</p>
                         {% if next_invoice %}
-                        <p class="mt-2 text-base font-semibold text-slate-900">R$ {{ next_invoice.open_total|decimal_br }}</p>
-                        <p class="mt-1 text-xs text-slate-500">Vence em {{ next_invoice.due_date_label }}</p>
+                        <p class="mt-2 text-lg font-semibold text-slate-900">R$ {{ next_invoice.open_total|decimal_br }}</p>
+                        <p class="mt-1 text-xs text-slate-500">Vencimento {{ next_invoice.due_date_label }}</p>
                         {% else %}
-                        <p class="mt-2 text-base font-semibold text-slate-900">Sem pendências</p>
+                        <p class="mt-2 text-lg font-semibold text-slate-900">Sem pendências</p>
                         <p class="mt-1 text-xs text-slate-500">Nenhuma fatura em aberto.</p>
                         {% endif %}
                     </div>
+                </div>
+                <div class="mt-3 grid gap-3 sm:grid-cols-2">
+                    <div class="rounded-2xl bg-white px-4 py-3 ring-1 ring-slate-200/80">
+                        <p class="text-xs uppercase tracking-[0.18em] text-slate-400">Fechamento</p>
+                        <p class="mt-1 text-sm font-semibold text-slate-900">Dia {{ card.closing_day }}</p>
+                    </div>
+                    <div class="rounded-2xl bg-white px-4 py-3 ring-1 ring-slate-200/80">
+                        <p class="text-xs uppercase tracking-[0.18em] text-slate-400">Vencimento</p>
+                        <p class="mt-1 text-sm font-semibold text-slate-900">Dia {{ card.due_day }}</p>
+                    </div>
+                    <div class="rounded-2xl bg-white px-4 py-3 ring-1 ring-slate-200/80">
+                        <p class="text-xs uppercase tracking-[0.18em] text-slate-400">Em aberto</p>
+                        <p class="mt-1 text-sm font-semibold {% if card_overview.get('open_total', 0) > 0 %}text-sky-700{% else %}text-slate-900{% endif %}">R$ {{ card_overview.get('open_total', 0)|decimal_br }}</p>
+                    </div>
+                    <div class="rounded-2xl bg-white px-4 py-3 ring-1 ring-slate-200/80">
+                        <p class="text-xs uppercase tracking-[0.18em] text-slate-400">Em atraso</p>
+                        <p class="mt-1 text-sm font-semibold {% if card_overview.get('overdue_total', 0) > 0 %}text-rose-600{% else %}text-slate-900{% endif %}">R$ {{ card_overview.get('overdue_total', 0)|decimal_br }}</p>
+                    </div>
                     <div class="rounded-2xl bg-white px-4 py-3 ring-1 ring-slate-200/80">
                         <p class="text-xs uppercase tracking-[0.18em] text-slate-400">Conta para pagamento</p>
-                        <p class="mt-2 text-sm font-semibold text-slate-900">{{ card.payment_account.account_name if card.payment_account else "Não vinculada" }}</p>
+                        <p class="mt-1 text-sm font-semibold text-slate-900">{{ card.payment_account.account_name if card.payment_account else "Não vinculada" }}</p>
                     </div>
                     <div class="rounded-2xl bg-white px-4 py-3 ring-1 ring-slate-200/80">
                         <p class="text-xs uppercase tracking-[0.18em] text-slate-400">Parcelas</p>
-                        <p class="mt-2 text-base font-semibold text-slate-900">{{ card_overview.get('open_installments', 0) }} abertas</p>
+                        <p class="mt-1 text-sm font-semibold text-slate-900">{{ card_overview.get('open_installments', 0) }} abertas</p>
                         <p class="mt-1 text-xs text-slate-500">{{ card_overview.get('paid_installments', 0) }} pagas</p>
-                    </div>
-                    <div class="rounded-2xl bg-white px-4 py-3 ring-1 ring-slate-200/80 sm:col-span-2">
-                        <p class="text-xs uppercase tracking-[0.18em] text-slate-400">Status</p>
-                        <div class="mt-2 flex flex-wrap items-center gap-2">
-                            <p class="inline-flex rounded-full px-3 py-1 text-xs font-semibold {% if card.is_active %}bg-emerald-50 text-emerald-700{% else %}bg-slate-100 text-slate-500{% endif %}">{{ "Ativo" if card.is_active else "Inativo" }}</p>
-                            {% if card_overview.get('due_today_total', 0) > 0 %}
-                            <p class="inline-flex rounded-full bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700">Vence hoje</p>
-                            {% endif %}
-                        </div>
                     </div>
                 </div>
                 {% if card_overview.get('usage_percent') is not none %}
-                <div class="mt-4 rounded-[1.25rem] border border-slate-200 bg-white px-4 py-4">
+                <div class="mt-3 rounded-[1.25rem] border border-slate-200 bg-white px-4 py-3">
                     <div class="flex items-center justify-between gap-3 text-sm">
                         <p class="font-semibold text-slate-700">Uso do limite</p>
                         <span class="font-semibold text-slate-900">{{ card_overview.get('usage_percent')|round(1) }}%</span>
                     </div>
-                    <div class="finance-credit-card-usage-rail mt-3">
+                    <div class="finance-credit-card-usage-rail mt-2">
                         <div class="finance-credit-card-usage-fill" style="width: {{ card_overview.get('usage_percent')|round(1) }}%;"></div>
                     </div>
                 </div>
