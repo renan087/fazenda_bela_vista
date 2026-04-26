@@ -1285,6 +1285,26 @@ body.dashboard-schedule-modal-open {
         overflow-y: hidden;
     }
 
+    .dashboard-executive-grid.swipe-card-pager-surface {
+        display: block;
+        width: 100%;
+        max-width: 100%;
+        overflow: hidden;
+    }
+
+    .dashboard-executive-grid.swipe-card-pager-surface > .dashboard-executive-page {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 0.85rem;
+        width: 100%;
+        max-width: 100%;
+        min-width: 0;
+    }
+
+    .dashboard-executive-grid.swipe-card-pager-surface > .dashboard-executive-page.hidden {
+        display: none;
+    }
+
     .dashboard-executive-grid.swipe-card-pager-scroll-active {
         align-items: stretch;
         gap: 0;
@@ -1305,7 +1325,19 @@ body.dashboard-schedule-modal-open {
         padding: 0.8rem;
     }
 
+    .dashboard-executive-grid.swipe-card-pager-surface .dashboard-executive-card {
+        min-width: 0;
+        max-width: 100%;
+        overflow: hidden;
+        padding: 0.8rem;
+    }
+
     .dashboard-executive-grid.swipe-card-pager-scroll-active .dashboard-executive-value-row {
+        min-width: 0;
+        gap: 0.55rem;
+    }
+
+    .dashboard-executive-grid.swipe-card-pager-surface .dashboard-executive-value-row {
         min-width: 0;
         gap: 0.55rem;
     }
@@ -1316,12 +1348,27 @@ body.dashboard-schedule-modal-open {
         overflow-wrap: anywhere;
     }
 
+    .dashboard-executive-grid.swipe-card-pager-surface .dashboard-executive-label,
+    .dashboard-executive-grid.swipe-card-pager-surface .dashboard-executive-value {
+        max-width: 100%;
+        overflow-wrap: anywhere;
+    }
+
     .dashboard-executive-grid.swipe-card-pager-scroll-active .dashboard-executive-icon {
         width: 2.35rem;
         height: 2.35rem;
     }
 
+    .dashboard-executive-grid.swipe-card-pager-surface .dashboard-executive-icon {
+        width: 2.35rem;
+        height: 2.35rem;
+    }
+
     .dashboard-executive-grid.swipe-card-pager-scroll-active .dashboard-executive-value {
+        font-size: clamp(1rem, 7vw, 1.32rem);
+    }
+
+    .dashboard-executive-grid.swipe-card-pager-surface .dashboard-executive-value {
         font-size: clamp(1rem, 7vw, 1.32rem);
     }
 }
