@@ -12,8 +12,9 @@
             <div data-dashboard-card="executive_summary" data-dashboard-per-page="6">
                 <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Resumo Executivo</p>
                 <h3 class="mt-2 text-xl font-semibold">Indicadores centrais</h3>
-                <div class="dashboard-executive-grid" data-dashboard-list>
-            <a href="/setores" class="dashboard-executive-card is-blue" data-dashboard-item>
+                <div class="dashboard-executive-carousel-viewport" data-dashboard-executive-viewport>
+                <div class="dashboard-executive-grid" data-dashboard-list data-dashboard-executive-grid>
+            <a href="/setores" class="dashboard-executive-card is-blue" data-dashboard-item data-dashboard-executive-item>
                 <p class="dashboard-executive-label">Area total plantada</p>
                 <div class="dashboard-executive-value-row">
                     <span class="dashboard-executive-icon" aria-hidden="true">
@@ -27,7 +28,7 @@
                     <p class="dashboard-executive-value" data-dashboard-count data-count-value="{{ kpis.area_total }}" data-count-suffix=" ha">{{ kpis.area_total }} ha</p>
                 </div>
             </a>
-            <a href="/setores" class="dashboard-executive-card is-green" data-dashboard-item>
+            <a href="/setores" class="dashboard-executive-card is-green" data-dashboard-item data-dashboard-executive-item>
                 <p class="dashboard-executive-label">Numero de setores</p>
                 <div class="dashboard-executive-value-row">
                     <span class="dashboard-executive-icon" aria-hidden="true">
@@ -41,7 +42,7 @@
                     <p class="dashboard-executive-value" data-dashboard-count data-count-value="{{ kpis.plot_count }}">{{ kpis.plot_count }}</p>
                 </div>
             </a>
-            <a href="/producao" class="dashboard-executive-card is-orange" data-dashboard-item>
+            <a href="/producao" class="dashboard-executive-card is-orange" data-dashboard-item data-dashboard-executive-item>
                 <p class="dashboard-executive-label">Producao estimada</p>
                 <div class="dashboard-executive-value-row">
                     <span class="dashboard-executive-icon" aria-hidden="true">
@@ -53,7 +54,7 @@
                     <p class="dashboard-executive-value" data-dashboard-count data-count-value="{{ kpis.estimated_production }}" data-count-suffix=" sacas">{{ kpis.estimated_production }} sacas</p>
                 </div>
             </a>
-            <a href="/producao" class="dashboard-executive-card is-violet" data-dashboard-item>
+            <a href="/producao" class="dashboard-executive-card is-violet" data-dashboard-item data-dashboard-executive-item>
                 <p class="dashboard-executive-label">Producao total</p>
                 <div class="dashboard-executive-value-row">
                     <span class="dashboard-executive-icon" aria-hidden="true">
@@ -66,7 +67,7 @@
                     <p class="dashboard-executive-value" data-dashboard-count data-count-value="{{ kpis.total_production }}" data-count-suffix=" sacas">{{ kpis.total_production }} sacas</p>
                 </div>
             </a>
-            <a href="#produtividade-area" class="dashboard-executive-card is-pink" data-dashboard-item>
+            <a href="#produtividade-area" class="dashboard-executive-card is-pink" data-dashboard-item data-dashboard-executive-item>
                 <p class="dashboard-executive-label">Produtividade media</p>
                 <div class="dashboard-executive-value-row">
                     <span class="dashboard-executive-icon" aria-hidden="true">
@@ -78,7 +79,7 @@
                     <p class="dashboard-executive-value" data-dashboard-count data-count-value="{{ kpis.productivity_per_hectare }}" data-count-suffix=" sc/ha">{{ kpis.productivity_per_hectare }} sc/ha</p>
                 </div>
             </a>
-            <a href="/pluviometria" class="dashboard-executive-card is-cyan" data-dashboard-item>
+            <a href="/pluviometria" class="dashboard-executive-card is-cyan" data-dashboard-item data-dashboard-executive-item>
                 <p class="dashboard-executive-label">Chuva no mes</p>
                 <div class="dashboard-executive-value-row">
                     <span class="dashboard-executive-icon" aria-hidden="true">
@@ -92,7 +93,7 @@
                     <p class="dashboard-executive-value" data-dashboard-count data-count-value="{{ kpis.monthly_rainfall }}" data-count-suffix=" mm">{{ kpis.monthly_rainfall }} mm</p>
                 </div>
             </a>
-            <a href="/producao" class="dashboard-executive-card is-blue-soft" data-dashboard-item>
+            <a href="/producao" class="dashboard-executive-card is-blue-soft" data-dashboard-item data-dashboard-executive-item>
                 <p class="dashboard-executive-label">Previsao pelo historico</p>
                 <div class="dashboard-executive-value-row">
                     <span class="dashboard-executive-icon" aria-hidden="true">
@@ -105,7 +106,7 @@
                     <p class="dashboard-executive-value" data-dashboard-count data-count-value="{{ kpis.forecast_production }}" data-count-suffix=" sacas">{{ kpis.forecast_production }} sacas</p>
                 </div>
             </a>
-            <a href="/fertilizacao" class="dashboard-executive-card is-green-soft" data-dashboard-item>
+            <a href="/fertilizacao" class="dashboard-executive-card is-green-soft" data-dashboard-item data-dashboard-executive-item>
                 <p class="dashboard-executive-label">Custo por hectare</p>
                 <div class="dashboard-executive-value-row">
                     <span class="dashboard-executive-icon" aria-hidden="true">
@@ -117,7 +118,7 @@
                     <p class="dashboard-executive-value" data-dashboard-count data-count-prefix="R$ " data-count-value="{{ kpis.cost_per_hectare }}">R$ {{ kpis.cost_per_hectare }}</p>
                 </div>
             </a>
-            <a href="/insumos/comprados" class="dashboard-executive-card is-orange-soft" data-dashboard-item>
+            <a href="/insumos/comprados" class="dashboard-executive-card is-orange-soft" data-dashboard-item data-dashboard-executive-item>
                 <p class="dashboard-executive-label">Insumos em alerta</p>
                 <div class="dashboard-executive-value-row">
                     <span class="dashboard-executive-icon" aria-hidden="true">
@@ -130,7 +131,7 @@
                     <p class="dashboard-executive-value" data-dashboard-count data-count-value="{{ kpis.low_stock_count }}">{{ kpis.low_stock_count }}</p>
                 </div>
             </a>
-            <a href="/fertilizacao/agendamentos" class="dashboard-executive-card is-violet-soft" data-dashboard-item>
+            <a href="/fertilizacao/agendamentos" class="dashboard-executive-card is-violet-soft" data-dashboard-item data-dashboard-executive-item>
                 <p class="dashboard-executive-label">Aplicacoes atrasadas</p>
                 <div class="dashboard-executive-value-row">
                     <span class="dashboard-executive-icon" aria-hidden="true">
@@ -142,6 +143,7 @@
                     <p class="dashboard-executive-value" data-dashboard-count data-count-value="{{ kpis.late_schedule_count }}">{{ kpis.late_schedule_count }}</p>
                 </div>
             </a>
+                </div>
                 </div>
                 {{ pager('executive_summary') }}
             </div>
@@ -476,6 +478,7 @@
     </article>
 </section>
 
+<script src="{{ url_for('static', path='js/swipe_card_pager.js') }}?v=11"></script>
 <script>
     const production = {{ production_chart|safe }};
     const productivity = {{ productivity_chart|safe }};
@@ -814,7 +817,34 @@
         scope.querySelectorAll('[data-dashboard-item]:not(.hidden) [data-dashboard-count]').forEach((element) => animateDashboardCount(element));
     };
 
+    const executiveSummaryCard = document.querySelector('[data-dashboard-card="executive_summary"]');
+    const executiveSummaryItems = Array.from(document.querySelectorAll('[data-dashboard-executive-item]'));
+    const executiveSummaryDots = document.querySelector('[data-dashboard-dots="executive_summary"]');
+    const executiveSummaryGrid = document.querySelector('[data-dashboard-executive-grid]');
+    const executiveSummaryViewport = document.querySelector('[data-dashboard-executive-viewport]');
+    if (
+        executiveSummaryItems.length > 1 &&
+        executiveSummaryDots &&
+        executiveSummaryGrid &&
+        executiveSummaryViewport &&
+        window.SiSFarmSwipePager
+    ) {
+        window.SiSFarmSwipePager.create({
+            root: executiveSummaryGrid,
+            scrollViewport: executiveSummaryViewport,
+            items: executiveSummaryItems,
+            dotsContainer: executiveSummaryDots,
+            itemsPerPageDesktop: 6,
+            itemsPerPageMobile: 1,
+            mobileOnly: true,
+        });
+        animateDashboardCounts(executiveSummaryCard);
+    }
+
     document.querySelectorAll('[data-dashboard-card]').forEach((card) => {
+        if (card === executiveSummaryCard && window.SiSFarmSwipePager) {
+            return;
+        }
         const items = Array.from(card.querySelectorAll('[data-dashboard-item]'));
         const dotsContainer = card.querySelector('[data-dashboard-dots]');
         const perPage = Number(card.dataset.dashboardPerPage || 4);
