@@ -1294,6 +1294,16 @@ body.dashboard-schedule-modal-open {
         width: 100%;
         max-width: 100%;
         overflow: hidden;
+        touch-action: pan-y;
+        will-change: transform, opacity;
+    }
+
+    .dashboard-executive-grid.swipe-card-pager-surface.is-page-transition-next {
+        animation: dashboardExecutivePageNext 260ms cubic-bezier(0.22, 1, 0.36, 1);
+    }
+
+    .dashboard-executive-grid.swipe-card-pager-surface.is-page-transition-prev {
+        animation: dashboardExecutivePagePrev 260ms cubic-bezier(0.22, 1, 0.36, 1);
     }
 
     .dashboard-executive-grid.swipe-card-pager-surface > .dashboard-executive-page {
@@ -1393,6 +1403,30 @@ body.dashboard-schedule-modal-open {
     .dashboard-executive-grid.swipe-card-pager-scroll-active .dashboard-executive-label {
         font-size: 0.78rem;
         line-height: 1.15;
+    }
+}
+
+@keyframes dashboardExecutivePageNext {
+    0% {
+        opacity: 0.72;
+        transform: translateX(24%);
+    }
+
+    100% {
+        opacity: 1;
+        transform: translateX(0);
+    }
+}
+
+@keyframes dashboardExecutivePagePrev {
+    0% {
+        opacity: 0.72;
+        transform: translateX(-24%);
+    }
+
+    100% {
+        opacity: 1;
+        transform: translateX(0);
     }
 }
 
@@ -2373,12 +2407,28 @@ body.dashboard-schedule-modal-open {
     transform: translateY(-50%) scale(0.55);
 }
 
+[data-dashboard-dots="executive_summary"].is-transitioning-next .swipe-card-pager-dot[data-role="next"] {
+    opacity: 0;
+    transform: translateY(-50%) scale(0.55);
+}
+
 [data-stock-catalog-dots].is-transitioning-prev .swipe-card-pager-dot[data-role="prev"] {
     opacity: 0;
     transform: translateY(-50%) scale(0.55);
 }
 
+[data-dashboard-dots="executive_summary"].is-transitioning-prev .swipe-card-pager-dot[data-role="prev"] {
+    opacity: 0;
+    transform: translateY(-50%) scale(0.55);
+}
+
 [data-stock-catalog-dots].is-transitioning-next .swipe-card-pager-dot[data-role="current"] {
+    left: calc(50% - 0.775rem);
+    width: 2.2rem;
+    transform: translateY(-50%);
+}
+
+[data-dashboard-dots="executive_summary"].is-transitioning-next .swipe-card-pager-dot[data-role="current"] {
     left: calc(50% - 0.775rem);
     width: 2.2rem;
     transform: translateY(-50%);
@@ -2390,7 +2440,17 @@ body.dashboard-schedule-modal-open {
     transform: translateY(-50%);
 }
 
+[data-dashboard-dots="executive_summary"].is-transitioning-prev .swipe-card-pager-dot[data-role="current"] {
+    left: calc(50% - 1.425rem);
+    width: 2.2rem;
+    transform: translateY(-50%);
+}
+
 [data-stock-catalog-dots].is-settling-next .swipe-card-pager-dot[data-role="current"] {
+    animation: swipePagerCurrentSettleNext 180ms ease;
+}
+
+[data-dashboard-dots="executive_summary"].is-settling-next .swipe-card-pager-dot[data-role="current"] {
     animation: swipePagerCurrentSettleNext 180ms ease;
 }
 
@@ -2398,11 +2458,23 @@ body.dashboard-schedule-modal-open {
     animation: swipePagerCurrentSettlePrev 180ms ease both;
 }
 
+[data-dashboard-dots="executive_summary"].is-settling-prev .swipe-card-pager-dot[data-role="current"] {
+    animation: swipePagerCurrentSettlePrev 180ms ease both;
+}
+
 [data-stock-catalog-dots].is-settling-next .swipe-card-pager-dot[data-role="next"] {
     animation: swipePagerSideRevealNext 140ms ease 220ms both;
 }
 
+[data-dashboard-dots="executive_summary"].is-settling-next .swipe-card-pager-dot[data-role="next"] {
+    animation: swipePagerSideRevealNext 140ms ease 220ms both;
+}
+
 [data-stock-catalog-dots].is-settling-prev .swipe-card-pager-dot[data-role="prev"] {
+    animation: swipePagerSideRevealPrev 140ms ease 220ms both;
+}
+
+[data-dashboard-dots="executive_summary"].is-settling-prev .swipe-card-pager-dot[data-role="prev"] {
     animation: swipePagerSideRevealPrev 140ms ease 220ms both;
 }
 
