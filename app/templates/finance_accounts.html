@@ -400,10 +400,11 @@
         </div>
 
         <div class="stock-history-stage mt-4" data-finance-tab="accounts">
-        <div class="mt-5 grid gap-4 lg:grid-cols-2 2xl:grid-cols-3">
+        <div class="finance-accounts-carousel-viewport min-w-0 w-full" data-finance-accounts-viewport>
+        <div class="mt-5 grid gap-4 lg:grid-cols-2 2xl:grid-cols-3" data-finance-accounts-grid>
             {% for account in finance_accounts %}
             {% set bank = (finance_bank_options | selectattr('code', 'equalto', account.bank_code) | list | first) %}
-            <article class="rounded-[1.5rem] border border-slate-200 bg-slate-50/80 p-5 shadow-sm transition hover:border-brand-200 hover:bg-white" data-finance-account-row data-finance-account-search="{{ (account.account_name or '') ~ ' ' ~ (account.bank_name or '') ~ ' ' ~ (account.branch_number or '') ~ ' ' ~ (account.account_number or '') }}">
+            <article class="min-w-0 max-w-full overflow-hidden rounded-[1.5rem] border border-slate-200 bg-slate-50/80 p-5 shadow-sm transition hover:border-brand-200 hover:bg-white" data-finance-account-row data-finance-account-summary-item data-finance-account-search="{{ (account.account_name or '') ~ ' ' ~ (account.bank_name or '') ~ ' ' ~ (account.branch_number or '') ~ ' ' ~ (account.account_number or '') }}">
                 <div class="flex items-start justify-between gap-3">
                     <div class="min-w-0">
                         <div class="flex flex-wrap items-center gap-2">
@@ -488,6 +489,10 @@
             </div>
             {% endfor %}
         </div>
+        </div>
+        {% if finance_accounts|length > 1 %}
+        <div class="mt-5" data-finance-accounts-dots></div>
+        {% endif %}
         <p class="stock-search-empty mt-4 hidden text-sm text-slate-500" data-finance-accounts-empty>Nenhuma conta corresponde à busca digitada.</p>
         </div>
 
@@ -1703,6 +1708,10 @@
     const creditCardInvoicePayButtons = Array.from(document.querySelectorAll('[data-finance-card-invoice-pay-trigger]'));
     const creditCardInvoiceRevertButtons = Array.from(document.querySelectorAll('[data-finance-card-invoice-revert-trigger]'));
     const creditCardInvoiceTabShells = Array.from(document.querySelectorAll('[data-finance-card-invoice-tabs-shell]'));
+    const financeAccountSummaryItems = Array.from(document.querySelectorAll('[data-finance-account-summary-item]'));
+    const financeAccountsDots = document.querySelector('[data-finance-accounts-dots]');
+    const financeAccountsGrid = document.querySelector('[data-finance-accounts-grid]');
+    const financeAccountsViewport = document.querySelector('[data-finance-accounts-viewport]');
     const financeCardSummaryItems = Array.from(document.querySelectorAll('[data-finance-card-summary-item]'));
     const financeCardsDots = document.querySelector('[data-finance-cards-dots]');
     const financeCardsGrid = document.querySelector('[data-finance-cards-grid]');
@@ -3399,6 +3408,24 @@
             form.submit();
         });
     });
+
+    if (
+        financeAccountSummaryItems.length > 1 &&
+        financeAccountsDots &&
+        financeAccountsGrid &&
+        financeAccountsViewport &&
+        window.SiSFarmSwipePager
+    ) {
+        window.SiSFarmSwipePager.create({
+            root: financeAccountsGrid,
+            scrollViewport: financeAccountsViewport,
+            items: financeAccountSummaryItems,
+            dotsContainer: financeAccountsDots,
+            itemsPerPageDesktop: 3,
+            itemsPerPageMobile: 1,
+            mobileOnly: true,
+        });
+    }
 
     if (
         financeCardSummaryItems.length > 1 &&
