@@ -1926,6 +1926,13 @@
             control._segmentedSync?.();
         });
         syncFinanceTabQuery();
+        if (activeFinanceTab === 'cards') {
+            window.requestAnimationFrame(() => {
+                window.requestAnimationFrame(() => {
+                    financeCardsPager?.setPage(financeCardsPager.getPage());
+                });
+            });
+        }
     };
 
     if (searchInput && rows.length) {

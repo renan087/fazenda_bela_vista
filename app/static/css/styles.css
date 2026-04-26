@@ -2051,6 +2051,35 @@ body.dashboard-schedule-modal-open {
     }
 }
 
+@media (max-width: 899px) {
+    [data-finance-tab="cards"],
+    [data-finance-cards-paged-shell],
+    .finance-cards-carousel-viewport,
+    [data-finance-cards-grid],
+    [data-finance-card-summary-item] {
+        box-sizing: border-box;
+        min-width: 0;
+        max-width: 100%;
+    }
+
+    .finance-cards-carousel-viewport {
+        width: 100%;
+        overflow: hidden;
+    }
+
+    .finance-cards-carousel-viewport.swipe-card-pager-scroll-viewport.is-carousel-active {
+        overflow-x: auto;
+        overflow-y: hidden;
+    }
+
+    .swipe-card-pager-scroll-track.swipe-card-pager-scroll-active > [data-finance-card-summary-item] {
+        width: 100%;
+        min-width: 0;
+        max-width: 100%;
+        overflow: hidden;
+    }
+}
+
 .stock-summary-grid {
     display: grid;
     gap: 1rem;
@@ -2170,6 +2199,7 @@ body.dashboard-schedule-modal-open {
 }
 
 .finance-cards-carousel-viewport.swipe-card-pager-scroll-viewport.is-carousel-active {
+    width: 100%;
     max-width: 100%;
     overflow-x: auto;
     overflow-y: hidden;
@@ -2182,6 +2212,7 @@ body.dashboard-schedule-modal-open {
 .finance-card-paged-shell {
     position: relative;
     min-width: 0;
+    max-width: 100%;
 }
 
 .finance-card-page-nav {
