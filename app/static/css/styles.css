@@ -1266,18 +1266,63 @@ body.dashboard-schedule-modal-open {
 }
 
 @media (max-width: 899px) {
+    .dashboard-executive-panel {
+        max-width: 100%;
+        overflow: hidden;
+        padding: 1rem;
+        border-radius: 1.5rem;
+    }
+
+    .dashboard-executive-panel > [data-dashboard-card="executive_summary"],
+    .dashboard-executive-carousel-viewport {
+        width: 100%;
+        max-width: 100%;
+        min-width: 0;
+    }
+
+    .dashboard-executive-carousel-viewport.swipe-card-pager-scroll-viewport.is-carousel-active {
+        overflow-x: auto;
+        overflow-y: hidden;
+    }
+
     .dashboard-executive-grid.swipe-card-pager-scroll-active {
         align-items: stretch;
+        gap: 0;
     }
 
     .dashboard-executive-grid.swipe-card-pager-scroll-active > .dashboard-executive-page {
         display: grid;
         grid-template-columns: repeat(2, minmax(0, 1fr));
         gap: 0.85rem;
+        width: 100%;
+        max-width: 100%;
     }
 
     .dashboard-executive-grid.swipe-card-pager-scroll-active .dashboard-executive-card {
         min-width: 0;
+        max-width: 100%;
+        overflow: hidden;
+        padding: 0.8rem;
+    }
+
+    .dashboard-executive-grid.swipe-card-pager-scroll-active .dashboard-executive-value-row {
+        min-width: 0;
+        gap: 0.55rem;
+    }
+
+    .dashboard-executive-grid.swipe-card-pager-scroll-active .dashboard-executive-label,
+    .dashboard-executive-grid.swipe-card-pager-scroll-active .dashboard-executive-value {
+        max-width: 100%;
+        overflow-wrap: anywhere;
+    }
+
+    .dashboard-executive-grid.swipe-card-pager-scroll-active .dashboard-executive-icon {
+        width: 2.35rem;
+        height: 2.35rem;
+    }
+
+    .dashboard-executive-grid.swipe-card-pager-scroll-active .dashboard-executive-value {
+        font-size: clamp(1rem, 7vw, 1.32rem);
     }
 }
 
