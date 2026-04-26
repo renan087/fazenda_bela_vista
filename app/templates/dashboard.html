@@ -115,7 +115,7 @@
                             <path d="M7 8c0-1.7 1.8-3 5-3s5 1.3 5 3-1.8 3-5 3-5 1.3-5 3 1.8 3 5 3 5-1.3 5-3"/>
                         </svg>
                     </span>
-                    <p class="dashboard-executive-value" data-dashboard-count data-count-prefix="R$ " data-count-value="{{ kpis.cost_per_hectare }}">R$ {{ kpis.cost_per_hectare }}</p>
+                    <p class="dashboard-executive-value" data-dashboard-count data-count-mobile-compact-currency="true" data-count-prefix="R$ " data-count-value="{{ kpis.cost_per_hectare }}">R$ {{ kpis.cost_per_hectare }}</p>
                 </div>
             </a>
             <a href="/insumos/comprados" class="dashboard-executive-card is-orange-soft" data-dashboard-item data-dashboard-executive-item>
@@ -777,12 +777,27 @@
         renderCalendar();
     })();
 
+    const dashboardCompactCurrencyMq = window.matchMedia('(max-width: 899px)');
+    const formatDashboardCompactCurrency = (value) => {
+        const amount = Math.max(0, Math.round(Number(value) || 0));
+        if (amount >= 1_000_000) {
+            const millions = Math.round(amount / 1_000_000);
+            return `R$${millions}M`;
+        }
+        if (amount >= 1_000) {
+            const thousands = Math.round(amount / 1_000);
+            return `R$${thousands}k`;
+        }
+        return `R$${amount}`;
+    };
+
     const animateDashboardCount = (element) => {
         if (!(element instanceof HTMLElement)) return;
         if (element.dataset.countAnimated === 'true') return;
         const rawValue = (element.dataset.countValue || '').trim();
         const prefix = element.dataset.countPrefix || '';
         const suffix = element.dataset.countSuffix || '';
+        const useMobileCompactCurrency = element.dataset.countMobileCompactCurrency === 'true' && dashboardCompactCurrencyMq.matches;
         const normalizedText = rawValue.includes(',')
             ? rawValue.replace(/\./g, '').replace(',', '.')
             : rawValue;
@@ -803,7 +818,11 @@
         const step = (now) => {
             const progress = Math.min(1, (now - start) / duration);
             const current = normalized * easeOut(progress);
-            element.textContent = `${prefix}${formatter.format(progress >= 1 ? normalized : current)}${suffix}`;
+            if (useMobileCompactCurrency) {
+                element.textContent = formatDashboardCompactCurrency(progress >= 1 ? normalized : current);
+            } else {
+                element.textContent = `${prefix}${formatter.format(progress >= 1 ? normalized : current)}${suffix}`;
+            }
             if (progress < 1) {
                 window.requestAnimationFrame(step);
                 return;
