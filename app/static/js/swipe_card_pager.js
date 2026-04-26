@@ -37,6 +37,9 @@
         let lastCarouselPullNext = true;
         let suppressNextClick = false;
 
+        const listenerAbort = new AbortController();
+        const listenerSignal = listenerAbort.signal;
+
         root.classList.add('swipe-card-pager-surface');
         root.style.touchAction = 'pan-y';
 
@@ -377,7 +380,7 @@
                 lastX = touch.clientX;
                 lastY = touch.clientY;
             },
-            { passive: true },
+            { passive: true, signal: listenerSignal },
         );
 
         root.addEventListener(
@@ -401,34 +404,38 @@
                     event.preventDefault();
                 }
             },
-            { passive: false },
+            { passive: false, signal: listenerSignal },
         );
 
-        root.addEventListener('touchend', () => {
-            if (isScrollCarousel()) {
-                resetTracking();
-                return;
-            }
-            if (!tracking || !shouldHandleSwipe()) {
-                resetTracking();
-                return;
-            }
-            const deltaX = lastX - startX;
-            const deltaY = lastY - startY;
-            const horizontalIntent = Math.abs(deltaX) > threshold && Math.abs(deltaX) > Math.abs(deltaY) * 1.2;
-            if (horizontalIntent) {
-                if (deltaX < 0 && currentPage < currentTotalPages - 1) {
-                    suppressNextClick = true;
-                    setPage(currentPage + 1, 'next');
-                } else if (deltaX > 0 && currentPage > 0) {
-                    suppressNextClick = true;
-                    setPage(currentPage - 1, 'prev');
+        root.addEventListener(
+            'touchend',
+            () => {
+                if (isScrollCarousel()) {
+                    resetTracking();
+                    return;
                 }
-            }
-            resetTracking();
-        });
+                if (!tracking || !shouldHandleSwipe()) {
+                    resetTracking();
+                    return;
+                }
+                const deltaX = lastX - startX;
+                const deltaY = lastY - startY;
+                const horizontalIntent = Math.abs(deltaX) > threshold && Math.abs(deltaX) > Math.abs(deltaY) * 1.2;
+                if (horizontalIntent) {
+                    if (deltaX < 0 && currentPage < currentTotalPages - 1) {
+                        suppressNextClick = true;
+                        setPage(currentPage + 1, 'next');
+                    } else if (deltaX > 0 && currentPage > 0) {
+                        suppressNextClick = true;
+                        setPage(currentPage - 1, 'prev');
+                    }
+                }
+                resetTracking();
+            },
+            { signal: listenerSignal },
+        );
 
-        root.addEventListener('touchcancel', resetTracking);
+        root.addEventListener('touchcancel', resetTracking, { signal: listenerSignal });
 
         root.addEventListener(
             'click',
@@ -438,7 +445,7 @@
                 event.preventDefault();
                 event.stopPropagation();
             },
-            true,
+            { capture: true, signal: listenerSignal },
         );
 
         const scheduleLayout = () => {
@@ -452,12 +459,13 @@
             });
         };
 
-        window.addEventListener('resize', scheduleLayout, { passive: true });
+        window.addEventListener('resize', scheduleLayout, { passive: true, signal: listenerSignal });
 
-        mediaQuery.addEventListener('change', () => {
+        const onMediaQueryChange = () => {
             if (isTransitioning) return;
             setPage(currentPage);
-        });
+        };
+        mediaQuery.addEventListener('change', onMediaQueryChange, { signal: listenerSignal });
         setPage(0);
 
         if (scrollViewport instanceof HTMLElement) {
@@ -467,7 +475,7 @@
                     if (!isScrollCarousel()) return;
                     scheduleDotsFromScroll();
                 },
-                { passive: true },
+                { passive: true, signal: listenerSignal },
             );
 
             scrollViewport.addEventListener(
@@ -476,14 +484,57 @@
                     if (!isScrollCarousel() || isTransitioning) return;
                     updateDotsFromScroll();
                 },
-                { passive: true },
+                { passive: true, signal: listenerSignal },
             );
         }
+
+        const destroy = () => {
+            listenerAbort.abort();
+            window.clearTimeout(animationTimer);
+            window.clearTimeout(dotsAnimationTimer);
+            disconnectObserver();
+            clearCarouselDotsLinkedVars();
+            if (scrollViewport instanceof HTMLElement) {
+                scrollViewport.classList.remove('swipe-card-pager-scroll-viewport', 'is-carousel-active');
+                scrollViewport.style.removeProperty('touch-action');
+                scrollViewport.scrollLeft = 0;
+            }
+            root.classList.remove(
+                'swipe-card-pager-surface',
+                'swipe-card-pager-scroll-track',
+                'swipe-card-pager-scroll-active',
+                'is-page-transition-next',
+                'is-page-transition-prev',
+            );
+            root.style.removeProperty('touch-action');
+            items.forEach((el) => {
+                el.classList.remove('hidden');
+                el.style.removeProperty('flex');
+                el.style.removeProperty('width');
+                el.style.removeProperty('max-width');
+            });
+            if (dotsContainer instanceof HTMLElement) {
+                dotsContainer.innerHTML = '';
+                dotsContainer.classList.remove(
+                    'swipe-carousel-dots-linked',
+                    'swipe-carousel-pull-next',
+                    'swipe-carousel-pull-prev',
+                    'swipe-carousel-hide-adjacent-next',
+                    'swipe-carousel-hide-adjacent-prev',
+                    'is-transitioning-next',
+                    'is-transitioning-prev',
+                    'is-settling-next',
+                    'is-settling-prev',
+                );
+                dotsContainer.style.removeProperty('--carousel-dot-stretch');
+            }
+        };
 
         return {
             setPage,
             getPage: () => currentPage,
             getTotalPages: () => currentTotalPages,
+            destroy,
         };
     };
 

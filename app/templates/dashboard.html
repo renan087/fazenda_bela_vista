@@ -14,7 +14,6 @@
                 <h3 class="mt-2 text-xl font-semibold">Indicadores centrais</h3>
                 <div class="dashboard-executive-carousel-viewport" data-dashboard-executive-viewport>
                 <div class="dashboard-executive-grid" data-dashboard-list data-dashboard-executive-grid>
-                <div class="dashboard-executive-page" data-dashboard-executive-page>
             <a href="/setores" class="dashboard-executive-card is-blue" data-dashboard-item data-dashboard-executive-item>
                 <p class="dashboard-executive-label">Area total plantada</p>
                 <div class="dashboard-executive-value-row">
@@ -68,8 +67,6 @@
                     <p class="dashboard-executive-value" data-dashboard-count data-count-value="{{ kpis.total_production }}" data-count-suffix=" sc">{{ kpis.total_production }} sc</p>
                 </div>
             </a>
-                </div>
-                <div class="dashboard-executive-page" data-dashboard-executive-page>
             <a href="#produtividade-area" class="dashboard-executive-card is-pink" data-dashboard-item data-dashboard-executive-item>
                 <p class="dashboard-executive-label">Produtividade media</p>
                 <div class="dashboard-executive-value-row">
@@ -121,8 +118,6 @@
                     <p class="dashboard-executive-value" data-dashboard-count data-count-prefix="R$ " data-count-value="{{ kpis.cost_per_hectare }}">R$ {{ kpis.cost_per_hectare }}</p>
                 </div>
             </a>
-                </div>
-                <div class="dashboard-executive-page" data-dashboard-executive-page>
             <a href="/insumos/comprados" class="dashboard-executive-card is-orange-soft" data-dashboard-item data-dashboard-executive-item>
                 <p class="dashboard-executive-label">Insumos em alerta</p>
                 <div class="dashboard-executive-value-row">
@@ -148,7 +143,6 @@
                     <p class="dashboard-executive-value" data-dashboard-count data-count-value="{{ kpis.late_schedule_count }}">{{ kpis.late_schedule_count }}</p>
                 </div>
             </a>
-                </div>
                 </div>
                 </div>
                 {{ pager('executive_summary') }}
@@ -824,35 +818,109 @@
     };
 
     const executiveSummaryCard = document.querySelector('[data-dashboard-card="executive_summary"]');
-    const executiveSummaryItems = Array.from(document.querySelectorAll('[data-dashboard-executive-item]'));
-    const executiveSummaryPages = Array.from(document.querySelectorAll('[data-dashboard-executive-page]'));
     const executiveSummaryDots = document.querySelector('[data-dashboard-dots="executive_summary"]');
     const executiveSummaryGrid = document.querySelector('[data-dashboard-executive-grid]');
     const executiveSummaryViewport = document.querySelector('[data-dashboard-executive-viewport]');
+    const executiveSummaryPagerShell = executiveSummaryCard?.querySelector('[data-dashboard-pager-shell="executive_summary"]');
     let executiveSummaryPager = null;
-    if (
-        executiveSummaryPages.length > 1 &&
-        executiveSummaryDots &&
-        executiveSummaryGrid &&
-        executiveSummaryViewport &&
-        window.SiSFarmSwipePager
-    ) {
-        executiveSummaryPager = window.SiSFarmSwipePager.create({
-            root: executiveSummaryGrid,
-            scrollViewport: executiveSummaryViewport,
-            items: executiveSummaryPages,
-            dotsContainer: executiveSummaryDots,
-            itemsPerPageDesktop: 1,
-            itemsPerPageMobile: 1,
-            mobileOnly: true,
-            allowInteractiveSwipe: true,
-            threshold: 30,
-        });
+    const executiveMobileMq = window.matchMedia('(max-width: 899px)');
+    const EXEC_CARDS_PER_PAGE_DESKTOP = 6;
+    const EXEC_CARDS_PER_PAGE_MOBILE = 4;
+
+    const flattenExecutiveSummaryGrid = (grid) => {
+        const cards = Array.from(grid.querySelectorAll('[data-dashboard-executive-item]'));
+        grid.replaceChildren(...cards);
+        return cards;
+    };
+
+    const setupExecutiveSummaryPager = () => {
+        if (!executiveSummaryCard || !executiveSummaryGrid || !executiveSummaryDots || !window.SiSFarmSwipePager) {
+            return;
+        }
+
+        if (executiveSummaryPager && typeof executiveSummaryPager.destroy === 'function') {
+            executiveSummaryPager.destroy();
+        }
+        executiveSummaryPager = null;
+
+        let cards = flattenExecutiveSummaryGrid(executiveSummaryGrid);
+        if (!cards.length) {
+            return;
+        }
+
+        const isMobile = executiveMobileMq.matches;
+
+        if (isMobile) {
+            executiveSummaryGrid.replaceChildren();
+            for (let i = 0; i < cards.length; i += EXEC_CARDS_PER_PAGE_MOBILE) {
+                const slide = document.createElement('div');
+                slide.className = 'dashboard-executive-page';
+                slide.dataset.dashboardExecutiveSlide = '';
+                cards.slice(i, i + EXEC_CARDS_PER_PAGE_MOBILE).forEach((c) => slide.appendChild(c));
+                executiveSummaryGrid.appendChild(slide);
+            }
+            const slides = Array.from(executiveSummaryGrid.querySelectorAll('[data-dashboard-executive-slide]'));
+            if (slides.length > 1 && executiveSummaryViewport) {
+                executiveSummaryPager = window.SiSFarmSwipePager.create({
+                    root: executiveSummaryGrid,
+                    scrollViewport: executiveSummaryViewport,
+                    items: slides,
+                    dotsContainer: executiveSummaryDots,
+                    itemsPerPageDesktop: 1,
+                    itemsPerPageMobile: 1,
+                    mobileOnly: true,
+                    allowInteractiveSwipe: true,
+                    threshold: 30,
+                });
+            } else {
+                slides.forEach((s) => s.classList.remove('hidden'));
+            }
+        } else {
+            cards = flattenExecutiveSummaryGrid(executiveSummaryGrid);
+            const totalPages = Math.ceil(cards.length / EXEC_CARDS_PER_PAGE_DESKTOP);
+            if (totalPages > 1) {
+                executiveSummaryPager = window.SiSFarmSwipePager.create({
+                    root: executiveSummaryGrid,
+                    scrollViewport: null,
+                    items: cards,
+                    dotsContainer: executiveSummaryDots,
+                    itemsPerPageDesktop: EXEC_CARDS_PER_PAGE_DESKTOP,
+                    itemsPerPageMobile: EXEC_CARDS_PER_PAGE_MOBILE,
+                    mobileOnly: true,
+                    allowInteractiveSwipe: false,
+                    threshold: 52,
+                });
+            } else {
+                cards.forEach((c) => c.classList.remove('hidden'));
+            }
+        }
+
+        let totalPagerPages = 0;
+        if (executiveSummaryPager) {
+            totalPagerPages = executiveSummaryPager.getTotalPages();
+        } else if (isMobile) {
+            totalPagerPages = Math.ceil(cards.length / EXEC_CARDS_PER_PAGE_MOBILE);
+        } else {
+            totalPagerPages = Math.ceil(cards.length / EXEC_CARDS_PER_PAGE_DESKTOP);
+        }
+        if (executiveSummaryPagerShell) {
+            executiveSummaryPagerShell.classList.toggle('hidden', totalPagerPages <= 1);
+        }
+
         animateDashboardCounts(executiveSummaryCard);
-    }
+    };
+
+    setupExecutiveSummaryPager();
+    let executiveSummaryResizeTimer = null;
+    executiveMobileMq.addEventListener('change', () => {
+        window.clearTimeout(executiveSummaryResizeTimer);
+        executiveSummaryResizeTimer = window.setTimeout(() => {
+            setupExecutiveSummaryPager();
+        }, 100);
+    });
 
     document.querySelectorAll('[data-dashboard-card]').forEach((card) => {
-        if (card === executiveSummaryCard && executiveSummaryPager) {
+        if (card === executiveSummaryCard) {
             return;
         }
         const items = Array.from(card.querySelectorAll('[data-dashboard-item]'));

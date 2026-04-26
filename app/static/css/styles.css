@@ -912,6 +912,7 @@ body {
     display: flex;
     flex-direction: column;
     min-height: 100%;
+    min-width: 0;
 }
 
 .dashboard-executive-grid {
@@ -919,6 +920,8 @@ body {
     gap: 0.85rem;
     grid-template-columns: repeat(1, minmax(0, 1fr));
     margin-top: 0;
+    min-width: 0;
+    max-width: 100%;
 }
 
 .dashboard-executive-carousel-viewport {
@@ -2042,7 +2045,8 @@ body.dashboard-schedule-modal-open {
 @media (min-width: 900px) {
     .stock-catalog-carousel-viewport,
     .finance-accounts-carousel-viewport,
-    .finance-cards-carousel-viewport {
+    .finance-cards-carousel-viewport,
+    .dashboard-executive-carousel-viewport {
         display: contents;
     }
 }
