@@ -2,7 +2,7 @@ import unicodedata
 from datetime import date
 
 from sqlalchemy import distinct, func, or_
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session, joinedload, load_only
 
 from app.models import (
     AgronomicProfile,
@@ -201,7 +201,17 @@ class FarmRepository:
     def get_plot(self, plot_id: int) -> Plot | None:
         return (
             self.db.query(Plot)
-            .options(joinedload(Plot.variety), joinedload(Plot.farm), joinedload(Plot.attachments))
+            .options(
+                joinedload(Plot.variety),
+                joinedload(Plot.farm),
+                joinedload(Plot.attachments).load_only(
+                    PlotAttachment.id,
+                    PlotAttachment.plot_id,
+                    PlotAttachment.filename,
+                    PlotAttachment.content_type,
+                    PlotAttachment.created_at,
+                ),
+            )
             .filter(Plot.id == plot_id)
             .first()
         )
@@ -310,7 +320,13 @@ class FarmRepository:
                 joinedload(FinanceTransaction.farm),
                 joinedload(FinanceTransaction.finance_account),
                 joinedload(FinanceTransaction.credit_card),
-                joinedload(FinanceTransaction.attachments),
+                joinedload(FinanceTransaction.attachments).load_only(
+                    FinanceTransactionAttachment.id,
+                    FinanceTransactionAttachment.finance_transaction_id,
+                    FinanceTransactionAttachment.filename,
+                    FinanceTransactionAttachment.content_type,
+                    FinanceTransactionAttachment.created_at,
+                ),
                 joinedload(FinanceTransaction.installments),
             )
             .order_by(FinanceTransaction.launch_date.desc(), FinanceTransaction.id.desc())
@@ -328,7 +344,13 @@ class FarmRepository:
                 joinedload(FinanceTransaction.farm),
                 joinedload(FinanceTransaction.finance_account),
                 joinedload(FinanceTransaction.credit_card),
-                joinedload(FinanceTransaction.attachments),
+                joinedload(FinanceTransaction.attachments).load_only(
+                    FinanceTransactionAttachment.id,
+                    FinanceTransactionAttachment.finance_transaction_id,
+                    FinanceTransactionAttachment.filename,
+                    FinanceTransactionAttachment.content_type,
+                    FinanceTransactionAttachment.created_at,
+                ),
                 joinedload(FinanceTransaction.installments),
             )
             .filter(FinanceTransaction.id == transaction_id)
@@ -417,7 +439,13 @@ class FarmRepository:
                 joinedload(PurchasedInput.input_catalog),
                 joinedload(PurchasedInput.finance_credit_card),
                 joinedload(PurchasedInput.stock_allocations),
-                joinedload(PurchasedInput.attachments),
+                joinedload(PurchasedInput.attachments).load_only(
+                    PurchasedInputAttachment.id,
+                    PurchasedInputAttachment.purchased_input_id,
+                    PurchasedInputAttachment.filename,
+                    PurchasedInputAttachment.content_type,
+                    PurchasedInputAttachment.created_at,
+                ),
             )
             .order_by(PurchasedInput.name.asc(), PurchasedInput.purchase_date.desc(), PurchasedInput.id.desc())
         )
@@ -435,7 +463,13 @@ class FarmRepository:
                 joinedload(PurchasedInput.stock_allocations),
                 joinedload(PurchasedInput.recommendation_items),
                 joinedload(PurchasedInput.schedule_items),
-                joinedload(PurchasedInput.attachments),
+                joinedload(PurchasedInput.attachments).load_only(
+                    PurchasedInputAttachment.id,
+                    PurchasedInputAttachment.purchased_input_id,
+                    PurchasedInputAttachment.filename,
+                    PurchasedInputAttachment.content_type,
+                    PurchasedInputAttachment.created_at,
+                ),
             )
             .filter(PurchasedInput.id == input_id)
             .first()
@@ -477,7 +511,17 @@ class FarmRepository:
     def list_equipment_assets(self, farm_id: int | None = None) -> list[EquipmentAsset]:
         query = (
             self.db.query(EquipmentAsset)
-            .options(joinedload(EquipmentAsset.farm), joinedload(EquipmentAsset.finance_credit_card), joinedload(EquipmentAsset.attachments))
+            .options(
+                joinedload(EquipmentAsset.farm),
+                joinedload(EquipmentAsset.finance_credit_card),
+                joinedload(EquipmentAsset.attachments).load_only(
+                    EquipmentAssetAttachment.id,
+                    EquipmentAssetAttachment.equipment_asset_id,
+                    EquipmentAssetAttachment.filename,
+                    EquipmentAssetAttachment.content_type,
+                    EquipmentAssetAttachment.created_at,
+                ),
+            )
             .order_by(EquipmentAsset.name.asc(), EquipmentAsset.id.desc())
         )
         if farm_id:
@@ -487,7 +531,17 @@ class FarmRepository:
     def get_equipment_asset(self, asset_id: int) -> EquipmentAsset | None:
         return (
             self.db.query(EquipmentAsset)
-            .options(joinedload(EquipmentAsset.farm), joinedload(EquipmentAsset.finance_credit_card), joinedload(EquipmentAsset.attachments))
+            .options(
+                joinedload(EquipmentAsset.farm),
+                joinedload(EquipmentAsset.finance_credit_card),
+                joinedload(EquipmentAsset.attachments).load_only(
+                    EquipmentAssetAttachment.id,
+                    EquipmentAssetAttachment.equipment_asset_id,
+                    EquipmentAssetAttachment.filename,
+                    EquipmentAssetAttachment.content_type,
+                    EquipmentAssetAttachment.created_at,
+                ),
+            )
             .filter(EquipmentAsset.id == asset_id)
             .first()
         )
