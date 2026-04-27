@@ -4,7 +4,7 @@ import traceback
 from contextlib import asynccontextmanager, suppress
 
 from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.middleware.sessions import SessionMiddleware
@@ -41,6 +41,12 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title=settings.app_name, lifespan=lifespan)
+
+
+@app.get("/health")
+def health():
+    """Resposta mínima para health check (evite usar /login no Render)."""
+    return PlainTextResponse("ok", status_code=200)
 
 
 @app.exception_handler(Exception)

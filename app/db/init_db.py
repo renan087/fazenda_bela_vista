@@ -744,7 +744,7 @@ def _sync_schema() -> None:
                 SET normalized_name = lower(
                     regexp_replace(
                         translate(trim(name), 'ÁÀÂÃÄáàâãäÉÈÊËéèêëÍÌÎÏíìîïÓÒÔÕÖóòôõöÚÙÛÜúùûüÇç', 'AAAAAaaaaaEEEEeeeeIIIIiiiiOOOOOoooooUUUUuuuuCc'),
-                        '\s+',
+                        '\\s+',
                         ' ',
                         'g'
                     )

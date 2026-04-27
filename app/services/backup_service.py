@@ -13,6 +13,7 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import quote
 from urllib.request import Request, urlopen
 
+import httpx
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
@@ -38,6 +39,7 @@ AUTOMATION_DEFAULT_SCHEDULE_HOUR = 3
 AUTOMATION_DEFAULT_SCHEDULE_MINUTE = 0
 AUTOMATION_DEFAULT_STORAGE_LIMIT_GB = 1
 PG_DUMP_TIMEOUT_SECONDS = 300
+BACKUP_UPLOAD_TIMEOUT_SECONDS = 600.0
 STALE_RUNNING_BACKUP_TTL = timedelta(minutes=10)
 STORAGE_LIMIT_ERROR_HINTS = (
     "limit",
@@ -666,7 +668,8 @@ def _backup_database_dump(started_at: datetime, on_upload_start=None) -> dict:
         subprocess.run(
             command,
             check=True,
-            capture_output=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
             text=True,
             timeout=PG_DUMP_TIMEOUT_SECONDS,
             env={**os.environ, "PGCONNECT_TIMEOUT": "15"},
@@ -782,26 +785,23 @@ def _upload_file_to_supabase(bucket: str, object_path: str, file_path: Path, con
         f"{settings.supabase_url.rstrip('/')}/storage/v1/object/"
         f"{quote(bucket, safe='')}/{quote(object_path, safe='/')}"
     )
-    request = Request(
-        upload_url,
-        data=file_path.read_bytes(),
-        method="POST",
-        headers={
-            "Authorization": f"Bearer {settings.supabase_service_role_key}",
-            "apikey": settings.supabase_service_role_key or "",
-            "Content-Type": content_type,
-            "x-upsert": "true",
-        },
-    )
+    headers = {
+        "Authorization": f"Bearer {settings.supabase_service_role_key}",
+        "apikey": settings.supabase_service_role_key or "",
+        "Content-Type": content_type,
+        "x-upsert": "true",
+    }
+    timeout = httpx.Timeout(BACKUP_UPLOAD_TIMEOUT_SECONDS, connect=30.0)
     try:
-        with urlopen(request, timeout=120) as response:
-            if response.status not in (200, 201):
-                raise RuntimeError(f"Supabase Storage retornou status {response.status}.")
-    except HTTPError as exc:
-        body = exc.read().decode("utf-8", errors="ignore").strip()
-        raise RuntimeError(body or f"Erro HTTP {exc.code} ao enviar backup para o Supabase.") from exc
-    except URLError as exc:
-        raise RuntimeError(f"Falha de rede ao enviar backup para o Supabase: {exc.reason}") from exc
+        with httpx.Client(timeout=timeout) as client, file_path.open("rb") as body:
+            response = client.post(upload_url, headers=headers, content=body)
+            if response.status_code not in (200, 201):
+                detail = (response.text or "")[:800].strip()
+                raise RuntimeError(
+                    detail or f"Supabase Storage retornou status {response.status_code} ao enviar backup."
+                )
+    except httpx.RequestError as exc:
+        raise RuntimeError(f"Falha de rede ao enviar backup para o Supabase: {exc}") from exc
 
 
 def _delete_object_from_supabase(bucket: str, object_path: str) -> tuple[bool, bool]:
