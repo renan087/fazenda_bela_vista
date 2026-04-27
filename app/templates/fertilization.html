@@ -2,14 +2,14 @@
 {% block content %}
 {% from "partials/module_history_filter_toolbar.html" import module_history_filter_toolbar with context %}
 {% macro render_fertilization_card(item) %}
-<article class="rounded-[1.5rem] border border-slate-100 bg-slate-50 p-5 lg:p-4" data-fertilization-history-row data-fertilization-search-text="{{ (item.plot.name if item.plot else '') ~ ' ' ~ (item.application_date|string) ~ ' ' ~ (item.product or '') ~ ' ' ~ (item.notes or '') }} {% if item.application_method == 'adubacao_solida' %}Adubação sólida{% else %}Fertirrigação{% endif %} {% for detail in item.items %} {{ detail.name }} {% endfor %}">
+<article class="rounded-[1.5rem] border border-slate-100 bg-slate-50 p-5 lg:p-4" data-fertilization-history-row data-fertilization-search-text="{{ (item.plot.name if item.plot else '') ~ ' ' ~ (item.application_date|string) ~ ' ' ~ (item.product or '') ~ ' ' ~ (item.notes or '') }} {% if item.application_method == 'adubacao_solida' %}Adubação sólida{% elif item.application_method == 'fertilizacao_foliar' %}Fertilização Foliar{% else %}Fertirrigação{% endif %} {% for detail in item.items %} {{ detail.name }} {% endfor %}">
     <div class="flex flex-wrap items-start justify-between gap-4 lg:gap-3">
         <div class="min-w-0">
             <button type="button" class="text-left text-lg font-semibold text-slate-900 transition hover:text-brand-700 lg:text-base" data-history-view-trigger data-history-view-kicker="Fertilização" data-history-view-title="{{ item.plot.name if item.plot else 'Setor removido' }}" data-history-view-subtitle="{{ item.application_date }} • {{ item.product }}" data-history-view-source="fertilization-view-{{ item.id }}" data-history-view-edit-url="/fertilizacao?edit_id={{ item.id }}">{{ item.plot.name if item.plot else "Setor removido" }}</button>
             <p class="mt-1 text-sm text-slate-500 lg:mt-0.5 lg:text-[13px]">{{ item.application_date }} • {{ item.product }}</p>
         </div>
         <div class="flex flex-wrap items-center gap-2">
-            <span class="stock-level-badge {% if item.application_method == 'adubacao_solida' %}bg-slate-100 text-slate-700 ring-1 ring-slate-200{% else %}bg-sky-50 text-sky-800 ring-1 ring-sky-100{% endif %}">{% if item.application_method == 'adubacao_solida' %}Adubação sólida{% else %}Fertirrigação{% endif %}</span>
+            <span class="stock-level-badge {% if item.application_method == 'adubacao_solida' %}bg-slate-100 text-slate-700 ring-1 ring-slate-200{% elif item.application_method == 'fertilizacao_foliar' %}bg-emerald-50 text-emerald-700 ring-1 ring-emerald-100{% else %}bg-sky-50 text-sky-800 ring-1 ring-sky-100{% endif %}">{% if item.application_method == 'adubacao_solida' %}Adubação sólida{% elif item.application_method == 'fertilizacao_foliar' %}Fertilização Foliar{% else %}Fertirrigação{% endif %}</span>
             <span class="stock-level-badge bg-brand-50 text-brand-700 ring-1 ring-brand-100">R$ {{ item.cost }}</span>
             <a href="/fertilizacao?edit_id={{ item.id }}" class="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-100" title="Editar">
                 <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -68,8 +68,8 @@
             <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Data</p><p class="mt-2 text-sm font-medium text-slate-800">{{ item.application_date }}</p></div>
             <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Produto</p><p class="mt-2 text-sm font-medium text-slate-800">{{ item.product }}</p></div>
             <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Custo</p><p class="mt-2 text-sm font-medium text-slate-800">R$ {{ item.cost }}</p></div>
-            <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Modo</p><p class="mt-2 text-sm font-medium text-slate-800">{% if item.application_method == 'adubacao_solida' %}Adubação sólida{% else %}Fertirrigação{% endif %}</p></div>
-            <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Duração</p><p class="mt-2 text-sm font-medium text-slate-800">{% if item.application_method == 'adubacao_solida' %}-{% elif item.duration_minutes %}{{ item.duration_minutes }} min{% else %}-{% endif %}</p></div>
+            <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Modo</p><p class="mt-2 text-sm font-medium text-slate-800">{% if item.application_method == 'adubacao_solida' %}Adubação sólida{% elif item.application_method == 'fertilizacao_foliar' %}Fertilização Foliar{% else %}Fertirrigação{% endif %}</p></div>
+            <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Duração</p><p class="mt-2 text-sm font-medium text-slate-800">{% if item.application_method != 'fertirrigacao' %}-{% elif item.duration_minutes %}{{ item.duration_minutes }} min{% else %}-{% endif %}</p></div>
         </div>
         <div class="rounded-2xl bg-slate-50 px-4 py-4">
             <p class="text-xs uppercase tracking-[0.2em] text-slate-400">Insumos aplicados</p>
@@ -278,14 +278,15 @@
                     <label>
                         <span class="mb-2 block text-sm font-medium text-slate-700">Modo de aplicação</span>
                         <select name="application_method" data-fertilization-application-method class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50 px-4" required>
-                            <option value="fertirrigacao" {% if not edit_fertilization or edit_fertilization.application_method != 'adubacao_solida' %}selected{% endif %}>Fertirrigação</option>
+                            <option value="fertirrigacao" {% if not edit_fertilization or edit_fertilization.application_method not in ['adubacao_solida', 'fertilizacao_foliar'] %}selected{% endif %}>Fertirrigação</option>
                             <option value="adubacao_solida" {% if edit_fertilization and edit_fertilization.application_method == 'adubacao_solida' %}selected{% endif %}>Adubação sólida</option>
+                            <option value="fertilizacao_foliar" {% if edit_fertilization and edit_fertilization.application_method == 'fertilizacao_foliar' %}selected{% endif %}>Fertilização Foliar</option>
                         </select>
                     </label>
-                    <div class="{% if edit_fertilization and edit_fertilization.application_method == 'adubacao_solida' %}hidden{% endif %}" data-fertilization-duration-block>
+                    <div class="{% if edit_fertilization and edit_fertilization.application_method in ['adubacao_solida', 'fertilizacao_foliar'] %}hidden{% endif %}" data-fertilization-duration-block>
                         <label>
                             <span class="mb-2 block text-sm font-medium text-slate-700">Duração da fertilização (minutos)</span>
-                            <input type="number" name="duration_minutes" data-fertilization-duration-minutes value="{{ edit_fertilization.duration_minutes if edit_fertilization and edit_fertilization.duration_minutes is not none else '' }}" min="1" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50 px-4" {% if not edit_fertilization or edit_fertilization.application_method != 'adubacao_solida' %}required{% endif %}>
+                            <input type="number" name="duration_minutes" data-fertilization-duration-minutes value="{{ edit_fertilization.duration_minutes if edit_fertilization and edit_fertilization.duration_minutes is not none else '' }}" min="1" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50 px-4" {% if not edit_fertilization or edit_fertilization.application_method not in ['adubacao_solida', 'fertilizacao_foliar'] %}required{% endif %}>
                             <span class="mt-2 block text-xs text-slate-500">Obrigatório em <strong>Fertirrigação</strong>. Com setor de gotejo configurado, o sistema calcula e registra a irrigação automaticamente.</span>
                         </label>
                     </div>

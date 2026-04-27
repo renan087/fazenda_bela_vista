@@ -41,6 +41,7 @@ MANUAL_STOCK_OUTPUT_ALLOCATION = "manual_stock_output_allocation"
 
 FERTILIZATION_METHOD_FERTIRRIGACAO = "fertirrigacao"
 FERTILIZATION_METHOD_ADUBACAO_SOLIDA = "adubacao_solida"
+FERTILIZATION_METHOD_FOLIAR = "fertilizacao_foliar"
 
 
 def _int_or_none(value: str | int | None) -> int | None:
@@ -226,12 +227,16 @@ def _normalize_fertilization_application_method(raw: str | None) -> str:
     v = (raw or "").strip().lower().replace(" ", "_")
     if v == FERTILIZATION_METHOD_ADUBACAO_SOLIDA:
         return FERTILIZATION_METHOD_ADUBACAO_SOLIDA
+    if v == FERTILIZATION_METHOD_FOLIAR:
+        return FERTILIZATION_METHOD_FOLIAR
     return FERTILIZATION_METHOD_FERTIRRIGACAO
 
 
 def fertilization_application_method_label(code: str | None) -> str:
     if (code or "") == FERTILIZATION_METHOD_ADUBACAO_SOLIDA:
         return "Adubação sólida"
+    if (code or "") == FERTILIZATION_METHOD_FOLIAR:
+        return "Fertilização Foliar"
     return "Fertirrigação"
 
 

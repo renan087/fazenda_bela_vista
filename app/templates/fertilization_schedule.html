@@ -5,7 +5,7 @@
     {% set validation = schedule_validations.get(schedule.id, {'ok': True, 'shortages': []}) %}
     {% set is_late = schedule.status != 'completed' and schedule.scheduled_date < today %}
     {% set schedule_status_label = 'Concluído' if schedule.status == 'completed' else 'Agendado' %}
-    <article class="rounded-[1.5rem] border border-slate-100 bg-slate-50 p-5 lg:p-4 {% if schedule.status == 'completed' %}opacity-70 saturate-[0.82]{% endif %}" data-schedule-history-row data-schedule-search-text="{{ (schedule.plot.name if schedule.plot else '') ~ ' ' ~ schedule.scheduled_date ~ ' ' ~ schedule.status ~ ' ' ~ (schedule.notes or '') }} {% if schedule.application_method == 'adubacao_solida' %}Adubação sólida{% else %}Fertirrigação{% endif %} {% for item in schedule.items %} {{ item.input_catalog.name if item.input_catalog else item.name }} {% endfor %}">
+    <article class="rounded-[1.5rem] border border-slate-100 bg-slate-50 p-5 lg:p-4 {% if schedule.status == 'completed' %}opacity-70 saturate-[0.82]{% endif %}" data-schedule-history-row data-schedule-search-text="{{ (schedule.plot.name if schedule.plot else '') ~ ' ' ~ schedule.scheduled_date ~ ' ' ~ schedule.status ~ ' ' ~ (schedule.notes or '') }} {% if schedule.application_method == 'adubacao_solida' %}Adubação sólida{% elif schedule.application_method == 'fertilizacao_foliar' %}Fertilização Foliar{% else %}Fertirrigação{% endif %} {% for item in schedule.items %} {{ item.input_catalog.name if item.input_catalog else item.name }} {% endfor %}">
         <div class="flex flex-wrap items-start justify-between gap-4 lg:gap-3">
             <div class="min-w-0">
                 <div class="flex flex-wrap items-center gap-2">
@@ -20,13 +20,13 @@
                     {% if not validation.ok %}
                     <span class="stock-level-badge stock-level-badge-critical">Estoque insuficiente</span>
                     {% endif %}
-                    <span class="stock-level-badge {% if schedule.application_method == 'adubacao_solida' %}bg-slate-100 text-slate-700 ring-1 ring-slate-200{% else %}bg-sky-50 text-sky-800 ring-1 ring-sky-100{% endif %}">{% if schedule.application_method == 'adubacao_solida' %}Adubação sólida{% else %}Fertirrigação{% endif %}</span>
+                    <span class="stock-level-badge {% if schedule.application_method == 'adubacao_solida' %}bg-slate-100 text-slate-700 ring-1 ring-slate-200{% elif schedule.application_method == 'fertilizacao_foliar' %}bg-emerald-50 text-emerald-700 ring-1 ring-emerald-100{% else %}bg-sky-50 text-sky-800 ring-1 ring-sky-100{% endif %}">{% if schedule.application_method == 'adubacao_solida' %}Adubação sólida{% elif schedule.application_method == 'fertilizacao_foliar' %}Fertilização Foliar{% else %}Fertirrigação{% endif %}</span>
                 </div>
                 <div class="mt-2 grid gap-1 text-sm text-slate-600 lg:grid-cols-2 lg:gap-x-5 lg:gap-y-1 lg:text-[13px] lg:leading-5">
                     <p><strong>Data:</strong> {{ schedule.scheduled_date }}</p>
                     <p><strong>Status:</strong> {{ schedule_status_label }}</p>
-                    <p><strong>Modo:</strong> {% if schedule.application_method == 'adubacao_solida' %}Adubação sólida{% else %}Fertirrigação{% endif %}</p>
-                    <p><strong>Duração:</strong> {% if schedule.application_method == 'adubacao_solida' %}-{% elif schedule.duration_minutes %}{{ schedule.duration_minutes }} min{% else %}-{% endif %}</p>
+                    <p><strong>Modo:</strong> {% if schedule.application_method == 'adubacao_solida' %}Adubação sólida{% elif schedule.application_method == 'fertilizacao_foliar' %}Fertilização Foliar{% else %}Fertirrigação{% endif %}</p>
+                    <p><strong>Duração:</strong> {% if schedule.application_method != 'fertirrigacao' %}-{% elif schedule.duration_minutes %}{{ schedule.duration_minutes }} min{% else %}-{% endif %}</p>
                 </div>
             </div>
             <div class="flex items-center gap-2 lg:gap-1.5">
@@ -100,8 +100,8 @@
                 <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Data prevista</p><p class="mt-2 text-sm font-medium text-slate-800">{{ schedule.scheduled_date }}</p></div>
                 <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Status</p><p class="mt-2 text-sm font-medium text-slate-800">{{ schedule_status_label }}</p></div>
                 <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Estoque</p><p class="mt-2 text-sm font-medium text-slate-800">{% if validation.ok %}Disponível{% else %}Insuficiente{% endif %}</p></div>
-                <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Modo</p><p class="mt-2 text-sm font-medium text-slate-800">{% if schedule.application_method == 'adubacao_solida' %}Adubação sólida{% else %}Fertirrigação{% endif %}</p></div>
-                <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Duração</p><p class="mt-2 text-sm font-medium text-slate-800">{% if schedule.application_method == 'adubacao_solida' %}-{% elif schedule.duration_minutes %}{{ schedule.duration_minutes }} min{% else %}-{% endif %}</p></div>
+                <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Modo</p><p class="mt-2 text-sm font-medium text-slate-800">{% if schedule.application_method == 'adubacao_solida' %}Adubação sólida{% elif schedule.application_method == 'fertilizacao_foliar' %}Fertilização Foliar{% else %}Fertirrigação{% endif %}</p></div>
+                <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Duração</p><p class="mt-2 text-sm font-medium text-slate-800">{% if schedule.application_method != 'fertirrigacao' %}-{% elif schedule.duration_minutes %}{{ schedule.duration_minutes }} min{% else %}-{% endif %}</p></div>
             </div>
             <div class="rounded-2xl bg-slate-50 px-4 py-4">
                 <p class="text-xs uppercase tracking-[0.2em] text-slate-400">Itens programados</p>
@@ -363,14 +363,15 @@
                     <label>
                         <span class="mb-2 block text-sm font-medium">Modo de aplicação</span>
                         <select name="application_method" data-schedule-application-method class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required>
-                            <option value="fertirrigacao" {% if not edit_schedule or edit_schedule.application_method != 'adubacao_solida' %}selected{% endif %}>Fertirrigação</option>
+                            <option value="fertirrigacao" {% if not edit_schedule or edit_schedule.application_method not in ['adubacao_solida', 'fertilizacao_foliar'] %}selected{% endif %}>Fertirrigação</option>
                             <option value="adubacao_solida" {% if edit_schedule and edit_schedule.application_method == 'adubacao_solida' %}selected{% endif %}>Adubação sólida</option>
+                            <option value="fertilizacao_foliar" {% if edit_schedule and edit_schedule.application_method == 'fertilizacao_foliar' %}selected{% endif %}>Fertilização Foliar</option>
                         </select>
                     </label>
-                    <div class="{% if edit_schedule and edit_schedule.application_method == 'adubacao_solida' %}hidden{% endif %}" data-schedule-duration-block>
+                    <div class="{% if edit_schedule and edit_schedule.application_method in ['adubacao_solida', 'fertilizacao_foliar'] %}hidden{% endif %}" data-schedule-duration-block>
                         <label>
                             <span class="mb-2 block text-sm font-medium">Duração da fertilização (minutos)</span>
-                            <input type="number" name="duration_minutes" data-schedule-duration-minutes value="{{ edit_schedule.duration_minutes if edit_schedule and edit_schedule.duration_minutes is not none else '' }}" min="1" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" {% if not edit_schedule or edit_schedule.application_method != 'adubacao_solida' %}required{% endif %}>
+                            <input type="number" name="duration_minutes" data-schedule-duration-minutes value="{{ edit_schedule.duration_minutes if edit_schedule and edit_schedule.duration_minutes is not none else '' }}" min="1" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" {% if not edit_schedule or edit_schedule.application_method not in ['adubacao_solida', 'fertilizacao_foliar'] %}required{% endif %}>
                             <span class="mt-2 block text-xs text-slate-500">Obrigatório em <strong>Fertirrigação</strong>. Ao concluir o agendamento, com setor de gotejo configurado, o sistema registra irrigação automática.</span>
                         </label>
                     </div>
