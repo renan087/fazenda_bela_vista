@@ -24,6 +24,7 @@ from app.services.runtime_memory_monitor import get_current_rss_mb, run_runtime_
 from app.web.routes import router as web_router
 
 logger = logging.getLogger(__name__)
+req_mem_logger = logging.getLogger("uvicorn.error")
 settings = get_settings()
 
 
@@ -65,27 +66,32 @@ async def request_memory_diagnostics(request: Request, call_next):
     should_trace = not (path == "/health" or path.startswith("/static/"))
     rss_before = get_current_rss_mb() if should_trace else None
     started = time.perf_counter()
-    response = await call_next(request)
-    if should_trace:
-        duration_ms = (time.perf_counter() - started) * 1000.0
-        rss_after = get_current_rss_mb()
-        if rss_before is not None and rss_after is not None:
-            delta_mb = rss_after - rss_before
-            if abs(delta_mb) >= 1.0 or rss_after >= 300.0:
-                logger.info(
-                    (
-                        "REQ_MEM method=%s path=%s status=%s duration_ms=%.1f "
-                        "rss_before_mb=%.2f rss_after_mb=%.2f delta_mb=%.2f"
-                    ),
-                    request.method,
-                    path,
-                    response.status_code,
-                    duration_ms,
-                    rss_before,
-                    rss_after,
-                    delta_mb,
-                )
-    return response
+    status_code = 500
+    response = None
+    try:
+        response = await call_next(request)
+        status_code = response.status_code
+        return response
+    finally:
+        if should_trace:
+            duration_ms = (time.perf_counter() - started) * 1000.0
+            rss_after = get_current_rss_mb()
+            if rss_before is not None and rss_after is not None:
+                delta_mb = rss_after - rss_before
+                if abs(delta_mb) >= 0.5 or rss_after >= 280.0 or rss_before >= 280.0:
+                    req_mem_logger.info(
+                        (
+                            "REQ_MEM method=%s path=%s status=%s duration_ms=%.1f "
+                            "rss_before_mb=%.2f rss_after_mb=%.2f delta_mb=%.2f"
+                        ),
+                        request.method,
+                        path,
+                        status_code,
+                        duration_ms,
+                        rss_before,
+                        rss_after,
+                        delta_mb,
+                    )
 
 
 @app.get("/health")
