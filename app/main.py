@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import time
 import traceback
 from contextlib import asynccontextmanager, suppress
 
@@ -19,7 +20,7 @@ from app.routers.api import router as api_router
 from app.routers.auth import api_router as auth_api_router
 from app.routers.auth import router as auth_router
 from app.services.backup_service import run_backup_automation_loop
-from app.services.runtime_memory_monitor import run_runtime_memory_monitor
+from app.services.runtime_memory_monitor import get_current_rss_mb, run_runtime_memory_monitor
 from app.web.routes import router as web_router
 
 logger = logging.getLogger(__name__)
@@ -56,6 +57,35 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title=settings.app_name, lifespan=lifespan)
+
+
+@app.middleware("http")
+async def request_memory_diagnostics(request: Request, call_next):
+    path = request.url.path or ""
+    should_trace = not (path == "/health" or path.startswith("/static/"))
+    rss_before = get_current_rss_mb() if should_trace else None
+    started = time.perf_counter()
+    response = await call_next(request)
+    if should_trace:
+        duration_ms = (time.perf_counter() - started) * 1000.0
+        rss_after = get_current_rss_mb()
+        if rss_before is not None and rss_after is not None:
+            delta_mb = rss_after - rss_before
+            if abs(delta_mb) >= 1.0 or rss_after >= 300.0:
+                logger.info(
+                    (
+                        "REQ_MEM method=%s path=%s status=%s duration_ms=%.1f "
+                        "rss_before_mb=%.2f rss_after_mb=%.2f delta_mb=%.2f"
+                    ),
+                    request.method,
+                    path,
+                    response.status_code,
+                    duration_ms,
+                    rss_before,
+                    rss_after,
+                    delta_mb,
+                )
+    return response
 
 
 @app.get("/health")

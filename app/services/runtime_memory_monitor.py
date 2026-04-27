@@ -26,6 +26,11 @@ def _read_rss_mb() -> float | None:
     return None
 
 
+def get_current_rss_mb() -> float | None:
+    """Retorna o RSS atual do processo em MB (ou None se indisponível)."""
+    return _read_rss_mb()
+
+
 async def run_runtime_memory_monitor(interval_seconds: int = 60) -> None:
     """Publica no log o RSS do processo em intervalo fixo."""
     safe_interval = max(10, int(interval_seconds))
