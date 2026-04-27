@@ -1600,6 +1600,11 @@ def validate_schedule_stock(
 
 
 def conclude_fertilization_schedule(repository: FarmRepository, schedule: FertilizationSchedule, application_date: str | None = None) -> FertilizationRecord:
+    locked_schedule = repository.lock_fertilization_schedule(schedule.id)
+    if not locked_schedule:
+        raise ValueError("Agendamento nao encontrado.")
+    schedule = locked_schedule
+    repository.db.expire(schedule, ["items", "plot", "fertilization_record"])
     if schedule.status == "completed" and schedule.fertilization_record_id:
         existing = repository.get_fertilization(schedule.fertilization_record_id)
         if existing:
@@ -1625,8 +1630,9 @@ def conclude_fertilization_schedule(repository: FarmRepository, schedule: Fertil
     if app_method == FERTILIZATION_METHOD_FERTIRRIGACAO:
         if not schedule.duration_minutes or int(schedule.duration_minutes) < 1:
             raise ValueError("Informe a duracao do agendamento (modo Fertirrigacao) antes de concluir.")
-    record = create_fertilization(
+    record = _save_fertilization(
         repository,
+        None,
         {
             "plot_id": schedule.plot_id,
             "application_date": application_date or schedule.scheduled_date.isoformat(),
@@ -1636,12 +1642,14 @@ def conclude_fertilization_schedule(repository: FarmRepository, schedule: Fertil
             "application_method": schedule.application_method,
             "items": schedule_items,
         },
+        commit=False,
     )
     schedule.status = "completed"
     schedule.fertilization_record_id = record.id
     repository.db.add(schedule)
     repository.db.commit()
     repository.db.refresh(schedule)
+    repository.db.refresh(record)
     return record
 
 
@@ -1951,6 +1959,8 @@ def _deduct_stock(repository: FarmRepository, fertilization_item: FertilizationI
 
     average_cost = _current_average_cost(repository, farm_id, fertilization_item.name, fertilization_item.unit)
     remaining = requested_quantity
+    total_cost = 0.0
+    output_input_id = fertilization_item.input_id
     for lot in candidate_lots:
         if remaining <= 0:
             break
@@ -1958,37 +1968,42 @@ def _deduct_stock(repository: FarmRepository, fertilization_item: FertilizationI
         consumed = min(lot_available, remaining)
         unit_cost = float(lot.total_cost or 0) / max(float(lot.total_quantity or 0), 1)
         lot.available_quantity = round(lot_available - consumed, 2)
+        allocation_total_cost = round(consumed * unit_cost, 2)
         fertilization_item.stock_allocations.append(
             FertilizationStockAllocation(
                 purchased_input_id=lot.id,
                 quantity_used=consumed,
                 unit_cost=round(unit_cost, 4),
-                total_cost=round(consumed * unit_cost, 2),
+                total_cost=allocation_total_cost,
             )
         )
-        repository.db.add(
-            StockOutput(
-                input_id=lot.input_id,
-                purchased_input_id=lot.id,
-                farm_id=farm_id,
-                plot_id=fertilization_item.fertilization.plot_id if fertilization_item.fertilization else None,
-                season_id=fertilization_item.fertilization.season_id if fertilization_item.fertilization else None,
-                movement_date=fertilization_item.fertilization.application_date if fertilization_item.fertilization else today_in_app_timezone(),
-                quantity=consumed,
-                unit=fertilization_item.unit,
-                origin="fertilizacao",
-                reference_type="fertilization_item",
-                reference_id=fertilization_item.id,
-                unit_cost=round(unit_cost, 4),
-                total_cost=round(consumed * unit_cost, 2),
-                notes=fertilization_item.name,
-            )
-        )
+        total_cost = round(total_cost + allocation_total_cost, 2)
+        output_input_id = output_input_id or lot.input_id
         remaining = round(remaining - consumed, 2)
         if fertilization_item.purchased_input_id is None:
             fertilization_item.purchased_input_id = lot.id
 
-    return round(average_cost, 4), round(requested_quantity * average_cost, 2)
+    unit_cost = round(total_cost / requested_quantity, 4) if requested_quantity else round(average_cost, 4)
+    repository.db.add(
+        StockOutput(
+            input_id=output_input_id,
+            purchased_input_id=fertilization_item.purchased_input_id,
+            farm_id=farm_id,
+            plot_id=fertilization_item.fertilization.plot_id if fertilization_item.fertilization else None,
+            season_id=fertilization_item.fertilization.season_id if fertilization_item.fertilization else None,
+            movement_date=fertilization_item.fertilization.application_date if fertilization_item.fertilization else today_in_app_timezone(),
+            quantity=requested_quantity,
+            unit=fertilization_item.unit,
+            origin="fertilizacao",
+            reference_type="fertilization_item",
+            reference_id=fertilization_item.id,
+            unit_cost=unit_cost,
+            total_cost=round(total_cost, 2),
+            notes=fertilization_item.name,
+        )
+    )
+
+    return unit_cost, round(total_cost, 2)
 
 
 def _restore_fertilization_stock(repository: FarmRepository, fertilization: FertilizationRecord) -> None:
@@ -2011,7 +2026,7 @@ def _restore_fertilization_stock(repository: FarmRepository, fertilization: Fert
                 repository.db.delete(output)
 
 
-def _save_fertilization(repository: FarmRepository, fertilization: FertilizationRecord | None, form: dict) -> FertilizationRecord:
+def _save_fertilization(repository: FarmRepository, fertilization: FertilizationRecord | None, form: dict, *, commit: bool = True) -> FertilizationRecord:
     items = _normalize_fertilization_items(form.get("items"), form.get("area_hectares"))
     plot = repository.get_plot(form["plot_id"])
     if not plot:
@@ -2087,8 +2102,11 @@ def _save_fertilization(repository: FarmRepository, fertilization: Fertilization
                 )
             )
 
-    repository.db.commit()
-    repository.db.refresh(record)
+    if commit:
+        repository.db.commit()
+        repository.db.refresh(record)
+    else:
+        repository.db.flush()
     return record
 
 

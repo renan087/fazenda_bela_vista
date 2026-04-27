@@ -661,6 +661,15 @@ class FarmRepository:
             .first()
         )
 
+    def lock_fertilization_schedule(self, schedule_id: int) -> FertilizationSchedule | None:
+        return (
+            self.db.query(FertilizationSchedule)
+            .filter(FertilizationSchedule.id == schedule_id)
+            .populate_existing()
+            .with_for_update()
+            .first()
+        )
+
     def list_stock_outputs(self, input_id: int | None = None, farm_id: int | None = None) -> list[StockOutput]:
         query = (
             self.db.query(StockOutput)
