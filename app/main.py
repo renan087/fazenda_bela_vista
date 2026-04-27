@@ -34,11 +34,17 @@ async def lifespan(app: FastAPI):
         seed_demo_data(db)
     background_tasks: list[asyncio.Task] = [asyncio.create_task(run_backup_automation_loop())]
     if settings.memory_monitor_enabled:
+        logger.info(
+            "MEM_MONITOR enable requested interval_seconds=%s",
+            settings.memory_monitor_interval_seconds,
+        )
         background_tasks.append(
             asyncio.create_task(
                 run_runtime_memory_monitor(settings.memory_monitor_interval_seconds)
             )
         )
+    else:
+        logger.info("MEM_MONITOR disabled by configuration")
     try:
         yield
     finally:

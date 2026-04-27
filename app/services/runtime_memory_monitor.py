@@ -4,7 +4,8 @@ import asyncio
 import logging
 import os
 
-logger = logging.getLogger(__name__)
+# Usa o logger do Uvicorn para garantir saída no painel do Render.
+logger = logging.getLogger("uvicorn.error")
 
 
 def _read_rss_mb() -> float | None:
@@ -28,6 +29,7 @@ def _read_rss_mb() -> float | None:
 async def run_runtime_memory_monitor(interval_seconds: int = 60) -> None:
     """Publica no log o RSS do processo em intervalo fixo."""
     safe_interval = max(10, int(interval_seconds))
+    logger.info("MEM_MONITOR started interval_seconds=%s pid=%s", safe_interval, os.getpid())
     while True:
         rss_mb = _read_rss_mb()
         if rss_mb is None:
