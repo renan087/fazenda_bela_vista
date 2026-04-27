@@ -6,7 +6,6 @@ from app.core.csrf import ensure_csrf_token
 from app.core.session import clear_expired_session, touch_session_activity
 from app.core.user_context import sync_user_context_from_preferences
 from app.core.security import decode_token
-from app.db.init_db import seed_admin
 from app.db.session import get_db
 from app.models.user import User
 
@@ -17,7 +16,6 @@ def get_current_user_api(
     token: str = Depends(oauth2_scheme),
     db: Session = Depends(get_db),
 ) -> User:
-    seed_admin(db)
     payload = decode_token(token)
     email = payload.get("sub") if payload else None
     if not email:
@@ -37,7 +35,6 @@ def get_current_user_web(
     request: Request,
     db: Session = Depends(get_db),
 ) -> User:
-    seed_admin(db)
     if clear_expired_session(request):
         raise HTTPException(status_code=status.HTTP_303_SEE_OTHER, headers={"Location": "/login"})
 
