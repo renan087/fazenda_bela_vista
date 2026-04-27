@@ -19,6 +19,7 @@ from app.routers.api import router as api_router
 from app.routers.auth import api_router as auth_api_router
 from app.routers.auth import router as auth_router
 from app.services.backup_service import run_backup_automation_loop
+from app.services.runtime_memory_monitor import run_runtime_memory_monitor
 from app.web.routes import router as web_router
 
 logger = logging.getLogger(__name__)
@@ -31,13 +32,21 @@ async def lifespan(app: FastAPI):
     with SessionLocal() as db:
         seed_admin(db)
         seed_demo_data(db)
-    backup_task = asyncio.create_task(run_backup_automation_loop())
+    background_tasks: list[asyncio.Task] = [asyncio.create_task(run_backup_automation_loop())]
+    if settings.memory_monitor_enabled:
+        background_tasks.append(
+            asyncio.create_task(
+                run_runtime_memory_monitor(settings.memory_monitor_interval_seconds)
+            )
+        )
     try:
         yield
     finally:
-        backup_task.cancel()
-        with suppress(asyncio.CancelledError):
-            await backup_task
+        for task in background_tasks:
+            task.cancel()
+        for task in background_tasks:
+            with suppress(asyncio.CancelledError):
+                await task
 
 
 app = FastAPI(title=settings.app_name, lifespan=lifespan)
