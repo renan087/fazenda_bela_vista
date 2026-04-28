@@ -262,7 +262,7 @@
             {% if active_farm %}
             <div class="stock-header-actions stock-header-actions-top stock-actions-row-mobile-adaptive finance-mobile-header-actions w-full max-[899px]:w-full">
                 <div class="hidden flex-wrap items-center gap-2" data-finance-header-exports="transactions">
-                    <a href="{{ finance_transactions_export_pdf_url }}" class="stock-action-button stock-export-button stock-export-button-pdf">
+                    <a href="{{ finance_transactions_export_pdf_url }}" class="stock-action-button stock-export-button stock-export-button-pdf" data-finance-export-path="/gestao-financeira/contas/exportar/lancamentos.pdf">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true">
                             <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/>
                             <path d="M14 3v5h5"/>
@@ -271,7 +271,7 @@
                         </svg>
                         <span class="stock-action-button-label">Exportar PDF</span>
                     </a>
-                    <a href="{{ finance_transactions_export_xlsx_url }}" class="stock-action-button stock-export-button stock-export-button-xlsx">
+                    <a href="{{ finance_transactions_export_xlsx_url }}" class="stock-action-button stock-export-button stock-export-button-xlsx" data-finance-export-path="/gestao-financeira/contas/exportar/lancamentos.xlsx">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true">
                             <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/>
                             <path d="M14 3v5h5"/>
@@ -282,7 +282,7 @@
                     </a>
                 </div>
                 <div class="hidden flex-wrap items-center gap-2" data-finance-header-exports="payables">
-                    <a href="{{ finance_payables_export_pdf_url }}" class="stock-action-button stock-export-button stock-export-button-pdf">
+                    <a href="{{ finance_payables_export_pdf_url }}" class="stock-action-button stock-export-button stock-export-button-pdf" data-finance-export-path="/gestao-financeira/contas/exportar/a-pagar.pdf">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true">
                             <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/>
                             <path d="M14 3v5h5"/>
@@ -291,7 +291,7 @@
                         </svg>
                         <span class="stock-action-button-label">Exportar PDF</span>
                     </a>
-                    <a href="{{ finance_payables_export_xlsx_url }}" class="stock-action-button stock-export-button stock-export-button-xlsx">
+                    <a href="{{ finance_payables_export_xlsx_url }}" class="stock-action-button stock-export-button stock-export-button-xlsx" data-finance-export-path="/gestao-financeira/contas/exportar/a-pagar.xlsx">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true">
                             <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/>
                             <path d="M14 3v5h5"/>
@@ -302,7 +302,7 @@
                     </a>
                 </div>
                 <div class="hidden flex-wrap items-center gap-2" data-finance-header-exports="receivables">
-                    <a href="{{ finance_receivables_export_pdf_url }}" class="stock-action-button stock-export-button stock-export-button-pdf">
+                    <a href="{{ finance_receivables_export_pdf_url }}" class="stock-action-button stock-export-button stock-export-button-pdf" data-finance-export-path="/gestao-financeira/contas/exportar/a-receber.pdf">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true">
                             <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/>
                             <path d="M14 3v5h5"/>
@@ -311,7 +311,7 @@
                         </svg>
                         <span class="stock-action-button-label">Exportar PDF</span>
                     </a>
-                    <a href="{{ finance_receivables_export_xlsx_url }}" class="stock-action-button stock-export-button stock-export-button-xlsx">
+                    <a href="{{ finance_receivables_export_xlsx_url }}" class="stock-action-button stock-export-button stock-export-button-xlsx" data-finance-export-path="/gestao-financeira/contas/exportar/a-receber.xlsx">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true">
                             <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/>
                             <path d="M14 3v5h5"/>
@@ -1776,6 +1776,19 @@
     const createFormAction = '/gestao-financeira/contas';
     const createTransactionFormAction = '/gestao-financeira/contas/lancamentos';
     const FINANCE_CSRF_TOKEN = {{ csrf_token|tojson }};
+    const FINANCE_EXPORT_DROP_KEYS = new Set([
+        'edit_id',
+        'launch',
+        'card_edit_id',
+        'card_launch',
+        'transaction_edit_id',
+        'transaction_launch',
+        'payables_partial',
+        'receivables_partial',
+        'transactions_page',
+        'payables_page',
+        'receivables_page',
+    ]);
     const transactionCategoryOptions = {
         despesa: {{ finance_transaction_expense_categories|tojson }},
         receita: {{ finance_transaction_revenue_categories|tojson }},
@@ -1899,10 +1912,25 @@
         });
     };
 
+    const buildFinanceExportUrl = (path) => {
+        const params = new URLSearchParams(window.location.search);
+        FINANCE_EXPORT_DROP_KEYS.forEach((key) => params.delete(key));
+        const query = params.toString();
+        return query ? `${path}?${query}` : path;
+    };
+
+    const updateFinanceExportLinks = () => {
+        document.querySelectorAll('[data-finance-export-path]').forEach((link) => {
+            const path = link.getAttribute('data-finance-export-path');
+            if (path) link.setAttribute('href', buildFinanceExportUrl(path));
+        });
+    };
+
     const syncFinanceTabQuery = () => {
         const url = new URL(window.location.href);
         url.searchParams.set('finance_tab', activeFinanceTab);
         window.history.replaceState({}, '', `${url.pathname}${url.search}${url.hash}`);
+        updateFinanceExportLinks();
     };
 
     const setActiveFinanceTab = (tabName) => {
@@ -3056,6 +3084,7 @@
         const html = await res.text();
         payablesListRoot.innerHTML = html;
         history.replaceState(null, '', stripPayablesPartialFromUrl(fetchUrl));
+        updateFinanceExportLinks();
         updatePayablesClearUi();
     };
 
@@ -3106,6 +3135,7 @@
         const html = await res.text();
         receivablesListRoot.innerHTML = html;
         history.replaceState(null, '', stripReceivablesPartialFromUrl(fetchUrl));
+        updateFinanceExportLinks();
         updateReceivablesClearUi();
     };
 
@@ -3163,6 +3193,7 @@
                 if (html == null || !payablesListRoot) return;
                 payablesListRoot.innerHTML = html;
                 history.replaceState(null, '', stripPayablesPartialFromUrl(u.toString()));
+                updateFinanceExportLinks();
                 updatePayablesClearUi();
             });
     });
@@ -3183,6 +3214,7 @@
                 if (html == null || !receivablesListRoot) return;
                 receivablesListRoot.innerHTML = html;
                 history.replaceState(null, '', stripReceivablesPartialFromUrl(u.toString()));
+                updateFinanceExportLinks();
                 updateReceivablesClearUi();
             });
     });

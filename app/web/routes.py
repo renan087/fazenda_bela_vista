@@ -3871,6 +3871,8 @@ FINANCE_ACCOUNTS_EXPORT_DROP_KEYS = frozenset(
         "launch",
         "transaction_edit_id",
         "transaction_launch",
+        "card_edit_id",
+        "card_launch",
         "payables_partial",
         "receivables_partial",
         "transactions_page",
@@ -4164,6 +4166,26 @@ def _collect_finance_receivable_rows(
     )
 
 
+def _parse_prefixed_finance_period(raw_start: str, raw_end: str) -> tuple[date | None, date | None, str, str]:
+    start_value = (raw_start or "").strip()
+    end_value = (raw_end or "").strip()
+    user_start: date | None = None
+    user_end: date | None = None
+    if start_value:
+        try:
+            user_start = date.fromisoformat(start_value)
+        except ValueError:
+            start_value = ""
+    if end_value:
+        try:
+            user_end = date.fromisoformat(end_value)
+        except ValueError:
+            end_value = ""
+    if user_start and user_end and user_start > user_end:
+        return None, None, "", ""
+    return user_start, user_end, start_value, end_value
+
+
 def _finance_installments_period_bounds(
     request: Request,
     *,
@@ -4194,7 +4216,7 @@ def _finance_installments_period_bounds(
         if not selected_range and not raw_start and not raw_end:
             return None, None, "", "", "custom"
         if selected_range == "custom" or raw_start or raw_end:
-            start_date, end_date, raw_start, raw_end = _finance_extract_period_bounds(request, flash_invalid=False)
+            start_date, end_date, raw_start, raw_end = _parse_prefixed_finance_period(raw_start, raw_end)
             return start_date, end_date, raw_start, raw_end, "custom"
         return None, None, "", "", "custom"
 
@@ -4224,7 +4246,7 @@ def _finance_installments_period_bounds(
             nm_start = date(today.year, today.month + 1, 1)
         nm_end = date(nm_start.year + (1 if nm_start.month == 12 else 0), 1 if nm_start.month == 12 else nm_start.month + 1, 1) - timedelta(days=1)
         return nm_start, nm_end, "", "", "next_month"
-    start_date, end_date, raw_start, raw_end = _finance_extract_period_bounds(request, flash_invalid=False)
+    start_date, end_date, raw_start, raw_end = _parse_prefixed_finance_period(raw_start, raw_end)
     return start_date, end_date, raw_start, raw_end, (selected_range or ("custom" if raw_start or raw_end else "current_month"))
 
 
