@@ -1,6 +1,7 @@
 import json
+import unicodedata
 from collections import defaultdict
-from datetime import date
+from datetime import date, timedelta
 
 from app.core.timezone import today_in_app_timezone
 from app.repositories.farm import FarmRepository
@@ -32,6 +33,184 @@ def _in_season(record_date, season) -> bool:
     if not season or not record_date:
         return True
     return season.start_date <= record_date <= season.end_date
+
+
+def _normalize_payment_method(value: str | None) -> str:
+    return (
+        unicodedata.normalize("NFD", str(value or ""))
+        .encode("ascii", "ignore")
+        .decode("ascii")
+        .strip()
+        .lower()
+    )
+
+
+def _finance_transaction_uses_future_settlement(transaction) -> bool:
+    payment_condition = (transaction.payment_condition or "").strip().lower()
+    if payment_condition == "a_prazo":
+        return True
+    if transaction.credit_card_id and _normalize_payment_method(transaction.payment_method) == "cartao de credito":
+        return True
+    return False
+
+
+def _account_initial_balance(account) -> float:
+    return round(_float(account.initial_balance), 2)
+
+
+def _finance_source_label(transaction) -> str:
+    source = (transaction.source or "").strip().lower()
+    if source == "insumos":
+        return "Compra de Insumos"
+    if source == "suprimentos":
+        return "Suprimentos"
+    if source in {"patrimônio", "patrimonio"}:
+        return "Patrimônio"
+    if source in {"comercialização", "comercializacao"}:
+        return "Comercialização"
+    return "Contas"
+
+
+def _build_dashboard_finance_flow(repository: FarmRepository, farm_id: int | None, today: date) -> dict:
+    if not farm_id:
+        return {
+            "balance": 0,
+            "payable_open_total": 0,
+            "receivable_open_total": 0,
+            "overdue_total": 0,
+            "overdue_count": 0,
+            "due_today_total": 0,
+            "due_today_count": 0,
+            "realized_credit_month": 0,
+            "realized_debit_month": 0,
+            "realized_balance_month": 0,
+            "upcoming_7_days_total": 0,
+            "action_items": [],
+        }
+
+    month_start = today.replace(day=1)
+    upcoming_limit = today + timedelta(days=7)
+    accounts = repository.list_finance_accounts(farm_id=farm_id)
+    account_balances = {account.id: _account_initial_balance(account) for account in accounts}
+
+    totals = {
+        "payable_open_total": 0.0,
+        "receivable_open_total": 0.0,
+        "overdue_total": 0.0,
+        "overdue_count": 0,
+        "due_today_total": 0.0,
+        "due_today_count": 0,
+        "realized_credit_month": 0.0,
+        "realized_debit_month": 0.0,
+        "upcoming_7_days_total": 0.0,
+    }
+    action_items: list[dict] = []
+
+    for transaction in repository.list_finance_transactions(farm_id=farm_id):
+        operation_type = (transaction.operation_type or "").strip().lower()
+        is_revenue = operation_type == "receita"
+        amount = abs(_float(transaction.amount))
+        account_id = transaction.finance_account_id
+        source_label = _finance_source_label(transaction)
+
+        if _finance_transaction_uses_future_settlement(transaction):
+            installments = sorted(
+                transaction.installments or [],
+                key=lambda item: (item.due_date or date.max, item.installment_number or 0, item.id),
+            )
+            total_parts = int(transaction.installment_count or 0) or len(installments) or 1
+            for installment in installments:
+                installment_amount = abs(_float(installment.amount))
+                if installment_amount <= 0:
+                    continue
+                status = (installment.status or "pendente").strip().lower()
+                due_date = installment.due_date
+                paid_at = installment.paid_at
+                if status == "pago":
+                    if account_id in account_balances and paid_at and paid_at <= today:
+                        if is_revenue:
+                            account_balances[account_id] = round(account_balances[account_id] + installment_amount, 2)
+                        else:
+                            account_balances[account_id] = round(account_balances[account_id] - installment_amount, 2)
+                    if paid_at and month_start <= paid_at <= today:
+                        if is_revenue:
+                            totals["realized_credit_month"] += installment_amount
+                        else:
+                            totals["realized_debit_month"] += installment_amount
+                    continue
+
+                if is_revenue:
+                    totals["receivable_open_total"] += installment_amount
+                else:
+                    totals["payable_open_total"] += installment_amount
+
+                item_status = "open"
+                item_label = "Em aberto"
+                if due_date and due_date < today:
+                    totals["overdue_total"] += installment_amount
+                    totals["overdue_count"] += 1
+                    item_status = "overdue"
+                    item_label = "Atrasado"
+                elif due_date and due_date == today:
+                    totals["due_today_total"] += installment_amount
+                    totals["due_today_count"] += 1
+                    item_status = "today"
+                    item_label = "Vence hoje"
+                elif due_date and today < due_date <= upcoming_limit:
+                    totals["upcoming_7_days_total"] += installment_amount
+                    item_status = "upcoming"
+                    item_label = "Próx. 7 dias"
+
+                if item_status in {"overdue", "today", "upcoming"}:
+                    action_items.append(
+                        {
+                            "date": due_date,
+                            "status": item_status,
+                            "status_label": item_label,
+                            "type": "receber" if is_revenue else "pagar",
+                            "source": source_label,
+                            "title": transaction.product_service,
+                            "installment": f"{installment.installment_number}/{total_parts}",
+                            "amount": round(installment_amount, 2),
+                            "link": f"/gestao-financeira/contas?finance_tab={'receivables' if is_revenue else 'payables'}",
+                        }
+                    )
+            continue
+
+        launch_date = transaction.launch_date
+        if amount > 0 and account_id in account_balances and launch_date and launch_date <= today:
+            if is_revenue:
+                account_balances[account_id] = round(account_balances[account_id] + amount, 2)
+            else:
+                account_balances[account_id] = round(account_balances[account_id] - amount, 2)
+        if launch_date and month_start <= launch_date <= today:
+            if is_revenue:
+                totals["realized_credit_month"] += amount
+            else:
+                totals["realized_debit_month"] += amount
+
+    action_items.sort(
+        key=lambda item: (
+            {"overdue": 0, "today": 1, "upcoming": 2}.get(item["status"], 3),
+            item["date"] or date.max,
+            item["title"] or "",
+        )
+    )
+    realized_balance = totals["realized_credit_month"] - totals["realized_debit_month"]
+    return {
+        "balance": round(sum(account_balances.values()), 2),
+        "payable_open_total": round(totals["payable_open_total"], 2),
+        "receivable_open_total": round(totals["receivable_open_total"], 2),
+        "overdue_total": round(totals["overdue_total"], 2),
+        "overdue_count": int(totals["overdue_count"]),
+        "due_today_total": round(totals["due_today_total"], 2),
+        "due_today_count": int(totals["due_today_count"]),
+        "realized_credit_month": round(totals["realized_credit_month"], 2),
+        "realized_debit_month": round(totals["realized_debit_month"], 2),
+        "realized_balance_month": round(realized_balance, 2),
+        "upcoming_7_days_total": round(totals["upcoming_7_days_total"], 2),
+        "action_items": action_items[:6],
+    }
 
 
 def calculate_forecast(
@@ -134,6 +313,7 @@ def build_dashboard_context(
         start_date=month_start,
         end_date=today,
     )
+    finance_flow = _build_dashboard_finance_flow(repository, farm_id, today)
     forecast = calculate_forecast(repository, plots=plots, harvests=harvests)
 
     total_area = sum(_float(plot.area_hectares) for plot in plots)
@@ -353,7 +533,13 @@ def build_dashboard_context(
             "rainfall_period_total": round(rainfall_period_total, 2),
             "low_stock_count": len(low_stock_items),
             "late_schedule_count": sum(1 for item in schedule_alerts if item["status"] == "late"),
+            "finance_balance": finance_flow["balance"],
+            "finance_payable_open": finance_flow["payable_open_total"],
+            "finance_receivable_open": finance_flow["receivable_open_total"],
+            "finance_realized_month": finance_flow["realized_balance_month"],
+            "finance_overdue_count": finance_flow["overdue_count"],
         },
+        "finance_flow": finance_flow,
         "recent_irrigations": irrigations,
         "recent_rainfalls": rainfalls,
         "recent_fertilizations": fertilizations,
