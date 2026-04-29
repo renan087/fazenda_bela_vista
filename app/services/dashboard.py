@@ -201,33 +201,15 @@ def _build_dashboard_finance_flow(repository: FarmRepository, farm_id: int | Non
     payable_open = round(totals["payable_open_total"], 2)
     receivable_open = round(totals["receivable_open_total"], 2)
     projected_balance = round(balance + receivable_open - payable_open, 2)
-    chart_max = max(abs(balance), abs(receivable_open), abs(payable_open), abs(projected_balance), 1)
-    projected_chart = [
-        {
-            "label": "Saldo atual",
-            "value": balance,
-            "width": round((abs(balance) / chart_max) * 100, 2),
-            "kind": "neutral",
-        },
-        {
-            "label": "A receber",
-            "value": receivable_open,
-            "width": round((abs(receivable_open) / chart_max) * 100, 2),
-            "kind": "positive",
-        },
-        {
-            "label": "A pagar",
-            "value": -payable_open,
-            "width": round((abs(payable_open) / chart_max) * 100, 2),
-            "kind": "negative",
-        },
-        {
-            "label": "Projetado",
-            "value": projected_balance,
-            "width": round((abs(projected_balance) / chart_max) * 100, 2),
-            "kind": "positive" if projected_balance >= 0 else "negative",
-        },
-    ]
+    projected_chart = {
+        "labels": ["Saldo atual", "Após receber", "Após pagar", "Projetado"],
+        "values": [
+            balance,
+            round(balance + receivable_open, 2),
+            projected_balance,
+            projected_balance,
+        ],
+    }
     return {
         "balance": balance,
         "payable_open_total": payable_open,

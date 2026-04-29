@@ -381,21 +381,8 @@
                     Projetado: R$ {{ finance_flow.projected_balance|decimal_br }}
                 </p>
             </div>
-            <div class="mt-5 space-y-3">
-                {% for bar in finance_flow.projected_chart %}
-                <div class="grid gap-2 md:grid-cols-[8.5rem_minmax(0,1fr)_7.5rem] md:items-center">
-                    <div class="flex items-center justify-between gap-3 md:block">
-                        <p class="text-xs font-semibold uppercase tracking-[0.18em] {% if bar.kind == 'positive' %}text-emerald-700{% elif bar.kind == 'negative' %}text-rose-700{% else %}text-slate-500{% endif %}">{{ bar.label }}</p>
-                        <p class="text-sm font-bold md:hidden {% if bar.kind == 'positive' %}text-emerald-700{% elif bar.kind == 'negative' %}text-rose-700{% else %}text-slate-900{% endif %}">R$ {{ bar.value|decimal_br }}</p>
-                    </div>
-                    <div class="h-9 overflow-hidden rounded-full bg-white shadow-inner ring-1 ring-slate-100">
-                        <div class="flex h-full min-w-[2.75rem] items-center rounded-full px-3 text-xs font-bold text-white transition-all duration-700 {% if bar.kind == 'positive' %}bg-emerald-500{% elif bar.kind == 'negative' %}bg-rose-500{% else %}bg-slate-500{% endif %}" style="width: {{ bar.width }}%;">
-                            {% if bar.kind == 'negative' %}-{% elif bar.kind == 'positive' and bar.label != 'Projetado' %}+{% endif %}
-                        </div>
-                    </div>
-                    <p class="hidden text-right text-sm font-bold md:block {% if bar.kind == 'positive' %}text-emerald-700{% elif bar.kind == 'negative' %}text-rose-700{% else %}text-slate-900{% endif %}">R$ {{ bar.value|decimal_br }}</p>
-                </div>
-                {% endfor %}
+            <div class="mt-5 h-72 rounded-[1.25rem] bg-white p-4 ring-1 ring-slate-100">
+                <canvas id="financeProjectionChart"></canvas>
             </div>
         </div>
     </article>
@@ -645,6 +632,7 @@
     const timeline = {{ timeline_chart|safe }};
     const rainfall = {{ rainfall_chart|safe }};
     const costByPlot = {{ cost_by_plot_chart|safe }};
+    const financeProjection = {{ finance_flow.projected_chart|tojson }};
     const mapData = {{ map_geojson|safe }};
     const dashboardScheduleData = JSON.parse(document.getElementById('dashboardScheduleData')?.textContent || '[]');
     const dashboardScheduleMeta = JSON.parse(document.getElementById('dashboardScheduleMeta')?.textContent || '{}');
@@ -721,6 +709,49 @@
             }]
         },
         options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
+    });
+
+    new Chart(document.getElementById('financeProjectionChart'), {
+        type: 'line',
+        data: {
+            labels: financeProjection.labels,
+            datasets: [{
+                label: 'Caixa previsto',
+                data: financeProjection.values,
+                fill: false,
+                tension: 0.32,
+                borderColor: '#446a36',
+                backgroundColor: '#446a36',
+                pointBackgroundColor: '#ffffff',
+                pointBorderColor: '#446a36',
+                pointBorderWidth: 2,
+                pointRadius: 4,
+                pointHoverRadius: 6,
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    callbacks: {
+                        label: (ctx) => `R$ ${new Intl.NumberFormat('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(ctx.parsed.y || 0)}`
+                    }
+                }
+            },
+            scales: {
+                y: {
+                    ticks: {
+                        callback: (value) => `R$ ${new Intl.NumberFormat('pt-BR', { notation: 'compact', maximumFractionDigits: 1 }).format(value)}`
+                    },
+                    grid: { color: 'rgba(148, 163, 184, 0.25)' }
+                },
+                x: {
+                    grid: { display: false }
+                }
+            }
+        }
     });
 
     const map = L.map('dashboardMap').setView([-20.7442, -42.8721], 14);
