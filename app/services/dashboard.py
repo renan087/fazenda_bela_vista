@@ -197,10 +197,15 @@ def _build_dashboard_finance_flow(repository: FarmRepository, farm_id: int | Non
         )
     )
     realized_balance = totals["realized_credit_month"] - totals["realized_debit_month"]
+    balance = round(sum(account_balances.values()), 2)
+    payable_open = round(totals["payable_open_total"], 2)
+    receivable_open = round(totals["receivable_open_total"], 2)
+    projected_balance = round(balance + receivable_open - payable_open, 2)
     return {
-        "balance": round(sum(account_balances.values()), 2),
-        "payable_open_total": round(totals["payable_open_total"], 2),
-        "receivable_open_total": round(totals["receivable_open_total"], 2),
+        "balance": balance,
+        "payable_open_total": payable_open,
+        "receivable_open_total": receivable_open,
+        "projected_balance": projected_balance,
         "overdue_total": round(totals["overdue_total"], 2),
         "overdue_count": int(totals["overdue_count"]),
         "due_today_total": round(totals["due_today_total"], 2),
