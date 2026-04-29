@@ -182,7 +182,7 @@
                     <p class="dashboard-executive-value" data-dashboard-count data-count-mobile-compact-currency="true" data-count-prefix="R$ " data-count-value="{{ kpis.finance_receivable_open }}">R$ {{ kpis.finance_receivable_open|decimal_br }}</p>
                 </div>
             </a>
-            <a href="/gestao-financeira" class="dashboard-executive-card is-violet" data-dashboard-item data-dashboard-executive-item>
+            <a href="/gestao-financeira?schedule_range=custom&start_date={{ finance_flow.current_month_start }}&end_date={{ finance_flow.current_month_end }}" class="dashboard-executive-card is-violet" data-dashboard-item data-dashboard-executive-item>
                 <p class="dashboard-executive-label">Realizado no mes</p>
                 <div class="dashboard-executive-value-row">
                     <span class="dashboard-executive-icon" aria-hidden="true">
@@ -319,7 +319,7 @@
                 <p class="mt-2 text-2xl font-bold text-slate-900">{{ finance_flow.overdue_count + finance_flow.due_today_count }}</p>
                 <p class="mt-1 text-sm text-slate-500">R$ {{ (finance_flow.overdue_total + finance_flow.due_today_total)|decimal_br }} exigem atenção</p>
             </a>
-            <a href="/gestao-financeira" class="rounded-2xl border border-slate-200 bg-slate-50 p-4 transition hover:border-slate-300">
+            <a href="/gestao-financeira?schedule_range=custom&start_date={{ finance_flow.current_month_start }}&end_date={{ finance_flow.current_month_end }}" class="rounded-2xl border border-slate-200 bg-slate-50 p-4 transition hover:border-slate-300">
                 <p class="text-xs font-semibold uppercase tracking-[0.25em] text-slate-500">Realizado no mês</p>
                 <p class="mt-2 text-2xl font-bold text-slate-900">R$ {{ finance_flow.realized_balance_month|decimal_br }}</p>
                 <p class="mt-1 text-sm text-slate-500">Créditos menos débitos já efetivados</p>

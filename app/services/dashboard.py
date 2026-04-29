@@ -209,6 +209,8 @@ def _build_dashboard_finance_flow(repository: FarmRepository, farm_id: int | Non
         "realized_debit_month": round(totals["realized_debit_month"], 2),
         "realized_balance_month": round(realized_balance, 2),
         "upcoming_7_days_total": round(totals["upcoming_7_days_total"], 2),
+        "current_month_start": month_start.isoformat(),
+        "current_month_end": today.isoformat(),
         "action_items": action_items[:6],
     }
 
