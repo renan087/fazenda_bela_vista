@@ -1596,9 +1596,30 @@ def _finance_extract_period_bounds(
     *,
     flash_invalid: bool = False,
 ) -> tuple[date | None, date | None, str, str]:
-    """Intervalo do extrato financeiro: apenas datas da query, sem limitar à safra ativa."""
+    """Intervalo do extrato financeiro: mês atual por padrão, sem limitar à safra ativa."""
+    today = today_in_app_timezone()
+    selected_range = (request.query_params.get("schedule_range") or "").strip()
     raw_start = (request.query_params.get("start_date") or "").strip()
     raw_end = (request.query_params.get("end_date") or "").strip()
+    if not selected_range and not raw_start and not raw_end:
+        month_start = date(today.year, today.month, 1)
+        month_end = date(today.year + (1 if today.month == 12 else 0), 1 if today.month == 12 else today.month + 1, 1) - timedelta(days=1)
+        return month_start, month_end, month_start.isoformat(), month_end.isoformat()
+    if selected_range == "current_month":
+        month_start = date(today.year, today.month, 1)
+        month_end = date(today.year + (1 if today.month == 12 else 0), 1 if today.month == 12 else today.month + 1, 1) - timedelta(days=1)
+        return month_start, month_end, month_start.isoformat(), month_end.isoformat()
+    if selected_range == "last_10_days":
+        period_start = today - timedelta(days=10)
+        return period_start, today, period_start.isoformat(), today.isoformat()
+    if selected_range == "last_20_days":
+        period_start = today - timedelta(days=20)
+        return period_start, today, period_start.isoformat(), today.isoformat()
+    if selected_range == "last_month":
+        current_month_start = date(today.year, today.month, 1)
+        previous_month_end = current_month_start - timedelta(days=1)
+        previous_month_start = date(previous_month_end.year, previous_month_end.month, 1)
+        return previous_month_start, previous_month_end, previous_month_start.isoformat(), previous_month_end.isoformat()
     user_start: date | None = None
     user_end: date | None = None
     if raw_start:
@@ -3074,7 +3095,7 @@ def _finance_management_dataset(
             filter_end_str,
         )
         if _period_filter_explicit_in_query(request)
-        else ""
+        else "current_month"
     )
     extract_season_q = _int_or_none(request.query_params.get("extract_season_id"))
     extract_finance_account_id = _int_or_none(request.query_params.get("extract_finance_account_id"))

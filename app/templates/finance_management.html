@@ -92,7 +92,7 @@
                     <span data-stock-filter-toggle-label>{% if finance_filters_active %}Mostrar filtro aplicado{% else %}Recolher filtros{% endif %}</span>
                 </button>
             </div>
-            <form method="get" action="/gestao-financeira" class="stock-filter-grid w-full min-w-0" data-stock-filter-form data-module-period-filter-root data-module-range-default="last_10_days" data-module-range-placeholder="Filtre por período" data-module-custom-auto-apply="false">
+            <form method="get" action="/gestao-financeira" class="stock-filter-grid w-full min-w-0" data-stock-filter-form data-module-period-filter-root data-module-range-default="current_month" data-module-range-placeholder="Filtre por período" data-module-custom-auto-apply="false">
                 <div class="stock-summary-collapse {% if not finance_filters_active %}is-expanded{% endif %}" data-stock-filter-collapse>
                 <div class="stock-summary-collapse-inner">
                 <div class="stock-filter-fields-row finance-filter-fields-row {% if finance_filters_active %}has-clear-action{% endif %}">
