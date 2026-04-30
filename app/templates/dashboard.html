@@ -115,7 +115,7 @@
                             <path d="M7 8c0-1.7 1.8-3 5-3s5 1.3 5 3-1.8 3-5 3-5 1.3-5 3 1.8 3 5 3 5-1.3 5-3"/>
                         </svg>
                     </span>
-                    <p class="dashboard-executive-value" data-dashboard-count data-count-mobile-compact-currency="true" data-count-prefix="R$ " data-count-value="{{ kpis.cost_per_hectare }}">R$ {{ kpis.cost_per_hectare }}</p>
+                    <p class="dashboard-executive-value" title="R$ {{ kpis.cost_per_hectare|decimal_br }}" data-dashboard-count data-count-mobile-compact-currency="true" data-count-prefix="R$ " data-count-value="{{ kpis.cost_per_hectare }}">{{ kpis.cost_per_hectare_compact }}</p>
                 </div>
             </a>
             <a href="{% if active_season %}/gestao-financeira?extract_season_id={{ active_season.id }}{% else %}/gestao-financeira{% endif %}" class="dashboard-executive-card is-cyan" data-dashboard-item data-dashboard-executive-item>
@@ -130,7 +130,7 @@
                         </svg>
                     </span>
                     {% if kpis.operational_cost_ha_available %}
-                    <p class="dashboard-executive-value" data-dashboard-count data-count-mobile-compact-currency="true" data-count-prefix="R$ " data-count-value="{{ kpis.operational_cost_per_hectare }}">R$ {{ kpis.operational_cost_per_hectare }}</p>
+                    <p class="dashboard-executive-value" title="R$ {{ kpis.operational_cost_per_hectare|decimal_br }}" data-dashboard-count data-count-mobile-compact-currency="true" data-count-prefix="R$ " data-count-value="{{ kpis.operational_cost_per_hectare }}">{{ kpis.operational_cost_per_hectare_compact }}</p>
                     {% else %}
                     <p class="dashboard-executive-value">—</p>
                     {% endif %}
@@ -146,7 +146,7 @@
                         </svg>
                     </span>
                     {% if kpis.operational_cost_sack_available %}
-                    <p class="dashboard-executive-value" data-dashboard-count data-count-mobile-compact-currency="true" data-count-prefix="R$ " data-count-value="{{ kpis.operational_cost_per_sack }}">R$ {{ kpis.operational_cost_per_sack }}</p>
+                    <p class="dashboard-executive-value" title="R$ {{ kpis.operational_cost_per_sack|decimal_br }}" data-dashboard-count data-count-mobile-compact-currency="true" data-count-prefix="R$ " data-count-value="{{ kpis.operational_cost_per_sack }}">{{ kpis.operational_cost_per_sack_compact }}</p>
                     {% else %}
                     <p class="dashboard-executive-value">—</p>
                     {% endif %}
@@ -188,7 +188,7 @@
                             <path d="M8 15h5"/>
                         </svg>
                     </span>
-                    <p class="dashboard-executive-value" data-dashboard-count data-count-mobile-compact-currency="true" data-count-prefix="R$ " data-count-value="{{ kpis.finance_balance }}">R$ {{ kpis.finance_balance|decimal_br }}</p>
+                    <p class="dashboard-executive-value" title="R$ {{ kpis.finance_balance|decimal_br }}" data-dashboard-count data-count-mobile-compact-currency="true" data-count-prefix="R$ " data-count-value="{{ kpis.finance_balance }}">{{ kpis.finance_balance_compact }}</p>
                 </div>
             </a>
             <a href="/gestao-financeira/contas?finance_tab=payables" class="dashboard-executive-card is-orange-soft" data-dashboard-item data-dashboard-executive-item>
@@ -200,7 +200,7 @@
                             <path d="M7 8c0-1.7 1.8-3 5-3s5 1.3 5 3-1.8 3-5 3-5 1.3-5 3 1.8 3 5 3 5-1.3 5-3"/>
                         </svg>
                     </span>
-                    <p class="dashboard-executive-value" data-dashboard-count data-count-mobile-compact-currency="true" data-count-prefix="R$ " data-count-value="{{ kpis.finance_payable_open }}">R$ {{ kpis.finance_payable_open|decimal_br }}</p>
+                    <p class="dashboard-executive-value" title="R$ {{ kpis.finance_payable_open|decimal_br }}" data-dashboard-count data-count-mobile-compact-currency="true" data-count-prefix="R$ " data-count-value="{{ kpis.finance_payable_open }}">{{ kpis.finance_payable_open_compact }}</p>
                 </div>
             </a>
             <a href="/gestao-financeira/contas?finance_tab=receivables" class="dashboard-executive-card is-blue-soft" data-dashboard-item data-dashboard-executive-item>
@@ -213,7 +213,7 @@
                             <path d="m16 19 2 2 4-4"/>
                         </svg>
                     </span>
-                    <p class="dashboard-executive-value" data-dashboard-count data-count-mobile-compact-currency="true" data-count-prefix="R$ " data-count-value="{{ kpis.finance_receivable_open }}">R$ {{ kpis.finance_receivable_open|decimal_br }}</p>
+                    <p class="dashboard-executive-value" title="R$ {{ kpis.finance_receivable_open|decimal_br }}" data-dashboard-count data-count-mobile-compact-currency="true" data-count-prefix="R$ " data-count-value="{{ kpis.finance_receivable_open }}">{{ kpis.finance_receivable_open_compact }}</p>
                 </div>
             </a>
             <a href="/gestao-financeira?schedule_range=custom&start_date={{ finance_flow.current_month_start }}&end_date={{ finance_flow.current_month_end }}" class="dashboard-executive-card is-violet" data-dashboard-item data-dashboard-executive-item>
@@ -226,7 +226,7 @@
                             <path d="M17 7h2v2"/>
                         </svg>
                     </span>
-                    <p class="dashboard-executive-value" data-dashboard-count data-count-mobile-compact-currency="true" data-count-prefix="R$ " data-count-value="{{ kpis.finance_realized_month }}">R$ {{ kpis.finance_realized_month|decimal_br }}</p>
+                    <p class="dashboard-executive-value" title="R$ {{ kpis.finance_realized_month|decimal_br }}" data-dashboard-count data-count-mobile-compact-currency="true" data-count-prefix="R$ " data-count-value="{{ kpis.finance_realized_month }}">{{ kpis.finance_realized_month_compact }}</p>
                 </div>
             </a>
                 </div>
@@ -1006,17 +1006,17 @@
     const formatDashboardCompactCurrency = (value) => {
         const numeric = Number(value) || 0;
         const sign = numeric < 0 ? '-' : '';
-        const amount = Math.abs(Math.round(numeric));
+        const amount = Math.abs(numeric);
         if (amount >= 1_000_000_000) {
-            return `${sign}${Math.round(amount / 1_000_000_000)}bi`;
+            return `${sign}${Math.floor(amount / 1_000_000_000)}bi`;
         }
         if (amount >= 1_000_000) {
-            return `${sign}${Math.round(amount / 1_000_000)}M`;
+            return `${sign}${Math.floor(amount / 1_000_000)}M`;
         }
         if (amount >= 1_000) {
-            return `${sign}${Math.round(amount / 1_000)}k`;
+            return `${sign}${Math.floor(amount / 1_000)}k`;
         }
-        return `${sign}${amount}`;
+        return `${sign}${Math.round(amount)}`;
     };
 
     const animateDashboardCount = (element) => {

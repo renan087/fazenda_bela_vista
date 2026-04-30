@@ -1451,6 +1451,14 @@ body.dashboard-schedule-modal-open {
     }
 }
 
+.dashboard-executive-grid .dashboard-executive-value[data-count-mobile-compact-currency="true"] {
+    flex: 0 0 auto;
+    min-width: max-content;
+    max-width: 100%;
+    overflow: visible;
+    text-overflow: clip;
+}
+
 .app-modal::backdrop {
     background: rgba(0, 0, 0, 0.3);
     backdrop-filter: blur(4px);

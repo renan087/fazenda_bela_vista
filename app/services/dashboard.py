@@ -12,6 +12,19 @@ def _float(value) -> float:
     return float(value or 0)
 
 
+def _compact_currency_label(value) -> str:
+    numeric = _float(value)
+    sign = "-" if numeric < 0 else ""
+    amount = abs(int(numeric))
+    if amount >= 1_000_000_000:
+        return f"{sign}{amount // 1_000_000_000}bi"
+    if amount >= 1_000_000:
+        return f"{sign}{amount // 1_000_000}M"
+    if amount >= 1_000:
+        return f"{sign}{amount // 1_000}k"
+    return f"{sign}{amount}"
+
+
 def _paginate(items: list, page: int, per_page: int = 4) -> dict:
     total = len(items)
     pages = max(1, (total + per_page - 1) // per_page)
@@ -546,6 +559,9 @@ def build_dashboard_context(
     finance_scope_ready = bool(finance_overview.get("finance_scope_ready"))
     operational_cost_ha_available = bool(finance_scope_ready and total_area > 0)
     operational_cost_sack_available = bool(finance_scope_ready and total_production > 0)
+    cost_per_hectare_value = round(cost_per_hectare, 2)
+    operational_cost_per_hectare_value = round(operational_cost_per_hectare, 2)
+    operational_cost_per_sack_value = round(operational_cost_per_sack, 2)
 
     return {
         "kpis": {
@@ -555,9 +571,12 @@ def build_dashboard_context(
             "total_production": round(total_production, 2),
             "productivity_per_hectare": round(productivity_per_hectare, 2),
             "forecast_production": forecast["total_projection"],
-            "cost_per_hectare": round(cost_per_hectare, 2),
-            "operational_cost_per_hectare": round(operational_cost_per_hectare, 2),
-            "operational_cost_per_sack": round(operational_cost_per_sack, 2),
+            "cost_per_hectare": cost_per_hectare_value,
+            "cost_per_hectare_compact": _compact_currency_label(cost_per_hectare_value),
+            "operational_cost_per_hectare": operational_cost_per_hectare_value,
+            "operational_cost_per_hectare_compact": _compact_currency_label(operational_cost_per_hectare_value),
+            "operational_cost_per_sack": operational_cost_per_sack_value,
+            "operational_cost_per_sack_compact": _compact_currency_label(operational_cost_per_sack_value),
             "operational_cost_ha_available": operational_cost_ha_available,
             "operational_cost_sack_available": operational_cost_sack_available,
             "finance_scope_ready": finance_scope_ready,
@@ -566,9 +585,13 @@ def build_dashboard_context(
             "low_stock_count": len(low_stock_items),
             "late_schedule_count": sum(1 for item in schedule_alerts if item["status"] == "late"),
             "finance_balance": finance_flow["balance"],
+            "finance_balance_compact": _compact_currency_label(finance_flow["balance"]),
             "finance_payable_open": finance_flow["payable_open_total"],
+            "finance_payable_open_compact": _compact_currency_label(finance_flow["payable_open_total"]),
             "finance_receivable_open": finance_flow["receivable_open_total"],
+            "finance_receivable_open_compact": _compact_currency_label(finance_flow["receivable_open_total"]),
             "finance_realized_month": finance_flow["realized_balance_month"],
+            "finance_realized_month_compact": _compact_currency_label(finance_flow["realized_balance_month"]),
             "finance_overdue_count": finance_flow["overdue_count"],
         },
         "finance_flow": finance_flow,
