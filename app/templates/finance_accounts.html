@@ -1513,7 +1513,7 @@
                             </select>
                         </label>
                         <label>
-                            <span class="mb-2 block text-sm font-medium">Data do lançamento</span>
+                            <span class="mb-2 block text-sm font-medium" data-finance-launch-date-label>Data do lançamento</span>
                             <input type="date" {% if not finance_installments_locked %}name="launch_date"{% endif %} value="{{ edit_finance_transaction.launch_date.isoformat() if edit_finance_transaction and edit_finance_transaction.launch_date else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 {% if finance_installments_locked %}cursor-not-allowed bg-slate-100 text-slate-600{% else %}bg-slate-50{% endif %}" {% if not finance_installments_locked %}required{% endif %} data-finance-launch-date {% if finance_installments_locked %}disabled{% endif %}>
                         </label>
                         <label>
@@ -1524,7 +1524,7 @@
                     </div>
                     <div class="grid gap-4 md:grid-cols-2">
                         <label>
-                            <span class="mb-2 block text-sm font-medium">Conta de lançamento</span>
+                            <span class="mb-2 block text-sm font-medium" data-finance-account-label>Conta de lançamento</span>
                             <select name="finance_account_id" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required data-default-account-id="{{ finance_account_default.id if finance_account_default else '' }}">
                                 <option value="">Selecione</option>
                                 {% for account in finance_accounts %}
@@ -1556,7 +1556,7 @@
                     {% endif %}
                     <div class="grid gap-4 md:grid-cols-2">
                         <label>
-                            <span class="mb-2 block text-sm font-medium">Condição de pagamento</span>
+                            <span class="mb-2 block text-sm font-medium" data-finance-condition-label>Condição de pagamento</span>
                             <select {% if not finance_installments_locked %}name="payment_condition"{% endif %} class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 {% if finance_installments_locked %}cursor-not-allowed bg-slate-100 text-slate-600{% else %}bg-slate-50{% endif %}" {% if not finance_installments_locked %}required{% endif %} data-finance-payment-condition {% if finance_installments_locked %}disabled{% endif %}>
                                 <option value="a_vista" {% if transaction_payment_condition == 'a_vista' %}selected{% endif %}>À vista</option>
                                 <option value="a_prazo" {% if transaction_payment_condition == 'a_prazo' %}selected{% endif %}>À prazo</option>
@@ -1583,7 +1583,7 @@
                                 </select>
                             </label>
                             <label>
-                                <span class="mb-2 block text-sm font-medium">Data da primeira parcela</span>
+                                <span class="mb-2 block text-sm font-medium" data-finance-first-installment-label>Data da primeira parcela</span>
                                 <input type="date" {% if not finance_installments_locked %}name="first_installment_date"{% endif %} value="{{ edit_finance_transaction.first_installment_date.isoformat() if edit_finance_transaction and edit_finance_transaction.first_installment_date and edit_finance_transaction.payment_condition == 'a_prazo' else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 {% if finance_installments_locked %}cursor-not-allowed bg-slate-100 text-slate-600{% else %}bg-white{% endif %}" data-finance-first-installment-date {% if finance_installments_locked %}disabled{% endif %}>
                             </label>
                         </div>
@@ -1595,22 +1595,35 @@
                     </div>
                     <div class="grid gap-4 md:grid-cols-2">
                         <label>
-                            <span class="mb-2 block text-sm font-medium">Produto ou serviço</span>
+                            <span class="mb-2 block text-sm font-medium" data-finance-product-label>Produto ou serviço</span>
                             <input type="text" name="product_service" value="{{ edit_finance_transaction.product_service if edit_finance_transaction else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required>
                         </label>
                         <label>
-                            <span class="mb-2 block text-sm font-medium">Forma de pagamento</span>
-                            <select name="payment_method" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50">
+                            <span class="mb-2 block text-sm font-medium" data-finance-method-label>Forma de pagamento</span>
+                            {% set initial_payment_methods = finance_transaction_revenue_payment_methods if edit_finance_transaction and edit_finance_transaction.operation_type == 'receita' else finance_transaction_expense_payment_methods %}
+                            <select name="payment_method" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" data-finance-payment-method>
                                 <option value="">Selecione</option>
-                                {% for option in finance_transaction_payment_methods %}
+                                {% for option in initial_payment_methods %}
                                 <option value="{{ option }}" {% if edit_finance_transaction and edit_finance_transaction.payment_method == option %}selected{% endif %}>{{ option }}</option>
+                                {% endfor %}
+                            </select>
+                        </label>
+                    </div>
+                    {% set transaction_selected_credit_card_id = edit_finance_transaction.credit_card_id if edit_finance_transaction and edit_finance_transaction.credit_card_id else (finance_credit_card_default.id if finance_credit_card_default else None) %}
+                    <div class="grid gap-4 md:grid-cols-2 {% if not (edit_finance_transaction and edit_finance_transaction.operation_type == 'despesa' and edit_finance_transaction.payment_method == 'Cartão de crédito') %}hidden{% endif %}" data-finance-credit-card-wrap>
+                        <label>
+                            <span class="mb-2 block text-sm font-medium">Cartão utilizado</span>
+                            <select name="credit_card_id" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" data-finance-credit-card-select data-default-card-id="{{ finance_credit_card_default.id if finance_credit_card_default else '' }}" {% if not (edit_finance_transaction and edit_finance_transaction.operation_type == 'despesa' and edit_finance_transaction.payment_method == 'Cartão de crédito') %}disabled{% endif %}>
+                                <option value="">{% if finance_credit_cards %}Selecione o cartão{% else %}Cadastre um cartão na aba Cartões{% endif %}</option>
+                                {% for card in finance_credit_cards %}
+                                <option value="{{ card.id }}" {% if transaction_selected_credit_card_id == card.id %}selected{% endif %}>{{ card.card_name }} • {{ card.issuer }}{% if card.brand %} • {{ card.brand }}{% endif %}{% if card.is_default %} • padrão{% endif %}</option>
                                 {% endfor %}
                             </select>
                         </label>
                     </div>
                     <div class="grid gap-4 md:grid-cols-2">
                         <label>
-                            <span class="mb-2 block text-sm font-medium">Favorecido / pagador</span>
+                            <span class="mb-2 block text-sm font-medium" data-finance-counterparty-label>Favorecido / pagador</span>
                             <input type="text" name="counterparty_name" value="{{ edit_finance_transaction.counterparty_name if edit_finance_transaction else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50">
                         </label>
                         <label>
@@ -1690,6 +1703,16 @@
     const transactionTypeSelect = document.querySelector('[data-finance-transaction-type]');
     const transactionCategorySelect = document.querySelector('[data-finance-transaction-category]');
     const transactionPaymentConditionSelect = document.querySelector('[data-finance-payment-condition]');
+    const transactionPaymentMethodSelect = document.querySelector('[data-finance-payment-method]');
+    const transactionCreditCardWrap = document.querySelector('[data-finance-credit-card-wrap]');
+    const transactionCreditCardSelect = document.querySelector('[data-finance-credit-card-select]');
+    const transactionAccountLabel = document.querySelector('[data-finance-account-label]');
+    const transactionConditionLabel = document.querySelector('[data-finance-condition-label]');
+    const transactionMethodLabel = document.querySelector('[data-finance-method-label]');
+    const transactionLaunchDateLabel = document.querySelector('[data-finance-launch-date-label]');
+    const transactionProductLabel = document.querySelector('[data-finance-product-label]');
+    const transactionCounterpartyLabel = document.querySelector('[data-finance-counterparty-label]');
+    const transactionFirstInstallmentLabel = document.querySelector('[data-finance-first-installment-label]');
     const transactionInstallmentsSection = document.querySelector('[data-finance-installments-section]');
     const transactionInstallmentCountInput = document.querySelector('[data-finance-installment-count]');
     const transactionInstallmentFrequencySelect = document.querySelector('[data-finance-installment-frequency]');
@@ -1792,6 +1815,10 @@
     const transactionCategoryOptions = {
         despesa: {{ finance_transaction_expense_categories|tojson }},
         receita: {{ finance_transaction_revenue_categories|tojson }},
+    };
+    const transactionPaymentMethodOptions = {
+        despesa: {{ finance_transaction_expense_payment_methods|tojson }},
+        receita: {{ finance_transaction_revenue_payment_methods|tojson }},
     };
     let activeFinanceTab = new URL(window.location.href).searchParams.get('finance_tab') || ({% if finance_open_transaction_modal %}'transactions'{% elif finance_open_credit_card_modal %}'cards'{% elif finance_open_launch_modal %}'accounts'{% else %}'accounts'{% endif %});
     let attachmentPopoverPinned = false;
@@ -2646,6 +2673,56 @@
         }
     };
 
+    const populateTransactionPaymentMethods = (typeValue, selectedValue = '') => {
+        if (!transactionPaymentMethodSelect) return;
+        const options = transactionPaymentMethodOptions[typeValue] || transactionPaymentMethodOptions.despesa || [];
+        transactionPaymentMethodSelect.replaceChildren(new Option('Selecione', ''));
+        options.forEach((option) => {
+            transactionPaymentMethodSelect.add(new Option(option, option));
+        });
+        if (selectedValue && options.includes(selectedValue)) {
+            transactionPaymentMethodSelect.value = selectedValue;
+        } else if (selectedValue === 'Cartão' && options.includes('Cartão de crédito')) {
+            transactionPaymentMethodSelect.value = 'Cartão de crédito';
+        } else {
+            transactionPaymentMethodSelect.value = '';
+        }
+    };
+
+    const syncTransactionCreditCardSection = () => {
+        if (!transactionCreditCardWrap || !transactionCreditCardSelect) return;
+        const isExpense = (transactionTypeSelect?.value || 'despesa') === 'despesa';
+        const isCreditCard = transactionPaymentMethodSelect?.value === 'Cartão de crédito';
+        const shouldShow = isExpense && isCreditCard;
+        transactionCreditCardWrap.classList.toggle('hidden', !shouldShow);
+        transactionCreditCardSelect.disabled = !shouldShow;
+        if (shouldShow) {
+            if (!transactionCreditCardSelect.value && transactionCreditCardSelect.dataset.defaultCardId) {
+                transactionCreditCardSelect.value = transactionCreditCardSelect.dataset.defaultCardId;
+            }
+        } else {
+            transactionCreditCardSelect.value = '';
+        }
+    };
+
+    const syncTransactionOperationLabels = () => {
+        const isRevenue = (transactionTypeSelect?.value || 'despesa') === 'receita';
+        if (transactionAccountLabel) transactionAccountLabel.textContent = isRevenue ? 'Conta de recebimento' : 'Conta de pagamento';
+        if (transactionConditionLabel) transactionConditionLabel.textContent = isRevenue ? 'Condição de recebimento' : 'Condição de pagamento';
+        if (transactionMethodLabel) transactionMethodLabel.textContent = isRevenue ? 'Forma de recebimento' : 'Forma de pagamento';
+        if (transactionLaunchDateLabel) transactionLaunchDateLabel.textContent = isRevenue ? 'Data da receita' : 'Data da despesa';
+        if (transactionProductLabel) transactionProductLabel.textContent = isRevenue ? 'Produto, serviço ou origem da receita' : 'Produto ou serviço';
+        if (transactionCounterpartyLabel) transactionCounterpartyLabel.textContent = isRevenue ? 'Cliente / pagador' : 'Favorecido / fornecedor';
+        if (transactionFirstInstallmentLabel) transactionFirstInstallmentLabel.textContent = isRevenue ? 'Data do primeiro recebimento' : 'Data da primeira parcela';
+    };
+
+    const syncTransactionFinancialMode = (selectedPaymentMethod = '') => {
+        const typeValue = transactionTypeSelect?.value || 'despesa';
+        syncTransactionOperationLabels();
+        populateTransactionPaymentMethods(typeValue, selectedPaymentMethod || transactionPaymentMethodSelect?.value || '');
+        syncTransactionCreditCardSection();
+    };
+
     const formatCurrencyLabel = (rawValue) => {
         const value = Number.parseFloat(rawValue || '0');
         if (!Number.isFinite(value)) return 'R$ 0,00';
@@ -2769,7 +2846,9 @@
         transactionInstallmentsPreview.classList.remove('is-scrollable');
         const isPrazo = transactionPaymentConditionSelect?.value === 'a_prazo';
         if (!isPrazo) {
-            transactionInstallmentsEmpty.textContent = 'Selecione "À prazo" para visualizar o cronograma das parcelas.';
+            transactionInstallmentsEmpty.textContent = (transactionTypeSelect?.value || 'despesa') === 'receita'
+                ? 'Selecione "À prazo" para visualizar o cronograma dos recebimentos.'
+                : 'Selecione "À prazo" para visualizar o cronograma das parcelas.';
             transactionInstallmentsEmpty.classList.remove('hidden');
             return;
         }
@@ -2778,7 +2857,9 @@
         const firstDateValue = transactionFirstInstallmentDateInput?.value || '';
         const amount = Number.parseFloat(transactionAmountRawInput?.value || '0');
         if (!Number.isFinite(count) || count < 1 || !firstDateValue || !Number.isFinite(amount) || amount <= 0) {
-            transactionInstallmentsEmpty.textContent = 'Informe quantidade, periodicidade e a data da primeira parcela para visualizar o cronograma.';
+            transactionInstallmentsEmpty.textContent = (transactionTypeSelect?.value || 'despesa') === 'receita'
+                ? 'Informe quantidade, periodicidade e a data do primeiro recebimento para visualizar o cronograma.'
+                : 'Informe quantidade, periodicidade e a data da primeira parcela para visualizar o cronograma.';
             transactionInstallmentsEmpty.classList.remove('hidden');
             return;
         }
@@ -2950,6 +3031,7 @@
         const accountSelect = transactionForm.querySelector('select[name="finance_account_id"]');
         if (accountSelect) accountSelect.value = accountSelect.dataset.defaultAccountId || '';
         populateTransactionCategories(transactionTypeSelect?.value || 'despesa');
+        syncTransactionFinancialMode();
         if (transactionAmountMask) transactionAmountMask.reset('0.00');
         syncFinanceInstallmentSection();
         renderFinanceInstallmentPreview();
@@ -2986,13 +3068,17 @@
             transactionTypeSelect?.value || 'despesa',
             {{ (edit_finance_transaction.category if edit_finance_transaction else '')|tojson }},
         );
+        syncTransactionFinancialMode({{ (edit_finance_transaction.payment_method if edit_finance_transaction else '')|tojson }});
         syncFinanceInstallmentSection();
         renderFinanceInstallmentPreview();
     }
 
     transactionTypeSelect?.addEventListener('change', () => {
         populateTransactionCategories(transactionTypeSelect.value);
+        syncTransactionFinancialMode();
+        renderFinanceInstallmentPreview();
     });
+    transactionPaymentMethodSelect?.addEventListener('change', syncTransactionCreditCardSection);
     transactionPaymentConditionSelect?.addEventListener('change', () => {
         syncFinanceInstallmentSection();
         renderFinanceInstallmentPreview();

@@ -648,9 +648,37 @@ FINANCE_TRANSACTION_PAYMENT_METHODS = [
     "TED",
     "DOC",
     "Boleto",
-    "Cartão",
+    "Cartão de crédito",
+    "Cartão de débito",
+    "Dinheiro",
+    "Depósito",
+    "Transferência",
+    "Débito automático",
+    "Cheque",
+    "Outro",
+]
+FINANCE_TRANSACTION_EXPENSE_PAYMENT_METHODS = [
+    "PIX",
+    "TED",
+    "DOC",
+    "Boleto",
+    "Cartão de crédito",
+    "Cartão de débito",
     "Dinheiro",
     "Débito automático",
+    "Cheque",
+    "Outro",
+]
+FINANCE_TRANSACTION_REVENUE_PAYMENT_METHODS = [
+    "PIX",
+    "TED",
+    "DOC",
+    "Boleto",
+    "Cartão de crédito",
+    "Cartão de débito",
+    "Dinheiro",
+    "Depósito",
+    "Transferência",
     "Cheque",
     "Outro",
 ]
@@ -3563,6 +3591,26 @@ def _is_credit_card_payment_method(payment_method: str | None) -> bool:
     return normalized == "cartao de credito"
 
 
+def _finance_date_with_clamped_day(year: int, month: int, day: int) -> date:
+    return date(year, month, min(max(day, 1), calendar.monthrange(year, month)[1]))
+
+
+def _finance_credit_card_due_date(reference_date: date, *, closing_day: int, due_day: int) -> date:
+    closing_this_month = _finance_date_with_clamped_day(reference_date.year, reference_date.month, closing_day)
+    if reference_date <= closing_this_month:
+        cycle_closing = closing_this_month
+    else:
+        next_month_reference = _finance_add_months(reference_date.replace(day=1), 1)
+        cycle_closing = _finance_date_with_clamped_day(
+            next_month_reference.year,
+            next_month_reference.month,
+            closing_day,
+        )
+    due_month_offset = 0 if due_day > cycle_closing.day else 1
+    due_reference = _finance_add_months(cycle_closing.replace(day=1), due_month_offset)
+    return _finance_date_with_clamped_day(due_reference.year, due_reference.month, due_day)
+
+
 def _resolve_optional_finance_credit_card(
     repo: FarmRepository,
     *,
@@ -3592,6 +3640,7 @@ def _finance_transaction_payload(
     launch_date: str,
     amount: str,
     finance_account_id: str | None,
+    credit_card_id: str | int | None,
     payment_condition: str | None,
     installment_count: str | None,
     installment_frequency: str | None,
@@ -3620,9 +3669,23 @@ def _finance_transaction_payload(
     if not product_service_value:
         raise ValueError("Informe o produto ou serviço.")
     account = _resolve_finance_transaction_account(repo, active_farm=active_farm, account_id=finance_account_id)
+    credit_card = (
+        _resolve_optional_finance_credit_card(
+            repo,
+            active_farm=active_farm,
+            credit_card_id=credit_card_id,
+            payment_method=payment_method,
+        )
+        if normalized_type == "despesa"
+        else None
+    )
     normalized_condition = (payment_condition or "a_vista").strip().lower()
     if normalized_condition not in {"a_vista", "a_prazo"}:
-        raise ValueError("Selecione uma condição de pagamento válida.")
+        raise ValueError(
+            "Selecione uma condição de recebimento válida."
+            if normalized_type == "receita"
+            else "Selecione uma condição de pagamento válida."
+        )
     resolved_installment_count = 1
     resolved_frequency = None
     resolved_first_installment_date = None
@@ -3630,9 +3693,17 @@ def _finance_transaction_payload(
         try:
             resolved_installment_count = int(str(installment_count or "").strip())
         except ValueError:
-            raise ValueError("Informe a quantidade de parcelas para pagamento a prazo.")
+            raise ValueError(
+                "Informe a quantidade de parcelas para recebimento a prazo."
+                if normalized_type == "receita"
+                else "Informe a quantidade de parcelas para pagamento a prazo."
+            )
         if resolved_installment_count < 1:
-            raise ValueError("Para pagamento a prazo, informe ao menos 1 parcela.")
+            raise ValueError(
+                "Para recebimento a prazo, informe ao menos 1 parcela."
+                if normalized_type == "receita"
+                else "Para pagamento a prazo, informe ao menos 1 parcela."
+            )
         resolved_frequency = (installment_frequency or "").strip().lower()
         if resolved_frequency not in {"mensal", "anual"}:
             raise ValueError("Selecione a periodicidade das parcelas.")
@@ -3643,10 +3714,12 @@ def _finance_transaction_payload(
         except ValueError:
             raise ValueError("Informe uma data válida para a primeira parcela.")
     else:
-        resolved_first_installment_date = parsed_launch_date
+        resolved_first_installment_date = None if credit_card else parsed_launch_date
     return {
         "farm_id": active_farm.id,
         "finance_account_id": account.id,
+        "credit_card_id": credit_card.id if credit_card else None,
+        "credit_card": credit_card,
         "operation_type": normalized_type,
         "launch_date": parsed_launch_date,
         "amount": _parse_finance_transaction_amount(amount),
@@ -3681,22 +3754,42 @@ def _build_finance_transaction_installments(
     *,
     amount: float,
     payment_condition: str,
+    payment_method: str | None = None,
+    credit_card: FinanceCreditCard | None = None,
+    reference_date: date | None = None,
     installment_count: int,
     installment_frequency: str | None,
     first_installment_date: date | None,
 ) -> list[dict]:
-    if payment_condition != "a_prazo" or installment_count < 1 or not first_installment_date:
+    is_credit_card_purchase = bool(credit_card) and _is_credit_card_payment_method(payment_method)
+    if installment_count < 1:
+        return []
+    if payment_condition != "a_prazo" and not is_credit_card_purchase:
+        return []
+    effective_first_due = first_installment_date
+    effective_frequency = installment_frequency or "mensal"
+    effective_count = installment_count
+    if is_credit_card_purchase:
+        effective_first_due = effective_first_due or _finance_credit_card_due_date(
+            reference_date or today_in_app_timezone(),
+            closing_day=int(credit_card.closing_day or 1),
+            due_day=int(credit_card.due_day or 1),
+        )
+        if payment_condition != "a_prazo":
+            effective_count = 1
+            effective_frequency = "mensal"
+    if not effective_first_due:
         return []
     total_cents = int((Decimal(str(amount)) * 100).quantize(Decimal("1")))
-    base_cents = total_cents // installment_count
-    remainder = total_cents % installment_count
+    base_cents = total_cents // effective_count
+    remainder = total_cents % effective_count
     installments: list[dict] = []
-    for index in range(installment_count):
+    for index in range(effective_count):
         current_cents = base_cents + (1 if index < remainder else 0)
-        if installment_frequency == "anual":
-            due_date = _finance_add_years(first_installment_date, index)
+        if effective_frequency == "anual":
+            due_date = _finance_add_years(effective_first_due, index)
         else:
-            due_date = _finance_add_months(first_installment_date, index)
+            due_date = _finance_add_months(effective_first_due, index)
         installments.append(
             {
                 "installment_number": index + 1,
@@ -3732,6 +3825,14 @@ def _reject_finance_schedule_change_if_installment_paid(
     if payload["launch_date"] != transaction.launch_date:
         raise ValueError(
             "Com parcela já quitada, a data do lançamento não pode ser alterada. Estorne os pagamentos das parcelas antes."
+        )
+    if (payload.get("payment_method") or "").strip() != (transaction.payment_method or "").strip():
+        raise ValueError(
+            "Com parcela já paga, a forma de pagamento ou recebimento não pode ser alterada. Estorne os pagamentos antes."
+        )
+    if payload.get("credit_card_id") != transaction.credit_card_id:
+        raise ValueError(
+            "Com parcela já paga, o cartão utilizado não pode ser alterado. Estorne os pagamentos antes."
         )
     prior_pc = (transaction.payment_condition or "a_vista").strip().lower()
     if payload["payment_condition"] != prior_pc:
@@ -5401,6 +5502,8 @@ def finance_accounts_page(
             finance_transaction_expense_categories=FINANCE_TRANSACTION_EXPENSE_CATEGORIES,
             finance_transaction_revenue_categories=FINANCE_TRANSACTION_REVENUE_CATEGORIES,
             finance_transaction_payment_methods=FINANCE_TRANSACTION_PAYMENT_METHODS,
+            finance_transaction_expense_payment_methods=FINANCE_TRANSACTION_EXPENSE_PAYMENT_METHODS,
+            finance_transaction_revenue_payment_methods=FINANCE_TRANSACTION_REVENUE_PAYMENT_METHODS,
             finance_credit_card_issuer_options=FINANCE_CREDIT_CARD_ISSUER_OPTIONS,
             finance_credit_card_brand_options=FINANCE_CREDIT_CARD_BRAND_OPTIONS,
             finance_account_balances=account_balances,
@@ -6536,6 +6639,7 @@ async def create_finance_transaction_action(
     launch_date: str = Form(...),
     amount: str = Form(...),
     finance_account_id: str | None = Form(None),
+    credit_card_id: str | None = Form(None),
     payment_condition: str | None = Form("a_vista"),
     installment_count: str | None = Form(None),
     installment_frequency: str | None = Form(None),
@@ -6566,6 +6670,7 @@ async def create_finance_transaction_action(
             launch_date=launch_date,
             amount=amount,
             finance_account_id=finance_account_id,
+            credit_card_id=credit_card_id,
             payment_condition=payment_condition,
             installment_count=installment_count,
             installment_frequency=installment_frequency,
@@ -6587,6 +6692,7 @@ async def create_finance_transaction_action(
         FinanceTransaction(
             farm_id=payload["farm_id"],
             finance_account_id=payload["finance_account_id"],
+            credit_card_id=payload["credit_card_id"],
             operation_type=payload["operation_type"],
             launch_date=payload["launch_date"],
             amount=payload["amount"],
@@ -6611,6 +6717,9 @@ async def create_finance_transaction_action(
         _build_finance_transaction_installments(
             amount=payload["amount"],
             payment_condition=payload["payment_condition"],
+            payment_method=payload["payment_method"],
+            credit_card=payload["credit_card"],
+            reference_date=payload["launch_date"],
             installment_count=payload["installment_count"],
             installment_frequency=payload["installment_frequency"],
             first_installment_date=payload["first_installment_date"],
@@ -6637,6 +6746,7 @@ async def update_finance_transaction_action(
     launch_date: str = Form(...),
     amount: str = Form(...),
     finance_account_id: str | None = Form(None),
+    credit_card_id: str | None = Form(None),
     payment_condition: str | None = Form("a_vista"),
     installment_count: str | None = Form(None),
     installment_frequency: str | None = Form(None),
@@ -6672,6 +6782,7 @@ async def update_finance_transaction_action(
             launch_date=launch_date,
             amount=amount,
             finance_account_id=finance_account_id,
+            credit_card_id=credit_card_id,
             payment_condition=payment_condition,
             installment_count=installment_count,
             installment_frequency=installment_frequency,
@@ -6690,10 +6801,14 @@ async def update_finance_transaction_action(
         _flash(request, "error", str(exc))
         return _redirect(_finance_transactions_modal_query(request, edit_id=transaction_id))
 
-    repo.update(transaction, payload)
+    update_payload = {key: value for key, value in payload.items() if key != "credit_card"}
+    repo.update(transaction, update_payload)
     new_installment_rows = _build_finance_transaction_installments(
         amount=payload["amount"],
         payment_condition=payload["payment_condition"],
+        payment_method=payload["payment_method"],
+        credit_card=payload["credit_card"],
+        reference_date=payload["launch_date"],
         installment_count=payload["installment_count"],
         installment_frequency=payload["installment_frequency"],
         first_installment_date=payload["first_installment_date"],
