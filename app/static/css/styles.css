@@ -1022,6 +1022,12 @@ body {
     white-space: nowrap;
 }
 
+.dashboard-executive-value-row .dashboard-executive-value {
+    flex: 1 1 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
 .dashboard-executive-card.is-blue {
     background: linear-gradient(180deg, rgba(244, 248, 252, 0.98), rgba(247, 250, 252, 0.98));
 }

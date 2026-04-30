@@ -107,7 +107,7 @@
                 </div>
             </a>
             <a href="/fertilizacao" class="dashboard-executive-card is-green-soft" data-dashboard-item data-dashboard-executive-item>
-                <p class="dashboard-executive-label">Custo por hectare</p>
+                <p class="dashboard-executive-label">Custo fertilizacao / ha</p>
                 <div class="dashboard-executive-value-row">
                     <span class="dashboard-executive-icon" aria-hidden="true">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -116,6 +116,40 @@
                         </svg>
                     </span>
                     <p class="dashboard-executive-value" data-dashboard-count data-count-mobile-compact-currency="true" data-count-prefix="R$ " data-count-value="{{ kpis.cost_per_hectare }}">R$ {{ kpis.cost_per_hectare }}</p>
+                </div>
+            </a>
+            <a href="{% if active_season %}/gestao-financeira?extract_season_id={{ active_season.id }}{% else %}/gestao-financeira{% endif %}" class="dashboard-executive-card is-cyan" data-dashboard-item data-dashboard-executive-item>
+                <p class="dashboard-executive-label">Custo operacional / ha</p>
+                <div class="dashboard-executive-value-row">
+                    <span class="dashboard-executive-icon" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M4 7h16"/>
+                            <path d="M5 7v11a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7"/>
+                            <path d="M8 11h8"/>
+                            <path d="M8 15h5"/>
+                        </svg>
+                    </span>
+                    {% if kpis.operational_cost_ha_available %}
+                    <p class="dashboard-executive-value" data-dashboard-count data-count-mobile-compact-currency="true" data-count-prefix="R$ " data-count-value="{{ kpis.operational_cost_per_hectare }}">R$ {{ kpis.operational_cost_per_hectare }}</p>
+                    {% else %}
+                    <p class="dashboard-executive-value">—</p>
+                    {% endif %}
+                </div>
+            </a>
+            <a href="{% if active_season %}/gestao-financeira?extract_season_id={{ active_season.id }}{% else %}/gestao-financeira{% endif %}" class="dashboard-executive-card is-pink" data-dashboard-item data-dashboard-executive-item>
+                <p class="dashboard-executive-label">Custo operacional / sc</p>
+                <div class="dashboard-executive-value-row">
+                    <span class="dashboard-executive-icon" aria-hidden="true">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M12 3v18"/>
+                            <path d="M7 8c0-1.7 1.8-3 5-3s5 1.3 5 3-1.8 3-5 3-5 1.3-5 3 1.8 3 5 3 5-1.3 5-3"/>
+                        </svg>
+                    </span>
+                    {% if kpis.operational_cost_sack_available %}
+                    <p class="dashboard-executive-value" data-dashboard-count data-count-mobile-compact-currency="true" data-count-prefix="R$ " data-count-value="{{ kpis.operational_cost_per_sack }}">R$ {{ kpis.operational_cost_per_sack }}</p>
+                    {% else %}
+                    <p class="dashboard-executive-value">—</p>
+                    {% endif %}
                 </div>
             </a>
             <a href="/insumos/comprados" class="dashboard-executive-card is-orange-soft" data-dashboard-item data-dashboard-executive-item>
@@ -555,7 +589,7 @@
                 <p class="mt-2 text-2xl font-semibold text-slate-900">{{ kpis.total_production }} sacas</p>
             </div>
             <div class="rounded-2xl bg-slate-50 p-4">
-                <p class="text-sm text-slate-500">Custo por hectare</p>
+                <p class="text-sm text-slate-500">Custo fertilizacao / ha</p>
                 <p class="mt-2 text-2xl font-semibold text-slate-900">R$ {{ kpis.cost_per_hectare }}</p>
             </div>
         </div>
@@ -988,7 +1022,10 @@
         const rawValue = (element.dataset.countValue || '').trim();
         const prefix = element.dataset.countPrefix || '';
         const suffix = element.dataset.countSuffix || '';
-        const useMobileCompactCurrency = element.dataset.countMobileCompactCurrency === 'true' && dashboardCompactCurrencyMq.matches;
+        const inExecutiveSummary = Boolean(element.closest('[data-dashboard-card="executive_summary"]'));
+        const useCompactCurrency =
+            element.dataset.countMobileCompactCurrency === 'true' &&
+            (dashboardCompactCurrencyMq.matches || inExecutiveSummary);
         const normalizedText = rawValue.includes(',')
             ? rawValue.replace(/\./g, '').replace(',', '.')
             : rawValue;
@@ -1009,7 +1046,7 @@
         const step = (now) => {
             const progress = Math.min(1, (now - start) / duration);
             const current = normalized * easeOut(progress);
-            if (useMobileCompactCurrency) {
+            if (useCompactCurrency) {
                 element.textContent = formatDashboardCompactCurrency(progress >= 1 ? normalized : current);
             } else {
                 element.textContent = `${prefix}${formatter.format(progress >= 1 ? normalized : current)}${suffix}`;

@@ -5,6 +5,7 @@ from datetime import date, timedelta
 
 from app.core.timezone import today_in_app_timezone
 from app.repositories.farm import FarmRepository
+from app.services.finance_overview import build_finance_overview_context
 
 
 def _float(value) -> float:
@@ -333,12 +334,17 @@ def build_dashboard_context(
     finance_flow = _build_dashboard_finance_flow(repository, farm_id, today)
     forecast = calculate_forecast(repository, plots=plots, harvests=harvests)
 
+    finance_overview = build_finance_overview_context(repository, farm_id=farm_id, active_season=season)
+    operational_cost_season = _float(finance_overview.get("operational_cost_season"))
+
     total_area = sum(_float(plot.area_hectares) for plot in plots)
     total_production = sum(_float(item.sacks_produced) for item in harvests)
     productivity_per_hectare = total_production / total_area if total_area else 0
     estimated_production = sum(_float(plot.estimated_yield_sacks) for plot in plots)
     total_cost = sum(_float(item.cost) for item in fertilizations)
     cost_per_hectare = total_cost / total_area if total_area else 0
+    operational_cost_per_hectare = operational_cost_season / total_area if total_area else 0
+    operational_cost_per_sack = operational_cost_season / total_production if total_production else 0
     monthly_rainfall = sum(_float(item.millimeters) for item in month_rainfalls)
     rainfall_period_total = sum(_float(item.millimeters) for item in rainfalls)
     stock_by_input: dict[int, dict] = {}
@@ -537,6 +543,10 @@ def build_dashboard_context(
         )
     activity_timeline.sort(key=lambda item: item["date"], reverse=True)
 
+    finance_scope_ready = bool(finance_overview.get("finance_scope_ready"))
+    operational_cost_ha_available = bool(finance_scope_ready and total_area > 0)
+    operational_cost_sack_available = bool(finance_scope_ready and total_production > 0)
+
     return {
         "kpis": {
             "area_total": round(total_area, 2),
@@ -546,6 +556,11 @@ def build_dashboard_context(
             "productivity_per_hectare": round(productivity_per_hectare, 2),
             "forecast_production": forecast["total_projection"],
             "cost_per_hectare": round(cost_per_hectare, 2),
+            "operational_cost_per_hectare": round(operational_cost_per_hectare, 2),
+            "operational_cost_per_sack": round(operational_cost_per_sack, 2),
+            "operational_cost_ha_available": operational_cost_ha_available,
+            "operational_cost_sack_available": operational_cost_sack_available,
+            "finance_scope_ready": finance_scope_ready,
             "monthly_rainfall": round(monthly_rainfall, 2),
             "rainfall_period_total": round(rainfall_period_total, 2),
             "low_stock_count": len(low_stock_items),
