@@ -741,7 +741,7 @@
                                         <p class="mt-2 text-sm font-semibold {% if invoice.open_total > 0 %}text-sky-700{% else %}text-slate-900{% endif %}">R$ {{ invoice.open_total|decimal_br }}</p>
                                     </div>
                                     <div class="rounded-2xl bg-slate-50 px-4 py-4 ring-1 ring-slate-200/70">
-                                        <p class="text-[0.65rem] font-semibold uppercase tracking-[0.18em] text-slate-400">Parcelas</p>
+                                        <p class="text-[0.65rem] font-semibold uppercase tracking-[0.18em] text-slate-400">{{ "Lançamento" if invoice.installment_count == 1 else "Lançamentos" }}</p>
                                         <p class="mt-2 text-sm font-semibold text-slate-900">{{ invoice.installment_count }}</p>
                                     </div>
                                 </div>
