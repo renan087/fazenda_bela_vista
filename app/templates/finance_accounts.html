@@ -1543,6 +1543,26 @@
                             </select>
                         </label>
                     </div>
+                    <div class="grid gap-4 md:grid-cols-2">
+                        <label>
+                            <span class="mb-2 block text-sm font-medium" data-finance-product-label>Produto ou serviço</span>
+                            <input type="text" name="product_service" value="{{ edit_finance_transaction.product_service if edit_finance_transaction else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required>
+                        </label>
+                    </div>
+                    <div class="grid gap-4 md:grid-cols-2">
+                        <label>
+                            <span class="mb-2 block text-sm font-medium" data-finance-counterparty-label>Favorecido / pagador</span>
+                            <input type="text" name="counterparty_name" value="{{ edit_finance_transaction.counterparty_name if edit_finance_transaction else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50">
+                        </label>
+                        <label>
+                            <span class="mb-2 block text-sm font-medium">Documento</span>
+                            <input type="text" name="document_number" value="{{ edit_finance_transaction.document_number if edit_finance_transaction else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50">
+                        </label>
+                    </div>
+                    <label>
+                        <span class="mb-2 block text-sm font-medium">Descrição / histórico</span>
+                        <input type="text" name="description" value="{{ edit_finance_transaction.description if edit_finance_transaction else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50">
+                    </label>
                     {% set transaction_payment_condition = edit_finance_transaction.payment_condition if edit_finance_transaction and edit_finance_transaction.payment_condition else 'a_vista' %}
                     {% set current_frequency = edit_finance_transaction.installment_frequency if edit_finance_transaction and edit_finance_transaction.installment_frequency else 'mensal' %}
                     {% if finance_installments_locked %}
@@ -1569,6 +1589,18 @@
                                 <option value="">Selecione</option>
                                 {% for option in initial_payment_methods %}
                                 <option value="{{ option }}" {% if edit_finance_transaction and edit_finance_transaction.payment_method == option %}selected{% endif %}>{{ option }}</option>
+                                {% endfor %}
+                            </select>
+                        </label>
+                    </div>
+                    {% set transaction_selected_credit_card_id = edit_finance_transaction.credit_card_id if edit_finance_transaction and edit_finance_transaction.credit_card_id else (finance_credit_card_default.id if finance_credit_card_default else None) %}
+                    <div class="grid gap-4 md:grid-cols-2 {% if not (edit_finance_transaction and edit_finance_transaction.operation_type == 'despesa' and edit_finance_transaction.payment_method == 'Cartão de crédito') %}hidden{% endif %}" data-finance-credit-card-wrap>
+                        <label>
+                            <span class="mb-2 block text-sm font-medium">Cartão utilizado</span>
+                            <select name="credit_card_id" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" data-finance-credit-card-select data-default-card-id="{{ finance_credit_card_default.id if finance_credit_card_default else '' }}" {% if not (edit_finance_transaction and edit_finance_transaction.operation_type == 'despesa' and edit_finance_transaction.payment_method == 'Cartão de crédito') %}disabled{% endif %}>
+                                <option value="">{% if finance_credit_cards %}Selecione o cartão{% else %}Cadastre um cartão na aba Cartões{% endif %}</option>
+                                {% for card in finance_credit_cards %}
+                                <option value="{{ card.id }}" {% if transaction_selected_credit_card_id == card.id %}selected{% endif %}>{{ card.card_name }} • {{ card.issuer }}{% if card.brand %} • {{ card.brand }}{% endif %}{% if card.is_default %} • padrão{% endif %}</option>
                                 {% endfor %}
                             </select>
                         </label>
@@ -1603,38 +1635,6 @@
                             <p class="mt-3 text-xs text-slate-500" data-finance-installments-empty>Informe quantidade, periodicidade e a data da primeira parcela para visualizar o cronograma.</p>
                         </div>
                     </div>
-                    <div class="grid gap-4 md:grid-cols-2">
-                        <label>
-                            <span class="mb-2 block text-sm font-medium" data-finance-product-label>Produto ou serviço</span>
-                            <input type="text" name="product_service" value="{{ edit_finance_transaction.product_service if edit_finance_transaction else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required>
-                        </label>
-                    </div>
-                    {% set transaction_selected_credit_card_id = edit_finance_transaction.credit_card_id if edit_finance_transaction and edit_finance_transaction.credit_card_id else (finance_credit_card_default.id if finance_credit_card_default else None) %}
-                    <div class="grid gap-4 md:grid-cols-2 {% if not (edit_finance_transaction and edit_finance_transaction.operation_type == 'despesa' and edit_finance_transaction.payment_method == 'Cartão de crédito') %}hidden{% endif %}" data-finance-credit-card-wrap>
-                        <label>
-                            <span class="mb-2 block text-sm font-medium">Cartão utilizado</span>
-                            <select name="credit_card_id" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" data-finance-credit-card-select data-default-card-id="{{ finance_credit_card_default.id if finance_credit_card_default else '' }}" {% if not (edit_finance_transaction and edit_finance_transaction.operation_type == 'despesa' and edit_finance_transaction.payment_method == 'Cartão de crédito') %}disabled{% endif %}>
-                                <option value="">{% if finance_credit_cards %}Selecione o cartão{% else %}Cadastre um cartão na aba Cartões{% endif %}</option>
-                                {% for card in finance_credit_cards %}
-                                <option value="{{ card.id }}" {% if transaction_selected_credit_card_id == card.id %}selected{% endif %}>{{ card.card_name }} • {{ card.issuer }}{% if card.brand %} • {{ card.brand }}{% endif %}{% if card.is_default %} • padrão{% endif %}</option>
-                                {% endfor %}
-                            </select>
-                        </label>
-                    </div>
-                    <div class="grid gap-4 md:grid-cols-2">
-                        <label>
-                            <span class="mb-2 block text-sm font-medium" data-finance-counterparty-label>Favorecido / pagador</span>
-                            <input type="text" name="counterparty_name" value="{{ edit_finance_transaction.counterparty_name if edit_finance_transaction else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50">
-                        </label>
-                        <label>
-                            <span class="mb-2 block text-sm font-medium">Documento</span>
-                            <input type="text" name="document_number" value="{{ edit_finance_transaction.document_number if edit_finance_transaction else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50">
-                        </label>
-                    </div>
-                    <label>
-                        <span class="mb-2 block text-sm font-medium">Descrição / histórico</span>
-                        <input type="text" name="description" value="{{ edit_finance_transaction.description if edit_finance_transaction else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50">
-                    </label>
                     <label>
                         <span class="mb-2 block text-sm font-medium">Observações</span>
                         <textarea name="notes" rows="3" class="w-full rounded-2xl border-slate-200 bg-slate-50">{{ edit_finance_transaction.notes if edit_finance_transaction else '' }}</textarea>
