@@ -1004,16 +1004,19 @@
 
     const dashboardCompactCurrencyMq = window.matchMedia('(max-width: 899px)');
     const formatDashboardCompactCurrency = (value) => {
-        const amount = Math.max(0, Math.round(Number(value) || 0));
+        const numeric = Number(value) || 0;
+        const sign = numeric < 0 ? '-' : '';
+        const amount = Math.abs(Math.round(numeric));
+        if (amount >= 1_000_000_000) {
+            return `${sign}${Math.round(amount / 1_000_000_000)}bi`;
+        }
         if (amount >= 1_000_000) {
-            const millions = Math.round(amount / 1_000_000);
-            return `R$${millions}M`;
+            return `${sign}${Math.round(amount / 1_000_000)}M`;
         }
         if (amount >= 1_000) {
-            const thousands = Math.round(amount / 1_000);
-            return `R$${thousands}k`;
+            return `${sign}${Math.round(amount / 1_000)}k`;
         }
-        return `R$${amount}`;
+        return `${sign}${amount}`;
     };
 
     const animateDashboardCount = (element) => {
@@ -1024,7 +1027,7 @@
         const suffix = element.dataset.countSuffix || '';
         const inExecutiveSummary = Boolean(element.closest('[data-dashboard-card="executive_summary"]'));
         const useCompactCurrency =
-            element.dataset.countMobileCompactCurrency === 'true' &&
+            (element.dataset.countMobileCompactCurrency === 'true' || prefix.trim() === 'R$') &&
             (dashboardCompactCurrencyMq.matches || inExecutiveSummary);
         const normalizedText = rawValue.includes(',')
             ? rawValue.replace(/\./g, '').replace(',', '.')
@@ -1043,6 +1046,12 @@
             minimumFractionDigits: decimals,
             maximumFractionDigits: decimals,
         });
+        if (useCompactCurrency) {
+            element.title = `R$ ${new Intl.NumberFormat('pt-BR', {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2,
+            }).format(normalized)}`;
+        }
         const step = (now) => {
             const progress = Math.min(1, (now - start) / duration);
             const current = normalized * easeOut(progress);
