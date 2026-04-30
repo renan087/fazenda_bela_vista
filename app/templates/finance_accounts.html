@@ -121,6 +121,19 @@
     padding-right: 0.2rem;
 }
 
+.finance-credit-card-invoice-lines {
+    max-height: clamp(12rem, calc(100dvh - 30rem), 24rem);
+    min-height: 0;
+    overflow-y: auto;
+    scrollbar-gutter: stable;
+}
+
+.finance-credit-card-invoice-tab .stock-movement-chip,
+.finance-credit-card-invoice-lines .stock-movement-chip {
+    flex-shrink: 0;
+    white-space: nowrap;
+}
+
 .finance-credit-card-invoice-summary::-webkit-details-marker {
     display: none;
 }
@@ -646,8 +659,8 @@
                     </form>
                 </div>
             </article>
-            <dialog id="finance-credit-card-invoices-modal-{{ card.id }}" class="app-modal rounded-[2rem] p-0 shadow-2xl w-full max-w-6xl overflow-hidden">
-                <div class="bg-white p-6 sm:p-8">
+            <dialog id="finance-credit-card-invoices-modal-{{ card.id }}" class="app-modal max-h-[calc(100dvh-2rem)] rounded-[2rem] p-0 shadow-2xl w-full max-w-6xl overflow-hidden">
+                <div class="flex max-h-[calc(100dvh-2rem)] flex-col bg-white p-6 sm:p-8">
                     <div class="flex items-start justify-between gap-4">
                         <div class="min-w-0">
                             <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Faturas do cartão</p>
@@ -669,7 +682,7 @@
                             </button>
                         </div>
                     </div>
-                    <div class="mt-6">
+                    <div class="mt-6 flex min-h-0 flex-1 flex-col">
                         {% if card_overview.get('invoice_groups', []) %}
                         <div class="finance-credit-card-invoice-tabs-shell" data-finance-card-invoice-tabs-shell data-can-scroll-left="false" data-can-scroll-right="true">
                             <button type="button" class="finance-credit-card-invoice-nav" data-finance-card-invoices-nav="prev" aria-label="Ver faturas anteriores">
@@ -705,11 +718,11 @@
                                 </svg>
                             </button>
                         </div>
-                        <div class="mt-5 space-y-4">
+                        <div class="mt-5 min-h-0 flex-1 space-y-4 overflow-hidden">
                             {% for invoice in card_overview.get('invoice_groups', []) %}
                             <section
                                 id="card-{{ card.id }}-invoice-{{ loop.index0 }}"
-                                class="{% if not loop.first %}hidden {% endif %}space-y-4"
+                                class="{% if not loop.first %}hidden {% endif %}flex min-h-0 flex-col space-y-4"
                                 role="tabpanel"
                                 data-finance-card-invoice-panel
                                 data-tab-group="card-{{ card.id }}"
@@ -732,8 +745,8 @@
                                         <p class="mt-2 text-sm font-semibold text-slate-900">{{ invoice.installment_count }}</p>
                                     </div>
                                 </div>
-                                <div class="overflow-hidden rounded-[1.5rem] border border-slate-200">
-                                    <div class="overflow-x-auto">
+                                <div class="min-h-0 overflow-hidden rounded-[1.5rem] border border-slate-200">
+                                    <div class="finance-credit-card-invoice-lines overflow-x-auto">
                                         <table class="stock-history-table min-w-full divide-y divide-slate-200 text-sm">
                                             <thead class="bg-slate-50 text-left text-slate-500">
                                                 <tr>
@@ -3481,8 +3494,24 @@
         if (!(modal instanceof HTMLDialogElement)) return;
         modal.showModal();
         lockBackgroundScroll();
-        const firstTab = modal.querySelector('[data-finance-card-invoice-tab]');
-        if (firstTab instanceof HTMLElement) setCreditCardInvoiceTab(firstTab);
+        const tabs = Array.from(modal.querySelectorAll('[data-finance-card-invoice-tab]'));
+        const now = new Date();
+        const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+        const currentMonthStart = `${currentMonth}-01`;
+        const currentOpenTab = tabs.find((tab) => {
+            const dueDate = tab.dataset.dueDate || '';
+            return dueDate.slice(0, 7) === currentMonth && tab.dataset.canPay === 'true';
+        });
+        const nextOpenTab = tabs.find((tab) => {
+            const dueDate = tab.dataset.dueDate || '';
+            return dueDate >= currentMonthStart && tab.dataset.canPay === 'true';
+        });
+        const anyOpenTab = tabs.find((tab) => tab.dataset.canPay === 'true');
+        const targetTab = currentOpenTab || nextOpenTab || anyOpenTab || tabs[0];
+        if (targetTab instanceof HTMLElement) setCreditCardInvoiceTab(targetTab);
+        modal.querySelectorAll('[data-finance-card-invoice-tabs-shell]').forEach((shell) => {
+            requestAnimationFrame(() => syncCreditCardInvoiceTabShell(shell));
+        });
     };
 
     const closeCreditCardInvoicesModal = (modal) => {
