@@ -855,10 +855,13 @@ def _build_global_notifications(request: Request, repo: FarmRepository, scope_co
         if entry.farm_id == active_farm.id and inventory_item_allowed(entry.input_catalog)
     ]
     available_by_input: dict[int, float] = defaultdict(float)
+    catalog_by_input: dict[int, object] = {}
     for entry in purchase_entries:
         if entry.input_id:
             available_by_input[entry.input_id] += float(entry.available_quantity or 0)
-    for catalog_item in repo.list_input_catalog():
+            if entry.input_catalog:
+                catalog_by_input[entry.input_id] = entry.input_catalog
+    for catalog_item in catalog_by_input.values():
         if not inventory_item_allowed(catalog_item):
             continue
         threshold = float(catalog_item.low_stock_threshold or 0)
