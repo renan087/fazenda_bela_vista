@@ -86,11 +86,18 @@ def _finance_source_label(transaction) -> str:
 
 
 def _build_dashboard_finance_flow(repository: FarmRepository, farm_id: int | None, today: date) -> dict:
+    month_start = today.replace(day=1)
+    empty_projection_chart = {
+        "labels": ["Saldo atual", "Após receber", "Após pagar", "Projetado"],
+        "values": [0.0, 0.0, 0.0, 0.0],
+    }
     if not farm_id:
         return {
             "balance": 0,
             "payable_open_total": 0,
             "receivable_open_total": 0,
+            "projected_balance": 0,
+            "projected_chart": empty_projection_chart,
             "overdue_total": 0,
             "overdue_count": 0,
             "due_today_total": 0,
@@ -99,10 +106,11 @@ def _build_dashboard_finance_flow(repository: FarmRepository, farm_id: int | Non
             "realized_debit_month": 0,
             "realized_balance_month": 0,
             "upcoming_7_days_total": 0,
+            "current_month_start": month_start.isoformat(),
+            "current_month_end": today.isoformat(),
             "action_items": [],
         }
 
-    month_start = today.replace(day=1)
     upcoming_limit = today + timedelta(days=7)
     accounts = repository.list_finance_accounts(farm_id=farm_id)
     account_balances = {account.id: _account_initial_balance(account) for account in accounts}
