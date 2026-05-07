@@ -332,8 +332,6 @@
         <div class="flex flex-wrap items-start justify-between gap-4">
             <div>
                 <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Fluxo financeiro</p>
-                <h3 class="mt-2 text-xl font-semibold">Compra/Venda → Parcelas → Extrato</h3>
-                <p class="mt-2 text-sm text-slate-500">A prazo e cartão aparecem em aberto até o pagamento/recebimento. O extrato considera somente o que já foi realizado.</p>
             </div>
             <a href="/gestao-financeira/contas" class="inline-flex items-center justify-center rounded-2xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white transition hover:bg-slate-800">Ver contas</a>
         </div>
@@ -409,7 +407,6 @@
             <div class="flex flex-wrap items-start justify-between gap-4">
                 <div>
                     <p class="text-xs font-semibold uppercase tracking-[0.25em] text-slate-400">Caixa previsto</p>
-                    <h4 class="mt-1 font-semibold text-slate-900">Saldo atual + recebíveis - pagamentos</h4>
                 </div>
                 <p class="text-sm font-semibold {% if finance_flow.projected_balance < 0 %}text-rose-700{% else %}text-emerald-700{% endif %}">
                     Projetado: R$ {{ finance_flow.projected_balance|decimal_br }}
