@@ -298,7 +298,9 @@
                             {% if menu_visibility.get('backups', True) %}
                             <a href="/backups" class="sidebar-submenu-link block rounded-xl px-3 py-2 text-sm {% if page == 'backups' %}bg-brand-500 text-white{% else %}text-slate-300 hover:bg-slate-800 hover:text-white{% endif %}" data-submenu-link>Backups</a>
                             {% endif %}
+                            {% if menu_visibility.get('docs', False) %}
                             <a href="/docs" target="_blank" class="sidebar-submenu-link block rounded-xl px-3 py-2 text-sm text-slate-300 hover:bg-slate-800 hover:text-white" data-submenu-link>API / Docs</a>
+                            {% endif %}
                         </div>
                     </div>
                 </nav>

@@ -703,6 +703,7 @@ COMMERCIALIZATION_COFFEE_TYPE_OPTIONS = [
 MENU_ITEM_VISIBILITY_RULES = {
     "users": has_admin_access,
     "backups": lambda user: bool(user and has_admin_access(user) and _user_in_default_organization(user)),
+    "docs": lambda user: bool(user and is_super_admin_email(user.email) and _user_in_default_organization(user)),
     "organizations": lambda user: bool(user and is_super_admin_email(user.email)),
 }
 
