@@ -12268,9 +12268,16 @@ def crop_seasons_page(
     repo = _repository(db)
     scope = _global_scope_context(request, repo)
     effective_farm_id = scope["active_farm_id"]
-    crop_seasons = repo.list_crop_seasons(farm_id=effective_farm_id)
+    if effective_farm_id:
+        crop_seasons = repo.list_crop_seasons(farm_id=effective_farm_id)
+    else:
+        crop_seasons = repo.list_crop_seasons(organization_id=scope.get("active_organization_id"))
     fertilizations = repo.list_fertilizations()
-    stock_outputs = repo.list_stock_outputs(farm_id=effective_farm_id) if effective_farm_id else repo.list_stock_outputs()
+    context_farm_ids = {farm.id for farm in scope.get("context_farms", [])}
+    if effective_farm_id:
+        stock_outputs = repo.list_stock_outputs(farm_id=effective_farm_id)
+    else:
+        stock_outputs = [output for output in repo.list_stock_outputs() if output.farm_id in context_farm_ids]
     edit_season = repo.get_crop_season(edit_id) if edit_id else None
     if edit_season and not _farm_matches_scope(edit_season.farm_id, scope):
         _flash(request, "error", "Esta safra nao pertence ao contexto ativo.")
@@ -12480,11 +12487,11 @@ def delete_crop_season_action(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user_web),
 ):
-    del user
     validate_csrf(request, csrf_token)
     repo = _repository(db)
+    scope = _global_scope_context(request, repo, user)
     crop_season = repo.get_crop_season(season_id)
-    if not crop_season:
+    if not crop_season or not _farm_matches_scope(crop_season.farm_id, scope):
         _flash(request, "error", "Safra nao encontrada.")
         return _redirect("/safras")
     repo.delete(crop_season)
