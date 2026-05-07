@@ -162,8 +162,8 @@ class FarmRepository:
         sort: str = "name",
     ) -> list[Plot]:
         query = self.db.query(Plot).options(joinedload(Plot.variety), joinedload(Plot.farm))
-        if farm_ids:
-            query = query.filter(Plot.farm_id.in_(farm_ids))
+        if farm_ids is not None:
+            query = query.filter(Plot.farm_id.in_(farm_ids or [-1]))
         if variety_ids:
             query = query.filter(Plot.variety_id.in_(variety_ids))
         order_map = {
@@ -182,8 +182,8 @@ class FarmRepository:
     def list_plots_with_boundary_geojson(self, farm_ids: list[int] | None = None) -> list[Plot]:
         """Setores com perímetro salvo, para contexto visual no mapa (sem filtros de busca/variedade)."""
         query = self.db.query(Plot).filter(Plot.boundary_geojson.isnot(None))
-        if farm_ids:
-            query = query.filter(Plot.farm_id.in_(farm_ids))
+        if farm_ids is not None:
+            query = query.filter(Plot.farm_id.in_(farm_ids or [-1]))
         query = query.order_by(Plot.farm_id.asc(), Plot.name.asc())
         rows = query.all()
         return [p for p in rows if (p.boundary_geojson or "").strip()]
@@ -192,22 +192,28 @@ class FarmRepository:
         self,
         selected_farm_ids: list[int] | None = None,
         selected_variety_ids: list[int] | None = None,
+        organization_id: int | None = None,
     ) -> tuple[list[Farm], list[CoffeeVariety]]:
         farm_query = self.db.query(Farm).order_by(Farm.name.asc())
         variety_query = self.db.query(CoffeeVariety).order_by(CoffeeVariety.name.asc())
+        if organization_id:
+            farm_query = farm_query.filter(Farm.organization_id == organization_id)
 
         if selected_variety_ids:
             farm_ids = (
                 self.db.query(distinct(Plot.farm_id))
+                .join(Farm, Farm.id == Plot.farm_id)
                 .filter(Plot.farm_id.isnot(None), Plot.variety_id.in_(selected_variety_ids))
-                .all()
             )
+            if organization_id:
+                farm_ids = farm_ids.filter(Farm.organization_id == organization_id)
+            farm_ids = farm_ids.all()
             farm_query = farm_query.filter(Farm.id.in_([row[0] for row in farm_ids] or [-1]))
 
-        if selected_farm_ids:
+        if selected_farm_ids is not None:
             variety_ids = (
                 self.db.query(distinct(Plot.variety_id))
-                .filter(Plot.variety_id.isnot(None), Plot.farm_id.in_(selected_farm_ids))
+                .filter(Plot.variety_id.isnot(None), Plot.farm_id.in_(selected_farm_ids or [-1]))
                 .all()
             )
             variety_query = variety_query.filter(CoffeeVariety.id.in_([row[0] for row in variety_ids] or [-1]))

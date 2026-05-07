@@ -1456,6 +1456,7 @@ def _global_scope_context(request: Request, repo: FarmRepository, user: User | N
     farms = repo.list_farms(organization_id=organization_id)
     allowed_farm_ids = {farm.id for farm in farms}
     organization_scoped = bool(organization_id)
+    request.state.context_farm_ids = list(allowed_farm_ids) if organization_scoped else None
     active_farm_id = _active_farm_id(request)
     active_season_id = _active_season_id(request)
     active_farm = repo.get_farm(active_farm_id) if active_farm_id else None
@@ -1532,7 +1533,7 @@ def _global_scope_context(request: Request, repo: FarmRepository, user: User | N
 
 
 def _scoped_plot_filters(request: Request, active_season: CropSeason | None) -> tuple[list[int] | None, list[int] | None]:
-    farm_ids = [_active_farm_id(request)] if _active_farm_id(request) else None
+    farm_ids = [_active_farm_id(request)] if _active_farm_id(request) else getattr(request.state, "context_farm_ids", None)
     variety_ids = [active_season.variety_id] if active_season and active_season.variety_id else None
     return farm_ids, variety_ids
 
@@ -1819,7 +1820,14 @@ def _resolve_optional_plot_in_scope(
 
 
 def _farm_matches_scope(farm_id: int | None, scope: dict) -> bool:
-    return farm_id in (None, scope.get("active_farm_id"))
+    if farm_id is None:
+        return True
+    if scope.get("active_farm_id"):
+        return farm_id == scope.get("active_farm_id")
+    context_farms = scope.get("context_farms") or []
+    if scope.get("active_organization_id"):
+        return farm_id in {farm.id for farm in context_farms}
+    return True
 
 
 def _page_number(value: str | int | None, default: int = 1) -> int:
@@ -7257,15 +7265,26 @@ def plots_page(
 ):
     repo = _repository(db)
     scope = _global_scope_context(request, repo)
+    context_farm_ids = [farm.id for farm in scope.get("context_farms", [])]
     farm_ids = _int_list(request.query_params.getlist("farm_id"))
     variety_ids = _int_list(request.query_params.getlist("variety_id"))
+    if farm_ids:
+        farm_ids = [farm_id for farm_id in farm_ids if farm_id in context_farm_ids]
     if not farm_ids and scope["active_farm_id"]:
         farm_ids = [scope["active_farm_id"]]
+    elif not farm_ids:
+        farm_ids = context_farm_ids
     if not variety_ids and scope["active_season"] and scope["active_season"].variety_id:
         variety_ids = [scope["active_season"].variety_id]
     edit_plot = repo.get_plot(edit_id) if edit_id else None
+    if edit_plot and edit_plot.farm_id not in context_farm_ids:
+        edit_plot = None
     open_plot_map_modal = bool(plot_map and edit_plot)
-    farms, varieties = repo.list_plot_filter_options(farm_ids or None, variety_ids or None)
+    farms, varieties = repo.list_plot_filter_options(
+        farm_ids,
+        variety_ids or None,
+        organization_id=scope.get("active_organization_id"),
+    )
     # Para o cadastro/edição do setor, a lista de variedades não deve ser limitada pelo filtro da página.
     # Caso contrário, o select "Variedade" fica preso à variedade da safra ativa (ex.: apenas 1 opção).
     form_varieties = repo.list_varieties()
@@ -7389,7 +7408,7 @@ def plots_page(
             plots_farm_preview_urls=plots_farm_preview_urls,
             filter_links=[
                 {"farm_id": plot.farm_id, "variety_id": plot.variety_id}
-                for plot in repo.list_plots(farm_ids=farm_ids or None, variety_ids=variety_ids or None)
+                for plot in repo.list_plots(farm_ids=farm_ids, variety_ids=variety_ids or None)
                 if plot.farm_id or plot.variety_id
             ],
             _repo=repo,
@@ -7426,15 +7445,15 @@ def create_plot_action(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user_web),
 ):
-    del user
     validate_csrf(request, csrf_token)
     repo = _repository(db)
+    scope = _global_scope_context(request, repo, user)
     selected_farm_id = _int_or_none(farm_id)
     if not selected_farm_id:
         _flash(request, "error", "Selecione uma fazenda antes de salvar o setor.")
         return _redirect("/setores")
     farm = repo.get_farm(selected_farm_id)
-    if not farm:
+    if not farm or not _farm_matches_scope(farm.id, scope):
         _flash(request, "error", "A fazenda selecionada nao foi encontrada.")
         return _redirect("/setores")
     geometry, geometry_ok, upload_payload, upload_filename = _resolve_geojson(boundary_geojson_file, boundary_geojson)
@@ -7515,16 +7534,16 @@ def update_plot_action(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user_web),
 ):
-    del user
     validate_csrf(request, csrf_token)
     repo = _repository(db)
+    scope = _global_scope_context(request, repo, user)
     plot = repo.get_plot(plot_id)
-    if not plot:
+    if not plot or not _farm_matches_scope(plot.farm_id, scope):
         _flash(request, "error", "Setor nao encontrado.")
         return _redirect("/setores")
     old_geometry = plot.boundary_geojson
     farm = repo.get_farm(farm_id)
-    if not farm:
+    if not farm or not _farm_matches_scope(farm.id, scope):
         _flash(request, "error", "A fazenda selecionada nao foi encontrada.")
         return _redirect("/setores")
     geometry, geometry_ok, upload_payload, upload_filename = _resolve_geojson(
@@ -7587,7 +7606,6 @@ def open_plot_attachment(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user_web),
 ):
-    del user
     repo = _repository(db)
     attachment = repo.get_plot_attachment(attachment_id)
     if not attachment or not attachment.plot:
@@ -7610,7 +7628,6 @@ def delete_plot_attachment_action(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user_web),
 ):
-    del user
     validate_csrf(request, csrf_token)
     repo = _repository(db)
     plot = repo.get_plot(plot_id)
@@ -7643,11 +7660,11 @@ def save_plot_preview_draft(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user_web),
 ):
-    del user
     validate_csrf(request, csrf_token)
     repo = _repository(db)
+    scope = _global_scope_context(request, repo, user)
     plot = repo.get_plot(plot_id)
-    if not plot:
+    if not plot or not _farm_matches_scope(plot.farm_id, scope):
         return JSONResponse({"ok": False, "error": "not_found"}, status_code=404)
     normalized = normalize_geojson(boundary_geojson)
     if not normalized:
@@ -7671,14 +7688,14 @@ def preview_plot_geometry_session(
     user: User = Depends(get_current_user_web),
 ):
     """Prévia de satélite para geometria ainda sem setor persistido (cadastro novo)."""
-    del user
     validate_csrf(request, csrf_token)
     repo = _repository(db)
+    scope = _global_scope_context(request, repo, user)
     fid = _int_or_none(farm_id)
     if not fid:
         return JSONResponse({"ok": False, "error": "farm_required"}, status_code=400)
     farm = repo.get_farm(fid)
-    if not farm:
+    if not farm or not _farm_matches_scope(farm.id, scope):
         return JSONResponse({"ok": False, "error": "farm_not_found"}, status_code=404)
     normalized = normalize_geojson(boundary_geojson)
     if not normalized:
@@ -7699,10 +7716,11 @@ def discard_plot_preview_draft(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user_web),
 ):
-    del user
     validate_csrf(request, csrf_token)
     repo = _repository(db)
-    if not repo.get_plot(plot_id):
+    scope = _global_scope_context(request, repo, user)
+    plot = repo.get_plot(plot_id)
+    if not plot or not _farm_matches_scope(plot.farm_id, scope):
         return JSONResponse({"ok": False, "error": "not_found"}, status_code=404)
     remove_plot_preview_draft(plot_id)
     return JSONResponse({"ok": True})
@@ -7717,11 +7735,11 @@ def delete_plot_action(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user_web),
 ):
-    del user
     validate_csrf(request, csrf_token)
     repo = _repository(db)
+    scope = _global_scope_context(request, repo, user)
     plot = repo.get_plot(plot_id)
-    if not plot:
+    if not plot or not _farm_matches_scope(plot.farm_id, scope):
         _flash(request, "error", "Setor nao encontrado.")
         return _redirect("/setores")
     remove_plot_preview_image(plot_id)
