@@ -338,10 +338,10 @@
             <a href="/gestao-financeira/contas" class="inline-flex items-center justify-center rounded-2xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white transition hover:bg-slate-800">Ver contas</a>
         </div>
         <div class="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-            <a href="/gestao-financeira/contas?finance_tab=payables" class="rounded-2xl border border-rose-100 bg-rose-50/80 p-4 transition hover:border-rose-200">
+            <a href="/gestao-financeira/contas?finance_tab=payables{% if finance_flow.payable_next_month_start and finance_flow.payable_next_month_end %}&schedule_range=custom&start_date={{ finance_flow.payable_next_month_start }}&end_date={{ finance_flow.payable_next_month_end }}{% endif %}" class="rounded-2xl border border-rose-100 bg-rose-50/80 p-4 transition hover:border-rose-200">
                 <p class="text-xs font-semibold uppercase tracking-[0.25em] text-rose-500">A pagar</p>
-                <p class="mt-2 text-2xl font-bold text-slate-900">R$ {{ finance_flow.payable_open_total|decimal_br }}</p>
-                <p class="mt-1 text-sm text-slate-500">Parcelas ainda não pagas</p>
+                <p class="mt-2 text-2xl font-bold text-slate-900">R$ {{ finance_flow.payable_next_month_total|decimal_br }}</p>
+                <p class="mt-1 text-sm text-slate-500">{{ finance_flow.payable_next_month_label }}</p>
             </a>
             <a href="/gestao-financeira/contas?finance_tab=receivables" class="rounded-2xl border border-emerald-100 bg-emerald-50/80 p-4 transition hover:border-emerald-200">
                 <p class="text-xs font-semibold uppercase tracking-[0.25em] text-emerald-600">A receber</p>

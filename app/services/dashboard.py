@@ -72,6 +72,30 @@ def _account_initial_balance(account) -> float:
     return round(_float(account.initial_balance), 2)
 
 
+def _month_end(day: date) -> date:
+    return date(day.year + (1 if day.month == 12 else 0), 1 if day.month == 12 else day.month + 1, 1) - timedelta(days=1)
+
+
+def _month_label(day: date | None) -> str:
+    if not day:
+        return "Sem mês em aberto"
+    names = [
+        "Janeiro",
+        "Fevereiro",
+        "Março",
+        "Abril",
+        "Maio",
+        "Junho",
+        "Julho",
+        "Agosto",
+        "Setembro",
+        "Outubro",
+        "Novembro",
+        "Dezembro",
+    ]
+    return f"{names[day.month - 1]}/{day.year}"
+
+
 def _finance_source_label(transaction) -> str:
     source = (transaction.source or "").strip().lower()
     if source == "insumos":
@@ -95,6 +119,10 @@ def _build_dashboard_finance_flow(repository: FarmRepository, farm_id: int | Non
         return {
             "balance": 0,
             "payable_open_total": 0,
+            "payable_next_month_total": 0,
+            "payable_next_month_label": "Sem mês em aberto",
+            "payable_next_month_start": "",
+            "payable_next_month_end": "",
             "receivable_open_total": 0,
             "projected_balance": 0,
             "projected_chart": empty_projection_chart,
@@ -127,6 +155,7 @@ def _build_dashboard_finance_flow(repository: FarmRepository, farm_id: int | Non
         "upcoming_7_days_total": 0.0,
     }
     action_items: list[dict] = []
+    payable_month_totals: dict[tuple[int, int], float] = defaultdict(float)
 
     for transaction in repository.list_finance_transactions(farm_id=farm_id):
         operation_type = (transaction.operation_type or "").strip().lower()
@@ -165,6 +194,8 @@ def _build_dashboard_finance_flow(repository: FarmRepository, farm_id: int | Non
                     totals["receivable_open_total"] += installment_amount
                 else:
                     totals["payable_open_total"] += installment_amount
+                    if due_date and due_date >= month_start:
+                        payable_month_totals[(due_date.year, due_date.month)] += installment_amount
 
                 item_status = "open"
                 item_label = "Em aberto"
@@ -221,6 +252,10 @@ def _build_dashboard_finance_flow(repository: FarmRepository, farm_id: int | Non
     realized_balance = totals["realized_credit_month"] - totals["realized_debit_month"]
     balance = round(sum(account_balances.values()), 2)
     payable_open = round(totals["payable_open_total"], 2)
+    next_payable_month = min(payable_month_totals.keys(), default=None)
+    next_payable_month_start = date(next_payable_month[0], next_payable_month[1], 1) if next_payable_month else None
+    next_payable_month_end = _month_end(next_payable_month_start) if next_payable_month_start else None
+    payable_next_month_total = round(payable_month_totals.get(next_payable_month, 0.0), 2) if next_payable_month else 0
     receivable_open = round(totals["receivable_open_total"], 2)
     projected_balance = round(balance + receivable_open - payable_open, 2)
     projected_chart = {
@@ -235,6 +270,10 @@ def _build_dashboard_finance_flow(repository: FarmRepository, farm_id: int | Non
     return {
         "balance": balance,
         "payable_open_total": payable_open,
+        "payable_next_month_total": payable_next_month_total,
+        "payable_next_month_label": _month_label(next_payable_month_start),
+        "payable_next_month_start": next_payable_month_start.isoformat() if next_payable_month_start else "",
+        "payable_next_month_end": next_payable_month_end.isoformat() if next_payable_month_end else "",
         "receivable_open_total": receivable_open,
         "projected_balance": projected_balance,
         "projected_chart": projected_chart,
