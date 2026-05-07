@@ -36,6 +36,7 @@ from app.models import (
     InputRecommendationItem,
     IrrigationRecord,
     LoginVerificationCode,
+    Organization,
     PasswordChangeVerification,
     PasswordResetToken,
     PestIncident,
@@ -52,6 +53,16 @@ from app.models import (
 from app.services.email_service import send_bootstrap_admin_password_email
 
 logger = logging.getLogger(__name__)
+
+
+def _ensure_default_organization(db: Session) -> Organization:
+    organization = db.query(Organization).filter(Organization.slug == "sisfarm").first()
+    if organization:
+        return organization
+    organization = Organization(name="SiSFarm", slug="sisfarm", is_active=True)
+    db.add(organization)
+    db.flush()
+    return organization
 
 
 def create_tables() -> None:
@@ -102,8 +113,18 @@ def _sync_schema() -> None:
         )
         """,
         """
+        CREATE TABLE IF NOT EXISTS organizations (
+            id SERIAL PRIMARY KEY,
+            name VARCHAR(160) UNIQUE NOT NULL,
+            slug VARCHAR(180) UNIQUE NOT NULL,
+            is_active BOOLEAN NOT NULL DEFAULT TRUE,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+        """,
+        """
         CREATE TABLE IF NOT EXISTS farms (
             id SERIAL PRIMARY KEY,
+            organization_id INTEGER REFERENCES organizations(id) ON DELETE SET NULL,
             name VARCHAR(160) UNIQUE NOT NULL,
             location VARCHAR(180) NOT NULL,
             total_area NUMERIC(12,2) NOT NULL,
@@ -532,6 +553,26 @@ def _sync_schema() -> None:
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_data BYTEA",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMPTZ",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS asaas_customer_id VARCHAR(40)",
+        "ALTER TABLE users ADD COLUMN IF NOT EXISTS organization_id INTEGER REFERENCES organizations(id) ON DELETE SET NULL",
+        "ALTER TABLE farms ADD COLUMN IF NOT EXISTS organization_id INTEGER REFERENCES organizations(id) ON DELETE SET NULL",
+        "CREATE INDEX IF NOT EXISTS ix_organizations_slug ON organizations(slug)",
+        "CREATE INDEX IF NOT EXISTS ix_users_organization_id ON users(organization_id)",
+        "CREATE INDEX IF NOT EXISTS ix_farms_organization_id ON farms(organization_id)",
+        """
+        INSERT INTO organizations (name, slug, is_active, created_at)
+        SELECT 'SiSFarm', 'sisfarm', TRUE, NOW()
+        WHERE NOT EXISTS (SELECT 1 FROM organizations WHERE slug = 'sisfarm')
+        """,
+        """
+        UPDATE users
+        SET organization_id = (SELECT id FROM organizations WHERE slug = 'sisfarm' LIMIT 1)
+        WHERE organization_id IS NULL
+        """,
+        """
+        UPDATE farms
+        SET organization_id = (SELECT id FROM organizations WHERE slug = 'sisfarm' LIMIT 1)
+        WHERE organization_id IS NULL
+        """,
         """
         CREATE TABLE IF NOT EXISTS asaas_payments (
             id SERIAL PRIMARY KEY,
@@ -1061,8 +1102,13 @@ def _sync_schema() -> None:
 
 def seed_admin(db: Session) -> None:
     settings = get_settings()
+    default_organization = _ensure_default_organization(db)
     existing_admin = db.query(User).filter(User.is_admin.is_(True)).first()
     if existing_admin:
+        if not existing_admin.organization_id:
+            existing_admin.organization_id = default_organization.id
+            db.add(existing_admin)
+            db.commit()
         return
 
     bootstrap_email = settings.super_admin_email or settings.admin_email
@@ -1078,6 +1124,9 @@ def seed_admin(db: Session) -> None:
         if not existing.is_two_factor_enabled:
             existing.is_two_factor_enabled = True
             updated = True
+        if not existing.organization_id:
+            existing.organization_id = default_organization.id
+            updated = True
         if updated:
             db.add(existing)
             db.commit()
@@ -1092,6 +1141,7 @@ def seed_admin(db: Session) -> None:
         is_active=True,
         is_admin=True,
         is_two_factor_enabled=True,
+        organization_id=default_organization.id,
     )
     db.add(admin)
     db.commit()
@@ -1105,6 +1155,7 @@ def seed_admin(db: Session) -> None:
 
 
 def seed_demo_data(db: Session) -> None:
+    default_organization = _ensure_default_organization(db)
     # Never inject demo data into an environment that already has operational records.
     if db.query(Farm).count() or db.query(Plot).count():
         return
@@ -1137,6 +1188,7 @@ def seed_demo_data(db: Session) -> None:
         name="Fazenda Bela Vista",
         location="Manhuacu - MG",
         total_area=28.5,
+        organization_id=default_organization.id,
         boundary_geojson='{"type":"Polygon","coordinates":[[[-42.8784,-20.7415],[-42.8686,-20.7415],[-42.8686,-20.7472],[-42.8784,-20.7472],[-42.8784,-20.7415]]]}',
         notes="Unidade principal com foco em cafe especial.",
     )

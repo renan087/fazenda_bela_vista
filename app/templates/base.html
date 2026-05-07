@@ -275,6 +275,9 @@
                     {% if menu_visibility.get('users', True) %}
                         {% set config_pages = config_pages + ['users'] %}
                     {% endif %}
+                    {% if menu_visibility.get('organizations', False) %}
+                        {% set config_pages = config_pages + ['organizations'] %}
+                    {% endif %}
                     {% if menu_visibility.get('backups', True) %}
                         {% set config_pages = config_pages + ['backups'] %}
                     {% endif %}
@@ -288,6 +291,9 @@
                         <div id="config-menu" class="sidebar-submenu-panel {% if page not in config_pages %}hidden {% endif %}space-y-1 px-3 pb-3" data-submenu-panel>
                             {% if menu_visibility.get('users', True) %}
                             <a href="/usuarios" class="sidebar-submenu-link block rounded-xl px-3 py-2 text-sm {% if page == 'users' %}bg-brand-500 text-white{% else %}text-slate-300 hover:bg-slate-800 hover:text-white{% endif %}" data-submenu-link>Usuarios</a>
+                            {% endif %}
+                            {% if menu_visibility.get('organizations', False) %}
+                            <a href="/organizacoes" class="sidebar-submenu-link block rounded-xl px-3 py-2 text-sm {% if page == 'organizations' %}bg-brand-500 text-white{% else %}text-slate-300 hover:bg-slate-800 hover:text-white{% endif %}" data-submenu-link>Organizações</a>
                             {% endif %}
                             {% if menu_visibility.get('backups', True) %}
                             <a href="/backups" class="sidebar-submenu-link block rounded-xl px-3 py-2 text-sm {% if page == 'backups' %}bg-brand-500 text-white{% else %}text-slate-300 hover:bg-slate-800 hover:text-white{% endif %}" data-submenu-link>Backups</a>

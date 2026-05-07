@@ -29,6 +29,7 @@ from app.models import (
     InputRecommendation,
     InputRecommendationItem,
     IrrigationRecord,
+    Organization,
     PestIncident,
     Plot,
     PlotAttachment,
@@ -57,11 +58,26 @@ class FarmRepository:
     def __init__(self, db: Session):
         self.db = db
 
-    def list_farms(self) -> list[Farm]:
-        return self.db.query(Farm).order_by(Farm.name.asc()).all()
+    def list_farms(self, organization_id: int | None = None) -> list[Farm]:
+        query = self.db.query(Farm)
+        if organization_id:
+            query = query.filter(Farm.organization_id == organization_id)
+        return query.order_by(Farm.name.asc()).all()
 
-    def list_users(self) -> list[User]:
-        return self.db.query(User).order_by(User.name.asc(), User.email.asc()).all()
+    def list_users(self, organization_id: int | None = None) -> list[User]:
+        query = self.db.query(User)
+        if organization_id:
+            query = query.filter(User.organization_id == organization_id)
+        return query.order_by(User.name.asc(), User.email.asc()).all()
+
+    def get_organization(self, organization_id: int) -> Organization | None:
+        return self.db.query(Organization).filter(Organization.id == organization_id).first()
+
+    def list_organizations(self) -> list[Organization]:
+        return self.db.query(Organization).order_by(Organization.name.asc()).all()
+
+    def get_default_organization(self) -> Organization | None:
+        return self.db.query(Organization).filter(Organization.slug == "sisfarm").first()
 
     def count_backup_runs(self) -> int:
         return self.db.query(func.count(BackupRun.id)).scalar() or 0

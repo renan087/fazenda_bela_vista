@@ -1,0 +1,178 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="stock-page-shell space-y-6">
+    <section class="stock-page-header rounded-[2rem] p-5 shadow-panel">
+        <div class="flex flex-wrap items-start justify-between gap-4">
+            <div class="min-w-0 stock-page-header-intro" data-stock-header-intro>
+                <div class="stock-page-header-intro-inner">
+                    <h2 class="stock-page-card-title">Organizações</h2>
+                    <p class="stock-page-card-subtitle">Cadastre clientes e vincule usuários e fazendas ao ambiente correto.</p>
+                </div>
+            </div>
+            <div class="rounded-2xl border border-emerald-100 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-700">
+                Acesso restrito ao super administrador
+            </div>
+        </div>
+    </section>
+
+    <section class="grid gap-4 md:grid-cols-3">
+        <article class="stock-panel rounded-[1.5rem] border border-slate-200 bg-white p-5 shadow-panel">
+            <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Clientes</p>
+            <p class="mt-3 text-2xl font-semibold text-slate-900">{{ organizations|length }}</p>
+        </article>
+        <article class="stock-panel rounded-[1.5rem] border border-slate-200 bg-white p-5 shadow-panel">
+            <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Usuários</p>
+            <p class="mt-3 text-2xl font-semibold text-slate-900">{{ users|length }}</p>
+        </article>
+        <article class="stock-panel rounded-[1.5rem] border border-slate-200 bg-white p-5 shadow-panel">
+            <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Fazendas</p>
+            <p class="mt-3 text-2xl font-semibold text-slate-900">{{ farms|length }}</p>
+        </article>
+    </section>
+
+    <section class="grid gap-5 xl:grid-cols-[1fr_1.2fr]">
+        <article class="stock-panel rounded-[2rem] bg-white p-6 shadow-panel">
+            <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Nova organização</p>
+            <h3 class="mt-2 text-2xl font-semibold text-slate-900">Cadastrar cliente</h3>
+            <p class="mt-2 text-sm text-slate-500">Use uma organização para separar usuários, fazendas e dados operacionais de cada cliente.</p>
+
+            <form method="post" action="/organizacoes" class="mt-6 grid gap-4">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <label>
+                    <span class="mb-2 block text-sm font-medium text-slate-700">Nome da organização</span>
+                    <input name="name" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" placeholder="Ex.: Fazenda São João" required>
+                </label>
+                <label class="inline-flex items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-medium text-slate-700">
+                    <input type="checkbox" name="is_active" value="true" class="rounded border-slate-300 text-brand-500" checked>
+                    Organização ativa
+                </label>
+                <button type="submit" class="stock-action-button stock-action-button-primary justify-center">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                        <path d="M12 5v14"/>
+                        <path d="M5 12h14"/>
+                    </svg>
+                    Criar organização
+                </button>
+            </form>
+        </article>
+
+        <article class="stock-panel rounded-[2rem] bg-white p-6 shadow-panel">
+            <div class="flex flex-wrap items-start justify-between gap-4">
+                <div>
+                    <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Organizações</p>
+                    <h3 class="mt-2 text-2xl font-semibold text-slate-900">Ambientes cadastrados</h3>
+                </div>
+            </div>
+            <div class="mt-5 space-y-3">
+                {% for organization in organizations %}
+                {% set stats = organization_stats.get(organization.id, {'users': 0, 'farms': 0}) %}
+                <article class="rounded-[1.35rem] border border-slate-100 bg-slate-50 p-4">
+                    <div class="flex flex-wrap items-start justify-between gap-3">
+                        <div class="min-w-0">
+                            <h4 class="text-lg font-semibold text-slate-900">{{ organization.name }}</h4>
+                            <p class="mt-1 text-sm text-slate-500">{{ organization.slug }}</p>
+                        </div>
+                        <div class="flex flex-wrap items-center justify-end gap-2">
+                            <span class="rounded-full px-3 py-1 text-xs font-semibold {% if organization.is_active %}bg-emerald-100 text-emerald-700{% else %}bg-slate-200 text-slate-600{% endif %}">
+                                {% if organization.is_active %}Ativa{% else %}Inativa{% endif %}
+                            </span>
+                            {% if organization.slug != 'sisfarm' %}
+                            <form method="post" action="/organizacoes/{{ organization.id }}/status">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                                <input type="hidden" name="is_active" value="{% if organization.is_active %}false{% else %}true{% endif %}">
+                                <button type="submit" class="inline-flex h-9 items-center justify-center rounded-xl border border-slate-200 px-3 text-xs font-semibold text-slate-600 transition hover:bg-slate-100">
+                                    {% if organization.is_active %}Inativar{% else %}Reativar{% endif %}
+                                </button>
+                            </form>
+                            <form method="post" action="/organizacoes/{{ organization.id }}/excluir" onsubmit="return confirm('Excluir a organização {{ organization.name }}? Essa ação só será permitida se não houver usuários ou fazendas vinculados.');">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                                <button type="submit" class="inline-flex h-9 items-center justify-center rounded-xl border border-rose-100 px-3 text-xs font-semibold text-rose-600 transition hover:bg-rose-50">
+                                    Excluir
+                                </button>
+                            </form>
+                            {% endif %}
+                        </div>
+                    </div>
+                    <div class="mt-4 grid gap-3 sm:grid-cols-2">
+                        <div class="rounded-2xl bg-white px-4 py-3">
+                            <p class="text-xs uppercase tracking-[0.25em] text-slate-400">Usuários</p>
+                            <p class="mt-1 text-lg font-semibold text-slate-900">{{ stats.users }}</p>
+                        </div>
+                        <div class="rounded-2xl bg-white px-4 py-3">
+                            <p class="text-xs uppercase tracking-[0.25em] text-slate-400">Fazendas</p>
+                            <p class="mt-1 text-lg font-semibold text-slate-900">{{ stats.farms }}</p>
+                        </div>
+                    </div>
+                </article>
+                {% else %}
+                <p class="text-sm text-slate-500">Nenhuma organização cadastrada.</p>
+                {% endfor %}
+            </div>
+        </article>
+    </section>
+
+    <section class="grid gap-5 xl:grid-cols-2">
+        <article class="stock-panel rounded-[2rem] bg-white p-6 shadow-panel">
+            <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Vinculação</p>
+            <h3 class="mt-2 text-2xl font-semibold text-slate-900">Usuário por organização</h3>
+            <p class="mt-2 text-sm text-slate-500">Ao vincular, o usuário passa a enxergar somente as fazendas e dados dessa organização.</p>
+
+            <form method="post" action="/organizacoes/usuarios/vincular" class="mt-6 grid gap-4">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <label>
+                    <span class="mb-2 block text-sm font-medium text-slate-700">Usuário</span>
+                    <select name="user_id" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required>
+                        <option value="">Selecione</option>
+                        {% for item in users %}
+                        <option value="{{ item.id }}">{{ item.name }} · {{ item.email }}{% if item.organization %} · {{ item.organization.name }}{% endif %}</option>
+                        {% endfor %}
+                    </select>
+                </label>
+                <label>
+                    <span class="mb-2 block text-sm font-medium text-slate-700">Organização</span>
+                    <select name="organization_id" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required>
+                        <option value="">Selecione</option>
+                        {% for organization in organizations %}
+                        <option value="{{ organization.id }}">{{ organization.name }}</option>
+                        {% endfor %}
+                    </select>
+                </label>
+                <button type="submit" class="rounded-2xl bg-slate-900 px-4 py-3 font-semibold text-white hover:bg-slate-800">
+                    Vincular usuário
+                </button>
+            </form>
+        </article>
+
+        <article class="stock-panel rounded-[2rem] bg-white p-6 shadow-panel">
+            <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Vinculação</p>
+            <h3 class="mt-2 text-2xl font-semibold text-slate-900">Fazenda por organização</h3>
+            <p class="mt-2 text-sm text-slate-500">Use este vínculo para mover ou corrigir a propriedade de uma fazenda entre clientes.</p>
+
+            <form method="post" action="/organizacoes/fazendas/vincular" class="mt-6 grid gap-4">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <label>
+                    <span class="mb-2 block text-sm font-medium text-slate-700">Fazenda</span>
+                    <select name="farm_id" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required>
+                        <option value="">Selecione</option>
+                        {% for farm in farms %}
+                        <option value="{{ farm.id }}">{{ farm.name }}{% if farm.organization %} · {{ farm.organization.name }}{% endif %}</option>
+                        {% endfor %}
+                    </select>
+                </label>
+                <label>
+                    <span class="mb-2 block text-sm font-medium text-slate-700">Organização</span>
+                    <select name="organization_id" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required>
+                        <option value="">Selecione</option>
+                        {% for organization in organizations %}
+                        <option value="{{ organization.id }}">{{ organization.name }}</option>
+                        {% endfor %}
+                    </select>
+                </label>
+                <button type="submit" class="rounded-2xl bg-brand-500 px-4 py-3 font-semibold text-white hover:bg-brand-700">
+                    Vincular fazenda
+                </button>
+            </form>
+        </article>
+    </section>
+</div>
+{% endblock %}

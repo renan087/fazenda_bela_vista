@@ -1,4 +1,4 @@
-from sqlalchemy import Numeric, String, Text
+from sqlalchemy import ForeignKey, Integer, Numeric, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -8,12 +8,14 @@ class Farm(Base):
     __tablename__ = "farms"
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    organization_id: Mapped[int] = mapped_column(Integer, ForeignKey("organizations.id", ondelete="SET NULL"), nullable=True, index=True)
     name: Mapped[str] = mapped_column(String(160), unique=True, nullable=False)
     location: Mapped[str] = mapped_column(String(180), nullable=False)
     total_area: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False)
     boundary_geojson: Mapped[str] = mapped_column(Text, nullable=True)
     notes: Mapped[str] = mapped_column(Text, nullable=True)
 
+    organization = relationship("Organization", back_populates="farms")
     plots = relationship("Plot", back_populates="farm")
     agronomic_profile = relationship("AgronomicProfile", back_populates="farm", uselist=False, cascade="all, delete-orphan")
     soil_analyses = relationship("SoilAnalysis", back_populates="farm", cascade="all, delete-orphan")

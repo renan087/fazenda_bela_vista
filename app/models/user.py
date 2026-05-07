@@ -1,7 +1,7 @@
 from datetime import date, datetime
 
 from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, LargeBinary, String, Text, func
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
 
@@ -16,6 +16,7 @@ class User(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     is_admin: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     is_two_factor_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    organization_id: Mapped[int] = mapped_column(Integer, ForeignKey("organizations.id", ondelete="SET NULL"), nullable=True, index=True)
     active_farm_id: Mapped[int] = mapped_column(Integer, ForeignKey("farms.id", ondelete="SET NULL"), nullable=True, index=True)
     active_season_id: Mapped[int] = mapped_column(Integer, ForeignKey("crop_seasons.id", ondelete="SET NULL"), nullable=True, index=True)
     display_name: Mapped[str] = mapped_column(String(120), nullable=True)
@@ -30,3 +31,5 @@ class User(Base):
     last_login_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     asaas_customer_id: Mapped[str] = mapped_column(String(40), nullable=True, index=True)
+
+    organization = relationship("Organization", back_populates="users")

@@ -58,6 +58,7 @@ from app.models import (
     HarvestRecord,
     InputRecommendation,
     IrrigationRecord,
+    Organization,
     PestIncident,
     Plot,
     PlotAttachment,
@@ -702,6 +703,7 @@ COMMERCIALIZATION_COFFEE_TYPE_OPTIONS = [
 MENU_ITEM_VISIBILITY_RULES = {
     "users": has_admin_access,
     "backups": has_admin_access,
+    "organizations": lambda user: bool(user and is_super_admin_email(user.email)),
 }
 
 
@@ -787,7 +789,7 @@ def _base_context(request: Request, user: User, csrf_token: str, page: str, **kw
         scope_context = _global_scope_context(request, repo, user)
         context.update(scope_context)
         context["global_notifications"] = _build_global_notifications(request, repo, scope_context)
-        context["context_lock_exempt"] = page in {"farms", "seasons", "profile", "finance_asaas_customer"}
+        context["context_lock_exempt"] = page in {"farms", "seasons", "profile", "finance_asaas_customer", "organizations", "users", "backups"}
         context["context_selection_blocking"] = scope_context["context_selection_required"] and not context["context_lock_exempt"]
         context["context_previous_available"] = bool(scope_context.get("previous_context_available"))
     context.update(kwargs)
@@ -1442,10 +1444,18 @@ def _active_season_id(request: Request) -> int | None:
 
 
 def _global_scope_context(request: Request, repo: FarmRepository, user: User | None = None) -> dict:
+    if user is None:
+        email = request.session.get("user_email")
+        if email:
+            user = repo.db.query(User).filter(User.email == email, User.is_active.is_(True)).first()
     if user:
         sync_user_context_from_preferences(request, repo.db, user)
 
-    farms = repo.list_farms()
+    organization_id = user.organization_id if user else None
+    active_organization = repo.get_organization(organization_id) if organization_id else None
+    farms = repo.list_farms(organization_id=organization_id)
+    allowed_farm_ids = {farm.id for farm in farms}
+    organization_scoped = bool(organization_id)
     active_farm_id = _active_farm_id(request)
     active_season_id = _active_season_id(request)
     active_farm = repo.get_farm(active_farm_id) if active_farm_id else None
@@ -1457,7 +1467,16 @@ def _global_scope_context(request: Request, repo: FarmRepository, user: User | N
     prev_season_id = _int_or_none(previous_payload.get("season_id")) if isinstance(previous_payload, dict) else None
     prev_farm = repo.get_farm(prev_farm_id) if prev_farm_id else None
     prev_season = repo.get_crop_season(prev_season_id) if prev_season_id else None
+    if prev_farm and organization_scoped and prev_farm.id not in allowed_farm_ids:
+        prev_farm = None
+    if prev_season and organization_scoped and prev_season.farm_id not in allowed_farm_ids:
+        prev_season = None
     previous_context_available = bool(prev_farm and prev_season and prev_season.farm_id == prev_farm.id)
+
+    if active_farm and organization_scoped and active_farm.id not in allowed_farm_ids:
+        active_farm = None
+    if active_season and organization_scoped and active_season.farm_id not in allowed_farm_ids:
+        active_season = None
 
     if active_farm_id and not active_farm:
         if active_farm_id and active_season_id:
@@ -1477,7 +1496,11 @@ def _global_scope_context(request: Request, repo: FarmRepository, user: User | N
         active_season = None
         active_season_id = None
 
-    all_seasons = repo.list_crop_seasons()
+    all_seasons = [
+        season
+        for season in repo.list_crop_seasons()
+        if not organization_scoped or season.farm_id in allowed_farm_ids
+    ]
     context_seasons = [
         season for season in all_seasons if active_farm_id and season.farm_id == active_farm_id
     ]
@@ -1497,6 +1520,8 @@ def _global_scope_context(request: Request, repo: FarmRepository, user: User | N
         "active_season_id": active_season_id,
         "active_farm": active_farm,
         "active_season": active_season,
+        "active_organization": active_organization,
+        "active_organization_id": organization_id,
         "context_selection_required": not active_farm_id or not active_season_id,
         "context_missing_farm": not active_farm_id,
         "context_missing_season": not active_season_id,
@@ -2882,6 +2907,35 @@ def _require_admin(request: Request, user: User) -> RedirectResponse | None:
         return None
     _flash(request, "error", "Apenas administradores podem acessar este modulo.")
     return _redirect("/dashboard")
+
+
+def _require_super_admin(request: Request, user: User) -> RedirectResponse | None:
+    if is_super_admin_email(user.email):
+        return None
+    _flash(request, "error", "Apenas o super administrador pode acessar este modulo.")
+    return _redirect("/dashboard")
+
+
+def _organization_slug_from_name(name: str) -> str:
+    normalized = (
+        unicodedata.normalize("NFD", name.strip().lower())
+        .encode("ascii", "ignore")
+        .decode("ascii")
+    )
+    slug = "".join(char if char.isalnum() else "-" for char in normalized)
+    slug = "-".join(part for part in slug.split("-") if part)
+    return slug[:160] or "organizacao"
+
+
+def _unique_organization_slug(db: Session, name: str) -> str:
+    base_slug = _organization_slug_from_name(name)
+    slug = base_slug
+    suffix = 2
+    while db.query(Organization.id).filter(Organization.slug == slug).first():
+        suffix_text = f"-{suffix}"
+        slug = f"{base_slug[: 180 - len(suffix_text)]}{suffix_text}"
+        suffix += 1
+    return slug
 
 
 def _soil_payload(
@@ -7688,9 +7742,12 @@ def farms_page(
     csrf_token: str = Depends(get_csrf_token),
 ):
     repo = _repository(db)
+    organization_id = user.organization_id
     edit_farm = repo.get_farm(edit_id) if edit_id else None
+    if edit_farm and organization_id and edit_farm.organization_id != organization_id:
+        edit_farm = None
     farm_form_view_only = bool(edit_farm and view == 1)
-    farms = repo.list_farms()
+    farms = repo.list_farms(organization_id=organization_id)
     farm_preview_ready: dict[int, bool] = {}
     farm_preview_fingerprint: dict[int, str] = {}
     for farm in farms:
@@ -7811,7 +7868,6 @@ def create_farm_action(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user_web),
 ):
-    del user
     validate_csrf(request, csrf_token)
     geometry, geometry_ok, _, _ = _resolve_geojson(boundary_geojson_file, boundary_geojson)
     if boundary_geojson_file and boundary_geojson_file.filename and not geometry_ok:
@@ -7825,6 +7881,7 @@ def create_farm_action(
             "total_area": total_area,
             "boundary_geojson": geometry,
             "notes": notes,
+            "organization_id": user.organization_id,
         },
     )
     if geometry:
@@ -7852,11 +7909,10 @@ def update_farm_action(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user_web),
 ):
-    del user
     validate_csrf(request, csrf_token)
     repo = _repository(db)
     farm = repo.get_farm(farm_id)
-    if not farm:
+    if not farm or (user.organization_id and farm.organization_id != user.organization_id):
         _flash(request, "error", "Fazenda nao encontrada.")
         return _redirect("/fazendas")
     geometry, geometry_ok, _, _ = _resolve_geojson(boundary_geojson_file, boundary_geojson, farm.boundary_geojson)
@@ -7888,11 +7944,10 @@ def update_farm_geometry_only(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user_web),
 ):
-    del user
     validate_csrf(request, csrf_token)
     repo = _repository(db)
     farm = repo.get_farm(farm_id)
-    if not farm:
+    if not farm or (user.organization_id and farm.organization_id != user.organization_id):
         _flash(request, "error", "Fazenda nao encontrada.")
         return _redirect("/fazendas")
     normalized = normalize_geojson(boundary_geojson)
@@ -7916,11 +7971,10 @@ def delete_farm_action(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user_web),
 ):
-    del user
     validate_csrf(request, csrf_token)
     repo = _repository(db)
     farm = repo.get_farm(farm_id)
-    if not farm:
+    if not farm or (user.organization_id and farm.organization_id != user.organization_id):
         _flash(request, "error", "Fazenda nao encontrada.")
         return _redirect("/fazendas")
     if farm.plots:
@@ -7930,6 +7984,192 @@ def delete_farm_action(
     repo.delete(farm)
     _flash(request, "success", "Fazenda excluida com sucesso.")
     return _redirect("/fazendas")
+
+
+@router.get("/organizacoes")
+def organizations_page(
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+    csrf_token: str = Depends(get_csrf_token),
+):
+    denied = _require_super_admin(request, user)
+    if denied:
+        return denied
+    repo = _repository(db)
+    organizations = repo.list_organizations()
+    users = repo.list_users()
+    farms = repo.list_farms()
+    organization_stats = {
+        organization.id: {
+            "users": sum(1 for item in users if item.organization_id == organization.id),
+            "farms": sum(1 for item in farms if item.organization_id == organization.id),
+        }
+        for organization in organizations
+    }
+    return templates.TemplateResponse(
+        "organizations.html",
+        _base_context(
+            request,
+            user,
+            csrf_token,
+            "organizations",
+            title="Organizações",
+            organizations=organizations,
+            organization_stats=organization_stats,
+            users=users,
+            farms=farms,
+            _repo=repo,
+        ),
+    )
+
+
+@router.post("/organizacoes")
+def create_organization_action(
+    request: Request,
+    csrf_token: str = Form(...),
+    name: str = Form(...),
+    is_active: str | None = Form(None),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    denied = _require_super_admin(request, user)
+    if denied:
+        return denied
+    validate_csrf(request, csrf_token)
+    normalized_name = (name or "").strip()
+    if not normalized_name:
+        _flash(request, "error", "Informe o nome da organizacao.")
+        return _redirect("/organizacoes")
+    existing = db.query(Organization).filter(Organization.name == normalized_name).first()
+    if existing:
+        _flash(request, "error", "Ja existe uma organizacao com este nome.")
+        return _redirect("/organizacoes")
+    organization = Organization(
+        name=normalized_name,
+        slug=_unique_organization_slug(db, normalized_name),
+        is_active=_bool_from_form(is_active),
+    )
+    _repository(db).create(organization)
+    _flash(request, "success", "Organizacao criada com sucesso.")
+    return _redirect("/organizacoes")
+
+
+@router.post("/organizacoes/usuarios/vincular")
+def link_user_organization_action(
+    request: Request,
+    csrf_token: str = Form(...),
+    user_id: int = Form(...),
+    organization_id: int = Form(...),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    denied = _require_super_admin(request, user)
+    if denied:
+        return denied
+    validate_csrf(request, csrf_token)
+    repo = _repository(db)
+    target_user = repo.get_user(user_id)
+    organization = repo.get_organization(organization_id)
+    if not target_user or not organization:
+        _flash(request, "error", "Usuario ou organizacao nao encontrado.")
+        return _redirect("/organizacoes")
+    if target_user.id == user.id:
+        _flash(request, "error", "Nao altere a organizacao do usuario atualmente logado.")
+        return _redirect("/organizacoes")
+    data = {"organization_id": organization.id}
+    active_farm = repo.get_farm(target_user.active_farm_id) if target_user.active_farm_id else None
+    if active_farm and active_farm.organization_id != organization.id:
+        data.update({"active_farm_id": None, "active_season_id": None})
+    repo.update(target_user, data)
+    _flash(request, "success", "Usuario vinculado a organizacao com sucesso.")
+    return _redirect("/organizacoes")
+
+
+@router.post("/organizacoes/fazendas/vincular")
+def link_farm_organization_action(
+    request: Request,
+    csrf_token: str = Form(...),
+    farm_id: int = Form(...),
+    organization_id: int = Form(...),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    denied = _require_super_admin(request, user)
+    if denied:
+        return denied
+    validate_csrf(request, csrf_token)
+    repo = _repository(db)
+    farm = repo.get_farm(farm_id)
+    organization = repo.get_organization(organization_id)
+    if not farm or not organization:
+        _flash(request, "error", "Fazenda ou organizacao nao encontrada.")
+        return _redirect("/organizacoes")
+    repo.update(farm, {"organization_id": organization.id})
+    _flash(request, "success", "Fazenda vinculada a organizacao com sucesso.")
+    return _redirect("/organizacoes")
+
+
+@router.post("/organizacoes/{organization_id}/status")
+def update_organization_status_action(
+    organization_id: int,
+    request: Request,
+    csrf_token: str = Form(...),
+    is_active: str | None = Form(None),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    denied = _require_super_admin(request, user)
+    if denied:
+        return denied
+    validate_csrf(request, csrf_token)
+    repo = _repository(db)
+    organization = repo.get_organization(organization_id)
+    if not organization:
+        _flash(request, "error", "Organizacao nao encontrada.")
+        return _redirect("/organizacoes")
+    if organization.slug == "sisfarm":
+        _flash(request, "error", "A organizacao padrao SiSFarm nao pode ser inativada.")
+        return _redirect("/organizacoes")
+    if user.organization_id == organization.id and not _bool_from_form(is_active):
+        _flash(request, "error", "Nao e permitido inativar a organizacao do usuario logado.")
+        return _redirect("/organizacoes")
+    repo.update(organization, {"is_active": _bool_from_form(is_active)})
+    _flash(request, "success", "Status da organizacao atualizado com sucesso.")
+    return _redirect("/organizacoes")
+
+
+@router.post("/organizacoes/{organization_id}/excluir")
+def delete_organization_action(
+    organization_id: int,
+    request: Request,
+    csrf_token: str = Form(...),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    denied = _require_super_admin(request, user)
+    if denied:
+        return denied
+    validate_csrf(request, csrf_token)
+    repo = _repository(db)
+    organization = repo.get_organization(organization_id)
+    if not organization:
+        _flash(request, "error", "Organizacao nao encontrada.")
+        return _redirect("/organizacoes")
+    if organization.slug == "sisfarm":
+        _flash(request, "error", "A organizacao padrao SiSFarm nao pode ser excluida.")
+        return _redirect("/organizacoes")
+    if user.organization_id == organization.id:
+        _flash(request, "error", "Nao e permitido excluir a organizacao do usuario logado.")
+        return _redirect("/organizacoes")
+    has_users = db.query(User.id).filter(User.organization_id == organization.id).first()
+    has_farms = db.query(Farm.id).filter(Farm.organization_id == organization.id).first()
+    if has_users or has_farms:
+        _flash(request, "error", "Exclua ou mova usuarios e fazendas antes de remover esta organizacao.")
+        return _redirect("/organizacoes")
+    repo.delete(organization)
+    _flash(request, "success", "Organizacao excluida com sucesso.")
+    return _redirect("/organizacoes")
 
 
 @router.get("/usuarios")
@@ -7963,8 +8203,12 @@ def users_page(
             csrf_token,
             "users",
             title="Administracao de Usuarios",
-            users=repo.list_users(),
-            edit_user=repo.get_user(edit_id) if edit_id else None,
+            users=repo.list_users(organization_id=user.organization_id),
+            edit_user=(
+                target
+                if (edit_id and (target := repo.get_user(edit_id)) and target.organization_id == user.organization_id)
+                else None
+            ),
             format_app_datetime=format_app_datetime,
             super_admin_email=(settings.super_admin_email or settings.admin_email or "").strip().lower(),
             pending_super_admin_two_factor_disable=pending_super_admin_two_factor_disable,
@@ -7986,7 +8230,7 @@ def user_avatar_view(
         return denied
     repo = _repository(db)
     target_user = repo.get_user(user_id)
-    if not target_user or not target_user.avatar_data:
+    if not target_user or target_user.organization_id != user.organization_id or not target_user.avatar_data:
         return Response(status_code=404)
     return Response(
         content=target_user.avatar_data,
@@ -8025,6 +8269,7 @@ def create_user_action(
             "is_active": _bool_from_form(is_active),
             "is_admin": _bool_from_form(is_admin),
             "is_two_factor_enabled": _bool_from_form(is_two_factor_enabled),
+            "organization_id": user.organization_id,
         },
     )
     _flash(request, "success", "Usuario criado com sucesso.")
@@ -8058,7 +8303,7 @@ def update_user_action(
 
         repo = _repository(db)
         target_user = repo.get_user(user_id)
-        if not target_user:
+        if not target_user or target_user.organization_id != user.organization_id:
             _flash(request, "error", "Usuario nao encontrado.")
             return _redirect("/usuarios")
 
@@ -8157,7 +8402,7 @@ def confirm_super_admin_two_factor_disable_action(
 
     repo = _repository(db)
     target_user = repo.get_user(user_id)
-    if not target_user:
+    if not target_user or target_user.organization_id != user.organization_id:
         _discard_super_admin_2fa_disable_pending(request, db, user.id)
         return JSONResponse({"ok": False, "message": "Usuario nao encontrado."}, status_code=404)
     if not is_super_admin_email(target_user.email):
@@ -8183,7 +8428,7 @@ def start_super_admin_two_factor_disable_action(
 
     repo = _repository(db)
     target_user = repo.get_user(user_id)
-    if not target_user or not is_super_admin_email(target_user.email):
+    if not target_user or target_user.organization_id != user.organization_id or not is_super_admin_email(target_user.email):
         _discard_super_admin_2fa_disable_pending(request, db, user.id)
         return JSONResponse({"ok": False, "message": "Usuario nao encontrado para esta confirmacao."}, status_code=404)
 
@@ -8235,7 +8480,7 @@ def delete_user_action(
     validate_csrf(request, csrf_token)
     repo = _repository(db)
     target_user = repo.get_user(user_id)
-    if not target_user:
+    if not target_user or target_user.organization_id != user.organization_id:
         _flash(request, "error", "Usuario nao encontrado.")
         return _redirect("/usuarios")
     if target_user.id == user.id:
@@ -8816,7 +9061,7 @@ def purchased_inputs_page(
             "purchased_inputs",
             _repo=repo,
             title="Compras de Insumos",
-            farms=repo.list_farms(),
+            farms=scope["context_farms"],
             selected_item_type=selected_item_type or normalized_item_type or "insumo_agricola",
             selected_farm_id=effective_farm_id,
             purchase_input_category_options_by_type=PURCHASE_INPUT_CATEGORY_OPTIONS_BY_TYPE,
@@ -9547,7 +9792,7 @@ def stock_page(
             "stock",
             _repo=repo,
             title="Estoque de Insumos",
-            farms=repo.list_farms(),
+            farms=scope["context_farms"],
             plots=repo.list_plots(farm_ids=farm_ids, variety_ids=variety_ids),
             selected_farm_id=selected_farm_id,
             selected_input_id=selected_input_id,
@@ -10595,7 +10840,7 @@ def equipment_assets_page(
             "assets",
             _repo=repo,
             title="Patrimonio e Equipamentos",
-            farms=repo.list_farms(),
+            farms=scope["context_farms"],
             selected_farm_id=effective_farm_id,
             selected_asset_status=selected_status or "",
             assets_search_value=assets_search_value,
@@ -10715,7 +10960,7 @@ def supplies_page(
             "supplies",
             _repo=repo,
             title="Suprimentos",
-            farms=repo.list_farms(),
+            farms=scope["context_farms"],
             plots=repo.list_plots(farm_ids=farm_ids, variety_ids=variety_ids),
             selected_farm_id=effective_farm_id,
             selected_input_id=selected_input_id,
@@ -11767,7 +12012,7 @@ def input_recommendations_page(
             "input_recommendations",
             _repo=repo,
             title="Recomendacao de Insumos",
-            farms=repo.list_farms(),
+            farms=scope["context_farms"],
             plots=plots,
             inputs_catalog=catalog_inputs,
             input_stock=input_stock,
@@ -12063,7 +12308,7 @@ def crop_seasons_page(
             "seasons",
             _repo=repo,
             title="Safras",
-            farms=repo.list_farms(),
+            farms=scope["context_farms"],
             varieties=repo.list_varieties(),
             crop_seasons=crop_seasons,
             season_costs=season_costs,
@@ -14903,7 +15148,7 @@ def agronomic_profiles_page(
             "agronomic_profiles",
             _repo=repo,
             title="Perfil Agronomico",
-            farms=repo.list_farms(),
+            farms=scope["context_farms"],
             profiles=[
                 profile
                 for profile in repo.list_agronomic_profiles()
@@ -15038,7 +15283,7 @@ def soil_analysis_page(
             "soil_analyses",
             _repo=repo,
             title="Analise de Solo",
-            farms=repo.list_farms(),
+            farms=scope["context_farms"],
             plots=plots,
             analyses=analyses_pagination["items"],
             analyses_pagination=analyses_pagination,

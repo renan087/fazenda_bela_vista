@@ -17,12 +17,21 @@ def normalize_user_context(
     db: Session,
     farm_id,
     season_id,
+    organization_id: int | None = None,
 ) -> tuple[int | None, int | None]:
     normalized_farm_id = _int_or_none(farm_id)
     normalized_season_id = _int_or_none(season_id)
 
-    farm = db.query(Farm).filter(Farm.id == normalized_farm_id).first() if normalized_farm_id else None
+    farm_query = db.query(Farm)
+    if organization_id:
+        farm_query = farm_query.filter(Farm.organization_id == organization_id)
+    farm = farm_query.filter(Farm.id == normalized_farm_id).first() if normalized_farm_id else None
+
     season = db.query(CropSeason).filter(CropSeason.id == normalized_season_id).first() if normalized_season_id else None
+    if season and organization_id:
+        season_farm = db.query(Farm).filter(Farm.id == season.farm_id, Farm.organization_id == organization_id).first()
+        if not season_farm:
+            season = None
 
     if normalized_farm_id and not farm:
         normalized_farm_id = None
@@ -58,7 +67,7 @@ def persist_user_context(
     farm_id,
     season_id,
 ) -> tuple[int | None, int | None]:
-    normalized_farm_id, normalized_season_id = normalize_user_context(db, farm_id, season_id)
+    normalized_farm_id, normalized_season_id = normalize_user_context(db, farm_id, season_id, user.organization_id)
     apply_context_to_session(request, normalized_farm_id, normalized_season_id)
 
     if user.active_farm_id != normalized_farm_id or user.active_season_id != normalized_season_id:
@@ -79,7 +88,12 @@ def sync_user_context_from_preferences(
     session_farm_id = request.session.get("active_farm_id")
     session_season_id = request.session.get("active_season_id")
     if session_farm_id not in (None, "") or session_season_id not in (None, ""):
-        normalized_farm_id, normalized_season_id = normalize_user_context(db, session_farm_id, session_season_id)
+        normalized_farm_id, normalized_season_id = normalize_user_context(
+            db,
+            session_farm_id,
+            session_season_id,
+            user.organization_id,
+        )
         apply_context_to_session(request, normalized_farm_id, normalized_season_id)
         return normalized_farm_id, normalized_season_id
 

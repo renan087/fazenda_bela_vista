@@ -265,6 +265,7 @@ def create_farm(repository: FarmRepository, form: dict) -> Farm:
             total_area=form["total_area"],
             boundary_geojson=form.get("boundary_geojson"),
             notes=form.get("notes"),
+            organization_id=form.get("organization_id"),
         )
     )
 
@@ -472,6 +473,7 @@ def create_user(repository: FarmRepository, form: dict) -> User:
             is_active=is_active,
             is_admin=is_admin,
             is_two_factor_enabled=is_two_factor_enabled,
+            organization_id=form.get("organization_id"),
         )
     )
 
