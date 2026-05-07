@@ -342,6 +342,7 @@ def update_farm(repository: FarmRepository, farm: Farm, form: dict) -> Farm:
 def create_variety(repository: FarmRepository, form: dict) -> CoffeeVariety:
     return repository.create(
         CoffeeVariety(
+            organization_id=form.get("organization_id"),
             name=form["name"],
             species=form["species"],
             maturation_cycle=form["maturation_cycle"],

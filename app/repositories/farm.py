@@ -269,8 +269,11 @@ class FarmRepository:
             .first()
         )
 
-    def list_varieties(self) -> list[CoffeeVariety]:
-        return self.db.query(CoffeeVariety).order_by(CoffeeVariety.name.asc()).all()
+    def list_varieties(self, organization_id: int | None = None) -> list[CoffeeVariety]:
+        query = self.db.query(CoffeeVariety)
+        if organization_id:
+            query = query.filter(CoffeeVariety.organization_id == organization_id)
+        return query.order_by(CoffeeVariety.name.asc()).all()
 
     def get_variety(self, variety_id: int) -> CoffeeVariety | None:
         return self.db.query(CoffeeVariety).filter(CoffeeVariety.id == variety_id).first()

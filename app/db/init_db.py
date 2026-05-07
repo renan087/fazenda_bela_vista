@@ -149,6 +149,18 @@ def _sync_schema() -> None:
         )
         """,
         """
+        CREATE TABLE IF NOT EXISTS coffee_varieties (
+            id SERIAL PRIMARY KEY,
+            organization_id INTEGER REFERENCES organizations(id) ON DELETE SET NULL,
+            name VARCHAR(120) NOT NULL,
+            species VARCHAR(80) NOT NULL DEFAULT 'Arabica',
+            maturation_cycle VARCHAR(80) NOT NULL DEFAULT 'Media',
+            flavor_profile VARCHAR(180),
+            notes TEXT,
+            CONSTRAINT uq_coffee_varieties_organization_name UNIQUE (organization_id, name)
+        )
+        """,
+        """
         CREATE TABLE IF NOT EXISTS crop_seasons (
             id SERIAL PRIMARY KEY,
             farm_id INTEGER NOT NULL REFERENCES farms(id) ON DELETE CASCADE,
@@ -662,7 +674,27 @@ def _sync_schema() -> None:
         "ALTER TABLE input_recommendation_items ADD COLUMN IF NOT EXISTS input_id INTEGER",
         "ALTER TABLE fertilization_items ADD COLUMN IF NOT EXISTS input_id INTEGER",
         "ALTER TABLE fertilization_schedule_items ADD COLUMN IF NOT EXISTS input_id INTEGER",
+        "ALTER TABLE coffee_varieties ADD COLUMN IF NOT EXISTS organization_id INTEGER REFERENCES organizations(id) ON DELETE SET NULL",
         "ALTER TABLE coffee_varieties ADD COLUMN IF NOT EXISTS flavor_profile VARCHAR(180)",
+        "ALTER TABLE coffee_varieties DROP CONSTRAINT IF EXISTS coffee_varieties_name_key",
+        "CREATE INDEX IF NOT EXISTS ix_coffee_varieties_organization_id ON coffee_varieties(organization_id)",
+        """
+        UPDATE coffee_varieties
+        SET organization_id = (SELECT id FROM organizations WHERE slug = 'sisfarm' LIMIT 1)
+        WHERE organization_id IS NULL
+        """,
+        """
+        DO $$
+        BEGIN
+            IF NOT EXISTS (
+                SELECT 1 FROM pg_constraint
+                WHERE conname = 'uq_coffee_varieties_organization_name'
+            ) THEN
+                ALTER TABLE coffee_varieties
+                ADD CONSTRAINT uq_coffee_varieties_organization_name UNIQUE (organization_id, name);
+            END IF;
+        END $$;
+        """,
         "ALTER TABLE plots ADD COLUMN IF NOT EXISTS planting_date DATE",
         "ALTER TABLE plots ADD COLUMN IF NOT EXISTS farm_id INTEGER",
         "ALTER TABLE plots ADD COLUMN IF NOT EXISTS spacing_row_meters NUMERIC(8,2)",
@@ -1163,6 +1195,7 @@ def seed_demo_data(db: Session) -> None:
     catuai = db.query(CoffeeVariety).filter(CoffeeVariety.name == "Catuai 144").first()
     if not catuai:
         catuai = CoffeeVariety(
+            organization_id=default_organization.id,
             name="Catuai 144",
             species="Arabica",
             maturation_cycle="Media",
@@ -1175,6 +1208,7 @@ def seed_demo_data(db: Session) -> None:
     mundo_novo = db.query(CoffeeVariety).filter(CoffeeVariety.name == "Mundo Novo").first()
     if not mundo_novo:
         mundo_novo = CoffeeVariety(
+            organization_id=default_organization.id,
             name="Mundo Novo",
             species="Arabica",
             maturation_cycle="Tardia",

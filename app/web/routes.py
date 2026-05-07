@@ -702,7 +702,7 @@ COMMERCIALIZATION_COFFEE_TYPE_OPTIONS = [
 ]
 MENU_ITEM_VISIBILITY_RULES = {
     "users": has_admin_access,
-    "backups": has_admin_access,
+    "backups": lambda user: bool(user and has_admin_access(user) and _user_in_default_organization(user)),
     "organizations": lambda user: bool(user and is_super_admin_email(user.email)),
 }
 
@@ -1830,6 +1830,15 @@ def _farm_matches_scope(farm_id: int | None, scope: dict) -> bool:
     return True
 
 
+def _variety_matches_scope(variety: CoffeeVariety | None, scope: dict) -> bool:
+    if not variety:
+        return False
+    organization_id = scope.get("active_organization_id")
+    if organization_id:
+        return variety.organization_id == organization_id
+    return True
+
+
 def _page_number(value: str | int | None, default: int = 1) -> int:
     try:
         return max(int(value or default), 1)
@@ -2921,6 +2930,29 @@ def _require_super_admin(request: Request, user: User) -> RedirectResponse | Non
         return None
     _flash(request, "error", "Apenas o super administrador pode acessar este modulo.")
     return _redirect("/dashboard")
+
+
+def _user_in_default_organization(user: User | None) -> bool:
+    if not user:
+        return False
+    organization = getattr(user, "organization", None)
+    return bool(organization and organization.slug == "sisfarm")
+
+
+def _require_default_organization_backup_access(request: Request, user: User) -> RedirectResponse | None:
+    if has_admin_access(user) and _user_in_default_organization(user):
+        return None
+    _flash(request, "error", "Backups ficam disponiveis apenas na organizacao padrao SiSFarm.")
+    return _redirect("/dashboard")
+
+
+def _backup_access_json_denied(user: User) -> JSONResponse | None:
+    if has_admin_access(user) and _user_in_default_organization(user):
+        return None
+    return JSONResponse(
+        {"ok": False, "error": "Backups ficam disponiveis apenas na organizacao padrao SiSFarm."},
+        status_code=403,
+    )
 
 
 def _organization_slug_from_name(name: str) -> str:
@@ -7287,7 +7319,7 @@ def plots_page(
     )
     # Para o cadastro/edição do setor, a lista de variedades não deve ser limitada pelo filtro da página.
     # Caso contrário, o select "Variedade" fica preso à variedade da safra ativa (ex.: apenas 1 opção).
-    form_varieties = repo.list_varieties()
+    form_varieties = repo.list_varieties(organization_id=scope.get("active_organization_id"))
     plots_list = repo.list_plots(search=q, farm_ids=farm_ids, variety_ids=variety_ids, sort=sort)
     plot_preview_ready: dict[int, bool] = {}
     plot_preview_fingerprint: dict[int, str] = {}
@@ -7452,6 +7484,12 @@ def create_plot_action(
     if not selected_farm_id:
         _flash(request, "error", "Selecione uma fazenda antes de salvar o setor.")
         return _redirect("/setores")
+    selected_variety_id = _int_or_none(variety_id)
+    if selected_variety_id:
+        selected_variety = repo.get_variety(selected_variety_id)
+        if not _variety_matches_scope(selected_variety, scope):
+            _flash(request, "error", "A variedade selecionada nao pertence a organizacao atual.")
+            return _redirect("/setores")
     farm = repo.get_farm(selected_farm_id)
     if not farm or not _farm_matches_scope(farm.id, scope):
         _flash(request, "error", "A fazenda selecionada nao foi encontrada.")
@@ -7546,6 +7584,12 @@ def update_plot_action(
     if not farm or not _farm_matches_scope(farm.id, scope):
         _flash(request, "error", "A fazenda selecionada nao foi encontrada.")
         return _redirect("/setores")
+    selected_variety_id = _int_or_none(variety_id)
+    if selected_variety_id:
+        selected_variety = repo.get_variety(selected_variety_id)
+        if not _variety_matches_scope(selected_variety, scope):
+            _flash(request, "error", "A variedade selecionada nao pertence a organizacao atual.")
+            return _redirect("/setores")
     geometry, geometry_ok, upload_payload, upload_filename = _resolve_geojson(
         boundary_geojson_file, boundary_geojson, plot.boundary_geojson
     )
@@ -8515,7 +8559,7 @@ def backups_page(
     user: User = Depends(get_current_user_web),
     csrf_token: str = Depends(get_csrf_token),
 ):
-    denied = _require_admin(request, user)
+    denied = _require_default_organization_backup_access(request, user)
     if denied:
         return denied
     repo = _repository(db)
@@ -8572,7 +8616,7 @@ def configure_backup_automation_action(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user_web),
 ):
-    denied = _require_admin(request, user)
+    denied = _require_default_organization_backup_access(request, user)
     if denied:
         return denied
     validate_csrf(request, csrf_token)
@@ -8616,7 +8660,7 @@ def configure_backup_storage_limit_action(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user_web),
 ):
-    denied = _require_admin(request, user)
+    denied = _require_default_organization_backup_access(request, user)
     if denied:
         return denied
     validate_csrf(request, csrf_token)
@@ -8637,7 +8681,7 @@ def execute_backup_action(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user_web),
 ):
-    denied = _require_admin(request, user)
+    denied = _require_default_organization_backup_access(request, user)
     if denied:
         return denied
     validate_csrf(request, csrf_token)
@@ -8681,9 +8725,9 @@ def start_backup_action(
     user: User = Depends(get_current_user_web),
 ):
     try:
-        denied = _require_admin(request, user)
+        denied = _backup_access_json_denied(user)
         if denied:
-            return JSONResponse({"ok": False, "error": "Acesso negado."}, status_code=403)
+            return denied
         validate_csrf(request, csrf_token)
         storage_usage = _build_backup_storage_usage(_repository(db))
         if storage_usage["is_over_limit"]:
@@ -8737,9 +8781,9 @@ def backup_status_api(
     user: User = Depends(get_current_user_web),
 ):
     try:
-        denied = _require_admin(request, user)
+        denied = _backup_access_json_denied(user)
         if denied:
-            return JSONResponse({"ok": False, "error": "Acesso negado."}, status_code=403)
+            return denied
         run = _repository(db).get_backup_run(backup_run_id)
         if not run:
             return JSONResponse({"ok": False, "error": "Backup não encontrado."}, status_code=404)
@@ -8763,7 +8807,7 @@ def delete_backup_action(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user_web),
 ):
-    denied = _require_admin(request, user)
+    denied = _require_default_organization_backup_access(request, user)
     if denied:
         return denied
     validate_csrf(request, csrf_token)
@@ -12156,6 +12200,10 @@ def varieties_page(
     csrf_token: str = Depends(get_csrf_token),
 ):
     repo = _repository(db)
+    scope = _global_scope_context(request, repo, user)
+    edit_variety = repo.get_variety(edit_id) if edit_id else None
+    if edit_variety and not _variety_matches_scope(edit_variety, scope):
+        edit_variety = None
     return templates.TemplateResponse(
         "varieties.html",
         _base_context(
@@ -12164,8 +12212,8 @@ def varieties_page(
             csrf_token,
             "varieties",
             _repo=repo,
-            varieties=repo.list_varieties(),
-            edit_variety=repo.get_variety(edit_id) if edit_id else None,
+            varieties=repo.list_varieties(organization_id=scope.get("active_organization_id")),
+            edit_variety=edit_variety,
         ),
     )
 
@@ -12182,11 +12230,13 @@ def create_variety_action(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user_web),
 ):
-    del user
     validate_csrf(request, csrf_token)
+    repo = _repository(db)
+    scope = _global_scope_context(request, repo, user)
     create_variety(
-        _repository(db),
+        repo,
         {
+            "organization_id": scope.get("active_organization_id"),
             "name": name,
             "species": species,
             "maturation_cycle": maturation_cycle,
@@ -12211,11 +12261,11 @@ def update_variety_action(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user_web),
 ):
-    del user
     validate_csrf(request, csrf_token)
     repo = _repository(db)
+    scope = _global_scope_context(request, repo, user)
     variety = repo.get_variety(variety_id)
-    if not variety:
+    if not variety or not _variety_matches_scope(variety, scope):
         _flash(request, "error", "Variedade nao encontrada.")
         return _redirect("/variedades")
     update_variety(
@@ -12241,11 +12291,11 @@ def delete_variety_action(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user_web),
 ):
-    del user
     validate_csrf(request, csrf_token)
     repo = _repository(db)
+    scope = _global_scope_context(request, repo, user)
     variety = repo.get_variety(variety_id)
-    if not variety:
+    if not variety or not _variety_matches_scope(variety, scope):
         _flash(request, "error", "Variedade nao encontrada.")
         return _redirect("/variedades")
     if variety.plots:
@@ -12333,7 +12383,7 @@ def crop_seasons_page(
             _repo=repo,
             title="Safras",
             farms=scope["context_farms"],
-            varieties=repo.list_varieties(),
+            varieties=repo.list_varieties(organization_id=scope.get("active_organization_id")),
             crop_seasons=crop_seasons,
             season_costs=season_costs,
             edit_season=edit_season,
@@ -12382,6 +12432,12 @@ def create_crop_season_action(
     if parsed_end_date < parsed_start_date:
         _flash(request, "error", "A data final da safra nao pode ser anterior a data inicial.")
         return _redirect("/safras")
+    selected_variety_id = _int_or_none(variety_id)
+    if selected_variety_id:
+        selected_variety = repo.get_variety(selected_variety_id)
+        if not _variety_matches_scope(selected_variety, scope):
+            _flash(request, "error", "A variedade selecionada nao pertence a organizacao atual.")
+            return _redirect("/safras")
     try:
         create_crop_season(
             repo,
@@ -12391,7 +12447,7 @@ def create_crop_season_action(
                 "start_date": start_date,
                 "end_date": end_date,
                 "culture": culture,
-                "variety_id": _int_or_none(variety_id),
+                "variety_id": selected_variety_id,
                 "cultivated_area": parsed_cultivated_area,
                 "area_unit": area_unit,
                 "notes": notes,
@@ -12454,6 +12510,12 @@ def update_crop_season_action(
     if parsed_end_date < parsed_start_date:
         _flash(request, "error", "A data final da safra nao pode ser anterior a data inicial.")
         return _redirect("/safras")
+    selected_variety_id = _int_or_none(variety_id)
+    if selected_variety_id:
+        selected_variety = repo.get_variety(selected_variety_id)
+        if not _variety_matches_scope(selected_variety, scope):
+            _flash(request, "error", "A variedade selecionada nao pertence a organizacao atual.")
+            return _redirect("/safras")
     try:
         update_crop_season(
             repo,
@@ -12464,7 +12526,7 @@ def update_crop_season_action(
                 "start_date": start_date,
                 "end_date": end_date,
                 "culture": culture,
-                "variety_id": _int_or_none(variety_id),
+                "variety_id": selected_variety_id,
                 "cultivated_area": parsed_cultivated_area,
                 "area_unit": area_unit,
                 "notes": notes,
