@@ -539,7 +539,7 @@ class FarmRepository:
             .first()
         )
 
-    def list_equipment_assets(self, farm_id: int | None = None) -> list[EquipmentAsset]:
+    def list_equipment_assets(self, farm_id: int | None = None, farm_ids: list[int] | None = None) -> list[EquipmentAsset]:
         query = (
             self.db.query(EquipmentAsset)
             .options(
@@ -557,6 +557,8 @@ class FarmRepository:
         )
         if farm_id:
             query = query.filter(EquipmentAsset.farm_id == farm_id)
+        elif farm_ids is not None:
+            query = query.filter(EquipmentAsset.farm_id.in_(farm_ids or [-1]))
         return query.all()
 
     def get_equipment_asset(self, asset_id: int) -> EquipmentAsset | None:

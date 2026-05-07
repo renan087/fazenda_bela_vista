@@ -10525,13 +10525,21 @@ def export_equipment_assets_xlsx(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user_web),
 ):
-    del user
     repo = _repository(db)
-    selected_farm_id = _int_or_none(farm_id) or _active_farm_id(request)
+    scope = _global_scope_context(request, repo, user)
+    context_farm_ids = [farm.id for farm in scope.get("context_farms", [])]
+    requested_farm_id = _int_or_none(farm_id) or _active_farm_id(request)
+    selected_farm_id = requested_farm_id if requested_farm_id in context_farm_ids else None
     selected_status = status if status in {"ativo", "em_manutencao", "baixado"} else None
     assets = _sort_collection_desc(
         _filter_equipment_assets_by_search(
-            _filter_equipment_assets_by_status(repo.list_equipment_assets(farm_id=selected_farm_id), selected_status),
+            _filter_equipment_assets_by_status(
+                repo.list_equipment_assets(
+                    farm_id=selected_farm_id,
+                    farm_ids=None if selected_farm_id else context_farm_ids,
+                ),
+                selected_status,
+            ),
             assets_search,
         ),
         lambda item: item.acquisition_date,
@@ -10593,12 +10601,21 @@ def export_equipment_assets_pdf(
     user: User = Depends(get_current_user_web),
 ):
     repo = _repository(db)
-    selected_farm_id = _int_or_none(farm_id) or _active_farm_id(request)
+    scope = _global_scope_context(request, repo, user)
+    context_farm_ids = [farm.id for farm in scope.get("context_farms", [])]
+    requested_farm_id = _int_or_none(farm_id) or _active_farm_id(request)
+    selected_farm_id = requested_farm_id if requested_farm_id in context_farm_ids else None
     selected_farm = repo.get_farm(selected_farm_id) if selected_farm_id else None
     selected_status = status if status in {"ativo", "em_manutencao", "baixado"} else None
     assets = _sort_collection_desc(
         _filter_equipment_assets_by_search(
-            _filter_equipment_assets_by_status(repo.list_equipment_assets(farm_id=selected_farm_id), selected_status),
+            _filter_equipment_assets_by_status(
+                repo.list_equipment_assets(
+                    farm_id=selected_farm_id,
+                    farm_ids=None if selected_farm_id else context_farm_ids,
+                ),
+                selected_status,
+            ),
             assets_search,
         ),
         lambda item: item.acquisition_date,
@@ -10868,7 +10885,10 @@ def equipment_assets_page(
     csrf_token: str = Depends(get_csrf_token),
 ):
     repo = _repository(db)
-    effective_farm_id = farm_id or _active_farm_id(request)
+    scope = _global_scope_context(request, repo, user)
+    context_farm_ids = [farm.id for farm in scope.get("context_farms", [])]
+    requested_farm_id = farm_id or _active_farm_id(request)
+    effective_farm_id = requested_farm_id if requested_farm_id in context_farm_ids else None
     finance_accounts = repo.list_finance_accounts(farm_id=effective_farm_id) if effective_farm_id else []
     finance_credit_cards = repo.list_finance_credit_cards(farm_id=effective_farm_id) if effective_farm_id else []
     selected_status = status if status in EQUIPMENT_ASSET_STATUS_OPTIONS else None
@@ -10888,7 +10908,13 @@ def equipment_assets_page(
     assets_filter_query = urlencode(preserve_filters)
     assets = _sort_collection_desc(
         _filter_equipment_assets_by_search(
-            _filter_equipment_assets_by_status(repo.list_equipment_assets(farm_id=effective_farm_id), selected_status),
+            _filter_equipment_assets_by_status(
+                repo.list_equipment_assets(
+                    farm_id=effective_farm_id,
+                    farm_ids=None if effective_farm_id else context_farm_ids,
+                ),
+                selected_status,
+            ),
             assets_search_value or None,
         ),
         lambda item: item.acquisition_date,
@@ -10925,7 +10951,15 @@ def equipment_assets_page(
             current_year=today_in_app_timezone().year,
             assets=assets_pagination["items"],
             assets_pagination=assets_pagination,
-            edit_asset=repo.get_equipment_asset(edit_id) if edit_id else None,
+            edit_asset=(
+                asset
+                if (
+                    edit_id
+                    and (asset := repo.get_equipment_asset(edit_id))
+                    and _farm_matches_scope(asset.farm_id, scope)
+                )
+                else None
+            ),
         ),
     )
 
@@ -11959,11 +11993,11 @@ def delete_equipment_asset_action(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user_web),
 ):
-    del user
     validate_csrf(request, csrf_token)
     repo = _repository(db)
+    scope = _global_scope_context(request, repo, user)
     asset = repo.get_equipment_asset(asset_id)
-    if not asset:
+    if not asset or not _farm_matches_scope(asset.farm_id, scope):
         _flash(request, "error", "Patrimonio nao encontrado.")
         return _redirect_for_request(request, "/insumos/patrimonio")
     tx_id = asset.finance_transaction_id
