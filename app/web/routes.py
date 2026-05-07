@@ -1496,11 +1496,10 @@ def _global_scope_context(request: Request, repo: FarmRepository, user: User | N
         active_season = None
         active_season_id = None
 
-    all_seasons = [
-        season
-        for season in repo.list_crop_seasons()
-        if not organization_scoped or season.farm_id in allowed_farm_ids
-    ]
+    if organization_id:
+        all_seasons = repo.list_crop_seasons(organization_id=organization_id)
+    else:
+        all_seasons = repo.list_crop_seasons()
     context_seasons = [
         season for season in all_seasons if active_farm_id and season.farm_id == active_farm_id
     ]

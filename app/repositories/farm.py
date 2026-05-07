@@ -269,7 +269,11 @@ class FarmRepository:
     def get_variety(self, variety_id: int) -> CoffeeVariety | None:
         return self.db.query(CoffeeVariety).filter(CoffeeVariety.id == variety_id).first()
 
-    def list_crop_seasons(self, farm_id: int | None = None) -> list[CropSeason]:
+    def list_crop_seasons(
+        self,
+        farm_id: int | None = None,
+        organization_id: int | None = None,
+    ) -> list[CropSeason]:
         query = (
             self.db.query(CropSeason)
             .options(joinedload(CropSeason.farm), joinedload(CropSeason.variety))
@@ -277,6 +281,8 @@ class FarmRepository:
         )
         if farm_id:
             query = query.filter(CropSeason.farm_id == farm_id)
+        elif organization_id is not None:
+            query = query.join(Farm, CropSeason.farm_id == Farm.id).filter(Farm.organization_id == organization_id)
         return query.all()
 
     def get_crop_season(self, season_id: int) -> CropSeason | None:
