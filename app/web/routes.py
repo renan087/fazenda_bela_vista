@@ -3127,6 +3127,8 @@ def dashboard(
         rain_end_date=_date_or_none(rain_end_date),
         farm_id=scope["active_farm_id"],
         season=scope["active_season"],
+        organization_id=scope.get("active_organization_id"),
+        context_farm_ids=[farm.id for farm in scope.get("context_farms", [])],
         pages={
             "irrigations": _page_number(irrigations_page),
             "rainfalls": _page_number(rainfalls_page),
@@ -15629,6 +15631,8 @@ def map_page(
         repo,
         farm_id=scope["active_farm_id"],
         season=scope["active_season"],
+        organization_id=scope.get("active_organization_id"),
+        context_farm_ids=[farm.id for farm in scope.get("context_farms", [])],
     )["map_geojson"]
     edit_plot = repo.get_plot(edit_plot_id) if edit_plot_id else None
     return templates.TemplateResponse(

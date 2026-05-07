@@ -296,13 +296,19 @@ def build_dashboard_context(
     pages: dict | None = None,
     farm_id: int | None = None,
     season=None,
+    organization_id: int | None = None,
+    context_farm_ids: list[int] | None = None,
 ) -> dict:
     pages = pages or {}
+    scoped_farm_ids = [farm_id] if farm_id else context_farm_ids
+    scoped_farm_id_set = set(scoped_farm_ids or []) if scoped_farm_ids is not None else None
     plots = repository.list_plots(
-        farm_ids=[farm_id] if farm_id else None,
+        farm_ids=scoped_farm_ids,
         variety_ids=[season.variety_id] if season and season.variety_id else None,
     )
-    farms = [farm for farm in repository.list_farms() if not farm_id or farm.id == farm_id]
+    farms = repository.list_farms(organization_id=organization_id)
+    if scoped_farm_id_set is not None:
+        farms = [farm for farm in farms if farm.id in scoped_farm_id_set]
     plot_ids = {plot.id for plot in plots}
     harvests = [
         harvest
@@ -327,9 +333,10 @@ def build_dashboard_context(
     purchased_inputs = [
         entry
         for entry in repository.list_purchased_inputs()
-        if not farm_id or entry.farm_id in (None, farm_id)
+        if (scoped_farm_id_set is None or entry.farm_id in scoped_farm_id_set)
+        and entry.input_catalog
+        and entry.input_catalog.item_type in {"insumo_agricola", "combustivel"}
     ]
-    catalog_inputs = repository.list_input_catalog()
     incidents = [
         incident
         for incident in repository.list_pest_incidents()
@@ -369,19 +376,27 @@ def build_dashboard_context(
     monthly_rainfall = sum(_float(item.millimeters) for item in month_rainfalls)
     rainfall_period_total = sum(_float(item.millimeters) for item in rainfalls)
     stock_by_input: dict[int, dict] = {}
-    for catalog in catalog_inputs:
-        related_entries = [entry for entry in purchased_inputs if entry.input_id == catalog.id]
+    catalog_ids = {
+        entry.input_id
+        for entry in purchased_inputs
+        if entry.input_id and entry.input_catalog
+    }
+    for catalog_id in catalog_ids:
+        related_entries = [entry for entry in purchased_inputs if entry.input_id == catalog_id]
+        latest_entry = max(
+            related_entries,
+            key=lambda entry: ((entry.purchase_date or today), entry.id),
+            default=None,
+        )
+        catalog = latest_entry.input_catalog if latest_entry else None
+        if not catalog:
+            continue
         available_quantity = sum(_float(entry.available_quantity) for entry in related_entries)
         total_quantity = sum(_float(entry.total_quantity) for entry in related_entries)
         total_value = sum(
             (_float(entry.available_quantity) * (_float(entry.total_cost) / max(_float(entry.total_quantity), 1)))
             for entry in related_entries
             if _float(entry.available_quantity) > 0
-        )
-        latest_entry = max(
-            related_entries,
-            key=lambda entry: ((entry.purchase_date or today), entry.id),
-            default=None,
         )
         stock_by_input[catalog.id] = {
             "id": catalog.id,
