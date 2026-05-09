@@ -14434,6 +14434,57 @@ async def create_fertilization_schedule_action(
     return _redirect("/fertilizacao/agendamentos")
 
 
+@router.post("/fertilizacao/agendamentos/alterar-data-lote")
+async def update_fertilization_schedules_date_batch_action(
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    del user
+    form = await request.form()
+    validate_csrf(request, str(form.get("csrf_token") or ""))
+    redirect_to = str(form.get("redirect_to") or "")
+    target_url = redirect_to if redirect_to.startswith("/") else "/fertilizacao/agendamentos"
+    new_date_raw = str(form.get("scheduled_date") or "").strip()
+    selected_ids = []
+    for raw_id in form.getlist("schedule_ids"):
+        parsed_id = _int_or_none(raw_id)
+        if parsed_id and parsed_id not in selected_ids:
+            selected_ids.append(parsed_id)
+    if not selected_ids:
+        _flash(request, "error", "Selecione ao menos um agendamento para alterar a data.")
+        return _redirect(target_url)
+    try:
+        new_date = date.fromisoformat(new_date_raw)
+    except ValueError:
+        _flash(request, "error", "Informe uma nova data valida para os agendamentos selecionados.")
+        return _redirect(target_url)
+
+    repo = _repository(db)
+    scope = _global_scope_context(request, repo)
+    updated_count = 0
+    skipped_count = 0
+    for schedule_id in selected_ids:
+        schedule = repo.get_fertilization_schedule(schedule_id)
+        if not schedule or not _plot_matches_scope(schedule.plot, scope):
+            skipped_count += 1
+            continue
+        if schedule.status == "completed" or schedule.fertilization_record_id:
+            skipped_count += 1
+            continue
+        schedule.scheduled_date = new_date
+        repo.db.add(schedule)
+        updated_count += 1
+    if updated_count:
+        repo.db.commit()
+        _flash(request, "success", f"Data alterada para {updated_count} agendamento(s).")
+    else:
+        _flash(request, "error", "Nenhum agendamento ativo pode ser alterado.")
+    if skipped_count:
+        _flash(request, "info", f"{skipped_count} agendamento(s) foram ignorados por ja estarem concluidos ou fora do contexto.")
+    return _redirect(target_url)
+
+
 @router.post("/fertilizacao/agendamentos/{schedule_id}/editar")
 async def update_fertilization_schedule_action(
     schedule_id: int,
