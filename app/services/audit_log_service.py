@@ -141,3 +141,7 @@ def query_audit_logs(
         .all()
     )
     return rows, int(total)
+
+
+def count_audit_logs(db: Session) -> int:
+    return int(db.query(AuditLog).count())

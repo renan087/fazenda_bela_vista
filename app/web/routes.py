@@ -87,7 +87,7 @@ from app.services.backup_service import (
     update_backup_automation_setting,
     update_backup_storage_limit_setting,
 )
-from app.services.audit_log_service import query_audit_logs
+from app.services.audit_log_service import count_audit_logs, query_audit_logs
 from app.services.dashboard import build_dashboard_context
 from app.services.finance_overview import (
     _in_extract_period,
@@ -8219,6 +8219,7 @@ def audit_logs_page(
         except ValueError:
             _flash(request, "error", "Data final invalida.")
     per_page = 50
+    audit_total_all = count_audit_logs(db)
     rows, total = query_audit_logs(
         db,
         actor_user_id=actor_user_id,
@@ -8265,6 +8266,7 @@ def audit_logs_page(
             title="Auditoria de acesso",
             audit_rows=rows,
             audit_total=total,
+            audit_total_all=audit_total_all,
             audit_page=page,
             audit_total_pages=total_pages,
             audit_per_page=per_page,

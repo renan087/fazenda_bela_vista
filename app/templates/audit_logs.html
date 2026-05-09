@@ -15,6 +15,17 @@
         </div>
     </section>
 
+    <section class="grid gap-4 md:grid-cols-2">
+        <div class="rounded-[1.5rem] border border-slate-200 bg-white px-5 py-4 shadow-sm">
+            <p class="text-xs uppercase tracking-[0.25em] text-slate-400">Total gravado</p>
+            <p class="mt-2 text-2xl font-semibold text-slate-900">{{ audit_total_all }}</p>
+        </div>
+        <div class="rounded-[1.5rem] border border-slate-200 bg-white px-5 py-4 shadow-sm">
+            <p class="text-xs uppercase tracking-[0.25em] text-slate-400">Resultado filtrado</p>
+            <p class="mt-2 text-2xl font-semibold text-slate-900">{{ audit_total }}</p>
+        </div>
+    </section>
+
     <section class="stock-panel rounded-[2rem] bg-white p-6 shadow-panel">
         <form method="get" action="/auditoria" class="grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
             <label class="block">

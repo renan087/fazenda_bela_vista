@@ -32,6 +32,15 @@ req_mem_logger = logging.getLogger("uvicorn.error")
 settings = get_settings()
 
 
+def _session_value(request: Request, key: str):
+    try:
+        if "session" not in request.scope:
+            return None
+        return request.session.get(key)
+    except (AssertionError, RuntimeError, KeyError):
+        return None
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     create_tables()
@@ -71,7 +80,7 @@ app = FastAPI(
 
 
 def _docs_access_allowed(request: Request) -> bool:
-    email = request.session.get("user_email")
+    email = _session_value(request, "user_email")
     if not email:
         return False
     with SessionLocal() as db:
@@ -82,7 +91,7 @@ def _docs_access_allowed(request: Request) -> bool:
 
 
 def _docs_redirect(request: Request) -> RedirectResponse:
-    target = "/dashboard" if request.session.get("user_email") else "/login"
+    target = "/dashboard" if _session_value(request, "user_email") else "/login"
     return RedirectResponse(url=target, status_code=303)
 
 
@@ -147,7 +156,7 @@ async def audit_authenticated_http_middleware(request: Request, call_next):
     finally:
         duration_ms = (time.perf_counter() - started) * 1000.0
         try:
-            email = request.session.get("user_email") if hasattr(request, "session") else None
+            email = _session_value(request, "user_email")
             if email:
                 from app.db.session import SessionLocal
                 from app.models.user import User
