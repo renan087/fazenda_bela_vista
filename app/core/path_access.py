@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from app.core.permissions_catalog import (
     BACKUPS_MANAGE,
+    DATA_DELETE,
     PAGE_AGENDA,
     PAGE_AGRONOMIC,
     PAGE_ASSETS,
@@ -21,6 +22,7 @@ from app.core.permissions_catalog import (
     PAGE_SOIL,
     PAGE_VARIETIES,
     USERS_MANAGE,
+    write_permission_for_page,
 )
 
 # Ordem: primeiro match vence (prefixos mais longos antes).
@@ -68,16 +70,54 @@ WEB_PATH_PUBLIC_PREFIXES: frozenset[str] = frozenset(
 )
 
 
-def required_permission_for_web_path(path: str) -> str | None:
+DELETE_PATH_MARKERS: tuple[str, ...] = (
+    "/excluir",
+    "/remover",
+    "/delete",
+    "/deletar",
+)
+
+WRITE_EXEMPT_PREFIXES: frozenset[str] = frozenset(
+    {
+        "/contexto",
+        "/meu-perfil",
+    }
+)
+
+MANAGE_ONLY_PERMISSIONS: frozenset[str] = frozenset({USERS_MANAGE, BACKUPS_MANAGE})
+
+
+def is_delete_web_path(path: str) -> bool:
+    normalized = (path or "").split("?")[0].rstrip("/") or "/"
+    return any(marker in normalized for marker in DELETE_PATH_MARKERS)
+
+
+def required_permissions_for_web_path(path: str, method: str = "GET") -> tuple[str, ...]:
     if not path:
-        return None
+        return ()
     path = path.split("?")[0]
     if path != "/" and path.endswith("/"):
         path = path.rstrip("/") or "/"
     for prefix, code in WEB_PATH_PERMISSION_PREFIXES:
         if path == prefix or path.startswith(prefix + "/"):
-            return code
-    return None
+            required = [code]
+            normalized_method = (method or "GET").upper()
+            if normalized_method in {"GET", "HEAD", "OPTIONS"} or code in MANAGE_ONLY_PERMISSIONS:
+                return tuple(required)
+            if any(path == exempt or path.startswith(exempt + "/") for exempt in WRITE_EXEMPT_PREFIXES):
+                return tuple(required)
+            write_code = write_permission_for_page(code)
+            if write_code:
+                required.append(write_code)
+            if is_delete_web_path(path):
+                required.append(DATA_DELETE)
+            return tuple(required)
+    return ()
+
+
+def required_permission_for_web_path(path: str) -> str | None:
+    required = required_permissions_for_web_path(path)
+    return required[0] if required else None
 
 
 def is_public_web_prefix(path: str) -> bool:

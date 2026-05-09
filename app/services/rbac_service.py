@@ -13,6 +13,7 @@ from app.core.permissions_catalog import (
     PAGE_AGENDA,
     PAGE_AGRONOMIC,
     PAGE_ASSETS,
+    DATA_DELETE,
     PAGE_DASHBOARD,
     PAGE_FINANCE,
     PAGE_INPUTS,
@@ -29,6 +30,7 @@ from app.core.permissions_catalog import (
     PERMISSION_DEFINITIONS,
     all_permission_codes,
     operational_permission_codes,
+    write_permission_for_page,
 )
 from app.models import Organization, User
 from app.models.rbac import Permission, Role, role_permissions_table, user_roles_table
@@ -43,6 +45,50 @@ ROLE_SLUG_OPERATOR = "operador"
 ROLE_NAME_ADMIN = "Administrador da organizacao"
 ROLE_NAME_OPERATOR = "Operador (acesso operacional completo)"
 
+PAGE_ROLE_PROFILES: tuple[tuple[str, str, str], ...] = (
+    ("unidade-produtiva", "Unidade produtiva", PAGE_PRODUCTIVE_UNIT),
+    ("operacoes", "Operações", PAGE_OPERATIONS),
+    ("insumos", "Insumos", PAGE_INPUTS),
+    ("agenda", "Agenda", PAGE_AGENDA),
+    ("patrimonio", "Patrimônio", PAGE_ASSETS),
+    ("financeiro", "Gestão financeira", PAGE_FINANCE),
+    ("producao", "Produção", PAGE_PRODUCTION),
+    ("variedades", "Variedades", PAGE_VARIETIES),
+    ("irrigacao", "Irrigação", PAGE_IRRIGATION),
+    ("pluviometria", "Pluviometria", PAGE_RAINFALL),
+    ("pragas", "Pragas e doenças", PAGE_PESTS),
+    ("analise-solo", "Análise de solo", PAGE_SOIL),
+    ("perfil-agronomico", "Perfil agronômico", PAGE_AGRONOMIC),
+    ("mapa", "Mapa da fazenda", PAGE_MAP),
+    ("campo-mobile", "Campo mobile", PAGE_MOBILE),
+)
+
+
+def _page_write_role_profiles() -> tuple[tuple[str, str, frozenset[str]], ...]:
+    profiles: list[tuple[str, str, frozenset[str]]] = []
+    for slug_part, label, page_code in PAGE_ROLE_PROFILES:
+        write_code = write_permission_for_page(page_code)
+        if not write_code:
+            continue
+        profiles.append(
+            (
+                f"alterar-{slug_part}",
+                f"Alterar - {label}",
+                frozenset({PAGE_DASHBOARD, page_code, write_code}),
+            )
+        )
+    return tuple(profiles)
+
+
+def _codes_with_writes(*page_codes: str) -> frozenset[str]:
+    codes: set[str] = set(page_codes)
+    for page_code in page_codes:
+        write_code = write_permission_for_page(page_code)
+        if write_code:
+            codes.add(write_code)
+    return frozenset(codes)
+
+
 # (slug, nome exibido, conjunto de codigos de permissao)
 ROLE_PROFILES: tuple[tuple[str, str, frozenset[str]], ...] = (
     (ROLE_SLUG_ADMIN, ROLE_NAME_ADMIN, all_permission_codes()),
@@ -54,33 +100,31 @@ ROLE_PROFILES: tuple[tuple[str, str, frozenset[str]], ...] = (
     (
         "papel-financeiro",
         "Financeiro",
-        frozenset({PAGE_DASHBOARD, PAGE_FINANCE}),
+        _codes_with_writes(PAGE_DASHBOARD, PAGE_FINANCE),
     ),
     (
         "papel-producao",
         "Producao e comercializacao",
-        frozenset({PAGE_DASHBOARD, PAGE_PRODUCTION}),
+        _codes_with_writes(PAGE_DASHBOARD, PAGE_PRODUCTION),
     ),
     (
         "papel-agronomia",
         "Coordenacao agronomica",
-        frozenset(
-            {
-                PAGE_DASHBOARD,
-                PAGE_PRODUCTIVE_UNIT,
-                PAGE_OPERATIONS,
-                PAGE_INPUTS,
-                PAGE_AGENDA,
-                PAGE_ASSETS,
-                PAGE_VARIETIES,
-                PAGE_IRRIGATION,
-                PAGE_RAINFALL,
-                PAGE_PESTS,
-                PAGE_SOIL,
-                PAGE_AGRONOMIC,
-                PAGE_MAP,
-                PAGE_MOBILE,
-            }
+        _codes_with_writes(
+            PAGE_DASHBOARD,
+            PAGE_PRODUCTIVE_UNIT,
+            PAGE_OPERATIONS,
+            PAGE_INPUTS,
+            PAGE_AGENDA,
+            PAGE_ASSETS,
+            PAGE_VARIETIES,
+            PAGE_IRRIGATION,
+            PAGE_RAINFALL,
+            PAGE_PESTS,
+            PAGE_SOIL,
+            PAGE_AGRONOMIC,
+            PAGE_MAP,
+            PAGE_MOBILE,
         ),
     ),
     (
@@ -99,6 +143,12 @@ ROLE_PROFILES: tuple[tuple[str, str, frozenset[str]], ...] = (
                 PAGE_MOBILE,
             }
         ),
+    ),
+    *_page_write_role_profiles(),
+    (
+        "exclusoes",
+        "Exclusões",
+        frozenset({DATA_DELETE}),
     ),
 )
 
