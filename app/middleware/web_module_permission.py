@@ -19,7 +19,7 @@ class WebModulePermissionMiddleware(BaseHTTPMiddleware):
         path = request.url.path or ""
         if request.method == "OPTIONS" or path == "/" or is_public_web_prefix(path):
             return await call_next(request)
-        required_permissions = required_permissions_for_web_path(path, request.method)
+        required_permissions = required_permissions_for_web_path(path, request.method, request.query_params)
         if not required_permissions:
             return await call_next(request)
         try:

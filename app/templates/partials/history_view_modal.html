@@ -140,7 +140,7 @@
             }
             viewBody.innerHTML = source.innerHTML;
 
-            currentEditUrl = trigger.dataset.historyViewEditUrl || '';
+            currentEditUrl = document.body.dataset.canWritePage === '1' ? (trigger.dataset.historyViewEditUrl || '') : '';
             if (editLink) {
                 if (currentEditUrl) {
                     editLink.href = currentEditUrl;

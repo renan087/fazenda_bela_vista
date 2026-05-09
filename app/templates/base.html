@@ -65,7 +65,7 @@
         }
     </style>
 </head>
-<body class="bg-slate-100 text-slate-800" data-modal-mode="{% if modal_mode %}1{% else %}0{% endif %}">
+<body class="bg-slate-100 text-slate-800" data-modal-mode="{% if modal_mode %}1{% else %}0{% endif %}" data-can-write-page="{% if can_write_page %}1{% else %}0{% endif %}">
     {# Evita flash expandido→recolhido: aplica preferência antes de parsear a sidebar (desktop). #}
     <script>
         (function () {
@@ -1340,6 +1340,69 @@
                     } catch (error) {
                         console.warn('Nao foi possivel ajustar o action do formulario para o modo modal.', error);
                     }
+                });
+            }
+
+            if (document.body.dataset.canWritePage !== '1') {
+                const editLinkSelector = [
+                    'a[href*="edit_id="]:not([href*="view=1"])',
+                    'a[href*="edit_output_id="]',
+                    'a[href*="edit_farm_id="]',
+                    'a[href*="edit_plot_id="]',
+                    'a[href*="transaction_edit_id="]',
+                    'a[href*="card_edit_id="]',
+                    'a[href*="/editar"]'
+                ].join(',');
+
+                document.querySelectorAll('[data-history-view-edit-url]').forEach((element) => {
+                    element.removeAttribute('data-history-view-edit-url');
+                });
+
+                document.querySelectorAll('button.stock-action-button:not(.stock-export-button), a.stock-action-button:not(.stock-export-button)').forEach((element) => {
+                    element.remove();
+                });
+
+                document.querySelectorAll('form[action*="/excluir"], form[action*="/remover"], form[action*="/delete"], form[action*="/deletar"]').forEach((form) => {
+                    form.remove();
+                });
+
+                document.querySelectorAll('*').forEach((element) => {
+                    const attributes = Array.from(element.attributes || []);
+                    const editLinkAttribute = attributes.find((attribute) => {
+                        return attribute.name.startsWith('data-') && attribute.name.endsWith('-edit-link');
+                    });
+                    if (editLinkAttribute && !editLinkAttribute.value.includes('view=1')) {
+                        attributes.forEach((attribute) => {
+                            if (attribute.name.startsWith('data-') && (
+                                attribute.name.endsWith('-launch-open') ||
+                                attribute.name.endsWith('-edit-link')
+                            )) {
+                                element.removeAttribute(attribute.name);
+                            }
+                        });
+                        return;
+                    }
+
+                    const hasLaunchAction = attributes.some((attribute) => {
+                        return attribute.name.startsWith('data-') && (
+                            attribute.name.endsWith('-launch-open') ||
+                            attribute.name.endsWith('-output-open') ||
+                            attribute.name.endsWith('-account-open') ||
+                            attribute.name.endsWith('-credit-card-open') ||
+                            attribute.name.endsWith('-transaction-open')
+                        );
+                    });
+                    if (hasLaunchAction) {
+                        element.remove();
+                    }
+                });
+
+                document.querySelectorAll(editLinkSelector).forEach((element) => {
+                    if (element.matches('[data-history-view-trigger]')) {
+                        element.removeAttribute('data-history-view-edit-url');
+                        return;
+                    }
+                    element.remove();
                 });
             }
         })();

@@ -77,6 +77,24 @@ DELETE_PATH_MARKERS: tuple[str, ...] = (
     "/deletar",
 )
 
+EDIT_PATH_MARKERS: tuple[str, ...] = (
+    "/editar",
+)
+
+EDIT_QUERY_PARAM_NAMES: frozenset[str] = frozenset(
+    {
+        "edit_id",
+        "edit_output_id",
+        "edit_farm_id",
+        "edit_plot_id",
+        "transaction_edit_id",
+        "card_edit_id",
+        "launch",
+        "transaction_launch",
+        "card_launch",
+    }
+)
+
 WRITE_EXEMPT_PREFIXES: frozenset[str] = frozenset(
     {
         "/contexto",
@@ -92,7 +110,22 @@ def is_delete_web_path(path: str) -> bool:
     return any(marker in normalized for marker in DELETE_PATH_MARKERS)
 
 
-def required_permissions_for_web_path(path: str, method: str = "GET") -> tuple[str, ...]:
+def is_edit_web_request(path: str, query_params=None) -> bool:
+    normalized = (path or "").split("?")[0].rstrip("/") or "/"
+    if any(marker in normalized for marker in EDIT_PATH_MARKERS):
+        return True
+    if not query_params:
+        return False
+    try:
+        readonly_view = str(query_params.get("view") or "").strip().lower() in {"1", "true", "sim", "yes"}
+        if readonly_view:
+            return False
+        return any(name in query_params for name in EDIT_QUERY_PARAM_NAMES)
+    except AttributeError:
+        return False
+
+
+def required_permissions_for_web_path(path: str, method: str = "GET", query_params=None) -> tuple[str, ...]:
     if not path:
         return ()
     path = path.split("?")[0]
@@ -102,7 +135,11 @@ def required_permissions_for_web_path(path: str, method: str = "GET") -> tuple[s
         if path == prefix or path.startswith(prefix + "/"):
             required = [code]
             normalized_method = (method or "GET").upper()
-            if normalized_method in {"GET", "HEAD", "OPTIONS"} or code in MANAGE_ONLY_PERMISSIONS:
+            requires_write = normalized_method not in {"GET", "HEAD", "OPTIONS"} or is_edit_web_request(
+                path,
+                query_params,
+            )
+            if not requires_write or code in MANAGE_ONLY_PERMISSIONS:
                 return tuple(required)
             if any(path == exempt or path.startswith(exempt + "/") for exempt in WRITE_EXEMPT_PREFIXES):
                 return tuple(required)

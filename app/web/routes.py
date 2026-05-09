@@ -49,7 +49,9 @@ from app.core.permissions_catalog import (
     PAGE_VARIETIES,
     USERS_MANAGE,
     all_permission_codes,
+    write_permission_for_page,
 )
+from app.core.path_access import required_permissions_for_web_path
 from app.core.csrf import validate_csrf
 from app.core.deps import get_csrf_token, get_current_user_web
 from app.core.security import get_password_hash, verify_password
@@ -838,6 +840,14 @@ def _base_context(request: Request, user: User, csrf_token: str, page: str, **kw
             if user and (is_super_admin_email(user.email) or user.is_admin)
             else frozenset()
         )
+    page_required_permissions = required_permissions_for_web_path(request.url.path, "GET")
+    page_primary_permission = page_required_permissions[0] if page_required_permissions else None
+    page_write_permission = write_permission_for_page(page_primary_permission) if page_primary_permission else None
+    can_write_page = (
+        page_write_permission in permission_codes
+        if page_write_permission
+        else all(code in permission_codes for code in page_required_permissions)
+    )
     context = {
         "request": request,
         "user": user,
@@ -847,6 +857,8 @@ def _base_context(request: Request, user: User, csrf_token: str, page: str, **kw
         "modal_mode": modal_mode,
         "menu_visibility": _build_menu_visibility(user, permission_codes),
         "permission_codes": permission_codes,
+        "can_write_page": can_write_page,
+        "page_write_permission": page_write_permission,
     }
     if repo:
         scope_context = _global_scope_context(request, repo, user)
