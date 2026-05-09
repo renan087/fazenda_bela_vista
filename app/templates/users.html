@@ -656,32 +656,48 @@
             return (profileScope || []).flatMap((slugPart) => [`consultar-${slugPart}`, `alterar-${slugPart}`]);
         };
 
+        const setRoleChecked = (input, checked) => {
+            if (!input || input.checked === checked) return;
+            input.checked = checked;
+            input.dispatchEvent(new Event('change', { bubbles: true }));
+        };
+
+        const clearIndividualAccess = () => {
+            individualRoleInputs.forEach((input) => setRoleChecked(input, false));
+        };
+
+        const setReadyProfileIndividualAccess = (profileSlug, checked) => {
+            slugsForProfile(profileSlug).forEach((slug) => {
+                const input = roleInputBySlug.get(slug);
+                setRoleChecked(input, checked);
+            });
+        };
+
         const applyReadyProfileAccess = (profileSlug) => {
             const profileInput = roleInputBySlug.get(profileSlug);
             if (!profileInput?.checked) return;
             syncingReadyProfileAccess = true;
-            slugsForProfile(profileSlug).forEach((slug) => {
-                const input = roleInputBySlug.get(slug);
-                if (!input) return;
-                input.checked = true;
-                input.dispatchEvent(new Event('change', { bubbles: true }));
-            });
+            clearIndividualAccess();
+            setReadyProfileIndividualAccess(profileSlug, true);
             syncingReadyProfileAccess = false;
         };
 
         readyProfileInputs.forEach((profileInput) => {
             profileInput.addEventListener('change', () => {
-                if (!profileInput.checked) return;
                 const profileSlug = profileInput.dataset.roleSlug || '';
                 syncingReadyProfileAccess = true;
-                readyProfileInputs.forEach((otherInput) => {
-                    if (otherInput !== profileInput) {
-                        otherInput.checked = false;
-                        otherInput.dispatchEvent(new Event('change', { bubbles: true }));
-                    }
-                });
+                if (profileInput.checked) {
+                    clearIndividualAccess();
+                    readyProfileInputs.forEach((otherInput) => {
+                        if (otherInput !== profileInput) {
+                            setRoleChecked(otherInput, false);
+                        }
+                    });
+                    setReadyProfileIndividualAccess(profileSlug, true);
+                } else {
+                    setReadyProfileIndividualAccess(profileSlug, false);
+                }
                 syncingReadyProfileAccess = false;
-                applyReadyProfileAccess(profileSlug);
             });
         });
         allRoleInputs.forEach((input) => {
