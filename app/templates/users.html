@@ -471,7 +471,7 @@
                             <div class="user-role-switch-grid">
                                 {% for r in group.roles %}
                                 <label class="user-switch user-role-switch rounded-2xl border px-4 py-3">
-                                    <input type="checkbox" name="role_id" value="{{ r.id }}" {% if edit_user_role_ids and r.id in edit_user_role_ids %}checked{% endif %}>
+                                    <input type="checkbox" name="role_id" value="{{ r.id }}" data-role-slug="{{ r.slug }}" {% if edit_user_role_ids and r.id in edit_user_role_ids %}checked{% endif %}>
                                     <span class="user-role-switch-content">
                                         <span class="user-role-switch-title">{{ r.name }}</span>
                                         <span class="user-role-switch-status user-role-status-restricted">Acesso Restrito</span>
@@ -489,7 +489,7 @@
                                     <div class="user-role-page-actions">
                                         {% for r in page_card.roles %}
                                         <label class="user-switch user-role-switch rounded-2xl border px-4 py-3">
-                                            <input type="checkbox" name="role_id" value="{{ r.id }}" {% if edit_user_role_ids and r.id in edit_user_role_ids %}checked{% endif %}>
+                                            <input type="checkbox" name="role_id" value="{{ r.id }}" data-role-slug="{{ r.slug }}" {% if edit_user_role_ids and r.id in edit_user_role_ids %}checked{% endif %}>
                                             <span class="user-role-switch-content">
                                                 <span class="user-role-switch-title">{{ r.name }}</span>
                                                 <span class="user-role-switch-status user-role-status-restricted">Acesso Restrito</span>
@@ -607,6 +607,98 @@
                 input.checked = false;
                 input.dispatchEvent(new Event('change', { bubbles: true }));
             });
+        });
+        const allRoleInputs = Array.from(form?.querySelectorAll('input[name="role_id"][data-role-slug]') || []);
+        const roleInputBySlug = new Map(allRoleInputs.map((input) => [input.dataset.roleSlug || '', input]));
+        const readyProfileAccessMap = {
+            operador: 'all',
+            'papel-financeiro': ['financeiro'],
+            'papel-producao': ['producao'],
+            'papel-agronomia': [
+                'unidade-produtiva',
+                'operacoes',
+                'insumos',
+                'agenda',
+                'patrimonio',
+                'variedades',
+                'irrigacao',
+                'pluviometria',
+                'pragas',
+                'analise-solo',
+                'perfil-agronomico',
+                'mapa',
+                'campo-mobile'
+            ],
+            'papel-monitoramento': [
+                'variedades',
+                'irrigacao',
+                'pluviometria',
+                'pragas',
+                'analise-solo',
+                'perfil-agronomico',
+                'mapa',
+                'campo-mobile'
+            ]
+        };
+        const readyProfileSlugs = Object.keys(readyProfileAccessMap);
+        const readyProfileInputs = readyProfileSlugs.map((slug) => roleInputBySlug.get(slug)).filter(Boolean);
+        const individualRoleInputs = allRoleInputs.filter((input) => {
+            const slug = input.dataset.roleSlug || '';
+            return slug.startsWith('consultar-') || slug.startsWith('alterar-');
+        });
+        let syncingReadyProfileAccess = false;
+
+        const slugsForProfile = (profileSlug) => {
+            const profileScope = readyProfileAccessMap[profileSlug];
+            if (profileScope === 'all') {
+                return individualRoleInputs.map((input) => input.dataset.roleSlug || '').filter(Boolean);
+            }
+            return (profileScope || []).flatMap((slugPart) => [`consultar-${slugPart}`, `alterar-${slugPart}`]);
+        };
+
+        const applyReadyProfileAccess = (profileSlug) => {
+            const profileInput = roleInputBySlug.get(profileSlug);
+            if (!profileInput?.checked) return;
+            syncingReadyProfileAccess = true;
+            slugsForProfile(profileSlug).forEach((slug) => {
+                const input = roleInputBySlug.get(slug);
+                if (!input) return;
+                input.checked = true;
+                input.dispatchEvent(new Event('change', { bubbles: true }));
+            });
+            syncingReadyProfileAccess = false;
+        };
+
+        readyProfileInputs.forEach((profileInput) => {
+            profileInput.addEventListener('change', () => {
+                if (!profileInput.checked) return;
+                const profileSlug = profileInput.dataset.roleSlug || '';
+                syncingReadyProfileAccess = true;
+                readyProfileInputs.forEach((otherInput) => {
+                    if (otherInput !== profileInput) {
+                        otherInput.checked = false;
+                        otherInput.dispatchEvent(new Event('change', { bubbles: true }));
+                    }
+                });
+                syncingReadyProfileAccess = false;
+                applyReadyProfileAccess(profileSlug);
+            });
+        });
+        allRoleInputs.forEach((input) => {
+            if (readyProfileInputs.includes(input)) return;
+            input.addEventListener('change', () => {
+                if (syncingReadyProfileAccess) return;
+                readyProfileInputs.forEach((profileInput) => {
+                    if (!profileInput.checked) return;
+                    profileInput.checked = false;
+                    profileInput.dispatchEvent(new Event('change', { bubbles: true }));
+                });
+            });
+        });
+        readyProfileInputs.forEach((profileInput) => {
+            if (profileInput.checked) {
+                applyReadyProfileAccess(profileInput.dataset.roleSlug || '');
+            }
         });
         const passwordField = form?.querySelector('[data-password-mask="true"]');
         const editMode = {{ 'true' if edit_user else 'false' }};
