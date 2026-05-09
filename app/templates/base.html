@@ -1024,6 +1024,18 @@
                 hideNavTooltip();
                 if (repositionSubmenuFlyout) repositionSubmenuFlyout();
             });
+            navEl?.addEventListener('wheel', (event) => {
+                const canScroll = navEl.scrollHeight > navEl.clientHeight;
+                if (!canScroll) {
+                    event.preventDefault();
+                    return;
+                }
+                const atTop = navEl.scrollTop <= 0;
+                const atBottom = Math.ceil(navEl.scrollTop + navEl.clientHeight) >= navEl.scrollHeight;
+                if ((event.deltaY < 0 && atTop) || (event.deltaY > 0 && atBottom)) {
+                    event.preventDefault();
+                }
+            }, { passive: false });
 
             const applyDesktopSidebarState = (collapsed) => {
                 if (!document.body || !desktopSidebarMq.matches) return;
