@@ -706,8 +706,9 @@
                 if (syncingReadyProfileAccess) return;
                 readyProfileInputs.forEach((profileInput) => {
                     if (!profileInput.checked) return;
+                    // Ao personalizar um acesso individual, apenas desligue o perfil pronto.
+                    // A limpeza em massa deve acontecer somente por clique direto no perfil pronto.
                     profileInput.checked = false;
-                    profileInput.dispatchEvent(new Event('change', { bubbles: true }));
                 });
             });
         });
