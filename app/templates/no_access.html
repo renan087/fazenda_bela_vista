@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="stock-page-shell">
+    <section class="stock-page-header rounded-[2rem] p-6 shadow-panel">
+        <div class="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+            <div class="max-w-3xl">
+                <p class="text-xs font-semibold uppercase tracking-[0.35em] text-slate-400">Acesso pendente</p>
+                <h2 class="mt-3 text-3xl font-bold text-slate-950">Seu perfil ainda não possui permissões configuradas</h2>
+                <p class="mt-3 text-base leading-7 text-slate-600">
+                    Sua conta está ativa, mas nenhum perfil de acesso foi vinculado a ela. Para usar o SiSFarm, solicite ao administrador da organização a liberação dos módulos necessários.
+                </p>
+            </div>
+            <div class="rounded-[1.5rem] border border-amber-100 bg-amber-50 px-5 py-4 text-sm font-semibold text-amber-900">
+                Nenhum papel funcional selecionado
+            </div>
+        </div>
+    </section>
+
+    <section class="stock-panel mt-6 rounded-[2rem] bg-white p-6 shadow-panel">
+        <div class="grid gap-4 lg:grid-cols-3">
+            <div class="rounded-[1.5rem] border border-slate-200 bg-slate-50 p-5">
+                <p class="text-xs font-semibold uppercase tracking-[0.25em] text-slate-400">1. Solicite acesso</p>
+                <p class="mt-3 text-sm leading-6 text-slate-600">Entre em contato com o administrador da sua fazenda ou organização.</p>
+            </div>
+            <div class="rounded-[1.5rem] border border-slate-200 bg-slate-50 p-5">
+                <p class="text-xs font-semibold uppercase tracking-[0.25em] text-slate-400">2. Perfis necessários</p>
+                <p class="mt-3 text-sm leading-6 text-slate-600">O administrador pode liberar consulta, alteração e exclusão conforme sua função.</p>
+            </div>
+            <div class="rounded-[1.5rem] border border-slate-200 bg-slate-50 p-5">
+                <p class="text-xs font-semibold uppercase tracking-[0.25em] text-slate-400">3. Novo acesso</p>
+                <p class="mt-3 text-sm leading-6 text-slate-600">Depois da liberação, atualize a página ou entre novamente no sistema.</p>
+            </div>
+        </div>
+        <div class="mt-6 flex flex-wrap gap-3">
+            <a href="/logout" class="stock-action-button stock-action-button-primary">Sair do sistema</a>
+            <a href="/sem-acesso" class="inline-flex min-h-[3rem] items-center rounded-2xl border border-slate-200 px-5 text-sm font-semibold text-slate-600 hover:bg-slate-50">Atualizar status</a>
+        </div>
+    </section>
+</div>
+{% endblock %}

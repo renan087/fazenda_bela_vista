@@ -3331,6 +3331,27 @@ def dashboard(
         ),
     )
 
+@router.get("/sem-acesso")
+def no_access_page(
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+    csrf_token: str = Depends(get_csrf_token),
+):
+    repo = _repository(db)
+    return templates.TemplateResponse(
+        "no_access.html",
+        _base_context(
+            request,
+            user,
+            csrf_token,
+            "no_access",
+            title="Acesso nao configurado",
+            _repo=repo,
+        ),
+    )
+
+
 def _finance_export_query(request: Request) -> str:
     allowed_keys = {"start_date", "end_date", "schedule_range", "extract_season_id", "extract_finance_account_id"}
     params = [

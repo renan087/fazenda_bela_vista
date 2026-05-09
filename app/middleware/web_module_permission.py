@@ -9,7 +9,7 @@ from starlette.responses import RedirectResponse, Response
 from app.core.path_access import is_public_web_prefix, required_permissions_for_web_path
 from app.db.session import SessionLocal
 from app.models import User
-from app.services.rbac_service import user_has_permission
+from app.services.rbac_service import permission_codes_for_user
 
 
 class WebModulePermissionMiddleware(BaseHTTPMiddleware):
@@ -32,8 +32,15 @@ class WebModulePermissionMiddleware(BaseHTTPMiddleware):
             row = db.query(User).filter(User.email == email, User.is_active.is_(True)).first()
             if not row:
                 return await call_next(request)
-            if all(user_has_permission(db, row, code) for code in required_permissions):
+            permission_codes = permission_codes_for_user(db, row)
+            if all(code in permission_codes for code in required_permissions):
                 return await call_next(request)
+            if not permission_codes:
+                request.session["flash"] = {
+                    "kind": "warning",
+                    "message": "Seu usuario ainda nao possui perfis de acesso configurados.",
+                }
+                return RedirectResponse(url="/sem-acesso", status_code=303)
         request.session["flash"] = {
             "kind": "error",
             "message": "Voce nao tem permissao para realizar esta acao.",
