@@ -8193,7 +8193,7 @@ def audit_logs_page(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user_web),
     csrf_token: str = Depends(get_csrf_token),
-    actor_user_id: int | None = Query(None),
+    actor_user_id: str | None = Query(None),
     email: str | None = Query(None),
     event_type: str | None = Query(None),
     date_from: str | None = Query(None),
@@ -8204,6 +8204,7 @@ def audit_logs_page(
     if denied:
         return denied
     repo = _repository(db)
+    filter_actor_user_id = _int_or_none((actor_user_id or "").strip())
     df_bound = None
     dt_bound = None
     if date_from and str(date_from).strip():
@@ -8222,7 +8223,7 @@ def audit_logs_page(
     audit_total_all = count_audit_logs(db)
     rows, total = query_audit_logs(
         db,
-        actor_user_id=actor_user_id,
+        actor_user_id=filter_actor_user_id,
         email_contains=(email.strip() if email else None) or None,
         event_type=(event_type.strip() if event_type else None) or None,
         date_from=df_bound,
@@ -8235,7 +8236,7 @@ def audit_logs_page(
     if effective_page != page:
         rows, total = query_audit_logs(
             db,
-            actor_user_id=actor_user_id,
+            actor_user_id=filter_actor_user_id,
             email_contains=(email.strip() if email else None) or None,
             event_type=(event_type.strip() if event_type else None) or None,
             date_from=df_bound,
@@ -8245,8 +8246,8 @@ def audit_logs_page(
         )
         page = effective_page
     pager_q = {}
-    if actor_user_id:
-        pager_q["actor_user_id"] = actor_user_id
+    if filter_actor_user_id is not None:
+        pager_q["actor_user_id"] = filter_actor_user_id
     if email and email.strip():
         pager_q["email"] = email.strip()
     if event_type and event_type.strip():
@@ -8270,7 +8271,7 @@ def audit_logs_page(
             audit_page=page,
             audit_total_pages=total_pages,
             audit_per_page=per_page,
-            filter_actor_user_id=actor_user_id,
+            filter_actor_user_id=filter_actor_user_id,
             filter_email=email or "",
             filter_event_type=event_type or "",
             filter_date_from=date_from or "",

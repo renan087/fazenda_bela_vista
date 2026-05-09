@@ -31,7 +31,7 @@
             <label class="block">
                 <span class="mb-2 block text-xs uppercase tracking-[0.25em] text-slate-400">Usuario (filtro)</span>
                 <select name="actor_user_id" class="min-h-[3rem] w-full rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-slate-900">
-                    <option value="">Todos</option>
+                    <option value="" {% if filter_actor_user_id is none %}selected{% endif %}>Todos</option>
                     {% for u in user_options %}
                     <option value="{{ u.id }}" {% if filter_actor_user_id == u.id %}selected{% endif %}>{{ u.name }} — {{ u.email }}</option>
                     {% endfor %}
