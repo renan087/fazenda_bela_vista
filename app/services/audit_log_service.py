@@ -79,18 +79,20 @@ def append_audit_event(
                 meta_str = None
         ip = client_ip(request) if request else None
         ua = _truncate_ua(request.headers.get("user-agent") if request else None)
-        if request and http_method is None:
-            http_method = request.method
-        if request and path is None:
-            path = _truncate_path(request.url.path)
+        resolved_http_method = http_method
+        resolved_path = path
+        if request and resolved_http_method is None:
+            resolved_http_method = request.method
+        if request and resolved_path is None:
+            resolved_path = _truncate_path(request.url.path)
         row = AuditLog(
             actor_user_id=uid,
             actor_email=email,
             organization_id=org_id,
             event_type=event_type[:80],
             outcome=(outcome or "success")[:20],
-            http_method=(http_method or "")[:12] if http_method else None,
-            path=path,
+            http_method=(resolved_http_method or "")[:12] if resolved_http_method else None,
+            path=resolved_path,
             status_code=status_code,
             ip_address=ip or None,
             user_agent=ua,
