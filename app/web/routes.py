@@ -134,6 +134,7 @@ from app.services.plot_preview_image import (
     remove_plot_preview_image,
 )
 from app.services.rbac_service import (
+    assignable_role_groups_for_editing,
     assignable_roles_for_editing,
     ensure_organization_roles,
     permission_codes_for_user,
@@ -8548,6 +8549,7 @@ def users_page(
             edit_user = candidate
     rbac_role_labels = role_labels_for_user(db, edit_user) if edit_user else []
     assignable_roles = assignable_roles_for_editing(db, user.organization_id)
+    assignable_role_groups = assignable_role_groups_for_editing(db, user.organization_id)
     edit_user_role_ids = role_ids_for_user_in_org(db, edit_user) if edit_user else []
     return templates.TemplateResponse(
         "users.html",
@@ -8561,6 +8563,7 @@ def users_page(
             edit_user=edit_user,
             rbac_role_labels=rbac_role_labels,
             assignable_roles=assignable_roles,
+            assignable_role_groups=assignable_role_groups,
             edit_user_role_ids=edit_user_role_ids,
             format_app_datetime=format_app_datetime,
             super_admin_email=(settings.super_admin_email or settings.admin_email or "").strip().lower(),

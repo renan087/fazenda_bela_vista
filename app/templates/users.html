@@ -61,6 +61,49 @@
         gap: 0.75rem;
     }
 
+    .user-role-group {
+        border: 1px solid rgba(226, 232, 240, 0.95);
+        border-radius: 1.35rem;
+        background: rgba(248, 250, 252, 0.72);
+        padding: 0.85rem;
+    }
+
+    .user-role-group + .user-role-group {
+        margin-top: 0.9rem;
+    }
+
+    .user-role-group-heading {
+        align-items: flex-start;
+        display: flex;
+        gap: 0.75rem;
+        justify-content: space-between;
+        margin-bottom: 0.75rem;
+    }
+
+    .user-role-group-title {
+        color: #0f172a;
+        font-size: 0.9rem;
+        font-weight: 800;
+    }
+
+    .user-role-group-description {
+        color: #64748b;
+        font-size: 0.76rem;
+        line-height: 1.45;
+        margin-top: 0.15rem;
+    }
+
+    .user-role-group-count {
+        border-radius: 999px;
+        background: #fff;
+        border: 1px solid rgba(203, 213, 225, 0.9);
+        color: #64748b;
+        flex: 0 0 auto;
+        font-size: 0.7rem;
+        font-weight: 800;
+        padding: 0.28rem 0.58rem;
+    }
+
     .user-role-switch {
         width: 100%;
         align-items: flex-start;
@@ -309,20 +352,31 @@
                 >
                     <span class="mb-2 block text-sm font-medium text-slate-700">Papéis funcionais</span>
                     <p class="mb-3 text-xs text-slate-500">Combine papéis para liberar módulos no menu. Deixe sem seleção para usar o papel <strong>Operador</strong> (acesso operacional completo, sem gestão de usuários/backups).</p>
-                    {% if assignable_roles %}
-                    <div class="user-role-switch-grid">
-                        {% for r in assignable_roles %}
-                        <label class="user-switch user-role-switch rounded-2xl border px-4 py-3">
-                            <input type="checkbox" name="role_id" value="{{ r.id }}" {% if edit_user_role_ids and r.id in edit_user_role_ids %}checked{% endif %}>
-                            <span class="user-role-switch-content">
-                                <span class="user-role-switch-title">{{ r.name }}</span>
-                                <span class="user-role-switch-status">Liberar acesso</span>
-                            </span>
-                            <span class="user-switch-track" aria-hidden="true"></span>
-                        </label>
+                    {% if assignable_role_groups %}
+                        {% for group in assignable_role_groups %}
+                        <section class="user-role-group">
+                            <div class="user-role-group-heading">
+                                <div>
+                                    <p class="user-role-group-title">{{ group.label }}</p>
+                                    <p class="user-role-group-description">{{ group.description }}</p>
+                                </div>
+                                <span class="user-role-group-count">{{ group.roles|length }}</span>
+                            </div>
+                            <div class="user-role-switch-grid">
+                                {% for r in group.roles %}
+                                <label class="user-switch user-role-switch rounded-2xl border px-4 py-3">
+                                    <input type="checkbox" name="role_id" value="{{ r.id }}" {% if edit_user_role_ids and r.id in edit_user_role_ids %}checked{% endif %}>
+                                    <span class="user-role-switch-content">
+                                        <span class="user-role-switch-title">{{ r.name }}</span>
+                                        <span class="user-role-switch-status">Liberar acesso</span>
+                                    </span>
+                                    <span class="user-switch-track" aria-hidden="true"></span>
+                                </label>
+                                {% endfor %}
+                            </div>
+                        </section>
                         {% endfor %}
-                    </div>
-                    <p class="mt-3 text-xs text-slate-400">Ligue os papéis que deseja atribuir ao usuário. Sem nenhum papel marcado, o sistema usa o perfil Operador.</p>
+                    <p class="mt-3 text-xs text-slate-400">Consulta libera apenas visualização. Alteração libera criação e edição. Exclusões precisam do papel crítico separado. Sem nenhum papel marcado, o sistema usa o perfil Operador.</p>
                     {% else %}
                     <p class="text-sm text-amber-700">Papéis ainda não foram sincronizados para esta organização. Salve e reinicie o servidor ou contacte o suporte.</p>
                     {% endif %}

@@ -80,6 +80,17 @@ def _page_write_role_profiles() -> tuple[tuple[str, str, frozenset[str]], ...]:
     return tuple(profiles)
 
 
+def _page_read_role_profiles() -> tuple[tuple[str, str, frozenset[str]], ...]:
+    return tuple(
+        (
+            f"consultar-{slug_part}",
+            f"Consultar - {label}",
+            frozenset({PAGE_DASHBOARD, page_code}),
+        )
+        for slug_part, label, page_code in PAGE_ROLE_PROFILES
+    )
+
+
 def _codes_with_writes(*page_codes: str) -> frozenset[str]:
     codes: set[str] = set(page_codes)
     for page_code in page_codes:
@@ -144,6 +155,7 @@ ROLE_PROFILES: tuple[tuple[str, str, frozenset[str]], ...] = (
             }
         ),
     ),
+    *_page_read_role_profiles(),
     *_page_write_role_profiles(),
     (
         "exclusoes",
@@ -320,11 +332,86 @@ def list_roles_for_organization(db: Session, organization_id: int) -> list[Role]
 
 def assignable_roles_for_editing(db: Session, organization_id: int) -> list[Role]:
     """Papéis que podem ser combinados na edicao (exceto administrador — via flag)."""
-    return (
+    roles = (
         db.query(Role)
         .filter(Role.organization_id == organization_id, Role.slug != ROLE_SLUG_ADMIN)
-        .order_by(Role.name.asc())
         .all()
+    )
+    by_slug = {role.slug: role for role in roles}
+    ordered_slugs = _assignable_role_order()
+    ordered = [by_slug[slug] for slug in ordered_slugs if slug in by_slug]
+    remaining = sorted(
+        (role for role in roles if role.slug not in set(ordered_slugs)),
+        key=lambda role: role.name.lower(),
+    )
+    return ordered + remaining
+
+
+def assignable_role_groups_for_editing(db: Session, organization_id: int) -> list[dict]:
+    """Agrupa papéis para uma experiencia mais didatica no formulário de usuários."""
+    roles = assignable_roles_for_editing(db, organization_id)
+    by_slug = {role.slug: role for role in roles}
+
+    groups: list[dict] = []
+    for label, description, slugs in _assignable_role_groups_definition():
+        group_roles = [by_slug[slug] for slug in slugs if slug in by_slug]
+        if group_roles:
+            groups.append(
+                {
+                    "label": label,
+                    "description": description,
+                    "roles": group_roles,
+                }
+            )
+    used_slugs = {role.slug for group in groups for role in group["roles"]}
+    custom_roles = [role for role in roles if role.slug not in used_slugs]
+    if custom_roles:
+        groups.append(
+            {
+                "label": "Papéis personalizados",
+                "description": "Papéis criados ou mantidos fora do catálogo padrão.",
+                "roles": custom_roles,
+            }
+        )
+    return groups
+
+
+def _assignable_role_order() -> tuple[str, ...]:
+    ordered: list[str] = []
+    for _, _, slugs in _assignable_role_groups_definition():
+        ordered.extend(slugs)
+    return tuple(ordered)
+
+
+def _assignable_role_groups_definition() -> tuple[tuple[str, str, tuple[str, ...]], ...]:
+    page_slugs = tuple(slug_part for slug_part, _, _ in PAGE_ROLE_PROFILES)
+    return (
+        (
+            "Perfis prontos",
+            "Combinações amplas para funções comuns da fazenda.",
+            (
+                ROLE_SLUG_OPERATOR,
+                "papel-financeiro",
+                "papel-producao",
+                "papel-agronomia",
+                "papel-monitoramento",
+            ),
+        ),
+        (
+            "Consultas por página",
+            "Permite somente visualizar a página e seus dados, sem salvar alterações.",
+            tuple(f"consultar-{slug}" for slug in page_slugs),
+        ),
+        (
+            "Alterações por página",
+            "Permite criar e editar dados da página. Não libera exclusões sozinho.",
+            tuple(f"alterar-{slug}" for slug in page_slugs),
+        ),
+        (
+            "Permissões críticas",
+            "Use com cuidado: permissões de alto impacto operacional.",
+            ("exclusoes",),
+        ),
     )
 
 
