@@ -851,7 +851,12 @@ def _base_context(request: Request, user: User, csrf_token: str, page: str, **kw
     if repo:
         scope_context = _global_scope_context(request, repo, user)
         context.update(scope_context)
-        context["global_notifications"] = _build_global_notifications(request, repo, scope_context)
+        context["global_notifications"] = _build_global_notifications(
+            request,
+            repo,
+            scope_context,
+            permission_codes,
+        )
         context["context_lock_exempt"] = page in {
             "farms",
             "seasons",
@@ -882,12 +887,20 @@ def _build_menu_visibility(user: User | None, permission_codes: frozenset[str]) 
     return visibility
 
 
-def _build_global_notifications(request: Request, repo: FarmRepository, scope_context: dict) -> dict:
+def _build_global_notifications(
+    request: Request,
+    repo: FarmRepository,
+    scope_context: dict,
+    permission_codes: frozenset[str],
+) -> dict:
     active_farm = scope_context.get("active_farm")
     active_season = scope_context.get("active_season")
     today = today_in_app_timezone()
     important: list[dict] = []
     operational: list[dict] = []
+    can_view_inputs = PAGE_INPUTS in permission_codes
+    can_view_finance = PAGE_FINANCE in permission_codes
+    can_view_agenda = PAGE_AGENDA in permission_codes
 
     if not active_farm:
         return {
@@ -921,90 +934,92 @@ def _build_global_notifications(request: Request, repo: FarmRepository, scope_co
     def inventory_item_allowed(catalog_item) -> bool:
         return bool(catalog_item and getattr(catalog_item, "item_type", None) in {"insumo_agricola", "combustivel"})
 
-    purchase_entries = [
-        entry
-        for entry in repo.list_purchased_inputs()
-        if entry.farm_id == active_farm.id and inventory_item_allowed(entry.input_catalog)
-    ]
-    available_by_input: dict[int, float] = defaultdict(float)
-    catalog_by_input: dict[int, object] = {}
-    for entry in purchase_entries:
-        if entry.input_id:
-            available_by_input[entry.input_id] += float(entry.available_quantity or 0)
-            if entry.input_catalog:
-                catalog_by_input[entry.input_id] = entry.input_catalog
-    for catalog_item in catalog_by_input.values():
-        if not inventory_item_allowed(catalog_item):
-            continue
-        threshold = float(catalog_item.low_stock_threshold or 0)
-        if threshold <= 0:
-            continue
-        available = round(available_by_input.get(catalog_item.id, 0.0), 2)
-        if available > threshold:
-            continue
-        if available <= threshold * 0.4:
-            add_notification(
-                important,
-                title="Estoque crítico",
-                message=f"{catalog_item.name} está com {available:g} {catalog_item.default_unit} disponível, abaixo do nível crítico.",
-                href="/insumos/estoque",
-                kind="stock",
-                severity="danger",
-                meta="Estoque de Insumos",
-            )
-        else:
-            add_notification(
-                operational,
-                title="Estoque baixo",
-                message=f"{catalog_item.name} está com {available:g} {catalog_item.default_unit} e já atingiu o alerta configurado.",
-                href="/insumos/estoque",
-                kind="stock",
-                severity="warning",
-                meta="Estoque de Insumos",
-            )
-
-    for transaction in repo.list_finance_transactions(farm_id=active_farm.id):
-        operation_type = (transaction.operation_type or "").strip().lower()
-        if operation_type not in {"despesa", "receita"}:
-            continue
-        is_receivable = operation_type == "receita"
-        overdue_title = "Conta a receber atrasada" if is_receivable else "Conta atrasada"
-        due_today_title = "Recebimento vence hoje" if is_receivable else "Vence hoje"
-        overdue_href = "/gestao-financeira/contas?finance_tab=receivables&receivables_status=overdue" if is_receivable else "/gestao-financeira/contas?finance_tab=payables&payables_status=overdue"
-        today_href = "/gestao-financeira/contas?finance_tab=receivables" if is_receivable else "/gestao-financeira/contas?finance_tab=payables"
-        meta_fallback = "A Receber" if is_receivable else "A Pagar"
-        value_noun = "recebimento" if is_receivable else "valor"
-        for installment in transaction.installments or []:
-            status = (installment.status or "pendente").strip().lower()
-            if status == "pago":
+    if can_view_inputs:
+        purchase_entries = [
+            entry
+            for entry in repo.list_purchased_inputs()
+            if entry.farm_id == active_farm.id and inventory_item_allowed(entry.input_catalog)
+        ]
+        available_by_input: dict[int, float] = defaultdict(float)
+        catalog_by_input: dict[int, object] = {}
+        for entry in purchase_entries:
+            if entry.input_id:
+                available_by_input[entry.input_id] += float(entry.available_quantity or 0)
+                if entry.input_catalog:
+                    catalog_by_input[entry.input_id] = entry.input_catalog
+        for catalog_item in catalog_by_input.values():
+            if not inventory_item_allowed(catalog_item):
                 continue
-            due_date = installment.due_date
-            if not due_date:
+            threshold = float(catalog_item.low_stock_threshold or 0)
+            if threshold <= 0:
                 continue
-            label = f"{installment.installment_number}/{transaction.installment_count or 1}"
-            value_label = _format_currency(installment.amount or 0)
-            if due_date < today:
+            available = round(available_by_input.get(catalog_item.id, 0.0), 2)
+            if available > threshold:
+                continue
+            if available <= threshold * 0.4:
                 add_notification(
                     important,
-                    title=overdue_title,
-                    message=f"{transaction.product_service or transaction.category or 'Parcela'} ({label}) venceu em {due_date.strftime('%d/%m/%Y')} no {value_noun} de {value_label}.",
-                    href=overdue_href,
-                    kind="receivable" if is_receivable else "payable",
+                    title="Estoque crítico",
+                    message=f"{catalog_item.name} está com {available:g} {catalog_item.default_unit} disponível, abaixo do nível crítico.",
+                    href="/insumos/estoque",
+                    kind="stock",
                     severity="danger",
-                    meta=transaction.finance_account.account_name if transaction.finance_account else meta_fallback,
+                    meta="Estoque de Insumos",
                 )
-            elif due_date == today:
+            else:
                 add_notification(
-                    important,
-                    title=due_today_title,
-                    message=f"{transaction.product_service or transaction.category or 'Parcela'} ({label}) vence hoje no {value_noun} de {value_label}.",
-                    href=today_href,
-                    kind="receivable" if is_receivable else "payable",
+                    operational,
+                    title="Estoque baixo",
+                    message=f"{catalog_item.name} está com {available:g} {catalog_item.default_unit} e já atingiu o alerta configurado.",
+                    href="/insumos/estoque",
+                    kind="stock",
                     severity="warning",
-                    meta=transaction.finance_account.account_name if transaction.finance_account else meta_fallback,
+                    meta="Estoque de Insumos",
                 )
 
-    if active_season:
+    if can_view_finance:
+        for transaction in repo.list_finance_transactions(farm_id=active_farm.id):
+            operation_type = (transaction.operation_type or "").strip().lower()
+            if operation_type not in {"despesa", "receita"}:
+                continue
+            is_receivable = operation_type == "receita"
+            overdue_title = "Conta a receber atrasada" if is_receivable else "Conta atrasada"
+            due_today_title = "Recebimento vence hoje" if is_receivable else "Vence hoje"
+            overdue_href = "/gestao-financeira/contas?finance_tab=receivables&receivables_status=overdue" if is_receivable else "/gestao-financeira/contas?finance_tab=payables&payables_status=overdue"
+            today_href = "/gestao-financeira/contas?finance_tab=receivables" if is_receivable else "/gestao-financeira/contas?finance_tab=payables"
+            meta_fallback = "A Receber" if is_receivable else "A Pagar"
+            value_noun = "recebimento" if is_receivable else "valor"
+            for installment in transaction.installments or []:
+                status = (installment.status or "pendente").strip().lower()
+                if status == "pago":
+                    continue
+                due_date = installment.due_date
+                if not due_date:
+                    continue
+                label = f"{installment.installment_number}/{transaction.installment_count or 1}"
+                value_label = _format_currency(installment.amount or 0)
+                if due_date < today:
+                    add_notification(
+                        important,
+                        title=overdue_title,
+                        message=f"{transaction.product_service or transaction.category or 'Parcela'} ({label}) venceu em {due_date.strftime('%d/%m/%Y')} no {value_noun} de {value_label}.",
+                        href=overdue_href,
+                        kind="receivable" if is_receivable else "payable",
+                        severity="danger",
+                        meta=transaction.finance_account.account_name if transaction.finance_account else meta_fallback,
+                    )
+                elif due_date == today:
+                    add_notification(
+                        important,
+                        title=due_today_title,
+                        message=f"{transaction.product_service or transaction.category or 'Parcela'} ({label}) vence hoje no {value_noun} de {value_label}.",
+                        href=today_href,
+                        kind="receivable" if is_receivable else "payable",
+                        severity="warning",
+                        meta=transaction.finance_account.account_name if transaction.finance_account else meta_fallback,
+                    )
+
+    if can_view_agenda and active_season:
         farm_ids, variety_ids = _scoped_plot_filters(request, active_season)
         plots = repo.list_plots(farm_ids=farm_ids, variety_ids=variety_ids)
         scoped_plot_ids = [plot.id for plot in plots]
