@@ -1,5 +1,15 @@
 {% extends "base.html" %}
 {% block content %}
+{% set can_productive_unit = 'page.productive_unit' in permission_codes %}
+{% set can_operations = 'page.operations' in permission_codes %}
+{% set can_inputs = 'page.inputs' in permission_codes %}
+{% set can_agenda = 'page.agenda' in permission_codes %}
+{% set can_finance = 'page.finance' in permission_codes %}
+{% set can_production = 'page.production' in permission_codes %}
+{% set can_rainfall = 'page.rainfall' in permission_codes %}
+{% set can_pests = 'page.pests' in permission_codes %}
+{% set can_soil = 'page.soil' in permission_codes %}
+{% set can_map = 'page.map' in permission_codes %}
 {% macro pager(section) -%}
 <div class="mt-4 border-t border-slate-100 pt-4" data-dashboard-pager-shell="{{ section }}">
     <div class="flex items-center justify-center gap-2" data-dashboard-dots="{{ section }}"></div>
@@ -14,6 +24,7 @@
                 <h3 class="mt-2 text-xl font-semibold">Indicadores centrais</h3>
                 <div class="dashboard-executive-carousel-viewport" data-dashboard-executive-viewport>
                 <div class="dashboard-executive-grid" data-dashboard-list data-dashboard-executive-grid>
+            {% if can_productive_unit %}
             <a href="/setores" class="dashboard-executive-card is-blue" data-dashboard-item data-dashboard-executive-item>
                 <p class="dashboard-executive-label">Area total plantada</p>
                 <div class="dashboard-executive-value-row">
@@ -28,6 +39,8 @@
                     <p class="dashboard-executive-value" data-dashboard-count data-count-value="{{ kpis.area_total }}" data-count-suffix=" ha">{{ kpis.area_total }} ha</p>
                 </div>
             </a>
+            {% endif %}
+            {% if can_productive_unit %}
             <a href="/setores" class="dashboard-executive-card is-green" data-dashboard-item data-dashboard-executive-item>
                 <p class="dashboard-executive-label">Numero de setores</p>
                 <div class="dashboard-executive-value-row">
@@ -42,6 +55,8 @@
                     <p class="dashboard-executive-value" data-dashboard-count data-count-value="{{ kpis.plot_count }}">{{ kpis.plot_count }}</p>
                 </div>
             </a>
+            {% endif %}
+            {% if can_production %}
             <a href="/producao" class="dashboard-executive-card is-orange" data-dashboard-item data-dashboard-executive-item>
                 <p class="dashboard-executive-label">Producao estimada</p>
                 <div class="dashboard-executive-value-row">
@@ -54,6 +69,8 @@
                     <p class="dashboard-executive-value" data-dashboard-count data-count-value="{{ kpis.estimated_production }}" data-count-suffix=" sc">{{ kpis.estimated_production }} sc</p>
                 </div>
             </a>
+            {% endif %}
+            {% if can_production %}
             <a href="/producao" class="dashboard-executive-card is-violet" data-dashboard-item data-dashboard-executive-item>
                 <p class="dashboard-executive-label">Producao total</p>
                 <div class="dashboard-executive-value-row">
@@ -67,6 +84,8 @@
                     <p class="dashboard-executive-value" data-dashboard-count data-count-value="{{ kpis.total_production }}" data-count-suffix=" sc">{{ kpis.total_production }} sc</p>
                 </div>
             </a>
+            {% endif %}
+            {% if can_production %}
             <a href="#produtividade-area" class="dashboard-executive-card is-pink" data-dashboard-item data-dashboard-executive-item>
                 <p class="dashboard-executive-label">Produtividade media</p>
                 <div class="dashboard-executive-value-row">
@@ -79,6 +98,8 @@
                     <p class="dashboard-executive-value" data-dashboard-count data-count-value="{{ kpis.productivity_per_hectare }}" data-count-suffix=" sc/ha">{{ kpis.productivity_per_hectare }} sc/ha</p>
                 </div>
             </a>
+            {% endif %}
+            {% if can_rainfall %}
             <a href="/pluviometria" class="dashboard-executive-card is-cyan" data-dashboard-item data-dashboard-executive-item>
                 <p class="dashboard-executive-label">Chuva no mes</p>
                 <div class="dashboard-executive-value-row">
@@ -93,6 +114,8 @@
                     <p class="dashboard-executive-value" data-dashboard-count data-count-value="{{ kpis.monthly_rainfall }}" data-count-suffix=" mm">{{ kpis.monthly_rainfall }} mm</p>
                 </div>
             </a>
+            {% endif %}
+            {% if can_production %}
             <a href="/producao" class="dashboard-executive-card is-blue-soft" data-dashboard-item data-dashboard-executive-item>
                 <p class="dashboard-executive-label">Previsao pelo historico</p>
                 <div class="dashboard-executive-value-row">
@@ -106,6 +129,8 @@
                     <p class="dashboard-executive-value" data-dashboard-count data-count-value="{{ kpis.forecast_production }}" data-count-suffix=" sc">{{ kpis.forecast_production }} sc</p>
                 </div>
             </a>
+            {% endif %}
+            {% if can_operations %}
             <a href="/fertilizacao" class="dashboard-executive-card is-green-soft" data-dashboard-item data-dashboard-executive-item>
                 <p class="dashboard-executive-label">Custo fertilizacao / ha</p>
                 <div class="dashboard-executive-value-row">
@@ -118,6 +143,8 @@
                     <p class="dashboard-executive-value" title="R$ {{ kpis.cost_per_hectare|decimal_br }}" data-dashboard-count data-count-mobile-compact-currency="true" data-count-prefix="R$ " data-count-value="{{ kpis.cost_per_hectare }}">{{ kpis.cost_per_hectare_compact }}</p>
                 </div>
             </a>
+            {% endif %}
+            {% if can_finance %}
             <a href="{% if active_season %}/gestao-financeira?extract_season_id={{ active_season.id }}{% else %}/gestao-financeira{% endif %}" class="dashboard-executive-card is-cyan" data-dashboard-item data-dashboard-executive-item>
                 <p class="dashboard-executive-label">Custo operacional / ha</p>
                 <div class="dashboard-executive-value-row">
@@ -136,6 +163,8 @@
                     {% endif %}
                 </div>
             </a>
+            {% endif %}
+            {% if can_finance %}
             <a href="{% if active_season %}/gestao-financeira?extract_season_id={{ active_season.id }}{% else %}/gestao-financeira{% endif %}" class="dashboard-executive-card is-pink" data-dashboard-item data-dashboard-executive-item>
                 <p class="dashboard-executive-label">Custo operacional / sc</p>
                 <div class="dashboard-executive-value-row">
@@ -152,6 +181,8 @@
                     {% endif %}
                 </div>
             </a>
+            {% endif %}
+            {% if can_inputs %}
             <a href="/insumos/comprados" class="dashboard-executive-card is-orange-soft" data-dashboard-item data-dashboard-executive-item>
                 <p class="dashboard-executive-label">Insumos em alerta</p>
                 <div class="dashboard-executive-value-row">
@@ -165,6 +196,8 @@
                     <p class="dashboard-executive-value" data-dashboard-count data-count-value="{{ kpis.low_stock_count }}">{{ kpis.low_stock_count }}</p>
                 </div>
             </a>
+            {% endif %}
+            {% if can_agenda %}
             <a href="/fertilizacao/agendamentos" class="dashboard-executive-card is-violet-soft" data-dashboard-item data-dashboard-executive-item>
                 <p class="dashboard-executive-label">Aplicacoes atrasadas</p>
                 <div class="dashboard-executive-value-row">
@@ -177,6 +210,8 @@
                     <p class="dashboard-executive-value" data-dashboard-count data-count-value="{{ kpis.late_schedule_count }}">{{ kpis.late_schedule_count }}</p>
                 </div>
             </a>
+            {% endif %}
+            {% if can_finance %}
             <a href="/gestao-financeira/contas" class="dashboard-executive-card is-green" data-dashboard-item data-dashboard-executive-item>
                 <p class="dashboard-executive-label">Saldo financeiro</p>
                 <div class="dashboard-executive-value-row">
@@ -191,6 +226,8 @@
                     <p class="dashboard-executive-value" title="R$ {{ kpis.finance_balance|decimal_br }}" data-dashboard-count data-count-mobile-compact-currency="true" data-count-prefix="R$ " data-count-value="{{ kpis.finance_balance }}">{{ kpis.finance_balance_compact }}</p>
                 </div>
             </a>
+            {% endif %}
+            {% if can_finance %}
             <a href="/gestao-financeira/contas?finance_tab=payables" class="dashboard-executive-card is-orange-soft" data-dashboard-item data-dashboard-executive-item>
                 <p class="dashboard-executive-label">A pagar aberto</p>
                 <div class="dashboard-executive-value-row">
@@ -203,6 +240,8 @@
                     <p class="dashboard-executive-value" title="R$ {{ kpis.finance_payable_open|decimal_br }}" data-dashboard-count data-count-mobile-compact-currency="true" data-count-prefix="R$ " data-count-value="{{ kpis.finance_payable_open }}">{{ kpis.finance_payable_open_compact }}</p>
                 </div>
             </a>
+            {% endif %}
+            {% if can_finance %}
             <a href="/gestao-financeira/contas?finance_tab=receivables" class="dashboard-executive-card is-blue-soft" data-dashboard-item data-dashboard-executive-item>
                 <p class="dashboard-executive-label">A receber aberto</p>
                 <div class="dashboard-executive-value-row">
@@ -216,6 +255,8 @@
                     <p class="dashboard-executive-value" title="R$ {{ kpis.finance_receivable_open|decimal_br }}" data-dashboard-count data-count-mobile-compact-currency="true" data-count-prefix="R$ " data-count-value="{{ kpis.finance_receivable_open }}">{{ kpis.finance_receivable_open_compact }}</p>
                 </div>
             </a>
+            {% endif %}
+            {% if can_finance %}
             <a href="/gestao-financeira?schedule_range=custom&start_date={{ finance_flow.current_month_start }}&end_date={{ finance_flow.current_month_end }}" class="dashboard-executive-card is-violet" data-dashboard-item data-dashboard-executive-item>
                 <p class="dashboard-executive-label">Realizado no mes</p>
                 <div class="dashboard-executive-value-row">
@@ -229,12 +270,14 @@
                     <p class="dashboard-executive-value" title="R$ {{ kpis.finance_realized_month|decimal_br }}" data-dashboard-count data-count-mobile-compact-currency="true" data-count-prefix="R$ " data-count-value="{{ kpis.finance_realized_month }}">{{ kpis.finance_realized_month_compact }}</p>
                 </div>
             </a>
+            {% endif %}
                 </div>
                 </div>
                 {{ pager('executive_summary') }}
             </div>
         </div>
 
+        {% if can_inputs %}
         <article class="overflow-hidden rounded-[2rem] bg-white p-6 shadow-panel" data-dashboard-card="stock_alerts">
             <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Alertas</p>
             <h3 class="mt-2 text-xl font-semibold">Insumos proximos de acabar</h3>
@@ -258,7 +301,9 @@
                 {{ pager('stock_alerts') }}
             </div>
         </article>
+        {% endif %}
     </div>
+    {% if can_agenda %}
     <article class="dashboard-agenda-panel overflow-hidden rounded-[2rem] bg-white p-6 shadow-panel" data-dashboard-card="schedules">
         <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Agenda</p>
         <h3 class="mt-2 text-xl font-semibold">Proximas aplicacoes</h3>
@@ -325,8 +370,10 @@
     </dialog>
     <script type="application/json" id="dashboardScheduleData">{{ schedule_alerts|tojson }}</script>
     <script type="application/json" id="dashboardScheduleMeta">{{ {"csrfToken": csrf_token, "redirectTo": current_url or request.url.path}|tojson }}</script>
+    {% endif %}
 </section>
 
+{% if can_finance %}
 <section class="mt-6">
     <article class="rounded-[2rem] bg-white p-6 shadow-panel">
         <div class="flex flex-wrap items-start justify-between gap-4">
@@ -418,7 +465,9 @@
         </div>
     </article>
 </section>
+{% endif %}
 
+{% if can_production %}
 <section class="mt-6 grid gap-6 xl:grid-cols-4">
     <article class="rounded-[2rem] bg-white p-6 shadow-panel xl:col-span-2">
         <div class="flex items-center justify-between">
@@ -459,8 +508,11 @@
         </div>
     </article>
 </section>
+{% endif %}
 
+{% if can_production or can_rainfall %}
 <section class="mt-6 grid gap-6 xl:grid-cols-2">
+    {% if can_production %}
     <article class="overflow-hidden rounded-[2rem] bg-white p-6 shadow-panel">
         <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Serie historica</p>
         <h3 class="mt-2 text-xl font-semibold">Linha de colheita</h3>
@@ -468,6 +520,8 @@
             <canvas id="timelineChart"></canvas>
         </div>
     </article>
+    {% endif %}
+    {% if can_rainfall %}
     <article class="rounded-[2rem] bg-white p-6 shadow-panel">
         <div class="flex flex-wrap items-start justify-between gap-4">
             <div>
@@ -494,8 +548,11 @@
             <canvas id="rainfallChart"></canvas>
         </div>
     </article>
+    {% endif %}
 </section>
+{% endif %}
 
+{% if can_operations %}
 <section class="mt-6 grid gap-6 xl:grid-cols-1">
     <article class="rounded-[2rem] bg-white p-6 shadow-panel">
         <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Fertilizacao</p>
@@ -516,13 +573,18 @@
         </div>
     </article>
 </section>
+{% endif %}
 
+{% if can_map or can_rainfall %}
 <section class="mt-6 grid gap-6 xl:grid-cols-2">
+    {% if can_map %}
     <article class="rounded-[2rem] bg-white p-6 shadow-panel" data-dashboard-card="rainfalls">
         <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Mapa</p>
         <h3 class="mt-2 text-xl font-semibold">Fazendas e setores desenhados</h3>
         <div id="dashboardMap" class="mt-6 h-72 overflow-hidden rounded-2xl"></div>
     </article>
+    {% endif %}
+    {% if can_rainfall %}
     <article class="rounded-[2rem] bg-white p-6 shadow-panel">
         <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Pluviometria</p>
         <h3 class="mt-2 text-xl font-semibold">Lancamentos recentes</h3>
@@ -546,15 +608,20 @@
             {{ pager('rainfalls') }}
         </div>
     </article>
+    {% endif %}
 </section>
+{% endif %}
 
+{% if can_operations or can_production %}
 <section class="mt-6 grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
+    {% if can_operations or can_production %}
     <article class="overflow-hidden rounded-[2rem] bg-white p-6 shadow-panel" data-dashboard-card="timeline">
         <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Timeline</p>
         <h3 class="mt-2 text-xl font-semibold">Atividades recentes</h3>
         <div class="mt-6 flex h-[36rem] min-h-0 flex-col overflow-hidden">
             <div class="min-h-0 flex-1 space-y-4 overflow-y-auto pr-2" data-dashboard-list>
                 {% for item in activity_timeline %}
+                {% if (item.kind == 'fertilizacao' and can_operations) or (item.kind == 'producao' and can_production) %}
                 <a href="{{ item.link }}" class="block rounded-2xl border border-slate-100 bg-slate-50 p-4 transition hover:border-brand-200 hover:bg-brand-50/40" data-dashboard-item>
                     <div class="flex items-center justify-between gap-4">
                         <div>
@@ -566,6 +633,7 @@
                     <p class="mt-3 text-sm text-slate-600">{{ item.detail }}</p>
                     <p class="mt-2 text-xs uppercase tracking-[0.25em] text-slate-400">{{ item.date }}</p>
                 </a>
+                {% endif %}
                 {% else %}
                 <p class="text-sm text-slate-500">Sem atividades recentes.</p>
                 {% endfor %}
@@ -573,10 +641,13 @@
             {{ pager('timeline') }}
         </div>
     </article>
+    {% endif %}
+    {% if can_operations or can_production %}
     <article class="overflow-hidden rounded-[2rem] bg-white p-6 shadow-panel" data-dashboard-card="fertilizations">
         <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Indicadores</p>
         <h3 class="mt-2 text-xl font-semibold">Evolucao dos custos e producao</h3>
         <div class="mt-6 grid gap-4 sm:grid-cols-3">
+            {% if can_production %}
             <div class="rounded-2xl bg-slate-50 p-4">
                 <p class="text-sm text-slate-500">Producao estimada</p>
                 <p class="mt-2 text-2xl font-semibold text-slate-900">{{ kpis.estimated_production }} sacas</p>
@@ -585,18 +656,27 @@
                 <p class="text-sm text-slate-500">Producao total</p>
                 <p class="mt-2 text-2xl font-semibold text-slate-900">{{ kpis.total_production }} sacas</p>
             </div>
+            {% endif %}
+            {% if can_operations %}
             <div class="rounded-2xl bg-slate-50 p-4">
                 <p class="text-sm text-slate-500">Custo fertilizacao / ha</p>
                 <p class="mt-2 text-2xl font-semibold text-slate-900">R$ {{ kpis.cost_per_hectare }}</p>
             </div>
+            {% endif %}
         </div>
+        {% if can_operations %}
         <div class="mt-6 h-72">
             <canvas id="costByPlotChart"></canvas>
         </div>
+        {% endif %}
     </article>
+    {% endif %}
 </section>
+{% endif %}
 
+{% if can_pests or can_production or can_soil %}
 <section class="mt-6 grid gap-6 xl:grid-cols-3">
+    {% if can_pests %}
     <article class="overflow-hidden rounded-[2rem] bg-white p-6 shadow-panel" data-dashboard-card="incidents">
         <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Sanidade</p>
         <h3 class="mt-2 text-xl font-semibold">Pragas e doencas</h3>
@@ -618,6 +698,8 @@
             {{ pager('incidents') }}
         </div>
     </article>
+    {% endif %}
+    {% if can_production %}
     <article class="overflow-hidden rounded-[2rem] bg-white p-6 shadow-panel" data-dashboard-card="harvests">
         <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Colheitas</p>
         <h3 class="mt-2 text-xl font-semibold">Registros recentes</h3>
@@ -636,6 +718,8 @@
             {{ pager('harvests') }}
         </div>
     </article>
+    {% endif %}
+    {% if can_soil %}
     <article class="overflow-hidden rounded-[2rem] bg-white p-6 shadow-panel" data-dashboard-card="soil_analyses">
         <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Analise de Solo</p>
         <h3 class="mt-2 text-xl font-semibold">Recomendacoes recentes</h3>
@@ -654,21 +738,29 @@
             {{ pager('soil_analyses') }}
         </div>
     </article>
+    {% endif %}
 </section>
+{% endif %}
 
 <script src="{{ url_for('static', path='js/swipe_card_pager.js') }}?v=12"></script>
 <script>
-    const production = {{ production_chart|safe }};
-    const productivity = {{ productivity_chart|safe }};
-    const timeline = {{ timeline_chart|safe }};
-    const rainfall = {{ rainfall_chart|safe }};
-    const costByPlot = {{ cost_by_plot_chart|safe }};
-    const financeProjection = {{ finance_flow.projected_chart|tojson }};
-    const mapData = {{ map_geojson|safe }};
+    const production = {{ production_chart|safe if can_production else '{"labels":[],"values":[]}' }};
+    const productivity = {{ productivity_chart|safe if can_production else '{"labels":[],"values":[]}' }};
+    const timeline = {{ timeline_chart|safe if can_production else '{"labels":[],"values":[]}' }};
+    const rainfall = {{ rainfall_chart|safe if can_rainfall else '{"labels":[],"values":[]}' }};
+    const costByPlot = {{ cost_by_plot_chart|safe if can_operations else '{"labels":[],"values":[]}' }};
+    const financeProjection = {{ finance_flow.projected_chart|tojson if can_finance else '{"labels":[],"values":[]}'|safe }};
+    const mapData = {{ map_geojson|safe if can_map else '{"type":"FeatureCollection","features":[]}' }};
     const dashboardScheduleData = JSON.parse(document.getElementById('dashboardScheduleData')?.textContent || '[]');
     const dashboardScheduleMeta = JSON.parse(document.getElementById('dashboardScheduleMeta')?.textContent || '{}');
 
-    new Chart(document.getElementById('productionChart'), {
+    const createChartIfPresent = (id, config) => {
+        const canvas = document.getElementById(id);
+        if (!canvas) return null;
+        return new Chart(canvas, config);
+    };
+
+    createChartIfPresent('productionChart', {
         type: 'bar',
         data: {
             labels: production.labels,
@@ -682,7 +774,7 @@
         options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
     });
 
-    new Chart(document.getElementById('timelineChart'), {
+    createChartIfPresent('timelineChart', {
         type: 'line',
         data: {
             labels: timeline.labels,
@@ -698,7 +790,7 @@
         options: { responsive: true, maintainAspectRatio: false }
     });
 
-    new Chart(document.getElementById('productivityChart'), {
+    createChartIfPresent('productivityChart', {
         type: 'bar',
         data: {
             labels: productivity.labels,
@@ -712,7 +804,7 @@
         options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
     });
 
-    new Chart(document.getElementById('rainfallChart'), {
+    createChartIfPresent('rainfallChart', {
         type: 'line',
         data: {
             labels: rainfall.labels,
@@ -728,7 +820,7 @@
         options: { responsive: true, maintainAspectRatio: false }
     });
 
-    new Chart(document.getElementById('costByPlotChart'), {
+    createChartIfPresent('costByPlotChart', {
         type: 'bar',
         data: {
             labels: costByPlot.labels,
@@ -742,7 +834,7 @@
         options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
     });
 
-    new Chart(document.getElementById('financeProjectionChart'), {
+    createChartIfPresent('financeProjectionChart', {
         type: 'line',
         data: {
             labels: financeProjection.labels,
@@ -785,24 +877,27 @@
         }
     });
 
-    const map = L.map('dashboardMap').setView([-20.7442, -42.8721], 14);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '&copy; OpenStreetMap'
-    }).addTo(map);
-    const layer = L.geoJSON(mapData, {
-        style: (feature) => feature.properties.feature_type === 'farm'
-            ? ({ color: '#0f172a', weight: 2, fillOpacity: 0.08, dashArray: '6 6' })
-            : ({ color: '#446a36', weight: 2, fillOpacity: 0.35 }),
-        onEachFeature: (feature, leafletLayer) => {
-            if (feature.properties.feature_type === 'farm') {
-                leafletLayer.bindPopup(`<strong>${feature.properties.name}</strong><br>${feature.properties.location}<br>${feature.properties.area} ha`);
-                return;
+    const mapRoot = document.getElementById('dashboardMap');
+    if (mapRoot) {
+        const map = L.map('dashboardMap').setView([-20.7442, -42.8721], 14);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '&copy; OpenStreetMap'
+        }).addTo(map);
+        const layer = L.geoJSON(mapData, {
+            style: (feature) => feature.properties.feature_type === 'farm'
+                ? ({ color: '#0f172a', weight: 2, fillOpacity: 0.08, dashArray: '6 6' })
+                : ({ color: '#446a36', weight: 2, fillOpacity: 0.35 }),
+            onEachFeature: (feature, leafletLayer) => {
+                if (feature.properties.feature_type === 'farm') {
+                    leafletLayer.bindPopup(`<strong>${feature.properties.name}</strong><br>${feature.properties.location}<br>${feature.properties.area} ha`);
+                    return;
+                }
+                leafletLayer.bindPopup(`<strong>${feature.properties.name}</strong><br>${feature.properties.farm}<br>${feature.properties.variety}<br>${feature.properties.area} ha`);
             }
-            leafletLayer.bindPopup(`<strong>${feature.properties.name}</strong><br>${feature.properties.farm}<br>${feature.properties.variety}<br>${feature.properties.area} ha`);
+        }).addTo(map);
+        if (layer.getBounds().isValid()) {
+            map.fitBounds(layer.getBounds(), { padding: [20, 20] });
         }
-    }).addTo(map);
-    if (layer.getBounds().isValid()) {
-        map.fitBounds(layer.getBounds(), { padding: [20, 20] });
     }
 
     (() => {
