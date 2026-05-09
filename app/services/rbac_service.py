@@ -1,4 +1,4 @@
-"""RBAC por organizacao: seed, consulta e sincronizacao com o flag legado `User.is_admin`."""
+"""RBAC por organizacao: papéis, permissoes e atribuicao a usuarios."""
 
 from __future__ import annotations
 
@@ -9,7 +9,27 @@ from sqlalchemy import delete, insert, select
 from sqlalchemy.orm import Session
 
 from app.core.admin_access import is_super_admin_email
-from app.core.permissions_catalog import PERMISSION_DEFINITIONS, all_permission_codes
+from app.core.permissions_catalog import (
+    PAGE_AGENDA,
+    PAGE_AGRONOMIC,
+    PAGE_ASSETS,
+    PAGE_DASHBOARD,
+    PAGE_FINANCE,
+    PAGE_INPUTS,
+    PAGE_IRRIGATION,
+    PAGE_MAP,
+    PAGE_MOBILE,
+    PAGE_OPERATIONS,
+    PAGE_PESTS,
+    PAGE_PRODUCTION,
+    PAGE_PRODUCTIVE_UNIT,
+    PAGE_RAINFALL,
+    PAGE_SOIL,
+    PAGE_VARIETIES,
+    PERMISSION_DEFINITIONS,
+    all_permission_codes,
+    operational_permission_codes,
+)
 from app.models import Organization, User
 from app.models.rbac import Permission, Role, role_permissions_table, user_roles_table
 
@@ -21,7 +41,66 @@ logger = logging.getLogger(__name__)
 ROLE_SLUG_ADMIN = "administrador"
 ROLE_SLUG_OPERATOR = "operador"
 ROLE_NAME_ADMIN = "Administrador da organizacao"
-ROLE_NAME_OPERATOR = "Operador"
+ROLE_NAME_OPERATOR = "Operador (acesso operacional completo)"
+
+# (slug, nome exibido, conjunto de codigos de permissao)
+ROLE_PROFILES: tuple[tuple[str, str, frozenset[str]], ...] = (
+    (ROLE_SLUG_ADMIN, ROLE_NAME_ADMIN, all_permission_codes()),
+    (
+        ROLE_SLUG_OPERATOR,
+        ROLE_NAME_OPERATOR,
+        operational_permission_codes(),
+    ),
+    (
+        "papel-financeiro",
+        "Financeiro",
+        frozenset({PAGE_DASHBOARD, PAGE_FINANCE}),
+    ),
+    (
+        "papel-producao",
+        "Producao e comercializacao",
+        frozenset({PAGE_DASHBOARD, PAGE_PRODUCTION}),
+    ),
+    (
+        "papel-agronomia",
+        "Coordenacao agronomica",
+        frozenset(
+            {
+                PAGE_DASHBOARD,
+                PAGE_PRODUCTIVE_UNIT,
+                PAGE_OPERATIONS,
+                PAGE_INPUTS,
+                PAGE_AGENDA,
+                PAGE_ASSETS,
+                PAGE_VARIETIES,
+                PAGE_IRRIGATION,
+                PAGE_RAINFALL,
+                PAGE_PESTS,
+                PAGE_SOIL,
+                PAGE_AGRONOMIC,
+                PAGE_MAP,
+                PAGE_MOBILE,
+            }
+        ),
+    ),
+    (
+        "papel-monitoramento",
+        "Monitoramento de campo",
+        frozenset(
+            {
+                PAGE_DASHBOARD,
+                PAGE_VARIETIES,
+                PAGE_IRRIGATION,
+                PAGE_RAINFALL,
+                PAGE_PESTS,
+                PAGE_SOIL,
+                PAGE_AGRONOMIC,
+                PAGE_MAP,
+                PAGE_MOBILE,
+            }
+        ),
+    ),
+)
 
 
 def seed_permissions(db: Session) -> None:
@@ -40,46 +119,45 @@ def _get_role_by_slug(db: Session, organization_id: int, slug: str) -> Role | No
     )
 
 
-def ensure_organization_roles(db: Session, organization_id: int) -> tuple[Role, Role]:
-    """Garante papéis sistema e permissoes; retorna (administrador, operador)."""
-    seed_permissions(db)
-    admin_role = _get_role_by_slug(db, organization_id, ROLE_SLUG_ADMIN)
-    op_role = _get_role_by_slug(db, organization_id, ROLE_SLUG_OPERATOR)
-    all_perm_rows = db.query(Permission).all()
-
-    if not admin_role:
-        admin_role = Role(
-            organization_id=organization_id,
-            name=ROLE_NAME_ADMIN,
-            slug=ROLE_SLUG_ADMIN,
-            is_system=True,
-        )
-        db.add(admin_role)
-        db.flush()
-
-    if not op_role:
-        op_role = Role(
-            organization_id=organization_id,
-            name=ROLE_NAME_OPERATOR,
-            slug=ROLE_SLUG_OPERATOR,
-            is_system=True,
-        )
-        db.add(op_role)
-        db.flush()
-
-    existing_admin_perm_ids = set(
+def _sync_role_permissions(db: Session, role: Role, codes: frozenset[str]) -> None:
+    rows = db.query(Permission).filter(Permission.code.in_(list(codes))).all()
+    wanted_ids = {r.id for r in rows}
+    current_ids = set(
         db.scalars(
-            select(role_permissions_table.c.permission_id).where(role_permissions_table.c.role_id == admin_role.id)
+            select(role_permissions_table.c.permission_id).where(role_permissions_table.c.role_id == role.id)
         ).all()
     )
-    for perm in all_perm_rows:
-        if perm.id not in existing_admin_perm_ids:
-            db.execute(insert(role_permissions_table).values(role_id=admin_role.id, permission_id=perm.id))
-    db.commit()
+    to_drop = current_ids - wanted_ids
+    to_add = wanted_ids - current_ids
+    for pid in to_drop:
+        db.execute(
+            delete(role_permissions_table).where(
+                role_permissions_table.c.role_id == role.id,
+                role_permissions_table.c.permission_id == pid,
+            )
+        )
+    for pid in to_add:
+        db.execute(insert(role_permissions_table).values(role_id=role.id, permission_id=pid))
 
-    db.refresh(admin_role)
-    db.refresh(op_role)
-    return admin_role, op_role
+
+def ensure_organization_roles(db: Session, organization_id: int) -> None:
+    """Cria/atualiza papéis de sistema e permissoes por organizacao."""
+    seed_permissions(db)
+    for slug, name, codes in ROLE_PROFILES:
+        role = _get_role_by_slug(db, organization_id, slug)
+        if not role:
+            role = Role(
+                organization_id=organization_id,
+                name=name,
+                slug=slug,
+                is_system=True,
+            )
+            db.add(role)
+            db.flush()
+        else:
+            role.name = name
+        _sync_role_permissions(db, role, codes)
+    db.commit()
 
 
 def _clear_user_roles_in_organization(db: Session, user_id: int, organization_id: int) -> None:
@@ -94,19 +172,44 @@ def _clear_user_roles_in_organization(db: Session, user_id: int, organization_id
     )
 
 
-def sync_roles_from_admin_flag(db: Session, user: User) -> None:
-    """Alinha `user_roles` ao flag `is_admin` / super admin (um papel por vez nesta versao)."""
+def set_user_roles_for_organization(db: Session, user: User, role_ids: list[int]) -> None:
+    """Substitui papéis do usuario na organizacao (valida FK na propria org)."""
     if not user.organization_id:
         return
-    admin_role, operador_role = ensure_organization_roles(db, user.organization_id)
+    ids = role_ids or []
+    if not ids:
+        wanted = []
+    else:
+        wanted = sorted(
+            set(
+                db.scalars(
+                    select(Role.id).where(
+                        Role.organization_id == user.organization_id,
+                        Role.id.in_(ids),
+                    )
+                ).all()
+            )
+        )
     _clear_user_roles_in_organization(db, user.id, user.organization_id)
-    target = admin_role if (user.is_admin or is_super_admin_email(user.email)) else operador_role
-    db.execute(insert(user_roles_table).values(user_id=user.id, role_id=target.id))
+    for rid in wanted:
+        db.execute(insert(user_roles_table).values(user_id=user.id, role_id=rid))
     db.commit()
 
 
+def sync_roles_from_admin_flag(db: Session, user: User) -> None:
+    """Um papel: administrador ou operador completo (compatibilidade com flag is_admin)."""
+    if not user.organization_id:
+        return
+    ensure_organization_roles(db, user.organization_id)
+    admin_role = _get_role_by_slug(db, user.organization_id, ROLE_SLUG_ADMIN)
+    operador_role = _get_role_by_slug(db, user.organization_id, ROLE_SLUG_OPERATOR)
+    if not admin_role or not operador_role:
+        return
+    target_id = admin_role.id if (user.is_admin or is_super_admin_email(user.email)) else operador_role.id
+    set_user_roles_for_organization(db, user, [target_id])
+
+
 def sync_legacy_user_roles(db: Session) -> None:
-    """Primeira carga: usuarios sem papel na organizacao recebem um padrao a partir de `is_admin`."""
     users = db.query(User).filter(User.organization_id.isnot(None)).all()
     for user in users:
         has_any = (
@@ -163,6 +266,29 @@ def list_roles_for_organization(db: Session, organization_id: int) -> list[Role]
         .order_by(Role.name.asc())
         .all()
     )
+
+
+def assignable_roles_for_editing(db: Session, organization_id: int) -> list[Role]:
+    """Papéis que podem ser combinados na edicao (exceto administrador — via flag)."""
+    return (
+        db.query(Role)
+        .filter(Role.organization_id == organization_id, Role.slug != ROLE_SLUG_ADMIN)
+        .order_by(Role.name.asc())
+        .all()
+    )
+
+
+def role_ids_for_user_in_org(db: Session, user: User) -> list[int]:
+    if not user.organization_id:
+        return []
+    q = (
+        db.query(Role.id)
+        .join(user_roles_table, Role.id == user_roles_table.c.role_id)
+        .filter(user_roles_table.c.user_id == user.id, Role.organization_id == user.organization_id)
+        .order_by(Role.slug.asc())
+        .all()
+    )
+    return [row[0] for row in q]
 
 
 def role_labels_for_user(db: Session, user: User) -> list[str]:

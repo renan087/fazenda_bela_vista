@@ -32,6 +32,7 @@ from app.services.data_change_audit import (
     reset_data_change_audit_context,
     set_data_change_audit_context,
 )
+from app.middleware.web_module_permission import WebModulePermissionMiddleware
 from app.services.runtime_memory_monitor import get_current_rss_mb, run_runtime_memory_monitor
 from app.web.routes import router as web_router
 
@@ -277,6 +278,7 @@ async def global_exception_handler(request: Request, exc: Exception):
 
 
 app.add_middleware(AuditAuthenticatedHttpMiddleware)
+app.add_middleware(WebModulePermissionMiddleware)
 app.add_middleware(
     SessionMiddleware,
     secret_key=settings.secret_key,

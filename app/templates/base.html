@@ -159,11 +159,14 @@
                 </div>
                 <nav class="erp-sidebar-nav min-h-0 flex-1 space-y-1 overflow-y-auto overflow-x-hidden px-4 py-6 text-sm">
                     {% set menu_visibility = menu_visibility or {} %}
+                    {% if menu_visibility.get('dashboard', True) %}
                     <a href="/dashboard" class="erp-sidebar-link flex items-center justify-start gap-3 rounded-2xl px-4 py-3 transition-all duration-300 ease-in-out {% if page == 'dashboard' %}bg-brand-500 text-white shadow-lg{% else %}text-slate-300 hover:bg-slate-900 hover:text-white{% endif %}">
                         <span class="erp-sidebar-icon">{{ nav_icon('dashboard') }}</span>
                         <span class="erp-sidebar-label">Dashboard</span>
                     </a>
+                    {% endif %}
                     {% set productive_unit_pages = ['farms', 'seasons', 'plots'] %}
+                    {% if menu_visibility.get('productive_unit') %}
                     <div class="rounded-2xl {% if page in productive_unit_pages %}bg-slate-900/80{% endif %}" data-submenu-group>
                         <button type="button" class="erp-sidebar-link flex w-full items-center justify-between rounded-2xl px-4 py-3 text-left transition-all duration-300 ease-in-out {% if page in productive_unit_pages %}text-white{% else %}text-slate-300 hover:bg-slate-900 hover:text-white{% endif %}" data-submenu-toggle="productive-unit-menu" data-submenu-parent aria-haspopup="true" aria-expanded="{% if page in productive_unit_pages %}true{% else %}false{% endif %}">
                             <span class="flex items-center gap-3"><span class="erp-sidebar-icon">{{ nav_icon('productive_unit') }}</span><span class="erp-sidebar-label">Unidade Produtiva</span></span>
@@ -177,7 +180,9 @@
                             <a href="/setores" class="sidebar-submenu-link block rounded-xl px-3 py-2 text-sm {% if page == 'plots' %}bg-brand-500 text-white{% else %}text-slate-300 hover:bg-slate-800 hover:text-white{% endif %}" data-submenu-link>Setores</a>
                         </div>
                     </div>
+                    {% endif %}
                     {% set operations_pages = ['fertilization', 'input_recommendations'] %}
+                    {% if menu_visibility.get('operations') %}
                     <div class="rounded-2xl {% if page in operations_pages %}bg-slate-900/80{% endif %}" data-submenu-group>
                         <button type="button" class="erp-sidebar-link flex w-full items-center justify-between rounded-2xl px-4 py-3 text-left transition-all duration-300 ease-in-out {% if page in operations_pages %}text-white{% else %}text-slate-300 hover:bg-slate-900 hover:text-white{% endif %}" data-submenu-toggle="operations-menu" data-submenu-parent aria-haspopup="true" aria-expanded="{% if page in operations_pages %}true{% else %}false{% endif %}">
                             <span class="flex items-center gap-3"><span class="erp-sidebar-icon">{{ nav_icon('operations') }}</span><span class="erp-sidebar-label">Operações</span></span>
@@ -190,7 +195,9 @@
                             <a href="/insumos/recomendacao" class="sidebar-submenu-link block rounded-xl px-3 py-2 text-sm {% if page == 'input_recommendations' %}bg-brand-500 text-white{% else %}text-slate-300 hover:bg-slate-800 hover:text-white{% endif %}" data-submenu-link>Recomendacao</a>
                         </div>
                     </div>
+                    {% endif %}
                     {% set inputs_pages = ['purchased_inputs', 'stock', 'supplies'] %}
+                    {% if menu_visibility.get('inputs') %}
                     <div class="rounded-2xl {% if page in inputs_pages %}bg-slate-900/80{% endif %}" data-submenu-group>
                         <button type="button" class="erp-sidebar-link flex w-full items-center justify-between rounded-2xl px-4 py-3 text-left transition-all duration-300 ease-in-out {% if page in inputs_pages %}text-white{% else %}text-slate-300 hover:bg-slate-900 hover:text-white{% endif %}" data-submenu-toggle="inputs-menu" data-submenu-parent aria-haspopup="true" aria-expanded="{% if page in inputs_pages %}true{% else %}false{% endif %}">
                             <span class="flex items-center gap-3"><span class="erp-sidebar-icon">{{ nav_icon('inputs') }}</span><span class="erp-sidebar-label">Insumos</span></span>
@@ -204,7 +211,9 @@
                             <a href="/insumos/suprimentos" class="sidebar-submenu-link block rounded-xl px-3 py-2 text-sm {% if page == 'supplies' %}bg-brand-500 text-white{% else %}text-slate-300 hover:bg-slate-800 hover:text-white{% endif %}" data-submenu-link>Suprimentos</a>
                         </div>
                     </div>
+                    {% endif %}
                     {% set agenda_pages = ['fertilization_schedules'] %}
+                    {% if menu_visibility.get('agenda') %}
                     <div class="rounded-2xl {% if page in agenda_pages %}bg-slate-900/80{% endif %}" data-submenu-group>
                         <button type="button" class="erp-sidebar-link flex w-full items-center justify-between rounded-2xl px-4 py-3 text-left transition-all duration-300 ease-in-out {% if page in agenda_pages %}text-white{% else %}text-slate-300 hover:bg-slate-900 hover:text-white{% endif %}" data-submenu-toggle="agenda-menu" data-submenu-parent aria-haspopup="true" aria-expanded="{% if page in agenda_pages %}true{% else %}false{% endif %}">
                             <span class="flex items-center gap-3"><span class="erp-sidebar-icon">{{ nav_icon('seasons') }}</span><span class="erp-sidebar-label">Agenda</span></span>
@@ -216,7 +225,9 @@
                             <a href="/fertilizacao/agendamentos" class="sidebar-submenu-link block rounded-xl px-3 py-2 text-sm {% if page == 'fertilization_schedules' %}bg-brand-500 text-white{% else %}text-slate-300 hover:bg-slate-800 hover:text-white{% endif %}" data-submenu-link>Agendamentos</a>
                         </div>
                     </div>
+                    {% endif %}
                     {% set asset_pages = ['assets'] %}
+                    {% if menu_visibility.get('assets') %}
                     <div class="rounded-2xl {% if page in asset_pages %}bg-slate-900/80{% endif %}" data-submenu-group>
                         <button type="button" class="erp-sidebar-link flex w-full items-center justify-between rounded-2xl px-4 py-3 text-left transition-all duration-300 ease-in-out {% if page in asset_pages %}text-white{% else %}text-slate-300 hover:bg-slate-900 hover:text-white{% endif %}" data-submenu-toggle="assets-menu" data-submenu-parent aria-haspopup="true" aria-expanded="{% if page in asset_pages %}true{% else %}false{% endif %}">
                             <span class="flex items-center gap-3"><span class="erp-sidebar-icon">{{ nav_icon('assets') }}</span><span class="erp-sidebar-label">Patrimônio</span></span>
@@ -228,7 +239,9 @@
                             <a href="/insumos/patrimonio" class="sidebar-submenu-link block rounded-xl px-3 py-2 text-sm {% if page == 'assets' %}bg-brand-500 text-white{% else %}text-slate-300 hover:bg-slate-800 hover:text-white{% endif %}" data-submenu-link>Patrimônio</a>
                         </div>
                     </div>
+                    {% endif %}
                     {% set finance_pages = ['finance_management', 'finance_accounts', 'finance_asaas_customer'] %}
+                    {% if menu_visibility.get('finance') %}
                     <div class="rounded-2xl {% if page in finance_pages %}bg-slate-900/80{% endif %}" data-submenu-group>
                         <button type="button" class="erp-sidebar-link flex w-full items-center justify-between rounded-2xl px-4 py-3 text-left transition-all duration-300 ease-in-out {% if page in finance_pages %}text-white{% else %}text-slate-300 hover:bg-slate-900 hover:text-white{% endif %}" data-submenu-toggle="finance-menu" data-submenu-parent aria-haspopup="true" aria-expanded="{% if page in finance_pages %}true{% else %}false{% endif %}">
                             <span class="flex items-center gap-3"><span class="erp-sidebar-icon">{{ nav_icon('finance_management') }}</span><span class="erp-sidebar-label">Gestão Financeira</span></span>
@@ -242,7 +255,9 @@
                             <a href="/gestao-financeira/assinatura/cliente-asaas" class="sidebar-submenu-link block rounded-xl px-3 py-2 text-sm {% if page == 'finance_asaas_customer' %}bg-brand-500 text-white{% else %}text-slate-300 hover:bg-slate-800 hover:text-white{% endif %}" data-submenu-link>Cliente Asaas</a>
                         </div>
                     </div>
+                    {% endif %}
                     {% set production_pages = ['harvest', 'commercialization'] %}
+                    {% if menu_visibility.get('production') %}
                     <div class="rounded-2xl {% if page in production_pages %}bg-slate-900/80{% endif %}" data-submenu-group>
                         <button type="button" class="erp-sidebar-link flex w-full items-center justify-between rounded-2xl px-4 py-3 text-left transition-all duration-300 ease-in-out {% if page in production_pages %}text-white{% else %}text-slate-300 hover:bg-slate-900 hover:text-white{% endif %}" data-submenu-toggle="production-menu" data-submenu-parent aria-haspopup="true" aria-expanded="{% if page in production_pages %}true{% else %}false{% endif %}">
                             <span class="flex items-center gap-3"><span class="erp-sidebar-icon">{{ nav_icon('production') }}</span><span class="erp-sidebar-label">Produção</span></span>
@@ -255,35 +270,42 @@
                             <a href="/producao/comercializacao" class="sidebar-submenu-link block rounded-xl px-3 py-2 text-sm {% if page == 'commercialization' %}bg-brand-500 text-white{% else %}text-slate-300 hover:bg-slate-800 hover:text-white{% endif %}" data-submenu-link>Comercialização</a>
                         </div>
                     </div>
+                    {% endif %}
                     {% set nav = [
-                        ('varieties', '/variedades', 'Variedades'),
-                        ('irrigation', '/irrigacao', 'Irrigacao'),
-                        ('rainfall', '/pluviometria', 'Pluviometria'),
-                        ('pests', '/pragas', 'Pragas e Doencas'),
-                        ('soil_analyses', '/analise-solo', 'Analise de Solo'),
-                        ('agronomic_profiles', '/perfil-agronomico', 'Perfil Agronomico'),
-                        ('map', '/mapa', 'Mapa da Fazenda'),
-                        ('mobile', '/mobile', 'Campo Mobile')
+                        ('varieties', '/variedades', 'Variedades', 'nav_varieties'),
+                        ('irrigation', '/irrigacao', 'Irrigacao', 'nav_irrigation'),
+                        ('rainfall', '/pluviometria', 'Pluviometria', 'nav_rainfall'),
+                        ('pests', '/pragas', 'Pragas e Doencas', 'nav_pests'),
+                        ('soil_analyses', '/analise-solo', 'Analise de Solo', 'nav_soil'),
+                        ('agronomic_profiles', '/perfil-agronomico', 'Perfil Agronomico', 'nav_agronomic'),
+                        ('map', '/mapa', 'Mapa da Fazenda', 'nav_map'),
+                        ('mobile', '/mobile', 'Campo Mobile', 'nav_mobile')
                     ] %}
-                    {% for key, href, label in nav %}
+                    {% for key, href, label, mvk in nav %}
+                    {% if menu_visibility.get(mvk) %}
                     <a href="{{ href }}" class="erp-sidebar-link flex items-center justify-start gap-3 rounded-2xl px-4 py-3 transition-all duration-300 ease-in-out {% if page == key %}bg-brand-500 text-white shadow-lg{% else %}text-slate-300 hover:bg-slate-900 hover:text-white{% endif %}">
                         <span class="erp-sidebar-icon">{{ nav_icon(key) }}</span>
                         <span class="erp-sidebar-label">{{ label }}</span>
                     </a>
+                    {% endif %}
                     {% endfor %}
                     {% set config_pages = [] %}
-                    {% if menu_visibility.get('users', True) %}
+                    {% if menu_visibility.get('users') %}
                         {% set config_pages = config_pages + ['users'] %}
                     {% endif %}
-                    {% if menu_visibility.get('organizations', False) %}
+                    {% if menu_visibility.get('organizations') %}
                         {% set config_pages = config_pages + ['organizations'] %}
                     {% endif %}
-                    {% if menu_visibility.get('audit_logs', False) %}
+                    {% if menu_visibility.get('audit_logs') %}
                         {% set config_pages = config_pages + ['audit_logs'] %}
                     {% endif %}
-                    {% if menu_visibility.get('backups', True) %}
+                    {% if menu_visibility.get('backups') %}
                         {% set config_pages = config_pages + ['backups'] %}
                     {% endif %}
+                    {% if menu_visibility.get('docs') %}
+                        {% set config_pages = config_pages + ['docs'] %}
+                    {% endif %}
+                    {% if config_pages|length > 0 %}
                     <div class="rounded-2xl {% if page in config_pages %}bg-slate-900/80{% endif %}" data-submenu-group>
                         <button type="button" class="erp-sidebar-link flex w-full items-center justify-between rounded-2xl px-4 py-3 text-left transition-all duration-300 ease-in-out {% if page in config_pages %}text-white{% else %}text-slate-300 hover:bg-slate-900 hover:text-white{% endif %}" data-submenu-toggle="config-menu" data-submenu-parent aria-haspopup="true" aria-expanded="{% if page in config_pages %}true{% else %}false{% endif %}">
                             <span class="flex items-center gap-3"><span class="erp-sidebar-icon">{{ nav_icon('config') }}</span><span class="erp-sidebar-label">Configuracao</span></span>
@@ -292,23 +314,24 @@
                             </span>
                         </button>
                         <div id="config-menu" class="sidebar-submenu-panel {% if page not in config_pages %}hidden {% endif %}space-y-1 px-3 pb-3" data-submenu-panel>
-                            {% if menu_visibility.get('users', True) %}
+                            {% if menu_visibility.get('users') %}
                             <a href="/usuarios" class="sidebar-submenu-link block rounded-xl px-3 py-2 text-sm {% if page == 'users' %}bg-brand-500 text-white{% else %}text-slate-300 hover:bg-slate-800 hover:text-white{% endif %}" data-submenu-link>Usuarios</a>
                             {% endif %}
-                            {% if menu_visibility.get('organizations', False) %}
+                            {% if menu_visibility.get('organizations') %}
                             <a href="/organizacoes" class="sidebar-submenu-link block rounded-xl px-3 py-2 text-sm {% if page == 'organizations' %}bg-brand-500 text-white{% else %}text-slate-300 hover:bg-slate-800 hover:text-white{% endif %}" data-submenu-link>Organizações</a>
                             {% endif %}
-                            {% if menu_visibility.get('audit_logs', False) %}
+                            {% if menu_visibility.get('audit_logs') %}
                             <a href="/auditoria" class="sidebar-submenu-link block rounded-xl px-3 py-2 text-sm {% if page == 'audit_logs' %}bg-brand-500 text-white{% else %}text-slate-300 hover:bg-slate-800 hover:text-white{% endif %}" data-submenu-link>Auditoria</a>
                             {% endif %}
-                            {% if menu_visibility.get('backups', True) %}
+                            {% if menu_visibility.get('backups') %}
                             <a href="/backups" class="sidebar-submenu-link block rounded-xl px-3 py-2 text-sm {% if page == 'backups' %}bg-brand-500 text-white{% else %}text-slate-300 hover:bg-slate-800 hover:text-white{% endif %}" data-submenu-link>Backups</a>
                             {% endif %}
-                            {% if menu_visibility.get('docs', False) %}
+                            {% if menu_visibility.get('docs') %}
                             <a href="/docs" target="_blank" class="sidebar-submenu-link block rounded-xl px-3 py-2 text-sm text-slate-300 hover:bg-slate-800 hover:text-white" data-submenu-link>API / Docs</a>
                             {% endif %}
                         </div>
                     </div>
+                    {% endif %}
                 </nav>
                 <div class="erp-sidebar-session-wrap border-t border-slate-800 px-6 py-5">
                     <div class="rounded-2xl bg-slate-900 px-4 py-4">

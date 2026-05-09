@@ -233,10 +233,27 @@
                     <span class="user-switch-copy text-sm font-medium text-slate-700">Usuário ativo</span>
                 </label>
                 <label class="user-switch rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-                    <input type="checkbox" name="is_admin" value="true" {% if edit_user and (edit_user.is_admin or edit_user.email == (super_admin_email or '')) %}checked{% endif %}>
+                    <input type="checkbox" name="is_admin" value="true" data-users-admin-toggle {% if edit_user and (edit_user.is_admin or edit_user.email == (super_admin_email or '')) %}checked{% endif %}>
                     <span class="user-switch-track" aria-hidden="true"></span>
                     <span class="user-switch-copy text-sm font-medium text-slate-700">Permissão de administrador</span>
                 </label>
+                <div
+                    data-user-roles-panel
+                    class="rounded-2xl border border-slate-200 bg-white px-4 py-3 {% if edit_user and (edit_user.is_admin or edit_user.email == (super_admin_email or '')) %}hidden{% endif %}"
+                >
+                    <span class="mb-2 block text-sm font-medium text-slate-700">Papéis funcionais</span>
+                    <p class="mb-3 text-xs text-slate-500">Combine papéis para liberar módulos no menu. Deixe sem seleção para usar o papel <strong>Operador</strong> (acesso operacional completo, sem gestão de usuários/backups).</p>
+                    {% if assignable_roles %}
+                    <select name="role_id" multiple size="8" class="min-h-[12rem] w-full rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm">
+                        {% for r in assignable_roles %}
+                        <option value="{{ r.id }}" {% if edit_user_role_ids and r.id in edit_user_role_ids %}selected{% endif %}>{{ r.name }}</option>
+                        {% endfor %}
+                    </select>
+                    <p class="mt-2 text-xs text-slate-400">Segure Ctrl/Cmd para selecionar vários.</p>
+                    {% else %}
+                    <p class="text-sm text-amber-700">Papéis ainda não foram sincronizados para esta organização. Salve e reinicie o servidor ou contacte o suporte.</p>
+                    {% endif %}
+                </div>
                 {% if rbac_role_labels %}
                 <div class="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600">
                     <span class="font-medium text-slate-700">Papéis atuais na organização:</span>
@@ -312,6 +329,14 @@
         const headerIntro = stickyHeader?.querySelector('[data-stock-header-intro]');
         const fadingPanels = Array.from(document.querySelectorAll('[data-stock-fade-panel]'));
         const form = document.querySelector('[data-user-form]');
+        const adminToggle = form?.querySelector('[data-users-admin-toggle]');
+        const rolesPanel = form?.querySelector('[data-user-roles-panel]');
+        const syncRolesPanel = () => {
+            if (!adminToggle || !rolesPanel) return;
+            rolesPanel.classList.toggle('hidden', adminToggle.checked);
+        };
+        adminToggle?.addEventListener('change', syncRolesPanel);
+        syncRolesPanel();
         const passwordField = form?.querySelector('[data-password-mask="true"]');
         const editMode = {{ 'true' if edit_user else 'false' }};
         const csrfToken = {{ csrf_token|tojson }};

@@ -29,7 +29,27 @@ from starlette.datastructures import UploadFile as StarletteUploadFile
 
 from app.core.config import get_settings
 from app.core.admin_access import has_admin_access, is_super_admin_email
-from app.core.permissions_catalog import BACKUPS_MANAGE, USERS_MANAGE, all_permission_codes
+from app.core.permissions_catalog import (
+    BACKUPS_MANAGE,
+    PAGE_AGENDA,
+    PAGE_AGRONOMIC,
+    PAGE_ASSETS,
+    PAGE_DASHBOARD,
+    PAGE_FINANCE,
+    PAGE_INPUTS,
+    PAGE_IRRIGATION,
+    PAGE_MAP,
+    PAGE_MOBILE,
+    PAGE_OPERATIONS,
+    PAGE_PESTS,
+    PAGE_PRODUCTION,
+    PAGE_PRODUCTIVE_UNIT,
+    PAGE_RAINFALL,
+    PAGE_SOIL,
+    PAGE_VARIETIES,
+    USERS_MANAGE,
+    all_permission_codes,
+)
 from app.core.csrf import validate_csrf
 from app.core.deps import get_csrf_token, get_current_user_web
 from app.core.security import get_password_hash, verify_password
@@ -114,9 +134,12 @@ from app.services.plot_preview_image import (
     remove_plot_preview_image,
 )
 from app.services.rbac_service import (
+    assignable_roles_for_editing,
     ensure_organization_roles,
     permission_codes_for_user,
+    role_ids_for_user_in_org,
     role_labels_for_user,
+    set_user_roles_for_organization,
     sync_roles_from_admin_flag,
     user_has_permission,
 )
@@ -710,6 +733,22 @@ COMMERCIALIZATION_COFFEE_TYPE_OPTIONS = [
     ("pergaminho", "Pergaminho"),
 ]
 MENU_ITEM_VISIBILITY_RULES = {
+    "dashboard": lambda user, pc: bool(user and PAGE_DASHBOARD in pc),
+    "productive_unit": lambda user, pc: bool(user and PAGE_PRODUCTIVE_UNIT in pc),
+    "operations": lambda user, pc: bool(user and PAGE_OPERATIONS in pc),
+    "inputs": lambda user, pc: bool(user and PAGE_INPUTS in pc),
+    "agenda": lambda user, pc: bool(user and PAGE_AGENDA in pc),
+    "assets": lambda user, pc: bool(user and PAGE_ASSETS in pc),
+    "finance": lambda user, pc: bool(user and PAGE_FINANCE in pc),
+    "production": lambda user, pc: bool(user and PAGE_PRODUCTION in pc),
+    "nav_varieties": lambda user, pc: bool(user and PAGE_VARIETIES in pc),
+    "nav_irrigation": lambda user, pc: bool(user and PAGE_IRRIGATION in pc),
+    "nav_rainfall": lambda user, pc: bool(user and PAGE_RAINFALL in pc),
+    "nav_pests": lambda user, pc: bool(user and PAGE_PESTS in pc),
+    "nav_soil": lambda user, pc: bool(user and PAGE_SOIL in pc),
+    "nav_agronomic": lambda user, pc: bool(user and PAGE_AGRONOMIC in pc),
+    "nav_map": lambda user, pc: bool(user and PAGE_MAP in pc),
+    "nav_mobile": lambda user, pc: bool(user and PAGE_MOBILE in pc),
     "users": lambda user, pc: bool(user and USERS_MANAGE in pc),
     "backups": lambda user, pc: bool(
         user and BACKUPS_MANAGE in pc and _user_in_default_organization(user)
@@ -8508,6 +8547,8 @@ def users_page(
         if candidate and candidate.organization_id == user.organization_id:
             edit_user = candidate
     rbac_role_labels = role_labels_for_user(db, edit_user) if edit_user else []
+    assignable_roles = assignable_roles_for_editing(db, user.organization_id)
+    edit_user_role_ids = role_ids_for_user_in_org(db, edit_user) if edit_user else []
     return templates.TemplateResponse(
         "users.html",
         _base_context(
@@ -8519,6 +8560,8 @@ def users_page(
             users=repo.list_users(organization_id=user.organization_id),
             edit_user=edit_user,
             rbac_role_labels=rbac_role_labels,
+            assignable_roles=assignable_roles,
+            edit_user_role_ids=edit_user_role_ids,
             format_app_datetime=format_app_datetime,
             super_admin_email=(settings.super_admin_email or settings.admin_email or "").strip().lower(),
             pending_super_admin_two_factor_disable=pending_super_admin_two_factor_disable,
@@ -8549,7 +8592,7 @@ def user_avatar_view(
 
 
 @router.post("/usuarios")
-def create_user_action(
+async def create_user_action(
     request: Request,
     csrf_token: str = Form(...),
     name: str = Form(...),
@@ -8565,6 +8608,13 @@ def create_user_action(
     if denied:
         return denied
     validate_csrf(request, csrf_token)
+    form = await request.form()
+    role_ids: list[int] = []
+    for v in form.getlist("role_id"):
+        try:
+            role_ids.append(int(v))
+        except (TypeError, ValueError):
+            pass
     repo = _repository(db)
     existing = db.query(User).filter(User.email == email.strip().lower()).first()
     if existing:
@@ -8582,13 +8632,18 @@ def create_user_action(
             "organization_id": user.organization_id,
         },
     )
-    sync_roles_from_admin_flag(db, new_user)
+    if new_user.is_admin or is_super_admin_email(new_user.email):
+        sync_roles_from_admin_flag(db, new_user)
+    elif role_ids:
+        set_user_roles_for_organization(db, new_user, role_ids)
+    else:
+        sync_roles_from_admin_flag(db, new_user)
     _flash(request, "success", "Usuario criado com sucesso.")
     return _redirect("/usuarios")
 
 
 @router.post("/usuarios/{user_id}/editar")
-def update_user_action(
+async def update_user_action(
     user_id: int,
     request: Request,
     csrf_token: str = Form(...),
@@ -8606,6 +8661,13 @@ def update_user_action(
         return denied
     try:
         validate_csrf(request, csrf_token)
+        form = await request.form()
+        role_ids: list[int] = []
+        for v in form.getlist("role_id"):
+            try:
+                role_ids.append(int(v))
+            except (TypeError, ValueError):
+                pass
         normalized_name = (name or "").strip()
         normalized_email = (email or "").strip().lower()
         if not normalized_name or not normalized_email:
@@ -8661,7 +8723,12 @@ def update_user_action(
         if not updated_user.is_two_factor_enabled:
             revoke_active_login_codes(db, updated_user.id)
 
-        sync_roles_from_admin_flag(db, updated_user)
+        if updated_user.is_admin or is_super_admin_email(updated_user.email):
+            sync_roles_from_admin_flag(db, updated_user)
+        elif role_ids:
+            set_user_roles_for_organization(db, updated_user, role_ids)
+        else:
+            sync_roles_from_admin_flag(db, updated_user)
 
         if updated_user.id == user.id:
             request.session["user_email"] = updated_user.email
