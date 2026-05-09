@@ -91,7 +91,9 @@
                 </thead>
                 <tbody class="divide-y divide-slate-100">
                     {% for row in audit_rows %}
-                    <tr class="hover:bg-slate-50/80">
+                    <tr class="cursor-pointer hover:bg-slate-50/80"
+                        data-audit-row-trigger
+                        title="Clique para ver detalhes do log">
                         <td class="whitespace-nowrap px-4 py-3 text-slate-800">{{ row.created_at|datetime_sp }}</td>
                         <td class="min-w-0 px-4 py-3">
                             <p class="truncate text-sm font-semibold text-slate-800" title="{{ row.actor_email or '' }}">{{ row.actor_email or '—' }}</p>
@@ -303,7 +305,16 @@
         };
 
         document.querySelectorAll('[data-audit-detail-trigger]').forEach((trigger) => {
-            trigger.addEventListener('click', () => openModal(trigger));
+            trigger.addEventListener('click', (event) => {
+                event.stopPropagation();
+                openModal(trigger);
+            });
+        });
+        document.querySelectorAll('[data-audit-row-trigger]').forEach((row) => {
+            row.addEventListener('click', () => {
+                const trigger = row.querySelector('[data-audit-detail-trigger]');
+                if (trigger) openModal(trigger);
+            });
         });
         modal.querySelectorAll('[data-audit-detail-close]').forEach((button) => {
             button.addEventListener('click', closeModal);
