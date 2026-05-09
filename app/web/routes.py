@@ -2053,6 +2053,29 @@ def _build_stock_context(
     }
 
 
+def _input_catalog_suggestions_for_purchase_form(
+    repo: FarmRepository,
+    *,
+    farm_id: int | None = None,
+    context_farm_ids: list[int] | None = None,
+) -> list:
+    allowed_item_types = {"insumo_agricola", "combustivel"}
+    scoped_farm_ids = (
+        {farm_id}
+        if farm_id
+        else (set(context_farm_ids or []) if context_farm_ids is not None else None)
+    )
+    suggestions_by_id = {}
+    for entry in repo.list_purchased_inputs():
+        catalog = entry.input_catalog
+        if not catalog or not catalog.is_active or catalog.item_type not in allowed_item_types:
+            continue
+        if scoped_farm_ids is not None and entry.farm_id not in scoped_farm_ids:
+            continue
+        suggestions_by_id[catalog.id] = catalog
+    return sorted(suggestions_by_id.values(), key=lambda item: (item.name or "").lower())
+
+
 def _stock_export_query(
     farm_id: int | None = None,
     input_id: int | None = None,
@@ -9098,6 +9121,11 @@ def purchased_inputs_page(
     if not normalized_item_type and selected_item_type != "all":
         normalized_item_type = "insumo_agricola"
     stock_context = _build_stock_context(repo, farm_id=effective_farm_id, item_type=normalized_item_type, input_id=selected_input_id, start_date=start, end_date=end)
+    input_catalog_suggestions = _input_catalog_suggestions_for_purchase_form(
+        repo,
+        farm_id=effective_farm_id,
+        context_farm_ids=[farm.id for farm in scope.get("context_farms", [])],
+    )
     purchase_entries = _sort_collection_desc(
         stock_context["purchase_entries"],
         lambda item: item.purchase_date,
@@ -9136,7 +9164,7 @@ def purchased_inputs_page(
             inputs=purchase_entries_pagination["items"],
             inputs_pagination=purchase_entries_pagination,
             inputs_catalog=stock_context["catalog_inputs"],
-            inputs_catalog_all=repo.list_input_catalog(),
+            inputs_catalog_all=input_catalog_suggestions,
             selected_input_id=selected_input_id,
             finance_account_options=finance_accounts,
             finance_account_default=next((item for item in finance_accounts if item.is_default), None),
