@@ -162,22 +162,21 @@ class AuditAuthenticatedHttpMiddleware(BaseHTTPMiddleware):
                     email = request.session.get("user_email")
                 except AssertionError:
                     email = None
-                if not email:
-                    return
-                with SessionLocal() as db:
-                    actor = db.query(User).filter(User.email == email, User.is_active.is_(True)).first()
-                    if not actor:
-                        return
-                    append_audit_event(
-                        event_type="http.request",
-                        outcome="success" if status_code < 400 else "failure",
-                        request=request,
-                        actor_user_id=actor.id,
-                        actor_email=actor.email,
-                        organization_id=actor.organization_id,
-                        status_code=status_code,
-                        duration_ms=round(duration_ms, 2),
-                    )
+                # Nunca use "return" aqui: em finally isso substitui o return do try e devolve None ao Starlette.
+                if email:
+                    with SessionLocal() as db:
+                        actor = db.query(User).filter(User.email == email, User.is_active.is_(True)).first()
+                        if actor:
+                            append_audit_event(
+                                event_type="http.request",
+                                outcome="success" if status_code < 400 else "failure",
+                                request=request,
+                                actor_user_id=actor.id,
+                                actor_email=actor.email,
+                                organization_id=actor.organization_id,
+                                status_code=status_code,
+                                duration_ms=round(duration_ms, 2),
+                            )
             except Exception:
                 logger.exception("Falha no middleware de auditoria HTTP")
 
