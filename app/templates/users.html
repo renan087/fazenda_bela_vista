@@ -41,17 +41,83 @@
         transition: transform 180ms ease;
     }
 
-    .user-switch input:checked + .user-switch-track {
+    .user-switch input:checked + .user-switch-track,
+    .user-switch input:checked ~ .user-switch-track {
         background: rgba(91, 179, 74, 0.92);
         border-color: rgba(91, 179, 74, 0.92);
     }
 
-    .user-switch input:checked + .user-switch-track::after {
+    .user-switch input:checked + .user-switch-track::after,
+    .user-switch input:checked ~ .user-switch-track::after {
         transform: translate(1.56rem, -50%);
     }
 
     .user-switch-copy {
         min-width: 0;
+    }
+
+    .user-role-switch-grid {
+        display: grid;
+        gap: 0.75rem;
+    }
+
+    .user-role-switch {
+        width: 100%;
+        align-items: flex-start;
+        justify-content: space-between;
+        border-color: rgba(203, 213, 225, 0.88);
+        background:
+            linear-gradient(135deg, rgba(255, 255, 255, 0.96), rgba(248, 250, 252, 0.92));
+        transition: border-color 180ms ease, background 180ms ease, box-shadow 180ms ease, transform 180ms ease;
+    }
+
+    .user-role-switch:hover {
+        border-color: rgba(91, 179, 74, 0.34);
+        box-shadow: 0 14px 30px rgba(15, 23, 42, 0.08);
+        transform: translateY(-1px);
+    }
+
+    .user-role-switch input:checked ~ .user-role-switch-content .user-role-switch-status::before {
+        background: #5bb34a;
+        box-shadow: 0 0 0 4px rgba(91, 179, 74, 0.14);
+    }
+
+    .user-role-switch input:checked ~ .user-role-switch-content .user-role-switch-status {
+        color: #3d7b32;
+    }
+
+    .user-role-switch-content {
+        min-width: 0;
+        flex: 1 1 auto;
+    }
+
+    .user-role-switch-title {
+        display: block;
+        color: #0f172a;
+        font-size: 0.95rem;
+        font-weight: 700;
+        line-height: 1.25;
+    }
+
+    .user-role-switch-status {
+        align-items: center;
+        color: #64748b;
+        display: inline-flex;
+        font-size: 0.74rem;
+        font-weight: 700;
+        gap: 0.42rem;
+        letter-spacing: 0.16em;
+        margin-top: 0.35rem;
+        text-transform: uppercase;
+    }
+
+    .user-role-switch-status::before {
+        content: "";
+        width: 0.46rem;
+        height: 0.46rem;
+        border-radius: 999px;
+        background: #cbd5e1;
+        transition: background-color 180ms ease, box-shadow 180ms ease;
     }
 
     .user-password-mask {
@@ -244,12 +310,19 @@
                     <span class="mb-2 block text-sm font-medium text-slate-700">Papéis funcionais</span>
                     <p class="mb-3 text-xs text-slate-500">Combine papéis para liberar módulos no menu. Deixe sem seleção para usar o papel <strong>Operador</strong> (acesso operacional completo, sem gestão de usuários/backups).</p>
                     {% if assignable_roles %}
-                    <select name="role_id" multiple size="8" class="min-h-[12rem] w-full rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm">
+                    <div class="user-role-switch-grid">
                         {% for r in assignable_roles %}
-                        <option value="{{ r.id }}" {% if edit_user_role_ids and r.id in edit_user_role_ids %}selected{% endif %}>{{ r.name }}</option>
+                        <label class="user-switch user-role-switch rounded-2xl border px-4 py-3">
+                            <input type="checkbox" name="role_id" value="{{ r.id }}" {% if edit_user_role_ids and r.id in edit_user_role_ids %}checked{% endif %}>
+                            <span class="user-role-switch-content">
+                                <span class="user-role-switch-title">{{ r.name }}</span>
+                                <span class="user-role-switch-status">Liberar acesso</span>
+                            </span>
+                            <span class="user-switch-track" aria-hidden="true"></span>
+                        </label>
                         {% endfor %}
-                    </select>
-                    <p class="mt-2 text-xs text-slate-400">Segure Ctrl/Cmd para selecionar vários.</p>
+                    </div>
+                    <p class="mt-3 text-xs text-slate-400">Ligue os papéis que deseja atribuir ao usuário. Sem nenhum papel marcado, o sistema usa o perfil Operador.</p>
                     {% else %}
                     <p class="text-sm text-amber-700">Papéis ainda não foram sincronizados para esta organização. Salve e reinicie o servidor ou contacte o suporte.</p>
                     {% endif %}
