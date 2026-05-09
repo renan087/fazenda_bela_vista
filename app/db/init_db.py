@@ -11,6 +11,7 @@ from app.db.base import Base
 from app.db.session import engine
 from app.models import (
     AgronomicProfile,
+    AuditLog,
     AsaasPayment,
     BackupAutomationSetting,
     BackupRun,
@@ -755,6 +756,28 @@ def _sync_schema() -> None:
         "ALTER TABLE fertilization_items ADD COLUMN IF NOT EXISTS purchased_input_id INTEGER",
         "ALTER TABLE fertilization_items ADD COLUMN IF NOT EXISTS unit_cost NUMERIC(10,4)",
         "ALTER TABLE fertilization_items ADD COLUMN IF NOT EXISTS total_cost NUMERIC(12,2)",
+        """
+        CREATE TABLE IF NOT EXISTS audit_logs (
+            id SERIAL PRIMARY KEY,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            actor_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+            actor_email VARCHAR(120),
+            organization_id INTEGER REFERENCES organizations(id) ON DELETE SET NULL,
+            event_type VARCHAR(80) NOT NULL,
+            outcome VARCHAR(20) NOT NULL DEFAULT 'success',
+            http_method VARCHAR(12),
+            path VARCHAR(500),
+            status_code INTEGER,
+            ip_address VARCHAR(45),
+            user_agent VARCHAR(400),
+            duration_ms NUMERIC(12,2),
+            metadata_json TEXT
+        )
+        """,
+        "CREATE INDEX IF NOT EXISTS ix_audit_logs_created_at ON audit_logs (created_at DESC)",
+        "CREATE INDEX IF NOT EXISTS ix_audit_logs_actor_user_id ON audit_logs (actor_user_id)",
+        "CREATE INDEX IF NOT EXISTS ix_audit_logs_event_type ON audit_logs (event_type)",
+        "CREATE INDEX IF NOT EXISTS ix_audit_logs_organization_id ON audit_logs (organization_id)",
     ]
     with engine.begin() as connection:
         for statement in statements:

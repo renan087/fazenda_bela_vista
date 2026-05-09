@@ -1,5 +1,5 @@
 from collections import defaultdict
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, time, timedelta, timezone
 from decimal import Decimal
 from io import BytesIO
 from pathlib import Path
@@ -33,7 +33,7 @@ from app.core.csrf import validate_csrf
 from app.core.deps import get_csrf_token, get_current_user_web
 from app.core.security import get_password_hash, verify_password
 from app.core.session import clear_expired_session, touch_session_activity
-from app.core.timezone import app_now, format_app_datetime, today_in_app_timezone
+from app.core.timezone import app_now, format_app_datetime, get_app_timezone, today_in_app_timezone
 from app.core.user_context import persist_user_context, sync_user_context_from_preferences
 from app.db.session import get_db
 from app.models import (
@@ -87,6 +87,7 @@ from app.services.backup_service import (
     update_backup_automation_setting,
     update_backup_storage_limit_setting,
 )
+from app.services.audit_log_service import query_audit_logs
 from app.services.dashboard import build_dashboard_context
 from app.services.finance_overview import (
     _in_extract_period,
@@ -705,6 +706,7 @@ MENU_ITEM_VISIBILITY_RULES = {
     "backups": lambda user: bool(user and has_admin_access(user) and _user_in_default_organization(user)),
     "docs": lambda user: bool(user and is_super_admin_email(user.email) and _user_in_default_organization(user)),
     "organizations": lambda user: bool(user and is_super_admin_email(user.email)),
+    "audit_logs": lambda user: bool(user and is_super_admin_email(user.email)),
 }
 
 
@@ -790,7 +792,16 @@ def _base_context(request: Request, user: User, csrf_token: str, page: str, **kw
         scope_context = _global_scope_context(request, repo, user)
         context.update(scope_context)
         context["global_notifications"] = _build_global_notifications(request, repo, scope_context)
-        context["context_lock_exempt"] = page in {"farms", "seasons", "profile", "finance_asaas_customer", "organizations", "users", "backups"}
+        context["context_lock_exempt"] = page in {
+            "farms",
+            "seasons",
+            "profile",
+            "finance_asaas_customer",
+            "organizations",
+            "users",
+            "backups",
+            "audit_logs",
+        }
         context["context_selection_blocking"] = scope_context["context_selection_required"] and not context["context_lock_exempt"]
         context["context_previous_available"] = bool(scope_context.get("previous_context_available"))
     context.update(kwargs)
@@ -8171,6 +8182,99 @@ def organizations_page(
             organization_stats=organization_stats,
             users=users,
             farms=farms,
+            _repo=repo,
+        ),
+    )
+
+
+@router.get("/auditoria")
+def audit_logs_page(
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+    csrf_token: str = Depends(get_csrf_token),
+    actor_user_id: int | None = Query(None),
+    email: str | None = Query(None),
+    event_type: str | None = Query(None),
+    date_from: str | None = Query(None),
+    date_to: str | None = Query(None),
+    page: int = Query(1, ge=1),
+):
+    denied = _require_super_admin(request, user)
+    if denied:
+        return denied
+    repo = _repository(db)
+    df_bound = None
+    dt_bound = None
+    if date_from and str(date_from).strip():
+        try:
+            d = date.fromisoformat(str(date_from).strip())
+            df_bound = datetime.combine(d, time.min, tzinfo=get_app_timezone())
+        except ValueError:
+            _flash(request, "error", "Data inicial invalida.")
+    if date_to and str(date_to).strip():
+        try:
+            d = date.fromisoformat(str(date_to).strip())
+            dt_bound = datetime.combine(d, time(23, 59, 59, 999999), tzinfo=get_app_timezone())
+        except ValueError:
+            _flash(request, "error", "Data final invalida.")
+    per_page = 50
+    rows, total = query_audit_logs(
+        db,
+        actor_user_id=actor_user_id,
+        email_contains=(email.strip() if email else None) or None,
+        event_type=(event_type.strip() if event_type else None) or None,
+        date_from=df_bound,
+        date_to=dt_bound,
+        page=page,
+        per_page=per_page,
+    )
+    total_pages = max(1, (total + per_page - 1) // per_page) if total else 1
+    effective_page = min(max(1, page), total_pages)
+    if effective_page != page:
+        rows, total = query_audit_logs(
+            db,
+            actor_user_id=actor_user_id,
+            email_contains=(email.strip() if email else None) or None,
+            event_type=(event_type.strip() if event_type else None) or None,
+            date_from=df_bound,
+            date_to=dt_bound,
+            page=effective_page,
+            per_page=per_page,
+        )
+        page = effective_page
+    pager_q = {}
+    if actor_user_id:
+        pager_q["actor_user_id"] = actor_user_id
+    if email and email.strip():
+        pager_q["email"] = email.strip()
+    if event_type and event_type.strip():
+        pager_q["event_type"] = event_type.strip()
+    if date_from and str(date_from).strip():
+        pager_q["date_from"] = str(date_from).strip()
+    if date_to and str(date_to).strip():
+        pager_q["date_to"] = str(date_to).strip()
+    pager_query_string = urlencode(pager_q)
+    return templates.TemplateResponse(
+        "audit_logs.html",
+        _base_context(
+            request,
+            user,
+            csrf_token,
+            "audit_logs",
+            title="Auditoria de acesso",
+            audit_rows=rows,
+            audit_total=total,
+            audit_page=page,
+            audit_total_pages=total_pages,
+            audit_per_page=per_page,
+            filter_actor_user_id=actor_user_id,
+            filter_email=email or "",
+            filter_event_type=event_type or "",
+            filter_date_from=date_from or "",
+            filter_date_to=date_to or "",
+            user_options=repo.list_users(),
+            pager_query_string=pager_query_string,
             _repo=repo,
         ),
     )

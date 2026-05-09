@@ -131,6 +131,50 @@ async def request_memory_diagnostics(request: Request, call_next):
                     )
 
 
+@app.middleware("http")
+async def audit_authenticated_http_middleware(request: Request, call_next):
+    """Registra navegacao HTTP autenticada (sessao web) para trilha de auditoria."""
+    path = request.url.path or ""
+    if path.startswith("/static/") or path == "/health" or path.startswith("/favicon"):
+        return await call_next(request)
+    started = time.perf_counter()
+    status_code = 500
+    response = None
+    try:
+        response = await call_next(request)
+        status_code = response.status_code
+        return response
+    finally:
+        duration_ms = (time.perf_counter() - started) * 1000.0
+        try:
+            email = request.session.get("user_email") if hasattr(request, "session") else None
+            if not email:
+                return
+            from app.db.session import SessionLocal
+            from app.models.user import User
+            from app.services.audit_log_service import append_audit_event
+
+            with SessionLocal() as db:
+                actor = db.query(User).filter(User.email == email, User.is_active.is_(True)).first()
+                if not actor:
+                    return
+                uid = actor.id
+                em = actor.email
+                oid = actor.organization_id
+            append_audit_event(
+                event_type="http.request",
+                outcome="success" if status_code < 400 else "failure",
+                request=request,
+                actor_user_id=uid,
+                actor_email=em,
+                organization_id=oid,
+                status_code=status_code,
+                duration_ms=round(duration_ms, 2),
+            )
+        except Exception:
+            logger.exception("Falha no middleware de auditoria HTTP")
+
+
 @app.get("/health")
 def health():
     """Resposta mínima para health check (evite usar /login no Render)."""

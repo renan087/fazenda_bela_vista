@@ -1,3 +1,4 @@
+from app.models.audit_log import AuditLog
 from app.models.asaas_payment import AsaasPayment
 from app.models.agronomic_profile import AgronomicProfile
 from app.models.backup_automation_setting import BackupAutomationSetting
@@ -40,6 +41,7 @@ from app.models.trusted_browser_token import TrustedBrowserToken
 from app.models.user import User
 
 __all__ = [
+    "AuditLog",
     "AsaasPayment",
     "AgronomicProfile",
     "BackupAutomationSetting",

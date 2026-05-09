@@ -278,6 +278,9 @@
                     {% if menu_visibility.get('organizations', False) %}
                         {% set config_pages = config_pages + ['organizations'] %}
                     {% endif %}
+                    {% if menu_visibility.get('audit_logs', False) %}
+                        {% set config_pages = config_pages + ['audit_logs'] %}
+                    {% endif %}
                     {% if menu_visibility.get('backups', True) %}
                         {% set config_pages = config_pages + ['backups'] %}
                     {% endif %}
@@ -294,6 +297,9 @@
                             {% endif %}
                             {% if menu_visibility.get('organizations', False) %}
                             <a href="/organizacoes" class="sidebar-submenu-link block rounded-xl px-3 py-2 text-sm {% if page == 'organizations' %}bg-brand-500 text-white{% else %}text-slate-300 hover:bg-slate-800 hover:text-white{% endif %}" data-submenu-link>Organizações</a>
+                            {% endif %}
+                            {% if menu_visibility.get('audit_logs', False) %}
+                            <a href="/auditoria" class="sidebar-submenu-link block rounded-xl px-3 py-2 text-sm {% if page == 'audit_logs' %}bg-brand-500 text-white{% else %}text-slate-300 hover:bg-slate-800 hover:text-white{% endif %}" data-submenu-link>Auditoria</a>
                             {% endif %}
                             {% if menu_visibility.get('backups', True) %}
                             <a href="/backups" class="sidebar-submenu-link block rounded-xl px-3 py-2 text-sm {% if page == 'backups' %}bg-brand-500 text-white{% else %}text-slate-300 hover:bg-slate-800 hover:text-white{% endif %}" data-submenu-link>Backups</a>

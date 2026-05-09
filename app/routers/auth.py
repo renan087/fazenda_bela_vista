@@ -18,6 +18,7 @@ from app.core.timezone import utc_now
 from app.db.session import get_db
 from app.models import User
 from app.schemas.auth import Token
+from app.services.audit_log_service import append_audit_event
 from app.services.email_service import send_access_code_email, send_password_reset_email
 from app.services.password_reset import get_valid_password_reset_token, issue_password_reset_token, revoke_user_password_reset_tokens
 from app.services.trusted_browser import (
@@ -121,6 +122,7 @@ def _complete_web_login(
     request.session.pop(PENDING_2FA_EMAIL, None)
     request.session.pop(PENDING_2FA_LAST_SENT_AT, None)
     touch_session_activity(request)
+    append_audit_event(request=request, actor_user=user, event_type="auth.login.success", outcome="success")
     response = RedirectResponse(url="/dashboard", status_code=status.HTTP_303_SEE_OTHER)
     if clear_trusted_browser_cookie:
         _clear_trusted_browser_cookie(response)
@@ -542,9 +544,19 @@ def login_web(
     db: Session = Depends(get_db),
 ):
     validate_csrf(request, csrf_token)
-    user = db.query(User).filter(User.email == email.strip().lower()).first()
+    normalized_email = email.strip().lower()
+    user = db.query(User).filter(User.email == normalized_email).first()
     _reactivate_super_admin_if_needed(db, user)
     if not authenticate_user(user, password):
+        append_audit_event(
+            request=request,
+            actor_user=user if user else None,
+            actor_email=normalized_email,
+            actor_user_id=user.id if user else None,
+            event_type="auth.login.failure",
+            outcome="failure",
+            metadata={"reason": "invalid_credentials"},
+        )
         return _render_login(request, "Credenciais invalidas.")
     return _start_web_login_challenge(request, db, user)
 
@@ -587,6 +599,13 @@ def login_verification_web(
         )
     valid, message = verify_login_code(db, user.id, normalized_code)
     if not valid:
+        append_audit_event(
+            request=request,
+            actor_user=user,
+            event_type="auth.2fa.failure",
+            outcome="failure",
+            metadata={"detail": (message or "")[:120]},
+        )
         return _render_login_verification(
             request,
             request.session.get(PENDING_2FA_EMAIL, user.email),
@@ -661,18 +680,33 @@ def resend_login_verification_code(
 
 
 @router.get("/logout")
-def logout(request: Request):
+def logout(request: Request, db: Session = Depends(get_db)):
+    email = request.session.get("user_email")
+    actor = db.query(User).filter(User.email == email).first() if email else None
+    if actor:
+        append_audit_event(request=request, actor_user=actor, event_type="auth.logout", outcome="success")
     request.session.clear()
     return RedirectResponse(url="/login", status_code=status.HTTP_303_SEE_OTHER)
 
 
 @api_router.post("/token", response_model=Token)
 def login_api(
+    request: Request,
     form_data: OAuth2PasswordRequestForm = Depends(),
     db: Session = Depends(get_db),
 ):
     user = db.query(User).filter(User.email == form_data.username).first()
     if not authenticate_user(user, form_data.password):
+        append_audit_event(
+            request=request,
+            actor_user=user if user else None,
+            actor_email=(form_data.username or "").strip().lower() or None,
+            actor_user_id=user.id if user else None,
+            event_type="auth.api.token.failure",
+            outcome="failure",
+            metadata={"reason": "invalid_credentials"},
+        )
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Credenciais invalidas")
 
+    append_audit_event(request=request, actor_user=user, event_type="auth.api.token.success", outcome="success")
     return Token(access_token=create_access_token(user.email))
