@@ -14612,6 +14612,56 @@ def conclude_fertilization_schedule_action(
     return _redirect(target_url)
 
 
+@router.post("/fertilizacao/agendamentos/{schedule_id}/alternar-status")
+def toggle_fertilization_schedule_status_action(
+    schedule_id: int,
+    request: Request,
+    csrf_token: str = Form(...),
+    redirect_to: str | None = Form(None),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    del user
+    validate_csrf(request, csrf_token)
+    target_url = redirect_to if redirect_to and redirect_to.startswith("/") else "/fertilizacao/agendamentos"
+    repo = _repository(db)
+    scope = _global_scope_context(request, repo)
+    schedule = repo.get_fertilization_schedule(schedule_id)
+    if not schedule:
+        _flash(request, "error", "Agendamento nao encontrado.")
+        return _redirect(target_url)
+    if not _plot_matches_scope(schedule.plot, scope):
+        _flash(request, "error", "Este agendamento nao pertence ao contexto ativo.")
+        return _redirect(target_url)
+
+    if schedule.status == "completed" or schedule.fertilization_record_id:
+        record_id = schedule.fertilization_record_id
+        schedule.status = "scheduled"
+        schedule.fertilization_record_id = None
+        repo.db.add(schedule)
+        repo.db.commit()
+        if record_id:
+            existing_record = repo.get_fertilization(record_id)
+            if existing_record:
+                delete_fertilization(repo, existing_record)
+        _flash(request, "success", "Agendamento voltou para programado.")
+        return _redirect(target_url)
+
+    purchased_inputs = repo.list_purchased_inputs()
+    validation = validate_schedule_stock(repo, schedule, purchased_inputs_cache=purchased_inputs)
+    if not validation["ok"]:
+        first = validation["shortages"][0]
+        _flash(request, "error", f"Estoque insuficiente. Necessario comprar {first['missing']} {first['unit']} de {first['name']}.")
+        return _redirect(target_url)
+    try:
+        conclude_fertilization_schedule(repo, schedule, None)
+    except ValueError as exc:
+        _flash(request, "error", str(exc))
+        return _redirect(target_url)
+    _flash(request, "success", "Agendamento concluido e aplicacao registrada.")
+    return _redirect(target_url)
+
+
 @router.post("/fertilizacao/agendamentos/{schedule_id}/excluir")
 def delete_fertilization_schedule_action(
     schedule_id: int,

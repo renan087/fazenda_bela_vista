@@ -38,12 +38,22 @@
                 </div>
             </div>
             <div class="flex items-center gap-2 lg:gap-1.5">
-                {% if schedule.status != 'completed' %}
-                <form method="post" action="/fertilizacao/agendamentos/{{ schedule.id }}/concluir">
+                <form method="post" action="/fertilizacao/agendamentos/{{ schedule.id }}/alternar-status" {% if schedule.status == 'completed' %}onsubmit="return confirm('Voltar este agendamento para programado? A aplicação gerada será removida e o estoque será restaurado.');"{% endif %}>
                     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                    <button class="rounded-xl bg-brand-500 px-3 py-2 text-xs font-medium text-white hover:bg-brand-700">Concluir</button>
+                    <input type="hidden" name="redirect_to" value="{{ current_url or request.url.path }}">
+                    <button class="inline-flex h-9 w-9 items-center justify-center rounded-xl border {% if schedule.status == 'completed' %}border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100{% else %}border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100{% endif %}" title="{% if schedule.status == 'completed' %}Voltar para programado{% else %}Concluir agendamento{% endif %}">
+                        {% if schedule.status == 'completed' %}
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M3 12a9 9 0 1 0 3-6.7"/>
+                            <path d="M3 4v6h6"/>
+                        </svg>
+                        {% else %}
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M20 6 9 17l-5-5"/>
+                        </svg>
+                        {% endif %}
+                    </button>
                 </form>
-                {% endif %}
                 <a href="{{ schedule_edit_urls[schedule.id] }}" class="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-100" title="Editar">
                     <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <path d="M12 20h9"/>
