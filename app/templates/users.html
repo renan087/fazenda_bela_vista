@@ -65,7 +65,7 @@
             <div class="min-w-0 stock-page-header-intro" data-stock-header-intro>
                 <div class="stock-page-header-intro-inner">
                     <h2 class="stock-page-card-title">Usuários e Permissões</h2>
-                    <p class="stock-page-card-subtitle">Gerencie acessos, permissões administrativas e contingências de autenticação em um fluxo unificado.</p>
+                    <p class="stock-page-card-subtitle">Gerencie acessos e autenticação. A opção <em>Permissão de administrador</em> atribui o papel <strong>Administrador da organização</strong> (RBAC), incluindo gestão de usuários e backups na organização padrão SiSFarm.</p>
                 </div>
             </div>
             <div class="stock-header-actions stock-header-actions-top stock-actions-row-mobile-adaptive max-[899px]:w-full">
@@ -237,6 +237,12 @@
                     <span class="user-switch-track" aria-hidden="true"></span>
                     <span class="user-switch-copy text-sm font-medium text-slate-700">Permissão de administrador</span>
                 </label>
+                {% if rbac_role_labels %}
+                <div class="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600">
+                    <span class="font-medium text-slate-700">Papéis atuais na organização:</span>
+                    {{ rbac_role_labels | join(', ') }}
+                </div>
+                {% endif %}
                 <label class="user-switch rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
                     <input type="checkbox" name="is_two_factor_enabled" value="true" data-super-admin-2fa-toggle {% if not edit_user or (not pending_super_admin_two_factor_disable_confirmed and edit_user.is_two_factor_enabled) %}checked{% endif %}>
                     <span class="user-switch-track" aria-hidden="true"></span>

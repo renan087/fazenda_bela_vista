@@ -17,3 +17,4 @@ class Organization(Base):
 
     users = relationship("User", back_populates="organization")
     farms = relationship("Farm", back_populates="organization")
+    roles = relationship("Role", back_populates="organization")

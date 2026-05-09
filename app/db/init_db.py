@@ -39,10 +39,12 @@ from app.models import (
     LoginVerificationCode,
     Organization,
     PasswordChangeVerification,
+    Permission,
     PasswordResetToken,
     PestIncident,
     Plot,
     PlotAttachment,
+    Role,
     PurchasedInput,
     PurchasedInputAttachment,
     RainfallRecord,
@@ -778,6 +780,40 @@ def _sync_schema() -> None:
         "CREATE INDEX IF NOT EXISTS ix_audit_logs_actor_user_id ON audit_logs (actor_user_id)",
         "CREATE INDEX IF NOT EXISTS ix_audit_logs_event_type ON audit_logs (event_type)",
         "CREATE INDEX IF NOT EXISTS ix_audit_logs_organization_id ON audit_logs (organization_id)",
+        """
+        CREATE TABLE IF NOT EXISTS permissions (
+            id SERIAL PRIMARY KEY,
+            code VARCHAR(80) UNIQUE NOT NULL,
+            description TEXT NOT NULL DEFAULT ''
+        )
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS roles (
+            id SERIAL PRIMARY KEY,
+            organization_id INTEGER NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+            name VARCHAR(120) NOT NULL,
+            slug VARCHAR(80) NOT NULL,
+            is_system BOOLEAN NOT NULL DEFAULT FALSE,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            CONSTRAINT uq_roles_organization_slug UNIQUE (organization_id, slug)
+        )
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS role_permissions (
+            role_id INTEGER NOT NULL REFERENCES roles(id) ON DELETE CASCADE,
+            permission_id INTEGER NOT NULL REFERENCES permissions(id) ON DELETE CASCADE,
+            PRIMARY KEY (role_id, permission_id)
+        )
+        """,
+        """
+        CREATE TABLE IF NOT EXISTS user_roles (
+            user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            role_id INTEGER NOT NULL REFERENCES roles(id) ON DELETE CASCADE,
+            PRIMARY KEY (user_id, role_id)
+        )
+        """,
+        "CREATE INDEX IF NOT EXISTS ix_roles_organization_id ON roles (organization_id)",
+        "CREATE INDEX IF NOT EXISTS ix_user_roles_user_id ON user_roles (user_id)",
     ]
     with engine.begin() as connection:
         for statement in statements:

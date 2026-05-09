@@ -4,6 +4,7 @@ from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, LargeBinary
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
+from app.models.rbac import user_roles_table
 
 
 class User(Base):
@@ -33,3 +34,4 @@ class User(Base):
     asaas_customer_id: Mapped[str] = mapped_column(String(40), nullable=True, index=True)
 
     organization = relationship("Organization", back_populates="users")
+    roles = relationship("Role", secondary=user_roles_table, back_populates="users")

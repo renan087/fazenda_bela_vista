@@ -32,6 +32,7 @@ from app.models.password_change_verification import PasswordChangeVerification
 from app.models.pesticide import PestIncident
 from app.models.plot import Plot
 from app.models.plot_attachment import PlotAttachment
+from app.models.rbac import Permission, Role
 from app.models.purchased_input import PurchasedInput
 from app.models.purchased_input_attachment import PurchasedInputAttachment
 from app.models.rainfall import RainfallRecord
@@ -75,6 +76,8 @@ __all__ = [
     "PestIncident",
     "Plot",
     "PlotAttachment",
+    "Permission",
+    "Role",
     "PurchasedInput",
     "PurchasedInputAttachment",
     "RainfallRecord",

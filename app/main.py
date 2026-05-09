@@ -19,6 +19,7 @@ from app.db.init_db import create_tables
 from app.db.init_db import seed_admin
 from app.db.init_db import seed_demo_data
 from app.db.session import SessionLocal
+from app.services.rbac_service import seed_rbac_for_all_organizations
 from app.models import User
 from app.routers.asaas_webhook import router as asaas_webhook_router
 from app.routers.api import router as api_router
@@ -66,6 +67,7 @@ async def lifespan(app: FastAPI):
     create_tables()
     with SessionLocal() as db:
         seed_admin(db)
+        seed_rbac_for_all_organizations(db)
         seed_demo_data(db)
     background_tasks: list[asyncio.Task] = [asyncio.create_task(run_backup_automation_loop())]
     if settings.memory_monitor_enabled:

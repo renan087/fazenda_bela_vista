@@ -29,6 +29,7 @@ from starlette.datastructures import UploadFile as StarletteUploadFile
 
 from app.core.config import get_settings
 from app.core.admin_access import has_admin_access, is_super_admin_email
+from app.core.permissions_catalog import BACKUPS_MANAGE, USERS_MANAGE, all_permission_codes
 from app.core.csrf import validate_csrf
 from app.core.deps import get_csrf_token, get_current_user_web
 from app.core.security import get_password_hash, verify_password
@@ -111,6 +112,13 @@ from app.services.plot_preview_image import (
     plot_preview_thumb_fs_path,
     remove_plot_preview_draft,
     remove_plot_preview_image,
+)
+from app.services.rbac_service import (
+    ensure_organization_roles,
+    permission_codes_for_user,
+    role_labels_for_user,
+    sync_roles_from_admin_flag,
+    user_has_permission,
 )
 from app.services.forms import (
     calculate_geojson_area_hectares,
@@ -702,11 +710,13 @@ COMMERCIALIZATION_COFFEE_TYPE_OPTIONS = [
     ("pergaminho", "Pergaminho"),
 ]
 MENU_ITEM_VISIBILITY_RULES = {
-    "users": has_admin_access,
-    "backups": lambda user: bool(user and has_admin_access(user) and _user_in_default_organization(user)),
-    "docs": lambda user: bool(user and is_super_admin_email(user.email) and _user_in_default_organization(user)),
-    "organizations": lambda user: bool(user and is_super_admin_email(user.email)),
-    "audit_logs": lambda user: bool(user and is_super_admin_email(user.email)),
+    "users": lambda user, pc: bool(user and USERS_MANAGE in pc),
+    "backups": lambda user, pc: bool(
+        user and BACKUPS_MANAGE in pc and _user_in_default_organization(user)
+    ),
+    "docs": lambda user, pc: bool(user and is_super_admin_email(user.email) and _user_in_default_organization(user)),
+    "organizations": lambda user, pc: bool(user and is_super_admin_email(user.email)),
+    "audit_logs": lambda user, pc: bool(user and is_super_admin_email(user.email)),
 }
 
 
@@ -779,6 +789,15 @@ def _base_context(request: Request, user: User, csrf_token: str, page: str, **kw
     modal_mode = _is_modal_request(request)
     flash = request.session.get("flash") if modal_mode else request.session.pop("flash", None)
     repo = kwargs.pop("_repo", None)
+    db_session = repo.db if repo else kwargs.pop("_db", None)
+    if db_session is not None:
+        permission_codes = permission_codes_for_user(db_session, user)
+    else:
+        permission_codes = (
+            all_permission_codes()
+            if user and (is_super_admin_email(user.email) or user.is_admin)
+            else frozenset()
+        )
     context = {
         "request": request,
         "user": user,
@@ -786,7 +805,8 @@ def _base_context(request: Request, user: User, csrf_token: str, page: str, **kw
         "page": page,
         "flash": flash,
         "modal_mode": modal_mode,
-        "menu_visibility": _build_menu_visibility(user),
+        "menu_visibility": _build_menu_visibility(user, permission_codes),
+        "permission_codes": permission_codes,
     }
     if repo:
         scope_context = _global_scope_context(request, repo, user)
@@ -812,11 +832,11 @@ def _repository(db: Session) -> FarmRepository:
     return FarmRepository(db)
 
 
-def _build_menu_visibility(user: User | None) -> dict[str, bool]:
+def _build_menu_visibility(user: User | None, permission_codes: frozenset[str]) -> dict[str, bool]:
     visibility: dict[str, bool] = {}
     for key, rule in MENU_ITEM_VISIBILITY_RULES.items():
         try:
-            visibility[key] = bool(rule(user))
+            visibility[key] = bool(rule(user, permission_codes))
         except Exception:
             visibility[key] = False
     return visibility
@@ -3018,11 +3038,15 @@ def _attachment_response(
     )
 
 
-def _require_admin(request: Request, user: User) -> RedirectResponse | None:
-    if has_admin_access(user):
+def _require_permission(request: Request, user: User, db: Session, code: str) -> RedirectResponse | None:
+    if user_has_permission(db, user, code):
         return None
-    _flash(request, "error", "Apenas administradores podem acessar este modulo.")
+    _flash(request, "error", "Voce nao tem permissao para acessar este recurso.")
     return _redirect("/dashboard")
+
+
+def _require_admin(request: Request, user: User, db: Session) -> RedirectResponse | None:
+    return _require_permission(request, user, db, USERS_MANAGE)
 
 
 def _require_super_admin(request: Request, user: User) -> RedirectResponse | None:
@@ -3039,18 +3063,25 @@ def _user_in_default_organization(user: User | None) -> bool:
     return bool(organization and organization.slug == "sisfarm")
 
 
-def _require_default_organization_backup_access(request: Request, user: User) -> RedirectResponse | None:
-    if has_admin_access(user) and _user_in_default_organization(user):
-        return None
-    _flash(request, "error", "Backups ficam disponiveis apenas na organizacao padrao SiSFarm.")
-    return _redirect("/dashboard")
+def _require_default_organization_backup_access(
+    request: Request, user: User, db: Session
+) -> RedirectResponse | None:
+    if not _user_in_default_organization(user):
+        _flash(request, "error", "Backups ficam disponiveis apenas na organizacao padrao SiSFarm.")
+        return _redirect("/dashboard")
+    return _require_permission(request, user, db, BACKUPS_MANAGE)
 
 
-def _backup_access_json_denied(user: User) -> JSONResponse | None:
-    if has_admin_access(user) and _user_in_default_organization(user):
+def _backup_access_json_denied(user: User, db: Session) -> JSONResponse | None:
+    if not _user_in_default_organization(user):
+        return JSONResponse(
+            {"ok": False, "error": "Backups ficam disponiveis apenas na organizacao padrao SiSFarm."},
+            status_code=403,
+        )
+    if user_has_permission(db, user, BACKUPS_MANAGE):
         return None
     return JSONResponse(
-        {"ok": False, "error": "Backups ficam disponiveis apenas na organizacao padrao SiSFarm."},
+        {"ok": False, "error": "Voce nao tem permissao para acessar os backups."},
         status_code=403,
     )
 
@@ -8324,6 +8355,7 @@ def create_organization_action(
         is_active=_bool_from_form(is_active),
     )
     _repository(db).create(organization)
+    ensure_organization_roles(db, organization.id)
     _flash(request, "success", "Organizacao criada com sucesso.")
     return _redirect("/organizacoes")
 
@@ -8355,6 +8387,8 @@ def link_user_organization_action(
     if active_farm and active_farm.organization_id != organization.id:
         data.update({"active_farm_id": None, "active_season_id": None})
     repo.update(target_user, data)
+    db.refresh(target_user)
+    sync_roles_from_admin_flag(db, target_user)
     _flash(request, "success", "Usuario vinculado a organizacao com sucesso.")
     return _redirect("/organizacoes")
 
@@ -8453,7 +8487,7 @@ def users_page(
     user: User = Depends(get_current_user_web),
     csrf_token: str = Depends(get_csrf_token),
 ):
-    denied = _require_admin(request, user)
+    denied = _require_admin(request, user, db)
     if denied:
         return denied
     repo = _repository(db)
@@ -8468,6 +8502,12 @@ def users_page(
         elif edit_id and pending_target_user_id == edit_id:
             pending_super_admin_two_factor_disable = pending_payload
             pending_super_admin_two_factor_disable_confirmed = pending_confirmed
+    edit_user = None
+    if edit_id:
+        candidate = repo.get_user(edit_id)
+        if candidate and candidate.organization_id == user.organization_id:
+            edit_user = candidate
+    rbac_role_labels = role_labels_for_user(db, edit_user) if edit_user else []
     return templates.TemplateResponse(
         "users.html",
         _base_context(
@@ -8477,11 +8517,8 @@ def users_page(
             "users",
             title="Administracao de Usuarios",
             users=repo.list_users(organization_id=user.organization_id),
-            edit_user=(
-                target
-                if (edit_id and (target := repo.get_user(edit_id)) and target.organization_id == user.organization_id)
-                else None
-            ),
+            edit_user=edit_user,
+            rbac_role_labels=rbac_role_labels,
             format_app_datetime=format_app_datetime,
             super_admin_email=(settings.super_admin_email or settings.admin_email or "").strip().lower(),
             pending_super_admin_two_factor_disable=pending_super_admin_two_factor_disable,
@@ -8498,7 +8535,7 @@ def user_avatar_view(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user_web),
 ):
-    denied = _require_admin(request, user)
+    denied = _require_admin(request, user, db)
     if denied:
         return denied
     repo = _repository(db)
@@ -8524,7 +8561,7 @@ def create_user_action(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user_web),
 ):
-    denied = _require_admin(request, user)
+    denied = _require_admin(request, user, db)
     if denied:
         return denied
     validate_csrf(request, csrf_token)
@@ -8533,7 +8570,7 @@ def create_user_action(
     if existing:
         _flash(request, "error", "Ja existe um usuario com este email.")
         return _redirect("/usuarios")
-    create_user(
+    new_user = create_user(
         repo,
         {
             "name": name,
@@ -8545,6 +8582,7 @@ def create_user_action(
             "organization_id": user.organization_id,
         },
     )
+    sync_roles_from_admin_flag(db, new_user)
     _flash(request, "success", "Usuario criado com sucesso.")
     return _redirect("/usuarios")
 
@@ -8563,7 +8601,7 @@ def update_user_action(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user_web),
 ):
-    denied = _require_admin(request, user)
+    denied = _require_admin(request, user, db)
     if denied:
         return denied
     try:
@@ -8623,6 +8661,8 @@ def update_user_action(
         if not updated_user.is_two_factor_enabled:
             revoke_active_login_codes(db, updated_user.id)
 
+        sync_roles_from_admin_flag(db, updated_user)
+
         if updated_user.id == user.id:
             request.session["user_email"] = updated_user.email
             if not has_admin_access(updated_user):
@@ -8654,7 +8694,7 @@ def confirm_super_admin_two_factor_disable_action(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user_web),
 ):
-    denied = _require_admin(request, user)
+    denied = _require_admin(request, user, db)
     if denied:
         return denied
     validate_csrf(request, csrf_token)
@@ -8694,7 +8734,7 @@ def start_super_admin_two_factor_disable_action(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user_web),
 ):
-    denied = _require_admin(request, user)
+    denied = _require_admin(request, user, db)
     if denied:
         return denied
     validate_csrf(request, csrf_token)
@@ -8728,7 +8768,7 @@ def cancel_super_admin_two_factor_disable_action(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user_web),
 ):
-    denied = _require_admin(request, user)
+    denied = _require_admin(request, user, db)
     if denied:
         return denied
     validate_csrf(request, csrf_token)
@@ -8747,7 +8787,7 @@ def delete_user_action(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user_web),
 ):
-    denied = _require_admin(request, user)
+    denied = _require_admin(request, user, db)
     if denied:
         return denied
     validate_csrf(request, csrf_token)
@@ -8771,7 +8811,7 @@ def backups_page(
     user: User = Depends(get_current_user_web),
     csrf_token: str = Depends(get_csrf_token),
 ):
-    denied = _require_default_organization_backup_access(request, user)
+    denied = _require_default_organization_backup_access(request, user, db)
     if denied:
         return denied
     repo = _repository(db)
@@ -8828,7 +8868,7 @@ def configure_backup_automation_action(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user_web),
 ):
-    denied = _require_default_organization_backup_access(request, user)
+    denied = _require_default_organization_backup_access(request, user, db)
     if denied:
         return denied
     validate_csrf(request, csrf_token)
@@ -8872,7 +8912,7 @@ def configure_backup_storage_limit_action(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user_web),
 ):
-    denied = _require_default_organization_backup_access(request, user)
+    denied = _require_default_organization_backup_access(request, user, db)
     if denied:
         return denied
     validate_csrf(request, csrf_token)
@@ -8893,7 +8933,7 @@ def execute_backup_action(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user_web),
 ):
-    denied = _require_default_organization_backup_access(request, user)
+    denied = _require_default_organization_backup_access(request, user, db)
     if denied:
         return denied
     validate_csrf(request, csrf_token)
@@ -8937,7 +8977,7 @@ def start_backup_action(
     user: User = Depends(get_current_user_web),
 ):
     try:
-        denied = _backup_access_json_denied(user)
+        denied = _backup_access_json_denied(user, db)
         if denied:
             return denied
         validate_csrf(request, csrf_token)
@@ -8993,7 +9033,7 @@ def backup_status_api(
     user: User = Depends(get_current_user_web),
 ):
     try:
-        denied = _backup_access_json_denied(user)
+        denied = _backup_access_json_denied(user, db)
         if denied:
             return denied
         run = _repository(db).get_backup_run(backup_run_id)
@@ -9019,7 +9059,7 @@ def delete_backup_action(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user_web),
 ):
-    denied = _require_default_organization_backup_access(request, user)
+    denied = _require_default_organization_backup_access(request, user, db)
     if denied:
         return denied
     validate_csrf(request, csrf_token)
