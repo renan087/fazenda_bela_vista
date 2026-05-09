@@ -15,7 +15,7 @@
         </div>
     </section>
 
-    <section class="grid gap-4 md:grid-cols-2">
+    <section class="stock-panel grid gap-4 rounded-[2rem] p-0 md:grid-cols-2" data-stock-fade-panel>
         <div class="rounded-[1.5rem] border border-slate-200 bg-white px-5 py-4 shadow-sm">
             <p class="text-xs uppercase tracking-[0.25em] text-slate-400">Total gravado</p>
             <p class="mt-2 text-2xl font-semibold text-slate-900">{{ audit_total_all }}</p>
@@ -26,7 +26,7 @@
         </div>
     </section>
 
-    <section class="stock-panel rounded-[2rem] bg-white p-6 shadow-panel">
+    <section class="stock-panel rounded-[2rem] bg-white p-6 shadow-panel" data-stock-fade-panel>
         <form method="get" action="/auditoria" class="grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
             <label class="block">
                 <span class="mb-2 block text-xs uppercase tracking-[0.25em] text-slate-400">Usuario (filtro)</span>
@@ -60,7 +60,7 @@
         </form>
     </section>
 
-    <section class="stock-panel overflow-hidden rounded-[2rem] bg-white shadow-panel">
+    <section class="stock-panel overflow-hidden rounded-[2rem] bg-white shadow-panel" data-stock-fade-panel>
         <div class="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-5 py-4">
             <p class="text-sm text-slate-600">{{ audit_total }} registro(s) · pagina {{ audit_page }} de {{ audit_total_pages }}</p>
         </div>
@@ -100,17 +100,96 @@
                 </tbody>
             </table>
         </div>
-        {% if audit_total_pages > 1 %}
-        <div class="flex flex-wrap items-center justify-center gap-2 border-t border-slate-100 px-4 py-4">
-            {% set pq = pager_query_string %}
-            {% if audit_page > 1 %}
-            <a class="rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50" href="/auditoria?{% if pq %}{{ pq }}&{% endif %}page={{ audit_page - 1 }}">Anterior</a>
-            {% endif %}
-            {% if audit_page < audit_total_pages %}
-            <a class="rounded-xl border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50" href="/auditoria?{% if pq %}{{ pq }}&{% endif %}page={{ audit_page + 1 }}">Proxima</a>
-            {% endif %}
+        <div class="px-4 pb-4">
+            {% with pagination=audit_pagination %}{% include "partials/history_pagination.html" %}{% endwith %}
         </div>
-        {% endif %}
     </section>
 </div>
+<script>
+    (() => {
+        const stickyHeader = document.querySelector('.stock-page-header');
+        const headerIntro = stickyHeader?.querySelector('[data-stock-header-intro]');
+        const fadingPanels = Array.from(document.querySelectorAll('[data-stock-fade-panel]'));
+        const mobileCompactMq = window.matchMedia('(max-width: 899px)');
+
+        const parseStickyTopPx = (el) => {
+            const raw = getComputedStyle(el).top;
+            if (!raw || raw === 'auto') return 0;
+            const pxMatch = /^([\d.]+)px$/.exec(raw);
+            if (pxMatch) return parseFloat(pxMatch[1]);
+            const remMatch = /^([\d.]+)rem$/.exec(raw);
+            if (remMatch) {
+                const rootPx = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
+                return parseFloat(remMatch[1]) * rootPx;
+            }
+            return 0;
+        };
+
+        let compactRaf = null;
+        const syncHeaderCompact = () => {
+            compactRaf = null;
+            if (!stickyHeader) return;
+            if (!mobileCompactMq.matches) {
+                stickyHeader.classList.remove('is-compact');
+                headerIntro?.removeAttribute('aria-hidden');
+                return;
+            }
+            const topPx = parseStickyTopPx(stickyHeader);
+            const rect = stickyHeader.getBoundingClientRect();
+            const isCompact = stickyHeader.classList.contains('is-compact');
+            let nextCompact = isCompact;
+            if (rect.top <= topPx + 2) nextCompact = true;
+            else if (rect.top > topPx + 8) nextCompact = false;
+            stickyHeader.classList.toggle('is-compact', nextCompact);
+            headerIntro?.setAttribute('aria-hidden', nextCompact ? 'true' : 'false');
+        };
+
+        const scheduleHeaderCompact = () => {
+            if (compactRaf !== null) return;
+            compactRaf = window.requestAnimationFrame(syncHeaderCompact);
+        };
+
+        let fadeRafId = null;
+        const updateFadingPanels = () => {
+            fadeRafId = null;
+            const stickyRect = stickyHeader?.getBoundingClientRect();
+            if (!stickyRect) return;
+            const stickyBottom = stickyRect.bottom;
+
+            fadingPanels.forEach((panel) => {
+                const panelRect = panel.getBoundingClientRect();
+                const panelTop = panelRect.top;
+                const panelHeight = panelRect.height;
+                if (panelTop >= stickyBottom || panelHeight <= 1) {
+                    panel.style.setProperty('--stock-fade-cutoff', '0px');
+                    panel.style.setProperty('--stock-fade-feather-end', '0px');
+                    return;
+                }
+                const overlap = Math.min(Math.max(stickyBottom - panelTop, 0), panelHeight);
+                const featherBand = Math.min(80, Math.max(22, overlap * 0.45 + 16));
+                panel.style.setProperty('--stock-fade-cutoff', `${overlap.toFixed(2)}px`);
+                panel.style.setProperty('--stock-fade-feather-end', `${(overlap + featherBand).toFixed(2)}px`);
+            });
+        };
+
+        const scheduleFadeUpdate = () => {
+            if (fadeRafId !== null) return;
+            fadeRafId = window.requestAnimationFrame(updateFadingPanels);
+        };
+
+        if (stickyHeader) {
+            window.addEventListener('scroll', scheduleHeaderCompact, { passive: true });
+            window.addEventListener('resize', scheduleHeaderCompact);
+            if (typeof mobileCompactMq.addEventListener === 'function') mobileCompactMq.addEventListener('change', scheduleHeaderCompact);
+            else if (typeof mobileCompactMq.addListener === 'function') mobileCompactMq.addListener(scheduleHeaderCompact);
+            scheduleHeaderCompact();
+        }
+
+        if (stickyHeader && fadingPanels.length) {
+            window.addEventListener('scroll', scheduleFadeUpdate, { passive: true });
+            window.addEventListener('resize', scheduleFadeUpdate);
+            scheduleFadeUpdate();
+        }
+    })();
+</script>
 {% endblock %}

@@ -8245,6 +8245,17 @@ def audit_logs_page(
             per_page=per_page,
         )
         page = effective_page
+    audit_pagination = {
+        "page": page,
+        "total_items": total,
+        "total_pages": total_pages,
+        "has_prev": page > 1,
+        "has_next": page < total_pages,
+        "first_url": _url_with_query(request, page=None),
+        "prev_url": _url_with_query(request, page=page - 1 if page > 2 else None),
+        "next_url": _url_with_query(request, page=page + 1),
+        "last_url": _url_with_query(request, page=total_pages if total_pages > 1 else None),
+    }
     pager_q = {}
     if filter_actor_user_id is not None:
         pager_q["actor_user_id"] = filter_actor_user_id
@@ -8271,6 +8282,7 @@ def audit_logs_page(
             audit_page=page,
             audit_total_pages=total_pages,
             audit_per_page=per_page,
+            audit_pagination=audit_pagination,
             filter_actor_user_id=filter_actor_user_id,
             filter_email=email or "",
             filter_event_type=event_type or "",
