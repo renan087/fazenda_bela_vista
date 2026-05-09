@@ -8,16 +8,11 @@ body {
 }
 
 [data-mobile-menu-button] {
-    inline-size: 3rem;
-    block-size: 3rem;
-    min-inline-size: 3rem;
-    max-inline-size: 3rem;
-    flex: 0 0 3rem;
+    flex: 0 0 auto;
 }
 
 [data-mobile-menu-button] > span {
     display: inline-flex;
-    inline-size: 1.25rem;
     flex-direction: column;
     gap: 0.375rem;
 }
