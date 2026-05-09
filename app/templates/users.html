@@ -61,6 +61,11 @@
         gap: 0.75rem;
     }
 
+    .user-role-page-grid {
+        display: grid;
+        gap: 0.85rem;
+    }
+
     .user-role-group {
         border: 1px solid rgba(226, 232, 240, 0.95);
         border-radius: 1.35rem;
@@ -102,6 +107,27 @@
         font-size: 0.7rem;
         font-weight: 800;
         padding: 0.28rem 0.58rem;
+    }
+
+    .user-role-page-card {
+        border: 1px solid rgba(203, 213, 225, 0.85);
+        border-radius: 1.25rem;
+        background:
+            radial-gradient(circle at top right, rgba(91, 179, 74, 0.08), transparent 42%),
+            #fff;
+        padding: 0.8rem;
+    }
+
+    .user-role-page-title {
+        color: #0f172a;
+        font-size: 0.92rem;
+        font-weight: 800;
+        margin-bottom: 0.65rem;
+    }
+
+    .user-role-page-actions {
+        display: grid;
+        gap: 0.62rem;
     }
 
     .user-role-switch {
@@ -360,7 +386,7 @@
                                     <p class="user-role-group-title">{{ group.label }}</p>
                                     <p class="user-role-group-description">{{ group.description }}</p>
                                 </div>
-                                <span class="user-role-group-count">{{ group.roles|length }}</span>
+                                <span class="user-role-group-count">{{ group.page_cards|length if group.page_cards else group.roles|length }}</span>
                             </div>
                             <div class="user-role-switch-grid">
                                 {% for r in group.roles %}
@@ -374,6 +400,27 @@
                                 </label>
                                 {% endfor %}
                             </div>
+                            {% if group.page_cards %}
+                            <div class="user-role-page-grid">
+                                {% for page_card in group.page_cards %}
+                                <article class="user-role-page-card">
+                                    <p class="user-role-page-title">{{ page_card.label }}</p>
+                                    <div class="user-role-page-actions">
+                                        {% for r in page_card.roles %}
+                                        <label class="user-switch user-role-switch rounded-2xl border px-4 py-3">
+                                            <input type="checkbox" name="role_id" value="{{ r.id }}" {% if edit_user_role_ids and r.id in edit_user_role_ids %}checked{% endif %}>
+                                            <span class="user-role-switch-content">
+                                                <span class="user-role-switch-title">{{ r.name }}</span>
+                                                <span class="user-role-switch-status">Liberar acesso</span>
+                                            </span>
+                                            <span class="user-switch-track" aria-hidden="true"></span>
+                                        </label>
+                                        {% endfor %}
+                                    </div>
+                                </article>
+                                {% endfor %}
+                            </div>
+                            {% endif %}
                         </section>
                         {% endfor %}
                     <p class="mt-3 text-xs text-slate-400">Consulta libera apenas visualização. Alteração libera criação e edição. Exclusões precisam do papel crítico separado. Sem nenhum papel marcado, o sistema usa o perfil Operador.</p>

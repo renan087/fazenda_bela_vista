@@ -363,7 +363,41 @@ def assignable_role_groups_for_editing(db: Session, organization_id: int) -> lis
                     "roles": group_roles,
                 }
             )
-    used_slugs = {role.slug for group in groups for role in group["roles"]}
+
+    page_cards = []
+    for slug_part, label, _page_code in PAGE_ROLE_PROFILES:
+        page_roles = [
+            by_slug[slug]
+            for slug in (f"consultar-{slug_part}", f"alterar-{slug_part}")
+            if slug in by_slug
+        ]
+        if page_roles:
+            page_cards.append(
+                {
+                    "label": label,
+                    "roles": page_roles,
+                }
+            )
+    if page_cards:
+        groups.append(
+            {
+                "label": "Permissões por página",
+                "description": "Cada card reúne consulta e alteração da mesma área do sistema.",
+                "page_cards": page_cards,
+            }
+        )
+
+    used_slugs = {
+        role.slug
+        for group in groups
+        for role in group.get("roles", [])
+    }
+    used_slugs.update(
+        role.slug
+        for group in groups
+        for page_card in group.get("page_cards", [])
+        for role in page_card.get("roles", [])
+    )
     custom_roles = [role for role in roles if role.slug not in used_slugs]
     if custom_roles:
         groups.append(
@@ -380,11 +414,13 @@ def _assignable_role_order() -> tuple[str, ...]:
     ordered: list[str] = []
     for _, _, slugs in _assignable_role_groups_definition():
         ordered.extend(slugs)
+    for slug_part, _, _ in PAGE_ROLE_PROFILES:
+        ordered.append(f"consultar-{slug_part}")
+        ordered.append(f"alterar-{slug_part}")
     return tuple(ordered)
 
 
 def _assignable_role_groups_definition() -> tuple[tuple[str, str, tuple[str, ...]], ...]:
-    page_slugs = tuple(slug_part for slug_part, _, _ in PAGE_ROLE_PROFILES)
     return (
         (
             "Perfis prontos",
@@ -396,16 +432,6 @@ def _assignable_role_groups_definition() -> tuple[tuple[str, str, tuple[str, ...
                 "papel-agronomia",
                 "papel-monitoramento",
             ),
-        ),
-        (
-            "Consultas por página",
-            "Permite somente visualizar a página e seus dados, sem salvar alterações.",
-            tuple(f"consultar-{slug}" for slug in page_slugs),
-        ),
-        (
-            "Alterações por página",
-            "Permite criar e editar dados da página. Não libera exclusões sozinho.",
-            tuple(f"alterar-{slug}" for slug in page_slugs),
         ),
         (
             "Permissões críticas",
