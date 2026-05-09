@@ -419,7 +419,7 @@
                     {% endif %}
                     <label>
                         <span class="mb-2 block text-sm font-medium">Data prevista</span>
-                        <input type="date" name="scheduled_date" value="{{ edit_schedule.scheduled_date.isoformat() if edit_schedule else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required>
+                        <input type="date" name="scheduled_date" value="{{ edit_schedule.scheduled_date.isoformat() if edit_schedule else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required data-schedule-date>
                     </label>
                     <label>
                         <span class="mb-2 block text-sm font-medium">Modo de aplicação</span>
@@ -437,6 +437,51 @@
                         </label>
                     </div>
                 </div>
+
+                {% if not edit_schedule %}
+                <div class="rounded-[1.5rem] border border-sky-100 bg-sky-50/50 p-4" data-schedule-repeat-card>
+                    <div class="flex flex-wrap items-start justify-between gap-4">
+                        <div class="min-w-0">
+                            <p class="text-xs uppercase tracking-[0.3em] text-slate-400">Repetição</p>
+                            <p class="mt-2 text-sm text-slate-600">Crie automaticamente outras datas com os mesmos setores e insumos deste agendamento.</p>
+                        </div>
+                        <label class="inline-flex items-center gap-2 rounded-2xl bg-white px-4 py-3 text-sm font-semibold text-slate-700 ring-1 ring-slate-200">
+                            <input type="checkbox" name="schedule_repeat_enabled" value="1" class="rounded border-slate-300 text-brand-600 focus:ring-brand-500" data-schedule-repeat-enabled>
+                            Repetir
+                        </label>
+                    </div>
+                    <div class="stock-summary-collapse mt-4" data-schedule-repeat-collapse>
+                        <div class="stock-summary-collapse-inner">
+                            <div class="grid gap-4 md:grid-cols-3">
+                                <label>
+                                    <span class="mb-2 block text-sm font-medium">Repetir a cada</span>
+                                    <input type="number" name="schedule_repeat_interval_value" min="1" step="1" value="7" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-white" data-schedule-repeat-interval>
+                                </label>
+                                <label>
+                                    <span class="mb-2 block text-sm font-medium">Período</span>
+                                    <select name="schedule_repeat_interval_unit" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-white" data-schedule-repeat-unit>
+                                        <option value="days">Dias</option>
+                                        <option value="months">Meses</option>
+                                    </select>
+                                </label>
+                                <label>
+                                    <span class="mb-2 block text-sm font-medium">Repetições adicionais</span>
+                                    <input type="number" name="schedule_repeat_count" min="1" max="36" step="1" value="1" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-white" data-schedule-repeat-count>
+                                </label>
+                            </div>
+                            <div class="mt-4 rounded-2xl border border-sky-100 bg-white/80 p-4">
+                                <div class="flex flex-wrap items-center justify-between gap-2">
+                                    <p class="text-xs uppercase tracking-[0.25em] text-slate-400">Prévia das datas</p>
+                                    <span class="text-xs font-medium text-slate-500" data-schedule-repeat-total>1 data</span>
+                                </div>
+                                <div class="mt-3 flex flex-wrap gap-2" data-schedule-repeat-preview>
+                                    <span class="rounded-full bg-slate-100 px-3 py-2 text-xs font-semibold text-slate-500">Informe a data prevista.</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                {% endif %}
 
                 <label>
                     <span class="mb-2 block text-sm font-medium">Status</span>
@@ -575,6 +620,14 @@
         const plotHiddenInputs = document.querySelector('[data-schedule-plot-hidden-inputs]');
         const plotEmptyState = document.querySelector('[data-schedule-plot-empty]');
         const plotSelectionCount = document.querySelector('[data-schedule-plot-selection-count]');
+        const scheduleDateInput = document.querySelector('[data-schedule-date]');
+        const repeatEnabledInput = document.querySelector('[data-schedule-repeat-enabled]');
+        const repeatCollapse = document.querySelector('[data-schedule-repeat-collapse]');
+        const repeatIntervalInput = document.querySelector('[data-schedule-repeat-interval]');
+        const repeatUnitInput = document.querySelector('[data-schedule-repeat-unit]');
+        const repeatCountInput = document.querySelector('[data-schedule-repeat-count]');
+        const repeatPreview = document.querySelector('[data-schedule-repeat-preview]');
+        const repeatTotal = document.querySelector('[data-schedule-repeat-total]');
         const recommendationMap = new Map({{ schedule_recommendations|tojson }}.map((recommendation) => [String(recommendation.id), recommendation]));
         const initialPlotOptionsHtml = plotSelect?.innerHTML || '';
         let scheduleListShell = document.querySelector('[data-schedule-list-shell]');
@@ -684,6 +737,75 @@
             return true;
         };
 
+        const parseScheduleDate = (value) => {
+            const parts = (value || '').split('-').map((part) => Number(part));
+            if (parts.length !== 3 || parts.some((part) => !Number.isFinite(part))) return null;
+            return new Date(parts[0], parts[1] - 1, parts[2]);
+        };
+
+        const formatScheduleDate = (date) => {
+            const day = String(date.getDate()).padStart(2, '0');
+            const month = String(date.getMonth() + 1).padStart(2, '0');
+            return `${day}/${month}/${date.getFullYear()}`;
+        };
+
+        const addScheduleMonths = (date, months) => {
+            const next = new Date(date.getFullYear(), date.getMonth() + months, 1);
+            const lastDay = new Date(next.getFullYear(), next.getMonth() + 1, 0).getDate();
+            next.setDate(Math.min(date.getDate(), lastDay));
+            return next;
+        };
+
+        const buildRepeatDates = () => {
+            const baseDate = parseScheduleDate(scheduleDateInput?.value || '');
+            if (!baseDate) return [];
+            const repeatEnabled = Boolean(repeatEnabledInput?.checked);
+            if (!repeatEnabled) return [baseDate];
+            const interval = Math.max(1, Number.parseInt(repeatIntervalInput?.value || '1', 10) || 1);
+            const count = Math.min(36, Math.max(1, Number.parseInt(repeatCountInput?.value || '1', 10) || 1));
+            const unit = repeatUnitInput?.value === 'months' ? 'months' : 'days';
+            const dates = [baseDate];
+            for (let index = 1; index <= count; index += 1) {
+                if (unit === 'months') {
+                    dates.push(addScheduleMonths(baseDate, interval * index));
+                } else {
+                    const next = new Date(baseDate);
+                    next.setDate(baseDate.getDate() + interval * index);
+                    dates.push(next);
+                }
+            }
+            return dates;
+        };
+
+        const syncScheduleRepeatFields = () => {
+            const enabled = Boolean(repeatEnabledInput?.checked);
+            repeatCollapse?.classList.toggle('is-expanded', enabled);
+            [repeatIntervalInput, repeatUnitInput, repeatCountInput].forEach((input) => {
+                if (!input) return;
+                input.disabled = !enabled;
+            });
+
+            const dates = buildRepeatDates();
+            if (repeatTotal) repeatTotal.textContent = dates.length === 1 ? '1 data' : `${dates.length} datas`;
+            if (!repeatPreview) return;
+            repeatPreview.innerHTML = '';
+            if (!dates.length) {
+                const empty = document.createElement('span');
+                empty.className = 'rounded-full bg-slate-100 px-3 py-2 text-xs font-semibold text-slate-500';
+                empty.textContent = 'Informe a data prevista.';
+                repeatPreview.appendChild(empty);
+                return;
+            }
+            dates.forEach((date, index) => {
+                const chip = document.createElement('span');
+                chip.className = index === 0
+                    ? 'rounded-full bg-brand-100 px-3 py-2 text-xs font-semibold text-brand-700'
+                    : 'rounded-full bg-sky-100 px-3 py-2 text-xs font-semibold text-sky-700';
+                chip.textContent = index === 0 ? `${formatScheduleDate(date)} • base` : formatScheduleDate(date);
+                repeatPreview.appendChild(chip);
+            });
+        };
+
         const resetScheduleCreateState = () => {
             if (scheduleRenderedInEditMode || !scheduleForm) return;
             scheduleForm.reset();
@@ -707,8 +829,13 @@
                 wrapper.innerHTML = '';
                 wrapper.appendChild(buildScheduleItemRow());
             }
+            if (repeatEnabledInput) repeatEnabledInput.checked = false;
+            if (repeatIntervalInput) repeatIntervalInput.value = '7';
+            if (repeatUnitInput) repeatUnitInput.value = 'days';
+            if (repeatCountInput) repeatCountInput.value = '1';
             syncPlotSelectionState();
             syncScheduleDurationField();
+            syncScheduleRepeatFields();
         };
 
         const openScheduleModal = () => {
@@ -739,6 +866,17 @@
 
         scheduleForm?.querySelector('[data-schedule-application-method]')?.addEventListener('change', syncScheduleDurationField);
         syncScheduleDurationField();
+        [
+            scheduleDateInput,
+            repeatEnabledInput,
+            repeatIntervalInput,
+            repeatUnitInput,
+            repeatCountInput,
+        ].forEach((input) => {
+            input?.addEventListener('input', syncScheduleRepeatFields);
+            input?.addEventListener('change', syncScheduleRepeatFields);
+        });
+        syncScheduleRepeatFields();
 
         if (contextToggle && contextCollapse && contextToggleLabel) {
             const setContextExpanded = (expanded) => {

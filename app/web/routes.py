@@ -1220,6 +1220,45 @@ def _paginate_schedule_date_groups(
     return page_groups, pagination
 
 
+def _add_months_clamped(source_date: date, months: int) -> date:
+    month_index = source_date.month - 1 + months
+    year = source_date.year + month_index // 12
+    month = month_index % 12 + 1
+    day = min(source_date.day, calendar.monthrange(year, month)[1])
+    return date(year, month, day)
+
+
+def _fertilization_schedule_dates_from_form(form) -> list[date]:
+    try:
+        base_date = date.fromisoformat(str(form.get("scheduled_date") or "").strip())
+    except ValueError as exc:
+        raise ValueError("Informe uma data prevista valida para o agendamento.") from exc
+
+    repeat_enabled = str(form.get("schedule_repeat_enabled") or "").strip().lower() in {"1", "true", "on", "yes"}
+    if not repeat_enabled:
+        return [base_date]
+
+    interval_unit = str(form.get("schedule_repeat_interval_unit") or "days").strip().lower()
+    interval_value = _positive_int(form.get("schedule_repeat_interval_value"), 0)
+    repeat_count = _positive_int(form.get("schedule_repeat_count"), 0)
+    if interval_unit not in {"days", "months"}:
+        raise ValueError("Selecione se a repeticao sera em dias ou meses.")
+    if interval_value < 1:
+        raise ValueError("Informe um intervalo de repeticao maior que zero.")
+    if repeat_count < 1:
+        raise ValueError("Informe ao menos uma repeticao adicional.")
+    if repeat_count > 36:
+        raise ValueError("Use no maximo 36 repeticoes adicionais por agendamento.")
+
+    dates = [base_date]
+    for index in range(1, repeat_count + 1):
+        if interval_unit == "months":
+            dates.append(_add_months_clamped(base_date, interval_value * index))
+        else:
+            dates.append(base_date + timedelta(days=interval_value * index))
+    return dates
+
+
 def _mark_password_change_pending(request: Request, user_id: int) -> None:
     request.session[PENDING_PASSWORD_CHANGE_SESSION_KEY] = user_id
 
@@ -14445,27 +14484,30 @@ async def create_fertilization_schedule_action(
         _flash(request, "error", "Selecione ao menos um setor e adicione ao menos um insumo.")
         return _redirect("/fertilizacao/agendamentos")
     try:
-        for plot in selected_plots:
-            create_fertilization_schedule(
-                repo,
-                {
-                    "plot_id": plot.id,
-                    "scheduled_date": str(form.get("scheduled_date") or ""),
-                    "season_id": scope["active_season_id"],
-                    "status": str(form.get("status") or "scheduled"),
-                    "duration_minutes": form.get("duration_minutes"),
-                    "application_method": form.get("application_method"),
-                    "notes": str(form.get("notes") or "") or None,
-                    "items": items,
-                },
-            )
+        scheduled_dates = _fertilization_schedule_dates_from_form(form)
+        for scheduled_date in scheduled_dates:
+            for plot in selected_plots:
+                create_fertilization_schedule(
+                    repo,
+                    {
+                        "plot_id": plot.id,
+                        "scheduled_date": scheduled_date.isoformat(),
+                        "season_id": scope["active_season_id"],
+                        "status": str(form.get("status") or "scheduled"),
+                        "duration_minutes": form.get("duration_minutes"),
+                        "application_method": form.get("application_method"),
+                        "notes": str(form.get("notes") or "") or None,
+                        "items": items,
+                    },
+                )
     except ValueError as exc:
         _flash(request, "error", str(exc))
         return _redirect("/fertilizacao/agendamentos")
-    if len(selected_plots) == 1:
+    total_created = len(selected_plots) * len(scheduled_dates)
+    if total_created == 1:
         _flash(request, "success", "Agendamento salvo com sucesso.")
     else:
-        _flash(request, "success", f"Agendamentos salvos com sucesso para {len(selected_plots)} setores.")
+        _flash(request, "success", f"{total_created} agendamentos salvos com sucesso.")
     return _redirect("/fertilizacao/agendamentos")
 
 
