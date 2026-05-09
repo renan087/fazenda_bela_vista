@@ -147,6 +147,27 @@
         margin-top: 0.85rem;
     }
 
+    .user-role-clear-button {
+        align-items: center;
+        border: 1px solid rgba(244, 63, 94, 0.2);
+        border-radius: 1rem;
+        color: #be123c;
+        display: inline-flex;
+        font-size: 0.78rem;
+        font-weight: 800;
+        gap: 0.45rem;
+        justify-content: center;
+        min-height: 2.45rem;
+        padding: 0.6rem 0.9rem;
+        transition: background-color 180ms ease, border-color 180ms ease, color 180ms ease;
+    }
+
+    .user-role-clear-button:hover {
+        background: #fff1f2;
+        border-color: rgba(244, 63, 94, 0.34);
+        color: #9f1239;
+    }
+
     .user-role-page-card {
         border: 1px solid rgba(203, 213, 225, 0.85);
         border-radius: 1.25rem;
@@ -191,6 +212,14 @@
 
     .user-role-switch input:checked ~ .user-role-switch-content .user-role-switch-status {
         color: #3d7b32;
+    }
+
+    .user-role-switch input:checked ~ .user-role-switch-content .user-role-status-restricted {
+        display: none;
+    }
+
+    .user-role-switch input:not(:checked) ~ .user-role-switch-content .user-role-status-granted {
+        display: none;
     }
 
     .user-role-switch-content {
@@ -424,6 +453,12 @@
                     </button>
                     <div class="user-role-collapse-body hidden" data-user-roles-collapse-body>
                     {% if assignable_role_groups %}
+                        <div class="mb-3 flex justify-end">
+                            <button type="button" class="user-role-clear-button" data-user-roles-clear>
+                                <span aria-hidden="true">×</span>
+                                Desmarcar todos os acessos
+                            </button>
+                        </div>
                         {% for group in assignable_role_groups %}
                         <section class="user-role-group">
                             <div class="user-role-group-heading">
@@ -439,7 +474,8 @@
                                     <input type="checkbox" name="role_id" value="{{ r.id }}" {% if edit_user_role_ids and r.id in edit_user_role_ids %}checked{% endif %}>
                                     <span class="user-role-switch-content">
                                         <span class="user-role-switch-title">{{ r.name }}</span>
-                                        <span class="user-role-switch-status">Liberar acesso</span>
+                                        <span class="user-role-switch-status user-role-status-restricted">Acesso Restrito</span>
+                                        <span class="user-role-switch-status user-role-status-granted">Acesso Concedido</span>
                                     </span>
                                     <span class="user-switch-track" aria-hidden="true"></span>
                                 </label>
@@ -456,7 +492,8 @@
                                             <input type="checkbox" name="role_id" value="{{ r.id }}" {% if edit_user_role_ids and r.id in edit_user_role_ids %}checked{% endif %}>
                                             <span class="user-role-switch-content">
                                                 <span class="user-role-switch-title">{{ r.name }}</span>
-                                                <span class="user-role-switch-status">Liberar acesso</span>
+                                                <span class="user-role-switch-status user-role-status-restricted">Acesso Restrito</span>
+                                                <span class="user-role-switch-status user-role-status-granted">Acesso Concedido</span>
                                             </span>
                                             <span class="user-switch-track" aria-hidden="true"></span>
                                         </label>
@@ -553,6 +590,7 @@
         const rolesPanel = form?.querySelector('[data-user-roles-panel]');
         const rolesCollapseToggle = form?.querySelector('[data-user-roles-collapse-toggle]');
         const rolesCollapseBody = form?.querySelector('[data-user-roles-collapse-body]');
+        const rolesClearButton = form?.querySelector('[data-user-roles-clear]');
         const syncRolesPanel = () => {
             if (!adminToggle || !rolesPanel) return;
             rolesPanel.classList.toggle('hidden', adminToggle.checked);
@@ -563,6 +601,12 @@
             const isExpanded = rolesCollapseToggle.getAttribute('aria-expanded') === 'true';
             rolesCollapseToggle.setAttribute('aria-expanded', isExpanded ? 'false' : 'true');
             rolesCollapseBody?.classList.toggle('hidden', isExpanded);
+        });
+        rolesClearButton?.addEventListener('click', () => {
+            form?.querySelectorAll('input[name="role_id"]:checked').forEach((input) => {
+                input.checked = false;
+                input.dispatchEvent(new Event('change', { bubbles: true }));
+            });
         });
         const passwordField = form?.querySelector('[data-password-mask="true"]');
         const editMode = {{ 'true' if edit_user else 'false' }};
