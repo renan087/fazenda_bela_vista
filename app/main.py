@@ -24,8 +24,13 @@ from app.routers.asaas_webhook import router as asaas_webhook_router
 from app.routers.api import router as api_router
 from app.routers.auth import api_router as auth_api_router
 from app.routers.auth import router as auth_router
-from app.services.audit_log_service import append_audit_event
+from app.services.audit_log_service import append_audit_event, client_ip
 from app.services.backup_service import run_backup_automation_loop
+from app.services.data_change_audit import (
+    install_data_change_audit_listeners,
+    reset_data_change_audit_context,
+    set_data_change_audit_context,
+)
 from app.services.runtime_memory_monitor import get_current_rss_mb, run_runtime_memory_monitor
 from app.web.routes import router as web_router
 
@@ -79,6 +84,7 @@ app = FastAPI(
     redoc_url=None,
     openapi_url=None,
 )
+install_data_change_audit_listeners()
 
 
 def _docs_access_allowed(request: Request) -> bool:
@@ -151,32 +157,51 @@ class AuditAuthenticatedHttpMiddleware(BaseHTTPMiddleware):
             return await call_next(request)
         started = time.perf_counter()
         status_code = 500
+        audit_token = None
+        actor_payload = None
+        try:
+            try:
+                email = request.session.get("user_email")
+            except AssertionError:
+                email = None
+            if email:
+                with SessionLocal() as db:
+                    actor = db.query(User).filter(User.email == email, User.is_active.is_(True)).first()
+                    if actor:
+                        actor_payload = {
+                            "actor_user_id": actor.id,
+                            "actor_email": actor.email,
+                            "organization_id": actor.organization_id,
+                        }
+                        audit_token = set_data_change_audit_context(
+                            **actor_payload,
+                            http_method=request.method,
+                            path=path[:500],
+                            ip_address=client_ip(request) or None,
+                            user_agent=(request.headers.get("user-agent") or "")[:400] or None,
+                        )
+        except Exception:
+            logger.exception("Falha ao preparar contexto de auditoria de dados")
         try:
             response = await call_next(request)
             status_code = response.status_code
             return response
         finally:
+            reset_data_change_audit_context(audit_token)
             duration_ms = (time.perf_counter() - started) * 1000.0
             try:
-                try:
-                    email = request.session.get("user_email")
-                except AssertionError:
-                    email = None
                 # Nunca use "return" aqui: em finally isso substitui o return do try e devolve None ao Starlette.
-                if email:
-                    with SessionLocal() as db:
-                        actor = db.query(User).filter(User.email == email, User.is_active.is_(True)).first()
-                        if actor:
-                            append_audit_event(
-                                event_type="http.request",
-                                outcome="success" if status_code < 400 else "failure",
-                                request=request,
-                                actor_user_id=actor.id,
-                                actor_email=actor.email,
-                                organization_id=actor.organization_id,
-                                status_code=status_code,
-                                duration_ms=round(duration_ms, 2),
-                            )
+                if actor_payload:
+                    append_audit_event(
+                        event_type="http.request",
+                        outcome="success" if status_code < 400 else "failure",
+                        request=request,
+                        actor_user_id=actor_payload["actor_user_id"],
+                        actor_email=actor_payload["actor_email"],
+                        organization_id=actor_payload["organization_id"],
+                        status_code=status_code,
+                        duration_ms=round(duration_ms, 2),
+                    )
             except Exception:
                 logger.exception("Falha no middleware de auditoria HTTP")
 
