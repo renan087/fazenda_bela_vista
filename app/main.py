@@ -39,6 +39,19 @@ req_mem_logger = logging.getLogger("uvicorn.error")
 settings = get_settings()
 
 
+def _skip_http_audit_path(path: str) -> bool:
+    path = path or ""
+    return (
+        path.startswith("/static/")
+        or path == "/health"
+        or path.startswith("/favicon")
+        or path == "/auditoria"
+        or path.startswith("/auditoria?")
+        or path == "/meu-perfil/avatar"
+        or path.startswith("/usuarios/") and path.endswith("/avatar")
+    )
+
+
 def _session_value(request: Request, key: str):
     try:
         if "session" not in request.scope:
@@ -153,7 +166,7 @@ class AuditAuthenticatedHttpMiddleware(BaseHTTPMiddleware):
 
     async def dispatch(self, request: Request, call_next):
         path = request.url.path or ""
-        if path.startswith("/static/") or path == "/health" or path.startswith("/favicon"):
+        if _skip_http_audit_path(path):
             return await call_next(request)
         started = time.perf_counter()
         status_code = 500

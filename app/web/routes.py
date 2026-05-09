@@ -87,7 +87,7 @@ from app.services.backup_service import (
     update_backup_automation_setting,
     update_backup_storage_limit_setting,
 )
-from app.services.audit_log_service import count_audit_logs, query_audit_logs
+from app.services.audit_log_service import count_audit_logs, list_audit_event_types, query_audit_logs
 from app.services.dashboard import build_dashboard_context
 from app.services.finance_overview import (
     _in_extract_period,
@@ -8221,6 +8221,7 @@ def audit_logs_page(
             _flash(request, "error", "Data final invalida.")
     per_page = 50
     audit_total_all = count_audit_logs(db)
+    audit_event_types = list_audit_event_types(db)
     rows, total = query_audit_logs(
         db,
         actor_user_id=filter_actor_user_id,
@@ -8288,6 +8289,7 @@ def audit_logs_page(
             filter_event_type=event_type or "",
             filter_date_from=date_from or "",
             filter_date_to=date_to or "",
+            audit_event_types=audit_event_types,
             user_options=repo.list_users(),
             pager_query_string=pager_query_string,
             _repo=repo,

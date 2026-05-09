@@ -147,3 +147,14 @@ def query_audit_logs(
 
 def count_audit_logs(db: Session) -> int:
     return int(db.query(AuditLog).count())
+
+
+def list_audit_event_types(db: Session) -> list[str]:
+    rows = (
+        db.query(AuditLog.event_type)
+        .filter(AuditLog.event_type.isnot(None))
+        .distinct()
+        .order_by(AuditLog.event_type.asc())
+        .all()
+    )
+    return [row[0] for row in rows if row and row[0]]
