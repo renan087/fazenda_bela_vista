@@ -8637,10 +8637,8 @@ async def create_user_action(
     )
     if new_user.is_admin or is_super_admin_email(new_user.email):
         sync_roles_from_admin_flag(db, new_user)
-    elif role_ids:
-        set_user_roles_for_organization(db, new_user, role_ids)
     else:
-        sync_roles_from_admin_flag(db, new_user)
+        set_user_roles_for_organization(db, new_user, role_ids)
     _flash(request, "success", "Usuario criado com sucesso.")
     return _redirect("/usuarios")
 
@@ -8728,10 +8726,8 @@ async def update_user_action(
 
         if updated_user.is_admin or is_super_admin_email(updated_user.email):
             sync_roles_from_admin_flag(db, updated_user)
-        elif role_ids:
-            set_user_roles_for_organization(db, updated_user, role_ids)
         else:
-            sync_roles_from_admin_flag(db, updated_user)
+            set_user_roles_for_organization(db, updated_user, role_ids)
 
         if updated_user.id == user.id:
             request.session["user_email"] = updated_user.email

@@ -109,6 +109,44 @@
         padding: 0.28rem 0.58rem;
     }
 
+    .user-role-collapse-toggle {
+        align-items: center;
+        display: flex;
+        gap: 1rem;
+        justify-content: space-between;
+        width: 100%;
+        text-align: left;
+    }
+
+    .user-role-collapse-toggle-icon {
+        align-items: center;
+        background: #f8fafc;
+        border: 1px solid rgba(203, 213, 225, 0.9);
+        border-radius: 999px;
+        color: #475569;
+        display: inline-flex;
+        flex: 0 0 auto;
+        height: 2.4rem;
+        justify-content: center;
+        transition: transform 180ms ease, background-color 180ms ease;
+        width: 2.4rem;
+    }
+
+    .user-role-collapse-toggle-icon svg {
+        height: 1rem;
+        width: 1rem;
+    }
+
+    .user-role-collapse-toggle[aria-expanded="true"] .user-role-collapse-toggle-icon {
+        background: rgba(91, 179, 74, 0.1);
+        color: #3d7b32;
+        transform: rotate(180deg);
+    }
+
+    .user-role-collapse-body {
+        margin-top: 0.85rem;
+    }
+
     .user-role-page-card {
         border: 1px solid rgba(203, 213, 225, 0.85);
         border-radius: 1.25rem;
@@ -376,8 +414,15 @@
                     data-user-roles-panel
                     class="rounded-2xl border border-slate-200 bg-white px-4 py-3 {% if edit_user and (edit_user.is_admin or edit_user.email == (super_admin_email or '')) %}hidden{% endif %}"
                 >
-                    <span class="mb-2 block text-sm font-medium text-slate-700">Papéis funcionais</span>
-                    <p class="mb-3 text-xs text-slate-500">Combine papéis para liberar módulos no menu. Deixe sem seleção para usar o papel <strong>Operador</strong> (acesso operacional completo, sem gestão de usuários/backups).</p>
+                    <button type="button" class="user-role-collapse-toggle" aria-expanded="false" data-user-roles-collapse-toggle>
+                        <span class="text-sm font-semibold text-slate-800">Papéis funcionais</span>
+                        <span class="user-role-collapse-toggle-icon" aria-hidden="true">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="m6 9 6 6 6-6"></path>
+                            </svg>
+                        </span>
+                    </button>
+                    <div class="user-role-collapse-body hidden" data-user-roles-collapse-body>
                     {% if assignable_role_groups %}
                         {% for group in assignable_role_groups %}
                         <section class="user-role-group">
@@ -423,10 +468,11 @@
                             {% endif %}
                         </section>
                         {% endfor %}
-                    <p class="mt-3 text-xs text-slate-400">Consulta libera apenas visualização. Alteração libera criação e edição. Exclusões precisam do papel crítico separado. Sem nenhum papel marcado, o sistema usa o perfil Operador.</p>
+                    <p class="mt-3 text-xs text-slate-400">Consulta libera apenas visualização. Alteração libera criação e edição. Exclusões precisam do papel crítico separado.</p>
                     {% else %}
                     <p class="text-sm text-amber-700">Papéis ainda não foram sincronizados para esta organização. Salve e reinicie o servidor ou contacte o suporte.</p>
                     {% endif %}
+                    </div>
                 </div>
                 {% if rbac_role_labels %}
                 <div class="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600">
@@ -505,12 +551,19 @@
         const form = document.querySelector('[data-user-form]');
         const adminToggle = form?.querySelector('[data-users-admin-toggle]');
         const rolesPanel = form?.querySelector('[data-user-roles-panel]');
+        const rolesCollapseToggle = form?.querySelector('[data-user-roles-collapse-toggle]');
+        const rolesCollapseBody = form?.querySelector('[data-user-roles-collapse-body]');
         const syncRolesPanel = () => {
             if (!adminToggle || !rolesPanel) return;
             rolesPanel.classList.toggle('hidden', adminToggle.checked);
         };
         adminToggle?.addEventListener('change', syncRolesPanel);
         syncRolesPanel();
+        rolesCollapseToggle?.addEventListener('click', () => {
+            const isExpanded = rolesCollapseToggle.getAttribute('aria-expanded') === 'true';
+            rolesCollapseToggle.setAttribute('aria-expanded', isExpanded ? 'false' : 'true');
+            rolesCollapseBody?.classList.toggle('hidden', isExpanded);
+        });
         const passwordField = form?.querySelector('[data-password-mask="true"]');
         const editMode = {{ 'true' if edit_user else 'false' }};
         const csrfToken = {{ csrf_token|tojson }};
