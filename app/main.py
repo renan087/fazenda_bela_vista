@@ -190,6 +190,20 @@ class AuditAuthenticatedHttpMiddleware(BaseHTTPMiddleware):
             reset_data_change_audit_context(audit_token)
             duration_ms = (time.perf_counter() - started) * 1000.0
             try:
+                if actor_payload is None:
+                    try:
+                        email = request.session.get("user_email")
+                    except AssertionError:
+                        email = None
+                    if email:
+                        with SessionLocal() as db:
+                            actor = db.query(User).filter(User.email == email, User.is_active.is_(True)).first()
+                            if actor:
+                                actor_payload = {
+                                    "actor_user_id": actor.id,
+                                    "actor_email": actor.email,
+                                    "organization_id": actor.organization_id,
+                                }
                 # Nunca use "return" aqui: em finally isso substitui o return do try e devolve None ao Starlette.
                 if actor_payload:
                     append_audit_event(
@@ -247,6 +261,7 @@ async def global_exception_handler(request: Request, exc: Exception):
     return HTMLResponse(content="Internal Server Error", status_code=500)
 
 
+app.add_middleware(AuditAuthenticatedHttpMiddleware)
 app.add_middleware(
     SessionMiddleware,
     secret_key=settings.secret_key,
@@ -255,7 +270,6 @@ app.add_middleware(
     same_site="lax",
     https_only=settings.is_production,
 )
-app.add_middleware(AuditAuthenticatedHttpMiddleware)
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 
 app.include_router(auth_router)
