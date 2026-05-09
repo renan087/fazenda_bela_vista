@@ -7,7 +7,7 @@ import logging
 from typing import Any
 
 from fastapi import Request
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from app.db.session import SessionLocal
 from app.models.audit_log import AuditLog
@@ -120,7 +120,7 @@ def query_audit_logs(
     page: int = 1,
     per_page: int = 50,
 ) -> tuple[list[AuditLog], int]:
-    q = db.query(AuditLog)
+    q = db.query(AuditLog).options(joinedload(AuditLog.organization))
     if actor_user_id:
         q = q.filter(AuditLog.actor_user_id == actor_user_id)
     if email_contains:

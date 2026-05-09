@@ -1,7 +1,7 @@
 from datetime import datetime
 
 from sqlalchemy import DateTime, ForeignKey, Integer, Numeric, String, Text, func
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
 
@@ -25,3 +25,5 @@ class AuditLog(Base):
     user_agent: Mapped[str] = mapped_column(String(400), nullable=True)
     duration_ms: Mapped[float] = mapped_column(Numeric(12, 2), nullable=True)
     metadata_json: Mapped[str] = mapped_column(Text, nullable=True)
+
+    organization = relationship("Organization")

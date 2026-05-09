@@ -70,6 +70,7 @@
                     <tr>
                         <th class="px-4 py-3 font-semibold">Quando</th>
                         <th class="px-4 py-3 font-semibold">Usuario</th>
+                        <th class="px-4 py-3 font-semibold">Organização</th>
                         <th class="px-4 py-3 font-semibold">Evento</th>
                         <th class="px-4 py-3 font-semibold">Resultado</th>
                         <th class="px-4 py-3 font-semibold">HTTP</th>
@@ -83,6 +84,7 @@
                     <tr class="hover:bg-slate-50/80">
                         <td class="whitespace-nowrap px-4 py-3 text-slate-800">{{ row.created_at|datetime_sp }}</td>
                         <td class="max-w-[14rem] truncate px-4 py-3 text-slate-700" title="{{ row.actor_email or '' }}">{{ row.actor_email or '—' }}</td>
+                        <td class="max-w-[14rem] truncate px-4 py-3 text-slate-700" title="{{ row.organization.name if row.organization else '' }}">{{ row.organization.name if row.organization else '—' }}</td>
                         <td class="max-w-[12rem] truncate px-4 py-3 font-mono text-xs text-slate-800" title="{{ row.event_type }}">{{ row.event_type }}</td>
                         <td class="px-4 py-3">
                             <span class="rounded-full px-2 py-0.5 text-xs font-semibold {% if row.outcome == 'success' %}bg-emerald-100 text-emerald-800{% else %}bg-rose-100 text-rose-800{% endif %}">{{ row.outcome }}</span>
@@ -94,7 +96,7 @@
                     </tr>
                     {% else %}
                     <tr>
-                        <td colspan="8" class="px-4 py-8 text-center text-slate-500">Nenhum evento encontrado para os filtros.</td>
+                        <td colspan="9" class="px-4 py-8 text-center text-slate-500">Nenhum evento encontrado para os filtros.</td>
                     </tr>
                     {% endfor %}
                 </tbody>
