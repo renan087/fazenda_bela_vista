@@ -14,7 +14,7 @@ body {
 [data-mobile-menu-button] > span {
     display: inline-flex;
     flex-direction: column;
-    gap: 0.125rem;
+    gap: 0.075rem;
 }
 
 [data-mobile-menu-button] > span > span {
