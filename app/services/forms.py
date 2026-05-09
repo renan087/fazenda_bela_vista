@@ -529,7 +529,7 @@ def _resolve_input_catalog(
             existing.item_type = existing.item_type or item_type
         if default_unit and existing.default_unit != default_unit:
             existing.default_unit = existing.default_unit or default_unit
-        if category and (not getattr(existing, "category", None) or existing.category == "Geral"):
+        if category and existing.category != category:
             existing.category = category
         if low_stock_threshold is not None and low_stock_threshold > 0:
             existing.low_stock_threshold = low_stock_threshold
