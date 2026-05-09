@@ -148,29 +148,24 @@ async def audit_authenticated_http_middleware(request: Request, call_next):
         duration_ms = (time.perf_counter() - started) * 1000.0
         try:
             email = request.session.get("user_email") if hasattr(request, "session") else None
-            if not email:
-                return
-            from app.db.session import SessionLocal
-            from app.models.user import User
-            from app.services.audit_log_service import append_audit_event
+            if email:
+                from app.db.session import SessionLocal
+                from app.models.user import User
+                from app.services.audit_log_service import append_audit_event
 
-            with SessionLocal() as db:
-                actor = db.query(User).filter(User.email == email, User.is_active.is_(True)).first()
-                if not actor:
-                    return
-                uid = actor.id
-                em = actor.email
-                oid = actor.organization_id
-            append_audit_event(
-                event_type="http.request",
-                outcome="success" if status_code < 400 else "failure",
-                request=request,
-                actor_user_id=uid,
-                actor_email=em,
-                organization_id=oid,
-                status_code=status_code,
-                duration_ms=round(duration_ms, 2),
-            )
+                with SessionLocal() as db:
+                    actor = db.query(User).filter(User.email == email, User.is_active.is_(True)).first()
+                    if actor:
+                        append_audit_event(
+                            event_type="http.request",
+                            outcome="success" if status_code < 400 else "failure",
+                            request=request,
+                            actor_user_id=actor.id,
+                            actor_email=actor.email,
+                            organization_id=actor.organization_id,
+                            status_code=status_code,
+                            duration_ms=round(duration_ms, 2),
+                        )
         except Exception:
             logger.exception("Falha no middleware de auditoria HTTP")
 
