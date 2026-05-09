@@ -10,6 +10,7 @@ from fastapi.openapi.utils import get_openapi
 from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
+from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.middleware.sessions import SessionMiddleware
 
 from app.core.admin_access import is_super_admin_email
@@ -23,6 +24,7 @@ from app.routers.asaas_webhook import router as asaas_webhook_router
 from app.routers.api import router as api_router
 from app.routers.auth import api_router as auth_api_router
 from app.routers.auth import router as auth_router
+from app.services.audit_log_service import append_audit_event
 from app.services.backup_service import run_backup_automation_loop
 from app.services.runtime_memory_monitor import get_current_rss_mb, run_runtime_memory_monitor
 from app.web.routes import router as web_router
@@ -140,43 +142,44 @@ async def request_memory_diagnostics(request: Request, call_next):
                     )
 
 
-@app.middleware("http")
-async def audit_authenticated_http_middleware(request: Request, call_next):
-    """Registra navegacao HTTP autenticada (sessao web) para trilha de auditoria."""
-    path = request.url.path or ""
-    if path.startswith("/static/") or path == "/health" or path.startswith("/favicon"):
-        return await call_next(request)
-    started = time.perf_counter()
-    status_code = 500
-    response = None
-    try:
-        response = await call_next(request)
-        status_code = response.status_code
-        return response
-    finally:
-        duration_ms = (time.perf_counter() - started) * 1000.0
-        try:
-            email = _session_value(request, "user_email")
-            if email:
-                from app.db.session import SessionLocal
-                from app.models.user import User
-                from app.services.audit_log_service import append_audit_event
+class AuditAuthenticatedHttpMiddleware(BaseHTTPMiddleware):
+    """Deve ficar *depois* de SessionMiddleware no stack para existir request.session."""
 
+    async def dispatch(self, request: Request, call_next):
+        path = request.url.path or ""
+        if path.startswith("/static/") or path == "/health" or path.startswith("/favicon"):
+            return await call_next(request)
+        started = time.perf_counter()
+        status_code = 500
+        try:
+            response = await call_next(request)
+            status_code = response.status_code
+            return response
+        finally:
+            duration_ms = (time.perf_counter() - started) * 1000.0
+            try:
+                try:
+                    email = request.session.get("user_email")
+                except AssertionError:
+                    email = None
+                if not email:
+                    return
                 with SessionLocal() as db:
                     actor = db.query(User).filter(User.email == email, User.is_active.is_(True)).first()
-                    if actor:
-                        append_audit_event(
-                            event_type="http.request",
-                            outcome="success" if status_code < 400 else "failure",
-                            request=request,
-                            actor_user_id=actor.id,
-                            actor_email=actor.email,
-                            organization_id=actor.organization_id,
-                            status_code=status_code,
-                            duration_ms=round(duration_ms, 2),
-                        )
-        except Exception:
-            logger.exception("Falha no middleware de auditoria HTTP")
+                    if not actor:
+                        return
+                    append_audit_event(
+                        event_type="http.request",
+                        outcome="success" if status_code < 400 else "failure",
+                        request=request,
+                        actor_user_id=actor.id,
+                        actor_email=actor.email,
+                        organization_id=actor.organization_id,
+                        status_code=status_code,
+                        duration_ms=round(duration_ms, 2),
+                    )
+            except Exception:
+                logger.exception("Falha no middleware de auditoria HTTP")
 
 
 @app.get("/health")
@@ -228,6 +231,7 @@ app.add_middleware(
     same_site="lax",
     https_only=settings.is_production,
 )
+app.add_middleware(AuditAuthenticatedHttpMiddleware)
 app.mount("/static", StaticFiles(directory="app/static"), name="static")
 
 app.include_router(auth_router)
