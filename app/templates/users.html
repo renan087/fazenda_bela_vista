@@ -684,6 +684,7 @@
 
         readyProfileInputs.forEach((profileInput) => {
             profileInput.addEventListener('change', () => {
+                if (syncingReadyProfileAccess) return;
                 const profileSlug = profileInput.dataset.roleSlug || '';
                 syncingReadyProfileAccess = true;
                 if (profileInput.checked) {
