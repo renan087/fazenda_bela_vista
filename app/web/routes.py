@@ -1197,6 +1197,29 @@ def _paginate_collection(
     }
 
 
+def _group_schedules_by_date(schedules: list[FertilizationSchedule]) -> list[dict]:
+    groups: list[dict] = []
+    for schedule in schedules:
+        schedule_date = schedule.scheduled_date
+        if not groups or groups[-1]["date"] != schedule_date:
+            groups.append({"date": schedule_date, "schedules": []})
+        groups[-1]["schedules"].append(schedule)
+    return groups
+
+
+def _paginate_schedule_date_groups(
+    request: Request,
+    schedules: list[FertilizationSchedule],
+    page_param: str,
+    per_page: int = HISTORY_PAGE_SIZE,
+) -> tuple[list[dict], dict]:
+    grouped = _group_schedules_by_date(schedules)
+    pagination = _paginate_collection(request, grouped, page_param, per_page)
+    page_groups = pagination["items"]
+    pagination = {**pagination, "items": [schedule for group in page_groups for schedule in group["schedules"]]}
+    return page_groups, pagination
+
+
 def _mark_password_change_pending(request: Request, user_id: int) -> None:
     request.session[PENDING_PASSWORD_CHANGE_SESSION_KEY] = user_id
 
@@ -14037,7 +14060,6 @@ def fertilization_schedules_page(
     plot_ids = {plot.id for plot in plots}
     edit_schedule = repo.get_fertilization_schedule(edit_id) if edit_id else None
     schedules = repo.list_fertilization_schedules_for_scope(plot_ids, start_date, end_date)
-    schedules.sort(key=lambda schedule: (schedule.scheduled_date, schedule.id), reverse=True)
     schedule_filter_clear_url = _url_with_query(
         request,
         start_date=None,
@@ -14047,10 +14069,21 @@ def fertilization_schedules_page(
         completed_page=None,
         schedule_tab=selected_schedule_tab,
     )
-    active_schedules = [schedule for schedule in schedules if schedule.status != "completed"]
-    completed_schedules = [schedule for schedule in schedules if schedule.status == "completed"]
-    active_schedules_pagination = _paginate_collection(request, active_schedules, "active_page")
-    completed_schedules_pagination = _paginate_collection(request, completed_schedules, "completed_page")
+    active_schedules = sorted(
+        [schedule for schedule in schedules if schedule.status != "completed"],
+        key=lambda schedule: (schedule.scheduled_date or date.max, schedule.id),
+    )
+    completed_schedules = sorted(
+        [schedule for schedule in schedules if schedule.status == "completed"],
+        key=lambda schedule: (schedule.scheduled_date or date.min, schedule.id),
+        reverse=True,
+    )
+    active_schedule_groups, active_schedules_pagination = _paginate_schedule_date_groups(
+        request, active_schedules, "active_page"
+    )
+    completed_schedule_groups, completed_schedules_pagination = _paginate_schedule_date_groups(
+        request, completed_schedules, "completed_page"
+    )
     schedule_edit_urls = {
         schedule.id: _url_with_query(request, edit_id=schedule.id)
         for schedule in [*active_schedules_pagination["items"], *completed_schedules_pagination["items"]]
@@ -14127,8 +14160,10 @@ def fertilization_schedules_page(
             inputs_catalog=consolidated_inputs,
             input_stock=input_stock,
             active_schedules=active_schedules_pagination["items"],
+            active_schedule_groups=active_schedule_groups,
             active_schedules_pagination=active_schedules_pagination,
             completed_schedules=completed_schedules_pagination["items"],
+            completed_schedule_groups=completed_schedule_groups,
             completed_schedules_pagination=completed_schedules_pagination,
             selected_schedule_tab=selected_schedule_tab,
             schedule_tab_urls={

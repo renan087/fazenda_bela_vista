@@ -220,14 +220,14 @@
 
         <div class="stock-history-stage mt-4 {% if selected_schedule_tab != 'active' %}hidden{% endif %}" data-schedule-tab="active" data-schedule-history-stage>
             <div class="space-y-4">
-                {% for group in active_schedules|groupby('scheduled_date') %}
+                {% for group in active_schedule_groups %}
                 <section class="rounded-[1.75rem] border border-slate-200 bg-slate-50/70 p-4 shadow-sm" data-schedule-group>
                     <div class="flex flex-wrap items-center justify-between gap-3">
                         <div class="min-w-0">
                             <p class="text-xs uppercase tracking-[0.25em] text-slate-400">Data de agendamento</p>
                             <div class="mt-2 flex flex-wrap items-center gap-2">
-                                <h3 class="text-lg font-semibold text-slate-900">{{ group.grouper.strftime('%d/%m/%Y') if group.grouper else '-' }}</h3>
-                                <span class="stock-level-badge bg-white text-slate-600 ring-1 ring-slate-200/80">{{ group.list|length }} registro(s)</span>
+                                <h3 class="text-lg font-semibold text-slate-900">{{ group.date.strftime('%d/%m/%Y') if group.date else '-' }}</h3>
+                                <span class="stock-level-badge bg-white text-slate-600 ring-1 ring-slate-200/80">{{ group.schedules|length }} registro(s)</span>
                             </div>
                         </div>
                         <button type="button" class="stock-summary-toggle" data-schedule-group-toggle aria-expanded="false">
@@ -241,7 +241,7 @@
                     <div class="stock-summary-collapse mt-4" data-schedule-group-collapse>
                         <div class="stock-summary-collapse-inner">
                             <div class="space-y-4">
-                                {% for schedule in group.list %}
+                                {% for schedule in group.schedules %}
                                 {{ render_schedule_card(schedule, schedule_validations, today) }}
                                 {% endfor %}
                             </div>
@@ -258,14 +258,14 @@
 
         <div class="stock-history-stage mt-4 {% if selected_schedule_tab != 'completed' %}hidden{% endif %}" data-schedule-tab="completed" data-schedule-history-stage>
             <div class="space-y-4">
-                {% for group in completed_schedules|groupby('scheduled_date') %}
+                {% for group in completed_schedule_groups %}
                 <section class="rounded-[1.75rem] border border-slate-200 bg-slate-50/70 p-4 shadow-sm" data-schedule-group>
                     <div class="flex flex-wrap items-center justify-between gap-3">
                         <div class="min-w-0">
                             <p class="text-xs uppercase tracking-[0.25em] text-slate-400">Data de agendamento</p>
                             <div class="mt-2 flex flex-wrap items-center gap-2">
-                                <h3 class="text-lg font-semibold text-slate-900">{{ group.grouper.strftime('%d/%m/%Y') if group.grouper else '-' }}</h3>
-                                <span class="stock-level-badge bg-white text-slate-600 ring-1 ring-slate-200/80">{{ group.list|length }} registro(s)</span>
+                                <h3 class="text-lg font-semibold text-slate-900">{{ group.date.strftime('%d/%m/%Y') if group.date else '-' }}</h3>
+                                <span class="stock-level-badge bg-white text-slate-600 ring-1 ring-slate-200/80">{{ group.schedules|length }} registro(s)</span>
                             </div>
                         </div>
                         <button type="button" class="stock-summary-toggle" data-schedule-group-toggle aria-expanded="false">
@@ -279,7 +279,7 @@
                     <div class="stock-summary-collapse mt-4" data-schedule-group-collapse>
                         <div class="stock-summary-collapse-inner">
                             <div class="space-y-4">
-                                {% for schedule in group.list %}
+                                {% for schedule in group.schedules %}
                                 {{ render_schedule_card(schedule, schedule_validations, today) }}
                                 {% endfor %}
                             </div>
