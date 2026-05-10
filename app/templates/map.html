@@ -202,6 +202,35 @@
                 coordinates: [[...points.map((point) => [point.lng, point.lat]), [points[0].lng, points[0].lat]]]
             };
         };
+        const FARM_MAP_STYLE = {
+            stroke: '#2f6b38',
+            fill: '#b7e4c7',
+            opacity: 0.34,
+        };
+        const PLOT_MAP_PALETTE = [
+            { stroke: '#2563eb', fill: '#93c5fd' },
+            { stroke: '#d97706', fill: '#fcd34d' },
+            { stroke: '#7c3aed', fill: '#c4b5fd' },
+            { stroke: '#0891b2', fill: '#67e8f9' },
+            { stroke: '#be123c', fill: '#fda4af' },
+            { stroke: '#4d7c0f', fill: '#bef264' },
+            { stroke: '#c2410c', fill: '#fdba74' },
+            { stroke: '#0f766e', fill: '#5eead4' },
+            { stroke: '#a21caf', fill: '#f0abfc' },
+            { stroke: '#4338ca', fill: '#a5b4fc' },
+            { stroke: '#15803d', fill: '#86efac' },
+            { stroke: '#b45309', fill: '#fde68a' },
+        ];
+        const plotColorByKey = new Map();
+        const plotStyleForFeature = (feature) => {
+            const props = feature.properties || {};
+            if (props.feature_type === 'farm') return FARM_MAP_STYLE;
+            const key = `${props.farm || ''}::${props.name || ''}`;
+            if (!plotColorByKey.has(key)) {
+                plotColorByKey.set(key, PLOT_MAP_PALETTE[plotColorByKey.size % PLOT_MAP_PALETTE.length]);
+            }
+            return plotColorByKey.get(key);
+        };
 
         const featurePopupHtml = (feature) => {
             const props = feature.properties || {};
@@ -259,15 +288,16 @@
             (mapData.features || []).forEach((feature) => {
                 const props = feature.properties || {};
                 const isFarm = props.feature_type === 'farm';
+                const featureStyle = plotStyleForFeature(feature);
                 extractFeaturePaths(feature.geometry).forEach((path) => {
                     path.forEach((point) => bounds.extend(point));
                     const polygon = new google.maps.Polygon({
                         paths: path,
-                        strokeColor: isFarm ? '#0f172a' : '#365a29',
+                        strokeColor: featureStyle.stroke,
                         strokeOpacity: 1,
-                        strokeWeight: 2,
-                        fillColor: isFarm ? '#94a3b8' : '#5f8a4c',
-                        fillOpacity: isFarm ? 0.12 : 0.25,
+                        strokeWeight: isFarm ? 3 : 2,
+                        fillColor: featureStyle.fill,
+                        fillOpacity: isFarm ? FARM_MAP_STYLE.opacity : 0.28,
                         clickable: true,
                         map,
                     });
@@ -359,9 +389,17 @@
             L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '&copy; OpenStreetMap' }).addTo(farmMap);
 
             const baseLayer = L.geoJSON(mapData, {
-                style: (feature) => feature.properties.feature_type === 'farm'
-                    ? { color: '#0f172a', weight: 2, fillColor: '#94a3b8', fillOpacity: 0.12, dashArray: '6 6' }
-                    : { color: '#365a29', weight: 2, fillColor: '#5f8a4c', fillOpacity: 0.25 },
+                style: (feature) => {
+                    const props = feature.properties || {};
+                    const isFarm = props.feature_type === 'farm';
+                    const featureStyle = plotStyleForFeature(feature);
+                    return {
+                        color: featureStyle.stroke,
+                        weight: isFarm ? 3 : 2,
+                        fillColor: featureStyle.fill,
+                        fillOpacity: isFarm ? FARM_MAP_STYLE.opacity : 0.28,
+                    };
+                },
                 onEachFeature: (feature, layer) => {
                     layer.bindPopup(featurePopupHtml(feature));
                 }
