@@ -582,13 +582,13 @@
         <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Mapa</p>
         <h3 class="mt-2 text-xl font-semibold">Fazendas e setores desenhados</h3>
         {% if dashboard_map_preview_url %}
-        <div class="relative mt-6 min-h-0 flex-1 overflow-hidden rounded-2xl bg-slate-50" data-dashboard-map-image-shell>
+        <a href="/mapa" class="group relative mt-6 min-h-0 flex-1 overflow-hidden rounded-2xl bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500" aria-label="Abrir Mapa da Fazenda" data-dashboard-map-image-shell>
             <div class="absolute inset-0 flex flex-col items-center justify-center gap-3 px-6 text-center text-sm text-slate-500" data-dashboard-map-loading>
                 <span class="h-8 w-8 animate-spin rounded-full border-2 border-slate-200 border-t-brand-500" aria-hidden="true"></span>
                 <span>Mapa da fazenda está sendo carregado.</span>
             </div>
-            <img src="{{ dashboard_map_preview_url }}" alt="Mapa estático com a fazenda e os setores desenhados" width="960" height="540" loading="lazy" decoding="async" class="h-full w-full opacity-0 object-cover transition-opacity duration-300" data-dashboard-map-image>
-        </div>
+            <img src="{{ dashboard_map_preview_url }}" alt="Mapa estático com a fazenda e os setores desenhados" width="960" height="540" loading="lazy" decoding="async" class="h-full w-full opacity-0 object-cover transition duration-300 group-hover:scale-[1.015] group-hover:brightness-95" data-dashboard-map-image>
+        </a>
         {% else %}
         <div class="mt-6 flex min-h-0 flex-1 items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-6 text-center text-sm text-slate-500">
             {% if dashboard_map_has_geometry %}
