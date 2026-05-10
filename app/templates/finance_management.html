@@ -40,6 +40,11 @@
         Os <strong>indicadores de safra</strong> no topo desta página dependem de fazenda e safra ativas. O <strong>extrato</strong> usa só a fazenda selecionada e o período que você definir no filtro (pode ser fora da safra).
     </div>
     {% endif %}
+    {% if active_farm_id %}
+    <div class="rounded-[1.5rem] border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
+        Ao abrir a página, o período padrão é o <strong>mês atual</strong>. Use <strong>Limpar</strong> para ver o <strong>histórico completo</strong> (sem filtro de datas); clique em <strong>Limpar</strong> de novo para voltar ao mês atual.
+    </div>
+    {% endif %}
 
     {% if not active_farm_id %}
     <div class="rounded-[1.5rem] border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600">
@@ -114,7 +119,7 @@
                     </label>
                     <div class="stock-filter-field stock-filter-field-period {% if finance_filter_start_date or finance_filter_end_date %}is-filtered{% endif %}">
                         <div class="module-filter-period-row">
-                            {{ module_period_picker_inline(selected_finance_range or ('custom' if finance_filter_start_date or finance_filter_end_date else ''), finance_filter_start_date, finance_filter_end_date, 'past', 'Filtre por período') }}
+                            {{ module_period_picker_inline(selected_finance_range, finance_filter_start_date, finance_filter_end_date, 'past', 'Filtre por período') }}
                         </div>
                     </div>
                     <div class="stock-filter-field stock-filter-field-actions flex flex-nowrap items-end gap-3">

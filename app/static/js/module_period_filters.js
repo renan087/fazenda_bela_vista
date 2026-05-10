@@ -71,6 +71,7 @@
     };
 
     const getPresetRangeTitle = (preset) => {
+        if (preset === 'all') return 'Todo o período';
         if (preset === 'current_month') return 'Mês atual';
         if (preset === 'last_20_days') return 'Últimos 20 dias';
         if (preset === 'last_month') return 'Mês passado';
@@ -177,6 +178,10 @@
             const s = (filterStartInput?.value || '').trim();
             const e = (filterEndInput?.value || '').trim();
             const isCustom = rangeInput.value === 'custom';
+            if (rangeInput.value === 'all') {
+                label.textContent = getPresetRangeTitle('all');
+                return;
+            }
             if (!s && !e && !isCustom && !(rangeInput.value || '').trim()) {
                 label.textContent = placeholderLabel;
                 return;
@@ -330,7 +335,10 @@
                 rangeInput.value = value;
                 menu.querySelectorAll('.module-filter-preset-option').forEach((item) => item.classList.remove('is-active'));
                 option.classList.add('is-active');
-                if (value !== 'custom') {
+                if (value === 'all') {
+                    if (filterStartInput instanceof HTMLInputElement) filterStartInput.value = '';
+                    if (filterEndInput instanceof HTMLInputElement) filterEndInput.value = '';
+                } else if (value !== 'custom') {
                     const range = getPresetRange(value);
                     if (filterStartInput instanceof HTMLInputElement) filterStartInput.value = range.start;
                     if (filterEndInput instanceof HTMLInputElement) filterEndInput.value = range.end;
@@ -355,6 +363,7 @@
 
         ownerForm.addEventListener('submit', () => {
             if (!(rangeInput.value || '').trim()) return;
+            if (rangeInput.value === 'all') return;
             if (rangeInput.value === 'custom') return;
             const range = getPresetRange(rangeInput.value || defaultPreset);
             if (filterStartInput instanceof HTMLInputElement) filterStartInput.value = range.start;

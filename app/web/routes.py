@@ -1765,7 +1765,7 @@ def _planning_filter_range_preset(raw_preset: str | None, raw_start: str, raw_en
 
 
 def _fertilization_filter_range_preset(raw_preset: str | None, raw_start: str, raw_end: str) -> str:
-    valid_presets = {"current_month", "last_10_days", "last_20_days", "last_month", "custom"}
+    valid_presets = {"all", "current_month", "last_10_days", "last_20_days", "last_month", "custom"}
     preset = (raw_preset or "").strip()
     if preset in valid_presets:
         return preset
@@ -1790,6 +1790,8 @@ def _finance_extract_period_bounds(
     selected_range = (request.query_params.get("schedule_range") or "").strip()
     raw_start = (request.query_params.get("start_date") or "").strip()
     raw_end = (request.query_params.get("end_date") or "").strip()
+    if selected_range == "all":
+        return None, None, "", ""
     if not selected_range and not raw_start and not raw_end:
         month_start = date(today.year, today.month, 1)
         month_end = date(today.year + (1 if today.month == 12 else 0), 1 if today.month == 12 else today.month + 1, 1) - timedelta(days=1)
@@ -3389,6 +3391,25 @@ def _finance_export_query(request: Request) -> str:
     return urlencode(params, doseq=True)
 
 
+def _finance_filter_clear_url(request: Request) -> str:
+    """Limpar safra/conta/período: sem datas = extrato completo. Já em 'all' só período → volta ao mês atual (URL limpa)."""
+    path = request.url.path
+    qp = request.query_params
+    sr = (qp.get("schedule_range") or "").strip()
+    has_season = bool((qp.get("extract_season_id") or "").strip())
+    has_account = bool((qp.get("extract_finance_account_id") or "").strip())
+    if sr == "all" and not has_season and not has_account:
+        return path
+    return _url_with_query(
+        request,
+        start_date=None,
+        end_date=None,
+        schedule_range="all",
+        extract_season_id=None,
+        extract_finance_account_id=None,
+    )
+
+
 def _finance_management_dataset(
     request: Request,
     repo: FarmRepository,
@@ -3402,15 +3423,17 @@ def _finance_management_dataset(
         request,
         flash_invalid=flash_invalid,
     )
-    selected_finance_range = (
-        _fertilization_filter_range_preset(
+    qp_schedule = (request.query_params.get("schedule_range") or "").strip()
+    if qp_schedule == "all":
+        selected_finance_range = "all"
+    elif _period_filter_explicit_in_query(request):
+        selected_finance_range = _fertilization_filter_range_preset(
             request.query_params.get("schedule_range"),
             filter_start_str,
             filter_end_str,
         )
-        if _period_filter_explicit_in_query(request)
-        else "current_month"
-    )
+    else:
+        selected_finance_range = "current_month"
     extract_season_q = _int_or_none(request.query_params.get("extract_season_id"))
     extract_finance_account_id = _int_or_none(request.query_params.get("extract_finance_account_id"))
     period_start_for_extract, period_end_for_extract, finance_filter_season_id, extract_range_empty = (
@@ -3422,15 +3445,8 @@ def _finance_management_dataset(
             extract_season_id=extract_season_q,
         )
     )
-    finance_filters_active = _period_filter_explicit_in_query(request) or bool(finance_filter_season_id) or bool(extract_finance_account_id)
-    finance_filter_clear_url = _url_with_query(
-        request,
-        start_date=None,
-        end_date=None,
-        schedule_range=None,
-        extract_season_id=None,
-        extract_finance_account_id=None,
-    )
+    finance_filters_active = bool(farm_id)
+    finance_filter_clear_url = _finance_filter_clear_url(request)
     finance_season_options = repo.list_crop_seasons(farm_id=farm_id) if farm_id else []
     finance_filter_season = repo.get_crop_season(finance_filter_season_id) if finance_filter_season_id else None
     finance_account_options = repo.list_finance_accounts(farm_id=farm_id) if farm_id else []
@@ -4348,6 +4364,8 @@ def _finance_transactions_period_bounds(request: Request) -> tuple[date | None, 
     raw_start = (qp.get("transactions_start_date") or qp.get("start_date") or "").strip()
     raw_end = (qp.get("transactions_end_date") or qp.get("end_date") or "").strip()
     today = today_in_app_timezone()
+    if selected_range == "all":
+        return None, None, "", "", "all"
     if not selected_range and not raw_start and not raw_end:
         return None, None, "", "", ""
 
