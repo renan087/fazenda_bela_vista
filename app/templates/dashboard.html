@@ -578,14 +578,14 @@
 {% if can_map or can_rainfall %}
 <section class="mt-6 grid gap-6 xl:grid-cols-2">
     {% if can_map %}
-    <article class="rounded-[2rem] bg-white p-6 shadow-panel" data-dashboard-card="rainfalls">
+    <article class="flex min-h-[35rem] flex-col rounded-[2rem] bg-white p-6 shadow-panel" data-dashboard-card="rainfalls">
         <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Mapa</p>
         <h3 class="mt-2 text-xl font-semibold">Fazendas e setores desenhados</h3>
         {% if dashboard_map_preview_url %}
-        <img src="{{ dashboard_map_preview_url }}" alt="Mapa estático com a fazenda e os setores desenhados" width="960" height="540" loading="lazy" decoding="async" class="mt-6 h-72 w-full rounded-2xl object-cover">
+        <img src="{{ dashboard_map_preview_url }}" alt="Mapa estático com a fazenda e os setores desenhados" width="960" height="540" loading="lazy" decoding="async" class="mt-6 min-h-0 flex-1 rounded-2xl object-cover">
         <p class="mt-3 text-xs text-emerald-700">Imagem estática gerada no servidor. Ela só é atualizada quando algum perímetro muda.</p>
         {% else %}
-        <div class="mt-6 flex h-72 items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-6 text-center text-sm text-slate-500">
+        <div class="mt-6 flex min-h-0 flex-1 items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-6 text-center text-sm text-slate-500">
             {% if dashboard_map_has_geometry %}
             A imagem do mapa está sendo preparada. Ela ficará armazenada no servidor e aparecerá automaticamente após a geração.
             {% else %}

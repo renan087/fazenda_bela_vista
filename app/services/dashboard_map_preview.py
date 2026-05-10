@@ -90,6 +90,26 @@ def _feature_rings(map_geojson: str) -> list[dict]:
     return out
 
 
+def _expand_world_rect_to_output_ratio(
+    wx0: float,
+    wy0: float,
+    wx1: float,
+    wy1: float,
+) -> tuple[float, float, float, float]:
+    """Mantém escala X/Y igual ao redimensionar para o tamanho final da imagem."""
+    width = max(wx1 - wx0, 1.0)
+    height = max(wy1 - wy0, 1.0)
+    target_ratio = OUTPUT_WIDTH / OUTPUT_HEIGHT
+    current_ratio = width / height
+    cx = (wx0 + wx1) / 2
+    cy = (wy0 + wy1) / 2
+    if current_ratio > target_ratio:
+        height = width / target_ratio
+    else:
+        width = height * target_ratio
+    return cx - width / 2, cy - height / 2, cx + width / 2, cy + height / 2
+
+
 def generate_dashboard_map_preview(map_geojson: str, fingerprint: str | None = None) -> bool:
     """Gera PNG local do mapa do dashboard usando mosaico satélite e desenho local."""
     fingerprint = (fingerprint or dashboard_map_fingerprint(map_geojson)).strip()
@@ -119,6 +139,7 @@ def generate_dashboard_map_preview(map_geojson: str, fingerprint: str | None = N
     wx1 += pad_w
     wy0 -= pad_h
     wy1 += pad_h
+    wx0, wy0, wx1, wy1 = _expand_world_rect_to_output_ratio(wx0, wy0, wx1, wy1)
 
     tx0 = int(wx0 // TILE_SIZE)
     tx1 = int(wx1 // TILE_SIZE)
