@@ -40,11 +40,6 @@
         Os <strong>indicadores de safra</strong> no topo desta página dependem de fazenda e safra ativas. O <strong>extrato</strong> usa só a fazenda selecionada e o período que você definir no filtro (pode ser fora da safra).
     </div>
     {% endif %}
-    {% if active_farm_id %}
-    <div class="rounded-[1.5rem] border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
-        Ao abrir a página, o período padrão é o <strong>mês atual</strong>. Use <strong>Limpar</strong> para ver o <strong>histórico completo</strong> (sem filtro de datas); clique em <strong>Limpar</strong> de novo para voltar ao mês atual.
-    </div>
-    {% endif %}
 
     {% if not active_farm_id %}
     <div class="rounded-[1.5rem] border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600">
@@ -117,10 +112,13 @@
                             {% endfor %}
                         </select>
                     </label>
-                    <div class="stock-filter-field stock-filter-field-period {% if finance_filter_start_date or finance_filter_end_date %}is-filtered{% endif %}">
+                    <div class="stock-filter-field stock-filter-field-period {% if finance_filter_start_date or finance_filter_end_date or selected_finance_range == 'all' %}is-filtered{% endif %}">
                         <div class="module-filter-period-row">
                             {{ module_period_picker_inline(selected_finance_range, finance_filter_start_date, finance_filter_end_date, 'past', 'Filtre por período') }}
                         </div>
+                        {% if finance_season_period_hint %}
+                        <p class="mt-1.5 text-xs text-slate-500">Intervalo cadastrado da safra: {{ finance_season_period_hint.start }} a {{ finance_season_period_hint.end }}.</p>
+                        {% endif %}
                     </div>
                     <div class="stock-filter-field stock-filter-field-actions flex flex-nowrap items-end gap-3">
                         <button type="submit" class="shrink-0 rounded-xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white">Filtrar</button>

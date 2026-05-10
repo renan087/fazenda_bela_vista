@@ -1783,9 +1783,10 @@ def _period_filter_explicit_in_query(request: Request) -> bool:
 def _finance_extract_period_bounds(
     request: Request,
     *,
+    extract_season_id: int | None = None,
     flash_invalid: bool = False,
 ) -> tuple[date | None, date | None, str, str]:
-    """Intervalo do extrato financeiro: mês atual por padrão, sem limitar à safra ativa."""
+    """Intervalo do extrato financeiro: mês atual por padrão; com safra na URL e sem período explícito, usa toda a safra."""
     today = today_in_app_timezone()
     selected_range = (request.query_params.get("schedule_range") or "").strip()
     raw_start = (request.query_params.get("start_date") or "").strip()
@@ -1793,6 +1794,8 @@ def _finance_extract_period_bounds(
     if selected_range == "all":
         return None, None, "", ""
     if not selected_range and not raw_start and not raw_end:
+        if extract_season_id:
+            return None, None, "", ""
         month_start = date(today.year, today.month, 1)
         month_end = date(today.year + (1 if today.month == 12 else 0), 1 if today.month == 12 else today.month + 1, 1) - timedelta(days=1)
         return month_start, month_end, month_start.isoformat(), month_end.isoformat()
@@ -3392,14 +3395,7 @@ def _finance_export_query(request: Request) -> str:
 
 
 def _finance_filter_clear_url(request: Request) -> str:
-    """Limpar safra/conta/período: sem datas = extrato completo. Já em 'all' só período → volta ao mês atual (URL limpa)."""
-    path = request.url.path
-    qp = request.query_params
-    sr = (qp.get("schedule_range") or "").strip()
-    has_season = bool((qp.get("extract_season_id") or "").strip())
-    has_account = bool((qp.get("extract_finance_account_id") or "").strip())
-    if sr == "all" and not has_season and not has_account:
-        return path
+    """Limpa safra, conta e período: extrato com histórico completo (schedule_range=all). Mês atual volta só pelo seletor ou nova entrada."""
     return _url_with_query(
         request,
         start_date=None,
@@ -3408,6 +3404,17 @@ def _finance_filter_clear_url(request: Request) -> str:
         extract_season_id=None,
         extract_finance_account_id=None,
     )
+
+
+def _finance_filters_show_clear(request: Request) -> bool:
+    """Limpar some só no estado pós-limpeza: all explícito, sem safra nem conta. Entrada padrão (mês implícito) mostra Limpar."""
+    qp = request.query_params
+    sr = (qp.get("schedule_range") or "").strip()
+    has_season = bool((qp.get("extract_season_id") or "").strip())
+    has_account = bool((qp.get("extract_finance_account_id") or "").strip())
+    if sr == "all" and not has_season and not has_account:
+        return False
+    return True
 
 
 def _finance_management_dataset(
@@ -3419,12 +3426,15 @@ def _finance_management_dataset(
     scope = _global_scope_context(request, repo)
     farm_id = scope.get("active_farm_id")
     active_season = scope.get("active_season")
+    extract_season_q = _int_or_none(request.query_params.get("extract_season_id"))
     period_start, period_end, filter_start_str, filter_end_str = _finance_extract_period_bounds(
         request,
+        extract_season_id=extract_season_q,
         flash_invalid=flash_invalid,
     )
     qp_schedule = (request.query_params.get("schedule_range") or "").strip()
-    if qp_schedule == "all":
+    season_only_implicit_all = bool(extract_season_q) and not _period_filter_explicit_in_query(request)
+    if qp_schedule == "all" or season_only_implicit_all:
         selected_finance_range = "all"
     elif _period_filter_explicit_in_query(request):
         selected_finance_range = _fertilization_filter_range_preset(
@@ -3434,7 +3444,6 @@ def _finance_management_dataset(
         )
     else:
         selected_finance_range = "current_month"
-    extract_season_q = _int_or_none(request.query_params.get("extract_season_id"))
     extract_finance_account_id = _int_or_none(request.query_params.get("extract_finance_account_id"))
     period_start_for_extract, period_end_for_extract, finance_filter_season_id, extract_range_empty = (
         _finance_extract_apply_season_bounds(
@@ -3445,7 +3454,7 @@ def _finance_management_dataset(
             extract_season_id=extract_season_q,
         )
     )
-    finance_filters_active = bool(farm_id)
+    finance_filters_active = bool(farm_id) and _finance_filters_show_clear(request)
     finance_filter_clear_url = _finance_filter_clear_url(request)
     finance_season_options = repo.list_crop_seasons(farm_id=farm_id) if farm_id else []
     finance_filter_season = repo.get_crop_season(finance_filter_season_id) if finance_filter_season_id else None
@@ -3516,6 +3525,13 @@ def _finance_management_dataset(
     finance_data["finance_account_options"] = finance_account_options
     finance_data["finance_filter_account_id"] = extract_finance_account_id
     finance_data["finance_filter_account"] = finance_filter_account
+    finance_season_period_hint = None
+    if season_only_implicit_all and finance_filter_season:
+        finance_season_period_hint = {
+            "start": finance_filter_season.start_date.strftime("%d/%m/%Y"),
+            "end": finance_filter_season.end_date.strftime("%d/%m/%Y"),
+        }
+    finance_data["finance_season_period_hint"] = finance_season_period_hint
     finance_data["finance_export_query"] = _finance_export_query(request)
     finance_data["finance_extract_rows_raw"] = extract_rows
     finance_data["finance_summary"] = {
