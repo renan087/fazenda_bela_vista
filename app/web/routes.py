@@ -3455,7 +3455,7 @@ def _finance_management_dataset(
         selected_finance_range = "current_month"
     extract_finance_account_id = _int_or_none(request.query_params.get("extract_finance_account_id"))
     extract_item_type = (request.query_params.get("extract_item_type") or "").strip()
-    if extract_item_type not in {"insumo_agricola", "combustivel"}:
+    if extract_item_type not in {"insumo_agricola", "combustivel", "demais_gastos"}:
         extract_item_type = ""
     period_start_for_extract, period_end_for_extract, finance_filter_season_id, extract_range_empty = (
         _finance_extract_apply_season_bounds(
@@ -3554,6 +3554,7 @@ def _finance_management_dataset(
     finance_data["finance_item_type_options"] = [
         {"value": "insumo_agricola", "label": "Insumo agrícola"},
         {"value": "combustivel", "label": "Combustível"},
+        {"value": "demais_gastos", "label": "Demais gastos"},
     ]
     finance_season_period_hint = None
     if season_only_implicit_all and finance_filter_season:

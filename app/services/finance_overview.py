@@ -10,7 +10,7 @@ from app.models import CropSeason, FinanceAccount, FinanceTransaction, Purchased
 from app.repositories.farm import FarmRepository
 
 EXTRACT_MAX_ROWS = 500
-EXTRACT_ITEM_TYPE_OPTIONS = {"insumo_agricola", "combustivel"}
+EXTRACT_ITEM_TYPE_OPTIONS = {"insumo_agricola", "combustivel", "demais_gastos"}
 AGRICULTURAL_ITEM_TYPE_ALIASES = {"insumo", "insumo_agricola"}
 COMBUSTIBLE_CATEGORY_ALIASES = {"combustivel", "combustiveis", "lubrificante", "lubrificantes"}
 
@@ -56,6 +56,8 @@ def _normalize_extract_item_type(value: str | None) -> str | None:
         return "insumo_agricola"
     if normalized == "combustivel":
         return "combustivel"
+    if normalized == "demais_gastos":
+        return "demais_gastos"
     return None
 
 
@@ -63,6 +65,8 @@ def _entry_matches_extract_item_type(entry: PurchasedInput, item_type_filter: st
     if not item_type_filter:
         return True
     item_type = _normalize_extract_item_type(_item_type(entry))
+    if item_type_filter == "demais_gastos":
+        return item_type not in {"insumo_agricola", "combustivel"}
     return item_type == item_type_filter
 
 
@@ -259,10 +263,14 @@ def _collect_finance_transaction_rows(
     for transaction in repo.list_finance_transactions(farm_id=farm_id):
         if finance_account_id and transaction.finance_account_id != finance_account_id:
             continue
-        if item_type_filter and _finance_transaction_item_type(transaction) != item_type_filter:
-            continue
         operation_type = (transaction.operation_type or "").lower()
         is_revenue = operation_type == "receita"
+        transaction_item_type = _finance_transaction_item_type(transaction)
+        if item_type_filter == "demais_gastos":
+            if is_revenue or transaction_item_type in {"insumo_agricola", "combustivel"}:
+                continue
+        elif item_type_filter and transaction_item_type != item_type_filter:
+            continue
         detail_parts = []
         if transaction.category:
             detail_parts.append(transaction.category)
@@ -412,6 +420,17 @@ def build_finance_extract_rows(
         )
 
     if not normalized_item_type_filter:
+        raw.extend(
+            _collect_finance_revenue_rows(
+                repo,
+                farm_id=farm_id,
+                period_start=period_start,
+                period_end=period_end,
+                finance_account_id=finance_account_id,
+            )
+        )
+
+    if normalized_item_type_filter in {None, "demais_gastos"}:
         for asset in repo.list_equipment_assets(farm_id=farm_id):
             if asset.finance_transaction_id:
                 continue
@@ -438,16 +457,6 @@ def build_finance_extract_rows(
                     "credit": None,
                 }
             )
-
-        raw.extend(
-            _collect_finance_revenue_rows(
-                repo,
-                farm_id=farm_id,
-                period_start=period_start,
-                period_end=period_end,
-                finance_account_id=finance_account_id,
-            )
-        )
     raw.extend(
         _collect_finance_transaction_rows(
             repo,
