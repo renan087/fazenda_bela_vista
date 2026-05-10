@@ -16181,6 +16181,7 @@ def map_page(
         context_farm_ids=[farm.id for farm in scope.get("context_farms", [])],
     )["map_geojson"]
     edit_plot = repo.get_plot(edit_plot_id) if edit_plot_id else None
+    google_maps_web_key = (get_settings().google_maps_api_key or "").strip()
     return templates.TemplateResponse(
         "map.html",
         _base_context(
@@ -16193,6 +16194,7 @@ def map_page(
             plots=repo.list_plots(farm_ids=farm_ids, variety_ids=variety_ids),
             edit_plot=edit_plot,
             edit_plot_geometry=edit_plot.boundary_geojson if edit_plot and edit_plot.boundary_geojson else None,
+            google_maps_web_key=google_maps_web_key,
         ),
     )
 

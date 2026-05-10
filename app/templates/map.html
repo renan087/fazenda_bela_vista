@@ -90,6 +90,11 @@
 
         <section class="stock-panel rounded-[2rem] bg-white p-6 shadow-panel">
             <div id="farmMap" class="h-[720px] overflow-hidden rounded-[1.5rem]"></div>
+            {% if google_maps_web_key %}
+            <p class="mt-3 text-xs text-emerald-700">Mapa em modo satélite (Google Maps).</p>
+            {% else %}
+            <p class="mt-3 text-xs text-slate-500">Configure <code class="rounded bg-slate-200 px-1 py-0.5 text-[11px]">GOOGLE_MAPS_API_KEY</code> no servidor para usar imagens de satélite do Google; sem chave, o mapa usa OpenStreetMap.</p>
+            {% endif %}
         </section>
     </div>
 </div>
@@ -146,38 +151,14 @@
         else if (mobileCompactMq.addListener) mobileCompactMq.addListener(requestHeaderSync);
         requestHeaderSync();
 
-        const mapData = {{ map_geojson|safe }};
-        const editPlot = {{ edit_plot_geometry|safe if edit_plot_geometry else 'null' }};
-        const farmMap = L.map('farmMap').setView([-20.7442, -42.8721], 14);
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '&copy; OpenStreetMap' }).addTo(farmMap);
-
-        const baseLayer = L.geoJSON(mapData, {
-            style: (feature) => feature.properties.feature_type === 'farm'
-                ? { color: '#0f172a', weight: 2, fillColor: '#94a3b8', fillOpacity: 0.12, dashArray: '6 6' }
-                : { color: '#365a29', weight: 2, fillColor: '#5f8a4c', fillOpacity: 0.25 },
-            onEachFeature: (feature, layer) => {
-                if (feature.properties.feature_type === 'farm') {
-                    layer.bindPopup(`<div style="min-width: 180px"><strong>${feature.properties.name}</strong><br>${feature.properties.location}<br>Area total: ${feature.properties.area} ha</div>`);
-                    return;
-                }
-                layer.bindPopup(`<div style="min-width: 180px"><strong>${feature.properties.name}</strong><br>${feature.properties.farm}<br>${feature.properties.variety}<br>Area: ${feature.properties.area} ha<br>Estimativa: ${feature.properties.estimated} sacas</div>`);
-            }
-        }).addTo(farmMap);
-        if (baseLayer.getBounds().isValid()) {
-            farmMap.fitBounds(baseLayer.getBounds(), { padding: [30, 30] });
-        }
-
-        if (!editPlot) return;
-
         const areaNode = document.querySelector('[data-area-hectares]');
         const pointCountNode = document.querySelector('[data-point-count]');
         const selectedPointNode = document.querySelector('[data-selected-point]');
         const boundaryInput = document.querySelector('[data-boundary-input]');
         const removeButton = document.querySelector('[data-remove-point]');
-        let selectedIndex = null;
-        let editLayer = null;
-        let markerLayer = L.layerGroup().addTo(farmMap);
-        let points = [];
+        const mapData = {{ map_geojson|safe }};
+        const editPlot = {{ edit_plot_geometry|safe if edit_plot_geometry else 'null' }};
+        const GOOGLE_MAPS_API_KEY = {{ google_maps_web_key | tojson }};
 
         const extractPoints = (geometry) => {
             if (!geometry || geometry.type !== 'Polygon' || !geometry.coordinates?.length) return [];
@@ -185,6 +166,19 @@
             return ring
                 .slice(0, -1)
                 .map((coordinate) => ({ lat: coordinate[1], lng: coordinate[0] }));
+        };
+        const extractFeaturePaths = (geometry) => {
+            if (!geometry) return [];
+            if (geometry.type === 'Polygon') return [extractPoints(geometry)];
+            if (geometry.type === 'MultiPolygon') {
+                return (geometry.coordinates || [])
+                    .map((polygon) => {
+                        const ring = polygon?.[0] || [];
+                        return ring.slice(0, -1).map((coordinate) => ({ lat: coordinate[1], lng: coordinate[0] }));
+                    })
+                    .filter((path) => path.length >= 3);
+            }
+            return [];
         };
 
         const calculateArea = (coords) => {
@@ -201,74 +195,242 @@
             return Math.abs(area) / 2 / 10000;
         };
 
-        const buildGeometry = () => ({
-            type: 'Polygon',
-            coordinates: [[...points.map((point) => [point.lng, point.lat]), [points[0].lng, points[0].lat]]]
-        });
+        const buildGeometry = (points) => {
+            if (!points.length) return null;
+            return {
+                type: 'Polygon',
+                coordinates: [[...points.map((point) => [point.lng, point.lat]), [points[0].lng, points[0].lat]]]
+            };
+        };
 
-        const markerIcon = (active) => L.divIcon({
-            className: '',
-            html: `<div style="width: 16px; height: 16px; border-radius: 9999px; background: ${active ? '#e11d48' : '#446a36'}; border: 3px solid white; box-shadow: 0 4px 12px rgba(15,23,42,.2);"></div>`,
-            iconSize: [16, 16],
-            iconAnchor: [8, 8]
-        });
+        const featurePopupHtml = (feature) => {
+            const props = feature.properties || {};
+            if (props.feature_type === 'farm') {
+                return `<div style="min-width: 180px"><strong>${props.name}</strong><br>${props.location || ''}<br>Área total: ${props.area} ha</div>`;
+            }
+            return `<div style="min-width: 180px"><strong>${props.name}</strong><br>${props.farm || 'Sem fazenda'}<br>${props.variety || 'Sem variedade'}<br>Área: ${props.area} ha<br>Estimativa: ${props.estimated} sacas</div>`;
+        };
 
-        const syncForm = () => {
+        const loadGoogleMapsScript = (apiKey) => {
+            if (window.google?.maps?.Map) return Promise.resolve();
+            if (window.__sisfarmGoogleMapsLoadPromise) return window.__sisfarmGoogleMapsLoadPromise;
+            window.__sisfarmGoogleMapsLoadPromise = new Promise((resolve, reject) => {
+                const script = document.createElement('script');
+                script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(apiKey)}&libraries=geometry`;
+                script.async = true;
+                script.defer = true;
+                script.onload = resolve;
+                script.onerror = () => reject(new Error('Falha ao carregar Google Maps'));
+                document.head.appendChild(script);
+            });
+            return window.__sisfarmGoogleMapsLoadPromise;
+        };
+
+        const syncStats = (points, selectedIndex) => {
             if (points.length < 3) {
-                boundaryInput.value = '';
+                if (boundaryInput) boundaryInput.value = '';
                 if (areaNode) areaNode.textContent = '0.00';
                 if (pointCountNode) pointCountNode.textContent = String(points.length);
                 if (selectedPointNode) selectedPointNode.textContent = selectedIndex === null ? 'Nenhum' : String(selectedIndex + 1);
                 return;
             }
-            const area = calculateArea(points);
-            boundaryInput.value = JSON.stringify(buildGeometry());
-            if (areaNode) areaNode.textContent = area.toFixed(4);
+            const geometry = buildGeometry(points);
+            if (boundaryInput) boundaryInput.value = JSON.stringify(geometry);
+            if (areaNode) areaNode.textContent = calculateArea(points).toFixed(4);
             if (pointCountNode) pointCountNode.textContent = String(points.length);
             if (selectedPointNode) selectedPointNode.textContent = selectedIndex === null ? 'Nenhum' : String(selectedIndex + 1);
         };
 
-        const renderEditor = () => {
-            if (editLayer) farmMap.removeLayer(editLayer);
-            markerLayer.clearLayers();
-            if (points.length >= 2) {
-                editLayer = L.polygon(points, { color: '#e11d48', weight: 3, fillColor: '#fb7185', fillOpacity: 0.18 }).addTo(farmMap);
-            }
-            points.forEach((point, index) => {
-                const marker = L.marker(point, { draggable: true, icon: markerIcon(index === selectedIndex) }).addTo(markerLayer);
-                marker.on('click', () => {
-                    selectedIndex = index;
+        const initGoogleMap = async () => {
+            if (!GOOGLE_MAPS_API_KEY) throw new Error('Google Maps API key ausente');
+            await loadGoogleMapsScript(GOOGLE_MAPS_API_KEY);
+            const map = new google.maps.Map(document.getElementById('farmMap'), {
+                center: { lat: -20.7442, lng: -42.8721 },
+                zoom: 14,
+                mapTypeId: 'satellite',
+                mapTypeControl: true,
+                streetViewControl: false,
+                rotateControl: false,
+                fullscreenControl: true,
+            });
+            const bounds = new google.maps.LatLngBounds();
+            const infoWindow = new google.maps.InfoWindow();
+
+            (mapData.features || []).forEach((feature) => {
+                const props = feature.properties || {};
+                const isFarm = props.feature_type === 'farm';
+                extractFeaturePaths(feature.geometry).forEach((path) => {
+                    path.forEach((point) => bounds.extend(point));
+                    const polygon = new google.maps.Polygon({
+                        paths: path,
+                        strokeColor: isFarm ? '#0f172a' : '#365a29',
+                        strokeOpacity: 1,
+                        strokeWeight: 2,
+                        fillColor: isFarm ? '#94a3b8' : '#5f8a4c',
+                        fillOpacity: isFarm ? 0.12 : 0.25,
+                        clickable: true,
+                        map,
+                    });
+                    polygon.addListener('click', (event) => {
+                        infoWindow.setContent(featurePopupHtml(feature));
+                        infoWindow.setPosition(event.latLng);
+                        infoWindow.open(map);
+                    });
+                });
+            });
+
+            let selectedIndex = null;
+            let points = extractPoints(editPlot);
+            let editPolygon = null;
+            const markers = [];
+            let skipNextMapClick = false;
+
+            const clearMarkers = () => {
+                markers.forEach((marker) => marker.setMap(null));
+                markers.length = 0;
+            };
+            const renderEditor = () => {
+                if (editPolygon) editPolygon.setMap(null);
+                clearMarkers();
+                if (points.length >= 2) {
+                    editPolygon = new google.maps.Polygon({
+                        paths: points,
+                        strokeColor: '#e11d48',
+                        strokeWeight: 3,
+                        fillColor: '#fb7185',
+                        fillOpacity: 0.18,
+                        zIndex: 100,
+                        map,
+                    });
+                }
+                points.forEach((point, index) => {
+                    bounds.extend(point);
+                    const marker = new google.maps.Marker({
+                        position: point,
+                        map,
+                        draggable: true,
+                        icon: {
+                            path: google.maps.SymbolPath.CIRCLE,
+                            scale: 8,
+                            fillColor: index === selectedIndex ? '#e11d48' : '#446a36',
+                            fillOpacity: 1,
+                            strokeColor: '#ffffff',
+                            strokeWeight: 3,
+                        },
+                    });
+                    marker.addListener('click', () => {
+                        skipNextMapClick = true;
+                        window.setTimeout(() => { skipNextMapClick = false; }, 80);
+                        selectedIndex = index;
+                        renderEditor();
+                    });
+                    marker.addListener('drag', () => {
+                        const position = marker.getPosition();
+                        points[index] = { lat: position.lat(), lng: position.lng() };
+                        if (editPolygon) editPolygon.setPath(points);
+                        syncStats(points, selectedIndex);
+                    });
+                    marker.addListener('dragend', renderEditor);
+                    markers.push(marker);
+                });
+                syncStats(points, selectedIndex);
+            };
+
+            if (editPlot) {
+                renderEditor();
+                map.addListener('click', (event) => {
+                    if (skipNextMapClick) return;
+                    points.push({ lat: event.latLng.lat(), lng: event.latLng.lng() });
+                    selectedIndex = points.length - 1;
                     renderEditor();
                 });
-                marker.on('drag', (event) => {
-                    points[index] = event.target.getLatLng();
-                    syncForm();
-                    if (editLayer) editLayer.setLatLngs(points);
+                removeButton?.addEventListener('click', () => {
+                    if (selectedIndex === null || points.length <= 3) return;
+                    points.splice(selectedIndex, 1);
+                    selectedIndex = null;
+                    renderEditor();
                 });
-                marker.on('dragend', () => renderEditor());
-            });
-            syncForm();
+            }
+            if (!bounds.isEmpty()) map.fitBounds(bounds, 48);
         };
 
-        points = extractPoints(editPlot);
-        renderEditor();
+        const initLeafletMap = () => {
+            const farmMap = L.map('farmMap').setView([-20.7442, -42.8721], 14);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '&copy; OpenStreetMap' }).addTo(farmMap);
 
-        if (points.length) {
-            const bounds = L.latLngBounds(points);
-            if (bounds.isValid()) farmMap.fitBounds(bounds.pad(0.3));
-        }
+            const baseLayer = L.geoJSON(mapData, {
+                style: (feature) => feature.properties.feature_type === 'farm'
+                    ? { color: '#0f172a', weight: 2, fillColor: '#94a3b8', fillOpacity: 0.12, dashArray: '6 6' }
+                    : { color: '#365a29', weight: 2, fillColor: '#5f8a4c', fillOpacity: 0.25 },
+                onEachFeature: (feature, layer) => {
+                    layer.bindPopup(featurePopupHtml(feature));
+                }
+            }).addTo(farmMap);
+            if (baseLayer.getBounds().isValid()) {
+                farmMap.fitBounds(baseLayer.getBounds(), { padding: [30, 30] });
+            }
 
-        farmMap.on('click', (event) => {
-            points.push(event.latlng);
-            selectedIndex = points.length - 1;
+            if (!editPlot) return;
+
+            let selectedIndex = null;
+            let editLayer = null;
+            const markerLayer = L.layerGroup().addTo(farmMap);
+            let points = [];
+
+            const markerIcon = (active) => L.divIcon({
+                className: '',
+                html: `<div style="width: 16px; height: 16px; border-radius: 9999px; background: ${active ? '#e11d48' : '#446a36'}; border: 3px solid white; box-shadow: 0 4px 12px rgba(15,23,42,.2);"></div>`,
+                iconSize: [16, 16],
+                iconAnchor: [8, 8]
+            });
+
+            const renderEditor = () => {
+                if (editLayer) farmMap.removeLayer(editLayer);
+                markerLayer.clearLayers();
+                if (points.length >= 2) {
+                    editLayer = L.polygon(points, { color: '#e11d48', weight: 3, fillColor: '#fb7185', fillOpacity: 0.18 }).addTo(farmMap);
+                }
+                points.forEach((point, index) => {
+                    const marker = L.marker(point, { draggable: true, icon: markerIcon(index === selectedIndex) }).addTo(markerLayer);
+                    marker.on('click', () => {
+                        selectedIndex = index;
+                        renderEditor();
+                    });
+                    marker.on('drag', (event) => {
+                        points[index] = event.target.getLatLng();
+                        syncStats(points, selectedIndex);
+                        if (editLayer) editLayer.setLatLngs(points);
+                    });
+                    marker.on('dragend', () => renderEditor());
+                });
+                syncStats(points, selectedIndex);
+            };
+
+            points = extractPoints(editPlot);
             renderEditor();
-        });
 
-        removeButton?.addEventListener('click', () => {
-            if (selectedIndex === null || points.length <= 3) return;
-            points.splice(selectedIndex, 1);
-            selectedIndex = null;
-            renderEditor();
+            if (points.length) {
+                const bounds = L.latLngBounds(points);
+                if (bounds.isValid()) farmMap.fitBounds(bounds.pad(0.3));
+            }
+
+            farmMap.on('click', (event) => {
+                points.push(event.latlng);
+                selectedIndex = points.length - 1;
+                renderEditor();
+            });
+
+            removeButton?.addEventListener('click', () => {
+                if (selectedIndex === null || points.length <= 3) return;
+                points.splice(selectedIndex, 1);
+                selectedIndex = null;
+                renderEditor();
+            });
+        };
+
+        initGoogleMap().catch((error) => {
+            console.warn('[mapa] Google Maps indisponível, usando OpenStreetMap.', error);
+            initLeafletMap();
         });
     })();
 </script>
