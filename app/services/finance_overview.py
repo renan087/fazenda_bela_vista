@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import unicodedata
 from datetime import date
 from decimal import Decimal
 
@@ -9,6 +10,9 @@ from app.models import CropSeason, FinanceAccount, FinanceTransaction, Purchased
 from app.repositories.farm import FarmRepository
 
 EXTRACT_MAX_ROWS = 500
+EXTRACT_ITEM_TYPE_OPTIONS = {"insumo_agricola", "combustivel"}
+AGRICULTURAL_ITEM_TYPE_ALIASES = {"insumo", "insumo_agricola"}
+COMBUSTIBLE_CATEGORY_ALIASES = {"combustivel", "combustiveis", "lubrificante", "lubrificantes"}
 
 
 def _f(value: object) -> float:
@@ -34,6 +38,32 @@ def _item_type(entry: PurchasedInput) -> str:
     if entry.input_catalog and entry.input_catalog.item_type:
         return str(entry.input_catalog.item_type)
     return "insumo"
+
+
+def _normalize_plain_text(value: object) -> str:
+    return (
+        unicodedata.normalize("NFD", str(value or ""))
+        .encode("ascii", "ignore")
+        .decode("ascii")
+        .strip()
+        .lower()
+    )
+
+
+def _normalize_extract_item_type(value: str | None) -> str | None:
+    normalized = (value or "").strip().lower()
+    if normalized in AGRICULTURAL_ITEM_TYPE_ALIASES:
+        return "insumo_agricola"
+    if normalized == "combustivel":
+        return "combustivel"
+    return None
+
+
+def _entry_matches_extract_item_type(entry: PurchasedInput, item_type_filter: str | None) -> bool:
+    if not item_type_filter:
+        return True
+    item_type = _normalize_extract_item_type(_item_type(entry))
+    return item_type == item_type_filter
 
 
 def _season_bounds(season: CropSeason | None) -> tuple:
@@ -223,10 +253,13 @@ def _collect_finance_transaction_rows(
     period_start: date | None,
     period_end: date | None,
     finance_account_id: int | None = None,
+    item_type_filter: str | None = None,
 ) -> list[dict]:
     raw: list[dict] = []
     for transaction in repo.list_finance_transactions(farm_id=farm_id):
         if finance_account_id and transaction.finance_account_id != finance_account_id:
+            continue
+        if item_type_filter and _finance_transaction_item_type(transaction) != item_type_filter:
             continue
         operation_type = (transaction.operation_type or "").lower()
         is_revenue = operation_type == "receita"
@@ -297,6 +330,22 @@ def _collect_finance_transaction_rows(
     return raw
 
 
+def _finance_transaction_item_type(transaction: FinanceTransaction) -> str | None:
+    for entry in transaction.purchased_inputs or []:
+        item_type = _normalize_extract_item_type(_item_type(entry))
+        if item_type in EXTRACT_ITEM_TYPE_OPTIONS:
+            return item_type
+
+    category = _normalize_plain_text(transaction.category)
+    if category in COMBUSTIBLE_CATEGORY_ALIASES:
+        return "combustivel"
+
+    source = _normalize_plain_text(transaction.source)
+    if source == "insumos":
+        return "insumo_agricola"
+    return None
+
+
 def _finance_transaction_module_label(transaction: FinanceTransaction) -> str:
     source = (transaction.source or "").strip().lower()
     if source == "insumos":
@@ -317,6 +366,7 @@ def build_finance_extract_rows(
     period_start: date | None = None,
     period_end: date | None = None,
     finance_account_id: int | None = None,
+    item_type_filter: str | None = None,
     limit: int = EXTRACT_MAX_ROWS,
 ) -> tuple[list[dict], bool]:
     """Extrato: despesas = entradas em Gestão de compras, entradas em Suprimentos, patrimônio adquirido.
@@ -331,9 +381,12 @@ def build_finance_extract_rows(
         return [], False
 
     raw: list[dict] = []
+    normalized_item_type_filter = _normalize_extract_item_type(item_type_filter)
 
     for entry in _filter_entries_by_farm(repo.list_purchased_inputs(), farm_id):
         if entry.finance_transaction_id:
+            continue
+        if not _entry_matches_extract_item_type(entry, normalized_item_type_filter):
             continue
         if finance_account_id and entry.finance_account_id != finance_account_id:
             continue
@@ -358,42 +411,43 @@ def build_finance_extract_rows(
             }
         )
 
-    for asset in repo.list_equipment_assets(farm_id=farm_id):
-        if asset.finance_transaction_id:
-            continue
-        if finance_account_id and asset.finance_account_id != finance_account_id:
-            continue
-        ad = asset.acquisition_date
-        if not _in_extract_period(ad, period_start, period_end):
-            continue
-        av = _f(asset.acquisition_value)
-        if av <= 0:
-            continue
-        raw.append(
-            {
-                "date": ad,
-                "sort_group": 3,
-                "ref_id": asset.id,
-                "module": "Patrimônio",
-                "description": f"Aquisição — {asset.name}",
-                "detail": " • ".join(part for part in [
-                    asset.category or "Bem adquirido",
-                    asset.finance_account.account_name if getattr(asset, "finance_account", None) else None,
-                ] if part),
-                "debit": av,
-                "credit": None,
-            }
-        )
+    if not normalized_item_type_filter:
+        for asset in repo.list_equipment_assets(farm_id=farm_id):
+            if asset.finance_transaction_id:
+                continue
+            if finance_account_id and asset.finance_account_id != finance_account_id:
+                continue
+            ad = asset.acquisition_date
+            if not _in_extract_period(ad, period_start, period_end):
+                continue
+            av = _f(asset.acquisition_value)
+            if av <= 0:
+                continue
+            raw.append(
+                {
+                    "date": ad,
+                    "sort_group": 3,
+                    "ref_id": asset.id,
+                    "module": "Patrimônio",
+                    "description": f"Aquisição — {asset.name}",
+                    "detail": " • ".join(part for part in [
+                        asset.category or "Bem adquirido",
+                        asset.finance_account.account_name if getattr(asset, "finance_account", None) else None,
+                    ] if part),
+                    "debit": av,
+                    "credit": None,
+                }
+            )
 
-    raw.extend(
-        _collect_finance_revenue_rows(
-            repo,
-            farm_id=farm_id,
-            period_start=period_start,
-            period_end=period_end,
-            finance_account_id=finance_account_id,
+        raw.extend(
+            _collect_finance_revenue_rows(
+                repo,
+                farm_id=farm_id,
+                period_start=period_start,
+                period_end=period_end,
+                finance_account_id=finance_account_id,
+            )
         )
-    )
     raw.extend(
         _collect_finance_transaction_rows(
             repo,
@@ -401,6 +455,7 @@ def build_finance_extract_rows(
             period_start=period_start,
             period_end=period_end,
             finance_account_id=finance_account_id,
+            item_type_filter=normalized_item_type_filter,
         )
     )
 

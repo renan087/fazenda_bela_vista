@@ -351,6 +351,7 @@ class FarmRepository:
                 joinedload(FinanceTransaction.farm),
                 joinedload(FinanceTransaction.finance_account),
                 joinedload(FinanceTransaction.credit_card),
+                joinedload(FinanceTransaction.purchased_inputs).joinedload(PurchasedInput.input_catalog),
                 joinedload(FinanceTransaction.attachments).load_only(
                     FinanceTransactionAttachment.id,
                     FinanceTransactionAttachment.finance_transaction_id,

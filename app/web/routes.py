@@ -3385,7 +3385,14 @@ def no_access_page(
 
 
 def _finance_export_query(request: Request) -> str:
-    allowed_keys = {"start_date", "end_date", "schedule_range", "extract_season_id", "extract_finance_account_id"}
+    allowed_keys = {
+        "start_date",
+        "end_date",
+        "schedule_range",
+        "extract_season_id",
+        "extract_finance_account_id",
+        "extract_item_type",
+    }
     params = [
         (key, value)
         for key, value in request.query_params.multi_items()
@@ -3403,6 +3410,7 @@ def _finance_filter_clear_url(request: Request) -> str:
         schedule_range="all",
         extract_season_id=None,
         extract_finance_account_id=None,
+        extract_item_type=None,
     )
 
 
@@ -3412,7 +3420,8 @@ def _finance_filters_show_clear(request: Request) -> bool:
     sr = (qp.get("schedule_range") or "").strip()
     has_season = bool((qp.get("extract_season_id") or "").strip())
     has_account = bool((qp.get("extract_finance_account_id") or "").strip())
-    if sr == "all" and not has_season and not has_account:
+    has_item_type = bool((qp.get("extract_item_type") or "").strip())
+    if sr == "all" and not has_season and not has_account and not has_item_type:
         return False
     return True
 
@@ -3445,6 +3454,9 @@ def _finance_management_dataset(
     else:
         selected_finance_range = "current_month"
     extract_finance_account_id = _int_or_none(request.query_params.get("extract_finance_account_id"))
+    extract_item_type = (request.query_params.get("extract_item_type") or "").strip()
+    if extract_item_type not in {"insumo_agricola", "combustivel"}:
+        extract_item_type = ""
     period_start_for_extract, period_end_for_extract, finance_filter_season_id, extract_range_empty = (
         _finance_extract_apply_season_bounds(
             repo,
@@ -3488,6 +3500,7 @@ def _finance_management_dataset(
             period_start=period_start_for_extract,
             period_end=period_end_for_extract,
             finance_account_id=extract_finance_account_id,
+            item_type_filter=extract_item_type or None,
         )
     summary_credit_total = round(sum(float(row.get("credit") or 0) for row in extract_rows), 2)
     summary_debit_total = round(sum(float(row.get("debit") or 0) for row in extract_rows), 2)
@@ -3537,6 +3550,11 @@ def _finance_management_dataset(
     finance_data["finance_account_options"] = finance_account_options
     finance_data["finance_filter_account_id"] = extract_finance_account_id
     finance_data["finance_filter_account"] = finance_filter_account
+    finance_data["finance_item_type_filter"] = extract_item_type
+    finance_data["finance_item_type_options"] = [
+        {"value": "insumo_agricola", "label": "Insumo agrícola"},
+        {"value": "combustivel", "label": "Combustível"},
+    ]
     finance_season_period_hint = None
     if season_only_implicit_all and finance_filter_season:
         finance_season_period_hint = {

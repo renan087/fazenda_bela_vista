@@ -112,6 +112,14 @@
                             {% endfor %}
                         </select>
                     </label>
+                    <label class="stock-filter-field stock-filter-field-input {% if finance_item_type_filter %}is-filtered{% endif %}">
+                        <select name="extract_item_type" class="w-full rounded-xl border-slate-200 bg-white">
+                            <option value="">Todos os tipos</option>
+                            {% for option in finance_item_type_options %}
+                            <option value="{{ option.value }}" {% if finance_item_type_filter == option.value %}selected{% endif %}>{{ option.label }}</option>
+                            {% endfor %}
+                        </select>
+                    </label>
                     <div class="stock-filter-field stock-filter-field-period {% if finance_filter_start_date or finance_filter_end_date or selected_finance_range == 'all' %}is-filtered{% endif %}">
                         <div class="module-filter-period-row">
                             {{ module_period_picker_inline(selected_finance_range, finance_filter_start_date, finance_filter_end_date, 'past', 'Filtre por período', finance_all_period_label) }}
