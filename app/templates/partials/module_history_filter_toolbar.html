@@ -1,7 +1,7 @@
 {# Toolbar reutilizável: busca + período (presets + calendário). Form GET com hidden start_date/end_date/schedule_range.
    preset_variant: 'future' (Agendamentos — próximos N dias / próximo mês) ou 'past' (Fertilização / Estoque — últimos N dias / mês passado).
    Sem start_date/end_date na URL: rótulo period_placeholder (ex.: convite a filtrar). #}
-{% macro module_period_picker_inline(selected_range, start_date, end_date, preset_variant='future', period_placeholder='Filtre por período') %}
+{% macro module_period_picker_inline(selected_range, start_date, end_date, preset_variant='future', period_placeholder='Filtre por período', all_period_label='Histórico completo (sem limite de datas)') %}
 {% set _default_range = 'last_10_days' if preset_variant == 'past' else 'next_10_days' %}
 {% set _range_val = selected_range or '' %}
 {% set _has_period = (start_date or end_date) %}
@@ -32,7 +32,7 @@
             {% if preset_variant == 'past' %}
             <button type="button" class="module-filter-preset-option {% if selected_range == 'all' %}is-active{% endif %}" data-module-range-option data-range-value="all">
                 <span class="module-filter-preset-option-title">Todo o período</span>
-                <span class="module-filter-preset-option-meta text-xs text-slate-500">Histórico completo (sem limite de datas)</span>
+                <span class="module-filter-preset-option-meta text-xs text-slate-500">{{ all_period_label }}</span>
             </button>
             <button type="button" class="module-filter-preset-option {% if _has_period and selected_range == 'current_month' %}is-active{% endif %}" data-module-range-option data-range-value="current_month">
                 <span class="module-filter-preset-option-title">Mês atual</span>

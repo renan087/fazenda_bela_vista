@@ -3492,6 +3492,17 @@ def _finance_management_dataset(
     summary_credit_total = round(sum(float(row.get("credit") or 0) for row in extract_rows), 2)
     summary_debit_total = round(sum(float(row.get("debit") or 0) for row in extract_rows), 2)
     summary_balance_total = round(summary_credit_total - summary_debit_total, 2)
+    extract_dates = sorted(row["date"] for row in extract_rows if row.get("date"))
+    if extract_dates:
+        first_extract_date = extract_dates[0].strftime("%d/%m/%Y")
+        last_extract_date = extract_dates[-1].strftime("%d/%m/%Y")
+        finance_all_period_label = (
+            first_extract_date
+            if first_extract_date == last_extract_date
+            else f"{first_extract_date} a {last_extract_date}"
+        )
+    else:
+        finance_all_period_label = "Sem lançamentos cadastrados"
     finance_data["finance_extract_rows"] = []
     for r in extract_rows:
         bal = float(r["balance"] or 0)
@@ -3517,6 +3528,7 @@ def _finance_management_dataset(
     finance_data["finance_filter_start_date"] = filter_start_str
     finance_data["finance_filter_end_date"] = filter_end_str
     finance_data["selected_finance_range"] = selected_finance_range
+    finance_data["finance_all_period_label"] = finance_all_period_label
     finance_data["finance_filters_active"] = finance_filters_active
     finance_data["finance_filter_clear_url"] = finance_filter_clear_url
     finance_data["finance_season_options"] = finance_season_options
