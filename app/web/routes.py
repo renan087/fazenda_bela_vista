@@ -112,6 +112,12 @@ from app.services.backup_service import (
 )
 from app.services.audit_log_service import count_audit_logs, list_audit_event_types, query_audit_logs
 from app.services.dashboard import build_dashboard_context
+from app.services.dashboard_map_preview import (
+    dashboard_map_fingerprint,
+    dashboard_map_preview_fs_path,
+    dashboard_map_preview_relative_path,
+    generate_dashboard_map_preview,
+)
 from app.services.finance_overview import (
     _in_extract_period,
     build_finance_extract_rows,
@@ -3305,6 +3311,7 @@ def revert_global_context(
 @router.get("/dashboard")
 def dashboard(
     request: Request,
+    background_tasks: BackgroundTasks,
     rain_start_date: str | None = None,
     rain_end_date: str | None = None,
     irrigations_page: int = 1,
@@ -3338,6 +3345,28 @@ def dashboard(
             "timeline": _page_number(timeline_page),
         },
     )
+    dashboard_map_preview_url = None
+    dashboard_map_geojson = data.get("map_geojson") or ""
+    dashboard_map_has_geometry = False
+    try:
+        dashboard_map_payload = json.loads(dashboard_map_geojson or "{}")
+        dashboard_map_has_geometry = bool(dashboard_map_payload.get("features"))
+    except (TypeError, json.JSONDecodeError):
+        dashboard_map_has_geometry = False
+    dashboard_map_fingerprint_value = dashboard_map_fingerprint(dashboard_map_geojson)
+    if dashboard_map_has_geometry and dashboard_map_fingerprint_value:
+        dashboard_map_path = dashboard_map_preview_fs_path(dashboard_map_fingerprint_value)
+        if dashboard_map_path.is_file() and dashboard_map_path.stat().st_size > 0:
+            dashboard_map_preview_url = (
+                f"/static/{dashboard_map_preview_relative_path(dashboard_map_fingerprint_value)}"
+                f"?v={dashboard_map_fingerprint_value}"
+            )
+        elif background_tasks is not None:
+            background_tasks.add_task(
+                generate_dashboard_map_preview,
+                dashboard_map_geojson,
+                dashboard_map_fingerprint_value,
+            )
     return templates.TemplateResponse(
         "dashboard.html",
         _base_context(
@@ -3358,6 +3387,8 @@ def dashboard(
                 "forecast_page": _page_number(forecast_page),
                 "timeline_page": _page_number(timeline_page),
             },
+            dashboard_map_preview_url=dashboard_map_preview_url,
+            dashboard_map_has_geometry=dashboard_map_has_geometry,
             _repo=repo,
             **data,
         ),
