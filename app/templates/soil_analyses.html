@@ -69,45 +69,47 @@
             </div>
         </div>
 
-        <form method="get" action="/analise-solo" class="module-filter-toolbar mt-6">
-            <div class="module-filter-toolbar-grid module-filter-toolbar-grid--wide">
-                <label class="module-filter-field">
-                    <span class="module-filter-label">Fazenda</span>
-                    <select name="farm_id" class="module-filter-select">
+        <div class="stock-filter-bar mt-6">
+            <form method="get" action="/analise-solo" class="stock-filter-grid">
+                <div class="stock-filter-fields-row soil-filter-fields-row">
+                <label class="stock-filter-field {% if filters.farm_id %}is-filtered{% endif %}">
+                    <span class="mb-2 block text-xs font-semibold uppercase tracking-[0.28em] text-slate-400">Fazenda</span>
+                    <select name="farm_id" class="w-full rounded-2xl border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700">
                         <option value="">Todas</option>
                         {% for farm in farms %}
                         <option value="{{ farm.id }}" {% if filters.farm_id == farm.id %}selected{% endif %}>{{ farm.name }}</option>
                         {% endfor %}
                     </select>
                 </label>
-                <label class="module-filter-field">
-                    <span class="module-filter-label">Setor</span>
-                    <select name="plot_id" class="module-filter-select">
+                <label class="stock-filter-field {% if filters.plot_id %}is-filtered{% endif %}">
+                    <span class="mb-2 block text-xs font-semibold uppercase tracking-[0.28em] text-slate-400">Setor</span>
+                    <select name="plot_id" class="w-full rounded-2xl border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700">
                         <option value="">Todos</option>
                         {% for plot in plots %}
                         <option value="{{ plot.id }}" {% if filters.plot_id == plot.id %}selected{% endif %}>{{ plot.name }}</option>
                         {% endfor %}
                     </select>
                 </label>
-                <label class="module-filter-field">
-                    <span class="module-filter-label">Comparar setor</span>
-                    <select name="compare_plot_id" class="module-filter-select">
+                <label class="stock-filter-field {% if filters.compare_plot_id %}is-filtered{% endif %}">
+                    <span class="mb-2 block text-xs font-semibold uppercase tracking-[0.28em] text-slate-400">Comparar setor</span>
+                    <select name="compare_plot_id" class="w-full rounded-2xl border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700">
                         <option value="">Usar filtro atual</option>
                         {% for plot in plots %}
                         <option value="{{ plot.id }}" {% if filters.compare_plot_id == plot.id %}selected{% endif %}>{{ plot.name }}</option>
                         {% endfor %}
                     </select>
                 </label>
-                <div class="module-filter-actions">
-                    <button class="stock-action-button stock-action-button-primary" type="submit">
+                <div class="stock-filter-field-actions flex flex-wrap items-end gap-3">
+                    <button class="rounded-xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white hover:bg-slate-800" type="submit">
                         <span class="stock-action-button-label">Aplicar</span>
                     </button>
-                    <a href="/analise-solo" class="stock-action-button">
+                    <a href="/analise-solo" class="rounded-xl bg-white px-4 py-3 text-sm font-semibold text-slate-700 ring-1 ring-slate-200 hover:bg-slate-100">
                         <span class="stock-action-button-label">Limpar</span>
                     </a>
                 </div>
-            </div>
-        </form>
+                </div>
+            </form>
+        </div>
 
         <div class="mt-6 space-y-4">
             {% for item in analyses %}

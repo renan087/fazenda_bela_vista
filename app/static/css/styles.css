@@ -3264,6 +3264,26 @@ body.dashboard-schedule-modal-open {
         white-space: nowrap;
         justify-content: flex-end;
     }
+
+    /* Análise de Solo: grid específico para 4 colunas (Fazenda, Setor, Comparação, Ações) */
+    .stock-filter-fields-row.soil-filter-fields-row {
+        grid-template-columns:
+            minmax(12rem, 1fr)
+            minmax(12rem, 1fr)
+            minmax(13rem, 1fr)
+            max-content;
+        column-gap: 0.85rem;
+        align-items: end;
+    }
+
+    .stock-filter-fields-row.soil-filter-fields-row > .stock-filter-field {
+        min-width: 0;
+    }
+
+    .stock-filter-fields-row.soil-filter-fields-row .stock-filter-field-actions {
+        white-space: nowrap;
+        justify-content: flex-end;
+    }
 }
 
 .module-filter-toolbar {
