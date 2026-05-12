@@ -551,6 +551,11 @@ def _resolve_input_catalog(
         if override_primary_unit and proposed != (existing.default_unit or "").strip():
             propagate_input_catalog_primary_unit(repository.db, catalog_id=existing.id, new_unit=proposed)
             existing.default_unit = proposed
+        elif proposed and proposed != (existing.default_unit or "").strip():
+            # Reparo de dados antigos: o fluxo da rota já envia a unidade
+            # primária resolvida pelo catálogo/primeira compra, não a unidade
+            # arbitrária digitada no formulário.
+            existing.default_unit = proposed
         repository.db.add(existing)
         repository.db.flush()
         return existing

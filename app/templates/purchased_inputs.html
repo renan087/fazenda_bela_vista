@@ -1025,6 +1025,26 @@
             });
         };
 
+        const categoryOptionsForType = (itemType) => {
+            const normalized = itemType || 'insumo_agricola';
+            return categoryOptionsByType[normalized] || categoryOptionsByType.insumo_agricola || [];
+        };
+
+        const renderFreeFormCategoryAndUnits = () => {
+            const selectedType = itemTypeField?.value || 'insumo_agricola';
+            const allowed = categoryOptionsForType(selectedType);
+            const currentCategory = normalizeCategory(categoryField?.value || '');
+            const nextCategory = [currentCategory, normalizeCategory(initialCategory)]
+                .find((value) => value && allowed.includes(value)) || allowed[0] || '';
+            renderCategoryOptions(allowed, nextCategory);
+
+            const profile = selectedCategoryProfile();
+            const preferredUnit = (packageUnitField?.value || '').trim() || profile.default_unit || (profile.units || [])[0] || 'un';
+            syncProfileLabels(profile);
+            populatePackageUnits(profile, preferredUnit, '');
+            syncPackageUnitLabels(profile);
+        };
+
         const populatePackageUnits = (profile, preferredUnit = '', catalogPrimary = '') => {
             if (!packageUnitField) return;
             const baseUnits = profile.units || ['un'];
@@ -1074,10 +1094,7 @@
                 if (packageUnitOverrideInput) packageUnitOverrideInput.value = '';
                 setIdentityLocked(false);
                 setPackageUnitLocked(false);
-                const profile = selectedCategoryProfile();
-                syncProfileLabels(profile);
-                populatePackageUnits(profile, packageUnitField?.value || '', '');
-                syncPackageUnitLabels(profile);
+                renderFreeFormCategoryAndUnits();
                 if (lowStockThresholdField) setLowStockLocked(false);
                 return;
             }
@@ -1088,7 +1105,7 @@
             }
             syncCatalogSuggestions();
 
-            const allowed = categoryOptionsByType[matchedType] || categoryOptionsByType.insumo_agricola || [];
+            const allowed = categoryOptionsForType(matchedType);
             const matchedCategory = normalizeCategory(match.category || '');
             const nextCategory = [matchedCategory, normalizeCategory(initialCategory)]
                 .find((value) => value && allowed.includes(value)) || allowed[0] || '';
@@ -1193,11 +1210,14 @@
         });
         itemTypeField?.addEventListener('change', () => {
             packageUnitManuallyUnlocked = false;
+            syncCatalogSuggestions();
+            renderFreeFormCategoryAndUnits();
             applyCatalogIdentity(true);
         });
         categoryField?.addEventListener('change', () => {
             const profile = selectedCategoryProfile();
-            populatePackageUnits(profile, packageUnitField?.value || '', lockedCatalogPrimary);
+            const preferredUnit = lockedCatalogPrimary || (packageUnitField?.value || '').trim() || profile.default_unit || '';
+            populatePackageUnits(profile, preferredUnit, lockedCatalogPrimary);
             syncProfileLabels(profile);
             syncPackageUnitLabels(profile);
         });
@@ -1262,7 +1282,7 @@
         // Renderiza as categorias do tipo selecionado antes de sincronizar com o catálogo.
         if (categoryField && itemTypeField) {
             const initType = itemTypeField.value || 'insumo_agricola';
-            const initAllowed = categoryOptionsByType[initType] || categoryOptionsByType.insumo_agricola || [];
+            const initAllowed = categoryOptionsForType(initType);
             const initNext = [normalizeCategory(initialCategory)]
                 .find((value) => value && initAllowed.includes(value)) || initAllowed[0] || '';
             renderCategoryOptions(initAllowed, initNext);

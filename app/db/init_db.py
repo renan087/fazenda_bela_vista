@@ -950,7 +950,7 @@ def _sync_schema() -> None:
             text(
                 """
                 UPDATE input_catalog catalog
-                SET default_unit = latest.package_unit
+                SET default_unit = first_entry.package_unit
                 FROM (
                     SELECT DISTINCT ON (entry.input_id)
                         entry.input_id,
@@ -961,12 +961,11 @@ def _sync_schema() -> None:
                       AND entry.package_unit <> ''
                     ORDER BY
                         entry.input_id,
-                        CASE WHEN COALESCE(entry.available_quantity, 0) > 0 THEN 0 ELSE 1 END,
-                        entry.purchase_date DESC NULLS LAST,
-                        entry.id DESC
-                ) latest
-                WHERE catalog.id = latest.input_id
-                  AND catalog.default_unit <> latest.package_unit
+                        entry.purchase_date ASC NULLS LAST,
+                        entry.id ASC
+                ) first_entry
+                WHERE catalog.id = first_entry.input_id
+                  AND catalog.default_unit <> first_entry.package_unit
                 """
             )
         )

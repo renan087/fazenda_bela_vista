@@ -3996,6 +3996,22 @@ def _purchase_input_all_units() -> list[str]:
     return units
 
 
+def _input_catalog_primary_unit_from_first_entry(repo: FarmRepository, catalog) -> str:
+    catalog_unit = _clean_text(getattr(catalog, "default_unit", None))
+    catalog_id = getattr(catalog, "id", None)
+    if not catalog_id:
+        return catalog_unit
+    entries = [
+        entry
+        for entry in repo.list_purchased_inputs()
+        if entry.input_id == catalog_id and _clean_text(entry.package_unit)
+    ]
+    if not entries:
+        return catalog_unit
+    entries.sort(key=lambda entry: (entry.purchase_date or date.max, entry.id or 0))
+    return _clean_text(entries[0].package_unit) or catalog_unit
+
+
 def _resolve_purchase_input_package_unit(
     category: str | None,
     package_unit: str | None,
@@ -4048,7 +4064,7 @@ def _validate_purchased_entry_package_unit(
             resolved_item_type,
             existing.category or category,
         )
-        existing_unit = _clean_text(existing.default_unit)
+        existing_unit = _input_catalog_primary_unit_from_first_entry(repo, existing)
         if override:
             raw_for_validation = posted_unit or existing_unit or ""
             validated = _resolve_purchase_input_package_unit(
@@ -9674,8 +9690,16 @@ def purchased_inputs_page(
     )
 
     def _catalog_form_package_unit(item) -> str:
-        # Unidade primaria de identidade do produto. O formulario deve travar
-        # nesta unidade; alteracoes so ocorrem via override explicito (lapis).
+        # Unidade primaria da identidade do produto. Usa o default_unit salvo
+        # e repara dados antigos olhando a primeira entrada vinculada.
+        entries = [
+            entry
+            for entry in (getattr(item, "purchase_entries", []) or [])
+            if entry.package_unit
+        ]
+        if entries:
+            entries.sort(key=lambda entry: (entry.purchase_date or date.max, entry.id or 0))
+            return (entries[0].package_unit or item.default_unit or "").strip() or "kg"
         return (item.default_unit or "").strip() or "kg"
 
     input_catalog_form_options = [
