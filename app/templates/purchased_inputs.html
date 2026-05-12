@@ -1147,14 +1147,20 @@
             renderCategoryOptions(allowed, nextCategory);
 
             const profile = selectedCategoryProfile();
-            const primary = (catalogMatch.packageUnit || '').trim();
+            let primary = (catalogMatch.packageUnit || '').trim();
+            if (!primary) {
+                primary = (form?.dataset?.editDefaultUnit || '').trim();
+            }
+            if (!primary) {
+                primary = (packageUnitField?.value || profile.default_unit || (profile.units || [])[0] || 'un').trim();
+            }
             syncProfileLabels(profile);
             populatePackageUnits(profile, primary, primary);
             setIdentityLocked(true);
 
             lockedCatalogPrimary = primary;
             if (packageUnitOverrideInput) packageUnitOverrideInput.value = '';
-            if (primary && packageUnitField) {
+            if (packageUnitField) {
                 if (![...packageUnitField.options].some((option) => option.value === primary)) {
                     const option = document.createElement('option');
                     option.value = primary;
@@ -1171,8 +1177,6 @@
                 } else {
                     setPackageUnitLocked(true, catalogMatch.value || purchasedNameInput?.value || '');
                 }
-            } else {
-                setPackageUnitLocked(false);
             }
             syncPackageUnitLabels(profile);
 

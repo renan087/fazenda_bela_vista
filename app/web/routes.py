@@ -9674,20 +9674,9 @@ def purchased_inputs_page(
     )
 
     def _catalog_form_package_unit(item) -> str:
-        scoped_entries = [
-            entry
-            for entry in (getattr(item, "purchase_entries", []) or [])
-            if effective_farm_id is None or entry.farm_id in (None, effective_farm_id)
-        ]
-        candidates = [
-            entry
-            for entry in scoped_entries
-            if entry.package_unit and float(entry.available_quantity or 0) > 0
-        ] or [entry for entry in scoped_entries if entry.package_unit]
-        if candidates:
-            candidates.sort(key=lambda entry: (entry.purchase_date or date.min, entry.id or 0), reverse=True)
-            return candidates[0].package_unit or item.default_unit or ""
-        return item.default_unit or ""
+        # Unidade primaria de identidade do produto. O formulario deve travar
+        # nesta unidade; alteracoes so ocorrem via override explicito (lapis).
+        return (item.default_unit or "").strip() or "kg"
 
     input_catalog_form_options = [
         {
