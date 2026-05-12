@@ -381,11 +381,7 @@
                     <input name="name" list="inputs-catalog-list" value="{{ edit_input.input_catalog.name if edit_input and edit_input.input_catalog else (edit_input.name if edit_input else '') }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required autocomplete="off" data-purchased-name-input placeholder="Ex.: Fertilizante, diesel ou defensivo">
                     <span class="mt-2 block text-xs text-slate-500">Digite para reutilizar um insumo já existente. Se não aparecer, o sistema cadastra um novo automaticamente.</span>
                 </label>
-                <datalist id="inputs-catalog-list">
-                    {% for input_item in purchased_input_catalog_options %}
-                    <option value="{{ input_item['value'] }}" data-item-type="{{ input_item['itemType'] }}" data-category="{{ input_item['category'] }}" data-package-unit="{{ input_item['packageUnit'] }}" data-low-stock-threshold="{{ input_item['lowStockThreshold'] }}"></option>
-                    {% endfor %}
-                </datalist>
+                <datalist id="inputs-catalog-list"></datalist>
                 <script type="application/json" id="purchased-input-catalog-data">{{ purchased_input_catalog_options|tojson }}</script>
                 <div class="grid gap-4 md:grid-cols-2">
                     <label><span class="mb-2 block text-sm font-medium" data-purchased-quantity-label>Quantidade comprada</span><input type="number" step="0.01" min="0" name="quantity_purchased" value="{{ edit_input.quantity_purchased if edit_input else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required data-quantity-purchased></label>
@@ -907,15 +903,20 @@
             return cleaned === 'Feritlizantes' ? 'Fertilizantes' : cleaned;
         };
 
+        const catalogMatchesCurrentContext = (item) => {
+            const selectedType = itemTypeField?.value || '';
+            const selectedCategory = normalizeCategory(categoryField?.value || '');
+            if (!selectedType || !selectedCategory) return false;
+            return item.itemType === selectedType && normalizeCategory(item.category) === selectedCategory;
+        };
+
+        const currentCatalogSuggestions = () => catalogOptionData.filter(catalogMatchesCurrentContext);
+
         const syncCatalogSuggestions = () => {
             if (!inputCatalogList || !itemTypeField) return;
-            const selectedType = itemTypeField.value || 'insumo_agricola';
             const seen = new Set();
             inputCatalogList.innerHTML = '';
-            catalogOptionData
-                .filter((item) => {
-                    return item.itemType === selectedType;
-                })
+            currentCatalogSuggestions()
                 .forEach((item) => {
                     const normalizedValue = normalizeSearchText(item.value);
                     if (!item.value || seen.has(normalizedValue)) return;
@@ -932,22 +933,21 @@
 
         const findCatalogMatch = () => {
             const typedName = normalizeSearchText(purchasedNameInput?.value || '');
-            const selectedType = itemTypeField?.value || 'insumo_agricola';
             const selectedCategory = normalizeCategory(categoryField?.value || '');
             if (!typedName) return null;
-            const byName = catalogOptionData.filter((item) => normalizeSearchText(item.value) === typedName);
+            const scopedCatalog = currentCatalogSuggestions();
+            const byName = scopedCatalog.filter((item) => normalizeSearchText(item.value) === typedName);
             if (!byName.length) {
                 if (typedName.length < 3) return null;
-                const prefixMatches = catalogOptionData.filter((item) => normalizeSearchText(item.value).startsWith(typedName));
+                const prefixMatches = scopedCatalog.filter((item) => normalizeSearchText(item.value).startsWith(typedName));
                 if (prefixMatches.length === 1) return prefixMatches[0];
                 return null;
             }
-            const byNameType = byName.filter((item) => item.itemType === selectedType);
-            if (selectedCategory && byNameType.length) {
-                const withCat = byNameType.find((item) => normalizeCategory(item.category) === selectedCategory);
+            if (selectedCategory && byName.length) {
+                const withCat = byName.find((item) => normalizeCategory(item.category) === selectedCategory);
                 if (withCat) return withCat;
             }
-            return byNameType[0] || byName[0] || null;
+            return byName[0] || null;
         };
 
         const setPackageUnitLocked = (locked, catalogName = '') => {
