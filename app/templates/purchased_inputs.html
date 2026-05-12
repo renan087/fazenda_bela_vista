@@ -925,6 +925,20 @@
         };
 
         const selectedCategoryProfile = () => categoryProfiles[categoryField?.value || ''] || categoryProfiles['Outros Itens'] || {};
+        const isLiquidPackageUnit = (unit) => ['l', 'ml'].includes(String(unit || '').trim().toLowerCase());
+
+        const syncPackageUnitLabels = (profile = selectedCategoryProfile()) => {
+            const selectedUnit = packageUnitField?.value || '';
+            if (isLiquidPackageUnit(selectedUnit)) {
+                if (packageSizeLabel) packageSizeLabel.textContent = 'Volume por embalagem';
+                if (packageUnitLabel) packageUnitLabel.textContent = 'Unidade do volume';
+                if (unitPriceLabel) unitPriceLabel.textContent = 'Valor por volume / embalagem (R$)';
+                return;
+            }
+            if (packageSizeLabel) packageSizeLabel.textContent = profile.package_size_label || 'Tamanho da embalagem';
+            if (packageUnitLabel) packageUnitLabel.textContent = profile.package_unit_label || 'Unidade da embalagem';
+            if (unitPriceLabel) unitPriceLabel.textContent = profile.unit_price_label || 'Valor por embalagem (R$)';
+        };
 
         const populatePackageUnits = (profile, preferredUnit = '') => {
             if (!packageUnitField) return;
@@ -947,13 +961,11 @@
             if (nameLabel) nameLabel.textContent = profile.name_label || 'Nome do insumo';
             if (purchasedNameInput) purchasedNameInput.placeholder = profile.name_placeholder || 'Ex.: Fertilizante, diesel ou defensivo';
             if (quantityLabel) quantityLabel.textContent = profile.quantity_label || 'Quantidade comprada';
-            if (packageSizeLabel) packageSizeLabel.textContent = profile.package_size_label || 'Tamanho da embalagem';
-            if (packageUnitLabel) packageUnitLabel.textContent = profile.package_unit_label || 'Unidade da embalagem';
-            if (unitPriceLabel) unitPriceLabel.textContent = profile.unit_price_label || 'Valor por embalagem (R$)';
             if (totalLabel) totalLabel.textContent = profile.total_label || 'Valor total calculado (R$)';
             if (lowStockLabel) lowStockLabel.textContent = profile.low_stock_label || 'Alerta de estoque baixo';
             if (lowStockThresholdField) lowStockThresholdField.placeholder = profile.low_stock_placeholder || '';
             populatePackageUnits(profile, preferredUnit);
+            syncPackageUnitLabels(profile);
             syncCatalogSuggestions();
             syncLowStockFromCatalog();
         };
@@ -987,6 +999,7 @@
         };
 
         [quantityField, sizeField, unitPriceField].forEach((field) => field?.addEventListener('input', syncTotals));
+        packageUnitField?.addEventListener('change', () => syncPackageUnitLabels());
         itemTypeField?.addEventListener('change', () => {
             syncItemType();
             syncCatalogSuggestions();
