@@ -9826,7 +9826,7 @@ async def update_purchased_input_action(
         return _redirect_for_request(request, "/insumos/comprados", edit_id=input_id, item_type=item_type)
     if saved_attachments:
         _flash(request, "success", f"Alteracoes salvas com sucesso. {saved_attachments} novo(s) anexo(s) adicionado(s).")
-        return _redirect_for_request(request, "/insumos/comprados", edit_id=input_id, item_type=item_type)
+        return _redirect_for_request(request, "/insumos/comprados", item_type=item_type)
     _flash(request, "success", "Insumo comprado atualizado com sucesso.")
     return _redirect_for_request(request, "/insumos/comprados", item_type=item_type)
 
