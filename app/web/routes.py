@@ -2257,11 +2257,14 @@ def _input_catalog_suggestions_for_purchase_form(
         else (set(context_farm_ids or []) if context_farm_ids is not None else None)
     )
     suggestions_by_id = {}
-    for entry in repo.list_purchased_inputs():
-        catalog = entry.input_catalog
-        if not catalog or not catalog.is_active or catalog.item_type not in allowed_item_types:
+    for catalog in repo.list_input_catalog():
+        if not catalog.is_active or catalog.item_type not in allowed_item_types:
             continue
-        if scoped_farm_ids is not None and entry.farm_id not in scoped_farm_ids and entry.farm_id is not None:
+        entries = list(getattr(catalog, "purchase_entries", []) or [])
+        if scoped_farm_ids is not None and not any(
+            entry.farm_id in scoped_farm_ids or entry.farm_id is None
+            for entry in entries
+        ):
             continue
         suggestions_by_id[catalog.id] = catalog
     return sorted(suggestions_by_id.values(), key=lambda item: (item.name or "").lower())

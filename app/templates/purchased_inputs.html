@@ -532,6 +532,7 @@
         const normalizeSearchText = (value) => (
             (value || '')
                 .toString()
+                .trim()
                 .normalize('NFD')
                 .replace(/[\u0300-\u036f]/g, '')
                 .toLowerCase()
@@ -908,15 +909,14 @@
             const selectedType = itemTypeField?.value || 'insumo_agricola';
             const selectedCategory = normalizeCategory(categoryField?.value || '');
             if (!typedName) return null;
-            const byNameType = (item) =>
-                normalizeSearchText(item.value) === typedName && item.itemType === selectedType;
-            if (selectedCategory) {
-                const withCat = catalogOptionData.find(
-                    (item) => byNameType(item) && normalizeCategory(item.category) === selectedCategory,
-                );
+            const byName = catalogOptionData.filter((item) => normalizeSearchText(item.value) === typedName);
+            if (!byName.length) return null;
+            const byNameType = byName.filter((item) => item.itemType === selectedType);
+            if (selectedCategory && byNameType.length) {
+                const withCat = byNameType.find((item) => normalizeCategory(item.category) === selectedCategory);
                 if (withCat) return withCat;
             }
-            return catalogOptionData.find((item) => byNameType(item)) || null;
+            return byNameType[0] || byName[0] || null;
         };
 
         const setPackageUnitLocked = (locked, catalogName = '') => {
@@ -1085,7 +1085,12 @@
         const syncCatalogBoundFields = (forceLowStock = false) => {
             const catalogMatch = findCatalogMatch();
             if (catalogMatch) {
+                if (itemTypeField && catalogMatch.itemType && itemTypeField.value !== catalogMatch.itemType) {
+                    itemTypeField.value = catalogMatch.itemType;
+                    syncCatalogSuggestions();
+                }
                 syncCategoryOptions(catalogMatch.category || '');
+                syncCategoryProfile(catalogMatch.packageUnit || '');
                 syncLowStockFromCatalog(forceLowStock);
                 syncPackageUnitFromCatalog();
                 return;
