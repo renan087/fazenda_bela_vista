@@ -2261,7 +2261,7 @@ def _input_catalog_suggestions_for_purchase_form(
         catalog = entry.input_catalog
         if not catalog or not catalog.is_active or catalog.item_type not in allowed_item_types:
             continue
-        if scoped_farm_ids is not None and entry.farm_id not in scoped_farm_ids:
+        if scoped_farm_ids is not None and entry.farm_id not in scoped_farm_ids and entry.farm_id is not None:
             continue
         suggestions_by_id[catalog.id] = catalog
     return sorted(suggestions_by_id.values(), key=lambda item: (item.name or "").lower())
