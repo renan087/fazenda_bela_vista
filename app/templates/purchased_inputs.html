@@ -364,7 +364,6 @@
                 <div class="grid gap-4 md:grid-cols-3">
                     <label>
                         <span class="mb-2 block text-sm font-medium">Tipo de item</span>
-                        <input type="hidden" name="item_type" value="" data-item-type-hidden disabled>
                         <select name="item_type" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" data-item-type-select>
                             <option value="insumo_agricola" {% if selected_item_type == 'insumo_agricola' or (edit_input and edit_input.input_catalog and edit_input.input_catalog.item_type == 'insumo_agricola') %}selected{% endif %}>Insumo agricola</option>
                             <option value="combustivel" {% if selected_item_type == 'combustivel' or (edit_input and edit_input.input_catalog and edit_input.input_catalog.item_type == 'combustivel') %}selected{% endif %}>Combustivel</option>
@@ -372,7 +371,6 @@
                     </label>
                     <label>
                         <span class="mb-2 block text-sm font-medium">Categoria</span>
-                        <input type="hidden" name="category" value="" data-category-hidden disabled>
                         <select name="category" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" data-category-select data-initial-category="{{ edit_input.input_catalog.category if edit_input and edit_input.input_catalog else '' }}" required>
                         </select>
                     </label>
@@ -810,8 +808,6 @@
         const packageUnitOverrideInput = form.querySelector('[data-package-unit-override]');
         const packageUnitEditButton = form.querySelector('[data-package-unit-edit]');
         const packageUnitLockHelp = form.querySelector('[data-package-unit-lock-help]');
-        const itemTypeHiddenField = form.querySelector('[data-item-type-hidden]');
-        const categoryHiddenField = form.querySelector('[data-category-hidden]');
         const lowStockThresholdField = form.querySelector('[data-purchased-low-stock-input]');
         const lowStockEditButton = form.querySelector('[data-purchased-low-stock-edit]');
         const initialCategory = categoryField?.dataset.initialCategory || '';
@@ -976,6 +972,40 @@
             }
         };
 
+        const syncPackageUnitFromCatalog = () => {
+            if (!packageUnitField || !packageUnitOverrideInput) return;
+            const catalogMatch = findCatalogMatch();
+            let primary = (catalogMatch?.packageUnit || '').trim();
+            if (!primary) {
+                primary = (form?.dataset?.editDefaultUnit || '').trim();
+            }
+            lockedCatalogPrimary = primary;
+            if (lockedCatalogPrimary) {
+                packageUnitOverrideInput.value = '';
+                if (![...packageUnitField.options].some((o) => o.value === lockedCatalogPrimary)) {
+                    const opt = document.createElement('option');
+                    opt.value = lockedCatalogPrimary;
+                    opt.textContent = lockedCatalogPrimary;
+                    packageUnitField.appendChild(opt);
+                }
+                packageUnitField.value = lockedCatalogPrimary;
+                if (packageUnitManuallyUnlocked) {
+                    setPackageUnitLocked(false);
+                    if (packageUnitLockHelp) {
+                        packageUnitLockHelp.classList.remove('hidden');
+                        packageUnitLockHelp.textContent = 'Unidade liberada. Ao salvar com unidade diferente, ela passará a ser a unidade primária deste insumo.';
+                    }
+                    return;
+                }
+                setPackageUnitLocked(true, catalogMatch?.value || purchasedNameInput?.value || '');
+            } else {
+                packageUnitOverrideInput.value = '';
+                packageUnitManuallyUnlocked = false;
+                setPackageUnitLocked(false);
+            }
+            syncPackageUnitLabels();
+        };
+
         const setLowStockLocked = (locked) => {
             if (!lowStockThresholdField) return;
             lowStockThresholdField.readOnly = locked;
@@ -984,6 +1014,20 @@
             lowStockThresholdField.classList.toggle('text-slate-500', locked);
             lowStockThresholdField.classList.toggle('bg-slate-50', !locked);
             lowStockEditButton?.classList.toggle('hidden', !locked);
+        };
+
+        const syncLowStockFromCatalog = (force = false) => {
+            if (!lowStockThresholdField) return;
+            const catalogMatch = findCatalogMatch();
+            const threshold = catalogMatch?.lowStockThreshold || '';
+            if (threshold) {
+                if (force || !String(lowStockThresholdField.value || '').trim()) {
+                    lowStockThresholdField.value = threshold;
+                }
+                setLowStockLocked(true);
+                return;
+            }
+            setLowStockLocked(false);
         };
 
         const selectedCategoryProfile = () => categoryProfiles[categoryField?.value || ''] || categoryProfiles['Outros Itens'] || {};
@@ -1025,26 +1069,6 @@
             });
         };
 
-        const categoryOptionsForType = (itemType) => {
-            const normalized = itemType || 'insumo_agricola';
-            return categoryOptionsByType[normalized] || categoryOptionsByType.insumo_agricola || [];
-        };
-
-        const renderFreeFormCategoryAndUnits = () => {
-            const selectedType = itemTypeField?.value || 'insumo_agricola';
-            const allowed = categoryOptionsForType(selectedType);
-            const currentCategory = normalizeCategory(categoryField?.value || '');
-            const nextCategory = [currentCategory, normalizeCategory(initialCategory)]
-                .find((value) => value && allowed.includes(value)) || allowed[0] || '';
-            renderCategoryOptions(allowed, nextCategory);
-
-            const profile = selectedCategoryProfile();
-            const preferredUnit = (packageUnitField?.value || '').trim() || profile.default_unit || (profile.units || [])[0] || 'un';
-            syncProfileLabels(profile);
-            populatePackageUnits(profile, preferredUnit, '');
-            syncPackageUnitLabels(profile);
-        };
-
         const populatePackageUnits = (profile, preferredUnit = '', catalogPrimary = '') => {
             if (!packageUnitField) return;
             const baseUnits = profile.units || ['un'];
@@ -1069,61 +1093,43 @@
             });
         };
 
-        const setIdentityLocked = (locked) => {
-            const apply = (select, hidden) => {
-                if (!(select instanceof HTMLSelectElement)) return;
-                select.disabled = locked;
-                select.classList.toggle('cursor-not-allowed', locked);
-                select.classList.toggle('bg-slate-100', locked);
-                select.classList.toggle('text-slate-500', locked);
-                select.classList.toggle('bg-slate-50', !locked);
-                if (hidden instanceof HTMLInputElement) {
-                    hidden.disabled = !locked;
-                    hidden.value = locked ? (select.value || '') : '';
-                }
-            };
-            apply(itemTypeField, itemTypeHiddenField);
-            apply(categoryField, categoryHiddenField);
+        const syncCategoryProfile = (preferredUnit = '') => {
+            const profile = selectedCategoryProfile();
+            const catalogMatch = findCatalogMatch();
+            let catPrimary = (catalogMatch?.packageUnit || '').trim();
+            if (!catPrimary) {
+                catPrimary = (form?.dataset?.editDefaultUnit || '').trim();
+            }
+            syncProfileLabels(profile);
+            populatePackageUnits(profile, preferredUnit || catPrimary, catPrimary);
+            syncPackageUnitLabels(profile);
+            syncCatalogSuggestions();
+            syncLowStockFromCatalog();
+            syncPackageUnitFromCatalog();
         };
 
-        const applyCatalogIdentity = (forceLowStock = false) => {
-            const match = findCatalogMatch();
-            if (!match) {
-                lockedCatalogPrimary = '';
-                packageUnitManuallyUnlocked = false;
-                if (packageUnitOverrideInput) packageUnitOverrideInput.value = '';
-                setIdentityLocked(false);
-                setPackageUnitLocked(false);
-                renderFreeFormCategoryAndUnits();
-                if (lowStockThresholdField) setLowStockLocked(false);
-                return;
-            }
-
-            const matchedType = (match.itemType || 'insumo_agricola').trim() || 'insumo_agricola';
+        const applyCatalogMatchToForm = (catalogMatch, forceLowStock = false) => {
+            if (!catalogMatch) return false;
+            const matchedType = catalogMatch.itemType || 'insumo_agricola';
             if (itemTypeField && itemTypeField.value !== matchedType) {
                 itemTypeField.value = matchedType;
             }
             syncCatalogSuggestions();
 
-            const allowed = categoryOptionsForType(matchedType);
-            const matchedCategory = normalizeCategory(match.category || '');
-            const nextCategory = [matchedCategory, normalizeCategory(initialCategory)]
+            const allowed = categoryOptionsByType[matchedType] || categoryOptionsByType.insumo_agricola || [];
+            const matchedCategory = normalizeCategory(catalogMatch.category || '');
+            const nextCategory = [matchedCategory, categoryField?.value, initialCategory].map(normalizeCategory)
                 .find((value) => value && allowed.includes(value)) || allowed[0] || '';
             renderCategoryOptions(allowed, nextCategory);
 
             const profile = selectedCategoryProfile();
-            const editDefault = (form?.dataset?.editDefaultUnit || '').trim();
-            const primary = (match.packageUnit || '').trim()
-                || editDefault
-                || (profile.default_unit || '').trim()
-                || (profile.units || ['un'])[0]
-                || 'un';
+            const primary = (catalogMatch.packageUnit || '').trim();
             syncProfileLabels(profile);
             populatePackageUnits(profile, primary, primary);
 
             lockedCatalogPrimary = primary;
             if (packageUnitOverrideInput) packageUnitOverrideInput.value = '';
-            if (packageUnitField) {
+            if (primary && packageUnitField) {
                 if (![...packageUnitField.options].some((option) => option.value === primary)) {
                     const option = document.createElement('option');
                     option.value = primary;
@@ -1131,20 +1137,21 @@
                     packageUnitField.appendChild(option);
                 }
                 packageUnitField.value = primary;
-            }
-            setIdentityLocked(true);
-            if (packageUnitManuallyUnlocked) {
-                setPackageUnitLocked(false);
-                if (packageUnitLockHelp) {
-                    packageUnitLockHelp.classList.remove('hidden');
-                    packageUnitLockHelp.textContent = 'Unidade liberada. Ao salvar com unidade diferente, ela passará a ser a unidade primária deste insumo.';
+                if (packageUnitManuallyUnlocked) {
+                    setPackageUnitLocked(false);
+                    if (packageUnitLockHelp) {
+                        packageUnitLockHelp.classList.remove('hidden');
+                        packageUnitLockHelp.textContent = 'Unidade liberada. Ao salvar com unidade diferente, ela passará a ser a unidade primária deste insumo.';
+                    }
+                } else {
+                    setPackageUnitLocked(true, catalogMatch.value || purchasedNameInput?.value || '');
                 }
             } else {
-                setPackageUnitLocked(true, match.value || purchasedNameInput?.value || '');
+                setPackageUnitLocked(false);
             }
             syncPackageUnitLabels(profile);
 
-            const threshold = match.lowStockThreshold;
+            const threshold = catalogMatch.lowStockThreshold;
             const hasThreshold = threshold !== null && threshold !== undefined && String(threshold).trim() !== '';
             if (lowStockThresholdField && hasThreshold) {
                 if (forceLowStock || !String(lowStockThresholdField.value || '').trim()) {
@@ -1154,6 +1161,28 @@
             } else {
                 setLowStockLocked(false);
             }
+            return true;
+        };
+
+        const syncCategoryOptions = (preferredCategory = '') => {
+            if (!categoryField || !itemTypeField) return;
+            const selectedType = itemTypeField.value || 'insumo_agricola';
+            const allowed = categoryOptionsByType[selectedType] || categoryOptionsByType.insumo_agricola || [];
+            const currentValue = categoryField.value;
+            const catalogMatch = findCatalogMatch();
+            const inferredCategory = normalizeCategory(catalogMatch?.category || '');
+            const nextValue = [preferredCategory, currentValue, inferredCategory, initialCategory].map(normalizeCategory)
+                .find((value) => value && allowed.includes(value)) || allowed[0] || '';
+
+            renderCategoryOptions(allowed, nextValue);
+            syncCategoryProfile(catalogMatch?.packageUnit || '');
+        };
+
+        const syncCatalogBoundFields = (forceLowStock = false) => {
+            const catalogMatch = findCatalogMatch();
+            if (applyCatalogMatchToForm(catalogMatch, forceLowStock)) return;
+            syncLowStockFromCatalog(forceLowStock);
+            syncPackageUnitFromCatalog();
         };
 
         [quantityField, sizeField, unitPriceField].forEach((field) => field?.addEventListener('input', syncTotals));
@@ -1183,17 +1212,6 @@
             packageUnitField?.focus();
         });
         form.addEventListener('submit', () => {
-            const syncHidden = (select, hidden) => {
-                if (!(select instanceof HTMLSelectElement) || !(hidden instanceof HTMLInputElement)) return;
-                if (select.disabled) {
-                    hidden.disabled = false;
-                    hidden.value = select.value || hidden.value || '';
-                } else {
-                    hidden.disabled = true;
-                }
-            };
-            syncHidden(itemTypeField, itemTypeHiddenField);
-            syncHidden(categoryField, categoryHiddenField);
             if (!packageUnitField || !packageUnitOverrideInput) return;
             if (packageUnitField.disabled) {
                 packageUnitOverrideInput.value = '';
@@ -1211,27 +1229,28 @@
         itemTypeField?.addEventListener('change', () => {
             packageUnitManuallyUnlocked = false;
             syncCatalogSuggestions();
-            renderFreeFormCategoryAndUnits();
-            applyCatalogIdentity(true);
+            syncCategoryOptions('');
         });
-        categoryField?.addEventListener('change', () => {
-            const profile = selectedCategoryProfile();
-            const preferredUnit = lockedCatalogPrimary || (packageUnitField?.value || '').trim() || profile.default_unit || '';
-            populatePackageUnits(profile, preferredUnit, lockedCatalogPrimary);
-            syncProfileLabels(profile);
-            syncPackageUnitLabels(profile);
-        });
+        categoryField?.addEventListener('change', () => syncCategoryProfile());
         lowStockEditButton?.addEventListener('click', () => {
             setLowStockLocked(false);
             lowStockThresholdField?.focus();
         });
         const syncPurchasedNameSelection = (forceLowStock = true) => {
             packageUnitManuallyUnlocked = false;
-            applyCatalogIdentity(forceLowStock);
+            syncCatalogBoundFields(forceLowStock);
         };
         purchasedNameInput?.addEventListener('input', () => syncPurchasedNameSelection(true));
-        purchasedNameInput?.addEventListener('change', () => syncPurchasedNameSelection(true));
-        purchasedNameInput?.addEventListener('blur', () => syncPurchasedNameSelection(true));
+        purchasedNameInput?.addEventListener('change', () => {
+            const catalogMatch = findCatalogMatch();
+            syncCategoryOptions(catalogMatch?.category || '');
+            syncPurchasedNameSelection(true);
+        });
+        purchasedNameInput?.addEventListener('blur', () => {
+            const catalogMatch = findCatalogMatch();
+            syncCategoryOptions(catalogMatch?.category || '');
+            syncPurchasedNameSelection(true);
+        });
         purchasedNameInput?.addEventListener('paste', () => {
             window.requestAnimationFrame(() => syncPurchasedNameSelection(true));
         });
@@ -1265,7 +1284,6 @@
             }
             setPackageUnitLocked(false);
             setLowStockLocked(false);
-            setIdentityLocked(false);
             form.querySelectorAll('[data-attachments-clear]').forEach((button) => button.click());
             form.querySelectorAll('input[type="file"]').forEach((input) => {
                 input.value = '';
@@ -1274,20 +1292,14 @@
             updateInstallmentSection();
             updatePurchasedCreditCardSection();
             syncCatalogSuggestions();
-            applyCatalogIdentity(true);
+            syncCategoryOptions(initialCategory);
+            syncCatalogBoundFields(true);
         };
         launchModal?.addEventListener('close', resetPurchasedLaunchForm);
         syncTotals();
         syncCatalogSuggestions();
-        // Renderiza as categorias do tipo selecionado antes de sincronizar com o catálogo.
-        if (categoryField && itemTypeField) {
-            const initType = itemTypeField.value || 'insumo_agricola';
-            const initAllowed = categoryOptionsForType(initType);
-            const initNext = [normalizeCategory(initialCategory)]
-                .find((value) => value && initAllowed.includes(value)) || initAllowed[0] || '';
-            renderCategoryOptions(initAllowed, initNext);
-        }
-        applyCatalogIdentity();
+        syncCategoryOptions(initialCategory);
+        syncCatalogBoundFields();
     })();
 
     // Filter bar: filter Insumo options based on Tipo de item selection
