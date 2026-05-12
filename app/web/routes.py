@@ -3976,15 +3976,29 @@ def _purchase_input_category_profile(category: str | None) -> dict:
     return PURCHASE_INPUT_CATEGORY_PROFILES.get(category or "") or PURCHASE_INPUT_CATEGORY_PROFILES["Outros Itens"]
 
 
+def _purchase_input_all_units() -> list[str]:
+    units: list[str] = []
+    for profile in PURCHASE_INPUT_CATEGORY_PROFILES.values():
+        for unit in profile.get("units") or []:
+            if unit not in units:
+                units.append(unit)
+    return units
+
+
 def _resolve_purchase_input_package_unit(
     category: str | None,
     package_unit: str | None,
     *,
     catalog_primary_unit: str | None = None,
+    allow_any_known_unit: bool = False,
 ) -> str:
     cleaned = _clean_text(package_unit)
     profile = _purchase_input_category_profile(category)
     allowed = list(profile.get("units") or [])
+    if allow_any_known_unit:
+        for unit in _purchase_input_all_units():
+            if unit not in allowed:
+                allowed.append(unit)
     extra = _clean_text(catalog_primary_unit)
     if extra and extra not in allowed:
         allowed.append(extra)
@@ -4001,23 +4015,29 @@ def _validate_purchased_entry_package_unit(
     name: str,
     package_unit: str,
     package_unit_override: str | None,
-) -> tuple[str, str]:
+) -> tuple[str, str, str]:
     """Valida unidade da embalagem; insumo já cadastrado usa a unidade primária do catálogo salvo, salvo override explícito."""
     resolved_category = _resolve_purchase_input_category(item_type, category)
     existing = repo.get_input_catalog_by_normalized_name(_normalize_input_name(name))
-    override = str(package_unit_override or "").strip().lower() in ("1", "true", "on", "yes")
+    posted_unit = _clean_text(package_unit)
+    existing_unit = _clean_text(existing.default_unit) if existing else None
+    explicit_override = str(package_unit_override or "").strip().lower() in ("1", "true", "on", "yes")
+    # Se a UI antiga/bugada permitiu alterar o select sem enviar a flag, trate a diferença
+    # como alteração intencional da unidade primária.
+    override = explicit_override or bool(existing and posted_unit and existing_unit and posted_unit != existing_unit)
     if existing and not override:
-        raw_for_validation = (_clean_text(existing.default_unit) or _clean_text(package_unit) or "").strip()
+        raw_for_validation = (existing_unit or posted_unit or "").strip()
     else:
-        raw_for_validation = (_clean_text(package_unit) or "").strip()
+        raw_for_validation = (posted_unit or "").strip()
     if not raw_for_validation:
         raise ValueError("Selecione uma unidade válida.")
     validated = _resolve_purchase_input_package_unit(
         resolved_category,
         raw_for_validation,
-        catalog_primary_unit=_clean_text(existing.default_unit) if existing else None,
+        catalog_primary_unit=existing_unit,
+        allow_any_known_unit=override,
     )
-    return resolved_category, validated
+    return resolved_category, validated, "1" if override else ""
 
 
 def _parse_finance_transaction_amount(raw_value: str | None) -> float:
@@ -9718,7 +9738,7 @@ async def create_purchased_input_action(
     if denied:
         return denied
     try:
-        resolved_category, resolved_package_unit = _validate_purchased_entry_package_unit(
+        resolved_category, resolved_package_unit, resolved_package_unit_override = _validate_purchased_entry_package_unit(
             repo,
             item_type=item_type,
             category=category,
@@ -9760,7 +9780,7 @@ async def create_purchased_input_action(
                 "quantity_purchased": quantity_purchased,
                 "package_size": package_size,
                 "package_unit": resolved_package_unit,
-                "package_unit_override": package_unit_override,
+                "package_unit_override": resolved_package_unit_override,
                 "unit_price": unit_price,
                 "finance_account_id": finance_account.id if finance_account else None,
                 "credit_card_id": finance_credit_card.id if finance_credit_card else None,
@@ -9830,7 +9850,7 @@ async def update_purchased_input_action(
         _flash(request, "error", "Este lancamento de entrada nao pertence ao contexto ativo.")
         return _redirect_for_request(request, "/insumos/comprados")
     try:
-        resolved_category, resolved_package_unit = _validate_purchased_entry_package_unit(
+        resolved_category, resolved_package_unit, resolved_package_unit_override = _validate_purchased_entry_package_unit(
             repo,
             item_type=item_type,
             category=category,
@@ -9873,7 +9893,7 @@ async def update_purchased_input_action(
                 "quantity_purchased": quantity_purchased,
                 "package_size": package_size,
                 "package_unit": resolved_package_unit,
-                "package_unit_override": package_unit_override,
+                "package_unit_override": resolved_package_unit_override,
                 "unit_price": unit_price,
                 "finance_account_id": finance_account.id if finance_account else None,
                 "credit_card_id": finance_credit_card.id if finance_credit_card else None,
