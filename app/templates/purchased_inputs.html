@@ -394,6 +394,7 @@
                     <label>
                         <span class="mb-2 block text-sm font-medium" data-purchased-package-unit-label>Unidade da embalagem</span>
                         <span class="relative block">
+                            <input type="hidden" name="package_unit" value="{{ edit_input.package_unit if edit_input else '' }}" data-package-unit-hidden disabled>
                             <select name="package_unit" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50 pr-12" data-package-unit>
                             {% for unit in ['kg', 'g', 't', 'L', 'ml', 'sacas', 'un'] %}
                             <option value="{{ unit }}" {% if edit_input and edit_input.package_unit == unit %}selected{% endif %}>{{ unit }}</option>
@@ -796,6 +797,7 @@
         const categoryField = form.querySelector('[data-category-select]');
         const purchasedNameInput = form.querySelector('[data-purchased-name-input]');
         const packageUnitField = form.querySelector('[data-package-unit]');
+        const packageUnitHiddenField = form.querySelector('[data-package-unit-hidden]');
         const packageUnitOverrideInput = form.querySelector('[data-package-unit-override]');
         const packageUnitEditButton = form.querySelector('[data-package-unit-edit]');
         const lowStockThresholdField = form.querySelector('[data-purchased-low-stock-input]');
@@ -916,12 +918,16 @@
 
         const setPackageUnitLocked = (locked) => {
             if (!packageUnitField) return;
+            packageUnitField.disabled = locked;
             packageUnitField.tabIndex = locked ? -1 : 0;
-            packageUnitField.classList.toggle('pointer-events-none', locked);
             packageUnitField.classList.toggle('cursor-not-allowed', locked);
             packageUnitField.classList.toggle('bg-slate-100', locked);
             packageUnitField.classList.toggle('text-slate-500', locked);
             packageUnitField.classList.toggle('bg-slate-50', !locked);
+            if (packageUnitHiddenField instanceof HTMLInputElement) {
+                packageUnitHiddenField.disabled = !locked;
+                packageUnitHiddenField.value = packageUnitField.value || lockedCatalogPrimary || '';
+            }
             packageUnitEditButton?.classList.toggle('hidden', !locked);
         };
 
@@ -1086,6 +1092,21 @@
         packageUnitEditButton?.addEventListener('click', () => {
             setPackageUnitLocked(false);
             packageUnitField?.focus();
+        });
+        form.addEventListener('submit', () => {
+            if (!packageUnitField || !packageUnitOverrideInput) return;
+            if (packageUnitField.disabled) {
+                packageUnitOverrideInput.value = '';
+                if (packageUnitHiddenField instanceof HTMLInputElement) {
+                    packageUnitHiddenField.disabled = false;
+                    packageUnitHiddenField.value = lockedCatalogPrimary || packageUnitField.value || '';
+                }
+                return;
+            }
+            if (lockedCatalogPrimary) {
+                const cur = (packageUnitField.value || '').trim();
+                packageUnitOverrideInput.value = cur && cur !== lockedCatalogPrimary ? '1' : '';
+            }
         });
         itemTypeField?.addEventListener('change', () => {
             syncCatalogSuggestions();

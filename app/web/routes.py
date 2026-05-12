@@ -4021,10 +4021,7 @@ def _validate_purchased_entry_package_unit(
     existing = repo.get_input_catalog_by_normalized_name(_normalize_input_name(name))
     posted_unit = _clean_text(package_unit)
     existing_unit = _clean_text(existing.default_unit) if existing else None
-    explicit_override = str(package_unit_override or "").strip().lower() in ("1", "true", "on", "yes")
-    # Se a UI antiga/bugada permitiu alterar o select sem enviar a flag, trate a diferença
-    # como alteração intencional da unidade primária.
-    override = explicit_override or bool(existing and posted_unit and existing_unit and posted_unit != existing_unit)
+    override = str(package_unit_override or "").strip().lower() in ("1", "true", "on", "yes")
     if existing and not override:
         raw_for_validation = (existing_unit or posted_unit or "").strip()
     else:
