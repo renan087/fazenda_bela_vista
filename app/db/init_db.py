@@ -949,6 +949,30 @@ def _sync_schema() -> None:
         connection.execute(
             text(
                 """
+                UPDATE input_catalog catalog
+                SET default_unit = latest.package_unit
+                FROM (
+                    SELECT DISTINCT ON (entry.input_id)
+                        entry.input_id,
+                        entry.package_unit
+                    FROM purchased_inputs entry
+                    WHERE entry.input_id IS NOT NULL
+                      AND entry.package_unit IS NOT NULL
+                      AND entry.package_unit <> ''
+                    ORDER BY
+                        entry.input_id,
+                        CASE WHEN COALESCE(entry.available_quantity, 0) > 0 THEN 0 ELSE 1 END,
+                        entry.purchase_date DESC NULLS LAST,
+                        entry.id DESC
+                ) latest
+                WHERE catalog.id = latest.input_id
+                  AND catalog.default_unit <> latest.package_unit
+                """
+            )
+        )
+        connection.execute(
+            text(
+                """
                 INSERT INTO input_recommendation_items (recommendation_id, purchased_input_id, unit, quantity)
                 SELECT id, purchased_input_id, COALESCE(unit, 'kg'), COALESCE(quantity_per_hectare, 0)
                 FROM input_recommendations recommendation

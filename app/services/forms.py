@@ -528,7 +528,7 @@ def _resolve_input_catalog(
         if item_type and existing.item_type != item_type:
             existing.item_type = existing.item_type or item_type
         if default_unit and existing.default_unit != default_unit:
-            existing.default_unit = existing.default_unit or default_unit
+            existing.default_unit = default_unit
         if category and existing.category != category:
             existing.category = category
         if low_stock_threshold is not None and low_stock_threshold > 0:

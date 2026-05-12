@@ -2097,6 +2097,23 @@ def _build_stock_context(
         for item in catalog_inputs
     }
 
+    def _stock_display_unit(item, entries: list) -> str:
+        candidates = [
+            entry
+            for entry in entries
+            if entry.package_unit and float(entry.available_quantity or 0) > 0
+        ] or [entry for entry in entries if entry.package_unit]
+        if not candidates:
+            return item.default_unit
+        candidates.sort(
+            key=lambda entry: (
+                entry.purchase_date or date.min,
+                entry.id or 0,
+            ),
+            reverse=True,
+        )
+        return candidates[0].package_unit or item.default_unit
+
     stock_catalog_rows = []
     extract_rows = []
     for item in catalog_inputs:
@@ -2104,13 +2121,15 @@ def _build_stock_context(
         related_outputs = [output for output in stock_outputs if output.input_id == item.id]
         if not related_entries:
             continue
+        display_unit = _stock_display_unit(item, related_entries)
+        input_stock[item.id]["unit"] = display_unit
         total_quantity = sum(float(entry.total_quantity or 0) for entry in related_entries)
         total_value = sum(float(entry.total_cost or 0) for entry in related_entries)
         row = {
             "id": item.id,
             "name": item.name,
             "item_type": item.item_type,
-            "unit": item.default_unit,
+            "unit": display_unit,
             "available_quantity": input_stock[item.id]["available"],
             "total_quantity": input_stock[item.id]["total"],
             "low_stock_threshold": float(item.low_stock_threshold or 0),
