@@ -540,10 +540,12 @@ def _resolve_input_catalog(
     proposed = (default_unit or "").strip() or "kg"
     existing = repository.get_input_catalog_by_normalized_name(normalized_name)
     if existing:
-        if item_type and existing.item_type != item_type:
-            existing.item_type = existing.item_type or item_type
-        if category and existing.category != category:
-            existing.category = category
+        # Identidade do produto: tipo de insumo e categoria são definidos
+        # no cadastro primário e não devem mudar por causa de uma nova compra.
+        if not (existing.item_type or "").strip():
+            existing.item_type = item_type or "insumo_agricola"
+        if not (existing.category or "").strip():
+            existing.category = (category or "Geral").strip() or "Geral"
         if low_stock_threshold is not None and low_stock_threshold > 0:
             existing.low_stock_threshold = low_stock_threshold
         if override_primary_unit and proposed != (existing.default_unit or "").strip():

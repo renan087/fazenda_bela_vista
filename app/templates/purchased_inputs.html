@@ -364,6 +364,7 @@
                 <div class="grid gap-4 md:grid-cols-3">
                     <label>
                         <span class="mb-2 block text-sm font-medium">Tipo de item</span>
+                        <input type="hidden" name="item_type" value="" data-item-type-hidden disabled>
                         <select name="item_type" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" data-item-type-select>
                             <option value="insumo_agricola" {% if selected_item_type == 'insumo_agricola' or (edit_input and edit_input.input_catalog and edit_input.input_catalog.item_type == 'insumo_agricola') %}selected{% endif %}>Insumo agricola</option>
                             <option value="combustivel" {% if selected_item_type == 'combustivel' or (edit_input and edit_input.input_catalog and edit_input.input_catalog.item_type == 'combustivel') %}selected{% endif %}>Combustivel</option>
@@ -371,6 +372,7 @@
                     </label>
                     <label>
                         <span class="mb-2 block text-sm font-medium">Categoria</span>
+                        <input type="hidden" name="category" value="" data-category-hidden disabled>
                         <select name="category" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" data-category-select data-initial-category="{{ edit_input.input_catalog.category if edit_input and edit_input.input_catalog else '' }}" required>
                         </select>
                     </label>
@@ -808,6 +810,8 @@
         const packageUnitOverrideInput = form.querySelector('[data-package-unit-override]');
         const packageUnitEditButton = form.querySelector('[data-package-unit-edit]');
         const packageUnitLockHelp = form.querySelector('[data-package-unit-lock-help]');
+        const itemTypeHiddenField = form.querySelector('[data-item-type-hidden]');
+        const categoryHiddenField = form.querySelector('[data-category-hidden]');
         const lowStockThresholdField = form.querySelector('[data-purchased-low-stock-input]');
         const lowStockEditButton = form.querySelector('[data-purchased-low-stock-edit]');
         const initialCategory = categoryField?.dataset.initialCategory || '';
@@ -1108,8 +1112,28 @@
             syncPackageUnitFromCatalog();
         };
 
+        const setIdentityLocked = (locked) => {
+            const apply = (select, hidden) => {
+                if (!(select instanceof HTMLSelectElement)) return;
+                select.disabled = locked;
+                select.classList.toggle('cursor-not-allowed', locked);
+                select.classList.toggle('bg-slate-100', locked);
+                select.classList.toggle('text-slate-500', locked);
+                select.classList.toggle('bg-slate-50', !locked);
+                if (hidden instanceof HTMLInputElement) {
+                    hidden.disabled = !locked;
+                    hidden.value = locked ? (select.value || '') : '';
+                }
+            };
+            apply(itemTypeField, itemTypeHiddenField);
+            apply(categoryField, categoryHiddenField);
+        };
+
         const applyCatalogMatchToForm = (catalogMatch, forceLowStock = false) => {
-            if (!catalogMatch) return false;
+            if (!catalogMatch) {
+                setIdentityLocked(false);
+                return false;
+            }
             const matchedType = catalogMatch.itemType || 'insumo_agricola';
             if (itemTypeField && itemTypeField.value !== matchedType) {
                 itemTypeField.value = matchedType;
@@ -1126,6 +1150,7 @@
             const primary = (catalogMatch.packageUnit || '').trim();
             syncProfileLabels(profile);
             populatePackageUnits(profile, primary, primary);
+            setIdentityLocked(true);
 
             lockedCatalogPrimary = primary;
             if (packageUnitOverrideInput) packageUnitOverrideInput.value = '';
@@ -1181,6 +1206,7 @@
         const syncCatalogBoundFields = (forceLowStock = false) => {
             const catalogMatch = findCatalogMatch();
             if (applyCatalogMatchToForm(catalogMatch, forceLowStock)) return;
+            setIdentityLocked(false);
             syncLowStockFromCatalog(forceLowStock);
             syncPackageUnitFromCatalog();
         };
@@ -1212,6 +1238,17 @@
             packageUnitField?.focus();
         });
         form.addEventListener('submit', () => {
+            const syncHidden = (select, hidden) => {
+                if (!(select instanceof HTMLSelectElement) || !(hidden instanceof HTMLInputElement)) return;
+                if (select.disabled) {
+                    hidden.disabled = false;
+                    hidden.value = select.value || hidden.value || '';
+                } else {
+                    hidden.disabled = true;
+                }
+            };
+            syncHidden(itemTypeField, itemTypeHiddenField);
+            syncHidden(categoryField, categoryHiddenField);
             if (!packageUnitField || !packageUnitOverrideInput) return;
             if (packageUnitField.disabled) {
                 packageUnitOverrideInput.value = '';
@@ -1284,6 +1321,7 @@
             }
             setPackageUnitLocked(false);
             setLowStockLocked(false);
+            setIdentityLocked(false);
             form.querySelectorAll('[data-attachments-clear]').forEach((button) => button.click());
             form.querySelectorAll('input[type="file"]').forEach((input) => {
                 input.value = '';

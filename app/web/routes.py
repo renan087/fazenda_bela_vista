@@ -4026,26 +4026,56 @@ def _validate_purchased_entry_package_unit(
     name: str,
     package_unit: str,
     package_unit_override: str | None,
-) -> tuple[str, str, str]:
-    """Valida unidade da embalagem; insumo já cadastrado usa a unidade primária do catálogo salvo, salvo override explícito."""
-    resolved_category = _resolve_purchase_input_category(item_type, category)
+) -> tuple[str, str, str, str]:
+    """Resolve tipo de insumo, categoria e unidade da embalagem.
+
+    Quando o produto já existe no catálogo, o tipo de insumo, a categoria e a
+    unidade primária são SEMPRE puxados do cadastro original (identidade do
+    produto). A unidade só pode ser alterada quando o usuário pede o override
+    explícito (lápis ao lado do campo), caso em que o novo valor é validado e
+    aceito como nova unidade primária.
+
+    Retorna ``(item_type, category, package_unit, package_unit_override_flag)``.
+    """
+
     existing = repo.get_input_catalog_by_normalized_name(_normalize_input_name(name))
-    posted_unit = _clean_text(package_unit)
-    existing_unit = _clean_text(existing.default_unit) if existing else None
     override = str(package_unit_override or "").strip().lower() in ("1", "true", "on", "yes")
-    if existing and not override:
-        raw_for_validation = (existing_unit or posted_unit or "").strip()
-    else:
-        raw_for_validation = (posted_unit or "").strip()
-    if not raw_for_validation:
+    posted_unit = _clean_text(package_unit)
+
+    if existing:
+        resolved_item_type = (existing.item_type or item_type or "insumo_agricola").strip() or "insumo_agricola"
+        resolved_category = _resolve_purchase_input_category(
+            resolved_item_type,
+            existing.category or category,
+        )
+        existing_unit = _clean_text(existing.default_unit)
+        if override:
+            raw_for_validation = posted_unit or existing_unit or ""
+            validated = _resolve_purchase_input_package_unit(
+                resolved_category,
+                raw_for_validation,
+                catalog_primary_unit=existing_unit,
+                allow_any_known_unit=True,
+            )
+            return resolved_item_type, resolved_category, validated, "1"
+        resolved_unit = existing_unit or _resolve_purchase_input_package_unit(
+            resolved_category,
+            posted_unit or "kg",
+            catalog_primary_unit=existing_unit,
+        )
+        return resolved_item_type, resolved_category, resolved_unit, ""
+
+    resolved_item_type = (item_type or "insumo_agricola").strip() or "insumo_agricola"
+    resolved_category = _resolve_purchase_input_category(resolved_item_type, category)
+    if not posted_unit:
         raise ValueError("Selecione uma unidade válida.")
     validated = _resolve_purchase_input_package_unit(
         resolved_category,
-        raw_for_validation,
-        catalog_primary_unit=existing_unit,
-        allow_any_known_unit=override,
+        posted_unit,
+        catalog_primary_unit=None,
+        allow_any_known_unit=False,
     )
-    return resolved_category, validated, "1" if override else ""
+    return resolved_item_type, resolved_category, validated, ""
 
 
 def _parse_finance_transaction_amount(raw_value: str | None) -> float:
@@ -9775,7 +9805,12 @@ async def create_purchased_input_action(
     if denied:
         return denied
     try:
-        resolved_category, resolved_package_unit, resolved_package_unit_override = _validate_purchased_entry_package_unit(
+        (
+            resolved_item_type,
+            resolved_category,
+            resolved_package_unit,
+            resolved_package_unit_override,
+        ) = _validate_purchased_entry_package_unit(
             repo,
             item_type=item_type,
             category=category,
@@ -9811,7 +9846,7 @@ async def create_purchased_input_action(
             repo,
             {
                 "farm_id": scope["active_farm_id"],
-                "item_type": item_type,
+                "item_type": resolved_item_type,
                 "category": resolved_category,
                 "name": name,
                 "quantity_purchased": quantity_purchased,
@@ -9887,7 +9922,12 @@ async def update_purchased_input_action(
         _flash(request, "error", "Este lancamento de entrada nao pertence ao contexto ativo.")
         return _redirect_for_request(request, "/insumos/comprados")
     try:
-        resolved_category, resolved_package_unit, resolved_package_unit_override = _validate_purchased_entry_package_unit(
+        (
+            resolved_item_type,
+            resolved_category,
+            resolved_package_unit,
+            resolved_package_unit_override,
+        ) = _validate_purchased_entry_package_unit(
             repo,
             item_type=item_type,
             category=category,
@@ -9924,7 +9964,7 @@ async def update_purchased_input_action(
             item,
             {
                 "farm_id": scope["active_farm_id"],
-                "item_type": item_type,
+                "item_type": resolved_item_type,
                 "category": resolved_category,
                 "name": name,
                 "quantity_purchased": quantity_purchased,
