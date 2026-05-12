@@ -2355,6 +2355,7 @@ def _float(value):
 
 def _normalize_fertilization_items(items: list[dict] | None, area_hectares: float | None) -> list[dict]:
     normalized: list[dict] = []
+    grouped: dict[tuple, dict] = {}
     for item in items or []:
         name = (item.get("name") or "").strip()
         unit = (item.get("unit") or "").strip()
@@ -2362,16 +2363,21 @@ def _normalize_fertilization_items(items: list[dict] | None, area_hectares: floa
         if not name or not unit or quantity in (None, ""):
             continue
         quantity_value = round(float(quantity), 2)
-        normalized.append(
-            {
-                "input_id": item.get("input_id"),
-                "purchased_input_id": item.get("purchased_input_id"),
-                "name": name,
-                "unit": unit,
-                "quantity_per_hectare": quantity_value,
-                "total_quantity": quantity_value,
-            }
-        )
+        key = (item.get("input_id"), item.get("purchased_input_id"), name.lower(), unit.lower())
+        if key in grouped:
+            grouped_item = grouped[key]
+            grouped_item["quantity_per_hectare"] = round(float(grouped_item["quantity_per_hectare"] or 0) + quantity_value, 2)
+            grouped_item["total_quantity"] = round(float(grouped_item["total_quantity"] or 0) + quantity_value, 2)
+            continue
+        grouped[key] = {
+            "input_id": item.get("input_id"),
+            "purchased_input_id": item.get("purchased_input_id"),
+            "name": name,
+            "unit": unit,
+            "quantity_per_hectare": quantity_value,
+            "total_quantity": quantity_value,
+        }
+        normalized.append(grouped[key])
     return normalized
 
 

@@ -1003,11 +1003,57 @@ def _sync_schema() -> None:
                   AND NOT EXISTS (
                     SELECT 1
                     FROM stock_outputs output
+                    WHERE output.reference_type = 'fertilization_item'
+                      AND output.reference_id = item.id
+                  )
+                  AND NOT EXISTS (
+                    SELECT 1
+                    FROM stock_outputs output
                     WHERE output.reference_type = 'fertilization_record'
                       AND output.reference_id = record.id
                       AND output.purchased_input_id = allocation.purchased_input_id
                       AND output.quantity = allocation.quantity_used
                   )
+                """
+            )
+        )
+        connection.execute(
+            text(
+                """
+                DELETE FROM stock_outputs legacy
+                USING fertilization_records record,
+                      fertilization_items item,
+                      stock_outputs modern
+                WHERE legacy.reference_type = 'fertilization_record'
+                  AND legacy.reference_id = record.id
+                  AND item.fertilization_record_id = record.id
+                  AND modern.reference_type = 'fertilization_item'
+                  AND modern.reference_id = item.id
+                  AND modern.input_id = legacy.input_id
+                  AND modern.unit = legacy.unit
+                  AND modern.movement_date = legacy.movement_date
+                """
+            )
+        )
+        connection.execute(
+            text(
+                """
+                DELETE FROM stock_outputs duplicate
+                USING stock_outputs keeper
+                WHERE duplicate.reference_type = 'fertilization_item'
+                  AND keeper.reference_type = 'fertilization_item'
+                  AND duplicate.reference_id = keeper.reference_id
+                  AND duplicate.id > keeper.id
+                """
+            )
+        )
+        connection.execute(
+            text(
+                """
+                CREATE UNIQUE INDEX IF NOT EXISTS ux_stock_outputs_fertilization_item_reference
+                ON stock_outputs (reference_id)
+                WHERE reference_type = 'fertilization_item'
+                  AND reference_id IS NOT NULL
                 """
             )
         )
