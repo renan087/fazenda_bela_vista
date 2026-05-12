@@ -407,6 +407,7 @@
                                 </svg>
                             </button>
                         </span>
+                        <span class="mt-2 hidden text-xs text-slate-500" data-package-unit-lock-help></span>
                     </label>
                     <label>
                         <span class="mb-2 block text-sm font-medium" data-purchased-unit-price-label>Valor por saco / embalagem (R$)</span>
@@ -800,6 +801,7 @@
         const packageUnitHiddenField = form.querySelector('[data-package-unit-hidden]');
         const packageUnitOverrideInput = form.querySelector('[data-package-unit-override]');
         const packageUnitEditButton = form.querySelector('[data-package-unit-edit]');
+        const packageUnitLockHelp = form.querySelector('[data-package-unit-lock-help]');
         const lowStockThresholdField = form.querySelector('[data-purchased-low-stock-input]');
         const lowStockEditButton = form.querySelector('[data-purchased-low-stock-edit]');
         const initialCategory = categoryField?.dataset.initialCategory || '';
@@ -815,6 +817,7 @@
         const lowStockLabel = form.querySelector('[data-purchased-low-stock-label]');
 
         let lockedCatalogPrimary = '';
+        let packageUnitManuallyUnlocked = false;
 
         const inputCatalogList = document.getElementById('inputs-catalog-list');
         const catalogOptionData = inputCatalogList
@@ -916,7 +919,7 @@
             return catalogOptionData.find((item) => byNameType(item)) || null;
         };
 
-        const setPackageUnitLocked = (locked) => {
+        const setPackageUnitLocked = (locked, catalogName = '') => {
             if (!packageUnitField) return;
             packageUnitField.disabled = locked;
             packageUnitField.tabIndex = locked ? -1 : 0;
@@ -924,11 +927,18 @@
             packageUnitField.classList.toggle('bg-slate-100', locked);
             packageUnitField.classList.toggle('text-slate-500', locked);
             packageUnitField.classList.toggle('bg-slate-50', !locked);
+            packageUnitField.classList.toggle('pr-12', locked);
             if (packageUnitHiddenField instanceof HTMLInputElement) {
                 packageUnitHiddenField.disabled = !locked;
                 packageUnitHiddenField.value = packageUnitField.value || lockedCatalogPrimary || '';
             }
             packageUnitEditButton?.classList.toggle('hidden', !locked);
+            if (packageUnitLockHelp) {
+                packageUnitLockHelp.classList.toggle('hidden', !locked);
+                packageUnitLockHelp.textContent = locked
+                    ? `Unidade travada em ${packageUnitField.value || lockedCatalogPrimary}${catalogName ? ` para ${catalogName}` : ''}. Use o lápis para alterar a unidade primária.`
+                    : '';
+            }
         };
 
         const syncPackageUnitFromCatalog = () => {
@@ -948,9 +958,18 @@
                     packageUnitField.appendChild(opt);
                 }
                 packageUnitField.value = lockedCatalogPrimary;
-                setPackageUnitLocked(true);
+                if (packageUnitManuallyUnlocked) {
+                    setPackageUnitLocked(false);
+                    if (packageUnitLockHelp) {
+                        packageUnitLockHelp.classList.remove('hidden');
+                        packageUnitLockHelp.textContent = 'Unidade liberada. Ao salvar com unidade diferente, ela passará a ser a unidade primária deste insumo.';
+                    }
+                    return;
+                }
+                setPackageUnitLocked(true, catalogMatch?.value || purchasedNameInput?.value || '');
             } else {
                 packageUnitOverrideInput.value = '';
+                packageUnitManuallyUnlocked = false;
                 setPackageUnitLocked(false);
             }
             syncPackageUnitLabels();
@@ -1090,7 +1109,15 @@
             }
         });
         packageUnitEditButton?.addEventListener('click', () => {
+            packageUnitManuallyUnlocked = true;
             setPackageUnitLocked(false);
+            if (packageUnitOverrideInput) {
+                packageUnitOverrideInput.value = '';
+            }
+            if (packageUnitLockHelp) {
+                packageUnitLockHelp.classList.remove('hidden');
+                packageUnitLockHelp.textContent = 'Unidade liberada. Ao salvar com unidade diferente, ela passará a ser a unidade primária deste insumo.';
+            }
             packageUnitField?.focus();
         });
         form.addEventListener('submit', () => {
@@ -1109,6 +1136,7 @@
             }
         });
         itemTypeField?.addEventListener('change', () => {
+            packageUnitManuallyUnlocked = false;
             syncCatalogSuggestions();
             syncCategoryOptions('');
         });
@@ -1117,7 +1145,10 @@
             setLowStockLocked(false);
             lowStockThresholdField?.focus();
         });
-        purchasedNameInput?.addEventListener('input', () => syncCatalogBoundFields(true));
+        purchasedNameInput?.addEventListener('input', () => {
+            packageUnitManuallyUnlocked = false;
+            syncCatalogBoundFields(true);
+        });
         purchasedNameInput?.addEventListener('change', () => {
             const catalogMatch = findCatalogMatch();
             syncCategoryOptions(catalogMatch?.category || '');
