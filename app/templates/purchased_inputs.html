@@ -332,6 +332,7 @@
         <div class="mt-6 max-h-[72vh] overflow-y-auto pr-1" data-modal-scroll>
             <form id="purchased-input-form" method="post" action="{% if edit_input %}/insumos/comprados/{{ edit_input.id }}/editar{% else %}/insumos/comprados{% endif %}" enctype="multipart/form-data" class="grid gap-4" data-purchased-input-form>
                 <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <input type="hidden" name="package_unit_override" value="" data-package-unit-override>
                 <div class="rounded-[1.5rem] border border-brand-100 bg-brand-50/50 p-4">
                     <div class="flex flex-wrap items-start justify-between gap-4">
                         <div class="min-w-0">
@@ -392,11 +393,20 @@
                 <div class="grid gap-4 md:grid-cols-2">
                     <label>
                         <span class="mb-2 block text-sm font-medium" data-purchased-package-unit-label>Unidade da embalagem</span>
-                        <select name="package_unit" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" data-package-unit>
+                        <span class="relative block">
+                            <select name="package_unit" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50 pr-12" data-package-unit>
                             {% for unit in ['kg', 'g', 't', 'L', 'ml', 'sacas', 'un'] %}
                             <option value="{{ unit }}" {% if edit_input and edit_input.package_unit == unit %}selected{% endif %}>{{ unit }}</option>
                             {% endfor %}
-                        </select>
+                            </select>
+                            <button type="button" class="absolute right-3 top-1/2 hidden -translate-y-1/2 rounded-xl p-2 text-slate-500 transition hover:bg-white hover:text-brand-700" title="Alterar unidade primária do insumo" aria-label="Alterar unidade primária do insumo" data-package-unit-edit>
+                                <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                                    <path d="M12 20h9"/>
+                                    <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/>
+                                </svg>
+                            </button>
+                        </span>
+                        <span class="mt-1.5 hidden block text-xs text-slate-500" data-package-unit-hint>Para insumos já cadastrados, a unidade segue a cadastrada na primeira compra. Use o lápis para mudar em todos os lotes e registros vinculados.</span>
                     </label>
                     <label>
                         <span class="mb-2 block text-sm font-medium" data-purchased-unit-price-label>Valor por saco / embalagem (R$)</span>
@@ -786,7 +796,10 @@
         const itemTypeField = form.querySelector('[data-item-type-select]');
         const categoryField = form.querySelector('[data-category-select]');
         const purchasedNameInput = form.querySelector('[data-purchased-name-input]');
-        const packageUnitField = form.querySelector('select[name="package_unit"]');
+        const packageUnitField = form.querySelector('[data-package-unit]');
+        const packageUnitOverrideInput = form.querySelector('[data-package-unit-override]');
+        const packageUnitEditButton = form.querySelector('[data-package-unit-edit]');
+        const packageUnitHint = form.querySelector('[data-package-unit-hint]');
         const lowStockThresholdField = form.querySelector('[data-purchased-low-stock-input]');
         const lowStockEditButton = form.querySelector('[data-purchased-low-stock-edit]');
         const initialCategory = categoryField?.dataset.initialCategory || '';
@@ -800,6 +813,41 @@
         const unitPriceLabel = form.querySelector('[data-purchased-unit-price-label]');
         const totalLabel = form.querySelector('[data-purchased-total-label]');
         const lowStockLabel = form.querySelector('[data-purchased-low-stock-label]');
+
+        let lockedCatalogPrimary = '';
+
+        const setPackageUnitLocked = (locked) => {
+            if (!packageUnitField) return;
+            packageUnitField.tabIndex = locked ? -1 : 0;
+            packageUnitField.classList.toggle('pointer-events-none', locked);
+            packageUnitField.classList.toggle('cursor-not-allowed', locked);
+            packageUnitField.classList.toggle('bg-slate-100', locked);
+            packageUnitField.classList.toggle('text-slate-500', locked);
+            packageUnitField.classList.toggle('bg-slate-50', !locked);
+            packageUnitEditButton?.classList.toggle('hidden', !locked);
+        };
+
+        const syncPackageUnitFromCatalog = () => {
+            if (!packageUnitField || !packageUnitOverrideInput) return;
+            const catalogMatch = findCatalogMatch();
+            lockedCatalogPrimary = (catalogMatch?.packageUnit || '').trim();
+            if (packageUnitHint) packageUnitHint.classList.toggle('hidden', !lockedCatalogPrimary);
+            if (lockedCatalogPrimary) {
+                packageUnitOverrideInput.value = '';
+                if (![...packageUnitField.options].some((o) => o.value === lockedCatalogPrimary)) {
+                    const opt = document.createElement('option');
+                    opt.value = lockedCatalogPrimary;
+                    opt.textContent = lockedCatalogPrimary;
+                    packageUnitField.appendChild(opt);
+                }
+                packageUnitField.value = lockedCatalogPrimary;
+                setPackageUnitLocked(true);
+            } else {
+                packageUnitOverrideInput.value = '';
+                setPackageUnitLocked(false);
+            }
+            syncPackageUnitLabels();
+        };
 
         const inputCatalogList = document.getElementById('inputs-catalog-list');
         const catalogOptionData = inputCatalogList
@@ -940,9 +988,12 @@
             if (unitPriceLabel) unitPriceLabel.textContent = profile.unit_price_label || 'Valor por embalagem (R$)';
         };
 
-        const populatePackageUnits = (profile, preferredUnit = '') => {
+        const populatePackageUnits = (profile, preferredUnit = '', catalogPrimary = '') => {
             if (!packageUnitField) return;
-            const units = profile.units || ['un'];
+            const baseUnits = profile.units || ['un'];
+            const units = [...baseUnits];
+            const cp = (catalogPrimary || '').trim();
+            if (cp && !units.includes(cp)) units.push(cp);
             const currentUnit = packageUnitField.value || '';
             const nextUnit = [preferredUnit, currentUnit, initialPackageUnit, profile.default_unit, units[0]]
                 .find((unit) => unit && units.includes(unit)) || units[0] || 'un';
@@ -958,16 +1009,19 @@
 
         const syncCategoryProfile = (preferredUnit = '') => {
             const profile = selectedCategoryProfile();
+            const catalogMatch = findCatalogMatch();
+            const catPrimary = (catalogMatch?.packageUnit || '').trim();
             if (nameLabel) nameLabel.textContent = profile.name_label || 'Nome do insumo';
             if (purchasedNameInput) purchasedNameInput.placeholder = profile.name_placeholder || 'Ex.: Fertilizante, diesel ou defensivo';
             if (quantityLabel) quantityLabel.textContent = profile.quantity_label || 'Quantidade comprada';
             if (totalLabel) totalLabel.textContent = profile.total_label || 'Valor total calculado (R$)';
             if (lowStockLabel) lowStockLabel.textContent = profile.low_stock_label || 'Alerta de estoque baixo';
             if (lowStockThresholdField) lowStockThresholdField.placeholder = profile.low_stock_placeholder || '';
-            populatePackageUnits(profile, preferredUnit);
+            populatePackageUnits(profile, preferredUnit || catPrimary, catPrimary);
             syncPackageUnitLabels(profile);
             syncCatalogSuggestions();
             syncLowStockFromCatalog();
+            syncPackageUnitFromCatalog();
         };
 
         const syncCategoryOptions = (preferredCategory = '') => {
@@ -999,7 +1053,23 @@
         };
 
         [quantityField, sizeField, unitPriceField].forEach((field) => field?.addEventListener('input', syncTotals));
-        packageUnitField?.addEventListener('change', () => syncPackageUnitLabels());
+        packageUnitField?.addEventListener('change', () => {
+            syncPackageUnitLabels();
+            if (!packageUnitOverrideInput || !packageUnitField) return;
+            if (!lockedCatalogPrimary) {
+                packageUnitOverrideInput.value = '';
+                return;
+            }
+            const unlocked = packageUnitField.tabIndex !== -1;
+            if (unlocked) {
+                const cur = (packageUnitField.value || '').trim();
+                packageUnitOverrideInput.value = cur !== lockedCatalogPrimary ? '1' : '';
+            }
+        });
+        packageUnitEditButton?.addEventListener('click', () => {
+            setPackageUnitLocked(false);
+            packageUnitField?.focus();
+        });
         itemTypeField?.addEventListener('change', () => {
             syncItemType();
             syncCatalogSuggestions();

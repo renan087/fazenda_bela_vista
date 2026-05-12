@@ -4,6 +4,8 @@ import unicodedata
 from datetime import date
 from decimal import Decimal
 
+from sqlalchemy import update
+
 from app.core.admin_access import is_super_admin_email
 from app.core.security import get_password_hash
 from app.core.timezone import today_in_app_timezone, app_now
@@ -514,6 +516,16 @@ def _normalize_input_name(value: str | None) -> str:
     return normalized.lower()
 
 
+def propagate_input_catalog_primary_unit(session, *, catalog_id: int, new_unit: str) -> None:
+    """Atualiza a unidade primária do catálogo em todos os lançamentos vinculados ao mesmo insumo (identidade do produto)."""
+    nu = (new_unit or "").strip() or "kg"
+    session.execute(update(PurchasedInput).where(PurchasedInput.input_id == catalog_id).values(package_unit=nu))
+    session.execute(update(StockOutput).where(StockOutput.input_id == catalog_id).values(unit=nu))
+    session.execute(update(FertilizationItem).where(FertilizationItem.input_id == catalog_id).values(unit=nu))
+    session.execute(update(FertilizationScheduleItem).where(FertilizationScheduleItem.input_id == catalog_id).values(unit=nu))
+    session.execute(update(InputRecommendationItem).where(InputRecommendationItem.input_id == catalog_id).values(unit=nu))
+
+
 def _resolve_input_catalog(
     repository: FarmRepository,
     name: str,
@@ -521,18 +533,22 @@ def _resolve_input_catalog(
     item_type: str = "insumo_agricola",
     category: str | None = None,
     low_stock_threshold: float | None = None,
+    *,
+    override_primary_unit: bool = False,
 ) -> InputCatalog:
     normalized_name = _normalize_input_name(name)
+    proposed = (default_unit or "").strip() or "kg"
     existing = repository.get_input_catalog_by_normalized_name(normalized_name)
     if existing:
         if item_type and existing.item_type != item_type:
             existing.item_type = existing.item_type or item_type
-        if default_unit and existing.default_unit != default_unit:
-            existing.default_unit = default_unit
         if category and existing.category != category:
             existing.category = category
         if low_stock_threshold is not None and low_stock_threshold > 0:
             existing.low_stock_threshold = low_stock_threshold
+        if override_primary_unit and proposed != (existing.default_unit or "").strip():
+            propagate_input_catalog_primary_unit(repository.db, catalog_id=existing.id, new_unit=proposed)
+            existing.default_unit = proposed
         repository.db.add(existing)
         repository.db.flush()
         return existing
@@ -541,7 +557,7 @@ def _resolve_input_catalog(
         normalized_name=normalized_name,
         item_type=item_type or "insumo_agricola",
         category=(category or "Geral").strip() or "Geral",
-        default_unit=default_unit or "kg",
+        default_unit=proposed,
         low_stock_threshold=low_stock_threshold if low_stock_threshold is not None else None,
         is_active=True,
     )
@@ -586,6 +602,7 @@ def create_purchased_input(repository: FarmRepository, form: dict) -> PurchasedI
     total_quantity = round(quantity_purchased * package_size, 2)
     low_stock_threshold = float(form.get("low_stock_threshold") or 0)
     item_type = form.get("item_type") or "insumo_agricola"
+    override_primary = str(form.get("package_unit_override") or "").strip().lower() in ("1", "true", "on", "yes")
     catalog = _resolve_input_catalog(
         repository,
         form["name"],
@@ -593,6 +610,7 @@ def create_purchased_input(repository: FarmRepository, form: dict) -> PurchasedI
         item_type,
         form.get("category"),
         low_stock_threshold if low_stock_threshold > 0 else None,
+        override_primary_unit=override_primary,
     )
 
     payment_condition, payment_method, installment_count, installment_frequency, first_installment_date = _normalize_finance_schedule_fields(form)
@@ -608,7 +626,7 @@ def create_purchased_input(repository: FarmRepository, form: dict) -> PurchasedI
         normalized_name=catalog.normalized_name,
         quantity_purchased=quantity_purchased,
         package_size=package_size,
-        package_unit=form["package_unit"],
+        package_unit=catalog.default_unit,
         unit_price=unit_price,
         purchase_date=date.fromisoformat(form["purchase_date"]) if form.get("purchase_date") else today_in_app_timezone(),
         total_quantity=total_quantity,
@@ -678,6 +696,7 @@ def update_purchased_input(repository: FarmRepository, item: PurchasedInput, for
     payment_condition, payment_method, installment_count, installment_frequency, first_installment_date = _normalize_finance_schedule_fields(form)
     credit_card = _resolve_credit_card(repository, form)
     should_create_financial_transaction = bool(form.get("finance_account_id") or credit_card)
+    override_primary = str(form.get("package_unit_override") or "").strip().lower() in ("1", "true", "on", "yes")
     catalog = _resolve_input_catalog(
         repository,
         form["name"],
@@ -685,6 +704,7 @@ def update_purchased_input(repository: FarmRepository, item: PurchasedInput, for
         item_type,
         form.get("category"),
         low_stock_threshold if low_stock_threshold > 0 else None,
+        override_primary_unit=override_primary,
     )
 
     updated_item = repository.update(
@@ -698,7 +718,7 @@ def update_purchased_input(repository: FarmRepository, item: PurchasedInput, for
             "normalized_name": catalog.normalized_name,
             "quantity_purchased": quantity_purchased,
             "package_size": package_size,
-            "package_unit": form["package_unit"],
+            "package_unit": catalog.default_unit,
             "unit_price": unit_price,
             "purchase_date": date.fromisoformat(form["purchase_date"]) if form.get("purchase_date") else item.purchase_date,
             "total_quantity": total_quantity,
