@@ -411,7 +411,7 @@ PURCHASE_INPUT_CATEGORY_OPTIONS = [
     "Adjuvante",
     "Combustíveis",
     "Corretivos de Solo",
-    "Feritlizantes",
+    "Fertilizantes",
     "Fungicida",
     "Herbicida",
     "Inseticida",
@@ -430,7 +430,7 @@ PURCHASE_INPUT_CATEGORY_OPTIONS_BY_TYPE = {
         "Acaricida",
         "Adjuvante",
         "Corretivos de Solo",
-        "Feritlizantes",
+        "Fertilizantes",
         "Fungicida",
         "Herbicida",
         "Inseticida",
@@ -479,7 +479,7 @@ PURCHASE_INPUT_CATEGORY_PROFILES = {
         "units": ["kg", "g", "t", "sacas"],
         "default_unit": "kg",
     },
-    "Feritlizantes": {
+    "Fertilizantes": {
         "name_label": "Nome do fertilizante",
         "name_placeholder": "Ex.: NPK 20-05-20, ureia",
         "quantity_label": "Quantidade comprada",
@@ -652,7 +652,7 @@ FINANCE_TRANSACTION_EXPENSE_CATEGORIES = [
     "Encargos Financeiros (Juros, Taxas e Multas)",
     "Encargos Sociais",
     "Energia Elétrica",
-    "Feritlizantes",
+    "Fertilizantes",
     "Financiamentos",
     "Fretes",
     "Fungicida",
@@ -3967,8 +3967,15 @@ def _purchase_input_category_options(item_type: str | None) -> list[str]:
     return PURCHASE_INPUT_CATEGORY_OPTIONS_BY_TYPE.get(normalized, PURCHASE_INPUT_CATEGORY_OPTIONS_BY_TYPE["insumo_agricola"])
 
 
-def _resolve_purchase_input_category(item_type: str | None, category: str | None) -> str:
+def _normalize_purchase_input_category_label(category: str | None) -> str:
     cleaned = _clean_text(category)
+    if cleaned == "Feritlizantes":
+        return "Fertilizantes"
+    return cleaned
+
+
+def _resolve_purchase_input_category(item_type: str | None, category: str | None) -> str:
+    cleaned = _normalize_purchase_input_category_label(category)
     allowed = _purchase_input_category_options(item_type)
     if cleaned not in allowed:
         raise ValueError("Selecione uma categoria válida para o tipo de item informado.")
@@ -3976,7 +3983,8 @@ def _resolve_purchase_input_category(item_type: str | None, category: str | None
 
 
 def _purchase_input_category_profile(category: str | None) -> dict:
-    return PURCHASE_INPUT_CATEGORY_PROFILES.get(category or "") or PURCHASE_INPUT_CATEGORY_PROFILES["Outros Itens"]
+    normalized = _normalize_purchase_input_category_label(category)
+    return PURCHASE_INPUT_CATEGORY_PROFILES.get(normalized or "") or PURCHASE_INPUT_CATEGORY_PROFILES["Outros Itens"]
 
 
 def _purchase_input_all_units() -> list[str]:
@@ -9634,6 +9642,17 @@ def purchased_inputs_page(
         farm_id=effective_farm_id,
         context_farm_ids=[farm.id for farm in scope.get("context_farms", [])],
     )
+    input_catalog_form_options = [
+        {
+            "id": item.id,
+            "value": item.name or "",
+            "itemType": item.item_type or "insumo_agricola",
+            "category": _normalize_purchase_input_category_label(item.category or ""),
+            "packageUnit": item.default_unit or "",
+            "lowStockThreshold": float(item.low_stock_threshold) if item.low_stock_threshold is not None else "",
+        }
+        for item in input_catalog_suggestions
+    ]
     purchase_entries = _sort_collection_desc(
         stock_context["purchase_entries"],
         lambda item: item.purchase_date,
@@ -9673,6 +9692,7 @@ def purchased_inputs_page(
             inputs_pagination=purchase_entries_pagination,
             inputs_catalog=stock_context["catalog_inputs"],
             inputs_catalog_all=input_catalog_suggestions,
+            purchased_input_catalog_options=input_catalog_form_options,
             selected_input_id=selected_input_id,
             finance_account_options=finance_accounts,
             finance_account_default=next((item for item in finance_accounts if item.is_default), None),

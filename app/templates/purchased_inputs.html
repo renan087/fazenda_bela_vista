@@ -386,6 +386,7 @@
                     <option value="{{ input_item.name }}" data-item-type="{{ input_item.item_type or 'insumo_agricola' }}" data-category="{{ input_item.category or '' }}" data-package-unit="{{ input_item.default_unit or '' }}" data-low-stock-threshold="{{ input_item.low_stock_threshold if input_item.low_stock_threshold is not none else '' }}"></option>
                     {% endfor %}
                 </datalist>
+                <script type="application/json" id="purchased-input-catalog-data">{{ purchased_input_catalog_options|tojson }}</script>
                 <div class="grid gap-4 md:grid-cols-2">
                     <label><span class="mb-2 block text-sm font-medium" data-purchased-quantity-label>Quantidade comprada</span><input type="number" step="0.01" min="0" name="quantity_purchased" value="{{ edit_input.quantity_purchased if edit_input else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required data-quantity-purchased></label>
                     <label><span class="mb-2 block text-sm font-medium" data-purchased-package-size-label>Tamanho do saco / embalagem</span><input type="number" step="0.01" min="0" name="package_size" value="{{ edit_input.package_size if edit_input else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required data-package-size></label>
@@ -536,6 +537,7 @@
                 .normalize('NFD')
                 .replace(/[\u0300-\u036f]/g, '')
                 .toLowerCase()
+                .replace(/\s+/g, ' ')
         );
         const getPurchasedCleanUrl = () => {
             const url = new URL(window.location.href);
@@ -821,8 +823,26 @@
         let packageUnitManuallyUnlocked = false;
 
         const inputCatalogList = document.getElementById('inputs-catalog-list');
-        const catalogOptionData = inputCatalogList
-            ? Array.from(inputCatalogList.querySelectorAll('option')).map((option) => ({
+        const catalogDataScript = document.getElementById('purchased-input-catalog-data');
+        const parsedCatalogData = (() => {
+            if (!catalogDataScript?.textContent) return [];
+            try {
+                const parsed = JSON.parse(catalogDataScript.textContent);
+                return Array.isArray(parsed) ? parsed : [];
+            } catch (_) {
+                return [];
+            }
+        })();
+        const catalogOptionData = parsedCatalogData.length
+            ? parsedCatalogData.map((item) => ({
+                value: item.value || '',
+                itemType: item.itemType || 'insumo_agricola',
+                category: item.category || '',
+                packageUnit: item.packageUnit || '',
+                lowStockThreshold: item.lowStockThreshold ?? '',
+            }))
+            : inputCatalogList
+                ? Array.from(inputCatalogList.querySelectorAll('option')).map((option) => ({
                 value: option.value,
                 itemType: option.dataset.itemType || 'insumo_agricola',
                 category: option.dataset.category || '',
@@ -879,7 +899,10 @@
         paymentMethodField?.addEventListener('change', updatePurchasedCreditCardSection);
         updatePurchasedCreditCardSection();
 
-        const normalizeCategory = (value) => (value || '').trim();
+        const normalizeCategory = (value) => {
+            const cleaned = (value || '').trim();
+            return cleaned === 'Feritlizantes' ? 'Fertilizantes' : cleaned;
+        };
 
         const syncCatalogSuggestions = () => {
             if (!inputCatalogList || !itemTypeField) return;
@@ -1065,8 +1088,8 @@
             const allowed = categoryOptionsByType[selectedType] || categoryOptionsByType.insumo_agricola || [];
             const currentValue = categoryField.value;
             const catalogMatch = findCatalogMatch();
-            const inferredCategory = catalogMatch?.category || '';
-            const nextValue = [preferredCategory, currentValue, inferredCategory, initialCategory]
+            const inferredCategory = normalizeCategory(catalogMatch?.category || '');
+            const nextValue = [preferredCategory, currentValue, inferredCategory, initialCategory].map(normalizeCategory)
                 .find((value) => value && allowed.includes(value)) || allowed[0] || '';
 
             categoryField.innerHTML = '';
