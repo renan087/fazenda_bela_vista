@@ -238,11 +238,11 @@
                                                 <p class="text-xs uppercase tracking-[0.2em] text-slate-400">Anexos</p>
                                                 <div class="mt-3 space-y-2">
                                                     {% for attachment in (item.attachments or [])|sort(attribute='id', reverse=True) %}
-                                                    <a href="/insumos/suprimentos/anexos/{{ attachment.id }}" target="_blank" class="flex items-center gap-2 rounded-xl bg-white px-3 py-2 text-sm font-medium text-brand-700 ring-1 ring-slate-200 transition hover:bg-brand-50 hover:text-brand-800">
+                                                    <a href="/insumos/suprimentos/anexos/{{ attachment.id }}" target="_blank" class="flex max-w-full min-w-0 items-center gap-2 rounded-xl bg-white px-3 py-2 text-sm font-medium text-brand-700 ring-1 ring-slate-200 transition hover:bg-brand-50 hover:text-brand-800" title="{{ attachment.filename }}">
                                                         <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                                             <path d="M21.44 11.05 12.25 20.24a6 6 0 0 1-8.49-8.49l9.2-9.19a4 4 0 1 1 5.65 5.66l-9.2 9.19a2 2 0 0 1-2.82-2.83l8.49-8.48"/>
                                                         </svg>
-                                                        <span class="truncate">{{ attachment.filename }}</span>
+                                                        <span class="min-w-0 truncate">{{ attachment.filename }}</span>
                                                     </a>
                                                     {% else %}
                                                     <p class="text-sm text-slate-500">Nenhum anexo vinculado.</p>
@@ -600,12 +600,12 @@
                 </div>
                 <div class="mt-4 space-y-3">
                     {% for attachment in (edit_supply.attachments or [])|sort(attribute='id', reverse=True) %}
-                    <div class="flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-white px-4 py-3">
-                        <div class="min-w-0">
-                            <a href="/insumos/suprimentos/anexos/{{ attachment.id }}" target="_blank" class="block truncate text-sm font-medium text-brand-700 hover:text-brand-500">{{ attachment.filename }}</a>
+                    <div class="flex max-w-full items-center justify-between gap-3 rounded-2xl bg-white px-4 py-3">
+                        <div class="min-w-0 flex-1">
+                            <a href="/insumos/suprimentos/anexos/{{ attachment.id }}" target="_blank" class="block truncate text-sm font-medium text-brand-700 hover:text-brand-500" title="{{ attachment.filename }}">{{ attachment.filename }}</a>
                             <p class="mt-1 text-xs text-slate-500">{{ attachment.content_type }}</p>
                         </div>
-                        <form method="post" action="/insumos/suprimentos/{{ edit_supply.id }}/anexos/{{ attachment.id }}/excluir" data-attachment-delete-form data-attachment-name="{{ attachment.filename }}">
+                        <form method="post" action="/insumos/suprimentos/{{ edit_supply.id }}/anexos/{{ attachment.id }}/excluir" class="shrink-0" data-attachment-delete-form data-attachment-name="{{ attachment.filename }}">
                             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                             <input type="hidden" name="redirect_to" value="{{ supplies_after_edit_close_url }}">
                             <button class="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-medium text-rose-700 hover:bg-rose-100">Excluir anexo</button>

@@ -168,9 +168,9 @@
                         {% if asset.attachments %}
                         <div class="rounded-2xl bg-slate-50 px-4 py-4">
                             <p class="text-xs uppercase tracking-[0.2em] text-slate-400">Anexos</p>
-                            <div class="mt-3 flex flex-wrap gap-2">
+                            <div class="mt-3 flex max-w-full flex-wrap gap-2">
                                 {% for attachment in asset.attachments %}
-                                <a href="/insumos/patrimonio/anexos/{{ attachment.id }}" target="_blank" class="rounded-xl bg-white px-3 py-2 text-sm font-medium text-slate-700 ring-1 ring-slate-200 hover:bg-slate-100">{{ attachment.filename }}</a>
+                                <a href="/insumos/patrimonio/anexos/{{ attachment.id }}" target="_blank" class="inline-flex max-w-full min-w-0 rounded-xl bg-white px-3 py-2 text-sm font-medium text-slate-700 ring-1 ring-slate-200 hover:bg-slate-100" title="{{ attachment.filename }}"><span class="truncate">{{ attachment.filename }}</span></a>
                                 {% endfor %}
                             </div>
                         </div>

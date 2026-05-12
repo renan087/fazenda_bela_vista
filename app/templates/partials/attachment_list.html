@@ -9,12 +9,12 @@
     </div>
     <div class="mt-4 space-y-3">
         {% for attachment in attachment_owner.attachments|sort(attribute='id', reverse=True) %}
-        <div class="flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-white px-4 py-3">
-            <div class="min-w-0">
-                <a href="{{ attachment_view_base }}/{{ attachment.id }}" target="_blank" class="block truncate text-sm font-medium text-brand-700 hover:text-brand-500">{{ attachment.filename }}</a>
+        <div class="flex max-w-full items-center justify-between gap-3 rounded-2xl bg-white px-4 py-3">
+            <div class="min-w-0 flex-1">
+                <a href="{{ attachment_view_base }}/{{ attachment.id }}" target="_blank" class="block truncate text-sm font-medium text-brand-700 hover:text-brand-500" title="{{ attachment.filename }}">{{ attachment.filename }}</a>
                 <p class="mt-1 text-xs text-slate-500">{{ attachment.content_type }}</p>
             </div>
-            <form method="post" action="{{ attachment_delete_base }}/{{ attachment.id }}/excluir" data-attachment-delete-form data-attachment-name="{{ attachment.filename }}">
+            <form method="post" action="{{ attachment_delete_base }}/{{ attachment.id }}/excluir" class="shrink-0" data-attachment-delete-form data-attachment-name="{{ attachment.filename }}">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                 <button class="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-medium text-rose-700 hover:bg-rose-100">Excluir anexo</button>
             </form>

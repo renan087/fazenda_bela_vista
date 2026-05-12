@@ -27,13 +27,14 @@
                 pendingList.innerHTML = '';
                 pendingFiles.forEach((file, index) => {
                     const row = document.createElement('div');
-                    row.className = 'flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-white px-4 py-3';
+                    row.className = 'flex max-w-full items-center justify-between gap-3 rounded-2xl bg-white px-4 py-3';
 
                     const content = document.createElement('div');
-                    content.className = 'min-w-0';
+                    content.className = 'min-w-0 flex-1';
 
                     const title = document.createElement('p');
                     title.className = 'truncate text-sm font-medium text-slate-900';
+                    title.title = file.name;
                     title.textContent = file.name;
 
                     const meta = document.createElement('p');
@@ -42,7 +43,7 @@
 
                     const removeButton = document.createElement('button');
                     removeButton.type = 'button';
-                    removeButton.className = 'rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-100';
+                    removeButton.className = 'shrink-0 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-100';
                     removeButton.textContent = 'Remover';
                     removeButton.addEventListener('click', () => {
                         pendingFiles = pendingFiles.filter((_, itemIndex) => itemIndex !== index);

@@ -4586,3 +4586,9 @@ input[type="number"] {
     -moz-appearance: textfield;
     appearance: textfield;
 }
+
+/* Uploads/anexos: nomes longos não devem alargar modais ou páginas. */
+input[type="file"] {
+    max-width: 100%;
+    min-width: 0;
+}
