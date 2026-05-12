@@ -9642,13 +9642,30 @@ def purchased_inputs_page(
         farm_id=effective_farm_id,
         context_farm_ids=[farm.id for farm in scope.get("context_farms", [])],
     )
+
+    def _catalog_form_package_unit(item) -> str:
+        scoped_entries = [
+            entry
+            for entry in (getattr(item, "purchase_entries", []) or [])
+            if effective_farm_id is None or entry.farm_id in (None, effective_farm_id)
+        ]
+        candidates = [
+            entry
+            for entry in scoped_entries
+            if entry.package_unit and float(entry.available_quantity or 0) > 0
+        ] or [entry for entry in scoped_entries if entry.package_unit]
+        if candidates:
+            candidates.sort(key=lambda entry: (entry.purchase_date or date.min, entry.id or 0), reverse=True)
+            return candidates[0].package_unit or item.default_unit or ""
+        return item.default_unit or ""
+
     input_catalog_form_options = [
         {
             "id": item.id,
             "value": item.name or "",
             "itemType": item.item_type or "insumo_agricola",
             "category": _normalize_purchase_input_category_label(item.category or ""),
-            "packageUnit": item.default_unit or "",
+            "packageUnit": _catalog_form_package_unit(item),
             "lowStockThreshold": float(item.low_stock_threshold) if item.low_stock_threshold is not None else "",
         }
         for item in input_catalog_suggestions

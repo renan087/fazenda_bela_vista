@@ -382,8 +382,8 @@
                     <span class="mt-2 block text-xs text-slate-500">Digite para reutilizar um insumo já existente. Se não aparecer, o sistema cadastra um novo automaticamente.</span>
                 </label>
                 <datalist id="inputs-catalog-list">
-                    {% for input_item in inputs_catalog_all %}
-                    <option value="{{ input_item.name }}" data-item-type="{{ input_item.item_type or 'insumo_agricola' }}" data-category="{{ input_item.category or '' }}" data-package-unit="{{ input_item.default_unit or '' }}" data-low-stock-threshold="{{ input_item.low_stock_threshold if input_item.low_stock_threshold is not none else '' }}"></option>
+                    {% for input_item in purchased_input_catalog_options %}
+                    <option value="{{ input_item['value'] }}" data-item-type="{{ input_item['itemType'] }}" data-category="{{ input_item['category'] }}" data-package-unit="{{ input_item['packageUnit'] }}" data-low-stock-threshold="{{ input_item['lowStockThreshold'] }}"></option>
                     {% endfor %}
                 </datalist>
                 <script type="application/json" id="purchased-input-catalog-data">{{ purchased_input_catalog_options|tojson }}</script>
