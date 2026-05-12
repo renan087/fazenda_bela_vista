@@ -1021,11 +1021,14 @@
             const catalogMatch = findCatalogMatch();
             const threshold = catalogMatch?.lowStockThreshold || '';
             if (threshold) {
-                if (force || !String(lowStockThresholdField.value || '').trim()) {
+                if (force || lowStockThresholdField.readOnly || !String(lowStockThresholdField.value || '').trim()) {
                     lowStockThresholdField.value = threshold;
                 }
                 setLowStockLocked(true);
                 return;
+            }
+            if (force || lowStockThresholdField.readOnly) {
+                lowStockThresholdField.value = '';
             }
             setLowStockLocked(false);
         };
