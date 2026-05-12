@@ -553,11 +553,13 @@
             window.history.replaceState({}, '', nextUrl);
             return true;
         };
+        let resetPurchasedLaunchForm = () => {};
 
         if (launchModal) {
             openLaunchButton?.addEventListener('click', () => {
                 clearPurchasedEditState();
                 if (purchasedRenderedInEditMode) return;
+                resetPurchasedLaunchForm();
                 launchModal.showModal();
             });
             closeLaunchButtons.forEach((button) => {
@@ -572,7 +574,8 @@
             });
             launchModal.addEventListener('cancel', (event) => {
                 event.preventDefault();
-                clearPurchasedEditState();
+                if (!clearPurchasedEditState()) return;
+                launchModal.close();
             });
             {% if edit_input %}
             launchModal.showModal();
@@ -933,7 +936,12 @@
             const selectedCategory = normalizeCategory(categoryField?.value || '');
             if (!typedName) return null;
             const byName = catalogOptionData.filter((item) => normalizeSearchText(item.value) === typedName);
-            if (!byName.length) return null;
+            if (!byName.length) {
+                if (typedName.length < 3) return null;
+                const prefixMatches = catalogOptionData.filter((item) => normalizeSearchText(item.value).startsWith(typedName));
+                if (prefixMatches.length === 1) return prefixMatches[0];
+                return null;
+            }
             const byNameType = byName.filter((item) => item.itemType === selectedType);
             if (selectedCategory && byNameType.length) {
                 const withCat = byNameType.find((item) => normalizeCategory(item.category) === selectedCategory);
@@ -1038,6 +1046,29 @@
             if (unitPriceLabel) unitPriceLabel.textContent = profile.unit_price_label || 'Valor por embalagem (R$)';
         };
 
+        const syncProfileLabels = (profile) => {
+            if (nameLabel) nameLabel.textContent = profile.name_label || 'Nome do insumo';
+            if (purchasedNameInput) purchasedNameInput.placeholder = profile.name_placeholder || 'Ex.: Fertilizante, diesel ou defensivo';
+            if (quantityLabel) quantityLabel.textContent = profile.quantity_label || 'Quantidade comprada';
+            if (totalLabel) totalLabel.textContent = profile.total_label || 'Valor total calculado (R$)';
+            if (lowStockLabel) lowStockLabel.textContent = profile.low_stock_label || 'Alerta de estoque baixo';
+            if (lowStockThresholdField) lowStockThresholdField.placeholder = profile.low_stock_placeholder || '';
+        };
+
+        const renderCategoryOptions = (allowed, nextValue) => {
+            if (!categoryField) return;
+            categoryField.innerHTML = '';
+            allowed.forEach((optionValue) => {
+                const option = document.createElement('option');
+                option.value = optionValue;
+                option.textContent = optionValue;
+                if (optionValue === nextValue) {
+                    option.selected = true;
+                }
+                categoryField.appendChild(option);
+            });
+        };
+
         const populatePackageUnits = (profile, preferredUnit = '', catalogPrimary = '') => {
             if (!packageUnitField) return;
             const baseUnits = profile.units || ['un'];
@@ -1069,17 +1100,68 @@
             if (!catPrimary) {
                 catPrimary = (form?.dataset?.editDefaultUnit || '').trim();
             }
-            if (nameLabel) nameLabel.textContent = profile.name_label || 'Nome do insumo';
-            if (purchasedNameInput) purchasedNameInput.placeholder = profile.name_placeholder || 'Ex.: Fertilizante, diesel ou defensivo';
-            if (quantityLabel) quantityLabel.textContent = profile.quantity_label || 'Quantidade comprada';
-            if (totalLabel) totalLabel.textContent = profile.total_label || 'Valor total calculado (R$)';
-            if (lowStockLabel) lowStockLabel.textContent = profile.low_stock_label || 'Alerta de estoque baixo';
-            if (lowStockThresholdField) lowStockThresholdField.placeholder = profile.low_stock_placeholder || '';
+            syncProfileLabels(profile);
             populatePackageUnits(profile, preferredUnit || catPrimary, catPrimary);
             syncPackageUnitLabels(profile);
             syncCatalogSuggestions();
             syncLowStockFromCatalog();
             syncPackageUnitFromCatalog();
+        };
+
+        const applyCatalogMatchToForm = (catalogMatch, forceLowStock = false) => {
+            if (!catalogMatch) return false;
+            const matchedType = catalogMatch.itemType || 'insumo_agricola';
+            if (itemTypeField && itemTypeField.value !== matchedType) {
+                itemTypeField.value = matchedType;
+            }
+            syncCatalogSuggestions();
+
+            const allowed = categoryOptionsByType[matchedType] || categoryOptionsByType.insumo_agricola || [];
+            const matchedCategory = normalizeCategory(catalogMatch.category || '');
+            const nextCategory = [matchedCategory, categoryField?.value, initialCategory].map(normalizeCategory)
+                .find((value) => value && allowed.includes(value)) || allowed[0] || '';
+            renderCategoryOptions(allowed, nextCategory);
+
+            const profile = selectedCategoryProfile();
+            const primary = (catalogMatch.packageUnit || '').trim();
+            syncProfileLabels(profile);
+            populatePackageUnits(profile, primary, primary);
+
+            lockedCatalogPrimary = primary;
+            if (packageUnitOverrideInput) packageUnitOverrideInput.value = '';
+            if (primary && packageUnitField) {
+                if (![...packageUnitField.options].some((option) => option.value === primary)) {
+                    const option = document.createElement('option');
+                    option.value = primary;
+                    option.textContent = primary;
+                    packageUnitField.appendChild(option);
+                }
+                packageUnitField.value = primary;
+                if (packageUnitManuallyUnlocked) {
+                    setPackageUnitLocked(false);
+                    if (packageUnitLockHelp) {
+                        packageUnitLockHelp.classList.remove('hidden');
+                        packageUnitLockHelp.textContent = 'Unidade liberada. Ao salvar com unidade diferente, ela passará a ser a unidade primária deste insumo.';
+                    }
+                } else {
+                    setPackageUnitLocked(true, catalogMatch.value || purchasedNameInput?.value || '');
+                }
+            } else {
+                setPackageUnitLocked(false);
+            }
+            syncPackageUnitLabels(profile);
+
+            const threshold = catalogMatch.lowStockThreshold;
+            const hasThreshold = threshold !== null && threshold !== undefined && String(threshold).trim() !== '';
+            if (lowStockThresholdField && hasThreshold) {
+                if (forceLowStock || !String(lowStockThresholdField.value || '').trim()) {
+                    lowStockThresholdField.value = threshold;
+                }
+                setLowStockLocked(true);
+            } else {
+                setLowStockLocked(false);
+            }
+            return true;
         };
 
         const syncCategoryOptions = (preferredCategory = '') => {
@@ -1092,32 +1174,13 @@
             const nextValue = [preferredCategory, currentValue, inferredCategory, initialCategory].map(normalizeCategory)
                 .find((value) => value && allowed.includes(value)) || allowed[0] || '';
 
-            categoryField.innerHTML = '';
-            allowed.forEach((optionValue) => {
-                const option = document.createElement('option');
-                option.value = optionValue;
-                option.textContent = optionValue;
-                if (optionValue === nextValue) {
-                    option.selected = true;
-                }
-                categoryField.appendChild(option);
-            });
+            renderCategoryOptions(allowed, nextValue);
             syncCategoryProfile(catalogMatch?.packageUnit || '');
         };
 
         const syncCatalogBoundFields = (forceLowStock = false) => {
             const catalogMatch = findCatalogMatch();
-            if (catalogMatch) {
-                if (itemTypeField && catalogMatch.itemType && itemTypeField.value !== catalogMatch.itemType) {
-                    itemTypeField.value = catalogMatch.itemType;
-                    syncCatalogSuggestions();
-                }
-                syncCategoryOptions(catalogMatch.category || '');
-                syncCategoryProfile(catalogMatch.packageUnit || '');
-                syncLowStockFromCatalog(forceLowStock);
-                syncPackageUnitFromCatalog();
-                return;
-            }
+            if (applyCatalogMatchToForm(catalogMatch, forceLowStock)) return;
             syncLowStockFromCatalog(forceLowStock);
             syncPackageUnitFromCatalog();
         };
@@ -1173,20 +1236,66 @@
             setLowStockLocked(false);
             lowStockThresholdField?.focus();
         });
-        purchasedNameInput?.addEventListener('input', () => {
+        const syncPurchasedNameSelection = (forceLowStock = true) => {
             packageUnitManuallyUnlocked = false;
-            syncCatalogBoundFields(true);
-        });
+            syncCatalogBoundFields(forceLowStock);
+        };
+        purchasedNameInput?.addEventListener('input', () => syncPurchasedNameSelection(true));
         purchasedNameInput?.addEventListener('change', () => {
             const catalogMatch = findCatalogMatch();
             syncCategoryOptions(catalogMatch?.category || '');
-            syncCatalogBoundFields(true);
+            syncPurchasedNameSelection(true);
         });
         purchasedNameInput?.addEventListener('blur', () => {
             const catalogMatch = findCatalogMatch();
             syncCategoryOptions(catalogMatch?.category || '');
-            syncCatalogBoundFields(true);
+            syncPurchasedNameSelection(true);
         });
+        purchasedNameInput?.addEventListener('paste', () => {
+            window.requestAnimationFrame(() => syncPurchasedNameSelection(true));
+        });
+        purchasedNameInput?.addEventListener('compositionend', () => syncPurchasedNameSelection(true));
+        let purchasedNameWatcher = null;
+        let lastPurchasedNameValue = purchasedNameInput?.value || '';
+        purchasedNameInput?.addEventListener('focus', () => {
+            if (purchasedNameWatcher !== null) return;
+            lastPurchasedNameValue = purchasedNameInput.value || '';
+            purchasedNameWatcher = window.setInterval(() => {
+                const currentValue = purchasedNameInput.value || '';
+                if (currentValue === lastPurchasedNameValue) return;
+                lastPurchasedNameValue = currentValue;
+                syncPurchasedNameSelection(true);
+            }, 120);
+        });
+        purchasedNameInput?.addEventListener('blur', () => {
+            if (purchasedNameWatcher === null) return;
+            window.clearInterval(purchasedNameWatcher);
+            purchasedNameWatcher = null;
+        });
+        resetPurchasedLaunchForm = () => {
+            if (purchasedRenderedInEditMode || !form) return;
+            form.reset();
+            packageUnitManuallyUnlocked = false;
+            lockedCatalogPrimary = '';
+            if (packageUnitOverrideInput) packageUnitOverrideInput.value = '';
+            if (packageUnitHiddenField instanceof HTMLInputElement) {
+                packageUnitHiddenField.disabled = true;
+                packageUnitHiddenField.value = '';
+            }
+            setPackageUnitLocked(false);
+            setLowStockLocked(false);
+            form.querySelectorAll('[data-attachments-clear]').forEach((button) => button.click());
+            form.querySelectorAll('input[type="file"]').forEach((input) => {
+                input.value = '';
+            });
+            syncTotals();
+            updateInstallmentSection();
+            updatePurchasedCreditCardSection();
+            syncCatalogSuggestions();
+            syncCategoryOptions(initialCategory);
+            syncCatalogBoundFields(true);
+        };
+        launchModal?.addEventListener('close', resetPurchasedLaunchForm);
         syncTotals();
         syncCatalogSuggestions();
         syncCategoryOptions(initialCategory);
