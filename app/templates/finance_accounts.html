@@ -1895,10 +1895,10 @@
     }) => {
         if (!(grid instanceof HTMLElement) || !endpoint) return;
 
-        const EDGE_WIDTH = 44;
-        const EDGE_HOVER_DELAY = 160;
-        const EDGE_COOLDOWN = 300;
+        const EDGE_HOVER_DELAY = 120;
+        const EDGE_COOLDOWN = 280;
         const DRAG_THRESHOLD = 5;
+        const SWAP_OVERLAP_RATIO = 0.5;
 
         const state = {
             pointerId: null,
@@ -1909,6 +1909,9 @@
             ghostY: 0,
             ghostWidth: 0,
             ghostHeight: 0,
+            ghostClampMinX: 0,
+            ghostClampMaxX: 0,
+            ghostClamped: false,
             lastClientX: 0,
             dragBounds: null,
             startX: 0,
@@ -1926,6 +1929,11 @@
         const items = () => Array.from(grid.querySelectorAll('[data-finance-sortable-item]'));
         const orderSignature = () => items().map((item) => item.dataset.financeSortId || '').join(',');
         const containerEl = () => (viewport instanceof HTMLElement ? viewport : grid);
+        const boundsEl = () => grid.closest('.finance-card-paged-shell') || containerEl();
+        const refreshDragBounds = () => {
+            const bounds = boundsEl().getBoundingClientRect();
+            state.dragBounds = { left: bounds.left, right: bounds.right, top: bounds.top, bottom: bounds.bottom };
+        };
         const pageSize = () => Math.max(
             1,
             Number(window.matchMedia('(max-width: 899px)').matches ? itemsPerPageMobile : itemsPerPageDesktop) || 1,
@@ -1985,11 +1993,14 @@
 
         const positionGhost = (clientX) => {
             if (!state.ghost) return;
-            const bounds = state.dragBounds || containerEl().getBoundingClientRect();
+            const bounds = state.dragBounds || boundsEl().getBoundingClientRect();
             let x = clientX - state.ghostOffsetX;
             const minX = Number.isFinite(bounds.left) ? bounds.left : 0;
             const maxX = (Number.isFinite(bounds.right) ? bounds.right : minX + state.ghostWidth) - state.ghostWidth;
             const canClamp = Number.isFinite(minX) && Number.isFinite(maxX) && maxX >= minX;
+            state.ghostClampMinX = minX;
+            state.ghostClampMaxX = maxX;
+            state.ghostClamped = canClamp;
             if (canClamp) {
                 x = Math.min(maxX, Math.max(minX, x));
             }
@@ -1997,31 +2008,45 @@
             state.ghost.style.transform = `translate3d(${x}px, ${state.ghostY}px, 0)`;
         };
 
-        const swapOnHover = (clientX, clientY) => {
+        const swapOnHover = (clientX) => {
             if (!state.item) return;
             const ghostLeft = state.ghostX;
-            const ghostRight = state.ghostX + state.ghostWidth;
-            const ghostCenterY = state.ghostY + state.ghostHeight / 2;
+            const ghostRight = ghostLeft + state.ghostWidth;
+            const ghostTop = state.ghostY;
+            const ghostBottom = ghostTop + state.ghostHeight;
+            const ghostCenterX = ghostLeft + state.ghostWidth / 2;
             let target = null;
             let targetRect = null;
-            let bestRatio = 0;
+            let bestOverlap = 0;
             for (const candidate of items()) {
                 if (candidate === state.item || candidate.classList.contains('hidden')) continue;
                 const rect = candidate.getBoundingClientRect();
                 if (rect.width <= 0 || rect.height <= 0) continue;
+                const overlapY = Math.max(0, Math.min(ghostBottom, rect.bottom) - Math.max(ghostTop, rect.top));
+                if (overlapY <= 0) continue;
                 const overlapX = Math.max(0, Math.min(ghostRight, rect.right) - Math.max(ghostLeft, rect.left));
-                const overlapRatio = overlapX / Math.min(state.ghostWidth || 1, rect.width || 1);
-                const centerY = rect.top + rect.height / 2;
-                const sameRow = Math.abs(ghostCenterY - centerY) <= Math.max(rect.height, state.ghostHeight) * 0.75;
-                if (!sameRow) continue;
-                if (overlapRatio >= 0.5 && overlapRatio > bestRatio) {
-                    bestRatio = overlapRatio;
+                if (overlapX <= 0) continue;
+                const overlapOnGhost = overlapX / (state.ghostWidth || 1);
+                const overlapOnTarget = overlapX / (rect.width || 1);
+                const passedHalf = overlapOnGhost >= SWAP_OVERLAP_RATIO || overlapOnTarget >= SWAP_OVERLAP_RATIO;
+                if (!passedHalf) continue;
+                if (overlapX > bestOverlap) {
+                    bestOverlap = overlapX;
                     target = candidate;
                     targetRect = rect;
                 }
             }
-            if (!(target instanceof HTMLElement) || !targetRect) return;
-            const before = ghostLeft + state.ghostWidth / 2 < targetRect.left + targetRect.width / 2;
+            if (!(target instanceof HTMLElement) || !targetRect) {
+                const probe = document.elementFromPoint(clientX, state.ghostY + state.ghostHeight / 2);
+                const hovered = probe instanceof Element ? probe.closest('[data-finance-sortable-item]') : null;
+                if (hovered instanceof HTMLElement && hovered !== state.item && !hovered.classList.contains('hidden')) {
+                    target = hovered;
+                    targetRect = hovered.getBoundingClientRect();
+                } else {
+                    return;
+                }
+            }
+            const before = ghostCenterX < targetRect.left + targetRect.width / 2;
             const anchor = before ? target : target.nextElementSibling;
             if (state.item === anchor) return;
             if (state.item.nextElementSibling === anchor) return;
@@ -2052,10 +2077,22 @@
             syncPagerItems();
             pager.setPage(targetPage, direction);
             window.requestAnimationFrame(() => {
+                refreshDragBounds();
                 if (state.item) {
                     state.item.classList.remove('hidden');
                 }
             });
+        };
+
+        const triggerPageJump = (direction) => {
+            if (!state.item || !pager || state.jumpCooldown) return;
+            const page = pager.getPage();
+            const total = pager.getTotalPages();
+            const targetPage = direction === 'next' ? page + 1 : page - 1;
+            if (targetPage < 0 || targetPage >= total) return;
+            moveIntoPage(targetPage, direction);
+            state.jumpCooldown = true;
+            window.setTimeout(() => { state.jumpCooldown = false; }, EDGE_COOLDOWN);
         };
 
         const maybeJumpPage = (clientX, clientY) => {
@@ -2065,8 +2102,8 @@
                 clearEdgeTimer();
                 return;
             }
-            const bounds = containerEl().getBoundingClientRect();
-            const insideVertical = clientY >= bounds.top - 16 && clientY <= bounds.bottom + 16;
+            const bounds = state.dragBounds || boundsEl().getBoundingClientRect();
+            const insideVertical = clientY >= bounds.top - 20 && clientY <= bounds.bottom + 20;
             if (!insideVertical) {
                 clearEdgeTimer();
                 return;
@@ -2074,16 +2111,22 @@
             const movingRight = clientX > state.lastClientX + 0.5;
             const movingLeft = clientX < state.lastClientX - 0.5;
             const ghostRight = state.ghostX + state.ghostWidth;
-            const onRight = clientX >= bounds.right - EDGE_WIDTH || (movingRight && ghostRight >= bounds.right - 1);
-            const onLeft = clientX <= bounds.left + EDGE_WIDTH || (movingLeft && state.ghostX <= bounds.left + 1);
+            const ghostPastRight = ghostRight >= bounds.right - 4;
+            const ghostPastLeft = state.ghostX <= bounds.left + 4;
+            const cursorPastRight = clientX >= bounds.right - 4;
+            const cursorPastLeft = clientX <= bounds.left + 4;
+            const stuckAtRight = state.ghostClamped && state.ghostX >= state.ghostClampMaxX - 1;
+            const stuckAtLeft = state.ghostClamped && state.ghostX <= state.ghostClampMinX + 1;
+            const onRight = ghostPastRight || cursorPastRight || (stuckAtRight && movingRight);
+            const onLeft = ghostPastLeft || cursorPastLeft || (stuckAtLeft && movingLeft);
             if (!onRight && !onLeft) {
                 clearEdgeTimer();
                 return;
             }
             if (state.jumpCooldown) return;
             const page = pager.getPage();
-            const wantNext = onRight && page < total - 1;
-            const wantPrev = onLeft && page > 0;
+            const wantNext = onRight && !onLeft && page < total - 1;
+            const wantPrev = onLeft && !onRight && page > 0;
             if (!wantNext && !wantPrev) {
                 clearEdgeTimer();
                 return;
@@ -2096,13 +2139,7 @@
                 state.edgeTimer = null;
                 state.edgeSide = null;
                 if (!state.item) return;
-                const currentPage = pager.getPage();
-                const direction = wantNext ? 'next' : 'prev';
-                const targetPage = wantNext ? currentPage + 1 : currentPage - 1;
-                if (targetPage < 0 || targetPage >= pager.getTotalPages()) return;
-                moveIntoPage(targetPage, direction);
-                state.jumpCooldown = true;
-                window.setTimeout(() => { state.jumpCooldown = false; }, EDGE_COOLDOWN);
+                triggerPageJump(wantNext ? 'next' : 'prev');
             }, EDGE_HOVER_DELAY);
         };
 
@@ -2163,7 +2200,7 @@
             if (!(item instanceof HTMLElement)) return;
             event.preventDefault();
             const rect = item.getBoundingClientRect();
-            const bounds = containerEl().getBoundingClientRect();
+            refreshDragBounds();
             state.pointerId = event.pointerId;
             state.item = item;
             state.startX = event.clientX;
@@ -2175,10 +2212,6 @@
             state.ghostY = rect.top;
             state.ghostWidth = rect.width;
             state.ghostHeight = rect.height;
-            state.dragBounds = {
-                left: bounds.left,
-                right: bounds.right,
-            };
 
             const { node } = buildGhost(item);
             state.ghost = node;
@@ -2201,7 +2234,7 @@
                 }
                 moveEvent.preventDefault();
                 positionGhost(moveEvent.clientX);
-                swapOnHover(moveEvent.clientX, moveEvent.clientY);
+                swapOnHover(moveEvent.clientX);
                 maybeJumpPage(moveEvent.clientX, moveEvent.clientY);
                 state.lastClientX = moveEvent.clientX;
             };
