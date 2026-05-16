@@ -1907,6 +1907,7 @@
             ghostOffsetX: 0,
             ghostY: 0,
             ghostWidth: 0,
+            dragBounds: null,
             startX: 0,
             startY: 0,
             moved: false,
@@ -1981,14 +1982,13 @@
 
         const positionGhost = (clientX) => {
             if (!state.ghost) return;
-            const bounds = containerEl().getBoundingClientRect();
+            const bounds = state.dragBounds || containerEl().getBoundingClientRect();
             let x = clientX - state.ghostOffsetX;
-            const minX = bounds.left;
-            const maxX = bounds.right - state.ghostWidth;
-            if (maxX >= minX) {
+            const minX = Number.isFinite(bounds.left) ? bounds.left : 0;
+            const maxX = (Number.isFinite(bounds.right) ? bounds.right : minX + state.ghostWidth) - state.ghostWidth;
+            const canClamp = Number.isFinite(minX) && Number.isFinite(maxX) && maxX >= minX;
+            if (canClamp) {
                 x = Math.min(maxX, Math.max(minX, x));
-            } else {
-                x = minX;
             }
             state.ghost.style.transform = `translate3d(${x}px, ${state.ghostY}px, 0)`;
         };
@@ -2087,6 +2087,7 @@
         const cleanup = () => {
             clearEdgeTimer();
             state.jumpCooldown = false;
+            state.dragBounds = null;
             if (state.ghost) {
                 state.ghost.remove();
                 state.ghost = null;
@@ -2140,6 +2141,7 @@
             if (!(item instanceof HTMLElement)) return;
             event.preventDefault();
             const rect = item.getBoundingClientRect();
+            const bounds = containerEl().getBoundingClientRect();
             state.pointerId = event.pointerId;
             state.item = item;
             state.startX = event.clientX;
@@ -2149,6 +2151,10 @@
             state.ghostOffsetX = event.clientX - rect.left;
             state.ghostY = rect.top;
             state.ghostWidth = rect.width;
+            state.dragBounds = {
+                left: bounds.left,
+                right: bounds.right,
+            };
 
             const { node } = buildGhost(item);
             state.ghost = node;
