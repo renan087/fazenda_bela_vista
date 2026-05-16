@@ -1895,48 +1895,44 @@
     }) => {
         if (!(grid instanceof HTMLElement) || !endpoint) return;
 
-        const syncPagerItems = () => {
-            if (!Array.isArray(pagerItems)) return;
-            const order = Array.from(grid.querySelectorAll('[data-finance-sortable-item]'));
-            pagerItems.length = 0;
-            order.forEach((item) => pagerItems.push(item));
-        };
+        const EDGE_WIDTH = 28;
+        const EDGE_HOVER_DELAY = 220;
+        const EDGE_COOLDOWN = 300;
+        const DRAG_THRESHOLD = 5;
 
         const state = {
-            activePointerId: null,
-            draggedItem: null,
+            pointerId: null,
+            item: null,
             ghost: null,
             ghostOffsetX: 0,
-            ghostFixedY: 0,
+            ghostY: 0,
+            ghostWidth: 0,
             startX: 0,
             startY: 0,
             moved: false,
             initialOrder: '',
-            rafId: null,
-            pendingX: 0,
-            pendingY: 0,
-            pointerMoveHandler: null,
-            pointerUpHandler: null,
-            pointerCancelHandler: null,
-            originalUserSelect: '',
             edgeTimer: null,
             edgeSide: null,
-            edgeJumpCooldown: false,
-            edgeAwaitRelease: false,
+            jumpCooldown: false,
+            onMove: null,
+            onUp: null,
+            onCancel: null,
         };
-
-        const EDGE_THICKNESS = 12;
-        const EDGE_HOVER_DELAY = 320;
-        const EDGE_COOLDOWN = 220;
-        const DRAG_START_THRESHOLD = 8;
 
         const items = () => Array.from(grid.querySelectorAll('[data-finance-sortable-item]'));
         const orderSignature = () => items().map((item) => item.dataset.financeSortId || '').join(',');
-        const isMobile = () => window.matchMedia('(max-width: 899px)').matches;
-        const currentItemsPerPage = () => Math.max(
+        const containerEl = () => (viewport instanceof HTMLElement ? viewport : grid);
+        const pageSize = () => Math.max(
             1,
-            Number(isMobile() ? itemsPerPageMobile : itemsPerPageDesktop) || 1,
+            Number(window.matchMedia('(max-width: 899px)').matches ? itemsPerPageMobile : itemsPerPageDesktop) || 1,
         );
+
+        const syncPagerItems = () => {
+            if (!Array.isArray(pagerItems)) return;
+            const order = items();
+            pagerItems.length = 0;
+            order.forEach((item) => pagerItems.push(item));
+        };
 
         const saveOrder = async () => {
             const orderedIds = items()
@@ -1948,14 +1944,8 @@
             try {
                 const response = await fetch(endpoint, {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Accept': 'application/json',
-                    },
-                    body: JSON.stringify({
-                        csrf_token: FINANCE_CSRF_TOKEN,
-                        ordered_ids: orderedIds,
-                    }),
+                    headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+                    body: JSON.stringify({ csrf_token: FINANCE_CSRF_TOKEN, ordered_ids: orderedIds }),
                 });
                 if (!response.ok) {
                     const payload = await response.json().catch(() => ({}));
@@ -1991,68 +1981,32 @@
 
         const positionGhost = (clientX) => {
             if (!state.ghost) return;
-            const x = clientX - state.ghostOffsetX;
-            state.ghost.style.transform = `translate3d(${x}px, ${state.ghostFixedY}px, 0)`;
-        };
-
-        const reorderByPointer = (clientX, clientY) => {
-            if (!state.draggedItem) return;
-            const visibleItems = items().filter((item) => (
-                item !== state.draggedItem && !item.classList.contains('hidden')
-            ));
-            if (!visibleItems.length) return;
-            let best = null;
-            let bestDistance = Infinity;
-            for (const item of visibleItems) {
-                const rect = item.getBoundingClientRect();
-                if (rect.width === 0 || rect.height === 0) continue;
-                const cx = rect.left + rect.width / 2;
-                const cy = rect.top + rect.height / 2;
-                const dx = clientX - cx;
-                const dy = clientY - cy;
-                const distance = Math.hypot(dx, dy);
-                if (distance < bestDistance) {
-                    bestDistance = distance;
-                    best = { item, rect, cx, cy };
-                }
-            }
-            if (!best) return;
-            const sameRow = Math.abs(clientY - best.cy) < best.rect.height / 2;
-            const before = clientY < best.cy || (sameRow && clientX < best.cx);
-            const anchor = before ? best.item : best.item.nextElementSibling;
-            if (state.draggedItem === anchor) return;
-            if (state.draggedItem.nextElementSibling === anchor) return;
-            grid.insertBefore(state.draggedItem, anchor);
-        };
-
-        const moveDraggedIntoPage = (targetPage, direction) => {
-            if (!state.draggedItem || !pager) return;
-            const pageSize = currentItemsPerPage();
-            const others = items().filter((item) => item !== state.draggedItem);
-            const pageStart = targetPage * pageSize;
-            if (direction === 'next') {
-                const anchor = others[pageStart] || null;
-                grid.insertBefore(state.draggedItem, anchor);
+            const bounds = containerEl().getBoundingClientRect();
+            let x = clientX - state.ghostOffsetX;
+            const minX = bounds.left;
+            const maxX = bounds.right - state.ghostWidth;
+            if (maxX >= minX) {
+                x = Math.min(maxX, Math.max(minX, x));
             } else {
-                const lastIndex = Math.min(pageStart + pageSize - 1, others.length - 1);
-                const anchor = others[lastIndex] || null;
-                if (anchor) {
-                    grid.insertBefore(state.draggedItem, anchor);
-                } else {
-                    grid.insertBefore(state.draggedItem, grid.firstElementChild);
-                }
+                x = minX;
             }
-            syncPagerItems();
-            pager.setPage(targetPage, direction);
-            window.requestAnimationFrame(() => {
-                if (state.draggedItem) {
-                    state.draggedItem.classList.remove('hidden');
-                    state.draggedItem.classList.add('finance-sortable-page-jump');
-                    window.setTimeout(() => {
-                        state.draggedItem?.classList.remove('finance-sortable-page-jump');
-                    }, 280);
-                }
-            });
+            state.ghost.style.transform = `translate3d(${x}px, ${state.ghostY}px, 0)`;
+        };
+
+        const swapOnHover = (clientX, clientY) => {
+            if (!state.item) return;
+            const elementBelow = document.elementFromPoint(clientX, clientY);
+            if (!(elementBelow instanceof Element)) return;
+            const target = elementBelow.closest('[data-finance-sortable-item]');
+            if (!(target instanceof HTMLElement)) return;
+            if (target === state.item || target.parentElement !== grid) return;
+            if (target.classList.contains('hidden')) return;
+            const rect = target.getBoundingClientRect();
+            const before = clientX < rect.left + rect.width / 2;
+            const anchor = before ? target : target.nextElementSibling;
+            if (state.item === anchor) return;
+            if (state.item.nextElementSibling === anchor) return;
+            grid.insertBefore(state.item, anchor);
         };
 
         const clearEdgeTimer = () => {
@@ -2063,29 +2017,48 @@
             state.edgeSide = null;
         };
 
+        const moveIntoPage = (targetPage, direction) => {
+            if (!state.item || !pager) return;
+            const size = pageSize();
+            const others = items().filter((item) => item !== state.item);
+            const pageStart = targetPage * size;
+            if (direction === 'next') {
+                const anchor = others[pageStart] || null;
+                grid.insertBefore(state.item, anchor);
+            } else {
+                const lastIdx = Math.min(pageStart + size - 1, others.length - 1);
+                const anchor = others[lastIdx] || null;
+                grid.insertBefore(state.item, anchor || grid.firstElementChild);
+            }
+            syncPagerItems();
+            pager.setPage(targetPage, direction);
+            window.requestAnimationFrame(() => {
+                if (state.item) {
+                    state.item.classList.remove('hidden');
+                }
+            });
+        };
+
         const maybeJumpPage = (clientX, clientY) => {
-            if (!state.draggedItem || !pager) return;
-            const bounds = (viewport instanceof HTMLElement ? viewport : grid).getBoundingClientRect();
+            if (!state.item || !pager) return;
             const total = pager.getTotalPages();
             if (total <= 1) {
                 clearEdgeTimer();
                 return;
             }
-            const verticalSlack = 24;
-            const insideVertical =
-                clientY >= bounds.top - verticalSlack &&
-                clientY <= bounds.bottom + verticalSlack;
-            const onRight = insideVertical && clientX >= bounds.right - EDGE_THICKNESS && clientX <= bounds.right + EDGE_THICKNESS;
-            const onLeft = insideVertical && clientX <= bounds.left + EDGE_THICKNESS && clientX >= bounds.left - EDGE_THICKNESS;
-
-            if (!onRight && !onLeft) {
+            const bounds = containerEl().getBoundingClientRect();
+            const insideVertical = clientY >= bounds.top - 16 && clientY <= bounds.bottom + 16;
+            if (!insideVertical) {
                 clearEdgeTimer();
-                state.edgeAwaitRelease = false;
                 return;
             }
-
-            if (state.edgeJumpCooldown || state.edgeAwaitRelease) return;
-
+            const onRight = clientX >= bounds.right - EDGE_WIDTH;
+            const onLeft = clientX <= bounds.left + EDGE_WIDTH;
+            if (!onRight && !onLeft) {
+                clearEdgeTimer();
+                return;
+            }
+            if (state.jumpCooldown) return;
             const page = pager.getPage();
             const wantNext = onRight && page < total - 1;
             const wantPrev = onLeft && page > 0;
@@ -2093,56 +2066,33 @@
                 clearEdgeTimer();
                 return;
             }
-
             const side = wantNext ? 'right' : 'left';
             if (state.edgeSide === side && state.edgeTimer) return;
-
             clearEdgeTimer();
             state.edgeSide = side;
             state.edgeTimer = window.setTimeout(() => {
                 state.edgeTimer = null;
                 state.edgeSide = null;
-                if (!state.draggedItem) return;
+                if (!state.item) return;
                 const currentPage = pager.getPage();
                 const direction = wantNext ? 'next' : 'prev';
                 const targetPage = wantNext ? currentPage + 1 : currentPage - 1;
                 if (targetPage < 0 || targetPage >= pager.getTotalPages()) return;
-                moveDraggedIntoPage(targetPage, direction);
-                state.edgeJumpCooldown = true;
-                state.edgeAwaitRelease = true;
-                window.setTimeout(() => { state.edgeJumpCooldown = false; }, EDGE_COOLDOWN);
+                moveIntoPage(targetPage, direction);
+                state.jumpCooldown = true;
+                window.setTimeout(() => { state.jumpCooldown = false; }, EDGE_COOLDOWN);
             }, EDGE_HOVER_DELAY);
         };
 
-        const processFrame = () => {
-            state.rafId = null;
-            if (!state.draggedItem) return;
-            positionGhost(state.pendingX);
-            reorderByPointer(state.pendingX, state.pendingY);
-            maybeJumpPage(state.pendingX, state.pendingY);
-        };
-
-        const scheduleFrame = (clientX, clientY) => {
-            state.pendingX = clientX;
-            state.pendingY = clientY;
-            if (state.rafId !== null) return;
-            state.rafId = window.requestAnimationFrame(processFrame);
-        };
-
-        const cleanupDrag = () => {
-            if (state.rafId !== null) {
-                window.cancelAnimationFrame(state.rafId);
-                state.rafId = null;
-            }
+        const cleanup = () => {
             clearEdgeTimer();
-            state.edgeJumpCooldown = false;
-            state.edgeAwaitRelease = false;
+            state.jumpCooldown = false;
             if (state.ghost) {
                 state.ghost.remove();
                 state.ghost = null;
             }
-            if (state.draggedItem) {
-                state.draggedItem.classList.remove(
+            if (state.item) {
+                state.item.classList.remove(
                     'finance-sortable-source',
                     'finance-sortable-dragging',
                 );
@@ -2150,105 +2100,94 @@
             grid.classList.remove('finance-sortable-active');
             grid.closest('.finance-card-paged-shell')?.classList.remove('finance-sortable-shell-active');
             document.body.classList.remove('finance-sortable-cursor');
-            document.body.style.userSelect = state.originalUserSelect || '';
-            state.originalUserSelect = '';
-            state.activePointerId = null;
+            document.body.style.userSelect = '';
+            state.pointerId = null;
         };
 
-        const detachDocumentListeners = () => {
-            if (state.pointerMoveHandler) {
-                document.removeEventListener('pointermove', state.pointerMoveHandler, true);
-                state.pointerMoveHandler = null;
+        const detachListeners = () => {
+            if (state.onMove) {
+                document.removeEventListener('pointermove', state.onMove, true);
+                state.onMove = null;
             }
-            if (state.pointerUpHandler) {
-                document.removeEventListener('pointerup', state.pointerUpHandler, true);
-                state.pointerUpHandler = null;
+            if (state.onUp) {
+                document.removeEventListener('pointerup', state.onUp, true);
+                state.onUp = null;
             }
-            if (state.pointerCancelHandler) {
-                document.removeEventListener('pointercancel', state.pointerCancelHandler, true);
-                state.pointerCancelHandler = null;
+            if (state.onCancel) {
+                document.removeEventListener('pointercancel', state.onCancel, true);
+                state.onCancel = null;
             }
         };
 
-        const finishDrag = async (event, cancelled) => {
-            if (!state.draggedItem || event.pointerId !== state.activePointerId) return;
-            const item = state.draggedItem;
+        const finish = async (event, cancelled) => {
+            if (!state.item || event.pointerId !== state.pointerId) return;
+            const item = state.item;
             const didMove = state.moved;
-            cleanupDrag();
-            detachDocumentListeners();
+            cleanup();
+            detachListeners();
             if (item) {
                 item.classList.add('finance-sortable-just-moved');
-                window.setTimeout(() => item.classList.remove('finance-sortable-just-moved'), 240);
+                window.setTimeout(() => item.classList.remove('finance-sortable-just-moved'), 200);
             }
-            state.draggedItem = null;
+            state.item = null;
             if (!didMove || cancelled) return;
             syncPagerItems();
             await saveOrder();
         };
 
-        const startDrag = (handle, event) => {
+        const start = (handle, event) => {
             const item = handle.closest('[data-finance-sortable-item]');
             if (!(item instanceof HTMLElement)) return;
             event.preventDefault();
-            state.activePointerId = event.pointerId;
-            state.draggedItem = item;
+            const rect = item.getBoundingClientRect();
+            state.pointerId = event.pointerId;
+            state.item = item;
             state.startX = event.clientX;
             state.startY = event.clientY;
             state.moved = false;
             state.initialOrder = orderSignature();
-
-            const rect = item.getBoundingClientRect();
             state.ghostOffsetX = event.clientX - rect.left;
-            state.ghostFixedY = rect.top;
+            state.ghostY = rect.top;
+            state.ghostWidth = rect.width;
+
             const { node } = buildGhost(item);
             state.ghost = node;
             document.body.appendChild(state.ghost);
             positionGhost(event.clientX);
 
-            const startBounds = (viewport instanceof HTMLElement ? viewport : grid).getBoundingClientRect();
-            const startedOnEdge =
-                event.clientX <= startBounds.left + EDGE_THICKNESS ||
-                event.clientX >= startBounds.right - EDGE_THICKNESS;
-            state.edgeAwaitRelease = startedOnEdge;
-            state.edgeJumpCooldown = false;
-
             item.classList.add('finance-sortable-source', 'finance-sortable-dragging');
             grid.classList.add('finance-sortable-active');
             grid.closest('.finance-card-paged-shell')?.classList.add('finance-sortable-shell-active');
             document.body.classList.add('finance-sortable-cursor');
-            state.originalUserSelect = document.body.style.userSelect;
             document.body.style.userSelect = 'none';
 
-            state.pointerMoveHandler = (moveEvent) => {
-                if (moveEvent.pointerId !== state.activePointerId || !state.draggedItem) return;
+            state.onMove = (moveEvent) => {
+                if (moveEvent.pointerId !== state.pointerId || !state.item) return;
                 if (!state.moved) {
-                    const delta = Math.hypot(moveEvent.clientX - state.startX, moveEvent.clientY - state.startY);
-                    if (delta < DRAG_START_THRESHOLD) return;
+                    const dx = moveEvent.clientX - state.startX;
+                    const dy = moveEvent.clientY - state.startY;
+                    if (Math.hypot(dx, dy) < DRAG_THRESHOLD) return;
                     state.moved = true;
                 }
                 moveEvent.preventDefault();
-                scheduleFrame(moveEvent.clientX, moveEvent.clientY);
+                positionGhost(moveEvent.clientX);
+                swapOnHover(moveEvent.clientX, moveEvent.clientY);
+                maybeJumpPage(moveEvent.clientX, moveEvent.clientY);
             };
-            state.pointerUpHandler = (upEvent) => {
-                finishDrag(upEvent, false);
-            };
-            state.pointerCancelHandler = (cancelEvent) => {
-                finishDrag(cancelEvent, true);
-            };
-            document.addEventListener('pointermove', state.pointerMoveHandler, { capture: true, passive: false });
-            document.addEventListener('pointerup', state.pointerUpHandler, { capture: true });
-            document.addEventListener('pointercancel', state.pointerCancelHandler, { capture: true });
+            state.onUp = (upEvent) => finish(upEvent, false);
+            state.onCancel = (cancelEvent) => finish(cancelEvent, true);
+            document.addEventListener('pointermove', state.onMove, { capture: true, passive: false });
+            document.addEventListener('pointerup', state.onUp, { capture: true });
+            document.addEventListener('pointercancel', state.onCancel, { capture: true });
         };
 
         grid.querySelectorAll('[data-finance-sort-handle]').forEach((handle) => {
             handle.addEventListener('pointerdown', (event) => {
                 if (event.pointerType === 'mouse' && event.button !== 0) return;
-                if (state.draggedItem) return;
-                startDrag(handle, event);
+                if (state.item) return;
+                start(handle, event);
             });
-            handle.addEventListener('click', (event) => {
-                event.preventDefault();
-            });
+            handle.addEventListener('click', (event) => event.preventDefault());
             handle.addEventListener('dragstart', (event) => event.preventDefault());
         });
     };
