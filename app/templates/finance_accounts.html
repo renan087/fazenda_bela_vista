@@ -1895,8 +1895,8 @@
     }) => {
         if (!(grid instanceof HTMLElement) || !endpoint) return;
 
-        const EDGE_WIDTH = 28;
-        const EDGE_HOVER_DELAY = 220;
+        const EDGE_WIDTH = 44;
+        const EDGE_HOVER_DELAY = 160;
         const EDGE_COOLDOWN = 300;
         const DRAG_THRESHOLD = 5;
 
@@ -1905,8 +1905,11 @@
             item: null,
             ghost: null,
             ghostOffsetX: 0,
+            ghostX: 0,
             ghostY: 0,
             ghostWidth: 0,
+            ghostHeight: 0,
+            lastClientX: 0,
             dragBounds: null,
             startX: 0,
             startY: 0,
@@ -1990,19 +1993,35 @@
             if (canClamp) {
                 x = Math.min(maxX, Math.max(minX, x));
             }
+            state.ghostX = x;
             state.ghost.style.transform = `translate3d(${x}px, ${state.ghostY}px, 0)`;
         };
 
         const swapOnHover = (clientX, clientY) => {
             if (!state.item) return;
-            const elementBelow = document.elementFromPoint(clientX, clientY);
-            if (!(elementBelow instanceof Element)) return;
-            const target = elementBelow.closest('[data-finance-sortable-item]');
-            if (!(target instanceof HTMLElement)) return;
-            if (target === state.item || target.parentElement !== grid) return;
-            if (target.classList.contains('hidden')) return;
-            const rect = target.getBoundingClientRect();
-            const before = clientX < rect.left + rect.width / 2;
+            const ghostLeft = state.ghostX;
+            const ghostRight = state.ghostX + state.ghostWidth;
+            const ghostCenterY = state.ghostY + state.ghostHeight / 2;
+            let target = null;
+            let targetRect = null;
+            let bestRatio = 0;
+            for (const candidate of items()) {
+                if (candidate === state.item || candidate.classList.contains('hidden')) continue;
+                const rect = candidate.getBoundingClientRect();
+                if (rect.width <= 0 || rect.height <= 0) continue;
+                const overlapX = Math.max(0, Math.min(ghostRight, rect.right) - Math.max(ghostLeft, rect.left));
+                const overlapRatio = overlapX / Math.min(state.ghostWidth || 1, rect.width || 1);
+                const centerY = rect.top + rect.height / 2;
+                const sameRow = Math.abs(ghostCenterY - centerY) <= Math.max(rect.height, state.ghostHeight) * 0.75;
+                if (!sameRow) continue;
+                if (overlapRatio >= 0.5 && overlapRatio > bestRatio) {
+                    bestRatio = overlapRatio;
+                    target = candidate;
+                    targetRect = rect;
+                }
+            }
+            if (!(target instanceof HTMLElement) || !targetRect) return;
+            const before = ghostLeft + state.ghostWidth / 2 < targetRect.left + targetRect.width / 2;
             const anchor = before ? target : target.nextElementSibling;
             if (state.item === anchor) return;
             if (state.item.nextElementSibling === anchor) return;
@@ -2052,8 +2071,11 @@
                 clearEdgeTimer();
                 return;
             }
-            const onRight = clientX >= bounds.right - EDGE_WIDTH;
-            const onLeft = clientX <= bounds.left + EDGE_WIDTH;
+            const movingRight = clientX > state.lastClientX + 0.5;
+            const movingLeft = clientX < state.lastClientX - 0.5;
+            const ghostRight = state.ghostX + state.ghostWidth;
+            const onRight = clientX >= bounds.right - EDGE_WIDTH || (movingRight && ghostRight >= bounds.right - 1);
+            const onLeft = clientX <= bounds.left + EDGE_WIDTH || (movingLeft && state.ghostX <= bounds.left + 1);
             if (!onRight && !onLeft) {
                 clearEdgeTimer();
                 return;
@@ -2146,11 +2168,13 @@
             state.item = item;
             state.startX = event.clientX;
             state.startY = event.clientY;
+            state.lastClientX = event.clientX;
             state.moved = false;
             state.initialOrder = orderSignature();
             state.ghostOffsetX = event.clientX - rect.left;
             state.ghostY = rect.top;
             state.ghostWidth = rect.width;
+            state.ghostHeight = rect.height;
             state.dragBounds = {
                 left: bounds.left,
                 right: bounds.right,
@@ -2179,6 +2203,7 @@
                 positionGhost(moveEvent.clientX);
                 swapOnHover(moveEvent.clientX, moveEvent.clientY);
                 maybeJumpPage(moveEvent.clientX, moveEvent.clientY);
+                state.lastClientX = moveEvent.clientX;
             };
             state.onUp = (upEvent) => finish(upEvent, false);
             state.onCancel = (cancelEvent) => finish(cancelEvent, true);
