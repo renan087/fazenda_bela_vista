@@ -1907,12 +1907,11 @@
             draggedItem: null,
             ghost: null,
             ghostOffsetX: 0,
-            ghostOffsetY: 0,
+            ghostFixedY: 0,
             startX: 0,
             startY: 0,
             moved: false,
             initialOrder: '',
-            pageJumpLocked: false,
             rafId: null,
             pendingX: 0,
             pendingY: 0,
@@ -1920,8 +1919,16 @@
             pointerUpHandler: null,
             pointerCancelHandler: null,
             originalUserSelect: '',
-            edgeAutoJumpTimer: null,
+            edgeTimer: null,
+            edgeSide: null,
+            edgeJumpCooldown: false,
+            edgeAwaitRelease: false,
         };
+
+        const EDGE_THICKNESS = 12;
+        const EDGE_HOVER_DELAY = 320;
+        const EDGE_COOLDOWN = 220;
+        const DRAG_START_THRESHOLD = 8;
 
         const items = () => Array.from(grid.querySelectorAll('[data-finance-sortable-item]'));
         const orderSignature = () => items().map((item) => item.dataset.financeSortId || '').join(',');
@@ -1982,11 +1989,10 @@
             return { node: clone, rect };
         };
 
-        const positionGhost = (clientX, clientY) => {
+        const positionGhost = (clientX) => {
             if (!state.ghost) return;
             const x = clientX - state.ghostOffsetX;
-            const y = clientY - state.ghostOffsetY;
-            state.ghost.style.transform = `translate3d(${x}px, ${y}px, 0)`;
+            state.ghost.style.transform = `translate3d(${x}px, ${state.ghostFixedY}px, 0)`;
         };
 
         const reorderByPointer = (clientX, clientY) => {
@@ -2049,28 +2055,71 @@
             });
         };
 
-        const maybeJumpPage = (clientX) => {
-            if (!state.draggedItem || !pager || state.pageJumpLocked) return;
+        const clearEdgeTimer = () => {
+            if (state.edgeTimer) {
+                window.clearTimeout(state.edgeTimer);
+                state.edgeTimer = null;
+            }
+            state.edgeSide = null;
+        };
+
+        const maybeJumpPage = (clientX, clientY) => {
+            if (!state.draggedItem || !pager) return;
             const bounds = (viewport instanceof HTMLElement ? viewport : grid).getBoundingClientRect();
-            const edge = Math.min(110, Math.max(56, bounds.width * 0.13));
-            const page = pager.getPage();
             const total = pager.getTotalPages();
-            const wantNext = clientX >= bounds.right - edge && page < total - 1;
-            const wantPrev = clientX <= bounds.left + edge && page > 0;
-            if (!wantNext && !wantPrev) return;
-            state.pageJumpLocked = true;
-            const targetPage = wantNext ? page + 1 : page - 1;
-            const direction = wantNext ? 'next' : 'prev';
-            moveDraggedIntoPage(targetPage, direction);
-            window.setTimeout(() => { state.pageJumpLocked = false; }, 460);
+            if (total <= 1) {
+                clearEdgeTimer();
+                return;
+            }
+            const verticalSlack = 24;
+            const insideVertical =
+                clientY >= bounds.top - verticalSlack &&
+                clientY <= bounds.bottom + verticalSlack;
+            const onRight = insideVertical && clientX >= bounds.right - EDGE_THICKNESS && clientX <= bounds.right + EDGE_THICKNESS;
+            const onLeft = insideVertical && clientX <= bounds.left + EDGE_THICKNESS && clientX >= bounds.left - EDGE_THICKNESS;
+
+            if (!onRight && !onLeft) {
+                clearEdgeTimer();
+                state.edgeAwaitRelease = false;
+                return;
+            }
+
+            if (state.edgeJumpCooldown || state.edgeAwaitRelease) return;
+
+            const page = pager.getPage();
+            const wantNext = onRight && page < total - 1;
+            const wantPrev = onLeft && page > 0;
+            if (!wantNext && !wantPrev) {
+                clearEdgeTimer();
+                return;
+            }
+
+            const side = wantNext ? 'right' : 'left';
+            if (state.edgeSide === side && state.edgeTimer) return;
+
+            clearEdgeTimer();
+            state.edgeSide = side;
+            state.edgeTimer = window.setTimeout(() => {
+                state.edgeTimer = null;
+                state.edgeSide = null;
+                if (!state.draggedItem) return;
+                const currentPage = pager.getPage();
+                const direction = wantNext ? 'next' : 'prev';
+                const targetPage = wantNext ? currentPage + 1 : currentPage - 1;
+                if (targetPage < 0 || targetPage >= pager.getTotalPages()) return;
+                moveDraggedIntoPage(targetPage, direction);
+                state.edgeJumpCooldown = true;
+                state.edgeAwaitRelease = true;
+                window.setTimeout(() => { state.edgeJumpCooldown = false; }, EDGE_COOLDOWN);
+            }, EDGE_HOVER_DELAY);
         };
 
         const processFrame = () => {
             state.rafId = null;
             if (!state.draggedItem) return;
-            positionGhost(state.pendingX, state.pendingY);
+            positionGhost(state.pendingX);
             reorderByPointer(state.pendingX, state.pendingY);
-            maybeJumpPage(state.pendingX);
+            maybeJumpPage(state.pendingX, state.pendingY);
         };
 
         const scheduleFrame = (clientX, clientY) => {
@@ -2085,6 +2134,9 @@
                 window.cancelAnimationFrame(state.rafId);
                 state.rafId = null;
             }
+            clearEdgeTimer();
+            state.edgeJumpCooldown = false;
+            state.edgeAwaitRelease = false;
             if (state.ghost) {
                 state.ghost.remove();
                 state.ghost = null;
@@ -2101,7 +2153,6 @@
             document.body.style.userSelect = state.originalUserSelect || '';
             state.originalUserSelect = '';
             state.activePointerId = null;
-            state.pageJumpLocked = false;
         };
 
         const detachDocumentListeners = () => {
@@ -2148,11 +2199,18 @@
 
             const rect = item.getBoundingClientRect();
             state.ghostOffsetX = event.clientX - rect.left;
-            state.ghostOffsetY = event.clientY - rect.top;
+            state.ghostFixedY = rect.top;
             const { node } = buildGhost(item);
             state.ghost = node;
             document.body.appendChild(state.ghost);
-            positionGhost(event.clientX, event.clientY);
+            positionGhost(event.clientX);
+
+            const startBounds = (viewport instanceof HTMLElement ? viewport : grid).getBoundingClientRect();
+            const startedOnEdge =
+                event.clientX <= startBounds.left + EDGE_THICKNESS ||
+                event.clientX >= startBounds.right - EDGE_THICKNESS;
+            state.edgeAwaitRelease = startedOnEdge;
+            state.edgeJumpCooldown = false;
 
             item.classList.add('finance-sortable-source', 'finance-sortable-dragging');
             grid.classList.add('finance-sortable-active');
@@ -2165,10 +2223,7 @@
                 if (moveEvent.pointerId !== state.activePointerId || !state.draggedItem) return;
                 if (!state.moved) {
                     const delta = Math.hypot(moveEvent.clientX - state.startX, moveEvent.clientY - state.startY);
-                    if (delta < 4) {
-                        positionGhost(moveEvent.clientX, moveEvent.clientY);
-                        return;
-                    }
+                    if (delta < DRAG_START_THRESHOLD) return;
                     state.moved = true;
                 }
                 moveEvent.preventDefault();
