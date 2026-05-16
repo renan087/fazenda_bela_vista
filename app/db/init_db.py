@@ -292,6 +292,7 @@ def _sync_schema() -> None:
             branch_number VARCHAR(30),
             account_number VARCHAR(60),
             is_default BOOLEAN NOT NULL DEFAULT FALSE,
+            display_order INTEGER NOT NULL DEFAULT 0,
             created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
         )
         """,
@@ -308,6 +309,7 @@ def _sync_schema() -> None:
             credit_limit NUMERIC(14,2),
             is_default BOOLEAN NOT NULL DEFAULT FALSE,
             is_active BOOLEAN NOT NULL DEFAULT TRUE,
+            display_order INTEGER NOT NULL DEFAULT 0,
             notes VARCHAR(240),
             created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
         )
@@ -616,6 +618,7 @@ def _sync_schema() -> None:
         "ALTER TABLE finance_accounts ADD COLUMN IF NOT EXISTS branch_number VARCHAR(30)",
         "ALTER TABLE finance_accounts ADD COLUMN IF NOT EXISTS account_number VARCHAR(60)",
         "ALTER TABLE finance_accounts ADD COLUMN IF NOT EXISTS is_default BOOLEAN NOT NULL DEFAULT FALSE",
+        "ALTER TABLE finance_accounts ADD COLUMN IF NOT EXISTS display_order INTEGER NOT NULL DEFAULT 0",
         "ALTER TABLE finance_accounts ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW()",
         "ALTER TABLE finance_credit_cards ADD COLUMN IF NOT EXISTS farm_id INTEGER",
         "ALTER TABLE finance_credit_cards ADD COLUMN IF NOT EXISTS payment_account_id INTEGER",
@@ -627,6 +630,7 @@ def _sync_schema() -> None:
         "ALTER TABLE finance_credit_cards ADD COLUMN IF NOT EXISTS credit_limit NUMERIC(14,2)",
         "ALTER TABLE finance_credit_cards ADD COLUMN IF NOT EXISTS is_default BOOLEAN NOT NULL DEFAULT FALSE",
         "ALTER TABLE finance_credit_cards ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE",
+        "ALTER TABLE finance_credit_cards ADD COLUMN IF NOT EXISTS display_order INTEGER NOT NULL DEFAULT 0",
         "ALTER TABLE finance_credit_cards ADD COLUMN IF NOT EXISTS notes VARCHAR(240)",
         "ALTER TABLE finance_credit_cards ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW()",
         "ALTER TABLE finance_transactions ADD COLUMN IF NOT EXISTS farm_id INTEGER",

@@ -306,7 +306,7 @@ class FarmRepository:
         query = (
             self.db.query(FinanceAccount)
             .options(joinedload(FinanceAccount.farm), joinedload(FinanceAccount.custom_bank))
-            .order_by(FinanceAccount.is_default.desc(), FinanceAccount.account_name.asc(), FinanceAccount.id.desc())
+            .order_by(FinanceAccount.display_order.asc(), FinanceAccount.is_default.desc(), FinanceAccount.account_name.asc(), FinanceAccount.id.asc())
         )
         if farm_id:
             query = query.filter(FinanceAccount.farm_id == farm_id)
@@ -324,7 +324,7 @@ class FarmRepository:
         query = (
             self.db.query(FinanceCreditCard)
             .options(joinedload(FinanceCreditCard.farm), joinedload(FinanceCreditCard.payment_account))
-            .order_by(FinanceCreditCard.is_default.desc(), FinanceCreditCard.is_active.desc(), FinanceCreditCard.card_name.asc(), FinanceCreditCard.id.desc())
+            .order_by(FinanceCreditCard.display_order.asc(), FinanceCreditCard.is_default.desc(), FinanceCreditCard.is_active.desc(), FinanceCreditCard.card_name.asc(), FinanceCreditCard.id.asc())
         )
         if farm_id:
             query = query.filter(FinanceCreditCard.farm_id == farm_id)

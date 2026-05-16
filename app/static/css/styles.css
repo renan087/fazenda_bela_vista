@@ -2276,6 +2276,27 @@ body.dashboard-schedule-modal-open {
     transform: translateY(-50%);
 }
 
+.finance-sort-handle {
+    cursor: grab;
+    touch-action: none;
+}
+
+.finance-sort-handle:active {
+    cursor: grabbing;
+}
+
+.finance-sortable-active [data-finance-sortable-item] {
+    transition: transform 0.16s ease, opacity 0.16s ease, box-shadow 0.16s ease, border-color 0.16s ease;
+}
+
+.finance-sortable-dragging {
+    opacity: 0.72;
+    border-color: rgba(68, 106, 54, 0.35) !important;
+    box-shadow: 0 20px 45px rgba(15, 23, 42, 0.16);
+    transform: scale(0.985);
+    z-index: 5;
+}
+
 .finance-card-page-nav-prev {
     left: -1.35rem;
 }

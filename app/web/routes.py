@@ -3760,6 +3760,21 @@ def _finance_credit_cards_set_default(repo: FarmRepository, farm_id: int, keep_i
             repo.db.add(card)
 
 
+def _finance_card_order_payload_ids(payload: dict) -> list[int]:
+    raw_ids = payload.get("ordered_ids")
+    if not isinstance(raw_ids, list):
+        raise ValueError("Ordem inválida.")
+    ordered_ids: list[int] = []
+    for raw_id in raw_ids:
+        try:
+            item_id = int(raw_id)
+        except (TypeError, ValueError):
+            raise ValueError("Ordem inválida.") from None
+        if item_id not in ordered_ids:
+            ordered_ids.append(item_id)
+    return ordered_ids
+
+
 def _finance_credit_card_invoice_reference_label(due_date: date | None) -> str:
     if not due_date:
         return "Sem vencimento definido"
@@ -6837,6 +6852,7 @@ def create_finance_account_action(
         branch_number=payload["branch_number"],
         account_number=payload["account_number"],
         is_default=payload["is_default"],
+        display_order=(max((int(item.display_order or 0) for item in repo.list_finance_accounts(farm_id=active_farm.id)), default=-1) + 1),
         created_at=app_now(),
     )
     repo.db.add(account)
@@ -7003,6 +7019,36 @@ def set_default_finance_account_action(
     return _redirect("/gestao-financeira/contas")
 
 
+@router.post("/gestao-financeira/contas/reordenar")
+async def reorder_finance_accounts_action(
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    del user
+    payload = await request.json()
+    validate_csrf(request, str(payload.get("csrf_token") or ""))
+    repo = _repository(db)
+    scope = _global_scope_context(request, repo)
+    active_farm = scope.get("active_farm")
+    if not active_farm:
+        return JSONResponse({"ok": False, "message": "Selecione uma fazenda ativa."}, status_code=400)
+    try:
+        ordered_ids = _finance_card_order_payload_ids(payload)
+    except ValueError as exc:
+        return JSONResponse({"ok": False, "message": str(exc)}, status_code=400)
+    accounts = repo.list_finance_accounts(farm_id=active_farm.id)
+    account_by_id = {account.id: account for account in accounts}
+    if any(account_id not in account_by_id for account_id in ordered_ids):
+        return JSONResponse({"ok": False, "message": "A ordem enviada contém contas inválidas."}, status_code=400)
+    final_ids = ordered_ids + [account.id for account in accounts if account.id not in ordered_ids]
+    for index, account_id in enumerate(final_ids):
+        account_by_id[account_id].display_order = index
+        repo.db.add(account_by_id[account_id])
+    repo.db.commit()
+    return JSONResponse({"ok": True})
+
+
 @router.post("/gestao-financeira/cartoes")
 def create_finance_credit_card_action(
     request: Request,
@@ -7060,6 +7106,7 @@ def create_finance_credit_card_action(
             payment_account_id=payload["payment_account_id"],
             is_default=payload["is_default"],
             is_active=payload["is_active"],
+            display_order=(max((int(item.display_order or 0) for item in repo.list_finance_credit_cards(farm_id=active_farm.id)), default=-1) + 1),
             notes=payload["notes"],
             created_at=app_now(),
         )
@@ -7189,6 +7236,36 @@ def set_default_finance_credit_card_action(
     repo.update(card, {"is_default": True})
     _flash(request, "success", f"{card.card_name} definido como cartão padrão.")
     return _redirect("/gestao-financeira/contas?finance_tab=cards")
+
+
+@router.post("/gestao-financeira/cartoes/reordenar")
+async def reorder_finance_credit_cards_action(
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    del user
+    payload = await request.json()
+    validate_csrf(request, str(payload.get("csrf_token") or ""))
+    repo = _repository(db)
+    scope = _global_scope_context(request, repo)
+    active_farm = scope.get("active_farm")
+    if not active_farm:
+        return JSONResponse({"ok": False, "message": "Selecione uma fazenda ativa."}, status_code=400)
+    try:
+        ordered_ids = _finance_card_order_payload_ids(payload)
+    except ValueError as exc:
+        return JSONResponse({"ok": False, "message": str(exc)}, status_code=400)
+    cards = repo.list_finance_credit_cards(farm_id=active_farm.id)
+    card_by_id = {card.id: card for card in cards}
+    if any(card_id not in card_by_id for card_id in ordered_ids):
+        return JSONResponse({"ok": False, "message": "A ordem enviada contém cartões inválidos."}, status_code=400)
+    final_ids = ordered_ids + [card.id for card in cards if card.id not in ordered_ids]
+    for index, card_id in enumerate(final_ids):
+        card_by_id[card_id].display_order = index
+        repo.db.add(card_by_id[card_id])
+    repo.db.commit()
+    return JSONResponse({"ok": True})
 
 
 @router.post("/gestao-financeira/contas/lancamentos")

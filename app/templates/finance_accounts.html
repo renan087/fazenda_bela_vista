@@ -427,7 +427,7 @@
         <div class="mt-5 grid gap-4 lg:grid-cols-2 2xl:grid-cols-3" data-finance-accounts-grid>
             {% for account in finance_accounts %}
             {% set bank = (finance_bank_options | selectattr('code', 'equalto', account.bank_code) | list | first) %}
-            <article class="min-w-0 max-w-full overflow-hidden rounded-[1.5rem] border border-slate-200 bg-slate-50/80 p-5 shadow-sm transition hover:border-brand-200 hover:bg-white" data-finance-account-row data-finance-account-summary-item data-finance-account-search="{{ (account.account_name or '') ~ ' ' ~ (account.bank_name or '') ~ ' ' ~ (account.branch_number or '') ~ ' ' ~ (account.account_number or '') }}">
+            <article class="min-w-0 max-w-full overflow-hidden rounded-[1.5rem] border border-slate-200 bg-slate-50/80 p-5 shadow-sm transition hover:border-brand-200 hover:bg-white" data-finance-account-row data-finance-account-summary-item data-finance-sortable-item data-finance-sort-id="{{ account.id }}" data-finance-account-search="{{ (account.account_name or '') ~ ' ' ~ (account.bank_name or '') ~ ' ' ~ (account.branch_number or '') ~ ' ' ~ (account.account_number or '') }}">
                 <div class="flex items-start justify-between gap-3">
                     <div class="min-w-0">
                         <div class="flex flex-wrap items-center gap-2">
@@ -438,14 +438,26 @@
                             </div>
                         </div>
                     </div>
-                    <form method="post" action="/gestao-financeira/contas/{{ account.id }}/definir-padrao">
-                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                        <button type="{% if account.is_default %}button{% else %}submit{% endif %}" class="finance-default-star-trigger inline-flex h-10 w-10 items-center justify-center rounded-full border transition {% if account.is_default %}border-amber-200 bg-amber-50 text-amber-500 hover:bg-amber-100{% else %}border-slate-200 bg-white text-slate-300 hover:border-amber-200 hover:bg-amber-50 hover:text-amber-400{% endif %}" title="{% if account.is_default %}Conta padrão{% else %}Definir como padrão{% endif %}" aria-label="{% if account.is_default %}Conta padrão{% else %}Definir como padrão{% endif %}" {% if not account.is_default %}data-finance-default-trigger{% endif %}>
-                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 24 24" fill="{% if account.is_default %}currentColor{% else %}none{% endif %}" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                                <path d="m12 3.5 2.63 5.33 5.88.86-4.25 4.14 1 5.84L12 17.1l-5.26 2.57 1-5.84L3.5 9.69l5.88-.86L12 3.5z"/>
+                    <div class="flex shrink-0 items-center gap-2">
+                        <button type="button" class="finance-sort-handle inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-400 transition hover:border-brand-200 hover:bg-brand-50 hover:text-brand-700" data-finance-sort-handle title="Arrastar para reorganizar" aria-label="Arrastar para reorganizar conta">
+                            <svg class="h-5 w-5" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                                <circle cx="9" cy="6" r="1.35"/>
+                                <circle cx="15" cy="6" r="1.35"/>
+                                <circle cx="9" cy="12" r="1.35"/>
+                                <circle cx="15" cy="12" r="1.35"/>
+                                <circle cx="9" cy="18" r="1.35"/>
+                                <circle cx="15" cy="18" r="1.35"/>
                             </svg>
                         </button>
-                    </form>
+                        <form method="post" action="/gestao-financeira/contas/{{ account.id }}/definir-padrao">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                            <button type="{% if account.is_default %}button{% else %}submit{% endif %}" class="finance-default-star-trigger inline-flex h-10 w-10 items-center justify-center rounded-full border transition {% if account.is_default %}border-amber-200 bg-amber-50 text-amber-500 hover:bg-amber-100{% else %}border-slate-200 bg-white text-slate-300 hover:border-amber-200 hover:bg-amber-50 hover:text-amber-400{% endif %}" title="{% if account.is_default %}Conta padrão{% else %}Definir como padrão{% endif %}" aria-label="{% if account.is_default %}Conta padrão{% else %}Definir como padrão{% endif %}" {% if not account.is_default %}data-finance-default-trigger{% endif %}>
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 24 24" fill="{% if account.is_default %}currentColor{% else %}none{% endif %}" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                    <path d="m12 3.5 2.63 5.33 5.88.86-4.25 4.14 1 5.84L12 17.1l-5.26 2.57 1-5.84L3.5 9.69l5.88-.86L12 3.5z"/>
+                                </svg>
+                            </button>
+                        </form>
+                    </div>
                 </div>
                 <div class="mt-4 grid gap-3 sm:grid-cols-2">
                     <div class="rounded-2xl bg-white px-4 py-3 ring-1 ring-slate-200/80">
@@ -541,7 +553,7 @@
             {% for card in finance_credit_cards %}
             {% set card_overview = finance_credit_card_overviews.get(card.id, {}) %}
             {% set next_invoice = card_overview.get('next_open_invoice') %}
-            <article class="min-w-0 max-w-full overflow-hidden rounded-[1.5rem] border border-slate-200 bg-slate-50/80 p-5 shadow-sm transition hover:border-sky-200 hover:bg-white" data-finance-card-summary-item>
+            <article class="min-w-0 max-w-full overflow-hidden rounded-[1.5rem] border border-slate-200 bg-slate-50/80 p-5 shadow-sm transition hover:border-sky-200 hover:bg-white" data-finance-card-summary-item data-finance-sortable-item data-finance-sort-id="{{ card.id }}">
                 <div class="flex items-start justify-between gap-3">
                     <div class="min-w-0">
                         <div class="flex items-center gap-3">
@@ -564,14 +576,26 @@
                             </div>
                         </div>
                     </div>
-                    <form method="post" action="/gestao-financeira/cartoes/{{ card.id }}/definir-padrao">
-                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                        <button type="{% if card.is_default %}button{% else %}submit{% endif %}" class="finance-default-star-trigger inline-flex h-10 w-10 items-center justify-center rounded-full border transition {% if card.is_default %}border-amber-200 bg-amber-50 text-amber-500 hover:bg-amber-100{% else %}border-slate-200 bg-white text-slate-300 hover:border-amber-200 hover:bg-amber-50 hover:text-amber-400{% endif %}" title="{% if card.is_default %}Cartão padrão{% else %}Definir como padrão{% endif %}" aria-label="{% if card.is_default %}Cartão padrão{% else %}Definir como padrão{% endif %}" {% if not card.is_default %}data-finance-default-trigger{% endif %}>
-                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 24 24" fill="{% if card.is_default %}currentColor{% else %}none{% endif %}" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                                <path d="m12 3.5 2.63 5.33 5.88.86-4.25 4.14 1 5.84L12 17.1l-5.26 2.57 1-5.84L3.5 9.69l5.88-.86L12 3.5z"/>
+                    <div class="flex shrink-0 items-center gap-2">
+                        <button type="button" class="finance-sort-handle inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-400 transition hover:border-sky-200 hover:bg-sky-50 hover:text-sky-700" data-finance-sort-handle title="Arrastar para reorganizar" aria-label="Arrastar para reorganizar cartão">
+                            <svg class="h-5 w-5" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                                <circle cx="9" cy="6" r="1.35"/>
+                                <circle cx="15" cy="6" r="1.35"/>
+                                <circle cx="9" cy="12" r="1.35"/>
+                                <circle cx="15" cy="12" r="1.35"/>
+                                <circle cx="9" cy="18" r="1.35"/>
+                                <circle cx="15" cy="18" r="1.35"/>
                             </svg>
                         </button>
-                    </form>
+                        <form method="post" action="/gestao-financeira/cartoes/{{ card.id }}/definir-padrao">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                            <button type="{% if card.is_default %}button{% else %}submit{% endif %}" class="finance-default-star-trigger inline-flex h-10 w-10 items-center justify-center rounded-full border transition {% if card.is_default %}border-amber-200 bg-amber-50 text-amber-500 hover:bg-amber-100{% else %}border-slate-200 bg-white text-slate-300 hover:border-amber-200 hover:bg-amber-50 hover:text-amber-400{% endif %}" title="{% if card.is_default %}Cartão padrão{% else %}Definir como padrão{% endif %}" aria-label="{% if card.is_default %}Cartão padrão{% else %}Definir como padrão{% endif %}" {% if not card.is_default %}data-finance-default-trigger{% endif %}>
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 24 24" fill="{% if card.is_default %}currentColor{% else %}none{% endif %}" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                    <path d="m12 3.5 2.63 5.33 5.88.86-4.25 4.14 1 5.84L12 17.1l-5.26 2.57 1-5.84L3.5 9.69l5.88-.86L12 3.5z"/>
+                                </svg>
+                            </button>
+                        </form>
+                    </div>
                 </div>
                 <div class="mt-4 grid gap-3 xl:grid-cols-2">
                     <div class="rounded-[1.35rem] border border-sky-100 bg-gradient-to-br from-sky-50 to-white px-4 py-4 shadow-sm">
@@ -1858,6 +1882,95 @@
 
     const normalize = (value) => (value || '').toString().normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
     const normalizeAccountIdentity = (value) => (value || '').toString().replace(/[^0-9A-Za-z]/g, '').toUpperCase();
+
+    const setupFinanceSortableCards = ({ grid, endpoint, itemLabel }) => {
+        if (!(grid instanceof HTMLElement) || !endpoint) return;
+        let draggedItem = null;
+        let activePointerId = null;
+        let startX = 0;
+        let startY = 0;
+        let moved = false;
+        let initialOrder = '';
+
+        const items = () => Array.from(grid.querySelectorAll('[data-finance-sortable-item]'));
+        const orderSignature = () => items().map((item) => item.dataset.financeSortId || '').join(',');
+        const saveOrder = async () => {
+            const orderedIds = items()
+                .map((item) => Number.parseInt(item.dataset.financeSortId || '', 10))
+                .filter((id) => Number.isInteger(id));
+            if (!orderedIds.length || orderedIds.join(',') === initialOrder) return;
+            const response = await fetch(endpoint, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                },
+                body: JSON.stringify({
+                    csrf_token: FINANCE_CSRF_TOKEN,
+                    ordered_ids: orderedIds,
+                }),
+            });
+            if (!response.ok) {
+                const payload = await response.json().catch(() => ({}));
+                throw new Error(payload.message || `Não foi possível salvar a ordem de ${itemLabel}.`);
+            }
+            window.setTimeout(() => window.location.reload(), 140);
+        };
+        const moveBeforePointer = (clientX, clientY) => {
+            if (!draggedItem) return;
+            const target = document.elementFromPoint(clientX, clientY)?.closest('[data-finance-sortable-item]');
+            if (!(target instanceof HTMLElement) || target === draggedItem || target.parentElement !== grid) return;
+            const rect = target.getBoundingClientRect();
+            const centerX = rect.left + rect.width / 2;
+            const centerY = rect.top + rect.height / 2;
+            const sameRow = Math.abs(clientY - centerY) < rect.height / 2;
+            const before = clientY < centerY || (sameRow && clientX < centerX);
+            grid.insertBefore(draggedItem, before ? target : target.nextElementSibling);
+        };
+        grid.querySelectorAll('[data-finance-sort-handle]').forEach((handle) => {
+            handle.addEventListener('pointerdown', (event) => {
+                if (event.pointerType === 'mouse' && event.button !== 0) return;
+                const item = handle.closest('[data-finance-sortable-item]');
+                if (!(item instanceof HTMLElement)) return;
+                event.preventDefault();
+                activePointerId = event.pointerId;
+                draggedItem = item;
+                startX = event.clientX;
+                startY = event.clientY;
+                moved = false;
+                initialOrder = orderSignature();
+                item.classList.add('finance-sortable-dragging');
+                grid.classList.add('finance-sortable-active');
+                handle.setPointerCapture?.(event.pointerId);
+            });
+            handle.addEventListener('pointermove', (event) => {
+                if (!draggedItem || event.pointerId !== activePointerId) return;
+                const delta = Math.hypot(event.clientX - startX, event.clientY - startY);
+                if (delta < 6 && !moved) return;
+                moved = true;
+                event.preventDefault();
+                moveBeforePointer(event.clientX, event.clientY);
+            });
+            const finishDrag = async (event) => {
+                if (!draggedItem || event.pointerId !== activePointerId) return;
+                const item = draggedItem;
+                draggedItem = null;
+                activePointerId = null;
+                item.classList.remove('finance-sortable-dragging');
+                grid.classList.remove('finance-sortable-active');
+                handle.releasePointerCapture?.(event.pointerId);
+                if (!moved) return;
+                try {
+                    await saveOrder();
+                } catch (error) {
+                    window.alert(error instanceof Error ? error.message : `Não foi possível salvar a ordem de ${itemLabel}.`);
+                    window.location.reload();
+                }
+            };
+            handle.addEventListener('pointerup', finishDrag);
+            handle.addEventListener('pointercancel', finishDrag);
+        });
+    };
 
     const clearAttachmentHideTimer = () => {
         if (attachmentHideTimer) {
@@ -3645,6 +3758,11 @@
             dotsContainer: financeAccountsDots,
         });
     }
+    setupFinanceSortableCards({
+        grid: financeAccountsGrid,
+        endpoint: '/gestao-financeira/contas/reordenar',
+        itemLabel: 'contas',
+    });
 
     let financeCardsPager = null;
     if (
@@ -3669,6 +3787,11 @@
             dotsContainer: financeCardsDots,
         });
     }
+    setupFinanceSortableCards({
+        grid: financeCardsGrid,
+        endpoint: '/gestao-financeira/cartoes/reordenar',
+        itemLabel: 'cartões',
+    });
 
     setupCollapse({
         toggleSelector: '[data-finance-transaction-context-toggle]',
