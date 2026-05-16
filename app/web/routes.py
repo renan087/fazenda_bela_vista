@@ -14680,7 +14680,12 @@ def fertilization_schedules_page(
         for schedule in [*active_schedules_pagination["items"], *completed_schedules_pagination["items"]]
     }
     schedule_after_edit_close_url = _url_with_query(request, edit_id=None)
-    purchased_inputs = repo.list_purchased_inputs()
+    stock_context = _build_stock_context(
+        repo,
+        farm_id=scope["active_farm_id"] if scope["active_farm_id"] else None,
+        item_type="insumo_agricola",
+    )
+    purchased_inputs = stock_context["purchase_entries"]
     schedule_validations = {}
     for sch in active_schedules_pagination["items"]:
         schedule_validations[sch.id] = validate_schedule_stock(
@@ -14696,17 +14701,9 @@ def fertilization_schedules_page(
         for recommendation in recs
         if (not plot_ids or recommendation.plot_id is None or recommendation.plot_id in plot_ids)
     ]
-    consolidated_inputs = repo.list_input_catalog(item_type="insumo_agricola")
-    avail_by_catalog = defaultdict(float)
-    for entry in purchased_inputs:
-        avail_by_catalog[entry.input_id] += float(entry.available_quantity or 0)
-    input_stock = {
-        item.id: {
-            "available": round(avail_by_catalog.get(item.id, 0), 2),
-            "unit": item.default_unit,
-        }
-        for item in consolidated_inputs
-    }
+    consolidated_inputs = stock_context["consumption_catalog_inputs"]
+    valid_schedule_input_ids = {item.id for item in consolidated_inputs}
+    input_stock = stock_context["input_stock"]
     edit_schedule_items = (
         [
             {
@@ -14719,25 +14716,28 @@ def fertilization_schedules_page(
         if edit_schedule and edit_schedule.items
         else [{"input_id": "", "unit": "kg", "quantity": ""}]
     )
-    schedule_recommendations = [
-        {
-            "id": recommendation.id,
-            "application_name": recommendation.application_name,
-            "plot_name": recommendation.plot.name if recommendation.plot else None,
-            "farm_name": recommendation.farm.name if recommendation.farm else None,
-            "items": [
-                {
-                    "input_id": item.input_id,
-                    "unit": item.unit,
-                    "quantity": float(item.quantity or 0),
-                }
-                for item in recommendation.items
-                if item.input_id
-            ],
-        }
-        for recommendation in recommendations
-        if recommendation.items
-    ]
+    schedule_recommendations = []
+    for recommendation in recommendations:
+        recommendation_items = [
+            {
+                "input_id": item.input_id,
+                "unit": item.unit,
+                "quantity": float(item.quantity or 0),
+            }
+            for item in recommendation.items
+            if item.input_id and item.input_id in valid_schedule_input_ids
+        ]
+        if not recommendation_items:
+            continue
+        schedule_recommendations.append(
+            {
+                "id": recommendation.id,
+                "application_name": recommendation.application_name,
+                "plot_name": recommendation.plot.name if recommendation.plot else None,
+                "farm_name": recommendation.farm.name if recommendation.farm else None,
+                "items": recommendation_items,
+            }
+        )
     return templates.TemplateResponse(
         "fertilization_schedule.html",
         _base_context(
