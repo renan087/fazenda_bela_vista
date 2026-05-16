@@ -1898,7 +1898,7 @@
         const EDGE_HOVER_DELAY = 120;
         const EDGE_COOLDOWN = 280;
         const DRAG_THRESHOLD = 5;
-        const SWAP_OVERLAP_RATIO = 0.5;
+        const SWAP_OVERLAP_RATIO = 0.4;
 
         const state = {
             pointerId: null,
@@ -2008,45 +2008,64 @@
             state.ghost.style.transform = `translate3d(${x}px, ${state.ghostY}px, 0)`;
         };
 
-        const swapOnHover = (clientX) => {
+        const swapOnHover = (clientX, clientY) => {
             if (!state.item) return;
-            const ghostLeft = state.ghostX;
+            const probeY = state.ghostY + state.ghostHeight / 2;
+            const ghostLeft = clientX - state.ghostOffsetX;
             const ghostRight = ghostLeft + state.ghostWidth;
             const ghostTop = state.ghostY;
             const ghostBottom = ghostTop + state.ghostHeight;
-            const ghostCenterX = ghostLeft + state.ghostWidth / 2;
+
+            const shouldSwapWith = (rect) => {
+                if (rect.width <= 0 || rect.height <= 0) return false;
+                const overlapY = Math.max(0, Math.min(ghostBottom, rect.bottom) - Math.max(ghostTop, rect.top));
+                if (overlapY < 12) return false;
+                const overlapX = Math.max(0, Math.min(ghostRight, rect.right) - Math.max(ghostLeft, rect.left));
+                if (overlapX > 0) {
+                    const overlapOnGhost = overlapX / (state.ghostWidth || 1);
+                    const overlapOnTarget = overlapX / rect.width;
+                    if (overlapOnGhost >= SWAP_OVERLAP_RATIO || overlapOnTarget >= SWAP_OVERLAP_RATIO) {
+                        return true;
+                    }
+                }
+                const insideX = clientX >= rect.left && clientX <= rect.right;
+                const insideY = clientY >= rect.top && clientY <= rect.bottom;
+                if (!insideX || !insideY) return false;
+                const enterFromLeft = (clientX - rect.left) / rect.width;
+                const enterFromRight = (rect.right - clientX) / rect.width;
+                return enterFromLeft >= SWAP_OVERLAP_RATIO || enterFromRight >= SWAP_OVERLAP_RATIO;
+            };
+
             let target = null;
             let targetRect = null;
             let bestOverlap = 0;
             for (const candidate of items()) {
                 if (candidate === state.item || candidate.classList.contains('hidden')) continue;
                 const rect = candidate.getBoundingClientRect();
-                if (rect.width <= 0 || rect.height <= 0) continue;
-                const overlapY = Math.max(0, Math.min(ghostBottom, rect.bottom) - Math.max(ghostTop, rect.top));
-                if (overlapY <= 0) continue;
+                if (!shouldSwapWith(rect)) continue;
                 const overlapX = Math.max(0, Math.min(ghostRight, rect.right) - Math.max(ghostLeft, rect.left));
-                if (overlapX <= 0) continue;
-                const overlapOnGhost = overlapX / (state.ghostWidth || 1);
-                const overlapOnTarget = overlapX / (rect.width || 1);
-                const passedHalf = overlapOnGhost >= SWAP_OVERLAP_RATIO || overlapOnTarget >= SWAP_OVERLAP_RATIO;
-                if (!passedHalf) continue;
-                if (overlapX > bestOverlap) {
+                if (overlapX >= bestOverlap) {
                     bestOverlap = overlapX;
                     target = candidate;
                     targetRect = rect;
                 }
             }
+
             if (!(target instanceof HTMLElement) || !targetRect) {
-                const probe = document.elementFromPoint(clientX, state.ghostY + state.ghostHeight / 2);
+                const probe = document.elementFromPoint(clientX, probeY);
                 const hovered = probe instanceof Element ? probe.closest('[data-finance-sortable-item]') : null;
                 if (hovered instanceof HTMLElement && hovered !== state.item && !hovered.classList.contains('hidden')) {
-                    target = hovered;
-                    targetRect = hovered.getBoundingClientRect();
-                } else {
-                    return;
+                    const rect = hovered.getBoundingClientRect();
+                    if (shouldSwapWith(rect)) {
+                        target = hovered;
+                        targetRect = rect;
+                    }
                 }
             }
-            const before = ghostCenterX < targetRect.left + targetRect.width / 2;
+            if (!(target instanceof HTMLElement) || !targetRect) return;
+
+            const decisionX = clientX;
+            const before = decisionX < targetRect.left + targetRect.width / 2;
             const anchor = before ? target : target.nextElementSibling;
             if (state.item === anchor) return;
             if (state.item.nextElementSibling === anchor) return;
@@ -2234,7 +2253,7 @@
                 }
                 moveEvent.preventDefault();
                 positionGhost(moveEvent.clientX);
-                swapOnHover(moveEvent.clientX);
+                swapOnHover(moveEvent.clientX, moveEvent.clientY);
                 maybeJumpPage(moveEvent.clientX, moveEvent.clientY);
                 state.lastClientX = moveEvent.clientX;
             };
