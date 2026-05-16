@@ -1889,156 +1889,312 @@
         itemLabel,
         pager = null,
         viewport = null,
+        pagerItems = null,
         itemsPerPageDesktop = 3,
         itemsPerPageMobile = 1,
     }) => {
         if (!(grid instanceof HTMLElement) || !endpoint) return;
-        let draggedItem = null;
-        let activePointerId = null;
-        let startX = 0;
-        let startY = 0;
-        let moved = false;
-        let initialOrder = '';
-        let pageJumpLocked = false;
+
+        const syncPagerItems = () => {
+            if (!Array.isArray(pagerItems)) return;
+            const order = Array.from(grid.querySelectorAll('[data-finance-sortable-item]'));
+            pagerItems.length = 0;
+            order.forEach((item) => pagerItems.push(item));
+        };
+
+        const state = {
+            activePointerId: null,
+            draggedItem: null,
+            ghost: null,
+            ghostOffsetX: 0,
+            ghostOffsetY: 0,
+            startX: 0,
+            startY: 0,
+            moved: false,
+            initialOrder: '',
+            pageJumpLocked: false,
+            rafId: null,
+            pendingX: 0,
+            pendingY: 0,
+            pointerMoveHandler: null,
+            pointerUpHandler: null,
+            pointerCancelHandler: null,
+            originalUserSelect: '',
+            edgeAutoJumpTimer: null,
+        };
 
         const items = () => Array.from(grid.querySelectorAll('[data-finance-sortable-item]'));
         const orderSignature = () => items().map((item) => item.dataset.financeSortId || '').join(',');
-        const currentItemsPerPage = () => (
-            window.matchMedia('(max-width: 899px)').matches
-                ? Math.max(1, Number(itemsPerPageMobile) || 1)
-                : Math.max(1, Number(itemsPerPageDesktop) || 1)
+        const isMobile = () => window.matchMedia('(max-width: 899px)').matches;
+        const currentItemsPerPage = () => Math.max(
+            1,
+            Number(isMobile() ? itemsPerPageMobile : itemsPerPageDesktop) || 1,
         );
-        const showSortPage = (pageIndex) => {
-            const pageSize = currentItemsPerPage();
-            const isMobile = window.matchMedia('(max-width: 899px)').matches;
-            items().forEach((item, index) => {
-                if (isMobile) {
-                    item.classList.remove('hidden');
-                    return;
-                }
-                item.classList.toggle('hidden', Math.floor(index / pageSize) !== pageIndex);
-            });
-        };
+
         const saveOrder = async () => {
             const orderedIds = items()
                 .map((item) => Number.parseInt(item.dataset.financeSortId || '', 10))
                 .filter((id) => Number.isInteger(id));
-            if (!orderedIds.length || orderedIds.join(',') === initialOrder) return;
-            const response = await fetch(endpoint, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Accept': 'application/json',
-                },
-                body: JSON.stringify({
-                    csrf_token: FINANCE_CSRF_TOKEN,
-                    ordered_ids: orderedIds,
-                }),
-            });
-            if (!response.ok) {
-                const payload = await response.json().catch(() => ({}));
-                throw new Error(payload.message || `Não foi possível salvar a ordem de ${itemLabel}.`);
+            if (!orderedIds.length) return;
+            const signature = orderedIds.join(',');
+            if (signature === state.initialOrder) return;
+            try {
+                const response = await fetch(endpoint, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        csrf_token: FINANCE_CSRF_TOKEN,
+                        ordered_ids: orderedIds,
+                    }),
+                });
+                if (!response.ok) {
+                    const payload = await response.json().catch(() => ({}));
+                    throw new Error(payload.message || `Não foi possível salvar a ordem de ${itemLabel}.`);
+                }
+                state.initialOrder = signature;
+            } catch (error) {
+                window.alert(error instanceof Error ? error.message : `Não foi possível salvar a ordem de ${itemLabel}.`);
+                window.location.reload();
             }
-            window.setTimeout(() => window.location.reload(), 140);
         };
-        const moveBeforePointer = (clientX, clientY) => {
-            if (!draggedItem) return;
-            const target = document.elementFromPoint(clientX, clientY)?.closest('[data-finance-sortable-item]');
-            if (!(target instanceof HTMLElement) || target === draggedItem || target.parentElement !== grid) return;
-            const rect = target.getBoundingClientRect();
-            const centerX = rect.left + rect.width / 2;
-            const centerY = rect.top + rect.height / 2;
-            const sameRow = Math.abs(clientY - centerY) < rect.height / 2;
-            const before = clientY < centerY || (sameRow && clientX < centerX);
-            grid.insertBefore(draggedItem, before ? target : target.nextElementSibling);
-            draggedItem.classList.add('finance-sortable-just-moved');
-            window.setTimeout(() => draggedItem?.classList.remove('finance-sortable-just-moved'), 180);
+
+        const buildGhost = (source) => {
+            const rect = source.getBoundingClientRect();
+            const clone = source.cloneNode(true);
+            clone.classList.remove(
+                'finance-sortable-source',
+                'finance-sortable-dragging',
+                'finance-sortable-just-moved',
+                'finance-sortable-page-jump',
+                'hidden',
+            );
+            clone.classList.add('finance-sortable-ghost');
+            clone.removeAttribute('data-finance-sortable-item');
+            clone.removeAttribute('data-finance-sort-id');
+            clone.querySelectorAll('button, input, a, form').forEach((el) => {
+                if (el instanceof HTMLElement) el.setAttribute('tabindex', '-1');
+            });
+            clone.style.width = `${rect.width}px`;
+            clone.style.height = `${rect.height}px`;
+            return { node: clone, rect };
         };
+
+        const positionGhost = (clientX, clientY) => {
+            if (!state.ghost) return;
+            const x = clientX - state.ghostOffsetX;
+            const y = clientY - state.ghostOffsetY;
+            state.ghost.style.transform = `translate3d(${x}px, ${y}px, 0)`;
+        };
+
+        const reorderByPointer = (clientX, clientY) => {
+            if (!state.draggedItem) return;
+            const visibleItems = items().filter((item) => (
+                item !== state.draggedItem && !item.classList.contains('hidden')
+            ));
+            if (!visibleItems.length) return;
+            let best = null;
+            let bestDistance = Infinity;
+            for (const item of visibleItems) {
+                const rect = item.getBoundingClientRect();
+                if (rect.width === 0 || rect.height === 0) continue;
+                const cx = rect.left + rect.width / 2;
+                const cy = rect.top + rect.height / 2;
+                const dx = clientX - cx;
+                const dy = clientY - cy;
+                const distance = Math.hypot(dx, dy);
+                if (distance < bestDistance) {
+                    bestDistance = distance;
+                    best = { item, rect, cx, cy };
+                }
+            }
+            if (!best) return;
+            const sameRow = Math.abs(clientY - best.cy) < best.rect.height / 2;
+            const before = clientY < best.cy || (sameRow && clientX < best.cx);
+            const anchor = before ? best.item : best.item.nextElementSibling;
+            if (state.draggedItem === anchor) return;
+            if (state.draggedItem.nextElementSibling === anchor) return;
+            grid.insertBefore(state.draggedItem, anchor);
+        };
+
         const moveDraggedIntoPage = (targetPage, direction) => {
-            if (!draggedItem || !pager) return;
+            if (!state.draggedItem || !pager) return;
             const pageSize = currentItemsPerPage();
-            const visibleItems = items().filter((item) => item !== draggedItem);
+            const others = items().filter((item) => item !== state.draggedItem);
             const pageStart = targetPage * pageSize;
             if (direction === 'next') {
-                const anchor = visibleItems[pageStart] || null;
-                grid.insertBefore(draggedItem, anchor);
+                const anchor = others[pageStart] || null;
+                grid.insertBefore(state.draggedItem, anchor);
             } else {
-                const anchor = visibleItems[Math.min(pageStart + pageSize - 1, visibleItems.length - 1)] || null;
-                grid.insertBefore(draggedItem, anchor ? anchor.nextElementSibling : grid.firstElementChild);
+                const lastIndex = Math.min(pageStart + pageSize - 1, others.length - 1);
+                const anchor = others[lastIndex] || null;
+                if (anchor) {
+                    grid.insertBefore(state.draggedItem, anchor);
+                } else {
+                    grid.insertBefore(state.draggedItem, grid.firstElementChild);
+                }
             }
+            syncPagerItems();
             pager.setPage(targetPage, direction);
             window.requestAnimationFrame(() => {
-                showSortPage(targetPage);
-                if (window.matchMedia('(max-width: 899px)').matches) {
-                    draggedItem?.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+                if (state.draggedItem) {
+                    state.draggedItem.classList.remove('hidden');
+                    state.draggedItem.classList.add('finance-sortable-page-jump');
+                    window.setTimeout(() => {
+                        state.draggedItem?.classList.remove('finance-sortable-page-jump');
+                    }, 280);
                 }
             });
-            draggedItem.classList.add('finance-sortable-page-jump');
-            window.setTimeout(() => draggedItem?.classList.remove('finance-sortable-page-jump'), 260);
         };
+
         const maybeJumpPage = (clientX) => {
-            if (!draggedItem || !pager || pageJumpLocked) return;
-            const boundsSource = viewport instanceof HTMLElement ? viewport : grid;
-            const rect = boundsSource.getBoundingClientRect();
-            const edgeSize = Math.min(90, Math.max(44, rect.width * 0.14));
+            if (!state.draggedItem || !pager || state.pageJumpLocked) return;
+            const bounds = (viewport instanceof HTMLElement ? viewport : grid).getBoundingClientRect();
+            const edge = Math.min(110, Math.max(56, bounds.width * 0.13));
             const page = pager.getPage();
             const total = pager.getTotalPages();
-            if (clientX >= rect.right - edgeSize && page < total - 1) {
-                pageJumpLocked = true;
-                moveDraggedIntoPage(page + 1, 'next');
-                window.setTimeout(() => { pageJumpLocked = false; }, 420);
-            } else if (clientX <= rect.left + edgeSize && page > 0) {
-                pageJumpLocked = true;
-                moveDraggedIntoPage(page - 1, 'prev');
-                window.setTimeout(() => { pageJumpLocked = false; }, 420);
+            const wantNext = clientX >= bounds.right - edge && page < total - 1;
+            const wantPrev = clientX <= bounds.left + edge && page > 0;
+            if (!wantNext && !wantPrev) return;
+            state.pageJumpLocked = true;
+            const targetPage = wantNext ? page + 1 : page - 1;
+            const direction = wantNext ? 'next' : 'prev';
+            moveDraggedIntoPage(targetPage, direction);
+            window.setTimeout(() => { state.pageJumpLocked = false; }, 460);
+        };
+
+        const processFrame = () => {
+            state.rafId = null;
+            if (!state.draggedItem) return;
+            positionGhost(state.pendingX, state.pendingY);
+            reorderByPointer(state.pendingX, state.pendingY);
+            maybeJumpPage(state.pendingX);
+        };
+
+        const scheduleFrame = (clientX, clientY) => {
+            state.pendingX = clientX;
+            state.pendingY = clientY;
+            if (state.rafId !== null) return;
+            state.rafId = window.requestAnimationFrame(processFrame);
+        };
+
+        const cleanupDrag = () => {
+            if (state.rafId !== null) {
+                window.cancelAnimationFrame(state.rafId);
+                state.rafId = null;
+            }
+            if (state.ghost) {
+                state.ghost.remove();
+                state.ghost = null;
+            }
+            if (state.draggedItem) {
+                state.draggedItem.classList.remove(
+                    'finance-sortable-source',
+                    'finance-sortable-dragging',
+                );
+            }
+            grid.classList.remove('finance-sortable-active');
+            grid.closest('.finance-card-paged-shell')?.classList.remove('finance-sortable-shell-active');
+            document.body.classList.remove('finance-sortable-cursor');
+            document.body.style.userSelect = state.originalUserSelect || '';
+            state.originalUserSelect = '';
+            state.activePointerId = null;
+            state.pageJumpLocked = false;
+        };
+
+        const detachDocumentListeners = () => {
+            if (state.pointerMoveHandler) {
+                document.removeEventListener('pointermove', state.pointerMoveHandler, true);
+                state.pointerMoveHandler = null;
+            }
+            if (state.pointerUpHandler) {
+                document.removeEventListener('pointerup', state.pointerUpHandler, true);
+                state.pointerUpHandler = null;
+            }
+            if (state.pointerCancelHandler) {
+                document.removeEventListener('pointercancel', state.pointerCancelHandler, true);
+                state.pointerCancelHandler = null;
             }
         };
+
+        const finishDrag = async (event, cancelled) => {
+            if (!state.draggedItem || event.pointerId !== state.activePointerId) return;
+            const item = state.draggedItem;
+            const didMove = state.moved;
+            cleanupDrag();
+            detachDocumentListeners();
+            if (item) {
+                item.classList.add('finance-sortable-just-moved');
+                window.setTimeout(() => item.classList.remove('finance-sortable-just-moved'), 240);
+            }
+            state.draggedItem = null;
+            if (!didMove || cancelled) return;
+            syncPagerItems();
+            await saveOrder();
+        };
+
+        const startDrag = (handle, event) => {
+            const item = handle.closest('[data-finance-sortable-item]');
+            if (!(item instanceof HTMLElement)) return;
+            event.preventDefault();
+            state.activePointerId = event.pointerId;
+            state.draggedItem = item;
+            state.startX = event.clientX;
+            state.startY = event.clientY;
+            state.moved = false;
+            state.initialOrder = orderSignature();
+
+            const rect = item.getBoundingClientRect();
+            state.ghostOffsetX = event.clientX - rect.left;
+            state.ghostOffsetY = event.clientY - rect.top;
+            const { node } = buildGhost(item);
+            state.ghost = node;
+            document.body.appendChild(state.ghost);
+            positionGhost(event.clientX, event.clientY);
+
+            item.classList.add('finance-sortable-source', 'finance-sortable-dragging');
+            grid.classList.add('finance-sortable-active');
+            grid.closest('.finance-card-paged-shell')?.classList.add('finance-sortable-shell-active');
+            document.body.classList.add('finance-sortable-cursor');
+            state.originalUserSelect = document.body.style.userSelect;
+            document.body.style.userSelect = 'none';
+
+            state.pointerMoveHandler = (moveEvent) => {
+                if (moveEvent.pointerId !== state.activePointerId || !state.draggedItem) return;
+                if (!state.moved) {
+                    const delta = Math.hypot(moveEvent.clientX - state.startX, moveEvent.clientY - state.startY);
+                    if (delta < 4) {
+                        positionGhost(moveEvent.clientX, moveEvent.clientY);
+                        return;
+                    }
+                    state.moved = true;
+                }
+                moveEvent.preventDefault();
+                scheduleFrame(moveEvent.clientX, moveEvent.clientY);
+            };
+            state.pointerUpHandler = (upEvent) => {
+                finishDrag(upEvent, false);
+            };
+            state.pointerCancelHandler = (cancelEvent) => {
+                finishDrag(cancelEvent, true);
+            };
+            document.addEventListener('pointermove', state.pointerMoveHandler, { capture: true, passive: false });
+            document.addEventListener('pointerup', state.pointerUpHandler, { capture: true });
+            document.addEventListener('pointercancel', state.pointerCancelHandler, { capture: true });
+        };
+
         grid.querySelectorAll('[data-finance-sort-handle]').forEach((handle) => {
             handle.addEventListener('pointerdown', (event) => {
                 if (event.pointerType === 'mouse' && event.button !== 0) return;
-                const item = handle.closest('[data-finance-sortable-item]');
-                if (!(item instanceof HTMLElement)) return;
-                event.preventDefault();
-                activePointerId = event.pointerId;
-                draggedItem = item;
-                startX = event.clientX;
-                startY = event.clientY;
-                moved = false;
-                initialOrder = orderSignature();
-                item.classList.add('finance-sortable-dragging');
-                grid.classList.add('finance-sortable-active');
-                grid.closest('.finance-card-paged-shell')?.classList.add('finance-sortable-shell-active');
-                handle.setPointerCapture?.(event.pointerId);
+                if (state.draggedItem) return;
+                startDrag(handle, event);
             });
-            handle.addEventListener('pointermove', (event) => {
-                if (!draggedItem || event.pointerId !== activePointerId) return;
-                const delta = Math.hypot(event.clientX - startX, event.clientY - startY);
-                if (delta < 6 && !moved) return;
-                moved = true;
+            handle.addEventListener('click', (event) => {
                 event.preventDefault();
-                moveBeforePointer(event.clientX, event.clientY);
-                maybeJumpPage(event.clientX);
             });
-            const finishDrag = async (event) => {
-                if (!draggedItem || event.pointerId !== activePointerId) return;
-                const item = draggedItem;
-                draggedItem = null;
-                activePointerId = null;
-                pageJumpLocked = false;
-                item.classList.remove('finance-sortable-dragging');
-                grid.classList.remove('finance-sortable-active');
-                grid.closest('.finance-card-paged-shell')?.classList.remove('finance-sortable-shell-active');
-                handle.releasePointerCapture?.(event.pointerId);
-                if (!moved) return;
-                try {
-                    await saveOrder();
-                } catch (error) {
-                    window.alert(error instanceof Error ? error.message : `Não foi possível salvar a ordem de ${itemLabel}.`);
-                    window.location.reload();
-                }
-            };
-            handle.addEventListener('pointerup', finishDrag);
-            handle.addEventListener('pointercancel', finishDrag);
+            handle.addEventListener('dragstart', (event) => event.preventDefault());
         });
     };
 
@@ -3834,6 +3990,7 @@
         itemLabel: 'contas',
         pager: financeAccountsPager,
         viewport: financeAccountsViewport,
+        pagerItems: financeAccountSummaryItems,
         itemsPerPageDesktop: 3,
         itemsPerPageMobile: 1,
     });
@@ -3867,6 +4024,7 @@
         itemLabel: 'cartões',
         pager: financeCardsPager,
         viewport: financeCardsViewport,
+        pagerItems: financeCardSummaryItems,
         itemsPerPageDesktop: 3,
         itemsPerPageMobile: 1,
     });

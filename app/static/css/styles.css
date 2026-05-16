@@ -2279,14 +2279,26 @@ body.dashboard-schedule-modal-open {
 .finance-sort-handle {
     cursor: grab;
     touch-action: none;
+    user-select: none;
 }
 
 .finance-sort-handle:active {
     cursor: grabbing;
 }
 
+body.finance-sortable-cursor,
+body.finance-sortable-cursor * {
+    cursor: grabbing !important;
+}
+
+body.finance-sortable-cursor {
+    touch-action: none;
+    -webkit-user-select: none;
+    overscroll-behavior: contain;
+}
+
 .finance-sortable-active [data-finance-sortable-item] {
-    transition: transform 0.22s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
+    transition: transform 0.28s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
 }
 
 .finance-sortable-shell-active .finance-card-page-nav:not(:disabled) {
@@ -2297,40 +2309,109 @@ body.dashboard-schedule-modal-open {
     box-shadow: 0 20px 38px -24px rgba(68, 106, 54, 0.6);
 }
 
+.finance-sortable-source {
+    opacity: 0.18;
+    filter: blur(0.6px) saturate(0.85);
+    transform: scale(0.97);
+    box-shadow: inset 0 0 0 2px rgba(68, 106, 54, 0.35);
+    transition: opacity 0.18s ease, transform 0.22s ease, filter 0.22s ease;
+    pointer-events: none;
+}
+
+.finance-sortable-source * {
+    pointer-events: none !important;
+}
+
 .finance-sortable-dragging {
-    opacity: 0.78;
-    border-color: rgba(68, 106, 54, 0.35) !important;
-    box-shadow: 0 24px 54px rgba(15, 23, 42, 0.2);
-    transform: scale(0.975) rotate(-0.35deg);
     z-index: 5;
 }
 
+.finance-sortable-ghost {
+    position: fixed;
+    top: 0;
+    left: 0;
+    margin: 0;
+    pointer-events: none;
+    z-index: 9999;
+    border-radius: 1.5rem;
+    box-shadow:
+        0 30px 60px -18px rgba(15, 23, 42, 0.45),
+        0 10px 24px -8px rgba(15, 23, 42, 0.3),
+        0 0 0 1px rgba(68, 106, 54, 0.18);
+    background: #ffffff;
+    transform: translate3d(0, 0, 0);
+    transform-origin: center;
+    will-change: transform;
+    animation: finance-sortable-float 1.6s ease-in-out infinite;
+    transition: box-shadow 0.18s ease;
+    overflow: hidden;
+}
+
+.finance-sortable-ghost::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background: linear-gradient(135deg, rgba(68, 106, 54, 0.06) 0%, rgba(255, 255, 255, 0) 60%);
+    pointer-events: none;
+}
+
 .finance-sortable-just-moved {
-    animation: finance-sortable-shift 0.18s ease both;
+    animation: finance-sortable-shift 0.22s ease both;
 }
 
 .finance-sortable-page-jump {
-    animation: finance-sortable-page-jump 0.26s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+    animation: finance-sortable-page-jump 0.32s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+@keyframes finance-sortable-float {
+    0% {
+        box-shadow:
+            0 22px 42px -16px rgba(15, 23, 42, 0.4),
+            0 8px 18px -8px rgba(15, 23, 42, 0.25),
+            0 0 0 1px rgba(68, 106, 54, 0.18);
+    }
+    50% {
+        box-shadow:
+            0 38px 70px -18px rgba(15, 23, 42, 0.48),
+            0 16px 30px -10px rgba(15, 23, 42, 0.32),
+            0 0 0 1px rgba(68, 106, 54, 0.24);
+    }
+    100% {
+        box-shadow:
+            0 22px 42px -16px rgba(15, 23, 42, 0.4),
+            0 8px 18px -8px rgba(15, 23, 42, 0.25),
+            0 0 0 1px rgba(68, 106, 54, 0.18);
+    }
 }
 
 @keyframes finance-sortable-shift {
     0% {
-        transform: translateY(6px) scale(0.99);
+        transform: translateY(6px) scale(0.98);
+        opacity: 0.4;
+    }
+    60% {
+        transform: translateY(-2px) scale(1.01);
+        opacity: 1;
     }
     100% {
         transform: translateY(0) scale(1);
+        opacity: 1;
     }
 }
 
 @keyframes finance-sortable-page-jump {
     0% {
-        transform: translateX(18px) scale(0.96);
+        transform: translateX(22px) scale(0.95);
+        opacity: 0.4;
     }
     60% {
-        transform: translateX(-4px) scale(1.01);
+        transform: translateX(-4px) scale(1.02);
+        opacity: 1;
     }
     100% {
         transform: translateX(0) scale(1);
+        opacity: 1;
     }
 }
 
