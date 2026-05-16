@@ -523,7 +523,7 @@
                                     <option value="">Selecione</option>
                                     {% for input_item in inputs_catalog %}
                                     {% set stock = input_stock.get(input_item.id, {}) %}
-                                    <option value="{{ input_item.id }}" {% if item.input_id|string == input_item.id|string %}selected{% endif %}>
+                                    <option value="{{ input_item.id }}" data-schedule-input-unit="{{ stock.get('unit', input_item.default_unit) }}" {% if item.input_id|string == input_item.id|string %}selected{% endif %}>
                                         {{ input_item.name }} • disponivel: {{ stock.get('available', 0) }} {{ stock.get('unit', input_item.default_unit) }}
                                     </option>
                                     {% endfor %}
@@ -531,11 +531,12 @@
                             </label>
                             <label>
                                 <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Unidade</span>
-                                <select name="unit" class="min-h-[3rem] w-full rounded-xl border-slate-200 bg-slate-50">
+                                <select name="unit_display" class="min-h-[3rem] w-full rounded-xl border-slate-200 bg-slate-50 disabled:cursor-not-allowed disabled:text-slate-500" data-schedule-unit-display disabled>
                                     {% for unit in ['kg', 'g', 'L', 'ml', 'sacas', 'un'] %}
-                                    <option value="{{ unit }}" {% if item.unit == unit %}selected{% endif %}>{{ unit }}</option>
+                                    <option value="{{ unit }}" {% if item.unit == unit %}selected{% endif %}>{% if unit == 'L' %}Litro (L){% elif unit == 'ml' %}Mililitro (ml){% else %}{{ unit }}{% endif %}</option>
                                     {% endfor %}
                                 </select>
+                                <input type="hidden" name="unit" value="{{ item.unit }}" data-schedule-unit-hidden>
                             </label>
                             <label>
                                 <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Quantidade</span>
@@ -566,7 +567,7 @@
                 <option value="">Selecione</option>
                 {% for input_item in inputs_catalog %}
                 {% set stock = input_stock.get(input_item.id, {}) %}
-                <option value="{{ input_item.id }}">
+                <option value="{{ input_item.id }}" data-schedule-input-unit="{{ stock.get('unit', input_item.default_unit) }}">
                     {{ input_item.name }} • disponivel: {{ stock.get('available', 0) }} {{ stock.get('unit', input_item.default_unit) }}
                 </option>
                 {% endfor %}
@@ -574,11 +575,12 @@
         </label>
         <label>
             <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Unidade</span>
-            <select name="unit" class="min-h-[3rem] w-full rounded-xl border-slate-200 bg-slate-50">
+            <select name="unit_display" class="min-h-[3rem] w-full rounded-xl border-slate-200 bg-slate-50 disabled:cursor-not-allowed disabled:text-slate-500" data-schedule-unit-display disabled>
                 {% for unit in ['kg', 'g', 'L', 'ml', 'sacas', 'un'] %}
-                <option value="{{ unit }}">{{ unit }}</option>
+                <option value="{{ unit }}">{% if unit == 'L' %}Litro (L){% elif unit == 'ml' %}Mililitro (ml){% else %}{{ unit }}{% endif %}</option>
                 {% endfor %}
             </select>
+            <input type="hidden" name="unit" value="" data-schedule-unit-hidden>
         </label>
         <label>
             <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Quantidade</span>
@@ -645,6 +647,31 @@
         const scheduleBulkModalCount = document.querySelector('[data-schedule-bulk-modal-count]');
         const scheduleBulkDateInput = document.querySelector('[data-schedule-bulk-date]');
         const scheduleBulkModalCloseButtons = Array.from(document.querySelectorAll('[data-schedule-bulk-modal-close]'));
+        const normalizeScheduleUnit = (value) => {
+            const raw = (value || '').toString().trim();
+            const lower = raw.toLowerCase();
+            if (['l', 'lt', 'litro', 'litros'].includes(lower)) return 'L';
+            if (['ml', 'mililitro', 'mililitros'].includes(lower)) return 'ml';
+            return raw;
+        };
+        const syncScheduleItemUnit = (row) => {
+            if (!row) return;
+            const inputField = row.querySelector('select[name="input_id"]');
+            const unitDisplay = row.querySelector('[data-schedule-unit-display]');
+            const unitHidden = row.querySelector('[data-schedule-unit-hidden]');
+            if (!(inputField instanceof HTMLSelectElement) || !(unitDisplay instanceof HTMLSelectElement) || !(unitHidden instanceof HTMLInputElement)) return;
+            const selectedOption = inputField.selectedOptions[0];
+            const unit = normalizeScheduleUnit(selectedOption?.dataset.scheduleInputUnit || '');
+            if (unit) {
+                unitDisplay.value = unit;
+                unitHidden.value = unit;
+                unitDisplay.disabled = true;
+                return;
+            }
+            unitDisplay.value = '';
+            unitHidden.value = '';
+            unitDisplay.disabled = true;
+        };
         const normalizeSearchText = (value) => (
             (value || '')
                 .toString()
@@ -1259,6 +1286,9 @@
         if (!wrapper || !addButton || !template) return;
 
         const bindRemove = (row) => {
+            row.querySelector('select[name="input_id"]')?.addEventListener('change', () => {
+                syncScheduleItemUnit(row);
+            });
             row.querySelector('[data-remove-schedule-item]')?.addEventListener('click', () => {
                 if (wrapper.querySelectorAll('[data-schedule-item]').length === 1) {
                     row.querySelectorAll('input, select').forEach((field) => {
@@ -1268,10 +1298,12 @@
                             field.value = '';
                         }
                     });
+                    syncScheduleItemUnit(row);
                     return;
                 }
                 row.remove();
             });
+            syncScheduleItemUnit(row);
         };
 
         wrapper.querySelectorAll('[data-schedule-item]').forEach(bindRemove);
@@ -1280,7 +1312,7 @@
             const row = fragment.firstElementChild;
             if (row && itemData) {
                 const inputField = row.querySelector('select[name="input_id"]');
-                const unitField = row.querySelector('select[name="unit"]');
+                const unitField = row.querySelector('[data-schedule-unit-hidden]');
                 const quantityField = row.querySelector('input[name="quantity"]');
                 if (inputField) inputField.value = String(itemData.input_id || '');
                 if (unitField) unitField.value = itemData.unit || 'kg';
