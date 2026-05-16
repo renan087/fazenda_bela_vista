@@ -1883,7 +1883,15 @@
     const normalize = (value) => (value || '').toString().normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
     const normalizeAccountIdentity = (value) => (value || '').toString().replace(/[^0-9A-Za-z]/g, '').toUpperCase();
 
-    const setupFinanceSortableCards = ({ grid, endpoint, itemLabel }) => {
+    const setupFinanceSortableCards = ({
+        grid,
+        endpoint,
+        itemLabel,
+        pager = null,
+        viewport = null,
+        itemsPerPageDesktop = 3,
+        itemsPerPageMobile = 1,
+    }) => {
         if (!(grid instanceof HTMLElement) || !endpoint) return;
         let draggedItem = null;
         let activePointerId = null;
@@ -1891,9 +1899,26 @@
         let startY = 0;
         let moved = false;
         let initialOrder = '';
+        let pageJumpLocked = false;
 
         const items = () => Array.from(grid.querySelectorAll('[data-finance-sortable-item]'));
         const orderSignature = () => items().map((item) => item.dataset.financeSortId || '').join(',');
+        const currentItemsPerPage = () => (
+            window.matchMedia('(max-width: 899px)').matches
+                ? Math.max(1, Number(itemsPerPageMobile) || 1)
+                : Math.max(1, Number(itemsPerPageDesktop) || 1)
+        );
+        const showSortPage = (pageIndex) => {
+            const pageSize = currentItemsPerPage();
+            const isMobile = window.matchMedia('(max-width: 899px)').matches;
+            items().forEach((item, index) => {
+                if (isMobile) {
+                    item.classList.remove('hidden');
+                    return;
+                }
+                item.classList.toggle('hidden', Math.floor(index / pageSize) !== pageIndex);
+            });
+        };
         const saveOrder = async () => {
             const orderedIds = items()
                 .map((item) => Number.parseInt(item.dataset.financeSortId || '', 10))
@@ -1926,6 +1951,47 @@
             const sameRow = Math.abs(clientY - centerY) < rect.height / 2;
             const before = clientY < centerY || (sameRow && clientX < centerX);
             grid.insertBefore(draggedItem, before ? target : target.nextElementSibling);
+            draggedItem.classList.add('finance-sortable-just-moved');
+            window.setTimeout(() => draggedItem?.classList.remove('finance-sortable-just-moved'), 180);
+        };
+        const moveDraggedIntoPage = (targetPage, direction) => {
+            if (!draggedItem || !pager) return;
+            const pageSize = currentItemsPerPage();
+            const visibleItems = items().filter((item) => item !== draggedItem);
+            const pageStart = targetPage * pageSize;
+            if (direction === 'next') {
+                const anchor = visibleItems[pageStart] || null;
+                grid.insertBefore(draggedItem, anchor);
+            } else {
+                const anchor = visibleItems[Math.min(pageStart + pageSize - 1, visibleItems.length - 1)] || null;
+                grid.insertBefore(draggedItem, anchor ? anchor.nextElementSibling : grid.firstElementChild);
+            }
+            pager.setPage(targetPage, direction);
+            window.requestAnimationFrame(() => {
+                showSortPage(targetPage);
+                if (window.matchMedia('(max-width: 899px)').matches) {
+                    draggedItem?.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+                }
+            });
+            draggedItem.classList.add('finance-sortable-page-jump');
+            window.setTimeout(() => draggedItem?.classList.remove('finance-sortable-page-jump'), 260);
+        };
+        const maybeJumpPage = (clientX) => {
+            if (!draggedItem || !pager || pageJumpLocked) return;
+            const boundsSource = viewport instanceof HTMLElement ? viewport : grid;
+            const rect = boundsSource.getBoundingClientRect();
+            const edgeSize = Math.min(90, Math.max(44, rect.width * 0.14));
+            const page = pager.getPage();
+            const total = pager.getTotalPages();
+            if (clientX >= rect.right - edgeSize && page < total - 1) {
+                pageJumpLocked = true;
+                moveDraggedIntoPage(page + 1, 'next');
+                window.setTimeout(() => { pageJumpLocked = false; }, 420);
+            } else if (clientX <= rect.left + edgeSize && page > 0) {
+                pageJumpLocked = true;
+                moveDraggedIntoPage(page - 1, 'prev');
+                window.setTimeout(() => { pageJumpLocked = false; }, 420);
+            }
         };
         grid.querySelectorAll('[data-finance-sort-handle]').forEach((handle) => {
             handle.addEventListener('pointerdown', (event) => {
@@ -1941,6 +2007,7 @@
                 initialOrder = orderSignature();
                 item.classList.add('finance-sortable-dragging');
                 grid.classList.add('finance-sortable-active');
+                grid.closest('.finance-card-paged-shell')?.classList.add('finance-sortable-shell-active');
                 handle.setPointerCapture?.(event.pointerId);
             });
             handle.addEventListener('pointermove', (event) => {
@@ -1950,14 +2017,17 @@
                 moved = true;
                 event.preventDefault();
                 moveBeforePointer(event.clientX, event.clientY);
+                maybeJumpPage(event.clientX);
             });
             const finishDrag = async (event) => {
                 if (!draggedItem || event.pointerId !== activePointerId) return;
                 const item = draggedItem;
                 draggedItem = null;
                 activePointerId = null;
+                pageJumpLocked = false;
                 item.classList.remove('finance-sortable-dragging');
                 grid.classList.remove('finance-sortable-active');
+                grid.closest('.finance-card-paged-shell')?.classList.remove('finance-sortable-shell-active');
                 handle.releasePointerCapture?.(event.pointerId);
                 if (!moved) return;
                 try {
@@ -3762,6 +3832,10 @@
         grid: financeAccountsGrid,
         endpoint: '/gestao-financeira/contas/reordenar',
         itemLabel: 'contas',
+        pager: financeAccountsPager,
+        viewport: financeAccountsViewport,
+        itemsPerPageDesktop: 3,
+        itemsPerPageMobile: 1,
     });
 
     let financeCardsPager = null;
@@ -3791,6 +3865,10 @@
         grid: financeCardsGrid,
         endpoint: '/gestao-financeira/cartoes/reordenar',
         itemLabel: 'cartões',
+        pager: financeCardsPager,
+        viewport: financeCardsViewport,
+        itemsPerPageDesktop: 3,
+        itemsPerPageMobile: 1,
     });
 
     setupCollapse({

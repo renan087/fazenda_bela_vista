@@ -2286,15 +2286,52 @@ body.dashboard-schedule-modal-open {
 }
 
 .finance-sortable-active [data-finance-sortable-item] {
-    transition: transform 0.16s ease, opacity 0.16s ease, box-shadow 0.16s ease, border-color 0.16s ease;
+    transition: transform 0.22s cubic-bezier(0.2, 0.8, 0.2, 1), opacity 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
+}
+
+.finance-sortable-shell-active .finance-card-page-nav:not(:disabled) {
+    opacity: 0.86;
+    transform: translateY(-50%) scale(1.08);
+    border-color: rgba(68, 106, 54, 0.28);
+    color: rgb(68 106 54);
+    box-shadow: 0 20px 38px -24px rgba(68, 106, 54, 0.6);
 }
 
 .finance-sortable-dragging {
-    opacity: 0.72;
+    opacity: 0.78;
     border-color: rgba(68, 106, 54, 0.35) !important;
-    box-shadow: 0 20px 45px rgba(15, 23, 42, 0.16);
-    transform: scale(0.985);
+    box-shadow: 0 24px 54px rgba(15, 23, 42, 0.2);
+    transform: scale(0.975) rotate(-0.35deg);
     z-index: 5;
+}
+
+.finance-sortable-just-moved {
+    animation: finance-sortable-shift 0.18s ease both;
+}
+
+.finance-sortable-page-jump {
+    animation: finance-sortable-page-jump 0.26s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+@keyframes finance-sortable-shift {
+    0% {
+        transform: translateY(6px) scale(0.99);
+    }
+    100% {
+        transform: translateY(0) scale(1);
+    }
+}
+
+@keyframes finance-sortable-page-jump {
+    0% {
+        transform: translateX(18px) scale(0.96);
+    }
+    60% {
+        transform: translateX(-4px) scale(1.01);
+    }
+    100% {
+        transform: translateX(0) scale(1);
+    }
 }
 
 .finance-card-page-nav-prev {
