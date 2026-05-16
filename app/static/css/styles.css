@@ -2286,6 +2286,12 @@ body.dashboard-schedule-modal-open {
     cursor: grabbing;
 }
 
+@media (max-width: 899px) {
+    .finance-sort-handle {
+        display: none !important;
+    }
+}
+
 body.finance-sortable-cursor,
 body.finance-sortable-cursor * {
     cursor: grabbing !important;
