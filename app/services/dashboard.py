@@ -440,7 +440,7 @@ def build_dashboard_context(
         stock_by_input[catalog.id] = {
             "id": catalog.id,
             "name": catalog.name,
-            "unit": catalog.default_unit,
+            "unit": latest_entry.package_unit or catalog.default_unit,
             "available_quantity": round(available_quantity, 2),
             "total_quantity": round(total_quantity, 2),
             "low_stock_threshold": round(_float(catalog.low_stock_threshold), 2),
@@ -454,7 +454,20 @@ def build_dashboard_context(
         for item in stock_by_input.values()
         if item["low_stock_threshold"] > 0 and item["available_quantity"] <= item["low_stock_threshold"]
     ]
-    low_stock_items.sort(key=lambda item: (item["available_quantity"], item["name"]))
+    for item in low_stock_items:
+        item["stock_level"] = (
+            "critical"
+            if item["available_quantity"] <= item["low_stock_threshold"] * 0.4
+            else "low"
+        )
+        item["stock_level_label"] = "Crítico" if item["stock_level"] == "critical" else "Baixo"
+    low_stock_items.sort(
+        key=lambda item: (
+            0 if item["stock_level"] == "critical" else 1,
+            item["available_quantity"],
+            item["name"],
+        )
+    )
     schedule_alerts = []
     for schedule in sorted(schedules, key=lambda schedule: (schedule.scheduled_date, schedule.id)):
         status = schedule.status
