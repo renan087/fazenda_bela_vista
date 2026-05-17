@@ -417,7 +417,7 @@
             </a>
         </div>
         <div class="mt-6 grid gap-5 xl:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
-            <div class="dashboard-finance-action-card rounded-[1.5rem] border border-slate-100 bg-slate-50/70 p-4" data-dashboard-card="finance_action_items" data-dashboard-per-page="3">
+            <div class="dashboard-finance-action-card rounded-[1.5rem] border border-slate-100 bg-slate-50/70 p-4" data-dashboard-card="finance_action_items" data-dashboard-per-page="3" data-dashboard-swipe-mobile="true">
                 <div class="dashboard-finance-action-header flex items-center justify-between gap-4">
                     <div class="min-w-0">
                         <p class="text-xs font-semibold uppercase tracking-[0.25em] text-slate-400">Atenção</p>
@@ -1434,6 +1434,7 @@
             return;
         }
         const items = Array.from(card.querySelectorAll('[data-dashboard-item]'));
+        const listContainer = card.querySelector('[data-dashboard-list]');
         const dotsContainer = card.querySelector('[data-dashboard-dots]');
         const perPage = Number(card.dataset.dashboardPerPage || 4);
         const pagerShell = card.querySelector('[data-dashboard-pager-shell]');
@@ -1441,6 +1442,23 @@
             items.forEach((item) => item.classList.remove('hidden'));
             if (pagerShell) {
                 pagerShell.classList.add('hidden');
+            }
+            return;
+        }
+
+        if (card.dataset.dashboardSwipeMobile === 'true' && listContainer && window.SiSFarmSwipePager) {
+            const pager = window.SiSFarmSwipePager.create({
+                root: listContainer,
+                items,
+                dotsContainer,
+                itemsPerPageDesktop: perPage,
+                itemsPerPageMobile: perPage,
+                mobileOnly: true,
+                allowInteractiveSwipe: true,
+                threshold: 30,
+            });
+            if (pagerShell) {
+                pagerShell.classList.toggle('hidden', !pager || pager.getTotalPages() <= 1);
             }
             return;
         }

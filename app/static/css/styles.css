@@ -2556,7 +2556,8 @@ body.finance-sortable-cursor {
 [data-stock-catalog-dots],
 [data-finance-accounts-dots],
 [data-finance-cards-dots],
-[data-dashboard-dots="executive_summary"] {
+[data-dashboard-dots="executive_summary"],
+[data-dashboard-dots="finance_action_items"] {
     position: relative;
     display: block;
     width: 3.25rem;
@@ -2608,7 +2609,8 @@ body.finance-sortable-cursor {
     transform: translateY(-50%);
 }
 
-[data-dashboard-dots="executive_summary"].swipe-carousel-dots-linked.swipe-carousel-pull-next .swipe-card-pager-dot[data-role="current"].is-active {
+[data-dashboard-dots="executive_summary"].swipe-carousel-dots-linked.swipe-carousel-pull-next .swipe-card-pager-dot[data-role="current"].is-active,
+[data-dashboard-dots="finance_action_items"].swipe-carousel-dots-linked.swipe-carousel-pull-next .swipe-card-pager-dot[data-role="current"].is-active {
     right: auto;
     width: calc(1.55rem + var(--carousel-dot-stretch, 0) * 0.65rem);
     left: calc(50% - 0.775rem);
@@ -2643,7 +2645,8 @@ body.finance-sortable-cursor {
     transform: translateY(-50%);
 }
 
-[data-dashboard-dots="executive_summary"].swipe-carousel-dots-linked.swipe-carousel-pull-prev .swipe-card-pager-dot[data-role="current"].is-active {
+[data-dashboard-dots="executive_summary"].swipe-carousel-dots-linked.swipe-carousel-pull-prev .swipe-card-pager-dot[data-role="current"].is-active,
+[data-dashboard-dots="finance_action_items"].swipe-carousel-dots-linked.swipe-carousel-pull-prev .swipe-card-pager-dot[data-role="current"].is-active {
     right: auto;
     width: calc(1.55rem + var(--carousel-dot-stretch, 0) * 0.65rem);
     left: calc(50% - 0.775rem - var(--carousel-dot-stretch, 0) * 0.65rem);
@@ -2671,7 +2674,8 @@ body.finance-sortable-cursor {
     transform: translateY(-50%) scale(0.7);
 }
 
-[data-dashboard-dots="executive_summary"].swipe-carousel-hide-adjacent-next .swipe-card-pager-dot[data-role="next"]:not(.hidden) {
+[data-dashboard-dots="executive_summary"].swipe-carousel-hide-adjacent-next .swipe-card-pager-dot[data-role="next"]:not(.hidden),
+[data-dashboard-dots="finance_action_items"].swipe-carousel-hide-adjacent-next .swipe-card-pager-dot[data-role="next"]:not(.hidden) {
     opacity: 0;
     transform: translateY(-50%) scale(0.7);
 }
@@ -2697,7 +2701,8 @@ body.finance-sortable-cursor {
     transform: translateY(-50%) scale(0.7);
 }
 
-[data-dashboard-dots="executive_summary"].swipe-carousel-hide-adjacent-prev .swipe-card-pager-dot[data-role="prev"]:not(.hidden) {
+[data-dashboard-dots="executive_summary"].swipe-carousel-hide-adjacent-prev .swipe-card-pager-dot[data-role="prev"]:not(.hidden),
+[data-dashboard-dots="finance_action_items"].swipe-carousel-hide-adjacent-prev .swipe-card-pager-dot[data-role="prev"]:not(.hidden) {
     opacity: 0;
     transform: translateY(-50%) scale(0.7);
 }
@@ -2707,7 +2712,8 @@ body.finance-sortable-cursor {
     transform: translateY(-50%) scale(0.55);
 }
 
-[data-dashboard-dots="executive_summary"].is-transitioning-next .swipe-card-pager-dot[data-role="next"] {
+[data-dashboard-dots="executive_summary"].is-transitioning-next .swipe-card-pager-dot[data-role="next"],
+[data-dashboard-dots="finance_action_items"].is-transitioning-next .swipe-card-pager-dot[data-role="next"] {
     opacity: 0;
     transform: translateY(-50%) scale(0.55);
 }
@@ -2717,7 +2723,8 @@ body.finance-sortable-cursor {
     transform: translateY(-50%) scale(0.55);
 }
 
-[data-dashboard-dots="executive_summary"].is-transitioning-prev .swipe-card-pager-dot[data-role="prev"] {
+[data-dashboard-dots="executive_summary"].is-transitioning-prev .swipe-card-pager-dot[data-role="prev"],
+[data-dashboard-dots="finance_action_items"].is-transitioning-prev .swipe-card-pager-dot[data-role="prev"] {
     opacity: 0;
     transform: translateY(-50%) scale(0.55);
 }
@@ -2728,7 +2735,8 @@ body.finance-sortable-cursor {
     transform: translateY(-50%);
 }
 
-[data-dashboard-dots="executive_summary"].is-transitioning-next .swipe-card-pager-dot[data-role="current"] {
+[data-dashboard-dots="executive_summary"].is-transitioning-next .swipe-card-pager-dot[data-role="current"],
+[data-dashboard-dots="finance_action_items"].is-transitioning-next .swipe-card-pager-dot[data-role="current"] {
     left: calc(50% - 0.775rem);
     width: 2.2rem;
     transform: translateY(-50%);
@@ -2740,7 +2748,8 @@ body.finance-sortable-cursor {
     transform: translateY(-50%);
 }
 
-[data-dashboard-dots="executive_summary"].is-transitioning-prev .swipe-card-pager-dot[data-role="current"] {
+[data-dashboard-dots="executive_summary"].is-transitioning-prev .swipe-card-pager-dot[data-role="current"],
+[data-dashboard-dots="finance_action_items"].is-transitioning-prev .swipe-card-pager-dot[data-role="current"] {
     left: calc(50% - 1.425rem);
     width: 2.2rem;
     transform: translateY(-50%);
@@ -2750,7 +2759,8 @@ body.finance-sortable-cursor {
     animation: swipePagerCurrentSettleNext 180ms ease;
 }
 
-[data-dashboard-dots="executive_summary"].is-settling-next .swipe-card-pager-dot[data-role="current"] {
+[data-dashboard-dots="executive_summary"].is-settling-next .swipe-card-pager-dot[data-role="current"],
+[data-dashboard-dots="finance_action_items"].is-settling-next .swipe-card-pager-dot[data-role="current"] {
     animation: swipePagerCurrentSettleNext 180ms ease;
 }
 
@@ -2758,7 +2768,8 @@ body.finance-sortable-cursor {
     animation: swipePagerCurrentSettlePrev 180ms ease both;
 }
 
-[data-dashboard-dots="executive_summary"].is-settling-prev .swipe-card-pager-dot[data-role="current"] {
+[data-dashboard-dots="executive_summary"].is-settling-prev .swipe-card-pager-dot[data-role="current"],
+[data-dashboard-dots="finance_action_items"].is-settling-prev .swipe-card-pager-dot[data-role="current"] {
     animation: swipePagerCurrentSettlePrev 180ms ease both;
 }
 
@@ -2766,7 +2777,8 @@ body.finance-sortable-cursor {
     animation: swipePagerSideRevealNext 140ms ease 220ms both;
 }
 
-[data-dashboard-dots="executive_summary"].is-settling-next .swipe-card-pager-dot[data-role="next"] {
+[data-dashboard-dots="executive_summary"].is-settling-next .swipe-card-pager-dot[data-role="next"],
+[data-dashboard-dots="finance_action_items"].is-settling-next .swipe-card-pager-dot[data-role="next"] {
     animation: swipePagerSideRevealNext 140ms ease 220ms both;
 }
 
@@ -2774,7 +2786,8 @@ body.finance-sortable-cursor {
     animation: swipePagerSideRevealPrev 140ms ease 220ms both;
 }
 
-[data-dashboard-dots="executive_summary"].is-settling-prev .swipe-card-pager-dot[data-role="prev"] {
+[data-dashboard-dots="executive_summary"].is-settling-prev .swipe-card-pager-dot[data-role="prev"],
+[data-dashboard-dots="finance_action_items"].is-settling-prev .swipe-card-pager-dot[data-role="prev"] {
     animation: swipePagerSideRevealPrev 140ms ease 220ms both;
 }
 
