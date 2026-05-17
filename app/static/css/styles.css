@@ -946,6 +946,22 @@ body {
     margin-top: 1.1rem;
 }
 
+.dashboard-executive-paged-shell .dashboard-executive-carousel-viewport {
+    margin-top: 1.1rem;
+}
+
+.dashboard-executive-paged-shell .finance-card-page-nav {
+    z-index: 35;
+}
+
+.dashboard-executive-paged-shell .finance-card-page-nav-prev {
+    left: calc(-1.5rem + 1px);
+}
+
+.dashboard-executive-paged-shell .finance-card-page-nav-next {
+    right: calc(-1.5rem + 1px);
+}
+
 .dashboard-executive-carousel-viewport.swipe-card-pager-scroll-viewport.is-carousel-active {
     max-width: 100%;
     overflow-x: auto;

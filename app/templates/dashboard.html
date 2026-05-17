@@ -22,6 +22,12 @@
             <div data-dashboard-card="executive_summary" data-dashboard-per-page="6">
                 <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Resumo Executivo</p>
                 <h3 class="mt-2 text-xl font-semibold">Indicadores centrais</h3>
+                <div class="finance-card-paged-shell dashboard-executive-paged-shell" data-dashboard-executive-paged-shell>
+                <button type="button" class="finance-card-page-nav finance-card-page-nav-prev hidden" data-dashboard-executive-page-nav="prev" aria-label="Página anterior do resumo executivo">
+                    <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <path d="m15 18-6-6 6-6"/>
+                    </svg>
+                </button>
                 <div class="dashboard-executive-carousel-viewport" data-dashboard-executive-viewport>
                 <div class="dashboard-executive-grid" data-dashboard-list data-dashboard-executive-grid>
             {% if can_productive_unit %}
@@ -272,6 +278,12 @@
             </a>
             {% endif %}
                 </div>
+                </div>
+                <button type="button" class="finance-card-page-nav finance-card-page-nav-next hidden" data-dashboard-executive-page-nav="next" aria-label="Próxima página do resumo executivo">
+                    <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <path d="m9 6 6 6-6 6"/>
+                    </svg>
+                </button>
                 </div>
                 {{ pager('executive_summary') }}
             </div>
@@ -1178,6 +1190,7 @@
     const executiveSummaryDots = document.querySelector('[data-dashboard-dots="executive_summary"]');
     const executiveSummaryGrid = document.querySelector('[data-dashboard-executive-grid]');
     const executiveSummaryPagerShell = executiveSummaryCard?.querySelector('[data-dashboard-pager-shell="executive_summary"]');
+    const executiveSummaryPageNavButtons = Array.from(document.querySelectorAll('[data-dashboard-executive-page-nav]'));
     let executiveSummaryPager = null;
     const executiveMobileMq = window.matchMedia('(max-width: 899px)');
     const EXEC_CARDS_PER_PAGE_DESKTOP = 6;
@@ -1188,6 +1201,29 @@
         grid.replaceChildren(...cards);
         return cards;
     };
+
+    const syncExecutiveSummaryPageNav = () => {
+        const total = executiveSummaryPager ? executiveSummaryPager.getTotalPages() : 0;
+        const page = executiveSummaryPager ? executiveSummaryPager.getPage() : 0;
+        executiveSummaryPageNavButtons.forEach((button) => {
+            const direction = button.dataset.dashboardExecutivePageNav;
+            const isUnavailable = total <= 1;
+            button.classList.toggle('hidden', isUnavailable);
+            button.disabled = isUnavailable || (direction === 'prev' && page <= 0) || (direction === 'next' && page >= total - 1);
+        });
+    };
+
+    executiveSummaryPageNavButtons.forEach((button) => {
+        button.addEventListener('click', () => {
+            if (!executiveSummaryPager) return;
+            const direction = button.dataset.dashboardExecutivePageNav;
+            const page = executiveSummaryPager.getPage();
+            executiveSummaryPager.setPage(direction === 'next' ? page + 1 : page - 1, direction);
+            window.setTimeout(syncExecutiveSummaryPageNav, 260);
+        });
+    });
+    executiveSummaryDots?.addEventListener('click', () => window.setTimeout(syncExecutiveSummaryPageNav, 260));
+    window.addEventListener('resize', syncExecutiveSummaryPageNav);
 
     const setupExecutiveSummaryPager = () => {
         if (!executiveSummaryCard || !executiveSummaryGrid || !executiveSummaryDots || !window.SiSFarmSwipePager) {
@@ -1261,6 +1297,7 @@
         if (executiveSummaryPagerShell) {
             executiveSummaryPagerShell.classList.toggle('hidden', totalPagerPages <= 1);
         }
+        syncExecutiveSummaryPageNav();
 
         animateDashboardCounts(executiveSummaryCard);
     };
