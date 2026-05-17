@@ -1491,6 +1491,68 @@ body.dashboard-schedule-modal-open {
     text-overflow: clip;
 }
 
+.dashboard-finance-flow-panel,
+.dashboard-finance-flow-panel > div,
+.dashboard-finance-kpi-card,
+.dashboard-finance-action-card,
+.dashboard-finance-extract-card,
+.dashboard-finance-action-item {
+    min-width: 0;
+    max-width: 100%;
+    box-sizing: border-box;
+}
+
+.dashboard-finance-flow-panel {
+    overflow: hidden;
+}
+
+.dashboard-finance-kpi-card,
+.dashboard-finance-action-item {
+    overflow: hidden;
+}
+
+.dashboard-finance-money,
+.dashboard-finance-action-amount {
+    overflow-wrap: anywhere;
+}
+
+@media (max-width: 640px) {
+    .dashboard-finance-flow-panel {
+        padding: 1rem !important;
+        border-radius: 1.5rem !important;
+    }
+
+    .dashboard-finance-flow-panel .grid {
+        min-width: 0;
+        max-width: 100%;
+    }
+
+    .dashboard-finance-flow-panel .text-2xl {
+        font-size: clamp(1.1rem, 6vw, 1.35rem);
+        line-height: 1.15;
+    }
+
+    .dashboard-finance-action-header {
+        flex-wrap: wrap;
+        align-items: flex-start;
+    }
+
+    .dashboard-finance-action-header > span {
+        flex: 0 0 auto;
+    }
+
+    .dashboard-finance-action-item {
+        align-items: flex-start;
+        gap: 0.75rem;
+    }
+
+    .dashboard-finance-action-amount {
+        max-width: 38%;
+        text-align: right;
+        line-height: 1.2;
+    }
+}
+
 .app-modal::backdrop {
     background: rgba(0, 0, 0, 0.3);
     backdrop-filter: blur(4px);

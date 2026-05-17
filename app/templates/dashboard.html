@@ -387,7 +387,7 @@
 
 {% if can_finance %}
 <section class="mt-6">
-    <article class="rounded-[2rem] bg-white p-6 shadow-panel">
+    <article class="dashboard-finance-flow-panel rounded-[2rem] bg-white p-6 shadow-panel">
         <div class="flex flex-wrap items-start justify-between gap-4">
             <div>
                 <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Fluxo financeiro</p>
@@ -395,31 +395,31 @@
             <a href="/gestao-financeira/contas" class="inline-flex items-center justify-center rounded-2xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white transition hover:bg-slate-800">Ver contas</a>
         </div>
         <div class="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-            <a href="/gestao-financeira/contas?finance_tab=payables{% if finance_flow.payable_next_month_start and finance_flow.payable_next_month_end %}&schedule_range=custom&start_date={{ finance_flow.payable_next_month_start }}&end_date={{ finance_flow.payable_next_month_end }}{% endif %}" class="rounded-2xl border border-rose-100 bg-rose-50/80 p-4 transition hover:border-rose-200">
+            <a href="/gestao-financeira/contas?finance_tab=payables{% if finance_flow.payable_next_month_start and finance_flow.payable_next_month_end %}&schedule_range=custom&start_date={{ finance_flow.payable_next_month_start }}&end_date={{ finance_flow.payable_next_month_end }}{% endif %}" class="dashboard-finance-kpi-card rounded-2xl border border-rose-100 bg-rose-50/80 p-4 transition hover:border-rose-200">
                 <p class="text-xs font-semibold uppercase tracking-[0.25em] text-rose-500">A pagar</p>
-                <p class="mt-2 text-2xl font-bold text-slate-900">R$ {{ finance_flow.payable_next_month_total|decimal_br }}</p>
+                <p class="dashboard-finance-money mt-2 text-2xl font-bold text-slate-900">R$ {{ finance_flow.payable_next_month_total|decimal_br }}</p>
                 <p class="mt-1 text-sm text-slate-500">{{ finance_flow.payable_next_month_label }}</p>
             </a>
-            <a href="/gestao-financeira/contas?finance_tab=receivables" class="rounded-2xl border border-emerald-100 bg-emerald-50/80 p-4 transition hover:border-emerald-200">
+            <a href="/gestao-financeira/contas?finance_tab=receivables" class="dashboard-finance-kpi-card rounded-2xl border border-emerald-100 bg-emerald-50/80 p-4 transition hover:border-emerald-200">
                 <p class="text-xs font-semibold uppercase tracking-[0.25em] text-emerald-600">A receber</p>
-                <p class="mt-2 text-2xl font-bold text-slate-900">R$ {{ finance_flow.receivable_open_total|decimal_br }}</p>
+                <p class="dashboard-finance-money mt-2 text-2xl font-bold text-slate-900">R$ {{ finance_flow.receivable_open_total|decimal_br }}</p>
                 <p class="mt-1 text-sm text-slate-500">Recebíveis ainda em aberto</p>
             </a>
-            <a href="/gestao-financeira/contas?finance_tab=payables&payables_status=overdue" class="rounded-2xl border border-amber-100 bg-amber-50/80 p-4 transition hover:border-amber-200">
+            <a href="/gestao-financeira/contas?finance_tab=payables&payables_status=overdue" class="dashboard-finance-kpi-card rounded-2xl border border-amber-100 bg-amber-50/80 p-4 transition hover:border-amber-200">
                 <p class="text-xs font-semibold uppercase tracking-[0.25em] text-amber-600">Vencidos / hoje</p>
                 <p class="mt-2 text-2xl font-bold text-slate-900">{{ finance_flow.overdue_count + finance_flow.due_today_count }}</p>
                 <p class="mt-1 text-sm text-slate-500">R$ {{ (finance_flow.overdue_total + finance_flow.due_today_total)|decimal_br }} exigem atenção</p>
             </a>
-            <a href="/gestao-financeira?schedule_range=custom&start_date={{ finance_flow.current_month_start }}&end_date={{ finance_flow.current_month_end }}" class="rounded-2xl border border-slate-200 bg-slate-50 p-4 transition hover:border-slate-300">
+            <a href="/gestao-financeira?schedule_range=custom&start_date={{ finance_flow.current_month_start }}&end_date={{ finance_flow.current_month_end }}" class="dashboard-finance-kpi-card rounded-2xl border border-slate-200 bg-slate-50 p-4 transition hover:border-slate-300">
                 <p class="text-xs font-semibold uppercase tracking-[0.25em] text-slate-500">Realizado no mês</p>
-                <p class="mt-2 text-2xl font-bold text-slate-900">R$ {{ finance_flow.realized_balance_month|decimal_br }}</p>
+                <p class="dashboard-finance-money mt-2 text-2xl font-bold text-slate-900">R$ {{ finance_flow.realized_balance_month|decimal_br }}</p>
                 <p class="mt-1 text-sm text-slate-500">Créditos menos débitos já efetivados</p>
             </a>
         </div>
         <div class="mt-6 grid gap-5 xl:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
-            <div class="rounded-[1.5rem] border border-slate-100 bg-slate-50/70 p-4" data-dashboard-card="finance_action_items" data-dashboard-per-page="3">
-                <div class="flex items-center justify-between gap-4">
-                    <div>
+            <div class="dashboard-finance-action-card rounded-[1.5rem] border border-slate-100 bg-slate-50/70 p-4" data-dashboard-card="finance_action_items" data-dashboard-per-page="3">
+                <div class="dashboard-finance-action-header flex items-center justify-between gap-4">
+                    <div class="min-w-0">
                         <p class="text-xs font-semibold uppercase tracking-[0.25em] text-slate-400">Atenção</p>
                         <h4 class="mt-1 font-semibold text-slate-900">Próximos pagamentos e recebimentos</h4>
                     </div>
@@ -427,16 +427,16 @@
                 </div>
                 <div class="mt-4 space-y-3" data-dashboard-list>
                     {% for item in finance_flow.action_items %}
-                    <a href="{{ item.link }}" class="flex items-center justify-between gap-4 rounded-2xl bg-white p-3 ring-1 ring-slate-100 transition hover:ring-brand-200" data-dashboard-item>
+                    <a href="{{ item.link }}" class="dashboard-finance-action-item flex items-center justify-between gap-4 rounded-2xl bg-white p-3 ring-1 ring-slate-100 transition hover:ring-brand-200" data-dashboard-item>
                         <div class="min-w-0">
                             <div class="flex flex-wrap items-center gap-2">
                                 <span class="rounded-full px-2.5 py-1 text-xs font-semibold {% if item.status == 'overdue' %}bg-rose-100 text-rose-700{% elif item.status == 'today' %}bg-amber-100 text-amber-700{% else %}bg-blue-100 text-blue-700{% endif %}">{{ item.status_label }}</span>
                                 <span class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">{{ item.type }}</span>
                             </div>
                             <p class="mt-2 truncate font-semibold text-slate-900">{{ item.title }}</p>
-                            <p class="mt-1 text-sm text-slate-500">{{ item.source }} • Parcela {{ item.installment }}{% if item.date %} • {{ item.date.strftime('%d/%m/%Y') }}{% endif %}</p>
+                            <p class="mt-1 truncate text-sm text-slate-500">{{ item.source }} • Parcela {{ item.installment }}{% if item.date %} • {{ item.date.strftime('%d/%m/%Y') }}{% endif %}</p>
                         </div>
-                        <p class="shrink-0 text-sm font-bold text-slate-900">R$ {{ item.amount|decimal_br }}</p>
+                        <p class="dashboard-finance-action-amount shrink-0 text-sm font-bold text-slate-900">R$ {{ item.amount|decimal_br }}</p>
                     </a>
                     {% else %}
                     <p class="rounded-2xl bg-white p-4 text-sm text-slate-500 ring-1 ring-slate-100">Nenhuma parcela vencida ou próxima nos próximos 7 dias.</p>
@@ -444,7 +444,7 @@
                 </div>
                 {{ pager('finance_action_items') }}
             </div>
-            <div class="rounded-[1.5rem] border border-slate-100 bg-slate-50/70 p-4">
+            <div class="dashboard-finance-extract-card rounded-[1.5rem] border border-slate-100 bg-slate-50/70 p-4">
                 <p class="text-xs font-semibold uppercase tracking-[0.25em] text-slate-400">Extrato</p>
                 <h4 class="mt-1 font-semibold text-slate-900">Movimento efetivado no mês</h4>
                 <div class="mt-4 space-y-3">
@@ -472,7 +472,7 @@
                     Projetado: R$ {{ finance_flow.projected_balance|decimal_br }}
                 </p>
             </div>
-            <div class="mt-5 h-72 rounded-[1.25rem] bg-white p-4 ring-1 ring-slate-100">
+            <div class="mt-5 h-72 overflow-hidden rounded-[1.25rem] bg-white p-4 ring-1 ring-slate-100">
                 <canvas id="financeProjectionChart"></canvas>
             </div>
         </div>
