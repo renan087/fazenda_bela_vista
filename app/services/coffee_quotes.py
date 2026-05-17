@@ -488,29 +488,92 @@ def refresh_cepea_coffee_quotes(repository: FarmRepository, *, force: bool = Fal
     return True
 
 
+def _resolve_latest_coffee_quote(repository: FarmRepository, quote_type: str) -> CoffeeQuote | None:
+    recent = repository.list_coffee_quotes(quote_type=quote_type, limit=12)
+    if not recent:
+        return None
+    latest_date = recent[0].quote_date
+    candidates = [row for row in recent if row.quote_date == latest_date]
+    for row in candidates:
+        if row.source_url == CEPEA_COFFEE_URL and row.variation_month is not None:
+            return row
+    for row in candidates:
+        if row.variation_month is not None:
+            return row
+    return candidates[0]
+
+
+def _official_cepea_quotes_by_type_and_date(client: httpx.Client) -> dict[tuple[str, date], CoffeeQuote]:
+    response = client.get(CEPEA_COFFEE_URL)
+    response.raise_for_status()
+    indexed: dict[tuple[str, date], CoffeeQuote] = {}
+    for quote in parse_cepea_coffee_quotes(response.text):
+        indexed[(quote.quote_type, quote.quote_date)] = quote
+    return indexed
+
+
+def _apply_official_variations_to_latest(repository: FarmRepository) -> None:
+    headers = {
+        "User-Agent": "Mozilla/5.0 (compatible; SiSFarm/1.0; +https://app.sisfarm.com.br)",
+        "Accept-Language": "pt-BR,pt;q=0.9,en;q=0.8",
+    }
+    try:
+        with httpx.Client(timeout=6.0, follow_redirects=True, headers=headers) as client:
+            official_by_key = _official_cepea_quotes_by_type_and_date(client)
+    except Exception as exc:
+        logger.warning("Nao foi possivel sincronizar variacao oficial CEPEA para o dashboard: %s", exc)
+        return
+
+    for quote_type in ("arabica", "robusta"):
+        latest = _resolve_latest_coffee_quote(repository, quote_type)
+        if not latest:
+            continue
+        official = official_by_key.get((quote_type, latest.quote_date))
+        if official is None:
+            continue
+        changed = False
+        if official.variation_month is not None and round(float(latest.variation_month or 0), 2) != round(float(official.variation_month), 2):
+            latest.variation_month = official.variation_month
+            changed = True
+        if official.variation_day is not None and round(float(latest.variation_day or 0), 2) != round(float(official.variation_day), 2):
+            latest.variation_day = official.variation_day
+            changed = True
+        if official.price_brl is not None and round(float(latest.price_brl or 0), 2) != round(float(official.price_brl), 2):
+            latest.price_brl = official.price_brl
+            changed = True
+        if official.price_usd is not None:
+            latest.price_usd = official.price_usd
+            changed = True
+        if latest.source_url != CEPEA_COFFEE_URL:
+            latest.source_url = CEPEA_COFFEE_URL
+            changed = True
+        if changed:
+            latest.fetched_at = app_now()
+            repository.upsert_coffee_quote(latest)
+
+
 def _refresh_latest_variation_from_stored_history(repository: FarmRepository, quote_type: str) -> tuple[CoffeeQuote | None, list[CoffeeQuote]]:
     rows = list(reversed(repository.list_coffee_quotes(quote_type=quote_type, limit=90)))
     if not rows:
         return None, []
-    stored_latest = repository.get_latest_coffee_quote(quote_type)
-    latest_row = rows[-1]
+    latest = _resolve_latest_coffee_quote(repository, quote_type) or rows[-1]
+    if latest.variation_month is not None:
+        return latest, rows
     if not _has_previous_month_base(rows, quote_type):
-        return stored_latest or latest_row, rows
-    _calculate_variations_from_series(rows)
-    latest = rows[-1]
-    if (
-        stored_latest
-        and stored_latest.quote_date == latest.quote_date
-        and latest.variation_month is not None
-        and round(float(stored_latest.variation_month or 0), 2) != round(float(latest.variation_month or 0), 2)
-    ):
-        repository.upsert_coffee_quote(latest)
-        stored_latest = repository.get_latest_coffee_quote(quote_type)
-    return stored_latest or latest, rows
+        return latest, rows
+    recalculated = list(rows)
+    _calculate_variations_from_series(recalculated)
+    recalculated_latest = recalculated[-1]
+    if recalculated_latest.quote_date == latest.quote_date and recalculated_latest.variation_month is not None:
+        latest.variation_month = recalculated_latest.variation_month
+        if recalculated_latest.variation_day is not None:
+            latest.variation_day = recalculated_latest.variation_day
+    return latest, rows
 
 
 def latest_coffee_quote_context(repository: FarmRepository) -> dict:
     refresh_cepea_coffee_quotes(repository)
+    _apply_official_variations_to_latest(repository)
     quotes = {}
     history = {}
     for quote_type in ("arabica", "robusta"):
