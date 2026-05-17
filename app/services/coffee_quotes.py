@@ -433,7 +433,7 @@ def fetch_cepea_widget_with_cecafe_history_quotes(client: httpx.Client) -> list[
     except Exception as exc:
         logger.warning("Nao foi possivel buscar variacao oficial CEPEA: %s", exc)
         official_quotes = []
-    quotes = _merge_quotes_by_type_and_date(history_quotes, widget_quotes, official_quotes)
+    quotes = _merge_quotes_by_type_and_date(history_quotes, widget_quotes)
     _calculate_variations_from_series(quotes)
     quotes = _merge_quotes_by_type_and_date(quotes, official_quotes)
     trusted_quote_types = {
@@ -447,12 +447,52 @@ def fetch_cepea_widget_with_cecafe_history_quotes(client: httpx.Client) -> list[
     return quotes
 
 
+def _http_client_headers() -> dict[str, str]:
+    return {
+        "User-Agent": "Mozilla/5.0 (compatible; SiSFarm/1.0; +https://app.sisfarm.com.br)",
+        "Accept-Language": "pt-BR,pt;q=0.9,en;q=0.8",
+    }
+
+
+def _fetch_official_cepea_quotes(client: httpx.Client) -> list[CoffeeQuote]:
+    response = client.get(CEPEA_COFFEE_URL)
+    response.raise_for_status()
+    return parse_cepea_coffee_quotes(response.text)
+
+
+def _persist_official_cepea_quotes(repository: FarmRepository, official_quotes: list[CoffeeQuote]) -> None:
+    for quote in official_quotes:
+        repository.upsert_coffee_quote(quote)
+
+
+def _official_latest_quotes_for_dashboard(repository: FarmRepository) -> dict[str, CoffeeQuote | None]:
+    quotes: dict[str, CoffeeQuote | None] = {"arabica": None, "robusta": None}
+    try:
+        with httpx.Client(timeout=8.0, follow_redirects=True, headers=_http_client_headers()) as client:
+            official_quotes = _fetch_official_cepea_quotes(client)
+    except Exception as exc:
+        logger.warning("Nao foi possivel buscar cotacao oficial CEPEA para o dashboard: %s", exc)
+        for quote_type in ("arabica", "robusta"):
+            quotes[quote_type] = _resolve_latest_coffee_quote(repository, quote_type)
+        return quotes
+
+    _persist_official_cepea_quotes(repository, official_quotes)
+    for quote_type in ("arabica", "robusta"):
+        type_rows = [quote for quote in official_quotes if quote.quote_type == quote_type]
+        if type_rows:
+            quotes[quote_type] = max(type_rows, key=lambda item: item.quote_date)
+            continue
+        quotes[quote_type] = _resolve_latest_coffee_quote(repository, quote_type)
+    return quotes
+
+
 def refresh_cepea_coffee_quotes(repository: FarmRepository, *, force: bool = False) -> bool:
     today = today_in_app_timezone()
     latest_quotes = [
         repository.get_latest_coffee_quote("arabica"),
         repository.get_latest_coffee_quote("robusta"),
     ]
+    headers = _http_client_headers()
     if (
         not force
         and all(latest_quotes)
@@ -460,31 +500,36 @@ def refresh_cepea_coffee_quotes(repository: FarmRepository, *, force: bool = Fal
         and all(quote.variation_month is not None for quote in latest_quotes if quote)
         and all(quote.source_url == CEPEA_COFFEE_URL for quote in latest_quotes if quote)
     ):
+        try:
+            with httpx.Client(timeout=8.0, follow_redirects=True, headers=headers) as client:
+                _persist_official_cepea_quotes(repository, _fetch_official_cepea_quotes(client))
+        except Exception as exc:
+            logger.warning("Nao foi possivel revalidar cotacao oficial CEPEA: %s", exc)
         return False
     quotes: list[CoffeeQuote] = []
-    headers = {
-        "User-Agent": "Mozilla/5.0 (compatible; SiSFarm/1.0; +https://app.sisfarm.com.br)",
-        "Accept-Language": "pt-BR,pt;q=0.9,en;q=0.8",
-    }
-    with httpx.Client(timeout=6.0, follow_redirects=True, headers=headers) as client:
+    official_quotes: list[CoffeeQuote] = []
+    with httpx.Client(timeout=8.0, follow_redirects=True, headers=headers) as client:
         try:
             quotes = fetch_cepea_widget_with_cecafe_history_quotes(client)
         except Exception as exc:
             logger.warning("Nao foi possivel atualizar cotacao de cafe via widget CEPEA/Cecafe: %s", exc)
+        try:
+            official_quotes = _fetch_official_cepea_quotes(client)
+        except Exception as exc:
+            logger.warning("Nao foi possivel buscar cotacao oficial CEPEA: %s", exc)
+        if not quotes:
+            quotes = list(official_quotes)
         if not quotes:
             try:
-                response = client.get(CEPEA_COFFEE_URL)
-                response.raise_for_status()
-                quotes = parse_cepea_coffee_quotes(response.text)
+                quotes = fetch_noticias_agricolas_cepea_quotes(client)
             except Exception as exc:
-                logger.warning("Nao foi possivel atualizar cotacao de cafe CEPEA diretamente: %s", exc)
-        if not quotes:
-            quotes = fetch_noticias_agricolas_cepea_quotes(client)
-    if not quotes:
+                logger.warning("Nao foi possivel atualizar cotacao de cafe via espelho Noticias Agricolas: %s", exc)
+    if not quotes and not official_quotes:
         logger.warning("Cotacoes de cafe CEPEA nao retornaram dados interpretaveis.")
         return False
     for quote in quotes:
         repository.upsert_coffee_quote(quote)
+    _persist_official_cepea_quotes(repository, official_quotes)
     return True
 
 
@@ -503,83 +548,16 @@ def _resolve_latest_coffee_quote(repository: FarmRepository, quote_type: str) ->
     return candidates[0]
 
 
-def _official_cepea_quotes_by_type_and_date(client: httpx.Client) -> dict[tuple[str, date], CoffeeQuote]:
-    response = client.get(CEPEA_COFFEE_URL)
-    response.raise_for_status()
-    indexed: dict[tuple[str, date], CoffeeQuote] = {}
-    for quote in parse_cepea_coffee_quotes(response.text):
-        indexed[(quote.quote_type, quote.quote_date)] = quote
-    return indexed
-
-
-def _apply_official_variations_to_latest(repository: FarmRepository) -> None:
-    headers = {
-        "User-Agent": "Mozilla/5.0 (compatible; SiSFarm/1.0; +https://app.sisfarm.com.br)",
-        "Accept-Language": "pt-BR,pt;q=0.9,en;q=0.8",
-    }
-    try:
-        with httpx.Client(timeout=6.0, follow_redirects=True, headers=headers) as client:
-            official_by_key = _official_cepea_quotes_by_type_and_date(client)
-    except Exception as exc:
-        logger.warning("Nao foi possivel sincronizar variacao oficial CEPEA para o dashboard: %s", exc)
-        return
-
-    for quote_type in ("arabica", "robusta"):
-        latest = _resolve_latest_coffee_quote(repository, quote_type)
-        if not latest:
-            continue
-        official = official_by_key.get((quote_type, latest.quote_date))
-        if official is None:
-            continue
-        changed = False
-        if official.variation_month is not None and round(float(latest.variation_month or 0), 2) != round(float(official.variation_month), 2):
-            latest.variation_month = official.variation_month
-            changed = True
-        if official.variation_day is not None and round(float(latest.variation_day or 0), 2) != round(float(official.variation_day), 2):
-            latest.variation_day = official.variation_day
-            changed = True
-        if official.price_brl is not None and round(float(latest.price_brl or 0), 2) != round(float(official.price_brl), 2):
-            latest.price_brl = official.price_brl
-            changed = True
-        if official.price_usd is not None:
-            latest.price_usd = official.price_usd
-            changed = True
-        if latest.source_url != CEPEA_COFFEE_URL:
-            latest.source_url = CEPEA_COFFEE_URL
-            changed = True
-        if changed:
-            latest.fetched_at = app_now()
-            repository.upsert_coffee_quote(latest)
-
-
-def _refresh_latest_variation_from_stored_history(repository: FarmRepository, quote_type: str) -> tuple[CoffeeQuote | None, list[CoffeeQuote]]:
-    rows = list(reversed(repository.list_coffee_quotes(quote_type=quote_type, limit=90)))
-    if not rows:
-        return None, []
-    latest = _resolve_latest_coffee_quote(repository, quote_type) or rows[-1]
-    if latest.variation_month is not None:
-        return latest, rows
-    if not _has_previous_month_base(rows, quote_type):
-        return latest, rows
-    recalculated = list(rows)
-    _calculate_variations_from_series(recalculated)
-    recalculated_latest = recalculated[-1]
-    if recalculated_latest.quote_date == latest.quote_date and recalculated_latest.variation_month is not None:
-        latest.variation_month = recalculated_latest.variation_month
-        if recalculated_latest.variation_day is not None:
-            latest.variation_day = recalculated_latest.variation_day
-    return latest, rows
+def _coffee_quote_history_rows(repository: FarmRepository, quote_type: str, *, limit: int = 90) -> list[CoffeeQuote]:
+    return list(reversed(repository.list_coffee_quotes(quote_type=quote_type, limit=limit)))
 
 
 def latest_coffee_quote_context(repository: FarmRepository) -> dict:
     refresh_cepea_coffee_quotes(repository)
-    _apply_official_variations_to_latest(repository)
-    quotes = {}
+    quotes = _official_latest_quotes_for_dashboard(repository)
     history = {}
     for quote_type in ("arabica", "robusta"):
-        latest, rows = _refresh_latest_variation_from_stored_history(repository, quote_type)
-        quotes[quote_type] = latest
-        chart_rows = rows[-30:]
+        chart_rows = _coffee_quote_history_rows(repository, quote_type)[-30:]
         history[quote_type] = {
             "labels": [row.quote_date.strftime("%d/%m") for row in chart_rows],
             "values": [float(row.price_brl or 0) for row in chart_rows],
