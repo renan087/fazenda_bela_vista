@@ -1,7 +1,7 @@
 import unicodedata
 from datetime import date
 
-from sqlalchemy import distinct, func, or_
+from sqlalchemy import distinct, func, or_, tuple_
 from sqlalchemy.orm import Session, joinedload, load_only
 
 from app.models import (
@@ -831,6 +831,38 @@ class FarmRepository:
         self.db.commit()
         self.db.refresh(quote)
         return quote
+
+    def upsert_coffee_quotes(self, quotes: list[CoffeeQuote]) -> int:
+        if not quotes:
+            return 0
+        processed = 0
+        keys = [(quote.quote_type, quote.quote_date, quote.source) for quote in quotes]
+        existing_by_key: dict[tuple[str, date, str], CoffeeQuote] = {}
+        chunk_size = 1000
+        for start in range(0, len(keys), chunk_size):
+            chunk = keys[start:start + chunk_size]
+            rows = (
+                self.db.query(CoffeeQuote)
+                .filter(tuple_(CoffeeQuote.quote_type, CoffeeQuote.quote_date, CoffeeQuote.source).in_(chunk))
+                .all()
+            )
+            existing_by_key.update({(row.quote_type, row.quote_date, row.source): row for row in rows})
+
+        for quote in quotes:
+            existing = existing_by_key.get((quote.quote_type, quote.quote_date, quote.source))
+            if existing:
+                existing.price_brl = quote.price_brl
+                existing.variation_day = quote.variation_day
+                existing.variation_month = quote.variation_month
+                existing.price_usd = quote.price_usd
+                existing.source_url = quote.source_url
+                existing.fetched_at = quote.fetched_at
+                self.db.add(existing)
+            else:
+                self.db.add(quote)
+            processed += 1
+        self.db.commit()
+        return processed
 
     def get_coffee_commercialization(self, record_id: int) -> CoffeeCommercializationRecord | None:
         return (

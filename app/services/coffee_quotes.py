@@ -1,7 +1,8 @@
 import logging
 import re
 from html import unescape
-from datetime import date
+from datetime import date, datetime
+from pathlib import Path
 
 import httpx
 
@@ -44,6 +45,27 @@ def _parse_brazilian_date(value: str) -> date | None:
         return date(int(year), int(month), int(day))
     except (ValueError, TypeError):
         return None
+
+
+def _parse_cepea_xls_date(value: object, datemode: int) -> date | None:
+    if isinstance(value, datetime):
+        return value.date()
+    if isinstance(value, date):
+        return value
+    if isinstance(value, (int, float)):
+        try:
+            import xlrd
+
+            return xlrd.xldate.xldate_as_datetime(value, datemode).date()
+        except Exception:
+            return None
+    return _parse_brazilian_date(str(value))
+
+
+def _parse_cepea_xls_decimal(value: object) -> float | None:
+    if isinstance(value, (int, float)):
+        return float(value)
+    return _parse_brazilian_decimal(str(value))
 
 
 def _extract_section(text: str, start_marker: str, end_marker: str | None = None) -> str:
@@ -209,6 +231,51 @@ def parse_cecafe_rendered_quotes(html: str) -> list[CoffeeQuote]:
         if clean_cells:
             rows.append(clean_cells)
     return parse_cecafe_cepea_rows(rows)
+
+
+def parse_cepea_xls_quotes(file_path: str | Path, quote_type: str | None = None) -> list[CoffeeQuote]:
+    try:
+        import xlrd
+    except ImportError as exc:
+        raise RuntimeError("A dependencia xlrd e necessaria para importar arquivos .xls do CEPEA.") from exc
+
+    workbook = xlrd.open_workbook(str(file_path), ignore_workbook_corruption=True)
+    sheet = workbook.sheet_by_index(0)
+    if sheet.nrows < 5 or sheet.ncols < 3:
+        return []
+
+    title = str(sheet.cell_value(0, 0) or "").upper()
+    inferred_type = quote_type
+    if inferred_type is None:
+        if "ROBUSTA" in title or "CONILLON" in title:
+            inferred_type = "robusta"
+        elif "ARABICA" in title or "ARÁBICA" in title:
+            inferred_type = "arabica"
+    if inferred_type not in {"arabica", "robusta"}:
+        raise ValueError("Nao foi possivel identificar se o arquivo CEPEA e de arabica ou robusta.")
+
+    fetched_at = app_now()
+    quotes: list[CoffeeQuote] = []
+    for row_index in range(4, sheet.nrows):
+        quote_date = _parse_cepea_xls_date(sheet.cell_value(row_index, 0), workbook.datemode)
+        price_brl = _parse_cepea_xls_decimal(sheet.cell_value(row_index, 1))
+        if not quote_date or price_brl is None or price_brl <= 0:
+            continue
+        quotes.append(
+            CoffeeQuote(
+                quote_type=inferred_type,
+                quote_date=quote_date,
+                price_brl=round(price_brl, 2),
+                variation_day=None,
+                variation_month=None,
+                price_usd=_parse_cepea_xls_decimal(sheet.cell_value(row_index, 2)),
+                source=CEPEA_SOURCE,
+                source_url=CEPEA_COFFEE_URL,
+                fetched_at=fetched_at,
+            )
+        )
+    _calculate_variations_from_series(quotes)
+    return quotes
 
 
 def _calculate_variations_from_series(quotes: list[CoffeeQuote]) -> None:
