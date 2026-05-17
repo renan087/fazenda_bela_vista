@@ -202,6 +202,30 @@ def _replace_installments(
     transaction: FinanceTransaction,
     installment_rows: list[dict],
 ) -> None:
+    paid_snapshot = {
+        installment.installment_number: {
+            "status": installment.status,
+            "paid_at": installment.paid_at,
+            "payment_notes": installment.payment_notes,
+        }
+        for installment in (transaction.installments or [])
+        if (installment.status or "").strip().lower() == "pago"
+    }
+    if paid_snapshot:
+        new_installment_numbers = {row["installment_number"] for row in installment_rows}
+        missing_paid = sorted(number for number in paid_snapshot if number not in new_installment_numbers)
+        if missing_paid:
+            raise ValueError(
+                "A edição removeria parcelas já pagas. Estorne os pagamentos antes de alterar o parcelamento."
+            )
+        for row in installment_rows:
+            paid_state = paid_snapshot.get(row["installment_number"])
+            if not paid_state:
+                continue
+            row["status"] = paid_state["status"]
+            row["paid_at"] = paid_state["paid_at"]
+            row["payment_notes"] = paid_state["payment_notes"]
+
     for installment in list(transaction.installments or []):
         repo.delete(installment)
     for row in installment_rows:
