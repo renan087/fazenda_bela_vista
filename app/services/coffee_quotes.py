@@ -304,6 +304,14 @@ def _calculate_variations_from_series(quotes: list[CoffeeQuote]) -> None:
                 quote.variation_month = round(((float(quote.price_brl) - float(month_base.price_brl)) / float(month_base.price_brl)) * 100, 2)
 
 
+def _has_previous_month_base(quotes: list[CoffeeQuote], quote_type: str) -> bool:
+    rows = sorted((quote for quote in quotes if quote.quote_type == quote_type), key=lambda item: item.quote_date)
+    if not rows:
+        return False
+    latest = rows[-1]
+    return any(row.quote_date < latest.quote_date.replace(day=1) for row in rows)
+
+
 def _merge_quotes_by_type_and_date(*quote_groups: list[CoffeeQuote]) -> list[CoffeeQuote]:
     merged: dict[tuple[str, date], CoffeeQuote] = {}
     for group in quote_groups:
@@ -317,6 +325,7 @@ def _merge_quotes_by_type_and_date(*quote_groups: list[CoffeeQuote]) -> list[Cof
             existing.price_usd = quote.price_usd if quote.price_usd is not None else existing.price_usd
             existing.variation_day = quote.variation_day if quote.variation_day is not None else existing.variation_day
             existing.variation_month = quote.variation_month if quote.variation_month is not None else existing.variation_month
+            existing.source_url = quote.source_url or existing.source_url
             existing.fetched_at = quote.fetched_at or existing.fetched_at
     return list(merged.values())
 
@@ -417,8 +426,24 @@ def fetch_cepea_widget_with_cecafe_history_quotes(client: httpx.Client) -> list[
     except Exception as exc:
         logger.warning("Nao foi possivel buscar serie Cecafe/CEPEA: %s", exc)
         history_quotes = []
-    quotes = _merge_quotes_by_type_and_date(history_quotes, widget_quotes)
+    try:
+        official_response = client.get(CEPEA_COFFEE_URL)
+        official_response.raise_for_status()
+        official_quotes = parse_cepea_coffee_quotes(official_response.text)
+    except Exception as exc:
+        logger.warning("Nao foi possivel buscar variacao oficial CEPEA: %s", exc)
+        official_quotes = []
+    quotes = _merge_quotes_by_type_and_date(history_quotes, widget_quotes, official_quotes)
     _calculate_variations_from_series(quotes)
+    quotes = _merge_quotes_by_type_and_date(quotes, official_quotes)
+    trusted_quote_types = {
+        quote_type
+        for quote_type in ("arabica", "robusta")
+        if any(quote.quote_type == quote_type for quote in official_quotes) or _has_previous_month_base(quotes, quote_type)
+    }
+    for quote in quotes:
+        if quote.quote_type in trusted_quote_types:
+            quote.source_url = CEPEA_COFFEE_URL
     return quotes
 
 
@@ -433,7 +458,7 @@ def refresh_cepea_coffee_quotes(repository: FarmRepository, *, force: bool = Fal
         and all(latest_quotes)
         and all(quote.fetched_at and quote.fetched_at.date() >= today for quote in latest_quotes if quote)
         and all(quote.variation_month is not None for quote in latest_quotes if quote)
-        and all(quote.source_url == CECAFE_CEPEA_URL for quote in latest_quotes if quote)
+        and all(quote.source_url == CEPEA_COFFEE_URL for quote in latest_quotes if quote)
     ):
         return False
     quotes: list[CoffeeQuote] = []
@@ -467,9 +492,12 @@ def _refresh_latest_variation_from_stored_history(repository: FarmRepository, qu
     rows = list(reversed(repository.list_coffee_quotes(quote_type=quote_type, limit=90)))
     if not rows:
         return None, []
+    stored_latest = repository.get_latest_coffee_quote(quote_type)
+    latest_row = rows[-1]
+    if not _has_previous_month_base(rows, quote_type):
+        return stored_latest or latest_row, rows
     _calculate_variations_from_series(rows)
     latest = rows[-1]
-    stored_latest = repository.get_latest_coffee_quote(quote_type)
     if (
         stored_latest
         and stored_latest.quote_date == latest.quote_date
