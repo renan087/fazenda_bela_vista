@@ -12,7 +12,14 @@ from app.repositories.farm import FarmRepository
 logger = logging.getLogger(__name__)
 
 CEPEA_COFFEE_URL = "https://www.cepea.org.br/br/indicador/cafe.aspx?mobile="
+CEPEA_WIDGET_URL = (
+    "https://www.cepea.org.br/br/widgetproduto.js.php?"
+    "fonte=arial&tamanho=10&largura=400px&corfundo=dbd6b2&cortexto=333333&corlinha=ede7bf"
+    "&id_indicador%5B%5D=23&id_indicador%5B%5D=24"
+)
 CEPEA_SOURCE = "CEPEA/ESALQ"
+CECAFE_CEPEA_URL = "https://www.cecafe.com.br/en/market-indicators/cepea-esalq-prices/"
+CECAFE_CEPEA_AJAX_URL = "https://www.cecafe.com.br/site/wp-admin/admin-ajax.php?action=get_wdtable&table_id=103"
 NOTICIAS_AGRICOLAS_CEPEA_URLS = {
     "arabica": "https://www.noticiasagricolas.com.br/cotacoes/cafe/indicador-cepea-esalq-cafe-arabica",
     "robusta": "https://www.noticiasagricolas.com.br/cotacoes/cafe/indicador-cepea-esalq-cafe-conillon",
@@ -128,6 +135,125 @@ def parse_noticias_agricolas_cepea_quotes(html: str, quote_type: str) -> list[Co
     return quotes
 
 
+def parse_cepea_widget_quotes(script: str) -> list[CoffeeQuote]:
+    row_pattern = re.compile(
+        r"<tr>\s*"
+        r"<td>\s*(?P<date>\d{2}/\d{2}/\d{4})\s*</td>\s*"
+        r"<td>\s*(?P<product>.*?)</td>\s*"
+        r"<td>\s*R\$\s*<span[^>]*>\s*(?P<brl>[-+]?\d{1,3}(?:\.\d{3})*,\d{2})\s*</span>\s*</td>\s*"
+        r"</tr>",
+        re.IGNORECASE | re.DOTALL,
+    )
+    fetched_at = app_now()
+    quotes: list[CoffeeQuote] = []
+    for match in row_pattern.finditer(script):
+        product_text = re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", unescape(match.group("product")))).strip().lower()
+        quote_type = "robusta" if any(token in product_text for token in ("robusta", "conillon")) else "arabica"
+        quote_date = _parse_brazilian_date(match.group("date"))
+        price_brl = _parse_brazilian_decimal(match.group("brl"))
+        if not quote_date or price_brl is None:
+            continue
+        quotes.append(
+            CoffeeQuote(
+                quote_type=quote_type,
+                quote_date=quote_date,
+                price_brl=price_brl,
+                variation_day=None,
+                variation_month=None,
+                price_usd=None,
+                source=CEPEA_SOURCE,
+                source_url=CECAFE_CEPEA_URL,
+                fetched_at=fetched_at,
+            )
+        )
+    return quotes
+
+
+def parse_cecafe_cepea_rows(rows: list[list[str]]) -> list[CoffeeQuote]:
+    fetched_at = app_now()
+    quotes: list[CoffeeQuote] = []
+    for row in rows:
+        if len(row) < 5:
+            continue
+        quote_date = _parse_brazilian_date(str(row[0]))
+        if not quote_date:
+            continue
+        for quote_type, brl_index, usd_index in (("arabica", 1, 2), ("robusta", 3, 4)):
+            price_brl = _parse_brazilian_decimal(str(row[brl_index]))
+            if price_brl is None:
+                continue
+            quotes.append(
+                CoffeeQuote(
+                    quote_type=quote_type,
+                    quote_date=quote_date,
+                    price_brl=price_brl,
+                    variation_day=None,
+                    variation_month=None,
+                    price_usd=_parse_brazilian_decimal(str(row[usd_index])),
+                    source=CEPEA_SOURCE,
+                    source_url=CECAFE_CEPEA_URL,
+                    fetched_at=fetched_at,
+                )
+            )
+    return quotes
+
+
+def parse_cecafe_rendered_quotes(html: str) -> list[CoffeeQuote]:
+    rows: list[list[str]] = []
+    for match in re.finditer(r'<tr id="table_103_row_\d+".*?</tr>', html, re.IGNORECASE | re.DOTALL):
+        cells = re.findall(r"<td[^>]*>(.*?)</td>", match.group(0), re.IGNORECASE | re.DOTALL)
+        clean_cells = [
+            re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", unescape(cell))).strip()
+            for cell in cells
+        ]
+        if clean_cells:
+            rows.append(clean_cells)
+    return parse_cecafe_cepea_rows(rows)
+
+
+def _calculate_variations_from_series(quotes: list[CoffeeQuote]) -> None:
+    by_type: dict[str, list[CoffeeQuote]] = {}
+    for quote in quotes:
+        by_type.setdefault(quote.quote_type, []).append(quote)
+    for quote_type_rows in by_type.values():
+        rows = sorted(quote_type_rows, key=lambda item: item.quote_date)
+        previous_by_date: dict[date, CoffeeQuote] = {}
+        latest_before_month: dict[tuple[int, int], CoffeeQuote] = {}
+        previous: CoffeeQuote | None = None
+        for quote in rows:
+            if previous:
+                previous_by_date[quote.quote_date] = previous
+            month_key = (quote.quote_date.year, quote.quote_date.month)
+            if month_key not in latest_before_month:
+                latest_before_month[month_key] = previous
+            previous = quote
+
+        for quote in rows:
+            previous_quote = previous_by_date.get(quote.quote_date)
+            if previous_quote and previous_quote.price_brl:
+                quote.variation_day = round(((float(quote.price_brl) - float(previous_quote.price_brl)) / float(previous_quote.price_brl)) * 100, 2)
+            month_base = latest_before_month.get((quote.quote_date.year, quote.quote_date.month))
+            if month_base and month_base.price_brl:
+                quote.variation_month = round(((float(quote.price_brl) - float(month_base.price_brl)) / float(month_base.price_brl)) * 100, 2)
+
+
+def _merge_quotes_by_type_and_date(*quote_groups: list[CoffeeQuote]) -> list[CoffeeQuote]:
+    merged: dict[tuple[str, date], CoffeeQuote] = {}
+    for group in quote_groups:
+        for quote in group:
+            key = (quote.quote_type, quote.quote_date)
+            existing = merged.get(key)
+            if existing is None:
+                merged[key] = quote
+                continue
+            existing.price_brl = quote.price_brl if quote.price_brl is not None else existing.price_brl
+            existing.price_usd = quote.price_usd if quote.price_usd is not None else existing.price_usd
+            existing.variation_day = quote.variation_day if quote.variation_day is not None else existing.variation_day
+            existing.variation_month = quote.variation_month if quote.variation_month is not None else existing.variation_month
+            existing.fetched_at = quote.fetched_at or existing.fetched_at
+    return list(merged.values())
+
+
 def _fill_month_variation_from_history(quotes: list[CoffeeQuote]) -> None:
     if not quotes:
         return
@@ -158,6 +284,77 @@ def fetch_noticias_agricolas_cepea_quotes(client: httpx.Client) -> list[CoffeeQu
     return quotes
 
 
+def fetch_cecafe_cepea_quotes(client: httpx.Client, *, length: int = 45) -> list[CoffeeQuote]:
+    response = client.get(CECAFE_CEPEA_URL)
+    response.raise_for_status()
+    nonce_match = re.search(r'id="wdtNonceFrontendServerSide_103"[^>]*value="([^"]+)"', response.text)
+    rendered_quotes = parse_cecafe_rendered_quotes(response.text)
+    if not nonce_match:
+        return rendered_quotes
+
+    nonce = nonce_match.group(1)
+    data: dict[str, str] = {
+        "draw": "1",
+        "start": "0",
+        "length": str(length),
+        "wdtNonce": nonce,
+        "wdtNonceFrontendServerSide_103": nonce,
+        "order[0][column]": "0",
+        "order[0][dir]": "desc",
+        "search[value]": "",
+        "search[regex]": "false",
+    }
+    columns = ("data", "arabica_rs", "arabica_usd", "conillon_rs", "conillon_usd", "id")
+    for index, name in enumerate(columns):
+        data[f"columns[{index}][data]"] = name
+        data[f"columns[{index}][name]"] = name
+        data[f"columns[{index}][searchable]"] = "true"
+        data[f"columns[{index}][orderable]"] = "true"
+        data[f"columns[{index}][search][value]"] = ""
+        data[f"columns[{index}][search][regex]"] = "false"
+    ajax_response = client.post(
+        CECAFE_CEPEA_AJAX_URL,
+        data=data,
+        headers={
+            "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+            "Referer": CECAFE_CEPEA_URL,
+            "X-Requested-With": "XMLHttpRequest",
+        },
+    )
+    ajax_response.raise_for_status()
+    try:
+        payload = ajax_response.json()
+    except ValueError:
+        return rendered_quotes
+    rows = payload.get("data")
+    if not isinstance(rows, list):
+        return rendered_quotes
+    quotes = parse_cecafe_cepea_rows(rows)
+    return quotes or rendered_quotes
+
+
+def fetch_cepea_widget_with_cecafe_history_quotes(client: httpx.Client) -> list[CoffeeQuote]:
+    widget_response = client.get(
+        CEPEA_WIDGET_URL,
+        headers={
+            "Accept": "application/javascript,text/javascript,*/*;q=0.8",
+            "Referer": CEPEA_COFFEE_URL,
+        },
+    )
+    widget_response.raise_for_status()
+    widget_quotes = parse_cepea_widget_quotes(widget_response.text)
+    if not widget_quotes:
+        return []
+    try:
+        history_quotes = fetch_cecafe_cepea_quotes(client)
+    except Exception as exc:
+        logger.warning("Nao foi possivel buscar serie Cecafe/CEPEA: %s", exc)
+        history_quotes = []
+    quotes = _merge_quotes_by_type_and_date(history_quotes, widget_quotes)
+    _calculate_variations_from_series(quotes)
+    return quotes
+
+
 def refresh_cepea_coffee_quotes(repository: FarmRepository, *, force: bool = False) -> bool:
     today = today_in_app_timezone()
     latest_quotes = [
@@ -169,17 +366,26 @@ def refresh_cepea_coffee_quotes(repository: FarmRepository, *, force: bool = Fal
         and all(latest_quotes)
         and all(quote.fetched_at and quote.fetched_at.date() >= today for quote in latest_quotes if quote)
         and all(quote.variation_month is not None for quote in latest_quotes if quote)
+        and all(quote.source_url == CECAFE_CEPEA_URL for quote in latest_quotes if quote)
     ):
         return False
     quotes: list[CoffeeQuote] = []
-    headers = {"User-Agent": "SiSFarm/1.0 (+https://app.sisfarm.com.br)"}
+    headers = {
+        "User-Agent": "Mozilla/5.0 (compatible; SiSFarm/1.0; +https://app.sisfarm.com.br)",
+        "Accept-Language": "pt-BR,pt;q=0.9,en;q=0.8",
+    }
     with httpx.Client(timeout=6.0, follow_redirects=True, headers=headers) as client:
         try:
-            response = client.get(CEPEA_COFFEE_URL)
-            response.raise_for_status()
-            quotes = parse_cepea_coffee_quotes(response.text)
+            quotes = fetch_cepea_widget_with_cecafe_history_quotes(client)
         except Exception as exc:
-            logger.warning("Nao foi possivel atualizar cotacao de cafe CEPEA diretamente: %s", exc)
+            logger.warning("Nao foi possivel atualizar cotacao de cafe via widget CEPEA/Cecafe: %s", exc)
+        if not quotes:
+            try:
+                response = client.get(CEPEA_COFFEE_URL)
+                response.raise_for_status()
+                quotes = parse_cepea_coffee_quotes(response.text)
+            except Exception as exc:
+                logger.warning("Nao foi possivel atualizar cotacao de cafe CEPEA diretamente: %s", exc)
         if not quotes:
             quotes = fetch_noticias_agricolas_cepea_quotes(client)
     if not quotes:
