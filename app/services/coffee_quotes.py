@@ -153,7 +153,7 @@ def parse_noticias_agricolas_cepea_quotes(html: str, quote_type: str) -> list[Co
                 fetched_at=fetched_at,
             )
         )
-    _fill_month_variation_from_history(quotes)
+    _calculate_variations_from_series(quotes)
     return quotes
 
 
@@ -330,23 +330,6 @@ def _merge_quotes_by_type_and_date(*quote_groups: list[CoffeeQuote]) -> list[Cof
     return list(merged.values())
 
 
-def _fill_month_variation_from_history(quotes: list[CoffeeQuote]) -> None:
-    if not quotes:
-        return
-    oldest_price_by_month: dict[tuple[int, int], float] = {}
-    for quote in sorted(quotes, key=lambda item: item.quote_date):
-        if quote.price_brl is None or quote.price_brl == 0:
-            continue
-        month_key = (quote.quote_date.year, quote.quote_date.month)
-        oldest_price_by_month.setdefault(month_key, float(quote.price_brl))
-    for quote in quotes:
-        month_key = (quote.quote_date.year, quote.quote_date.month)
-        month_base = oldest_price_by_month.get(month_key)
-        if not month_base or quote.price_brl is None:
-            continue
-        quote.variation_month = round(((float(quote.price_brl) - month_base) / month_base) * 100, 2)
-
-
 def fetch_noticias_agricolas_cepea_quotes(client: httpx.Client) -> list[CoffeeQuote]:
     quotes: list[CoffeeQuote] = []
     for quote_type, url in NOTICIAS_AGRICOLAS_CEPEA_URLS.items():
@@ -360,7 +343,7 @@ def fetch_noticias_agricolas_cepea_quotes(client: httpx.Client) -> list[CoffeeQu
     return quotes
 
 
-def fetch_cecafe_cepea_quotes(client: httpx.Client, *, length: int = 45) -> list[CoffeeQuote]:
+def fetch_cecafe_cepea_quotes(client: httpx.Client, *, length: int = 120) -> list[CoffeeQuote]:
     response = client.get(CECAFE_CEPEA_URL)
     response.raise_for_status()
     nonce_match = re.search(r'id="wdtNonceFrontendServerSide_103"[^>]*value="([^"]+)"', response.text)
@@ -422,10 +405,14 @@ def fetch_cepea_widget_with_cecafe_history_quotes(client: httpx.Client) -> list[
     if not widget_quotes:
         return []
     try:
-        history_quotes = fetch_cecafe_cepea_quotes(client)
+        history_quotes = fetch_cecafe_cepea_quotes(client, length=120)
     except Exception as exc:
         logger.warning("Nao foi possivel buscar serie Cecafe/CEPEA: %s", exc)
         history_quotes = []
+        try:
+            history_quotes = fetch_noticias_agricolas_cepea_quotes(client)
+        except Exception as fallback_exc:
+            logger.warning("Nao foi possivel buscar espelho Noticias Agricolas: %s", fallback_exc)
     official_quotes: list[CoffeeQuote] = []
     try:
         official_response = client.get(CEPEA_COFFEE_URL)
@@ -477,42 +464,40 @@ def _fetch_remote_coffee_quotes(client: httpx.Client) -> list[CoffeeQuote]:
     raise RuntimeError("Widget CEPEA/Cecafe nao retornou cotacoes interpretaveis.")
 
 
+def _latest_coffee_quotes_from_remote_series(remote_quotes: list[CoffeeQuote]) -> dict[str, CoffeeQuote | None]:
+    result: dict[str, CoffeeQuote | None] = {"arabica": None, "robusta": None}
+    if not remote_quotes:
+        return result
+    _calculate_variations_from_series(remote_quotes)
+    for quote_type in ("arabica", "robusta"):
+        type_rows = [quote for quote in remote_quotes if quote.quote_type == quote_type]
+        if not type_rows:
+            continue
+        latest = max(type_rows, key=lambda item: item.quote_date)
+        if not _has_previous_month_base(remote_quotes, quote_type):
+            latest.variation_month = None
+        result[quote_type] = latest
+    return result
+
+
 def _build_latest_coffee_quotes_for_dashboard(repository: FarmRepository) -> dict[str, CoffeeQuote | None]:
     remote_quotes: list[CoffeeQuote] = []
     try:
         with httpx.Client(timeout=10.0, follow_redirects=True, headers=_http_client_headers()) as client:
             remote_quotes = _fetch_remote_coffee_quotes(client)
-            for quote in remote_quotes:
-                repository.upsert_coffee_quote(quote)
     except Exception as exc:
         logger.warning("Nao foi possivel buscar cotacoes remotas de cafe para o dashboard: %s", exc)
 
-    result: dict[str, CoffeeQuote | None] = {"arabica": None, "robusta": None}
+    result = _latest_coffee_quotes_from_remote_series(remote_quotes)
     for quote_type in ("arabica", "robusta"):
-        stored_rows = list(reversed(repository.list_coffee_quotes(quote_type=quote_type, limit=120)))
-        merged = _merge_quotes_by_type_and_date(stored_rows, remote_quotes)
-        type_rows = [quote for quote in merged if quote.quote_type == quote_type]
-        if not type_rows and remote_quotes:
-            type_rows = [quote for quote in remote_quotes if quote.quote_type == quote_type]
-
-        if type_rows and _has_previous_month_base(type_rows, quote_type):
-            _calculate_variations_from_series(type_rows)
-            latest = max(type_rows, key=lambda item: item.quote_date)
+        latest = result.get(quote_type)
+        if latest:
             repository.upsert_coffee_quote(latest)
-            result[quote_type] = latest
             continue
-
-        remote_latest = max(
-            (quote for quote in remote_quotes if quote.quote_type == quote_type),
-            key=lambda item: item.quote_date,
-            default=None,
-        )
-        if remote_latest:
-            repository.upsert_coffee_quote(remote_latest)
-            result[quote_type] = remote_latest
-            continue
-
         result[quote_type] = _resolve_latest_coffee_quote(repository, quote_type)
+    if remote_quotes:
+        for quote in remote_quotes:
+            repository.upsert_coffee_quote(quote)
     return result
 
 
@@ -527,8 +512,6 @@ def refresh_cepea_coffee_quotes(repository: FarmRepository, *, force: bool = Fal
         not force
         and all(latest_quotes)
         and all(quote.fetched_at and quote.fetched_at.date() >= today for quote in latest_quotes if quote)
-        and all(quote.variation_month is not None for quote in latest_quotes if quote)
-        and all(quote.source_url == CEPEA_COFFEE_URL for quote in latest_quotes if quote)
     ):
         return False
     quotes: list[CoffeeQuote] = []
