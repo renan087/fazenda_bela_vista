@@ -54,6 +54,11 @@ class Settings(BaseSettings):
     asaas_webhook_token: str | None = None
     memory_monitor_enabled: bool = True
     memory_monitor_interval_seconds: int = 60
+    coffee_quote_sync_enabled: bool = True
+    coffee_quote_sync_retry_interval_seconds: int = 120
+    coffee_quote_sync_max_attempts_per_burst: int = 15
+    coffee_quote_sync_max_burst_seconds: int = 1800
+    coffee_quote_sync_idle_interval_seconds: int = 3600
 
     @property
     def is_production(self) -> bool:

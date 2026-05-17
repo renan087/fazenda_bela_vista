@@ -500,58 +500,74 @@ def _db_price_series(repository: FarmRepository, limit: int = 120) -> list[Coffe
     return price_quotes
 
 
-def _build_latest_coffee_quotes_for_dashboard(repository: FarmRepository) -> dict[str, CoffeeQuote | None]:
-    remote_quotes: list[CoffeeQuote] = []
-    try:
-        with httpx.Client(timeout=30.0, follow_redirects=True, headers=_http_client_headers()) as client:
-            remote_quotes = _fetch_remote_coffee_quotes(client)
-    except Exception as exc:
-        logger.warning("Nao foi possivel buscar cotacoes remotas de cafe para o dashboard: %s", exc)
+def coffee_quotes_dashboard_ready(repository: FarmRepository) -> bool:
+    """Cotações prontas para exibir: preço do dia salvo e variação mensal quando calculável."""
+    today = today_in_app_timezone()
+    db_series = _db_price_series(repository)
+    for quote_type in ("arabica", "robusta"):
+        latest = repository.get_latest_coffee_quote(quote_type)
+        if not latest or latest.price_brl is None:
+            return False
+        if not latest.fetched_at or latest.fetched_at.date() < today:
+            return False
+        if latest.variation_month is None and _has_previous_month_base(db_series, quote_type):
+            return False
+    return True
 
+
+def coffee_quotes_need_background_sync(repository: FarmRepository) -> bool:
+    return not coffee_quotes_dashboard_ready(repository)
+
+
+def _persist_coffee_quotes_sync(repository: FarmRepository, remote_quotes: list[CoffeeQuote]) -> dict[str, CoffeeQuote | None]:
     db_price_quotes = _db_price_series(repository)
     combined = _merge_quotes_by_type_and_date(db_price_quotes, remote_quotes)
     result = _latest_coffee_quotes_from_remote_series(combined)
-
     if remote_quotes:
         for quote in remote_quotes:
             repository.upsert_coffee_quote(quote)
-
     for quote_type in ("arabica", "robusta"):
         latest = result.get(quote_type)
         if latest:
             repository.upsert_coffee_quote(latest)
-            continue
-        db_quote = _resolve_latest_coffee_quote(repository, quote_type)
-        if db_quote is not None:
-            repository.db.expunge(db_quote)
-            db_quote.variation_month = None
-        result[quote_type] = db_quote
-
     return result
 
 
+def sync_cepea_coffee_quotes_once() -> bool:
+    """Busca fontes remotas, grava no banco e retorna True se o painel pode exibir os cards."""
+    from app.db.session import SessionLocal
+
+    with SessionLocal() as db:
+        repository = FarmRepository(db)
+        remote_quotes: list[CoffeeQuote] = []
+        try:
+            with httpx.Client(timeout=30.0, follow_redirects=True, headers=_http_client_headers()) as client:
+                remote_quotes = _fetch_remote_coffee_quotes(client)
+        except Exception as exc:
+            logger.warning("Nao foi possivel buscar cotacoes remotas de cafe: %s", exc)
+            return False
+        if not remote_quotes:
+            logger.warning("Busca remota de cafe nao retornou cotacoes interpretaveis.")
+            return False
+        _persist_coffee_quotes_sync(repository, remote_quotes)
+        return coffee_quotes_dashboard_ready(repository)
+
+
+def get_dashboard_coffee_quotes(repository: FarmRepository) -> dict[str, CoffeeQuote | None]:
+    """Lê e recalcula cotações a partir do banco (sem HTTP na requisição do usuário)."""
+    db_price_quotes = _db_price_series(repository)
+    if not db_price_quotes:
+        return {
+            quote_type: _resolve_latest_coffee_quote(repository, quote_type)
+            for quote_type in ("arabica", "robusta")
+        }
+    return _latest_coffee_quotes_from_remote_series(db_price_quotes)
+
+
 def refresh_cepea_coffee_quotes(repository: FarmRepository, *, force: bool = False) -> bool:
-    today = today_in_app_timezone()
-    latest_quotes = [
-        repository.get_latest_coffee_quote("arabica"),
-        repository.get_latest_coffee_quote("robusta"),
-    ]
-    headers = _http_client_headers()
-    if (
-        not force
-        and all(latest_quotes)
-        and all(quote.fetched_at and quote.fetched_at.date() >= today for quote in latest_quotes if quote)
-    ):
+    if not force and not coffee_quotes_need_background_sync(repository):
         return False
-    quotes: list[CoffeeQuote] = []
-    with httpx.Client(timeout=30.0, follow_redirects=True, headers=headers) as client:
-        quotes = _fetch_remote_coffee_quotes(client)
-    if not quotes:
-        logger.warning("Cotacoes de cafe CEPEA nao retornaram dados interpretaveis.")
-        return False
-    for quote in quotes:
-        repository.upsert_coffee_quote(quote)
-    return True
+    return sync_cepea_coffee_quotes_once()
 
 
 def _resolve_latest_coffee_quote(repository: FarmRepository, quote_type: str) -> CoffeeQuote | None:
@@ -574,8 +590,7 @@ def _coffee_quote_history_rows(repository: FarmRepository, quote_type: str, *, l
 
 
 def latest_coffee_quote_context(repository: FarmRepository) -> dict:
-    quotes = _build_latest_coffee_quotes_for_dashboard(repository)
-    refresh_cepea_coffee_quotes(repository)
+    quotes = get_dashboard_coffee_quotes(repository)
     history = {}
     for quote_type in ("arabica", "robusta"):
         chart_rows = _coffee_quote_history_rows(repository, quote_type)[-30:]

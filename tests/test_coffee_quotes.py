@@ -5,8 +5,10 @@ from app.services.coffee_quotes import (
     _calculate_variations_from_series,
     _cepea_page_html_is_blocked,
     _latest_coffee_quotes_from_remote_series,
+    coffee_quotes_dashboard_ready,
     parse_cepea_coffee_quotes,
 )
+from app.core.timezone import app_now
 
 
 SAMPLE_CEPEA_HTML = """
@@ -64,6 +66,40 @@ def test_latest_from_remote_series_ignores_stale_month_calculation() -> None:
     assert round(float(arabica.variation_month), 2) == -7.02
     assert round(float(robusta.variation_month), 2) == 0.53
     assert round(float(arabica.variation_month), 2) != -6.93
+
+
+def test_dashboard_ready_requires_month_when_previous_month_exists() -> None:
+    from unittest.mock import MagicMock
+
+    today = date(2026, 5, 17)
+    arabica = CoffeeQuote(
+        quote_type="arabica",
+        quote_date=date(2026, 5, 15),
+        price_brl=1637.88,
+        variation_month=None,
+        source="CEPEA/ESALQ",
+        fetched_at=app_now(),
+    )
+    robusta = CoffeeQuote(
+        quote_type="robusta",
+        quote_date=date(2026, 5, 15),
+        price_brl=930.15,
+        variation_month=0.53,
+        source="CEPEA/ESALQ",
+        fetched_at=app_now(),
+    )
+    repo = MagicMock()
+    repo.get_latest_coffee_quote.side_effect = lambda t: arabica if t == "arabica" else robusta
+    repo.list_coffee_quotes.return_value = [
+        CoffeeQuote(quote_type="arabica", quote_date=date(2026, 4, 30), price_brl=1761.57, source="CEPEA/ESALQ"),
+        CoffeeQuote(quote_type="arabica", quote_date=date(2026, 5, 15), price_brl=1637.88, source="CEPEA/ESALQ"),
+        CoffeeQuote(quote_type="robusta", quote_date=date(2026, 4, 30), price_brl=925.26, source="CEPEA/ESALQ"),
+        CoffeeQuote(quote_type="robusta", quote_date=date(2026, 5, 15), price_brl=930.15, source="CEPEA/ESALQ"),
+    ]
+    assert coffee_quotes_dashboard_ready(repo) is False
+
+    arabica.variation_month = -7.02
+    assert coffee_quotes_dashboard_ready(repo) is True
 
 
 def test_latest_from_remote_series_clears_month_without_previous_month_close() -> None:

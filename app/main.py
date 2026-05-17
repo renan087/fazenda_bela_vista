@@ -27,6 +27,7 @@ from app.routers.auth import api_router as auth_api_router
 from app.routers.auth import router as auth_router
 from app.services.audit_log_service import append_audit_event, client_ip
 from app.services.backup_service import run_backup_automation_loop
+from app.services.coffee_quote_sync_service import run_coffee_quote_sync_loop
 from app.services.data_change_audit import (
     install_data_change_audit_listeners,
     reset_data_change_audit_context,
@@ -71,6 +72,8 @@ async def lifespan(app: FastAPI):
         seed_rbac_for_all_organizations(db)
         seed_demo_data(db)
     background_tasks: list[asyncio.Task] = [asyncio.create_task(run_backup_automation_loop())]
+    if settings.coffee_quote_sync_enabled:
+        background_tasks.append(asyncio.create_task(run_coffee_quote_sync_loop()))
     if settings.memory_monitor_enabled:
         logger.info(
             "MEM_MONITOR enable requested interval_seconds=%s",
