@@ -2425,11 +2425,11 @@ body.finance-sortable-cursor {
 }
 
 [data-stock-catalog-paged-shell] .finance-card-page-nav-prev {
-    left: 0.45rem;
+    left: 0;
 }
 
 [data-stock-catalog-paged-shell] .finance-card-page-nav-next {
-    right: 0.45rem;
+    right: 0;
 }
 
 @media (min-width: 900px) {
