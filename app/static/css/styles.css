@@ -2424,12 +2424,20 @@ body.finance-sortable-cursor {
     right: -1.35rem;
 }
 
+[data-stock-summary-collapse] > .stock-summary-collapse-inner {
+    overflow: visible;
+}
+
+[data-stock-catalog-paged-shell] .finance-card-page-nav {
+    z-index: 35;
+}
+
 [data-stock-catalog-paged-shell] .finance-card-page-nav-prev {
-    left: 0;
+    left: calc(-1.5rem + 1px);
 }
 
 [data-stock-catalog-paged-shell] .finance-card-page-nav-next {
-    right: 0;
+    right: calc(-1.5rem + 1px);
 }
 
 @media (min-width: 900px) {
