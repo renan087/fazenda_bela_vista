@@ -480,6 +480,26 @@ def _latest_coffee_quotes_from_remote_series(remote_quotes: list[CoffeeQuote]) -
     return result
 
 
+def _db_price_series(repository: FarmRepository, limit: int = 120) -> list[CoffeeQuote]:
+    price_quotes: list[CoffeeQuote] = []
+    for quote_type in ("arabica", "robusta"):
+        for db_q in reversed(repository.list_coffee_quotes(quote_type=quote_type, limit=limit)):
+            if db_q.price_brl is None:
+                continue
+            price_quotes.append(
+                CoffeeQuote(
+                    quote_type=db_q.quote_type,
+                    quote_date=db_q.quote_date,
+                    price_brl=float(db_q.price_brl),
+                    variation_day=None,
+                    variation_month=None,
+                    source=db_q.source,
+                    fetched_at=db_q.fetched_at,
+                )
+            )
+    return price_quotes
+
+
 def _build_latest_coffee_quotes_for_dashboard(repository: FarmRepository) -> dict[str, CoffeeQuote | None]:
     remote_quotes: list[CoffeeQuote] = []
     try:
@@ -488,7 +508,14 @@ def _build_latest_coffee_quotes_for_dashboard(repository: FarmRepository) -> dic
     except Exception as exc:
         logger.warning("Nao foi possivel buscar cotacoes remotas de cafe para o dashboard: %s", exc)
 
-    result = _latest_coffee_quotes_from_remote_series(remote_quotes)
+    db_price_quotes = _db_price_series(repository)
+    combined = _merge_quotes_by_type_and_date(db_price_quotes, remote_quotes)
+    result = _latest_coffee_quotes_from_remote_series(combined)
+
+    if remote_quotes:
+        for quote in remote_quotes:
+            repository.upsert_coffee_quote(quote)
+
     for quote_type in ("arabica", "robusta"):
         latest = result.get(quote_type)
         if latest:
@@ -499,9 +526,7 @@ def _build_latest_coffee_quotes_for_dashboard(repository: FarmRepository) -> dic
             repository.db.expunge(db_quote)
             db_quote.variation_month = None
         result[quote_type] = db_quote
-    if remote_quotes:
-        for quote in remote_quotes:
-            repository.upsert_coffee_quote(quote)
+
     return result
 
 
