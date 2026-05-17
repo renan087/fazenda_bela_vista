@@ -483,7 +483,7 @@ def _latest_coffee_quotes_from_remote_series(remote_quotes: list[CoffeeQuote]) -
 def _build_latest_coffee_quotes_for_dashboard(repository: FarmRepository) -> dict[str, CoffeeQuote | None]:
     remote_quotes: list[CoffeeQuote] = []
     try:
-        with httpx.Client(timeout=10.0, follow_redirects=True, headers=_http_client_headers()) as client:
+        with httpx.Client(timeout=30.0, follow_redirects=True, headers=_http_client_headers()) as client:
             remote_quotes = _fetch_remote_coffee_quotes(client)
     except Exception as exc:
         logger.warning("Nao foi possivel buscar cotacoes remotas de cafe para o dashboard: %s", exc)
@@ -494,7 +494,11 @@ def _build_latest_coffee_quotes_for_dashboard(repository: FarmRepository) -> dic
         if latest:
             repository.upsert_coffee_quote(latest)
             continue
-        result[quote_type] = _resolve_latest_coffee_quote(repository, quote_type)
+        db_quote = _resolve_latest_coffee_quote(repository, quote_type)
+        if db_quote is not None:
+            repository.db.expunge(db_quote)
+            db_quote.variation_month = None
+        result[quote_type] = db_quote
     if remote_quotes:
         for quote in remote_quotes:
             repository.upsert_coffee_quote(quote)
@@ -515,7 +519,7 @@ def refresh_cepea_coffee_quotes(repository: FarmRepository, *, force: bool = Fal
     ):
         return False
     quotes: list[CoffeeQuote] = []
-    with httpx.Client(timeout=10.0, follow_redirects=True, headers=headers) as client:
+    with httpx.Client(timeout=30.0, follow_redirects=True, headers=headers) as client:
         quotes = _fetch_remote_coffee_quotes(client)
     if not quotes:
         logger.warning("Cotacoes de cafe CEPEA nao retornaram dados interpretaveis.")
