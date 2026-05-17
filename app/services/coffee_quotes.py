@@ -463,18 +463,35 @@ def refresh_cepea_coffee_quotes(repository: FarmRepository, *, force: bool = Fal
     return True
 
 
+def _refresh_latest_variation_from_stored_history(repository: FarmRepository, quote_type: str) -> tuple[CoffeeQuote | None, list[CoffeeQuote]]:
+    rows = list(reversed(repository.list_coffee_quotes(quote_type=quote_type, limit=90)))
+    if not rows:
+        return None, []
+    _calculate_variations_from_series(rows)
+    latest = rows[-1]
+    stored_latest = repository.get_latest_coffee_quote(quote_type)
+    if (
+        stored_latest
+        and stored_latest.quote_date == latest.quote_date
+        and latest.variation_month is not None
+        and round(float(stored_latest.variation_month or 0), 2) != round(float(latest.variation_month or 0), 2)
+    ):
+        repository.upsert_coffee_quote(latest)
+        stored_latest = repository.get_latest_coffee_quote(quote_type)
+    return stored_latest or latest, rows
+
+
 def latest_coffee_quote_context(repository: FarmRepository) -> dict:
     refresh_cepea_coffee_quotes(repository)
-    quotes = {
-        "arabica": repository.get_latest_coffee_quote("arabica"),
-        "robusta": repository.get_latest_coffee_quote("robusta"),
-    }
+    quotes = {}
     history = {}
-    for quote_type in quotes:
-        rows = list(reversed(repository.list_coffee_quotes(quote_type=quote_type, limit=30)))
+    for quote_type in ("arabica", "robusta"):
+        latest, rows = _refresh_latest_variation_from_stored_history(repository, quote_type)
+        quotes[quote_type] = latest
+        chart_rows = rows[-30:]
         history[quote_type] = {
-            "labels": [row.quote_date.strftime("%d/%m") for row in rows],
-            "values": [float(row.price_brl or 0) for row in rows],
+            "labels": [row.quote_date.strftime("%d/%m") for row in chart_rows],
+            "values": [float(row.price_brl or 0) for row in chart_rows],
         }
     return {
         "quotes": quotes,
