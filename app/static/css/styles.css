@@ -2424,6 +2424,14 @@ body.finance-sortable-cursor {
     right: -1.35rem;
 }
 
+[data-stock-catalog-paged-shell] .finance-card-page-nav-prev {
+    left: 0.45rem;
+}
+
+[data-stock-catalog-paged-shell] .finance-card-page-nav-next {
+    right: 0.45rem;
+}
+
 @media (min-width: 900px) {
     .finance-card-page-nav {
         display: inline-flex;
