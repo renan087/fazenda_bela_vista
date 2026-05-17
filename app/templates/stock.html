@@ -57,6 +57,14 @@
         </div>
         <div class="stock-summary-collapse is-expanded" data-stock-summary-collapse>
         <div class="stock-summary-collapse-inner">
+        <div class="finance-card-paged-shell" data-stock-catalog-paged-shell>
+        {% if stock_catalog_rows|length > 4 %}
+        <button type="button" class="finance-card-page-nav finance-card-page-nav-prev" data-stock-catalog-page-nav="prev" aria-label="Página anterior da visão consolidada">
+            <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="m15 18-6-6 6-6"/>
+            </svg>
+        </button>
+        {% endif %}
         <div class="stock-catalog-carousel-viewport min-w-0 w-full" data-stock-catalog-viewport>
         <div class="stock-summary-grid mt-6" data-stock-catalog-grid>
             {% for item in stock_catalog_rows %}
@@ -112,6 +120,14 @@
             <p class="text-sm text-slate-500 md:col-span-2">Nenhum insumo encontrado para os filtros informados.</p>
             {% endfor %}
         </div>
+        </div>
+        {% if stock_catalog_rows|length > 4 %}
+        <button type="button" class="finance-card-page-nav finance-card-page-nav-next" data-stock-catalog-page-nav="next" aria-label="Próxima página da visão consolidada">
+            <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="m9 6 6 6-6 6"/>
+            </svg>
+        </button>
+        {% endif %}
         </div>
         {% if stock_catalog_rows|length > 4 %}
         <div class="mt-5" data-stock-catalog-dots></div>
@@ -1077,6 +1093,29 @@
             const catalogDots = document.querySelector('[data-stock-catalog-dots]');
             const catalogGrid = document.querySelector('[data-stock-catalog-grid]');
             const catalogViewport = document.querySelector('[data-stock-catalog-viewport]');
+            const catalogPageNavButtons = Array.from(document.querySelectorAll('[data-stock-catalog-page-nav]'));
+            const bindCatalogPagerNav = (pager) => {
+                if (!pager || !catalogPageNavButtons.length) return;
+                const sync = () => {
+                    const page = pager.getPage();
+                    const total = pager.getTotalPages();
+                    catalogPageNavButtons.forEach((button) => {
+                        const direction = button.dataset.stockCatalogPageNav;
+                        button.disabled = total <= 1 || (direction === 'prev' && page <= 0) || (direction === 'next' && page >= total - 1);
+                    });
+                };
+                catalogPageNavButtons.forEach((button) => {
+                    button.addEventListener('click', () => {
+                        const direction = button.dataset.stockCatalogPageNav;
+                        const page = pager.getPage();
+                        pager.setPage(direction === 'next' ? page + 1 : page - 1, direction);
+                        window.setTimeout(sync, 260);
+                    });
+                });
+                catalogDots?.addEventListener('click', () => window.setTimeout(sync, 260));
+                window.addEventListener('resize', sync);
+                sync();
+            };
             const cardsPerPageDesktop = 4;
             const cardsPerPageMobile = 1;
             if (
@@ -1086,7 +1125,7 @@
                 catalogViewport &&
                 window.SiSFarmSwipePager
             ) {
-                window.SiSFarmSwipePager.create({
+                const catalogPager = window.SiSFarmSwipePager.create({
                     root: catalogGrid,
                     scrollViewport: catalogViewport,
                     items: catalogCards,
@@ -1095,6 +1134,7 @@
                     itemsPerPageMobile: cardsPerPageMobile,
                     mobileOnly: true,
                 });
+                bindCatalogPagerNav(catalogPager);
             }
 
         })();
