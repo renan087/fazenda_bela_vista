@@ -5,6 +5,7 @@ from datetime import date, timedelta
 
 from app.core.timezone import today_in_app_timezone
 from app.repositories.farm import FarmRepository
+from app.services.coffee_quotes import latest_coffee_quote_context
 from app.services.finance_overview import build_finance_overview_context
 
 
@@ -107,6 +108,66 @@ def _finance_source_label(transaction) -> str:
     if source in {"comercialização", "comercializacao"}:
         return "Comercialização"
     return "Contas"
+
+
+def _coffee_quote_type_for_harvest(harvest) -> str:
+    variety = getattr(getattr(harvest, "plot", None), "variety", None)
+    species = (
+        unicodedata.normalize("NFD", str(getattr(variety, "species", "") or ""))
+        .encode("ascii", "ignore")
+        .decode("ascii")
+        .strip()
+        .lower()
+    )
+    if any(token in species for token in ("robusta", "conilon", "canephora")):
+        return "robusta"
+    return "arabica"
+
+
+def _build_coffee_market_context(repository: FarmRepository, harvests: list, farm_id: int | None, scoped_farm_id_set: set[int] | None) -> dict:
+    quote_context = latest_coffee_quote_context(repository)
+    quotes = quote_context["quotes"]
+    commercializations = repository.list_coffee_commercializations(farm_id=farm_id)
+    if scoped_farm_id_set is not None:
+        commercializations = [item for item in commercializations if item.farm_id in scoped_farm_id_set]
+    sold_by_harvest: dict[int, float] = defaultdict(float)
+    for item in commercializations:
+        if item.harvest_id:
+            sold_by_harvest[item.harvest_id] += _float(item.equivalent_sacks)
+
+    available_sacks_by_type = {"arabica": 0.0, "robusta": 0.0}
+    estimated_value_by_type = {"arabica": 0.0, "robusta": 0.0}
+    available_lots = 0
+    for harvest in harvests:
+        available = max(_float(harvest.sacks_produced) - sold_by_harvest.get(harvest.id, 0.0), 0.0)
+        if available <= 0:
+            continue
+        quote_type = _coffee_quote_type_for_harvest(harvest)
+        available_lots += 1
+        available_sacks_by_type[quote_type] += available
+        quote = quotes.get(quote_type)
+        if quote:
+            estimated_value_by_type[quote_type] += available * _float(quote.price_brl)
+
+    estimated_total = round(sum(estimated_value_by_type.values()), 2)
+    available_total = round(sum(available_sacks_by_type.values()), 2)
+    return {
+        "quotes": quotes,
+        "history": quote_context["history"],
+        "source": quote_context["source"],
+        "source_url": quote_context["source_url"],
+        "available_sacks": {
+            "arabica": round(available_sacks_by_type["arabica"], 2),
+            "robusta": round(available_sacks_by_type["robusta"], 2),
+            "total": available_total,
+        },
+        "estimated_value": {
+            "arabica": round(estimated_value_by_type["arabica"], 2),
+            "robusta": round(estimated_value_by_type["robusta"], 2),
+            "total": estimated_total,
+        },
+        "available_lots": available_lots,
+    }
 
 
 def _build_dashboard_finance_flow(repository: FarmRepository, farm_id: int | None, today: date) -> dict:
@@ -400,6 +461,7 @@ def build_dashboard_context(
     )
     finance_flow = _build_dashboard_finance_flow(repository, farm_id, today)
     forecast = calculate_forecast(repository, plots=plots, harvests=harvests)
+    coffee_market = _build_coffee_market_context(repository, harvests, farm_id, scoped_farm_id_set)
 
     finance_overview = build_finance_overview_context(repository, farm_id=farm_id, active_season=season)
     operational_cost_season = _float(finance_overview.get("operational_cost_season"))
@@ -670,6 +732,7 @@ def build_dashboard_context(
             "finance_overdue_count": finance_flow["overdue_count"],
         },
         "finance_flow": finance_flow,
+        "coffee_market": coffee_market,
         "recent_irrigations": irrigations,
         "recent_rainfalls": rainfalls,
         "recent_fertilizations": fertilizations,

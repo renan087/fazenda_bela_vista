@@ -4,6 +4,7 @@ from app.models.agronomic_profile import AgronomicProfile
 from app.models.backup_automation_setting import BackupAutomationSetting
 from app.models.backup_run import BackupRun
 from app.models.coffee_commercialization import CoffeeCommercializationRecord
+from app.models.coffee_quote import CoffeeQuote
 from app.models.coffee_variety import CoffeeVariety
 from app.models.crop_season import CropSeason
 from app.models.equipment_asset import EquipmentAsset
@@ -48,6 +49,7 @@ __all__ = [
     "BackupAutomationSetting",
     "BackupRun",
     "CoffeeCommercializationRecord",
+    "CoffeeQuote",
     "CoffeeVariety",
     "CropSeason",
     "EquipmentAsset",

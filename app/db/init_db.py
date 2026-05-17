@@ -16,6 +16,7 @@ from app.models import (
     BackupAutomationSetting,
     BackupRun,
     CoffeeCommercializationRecord,
+    CoffeeQuote,
     CoffeeVariety,
     CropSeason,
     EquipmentAsset,
@@ -207,6 +208,22 @@ def _sync_schema() -> None:
             created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
         )
         """,
+        """
+        CREATE TABLE IF NOT EXISTS coffee_quotes (
+            id SERIAL PRIMARY KEY,
+            quote_type VARCHAR(30) NOT NULL,
+            quote_date DATE NOT NULL,
+            price_brl NUMERIC(14,2) NOT NULL,
+            variation_day NUMERIC(8,2),
+            variation_month NUMERIC(8,2),
+            price_usd NUMERIC(14,2),
+            source VARCHAR(80) NOT NULL DEFAULT 'CEPEA/ESALQ',
+            source_url VARCHAR(500),
+            fetched_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            CONSTRAINT uq_coffee_quotes_type_date_source UNIQUE (quote_type, quote_date, source)
+        )
+        """,
+        "CREATE INDEX IF NOT EXISTS ix_coffee_quotes_type_date ON coffee_quotes (quote_type, quote_date DESC)",
         """
         CREATE TABLE IF NOT EXISTS fertilization_items (
             id SERIAL PRIMARY KEY,

@@ -9,6 +9,7 @@ from app.models import (
     BackupRun,
     BackupAutomationSetting,
     CoffeeCommercializationRecord,
+    CoffeeQuote,
     CoffeeVariety,
     CropSeason,
     EquipmentAsset,
@@ -790,6 +791,46 @@ class FarmRepository:
         if farm_id:
             query = query.filter(CoffeeCommercializationRecord.farm_id == farm_id)
         return query.all()
+
+    def get_latest_coffee_quote(self, quote_type: str) -> CoffeeQuote | None:
+        return (
+            self.db.query(CoffeeQuote)
+            .filter(CoffeeQuote.quote_type == quote_type)
+            .order_by(CoffeeQuote.quote_date.desc(), CoffeeQuote.id.desc())
+            .first()
+        )
+
+    def list_coffee_quotes(self, quote_type: str | None = None, limit: int = 30) -> list[CoffeeQuote]:
+        query = self.db.query(CoffeeQuote).order_by(CoffeeQuote.quote_date.desc(), CoffeeQuote.id.desc())
+        if quote_type:
+            query = query.filter(CoffeeQuote.quote_type == quote_type)
+        return query.limit(limit).all()
+
+    def upsert_coffee_quote(self, quote: CoffeeQuote) -> CoffeeQuote:
+        existing = (
+            self.db.query(CoffeeQuote)
+            .filter(
+                CoffeeQuote.quote_type == quote.quote_type,
+                CoffeeQuote.quote_date == quote.quote_date,
+                CoffeeQuote.source == quote.source,
+            )
+            .first()
+        )
+        if existing:
+            existing.price_brl = quote.price_brl
+            existing.variation_day = quote.variation_day
+            existing.variation_month = quote.variation_month
+            existing.price_usd = quote.price_usd
+            existing.source_url = quote.source_url
+            existing.fetched_at = quote.fetched_at
+            self.db.add(existing)
+            self.db.commit()
+            self.db.refresh(existing)
+            return existing
+        self.db.add(quote)
+        self.db.commit()
+        self.db.refresh(quote)
+        return quote
 
     def get_coffee_commercialization(self, record_id: int) -> CoffeeCommercializationRecord | None:
         return (

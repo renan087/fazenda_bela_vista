@@ -480,6 +480,73 @@
 {% endif %}
 
 {% if can_production %}
+<section class="mt-6">
+    <article class="rounded-[2rem] bg-white p-6 shadow-panel">
+        <div class="flex flex-wrap items-start justify-between gap-4">
+            <div>
+                <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Mercado</p>
+                <h3 class="mt-2 text-xl font-semibold">Cotação do café</h3>
+                <p class="mt-2 text-sm text-slate-500">Indicadores CEPEA/ESALQ em R$/saca de 60 kg e estimativa sobre os lotes disponíveis.</p>
+            </div>
+            <a href="{{ coffee_market.source_url }}" target="_blank" rel="noopener noreferrer" class="inline-flex items-center justify-center rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 transition hover:border-brand-200 hover:bg-brand-50">
+                Fonte {{ coffee_market.source }}
+            </a>
+        </div>
+        <div class="mt-6 grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.25fr)]">
+            {% set arabica_quote = coffee_market.quotes.get('arabica') %}
+            {% set robusta_quote = coffee_market.quotes.get('robusta') %}
+            <div class="rounded-[1.5rem] border border-emerald-100 bg-emerald-50/70 p-5">
+                <p class="text-xs font-semibold uppercase tracking-[0.25em] text-emerald-700">Arábica CEPEA/ESALQ</p>
+                {% if arabica_quote %}
+                <p class="mt-3 text-3xl font-bold text-slate-900">R$ {{ arabica_quote.price_brl|decimal_br }}</p>
+                <div class="mt-3 flex flex-wrap items-center gap-2 text-xs font-semibold">
+                    <span class="rounded-full bg-white px-3 py-1 {% if arabica_quote.variation_day and arabica_quote.variation_day < 0 %}text-rose-700 ring-rose-100{% else %}text-emerald-700 ring-emerald-100{% endif %} ring-1">Dia: {{ arabica_quote.variation_day|decimal_br }}%</span>
+                    <span class="rounded-full bg-white px-3 py-1 {% if arabica_quote.variation_month and arabica_quote.variation_month < 0 %}text-rose-700 ring-rose-100{% else %}text-emerald-700 ring-emerald-100{% endif %} ring-1">Mês: {{ arabica_quote.variation_month|decimal_br }}%</span>
+                </div>
+                <p class="mt-3 text-sm text-slate-500">Atualizado em {{ arabica_quote.quote_date.strftime('%d/%m/%Y') }}</p>
+                {% else %}
+                <p class="mt-3 text-lg font-semibold text-slate-700">Sem cotação salva</p>
+                <p class="mt-2 text-sm text-slate-500">A cotação será exibida após a primeira atualização do CEPEA.</p>
+                {% endif %}
+            </div>
+            <div class="rounded-[1.5rem] border border-amber-100 bg-amber-50/70 p-5">
+                <p class="text-xs font-semibold uppercase tracking-[0.25em] text-amber-700">Robusta CEPEA/ESALQ</p>
+                {% if robusta_quote %}
+                <p class="mt-3 text-3xl font-bold text-slate-900">R$ {{ robusta_quote.price_brl|decimal_br }}</p>
+                <div class="mt-3 flex flex-wrap items-center gap-2 text-xs font-semibold">
+                    <span class="rounded-full bg-white px-3 py-1 {% if robusta_quote.variation_day and robusta_quote.variation_day < 0 %}text-rose-700 ring-rose-100{% else %}text-emerald-700 ring-emerald-100{% endif %} ring-1">Dia: {{ robusta_quote.variation_day|decimal_br }}%</span>
+                    <span class="rounded-full bg-white px-3 py-1 {% if robusta_quote.variation_month and robusta_quote.variation_month < 0 %}text-rose-700 ring-rose-100{% else %}text-emerald-700 ring-emerald-100{% endif %} ring-1">Mês: {{ robusta_quote.variation_month|decimal_br }}%</span>
+                </div>
+                <p class="mt-3 text-sm text-slate-500">Atualizado em {{ robusta_quote.quote_date.strftime('%d/%m/%Y') }}</p>
+                {% else %}
+                <p class="mt-3 text-lg font-semibold text-slate-700">Sem cotação salva</p>
+                <p class="mt-2 text-sm text-slate-500">A cotação será exibida após a primeira atualização do CEPEA.</p>
+                {% endif %}
+            </div>
+            <div class="rounded-[1.5rem] border border-slate-100 bg-slate-50/80 p-5">
+                <p class="text-xs font-semibold uppercase tracking-[0.25em] text-slate-400">Estoque estimado</p>
+                <p class="mt-3 text-3xl font-bold text-slate-900">R$ {{ coffee_market.estimated_value.total|decimal_br }}</p>
+                <p class="mt-2 text-sm text-slate-500">{{ coffee_market.available_sacks.total|decimal_br }} sc disponíveis em {{ coffee_market.available_lots }} lote(s).</p>
+                <div class="mt-4 grid gap-3 sm:grid-cols-2">
+                    <div class="rounded-2xl bg-white p-3 ring-1 ring-slate-100">
+                        <p class="text-xs uppercase tracking-[0.18em] text-slate-400">Arábica</p>
+                        <p class="mt-1 font-semibold text-slate-900">{{ coffee_market.available_sacks.arabica|decimal_br }} sc</p>
+                    </div>
+                    <div class="rounded-2xl bg-white p-3 ring-1 ring-slate-100">
+                        <p class="text-xs uppercase tracking-[0.18em] text-slate-400">Robusta</p>
+                        <p class="mt-1 font-semibold text-slate-900">{{ coffee_market.available_sacks.robusta|decimal_br }} sc</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="mt-5 h-72 rounded-[1.5rem] bg-slate-50 p-4 ring-1 ring-slate-100">
+            <canvas id="coffeeQuoteChart"></canvas>
+        </div>
+    </article>
+</section>
+{% endif %}
+
+{% if can_production %}
 <section class="mt-6 grid gap-6 xl:grid-cols-4">
     <article class="rounded-[2rem] bg-white p-6 shadow-panel xl:col-span-2">
         <div class="flex items-center justify-between">
@@ -778,6 +845,7 @@
     const rainfall = {{ rainfall_chart|safe if can_rainfall else '{"labels":[],"values":[]}' }};
     const costByPlot = {{ cost_by_plot_chart|safe if can_operations else '{"labels":[],"values":[]}' }};
     const financeProjection = {{ finance_flow.projected_chart|tojson if can_finance else '{"labels":[],"values":[]}'|safe }};
+    const coffeeQuoteHistory = {{ coffee_market.history|tojson if can_production else '{"arabica":{"labels":[],"values":[]},"robusta":{"labels":[],"values":[]}}'|safe }};
     const dashboardScheduleData = JSON.parse(document.getElementById('dashboardScheduleData')?.textContent || '[]');
     const dashboardScheduleMeta = JSON.parse(document.getElementById('dashboardScheduleMeta')?.textContent || '{}');
 
@@ -899,6 +967,55 @@
                 },
                 x: {
                     grid: { display: false }
+                }
+            }
+        }
+    });
+
+    createChartIfPresent('coffeeQuoteChart', {
+        type: 'line',
+        data: {
+            labels: coffeeQuoteHistory.arabica?.labels?.length
+                ? coffeeQuoteHistory.arabica.labels
+                : (coffeeQuoteHistory.robusta?.labels || []),
+            datasets: [
+                {
+                    label: 'Arábica CEPEA/ESALQ',
+                    data: coffeeQuoteHistory.arabica?.values || [],
+                    fill: false,
+                    tension: 0.32,
+                    borderColor: '#446a36',
+                    backgroundColor: '#446a36',
+                    pointRadius: 2,
+                    pointHoverRadius: 5,
+                },
+                {
+                    label: 'Robusta CEPEA/ESALQ',
+                    data: coffeeQuoteHistory.robusta?.values || [],
+                    fill: false,
+                    tension: 0.32,
+                    borderColor: '#d97706',
+                    backgroundColor: '#d97706',
+                    pointRadius: 2,
+                    pointHoverRadius: 5,
+                },
+            ],
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                tooltip: {
+                    callbacks: {
+                        label: (ctx) => `${ctx.dataset.label}: R$ ${new Intl.NumberFormat('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(ctx.parsed.y || 0)}`
+                    }
+                }
+            },
+            scales: {
+                y: {
+                    ticks: {
+                        callback: (value) => `R$ ${new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 0 }).format(value)}`
+                    }
                 }
             }
         }
