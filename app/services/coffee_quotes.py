@@ -13,6 +13,10 @@ logger = logging.getLogger(__name__)
 
 CEPEA_COFFEE_URL = "https://www.cepea.org.br/br/indicador/cafe.aspx?mobile="
 CEPEA_SOURCE = "CEPEA/ESALQ"
+NOTICIAS_AGRICOLAS_CEPEA_URLS = {
+    "arabica": "https://www.noticiasagricolas.com.br/cotacoes/cafe/indicador-cepea-esalq-cafe-arabica",
+    "robusta": "https://www.noticiasagricolas.com.br/cotacoes/cafe/indicador-cepea-esalq-cafe-conillon",
+}
 
 
 def _parse_brazilian_decimal(value: str | None) -> float | None:
@@ -91,6 +95,51 @@ def parse_cepea_coffee_quotes(html: str) -> list[CoffeeQuote]:
     return quotes
 
 
+def parse_noticias_agricolas_cepea_quotes(html: str, quote_type: str) -> list[CoffeeQuote]:
+    row_pattern = re.compile(
+        r"<tr>\s*"
+        r"<td>\s*(?P<date>\d{2}/\d{2}/\d{4})\s*</td>\s*"
+        r"<td>\s*(?P<brl>[-+]?\d{1,3}(?:\.\d{3})*,\d{2})\s*</td>\s*"
+        r"<td>\s*(?P<day>[-+]?\d{1,3},\d{2})\s*</td>\s*"
+        r"</tr>",
+        re.IGNORECASE,
+    )
+    fetched_at = app_now()
+    quotes: list[CoffeeQuote] = []
+    for match in row_pattern.finditer(html):
+        quote_date = _parse_brazilian_date(match.group("date"))
+        price_brl = _parse_brazilian_decimal(match.group("brl"))
+        if not quote_date or price_brl is None:
+            continue
+        quotes.append(
+            CoffeeQuote(
+                quote_type=quote_type,
+                quote_date=quote_date,
+                price_brl=price_brl,
+                variation_day=_parse_brazilian_decimal(match.group("day")),
+                variation_month=None,
+                price_usd=None,
+                source=CEPEA_SOURCE,
+                source_url=CEPEA_COFFEE_URL,
+                fetched_at=fetched_at,
+            )
+        )
+    return quotes
+
+
+def fetch_noticias_agricolas_cepea_quotes(client: httpx.Client) -> list[CoffeeQuote]:
+    quotes: list[CoffeeQuote] = []
+    for quote_type, url in NOTICIAS_AGRICOLAS_CEPEA_URLS.items():
+        try:
+            response = client.get(url)
+            response.raise_for_status()
+        except Exception as exc:
+            logger.warning("Nao foi possivel buscar espelho CEPEA %s: %s", quote_type, exc)
+            continue
+        quotes.extend(parse_noticias_agricolas_cepea_quotes(response.text, quote_type))
+    return quotes
+
+
 def refresh_cepea_coffee_quotes(repository: FarmRepository, *, force: bool = False) -> bool:
     today = today_in_app_timezone()
     latest_quotes = [
@@ -103,17 +152,19 @@ def refresh_cepea_coffee_quotes(repository: FarmRepository, *, force: bool = Fal
         and all(quote.fetched_at and quote.fetched_at.date() >= today for quote in latest_quotes if quote)
     ):
         return False
-    try:
-        with httpx.Client(timeout=4.0, follow_redirects=True) as client:
+    quotes: list[CoffeeQuote] = []
+    headers = {"User-Agent": "SiSFarm/1.0 (+https://app.sisfarm.com.br)"}
+    with httpx.Client(timeout=6.0, follow_redirects=True, headers=headers) as client:
+        try:
             response = client.get(CEPEA_COFFEE_URL)
             response.raise_for_status()
-    except Exception as exc:
-        logger.warning("Nao foi possivel atualizar cotacao de cafe CEPEA: %s", exc)
-        return False
-
-    quotes = parse_cepea_coffee_quotes(response.text)
+            quotes = parse_cepea_coffee_quotes(response.text)
+        except Exception as exc:
+            logger.warning("Nao foi possivel atualizar cotacao de cafe CEPEA diretamente: %s", exc)
+        if not quotes:
+            quotes = fetch_noticias_agricolas_cepea_quotes(client)
     if not quotes:
-        logger.warning("CEPEA nao retornou cotacoes de cafe interpretaveis.")
+        logger.warning("Cotacoes de cafe CEPEA nao retornaram dados interpretaveis.")
         return False
     for quote in quotes:
         repository.upsert_coffee_quote(quote)
