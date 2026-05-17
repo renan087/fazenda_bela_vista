@@ -124,7 +124,25 @@ def parse_noticias_agricolas_cepea_quotes(html: str, quote_type: str) -> list[Co
                 fetched_at=fetched_at,
             )
         )
+    _fill_month_variation_from_history(quotes)
     return quotes
+
+
+def _fill_month_variation_from_history(quotes: list[CoffeeQuote]) -> None:
+    if not quotes:
+        return
+    oldest_price_by_month: dict[tuple[int, int], float] = {}
+    for quote in sorted(quotes, key=lambda item: item.quote_date):
+        if quote.price_brl is None or quote.price_brl == 0:
+            continue
+        month_key = (quote.quote_date.year, quote.quote_date.month)
+        oldest_price_by_month.setdefault(month_key, float(quote.price_brl))
+    for quote in quotes:
+        month_key = (quote.quote_date.year, quote.quote_date.month)
+        month_base = oldest_price_by_month.get(month_key)
+        if not month_base or quote.price_brl is None:
+            continue
+        quote.variation_month = round(((float(quote.price_brl) - month_base) / month_base) * 100, 2)
 
 
 def fetch_noticias_agricolas_cepea_quotes(client: httpx.Client) -> list[CoffeeQuote]:
@@ -150,6 +168,7 @@ def refresh_cepea_coffee_quotes(repository: FarmRepository, *, force: bool = Fal
         not force
         and all(latest_quotes)
         and all(quote.fetched_at and quote.fetched_at.date() >= today for quote in latest_quotes if quote)
+        and all(quote.variation_month is not None for quote in latest_quotes if quote)
     ):
         return False
     quotes: list[CoffeeQuote] = []
