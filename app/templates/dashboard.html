@@ -540,7 +540,26 @@
                 </div>
             </div>
         </div>
-        <div class="mt-5 h-72 rounded-[1.5rem] bg-slate-50 p-4 ring-1 ring-slate-100">
+        <div class="mt-6 flex items-center justify-center">
+            <div class="hidden overflow-hidden rounded-none border border-[#9b985d] bg-white text-sm font-medium text-slate-700 md:inline-flex" data-coffee-range-tabs>
+                <button type="button" class="border-r border-[#9b985d] px-5 py-2 transition hover:bg-[#f5f2d8]" data-coffee-range="30d">30 dias</button>
+                <button type="button" class="border-r border-[#9b985d] px-5 py-2 transition hover:bg-[#f5f2d8]" data-coffee-range="60d">60 dias</button>
+                <button type="button" class="border-r border-[#9b985d] px-5 py-2 transition hover:bg-[#f5f2d8]" data-coffee-range="6m">6 meses</button>
+                <button type="button" class="border-r border-[#9b985d] px-5 py-2 transition hover:bg-[#f5f2d8]" data-coffee-range="12m">12 meses</button>
+                <button type="button" class="px-5 py-2 transition hover:bg-[#f5f2d8]" data-coffee-range="24m">2 anos</button>
+            </div>
+            <label class="w-full md:hidden">
+                <span class="sr-only">Periodo do grafico de cotacao</span>
+                <select class="h-12 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm font-semibold text-slate-700 outline-none transition focus:border-brand-300 focus:ring-4 focus:ring-brand-100" data-coffee-range-select>
+                    <option value="30d">30 dias</option>
+                    <option value="60d">60 dias</option>
+                    <option value="6m">6 meses</option>
+                    <option value="12m">12 meses</option>
+                    <option value="24m">2 anos</option>
+                </select>
+            </label>
+        </div>
+        <div class="mt-4 h-72 rounded-[1.5rem] bg-slate-50 p-4 ring-1 ring-slate-100">
             <canvas id="coffeeQuoteChart"></canvas>
         </div>
     </article>
@@ -973,16 +992,23 @@
         }
     });
 
-    createChartIfPresent('coffeeQuoteChart', {
+    const coffeeRangeLabels = {
+        '30d': '30 dias',
+        '60d': '60 dias',
+        '6m': '6 meses',
+        '12m': '12 meses',
+        '24m': '2 anos',
+    };
+    const coffeeRangeKeys = Object.keys(coffeeRangeLabels);
+    const coffeeRangeData = (range) => coffeeQuoteHistory?.[range] || { labels: [], arabica: [], robusta: [] };
+    const coffeeQuoteChart = createChartIfPresent('coffeeQuoteChart', {
         type: 'line',
         data: {
-            labels: coffeeQuoteHistory.arabica?.labels?.length
-                ? coffeeQuoteHistory.arabica.labels
-                : (coffeeQuoteHistory.robusta?.labels || []),
+            labels: coffeeRangeData('30d').labels,
             datasets: [
                 {
                     label: 'Arábica CEPEA/ESALQ',
-                    data: coffeeQuoteHistory.arabica?.values || [],
+                    data: coffeeRangeData('30d').arabica,
                     fill: false,
                     tension: 0.32,
                     borderColor: '#446a36',
@@ -992,7 +1018,7 @@
                 },
                 {
                     label: 'Robusta CEPEA/ESALQ',
-                    data: coffeeQuoteHistory.robusta?.values || [],
+                    data: coffeeRangeData('30d').robusta,
                     fill: false,
                     tension: 0.32,
                     borderColor: '#d97706',
@@ -1017,10 +1043,52 @@
                     ticks: {
                         callback: (value) => `R$ ${new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 0 }).format(value)}`
                     }
+                },
+                x: {
+                    ticks: {
+                        maxRotation: 0,
+                        autoSkip: true,
+                        maxTicksLimit: 12,
+                    },
+                    grid: { color: 'rgba(148, 163, 184, 0.22)' }
                 }
             }
         }
     });
+
+    (() => {
+        if (!coffeeQuoteChart) return;
+        const buttons = Array.from(document.querySelectorAll('[data-coffee-range]'));
+        const select = document.querySelector('[data-coffee-range-select]');
+        const activeClasses = ['bg-[#8f8b4b]', 'text-white'];
+        const inactiveClasses = ['bg-white', 'text-slate-700'];
+        const updateRange = (range) => {
+            const safeRange = coffeeRangeKeys.includes(range) ? range : '30d';
+            const data = coffeeRangeData(safeRange);
+            coffeeQuoteChart.data.labels = data.labels || [];
+            coffeeQuoteChart.data.datasets[0].data = data.arabica || [];
+            coffeeQuoteChart.data.datasets[1].data = data.robusta || [];
+            coffeeQuoteChart.update();
+            buttons.forEach((button) => {
+                const isActive = button.dataset.coffeeRange === safeRange;
+                button.classList.toggle(activeClasses[0], isActive);
+                button.classList.toggle(activeClasses[1], isActive);
+                button.classList.toggle(inactiveClasses[0], !isActive);
+                button.classList.toggle(inactiveClasses[1], !isActive);
+                button.setAttribute('aria-pressed', String(isActive));
+            });
+            if (select instanceof HTMLSelectElement) {
+                select.value = safeRange;
+            }
+        };
+        buttons.forEach((button) => {
+            button.addEventListener('click', () => updateRange(button.dataset.coffeeRange));
+        });
+        if (select instanceof HTMLSelectElement) {
+            select.addEventListener('change', () => updateRange(select.value));
+        }
+        updateRange('30d');
+    })();
 
     (() => {
         const image = document.querySelector('[data-dashboard-map-image]');

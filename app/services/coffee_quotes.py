@@ -2,7 +2,7 @@ import logging
 import re
 import csv
 from html import unescape
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 import httpx
@@ -658,15 +658,96 @@ def _coffee_quote_history_rows(repository: FarmRepository, quote_type: str, *, l
     return list(reversed(repository.list_coffee_quotes(quote_type=quote_type, limit=limit)))
 
 
+def _month_key(day: date) -> tuple[int, int]:
+    return day.year, day.month
+
+
+def _month_label(year: int, month: int) -> str:
+    names = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"]
+    return f"{names[month - 1]}/{str(year)[-2:]}"
+
+
+def _subtract_months(day: date, months: int) -> date:
+    month_index = day.year * 12 + day.month - 1 - months
+    return date(month_index // 12, month_index % 12 + 1, 1)
+
+
+def _build_daily_history_range(rows_by_type: dict[str, list[CoffeeQuote]], days: int) -> dict:
+    latest_dates = [rows[-1].quote_date for rows in rows_by_type.values() if rows]
+    if not latest_dates:
+        return {"labels": [], "arabica": [], "robusta": []}
+    cutoff = max(latest_dates) - timedelta(days=days - 1)
+    labels_dates = sorted({
+        row.quote_date
+        for rows in rows_by_type.values()
+        for row in rows
+        if row.quote_date >= cutoff
+    })
+    values_by_type: dict[str, dict[date, float]] = {
+        quote_type: {row.quote_date: float(row.price_brl or 0) for row in rows if row.quote_date >= cutoff}
+        for quote_type, rows in rows_by_type.items()
+    }
+    return {
+        "labels": [day.strftime("%d/%m") for day in labels_dates],
+        "arabica": [values_by_type.get("arabica", {}).get(day) for day in labels_dates],
+        "robusta": [values_by_type.get("robusta", {}).get(day) for day in labels_dates],
+    }
+
+
+def _build_monthly_history_range(rows_by_type: dict[str, list[CoffeeQuote]], months: int) -> dict:
+    latest_dates = [rows[-1].quote_date for rows in rows_by_type.values() if rows]
+    if not latest_dates:
+        return {"labels": [], "arabica": [], "robusta": []}
+    cutoff = _subtract_months(max(latest_dates), months - 1)
+    monthly_by_type: dict[str, dict[tuple[int, int], CoffeeQuote]] = {}
+    for quote_type, rows in rows_by_type.items():
+        monthly_by_type[quote_type] = {}
+        for row in rows:
+            if row.quote_date < cutoff:
+                continue
+            key = _month_key(row.quote_date)
+            current = monthly_by_type[quote_type].get(key)
+            if current is None or row.quote_date > current.quote_date:
+                monthly_by_type[quote_type][key] = row
+    labels_keys = sorted({
+        key
+        for monthly_rows in monthly_by_type.values()
+        for key in monthly_rows
+    })
+    return {
+        "labels": [_month_label(year, month) for year, month in labels_keys],
+        "arabica": [
+            float(monthly_by_type.get("arabica", {}).get(key).price_brl)
+            if monthly_by_type.get("arabica", {}).get(key)
+            else None
+            for key in labels_keys
+        ],
+        "robusta": [
+            float(monthly_by_type.get("robusta", {}).get(key).price_brl)
+            if monthly_by_type.get("robusta", {}).get(key)
+            else None
+            for key in labels_keys
+        ],
+    }
+
+
+def _coffee_quote_history_ranges(repository: FarmRepository) -> dict:
+    rows_by_type = {
+        quote_type: _coffee_quote_history_rows(repository, quote_type, limit=800)
+        for quote_type in ("arabica", "robusta")
+    }
+    return {
+        "30d": _build_daily_history_range(rows_by_type, 30),
+        "60d": _build_daily_history_range(rows_by_type, 60),
+        "6m": _build_monthly_history_range(rows_by_type, 6),
+        "12m": _build_monthly_history_range(rows_by_type, 12),
+        "24m": _build_monthly_history_range(rows_by_type, 24),
+    }
+
+
 def latest_coffee_quote_context(repository: FarmRepository) -> dict:
     quotes = get_dashboard_coffee_quotes(repository)
-    history = {}
-    for quote_type in ("arabica", "robusta"):
-        chart_rows = _coffee_quote_history_rows(repository, quote_type)[-30:]
-        history[quote_type] = {
-            "labels": [row.quote_date.strftime("%d/%m") for row in chart_rows],
-            "values": [float(row.price_brl or 0) for row in chart_rows],
-        }
+    history = _coffee_quote_history_ranges(repository)
     return {
         "quotes": quotes,
         "history": history,
