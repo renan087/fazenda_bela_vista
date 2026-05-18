@@ -3,6 +3,7 @@ import re
 import csv
 from html import unescape
 from datetime import date, datetime, timedelta
+from decimal import Decimal, ROUND_DOWN
 from pathlib import Path
 
 import httpx
@@ -699,35 +700,32 @@ def _build_monthly_history_range(rows_by_type: dict[str, list[CoffeeQuote]], mon
     if not latest_dates:
         return {"labels": [], "arabica": [], "robusta": []}
     cutoff = _subtract_months(max(latest_dates), months - 1)
-    monthly_by_type: dict[str, dict[tuple[int, int], CoffeeQuote]] = {}
+    monthly_by_type: dict[str, dict[tuple[int, int], list[CoffeeQuote]]] = {}
     for quote_type, rows in rows_by_type.items():
         monthly_by_type[quote_type] = {}
         for row in rows:
             if row.quote_date < cutoff:
                 continue
             key = _month_key(row.quote_date)
-            current = monthly_by_type[quote_type].get(key)
-            if current is None or row.quote_date > current.quote_date:
-                monthly_by_type[quote_type][key] = row
+            monthly_by_type[quote_type].setdefault(key, []).append(row)
     labels_keys = sorted({
         key
         for monthly_rows in monthly_by_type.values()
         for key in monthly_rows
     })
+
+    def monthly_average(quote_type: str, key: tuple[int, int]) -> float | None:
+        rows = monthly_by_type.get(quote_type, {}).get(key) or []
+        if not rows:
+            return None
+        total = sum(Decimal(str(row.price_brl or 0)) for row in rows)
+        average = total / Decimal(len(rows))
+        return float(average.quantize(Decimal("0.01"), rounding=ROUND_DOWN))
+
     return {
         "labels": [_month_label(year, month) for year, month in labels_keys],
-        "arabica": [
-            float(monthly_by_type.get("arabica", {}).get(key).price_brl)
-            if monthly_by_type.get("arabica", {}).get(key)
-            else None
-            for key in labels_keys
-        ],
-        "robusta": [
-            float(monthly_by_type.get("robusta", {}).get(key).price_brl)
-            if monthly_by_type.get("robusta", {}).get(key)
-            else None
-            for key in labels_keys
-        ],
+        "arabica": [monthly_average("arabica", key) for key in labels_keys],
+        "robusta": [monthly_average("robusta", key) for key in labels_keys],
     }
 
 
