@@ -21,12 +21,14 @@ from app.db.init_db import seed_demo_data
 from app.db.session import SessionLocal
 from app.services.rbac_service import seed_rbac_for_all_organizations
 from app.models import User
+from app.repositories.farm import FarmRepository
 from app.routers.asaas_webhook import router as asaas_webhook_router
 from app.routers.api import router as api_router
 from app.routers.auth import api_router as auth_api_router
 from app.routers.auth import router as auth_router
 from app.services.audit_log_service import append_audit_event, client_ip
 from app.services.backup_service import run_backup_automation_loop
+from app.services.coffee_quotes import seed_cepea_coffee_quotes_from_bundle
 from app.services.coffee_quote_sync_service import run_coffee_quote_sync_loop
 from app.services.data_change_audit import (
     install_data_change_audit_listeners,
@@ -71,6 +73,9 @@ async def lifespan(app: FastAPI):
         seed_admin(db)
         seed_rbac_for_all_organizations(db)
         seed_demo_data(db)
+        seeded_coffee_quotes = seed_cepea_coffee_quotes_from_bundle(FarmRepository(db))
+        if seeded_coffee_quotes:
+            logger.info("Serie historica CEPEA de cafe sincronizada a partir do bundle: %s registros.", seeded_coffee_quotes)
     background_tasks: list[asyncio.Task] = [asyncio.create_task(run_backup_automation_loop())]
     if settings.coffee_quote_sync_enabled:
         background_tasks.append(asyncio.create_task(run_coffee_quote_sync_loop()))

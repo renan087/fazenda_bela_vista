@@ -1,5 +1,6 @@
 import logging
 import re
+import csv
 from html import unescape
 from datetime import date, datetime
 from pathlib import Path
@@ -19,6 +20,7 @@ CEPEA_WIDGET_URL = (
     "&id_indicador%5B%5D=23&id_indicador%5B%5D=24"
 )
 CEPEA_SOURCE = "CEPEA/ESALQ"
+CEPEA_SEED_FILE = Path(__file__).resolve().parents[1] / "data" / "cepea_coffee_quotes_seed.csv"
 CECAFE_CEPEA_URL = "https://www.cecafe.com.br/en/market-indicators/cepea-esalq-prices/"
 CECAFE_CEPEA_AJAX_URL = "https://www.cecafe.com.br/site/wp-admin/admin-ajax.php?action=get_wdtable&table_id=103"
 NOTICIAS_AGRICOLAS_CEPEA_URLS = {
@@ -276,6 +278,73 @@ def parse_cepea_xls_quotes(file_path: str | Path, quote_type: str | None = None)
         )
     _calculate_variations_from_series(quotes)
     return quotes
+
+
+def _parse_seed_decimal(value: str | None) -> float | None:
+    if value is None or value == "":
+        return None
+    return float(value)
+
+
+def _load_bundled_cepea_seed_quotes() -> list[CoffeeQuote]:
+    if not CEPEA_SEED_FILE.exists():
+        return []
+    fetched_at = app_now()
+    quotes: list[CoffeeQuote] = []
+    with CEPEA_SEED_FILE.open(encoding="utf-8", newline="") as file:
+        reader = csv.DictReader(file)
+        for row in reader:
+            quote_type = (row.get("quote_type") or "").strip()
+            quote_date = date.fromisoformat(row["quote_date"])
+            price_brl = _parse_seed_decimal(row.get("price_brl"))
+            if quote_type not in {"arabica", "robusta"} or price_brl is None:
+                continue
+            quotes.append(
+                CoffeeQuote(
+                    quote_type=quote_type,
+                    quote_date=quote_date,
+                    price_brl=price_brl,
+                    variation_day=_parse_seed_decimal(row.get("variation_day")),
+                    variation_month=_parse_seed_decimal(row.get("variation_month")),
+                    price_usd=_parse_seed_decimal(row.get("price_usd")),
+                    source=CEPEA_SOURCE,
+                    source_url=CEPEA_COFFEE_URL,
+                    fetched_at=fetched_at,
+                )
+            )
+    return quotes
+
+
+def seed_cepea_coffee_quotes_from_bundle(repository: FarmRepository) -> int:
+    quotes = _load_bundled_cepea_seed_quotes()
+    if not quotes:
+        return 0
+
+    latest_seed_by_type: dict[str, CoffeeQuote] = {}
+    for quote in quotes:
+        current = latest_seed_by_type.get(quote.quote_type)
+        if current is None or quote.quote_date > current.quote_date:
+            latest_seed_by_type[quote.quote_type] = quote
+
+    for quote_type, seed_quote in latest_seed_by_type.items():
+        existing = repository.get_latest_coffee_quote(quote_type)
+        if not existing or existing.quote_date < seed_quote.quote_date:
+            break
+        if (
+            existing.quote_date == seed_quote.quote_date
+            and round(float(existing.price_brl or 0), 2) != round(float(seed_quote.price_brl or 0), 2)
+        ):
+            break
+        if (
+            existing.quote_date == seed_quote.quote_date
+            and seed_quote.variation_month is not None
+            and round(float(existing.variation_month or 0), 2) != round(float(seed_quote.variation_month), 2)
+        ):
+            break
+    else:
+        return 0
+
+    return repository.upsert_coffee_quotes(quotes)
 
 
 def _calculate_variations_from_series(quotes: list[CoffeeQuote]) -> None:
