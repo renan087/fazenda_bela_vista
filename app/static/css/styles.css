@@ -951,7 +951,7 @@ body {
 }
 
 .dashboard-executive-paged-shell .finance-card-page-nav {
-    z-index: 35;
+    z-index: 10;
 }
 
 .dashboard-executive-paged-shell .finance-card-page-nav-prev {
