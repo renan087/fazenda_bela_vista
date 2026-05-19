@@ -74,17 +74,17 @@ def test_dashboard_ready_requires_month_when_previous_month_exists() -> None:
     today = date(2026, 5, 17)
     arabica = CoffeeQuote(
         quote_type="arabica",
-        quote_date=date(2026, 5, 15),
-        price_brl=1637.88,
+        quote_date=date(2026, 5, 18),
+        price_brl=1605.75,
         variation_month=None,
         source="CEPEA/ESALQ",
         fetched_at=app_now(),
     )
     robusta = CoffeeQuote(
         quote_type="robusta",
-        quote_date=date(2026, 5, 15),
-        price_brl=930.15,
-        variation_month=0.53,
+        quote_date=date(2026, 5, 18),
+        price_brl=914.16,
+        variation_month=-1.20,
         source="CEPEA/ESALQ",
         fetched_at=app_now(),
     )
@@ -92,13 +92,13 @@ def test_dashboard_ready_requires_month_when_previous_month_exists() -> None:
     repo.get_latest_coffee_quote.side_effect = lambda t: arabica if t == "arabica" else robusta
     repo.list_coffee_quotes.return_value = [
         CoffeeQuote(quote_type="arabica", quote_date=date(2026, 4, 30), price_brl=1761.57, source="CEPEA/ESALQ"),
-        CoffeeQuote(quote_type="arabica", quote_date=date(2026, 5, 15), price_brl=1637.88, source="CEPEA/ESALQ"),
+        CoffeeQuote(quote_type="arabica", quote_date=date(2026, 5, 18), price_brl=1605.75, source="CEPEA/ESALQ"),
         CoffeeQuote(quote_type="robusta", quote_date=date(2026, 4, 30), price_brl=925.26, source="CEPEA/ESALQ"),
-        CoffeeQuote(quote_type="robusta", quote_date=date(2026, 5, 15), price_brl=930.15, source="CEPEA/ESALQ"),
+        CoffeeQuote(quote_type="robusta", quote_date=date(2026, 5, 18), price_brl=914.16, source="CEPEA/ESALQ"),
     ]
     assert coffee_quotes_dashboard_ready(repo) is False
 
-    arabica.variation_month = -7.02
+    arabica.variation_month = -8.85
     assert coffee_quotes_dashboard_ready(repo) is True
 
 

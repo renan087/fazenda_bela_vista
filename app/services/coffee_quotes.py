@@ -2,7 +2,7 @@ import logging
 import re
 import csv
 from html import unescape
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, time, timedelta
 from decimal import Decimal, ROUND_DOWN
 from pathlib import Path
 
@@ -290,7 +290,6 @@ def _parse_seed_decimal(value: str | None) -> float | None:
 def _load_bundled_cepea_seed_quotes() -> list[CoffeeQuote]:
     if not CEPEA_SEED_FILE.exists():
         return []
-    fetched_at = app_now()
     quotes: list[CoffeeQuote] = []
     with CEPEA_SEED_FILE.open(encoding="utf-8", newline="") as file:
         reader = csv.DictReader(file)
@@ -310,7 +309,7 @@ def _load_bundled_cepea_seed_quotes() -> list[CoffeeQuote]:
                     price_usd=_parse_seed_decimal(row.get("price_usd")),
                     source=CEPEA_SOURCE,
                     source_url=CEPEA_COFFEE_URL,
-                    fetched_at=fetched_at,
+                    fetched_at=datetime.combine(quote_date, time.min),
                 )
             )
     return quotes
@@ -570,13 +569,23 @@ def _db_price_series(repository: FarmRepository, limit: int = 120) -> list[Coffe
     return price_quotes
 
 
+def _expected_latest_quote_date(today: date) -> date:
+    expected = today
+    while expected.weekday() >= 5:
+        expected -= timedelta(days=1)
+    return expected
+
+
 def coffee_quotes_dashboard_ready(repository: FarmRepository) -> bool:
     """Cotações prontas para exibir: preço do dia salvo e variação mensal quando calculável."""
     today = today_in_app_timezone()
+    expected_quote_date = _expected_latest_quote_date(today)
     db_series = _db_price_series(repository)
     for quote_type in ("arabica", "robusta"):
         latest = repository.get_latest_coffee_quote(quote_type)
         if not latest or latest.price_brl is None:
+            return False
+        if latest.quote_date < expected_quote_date:
             return False
         if not latest.fetched_at or latest.fetched_at.date() < today:
             return False
