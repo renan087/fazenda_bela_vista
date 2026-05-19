@@ -1137,7 +1137,6 @@
             if (!quotes.length) return;
             const newestDate = quotes.map((quote) => quote.quote_date).sort().at(-1) || '';
             if (newestDate <= currentMaxDate()) {
-                sessionStorage.setItem(syncKey, 'done');
                 return;
             }
             const response = await fetch('/api/dashboard/cotacao-cafe/sincronizar-navegador', {
