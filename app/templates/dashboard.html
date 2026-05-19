@@ -866,6 +866,10 @@
     const costByPlot = {{ cost_by_plot_chart|safe if can_operations else '{"labels":[],"values":[]}' }};
     const financeProjection = {{ finance_flow.projected_chart|tojson if can_finance else '{"labels":[],"values":[]}'|safe }};
     const coffeeQuoteHistory = {{ coffee_market.history|tojson if can_production else '{"arabica":{"labels":[],"values":[]},"robusta":{"labels":[],"values":[]}}'|safe }};
+    const coffeeQuoteDates = {{ {
+        "arabica": coffee_market.quotes.get("arabica").quote_date.isoformat() if can_production and coffee_market.quotes.get("arabica") else "",
+        "robusta": coffee_market.quotes.get("robusta").quote_date.isoformat() if can_production and coffee_market.quotes.get("robusta") else "",
+    }|tojson if can_production else '{"arabica":"","robusta":""}'|safe }};
     const dashboardScheduleData = JSON.parse(document.getElementById('dashboardScheduleData')?.textContent || '[]');
     const dashboardScheduleMeta = JSON.parse(document.getElementById('dashboardScheduleMeta')?.textContent || '{}');
 
@@ -1088,6 +1092,80 @@
             select.addEventListener('change', () => updateRange(select.value));
         }
         updateRange('30d');
+    })();
+
+    (() => {
+        if (!coffeeQuoteChart || !dashboardScheduleMeta.csrfToken) return;
+        const syncKey = `sisfarm:cepea-browser-sync:${new Date().toISOString().slice(0, 10)}`;
+        if (sessionStorage.getItem(syncKey) === 'done') return;
+
+        const parseBrazilianNumber = (value) => {
+            const cleaned = String(value || '').replace(/[^\d,.-]/g, '').replace(/\./g, '').replace(',', '.');
+            const parsed = Number.parseFloat(cleaned);
+            return Number.isFinite(parsed) ? parsed : null;
+        };
+        const normalizeDate = (value) => {
+            const parts = String(value || '').trim().split('/');
+            if (parts.length !== 3) return '';
+            const [day, month, year] = parts;
+            if (!day || !month || !year) return '';
+            return `${year.padStart(4, '0')}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+        };
+        const currentMaxDate = () => {
+            const dates = Object.values(coffeeQuoteDates || {}).filter(Boolean).sort();
+            return dates[dates.length - 1] || '';
+        };
+        const parseWidgetQuotes = (doc) => {
+            const rows = Array.from(doc.querySelectorAll('tr'));
+            const quotes = [];
+            rows.forEach((row) => {
+                const cells = Array.from(row.querySelectorAll('td')).map((cell) => cell.textContent.trim());
+                if (cells.length < 3) return;
+                const quoteDate = normalizeDate(cells[0]);
+                const product = cells[1].normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+                const price = parseBrazilianNumber(cells[2]);
+                if (!quoteDate || !price) return;
+                quotes.push({
+                    quote_type: product.includes('robusta') || product.includes('conillon') ? 'robusta' : 'arabica',
+                    quote_date: quoteDate,
+                    price_brl: price,
+                });
+            });
+            return quotes;
+        };
+        const submitQuotes = async (quotes) => {
+            if (!quotes.length) return;
+            const newestDate = quotes.map((quote) => quote.quote_date).sort().at(-1) || '';
+            if (newestDate <= currentMaxDate()) {
+                sessionStorage.setItem(syncKey, 'done');
+                return;
+            }
+            const response = await fetch('/api/dashboard/cotacao-cafe/sincronizar-navegador', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ csrf_token: dashboardScheduleMeta.csrfToken, quotes }),
+            });
+            const payload = await response.json().catch(() => ({}));
+            if (!response.ok || !payload.ok) return;
+            sessionStorage.setItem(syncKey, 'done');
+            location.reload();
+        };
+
+        const frame = document.createElement('iframe');
+        frame.className = 'hidden';
+        frame.setAttribute('aria-hidden', 'true');
+        frame.srcdoc = `<!doctype html><html><body><script src="https://www.cepea.org.br/br/widgetproduto.js.php?fonte=arial&tamanho=10&largura=400px&corfundo=dbd6b2&cortexto=333333&corlinha=ede7bf&id_indicador%5B%5D=23&id_indicador%5B%5D=24"><\/script></body></html>`;
+        frame.addEventListener('load', () => {
+            window.setTimeout(() => {
+                try {
+                    const quotes = parseWidgetQuotes(frame.contentDocument || frame.contentWindow?.document);
+                    submitQuotes(quotes).finally(() => frame.remove());
+                } catch (error) {
+                    frame.remove();
+                }
+            }, 900);
+        }, { once: true });
+        document.body.appendChild(frame);
     })();
 
     (() => {

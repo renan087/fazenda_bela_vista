@@ -462,17 +462,20 @@ def fetch_cecafe_cepea_quotes(client: httpx.Client, *, length: int = 120) -> lis
 
 
 def fetch_cepea_widget_with_cecafe_history_quotes(client: httpx.Client) -> list[CoffeeQuote]:
-    widget_response = client.get(
-        CEPEA_WIDGET_URL,
-        headers={
-            "Accept": "application/javascript,text/javascript,*/*;q=0.8",
-            "Referer": CEPEA_COFFEE_URL,
-        },
-    )
-    widget_response.raise_for_status()
-    widget_quotes = parse_cepea_widget_quotes(widget_response.text)
-    if not widget_quotes:
-        return []
+    widget_quotes: list[CoffeeQuote] = []
+    try:
+        widget_response = client.get(
+            CEPEA_WIDGET_URL,
+            headers={
+                "Accept": "application/javascript,text/javascript,*/*;q=0.8",
+                "Referer": CEPEA_COFFEE_URL,
+            },
+        )
+        widget_response.raise_for_status()
+        widget_quotes = parse_cepea_widget_quotes(widget_response.text)
+    except Exception as exc:
+        logger.warning("Nao foi possivel buscar widget CEPEA: %s", exc)
+
     try:
         history_quotes = fetch_cecafe_cepea_quotes(client, length=120)
     except Exception as exc:
@@ -495,7 +498,13 @@ def fetch_cepea_widget_with_cecafe_history_quotes(client: httpx.Client) -> list[
     except Exception as exc:
         logger.warning("Nao foi possivel buscar variacao oficial CEPEA: %s", exc)
         official_quotes = []
-    quotes = _merge_quotes_by_type_and_date(history_quotes, widget_quotes)
+    news_quotes: list[CoffeeQuote] = []
+    if not widget_quotes and not official_quotes:
+        try:
+            news_quotes = fetch_noticias_agricolas_cepea_quotes(client)
+        except Exception as exc:
+            logger.warning("Nao foi possivel buscar Noticias Agricolas como fonte final: %s", exc)
+    quotes = _merge_quotes_by_type_and_date(history_quotes, news_quotes, widget_quotes)
     _calculate_variations_from_series(quotes)
     quotes = _merge_quotes_by_type_and_date(quotes, official_quotes)
     trusted_quote_types = {
@@ -610,6 +619,18 @@ def _persist_coffee_quotes_sync(repository: FarmRepository, remote_quotes: list[
         if latest:
             repository.upsert_coffee_quote(latest)
     return result
+
+
+def persist_browser_cepea_quotes(repository: FarmRepository, quotes: list[CoffeeQuote]) -> dict[str, CoffeeQuote | None]:
+    """Persiste cotações capturadas no navegador quando o servidor é bloqueado pelo CEPEA."""
+    valid_quotes = [
+        quote
+        for quote in quotes
+        if quote.quote_type in {"arabica", "robusta"} and quote.quote_date and quote.price_brl
+    ]
+    if not valid_quotes:
+        return {"arabica": None, "robusta": None}
+    return _persist_coffee_quotes_sync(repository, valid_quotes)
 
 
 def sync_cepea_coffee_quotes_once() -> bool:

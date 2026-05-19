@@ -64,6 +64,7 @@ from app.models import (
     AgronomicProfile,
     BackupRun,
     CoffeeCommercializationRecord,
+    CoffeeQuote,
     CoffeeVariety,
     CropSeason,
     EquipmentAsset,
@@ -111,6 +112,7 @@ from app.services.backup_service import (
     update_backup_storage_limit_setting,
 )
 from app.services.audit_log_service import count_audit_logs, list_audit_event_types, query_audit_logs
+from app.services.coffee_quotes import CEPEA_SOURCE, CEPEA_WIDGET_URL, persist_browser_cepea_quotes
 from app.services.dashboard import build_dashboard_context
 from app.services.dashboard_map_preview import (
     dashboard_map_fingerprint,
@@ -3415,6 +3417,68 @@ def dashboard(
             _repo=repo,
             **data,
         ),
+    )
+
+
+@router.post("/api/dashboard/cotacao-cafe/sincronizar-navegador")
+async def sync_browser_coffee_quotes_action(
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    del user
+    payload = await request.json()
+    validate_csrf(request, str(payload.get("csrf_token") or ""))
+    raw_quotes = payload.get("quotes")
+    if not isinstance(raw_quotes, list):
+        return JSONResponse({"ok": False, "message": "Cotações inválidas."}, status_code=400)
+
+    quotes: list[CoffeeQuote] = []
+    for raw_quote in raw_quotes:
+        if not isinstance(raw_quote, dict):
+            continue
+        quote_type = str(raw_quote.get("quote_type") or "").strip().lower()
+        if quote_type not in {"arabica", "robusta"}:
+            continue
+        try:
+            quote_date = date.fromisoformat(str(raw_quote.get("quote_date") or ""))
+            price_brl = float(raw_quote.get("price_brl"))
+        except (TypeError, ValueError):
+            continue
+        if price_brl <= 0:
+            continue
+        quotes.append(
+            CoffeeQuote(
+                quote_type=quote_type,
+                quote_date=quote_date,
+                price_brl=round(price_brl, 2),
+                variation_day=None,
+                variation_month=None,
+                price_usd=None,
+                source=CEPEA_SOURCE,
+                source_url=CEPEA_WIDGET_URL,
+                fetched_at=app_now(),
+            )
+        )
+    if not quotes:
+        return JSONResponse({"ok": False, "message": "Nenhuma cotação válida encontrada."}, status_code=400)
+
+    repo = _repository(db)
+    latest = persist_browser_cepea_quotes(repo, quotes)
+    return JSONResponse(
+        {
+            "ok": True,
+            "latest": {
+                quote_type: {
+                    "quote_date": quote.quote_date.isoformat(),
+                    "price_brl": float(quote.price_brl or 0),
+                    "variation_day": float(quote.variation_day) if quote.variation_day is not None else None,
+                    "variation_month": float(quote.variation_month) if quote.variation_month is not None else None,
+                }
+                for quote_type, quote in latest.items()
+                if quote
+            },
+        }
     )
 
 @router.get("/sem-acesso")
