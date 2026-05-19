@@ -632,6 +632,20 @@ def sync_cepea_coffee_quotes_once() -> bool:
         return coffee_quotes_dashboard_ready(repository)
 
 
+def ensure_dashboard_coffee_quotes_current(repository: FarmRepository) -> None:
+    """Tentativa leve na request quando o background ainda não atualizou a cotação."""
+    if not coffee_quotes_need_background_sync(repository):
+        return
+    try:
+        with httpx.Client(timeout=8.0, follow_redirects=True, headers=_http_client_headers()) as client:
+            remote_quotes = _fetch_remote_coffee_quotes(client)
+    except Exception as exc:
+        logger.warning("Nao foi possivel atualizar cotacao de cafe durante o dashboard: %s", exc)
+        return
+    if remote_quotes:
+        _persist_coffee_quotes_sync(repository, remote_quotes)
+
+
 def get_dashboard_coffee_quotes(repository: FarmRepository) -> dict[str, CoffeeQuote | None]:
     """Lê e recalcula cotações a partir do banco (sem HTTP na requisição do usuário)."""
     db_price_quotes = _db_price_series(repository)
@@ -753,6 +767,7 @@ def _coffee_quote_history_ranges(repository: FarmRepository) -> dict:
 
 
 def latest_coffee_quote_context(repository: FarmRepository) -> dict:
+    ensure_dashboard_coffee_quotes_current(repository)
     quotes = get_dashboard_coffee_quotes(repository)
     history = _coffee_quote_history_ranges(repository)
     return {
