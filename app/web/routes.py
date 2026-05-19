@@ -13787,39 +13787,67 @@ def export_irrigation_pdf(
 
 
 @router.post("/irrigacao")
-def create_irrigation_action(
+async def create_irrigation_action(
     request: Request,
-    csrf_token: str = Form(...),
-    plot_id: int = Form(...),
-    irrigation_date: str = Form(...),
-    volume_liters: str | None = Form(None),
-    duration_minutes: int = Form(...),
-    notes: str | None = Form(None),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user_web),
 ):
     del user
+    form = await request.form()
+    csrf_token = str(form.get("csrf_token") or "")
     validate_csrf(request, csrf_token)
     repo = _repository(db)
-    plot, _, denied = _resolve_plot_in_scope(request, repo, plot_id, "/irrigacao")
-    if denied:
-        return denied
-    calculated_volume = calculate_irrigation_volume(plot, duration_minutes)
-    manual_volume = _float_or_none(volume_liters)
-    if calculated_volume is None and manual_volume is None:
-        _flash(request, "error", "Informe o volume manual em litros ou cadastre os dados de irrigacao no setor.")
+    selected_plot_ids: list[int] = []
+    for raw_plot_id in form.getlist("plot_id"):
+        parsed_plot_id = _int_or_none(raw_plot_id)
+        if parsed_plot_id and parsed_plot_id not in selected_plot_ids:
+            selected_plot_ids.append(parsed_plot_id)
+    if not selected_plot_ids:
+        _flash(request, "error", "Selecione ao menos um setor.")
         return _redirect("/irrigacao")
-    create_irrigation(
-        repo,
-        {
-            "plot_id": plot_id,
-            "irrigation_date": irrigation_date,
-            "volume_liters": calculated_volume if calculated_volume is not None else manual_volume,
-            "duration_minutes": duration_minutes,
-            "notes": notes,
-        },
+    duration_minutes = _int_or_none(form.get("duration_minutes"))
+    if not duration_minutes:
+        _flash(request, "error", "Informe a duracao da irrigacao.")
+        return _redirect("/irrigacao")
+    selected_plots = []
+    for plot_id in selected_plot_ids:
+        plot, _, denied = _resolve_plot_in_scope(request, repo, plot_id, "/irrigacao")
+        if denied:
+            return denied
+        selected_plots.append(plot)
+    manual_volume = _float_or_none(form.get("volume_liters"))
+    missing_volume_plots = [
+        plot.name
+        for plot in selected_plots
+        if calculate_irrigation_volume(plot, duration_minutes) is None and manual_volume is None
+    ]
+    if missing_volume_plots:
+        _flash(
+            request,
+            "error",
+            "Informe o volume manual em litros ou cadastre os dados de irrigacao no setor: "
+            + ", ".join(missing_volume_plots),
+        )
+        return _redirect("/irrigacao")
+    for plot in selected_plots:
+        calculated_volume = calculate_irrigation_volume(plot, duration_minutes)
+        create_irrigation(
+            repo,
+            {
+                "plot_id": plot.id,
+                "irrigation_date": str(form.get("irrigation_date") or ""),
+                "volume_liters": calculated_volume if calculated_volume is not None else manual_volume,
+                "duration_minutes": duration_minutes,
+                "notes": str(form.get("notes") or "") or None,
+            },
+        )
+    _flash(
+        request,
+        "success",
+        "Irrigacao registrada com sucesso."
+        if len(selected_plots) == 1
+        else f"Irrigacao registrada com sucesso para {len(selected_plots)} setores.",
     )
-    _flash(request, "success", "Irrigacao registrada com sucesso.")
     return _redirect("/irrigacao")
 
 

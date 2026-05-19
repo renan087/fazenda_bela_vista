@@ -256,14 +256,34 @@
                     </div>
                 </div>
 
+                {% if edit_irrigation %}
                 <label>
                     <span class="mb-2 block text-sm font-medium">Setor</span>
                     <select name="plot_id" data-irrigation-plot class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required>
                         {% for plot in plots %}
-                        <option value="{{ plot.id }}" {% if edit_irrigation and edit_irrigation.plot_id == plot.id %}selected{% endif %}>{{ plot.name }}</option>
+                        <option value="{{ plot.id }}" {% if edit_irrigation and edit_irrigation.plot_id == plot.id %}selected{% endif %}>{{ plot.name }}{% if plot.farm %} • {{ plot.farm.name }}{% endif %}</option>
                         {% endfor %}
                     </select>
                 </label>
+                {% else %}
+                <div>
+                    <span class="mb-2 block text-sm font-medium">Setores</span>
+                    <select class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" data-irrigation-plot-select>
+                        <option value="">Selecione um setor</option>
+                        {% for plot in plots %}
+                        <option value="{{ plot.id }}" data-plot-name="{{ plot.name }}" data-plot-farm="{{ plot.farm.name if plot.farm else 'Sem fazenda vinculada' }}">{{ plot.name }}{% if plot.farm %} • {{ plot.farm.name }}{% endif %}</option>
+                        {% endfor %}
+                    </select>
+                    <div class="schedule-plot-selected mt-3" data-irrigation-plot-selected>
+                        <p class="schedule-plot-selected-empty text-sm text-slate-500" data-irrigation-plot-empty>Nenhum setor selecionado.</p>
+                    </div>
+                    <div data-irrigation-plot-hidden-inputs></div>
+                    <div class="mt-2 flex flex-wrap items-center justify-between gap-2">
+                        <span class="block text-xs text-slate-500">Selecione um ou mais setores para registrar a mesma irrigação.</span>
+                        <span class="schedule-plot-picker-count text-xs font-medium text-slate-500" data-irrigation-plot-selection-count>Nenhum setor selecionado</span>
+                    </div>
+                </div>
+                {% endif %}
                 <div class="grid gap-4 md:grid-cols-2">
                     <label>
                         <span class="mb-2 block text-sm font-medium">Data</span>
@@ -340,6 +360,7 @@
                 window.location.href = afterEditCloseUrl;
                 return;
             }
+            resetIrrigationCreateState();
             launchModal?.close();
         };
 
@@ -351,6 +372,7 @@
                     window.location.href = editUrl;
                     return;
                 }
+                resetIrrigationCreateState();
                 launchModal?.showModal();
             });
         });
@@ -403,6 +425,12 @@
         syncIrrigationExportLinks();
 
         const plotSelect = document.querySelector('[data-irrigation-plot]');
+        const multiPlotSelect = document.querySelector('[data-irrigation-plot-select]');
+        const plotSelected = document.querySelector('[data-irrigation-plot-selected]');
+        const plotHiddenInputs = document.querySelector('[data-irrigation-plot-hidden-inputs]');
+        const plotEmptyState = document.querySelector('[data-irrigation-plot-empty]');
+        const plotSelectionCount = document.querySelector('[data-irrigation-plot-selection-count]');
+        const initialMultiPlotOptionsHtml = multiPlotSelect?.innerHTML || '';
         const help = document.querySelector('[data-irrigation-help]');
         const durationField = document.querySelector('[data-irrigation-duration]');
         const volumeField = document.querySelector('[data-irrigation-volume]');
@@ -419,18 +447,29 @@
             }
             return null;
         };
+        const selectedIrrigationPlotIds = () => {
+            if (plotSelect?.value) return [Number(plotSelect.value)];
+            return Array.from(plotHiddenInputs?.querySelectorAll('input[name="plot_id"]') || [])
+                .map((input) => Number(input.value || 0))
+                .filter(Boolean);
+        };
         const updateHelp = () => {
-            const selectedId = Number(plotSelect?.value || 0);
+            const selectedIds = selectedIrrigationPlotIds();
+            const selectedId = selectedIds[0] || 0;
             const config = configs.find((item) => item.id === selectedId);
-            if (!help || !config) return;
-            if (config.type === 'gotejo') {
+            if (!help) return;
+            if (!selectedIds.length) {
+                help.textContent = 'Selecione um ou mais setores com configuração de irrigação para calcular o volume automaticamente.';
+            } else if (selectedIds.length > 1) {
+                help.textContent = 'O sistema calculará o volume individualmente para cada setor configurado. Para setores sem configuração automática, será usado o volume manual informado.';
+            } else if (config?.type === 'gotejo') {
                 help.textContent = `Cálculo automático ativo: ${config.line_count || 0} linhas de ${config.line_length || 0} m, espaçamento ${config.drip_spacing_cm || 0} cm e ${config.drip_lph || 0} L/h por gotejo.`;
-            } else if (config.type === 'aspersor') {
+            } else if (config?.type === 'aspersor') {
                 help.textContent = `Cálculo automático ativo: ${config.sprinkler_count || 0} aspersores com ${config.sprinkler_lph || 0} L/h por aspersor.`;
             } else {
                 help.textContent = 'Este setor não possui configuração de irrigação automática. Nesse caso, informe o volume manual em litros.';
             }
-            const automaticVolume = computeVolume(config, durationField?.value);
+            const automaticVolume = selectedIds.length === 1 ? computeVolume(config, durationField?.value) : null;
             const hasAutomatic = automaticVolume !== null;
             if (volumeField) {
                 volumeField.readOnly = hasAutomatic;
@@ -441,11 +480,95 @@
                 volumeField.dataset.auto = hasAutomatic ? '1' : '0';
             }
         };
-        if (plotSelect && durationField) {
-            plotSelect.addEventListener('change', updateHelp);
-            durationField.addEventListener('input', updateHelp);
+        const syncIrrigationPlotSelectionState = () => {
+            if (!plotHiddenInputs) return;
+            const selectedCount = plotHiddenInputs.querySelectorAll('input[name="plot_id"]').length;
+            if (multiPlotSelect) {
+                multiPlotSelect.setCustomValidity(selectedCount ? '' : 'Selecione ao menos um setor.');
+            }
+            plotEmptyState?.classList.toggle('hidden', selectedCount > 0);
+            if (plotSelectionCount) {
+                plotSelectionCount.textContent = selectedCount
+                    ? `${selectedCount} setor${selectedCount > 1 ? 'es' : ''} selecionado${selectedCount > 1 ? 's' : ''}`
+                    : 'Nenhum setor selecionado';
+            }
             updateHelp();
-        }
+        };
+        const restoreIrrigationPlotOption = (plotId, plotName, plotFarm) => {
+            if (!multiPlotSelect || !plotId) return;
+            const option = document.createElement('option');
+            option.value = plotId;
+            option.dataset.plotName = plotName || '';
+            option.dataset.plotFarm = plotFarm || '';
+            option.textContent = plotFarm ? `${plotName} • ${plotFarm}` : plotName;
+            multiPlotSelect.appendChild(option);
+        };
+        const bindIrrigationPlotTagRemove = (chip) => {
+            chip.querySelector('[data-irrigation-plot-remove]')?.addEventListener('click', () => {
+                const plotId = chip.dataset.plotId || '';
+                const plotName = chip.dataset.plotName || '';
+                const plotFarm = chip.dataset.plotFarm || '';
+                plotHiddenInputs?.querySelector(`input[name="plot_id"][value="${CSS.escape(plotId)}"]`)?.remove();
+                restoreIrrigationPlotOption(plotId, plotName, plotFarm);
+                chip.remove();
+                syncIrrigationPlotSelectionState();
+            });
+        };
+        multiPlotSelect?.addEventListener('change', (event) => {
+            const select = event.currentTarget;
+            if (!(select instanceof HTMLSelectElement)) return;
+            const option = select.selectedOptions[0];
+            const plotId = option?.value || '';
+            if (!plotId || !plotSelected || !plotHiddenInputs) return;
+            const plotName = option.dataset.plotName || option.textContent.split(' • ')[0] || '';
+            const plotFarm = option.dataset.plotFarm || '';
+
+            const hiddenInput = document.createElement('input');
+            hiddenInput.type = 'hidden';
+            hiddenInput.name = 'plot_id';
+            hiddenInput.value = plotId;
+            plotHiddenInputs.appendChild(hiddenInput);
+
+            const chip = document.createElement('div');
+            chip.className = 'schedule-plot-chip';
+            chip.dataset.plotId = plotId;
+            chip.dataset.plotName = plotName;
+            chip.dataset.plotFarm = plotFarm;
+            chip.innerHTML = `
+                <div class="schedule-plot-chip-body">
+                    <span class="schedule-plot-chip-title">${plotName}</span>
+                    <span class="schedule-plot-chip-meta">${plotFarm || 'Sem fazenda vinculada'}</span>
+                </div>
+                <button type="button" class="schedule-plot-chip-remove" data-irrigation-plot-remove aria-label="Remover setor">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true">
+                        <path d="M18 6 6 18"/>
+                        <path d="m6 6 12 12"/>
+                    </svg>
+                </button>
+            `;
+            plotSelected.appendChild(chip);
+            bindIrrigationPlotTagRemove(chip);
+            option.remove();
+            select.value = '';
+            syncIrrigationPlotSelectionState();
+        });
+        const resetIrrigationCreateState = () => {
+            if (isEditing) return;
+            const form = document.getElementById('irrigation-form');
+            form?.reset();
+            if (multiPlotSelect) {
+                multiPlotSelect.innerHTML = initialMultiPlotOptionsHtml;
+                multiPlotSelect.value = '';
+                multiPlotSelect.setCustomValidity('');
+            }
+            plotSelected?.querySelectorAll('.schedule-plot-chip').forEach((chip) => chip.remove());
+            plotHiddenInputs?.replaceChildren();
+            syncIrrigationPlotSelectionState();
+        };
+        plotSelect?.addEventListener('change', updateHelp);
+        durationField?.addEventListener('input', updateHelp);
+        syncIrrigationPlotSelectionState();
+        updateHelp();
 
         const mobileCompactMq = window.matchMedia('(max-width: 899px)');
         const parseStickyTopPx = (el) => {
