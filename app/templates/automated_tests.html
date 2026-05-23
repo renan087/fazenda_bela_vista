@@ -24,11 +24,12 @@
             </div>
         </div>
         {% if last_report and not is_running %}
+        {% set report_summary = last_report.get('summary', {}) %}
         <p class="mt-4 text-sm text-slate-500">
-            Última execução: {{ last_report.finished_at }} · {{ last_report.duration_seconds }}s ·
-            {{ last_report.summary.passed|default(0) }} ok,
-            {{ last_report.summary.failed|default(0) }} falhas,
-            {{ last_report.summary.skipped|default(0) }} ignorados
+            Última execução: {{ last_report.get('finished_at', '') }} · {{ last_report.get('duration_seconds', 0) }}s ·
+            {{ report_summary.get('passed', 0) }} ok,
+            {{ report_summary.get('failed', 0) }} falhas,
+            {{ report_summary.get('skipped', 0) }} ignorados
         </p>
         {% endif %}
     </section>

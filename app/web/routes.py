@@ -894,6 +894,7 @@ def _base_context(request: Request, user: User, csrf_token: str, page: str, **kw
             "users",
             "backups",
             "audit_logs",
+            "automated_tests",
         }
         context["context_selection_blocking"] = scope_context["context_selection_required"] and not context["context_lock_exempt"]
         context["context_previous_available"] = bool(scope_context.get("previous_context_available"))
@@ -16672,22 +16673,27 @@ def automated_tests_page(
     denied = _require_super_admin(request, user)
     if denied:
         return denied
-    report = load_last_report()
-    return templates.TemplateResponse(
-        "automated_tests.html",
-        _base_context(
-            request,
-            user,
-            csrf_token,
-            "automated_tests",
-            title="Testes automatizados",
-            catalog_rows=catalog_with_status(),
-            last_report=report.to_dict() if report else None,
-            is_running=is_automated_test_run_in_progress(),
-            _repo=None,
-            _db=db,
-        ),
-    )
+    try:
+        repo = _repository(db)
+        report = load_last_report()
+        return templates.TemplateResponse(
+            "automated_tests.html",
+            _base_context(
+                request,
+                user,
+                csrf_token,
+                "automated_tests",
+                title="Testes automatizados",
+                catalog_rows=catalog_with_status(),
+                last_report=report.to_dict() if report else None,
+                is_running=is_automated_test_run_in_progress(),
+                _repo=repo,
+            ),
+        )
+    except Exception:
+        logger.exception("Erro ao renderizar painel de testes automatizados — user_id=%s", getattr(user, "id", "?"))
+        _flash(request, "error", "Nao foi possivel abrir o painel de testes automatizados.")
+        return _redirect("/dashboard")
 
 
 @router.get("/qualidade/testes-automatizados/status")

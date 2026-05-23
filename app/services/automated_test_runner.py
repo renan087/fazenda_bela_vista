@@ -75,22 +75,35 @@ def load_last_report() -> AutomatedTestRunReport | None:
         return None
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
-        suites = [
-            SuiteRunResult(
-                suite_id=item["suite_id"],
-                name=item["name"],
-                domain=item["domain"],
-                status=item["status"],
-                passed=int(item.get("passed", 0)),
-                failed=int(item.get("failed", 0)),
-                skipped=int(item.get("skipped", 0)),
-                errors=int(item.get("errors", 0)),
-                duration_seconds=float(item.get("duration_seconds", 0)),
-                failures=[SuiteTestFailure(**failure) for failure in item.get("failures", [])],
-                output_tail=str(item.get("output_tail", ""))[:4000],
+        suites: list[SuiteRunResult] = []
+        for item in payload.get("suites", []):
+            if not isinstance(item, dict):
+                continue
+            suite_id = str(item.get("suite_id") or "").strip()
+            if not suite_id:
+                continue
+            suites.append(
+                SuiteRunResult(
+                    suite_id=suite_id,
+                    name=str(item.get("name") or suite_id),
+                    domain=str(item.get("domain") or ""),
+                    status=str(item.get("status") or "unknown"),
+                    passed=int(item.get("passed", 0)),
+                    failed=int(item.get("failed", 0)),
+                    skipped=int(item.get("skipped", 0)),
+                    errors=int(item.get("errors", 0)),
+                    duration_seconds=float(item.get("duration_seconds", 0)),
+                    failures=[
+                        SuiteTestFailure(
+                            test_id=str(failure.get("test_id") or "test"),
+                            message=str(failure.get("message") or ""),
+                        )
+                        for failure in item.get("failures", [])
+                        if isinstance(failure, dict)
+                    ],
+                    output_tail=str(item.get("output_tail", ""))[:4000],
+                )
             )
-            for item in payload.get("suites", [])
-        ]
         return AutomatedTestRunReport(
             started_at=payload.get("started_at", ""),
             finished_at=payload.get("finished_at", ""),
