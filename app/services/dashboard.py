@@ -7,6 +7,7 @@ from app.core.timezone import today_in_app_timezone
 from app.repositories.farm import FarmRepository
 from app.services.coffee_quotes import latest_coffee_quote_context
 from app.services.finance_overview import build_finance_overview_context
+from app.services.forms import fertilization_application_method_label
 
 
 def _float(value) -> float:
@@ -557,6 +558,8 @@ def build_dashboard_context(
                 "plot": schedule.plot.name if schedule.plot else "Setor removido",
                 "date": schedule.scheduled_date.isoformat(),
                 "status": "late" if schedule.scheduled_date < today else "scheduled",
+                "application_method": schedule.application_method or "fertirrigacao",
+                "application_method_label": fertilization_application_method_label(schedule.application_method),
                 "stock_ok": validation["ok"],
                 "shortages": validation["shortages"],
                 "link": f"/fertilizacao/agendamentos?edit_id={schedule.id}",
