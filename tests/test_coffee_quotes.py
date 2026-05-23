@@ -1,14 +1,19 @@
 from datetime import date
 
+import pytest
+
 from app.models import CoffeeQuote
+
+pytestmark = pytest.mark.suite_coffee_market
+from app.core.timezone import app_now, today_in_app_timezone
 from app.services.coffee_quotes import (
     _calculate_variations_from_series,
     _cepea_page_html_is_blocked,
+    _expected_latest_quote_date,
     _latest_coffee_quotes_from_remote_series,
     coffee_quotes_dashboard_ready,
     parse_cepea_coffee_quotes,
 )
-from app.core.timezone import app_now
 
 
 SAMPLE_CEPEA_HTML = """
@@ -71,10 +76,10 @@ def test_latest_from_remote_series_ignores_stale_month_calculation() -> None:
 def test_dashboard_ready_requires_month_when_previous_month_exists() -> None:
     from unittest.mock import MagicMock
 
-    today = date(2026, 5, 17)
+    expected_day = _expected_latest_quote_date(today_in_app_timezone())
     arabica = CoffeeQuote(
         quote_type="arabica",
-        quote_date=date(2026, 5, 18),
+        quote_date=expected_day,
         price_brl=1605.75,
         variation_month=None,
         source="CEPEA/ESALQ",
@@ -82,7 +87,7 @@ def test_dashboard_ready_requires_month_when_previous_month_exists() -> None:
     )
     robusta = CoffeeQuote(
         quote_type="robusta",
-        quote_date=date(2026, 5, 18),
+        quote_date=expected_day,
         price_brl=914.16,
         variation_month=-1.20,
         source="CEPEA/ESALQ",
@@ -92,9 +97,9 @@ def test_dashboard_ready_requires_month_when_previous_month_exists() -> None:
     repo.get_latest_coffee_quote.side_effect = lambda t: arabica if t == "arabica" else robusta
     repo.list_coffee_quotes.return_value = [
         CoffeeQuote(quote_type="arabica", quote_date=date(2026, 4, 30), price_brl=1761.57, source="CEPEA/ESALQ"),
-        CoffeeQuote(quote_type="arabica", quote_date=date(2026, 5, 18), price_brl=1605.75, source="CEPEA/ESALQ"),
+        CoffeeQuote(quote_type="arabica", quote_date=expected_day, price_brl=1605.75, source="CEPEA/ESALQ"),
         CoffeeQuote(quote_type="robusta", quote_date=date(2026, 4, 30), price_brl=925.26, source="CEPEA/ESALQ"),
-        CoffeeQuote(quote_type="robusta", quote_date=date(2026, 5, 18), price_brl=914.16, source="CEPEA/ESALQ"),
+        CoffeeQuote(quote_type="robusta", quote_date=expected_day, price_brl=914.16, source="CEPEA/ESALQ"),
     ]
     assert coffee_quotes_dashboard_ready(repo) is False
 

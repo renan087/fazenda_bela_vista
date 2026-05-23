@@ -1,0 +1,180 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="stock-page-shell space-y-6" data-automated-tests-panel>
+    <section class="stock-page-header rounded-[2rem] p-5 shadow-panel">
+        <div class="flex flex-wrap items-start justify-between gap-4">
+            <div class="min-w-0 stock-page-header-intro">
+                <h2 class="stock-page-card-title">Testes automatizados</h2>
+                <p class="stock-page-card-subtitle">Painel de verificação por implemento — execução via pytest com relatório persistido.</p>
+            </div>
+            <div class="flex flex-wrap items-center gap-2">
+                <span
+                    class="rounded-full px-4 py-2 text-xs font-semibold ring-1 {% if is_running %}bg-amber-50 text-amber-800 ring-amber-200{% elif last_report and last_report.overall_status == 'passed' %}bg-emerald-50 text-emerald-800 ring-emerald-200{% elif last_report %}bg-rose-50 text-rose-800 ring-rose-200{% else %}bg-slate-100 text-slate-600 ring-slate-200{% endif %}"
+                    data-tests-overall-badge
+                >
+                    {% if is_running %}Executando…{% elif last_report %}{{ last_report.overall_status|upper }}{% else %}Nunca executado{% endif %}
+                </span>
+                <form method="post" action="/qualidade/testes-automatizados/executar" class="inline">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    <input type="hidden" name="suite_id" value="">
+                    <button type="submit" class="rounded-2xl bg-brand-500 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-700 disabled:opacity-50" {% if is_running %}disabled{% endif %} data-run-all-btn>
+                        Executar todos
+                    </button>
+                </form>
+            </div>
+        </div>
+        {% if last_report and not is_running %}
+        <p class="mt-4 text-sm text-slate-500">
+            Última execução: {{ last_report.finished_at }} · {{ last_report.duration_seconds }}s ·
+            {{ last_report.summary.passed|default(0) }} ok,
+            {{ last_report.summary.failed|default(0) }} falhas,
+            {{ last_report.summary.skipped|default(0) }} ignorados
+        </p>
+        {% endif %}
+    </section>
+
+    <section class="grid gap-4 md:grid-cols-2 xl:grid-cols-3" data-tests-suite-grid>
+        {% for row in catalog_rows %}
+        <article class="rounded-[1.5rem] border bg-white p-5 shadow-sm {% if row.last_status == 'passed' %}border-emerald-200{% elif row.last_status in ['failed', 'error'] %}border-rose-200{% elif row.last_status == 'running' %}border-amber-200{% else %}border-slate-200{% endif %}" data-suite-card data-suite-id="{{ row.id }}">
+            <div class="flex items-start justify-between gap-3">
+                <div>
+                    <p class="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">{{ row.domain }}</p>
+                    <h3 class="mt-1 text-lg font-semibold text-slate-900">{{ row.name }}</h3>
+                </div>
+                <span
+                    class="shrink-0 rounded-full px-3 py-1 text-xs font-bold uppercase tracking-wide {% if row.last_status == 'passed' %}bg-emerald-100 text-emerald-800{% elif row.last_status in ['failed', 'error'] %}bg-rose-100 text-rose-800{% elif row.last_status == 'running' %}bg-amber-100 text-amber-800{% else %}bg-slate-100 text-slate-600{% endif %}"
+                    data-suite-status
+                >{{ row.last_status }}</span>
+            </div>
+            <p class="mt-3 text-sm text-slate-600">{{ row.description }}</p>
+            <dl class="mt-4 grid grid-cols-3 gap-2 text-center text-xs">
+                <div class="rounded-xl bg-slate-50 px-2 py-2">
+                    <dt class="text-slate-400">Ok</dt>
+                    <dd class="mt-1 font-semibold text-emerald-700" data-suite-passed>{{ row.last_passed }}</dd>
+                </div>
+                <div class="rounded-xl bg-slate-50 px-2 py-2">
+                    <dt class="text-slate-400">Falhas</dt>
+                    <dd class="mt-1 font-semibold text-rose-700" data-suite-failed>{{ row.last_failed }}</dd>
+                </div>
+                <div class="rounded-xl bg-slate-50 px-2 py-2">
+                    <dt class="text-slate-400">Tempo</dt>
+                    <dd class="mt-1 font-semibold text-slate-800" data-suite-duration>{{ row.last_duration_seconds|decimal_br }}s</dd>
+                </div>
+            </dl>
+            {% if row.last_failures %}
+            <ul class="mt-3 space-y-1 rounded-xl border border-rose-100 bg-rose-50/80 px-3 py-2 text-xs text-rose-900" data-suite-failures>
+                {% for failure in row.last_failures[:3] %}
+                <li><span class="font-mono">{{ failure.test_id }}</span> — {{ failure.message[:120] }}{% if failure.message|length > 120 %}…{% endif %}</li>
+                {% endfor %}
+            </ul>
+            {% else %}
+            <ul class="mt-3 hidden space-y-1 rounded-xl border border-rose-100 bg-rose-50/80 px-3 py-2 text-xs text-rose-900" data-suite-failures></ul>
+            {% endif %}
+            <p class="mt-3 font-mono text-[10px] text-slate-400">{{ row.marker }} · {{ row.pytest_paths|join(', ') }}</p>
+            <form method="post" action="/qualidade/testes-automatizados/executar" class="mt-4">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <input type="hidden" name="suite_id" value="{{ row.id }}">
+                <button type="submit" class="w-full rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-800 transition hover:border-brand-200 hover:bg-brand-50 disabled:opacity-50" {% if is_running %}disabled{% endif %}>
+                    Executar este implemento
+                </button>
+            </form>
+        </article>
+        {% endfor %}
+    </section>
+</div>
+<script>
+(() => {
+    const panel = document.querySelector('[data-automated-tests-panel]');
+    if (!panel) return;
+
+    const statusUrl = '/qualidade/testes-automatizados/status';
+    let pollTimer = null;
+
+    function statusClass(status) {
+        if (status === 'passed') return 'bg-emerald-100 text-emerald-800';
+        if (status === 'failed' || status === 'error') return 'bg-rose-100 text-rose-800';
+        if (status === 'running') return 'bg-amber-100 text-amber-800';
+        return 'bg-slate-100 text-slate-600';
+    }
+
+    function cardBorderClass(status) {
+        if (status === 'passed') return 'border-emerald-200';
+        if (status === 'failed' || status === 'error') return 'border-rose-200';
+        if (status === 'running') return 'border-amber-200';
+        return 'border-slate-200';
+    }
+
+    function applyPayload(payload) {
+        const running = Boolean(payload.running);
+        const badge = panel.querySelector('[data-tests-overall-badge]');
+        const runAll = panel.querySelector('[data-run-all-btn]');
+        panel.querySelectorAll('button[type="submit"]').forEach((btn) => { btn.disabled = running; });
+
+        if (badge) {
+            if (running) {
+                badge.textContent = 'Executando…';
+                badge.className = 'rounded-full px-4 py-2 text-xs font-semibold ring-1 bg-amber-50 text-amber-800 ring-amber-200';
+            } else if (payload.report) {
+                badge.textContent = (payload.report.overall_status || 'unknown').toUpperCase();
+                const ok = payload.report.overall_status === 'passed';
+                badge.className = 'rounded-full px-4 py-2 text-xs font-semibold ring-1 ' + (ok ? 'bg-emerald-50 text-emerald-800 ring-emerald-200' : 'bg-rose-50 text-rose-800 ring-rose-200');
+            }
+        }
+
+        const catalog = payload.catalog || [];
+        const byId = Object.fromEntries(catalog.map((row) => [row.id, row]));
+        panel.querySelectorAll('[data-suite-card]').forEach((card) => {
+            const id = card.getAttribute('data-suite-id');
+            const row = byId[id];
+            if (!row) return;
+            card.className = 'rounded-[1.5rem] border bg-white p-5 shadow-sm ' + cardBorderClass(row.last_status);
+            const statusEl = card.querySelector('[data-suite-status]');
+            if (statusEl) {
+                statusEl.textContent = row.last_status;
+                statusEl.className = 'shrink-0 rounded-full px-3 py-1 text-xs font-bold uppercase tracking-wide ' + statusClass(row.last_status);
+            }
+            const passed = card.querySelector('[data-suite-passed]');
+            const failed = card.querySelector('[data-suite-failed]');
+            const duration = card.querySelector('[data-suite-duration]');
+            if (passed) passed.textContent = row.last_passed;
+            if (failed) failed.textContent = row.last_failed;
+            if (duration) duration.textContent = Number(row.last_duration_seconds || 0).toFixed(2).replace('.', ',') + 's';
+            const failuresEl = card.querySelector('[data-suite-failures]');
+            if (failuresEl) {
+                const items = row.last_failures || [];
+                if (!items.length) {
+                    failuresEl.classList.add('hidden');
+                    failuresEl.innerHTML = '';
+                } else {
+                    failuresEl.classList.remove('hidden');
+                    failuresEl.innerHTML = items.slice(0, 3).map((f) => (
+                        '<li><span class="font-mono">' + f.test_id + '</span> — ' + (f.message || '').slice(0, 120) + '</span></li>'
+                    )).join('');
+                }
+            }
+        });
+
+        if (running && !pollTimer) {
+            pollTimer = window.setInterval(poll, 2500);
+        }
+        if (!running && pollTimer) {
+            window.clearInterval(pollTimer);
+            pollTimer = null;
+        }
+    }
+
+    async function poll() {
+        try {
+            const response = await fetch(statusUrl, { credentials: 'same-origin', headers: { Accept: 'application/json' } });
+            if (!response.ok) return;
+            const payload = await response.json();
+            applyPayload(payload);
+        } catch (_) { /* silencioso */ }
+    }
+
+    {% if is_running %}
+    pollTimer = window.setInterval(poll, 2500);
+    {% endif %}
+})();
+</script>
+{% endblock %}

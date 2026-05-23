@@ -59,6 +59,7 @@ class Settings(BaseSettings):
     coffee_quote_sync_max_attempts_per_burst: int = 15
     coffee_quote_sync_max_burst_seconds: int = 1800
     coffee_quote_sync_idle_interval_seconds: int = 3600
+    automated_tests_state_file: str = ".cache/automated_tests_state.json"
     coffee_quote_market_poll_start_hour: int = 18
     coffee_quote_market_poll_start_minute: int = 30
     coffee_quote_market_poll_interval_seconds: int = 1800

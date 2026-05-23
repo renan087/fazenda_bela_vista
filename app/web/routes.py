@@ -112,6 +112,12 @@ from app.services.backup_service import (
     update_backup_storage_limit_setting,
 )
 from app.services.audit_log_service import count_audit_logs, list_audit_event_types, query_audit_logs
+from app.services.automated_test_runner import (
+    catalog_with_status,
+    is_automated_test_run_in_progress,
+    load_last_report,
+    run_automated_tests_background,
+)
 from app.services.coffee_quotes import CEPEA_SOURCE, CEPEA_WIDGET_URL, persist_browser_cepea_quotes
 from app.services.dashboard import build_dashboard_context
 from app.services.dashboard_map_preview import (
@@ -768,6 +774,7 @@ MENU_ITEM_VISIBILITY_RULES = {
     "docs": lambda user, pc: bool(user and is_super_admin_email(user.email) and _user_in_default_organization(user)),
     "organizations": lambda user, pc: bool(user and is_super_admin_email(user.email)),
     "audit_logs": lambda user, pc: bool(user and is_super_admin_email(user.email)),
+    "automated_tests": lambda user, pc: bool(user and is_super_admin_email(user.email)),
 }
 
 
@@ -16653,3 +16660,71 @@ def mobile_page(
             ][:3],
         ),
     )
+
+
+@router.get("/qualidade/testes-automatizados")
+def automated_tests_page(
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+    csrf_token: str = Depends(get_csrf_token),
+):
+    denied = _require_super_admin(request, user)
+    if denied:
+        return denied
+    report = load_last_report()
+    return templates.TemplateResponse(
+        "automated_tests.html",
+        _base_context(
+            request,
+            user,
+            csrf_token,
+            "automated_tests",
+            title="Testes automatizados",
+            catalog_rows=catalog_with_status(),
+            last_report=report.to_dict() if report else None,
+            is_running=is_automated_test_run_in_progress(),
+            _repo=None,
+            _db=db,
+        ),
+    )
+
+
+@router.get("/qualidade/testes-automatizados/status")
+def automated_tests_status_json(
+    request: Request,
+    user: User = Depends(get_current_user_web),
+):
+    denied = _require_super_admin(request, user)
+    if denied:
+        return denied
+    report = load_last_report()
+    return JSONResponse(
+        {
+            "running": is_automated_test_run_in_progress(),
+            "report": report.to_dict() if report else None,
+            "catalog": catalog_with_status(),
+        }
+    )
+
+
+@router.post("/qualidade/testes-automatizados/executar")
+def automated_tests_run(
+    request: Request,
+    user: User = Depends(get_current_user_web),
+    csrf_token: str = Form(...),
+    suite_id: str = Form(""),
+):
+    denied = _require_super_admin(request, user)
+    if denied:
+        return denied
+    validate_csrf(request, csrf_token)
+    normalized_suite = suite_id.strip()
+    suite_ids = [normalized_suite] if normalized_suite else None
+    started = run_automated_tests_background(suite_ids=suite_ids, trigger="panel")
+    if not started:
+        _flash(request, "error", "Já existe uma execução de testes em andamento.")
+    else:
+        label = f"implemento «{normalized_suite}»" if normalized_suite else "todos os implementos"
+        _flash(request, "success", f"Execução iniciada ({label}). O painel atualiza automaticamente.")
+    return _redirect("/qualidade/testes-automatizados")

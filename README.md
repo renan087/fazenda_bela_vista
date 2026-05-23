@@ -96,6 +96,17 @@ Parametros de seguranca do 2FA:
 - `TWO_FACTOR_CODE_MINUTES`
 - `TWO_FACTOR_MAX_ATTEMPTS`
 
+## Testes automatizados
+
+Instale dependências de desenvolvimento e execute a suíte:
+
+```bash
+pip install -r requirements-dev.txt
+pytest
+```
+
+No painel web (super administrador): **Configuração → Testes automatizados** (`/qualidade/testes-automatizados`). Cada card representa um implemento (cotação, RBAC, segurança, rotas, dashboard). A execução roda pytest em background e persiste o último relatório em `.cache/automated_tests_state.json`.
+
 ## Publicacao
 
 O projeto permanece preparado para deploy no Render com `render.yaml`.
