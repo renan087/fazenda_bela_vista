@@ -29,7 +29,15 @@ def as_app_timezone(value: datetime | None) -> datetime | None:
     return value.astimezone(get_app_timezone())
 
 
-def format_app_datetime(value: datetime | None, fmt: str = "%d/%m/%Y %H:%M") -> str:
+def format_app_datetime(value: datetime | str | None, fmt: str = "%d/%m/%Y %H:%M") -> str:
+    if isinstance(value, str):
+        raw = value.strip()
+        if not raw:
+            return ""
+        try:
+            value = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+        except ValueError:
+            return raw[:16].replace("T", " ")
     localized = as_app_timezone(value)
     if localized is None:
         return ""

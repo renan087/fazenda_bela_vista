@@ -105,7 +105,9 @@ pip install -r requirements-dev.txt
 pytest
 ```
 
-No painel web (super administrador): **Configuração → Testes automatizados** (`/qualidade/testes-automatizados`). Cada card representa um implemento (cotação, RBAC, segurança, rotas, dashboard). A execução roda pytest em background e persiste o último relatório em `.cache/automated_tests_state.json`.
+No painel web (super administrador): **Configuração → Testes automatizados** (`/qualidade/testes-automatizados`). Cada card representa um implemento (cotação, RBAC, segurança, rotas, dashboard). A execução roda pytest em background, grava o histórico no PostgreSQL (últimas 30 execuções, taxa de sucesso por implemento) e mantém cópia local em `.cache/automated_tests_state.json`. O commit do deploy aparece quando `RENDER_GIT_COMMIT`, `GITHUB_SHA` ou `GIT_COMMIT` estiver definido. **Não há correção automática de dados de negócio** — apenas relatório e histórico.
+
+**CI (Nível 1):** em todo push/PR para `main`, o workflow `.github/workflows/ci.yml` executa `pytest`. Falhas na CI bloqueiam merge; o painel em produção é para execução manual de diagnóstico.
 
 ## Publicacao
 

@@ -13,9 +13,12 @@ import xml.etree.ElementTree as ET
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from app.core.config import get_settings
+
+if TYPE_CHECKING:
+    from sqlalchemy.orm import Session
 from app.testing.catalog import AUTOMATED_TEST_SUITES, AutomatedTestSuite, get_suite
 
 logger = logging.getLogger(__name__)
@@ -70,7 +73,17 @@ def _state_file_path() -> Path:
     return path
 
 
-def load_last_report() -> AutomatedTestRunReport | None:
+def load_last_report(db: Session | None = None) -> AutomatedTestRunReport | None:
+    if db is not None:
+        from app.repositories.automated_test_history import AutomatedTestHistoryRepository
+
+        report = AutomatedTestHistoryRepository(db).get_latest_report()
+        if report is not None:
+            return report
+    return _load_last_report_from_file()
+
+
+def _load_last_report_from_file() -> AutomatedTestRunReport | None:
     path = _state_file_path()
     if not path.is_file():
         return None
@@ -126,8 +139,14 @@ def _save_report(report: AutomatedTestRunReport) -> None:
     path.write_text(json.dumps(report.to_dict(), ensure_ascii=False, indent=2), encoding="utf-8")
 
 
-def is_automated_test_run_in_progress() -> bool:
-    return _IS_RUNNING
+def is_automated_test_run_in_progress(db: Session | None = None) -> bool:
+    if _IS_RUNNING:
+        return True
+    if db is not None:
+        from app.repositories.automated_test_history import AutomatedTestHistoryRepository
+
+        return AutomatedTestHistoryRepository(db).get_running_run() is not None
+    return False
 
 
 def _pytest_runtime_ready() -> str | None:
@@ -274,14 +293,32 @@ def run_automated_tests(
     *,
     suite_ids: list[str] | None = None,
     trigger: str = "manual",
+    initiated_by_user_id: int | None = None,
+    db: Session | None = None,
 ) -> AutomatedTestRunReport:
     """Executa suites selecionadas (ou todas) e persiste relatório."""
-    global _IS_RUNNING
     selected = [get_suite(sid) for sid in suite_ids] if suite_ids else list(AUTOMATED_TEST_SUITES)
     suites_to_run = [suite for suite in selected if suite is not None]
     if suite_ids and len(suites_to_run) != len(suite_ids):
         missing = sorted(set(suite_ids) - {suite.id for suite in suites_to_run})
         raise ValueError(f"Suite(s) desconhecida(s): {', '.join(missing)}")
+
+    settings = get_settings()
+    db_run_id: int | None = None
+    if db is not None:
+        from app.repositories.automated_test_history import (
+            AutomatedTestHistoryRepository,
+            resolve_deploy_revision,
+        )
+
+        run_row = AutomatedTestHistoryRepository(db).start_run(
+            trigger=trigger,
+            environment=settings.environment,
+            deploy_revision=resolve_deploy_revision(),
+            initiated_by_user_id=initiated_by_user_id,
+            suite_placeholders=[(suite.id, suite.name, suite.domain) for suite in suites_to_run],
+        )
+        db_run_id = run_row.id
 
     started = datetime.now(timezone.utc)
     running_report = AutomatedTestRunReport(
@@ -348,6 +385,12 @@ def run_automated_tests(
         summary=summary,
     )
     _save_report(report)
+
+    if db is not None and db_run_id is not None:
+        from app.repositories.automated_test_history import AutomatedTestHistoryRepository
+
+        AutomatedTestHistoryRepository(db).finalize_run(db_run_id, report)
+
     return report
 
 
@@ -355,20 +398,39 @@ def run_automated_tests_background(
     *,
     suite_ids: list[str] | None = None,
     trigger: str = "manual",
+    initiated_by_user_id: int | None = None,
 ) -> bool:
     """Dispara execução em thread; retorna False se já houver execução em andamento."""
     global _IS_RUNNING
 
     def _worker() -> None:
         global _IS_RUNNING
+        from app.db.session import SessionLocal
+
+        db = SessionLocal()
         try:
-            run_automated_tests(suite_ids=suite_ids, trigger=trigger)
+            run_automated_tests(
+                suite_ids=suite_ids,
+                trigger=trigger,
+                initiated_by_user_id=initiated_by_user_id,
+                db=db,
+            )
         finally:
+            db.close()
             _IS_RUNNING = False
 
     with _RUN_LOCK:
         if _IS_RUNNING:
             return False
+        from app.db.session import SessionLocal
+        from app.repositories.automated_test_history import AutomatedTestHistoryRepository
+
+        probe_db = SessionLocal()
+        try:
+            if AutomatedTestHistoryRepository(probe_db).get_running_run() is not None:
+                return False
+        finally:
+            probe_db.close()
         _IS_RUNNING = True
 
     thread = threading.Thread(target=_worker, name="automated-test-runner", daemon=True)
@@ -376,13 +438,20 @@ def run_automated_tests_background(
     return True
 
 
-def catalog_with_status() -> list[dict[str, Any]]:
+def catalog_with_status(db: Session | None = None) -> list[dict[str, Any]]:
     """Catálogo enriquecido com último resultado por suite."""
-    report = load_last_report()
+    report = load_last_report(db)
     by_id = {suite.suite_id: suite for suite in report.suites} if report else {}
+    success_rates: dict[str, dict[str, int | float]] = {}
+    if db is not None:
+        from app.repositories.automated_test_history import AutomatedTestHistoryRepository
+
+        success_rates = AutomatedTestHistoryRepository(db).suite_success_rates(run_limit=30)
+
     rows: list[dict[str, Any]] = []
     for suite in AUTOMATED_TEST_SUITES:
         last = by_id.get(suite.id)
+        stats = success_rates.get(suite.id, {})
         rows.append(
             {
                 "id": suite.id,
@@ -397,6 +466,8 @@ def catalog_with_status() -> list[dict[str, Any]]:
                 "last_skipped": last.skipped if last else 0,
                 "last_duration_seconds": last.duration_seconds if last else 0.0,
                 "last_failures": [asdict(item) for item in last.failures] if last else [],
+                "history_runs": int(stats.get("total", 0)),
+                "history_success_rate": float(stats.get("success_rate", 0.0)),
             }
         )
     return rows

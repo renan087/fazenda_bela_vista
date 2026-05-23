@@ -835,6 +835,43 @@ def _sync_schema() -> None:
         """,
         "CREATE INDEX IF NOT EXISTS ix_roles_organization_id ON roles (organization_id)",
         "CREATE INDEX IF NOT EXISTS ix_user_roles_user_id ON user_roles (user_id)",
+        """
+        CREATE TABLE IF NOT EXISTS automated_test_runs (
+            id SERIAL PRIMARY KEY,
+            trigger_source VARCHAR(40) NOT NULL DEFAULT 'manual',
+            overall_status VARCHAR(20) NOT NULL DEFAULT 'running',
+            is_running BOOLEAN NOT NULL DEFAULT TRUE,
+            deploy_revision VARCHAR(64),
+            environment VARCHAR(20) NOT NULL DEFAULT 'development',
+            initiated_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+            duration_seconds NUMERIC(10,2),
+            summary_json TEXT,
+            started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            finished_at TIMESTAMPTZ,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+        """,
+        "CREATE INDEX IF NOT EXISTS ix_automated_test_runs_finished_at ON automated_test_runs (finished_at DESC)",
+        "CREATE INDEX IF NOT EXISTS ix_automated_test_runs_deploy_revision ON automated_test_runs (deploy_revision)",
+        """
+        CREATE TABLE IF NOT EXISTS automated_test_suite_results (
+            id SERIAL PRIMARY KEY,
+            run_id INTEGER NOT NULL REFERENCES automated_test_runs(id) ON DELETE CASCADE,
+            suite_id VARCHAR(60) NOT NULL,
+            suite_name VARCHAR(160) NOT NULL,
+            suite_domain VARCHAR(120) NOT NULL DEFAULT '',
+            status VARCHAR(20) NOT NULL DEFAULT 'unknown',
+            passed_count INTEGER NOT NULL DEFAULT 0,
+            failed_count INTEGER NOT NULL DEFAULT 0,
+            skipped_count INTEGER NOT NULL DEFAULT 0,
+            error_count INTEGER NOT NULL DEFAULT 0,
+            duration_seconds NUMERIC(10,2) NOT NULL DEFAULT 0,
+            failures_json TEXT,
+            output_tail TEXT
+        )
+        """,
+        "CREATE INDEX IF NOT EXISTS ix_automated_test_suite_results_run_id ON automated_test_suite_results (run_id)",
+        "CREATE INDEX IF NOT EXISTS ix_automated_test_suite_results_suite_id ON automated_test_suite_results (suite_id)",
     ]
     with engine.begin() as connection:
         for statement in statements:

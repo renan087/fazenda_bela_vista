@@ -112,6 +112,7 @@ from app.services.backup_service import (
     update_backup_storage_limit_setting,
 )
 from app.services.audit_log_service import count_audit_logs, list_audit_event_types, query_audit_logs
+from app.repositories.automated_test_history import AutomatedTestHistoryRepository, resolve_deploy_revision
 from app.services.automated_test_runner import (
     catalog_with_status,
     is_automated_test_run_in_progress,
@@ -16675,7 +16676,10 @@ def automated_tests_page(
         return denied
     try:
         repo = _repository(db)
-        report = load_last_report()
+        history_repo = AutomatedTestHistoryRepository(db)
+        report = load_last_report(db)
+        latest_run = history_repo.get_latest_completed_run()
+        deploy_revision = (latest_run.deploy_revision if latest_run and latest_run.deploy_revision else None) or resolve_deploy_revision()
         return templates.TemplateResponse(
             "automated_tests.html",
             _base_context(
@@ -16684,9 +16688,12 @@ def automated_tests_page(
                 csrf_token,
                 "automated_tests",
                 title="Testes automatizados",
-                catalog_rows=catalog_with_status(),
+                catalog_rows=catalog_with_status(db),
                 last_report=report.to_dict() if report else None,
-                is_running=is_automated_test_run_in_progress(),
+                is_running=is_automated_test_run_in_progress(db),
+                history_rows=history_repo.history_rows_for_template(limit=30),
+                deploy_revision=deploy_revision,
+                format_app_datetime=format_app_datetime,
                 _repo=repo,
             ),
         )
@@ -16699,17 +16706,19 @@ def automated_tests_page(
 @router.get("/qualidade/testes-automatizados/status")
 def automated_tests_status_json(
     request: Request,
+    db: Session = Depends(get_db),
     user: User = Depends(get_current_user_web),
 ):
     denied = _require_super_admin(request, user)
     if denied:
         return denied
-    report = load_last_report()
+    report = load_last_report(db)
     return JSONResponse(
         {
-            "running": is_automated_test_run_in_progress(),
+            "running": is_automated_test_run_in_progress(db),
             "report": report.to_dict() if report else None,
-            "catalog": catalog_with_status(),
+            "catalog": catalog_with_status(db),
+            "deploy_revision": resolve_deploy_revision(),
         }
     )
 
@@ -16727,7 +16736,11 @@ def automated_tests_run(
     validate_csrf(request, csrf_token)
     normalized_suite = suite_id.strip()
     suite_ids = [normalized_suite] if normalized_suite else None
-    started = run_automated_tests_background(suite_ids=suite_ids, trigger="panel")
+    started = run_automated_tests_background(
+        suite_ids=suite_ids,
+        trigger="panel",
+        initiated_by_user_id=user.id,
+    )
     if not started:
         _flash(request, "error", "Já existe uma execução de testes em andamento.")
     else:
