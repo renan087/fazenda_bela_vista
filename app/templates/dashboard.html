@@ -1329,8 +1329,16 @@
                 const dayLabel = document.createElement('span');
                 dayLabel.textContent = String(cellDate.getDate());
                 content.appendChild(dayLabel);
+                const daySchedules = scheduleMap.get(iso) || [];
+                const dayMethods = new Set(daySchedules.map((item) => item.application_method || 'fertirrigacao'));
                 if (lateDateSet.has(iso)) {
                     button.classList.add('is-late-event');
+                } else if (dayMethods.has('fertilizacao_foliar')) {
+                    button.classList.add('is-foliar-event');
+                } else if (dayMethods.has('adubacao_solida')) {
+                    button.classList.add('is-solid-event');
+                } else if (dayMethods.has('fertirrigacao')) {
+                    button.classList.add('is-fertigation-event');
                 }
                 button.appendChild(content);
                 if (cellDate.getMonth() !== currentMonth.getMonth()) button.classList.add('is-outside');

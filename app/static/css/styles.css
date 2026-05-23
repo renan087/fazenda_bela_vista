@@ -1211,6 +1211,18 @@ body {
     background: rgb(217 119 6);
 }
 
+.dashboard-agenda-calendar .module-filter-calendar-day.is-fertigation-event::after {
+    background: rgb(2 132 199);
+}
+
+.dashboard-agenda-calendar .module-filter-calendar-day.is-foliar-event::after {
+    background: rgb(5 150 105);
+}
+
+.dashboard-agenda-calendar .module-filter-calendar-day.is-solid-event::after {
+    background: rgb(100 116 139);
+}
+
 .dashboard-agenda-calendar .module-filter-calendar-day-content {
     display: inline-flex;
     align-items: center;
