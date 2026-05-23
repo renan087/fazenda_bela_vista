@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import subprocess
 import sys
 import threading
@@ -129,7 +130,20 @@ def is_automated_test_run_in_progress() -> bool:
     return _IS_RUNNING
 
 
-def _parse_junit(path: Path, suite: AutomatedTestSuite) -> SuiteRunResult:
+def _pytest_runtime_ready() -> str | None:
+    """Retorna mensagem de erro se pytest ou arquivos de teste não estiverem disponíveis."""
+    try:
+        import pytest as _pytest  # noqa: F401
+    except ImportError:
+        return "pytest não está instalado no servidor (requirements.txt + redeploy)."
+    for suite in AUTOMATED_TEST_SUITES:
+        for relative in suite.pytest_paths:
+            if not (PROJECT_ROOT / relative).is_file():
+                return f"Arquivo de teste ausente no deploy: {relative}"
+    return None
+
+
+def _parse_junit(path: Path, suite: AutomatedTestSuite, *, subprocess_hint: str = "") -> SuiteRunResult:
     result = SuiteRunResult(
         suite_id=suite.id,
         name=suite.name,
@@ -139,7 +153,8 @@ def _parse_junit(path: Path, suite: AutomatedTestSuite) -> SuiteRunResult:
     if not path.is_file():
         result.status = "error"
         result.errors = 1
-        result.failures.append(SuiteTestFailure(test_id="junit", message="Arquivo JUnit não gerado."))
+        hint = (subprocess_hint or "").strip() or "Arquivo JUnit não gerado."
+        result.failures.append(SuiteTestFailure(test_id="pytest", message=hint[:500]))
         return result
 
     try:
@@ -182,11 +197,24 @@ def _parse_junit(path: Path, suite: AutomatedTestSuite) -> SuiteRunResult:
 
 
 def _run_pytest_for_suite(suite: AutomatedTestSuite) -> SuiteRunResult:
-    junit_path = _state_file_path().parent / f"pytest_{suite.id}.xml"
-    junit_path.parent.mkdir(parents=True, exist_ok=True)
+    runtime_error = _pytest_runtime_ready()
+    if runtime_error:
+        return SuiteRunResult(
+            suite_id=suite.id,
+            name=suite.name,
+            domain=suite.domain,
+            status="error",
+            errors=1,
+            failures=[SuiteTestFailure(test_id="pytest", message=runtime_error)],
+        )
+
+    cache_dir = _state_file_path().parent
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    junit_path = cache_dir / f"pytest_{suite.id}.xml"
     if junit_path.is_file():
         junit_path.unlink()
 
+    junit_arg = junit_path.resolve().as_posix()
     command = [
         sys.executable,
         "-m",
@@ -194,31 +222,37 @@ def _run_pytest_for_suite(suite: AutomatedTestSuite) -> SuiteRunResult:
         *suite.pytest_paths,
         "-q",
         "--tb=short",
-        f"--junitxml={junit_path}",
+        f"--rootdir={PROJECT_ROOT.resolve().as_posix()}",
+        f"--junitxml={junit_arg}",
     ]
-    if suite.marker:
-        command.extend(["-m", suite.marker])
+
+    env = os.environ.copy()
+    env["PYTHONPATH"] = str(PROJECT_ROOT.resolve())
+    env.setdefault("PYTHONUNBUFFERED", "1")
 
     completed = subprocess.run(
         command,
-        cwd=str(PROJECT_ROOT),
+        cwd=str(PROJECT_ROOT.resolve()),
         capture_output=True,
         text=True,
         timeout=120,
         check=False,
+        env=env,
     )
-    parsed = _parse_junit(junit_path, suite)
-    output_tail = (completed.stdout or "") + ("\n" + completed.stderr if completed.stderr else "")
-    parsed.output_tail = output_tail.strip()[-4000:]
+    output_tail = ((completed.stdout or "") + ("\n" + completed.stderr if completed.stderr else "")).strip()
+    hint = output_tail[-500:] if output_tail else f"pytest encerrou com código {completed.returncode}"
+    parsed = _parse_junit(junit_path, suite, subprocess_hint=hint)
+    parsed.output_tail = output_tail[-4000:]
     if completed.returncode not in (0, 1) and parsed.status == "passed":
         parsed.status = "error"
         parsed.errors = max(parsed.errors, 1)
-        parsed.failures.append(
-            SuiteTestFailure(
-                test_id="pytest",
-                message=f"pytest encerrou com código {completed.returncode}",
+        if not any(failure.test_id == "pytest" for failure in parsed.failures):
+            parsed.failures.append(
+                SuiteTestFailure(
+                    test_id="pytest",
+                    message=f"pytest encerrou com código {completed.returncode}: {hint[:200]}",
+                )
             )
-        )
     return parsed
 
 
