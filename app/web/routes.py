@@ -107,6 +107,7 @@ from app.services.backup_service import (
     execute_backup,
     expire_stale_running_backup_runs,
     get_or_create_backup_automation_setting,
+    get_supabase_backup_storage_usage,
     process_backup_run_in_background,
     update_backup_automation_setting,
     update_backup_storage_limit_setting,
@@ -1164,9 +1165,9 @@ def _format_storage_bytes(value: int | float | None) -> str:
     return f"{size:.{precision}f} {units[unit_index]}"
 
 
-def _build_backup_storage_usage(repo: FarmRepository) -> dict[str, object]:
+def _build_backup_storage_usage(repo: FarmRepository, live_usage: dict[str, int] | None = None) -> dict[str, object]:
     setting = repo.get_backup_automation_setting()
-    summary = repo.summarize_backup_storage_usage()
+    summary = live_usage or repo.summarize_backup_storage_usage()
     database_bytes = int(summary.get("database_bytes", 0) or 0)
     files_bytes = int(summary.get("files_bytes", 0) or 0)
     total_bytes = database_bytes + files_bytes
@@ -1193,6 +1194,7 @@ def _build_backup_storage_usage(repo: FarmRepository) -> dict[str, object]:
         "total_label": _format_storage_bytes(total_bytes),
         "remaining_label": _format_storage_bytes(remaining_bytes),
         "tone": tone,
+        "is_live": live_usage is not None,
     }
 
 
@@ -9378,7 +9380,11 @@ def backups_page(
         }
         for item in repo.list_backup_runs(limit=per_page, offset=offset)
     ]
-    storage_usage = _build_backup_storage_usage(repo)
+    try:
+        storage_usage = _build_backup_storage_usage(repo, get_supabase_backup_storage_usage())
+    except Exception:
+        logger.warning("Nao foi possivel consultar o uso real de backups no Supabase.", exc_info=True)
+        storage_usage = _build_backup_storage_usage(repo)
     automation = _build_backup_automation_context(repo, db)
     return templates.TemplateResponse(
         "backups.html",
@@ -9482,18 +9488,6 @@ def execute_backup_action(
     if denied:
         return denied
     validate_csrf(request, csrf_token)
-    storage_usage = _build_backup_storage_usage(_repository(db))
-    if storage_usage["is_over_limit"]:
-        _flash(
-            request,
-            "error",
-            (
-                "O limite estimado de armazenamento para backups no Supabase foi atingido "
-                f"({storage_usage['total_label']} de {storage_usage['limit_label']}). "
-                "Exclua backups antigos antes de tentar novamente."
-            ),
-        )
-        return _redirect("/backups")
     try:
         run = execute_backup(db, initiated_by=user, trigger_source="web_manual")
     except Exception as exc:
@@ -9526,18 +9520,6 @@ def start_backup_action(
         if denied:
             return denied
         validate_csrf(request, csrf_token)
-        storage_usage = _build_backup_storage_usage(_repository(db))
-        if storage_usage["is_over_limit"]:
-            return JSONResponse(
-                {
-                    "ok": False,
-                    "error": (
-                        "O limite estimado de armazenamento para backups no Supabase foi atingido. "
-                        "Exclua backups antigos antes de tentar novamente."
-                    ),
-                },
-                status_code=409,
-            )
         expire_stale_running_backup_runs(db)
         running = db.query(BackupRun).filter(BackupRun.status == "running").order_by(BackupRun.started_at.desc()).first()
         if running:

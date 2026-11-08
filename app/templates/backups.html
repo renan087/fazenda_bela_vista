@@ -125,7 +125,7 @@
         <div class="mt-3 rounded-[1.25rem] border border-slate-200 bg-white px-4 py-4">
             <div class="flex flex-wrap items-start justify-between gap-3">
                 <div>
-                    <p class="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">Uso estimado do storage</p>
+                    <p class="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">{% if backup_storage_usage.is_live %}Uso confirmado no Supabase{% else %}Uso estimado do storage{% endif %}</p>
                     <p class="mt-2 text-sm text-slate-500">
                         {{ backup_storage_usage.total_label }} usados de {{ backup_storage_usage.limit_label }}
                         {% if backup_storage_usage.is_over_limit %}
@@ -173,7 +173,7 @@
                     aria-valuemin="0"
                     aria-valuemax="100"
                     aria-valuenow="{{ backup_storage_usage.usage_percent }}"
-                    aria-label="Uso estimado do storage de backup no Supabase"
+                    aria-label="Uso do storage de backup no Supabase"
                 ></div>
             </div>
             <div class="mt-4 grid gap-3 sm:grid-cols-3">
@@ -191,7 +191,11 @@
                 </div>
             </div>
             <p class="mt-3 text-xs leading-5 text-slate-400">
-                A barra considera o tamanho acumulado dos backups atualmente registrados no sistema e enviados aos buckets configurados.
+                {% if backup_storage_usage.is_live %}
+                Uso calculado pelos objetos atuais dos diretórios de backup no Supabase. O sistema mantém uma reserva de 10% antes de enviar o próximo backup.
+                {% else %}
+                Não foi possível consultar o Supabase agora. A barra usa o histórico local e será confirmada na próxima execução de backup.
+                {% endif %}
             </p>
         </div>
         <div class="mt-4 rounded-[1.25rem] border border-slate-200 bg-slate-50/80 px-4 py-4">

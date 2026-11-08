@@ -38,6 +38,7 @@ AUTOMATION_TRIGGER_SOURCE = "automatic"
 AUTOMATION_DEFAULT_SCHEDULE_HOUR = 3
 AUTOMATION_DEFAULT_SCHEDULE_MINUTE = 0
 AUTOMATION_DEFAULT_STORAGE_LIMIT_GB = 1
+BACKUP_STORAGE_SAFE_USAGE_RATIO = 0.90
 PG_DUMP_TIMEOUT_SECONDS = 300
 BACKUP_UPLOAD_TIMEOUT_SECONDS = 600.0
 STALE_RUNNING_BACKUP_TTL = timedelta(minutes=10)
@@ -104,29 +105,49 @@ def execute_backup_run(db: Session, run_id: int) -> BackupRun:
     started_at = _utc_now()
     db_result: dict | None = None
     files_result: dict | None = None
+    prepared_database: dict | None = None
+    prepared_files: dict | None = None
+    storage_preflight: dict | None = None
     errors: list[str] = []
 
     try:
         _validate_storage_configuration()
         _update_backup_progress(db, run.id, stage="database_preparing")
-        db_result = _backup_database_dump(
-            started_at,
-            on_upload_start=lambda: _update_backup_progress(db, run.id, stage="database_uploading"),
-        )
+        prepared_database = _backup_database_dump(started_at, upload=False)
     except Exception as exc:
-        logger.exception("Falha ao gerar ou enviar backup do banco.")
+        logger.exception("Falha ao gerar backup do banco.")
         errors.append(f"Banco: {exc}")
 
     try:
         _validate_storage_configuration()
         _update_backup_progress(db, run.id, stage="files_preparing")
-        files_result = _backup_files_archive(
-            started_at,
-            on_upload_start=lambda: _update_backup_progress(db, run.id, stage="files_uploading"),
-        )
+        prepared_files = _backup_files_archive(started_at, upload=False)
     except Exception as exc:
-        logger.exception("Falha ao gerar ou enviar backup de arquivos.")
+        logger.exception("Falha ao gerar backup de arquivos.")
         errors.append(f"Arquivos: {exc}")
+
+    try:
+        prepared_size = sum(
+            int(item.get("size_bytes", 0) or 0)
+            for item in (prepared_database, prepared_files)
+            if item
+        )
+        if prepared_size:
+            storage_preflight = _ensure_backup_storage_capacity(db, required_bytes=prepared_size)
+        if prepared_database:
+            _update_backup_progress(db, run.id, stage="database_uploading")
+            _upload_prepared_backup(prepared_database)
+            db_result = prepared_database
+        if prepared_files:
+            _update_backup_progress(db, run.id, stage="files_uploading")
+            _upload_prepared_backup(prepared_files)
+            files_result = prepared_files
+    except Exception as exc:
+        logger.exception("Falha na validacao de espaco ou envio ao Supabase.")
+        errors.append(f"Storage: {exc}")
+    finally:
+        for prepared in (prepared_database, prepared_files):
+            _cleanup_prepared_backup(prepared)
 
     success_count = int(db_result is not None) + int(files_result is not None)
     run.status = "success" if success_count == 2 else "partial" if success_count == 1 else "failed"
@@ -140,6 +161,7 @@ def execute_backup_run(db: Session, run_id: int) -> BackupRun:
         {
             "database": db_result["details"] if db_result else None,
             "files": files_result["details"] if files_result else None,
+            "storage_preflight": storage_preflight,
         },
         ensure_ascii=False,
     )
@@ -344,28 +366,7 @@ def execute_due_automatic_backup(db: Session) -> BackupRun | None:
 
 
 def execute_automatic_backup_cycle(db: Session) -> BackupRun:
-    repo = FarmRepository(db)
-    if _is_storage_limit_reached(db):
-        oldest = repo.get_oldest_active_backup_run()
-        if oldest:
-            mark_backup_run_storage_deleted(
-                db,
-                oldest,
-                reason="storage_limit",
-                source=AUTOMATION_TRIGGER_SOURCE,
-            )
-
     run = execute_backup(db, initiated_by=None, trigger_source=AUTOMATION_TRIGGER_SOURCE)
-    if _run_failed_due_to_storage_limit(run):
-        oldest = repo.get_oldest_active_backup_run()
-        if oldest:
-            mark_backup_run_storage_deleted(
-                db,
-                oldest,
-                reason="storage_limit",
-                source=AUTOMATION_TRIGGER_SOURCE,
-            )
-            run = execute_backup(db, initiated_by=None, trigger_source=AUTOMATION_TRIGGER_SOURCE)
     return run
 
 
@@ -647,7 +648,7 @@ def _validate_storage_configuration() -> None:
         raise RuntimeError("SUPABASE_BUCKET_FILES nao configurado.")
 
 
-def _backup_database_dump(started_at: datetime, on_upload_start=None) -> dict:
+def _backup_database_dump(started_at: datetime, on_upload_start=None, *, upload: bool = True) -> dict:
     timestamp = started_at.strftime("%Y%m%dT%H%M%SZ")
     with tempfile.NamedTemporaryFile(prefix="backup_db_", suffix=".sql", delete=False) as temp_file:
         sql_path = Path(temp_file.name)
@@ -676,23 +677,24 @@ def _backup_database_dump(started_at: datetime, on_upload_start=None) -> dict:
         )
         with sql_path.open("rb") as source, gzip.open(gzip_path, "wb") as target:
             shutil.copyfileobj(source, target)
-        if callable(on_upload_start):
-            on_upload_start()
-        _upload_file_to_supabase(
-            bucket=settings.supabase_bucket_db,
-            object_path=object_path,
-            file_path=gzip_path,
-            content_type="application/gzip",
-        )
-        return {
+        result = {
             "object_path": object_path,
             "size_bytes": gzip_path.stat().st_size,
+            "bucket": settings.supabase_bucket_db,
+            "content_type": "application/gzip",
             "details": {
                 "timestamp": timestamp,
                 "format": "sql.gz",
                 "database_url_mode": "pg_dump",
             },
         }
+        if upload:
+            if callable(on_upload_start):
+                on_upload_start()
+            _upload_prepared_backup({**result, "local_path": gzip_path})
+        else:
+            result["local_path"] = gzip_path
+        return result
     except FileNotFoundError as exc:
         raise RuntimeError(
             "Comando pg_dump nao encontrado no ambiente. "
@@ -708,10 +710,11 @@ def _backup_database_dump(started_at: datetime, on_upload_start=None) -> dict:
         raise RuntimeError(stderr or "pg_dump retornou erro ao gerar o dump do banco.") from exc
     finally:
         sql_path.unlink(missing_ok=True)
-        gzip_path.unlink(missing_ok=True)
+        if upload:
+            gzip_path.unlink(missing_ok=True)
 
 
-def _backup_files_archive(started_at: datetime, on_upload_start=None) -> dict:
+def _backup_files_archive(started_at: datetime, on_upload_start=None, *, upload: bool = True) -> dict:
     timestamp = started_at.strftime("%Y%m%dT%H%M%SZ")
     with tempfile.NamedTemporaryFile(prefix="backup_files_", suffix=".zip", delete=False) as temp_file:
         archive_path = Path(temp_file.name)
@@ -743,21 +746,158 @@ def _backup_files_archive(started_at: datetime, on_upload_start=None) -> dict:
                 details["notes"].append("O bucket de arquivos fica preparado para futuros diretorios locais ou migracao de storage.")
             archive.writestr("manifest.json", json.dumps(details, ensure_ascii=False, indent=2))
 
-        if callable(on_upload_start):
-            on_upload_start()
-        _upload_file_to_supabase(
-            bucket=settings.supabase_bucket_files,
-            object_path=object_path,
-            file_path=archive_path,
-            content_type="application/zip",
-        )
-        return {
+        result = {
             "object_path": object_path,
             "size_bytes": archive_path.stat().st_size,
+            "bucket": settings.supabase_bucket_files,
+            "content_type": "application/zip",
             "details": details,
         }
+        if upload:
+            if callable(on_upload_start):
+                on_upload_start()
+            _upload_prepared_backup({**result, "local_path": archive_path})
+        else:
+            result["local_path"] = archive_path
+        return result
     finally:
-        archive_path.unlink(missing_ok=True)
+        if upload:
+            archive_path.unlink(missing_ok=True)
+
+
+def _upload_prepared_backup(prepared: dict) -> None:
+    local_path = prepared.get("local_path")
+    if not isinstance(local_path, Path):
+        raise RuntimeError("Arquivo local do backup nao foi preparado corretamente.")
+    _upload_file_to_supabase(
+        bucket=str(prepared["bucket"]),
+        object_path=str(prepared["object_path"]),
+        file_path=local_path,
+        content_type=str(prepared["content_type"]),
+    )
+
+
+def _cleanup_prepared_backup(prepared: dict | None) -> None:
+    if not prepared:
+        return
+    local_path = prepared.get("local_path")
+    if isinstance(local_path, Path):
+        local_path.unlink(missing_ok=True)
+
+
+def get_supabase_backup_storage_usage() -> dict[str, int]:
+    """Retorna o uso real dos objetos de backup armazenados no Supabase."""
+    _validate_storage_configuration()
+    database_bytes = sum(item["size_bytes"] for item in _list_supabase_objects(settings.supabase_bucket_db, "database"))
+    files_bytes = sum(item["size_bytes"] for item in _list_supabase_objects(settings.supabase_bucket_files, "files"))
+    return {"database_bytes": database_bytes, "files_bytes": files_bytes}
+
+
+def _list_supabase_objects(bucket: str, prefix: str) -> list[dict[str, object]]:
+    list_url = f"{settings.supabase_url.rstrip('/')}/storage/v1/object/list/{quote(bucket, safe='')}"
+    headers = {
+        "Authorization": f"Bearer {settings.supabase_service_role_key}",
+        "apikey": settings.supabase_service_role_key or "",
+        "Content-Type": "application/json",
+    }
+    timeout = httpx.Timeout(30.0, connect=15.0)
+    objects: list[dict[str, object]] = []
+
+    def visit(client: httpx.Client, current_prefix: str) -> None:
+        offset = 0
+        while True:
+            response = client.post(
+                list_url,
+                headers=headers,
+                json={
+                    "prefix": current_prefix,
+                    "limit": 1000,
+                    "offset": offset,
+                    "sortBy": {"column": "name", "order": "asc"},
+                },
+            )
+            if response.status_code != 200:
+                detail = (response.text or "")[:800].strip()
+                raise RuntimeError(detail or f"Supabase Storage retornou status {response.status_code} ao consultar o uso.")
+            entries = response.json()
+            if not isinstance(entries, list):
+                raise RuntimeError("Resposta invalida ao consultar objetos de backup no Supabase.")
+            for entry in entries:
+                if not isinstance(entry, dict):
+                    continue
+                name = str(entry.get("name") or "").strip()
+                if not name:
+                    continue
+                object_path = f"{current_prefix.rstrip('/')}/{name}" if current_prefix else name
+                if entry.get("id"):
+                    metadata = entry.get("metadata") if isinstance(entry.get("metadata"), dict) else {}
+                    try:
+                        size_bytes = int(metadata.get("size") or 0)
+                    except (TypeError, ValueError):
+                        size_bytes = 0
+                    objects.append({"path": object_path, "size_bytes": max(size_bytes, 0)})
+                else:
+                    visit(client, object_path)
+            if len(entries) < 1000:
+                break
+            offset += len(entries)
+
+    try:
+        with httpx.Client(timeout=timeout) as client:
+            visit(client, prefix)
+    except httpx.RequestError as exc:
+        raise RuntimeError(f"Falha de rede ao consultar o uso do Supabase: {exc}") from exc
+    return objects
+
+
+def _ensure_backup_storage_capacity(db: Session, *, required_bytes: int) -> dict[str, object]:
+    setting = get_or_create_backup_automation_setting(db)
+    limit_bytes = _normalize_storage_limit_gb(getattr(setting, "storage_limit_gb", AUTOMATION_DEFAULT_STORAGE_LIMIT_GB)) * 1024 * 1024 * 1024
+    safe_limit_bytes = int(limit_bytes * BACKUP_STORAGE_SAFE_USAGE_RATIO)
+    usage = get_supabase_backup_storage_usage()
+    current_bytes = int(usage["database_bytes"]) + int(usage["files_bytes"])
+    used_before_cleanup_bytes = current_bytes
+    deleted_run_ids: list[int] = []
+
+    if current_bytes + required_bytes > safe_limit_bytes:
+        active_runs = (
+            db.query(BackupRun)
+            .filter(BackupRun.deleted_from_storage_at.is_(None))
+            .filter(BackupRun.status.in_(("success", "partial")))
+            .filter((BackupRun.database_object_path.is_not(None)) | (BackupRun.files_object_path.is_not(None)))
+            .order_by(BackupRun.started_at.asc(), BackupRun.id.asc())
+            .all()
+        )
+        latest_success = next((item for item in reversed(active_runs) if item.status == "success"), None)
+        protected_id = latest_success.id if latest_success else None
+        for candidate in active_runs:
+            if candidate.id == protected_id:
+                continue
+            mark_backup_run_storage_deleted(
+                db,
+                candidate,
+                reason="storage_safe_limit",
+                source="automatic_cleanup",
+            )
+            deleted_run_ids.append(candidate.id)
+            usage = get_supabase_backup_storage_usage()
+            current_bytes = int(usage["database_bytes"]) + int(usage["files_bytes"])
+            if current_bytes + required_bytes <= safe_limit_bytes:
+                break
+
+    if current_bytes + required_bytes > safe_limit_bytes:
+        raise RuntimeError(
+            "Nao ha espaco seguro no Supabase para este backup sem remover o backup mais recente. "
+            "Aumente o limite ou exclua backups manualmente."
+        )
+    return {
+        "source": "supabase_storage",
+        "used_before_bytes": used_before_cleanup_bytes,
+        "used_after_cleanup_bytes": current_bytes,
+        "next_backup_bytes": required_bytes,
+        "safe_limit_bytes": safe_limit_bytes,
+        "deleted_run_ids": deleted_run_ids,
+    }
 
 
 def _existing_local_directories() -> list[Path]:
