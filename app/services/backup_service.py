@@ -864,18 +864,16 @@ def get_supabase_storage_plan_quota() -> dict[str, object]:
     timeout = httpx.Timeout(20.0, connect=10.0)
     try:
         with httpx.Client(timeout=timeout) as client:
-            organizations = _management_get(client, "/v1/organizations")
-            if not isinstance(organizations, list) or not organizations:
-                raise RuntimeError("A Management API nao retornou uma organizacao do Supabase.")
             requested_slug = (settings.supabase_organization_slug or "").strip()
-            organization = next(
-                (item for item in organizations if isinstance(item, dict) and item.get("slug") == requested_slug),
-                None,
-            ) if requested_slug else None
-            organization = organization or next((item for item in organizations if isinstance(item, dict)), None)
-            if not isinstance(organization, dict) or not organization.get("slug"):
-                raise RuntimeError("Nao foi possivel identificar a organizacao do Supabase.")
-            slug = str(organization["slug"])
+            if not requested_slug:
+                organizations = _management_get(client, "/v1/organizations")
+                if not isinstance(organizations, list) or not organizations:
+                    raise RuntimeError("A Management API nao retornou uma organizacao do Supabase.")
+                organization = next((item for item in organizations if isinstance(item, dict)), None)
+                if not isinstance(organization, dict) or not organization.get("slug"):
+                    raise RuntimeError("Nao foi possivel identificar a organizacao do Supabase.")
+                requested_slug = str(organization["slug"])
+            slug = requested_slug
             organization_detail = _management_get(client, f"/v1/organizations/{quote(slug, safe='')}")
     except httpx.RequestError as exc:
         raise RuntimeError(f"Falha de rede ao consultar o plano do Supabase: {exc}") from exc
