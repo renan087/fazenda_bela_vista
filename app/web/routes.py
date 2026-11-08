@@ -3265,17 +3265,73 @@ def _soil_payload(
     return payload
 
 
+AGRONOMIC_PROFILE_COMPLETION_WEIGHTS = (
+    ("culture", "cultura", 8),
+    ("region", "região", 7),
+    ("cultivar", "cultivar predominante", 8),
+    ("production_system", "sistema de produção", 6),
+    ("climate", "clima", 5),
+    ("soil_type", "tipo de solo", 10),
+    ("irrigation_system", "sistema de irrigação", 10),
+    ("plant_spacing", "espaçamento entre plantas", 4),
+    ("crop_stage", "fase atual da lavoura", 10),
+    ("fertilizers_used", "insumos já utilizados", 8),
+    ("common_pests", "pragas e doenças recorrentes", 6),
+    ("target_productivity_sacks_per_ha", "meta de produtividade", 7),
+    ("last_liming_date", "última calagem", 4),
+    ("current_limitations", "limitações atuais", 7),
+)
+AGRONOMIC_PROFILE_AI_MIN_COMPLETION = 70
+
+
+def _agronomic_profile_completion(profile: AgronomicProfile | None) -> tuple[int, list[str]]:
+    if not profile:
+        return 0, ["cadastre o Perfil Agronômico da fazenda"]
+    total_weight = sum(weight for _, _, weight in AGRONOMIC_PROFILE_COMPLETION_WEIGHTS)
+    completed_weight = sum(
+        weight
+        for field, _, weight in AGRONOMIC_PROFILE_COMPLETION_WEIGHTS
+        if getattr(profile, field, None)
+    )
+    missing = [
+        label
+        for field, label, _ in AGRONOMIC_PROFILE_COMPLETION_WEIGHTS
+        if not getattr(profile, field, None)
+    ]
+    return round(completed_weight * 100 / total_weight), missing
+
+
 def _apply_soil_ai_recommendation(repo: FarmRepository, analysis: SoilAnalysis) -> SoilAnalysis:
     refreshed = repo.get_soil_analysis(analysis.id) or analysis
+    profile = refreshed.farm.agronomic_profile if refreshed.farm else None
+    completion, missing_fields = _agronomic_profile_completion(profile)
+    if completion < AGRONOMIC_PROFILE_AI_MIN_COMPLETION:
+        priority_fields = ", ".join(missing_fields[:3])
+        message = (
+            f"A recomendação por IA requer um Perfil Agronômico com pelo menos "
+            f"{AGRONOMIC_PROFILE_AI_MIN_COMPLETION}% de completude. Atual: {completion}%."
+        )
+        if priority_fields:
+            message += f" Complete: {priority_fields}."
+        return repo.update(
+            refreshed,
+            {
+                "ai_recommendation": None,
+                "ai_status": "profile_incomplete",
+                "ai_model": None,
+                "ai_error": message,
+                "ai_generated_at": None,
+            },
+        )
     ai_result = gerar_recomendacao_adubacao(refreshed)
     return repo.update(
         refreshed,
         {
-            "ai_recommendation": ai_result["recommendation"],
-            "ai_status": ai_result["status"],
-            "ai_model": ai_result["model"],
-            "ai_error": ai_result["error"],
-            "ai_generated_at": ai_result["generated_at"],
+            "ai_recommendation": ai_result.get("recommendation"),
+            "ai_status": ai_result.get("status"),
+            "ai_model": ai_result.get("model"),
+            "ai_error": ai_result.get("error"),
+            "ai_generated_at": ai_result.get("generated_at"),
         },
     )
 
@@ -16199,16 +16255,7 @@ def agronomic_profiles_page(
     active_farm_id = scope["active_farm_id"]
     selected_farm = scope["active_farm"]
     active_profile = repo.get_agronomic_profile_by_farm(active_farm_id) if active_farm_id else None
-    profile_completion_fields = (
-        "culture", "region", "cultivar", "production_system", "climate", "soil_type",
-        "irrigation_system", "plant_spacing", "crop_stage", "fertilizers_used",
-        "common_pests", "target_productivity_sacks_per_ha", "current_limitations",
-    )
-    profile_completion = (
-        round(sum(bool(getattr(active_profile, field, None)) for field in profile_completion_fields) * 100 / len(profile_completion_fields))
-        if active_profile
-        else 0
-    )
+    profile_completion, _ = _agronomic_profile_completion(active_profile)
     auto_open_profile_modal = bool(
         edit_farm_id is not None and active_farm_id is not None and edit_farm_id == active_farm_id
     )
@@ -16347,6 +16394,9 @@ def soil_analysis_page(
     allowed_farm_ids = {farm.id for farm in scope["context_farms"]}
     requested_farm_id = farm_id if farm_id in allowed_farm_ids else None
     effective_farm_id = requested_farm_id or scope["active_farm_id"]
+    active_profile = repo.get_agronomic_profile_by_farm(effective_farm_id) if effective_farm_id else None
+    profile_completion, missing_profile_fields = _agronomic_profile_completion(active_profile)
+    ai_generation_available = profile_completion >= AGRONOMIC_PROFILE_AI_MIN_COMPLETION
     # Análises de solo são histórico técnico do setor, não eventos da safra ativa.
     # Restringimos à fazenda/organização em contexto, mas não ocultamos coletas feitas
     # fora do período da safra ou em setores com outra variedade.
@@ -16392,6 +16442,9 @@ def soil_analysis_page(
             analyses_pagination=analyses_pagination,
             edit_analysis=repo.get_soil_analysis(edit_id) if edit_id else None,
             generated_recommendation_id=recommendation_id,
+            ai_generation_available=ai_generation_available,
+            profile_completion=profile_completion,
+            missing_profile_fields=missing_profile_fields,
             filters={"farm_id": effective_farm_id, "plot_id": effective_plot_id, "compare_plot_id": compare_target},
             compare_chart=_soil_history_chart(compare_analyses),
             compare_analyses=compare_analyses,
@@ -16455,6 +16508,8 @@ def create_soil_analysis_action(
     analysis = _apply_soil_ai_recommendation(repo, analysis)
     if analysis.ai_status == "generated":
         _flash(request, "success", "Analise de solo salva e recomendacao da IA gerada com sucesso.")
+    elif analysis.ai_status == "profile_incomplete":
+        _flash(request, "success", "Analise de solo salva. Complete o Perfil Agronomico para liberar a recomendacao da IA.")
     elif analysis.ai_status == "skipped":
         _flash(request, "success", "Analise de solo salva. Configure a OPENAI_API_KEY para gerar recomendacoes personalizadas.")
     else:
@@ -16527,6 +16582,8 @@ def update_soil_analysis_action(
     updated = _apply_soil_ai_recommendation(repo, updated)
     if updated.ai_status == "generated":
         _flash(request, "success", "Analise de solo atualizada e recomendacao regenerada.")
+    elif updated.ai_status == "profile_incomplete":
+        _flash(request, "success", "Analise de solo atualizada. Complete o Perfil Agronomico para liberar a recomendacao da IA.")
     elif updated.ai_status == "skipped":
         _flash(request, "success", "Analise de solo atualizada. Configure a OPENAI_API_KEY para gerar recomendacoes personalizadas.")
     else:
@@ -16552,6 +16609,8 @@ def regenerate_soil_recommendation_action(
     updated = _apply_soil_ai_recommendation(repo, analysis)
     if updated.ai_status == "generated":
         _flash(request, "success", "Recomendacao agronomica regenerada com sucesso.")
+    elif updated.ai_status == "profile_incomplete":
+        _flash(request, "error", updated.ai_error or "Complete o Perfil Agronomico para gerar a recomendacao da IA.")
     elif updated.ai_status == "skipped":
         _flash(request, "error", "OPENAI_API_KEY nao configurada para gerar a recomendacao.")
     else:
