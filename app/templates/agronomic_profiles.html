@@ -21,6 +21,19 @@
         </div>
     </section>
 
+    <section class="rounded-[1.5rem] border border-brand-100 bg-brand-50/60 p-5 shadow-panel">
+        <div class="flex flex-wrap items-center justify-between gap-4">
+            <div>
+                <p class="text-xs font-semibold uppercase tracking-[0.28em] text-brand-700">Perfil técnico da fazenda ativa</p>
+                <p class="mt-2 text-sm text-slate-600">Quanto mais completo o contexto, mais precisas serão as análises e recomendações agronômicas da IA.</p>
+            </div>
+            <div class="min-w-[12rem]">
+                <div class="flex items-center justify-between gap-3 text-sm font-semibold text-slate-700"><span>Completude</span><span>{{ profile_completion }}%</span></div>
+                <div class="mt-2 h-2 overflow-hidden rounded-full bg-white"><div class="h-full rounded-full bg-brand-500" style="width: {{ profile_completion }}%"></div></div>
+            </div>
+        </div>
+    </section>
+
     <section class="stock-panel rounded-[2rem] bg-white p-6 shadow-panel" data-stock-fade-panel>
         <div class="flex flex-wrap items-start justify-between gap-4">
             <div class="min-w-0">
@@ -110,22 +123,62 @@
                     </div>
                 </div>
 
-                <div class="grid gap-4 md:grid-cols-2">
-                    <label><span class="mb-2 block text-sm font-medium">Cultura</span><input name="culture" value="{{ edit_profile.culture if edit_profile else 'Cafe arabica' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required></label>
-                    <label><span class="mb-2 block text-sm font-medium">Região</span><input name="region" value="{{ edit_profile.region if edit_profile else 'Bahia - Brasil' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required></label>
-                    <label><span class="mb-2 block text-sm font-medium">Clima</span><input name="climate" value="{{ edit_profile.climate if edit_profile else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50"></label>
-                    <label><span class="mb-2 block text-sm font-medium">Tipo de solo</span><input name="soil_type" value="{{ edit_profile.soil_type if edit_profile else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50"></label>
-                    <label><span class="mb-2 block text-sm font-medium">Sistema de irrigação</span><input name="irrigation_system" value="{{ edit_profile.irrigation_system if edit_profile else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50"></label>
-                    <label><span class="mb-2 block text-sm font-medium">Espaçamento entre plantas</span><input name="plant_spacing" value="{{ edit_profile.plant_spacing if edit_profile else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50"></label>
-                    <label><span class="mb-2 block text-sm font-medium">Espaçamento entre gotejos</span><input name="drip_spacing" value="{{ edit_profile.drip_spacing if edit_profile else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50 md:col-span-2"></label>
-                </div>
+                <section class="rounded-[1.5rem] border border-slate-200 p-4">
+                    <p class="text-xs font-semibold uppercase tracking-[0.28em] text-brand-700">1. Identificação produtiva</p>
+                    <div class="mt-4 grid gap-4 md:grid-cols-2">
+                        <label><span class="mb-2 block text-sm font-medium">Cultura</span><input name="culture" list="profile-cultures" value="{{ edit_profile.culture if edit_profile else 'Café arábica' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required></label>
+                        <label><span class="mb-2 block text-sm font-medium">Cultivar predominante</span><input name="cultivar" list="profile-cultivars" value="{{ edit_profile.cultivar if edit_profile else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" placeholder="Ex.: Catuaí 144"></label>
+                        <label><span class="mb-2 block text-sm font-medium">Região</span><input name="region" value="{{ edit_profile.region if edit_profile else 'Bahia - Brasil' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required></label>
+                        <label><span class="mb-2 block text-sm font-medium">Sistema de produção</span><input name="production_system" list="profile-production-systems" value="{{ edit_profile.production_system if edit_profile else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" placeholder="Selecione ou informe"></label>
+                    </div>
+                </section>
 
-                <div class="grid gap-4 md:grid-cols-3">
-                    <label><span class="mb-2 block text-sm font-medium">Fertilizantes utilizados</span><textarea name="fertilizers_used" rows="5" class="w-full rounded-2xl border-slate-200 bg-slate-50" placeholder="Um item por linha">{{ edit_profile.fertilizers_used if edit_profile else '' }}</textarea></label>
-                    <label><span class="mb-2 block text-sm font-medium">Fase da lavoura</span><textarea name="crop_stage" rows="5" class="w-full rounded-2xl border-slate-200 bg-slate-50" placeholder="Um item por linha">{{ edit_profile.crop_stage if edit_profile else '' }}</textarea></label>
-                    <label><span class="mb-2 block text-sm font-medium">Pragas comuns</span><textarea name="common_pests" rows="5" class="w-full rounded-2xl border-slate-200 bg-slate-50" placeholder="Um item por linha">{{ edit_profile.common_pests if edit_profile else '' }}</textarea></label>
-                </div>
+                <section class="rounded-[1.5rem] border border-slate-200 p-4">
+                    <p class="text-xs font-semibold uppercase tracking-[0.28em] text-brand-700">2. Ambiente e estrutura</p>
+                    <div class="mt-4 grid gap-4 md:grid-cols-2">
+                        <label><span class="mb-2 block text-sm font-medium">Clima predominante</span><input name="climate" list="profile-climates" value="{{ edit_profile.climate if edit_profile else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50"></label>
+                        <label><span class="mb-2 block text-sm font-medium">Tipo de solo</span><input name="soil_type" list="profile-soils" value="{{ edit_profile.soil_type if edit_profile else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50"></label>
+                        <label><span class="mb-2 block text-sm font-medium">Altitude média (m)</span><input type="number" min="0" name="altitude_meters" value="{{ edit_profile.altitude_meters if edit_profile and edit_profile.altitude_meters is not none else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50"></label>
+                        <label><span class="mb-2 block text-sm font-medium">Declividade</span><input name="terrain_slope" list="profile-slopes" value="{{ edit_profile.terrain_slope if edit_profile else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50"></label>
+                        <label><span class="mb-2 block text-sm font-medium">Exposição solar predominante</span><input name="sun_exposure" list="profile-sun-exposures" value="{{ edit_profile.sun_exposure if edit_profile else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50"></label>
+                    </div>
+                </section>
+
+                <section class="rounded-[1.5rem] border border-slate-200 p-4">
+                    <p class="text-xs font-semibold uppercase tracking-[0.28em] text-brand-700">3. Lavoura e metas</p>
+                    <div class="mt-4 grid gap-4 md:grid-cols-2">
+                        <label><span class="mb-2 block text-sm font-medium">Sistema de irrigação</span><input name="irrigation_system" list="profile-irrigation-systems" value="{{ edit_profile.irrigation_system if edit_profile else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50"></label>
+                        <label><span class="mb-2 block text-sm font-medium">Fase atual da lavoura</span><input name="crop_stage" list="profile-crop-stages" value="{{ edit_profile.crop_stage if edit_profile else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50"></label>
+                        <label><span class="mb-2 block text-sm font-medium">Espaçamento entre plantas</span><input name="plant_spacing" value="{{ edit_profile.plant_spacing if edit_profile else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" placeholder="Ex.: 0,60 m"></label>
+                        <label><span class="mb-2 block text-sm font-medium">Espaçamento entre gotejos</span><input name="drip_spacing" value="{{ edit_profile.drip_spacing if edit_profile else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" placeholder="Ex.: 0,50 m"></label>
+                        <label><span class="mb-2 block text-sm font-medium">Meta de produtividade (sc/ha)</span><input type="number" min="0" step="0.01" name="target_productivity_sacks_per_ha" value="{{ edit_profile.target_productivity_sacks_per_ha if edit_profile and edit_profile.target_productivity_sacks_per_ha is not none else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50"></label>
+                    </div>
+                </section>
+
+                <section class="rounded-[1.5rem] border border-slate-200 p-4">
+                    <p class="text-xs font-semibold uppercase tracking-[0.28em] text-brand-700">4. Manejo e pontos de atenção</p>
+                    <div class="mt-4 grid gap-4 md:grid-cols-3">
+                        <label><span class="mb-2 block text-sm font-medium">Última calagem</span><input type="date" name="last_liming_date" value="{{ edit_profile.last_liming_date.isoformat() if edit_profile and edit_profile.last_liming_date else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50"></label>
+                        <label><span class="mb-2 block text-sm font-medium">Última gessagem</span><input type="date" name="last_gypsum_date" value="{{ edit_profile.last_gypsum_date.isoformat() if edit_profile and edit_profile.last_gypsum_date else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50"></label>
+                        <label><span class="mb-2 block text-sm font-medium">Última matéria orgânica</span><input type="date" name="last_organic_matter_date" value="{{ edit_profile.last_organic_matter_date.isoformat() if edit_profile and edit_profile.last_organic_matter_date else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50"></label>
+                    </div>
+                    <div class="mt-4 grid gap-4 md:grid-cols-2">
+                        <label><span class="mb-2 block text-sm font-medium">Fertilizantes e insumos já utilizados</span><textarea name="fertilizers_used" rows="4" class="w-full rounded-2xl border-slate-200 bg-slate-50" placeholder="Um item por linha">{{ edit_profile.fertilizers_used if edit_profile else '' }}</textarea></label>
+                        <label><span class="mb-2 block text-sm font-medium">Histórico de podas</span><textarea name="pruning_history" rows="4" class="w-full rounded-2xl border-slate-200 bg-slate-50" placeholder="Ex.: esqueletamento em 2025, decote previsto">{{ edit_profile.pruning_history if edit_profile else '' }}</textarea></label>
+                        <label><span class="mb-2 block text-sm font-medium">Pragas e doenças recorrentes</span><textarea name="common_pests" rows="4" class="w-full rounded-2xl border-slate-200 bg-slate-50" placeholder="Um item por linha">{{ edit_profile.common_pests if edit_profile else '' }}</textarea></label>
+                        <label><span class="mb-2 block text-sm font-medium">Limitações atuais da lavoura</span><textarea name="current_limitations" rows="4" class="w-full rounded-2xl border-slate-200 bg-slate-50" placeholder="Ex.: estresse hídrico, solo compactado, falhas no estande">{{ edit_profile.current_limitations if edit_profile else '' }}</textarea></label>
+                    </div>
+                </section>
             </form>
+            <datalist id="profile-cultures"><option value="Café arábica"><option value="Café conilon/robusta"></datalist>
+            <datalist id="profile-cultivars"><option value="Catuaí 144"><option value="Mundo Novo"><option value="Arara"><option value="Catucaí"><option value="Bourbon"><option value="Conilon Vitória"></datalist>
+            <datalist id="profile-production-systems"><option value="Convencional"><option value="Orgânico"><option value="Regenerativo"><option value="Irrigado"><option value="Sequeiro"></datalist>
+            <datalist id="profile-climates"><option value="Tropical de altitude"><option value="Tropical semiárido"><option value="Tropical úmido"><option value="Subtropical"></datalist>
+            <datalist id="profile-soils"><option value="Argiloso"><option value="Arenoso"><option value="Franco-argiloso"><option value="Latossolo"><option value="Cambissolo"></datalist>
+            <datalist id="profile-slopes"><option value="Plano"><option value="Suave ondulado"><option value="Ondulado"><option value="Forte ondulado"></datalist>
+            <datalist id="profile-sun-exposures"><option value="Pleno sol"><option value="Meia sombra"><option value="Face norte"><option value="Face sul"><option value="Face leste"><option value="Face oeste"></datalist>
+            <datalist id="profile-irrigation-systems"><option value="Gotejamento"><option value="Microaspersão"><option value="Pivô central"><option value="Sequeiro"></datalist>
+            <datalist id="profile-crop-stages"><option value="Implantação"><option value="Formação"><option value="Produção"><option value="Pós-colheita"><option value="Renovação / recepa"></datalist>
             {% if edit_farm and edit_profile %}
             <form method="post" action="/perfil-agronomico/{{ edit_farm.id }}/excluir" class="mt-4" onsubmit="return confirm('Remover o perfil agronômico desta fazenda?');">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token }}">

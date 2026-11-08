@@ -1896,6 +1896,17 @@ def create_agronomic_profile(repository: FarmRepository, form: dict) -> Agronomi
             fertilizers_used=form.get("fertilizers_used"),
             crop_stage=form.get("crop_stage"),
             common_pests=form.get("common_pests"),
+            cultivar=form.get("cultivar"),
+            production_system=form.get("production_system"),
+            altitude_meters=form.get("altitude_meters"),
+            terrain_slope=form.get("terrain_slope"),
+            sun_exposure=form.get("sun_exposure"),
+            target_productivity_sacks_per_ha=form.get("target_productivity_sacks_per_ha"),
+            last_liming_date=form.get("last_liming_date"),
+            last_gypsum_date=form.get("last_gypsum_date"),
+            last_organic_matter_date=form.get("last_organic_matter_date"),
+            pruning_history=form.get("pruning_history"),
+            current_limitations=form.get("current_limitations"),
         )
     )
 
@@ -1915,6 +1926,17 @@ def update_agronomic_profile(repository: FarmRepository, profile: AgronomicProfi
             "fertilizers_used": form.get("fertilizers_used"),
             "crop_stage": form.get("crop_stage"),
             "common_pests": form.get("common_pests"),
+            "cultivar": form.get("cultivar"),
+            "production_system": form.get("production_system"),
+            "altitude_meters": form.get("altitude_meters"),
+            "terrain_slope": form.get("terrain_slope"),
+            "sun_exposure": form.get("sun_exposure"),
+            "target_productivity_sacks_per_ha": form.get("target_productivity_sacks_per_ha"),
+            "last_liming_date": form.get("last_liming_date"),
+            "last_gypsum_date": form.get("last_gypsum_date"),
+            "last_organic_matter_date": form.get("last_organic_matter_date"),
+            "pruning_history": form.get("pruning_history"),
+            "current_limitations": form.get("current_limitations"),
         },
     )
 

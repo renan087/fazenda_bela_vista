@@ -16198,6 +16198,17 @@ def agronomic_profiles_page(
     scope = _global_scope_context(request, repo)
     active_farm_id = scope["active_farm_id"]
     selected_farm = scope["active_farm"]
+    active_profile = repo.get_agronomic_profile_by_farm(active_farm_id) if active_farm_id else None
+    profile_completion_fields = (
+        "culture", "region", "cultivar", "production_system", "climate", "soil_type",
+        "irrigation_system", "plant_spacing", "crop_stage", "fertilizers_used",
+        "common_pests", "target_productivity_sacks_per_ha", "current_limitations",
+    )
+    profile_completion = (
+        round(sum(bool(getattr(active_profile, field, None)) for field in profile_completion_fields) * 100 / len(profile_completion_fields))
+        if active_profile
+        else 0
+    )
     auto_open_profile_modal = bool(
         edit_farm_id is not None and active_farm_id is not None and edit_farm_id == active_farm_id
     )
@@ -16217,7 +16228,8 @@ def agronomic_profiles_page(
                 if not active_farm_id or profile.farm_id == active_farm_id
             ],
             edit_farm=selected_farm,
-            edit_profile=repo.get_agronomic_profile_by_farm(active_farm_id) if active_farm_id else None,
+            edit_profile=active_profile,
+            profile_completion=profile_completion,
             auto_open_profile_modal=auto_open_profile_modal,
         ),
     )
@@ -16237,6 +16249,17 @@ def save_agronomic_profile_action(
     fertilizers_used: str | None = Form(None),
     crop_stage: str | None = Form(None),
     common_pests: str | None = Form(None),
+    cultivar: str | None = Form(None),
+    production_system: str | None = Form(None),
+    altitude_meters: str | None = Form(None),
+    terrain_slope: str | None = Form(None),
+    sun_exposure: str | None = Form(None),
+    target_productivity_sacks_per_ha: str | None = Form(None),
+    last_liming_date: str | None = Form(None),
+    last_gypsum_date: str | None = Form(None),
+    last_organic_matter_date: str | None = Form(None),
+    pruning_history: str | None = Form(None),
+    current_limitations: str | None = Form(None),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user_web),
 ):
@@ -16260,6 +16283,17 @@ def save_agronomic_profile_action(
         "fertilizers_used": fertilizers_used,
         "crop_stage": crop_stage,
         "common_pests": common_pests,
+        "cultivar": cultivar,
+        "production_system": production_system,
+        "altitude_meters": _int_or_none(altitude_meters),
+        "terrain_slope": terrain_slope,
+        "sun_exposure": sun_exposure,
+        "target_productivity_sacks_per_ha": _float_or_none(target_productivity_sacks_per_ha),
+        "last_liming_date": _date_or_none(last_liming_date),
+        "last_gypsum_date": _date_or_none(last_gypsum_date),
+        "last_organic_matter_date": _date_or_none(last_organic_matter_date),
+        "pruning_history": pruning_history,
+        "current_limitations": current_limitations,
     }
     if existing:
         update_agronomic_profile(repo, existing, payload)
