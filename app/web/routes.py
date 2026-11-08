@@ -16302,6 +16302,7 @@ def soil_analysis_page(
     farm_id: int | None = None,
     plot_id: int | None = None,
     edit_id: int | None = None,
+    recommendation_id: int | None = None,
     compare_plot_id: int | None = None,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user_web),
@@ -16350,6 +16351,7 @@ def soil_analysis_page(
             analyses=analyses_pagination["items"],
             analyses_pagination=analyses_pagination,
             edit_analysis=repo.get_soil_analysis(edit_id) if edit_id else None,
+            generated_recommendation_id=recommendation_id,
             filters={"farm_id": effective_farm_id, "plot_id": effective_plot_id, "compare_plot_id": compare_target},
             compare_chart=_soil_history_chart(compare_analyses),
             compare_analyses=compare_analyses,
@@ -16514,7 +16516,12 @@ def regenerate_soil_recommendation_action(
         _flash(request, "error", "OPENAI_API_KEY nao configurada para gerar a recomendacao.")
     else:
         _flash(request, "error", "Nao foi possivel gerar a recomendacao agronomica nesta tentativa.")
-    return _redirect_with_query("/analise-solo", edit_id=analysis_id, plot_id=analysis.plot_id, compare_plot_id=analysis.plot_id)
+    return _redirect_with_query(
+        "/analise-solo",
+        recommendation_id=analysis_id if updated.ai_status == "generated" else None,
+        plot_id=analysis.plot_id,
+        compare_plot_id=analysis.plot_id,
+    )
 
 
 @router.post("/analise-solo/{analysis_id}/excluir")
