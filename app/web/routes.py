@@ -109,7 +109,6 @@ from app.services.backup_service import (
     get_or_create_backup_automation_setting,
     process_backup_run_in_background,
     update_backup_automation_setting,
-    update_backup_storage_limit_setting,
 )
 from app.services.audit_log_service import count_audit_logs, list_audit_event_types, query_audit_logs
 from app.repositories.automated_test_history import AutomatedTestHistoryRepository, resolve_deploy_revision
@@ -1177,15 +1176,17 @@ def _build_backup_storage_usage(repo: FarmRepository, live_usage: dict[str, int]
         else {
             "database_bytes": setting.last_storage_database_bytes,
             "files_bytes": setting.last_storage_files_bytes,
+            "other_bytes": setting.last_storage_other_bytes,
         }
         if has_snapshot
         else repo.summarize_backup_storage_usage()
     )
     database_bytes = int(summary.get("database_bytes", 0) or 0)
     files_bytes = int(summary.get("files_bytes", 0) or 0)
-    total_bytes = database_bytes + files_bytes
+    other_bytes = int(summary.get("other_bytes", 0) or 0)
+    total_bytes = int(summary.get("total_bytes", 0) or 0) or database_bytes + files_bytes + other_bytes
     storage_limit_gb = max(1, int(getattr(setting, "storage_limit_gb", 1) or 1))
-    limit_bytes = storage_limit_gb * 1024 * 1024 * 1024
+    limit_bytes = int(getattr(setting, "storage_limit_bytes", 0) or 0) or storage_limit_gb * 1024 * 1024 * 1024
     usage_ratio = (total_bytes / limit_bytes) if limit_bytes > 0 else 0.0
     usage_percent = min(usage_ratio * 100, 100.0)
     remaining_bytes = max(limit_bytes - total_bytes, 0)
@@ -1195,6 +1196,7 @@ def _build_backup_storage_usage(repo: FarmRepository, live_usage: dict[str, int]
         "limit_bytes": limit_bytes,
         "database_bytes": database_bytes,
         "files_bytes": files_bytes,
+        "other_bytes": other_bytes,
         "total_bytes": total_bytes,
         "remaining_bytes": remaining_bytes,
         "usage_percent": round(usage_percent, 2),
@@ -1202,8 +1204,12 @@ def _build_backup_storage_usage(repo: FarmRepository, live_usage: dict[str, int]
         "is_over_limit": is_over_limit,
         "limit_label": _format_storage_bytes(limit_bytes),
         "limit_gb": storage_limit_gb,
+        "limit_source": getattr(setting, "storage_limit_source", None) or "fallback",
+        "plan_name": getattr(setting, "storage_plan_name", None),
+        "limit_checked_at_label": format_app_datetime(getattr(setting, "last_storage_limit_checked_at", None)) if getattr(setting, "last_storage_limit_checked_at", None) else "",
         "database_label": _format_storage_bytes(database_bytes),
         "files_label": _format_storage_bytes(files_bytes),
+        "other_label": _format_storage_bytes(other_bytes),
         "total_label": _format_storage_bytes(total_bytes),
         "remaining_label": _format_storage_bytes(remaining_bytes),
         "tone": tone,
@@ -9462,28 +9468,6 @@ def configure_backup_automation_action(
         )
     else:
         _flash(request, "success", "Backup automatico desativado com sucesso.")
-    return _redirect("/backups")
-
-
-@router.post("/backups/storage/configurar")
-def configure_backup_storage_limit_action(
-    request: Request,
-    csrf_token: str = Form(...),
-    storage_limit_gb: str = Form("1"),
-    db: Session = Depends(get_db),
-    user: User = Depends(get_current_user_web),
-):
-    denied = _require_default_organization_backup_access(request, user, db)
-    if denied:
-        return denied
-    validate_csrf(request, csrf_token)
-    try:
-        parsed_limit = max(1, min(int(storage_limit_gb or "1"), 1024))
-    except (TypeError, ValueError):
-        _flash(request, "error", "Informe um limite válido entre 1 GB e 1024 GB.")
-        return _redirect("/backups")
-    setting = update_backup_storage_limit_setting(db, parsed_limit)
-    _flash(request, "success", f"Limite de storage para backups atualizado para {setting.storage_limit_gb} GB.")
     return _redirect("/backups")
 
 

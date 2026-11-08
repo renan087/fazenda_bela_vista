@@ -39,6 +39,7 @@ AUTOMATION_DEFAULT_SCHEDULE_HOUR = 3
 AUTOMATION_DEFAULT_SCHEDULE_MINUTE = 0
 AUTOMATION_DEFAULT_STORAGE_LIMIT_GB = 1
 BACKUP_STORAGE_SAFE_USAGE_RATIO = 0.90
+BYTES_PER_GIB = 1024 * 1024 * 1024
 PG_DUMP_TIMEOUT_SECONDS = 300
 BACKUP_UPLOAD_TIMEOUT_SECONDS = 600.0
 STALE_RUNNING_BACKUP_TTL = timedelta(minutes=10)
@@ -319,15 +320,6 @@ def update_backup_automation_setting(
         if automatic_enabled
         else None
     )
-    db.add(setting)
-    db.commit()
-    db.refresh(setting)
-    return setting
-
-
-def update_backup_storage_limit_setting(db: Session, storage_limit_gb: int) -> BackupAutomationSetting:
-    setting = get_or_create_backup_automation_setting(db)
-    setting.storage_limit_gb = _normalize_storage_limit_gb(storage_limit_gb)
     db.add(setting)
     db.commit()
     db.refresh(setting)
@@ -792,20 +784,184 @@ def _cleanup_prepared_backup(prepared: dict | None) -> None:
 
 
 def get_supabase_backup_storage_usage() -> dict[str, int]:
-    """Retorna o uso real dos objetos de backup armazenados no Supabase."""
+    """Retorna o uso real de Storage nos buckets usados pelo sistema."""
     _validate_storage_configuration()
-    database_bytes = sum(item["size_bytes"] for item in _list_supabase_objects(settings.supabase_bucket_db, "database"))
-    files_bytes = sum(item["size_bytes"] for item in _list_supabase_objects(settings.supabase_bucket_files, "files"))
-    return {"database_bytes": database_bytes, "files_bytes": files_bytes}
+    bucket_names = _list_supabase_bucket_names() | {settings.supabase_bucket_db, settings.supabase_bucket_files}
+    bucket_objects = {bucket: _list_supabase_objects(bucket, "") for bucket in bucket_names}
+    database_bytes = sum(
+        item["size_bytes"]
+        for item in bucket_objects[settings.supabase_bucket_db]
+        if str(item["path"]).startswith("database/")
+    )
+    files_bytes = sum(
+        item["size_bytes"]
+        for item in bucket_objects[settings.supabase_bucket_files]
+        if str(item["path"]).startswith("files/")
+    )
+    total_bytes = sum(item["size_bytes"] for objects in bucket_objects.values() for item in objects)
+    backup_bytes = database_bytes + files_bytes
+    return {
+        "database_bytes": database_bytes,
+        "files_bytes": files_bytes,
+        "other_bytes": max(total_bytes - backup_bytes, 0),
+        "total_bytes": total_bytes,
+    }
+
+
+def _list_supabase_bucket_names() -> set[str]:
+    list_url = f"{settings.supabase_url.rstrip('/')}/storage/v1/bucket"
+    headers = {
+        "Authorization": f"Bearer {settings.supabase_service_role_key}",
+        "apikey": settings.supabase_service_role_key or "",
+    }
+    try:
+        with httpx.Client(timeout=httpx.Timeout(20.0, connect=10.0)) as client:
+            response = client.get(list_url, headers=headers)
+    except httpx.RequestError as exc:
+        raise RuntimeError(f"Falha de rede ao consultar os buckets do Supabase: {exc}") from exc
+    if response.status_code != 200:
+        detail = (response.text or "")[:800].strip()
+        raise RuntimeError(detail or f"Supabase Storage retornou status {response.status_code} ao consultar os buckets.")
+    payload = response.json()
+    if not isinstance(payload, list):
+        raise RuntimeError("Resposta invalida ao consultar os buckets do Supabase.")
+    buckets = {str(item.get("name") or "").strip() for item in payload if isinstance(item, dict)}
+    return {bucket for bucket in buckets if bucket}
 
 
 def _record_supabase_storage_snapshot(db: Session, usage: dict[str, int]) -> None:
     setting = get_or_create_backup_automation_setting(db)
     setting.last_storage_database_bytes = int(usage.get("database_bytes", 0) or 0)
     setting.last_storage_files_bytes = int(usage.get("files_bytes", 0) or 0)
+    setting.last_storage_other_bytes = int(usage.get("other_bytes", 0) or 0)
     setting.last_storage_checked_at = _utc_now()
     db.add(setting)
     db.commit()
+
+
+def _management_headers() -> dict[str, str]:
+    token = (settings.supabase_access_token or "").strip()
+    if not token:
+        raise RuntimeError("SUPABASE_ACCESS_TOKEN nao esta configurado no backend.")
+    return {"Authorization": f"Bearer {token}"}
+
+
+def _management_get(client: httpx.Client, path: str) -> object:
+    response = client.get(f"https://api.supabase.com{path}", headers=_management_headers())
+    if response.status_code != 200:
+        detail = (response.text or "")[:500].strip()
+        raise RuntimeError(detail or f"Management API retornou status {response.status_code}.")
+    return response.json()
+
+
+def _find_storage_quota_bytes(value: object, *, storage_context: bool = False) -> int | None:
+    """Extrai uma cota de Storage somente de chaves explicitamente declaradas pela API."""
+    if isinstance(value, list):
+        for item in value:
+            quota = _find_storage_quota_bytes(item, storage_context=storage_context)
+            if quota:
+                return quota
+        return None
+    if not isinstance(value, dict):
+        return None
+
+    normalized = {str(key).replace("-", "_").lower(): item for key, item in value.items()}
+    feature = normalized.get("feature")
+    feature_key = str(normalized.get("key") or normalized.get("feature_key") or "").lower()
+    if isinstance(feature, dict):
+        feature_key = f"{feature_key} {feature.get('key') or ''}".lower()
+    storage_context = storage_context or "storage" in feature_key or any("storage" in key for key in normalized)
+    if storage_context:
+        for key in ("storage_quota_bytes", "storage_size_bytes", "quota_bytes", "limit_bytes", "max_bytes"):
+            raw = normalized.get(key)
+            if isinstance(raw, (int, float)) and raw > 0:
+                return int(raw)
+        for key in ("storage_quota_gb", "storage_size_gb", "quota_gb", "limit_gb", "max_gb"):
+            raw = normalized.get(key)
+            if isinstance(raw, (int, float)) and raw > 0:
+                return int(raw * BYTES_PER_GIB)
+        config = normalized.get("config")
+        if isinstance(config, dict):
+            quota = _find_storage_quota_bytes(config, storage_context=True)
+            if quota:
+                return quota
+
+    for item in value.values():
+        quota = _find_storage_quota_bytes(item, storage_context=storage_context)
+        if quota:
+            return quota
+    return None
+
+
+def _find_plan_name(value: object) -> str | None:
+    if isinstance(value, list):
+        for item in value:
+            plan = _find_plan_name(item)
+            if plan:
+                return plan
+        return None
+    if not isinstance(value, dict):
+        return None
+    for key in ("plan", "plan_name", "subscription_plan", "tier"):
+        raw = value.get(key)
+        if isinstance(raw, str) and raw.strip():
+            return raw.strip()
+        if isinstance(raw, dict):
+            name = raw.get("name") or raw.get("slug")
+            if isinstance(name, str) and name.strip():
+                return name.strip()
+    return None
+
+
+def get_supabase_storage_plan_quota() -> dict[str, object]:
+    """Obtém a cota de Storage da organização sem depender do painel web."""
+    timeout = httpx.Timeout(20.0, connect=10.0)
+    try:
+        with httpx.Client(timeout=timeout) as client:
+            organizations = _management_get(client, "/v1/organizations")
+            if not isinstance(organizations, list) or not organizations:
+                raise RuntimeError("A Management API nao retornou uma organizacao do Supabase.")
+            requested_slug = (settings.supabase_organization_slug or "").strip()
+            organization = next(
+                (item for item in organizations if isinstance(item, dict) and item.get("slug") == requested_slug),
+                None,
+            ) if requested_slug else None
+            organization = organization or next((item for item in organizations if isinstance(item, dict)), None)
+            if not isinstance(organization, dict) or not organization.get("slug"):
+                raise RuntimeError("Nao foi possivel identificar a organizacao do Supabase.")
+            slug = str(organization["slug"])
+            entitlements = _management_get(client, f"/v1/organizations/{quote(slug, safe='')}/entitlements")
+    except httpx.RequestError as exc:
+        raise RuntimeError(f"Falha de rede ao consultar o plano do Supabase: {exc}") from exc
+
+    limit_bytes = _find_storage_quota_bytes(entitlements)
+    if not limit_bytes:
+        raise RuntimeError("A Management API nao informou a cota de Storage da organizacao.")
+    return {
+        "limit_bytes": limit_bytes,
+        "plan_name": _find_plan_name(organization) or _find_plan_name(entitlements),
+        "organization_slug": slug,
+    }
+
+
+def _sync_supabase_storage_limit(db: Session) -> BackupAutomationSetting:
+    setting = get_or_create_backup_automation_setting(db)
+    try:
+        quota = get_supabase_storage_plan_quota()
+    except Exception as exc:
+        logger.warning("Nao foi possivel sincronizar a cota do plano do Supabase: %s", exc)
+        return setting
+
+    limit_bytes = int(quota["limit_bytes"])
+    setting.storage_limit_bytes = limit_bytes
+    setting.storage_limit_gb = max(1, round(limit_bytes / BYTES_PER_GIB))
+    setting.storage_limit_source = "supabase_management_api"
+    setting.storage_plan_name = str(quota.get("plan_name") or "").strip() or None
+    setting.last_storage_limit_checked_at = _utc_now()
+    db.add(setting)
+    db.commit()
+    db.refresh(setting)
+    return setting
 
 
 def _list_supabase_objects(bucket: str, prefix: str) -> list[dict[str, object]]:
@@ -866,12 +1022,14 @@ def _list_supabase_objects(bucket: str, prefix: str) -> list[dict[str, object]]:
 
 
 def _ensure_backup_storage_capacity(db: Session, *, required_bytes: int) -> dict[str, object]:
-    setting = get_or_create_backup_automation_setting(db)
-    limit_bytes = _normalize_storage_limit_gb(getattr(setting, "storage_limit_gb", AUTOMATION_DEFAULT_STORAGE_LIMIT_GB)) * 1024 * 1024 * 1024
+    setting = _sync_supabase_storage_limit(db)
+    limit_bytes = int(getattr(setting, "storage_limit_bytes", 0) or 0)
+    if limit_bytes <= 0:
+        limit_bytes = _normalize_storage_limit_gb(getattr(setting, "storage_limit_gb", AUTOMATION_DEFAULT_STORAGE_LIMIT_GB)) * BYTES_PER_GIB
     safe_limit_bytes = int(limit_bytes * BACKUP_STORAGE_SAFE_USAGE_RATIO)
     usage = get_supabase_backup_storage_usage()
     _record_supabase_storage_snapshot(db, usage)
-    current_bytes = int(usage["database_bytes"]) + int(usage["files_bytes"])
+    current_bytes = int(usage.get("total_bytes", 0) or 0)
     used_before_cleanup_bytes = current_bytes
     deleted_run_ids: list[int] = []
 
@@ -898,7 +1056,7 @@ def _ensure_backup_storage_capacity(db: Session, *, required_bytes: int) -> dict
             deleted_run_ids.append(candidate.id)
             usage = get_supabase_backup_storage_usage()
             _record_supabase_storage_snapshot(db, usage)
-            current_bytes = int(usage["database_bytes"]) + int(usage["files_bytes"])
+            current_bytes = int(usage.get("total_bytes", 0) or 0)
             if current_bytes + required_bytes <= safe_limit_bytes:
                 break
 
@@ -913,6 +1071,7 @@ def _ensure_backup_storage_capacity(db: Session, *, required_bytes: int) -> dict
         "used_after_cleanup_bytes": current_bytes,
         "next_backup_bytes": required_bytes,
         "safe_limit_bytes": safe_limit_bytes,
+        "limit_source": getattr(setting, "storage_limit_source", None) or "fallback",
         "deleted_run_ids": deleted_run_ids,
     }
 

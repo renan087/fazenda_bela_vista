@@ -44,6 +44,9 @@ class Settings(BaseSettings):
     google_maps_api_key: str | None = None
     supabase_url: str | None = None
     supabase_service_role_key: str | None = None
+    # Token da Management API. Usado exclusivamente no backend ao executar backups.
+    supabase_access_token: str | None = None
+    supabase_organization_slug: str | None = None
     supabase_bucket_db: str = "backups-db"
     supabase_bucket_files: str = "anexos"
     backup_local_dirs: str | None = None
