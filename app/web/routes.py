@@ -16344,16 +16344,20 @@ def soil_analysis_page(
 ):
     repo = _repository(db)
     scope = _global_scope_context(request, repo)
-    effective_farm_id = farm_id or scope["active_farm_id"]
-    farm_ids, variety_ids = _scoped_plot_filters(request, scope["active_season"])
-    start_date, end_date = _scoped_dates(scope["active_season"])
-    plots = repo.list_plots(farm_ids=farm_ids, variety_ids=variety_ids)
+    allowed_farm_ids = {farm.id for farm in scope["context_farms"]}
+    requested_farm_id = farm_id if farm_id in allowed_farm_ids else None
+    effective_farm_id = requested_farm_id or scope["active_farm_id"]
+    # Análises de solo são histórico técnico do setor, não eventos da safra ativa.
+    # Restringimos à fazenda/organização em contexto, mas não ocultamos coletas feitas
+    # fora do período da safra ou em setores com outra variedade.
+    farm_ids = [effective_farm_id] if effective_farm_id else [farm.id for farm in scope["context_farms"]]
+    plots = repo.list_plots(farm_ids=farm_ids)
     plot_ids = {plot.id for plot in plots}
     effective_plot_id = plot_id if plot_id else None
     analyses = [
         analysis
         for analysis in repo.list_soil_analyses(farm_id=effective_farm_id, plot_id=effective_plot_id)
-        if (not plot_ids or analysis.plot_id in plot_ids) and _within_scope(analysis.analysis_date, start_date, end_date)
+        if analysis.plot_id in plot_ids
     ]
     analyses = _sort_collection_desc(
         analyses,
@@ -16362,11 +16366,13 @@ def soil_analysis_page(
     )
     analyses_pagination = _paginate_collection(request, analyses, "analyses_page")
     compare_target = compare_plot_id or effective_plot_id
+    if compare_target not in plot_ids:
+        compare_target = None
     compare_analyses = (
         [
             analysis
             for analysis in repo.list_soil_analyses(plot_id=compare_target)
-            if _within_scope(analysis.analysis_date, start_date, end_date)
+            if analysis.plot_id in plot_ids
         ]
         if compare_target
         else analyses[:6]
