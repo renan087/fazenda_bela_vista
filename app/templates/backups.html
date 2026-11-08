@@ -134,6 +134,9 @@
                         <span class="font-medium text-slate-700">• {{ backup_storage_usage.remaining_label }} livres</span>
                         {% endif %}
                     </p>
+                    {% if backup_storage_usage.is_live and backup_storage_usage.checked_at_label %}
+                    <p class="mt-1 text-xs text-slate-400">Verificado no Supabase em {{ backup_storage_usage.checked_at_label }}.</p>
+                    {% endif %}
                 </div>
                 <span class="inline-flex rounded-full px-3 py-1.5 text-xs font-semibold {% if backup_storage_usage.tone == 'danger' %}bg-rose-100 text-rose-700{% elif backup_storage_usage.tone == 'warning' %}bg-amber-100 text-amber-700{% else %}bg-emerald-100 text-emerald-700{% endif %}">
                     {{ backup_storage_usage.usage_percent }}%

@@ -107,7 +107,6 @@ from app.services.backup_service import (
     execute_backup,
     expire_stale_running_backup_runs,
     get_or_create_backup_automation_setting,
-    get_supabase_backup_storage_usage,
     process_backup_run_in_background,
     update_backup_automation_setting,
     update_backup_storage_limit_setting,
@@ -1167,7 +1166,21 @@ def _format_storage_bytes(value: int | float | None) -> str:
 
 def _build_backup_storage_usage(repo: FarmRepository, live_usage: dict[str, int] | None = None) -> dict[str, object]:
     setting = repo.get_backup_automation_setting()
-    summary = live_usage or repo.summarize_backup_storage_usage()
+    has_snapshot = (
+        getattr(setting, "last_storage_checked_at", None) is not None
+        and getattr(setting, "last_storage_database_bytes", None) is not None
+        and getattr(setting, "last_storage_files_bytes", None) is not None
+    )
+    summary = (
+        live_usage
+        if live_usage is not None
+        else {
+            "database_bytes": setting.last_storage_database_bytes,
+            "files_bytes": setting.last_storage_files_bytes,
+        }
+        if has_snapshot
+        else repo.summarize_backup_storage_usage()
+    )
     database_bytes = int(summary.get("database_bytes", 0) or 0)
     files_bytes = int(summary.get("files_bytes", 0) or 0)
     total_bytes = database_bytes + files_bytes
@@ -1194,7 +1207,8 @@ def _build_backup_storage_usage(repo: FarmRepository, live_usage: dict[str, int]
         "total_label": _format_storage_bytes(total_bytes),
         "remaining_label": _format_storage_bytes(remaining_bytes),
         "tone": tone,
-        "is_live": live_usage is not None,
+        "is_live": live_usage is not None or has_snapshot,
+        "checked_at_label": format_app_datetime(getattr(setting, "last_storage_checked_at", None)) if has_snapshot else "",
     }
 
 
@@ -9380,11 +9394,7 @@ def backups_page(
         }
         for item in repo.list_backup_runs(limit=per_page, offset=offset)
     ]
-    try:
-        storage_usage = _build_backup_storage_usage(repo, get_supabase_backup_storage_usage())
-    except Exception:
-        logger.warning("Nao foi possivel consultar o uso real de backups no Supabase.", exc_info=True)
-        storage_usage = _build_backup_storage_usage(repo)
+    storage_usage = _build_backup_storage_usage(repo)
     automation = _build_backup_automation_context(repo, db)
     return templates.TemplateResponse(
         "backups.html",

@@ -149,6 +149,12 @@ def execute_backup_run(db: Session, run_id: int) -> BackupRun:
         for prepared in (prepared_database, prepared_files):
             _cleanup_prepared_backup(prepared)
 
+    if db_result or files_result:
+        try:
+            _record_supabase_storage_snapshot(db, get_supabase_backup_storage_usage())
+        except Exception:
+            logger.warning("Nao foi possivel atualizar a leitura de uso do Supabase apos o backup.", exc_info=True)
+
     success_count = int(db_result is not None) + int(files_result is not None)
     run.status = "success" if success_count == 2 else "partial" if success_count == 1 else "failed"
     run.database_bucket = settings.supabase_bucket_db
@@ -793,6 +799,15 @@ def get_supabase_backup_storage_usage() -> dict[str, int]:
     return {"database_bytes": database_bytes, "files_bytes": files_bytes}
 
 
+def _record_supabase_storage_snapshot(db: Session, usage: dict[str, int]) -> None:
+    setting = get_or_create_backup_automation_setting(db)
+    setting.last_storage_database_bytes = int(usage.get("database_bytes", 0) or 0)
+    setting.last_storage_files_bytes = int(usage.get("files_bytes", 0) or 0)
+    setting.last_storage_checked_at = _utc_now()
+    db.add(setting)
+    db.commit()
+
+
 def _list_supabase_objects(bucket: str, prefix: str) -> list[dict[str, object]]:
     list_url = f"{settings.supabase_url.rstrip('/')}/storage/v1/object/list/{quote(bucket, safe='')}"
     headers = {
@@ -855,6 +870,7 @@ def _ensure_backup_storage_capacity(db: Session, *, required_bytes: int) -> dict
     limit_bytes = _normalize_storage_limit_gb(getattr(setting, "storage_limit_gb", AUTOMATION_DEFAULT_STORAGE_LIMIT_GB)) * 1024 * 1024 * 1024
     safe_limit_bytes = int(limit_bytes * BACKUP_STORAGE_SAFE_USAGE_RATIO)
     usage = get_supabase_backup_storage_usage()
+    _record_supabase_storage_snapshot(db, usage)
     current_bytes = int(usage["database_bytes"]) + int(usage["files_bytes"])
     used_before_cleanup_bytes = current_bytes
     deleted_run_ids: list[int] = []
@@ -881,6 +897,7 @@ def _ensure_backup_storage_capacity(db: Session, *, required_bytes: int) -> dict
             )
             deleted_run_ids.append(candidate.id)
             usage = get_supabase_backup_storage_usage()
+            _record_supabase_storage_snapshot(db, usage)
             current_bytes = int(usage["database_bytes"]) + int(usage["files_bytes"])
             if current_bytes + required_bytes <= safe_limit_bytes:
                 break

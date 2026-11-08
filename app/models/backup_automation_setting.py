@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, Integer, String, Text, func
+from sqlalchemy import BigInteger, Boolean, DateTime, Integer, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -19,6 +19,9 @@ class BackupAutomationSetting(Base):
     last_auto_run_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=True)
     last_auto_run_status: Mapped[str] = mapped_column(String(20), nullable=True)
     last_error_message: Mapped[str] = mapped_column(Text, nullable=True)
+    last_storage_database_bytes: Mapped[int] = mapped_column(BigInteger, nullable=True)
+    last_storage_files_bytes: Mapped[int] = mapped_column(BigInteger, nullable=True)
+    last_storage_checked_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=True)
     scheduler_locked_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
