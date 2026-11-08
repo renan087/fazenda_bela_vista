@@ -40,6 +40,11 @@ AUTOMATION_DEFAULT_SCHEDULE_MINUTE = 0
 AUTOMATION_DEFAULT_STORAGE_LIMIT_GB = 1
 BACKUP_STORAGE_SAFE_USAGE_RATIO = 0.90
 BYTES_PER_GIB = 1024 * 1024 * 1024
+SUPABASE_STORAGE_QUOTA_BY_PLAN_GIB = {
+    "free": 1,
+    "pro": 100,
+    "team": 100,
+}
 PG_DUMP_TIMEOUT_SECONDS = 300
 BACKUP_UPLOAD_TIMEOUT_SECONDS = 600.0
 STALE_RUNNING_BACKUP_TTL = timedelta(minutes=10)
@@ -854,67 +859,8 @@ def _management_get(client: httpx.Client, path: str) -> object:
     return response.json()
 
 
-def _find_storage_quota_bytes(value: object, *, storage_context: bool = False) -> int | None:
-    """Extrai uma cota de Storage somente de chaves explicitamente declaradas pela API."""
-    if isinstance(value, list):
-        for item in value:
-            quota = _find_storage_quota_bytes(item, storage_context=storage_context)
-            if quota:
-                return quota
-        return None
-    if not isinstance(value, dict):
-        return None
-
-    normalized = {str(key).replace("-", "_").lower(): item for key, item in value.items()}
-    feature = normalized.get("feature")
-    feature_key = str(normalized.get("key") or normalized.get("feature_key") or "").lower()
-    if isinstance(feature, dict):
-        feature_key = f"{feature_key} {feature.get('key') or ''}".lower()
-    storage_context = storage_context or "storage" in feature_key or any("storage" in key for key in normalized)
-    if storage_context:
-        for key in ("storage_quota_bytes", "storage_size_bytes", "quota_bytes", "limit_bytes", "max_bytes"):
-            raw = normalized.get(key)
-            if isinstance(raw, (int, float)) and raw > 0:
-                return int(raw)
-        for key in ("storage_quota_gb", "storage_size_gb", "quota_gb", "limit_gb", "max_gb"):
-            raw = normalized.get(key)
-            if isinstance(raw, (int, float)) and raw > 0:
-                return int(raw * BYTES_PER_GIB)
-        config = normalized.get("config")
-        if isinstance(config, dict):
-            quota = _find_storage_quota_bytes(config, storage_context=True)
-            if quota:
-                return quota
-
-    for item in value.values():
-        quota = _find_storage_quota_bytes(item, storage_context=storage_context)
-        if quota:
-            return quota
-    return None
-
-
-def _find_plan_name(value: object) -> str | None:
-    if isinstance(value, list):
-        for item in value:
-            plan = _find_plan_name(item)
-            if plan:
-                return plan
-        return None
-    if not isinstance(value, dict):
-        return None
-    for key in ("plan", "plan_name", "subscription_plan", "tier"):
-        raw = value.get(key)
-        if isinstance(raw, str) and raw.strip():
-            return raw.strip()
-        if isinstance(raw, dict):
-            name = raw.get("name") or raw.get("slug")
-            if isinstance(name, str) and name.strip():
-                return name.strip()
-    return None
-
-
 def get_supabase_storage_plan_quota() -> dict[str, object]:
-    """Obtém a cota de Storage da organização sem depender do painel web."""
+    """Obtém o plano da organização e aplica a cota oficial de Storage correspondente."""
     timeout = httpx.Timeout(20.0, connect=10.0)
     try:
         with httpx.Client(timeout=timeout) as client:
@@ -930,16 +876,20 @@ def get_supabase_storage_plan_quota() -> dict[str, object]:
             if not isinstance(organization, dict) or not organization.get("slug"):
                 raise RuntimeError("Nao foi possivel identificar a organizacao do Supabase.")
             slug = str(organization["slug"])
-            entitlements = _management_get(client, f"/v1/organizations/{quote(slug, safe='')}/entitlements")
+            organization_detail = _management_get(client, f"/v1/organizations/{quote(slug, safe='')}")
     except httpx.RequestError as exc:
         raise RuntimeError(f"Falha de rede ao consultar o plano do Supabase: {exc}") from exc
 
-    limit_bytes = _find_storage_quota_bytes(entitlements)
-    if not limit_bytes:
-        raise RuntimeError("A Management API nao informou a cota de Storage da organizacao.")
+    if not isinstance(organization_detail, dict):
+        raise RuntimeError("A Management API nao retornou os detalhes da organizacao do Supabase.")
+    plan_name = str(organization_detail.get("plan") or "").strip()
+    plan_key = plan_name.lower()
+    quota_gib = SUPABASE_STORAGE_QUOTA_BY_PLAN_GIB.get(plan_key)
+    if not quota_gib:
+        raise RuntimeError(f"O plano {plan_name or 'desconhecido'} possui cota de Storage personalizada.")
     return {
-        "limit_bytes": limit_bytes,
-        "plan_name": _find_plan_name(organization) or _find_plan_name(entitlements),
+        "limit_bytes": quota_gib * BYTES_PER_GIB,
+        "plan_name": plan_name.title(),
         "organization_slug": slug,
     }
 
