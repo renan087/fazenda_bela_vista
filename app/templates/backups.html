@@ -155,11 +155,16 @@
                     <p class="font-medium text-emerald-700">Sincronizado automaticamente</p>
                     {% if backup_storage_usage.limit_checked_at_label %}<p class="mt-1">Plano verificado em {{ backup_storage_usage.limit_checked_at_label }}.</p>{% endif %}
                     {% else %}
-                    <p class="font-medium text-amber-700">Aguardando leitura do plano</p>
-                    <p class="mt-1">Será atualizado na próxima execução de backup.</p>
+                    <p class="font-medium text-amber-700">Não foi possível sincronizar o plano</p>
+                    {% if backup_storage_usage.limit_attempted_at_label %}<p class="mt-1">Última tentativa em {{ backup_storage_usage.limit_attempted_at_label }}.</p>{% endif %}
                     {% endif %}
                 </div>
             </div>
+            {% if backup_storage_usage.limit_source != 'supabase_management_api' and backup_storage_usage.limit_error %}
+            <p class="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-800">
+                {{ backup_storage_usage.limit_error }}
+            </p>
+            {% endif %}
             <div class="mt-4 h-3 overflow-hidden rounded-full bg-slate-100">
                 <div
                     class="h-full rounded-full transition-all {% if backup_storage_usage.tone == 'danger' %}bg-rose-500{% elif backup_storage_usage.tone == 'warning' %}bg-amber-500{% else %}bg-emerald-500{% endif %}"

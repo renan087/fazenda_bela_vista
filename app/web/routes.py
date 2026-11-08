@@ -1207,6 +1207,8 @@ def _build_backup_storage_usage(repo: FarmRepository, live_usage: dict[str, int]
         "limit_source": getattr(setting, "storage_limit_source", None) or "fallback",
         "plan_name": getattr(setting, "storage_plan_name", None),
         "limit_checked_at_label": format_app_datetime(getattr(setting, "last_storage_limit_checked_at", None)) if getattr(setting, "last_storage_limit_checked_at", None) else "",
+        "limit_attempted_at_label": format_app_datetime(getattr(setting, "last_storage_limit_attempted_at", None)) if getattr(setting, "last_storage_limit_attempted_at", None) else "",
+        "limit_error": getattr(setting, "last_storage_limit_error", None),
         "database_label": _format_storage_bytes(database_bytes),
         "files_label": _format_storage_bytes(files_bytes),
         "other_label": _format_storage_bytes(other_bytes),

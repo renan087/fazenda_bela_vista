@@ -17,6 +17,8 @@ class BackupAutomationSetting(Base):
     storage_limit_source: Mapped[str | None] = mapped_column(String(40), nullable=True)
     storage_plan_name: Mapped[str | None] = mapped_column(String(80), nullable=True)
     last_storage_limit_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_storage_limit_attempted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_storage_limit_error: Mapped[str | None] = mapped_column(Text, nullable=True)
     scheduled_hour: Mapped[int] = mapped_column(Integer, nullable=False, default=3)
     scheduled_minute: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     next_run_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=True)

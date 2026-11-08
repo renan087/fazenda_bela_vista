@@ -896,10 +896,16 @@ def get_supabase_storage_plan_quota() -> dict[str, object]:
 
 def _sync_supabase_storage_limit(db: Session) -> BackupAutomationSetting:
     setting = get_or_create_backup_automation_setting(db)
+    setting.last_storage_limit_attempted_at = _utc_now()
     try:
         quota = get_supabase_storage_plan_quota()
     except Exception as exc:
-        logger.warning("Nao foi possivel sincronizar a cota do plano do Supabase: %s", exc)
+        message = str(exc).replace("\n", " ").strip()
+        setting.last_storage_limit_error = message[:500] or "Falha desconhecida ao consultar a Management API."
+        db.add(setting)
+        db.commit()
+        db.refresh(setting)
+        logger.warning("Nao foi possivel sincronizar a cota do plano do Supabase: %s", message)
         return setting
 
     limit_bytes = int(quota["limit_bytes"])
@@ -908,6 +914,7 @@ def _sync_supabase_storage_limit(db: Session) -> BackupAutomationSetting:
     setting.storage_limit_source = "supabase_management_api"
     setting.storage_plan_name = str(quota.get("plan_name") or "").strip() or None
     setting.last_storage_limit_checked_at = _utc_now()
+    setting.last_storage_limit_error = None
     db.add(setting)
     db.commit()
     db.refresh(setting)
