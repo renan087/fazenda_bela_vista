@@ -9,12 +9,20 @@
                 <h3 class="mt-2 text-2xl font-semibold purchased-modal-heading">Sistema e IA</h3>
                 <p class="mt-2 text-sm text-slate-500">{{ item.plot.name if item.plot else "Setor removido" }} • {{ item.analysis_date.strftime('%d-%m-%Y') if item.analysis_date else "-" }} • {{ item.laboratory }}</p>
             </div>
-            <button type="button" class="modal-close-button" aria-label="Fechar" data-soil-recommendations-close>
-                <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                    <path d="M18 6 6 18"/>
-                    <path d="m6 6 12 12"/>
-                </svg>
-            </button>
+            <div class="flex items-start gap-3">
+                {% if item.ai_generated_at %}
+                <div class="pt-1 text-right">
+                    <p class="text-[0.65rem] font-semibold uppercase tracking-[0.18em] text-slate-400">IA gerada em</p>
+                    <p class="mt-1 text-xs font-medium text-slate-600">{{ item.ai_generated_at|datetime_sp }}</p>
+                </div>
+                {% endif %}
+                <button type="button" class="modal-close-button" aria-label="Fechar" data-soil-recommendations-close>
+                    <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <path d="M18 6 6 18"/>
+                        <path d="m6 6 12 12"/>
+                    </svg>
+                </button>
+            </div>
         </div>
         <div class="mt-6 max-h-[72vh] overflow-y-auto pr-1 space-y-6">
             <section class="rounded-2xl bg-slate-50 p-4">
