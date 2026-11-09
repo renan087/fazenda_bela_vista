@@ -101,6 +101,7 @@ from app.services.asaas_customers import (
 )
 from app.services.asaas_payment_sync import upsert_asaas_payment_row, user_owns_asaas_payment_payload
 from app.services.asaas_payments import create_asaas_payment, get_asaas_payment, is_asaas_status_paid
+from app.services.agronomic_profile_suggestions import build_agronomic_profile_suggestions
 from app.services.backup_service import (
     _create_backup_run,
     delete_backup_run,
@@ -16320,6 +16321,23 @@ def agronomic_profiles_page(
             auto_open_profile_modal=auto_open_profile_modal,
         ),
     )
+
+
+@router.get("/perfil-agronomico/sugestoes")
+def agronomic_profile_suggestions_api(
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    if not user_has_permission(db, user, PAGE_AGRONOMIC):
+        return JSONResponse({"ok": False, "error": "Você não tem permissão para consultar o perfil agronômico."}, status_code=403)
+    repo = _repository(db)
+    scope = _global_scope_context(request, repo, user)
+    farm = scope.get("active_farm")
+    if not farm:
+        return JSONResponse({"ok": False, "error": "Selecione uma fazenda ativa para gerar sugestões."}, status_code=400)
+    plots = repo.list_plots(farm_ids=[farm.id])
+    return JSONResponse({"ok": True, **build_agronomic_profile_suggestions(farm, plots)})
 
 
 @router.post("/perfil-agronomico")

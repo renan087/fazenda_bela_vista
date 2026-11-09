@@ -123,12 +123,25 @@
                     </div>
                 </div>
 
+                <section class="rounded-[1.5rem] border border-emerald-100 bg-emerald-50/50 p-4" data-profile-suggestions-panel>
+                    <div class="flex flex-wrap items-start justify-between gap-4">
+                        <div class="min-w-0">
+                            <p class="text-xs font-semibold uppercase tracking-[0.28em] text-emerald-700">Sugestões da fazenda ativa</p>
+                            <p class="mt-2 text-sm leading-6 text-slate-600">Usamos apenas dados já cadastrados. Dados geográficos calculados aparecem como estimativas e precisam de confirmação em campo.</p>
+                        </div>
+                        <button type="button" class="rounded-xl border border-emerald-200 bg-white px-4 py-2.5 text-sm font-semibold text-emerald-700 transition hover:border-emerald-300 hover:bg-emerald-50" data-profile-suggestions-refresh>
+                            Atualizar sugestões
+                        </button>
+                    </div>
+                    <p class="mt-3 text-xs leading-5 text-slate-500" data-profile-suggestions-status>As sugestões serão aplicadas apenas em campos vazios.</p>
+                </section>
+
                 <section class="rounded-[1.5rem] border border-slate-200 p-4">
                     <p class="text-xs font-semibold uppercase tracking-[0.28em] text-brand-700">1. Identificação produtiva</p>
                     <div class="mt-4 grid gap-4 md:grid-cols-2">
-                        <label><span class="mb-2 block text-sm font-medium">Cultura</span><input name="culture" list="profile-cultures" value="{{ edit_profile.culture if edit_profile else 'Café arábica' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required></label>
+                        <label><span class="mb-2 block text-sm font-medium">Cultura</span><input name="culture" list="profile-cultures" value="{{ edit_profile.culture if edit_profile else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" placeholder="Selecione ou informe" required></label>
                         <label><span class="mb-2 block text-sm font-medium">Cultivar predominante</span><input name="cultivar" list="profile-cultivars" value="{{ edit_profile.cultivar if edit_profile else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" placeholder="Ex.: Catuaí 144"></label>
-                        <label><span class="mb-2 block text-sm font-medium">Região</span><input name="region" value="{{ edit_profile.region if edit_profile else 'Bahia - Brasil' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required></label>
+                        <label><span class="mb-2 block text-sm font-medium">Região</span><input name="region" value="{{ edit_profile.region if edit_profile else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" placeholder="Cidade, estado e país" required></label>
                         <label><span class="mb-2 block text-sm font-medium">Sistema de produção</span><input name="production_system" list="profile-production-systems" value="{{ edit_profile.production_system if edit_profile else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" placeholder="Selecione ou informe"></label>
                     </div>
                 </section>
@@ -201,6 +214,11 @@
     const headerIntro = stickyHeader?.querySelector('[data-stock-header-intro]');
     const fadingPanels = Array.from(document.querySelectorAll('[data-stock-fade-panel]'));
     const autoOpenModal = {{ 'true' if auto_open_profile_modal else 'false' }};
+    const profileForm = document.getElementById('agronomic-profile-form');
+    const suggestionsButton = document.querySelector('[data-profile-suggestions-refresh]');
+    const suggestionsStatus = document.querySelector('[data-profile-suggestions-status]');
+    let suggestionsLoaded = false;
+    let suggestionsLoading = false;
 
     const closeModal = () => {
         const url = new URL(window.location.href);
@@ -212,13 +230,91 @@
         launchModal?.close();
     };
 
-    openButtons.forEach((button) => button.addEventListener('click', () => launchModal?.showModal()));
+    const setSuggestionHint = (field, suggestion) => {
+        const input = profileForm?.elements.namedItem(field);
+        if (!(input instanceof HTMLInputElement || input instanceof HTMLTextAreaElement)) return false;
+        const label = input.closest('label');
+        if (!label) return false;
+        let hint = label.querySelector('[data-profile-suggestion-hint]');
+        if (!hint) {
+            hint = document.createElement('span');
+            hint.dataset.profileSuggestionHint = 'true';
+            hint.className = 'mt-1.5 flex items-start gap-1.5 text-xs leading-5';
+            label.appendChild(hint);
+        }
+        const estimated = suggestion.source === 'estimate';
+        hint.className = `mt-1.5 flex items-start gap-1.5 text-xs leading-5 ${estimated ? 'text-amber-700' : 'text-emerald-700'}`;
+        hint.textContent = `${estimated ? 'Estimativa:' : 'Confirmado:'} ${suggestion.detail}`;
+        return true;
+    };
+
+    const clearSuggestionHint = (input) => {
+        const hint = input.closest('label')?.querySelector('[data-profile-suggestion-hint]');
+        hint?.remove();
+        delete input.dataset.profileSuggested;
+    };
+
+    const loadSuggestions = async () => {
+        if (!profileForm || suggestionsLoading) return;
+        suggestionsLoading = true;
+        if (suggestionsButton) {
+            suggestionsButton.disabled = true;
+            suggestionsButton.classList.add('opacity-70', 'cursor-not-allowed');
+        }
+        if (suggestionsStatus) suggestionsStatus.textContent = 'Analisando os dados cadastrados da fazenda...';
+        try {
+            const response = await fetch('/perfil-agronomico/sugestoes', {
+                credentials: 'same-origin',
+                headers: { 'Accept': 'application/json' },
+            });
+            const payload = await response.json();
+            if (!response.ok || !payload.ok) throw new Error(payload.error || 'Não foi possível gerar sugestões agora.');
+            let applied = 0;
+            let estimated = 0;
+            Object.entries(payload.suggestions || {}).forEach(([field, suggestion]) => {
+                const input = profileForm.elements.namedItem(field);
+                if (!(input instanceof HTMLInputElement || input instanceof HTMLTextAreaElement) || !suggestion?.value) return;
+                if (input.value.trim() && input.dataset.profileSuggested !== 'true') return;
+                input.value = String(suggestion.value);
+                input.dataset.profileSuggested = 'true';
+                if (setSuggestionHint(field, suggestion)) {
+                    applied += 1;
+                    if (suggestion.source === 'estimate') estimated += 1;
+                }
+            });
+            suggestionsLoaded = true;
+            if (suggestionsStatus) {
+                suggestionsStatus.textContent = applied
+                    ? `${applied} sugestão(ões) aplicada(s) em campos vazios.${estimated ? ` ${estimated} é/são estimativa(s) e devem ser confirmadas em campo.` : ' Dados confirmados vieram do cadastro da fazenda e dos setores.'}`
+                    : 'Os campos preenchidos foram preservados. Nenhuma sugestão substituiu dados já informados.';
+            }
+        } catch (error) {
+            if (suggestionsStatus) suggestionsStatus.textContent = error?.message || 'Não foi possível gerar sugestões agora.';
+        } finally {
+            suggestionsLoading = false;
+            if (suggestionsButton) {
+                suggestionsButton.disabled = false;
+                suggestionsButton.classList.remove('opacity-70', 'cursor-not-allowed');
+            }
+        }
+    };
+
+    profileForm?.querySelectorAll('input, textarea').forEach((input) => input.addEventListener('input', () => {
+        if (input.dataset.profileSuggested === 'true') clearSuggestionHint(input);
+    }));
+    suggestionsButton?.addEventListener('click', loadSuggestions);
+
+    const openProfileModal = () => {
+        if (!launchModal?.open) launchModal?.showModal();
+        if (!suggestionsLoaded) loadSuggestions();
+    };
+    openButtons.forEach((button) => button.addEventListener('click', openProfileModal));
     closeButtons.forEach((button) => button.addEventListener('click', closeModal));
     launchModal?.addEventListener('cancel', (event) => {
         event.preventDefault();
         closeModal();
     });
-    if (autoOpenModal) launchModal?.showModal();
+    if (autoOpenModal) openProfileModal();
 
     const contextToggle = document.querySelector('[data-profile-context-toggle]');
     const contextCollapse = document.querySelector('[data-profile-context-collapse]');
