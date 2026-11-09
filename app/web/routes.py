@@ -109,6 +109,7 @@ from app.services.backup_service import (
     get_backup_repository_monitor_context,
     get_or_create_backup_automation_setting,
     process_backup_run_in_background,
+    run_backup_repository_monitor_now,
     update_backup_automation_setting,
 )
 from app.services.audit_log_service import count_audit_logs, list_audit_event_types, query_audit_logs
@@ -9507,6 +9508,30 @@ def configure_backup_automation_action(
         )
     else:
         _flash(request, "success", "Backup automatico desativado com sucesso.")
+    return _redirect("/backups")
+
+
+@router.post("/backups/monitoramento/executar")
+def run_backup_repository_monitor_action(
+    request: Request,
+    csrf_token: str = Form(...),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    denied = _require_default_organization_backup_access(request, user, db)
+    if denied:
+        return denied
+    validate_csrf(request, csrf_token)
+    try:
+        result = run_backup_repository_monitor_now()
+    except Exception as exc:
+        logger.exception("Falha ao executar monitoramento manual do repositorio de backups.")
+        _flash(request, "error", f"Não foi possível concluir o monitoramento: {exc}")
+        return _redirect("/backups")
+    if result.get("status") == "success":
+        _flash(request, "success", "Monitoramento do repositório concluído e registrado no Supabase.")
+    else:
+        _flash(request, "error", "O monitoramento foi registrado, mas a verificação do Storage apresentou falha.")
     return _redirect("/backups")
 
 

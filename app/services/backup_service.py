@@ -391,7 +391,7 @@ def process_due_backup_repository_monitor_tick(now: datetime | None = None) -> b
         with SessionLocal() as db:
             if _repository_monitor_already_recorded(check_day):
                 return False
-            _record_backup_repository_check(db, checked_at=local_now)
+            _record_backup_repository_check(db, checked_at=local_now, source="scheduled_backup_repository_monitor")
         logger.info("Verificacao diaria do repositorio de backups registrada no Supabase.")
         return True
     except Exception:
@@ -403,6 +403,16 @@ def _backup_repository_monitor_minute(check_day: date) -> int:
     """Distribui as verificacoes dentro da janela sem depender de estado em memoria."""
     seed = f"{settings.app_name}:{check_day.isoformat()}:backup-repository-monitor".encode("utf-8")
     return int.from_bytes(hashlib.sha256(seed).digest()[:2], "big") % 60
+
+
+def run_backup_repository_monitor_now() -> dict[str, object]:
+    """Executa uma verificacao manual sem mudar a agenda automatica."""
+    with SessionLocal() as db:
+        return _record_backup_repository_check(
+            db,
+            checked_at=app_now(),
+            source="manual_backup_repository_monitor",
+        )
 
 
 def _supabase_rest_headers() -> dict[str, str]:
@@ -433,7 +443,12 @@ def _repository_monitor_already_recorded(check_day: date) -> bool:
     return isinstance(payload, list) and bool(payload)
 
 
-def _record_backup_repository_check(db: Session, *, checked_at: datetime) -> None:
+def _record_backup_repository_check(
+    db: Session,
+    *,
+    checked_at: datetime,
+    source: str,
+) -> dict[str, object]:
     latest_backup = (
         db.query(BackupRun)
         .filter(BackupRun.status.in_(("success", "partial")))
@@ -443,7 +458,7 @@ def _record_backup_repository_check(db: Session, *, checked_at: datetime) -> Non
     status = "success"
     usage: dict[str, object] | None = None
     details: dict[str, object] = {
-        "source": "scheduled_backup_repository_monitor",
+        "source": source,
         "local_time": checked_at.isoformat(),
         "buckets": [settings.supabase_bucket_db, settings.supabase_bucket_files],
     }
@@ -471,6 +486,7 @@ def _record_backup_repository_check(db: Session, *, checked_at: datetime) -> Non
     if response.status_code not in {200, 201}:
         detail = (response.text or "")[:500].strip()
         raise RuntimeError(detail or f"Supabase PostgREST retornou status {response.status_code} ao registrar o monitoramento.")
+    return {"status": status, "storage_checked": bool(usage)}
 
 
 def get_backup_repository_monitor_context(now: datetime | None = None) -> dict[str, object]:
