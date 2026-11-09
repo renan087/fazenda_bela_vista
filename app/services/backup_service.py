@@ -430,20 +430,15 @@ def mark_backup_run_storage_deleted(
 
 
 def delete_backup_run(db: Session, run: BackupRun) -> list[str]:
+    """Remove arquivos remotos, mas preserva a auditoria da execução no histórico."""
     if run.deleted_from_storage_at:
-        db.delete(run)
-        db.commit()
         return []
-
-    warnings = mark_backup_run_storage_deleted(
+    return mark_backup_run_storage_deleted(
         db,
         run,
         reason="manual_delete",
         source="manual",
     )
-    db.delete(run)
-    db.commit()
-    return warnings
 
 
 def _claim_due_automatic_backup(db: Session) -> BackupAutomationSetting | None:
@@ -788,7 +783,7 @@ def _cleanup_prepared_backup(prepared: dict | None) -> None:
         local_path.unlink(missing_ok=True)
 
 
-def get_supabase_backup_storage_usage() -> dict[str, int]:
+def get_supabase_backup_storage_usage() -> dict[str, object]:
     """Retorna o uso real de Storage nos buckets usados pelo sistema."""
     _validate_storage_configuration()
     bucket_names = _list_supabase_bucket_names() | {settings.supabase_bucket_db, settings.supabase_bucket_files}
@@ -805,11 +800,17 @@ def get_supabase_backup_storage_usage() -> dict[str, int]:
     )
     total_bytes = sum(item["size_bytes"] for objects in bucket_objects.values() for item in objects)
     backup_bytes = database_bytes + files_bytes
+    object_keys = {
+        (bucket, str(item["path"]))
+        for bucket, objects in bucket_objects.items()
+        for item in objects
+    }
     return {
         "database_bytes": database_bytes,
         "files_bytes": files_bytes,
         "other_bytes": max(total_bytes - backup_bytes, 0),
         "total_bytes": total_bytes,
+        "object_keys": object_keys,
     }
 
 
@@ -834,7 +835,7 @@ def _list_supabase_bucket_names() -> set[str]:
     return {bucket for bucket in buckets if bucket}
 
 
-def _record_supabase_storage_snapshot(db: Session, usage: dict[str, int]) -> None:
+def _record_supabase_storage_snapshot(db: Session, usage: dict[str, object]) -> None:
     setting = get_or_create_backup_automation_setting(db)
     setting.last_storage_database_bytes = int(usage.get("database_bytes", 0) or 0)
     setting.last_storage_files_bytes = int(usage.get("files_bytes", 0) or 0)
@@ -842,6 +843,51 @@ def _record_supabase_storage_snapshot(db: Session, usage: dict[str, int]) -> Non
     setting.last_storage_checked_at = _utc_now()
     db.add(setting)
     db.commit()
+
+
+def _reconcile_backup_history_with_storage(db: Session, usage: dict[str, object]) -> list[int]:
+    """Marca no histórico backups removidos diretamente do Storage, sem apagá-los."""
+    raw_paths = usage.get("object_keys")
+    if not isinstance(raw_paths, set):
+        return []
+    remote_paths = raw_paths
+
+    reconciled_ids: list[int] = []
+    active_runs = (
+        db.query(BackupRun)
+        .filter(BackupRun.deleted_from_storage_at.is_(None))
+        .filter(BackupRun.status.in_(("success", "partial")))
+        .filter((BackupRun.database_object_path.is_not(None)) | (BackupRun.files_object_path.is_not(None)))
+        .all()
+    )
+    for run in active_runs:
+        expected_paths = [
+            (run.database_bucket, run.database_object_path),
+            (run.files_bucket, run.files_object_path),
+        ]
+        missing_labels = [
+            label
+            for label, (bucket, object_path) in zip(("banco", "arquivos"), expected_paths)
+            if bucket and object_path and (bucket, object_path) not in remote_paths
+        ]
+        if not missing_labels:
+            continue
+        deleted_at = _utc_now()
+        run.deleted_from_storage_at = deleted_at
+        run.deleted_from_storage_reason = "external_storage_deletion"
+        run.deleted_from_storage_source = "supabase_reconciliation"
+        run.details_json = _with_storage_deletion_details(
+            run.details_json,
+            deleted_at=deleted_at,
+            reason=run.deleted_from_storage_reason,
+            source=run.deleted_from_storage_source,
+            warnings=[f"Arquivo de {label} não foi localizado no Supabase." for label in missing_labels],
+        )
+        db.add(run)
+        reconciled_ids.append(run.id)
+    if reconciled_ids:
+        db.commit()
+    return reconciled_ids
 
 
 def _management_headers() -> dict[str, str]:
@@ -983,6 +1029,10 @@ def _list_supabase_objects(bucket: str, prefix: str) -> list[dict[str, object]]:
     return objects
 
 
+def _backup_run_size_bytes(run: BackupRun) -> int:
+    return int(run.database_size_bytes or 0) + int(run.files_size_bytes or 0)
+
+
 def _ensure_backup_storage_capacity(db: Session, *, required_bytes: int) -> dict[str, object]:
     setting = _sync_supabase_storage_limit(db)
     limit_bytes = int(getattr(setting, "storage_limit_bytes", 0) or 0)
@@ -991,6 +1041,7 @@ def _ensure_backup_storage_capacity(db: Session, *, required_bytes: int) -> dict
     safe_limit_bytes = int(limit_bytes * BACKUP_STORAGE_SAFE_USAGE_RATIO)
     usage = get_supabase_backup_storage_usage()
     _record_supabase_storage_snapshot(db, usage)
+    reconciled_run_ids = _reconcile_backup_history_with_storage(db, usage)
     current_bytes = int(usage.get("total_bytes", 0) or 0)
     used_before_cleanup_bytes = current_bytes
     deleted_run_ids: list[int] = []
@@ -1016,11 +1067,14 @@ def _ensure_backup_storage_capacity(db: Session, *, required_bytes: int) -> dict
                 source="automatic_cleanup",
             )
             deleted_run_ids.append(candidate.id)
-            usage = get_supabase_backup_storage_usage()
-            _record_supabase_storage_snapshot(db, usage)
-            current_bytes = int(usage.get("total_bytes", 0) or 0)
+            current_bytes = max(current_bytes - _backup_run_size_bytes(candidate), 0)
             if current_bytes + required_bytes <= safe_limit_bytes:
                 break
+
+    if deleted_run_ids:
+        usage = get_supabase_backup_storage_usage()
+        _record_supabase_storage_snapshot(db, usage)
+        current_bytes = int(usage.get("total_bytes", 0) or 0)
 
     if current_bytes + required_bytes > safe_limit_bytes:
         raise RuntimeError(
@@ -1035,6 +1089,7 @@ def _ensure_backup_storage_capacity(db: Session, *, required_bytes: int) -> dict
         "safe_limit_bytes": safe_limit_bytes,
         "limit_source": getattr(setting, "storage_limit_source", None) or "fallback",
         "deleted_run_ids": deleted_run_ids,
+        "reconciled_run_ids": reconciled_run_ids,
     }
 
 

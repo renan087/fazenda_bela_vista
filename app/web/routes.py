@@ -9601,9 +9601,9 @@ def delete_backup_action(
         return _redirect_with_query("/backups", page=page)
 
     if warnings:
-        _flash(request, "success", f"Backup removido do historico. {' '.join(warnings)}")
+        _flash(request, "success", f"Backup removido do Supabase e mantido no histórico. {' '.join(warnings)}")
     else:
-        _flash(request, "success", "Backup excluido com sucesso.")
+        _flash(request, "success", "Backup removido do Supabase e mantido no histórico.")
     return _redirect_with_query("/backups", page=page)
 
 

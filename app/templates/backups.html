@@ -411,9 +411,10 @@
                         </div>
                     </div>
                     <div class="flex items-center justify-end">
-                        <form method="post" action="/backups/{{ run.id }}/excluir?page={{ backup_page }}" onsubmit="return confirm('Confirma a exclusão deste backup? Esta ação remove o histórico e tenta apagar os arquivos no storage.');">
+                        {% if not run.deleted_from_storage_at %}
+                        <form method="post" action="/backups/{{ run.id }}/excluir?page={{ backup_page }}" onsubmit="return confirm('Confirma a remoção deste backup do Supabase? O histórico será mantido.');">
                             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                            <button type="submit" class="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 transition hover:border-rose-200 hover:bg-rose-50 hover:text-rose-700" title="Excluir backup" aria-label="Excluir backup">
+                            <button type="submit" class="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 transition hover:border-rose-200 hover:bg-rose-50 hover:text-rose-700" title="Remover do Supabase" aria-label="Remover backup do Supabase">
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="h-4 w-4" aria-hidden="true">
                                     <path d="M3 6h18"/>
                                     <path d="M8 6V4h8v2"/>
@@ -423,6 +424,9 @@
                                 </svg>
                             </button>
                         </form>
+                        {% else %}
+                        <span class="text-[11px] font-medium text-slate-400">Mantido no histórico</span>
+                        {% endif %}
                     </div>
                 </div>
                 {% if run.error_message %}
@@ -432,9 +436,9 @@
                 {% endif %}
                 {% if run.deleted_from_storage_at %}
                 <div class="mt-2 rounded-xl bg-amber-50 px-4 py-2.5 text-[11px] leading-relaxed text-amber-700">
-                    <span class="mr-1 font-semibold">Exclusao automatica:</span>
+                    <span class="mr-1 font-semibold">Status do storage:</span>
                     Removido do Supabase em {{ run.deleted_from_storage_at|datetime_sp }} por {{ run.deleted_from_storage_source or 'sistema' }}
-                    {% if run.deleted_from_storage_reason == 'storage_limit' %} apos atingir o limite de armazenamento.{% else %}.{% endif %}
+                    {% if run.deleted_from_storage_reason in ('storage_limit', 'storage_safe_limit') %} após atingir o limite de armazenamento.{% elif run.deleted_from_storage_reason == 'external_storage_deletion' %} após não ser localizado durante a conferência automática.{% else %}.{% endif %}
                     {% if storage_deletion.get('warnings') %} {{ storage_deletion.get('warnings')|join(' ') }}{% endif %}
                 </div>
                 {% endif %}
