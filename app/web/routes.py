@@ -106,6 +106,7 @@ from app.services.backup_service import (
     delete_backup_run,
     execute_backup,
     expire_stale_running_backup_runs,
+    get_backup_repository_monitor_context,
     get_or_create_backup_automation_setting,
     process_backup_run_in_background,
     update_backup_automation_setting,
@@ -1261,6 +1262,40 @@ def _build_backup_automation_context(repo: FarmRepository, db: Session) -> dict[
         "last_auto_run_status_label": _backup_status_label(setting.last_auto_run_status),
         "last_error_message": setting.last_error_message,
         "latest_auto_run_id": latest_auto_run.id if latest_auto_run else None,
+    }
+
+
+def _build_backup_repository_monitor_context() -> dict[str, object]:
+    monitor = get_backup_repository_monitor_context()
+    status = str(monitor.get("last_status") or "").lower()
+    if status == "success":
+        status_label, tone = "Concluído", "success"
+    elif status == "warning":
+        status_label, tone = "Concluído com alerta", "warning"
+    elif status == "failure":
+        status_label, tone = "Falhou", "danger"
+    else:
+        status_label, tone = "Aguardando primeira execução", "muted"
+    last_checked_at = monitor.get("last_checked_at")
+    last_backup_at = monitor.get("last_backup_at")
+    next_monitor_at = monitor.get("next_monitor_at")
+    window_active = bool(monitor.get("window_active"))
+    return {
+        **monitor,
+        "status_label": status_label,
+        "tone": tone,
+        "last_checked_at_label": format_app_datetime(last_checked_at) if isinstance(last_checked_at, datetime) else "-",
+        "last_backup_at_label": format_app_datetime(last_backup_at) if isinstance(last_backup_at, datetime) else "-",
+        "next_monitor_at_label": (
+            "Em execução nesta janela (até 04:00)"
+            if window_active
+            else format_app_datetime(next_monitor_at)
+            if isinstance(next_monitor_at, datetime)
+            else "-"
+        ),
+        "storage_total_label": _format_storage_bytes(monitor.get("storage_total_bytes")),
+        "database_backup_label": _format_storage_bytes(monitor.get("database_backup_bytes")),
+        "files_backup_label": _format_storage_bytes(monitor.get("files_backup_bytes")),
     }
 
 
@@ -9404,6 +9439,7 @@ def backups_page(
     ]
     storage_usage = _build_backup_storage_usage(repo)
     automation = _build_backup_automation_context(repo, db)
+    repository_monitor = _build_backup_repository_monitor_context()
     return templates.TemplateResponse(
         "backups.html",
         _base_context(
@@ -9417,6 +9453,7 @@ def backups_page(
             backup_files_bucket=settings.supabase_bucket_files,
             backup_storage_usage=storage_usage,
             backup_automation=automation,
+            backup_repository_monitor=repository_monitor,
             backup_page=page,
             backup_total_pages=total_pages,
             backup_total_runs=total_runs,

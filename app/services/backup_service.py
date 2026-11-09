@@ -473,6 +473,108 @@ def _record_backup_repository_check(db: Session, *, checked_at: datetime) -> Non
         raise RuntimeError(detail or f"Supabase PostgREST retornou status {response.status_code} ao registrar o monitoramento.")
 
 
+def get_backup_repository_monitor_context(now: datetime | None = None) -> dict[str, object]:
+    """Retorna o ultimo monitoramento e a proxima janela, sem varrer o Storage."""
+    local_now = now.astimezone(get_app_timezone()) if now else app_now()
+    next_monitor_at, window_active = _next_backup_repository_monitor_at(local_now)
+    context: dict[str, object] = {
+        "enabled": bool(settings.supabase_backup_monitor_enabled),
+        "available": False,
+        "last_status": None,
+        "last_checked_at": None,
+        "storage_total_bytes": None,
+        "database_backup_bytes": None,
+        "files_backup_bytes": None,
+        "last_backup_at": None,
+        "error": None,
+        "next_monitor_at": next_monitor_at,
+        "window_active": window_active,
+    }
+    if not context["enabled"]:
+        return context
+
+    endpoint = f"{settings.supabase_url.rstrip('/')}/rest/v1/backup_repository_checks"
+    params = {
+        "select": "status,checked_at,storage_total_bytes,database_backup_bytes,files_backup_bytes,last_backup_at,details",
+        "order": "checked_at.desc",
+        "limit": "1",
+    }
+    try:
+        with httpx.Client(timeout=httpx.Timeout(3.0, connect=2.0)) as client:
+            response = client.get(endpoint, headers=_supabase_rest_headers(), params=params)
+        if response.status_code != 200:
+            detail = (response.text or "")[:300].strip()
+            raise RuntimeError(detail or f"Supabase PostgREST retornou status {response.status_code}.")
+        payload = response.json()
+        if not isinstance(payload, list):
+            raise RuntimeError("Resposta invalida do monitoramento de backups no Supabase.")
+        context["available"] = True
+        if not payload or not isinstance(payload[0], dict):
+            return context
+        latest = payload[0]
+        context.update(
+            {
+                "last_status": str(latest.get("status") or "").lower() or None,
+                "last_checked_at": _parse_supabase_timestamp(latest.get("checked_at")),
+                "storage_total_bytes": _optional_int(latest.get("storage_total_bytes")),
+                "database_backup_bytes": _optional_int(latest.get("database_backup_bytes")),
+                "files_backup_bytes": _optional_int(latest.get("files_backup_bytes")),
+                "last_backup_at": _parse_supabase_timestamp(latest.get("last_backup_at")),
+            }
+        )
+    except Exception as exc:
+        message = str(exc).replace("\n", " ").strip()
+        context["error"] = message[:300] or "Falha ao consultar o monitoramento no Supabase."
+        logger.warning("Nao foi possivel ler o monitoramento de backups no Supabase: %s", message)
+    return context
+
+
+def _next_backup_repository_monitor_at(local_now: datetime) -> tuple[datetime, bool]:
+    today_target = local_now.replace(
+        hour=BACKUP_REPOSITORY_MONITOR_START_HOUR,
+        minute=_backup_repository_monitor_minute(local_now.date()),
+        second=0,
+        microsecond=0,
+    )
+    window_ends_at = local_now.replace(
+        hour=BACKUP_REPOSITORY_MONITOR_END_HOUR,
+        minute=0,
+        second=0,
+        microsecond=0,
+    )
+    if local_now < today_target:
+        return today_target, False
+    if local_now < window_ends_at:
+        return window_ends_at, True
+    next_day = local_now + timedelta(days=1)
+    return (
+        next_day.replace(
+            hour=BACKUP_REPOSITORY_MONITOR_START_HOUR,
+            minute=_backup_repository_monitor_minute(next_day.date()),
+            second=0,
+            microsecond=0,
+        ),
+        False,
+    )
+
+
+def _optional_int(value: object) -> int | None:
+    try:
+        return int(value) if value is not None else None
+    except (TypeError, ValueError):
+        return None
+
+
+def _parse_supabase_timestamp(value: object) -> datetime | None:
+    if not isinstance(value, str) or not value.strip():
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+
+
 def process_due_automatic_backup_tick() -> BackupRun | None:
     from app.db.session import SessionLocal
 

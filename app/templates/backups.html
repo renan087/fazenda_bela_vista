@@ -205,6 +205,49 @@
         <div class="mt-4 rounded-[1.25rem] border border-slate-200 bg-slate-50/80 px-4 py-4">
             <div class="flex flex-wrap items-start justify-between gap-3">
                 <div>
+                    <p class="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">Monitoramento do repositório</p>
+                    <p class="mt-2 text-sm text-slate-500">Verificação diária da integridade dos backups no PostgreSQL do Supabase.</p>
+                </div>
+                <span class="inline-flex rounded-full px-3 py-1.5 text-xs font-semibold {% if backup_repository_monitor.tone == 'success' %}bg-emerald-100 text-emerald-700{% elif backup_repository_monitor.tone == 'warning' %}bg-amber-100 text-amber-700{% elif backup_repository_monitor.tone == 'danger' %}bg-rose-100 text-rose-700{% else %}bg-slate-200 text-slate-600{% endif %}">
+                    {{ backup_repository_monitor.status_label }}
+                </span>
+            </div>
+            <div class="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                <div class="rounded-xl bg-white px-3 py-3 ring-1 ring-slate-200">
+                    <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">Última verificação</p>
+                    <p class="mt-1 text-sm font-semibold text-slate-900">{{ backup_repository_monitor.last_checked_at_label }}</p>
+                </div>
+                <div class="rounded-xl bg-white px-3 py-3 ring-1 ring-slate-200">
+                    <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">Próximo monitoramento</p>
+                    <p class="mt-1 text-sm font-semibold text-slate-900">{{ backup_repository_monitor.next_monitor_at_label }}</p>
+                </div>
+                <div class="rounded-xl bg-white px-3 py-3 ring-1 ring-slate-200">
+                    <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">Storage verificado</p>
+                    <p class="mt-1 text-sm font-semibold text-slate-900">{{ backup_repository_monitor.storage_total_label }}</p>
+                </div>
+                <div class="rounded-xl bg-white px-3 py-3 ring-1 ring-slate-200">
+                    <p class="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">Último backup encontrado</p>
+                    <p class="mt-1 text-sm font-semibold text-slate-900">{{ backup_repository_monitor.last_backup_at_label }}</p>
+                </div>
+            </div>
+            {% if backup_repository_monitor.last_status %}
+            <p class="mt-3 text-xs leading-5 text-slate-500">
+                Banco: <span class="font-medium text-slate-700">{{ backup_repository_monitor.database_backup_label }}</span>
+                <span class="px-1 text-slate-300">•</span>
+                Arquivos: <span class="font-medium text-slate-700">{{ backup_repository_monitor.files_backup_label }}</span>
+            </p>
+            {% endif %}
+            {% if not backup_repository_monitor.enabled %}
+            <p class="mt-3 text-xs leading-5 text-amber-700">O monitoramento diário está desativado pela configuração do ambiente.</p>
+            {% elif backup_repository_monitor.error %}
+            <p class="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-800">Não foi possível consultar o último registro: {{ backup_repository_monitor.error }}</p>
+            {% elif not backup_repository_monitor.last_status %}
+            <p class="mt-3 text-xs leading-5 text-slate-400">O primeiro registro será criado automaticamente na próxima janela entre 03:00 e 04:00.</p>
+            {% endif %}
+        </div>
+        <div class="mt-4 rounded-[1.25rem] border border-slate-200 bg-slate-50/80 px-4 py-4">
+            <div class="flex flex-wrap items-start justify-between gap-3">
+                <div>
                     <p class="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">Backup automatico</p>
                     <p class="mt-2 text-sm text-slate-500">
                         {% if backup_automation.enabled %}
