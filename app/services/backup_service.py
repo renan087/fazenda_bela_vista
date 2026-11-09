@@ -854,6 +854,11 @@ def _management_headers() -> dict[str, str]:
 def _management_get(client: httpx.Client, path: str) -> object:
     response = client.get(f"https://api.supabase.com{path}", headers=_management_headers())
     if response.status_code != 200:
+        if response.status_code == 404 and path.startswith("/v1/organizations/"):
+            raise RuntimeError(
+                "A organização configurada em SUPABASE_ORGANIZATION_SLUG não foi encontrada "
+                "ou o token não possui acesso a ela."
+            )
         detail = (response.text or "")[:500].strip()
         raise RuntimeError(detail or f"Management API retornou status {response.status_code}.")
     return response.json()
@@ -868,7 +873,9 @@ def get_supabase_storage_plan_quota() -> dict[str, object]:
             if not requested_slug:
                 organizations = _management_get(client, "/v1/organizations")
                 if not isinstance(organizations, list) or not organizations:
-                    raise RuntimeError("A Management API nao retornou uma organizacao do Supabase.")
+                    raise RuntimeError(
+                        "Defina SUPABASE_ORGANIZATION_SLUG no Render com o slug da organização do Supabase."
+                    )
                 organization = next((item for item in organizations if isinstance(item, dict)), None)
                 if not isinstance(organization, dict) or not organization.get("slug"):
                     raise RuntimeError("Nao foi possivel identificar a organizacao do Supabase.")
