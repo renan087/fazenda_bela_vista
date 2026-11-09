@@ -1,4 +1,5 @@
 import asyncio
+import hashlib
 import json
 import gzip
 import logging
@@ -7,7 +8,7 @@ import shutil
 import subprocess
 import tempfile
 import zipfile
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote
@@ -39,6 +40,9 @@ AUTOMATION_DEFAULT_SCHEDULE_HOUR = 3
 AUTOMATION_DEFAULT_SCHEDULE_MINUTE = 0
 AUTOMATION_DEFAULT_STORAGE_LIMIT_GB = 1
 BACKUP_STORAGE_SAFE_USAGE_RATIO = 0.90
+BACKUP_REPOSITORY_MONITOR_START_HOUR = 3
+BACKUP_REPOSITORY_MONITOR_END_HOUR = 4
+BACKUP_REPOSITORY_MONITOR_POLL_INTERVAL_SECONDS = 60
 BYTES_PER_GIB = 1024 * 1024 * 1024
 SUPABASE_STORAGE_QUOTA_BY_PLAN_GIB = {
     "free": 1,
@@ -57,6 +61,7 @@ STORAGE_LIMIT_ERROR_HINTS = (
     "space",
     "50 gb",
 )
+_repository_monitor_attempted_dates: set[date] = set()
 
 BACKUP_PROGRESS_STAGES = {
     "starting": {"progress": 6, "title": "Preparando backup", "message": "Organizando a execução inicial do backup."},
@@ -340,6 +345,132 @@ async def run_backup_automation_loop() -> None:
         except Exception:
             logger.exception("Falha inesperada no loop de backup automatico.")
         await asyncio.sleep(AUTOMATION_POLL_INTERVAL_SECONDS)
+
+
+async def run_backup_repository_monitor_loop() -> None:
+    """Registra diariamente a integridade do destino de backups no Supabase."""
+    while True:
+        try:
+            await asyncio.to_thread(process_due_backup_repository_monitor_tick)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.exception("Falha inesperada no monitoramento do repositorio de backups.")
+        await asyncio.sleep(BACKUP_REPOSITORY_MONITOR_POLL_INTERVAL_SECONDS)
+
+
+def process_due_backup_repository_monitor_tick(now: datetime | None = None) -> bool:
+    """Executa no maximo uma verificacao diaria, entre 03:00 e 04:00 locais."""
+    if not settings.supabase_backup_monitor_enabled:
+        return False
+
+    local_now = now.astimezone(get_app_timezone()) if now else app_now()
+    check_day = local_now.date()
+    if check_day in _repository_monitor_attempted_dates:
+        return False
+
+    scheduled_minute = _backup_repository_monitor_minute(check_day)
+    scheduled_at = local_now.replace(
+        hour=BACKUP_REPOSITORY_MONITOR_START_HOUR,
+        minute=scheduled_minute,
+        second=0,
+        microsecond=0,
+    )
+    window_ends_at = local_now.replace(
+        hour=BACKUP_REPOSITORY_MONITOR_END_HOUR,
+        minute=0,
+        second=0,
+        microsecond=0,
+    )
+    if local_now < scheduled_at or local_now >= window_ends_at:
+        return False
+
+    # Evita novas tentativas a cada minuto se o Supabase estiver indisponivel.
+    _repository_monitor_attempted_dates.add(check_day)
+    try:
+        with SessionLocal() as db:
+            if _repository_monitor_already_recorded(check_day):
+                return False
+            _record_backup_repository_check(db, checked_at=local_now)
+        logger.info("Verificacao diaria do repositorio de backups registrada no Supabase.")
+        return True
+    except Exception:
+        logger.exception("Nao foi possivel registrar a verificacao diaria do repositorio de backups.")
+        return False
+
+
+def _backup_repository_monitor_minute(check_day: date) -> int:
+    """Distribui as verificacoes dentro da janela sem depender de estado em memoria."""
+    seed = f"{settings.app_name}:{check_day.isoformat()}:backup-repository-monitor".encode("utf-8")
+    return int.from_bytes(hashlib.sha256(seed).digest()[:2], "big") % 60
+
+
+def _supabase_rest_headers() -> dict[str, str]:
+    _validate_storage_configuration()
+    return {
+        "Authorization": f"Bearer {settings.supabase_service_role_key}",
+        "apikey": settings.supabase_service_role_key or "",
+        "Content-Type": "application/json",
+    }
+
+
+def _repository_monitor_already_recorded(check_day: date) -> bool:
+    timezone_info = get_app_timezone()
+    start = datetime.combine(check_day, datetime.min.time(), tzinfo=timezone_info).astimezone(timezone.utc)
+    end = start + timedelta(days=1)
+    endpoint = f"{settings.supabase_url.rstrip('/')}/rest/v1/backup_repository_checks"
+    params = {
+        "select": "id",
+        "and": f"(checked_at.gte.{start.isoformat()},checked_at.lt.{end.isoformat()})",
+        "limit": "1",
+    }
+    with httpx.Client(timeout=httpx.Timeout(20.0, connect=10.0)) as client:
+        response = client.get(endpoint, headers=_supabase_rest_headers(), params=params)
+    if response.status_code != 200:
+        detail = (response.text or "")[:500].strip()
+        raise RuntimeError(detail or f"Supabase PostgREST retornou status {response.status_code} ao consultar o monitoramento.")
+    payload = response.json()
+    return isinstance(payload, list) and bool(payload)
+
+
+def _record_backup_repository_check(db: Session, *, checked_at: datetime) -> None:
+    latest_backup = (
+        db.query(BackupRun)
+        .filter(BackupRun.status.in_(("success", "partial")))
+        .order_by(BackupRun.started_at.desc(), BackupRun.id.desc())
+        .first()
+    )
+    status = "success"
+    usage: dict[str, object] | None = None
+    details: dict[str, object] = {
+        "source": "scheduled_backup_repository_monitor",
+        "local_time": checked_at.isoformat(),
+        "buckets": [settings.supabase_bucket_db, settings.supabase_bucket_files],
+    }
+    try:
+        usage = get_supabase_backup_storage_usage()
+        details["storage_checked"] = True
+    except Exception as exc:
+        status = "failure"
+        details["storage_checked"] = False
+        details["storage_error"] = str(exc)[:500]
+        logger.warning("Verificacao de Storage do monitor de backups falhou: %s", exc)
+
+    payload = {
+        "status": status,
+        "storage_total_bytes": int(usage.get("total_bytes", 0) or 0) if usage else None,
+        "database_backup_bytes": int(usage.get("database_bytes", 0) or 0) if usage else None,
+        "files_backup_bytes": int(usage.get("files_bytes", 0) or 0) if usage else None,
+        "last_backup_at": latest_backup.started_at.isoformat() if latest_backup else None,
+        "details": details,
+    }
+    endpoint = f"{settings.supabase_url.rstrip('/')}/rest/v1/backup_repository_checks"
+    headers = {**_supabase_rest_headers(), "Prefer": "return=minimal"}
+    with httpx.Client(timeout=httpx.Timeout(20.0, connect=10.0)) as client:
+        response = client.post(endpoint, headers=headers, json=payload)
+    if response.status_code not in {200, 201}:
+        detail = (response.text or "")[:500].strip()
+        raise RuntimeError(detail or f"Supabase PostgREST retornou status {response.status_code} ao registrar o monitoramento.")
 
 
 def process_due_automatic_backup_tick() -> BackupRun | None:

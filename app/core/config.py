@@ -49,6 +49,8 @@ class Settings(BaseSettings):
     supabase_organization_slug: str | None = None
     supabase_bucket_db: str = "backups-db"
     supabase_bucket_files: str = "anexos"
+    # Verificacao diaria do repositorio de backups no PostgreSQL do Supabase.
+    supabase_backup_monitor_enabled: bool = True
     backup_local_dirs: str | None = None
     # Asaas (assinaturas / clientes). Opcional: sem ASAAS_API_KEY o formulário só valida e exibe o JSON.
     asaas_api_key: str | None = None

@@ -27,7 +27,7 @@ from app.routers.api import router as api_router
 from app.routers.auth import api_router as auth_api_router
 from app.routers.auth import router as auth_router
 from app.services.audit_log_service import append_audit_event, client_ip
-from app.services.backup_service import run_backup_automation_loop
+from app.services.backup_service import run_backup_automation_loop, run_backup_repository_monitor_loop
 from app.services.coffee_quotes import seed_cepea_coffee_quotes_from_bundle
 from app.services.coffee_quote_sync_service import run_coffee_quote_sync_loop
 from app.services.data_change_audit import (
@@ -76,7 +76,10 @@ async def lifespan(app: FastAPI):
         seeded_coffee_quotes = seed_cepea_coffee_quotes_from_bundle(FarmRepository(db))
         if seeded_coffee_quotes:
             logger.info("Serie historica CEPEA de cafe sincronizada a partir do bundle: %s registros.", seeded_coffee_quotes)
-    background_tasks: list[asyncio.Task] = [asyncio.create_task(run_backup_automation_loop())]
+    background_tasks: list[asyncio.Task] = [
+        asyncio.create_task(run_backup_automation_loop()),
+        asyncio.create_task(run_backup_repository_monitor_loop()),
+    ]
     if settings.coffee_quote_sync_enabled:
         background_tasks.append(asyncio.create_task(run_coffee_quote_sync_loop()))
     if settings.memory_monitor_enabled:
