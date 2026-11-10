@@ -590,6 +590,18 @@
                     onStats: ({ vertices, area }) => {
                         if (previewVerticesEl) previewVerticesEl.textContent = String(vertices);
                         if (previewAreaEl) previewAreaEl.textContent = area.toFixed(2).replace('.', ',');
+                        // Mantem o formulario de edicao sincronizado quando o
+                        // usuario ajusta o perimetro no mapa ampliado.
+                        const editingFarmMatch = (form?.getAttribute('action') || '').match(/^\/fazendas\/(\d+)\/editar$/);
+                        if (editingFarmMatch && editingFarmMatch[1] === previewMapFarmId && previewGeometryInput?.value) {
+                            const mainBoundaryInput = form?.querySelector('[data-farms-boundary-input]');
+                            if (mainBoundaryInput) mainBoundaryInput.value = previewGeometryInput.value;
+                            try {
+                                FARM_BOUNDARY_DATA[previewMapFarmId] = JSON.parse(previewGeometryInput.value);
+                            } catch {
+                                // O editor so produz GeoJSON valido; a protecao evita interromper a revisao do mapa.
+                            }
+                        }
                     },
                 });
             } catch (err) {
@@ -598,6 +610,23 @@
             }
             window.setTimeout(() => previewBoundaryEditor?.invalidate(), 250);
             window.setTimeout(() => previewBoundaryEditor?.invalidate(), 600);
+        };
+
+        const openImportedCarMap = async (farmId, farmName) => {
+            if (!farmId || !mapPreviewModal) return;
+            resetPreviewModalLayout();
+            previewMapFarmId = String(farmId);
+            if (mapPreviewImg) {
+                mapPreviewImg.removeAttribute('src');
+                mapPreviewImg.alt = '';
+            }
+            if (mapPreviewName) {
+                mapPreviewName.textContent = `${farmName || 'Fazenda'} - perímetro importado do CAR`;
+            }
+            mapPreviewModal.showModal();
+            mapPreviewViewImage?.classList.add('hidden');
+            mapPreviewViewEditor?.classList.remove('hidden');
+            await startPreviewPolygonEdit();
         };
 
         mapPreviewStartEdit?.addEventListener('click', () => {
@@ -782,7 +811,11 @@
                 }
                 farmFormMapPrompt?.classList.add('hidden');
                 farmFormMapEditorWrap?.classList.remove('hidden');
-                await setupFarmFormBoundaryEditor(null, data.geometry);
+                if (deferFarmFormInlineMap && editingFarmMatch) {
+                    await openImportedCarMap(editingFarmMatch[1], nameInput?.value);
+                } else {
+                    await setupFarmFormBoundaryEditor(null, data.geometry);
+                }
             } catch {
                 showFarmGeocodeDialog('Não foi possível consultar o serviço público do CAR. Tente novamente mais tarde.');
             } finally {
