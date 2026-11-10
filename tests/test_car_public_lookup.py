@@ -89,3 +89,26 @@ def test_rejects_multipart_geometry_that_editor_cannot_preserve(monkeypatch):
 
     with pytest.raises(car_public_lookup.CarPublicLookupError, match="perimetro geografico"):
         car_public_lookup.lookup_public_car("BA-1234.ABCD")
+
+
+def test_uses_curl_fallback_after_tls_failure(monkeypatch):
+    class BrokenClient:
+        def __init__(self, **_kwargs):
+            pass
+
+        def __enter__(self):
+            raise car_public_lookup.httpx.ConnectError("TLS failed")
+
+        def __exit__(self, *_args):
+            return False
+
+    class CurlResult:
+        returncode = 0
+        stderr = ""
+        stdout = '{"features": []}'
+
+    monkeypatch.setattr(car_public_lookup.httpx, "Client", BrokenClient)
+    monkeypatch.setattr(car_public_lookup.shutil, "which", lambda _name: "/usr/bin/curl")
+    monkeypatch.setattr(car_public_lookup.subprocess, "run", lambda *_args, **_kwargs: CurlResult())
+
+    assert car_public_lookup._fetch_public_payload({"request": "GetFeature"}) == {"features": []}

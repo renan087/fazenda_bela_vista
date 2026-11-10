@@ -8,6 +8,10 @@ ajustar o perimetro retornado antes de salvar a fazenda.
 from __future__ import annotations
 
 import re
+import json
+import logging
+import shutil
+import subprocess
 from typing import Any
 
 import httpx
@@ -19,6 +23,7 @@ SUPPORTED_UFS = {
     "AC", "AL", "AM", "AP", "BA", "CE", "DF", "ES", "GO", "MA", "MG", "MS", "MT",
     "PA", "PB", "PE", "PI", "PR", "RJ", "RN", "RO", "RR", "RS", "SC", "SE", "SP", "TO",
 }
+logger = logging.getLogger(__name__)
 
 
 class CarPublicLookupError(ValueError):
@@ -49,13 +54,7 @@ def lookup_public_car(car_number: str | None) -> dict[str, Any]:
         "outputFormat": "application/json",
         "maxFeatures": "2",
     }
-    try:
-        with httpx.Client(timeout=httpx.Timeout(12.0, connect=4.0), follow_redirects=True) as client:
-            response = client.get(SICAR_WFS_URL, params=params)
-            response.raise_for_status()
-            payload = response.json()
-    except (httpx.HTTPError, ValueError) as exc:
-        raise CarPublicLookupError("Nao foi possivel consultar o geosservico publico do CAR agora. Tente novamente mais tarde.") from exc
+    payload = _fetch_public_payload(params)
 
     features = payload.get("features") if isinstance(payload, dict) else None
     if not isinstance(features, list) or not features:
@@ -76,6 +75,48 @@ def lookup_public_car(car_number: str | None) -> dict[str, Any]:
         "condition": _clean_text(properties.get("condicao")),
         "source": "Consulta Publica SICAR",
     }
+
+
+def _fetch_public_payload(params: dict[str, str]) -> dict[str, Any]:
+    """Busca o WFS com fallback para a pilha TLS que o servidor publico aceita."""
+    try:
+        with httpx.Client(timeout=httpx.Timeout(12.0, connect=4.0), follow_redirects=True) as client:
+            response = client.get(SICAR_WFS_URL, params=params)
+            response.raise_for_status()
+            payload = response.json()
+        if isinstance(payload, dict):
+            return payload
+    except (httpx.HTTPError, ValueError) as exc:
+        # O GeoServer do SICAR por vezes recusa o handshake TLS do OpenSSL usado
+        # pelo Python, embora aceite o curl com validacao de certificado normal.
+        logger.info("Consulta CAR via httpx falhou; tentando cliente TLS alternativo: %s", exc)
+
+    curl_path = shutil.which("curl")
+    if not curl_path:
+        raise CarPublicLookupError("Nao foi possivel consultar o geosservico publico do CAR agora. Tente novamente mais tarde.")
+    command = [
+        curl_path,
+        "--fail",
+        "--silent",
+        "--show-error",
+        "--max-time",
+        "12",
+        "--get",
+        SICAR_WFS_URL,
+    ]
+    for key, value in params.items():
+        command.extend(["--data-urlencode", f"{key}={value}"])
+    try:
+        result = subprocess.run(command, capture_output=True, text=True, timeout=14, check=False)
+        if result.returncode != 0:
+            logger.info("Consulta CAR via curl falhou: %s", (result.stderr or "").strip()[:200])
+            raise ValueError("curl failed")
+        payload = json.loads(result.stdout)
+        if isinstance(payload, dict):
+            return payload
+    except (OSError, subprocess.TimeoutExpired, ValueError, json.JSONDecodeError) as exc:
+        logger.info("Cliente TLS alternativo do CAR indisponivel: %s", exc)
+    raise CarPublicLookupError("Nao foi possivel consultar o geosservico publico do CAR agora. Tente novamente mais tarde.")
 
 
 def _normalize_geometry(value: object) -> dict[str, Any] | None:
