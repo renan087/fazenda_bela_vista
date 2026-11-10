@@ -129,6 +129,7 @@ from app.services.dashboard_map_preview import (
     dashboard_map_preview_relative_path,
     generate_dashboard_map_preview,
 )
+from app.services.car_public_lookup import CarPublicLookupError, lookup_public_car, normalize_car_number
 from app.services.finance_overview import (
     _in_extract_period,
     build_finance_extract_rows,
@@ -8628,6 +8629,19 @@ def geocode_farm_location(
     return JSONResponse({"ok": True, "lat": lat, "lng": lng})
 
 
+@router.get("/fazendas/consultar-car")
+def lookup_farm_car(
+    car: str = Query(""),
+    user: User = Depends(get_current_user_web),
+):
+    """Consulta somente a camada publica do SICAR para preencher o cadastro."""
+    del user
+    try:
+        return JSONResponse({"ok": True, "data": lookup_public_car(car)})
+    except CarPublicLookupError as exc:
+        return JSONResponse({"ok": False, "message": str(exc)}, status_code=422)
+
+
 @router.post("/fazendas")
 def create_farm_action(
     request: Request,
@@ -8635,6 +8649,7 @@ def create_farm_action(
     name: str = Form(...),
     location: str = Form(...),
     total_area: float = Form(...),
+    car_registration_number: str | None = Form(None),
     boundary_geojson: str | None = Form(None),
     boundary_geojson_file: UploadFile | None = File(None),
     notes: str | None = Form(None),
@@ -8643,6 +8658,11 @@ def create_farm_action(
     user: User = Depends(get_current_user_web),
 ):
     validate_csrf(request, csrf_token)
+    try:
+        car_number = normalize_car_number(car_registration_number) if (car_registration_number or "").strip() else None
+    except CarPublicLookupError as exc:
+        _flash(request, "error", str(exc))
+        return _redirect("/setores") if redirect_to == "/setores" else _redirect("/fazendas")
     geometry, geometry_ok, _, _ = _resolve_geojson(boundary_geojson_file, boundary_geojson)
     if boundary_geojson_file and boundary_geojson_file.filename and not geometry_ok:
         _flash(request, "error", "O arquivo GeoJSON da fazenda nao e valido.")
@@ -8653,6 +8673,7 @@ def create_farm_action(
             "name": name,
             "location": location,
             "total_area": total_area,
+            "car_registration_number": car_number,
             "boundary_geojson": geometry,
             "notes": notes,
             "organization_id": user.organization_id,
@@ -8677,6 +8698,7 @@ def update_farm_action(
     name: str = Form(...),
     location: str = Form(...),
     total_area: float = Form(...),
+    car_registration_number: str | None = Form(None),
     boundary_geojson: str | None = Form(None),
     boundary_geojson_file: UploadFile | None = File(None),
     notes: str | None = Form(None),
@@ -8689,6 +8711,11 @@ def update_farm_action(
     if not farm or (user.organization_id and farm.organization_id != user.organization_id):
         _flash(request, "error", "Fazenda nao encontrada.")
         return _redirect("/fazendas")
+    try:
+        car_number = normalize_car_number(car_registration_number) if (car_registration_number or "").strip() else None
+    except CarPublicLookupError as exc:
+        _flash(request, "error", str(exc))
+        return _redirect_with_query("/fazendas", edit_id=farm_id)
     geometry, geometry_ok, _, _ = _resolve_geojson(boundary_geojson_file, boundary_geojson, farm.boundary_geojson)
     if boundary_geojson_file and boundary_geojson_file.filename and not geometry_ok:
         _flash(request, "error", "O arquivo GeoJSON da fazenda nao e valido.")
@@ -8696,7 +8723,14 @@ def update_farm_action(
     update_farm(
         repo,
         farm,
-        {"name": name, "location": location, "total_area": total_area, "boundary_geojson": geometry, "notes": notes},
+        {
+            "name": name,
+            "location": location,
+            "total_area": total_area,
+            "car_registration_number": car_number,
+            "boundary_geojson": geometry,
+            "notes": notes,
+        },
     )
     if geometry:
         try:

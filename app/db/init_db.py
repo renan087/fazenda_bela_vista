@@ -770,6 +770,8 @@ def _sync_schema() -> None:
         "ALTER TABLE plots ADD COLUMN IF NOT EXISTS centroid_lng NUMERIC(10,6)",
         "ALTER TABLE plots ADD COLUMN IF NOT EXISTS boundary_geojson TEXT",
         "ALTER TABLE farms ADD COLUMN IF NOT EXISTS boundary_geojson TEXT",
+        "ALTER TABLE farms ADD COLUMN IF NOT EXISTS car_registration_number VARCHAR(140)",
+        "CREATE INDEX IF NOT EXISTS ix_farms_car_registration_number ON farms(car_registration_number)",
         "ALTER TABLE plots ADD COLUMN IF NOT EXISTS irrigation_type VARCHAR(40) DEFAULT 'none'",
         "ALTER TABLE plots ADD COLUMN IF NOT EXISTS irrigation_line_count INTEGER",
         "ALTER TABLE plots ADD COLUMN IF NOT EXISTS irrigation_line_length_meters NUMERIC(10,2)",
