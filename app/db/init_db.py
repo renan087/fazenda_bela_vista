@@ -22,6 +22,7 @@ from app.models import (
     EquipmentAsset,
     EquipmentAssetAttachment,
     Farm,
+    FarmAttachment,
     FinanceAccount,
     FinanceCreditCard,
     FinanceCustomBank,

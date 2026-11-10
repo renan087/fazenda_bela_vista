@@ -11,6 +11,7 @@ from app.models.crop_season import CropSeason
 from app.models.equipment_asset import EquipmentAsset
 from app.models.equipment_asset_attachment import EquipmentAssetAttachment
 from app.models.farm import Farm
+from app.models.farm_attachment import FarmAttachment
 from app.models.finance_account import FinanceAccount
 from app.models.finance_credit_card import FinanceCreditCard
 from app.models.finance_custom_bank import FinanceCustomBank
@@ -58,6 +59,7 @@ __all__ = [
     "EquipmentAsset",
     "EquipmentAssetAttachment",
     "Farm",
+    "FarmAttachment",
     "FinanceAccount",
     "FinanceCreditCard",
     "FinanceCustomBank",

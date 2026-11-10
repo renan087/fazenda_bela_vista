@@ -481,7 +481,16 @@
                     <span class="mb-2 block text-sm font-medium">Observações</span>
                     <textarea name="notes" rows="4" class="w-full rounded-2xl border-slate-200 bg-slate-50{% if farm_form_view_only %} cursor-default text-slate-700{% endif %}"{% if farm_form_view_only %} readonly tabindex="-1"{% endif %}>{{ edit_farm.notes if edit_farm else '' }}</textarea>
                 </label>
+                {% if not farm_form_view_only %}
+                {% set attachment_label = 'Documentos da fazenda' %}
+                {% set attachment_help_text = 'Envie CCIR, ITR, matrícula, certidões, fotos ou outros documentos. Você pode adicionar vários arquivos antes de salvar.' %}
+                {% include "partials/attachment_upload_field.html" %}
+                {% endif %}
             </form>
+            {% set attachment_owner = edit_farm %}
+            {% set attachment_view_base = '/fazendas/anexos' %}
+            {% set attachment_delete_base = '/fazendas/' ~ edit_farm.id ~ '/anexos' if edit_farm and not farm_form_view_only else '' %}
+            {% include "partials/attachment_list.html" %}
         </div>
     </div>
 </dialog>
@@ -502,6 +511,7 @@
     window.__GOOGLE_MAPS_API_KEY = {{ google_maps_web_key | tojson }};
 </script>
 <script src="{{ url_for('static', path='js/farm_boundary_editor.js') }}?v=6"></script>
+{% include "partials/attachment_manager_script.html" %}
 <script>
     (() => {
         let FARM_BOUNDARY_DATA = {};
@@ -567,6 +577,7 @@
         const resetForm = () => {
             if (isEditing || !form) return;
             form.reset();
+            form.querySelectorAll('[data-attachments-clear]').forEach((button) => button.click());
             if (carResult) {
                 carResult.textContent = '';
                 carResult.classList.add('hidden');

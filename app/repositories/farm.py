@@ -15,6 +15,7 @@ from app.models import (
     EquipmentAsset,
     EquipmentAssetAttachment,
     Farm,
+    FarmAttachment,
     FinanceAccount,
     FinanceCreditCard,
     FinanceCustomBank,
@@ -147,7 +148,28 @@ class FarmRepository:
         return self.db.query(User).filter(User.id == user_id).first()
 
     def get_farm(self, farm_id: int) -> Farm | None:
-        return self.db.query(Farm).filter(Farm.id == farm_id).first()
+        return (
+            self.db.query(Farm)
+            .options(
+                joinedload(Farm.attachments).load_only(
+                    FarmAttachment.id,
+                    FarmAttachment.farm_id,
+                    FarmAttachment.filename,
+                    FarmAttachment.content_type,
+                    FarmAttachment.created_at,
+                )
+            )
+            .filter(Farm.id == farm_id)
+            .first()
+        )
+
+    def get_farm_attachment(self, attachment_id: int) -> FarmAttachment | None:
+        return (
+            self.db.query(FarmAttachment)
+            .options(joinedload(FarmAttachment.farm))
+            .filter(FarmAttachment.id == attachment_id)
+            .first()
+        )
 
     def get_agronomic_profile_by_farm(self, farm_id: int) -> AgronomicProfile | None:
         return self.db.query(AgronomicProfile).filter(AgronomicProfile.farm_id == farm_id).first()

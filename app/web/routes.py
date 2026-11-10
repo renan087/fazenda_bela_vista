@@ -70,6 +70,7 @@ from app.models import (
     EquipmentAsset,
     EquipmentAssetAttachment,
     Farm,
+    FarmAttachment,
     FinanceAccount,
     FinanceCreditCard,
     FinanceCustomBank,
@@ -3122,6 +3123,33 @@ def _save_equipment_asset_attachments(
         repo.db.rollback()
         raise
     repo.db.refresh(asset)
+    return len(attachments)
+
+
+def _save_farm_attachments(
+    repo: FarmRepository,
+    farm: Farm,
+    attachments: list[tuple[str, str, bytes]],
+) -> int:
+    if not attachments:
+        return 0
+    repo.db.add_all(
+        [
+            FarmAttachment(
+                farm_id=farm.id,
+                filename=filename,
+                content_type=content_type,
+                file_data=payload,
+            )
+            for filename, content_type, payload in attachments
+        ]
+    )
+    try:
+        repo.db.commit()
+    except Exception:
+        repo.db.rollback()
+        raise
+    repo.db.refresh(farm)
     return len(attachments)
 
 
@@ -8668,7 +8696,7 @@ def download_farm_geometry_kml(
 
 
 @router.post("/fazendas")
-def create_farm_action(
+async def create_farm_action(
     request: Request,
     csrf_token: str = Form(...),
     name: str = Form(...),
@@ -8690,6 +8718,11 @@ def create_farm_action(
     try:
         car_number = normalize_car_number(car_registration_number) if (car_registration_number or "").strip() else None
     except CarPublicLookupError as exc:
+        _flash(request, "error", str(exc))
+        return _redirect("/setores") if redirect_to == "/setores" else _redirect("/fazendas")
+    try:
+        attachment_payloads = _read_attachments(await _request_attachments(request))
+    except ValueError as exc:
         _flash(request, "error", str(exc))
         return _redirect("/setores") if redirect_to == "/setores" else _redirect("/fazendas")
     geometry, geometry_ok, _, _ = _resolve_geojson(boundary_geojson_file, boundary_geojson)
@@ -8717,14 +8750,22 @@ def create_farm_action(
             generate_farm_preview_image(farm.id, geometry)
         except Exception:
             logging.getLogger(__name__).exception("Falha ao gerar imagem de satelite da fazenda %s", farm.id)
-    _flash(request, "success", "Fazenda cadastrada com sucesso.")
+    try:
+        saved_attachments = _save_farm_attachments(_repository(db), farm, attachment_payloads)
+    except Exception:
+        _flash(request, "error", "A fazenda foi cadastrada, mas nao foi possivel gravar os anexos agora.")
+        return _redirect("/setores") if redirect_to == "/setores" else _redirect("/fazendas")
+    message = "Fazenda cadastrada com sucesso."
+    if saved_attachments:
+        message += f" {saved_attachments} anexo(s) salvo(s)."
+    _flash(request, "success", message)
     if redirect_to == "/setores":
         return _redirect_with_query("/setores", selected_farm_id=farm.id)
     return _redirect("/fazendas")
 
 
 @router.post("/fazendas/{farm_id}/editar")
-def update_farm_action(
+async def update_farm_action(
     farm_id: int,
     request: Request,
     csrf_token: str = Form(...),
@@ -8751,6 +8792,11 @@ def update_farm_action(
     try:
         car_number = normalize_car_number(car_registration_number) if (car_registration_number or "").strip() else None
     except CarPublicLookupError as exc:
+        _flash(request, "error", str(exc))
+        return _redirect_with_query("/fazendas", edit_id=farm_id)
+    try:
+        attachment_payloads = _read_attachments(await _request_attachments(request))
+    except ValueError as exc:
         _flash(request, "error", str(exc))
         return _redirect_with_query("/fazendas", edit_id=farm_id)
     geometry, geometry_ok, _, _ = _resolve_geojson(boundary_geojson_file, boundary_geojson, farm.boundary_geojson)
@@ -8780,8 +8826,55 @@ def update_farm_action(
             logging.getLogger(__name__).exception("Falha ao gerar imagem de satelite da fazenda %s", farm.id)
     else:
         remove_farm_preview_image(farm.id)
-    _flash(request, "success", "Fazenda atualizada com sucesso.")
+    try:
+        saved_attachments = _save_farm_attachments(repo, farm, attachment_payloads)
+    except Exception:
+        _flash(request, "error", "As alteracoes foram salvas, mas nao foi possivel incluir os novos anexos.")
+        return _redirect_with_query("/fazendas", edit_id=farm_id)
+    message = "Fazenda atualizada com sucesso."
+    if saved_attachments:
+        message += f" {saved_attachments} novo(s) anexo(s) adicionado(s)."
+    _flash(request, "success", message)
     return _redirect("/fazendas")
+
+
+@router.get("/fazendas/anexos/{attachment_id}")
+def open_farm_attachment(
+    attachment_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    attachment = _repository(db).get_farm_attachment(attachment_id)
+    if not attachment or not attachment.farm or (
+        user.organization_id and attachment.farm.organization_id != user.organization_id
+    ):
+        _flash(request, "error", "Anexo nao encontrado.")
+        return _redirect("/fazendas")
+    return _attachment_response(attachment.filename, attachment.content_type, attachment.file_data)
+
+
+@router.post("/fazendas/{farm_id}/anexos/{attachment_id}/excluir")
+def delete_farm_attachment_action(
+    farm_id: int,
+    attachment_id: int,
+    request: Request,
+    csrf_token: str = Form(...),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    validate_csrf(request, csrf_token)
+    repo = _repository(db)
+    farm = repo.get_farm(farm_id)
+    attachment = repo.get_farm_attachment(attachment_id)
+    if not farm or (user.organization_id and farm.organization_id != user.organization_id):
+        _flash(request, "error", "Fazenda nao encontrada.")
+    elif not attachment or attachment.farm_id != farm.id:
+        _flash(request, "error", "Anexo nao encontrado.")
+    else:
+        repo.delete(attachment)
+        _flash(request, "success", "Anexo removido com sucesso.")
+    return _redirect_with_query("/fazendas", edit_id=farm_id)
 
 
 @router.post("/fazendas/{farm_id}/geometria")
