@@ -763,9 +763,11 @@
                 const nameInput = form?.querySelector('input[name="name"]');
                 const locationInput = form?.querySelector('input[name="location"]');
                 const areaInput = form?.querySelector('input[name="total_area"]');
-                // Consultar CAR e uma acao explicita de importacao: os dados
-                // publicos substituem os valores atuais, que seguem editaveis.
-                if (nameInput && data.name) nameInput.value = data.name;
+                // O nome comercial e definido pelo usuario. O SICAR so sugere
+                // um nome quando o cadastro ainda nao recebeu um.
+                if (nameInput && !nameInput.value.trim() && data.name) nameInput.value = data.name;
+                // Os demais dados geograficos sao substituidos pela importacao
+                // explicita e continuam editaveis antes de salvar.
                 if (locationInput && data.location) locationInput.value = data.location;
                 if (areaInput && data.total_area !== null && data.total_area !== undefined) {
                     areaInput.value = String(data.total_area);
