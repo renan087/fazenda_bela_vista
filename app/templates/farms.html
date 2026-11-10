@@ -281,6 +281,47 @@
                     {% endif %}
                 </div>
 
+                {% set farm_has_registration_documents = edit_farm and (edit_farm.ccir_number or edit_farm.itr_registration_number or edit_farm.property_registration_number or edit_farm.registry_office) %}
+                {% if not farm_form_view_only or farm_has_registration_documents %}
+                <div class="rounded-[1.5rem] border border-brand-100 bg-brand-50/50 p-4">
+                    <div class="flex flex-wrap items-start justify-between gap-4">
+                        <div class="min-w-0">
+                            <p class="text-xs uppercase tracking-[0.3em] text-slate-400">Documentação do imóvel</p>
+                            <p class="mt-2 text-sm text-slate-500">Dados opcionais para identificação registral e fiscal da propriedade.</p>
+                        </div>
+                        <button type="button" class="stock-summary-toggle" data-farms-documents-toggle aria-expanded="false">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                                <path d="M5 12h14"/>
+                                <path d="M12 5v14" data-farms-documents-toggle-plus></path>
+                            </svg>
+                            <span data-farms-documents-toggle-label>Expandir</span>
+                        </button>
+                    </div>
+                    <div class="stock-summary-collapse" data-farms-documents-collapse>
+                        <div class="stock-summary-collapse-inner">
+                            <div class="mt-4 grid gap-4 md:grid-cols-2">
+                                <label>
+                                    <span class="mb-2 block text-sm font-medium">CCIR <span class="font-normal text-slate-500">(opcional)</span></span>
+                                    <input name="ccir_number" value="{{ edit_farm.ccir_number if edit_farm and edit_farm.ccir_number else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-white{% if farm_form_view_only %} cursor-default text-slate-700{% endif %}"{% if farm_form_view_only %} readonly tabindex="-1"{% endif %}>
+                                </label>
+                                <label>
+                                    <span class="mb-2 block text-sm font-medium">Número do ITR <span class="font-normal text-slate-500">(opcional)</span></span>
+                                    <input name="itr_registration_number" value="{{ edit_farm.itr_registration_number if edit_farm and edit_farm.itr_registration_number else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-white{% if farm_form_view_only %} cursor-default text-slate-700{% endif %}"{% if farm_form_view_only %} readonly tabindex="-1"{% endif %}>
+                                </label>
+                                <label>
+                                    <span class="mb-2 block text-sm font-medium">Matrícula do imóvel <span class="font-normal text-slate-500">(opcional)</span></span>
+                                    <input name="property_registration_number" value="{{ edit_farm.property_registration_number if edit_farm and edit_farm.property_registration_number else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-white{% if farm_form_view_only %} cursor-default text-slate-700{% endif %}"{% if farm_form_view_only %} readonly tabindex="-1"{% endif %}>
+                                </label>
+                                <label>
+                                    <span class="mb-2 block text-sm font-medium">Cartório de registro <span class="font-normal text-slate-500">(opcional)</span></span>
+                                    <input name="registry_office" value="{{ edit_farm.registry_office if edit_farm and edit_farm.registry_office else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-white{% if farm_form_view_only %} cursor-default text-slate-700{% endif %}"{% if farm_form_view_only %} readonly tabindex="-1"{% endif %}>
+                                </label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                {% endif %}
+
                 <div class="grid gap-4 md:grid-cols-2 md:items-start">
                     <div class="space-y-2">
                         <label>
@@ -507,6 +548,10 @@
         const carInput = form?.querySelector('[data-farms-car-input]');
         const carLookupBtn = form?.querySelector('[data-farms-car-lookup]');
         const carResult = form?.querySelector('[data-farms-car-result]');
+        const documentsToggle = form?.querySelector('[data-farms-documents-toggle]');
+        const documentsCollapse = form?.querySelector('[data-farms-documents-collapse]');
+        const documentsToggleLabel = form?.querySelector('[data-farms-documents-toggle-label]');
+        const documentsTogglePlus = form?.querySelector('[data-farms-documents-toggle-plus]');
         const geocodeDialog = document.getElementById('farms-geocode-dialog');
         const geocodeDialogMsg = document.querySelector('[data-farms-geocode-dialog-msg]');
         const geocodeDialogOk = document.querySelector('[data-farms-geocode-dialog-ok]');
@@ -693,6 +738,19 @@
             if (compact.length <= 9) return `${compact.slice(0, 2)}-${compact.slice(2)}`;
             return `${compact.slice(0, 2)}-${compact.slice(2, 9)}-${compact.slice(9)}`;
         };
+
+        const setDocumentsExpanded = (expanded) => {
+            if (!documentsToggle || !documentsCollapse) return;
+            documentsCollapse.classList.toggle('is-expanded', expanded);
+            documentsToggle.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+            if (documentsToggleLabel) documentsToggleLabel.textContent = expanded ? 'Recolher' : 'Expandir';
+            documentsTogglePlus?.classList.toggle('hidden', expanded);
+        };
+
+        setDocumentsExpanded(false);
+        documentsToggle?.addEventListener('click', () => {
+            setDocumentsExpanded(!documentsCollapse?.classList.contains('is-expanded'));
+        });
 
         carInput?.addEventListener('blur', () => {
             const normalized = normalizeCarInput(carInput.value);

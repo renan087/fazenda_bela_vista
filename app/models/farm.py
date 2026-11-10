@@ -13,6 +13,10 @@ class Farm(Base):
     location: Mapped[str] = mapped_column(String(180), nullable=False)
     total_area: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False)
     car_registration_number: Mapped[str | None] = mapped_column(String(140), nullable=True, index=True)
+    ccir_number: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    itr_registration_number: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    property_registration_number: Mapped[str | None] = mapped_column(String(140), nullable=True)
+    registry_office: Mapped[str | None] = mapped_column(String(180), nullable=True)
     boundary_geojson: Mapped[str] = mapped_column(Text, nullable=True)
     notes: Mapped[str] = mapped_column(Text, nullable=True)
 
