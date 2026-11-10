@@ -130,6 +130,7 @@ from app.services.dashboard_map_preview import (
     generate_dashboard_map_preview,
 )
 from app.services.car_public_lookup import CarPublicLookupError, lookup_public_car, normalize_car_number
+from app.services.farm_kml_export import farm_boundary_to_kml
 from app.services.finance_overview import (
     _in_extract_period,
     build_finance_extract_rows,
@@ -8640,6 +8641,30 @@ def lookup_farm_car(
         return JSONResponse({"ok": True, "data": lookup_public_car(car)})
     except CarPublicLookupError as exc:
         return JSONResponse({"ok": False, "message": str(exc)}, status_code=422)
+
+
+@router.get("/fazendas/{farm_id}/geomapa.kml")
+def download_farm_geometry_kml(
+    farm_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    """Baixa o perimetro salvo da fazenda, sem consultar servicos externos."""
+    farm = _repository(db).get_farm(farm_id)
+    if not farm or (user.organization_id and farm.organization_id != user.organization_id):
+        raise HTTPException(status_code=404, detail="Fazenda nao encontrada.")
+    if not (farm.boundary_geojson or "").strip():
+        raise HTTPException(status_code=404, detail="Esta fazenda ainda nao possui um perimetro salvo.")
+    try:
+        content = farm_boundary_to_kml(farm.name, farm.boundary_geojson)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    filename = quote(f"geomapa-{farm.name or 'fazenda'}.kml")
+    return Response(
+        content=content,
+        media_type="application/vnd.google-earth.kml+xml; charset=utf-8",
+        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{filename}"},
+    )
 
 
 @router.post("/fazendas")

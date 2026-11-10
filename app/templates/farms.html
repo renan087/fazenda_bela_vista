@@ -271,9 +271,13 @@
                         </button>
                         {% endif %}
                     </div>
-                    <p class="mt-2 text-xs leading-relaxed text-slate-600">Consulta a camada pública do SICAR. Confira o perímetro importado no mapa antes de salvar, pois os dados do CAR são declaratórios.</p>
+                    {% if edit_farm and edit_farm.boundary_geojson %}
+                    <a href="/fazendas/{{ edit_farm.id }}/geomapa.kml" class="mt-3 inline-flex min-h-10 items-center justify-center rounded-xl border border-emerald-200 bg-white px-3 py-2 text-sm font-semibold text-emerald-800 transition hover:bg-emerald-100">
+                        Baixar geomapa em KML
+                    </a>
+                    {% endif %}
                     {% if farm_needs_map_gate and not farm_form_view_only %}
-                    <div class="mt-3 hidden rounded-xl border border-emerald-200 bg-white px-3 py-2 text-sm text-emerald-800" data-farms-car-result aria-live="polite"></div>
+                    <p class="mt-3 hidden text-xs font-medium leading-relaxed text-emerald-800" data-farms-car-result aria-live="polite"></p>
                     {% endif %}
                 </div>
 
@@ -756,18 +760,18 @@
                 }
                 const data = payload.data;
                 if (carInput) carInput.value = data.car_number || car.toUpperCase();
+                const nameInput = form?.querySelector('input[name="name"]');
                 const locationInput = form?.querySelector('input[name="location"]');
                 const areaInput = form?.querySelector('input[name="total_area"]');
+                if (nameInput && !nameInput.value.trim() && data.name) nameInput.value = data.name;
                 if (locationInput && !locationInput.value.trim() && data.location) locationInput.value = data.location;
                 if (areaInput && !areaInput.value.trim() && data.total_area !== null && data.total_area !== undefined) {
                     areaInput.value = String(data.total_area);
                 }
                 const hiddenInput = form?.querySelector('[data-farms-boundary-input]');
                 if (hiddenInput) hiddenInput.value = JSON.stringify(data.geometry);
-                const status = data.status ? ` Situação: ${data.status}.` : '';
-                const area = data.total_area ? ` Área declarada: ${Number(data.total_area).toLocaleString('pt-BR')} ha.` : '';
                 if (carResult) {
-                    carResult.textContent = `Perímetro público importado.${area}${status} Revise e ajuste no mapa antes de salvar.`;
+                    carResult.textContent = 'Confira o perímetro importado no mapa antes de salvar.';
                     carResult.classList.remove('hidden');
                 }
                 farmFormMapPrompt?.classList.add('hidden');

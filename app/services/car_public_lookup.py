@@ -71,7 +71,10 @@ def lookup_public_car(car_number: str | None) -> dict[str, Any]:
     return {
         "car_number": str(properties.get("cod_imovel") or normalized),
         "geometry": geometry,
-        "name": None,
+        # O cadastro publico nao informa o nome comercial da propriedade. Esta
+        # sugestao usa somente municipio e UF devolvidos pelo proprio SICAR e
+        # permanece totalmente editavel pelo usuario.
+        "name": _suggest_farm_name(properties.get("municipio"), properties.get("uf")),
         "location": _format_location(properties.get("municipio"), properties.get("uf")),
         "total_area": _number_or_none(properties.get("area")),
         "status": _clean_text(properties.get("status_imovel")),
@@ -140,6 +143,11 @@ def _format_location(municipio: object, uf: object) -> str | None:
     if city and state:
         return f"{city.title()}, {state.upper()}"
     return city or state
+
+
+def _suggest_farm_name(municipio: object, uf: object) -> str | None:
+    location = _format_location(municipio, uf)
+    return f"Imovel rural - {location}" if location else None
 
 
 def _clean_text(value: object) -> str | None:

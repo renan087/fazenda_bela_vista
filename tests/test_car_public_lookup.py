@@ -56,6 +56,7 @@ def test_returns_public_geometry_and_metadata(monkeypatch):
     result = car_public_lookup.lookup_public_car("BA-1234567.ABCDEF")
 
     assert result["geometry"]["type"] == "Polygon"
+    assert result["name"] == "Imovel rural - Guanambi, BA"
     assert result["location"] == "Guanambi, BA"
     assert result["total_area"] == 120.45
     assert result["status"] == "ATIVO"
