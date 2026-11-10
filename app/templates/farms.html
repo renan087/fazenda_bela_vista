@@ -763,13 +763,17 @@
                 const nameInput = form?.querySelector('input[name="name"]');
                 const locationInput = form?.querySelector('input[name="location"]');
                 const areaInput = form?.querySelector('input[name="total_area"]');
-                if (nameInput && !nameInput.value.trim() && data.name) nameInput.value = data.name;
-                if (locationInput && !locationInput.value.trim() && data.location) locationInput.value = data.location;
-                if (areaInput && !areaInput.value.trim() && data.total_area !== null && data.total_area !== undefined) {
+                // Consultar CAR e uma acao explicita de importacao: os dados
+                // publicos substituem os valores atuais, que seguem editaveis.
+                if (nameInput && data.name) nameInput.value = data.name;
+                if (locationInput && data.location) locationInput.value = data.location;
+                if (areaInput && data.total_area !== null && data.total_area !== undefined) {
                     areaInput.value = String(data.total_area);
                 }
                 const hiddenInput = form?.querySelector('[data-farms-boundary-input]');
                 if (hiddenInput) hiddenInput.value = JSON.stringify(data.geometry);
+                const editingFarmMatch = (form?.getAttribute('action') || '').match(/^\/fazendas\/(\d+)\/editar$/);
+                if (editingFarmMatch) FARM_BOUNDARY_DATA[editingFarmMatch[1]] = data.geometry;
                 if (carResult) {
                     carResult.textContent = 'Confira o perímetro importado no mapa antes de salvar.';
                     carResult.classList.remove('hidden');
