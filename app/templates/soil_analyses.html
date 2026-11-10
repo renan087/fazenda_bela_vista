@@ -430,47 +430,64 @@
         if (!raw || raw === 'auto') return 0;
         const pxMatch = /^([\d.]+)px$/.exec(raw);
         if (pxMatch) return parseFloat(pxMatch[1]);
+        const remMatch = /^([\d.]+)rem$/.exec(raw);
+        if (remMatch) {
+            const rootPx = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
+            return parseFloat(remMatch[1]) * rootPx;
+        }
         return 0;
     };
-    const syncHeaderFade = () => {
-        if (!stickyHeader || !fadingPanels.length) return;
-        const compact = mobileCompactMq.matches;
-        const stickyTop = parseStickyTopPx(stickyHeader);
-        const introRect = headerIntro?.getBoundingClientRect();
-        const firstPanelRect = fadingPanels[0]?.getBoundingClientRect();
-        const introHeight = introRect?.height || 0;
-        const compactOverlap = compact && firstPanelRect
-            ? Math.max(0, (stickyTop + introHeight) - firstPanelRect.top)
-            : 0;
-        const fadeDistance = compact ? Math.max(introHeight * 0.95, 1) : 1;
-        const headerProgress = compact ? Math.min(compactOverlap / fadeDistance, 1) : 0;
-        stickyHeader.style.setProperty('--stock-header-progress', headerProgress.toFixed(3));
 
-        const stickyRect = stickyHeader.getBoundingClientRect();
-        const stickyBottom = stickyRect.bottom;
+    let compactRaf = null;
+    const syncSoilHeaderCompact = () => {
+        compactRaf = null;
+        if (!stickyHeader) return;
+        if (!mobileCompactMq.matches) {
+            stickyHeader.classList.remove('is-compact');
+            headerIntro?.removeAttribute('aria-hidden');
+            return;
+        }
+        const topPx = parseStickyTopPx(stickyHeader);
+        const rect = stickyHeader.getBoundingClientRect();
+        const isCompact = stickyHeader.classList.contains('is-compact');
+        const nextCompact = rect.top <= topPx + 2 ? true : rect.top > topPx + 8 ? false : isCompact;
+        stickyHeader.classList.toggle('is-compact', nextCompact);
+        headerIntro?.setAttribute('aria-hidden', nextCompact ? 'true' : 'false');
+    };
+    const scheduleSoilHeaderCompact = () => {
+        if (compactRaf !== null) return;
+        compactRaf = window.requestAnimationFrame(syncSoilHeaderCompact);
+    };
+
+    let fadeRaf = null;
+    const syncSoilFadingPanels = () => {
+        fadeRaf = null;
+        if (!stickyHeader) return;
+        const stickyBottom = stickyHeader.getBoundingClientRect().bottom;
         fadingPanels.forEach((panel) => {
             const panelRect = panel.getBoundingClientRect();
-            const panelTop = panelRect.top;
-            const panelHeight = panelRect.height;
-            panel.style.setProperty('--stock-header-progress', headerProgress.toFixed(3));
-            panel.classList.toggle('stock-panel-under-header', compact && headerProgress > 0.02);
-            if (panelTop >= stickyBottom || panelHeight <= 1) {
-                panel.style.setProperty('--stock-fade-cutoff', '0px');
-                panel.style.setProperty('--stock-fade-feather-end', '0px');
-                return;
-            }
-            const overlap = Math.min(Math.max(stickyBottom - panelTop, 0), panelHeight);
+            const overlap = Math.min(Math.max(stickyBottom - panelRect.top, 0), panelRect.height);
             const featherBand = Math.min(80, Math.max(22, overlap * 0.45 + 16));
             panel.style.setProperty('--stock-fade-cutoff', `${overlap.toFixed(2)}px`);
             panel.style.setProperty('--stock-fade-feather-end', `${(overlap + featherBand).toFixed(2)}px`);
+            panel.classList.toggle('stock-panel-under-header', mobileCompactMq.matches && overlap > 0.02);
         });
     };
-    const requestHeaderSync = () => window.requestAnimationFrame(syncHeaderFade);
-    window.addEventListener('scroll', requestHeaderSync, { passive: true });
-    window.addEventListener('resize', requestHeaderSync);
-    if (mobileCompactMq.addEventListener) mobileCompactMq.addEventListener('change', requestHeaderSync);
-    else if (mobileCompactMq.addListener) mobileCompactMq.addListener(requestHeaderSync);
-    requestHeaderSync();
+    const scheduleSoilFadingPanels = () => {
+        if (fadeRaf !== null) return;
+        fadeRaf = window.requestAnimationFrame(syncSoilFadingPanels);
+    };
+
+    if (stickyHeader) {
+        window.addEventListener('scroll', scheduleSoilHeaderCompact, { passive: true });
+        window.addEventListener('scroll', scheduleSoilFadingPanels, { passive: true });
+        window.addEventListener('resize', scheduleSoilHeaderCompact);
+        window.addEventListener('resize', scheduleSoilFadingPanels);
+        if (mobileCompactMq.addEventListener) mobileCompactMq.addEventListener('change', scheduleSoilHeaderCompact);
+        else if (mobileCompactMq.addListener) mobileCompactMq.addListener(scheduleSoilHeaderCompact);
+        scheduleSoilHeaderCompact();
+        scheduleSoilFadingPanels();
+    }
 })();
 
 const soilHistory = {{ compare_chart|safe }};
