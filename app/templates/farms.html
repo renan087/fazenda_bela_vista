@@ -336,7 +336,7 @@
                     <p class="text-xs uppercase tracking-[0.25em] text-slate-400">Perímetro no mapa</p>
                     {% if farm_form_view_only and edit_farm %}
                     {% if edit_farm_preview_only_src %}
-                    <div class="mt-3">
+                    <div class="mt-3" data-farms-preview-card>
                         <button
                             type="button"
                             class="group relative w-full max-w-2xl overflow-hidden rounded-2xl border-2 border-slate-200 bg-slate-100 text-left shadow-sm transition hover:border-brand-400 hover:shadow-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500"
@@ -387,6 +387,13 @@
                                 Editar perímetro no mapa
                             </span>
                         </button>
+                    </div>
+                    <div class="mt-3 hidden space-y-2" data-farms-car-import-editor>
+                        <p class="text-sm text-slate-600">Perímetro importado do CAR. Revise ou ajuste os pontos antes de salvar.</p>
+                        <div id="farms-car-import-boundary-map" class="relative z-0 h-[280px] overflow-hidden rounded-2xl border border-slate-200 bg-white sm:h-[320px]"></div>
+                        <div class="flex flex-wrap gap-2">
+                            <button type="button" class="rounded-xl bg-slate-200 px-3 py-2 text-xs font-semibold text-slate-800 hover:bg-slate-300" data-farms-car-import-remove-point>Remover ponto selecionado</button>
+                        </div>
                     </div>
                     {% elif farm_needs_map_gate %}
                     <div class="mt-3 space-y-3" data-farms-new-map-gate>
@@ -494,6 +501,9 @@
         const farmFormMapEditorWrap = document.querySelector('[data-farms-map-editor-wrap]');
         const farmFormLoadMapBtn = document.querySelector('[data-farms-load-map]');
         const farmFormChangeRegionBtn = document.querySelector('[data-farms-map-change-region]');
+        const farmPreviewCard = document.querySelector('[data-farms-preview-card]');
+        const farmCarImportEditorWrap = document.querySelector('[data-farms-car-import-editor]');
+        const farmCarImportRemovePointBtn = document.querySelector('[data-farms-car-import-remove-point]');
         const carInput = form?.querySelector('[data-farms-car-input]');
         const carLookupBtn = form?.querySelector('[data-farms-car-lookup]');
         const carResult = form?.querySelector('[data-farms-car-result]');
@@ -612,23 +622,6 @@
             window.setTimeout(() => previewBoundaryEditor?.invalidate(), 600);
         };
 
-        const openImportedCarMap = async (farmId, farmName) => {
-            if (!farmId || !mapPreviewModal) return;
-            resetPreviewModalLayout();
-            previewMapFarmId = String(farmId);
-            if (mapPreviewImg) {
-                mapPreviewImg.removeAttribute('src');
-                mapPreviewImg.alt = '';
-            }
-            if (mapPreviewName) {
-                mapPreviewName.textContent = `${farmName || 'Fazenda'} - perímetro importado do CAR`;
-            }
-            mapPreviewModal.showModal();
-            mapPreviewViewImage?.classList.add('hidden');
-            mapPreviewViewEditor?.classList.remove('hidden');
-            await startPreviewPolygonEdit();
-        };
-
         mapPreviewStartEdit?.addEventListener('click', () => {
             void startPreviewPolygonEdit();
         });
@@ -732,17 +725,18 @@
             geocodeDialog?.showModal();
         };
 
-        const setupFarmFormBoundaryEditor = async (initialCenter, initialGeometry = null) => {
+        const setupFarmFormBoundaryEditor = async (initialCenter, initialGeometry = null, options = {}) => {
             destroyFarmFormBoundaryEditor();
             if (typeof window.initFarmBoundaryEditor !== 'function' || !form) return;
-            if (deferFarmFormInlineMap) return;
+            if (deferFarmFormInlineMap && !options.forceInline) return;
             if (farmFormNewMapGate && !initialCenter && !initialGeometry) return;
-            const mapEl = document.getElementById('farms-form-boundary-map');
+            const containerId = options.containerId || 'farms-form-boundary-map';
+            const mapEl = document.getElementById(containerId);
             const hiddenInput = form.querySelector('[data-farms-boundary-input]');
-            const removeBtn = form.querySelector('[data-farms-form-remove-point]');
+            const removeBtn = options.removePointButton || form.querySelector('[data-farms-form-remove-point]');
             if (!mapEl || !hiddenInput) return;
             const editorOpts = {
-                containerId: 'farms-form-boundary-map',
+                containerId,
                 hiddenInput,
                 initialGeometry: initialGeometry || EDIT_FARM_GEOMETRY || null,
                 removePointButton: removeBtn,
@@ -812,7 +806,13 @@
                 farmFormMapPrompt?.classList.add('hidden');
                 farmFormMapEditorWrap?.classList.remove('hidden');
                 if (deferFarmFormInlineMap && editingFarmMatch) {
-                    await openImportedCarMap(editingFarmMatch[1], nameInput?.value);
+                    farmPreviewCard?.classList.add('hidden');
+                    farmCarImportEditorWrap?.classList.remove('hidden');
+                    await setupFarmFormBoundaryEditor(null, data.geometry, {
+                        forceInline: true,
+                        containerId: 'farms-car-import-boundary-map',
+                        removePointButton: farmCarImportRemovePointBtn,
+                    });
                 } else {
                     await setupFarmFormBoundaryEditor(null, data.geometry);
                 }
