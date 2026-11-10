@@ -18,7 +18,7 @@ import httpx
 
 
 SICAR_WFS_URL = "https://geoserver.car.gov.br/geoserver/sicar/wfs"
-CAR_NUMBER_PATTERN = re.compile(r"^(?P<uf>[A-Z]{2})-[A-Z0-9][A-Z0-9.\-]{5,118}$")
+CAR_NUMBER_PATTERN = re.compile(r"^(?P<uf>[A-Z]{2})-(?P<municipality>\d{7})-(?P<code>[A-Z0-9]{6,120})$")
 SUPPORTED_UFS = {
     "AC", "AL", "AM", "AP", "BA", "CE", "DF", "ES", "GO", "MA", "MG", "MS", "MT",
     "PA", "PB", "PE", "PI", "PR", "RJ", "RN", "RO", "RR", "RS", "SC", "SE", "SP", "TO",
@@ -31,7 +31,10 @@ class CarPublicLookupError(ValueError):
 
 
 def normalize_car_number(value: str | None) -> str:
-    normalized = re.sub(r"\s+", "", str(value or "").upper())
+    # O recibo do CAR costuma ser copiado com pontos em diferentes agrupamentos.
+    # O GeoServer publico compara o codigo sem pontuacao interna.
+    compact = re.sub(r"[^A-Z0-9]", "", str(value or "").upper())
+    normalized = f"{compact[:2]}-{compact[2:9]}-{compact[9:]}" if len(compact) > 9 else compact
     match = CAR_NUMBER_PATTERN.fullmatch(normalized)
     if not match:
         raise CarPublicLookupError("Informe um numero de CAR valido, no formato UF-codigo do imovel.")

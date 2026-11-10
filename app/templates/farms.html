@@ -661,6 +661,18 @@
             return Number.isFinite(n) ? n : null;
         };
 
+        const normalizeCarInput = (value) => {
+            const compact = String(value || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+            if (compact.length <= 2) return compact;
+            if (compact.length <= 9) return `${compact.slice(0, 2)}-${compact.slice(2)}`;
+            return `${compact.slice(0, 2)}-${compact.slice(2, 9)}-${compact.slice(9)}`;
+        };
+
+        carInput?.addEventListener('blur', () => {
+            const normalized = normalizeCarInput(carInput.value);
+            if (normalized) carInput.value = normalized;
+        });
+
         const resetNewFarmMapGate = () => {
             if (!farmFormNewMapGate) return;
             destroyFarmFormBoundaryEditor();
@@ -724,12 +736,13 @@
         };
 
         carLookupBtn?.addEventListener('click', async () => {
-            const car = String(carInput?.value || '').trim();
+            const car = normalizeCarInput(carInput?.value);
             if (!car) {
                 showFarmGeocodeDialog('Informe o número do CAR antes de realizar a consulta.');
                 carInput?.focus();
                 return;
             }
+            if (carInput) carInput.value = car;
             carLookupBtn.disabled = true;
             carLookupBtn.textContent = 'Consultando...';
             try {

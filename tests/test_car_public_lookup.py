@@ -4,7 +4,11 @@ from app.services import car_public_lookup
 
 
 def test_normalizes_and_validates_car_number():
-    assert car_public_lookup.normalize_car_number(" ba-1234.abcd ") == "BA-1234.ABCD"
+    assert car_public_lookup.normalize_car_number(" ba-1234567-abcdef ") == "BA-1234567-ABCDEF"
+    assert (
+        car_public_lookup.normalize_car_number("BA-2925006-E817.CC3F.22DB.437C.871E.523B.4E66.4CAA")
+        == "BA-2925006-E817CC3F22DB437C871E523B4E664CAA"
+    )
 
     with pytest.raises(car_public_lookup.CarPublicLookupError):
         car_public_lookup.normalize_car_number("numero-invalido")
@@ -24,7 +28,7 @@ def test_returns_public_geometry_and_metadata(monkeypatch):
                             "coordinates": [[[[ -42.0, -14.0 ], [ -42.1, -14.0 ], [ -42.0, -14.1 ], [ -42.0, -14.0 ]]]],
                         },
                         "properties": {
-                            "cod_imovel": "BA-1234.ABCD",
+                            "cod_imovel": "BA-1234567-ABCDEF",
                             "municipio": "GUANAMBI",
                             "uf": "BA",
                             "area": "120.45",
@@ -49,7 +53,7 @@ def test_returns_public_geometry_and_metadata(monkeypatch):
 
     monkeypatch.setattr(car_public_lookup.httpx, "Client", Client)
 
-    result = car_public_lookup.lookup_public_car("BA-1234.ABCD")
+    result = car_public_lookup.lookup_public_car("BA-1234567.ABCDEF")
 
     assert result["geometry"]["type"] == "Polygon"
     assert result["location"] == "Guanambi, BA"
@@ -88,7 +92,7 @@ def test_rejects_multipart_geometry_that_editor_cannot_preserve(monkeypatch):
     monkeypatch.setattr(car_public_lookup.httpx, "Client", Client)
 
     with pytest.raises(car_public_lookup.CarPublicLookupError, match="perimetro geografico"):
-        car_public_lookup.lookup_public_car("BA-1234.ABCD")
+        car_public_lookup.lookup_public_car("BA-1234567-ABCDEF")
 
 
 def test_uses_curl_fallback_after_tls_failure(monkeypatch):
