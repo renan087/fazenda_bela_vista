@@ -3253,7 +3253,7 @@ body.finance-sortable-cursor {
     position: absolute;
     z-index: 50;
     top: calc(100% + 0.55rem);
-    right: 0;
+    left: 0;
     display: grid;
     min-width: 14rem;
     overflow: hidden;
@@ -3293,6 +3293,16 @@ body.finance-sortable-cursor {
 .stock-action-menu-item:focus-visible {
     background: rgb(248 250 252);
     outline: none;
+}
+
+.stock-action-menu-item.stock-export-button-pdf:hover,
+.stock-action-menu-item.stock-export-button-pdf:focus-visible {
+    background: rgb(255 241 242);
+}
+
+.stock-action-menu-item.stock-export-button-xlsx:hover,
+.stock-action-menu-item.stock-export-button-xlsx:focus-visible {
+    background: rgb(240 253 244);
 }
 
 .stock-action-menu-hint {
@@ -4958,6 +4968,16 @@ input[type="file"] {
 }
 
 @media (max-width: 899px) {
+    .stock-page-header .stock-header-actions {
+        grid-auto-rows: 4.85rem;
+    }
+
+    .stock-page-header .stock-header-actions > *,
+    .stock-page-header .stock-action-menu-trigger,
+    .stock-page-header .stock-action-button-primary {
+        height: 100%;
+    }
+
     .stock-page-header .stock-action-menu-trigger {
         flex-direction: row;
         gap: 0.3rem;
@@ -4970,7 +4990,7 @@ input[type="file"] {
     }
 
     .stock-action-menu-panel {
-        right: 0;
+        left: 0;
         min-width: min(14rem, calc(100vw - 3rem));
     }
 }
