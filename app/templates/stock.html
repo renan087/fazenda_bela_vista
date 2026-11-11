@@ -11,37 +11,28 @@
                 </div>
             </div>
             <div class="stock-header-actions stock-header-actions-top">
-                <a href="/insumos/estoque/exportar.pdf{% if stock_export_query %}?{{ stock_export_query }}{% endif %}" class="stock-action-button stock-export-button stock-export-button-pdf">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true">
-                        <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/>
-                        <path d="M14 3v5h5"/>
-                        <path d="M8 13h8"/>
-                        <path d="M8 17h6"/>
-                    </svg>
-                    <span class="stock-action-button-label">Exportar PDF</span>
-                </a>
-                <a href="/insumos/estoque/exportar.xlsx{% if stock_export_query %}?{{ stock_export_query }}{% endif %}" class="stock-action-button stock-export-button stock-export-button-xlsx">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true">
-                        <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/>
-                        <path d="M14 3v5h5"/>
-                        <path d="m9 17 6-6"/>
-                        <path d="m9 11 6 6"/>
-                    </svg>
-                    <span class="stock-action-button-label">Exportar Excel</span>
-                </a>
-                <button type="button" class="stock-action-button border border-sky-200 bg-sky-50 text-sky-800 hover:bg-sky-100" data-stock-inventory-open>
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-                        <path d="M4 7h16"/><path d="M7 3v8"/><path d="M17 3v8"/><path d="M6 11h12v10H6z"/><path d="M9 15h6"/>
-                    </svg>
-                    <span class="stock-action-button-label">Fazer inventário</span>
-                </button>
-                <button type="button" class="stock-action-button border border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-100" data-stock-adjustment-open>
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-                        <path d="M12 5v14"/>
-                        <path d="M5 12h14"/>
-                    </svg>
-                    <span class="stock-action-button-label">Ajustar estoque</span>
-                </button>
+                <details class="stock-action-menu">
+                    <summary class="stock-action-button stock-action-menu-trigger stock-export-button">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M8 13h8"/><path d="M8 17h6"/></svg>
+                        <span class="stock-action-button-label">Exportar</span>
+                        <svg class="stock-action-menu-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+                    </summary>
+                    <div class="stock-action-menu-panel" role="menu">
+                        <a href="/insumos/estoque/exportar.pdf{% if stock_export_query %}?{{ stock_export_query }}{% endif %}" class="stock-action-menu-item stock-export-button-pdf" role="menuitem"><span>Exportar PDF</span><span class="stock-action-menu-hint">Relatório</span></a>
+                        <a href="/insumos/estoque/exportar.xlsx{% if stock_export_query %}?{{ stock_export_query }}{% endif %}" class="stock-action-menu-item stock-export-button-xlsx" role="menuitem"><span>Exportar Excel</span><span class="stock-action-menu-hint">Planilha</span></a>
+                    </div>
+                </details>
+                <details class="stock-action-menu">
+                    <summary class="stock-action-button stock-action-menu-trigger stock-stock-management-button">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M4 7h16"/><path d="M7 3v8"/><path d="M17 3v8"/><path d="M6 11h12v10H6z"/><path d="M9 15h6"/></svg>
+                        <span class="stock-action-button-label">Gerenciar estoque</span>
+                        <svg class="stock-action-menu-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+                    </summary>
+                    <div class="stock-action-menu-panel" role="menu">
+                        <button type="button" class="stock-action-menu-item text-sky-800" role="menuitem" data-stock-inventory-open><span>Fazer inventário</span><span class="stock-action-menu-hint">Conferir saldo</span></button>
+                        <button type="button" class="stock-action-menu-item text-amber-800" role="menuitem" data-stock-adjustment-open><span>Ajustar estoque</span><span class="stock-action-menu-hint">Corrigir saldo</span></button>
+                    </div>
+                </details>
                 <button type="button" class="stock-action-button stock-action-button-primary" data-stock-launch-open>
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
                         <path d="M12 5v14"/>
@@ -997,6 +988,7 @@
             const adjustmentInput = adjustmentModal?.querySelector('[data-stock-adjustment-input]');
             const adjustmentUnitHidden = adjustmentModal?.querySelector('[data-stock-adjustment-unit-hidden]');
             const adjustmentUnitDisplay = adjustmentModal?.querySelector('[data-stock-adjustment-unit-display]');
+            const closeStockActionMenus = () => document.querySelectorAll('.stock-action-menu[open]').forEach((menu) => menu.removeAttribute('open'));
             const syncAdjustmentUnit = () => {
                 if (!(adjustmentInput instanceof HTMLSelectElement) || !(adjustmentUnitHidden instanceof HTMLInputElement) || !(adjustmentUnitDisplay instanceof HTMLSelectElement)) return;
                 const unit = (adjustmentInput.selectedOptions[0]?.dataset.defaultUnit || '').trim();
@@ -1010,6 +1002,7 @@
             };
             adjustmentInput?.addEventListener('change', syncAdjustmentUnit);
             adjustmentOpenButton?.addEventListener('click', () => {
+                closeStockActionMenus();
                 resetAdjustmentForm();
                 adjustmentModal?.showModal();
             });
@@ -1038,7 +1031,7 @@
                 const query = inventorySearch.value.trim().toLocaleLowerCase('pt-BR');
                 inventoryRows.forEach((row) => row.classList.toggle('hidden', Boolean(query) && !row.dataset.stockInventorySearch.includes(query)));
             });
-            inventoryOpenButton?.addEventListener('click', () => { resetInventoryForm(); inventoryModal?.showModal(); });
+            inventoryOpenButton?.addEventListener('click', () => { closeStockActionMenus(); resetInventoryForm(); inventoryModal?.showModal(); });
             inventoryCloseButtons.forEach((button) => button.addEventListener('click', () => { resetInventoryForm(); inventoryModal?.close(); }));
             inventoryModal?.addEventListener('cancel', (event) => { event.preventDefault(); resetInventoryForm(); inventoryModal.close(); });
             inventoryForm?.addEventListener('submit', (event) => {

@@ -3196,6 +3196,102 @@ body.finance-sortable-cursor {
     background: rgba(240, 253, 244, 0.9);
 }
 
+.stock-action-menu {
+    position: relative;
+    z-index: 30;
+}
+
+.stock-action-menu-trigger {
+    width: 100%;
+    cursor: pointer;
+    list-style: none;
+    border: 1px solid rgba(226, 232, 240, 0.95);
+    background: rgba(255, 255, 255, 0.98);
+    color: rgb(51 65 85);
+}
+
+.stock-action-menu-trigger::-webkit-details-marker {
+    display: none;
+}
+
+.stock-action-menu-trigger::marker {
+    content: "";
+}
+
+.stock-stock-management-button {
+    border-color: rgba(125, 211, 252, 0.6);
+    background: rgb(240 249 255);
+    color: rgb(7 89 133);
+}
+
+.stock-stock-management-button:hover,
+.stock-action-menu[open] .stock-stock-management-button {
+    background: rgb(224 242 254);
+}
+
+.stock-action-menu[open] .stock-export-button {
+    background: rgb(248 250 252);
+    border-color: rgb(203 213 225);
+}
+
+.stock-action-menu-chevron {
+    width: 0.9rem !important;
+    height: 0.9rem !important;
+    transition: transform 0.18s ease;
+}
+
+.stock-action-menu[open] .stock-action-menu-chevron {
+    transform: rotate(180deg);
+}
+
+.stock-action-menu-panel {
+    position: absolute;
+    z-index: 50;
+    top: calc(100% + 0.55rem);
+    right: 0;
+    display: grid;
+    min-width: 14rem;
+    overflow: hidden;
+    border: 1px solid rgb(226 232 240);
+    border-radius: 1rem;
+    background: rgba(255, 255, 255, 0.99);
+    box-shadow: 0 20px 42px -24px rgba(15, 23, 42, 0.5);
+}
+
+.stock-action-menu-item {
+    display: flex;
+    width: 100%;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    border: 0;
+    border-bottom: 1px solid rgb(241 245 249);
+    background: transparent;
+    padding: 0.8rem 0.9rem;
+    color: rgb(30 41 59);
+    font-size: 0.86rem;
+    font-weight: 650;
+    text-align: left;
+    text-decoration: none;
+    cursor: pointer;
+}
+
+.stock-action-menu-item:last-child {
+    border-bottom: 0;
+}
+
+.stock-action-menu-item:hover,
+.stock-action-menu-item:focus-visible {
+    background: rgb(248 250 252);
+    outline: none;
+}
+
+.stock-action-menu-hint {
+    color: rgb(100 116 139);
+    font-size: 0.72rem;
+    font-weight: 500;
+}
+
 .stock-filter-bar {
     border: 1px solid rgba(226, 232, 240, 0.95);
     border-radius: 1.6rem;
@@ -4850,4 +4946,22 @@ input[type="number"] {
 input[type="file"] {
     max-width: 100%;
     min-width: 0;
+}
+
+@media (max-width: 899px) {
+    .stock-page-header .stock-action-menu-trigger {
+        flex-direction: row;
+        gap: 0.3rem;
+        padding-inline: 0.45rem;
+    }
+
+    .stock-page-header .stock-action-menu-trigger .stock-action-button-label {
+        overflow-wrap: normal;
+        word-break: normal;
+    }
+
+    .stock-action-menu-panel {
+        right: 0;
+        min-width: min(14rem, calc(100vw - 3rem));
+    }
 }
