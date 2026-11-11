@@ -828,6 +828,31 @@ def _sync_schema() -> None:
         "ALTER TABLE stock_outputs ADD COLUMN IF NOT EXISTS season_id INTEGER",
         "ALTER TABLE stock_outputs ADD COLUMN IF NOT EXISTS adjustment_reason VARCHAR(100)",
         "UPDATE stock_outputs SET unit_cost = NULL, total_cost = NULL WHERE reference_type = 'stock_adjustment_output'",
+        """
+        CREATE TABLE IF NOT EXISTS stock_inventory_sessions (
+            id SERIAL PRIMARY KEY,
+            farm_id INTEGER NOT NULL REFERENCES farms(id),
+            inventory_date DATE NOT NULL,
+            status VARCHAR(20) NOT NULL DEFAULT 'completed',
+            notes TEXT,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+        """,
+        "CREATE INDEX IF NOT EXISTS ix_stock_inventory_sessions_farm_id ON stock_inventory_sessions(farm_id)",
+        """
+        CREATE TABLE IF NOT EXISTS stock_inventory_items (
+            id SERIAL PRIMARY KEY,
+            session_id INTEGER NOT NULL REFERENCES stock_inventory_sessions(id) ON DELETE CASCADE,
+            input_id INTEGER NOT NULL REFERENCES input_catalog(id),
+            system_quantity NUMERIC(12,2) NOT NULL,
+            counted_quantity NUMERIC(12,2) NOT NULL,
+            difference_quantity NUMERIC(12,2) NOT NULL,
+            unit VARCHAR(20) NOT NULL,
+            adjustment_entry_id INTEGER,
+            adjustment_output_id INTEGER
+        )
+        """,
+        "CREATE INDEX IF NOT EXISTS ix_stock_inventory_items_session_id ON stock_inventory_items(session_id)",
         "ALTER TABLE input_recommendations ADD COLUMN IF NOT EXISTS plot_id INTEGER",
         "ALTER TABLE fertilization_items ADD COLUMN IF NOT EXISTS purchased_input_id INTEGER",
         "ALTER TABLE fertilization_items ADD COLUMN IF NOT EXISTS unit_cost NUMERIC(10,4)",

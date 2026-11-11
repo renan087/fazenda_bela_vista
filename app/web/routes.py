@@ -182,6 +182,7 @@ from app.services.forms import (
     create_irrigation,
     create_manual_stock_output,
     create_stock_adjustment,
+    register_stock_inventory,
     create_pest_incident,
     create_plot,
     create_purchased_input,
@@ -10910,6 +10911,12 @@ def stock_page(
         normalized_item_type=normalized_item_type,
         edit_output_id=edit_output_id,
     )
+    active_stock_input_ids = {
+        item.id for item in stock_context["catalog_inputs"] if item.is_active
+    }
+    inventory_items = [
+        item for item in stock_context["stock_catalog_rows"] if item["id"] in active_stock_input_ids
+    ]
     return templates.TemplateResponse(
         "stock.html",
         _base_context(
@@ -10941,6 +10948,8 @@ def stock_page(
             ),
             inputs_catalog=stock_context["consumption_catalog_inputs"],
             adjustment_inputs=[item for item in stock_context["catalog_inputs"] if item.is_active],
+            inventory_items=inventory_items,
+            inventory_default_date=today_in_app_timezone(),
             input_stock=stock_context["input_stock"],
             stock_catalog_rows=stock_context["stock_catalog_rows"],
             purchase_entries=purchase_entries_pagination["items"],
@@ -11049,6 +11058,47 @@ def create_stock_adjustment_action(
         return _redirect("/insumos/estoque")
     action_label = "Entrada" if adjustment_direction == "entrada" else "Saída"
     _flash(request, "success", f"{action_label} de ajuste registrada no histórico de estoque.")
+    return _redirect("/insumos/estoque")
+
+
+@router.post("/insumos/estoque/inventario")
+async def register_stock_inventory_action(
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    del user
+    form = await request.form()
+    validate_csrf(request, str(form.get("csrf_token") or ""))
+    repo = _repository(db)
+    scope, denied = _launch_scope_or_redirect(request, repo, "/insumos/estoque")
+    if denied:
+        return denied
+    counted_items = []
+    for key, value in form.multi_items():
+        if not key.startswith("counted_") or str(value).strip() == "":
+            continue
+        input_id = _int_or_none(key.removeprefix("counted_"))
+        if input_id:
+            counted_items.append({"input_id": input_id, "counted_quantity": value})
+    try:
+        _, adjustments = register_stock_inventory(
+            repo,
+            {
+                "farm_id": scope["active_farm_id"],
+                "inventory_date": str(form.get("inventory_date") or ""),
+                "notes": str(form.get("notes") or ""),
+                "items": counted_items,
+            },
+        )
+    except ValueError as exc:
+        repo.db.rollback()
+        _flash(request, "error", str(exc))
+        return _redirect("/insumos/estoque")
+    if adjustments:
+        _flash(request, "success", f"Inventário concluído. {adjustments} ajuste(s) foram registrados no histórico.")
+    else:
+        _flash(request, "success", "Inventário concluído sem divergências de saldo.")
     return _redirect("/insumos/estoque")
 
 

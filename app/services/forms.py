@@ -34,6 +34,8 @@ from app.models import (
     RainfallRecord,
     SoilAnalysis,
     StockOutput,
+    StockInventoryItem,
+    StockInventorySession,
     User,
 )
 from app.repositories.farm import FarmRepository
@@ -1261,7 +1263,7 @@ def _manual_stock_output_allocations(repository: FarmRepository, output_id: int)
     )
 
 
-def create_manual_stock_output(repository: FarmRepository, form: dict) -> StockOutput:
+def create_manual_stock_output(repository: FarmRepository, form: dict, *, commit: bool = True) -> StockOutput:
     input_id = int(form["input_id"])
     quantity = float(form["quantity"])
     if quantity <= 0:
@@ -1349,12 +1351,20 @@ def create_manual_stock_output(repository: FarmRepository, form: dict) -> StockO
         output.total_cost = round(total_cost, 2)
         output.unit_cost = round(total_cost / quantity, 4) if quantity else 0
     repository.db.add(output)
-    repository.db.commit()
-    repository.db.refresh(output)
+    if commit:
+        repository.db.commit()
+        repository.db.refresh(output)
+    else:
+        repository.db.flush()
     return output
 
 
-def create_stock_adjustment(repository: FarmRepository, form: dict) -> tuple[str, PurchasedInput | StockOutput]:
+def create_stock_adjustment(
+    repository: FarmRepository,
+    form: dict,
+    *,
+    commit: bool = True,
+) -> tuple[str, PurchasedInput | StockOutput]:
     direction = (form.get("direction") or "").strip().lower()
     reason = (form.get("reason") or "").strip().lower()
     if direction not in {"entrada", "saida"}:
@@ -1399,8 +1409,11 @@ def create_stock_adjustment(repository: FarmRepository, form: dict) -> tuple[str
             adjustment_reason=reason,
         )
         repository.db.add(entry)
-        repository.db.commit()
-        repository.db.refresh(entry)
+        if commit:
+            repository.db.commit()
+            repository.db.refresh(entry)
+        else:
+            repository.db.flush()
         return direction, entry
 
     output = create_manual_stock_output(
@@ -1416,8 +1429,88 @@ def create_stock_adjustment(repository: FarmRepository, form: dict) -> tuple[str
             "reference_type": STOCK_ADJUSTMENT_OUTPUT_REFERENCE,
             "adjustment_reason": reason,
         },
+        commit=commit,
     )
     return direction, output
+
+
+def register_stock_inventory(repository: FarmRepository, form: dict) -> tuple[StockInventorySession, int]:
+    farm_id = _int_or_none(form.get("farm_id"))
+    if not farm_id:
+        raise ValueError("Selecione uma fazenda ativa para iniciar o inventário.")
+    inventory_date = _date_or_none(form.get("inventory_date")) or today_in_app_timezone()
+    counted_items = form.get("items") or []
+    if not counted_items:
+        raise ValueError("Informe ao menos uma contagem para concluir o inventário.")
+
+    session = StockInventorySession(
+        farm_id=farm_id,
+        inventory_date=inventory_date,
+        status="completed",
+        notes=(form.get("notes") or "").strip() or None,
+    )
+    repository.db.add(session)
+    repository.db.flush()
+    adjustments = 0
+    processed_input_ids: set[int] = set()
+
+    for item in counted_items:
+        input_id = _int_or_none(item.get("input_id"))
+        try:
+            counted_quantity = round(float(item.get("counted_quantity")), 2)
+        except (TypeError, ValueError):
+            continue
+        if not input_id or counted_quantity < 0:
+            raise ValueError("Informe uma contagem válida, maior ou igual a zero.")
+        if input_id in processed_input_ids:
+            raise ValueError("Cada insumo pode ser contado apenas uma vez por inventário.")
+        processed_input_ids.add(input_id)
+        catalog = repository.get_input_catalog(input_id)
+        if not catalog or not catalog.is_active:
+            raise ValueError("O inventário contém um insumo inválido ou inativo.")
+
+        unit = (catalog.default_unit or "kg").strip()
+        system_quantity = _catalog_available_stock(repository, catalog.id, farm_id, unit)
+        difference = round(counted_quantity - system_quantity, 2)
+        inventory_item = StockInventoryItem(
+            session_id=session.id,
+            input_id=catalog.id,
+            system_quantity=system_quantity,
+            counted_quantity=counted_quantity,
+            difference_quantity=difference,
+            unit=unit,
+        )
+        repository.db.add(inventory_item)
+        if not difference:
+            continue
+
+        direction, adjustment = create_stock_adjustment(
+            repository,
+            {
+                "direction": "entrada" if difference > 0 else "saida",
+                "reason": "inventario",
+                "farm_id": farm_id,
+                "input_id": catalog.id,
+                "movement_date": inventory_date.isoformat(),
+                "quantity": abs(difference),
+                "unit": unit,
+                "notes": (
+                    f"Inventário físico #{session.id}: sistema {system_quantity:g} {unit}; "
+                    f"contado {counted_quantity:g} {unit}."
+                    + (f" {session.notes}" if session.notes else "")
+                ),
+            },
+            commit=False,
+        )
+        if direction == "entrada":
+            inventory_item.adjustment_entry_id = adjustment.id
+        else:
+            inventory_item.adjustment_output_id = adjustment.id
+        adjustments += 1
+
+    repository.db.commit()
+    repository.db.refresh(session)
+    return session, adjustments
 
 
 def update_manual_stock_output(repository: FarmRepository, output: StockOutput, form: dict) -> StockOutput:
