@@ -11074,13 +11074,37 @@ async def register_stock_inventory_action(
     scope, denied = _launch_scope_or_redirect(request, repo, "/insumos/estoque")
     if denied:
         return denied
-    counted_items = []
+    counted_values: dict[int, str] = {}
+    package_counts: dict[int, str] = {}
+    package_sizes: dict[int, str] = {}
     for key, value in form.multi_items():
-        if not key.startswith("counted_") or str(value).strip() == "":
-            continue
-        input_id = _int_or_none(key.removeprefix("counted_"))
-        if input_id:
-            counted_items.append({"input_id": input_id, "counted_quantity": value})
+        value_s = str(value).strip()
+        if key.startswith("counted_") and value_s:
+            input_id = _int_or_none(key.removeprefix("counted_"))
+            if input_id:
+                counted_values[input_id] = value_s
+        elif key.startswith("package_count_") and value_s:
+            input_id = _int_or_none(key.removeprefix("package_count_"))
+            if input_id:
+                package_counts[input_id] = value_s
+        elif key.startswith("package_size_") and value_s:
+            input_id = _int_or_none(key.removeprefix("package_size_"))
+            if input_id:
+                package_sizes[input_id] = value_s
+    multiplier_ids = set(package_counts) | set(package_sizes)
+    if any(input_id not in package_counts or input_id not in package_sizes for input_id in multiplier_ids):
+        _flash(request, "error", "Informe quantidade e conteúdo para usar o multiplicador de embalagens.")
+        return _redirect("/insumos/estoque")
+    for input_id in multiplier_ids:
+        try:
+            counted_values[input_id] = str(float(package_counts[input_id]) * float(package_sizes[input_id]))
+        except ValueError:
+            _flash(request, "error", "Informe valores numéricos válidos no multiplicador de embalagens.")
+            return _redirect("/insumos/estoque")
+    counted_items = [
+        {"input_id": input_id, "counted_quantity": quantity}
+        for input_id, quantity in counted_values.items()
+    ]
     try:
         _, adjustments = register_stock_inventory(
             repo,

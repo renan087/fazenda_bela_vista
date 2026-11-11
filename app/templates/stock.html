@@ -750,13 +750,15 @@
             </div>
             <div class="overflow-hidden rounded-[1.25rem] border border-slate-200">
                 <div class="max-h-[min(52vh,34rem)] overflow-y-auto">
-                    <table class="w-full min-w-[38rem] divide-y divide-slate-200 text-sm">
-                        <thead class="sticky top-0 z-10 bg-slate-50 text-left text-xs uppercase tracking-[0.16em] text-slate-500"><tr><th class="px-4 py-3">Insumo</th><th class="px-4 py-3">Saldo do sistema</th><th class="px-4 py-3">Contagem física</th></tr></thead>
+                    <table class="w-full min-w-[54rem] divide-y divide-slate-200 text-sm">
+                        <thead class="sticky top-0 z-10 bg-slate-50 text-left text-xs uppercase tracking-[0.16em] text-slate-500"><tr><th class="px-4 py-3">Insumo</th><th class="px-4 py-3">Saldo do sistema</th><th class="px-4 py-3">Qtd. embalagens</th><th class="px-4 py-3">Conteúdo por embalagem</th><th class="px-4 py-3">Contagem física</th></tr></thead>
                         <tbody class="divide-y divide-slate-100 bg-white">
                             {% for item in inventory_items %}
                             <tr data-stock-inventory-row data-stock-inventory-search="{{ item.name|lower }} {{ item.item_type|lower }}">
                                 <td class="px-4 py-3"><p class="font-semibold text-slate-900">{{ item.name }}</p><p class="mt-1 text-xs text-slate-500">{{ 'Combustível' if item.item_type == 'combustivel' else 'Insumo agrícola' }}</p></td>
                                 <td class="px-4 py-3 font-medium text-slate-700">{{ item.available_quantity }} {{ item.unit }}</td>
+                                <td class="px-4 py-3"><input type="number" min="0" step="0.01" name="package_count_{{ item.id }}" class="min-h-[2.75rem] w-28 rounded-xl border-slate-200 bg-slate-50" inputmode="decimal" data-stock-inventory-multiplier="count"></td>
+                                <td class="px-4 py-3"><div class="flex items-center gap-2"><input type="number" min="0" step="0.01" name="package_size_{{ item.id }}" class="min-h-[2.75rem] w-28 rounded-xl border-slate-200 bg-slate-50" inputmode="decimal" data-stock-inventory-multiplier="size"><span class="text-xs text-slate-500">{{ item.unit }}</span></div></td>
                                 <td class="px-4 py-3"><div class="flex items-center gap-2"><input type="number" min="0" step="0.01" name="counted_{{ item.id }}" class="min-h-[2.75rem] w-32 rounded-xl border-slate-200 bg-slate-50" inputmode="decimal" data-stock-inventory-count><span class="text-sm text-slate-500">{{ item.unit }}</span></div></td>
                             </tr>
                             {% else %}
@@ -770,7 +772,7 @@
                 <span class="mb-2 block text-sm font-medium">Observação geral</span>
                 <textarea name="notes" rows="3" class="w-full rounded-2xl border-slate-200 bg-slate-50" placeholder="Ex.: contagem mensal realizada pelo responsável do almoxarifado."></textarea>
             </label>
-            <p class="rounded-xl border border-sky-100 bg-sky-50 px-4 py-3 text-xs leading-5 text-sky-900">A contagem não cria compras nem lançamentos financeiros. Somente as diferenças serão lançadas como ajustes de inventário no histórico.</p>
+            <p class="rounded-xl border border-sky-100 bg-sky-50 px-4 py-3 text-xs leading-5 text-sky-900">Use o multiplicador quando a contagem for por embalagens: quantidade × conteúdo por embalagem preenche a contagem física automaticamente. A contagem não cria compras nem lançamentos financeiros.</p>
             <div class="flex flex-wrap justify-end gap-3">
                 <button type="button" class="rounded-2xl bg-slate-100 px-4 py-3 font-semibold text-slate-700 hover:bg-slate-200" data-stock-inventory-close>Cancelar</button>
                 <button class="rounded-2xl bg-sky-700 px-4 py-3 font-semibold text-white hover:bg-sky-800" data-stock-inventory-submit>Concluir inventário</button>
@@ -995,6 +997,19 @@
                 if (hasCount) return;
                 event.preventDefault();
                 window.alert('Informe a contagem física de pelo menos um insumo para concluir o inventário.');
+            });
+            inventoryRows.forEach((row) => {
+                const packageCount = row.querySelector('[data-stock-inventory-multiplier="count"]');
+                const packageSize = row.querySelector('[data-stock-inventory-multiplier="size"]');
+                const counted = row.querySelector('[data-stock-inventory-count]');
+                const updateCountFromPackages = () => {
+                    const count = Number(packageCount?.value);
+                    const size = Number(packageSize?.value);
+                    if (!Number.isFinite(count) || !Number.isFinite(size) || !packageCount?.value || !packageSize?.value) return;
+                    counted.value = (count * size).toFixed(2).replace(/\.00$/, '');
+                };
+                packageCount?.addEventListener('input', updateCountFromPackages);
+                packageSize?.addEventListener('input', updateCountFromPackages);
             });
 
             const summaryToggle = document.querySelector('[data-stock-summary-toggle]');
