@@ -2118,6 +2118,11 @@ body.dashboard-schedule-modal-open {
     backdrop-filter: blur(10px);
 }
 
+/* O cabeçalho continua recortado na rolagem, exceto enquanto um menu de ação está aberto. */
+.stock-page-header.is-action-menu-open {
+    overflow: visible;
+}
+
 .stock-page-eyebrow {
     font-size: 0.74rem;
     font-weight: 700;

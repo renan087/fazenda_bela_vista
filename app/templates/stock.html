@@ -1266,6 +1266,26 @@
 
             const stickyHeader = document.querySelector('.stock-page-header');
             const headerIntro = stickyHeader?.querySelector('[data-stock-header-intro]');
+            const stockActionMenus = Array.from(document.querySelectorAll('.stock-action-menu'));
+            const syncStockActionMenus = () => {
+                stickyHeader?.classList.toggle('is-action-menu-open', stockActionMenus.some((menu) => menu.open));
+            };
+            stockActionMenus.forEach((menu) => {
+                menu.addEventListener('toggle', () => {
+                    if (menu.open) {
+                        stockActionMenus.forEach((otherMenu) => {
+                            if (otherMenu !== menu) otherMenu.removeAttribute('open');
+                        });
+                    }
+                    syncStockActionMenus();
+                });
+            });
+            document.addEventListener('click', (event) => {
+                if (event.target instanceof Element && event.target.closest('.stock-action-menu')) return;
+                closeStockActionMenus();
+                syncStockActionMenus();
+            });
+            syncStockActionMenus();
 
             const mobileCompactMq = window.matchMedia('(max-width: 899px)');
             const parseStickyTopPx = (el) => {
