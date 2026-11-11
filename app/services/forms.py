@@ -1463,6 +1463,7 @@ def register_stock_inventory(repository: FarmRepository, form: dict) -> tuple[St
         farm_id=farm_id,
         inventory_date=inventory_date,
         status="completed",
+        responsible_name=(form.get("responsible_name") or "").strip() or None,
         notes=(form.get("notes") or "").strip() or None,
     )
     repository.db.add(session)

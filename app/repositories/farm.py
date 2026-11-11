@@ -40,6 +40,8 @@ from app.models import (
     RainfallRecord,
     SoilAnalysis,
     StockOutput,
+    StockInventoryItem,
+    StockInventorySession,
     User,
 )
 
@@ -774,6 +776,19 @@ class FarmRepository:
             .filter(StockOutput.id == output_id)
             .first()
         )
+
+    def list_stock_inventory_sessions(self, farm_id: int | None = None) -> list[StockInventorySession]:
+        query = (
+            self.db.query(StockInventorySession)
+            .options(
+                joinedload(StockInventorySession.farm),
+                joinedload(StockInventorySession.items).joinedload(StockInventoryItem.input_catalog),
+            )
+            .order_by(StockInventorySession.inventory_date.desc(), StockInventorySession.id.desc())
+        )
+        if farm_id:
+            query = query.filter(StockInventorySession.farm_id == farm_id)
+        return query.all()
 
     def list_harvests(self, limit: int | None = None) -> list[HarvestRecord]:
         query = (

@@ -10892,7 +10892,7 @@ def stock_page(
         item_type=normalized_item_type,
     )
     raw_stock_tab = request.query_params.get("stock_tab")
-    if raw_stock_tab in {"entries", "outputs", "extract"}:
+    if raw_stock_tab in {"entries", "outputs", "extract", "inventories"}:
         selected_stock_tab = raw_stock_tab
     else:
         selected_stock_tab = "entries"
@@ -10900,7 +10900,7 @@ def stock_page(
             selected_stock_tab = "entries"
         elif movement_type == "saida":
             selected_stock_tab = "outputs"
-    if selected_stock_tab not in {"entries", "outputs", "extract"}:
+    if selected_stock_tab not in {"entries", "outputs", "extract", "inventories"}:
         selected_stock_tab = "entries"
     purchase_entries = _sort_collection_desc(
         stock_context["purchase_entries"],
@@ -10928,6 +10928,24 @@ def stock_page(
     purchase_entries_pagination = _paginate_collection(request, purchase_entries, "entries_page")
     stock_outputs_pagination = _paginate_collection(request, stock_outputs, "outputs_page")
     extract_rows_pagination = _paginate_collection(request, extract_rows, "extract_page")
+    inventory_sessions = repo.list_stock_inventory_sessions(farm_id=selected_farm_id)
+    if stock_search_value:
+        inventory_sessions = [
+            session
+            for session in inventory_sessions
+            if _normalize_search_value(
+                " ".join(
+                    [
+                        str(session.inventory_date or ""),
+                        session.farm.name if session.farm else "",
+                        session.responsible_name or "",
+                        session.notes or "",
+                        " ".join(item.input_catalog.name for item in session.items if item.input_catalog),
+                    ]
+                )
+            ).find(_normalize_search_value(stock_search_value)) >= 0
+        ]
+    inventory_sessions_pagination = _paginate_collection(request, inventory_sessions, "inventories_page")
     edit_output = repo.get_stock_output(edit_output_id) if edit_output_id else None
     edit_output_mode = None
     edit_fertilization_item = None
@@ -11000,11 +11018,14 @@ def stock_page(
             stock_outputs_pagination=stock_outputs_pagination,
             extract_rows=extract_rows_pagination["items"],
             extract_rows_pagination=extract_rows_pagination,
+            inventory_sessions=inventory_sessions_pagination["items"],
+            inventory_sessions_pagination=inventory_sessions_pagination,
             selected_stock_tab=selected_stock_tab,
             stock_tab_urls={
                 "entries": _url_with_query(request, stock_tab="entries"),
                 "outputs": _url_with_query(request, stock_tab="outputs"),
                 "extract": _url_with_query(request, stock_tab="extract"),
+                "inventories": _url_with_query(request, stock_tab="inventories"),
             },
             edit_output=edit_output,
             edit_output_mode=edit_output_mode,
@@ -11109,7 +11130,6 @@ async def register_stock_inventory_action(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user_web),
 ):
-    del user
     form = await request.form()
     validate_csrf(request, str(form.get("csrf_token") or ""))
     repo = _repository(db)
@@ -11153,6 +11173,7 @@ async def register_stock_inventory_action(
             {
                 "farm_id": scope["active_farm_id"],
                 "inventory_date": str(form.get("inventory_date") or ""),
+                "responsible_name": user.display_name or user.name,
                 "notes": str(form.get("notes") or ""),
                 "items": counted_items,
             },
@@ -11165,7 +11186,7 @@ async def register_stock_inventory_action(
         _flash(request, "success", f"Inventário concluído. {adjustments} ajuste(s) foram registrados no histórico.")
     else:
         _flash(request, "success", "Inventário concluído sem divergências de saldo.")
-    return _redirect("/insumos/estoque")
+    return _redirect("/insumos/estoque?stock_tab=inventories")
 
 
 @router.get("/insumos/estoque/saidas/{output_id}/editar")

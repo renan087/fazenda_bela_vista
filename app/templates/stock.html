@@ -224,6 +224,7 @@
                 <a href="{{ stock_tab_urls.entries }}" class="stock-tab-link {% if selected_stock_tab == 'entries' %}is-active{% endif %}" data-stock-tab-button="entries">Entradas</a>
                 <a href="{{ stock_tab_urls.outputs }}" class="stock-tab-link {% if selected_stock_tab == 'outputs' %}is-active{% endif %}" data-stock-tab-button="outputs">Saídas</a>
                 <a href="{{ stock_tab_urls.extract }}" class="stock-tab-link {% if selected_stock_tab == 'extract' %}is-active{% endif %}" data-stock-tab-button="extract">Extrato</a>
+                <a href="{{ stock_tab_urls.inventories }}" class="stock-tab-link {% if selected_stock_tab == 'inventories' %}is-active{% endif %}" data-stock-tab-button="inventories">Inventários</a>
             </div>
             <div class="stock-search-field">
                 <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
@@ -418,6 +419,54 @@
             </div>
             <p class="stock-search-empty mt-4 hidden text-sm text-slate-500" data-stock-search-empty>Nenhuma movimentação corresponde à busca digitada.</p>
             {% with pagination=extract_rows_pagination %}{% include "partials/history_pagination.html" %}{% endwith %}
+        </div>
+
+        <div class="stock-history-stage mt-4 {% if selected_stock_tab != 'inventories' %}hidden{% endif %}" data-stock-tab="inventories">
+            <div class="stock-table-shell overflow-hidden rounded-[1.5rem] border border-slate-200">
+                <div class="overflow-x-auto">
+                    <table class="stock-history-table min-w-full divide-y divide-slate-200 text-sm">
+                        <thead class="bg-slate-50 text-left text-slate-500">
+                            <tr>
+                                <th class="px-4 py-3 font-medium">Data</th>
+                                <th class="px-4 py-3 font-medium">Fazenda</th>
+                                <th class="px-4 py-3 font-medium">Responsável</th>
+                                <th class="px-4 py-3 font-medium">Itens conferidos</th>
+                                <th class="px-4 py-3 font-medium">Divergências</th>
+                                <th class="px-4 py-3 font-medium">Observações</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-100 bg-white">
+                            {% for inventory in inventory_sessions %}
+                            {% set divergence_count = inventory.items|selectattr('difference_quantity')|select|list|length %}
+                            <tr data-stock-history-row data-stock-kind="inventario" data-stock-search-text="{{ inventory.inventory_date ~ ' ' ~ (inventory.farm.name if inventory.farm else '') ~ ' ' ~ (inventory.responsible_name or '') ~ ' ' ~ (inventory.notes or '') }}">
+                                <td class="px-4 py-3 whitespace-nowrap">
+                                    <button type="button" class="text-left font-semibold text-slate-900 transition hover:text-brand-700" data-history-view-trigger data-history-view-kicker="Inventário físico" data-history-view-title="Inventário de estoque" data-history-view-subtitle="{{ inventory.inventory_date.strftime('%d-%m-%Y') if inventory.inventory_date else '-' }}" data-history-view-source="stock-inventory-view-{{ inventory.id }}">{{ inventory.inventory_date.strftime('%d-%m-%Y') if inventory.inventory_date else '-' }}</button>
+                                </td>
+                                <td class="px-4 py-3">{{ inventory.farm.name if inventory.farm else "Sem vínculo" }}</td>
+                                <td class="px-4 py-3">{{ inventory.responsible_name or "Não informado" }}</td>
+                                <td class="px-4 py-3 whitespace-nowrap">{{ inventory.items|length }} item(ns)</td>
+                                <td class="px-4 py-3">
+                                    {% if divergence_count %}<span class="stock-movement-chip stock-movement-chip-output">{{ divergence_count }} ajuste(s)</span>{% else %}<span class="stock-movement-chip stock-movement-chip-entry">Sem ajustes</span>{% endif %}
+                                </td>
+                                <td class="px-4 py-3 text-slate-500"><span class="stock-history-note-clamp" title="{{ inventory.notes or '-' }}">{{ inventory.notes or "-" }}</span></td>
+                            </tr>
+                            <template id="stock-inventory-view-{{ inventory.id }}">
+                                <div class="grid gap-3 sm:grid-cols-2">
+                                    <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Fazenda</p><p class="mt-2 text-sm font-medium text-slate-800">{{ inventory.farm.name if inventory.farm else "Sem vínculo" }}</p></div>
+                                    <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Responsável</p><p class="mt-2 text-sm font-medium text-slate-800">{{ inventory.responsible_name or "Não informado" }}</p></div>
+                                </div>
+                                <div class="mt-4 overflow-x-auto rounded-2xl border border-slate-200"><table class="min-w-full text-sm"><thead class="bg-slate-50 text-left text-slate-500"><tr><th class="px-3 py-2 font-medium">Insumo</th><th class="px-3 py-2 font-medium">Sistema</th><th class="px-3 py-2 font-medium">Contado</th><th class="px-3 py-2 font-medium">Diferença</th></tr></thead><tbody class="divide-y divide-slate-100">{% for item in inventory.items %}<tr><td class="px-3 py-2 font-medium text-slate-800">{{ item.input_catalog.name if item.input_catalog else '-' }}</td><td class="px-3 py-2">{{ item.system_quantity }} {{ item.unit }}</td><td class="px-3 py-2">{{ item.counted_quantity }} {{ item.unit }}</td><td class="px-3 py-2 {% if item.difference_quantity > 0 %}text-emerald-700{% elif item.difference_quantity < 0 %}text-rose-700{% else %}text-slate-500{% endif %}">{% if item.difference_quantity > 0 %}+{% endif %}{{ item.difference_quantity }} {{ item.unit }}</td></tr>{% endfor %}</tbody></table></div>
+                                <div class="mt-4 rounded-2xl bg-slate-50 px-4 py-4"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Observações</p><p class="mt-2 text-sm text-slate-600">{{ inventory.notes or "Sem observações." }}</p></div>
+                            </template>
+                            {% else %}
+                            <tr><td colspan="6" class="px-4 py-6 text-center text-slate-500">Nenhum inventário físico registrado.</td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            <p class="stock-search-empty mt-4 hidden text-sm text-slate-500" data-stock-search-empty>Nenhum inventário corresponde à busca digitada.</p>
+            {% with pagination=inventory_sessions_pagination %}{% include "partials/history_pagination.html" %}{% endwith %}
         </div>
         </div>
     </section>
@@ -816,7 +865,7 @@
                 if (!(pdf instanceof HTMLAnchorElement) || !(xlsx instanceof HTMLAnchorElement)) return;
                 const params = new URLSearchParams(window.location.search);
                 params.set('stock_tab', activeTab);
-                ['entries_page', 'outputs_page', 'extract_page'].forEach((key) => params.delete(key));
+                ['entries_page', 'outputs_page', 'extract_page', 'inventories_page'].forEach((key) => params.delete(key));
                 const searchEl = document.querySelector('[data-stock-history-search]');
                 const q = (searchEl?.value || '').trim();
                 if (q) {

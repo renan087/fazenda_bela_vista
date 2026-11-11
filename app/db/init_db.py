@@ -839,10 +839,12 @@ def _sync_schema() -> None:
             farm_id INTEGER NOT NULL REFERENCES farms(id),
             inventory_date DATE NOT NULL,
             status VARCHAR(20) NOT NULL DEFAULT 'completed',
+            responsible_name VARCHAR(120),
             notes TEXT,
             created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
         )
         """,
+        "ALTER TABLE stock_inventory_sessions ADD COLUMN IF NOT EXISTS responsible_name VARCHAR(120)",
         "CREATE INDEX IF NOT EXISTS ix_stock_inventory_sessions_farm_id ON stock_inventory_sessions(farm_id)",
         """
         CREATE TABLE IF NOT EXISTS stock_inventory_items (

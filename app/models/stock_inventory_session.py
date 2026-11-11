@@ -13,6 +13,7 @@ class StockInventorySession(Base):
     farm_id: Mapped[int] = mapped_column(ForeignKey("farms.id"), nullable=False, index=True)
     inventory_date: Mapped[date] = mapped_column(Date, nullable=False)
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="completed")
+    responsible_name: Mapped[str] = mapped_column(String(120), nullable=True)
     notes: Mapped[str] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
