@@ -1014,6 +1014,31 @@ def _build_global_notifications(
                     meta="Estoque de Insumos",
                 )
 
+        for entry in purchase_entries:
+            if not entry.expiration_date or float(entry.available_quantity or 0) <= 0:
+                continue
+            days_to_expiry = (entry.expiration_date - today).days
+            if days_to_expiry < 0:
+                add_notification(
+                    important,
+                    title="Lote vencido em estoque",
+                    message=f"{entry.input_catalog.name if entry.input_catalog else entry.name} • lote {entry.batch_number or entry.id} venceu em {entry.expiration_date.strftime('%d/%m/%Y')}.",
+                    href="/insumos/estoque",
+                    kind="stock",
+                    severity="danger",
+                    meta="Estoque de Insumos",
+                )
+            elif days_to_expiry <= 30:
+                add_notification(
+                    operational,
+                    title="Lote próximo do vencimento",
+                    message=f"{entry.input_catalog.name if entry.input_catalog else entry.name} • lote {entry.batch_number or entry.id} vence em {entry.expiration_date.strftime('%d/%m/%Y')}.",
+                    href="/insumos/estoque",
+                    kind="stock",
+                    severity="warning",
+                    meta="Estoque de Insumos",
+                )
+
     if can_view_finance:
         for transaction in repo.list_finance_transactions(farm_id=active_farm.id):
             operation_type = (transaction.operation_type or "").strip().lower()
@@ -10193,6 +10218,7 @@ def purchased_inputs_page(
                 end_date=end,
             ),
             edit_input=edit_input,
+            today=today_in_app_timezone(),
             purchased_inputs_filters_active=purchased_inputs_filters_active,
             selected_purchased_tab=selected_purchased_tab,
             purchased_tab_urls={
@@ -10225,6 +10251,10 @@ async def create_purchased_input_action(
     installment_frequency: str | None = Form(None),
     first_installment_date: str | None = Form(None),
     purchase_date: str | None = Form(None),
+    supplier_name: str | None = Form(None),
+    batch_number: str | None = Form(None),
+    manufacture_date: str | None = Form(None),
+    expiration_date: str | None = Form(None),
     low_stock_threshold: str | None = Form(None),
     notes: str | None = Form(None),
     db: Session = Depends(get_db),
@@ -10294,6 +10324,10 @@ async def create_purchased_input_action(
                 "installment_frequency": installment_frequency,
                 "first_installment_date": first_installment_date,
                 "purchase_date": purchase_date,
+                "supplier_name": supplier_name,
+                "batch_number": batch_number,
+                "manufacture_date": manufacture_date,
+                "expiration_date": expiration_date,
                 "low_stock_threshold": low_stock_threshold,
                 "notes": notes,
             },
@@ -10335,6 +10369,10 @@ async def update_purchased_input_action(
     installment_frequency: str | None = Form(None),
     first_installment_date: str | None = Form(None),
     purchase_date: str | None = Form(None),
+    supplier_name: str | None = Form(None),
+    batch_number: str | None = Form(None),
+    manufacture_date: str | None = Form(None),
+    expiration_date: str | None = Form(None),
     low_stock_threshold: str | None = Form(None),
     notes: str | None = Form(None),
     db: Session = Depends(get_db),
@@ -10412,6 +10450,10 @@ async def update_purchased_input_action(
                 "installment_frequency": installment_frequency,
                 "first_installment_date": first_installment_date,
                 "purchase_date": purchase_date,
+                "supplier_name": supplier_name,
+                "batch_number": batch_number,
+                "manufacture_date": manufacture_date,
+                "expiration_date": expiration_date,
                 "low_stock_threshold": low_stock_threshold,
                 "notes": notes,
             },

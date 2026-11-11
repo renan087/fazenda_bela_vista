@@ -78,6 +78,19 @@ def _date_or_none(value: str | date | None) -> date | None:
         return None
 
 
+def _lot_tracking_fields(form: dict) -> dict:
+    manufacture_date = _date_or_none(form.get("manufacture_date"))
+    expiration_date = _date_or_none(form.get("expiration_date"))
+    if manufacture_date and expiration_date and manufacture_date > expiration_date:
+        raise ValueError("A data de fabricação não pode ser posterior à data de validade.")
+    return {
+        "supplier_name": (form.get("supplier_name") or "").strip() or None,
+        "batch_number": (form.get("batch_number") or "").strip() or None,
+        "manufacture_date": manufacture_date,
+        "expiration_date": expiration_date,
+    }
+
+
 def _finance_add_months(base_date: date, months: int) -> date:
     month = base_date.month - 1 + months
     year = base_date.year + month // 12
@@ -665,6 +678,7 @@ def create_purchased_input(repository: FarmRepository, form: dict) -> PurchasedI
         low_stock_threshold if low_stock_threshold > 0 else None,
         override_primary_unit=override_primary,
     )
+    lot_tracking = _lot_tracking_fields(form)
 
     payment_condition, payment_method, installment_count, installment_frequency, first_installment_date = _normalize_finance_schedule_fields(form)
     credit_card = _resolve_credit_card(repository, form)
@@ -682,6 +696,7 @@ def create_purchased_input(repository: FarmRepository, form: dict) -> PurchasedI
         package_unit=catalog.default_unit,
         unit_price=unit_price,
         purchase_date=date.fromisoformat(form["purchase_date"]) if form.get("purchase_date") else today_in_app_timezone(),
+        **lot_tracking,
         total_quantity=total_quantity,
         available_quantity=total_quantity,
         total_cost=round(quantity_purchased * unit_price, 2),
@@ -759,6 +774,7 @@ def update_purchased_input(repository: FarmRepository, item: PurchasedInput, for
         low_stock_threshold if low_stock_threshold > 0 else None,
         override_primary_unit=override_primary,
     )
+    lot_tracking = _lot_tracking_fields(form)
 
     updated_item = repository.update(
         item,
@@ -774,6 +790,7 @@ def update_purchased_input(repository: FarmRepository, item: PurchasedInput, for
             "package_unit": catalog.default_unit,
             "unit_price": unit_price,
             "purchase_date": date.fromisoformat(form["purchase_date"]) if form.get("purchase_date") else item.purchase_date,
+            **lot_tracking,
             "total_quantity": total_quantity,
             "available_quantity": available_quantity,
             "total_cost": round(quantity_purchased * unit_price, 2),
@@ -1281,13 +1298,12 @@ def create_manual_stock_output(repository: FarmRepository, form: dict, *, commit
     movement_date = date.fromisoformat(form["movement_date"]) if form.get("movement_date") else today_in_app_timezone()
     season_id = _resolve_season_for_farm(repository, farm_id, movement_date, form.get("season_id"))
 
-    available = _catalog_available_stock(repository, input_catalog.id, farm_id, unit)
+    candidate_lots = _find_candidate_lots(repository, input_catalog.id, None, input_catalog.name, unit, farm_id)
+    candidate_lots = sorted(candidate_lots, key=lambda item: (item.expiration_date or date.max, item.purchase_date or date.max, item.id))
+    available = round(sum(_available_stock_for_input(lot) for lot in candidate_lots), 2)
     if quantity > available:
         missing = round(quantity - available, 2)
         raise ValueError(f"Estoque insuficiente. Necessario comprar {missing} {unit} de {input_catalog.name}.")
-
-    candidate_lots = _find_candidate_lots(repository, input_catalog.id, None, input_catalog.name, unit, farm_id)
-    candidate_lots = sorted(candidate_lots, key=lambda item: (item.purchase_date or today_in_app_timezone(), item.id))
 
     output_origin = (form.get("origin") or "manual").strip() or "manual"
     output_reference_type = (form.get("reference_type") or MANUAL_STOCK_OUTPUT_REFERENCE).strip()
@@ -1554,9 +1570,9 @@ def update_manual_stock_output(repository: FarmRepository, output: StockOutput, 
 
     candidate_lots = sorted(
         _find_candidate_lots(repository, input_catalog.id, None, input_catalog.name, target_unit, target_farm_id),
-        key=lambda item: (item.purchase_date or today_in_app_timezone(), item.id),
+        key=lambda item: (item.expiration_date or date.max, item.purchase_date or date.max, item.id),
     )
-    available = _catalog_available_stock(repository, input_catalog.id, target_farm_id, target_unit)
+    available = round(sum(_available_stock_for_input(lot) for lot in candidate_lots), 2)
     if new_quantity > available:
         missing = round(new_quantity - available, 2)
         raise ValueError(
@@ -2190,7 +2206,11 @@ def _current_average_cost(repository: FarmRepository, farm_id: int | None, input
         input_id = catalog.id if catalog else None
     lots = [
         item for item in repository.list_purchased_inputs(include_stock_adjustments=True)
-        if item.input_id == input_id and item.package_unit == unit and (farm_id is None or item.farm_id in (None, farm_id)) and _available_stock_for_input(item) > 0
+        if item.input_id == input_id
+        and item.package_unit == unit
+        and (farm_id is None or item.farm_id in (None, farm_id))
+        and (not item.expiration_date or item.expiration_date >= today_in_app_timezone())
+        and _available_stock_for_input(item) > 0
     ]
     total_quantity = sum(_available_stock_for_input(item) for item in lots)
     total_value = sum(_available_stock_for_input(item) * (float(item.total_cost or 0) / max(float(item.total_quantity or 0), 1)) for item in lots)
@@ -2198,7 +2218,12 @@ def _current_average_cost(repository: FarmRepository, farm_id: int | None, input
 
 
 def _find_candidate_lots(repository: FarmRepository, input_id: int | None, purchased_input_id: int | None, name: str | None, unit: str, farm_id: int | None) -> list[PurchasedInput]:
-    purchased_inputs = repository.list_purchased_inputs(include_stock_adjustments=True)
+    today = today_in_app_timezone()
+    purchased_inputs = [
+        item
+        for item in repository.list_purchased_inputs(include_stock_adjustments=True)
+        if not item.expiration_date or item.expiration_date >= today
+    ]
     target_input_id = input_id
     if target_input_id is None and purchased_input_id:
         direct = next((item for item in purchased_inputs if item.id == purchased_input_id), None)
@@ -2221,7 +2246,7 @@ def _deduct_stock(repository: FarmRepository, fertilization_item: FertilizationI
         fertilization_item.unit,
         farm_id,
     )
-    candidate_lots = sorted(candidate_lots, key=lambda item: (item.purchase_date or today_in_app_timezone(), item.id))
+    candidate_lots = sorted(candidate_lots, key=lambda item: (item.expiration_date or date.max, item.purchase_date or date.max, item.id))
     total_available = sum(_available_stock_for_input(item) for item in candidate_lots)
     if requested_quantity > total_available:
         missing = round(requested_quantity - total_available, 2)
