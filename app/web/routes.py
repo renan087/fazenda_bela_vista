@@ -2245,6 +2245,7 @@ def _build_stock_context(
                 }
             )
         for output in related_outputs:
+            is_adjustment = output.reference_type == "stock_adjustment_output"
             events.append(
                 {
                     "kind": "saida",
@@ -2254,9 +2255,9 @@ def _build_stock_context(
                     "farm": output.farm,
                     "plot": output.plot,
                     "origin": output.origin,
-                    "reference": f"{output.reference_type or 'movimento'}#{output.reference_id}" if output.reference_id else (output.reference_type or "movimento manual"),
-                    "value": float(output.total_cost or 0),
-                    "unit_cost": float(output.unit_cost or 0),
+                    "reference": (output.adjustment_reason or "ajuste") if is_adjustment else (f"{output.reference_type or 'movimento'}#{output.reference_id}" if output.reference_id else (output.reference_type or "movimento manual")),
+                    "value": None if is_adjustment else float(output.total_cost or 0),
+                    "unit_cost": None if is_adjustment else float(output.unit_cost or 0),
                     "notes": output.notes,
                     "sort_key": (output.movement_date or today_in_app_timezone(), 1, output.id),
                 }

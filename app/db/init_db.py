@@ -827,6 +827,7 @@ def _sync_schema() -> None:
         "ALTER TABLE fertilization_schedules ADD COLUMN IF NOT EXISTS application_method VARCHAR(40) NOT NULL DEFAULT 'fertirrigacao'",
         "ALTER TABLE stock_outputs ADD COLUMN IF NOT EXISTS season_id INTEGER",
         "ALTER TABLE stock_outputs ADD COLUMN IF NOT EXISTS adjustment_reason VARCHAR(100)",
+        "UPDATE stock_outputs SET unit_cost = NULL, total_cost = NULL WHERE reference_type = 'stock_adjustment_output'",
         "ALTER TABLE input_recommendations ADD COLUMN IF NOT EXISTS plot_id INTEGER",
         "ALTER TABLE fertilization_items ADD COLUMN IF NOT EXISTS purchased_input_id INTEGER",
         "ALTER TABLE fertilization_items ADD COLUMN IF NOT EXISTS unit_cost NUMERIC(10,4)",

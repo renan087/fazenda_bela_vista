@@ -1340,8 +1340,14 @@ def create_manual_stock_output(repository: FarmRepository, form: dict) -> StockO
         total_cost = round(total_cost + float(allocation.total_cost or 0), 2)
         remaining = round(remaining - consumed, 2)
 
-    output.total_cost = round(total_cost, 2)
-    output.unit_cost = round(total_cost / quantity, 4) if quantity else 0
+    # Ajustes apenas corrigem o saldo físico. O custo das alocações fica interno
+    # para preservar a baixa dos lotes, sem transformar o ajuste em movimentação financeira.
+    if output_reference_type == STOCK_ADJUSTMENT_OUTPUT_REFERENCE:
+        output.total_cost = None
+        output.unit_cost = None
+    else:
+        output.total_cost = round(total_cost, 2)
+        output.unit_cost = round(total_cost / quantity, 4) if quantity else 0
     repository.db.add(output)
     repository.db.commit()
     repository.db.refresh(output)
