@@ -433,7 +433,7 @@ def build_dashboard_context(
     ]
     purchased_inputs = [
         entry
-        for entry in repository.list_purchased_inputs()
+        for entry in repository.list_purchased_inputs(include_stock_adjustments=True)
         if (scoped_farm_id_set is None or entry.farm_id in scoped_farm_id_set)
         and entry.input_catalog
         and entry.input_catalog.item_type in {"insumo_agricola", "combustivel"}

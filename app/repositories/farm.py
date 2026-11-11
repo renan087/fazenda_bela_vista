@@ -486,7 +486,12 @@ class FarmRepository:
         )
         return query.limit(limit).all() if limit else query.all()
 
-    def list_purchased_inputs(self, item_type: str | None = None) -> list[PurchasedInput]:
+    def list_purchased_inputs(
+        self,
+        item_type: str | None = None,
+        *,
+        include_stock_adjustments: bool = False,
+    ) -> list[PurchasedInput]:
         query = (
             self.db.query(PurchasedInput)
             .options(
@@ -506,6 +511,11 @@ class FarmRepository:
         )
         if item_type:
             query = query.join(PurchasedInput.input_catalog).filter(InputCatalog.item_type == item_type)
+        if not include_stock_adjustments:
+            query = query.filter(
+                (PurchasedInput.entry_origin.is_(None))
+                | (PurchasedInput.entry_origin != "stock_adjustment_entry")
+            )
         return query.all()
 
     def get_purchased_input(self, input_id: int) -> PurchasedInput | None:

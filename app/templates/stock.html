@@ -29,6 +29,13 @@
                     </svg>
                     <span class="stock-action-button-label">Exportar Excel</span>
                 </a>
+                <button type="button" class="stock-action-button border border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-100" data-stock-adjustment-open>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                        <path d="M12 5v14"/>
+                        <path d="M5 12h14"/>
+                    </svg>
+                    <span class="stock-action-button-label">Ajustar estoque</span>
+                </button>
                 <button type="button" class="stock-action-button stock-action-button-primary" data-stock-launch-open>
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
                         <path d="M12 5v14"/>
@@ -242,7 +249,7 @@
                             {% for entry in purchase_entries %}
                             <tr data-stock-history-row data-stock-kind="entrada" data-stock-search-text="{{ (entry.purchase_date or '') ~ ' ' ~ (entry.input_catalog.name if entry.input_catalog else entry.name) ~ ' ' ~ (entry.farm.name if entry.farm else '') ~ ' ' ~ (entry.notes or '') ~ ' ' ~ ('Combustivel' if entry.input_catalog and entry.input_catalog.item_type == 'combustivel' else 'Insumo agricola') }}">
                                 <td class="px-4 py-3">
-                                    <span class="stock-movement-chip stock-movement-chip-entry">Entrada</span>
+                                    <span class="stock-movement-chip stock-movement-chip-entry">{% if entry.entry_origin == 'stock_adjustment_entry' %}Ajuste +{% else %}Entrada{% endif %}</span>
                                 </td>
                                 <td class="px-4 py-3 whitespace-nowrap">
                                     <button type="button" class="text-left font-semibold text-slate-900 transition hover:text-brand-700 whitespace-nowrap" data-history-view-trigger data-history-view-kicker="Entrada de estoque" data-history-view-title="{{ entry.input_catalog.name if entry.input_catalog else entry.name }}" data-history-view-subtitle="{{ entry.purchase_date.strftime('%d-%m-%Y') if entry.purchase_date else '-' }}" data-history-view-source="stock-entry-view-{{ entry.id }}">{{ entry.purchase_date.strftime('%d-%m-%Y') if entry.purchase_date else "-" }}</button>
@@ -254,6 +261,7 @@
                                             <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Data</p><p class="mt-2 text-sm font-medium text-slate-800">{{ entry.purchase_date.strftime('%d-%m-%Y') if entry.purchase_date else "-" }}</p></div>
                                             <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Fazenda</p><p class="mt-2 text-sm font-medium text-slate-800">{{ entry.farm.name if entry.farm else "Sem vínculo" }}</p></div>
                                             <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Tipo</p><p class="mt-2 text-sm font-medium text-slate-800">{{ 'Combustivel' if entry.input_catalog and entry.input_catalog.item_type == 'combustivel' else 'Insumo agricola' }}</p></div>
+                                            {% if entry.entry_origin == 'stock_adjustment_entry' %}<div class="rounded-2xl bg-amber-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-amber-700">Motivo do ajuste</p><p class="mt-2 text-sm font-medium text-amber-900">{{ (entry.adjustment_reason or 'outro')|replace('_', ' ')|capitalize }}</p></div>{% endif %}
                                             <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Quantidade</p><p class="mt-2 text-sm font-medium text-slate-800">{{ entry.total_quantity }} {{ entry.package_unit }}</p></div>
                                             <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Saldo do lote</p><p class="mt-2 text-sm font-medium text-slate-800">{{ entry.available_quantity }} {{ entry.package_unit }}</p></div>
                                             <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Valor</p><p class="mt-2 text-sm font-medium text-slate-800">R$ {{ entry.total_cost }}</p></div>
@@ -301,17 +309,18 @@
                             {% for output in stock_outputs %}
                             <tr data-stock-history-row data-stock-kind="saida" data-stock-search-text="{{ output.movement_date ~ ' ' ~ (output.input_catalog.name if output.input_catalog else '') ~ ' ' ~ output.origin ~ ' ' ~ (output.farm.name if output.farm else '') ~ ' ' ~ (output.plot.name if output.plot else '') ~ ' ' ~ (output.notes or '') }}">
                                 <td class="px-4 py-3">
-                                    <span class="stock-movement-chip stock-movement-chip-output">Saída</span>
+                                    <span class="stock-movement-chip stock-movement-chip-output">{% if output.reference_type == 'stock_adjustment_output' %}Ajuste -{% else %}Saída{% endif %}</span>
                                 </td>
                                 <td class="px-4 py-3 whitespace-nowrap">
-                                    <button type="button" class="text-left font-semibold text-slate-900 transition hover:text-brand-700 whitespace-nowrap" data-history-view-trigger data-history-view-kicker="Saida de estoque" data-history-view-title="{{ output.input_catalog.name if output.input_catalog else '-' }}" data-history-view-subtitle="{{ output.movement_date.strftime('%d-%m-%Y') if output.movement_date else '-' }}" data-history-view-source="stock-output-table-view-{{ output.id }}" data-history-view-edit-url="/insumos/estoque/saidas/{{ output.id }}/editar">{{ output.movement_date.strftime('%d-%m-%Y') if output.movement_date else "-" }}</button>
+                                    <button type="button" class="text-left font-semibold text-slate-900 transition hover:text-brand-700 whitespace-nowrap" data-history-view-trigger data-history-view-kicker="Saida de estoque" data-history-view-title="{{ output.input_catalog.name if output.input_catalog else '-' }}" data-history-view-subtitle="{{ output.movement_date.strftime('%d-%m-%Y') if output.movement_date else '-' }}" data-history-view-source="stock-output-table-view-{{ output.id }}"{% if output.reference_type != 'stock_adjustment_output' %} data-history-view-edit-url="/insumos/estoque/saidas/{{ output.id }}/editar"{% endif %}>{{ output.movement_date.strftime('%d-%m-%Y') if output.movement_date else "-" }}</button>
                                 </td>
                                 <td class="px-4 py-3 font-semibold text-slate-900">
-                                    <button type="button" class="text-left font-semibold transition hover:text-brand-700" data-history-view-trigger data-history-view-kicker="Saida de estoque" data-history-view-title="{{ output.input_catalog.name if output.input_catalog else '-' }}" data-history-view-subtitle="{{ output.movement_date.strftime('%d-%m-%Y') if output.movement_date else '-' }}" data-history-view-source="stock-output-table-view-{{ output.id }}" data-history-view-edit-url="/insumos/estoque/saidas/{{ output.id }}/editar">{{ output.input_catalog.name if output.input_catalog else "-" }}</button>
+                                    <button type="button" class="text-left font-semibold transition hover:text-brand-700" data-history-view-trigger data-history-view-kicker="Saida de estoque" data-history-view-title="{{ output.input_catalog.name if output.input_catalog else '-' }}" data-history-view-subtitle="{{ output.movement_date.strftime('%d-%m-%Y') if output.movement_date else '-' }}" data-history-view-source="stock-output-table-view-{{ output.id }}"{% if output.reference_type != 'stock_adjustment_output' %} data-history-view-edit-url="/insumos/estoque/saidas/{{ output.id }}/editar"{% endif %}>{{ output.input_catalog.name if output.input_catalog else "-" }}</button>
                                     <template id="stock-output-table-view-{{ output.id }}">
                                         <div class="grid gap-3 sm:grid-cols-2">
                                             <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Data</p><p class="mt-2 text-sm font-medium text-slate-800">{{ output.movement_date.strftime('%d-%m-%Y') if output.movement_date else "-" }}</p></div>
                                             <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Origem</p><p class="mt-2 text-sm font-medium text-slate-800">{{ output.origin }}</p></div>
+                                            {% if output.reference_type == 'stock_adjustment_output' %}<div class="rounded-2xl bg-amber-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-amber-700">Motivo do ajuste</p><p class="mt-2 text-sm font-medium text-amber-900">{{ (output.adjustment_reason or 'outro')|replace('_', ' ')|capitalize }}</p></div>{% endif %}
                                             <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Tipo</p><p class="mt-2 text-sm font-medium text-slate-800">{{ 'Combustivel' if output.input_catalog and output.input_catalog.item_type == 'combustivel' else 'Insumo agricola' }}</p></div>
                                             <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Fazenda / Setor</p><p class="mt-2 text-sm font-medium text-slate-800">{{ output.farm.name if output.farm else "Sem vínculo" }}{% if output.plot %} / {{ output.plot.name }}{% endif %}</p></div>
                                             <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Quantidade</p><p class="mt-2 text-sm font-medium text-slate-800">{{ output.quantity }} {{ output.unit }}</p></div>
@@ -328,13 +337,13 @@
                                 <td class="px-4 py-3 text-slate-500"><span class="stock-history-note-clamp" title="{{ output.notes or '-' }}">{{ output.notes or "-" }}</span></td>
                                 <td class="px-4 py-3">
                                     <div class="flex items-center justify-end gap-2">
-                                        <a href="/insumos/estoque/saidas/{{ output.id }}/editar" class="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-100" title="Editar">
+                                        {% if output.reference_type != 'stock_adjustment_output' %}<a href="/insumos/estoque/saidas/{{ output.id }}/editar" class="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-100" title="Editar">
                                             <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                                 <path d="M12 20h9"/>
                                                 <path d="M16.5 3.5a2.1 2.1 0 1 1 3 3L7 19l-4 1 1-4Z"/>
                                             </svg>
-                                        </a>
-                                        <form method="post" action="/insumos/estoque/saidas/{{ output.id }}/excluir" onsubmit="return confirm('Confirma a exclusão deste lançamento de saída?');">
+                                        </a>{% endif %}
+                                        {% if output.reference_type != 'stock_adjustment_output' %}<form method="post" action="/insumos/estoque/saidas/{{ output.id }}/excluir" onsubmit="return confirm('Confirma a exclusão deste lançamento de saída?');">
                                             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                                             <button type="submit" class="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 text-rose-600 hover:bg-rose-50" title="{% if output.reference_type == 'manual_stock_output' %}Excluir{% else %}Exclusão bloqueada{% endif %}">
                                                 <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -345,7 +354,7 @@
                                                     <path d="M14 11v6"/>
                                                 </svg>
                                             </button>
-                                        </form>
+                                        </form>{% endif %}
                                     </div>
                                 </td>
                             </tr>
@@ -630,6 +639,84 @@
         </form>
     </div>
 </dialog>
+
+<dialog id="stock-adjustment-modal" class="app-modal rounded-[2rem] p-0 shadow-2xl w-full max-w-3xl">
+    <div class="bg-white p-6 sm:p-8">
+        <div class="flex items-start justify-between gap-4">
+            <div>
+                <p class="text-xs uppercase tracking-[0.35em] text-amber-700">Ajuste de estoque</p>
+                <h3 class="mt-2 text-2xl font-semibold">Corrigir saldo físico</h3>
+                <p class="mt-2 text-sm text-slate-500">Registre diferenças de inventário, perdas, avarias ou correções sem criar lançamento financeiro.</p>
+            </div>
+            <button type="button" class="modal-close-button" aria-label="Fechar" data-stock-adjustment-close>
+                <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M18 6 6 18"/><path d="m6 6 12 12"/>
+                </svg>
+            </button>
+        </div>
+        <form method="post" action="/insumos/estoque/ajustes" class="mt-6 grid gap-4" data-stock-adjustment-form>
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <div class="grid gap-4 md:grid-cols-2">
+                <label>
+                    <span class="mb-2 block text-sm font-medium">Tipo de ajuste</span>
+                    <select name="direction" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required>
+                        <option value="entrada">Entrada: acrescentar ao saldo</option>
+                        <option value="saida">Saída: reduzir do saldo</option>
+                    </select>
+                </label>
+                <label>
+                    <span class="mb-2 block text-sm font-medium">Data do ajuste</span>
+                    <input type="date" name="movement_date" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" value="{{ request.query_params.get('movement_date', '') }}">
+                </label>
+            </div>
+            <label>
+                <span class="mb-2 block text-sm font-medium">Insumo</span>
+                <select name="input_id" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required data-stock-adjustment-input>
+                    <option value="">Selecione</option>
+                    {% for input_item in adjustment_inputs %}
+                    {% set stock = input_stock.get(input_item.id, {}) %}
+                    <option value="{{ input_item.id }}" data-default-unit="{{ input_item.default_unit }}">{{ input_item.name }} — saldo: {{ stock.get('available', 0) }} {{ stock.get('unit', input_item.default_unit) }}</option>
+                    {% endfor %}
+                </select>
+            </label>
+            <div class="grid gap-4 md:grid-cols-2">
+                <label>
+                    <span class="mb-2 block text-sm font-medium">Quantidade ajustada</span>
+                    <input type="number" step="0.01" min="0.01" name="quantity" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required>
+                </label>
+                <label>
+                    <span class="mb-2 block text-sm font-medium">Unidade</span>
+                    <input type="hidden" name="unit" value="" data-stock-adjustment-unit-hidden>
+                    <select class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50 cursor-not-allowed opacity-70" data-stock-adjustment-unit-display disabled>
+                        <option value=""></option>
+                        {% for unit in ['kg', 'g', 'L', 'ml', 'sacas', 'un'] %}<option value="{{ unit }}">{{ unit }}</option>{% endfor %}
+                    </select>
+                </label>
+            </div>
+            <label>
+                <span class="mb-2 block text-sm font-medium">Motivo do ajuste</span>
+                <select name="reason" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required>
+                    <option value="">Selecione</option>
+                    <option value="inventario">Inventário físico</option>
+                    <option value="perda">Perda</option>
+                    <option value="avaria">Avaria</option>
+                    <option value="vencimento">Vencimento</option>
+                    <option value="correcao_cadastral">Correção cadastral</option>
+                    <option value="outro">Outro</option>
+                </select>
+            </label>
+            <label>
+                <span class="mb-2 block text-sm font-medium">Observação</span>
+                <textarea name="notes" rows="4" class="w-full rounded-2xl border-slate-200 bg-slate-50" placeholder="Descreva a diferença identificada ou o motivo do ajuste."></textarea>
+            </label>
+            <p class="rounded-xl border border-amber-100 bg-amber-50 px-4 py-3 text-xs leading-5 text-amber-900">O ajuste será registrado no histórico e não gerará compra, pagamento ou lançamento financeiro.</p>
+            <div class="flex flex-wrap justify-end gap-3">
+                <button type="button" class="rounded-2xl bg-slate-100 px-4 py-3 font-semibold text-slate-700 hover:bg-slate-200" data-stock-adjustment-close>Cancelar</button>
+                <button class="rounded-2xl bg-amber-700 px-4 py-3 font-semibold text-white hover:bg-amber-800">Registrar ajuste</button>
+            </div>
+        </form>
+    </div>
+</dialog>
 {% include "partials/history_view_modal.html" %}
 
     <script src="{{ url_for('static', path='js/module_period_filters.js') }}?v=8"></script>
@@ -790,6 +877,40 @@
                 });
                 resetLaunchForm();
             }
+
+            const adjustmentModal = document.getElementById('stock-adjustment-modal');
+            const adjustmentOpenButton = document.querySelector('[data-stock-adjustment-open]');
+            const adjustmentCloseButtons = Array.from(document.querySelectorAll('[data-stock-adjustment-close]'));
+            const adjustmentForm = adjustmentModal?.querySelector('[data-stock-adjustment-form]');
+            const adjustmentInput = adjustmentModal?.querySelector('[data-stock-adjustment-input]');
+            const adjustmentUnitHidden = adjustmentModal?.querySelector('[data-stock-adjustment-unit-hidden]');
+            const adjustmentUnitDisplay = adjustmentModal?.querySelector('[data-stock-adjustment-unit-display]');
+            const syncAdjustmentUnit = () => {
+                if (!(adjustmentInput instanceof HTMLSelectElement) || !(adjustmentUnitHidden instanceof HTMLInputElement) || !(adjustmentUnitDisplay instanceof HTMLSelectElement)) return;
+                const unit = (adjustmentInput.selectedOptions[0]?.dataset.defaultUnit || '').trim();
+                adjustmentUnitHidden.value = unit;
+                adjustmentUnitDisplay.value = unit;
+                if (!unit) adjustmentUnitDisplay.selectedIndex = 0;
+            };
+            const resetAdjustmentForm = () => {
+                adjustmentForm?.reset();
+                syncAdjustmentUnit();
+            };
+            adjustmentInput?.addEventListener('change', syncAdjustmentUnit);
+            adjustmentOpenButton?.addEventListener('click', () => {
+                resetAdjustmentForm();
+                adjustmentModal?.showModal();
+            });
+            adjustmentCloseButtons.forEach((button) => button.addEventListener('click', () => {
+                resetAdjustmentForm();
+                adjustmentModal?.close();
+            }));
+            adjustmentModal?.addEventListener('cancel', (event) => {
+                event.preventDefault();
+                resetAdjustmentForm();
+                adjustmentModal.close();
+            });
+            resetAdjustmentForm();
 
             const summaryToggle = document.querySelector('[data-stock-summary-toggle]');
             const summaryCollapse = document.querySelector('[data-stock-summary-collapse]');

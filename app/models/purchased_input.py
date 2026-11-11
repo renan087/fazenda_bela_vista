@@ -32,6 +32,8 @@ class PurchasedInput(Base):
     installment_count: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     installment_frequency: Mapped[str] = mapped_column(String(20), nullable=True)
     first_installment_date: Mapped[date] = mapped_column(Date, nullable=True)
+    entry_origin: Mapped[str] = mapped_column(String(40), nullable=False, default="purchase")
+    adjustment_reason: Mapped[str] = mapped_column(String(100), nullable=True)
 
     input_catalog = relationship("InputCatalog", back_populates="purchase_entries")
     farm = relationship("Farm", back_populates="purchased_inputs")

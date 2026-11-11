@@ -24,6 +24,7 @@ class StockOutput(Base):
     unit_cost: Mapped[float] = mapped_column(Numeric(10, 4), nullable=True)
     total_cost: Mapped[float] = mapped_column(Numeric(12, 2), nullable=True)
     notes: Mapped[str] = mapped_column(Text, nullable=True)
+    adjustment_reason: Mapped[str] = mapped_column(String(100), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
     input_catalog = relationship("InputCatalog", back_populates="stock_outputs")

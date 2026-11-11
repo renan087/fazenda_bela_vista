@@ -181,6 +181,7 @@ from app.services.forms import (
     create_input_recommendation,
     create_irrigation,
     create_manual_stock_output,
+    create_stock_adjustment,
     create_pest_incident,
     create_plot,
     create_purchased_input,
@@ -972,7 +973,7 @@ def _build_global_notifications(
     if can_view_inputs:
         purchase_entries = [
             entry
-            for entry in repo.list_purchased_inputs()
+            for entry in repo.list_purchased_inputs(include_stock_adjustments=True)
             if entry.farm_id == active_farm.id and inventory_item_allowed(entry.input_catalog)
         ]
         available_by_input: dict[int, float] = defaultdict(float)
@@ -2140,7 +2141,7 @@ def _build_stock_context(
     if input_id:
         catalog_inputs = [item for item in catalog_inputs if item.id == input_id]
 
-    purchase_entries = repo.list_purchased_inputs(item_type=item_type)
+    purchase_entries = repo.list_purchased_inputs(item_type=item_type, include_stock_adjustments=True)
     if not item_type:
         purchase_entries = [entry for entry in purchase_entries if _is_inventory_item(entry.input_catalog)]
     if input_id:
@@ -2226,6 +2227,7 @@ def _build_stock_context(
         events = []
         for entry in related_entries:
             unit_cost = round(float(entry.total_cost or 0) / max(float(entry.total_quantity or 0), 1), 4)
+            is_adjustment = (entry.entry_origin or "purchase") == "stock_adjustment_entry"
             events.append(
                 {
                     "kind": "entrada",
@@ -2234,8 +2236,8 @@ def _build_stock_context(
                     "unit": entry.package_unit,
                     "farm": entry.farm,
                     "plot": None,
-                    "origin": "compra",
-                    "reference": f"Lote #{entry.id}",
+                    "origin": "ajuste de estoque" if is_adjustment else "compra",
+                    "reference": (entry.adjustment_reason or "ajuste") if is_adjustment else f"Lote #{entry.id}",
                     "value": float(entry.total_cost or 0),
                     "unit_cost": unit_cost,
                     "notes": entry.notes,
@@ -10937,6 +10939,7 @@ def stock_page(
                 stock_search=stock_search_value or None,
             ),
             inputs_catalog=stock_context["consumption_catalog_inputs"],
+            adjustment_inputs=[item for item in stock_context["catalog_inputs"] if item.is_active],
             input_stock=stock_context["input_stock"],
             stock_catalog_rows=stock_context["stock_catalog_rows"],
             purchase_entries=purchase_entries_pagination["items"],
@@ -11006,6 +11009,48 @@ def create_manual_stock_output_action(
     return _redirect("/insumos/estoque")
 
 
+@router.post("/insumos/estoque/ajustes")
+def create_stock_adjustment_action(
+    request: Request,
+    csrf_token: str = Form(...),
+    direction: str = Form(...),
+    input_id: int = Form(...),
+    movement_date: str | None = Form(None),
+    quantity: float = Form(...),
+    unit: str = Form(...),
+    reason: str = Form(...),
+    notes: str | None = Form(None),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    del user
+    validate_csrf(request, csrf_token)
+    repo = _repository(db)
+    scope, denied = _launch_scope_or_redirect(request, repo, "/insumos/estoque")
+    if denied:
+        return denied
+    try:
+        adjustment_direction, _ = create_stock_adjustment(
+            repo,
+            {
+                "direction": direction,
+                "farm_id": scope["active_farm_id"],
+                "input_id": input_id,
+                "movement_date": movement_date,
+                "quantity": quantity,
+                "unit": unit,
+                "reason": reason,
+                "notes": notes,
+            },
+        )
+    except ValueError as exc:
+        _flash(request, "error", str(exc))
+        return _redirect("/insumos/estoque")
+    action_label = "Entrada" if adjustment_direction == "entrada" else "Saída"
+    _flash(request, "success", f"{action_label} de ajuste registrada no histórico de estoque.")
+    return _redirect("/insumos/estoque")
+
+
 @router.get("/insumos/estoque/saidas/{output_id}/editar")
 def edit_stock_output_entry(
     output_id: int,
@@ -11018,6 +11063,9 @@ def edit_stock_output_entry(
     output = repo.get_stock_output(output_id)
     if not output:
         _flash(request, "error", "Lancamento de saida nao encontrado.")
+        return _redirect("/insumos/estoque")
+    if output.reference_type == "stock_adjustment_output":
+        _flash(request, "error", "Ajustes de estoque não são editáveis. Registre um novo ajuste compensatório.")
         return _redirect("/insumos/estoque")
     if output.reference_type in {"manual_stock_output", "fertilization_item", "fertilization_record"}:
         return _redirect_with_query("/insumos/estoque", edit_output_id=output_id)
@@ -11040,6 +11088,9 @@ async def update_stock_output_entry_action(
     output = repo.get_stock_output(output_id)
     if not output:
         _flash(request, "error", "Lancamento de saida nao encontrado.")
+        return _redirect("/insumos/estoque")
+    if output.reference_type == "stock_adjustment_output":
+        _flash(request, "error", "Ajustes de estoque não são editáveis. Registre um novo ajuste compensatório.")
         return _redirect("/insumos/estoque")
     try:
         if output.reference_type == "manual_stock_output":
@@ -11149,6 +11200,9 @@ def delete_stock_output_entry_action(
     output = repo.get_stock_output(output_id)
     if not output:
         _flash(request, "error", "Lancamento de saida nao encontrado.")
+        return _redirect("/insumos/estoque")
+    if output.reference_type == "stock_adjustment_output":
+        _flash(request, "error", "Ajustes de estoque não podem ser excluídos. Registre um novo ajuste compensatório.")
         return _redirect("/insumos/estoque")
     try:
         delete_manual_stock_output(repo, output)
@@ -13137,7 +13191,7 @@ def input_recommendations_page(
     plots = repo.list_plots(farm_ids=farm_ids, variety_ids=variety_ids)
     plot_ids = {plot.id for plot in plots}
     catalog_inputs = repo.list_input_catalog(item_type="insumo_agricola")
-    purchase_entries = repo.list_purchased_inputs()
+    purchase_entries = repo.list_purchased_inputs(include_stock_adjustments=True)
     input_stock = {
         item.id: {
             "available": round(
@@ -14672,7 +14726,7 @@ def fertilization_page(
     edit_fertilization = repo.get_fertilization(edit_id) if edit_id else None
     recommendation_groups: dict[str, list[dict]] = {}
     consolidated_inputs = repo.list_input_catalog(item_type="insumo_agricola")
-    purchased_inputs = repo.list_purchased_inputs()
+    purchased_inputs = repo.list_purchased_inputs(include_stock_adjustments=True)
     avail_by_catalog = defaultdict(float)
     for entry in purchased_inputs:
         avail_by_catalog[entry.input_id] += float(entry.available_quantity or 0)
@@ -15634,7 +15688,7 @@ def conclude_fertilization_schedule_action(
     if schedule.status == "completed" or schedule.fertilization_record_id:
         _flash(request, "info", "Este agendamento ja foi concluido.")
         return _redirect(target_url)
-    purchased_inputs = repo.list_purchased_inputs()
+    purchased_inputs = repo.list_purchased_inputs(include_stock_adjustments=True)
     validation = validate_schedule_stock(repo, schedule, purchased_inputs_cache=purchased_inputs)
     if not validation["ok"]:
         first = validation["shortages"][0]
@@ -15684,7 +15738,7 @@ def toggle_fertilization_schedule_status_action(
         _flash(request, "success", "Agendamento voltou para programado.")
         return _redirect(target_url)
 
-    purchased_inputs = repo.list_purchased_inputs()
+    purchased_inputs = repo.list_purchased_inputs(include_stock_adjustments=True)
     validation = validate_schedule_stock(repo, schedule, purchased_inputs_cache=purchased_inputs)
     if not validation["ok"]:
         first = validation["shortages"][0]

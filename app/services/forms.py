@@ -40,6 +40,16 @@ from app.repositories.farm import FarmRepository
 
 MANUAL_STOCK_OUTPUT_REFERENCE = "manual_stock_output"
 MANUAL_STOCK_OUTPUT_ALLOCATION = "manual_stock_output_allocation"
+STOCK_ADJUSTMENT_ENTRY_REFERENCE = "stock_adjustment_entry"
+STOCK_ADJUSTMENT_OUTPUT_REFERENCE = "stock_adjustment_output"
+STOCK_ADJUSTMENT_REASONS = {
+    "inventario",
+    "perda",
+    "avaria",
+    "vencimento",
+    "correcao_cadastral",
+    "outro",
+}
 
 FERTILIZATION_METHOD_FERTIRRIGACAO = "fertirrigacao"
 FERTILIZATION_METHOD_ADUBACAO_SOLIDA = "adubacao_solida"
@@ -629,7 +639,7 @@ def _catalog_available_stock_from_entries(
 
 def _catalog_available_stock(repository: FarmRepository, input_id: int | None, farm_id: int | None = None, unit: str | None = None) -> float:
     return _catalog_available_stock_from_entries(
-        repository.list_purchased_inputs(),
+        repository.list_purchased_inputs(include_stock_adjustments=True),
         input_id,
         farm_id,
         unit,
@@ -1277,6 +1287,9 @@ def create_manual_stock_output(repository: FarmRepository, form: dict) -> StockO
     candidate_lots = _find_candidate_lots(repository, input_catalog.id, None, input_catalog.name, unit, farm_id)
     candidate_lots = sorted(candidate_lots, key=lambda item: (item.purchase_date or today_in_app_timezone(), item.id))
 
+    output_origin = (form.get("origin") or "manual").strip() or "manual"
+    output_reference_type = (form.get("reference_type") or MANUAL_STOCK_OUTPUT_REFERENCE).strip()
+    adjustment_reason = (form.get("adjustment_reason") or "").strip() or None
     output = StockOutput(
         input_id=input_catalog.id,
         purchased_input_id=None,
@@ -1286,12 +1299,13 @@ def create_manual_stock_output(repository: FarmRepository, form: dict) -> StockO
         movement_date=movement_date,
         quantity=round(quantity, 2),
         unit=unit,
-        origin="manual",
-        reference_type=MANUAL_STOCK_OUTPUT_REFERENCE,
+        origin=output_origin,
+        reference_type=output_reference_type,
         reference_id=None,
         unit_cost=0,
         total_cost=0,
         notes=form.get("notes"),
+        adjustment_reason=adjustment_reason,
     )
     repository.db.add(output)
     repository.db.flush()
@@ -1314,12 +1328,13 @@ def create_manual_stock_output(repository: FarmRepository, form: dict) -> StockO
             movement_date=movement_date,
             quantity=consumed,
             unit=unit,
-            origin="manual",
+            origin=output_origin,
             reference_type=MANUAL_STOCK_OUTPUT_ALLOCATION,
             reference_id=output.id,
             unit_cost=round(unit_cost, 4),
             total_cost=round(consumed * unit_cost, 2),
             notes=form.get("notes"),
+            adjustment_reason=adjustment_reason,
         )
         repository.db.add(allocation)
         total_cost = round(total_cost + float(allocation.total_cost or 0), 2)
@@ -1331,6 +1346,72 @@ def create_manual_stock_output(repository: FarmRepository, form: dict) -> StockO
     repository.db.commit()
     repository.db.refresh(output)
     return output
+
+
+def create_stock_adjustment(repository: FarmRepository, form: dict) -> tuple[str, PurchasedInput | StockOutput]:
+    direction = (form.get("direction") or "").strip().lower()
+    reason = (form.get("reason") or "").strip().lower()
+    if direction not in {"entrada", "saida"}:
+        raise ValueError("Selecione se o ajuste aumenta ou reduz o estoque.")
+    if reason not in STOCK_ADJUSTMENT_REASONS:
+        raise ValueError("Selecione um motivo válido para o ajuste.")
+
+    input_id = _int_or_none(form.get("input_id"))
+    quantity = float(form.get("quantity") or 0)
+    if not input_id or quantity <= 0:
+        raise ValueError("Informe um insumo e uma quantidade maior que zero.")
+    input_catalog = repository.get_input_catalog(input_id)
+    if not input_catalog or not input_catalog.is_active:
+        raise ValueError("Selecione um insumo ativo para o ajuste.")
+
+    unit = (form.get("unit") or input_catalog.default_unit or "kg").strip()
+    if unit != (input_catalog.default_unit or unit).strip():
+        raise ValueError("A unidade do ajuste deve seguir a unidade padrão do insumo.")
+    farm_id = _int_or_none(form.get("farm_id"))
+    movement_date = _date_or_none(form.get("movement_date")) or today_in_app_timezone()
+    notes = (form.get("notes") or "").strip() or None
+
+    if direction == "entrada":
+        entry = PurchasedInput(
+            input_id=input_catalog.id,
+            farm_id=farm_id,
+            name=input_catalog.name,
+            normalized_name=_normalize_input_name(input_catalog.name),
+            quantity_purchased=1,
+            package_size=round(quantity, 2),
+            package_unit=unit,
+            unit_price=0,
+            purchase_date=movement_date,
+            total_quantity=round(quantity, 2),
+            available_quantity=round(quantity, 2),
+            total_cost=0,
+            low_stock_threshold=input_catalog.low_stock_threshold,
+            notes=notes,
+            payment_condition="a_vista",
+            installment_count=1,
+            entry_origin=STOCK_ADJUSTMENT_ENTRY_REFERENCE,
+            adjustment_reason=reason,
+        )
+        repository.db.add(entry)
+        repository.db.commit()
+        repository.db.refresh(entry)
+        return direction, entry
+
+    output = create_manual_stock_output(
+        repository,
+        {
+            "input_id": input_catalog.id,
+            "farm_id": farm_id,
+            "movement_date": movement_date.isoformat(),
+            "quantity": quantity,
+            "unit": unit,
+            "notes": notes,
+            "origin": "Ajuste de estoque",
+            "reference_type": STOCK_ADJUSTMENT_OUTPUT_REFERENCE,
+            "adjustment_reason": reason,
+        },
+    )
+    return direction, output
 
 
 def update_manual_stock_output(repository: FarmRepository, output: StockOutput, form: dict) -> StockOutput:
@@ -1644,7 +1725,11 @@ def validate_schedule_stock(
     *,
     purchased_inputs_cache: list | None = None,
 ) -> dict:
-    entries = purchased_inputs_cache if purchased_inputs_cache is not None else repository.list_purchased_inputs()
+    entries = (
+        purchased_inputs_cache
+        if purchased_inputs_cache is not None
+        else repository.list_purchased_inputs(include_stock_adjustments=True)
+    )
     farm_id = schedule.plot.farm_id if schedule.plot else None
     shortages = []
     for item in schedule.items:
@@ -2005,7 +2090,7 @@ def _current_average_cost(repository: FarmRepository, farm_id: int | None, input
         catalog = repository.get_input_catalog_by_normalized_name(normalized_name)
         input_id = catalog.id if catalog else None
     lots = [
-        item for item in repository.list_purchased_inputs()
+        item for item in repository.list_purchased_inputs(include_stock_adjustments=True)
         if item.input_id == input_id and item.package_unit == unit and (farm_id is None or item.farm_id in (None, farm_id)) and _available_stock_for_input(item) > 0
     ]
     total_quantity = sum(_available_stock_for_input(item) for item in lots)
@@ -2014,7 +2099,7 @@ def _current_average_cost(repository: FarmRepository, farm_id: int | None, input
 
 
 def _find_candidate_lots(repository: FarmRepository, input_id: int | None, purchased_input_id: int | None, name: str | None, unit: str, farm_id: int | None) -> list[PurchasedInput]:
-    purchased_inputs = repository.list_purchased_inputs()
+    purchased_inputs = repository.list_purchased_inputs(include_stock_adjustments=True)
     target_input_id = input_id
     if target_input_id is None and purchased_input_id:
         direct = next((item for item in purchased_inputs if item.id == purchased_input_id), None)
