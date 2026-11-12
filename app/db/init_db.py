@@ -861,9 +861,29 @@ def _sync_schema() -> None:
         """,
         "CREATE INDEX IF NOT EXISTS ix_stock_inventory_items_session_id ON stock_inventory_items(session_id)",
         """
+        CREATE TABLE IF NOT EXISTS equipment_maintenance_plans (
+            id SERIAL PRIMARY KEY,
+            asset_id INTEGER NOT NULL REFERENCES equipment_assets(id) ON DELETE CASCADE,
+            maintenance_type VARCHAR(30) NOT NULL DEFAULT 'preventiva',
+            description VARCHAR(220) NOT NULL,
+            responsible_name VARCHAR(160),
+            supplier_name VARCHAR(180),
+            interval_days INTEGER,
+            interval_hours NUMERIC(12,2),
+            next_due_date DATE,
+            next_due_hours NUMERIC(12,2),
+            is_active BOOLEAN NOT NULL DEFAULT TRUE,
+            notes TEXT,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+        """,
+        "CREATE INDEX IF NOT EXISTS ix_equipment_maintenance_plans_asset_id ON equipment_maintenance_plans(asset_id)",
+        "CREATE INDEX IF NOT EXISTS ix_equipment_maintenance_plans_next_due_date ON equipment_maintenance_plans(next_due_date)",
+        """
         CREATE TABLE IF NOT EXISTS equipment_maintenances (
             id SERIAL PRIMARY KEY,
             asset_id INTEGER NOT NULL REFERENCES equipment_assets(id) ON DELETE CASCADE,
+            plan_id INTEGER REFERENCES equipment_maintenance_plans(id) ON DELETE SET NULL,
             maintenance_date DATE NOT NULL,
             maintenance_type VARCHAR(30) NOT NULL DEFAULT 'preventiva',
             status VARCHAR(30) NOT NULL DEFAULT 'agendada',
@@ -879,7 +899,9 @@ def _sync_schema() -> None:
             created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
         )
         """,
+        "ALTER TABLE equipment_maintenances ADD COLUMN IF NOT EXISTS plan_id INTEGER REFERENCES equipment_maintenance_plans(id) ON DELETE SET NULL",
         "CREATE INDEX IF NOT EXISTS ix_equipment_maintenances_asset_id ON equipment_maintenances(asset_id)",
+        "CREATE INDEX IF NOT EXISTS ix_equipment_maintenances_plan_id ON equipment_maintenances(plan_id)",
         "CREATE INDEX IF NOT EXISTS ix_equipment_maintenances_maintenance_date ON equipment_maintenances(maintenance_date)",
         "ALTER TABLE input_recommendations ADD COLUMN IF NOT EXISTS plot_id INTEGER",
         "ALTER TABLE fertilization_items ADD COLUMN IF NOT EXISTS purchased_input_id INTEGER",

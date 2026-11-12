@@ -70,6 +70,7 @@ from app.models import (
     EquipmentAsset,
     EquipmentAssetAttachment,
     EquipmentMaintenance,
+    EquipmentMaintenancePlan,
     Farm,
     FarmAttachment,
     FinanceAccount,
@@ -941,6 +942,7 @@ def _build_global_notifications(
     can_view_inputs = PAGE_INPUTS in permission_codes
     can_view_finance = PAGE_FINANCE in permission_codes
     can_view_agenda = PAGE_AGENDA in permission_codes
+    can_view_assets = PAGE_ASSETS in permission_codes
 
     if not active_farm:
         return {
@@ -1113,6 +1115,32 @@ def _build_global_notifications(
                         severity="info",
                         meta="Fertilização",
                     )
+
+    if can_view_assets:
+        for plan in repo.list_equipment_maintenance_plans(farm_id=active_farm.id):
+            if not plan.is_active or not plan.next_due_date:
+                continue
+            asset_name = plan.asset.name if plan.asset else "Patrimônio"
+            if plan.next_due_date < today:
+                add_notification(
+                    important,
+                    title="Manutenção preventiva atrasada",
+                    message=f"{asset_name}: {plan.description} está pendente desde {plan.next_due_date.strftime('%d/%m/%Y')}.",
+                    href="/insumos/patrimonio/manutencoes",
+                    kind="maintenance",
+                    severity="danger",
+                    meta="Patrimônio",
+                )
+            elif plan.next_due_date <= today + timedelta(days=7):
+                add_notification(
+                    operational,
+                    title="Manutenção preventiva próxima",
+                    message=f"{asset_name}: {plan.description} está prevista para {plan.next_due_date.strftime('%d/%m/%Y')}.",
+                    href="/insumos/patrimonio/manutencoes",
+                    kind="maintenance",
+                    severity="warning",
+                    meta="Patrimônio",
+                )
 
     important.sort(key=lambda item: (item["severity"] != "danger", item["title"]))
     operational.sort(key=lambda item: item["title"])
@@ -12232,6 +12260,99 @@ def _sync_asset_maintenance_status(asset: EquipmentAsset, maintenance_status: st
         asset.status = "ativo"
 
 
+def _maintenance_plan_label(plan: EquipmentMaintenancePlan) -> str:
+    parts: list[str] = []
+    if plan.interval_days:
+        parts.append(f"a cada {plan.interval_days} dia(s)")
+    if plan.interval_hours:
+        parts.append(f"a cada {float(plan.interval_hours):g} h")
+    return " • ".join(parts) or "Periodicidade não informada"
+
+
+def _create_next_maintenance_from_plan(
+    repo: FarmRepository,
+    maintenance: EquipmentMaintenance,
+) -> EquipmentMaintenance | None:
+    plan = maintenance.plan
+    if not plan or not plan.is_active:
+        return None
+
+    existing = (
+        repo.db.query(EquipmentMaintenance)
+        .filter(
+            EquipmentMaintenance.plan_id == plan.id,
+            EquipmentMaintenance.id != maintenance.id,
+            EquipmentMaintenance.status.in_(["agendada", "em_andamento"]),
+        )
+        .first()
+    )
+    if existing:
+        return existing
+
+    due_date = (
+        maintenance.maintenance_date + timedelta(days=plan.interval_days)
+        if plan.interval_days
+        else plan.next_due_date or maintenance.maintenance_date
+    )
+    current_hours = float(maintenance.meter_reading_hours) if maintenance.meter_reading_hours is not None else None
+    due_hours = (
+        current_hours + float(plan.interval_hours)
+        if current_hours is not None and plan.interval_hours is not None
+        else plan.next_due_hours
+    )
+    plan.next_due_date = due_date
+    plan.next_due_hours = due_hours
+    next_maintenance = EquipmentMaintenance(
+        asset_id=plan.asset_id,
+        plan_id=plan.id,
+        maintenance_date=due_date,
+        maintenance_type=plan.maintenance_type,
+        status="agendada",
+        description=plan.description,
+        responsible_name=plan.responsible_name,
+        supplier_name=plan.supplier_name,
+        next_due_date=due_date,
+        next_due_hours=due_hours,
+        notes=plan.notes,
+    )
+    repo.db.add_all([plan, next_maintenance])
+    return next_maintenance
+
+
+def _maintenance_plan_form_values(form: dict, *, user: User) -> dict:
+    maintenance_type = (form.get("maintenance_type") or "preventiva").strip().lower()
+    if maintenance_type not in EQUIPMENT_MAINTENANCE_TYPE_OPTIONS:
+        raise ValueError("Selecione um tipo de manutenção válido.")
+    description = _clean_text(form.get("description"))
+    if not description:
+        raise ValueError("Descreva o serviço preventivo.")
+    interval_days = _int_or_none(form.get("interval_days"))
+    interval_hours = _float_or_none(form.get("interval_hours"))
+    next_due_date = _date_or_none(form.get("next_due_date"))
+    next_due_hours = _float_or_none(form.get("next_due_hours"))
+    if (interval_days is None or interval_days <= 0) and (interval_hours is None or interval_hours <= 0):
+        raise ValueError("Informe um intervalo em dias, horas de uso ou ambos.")
+    if interval_days is not None and interval_days <= 0:
+        raise ValueError("O intervalo em dias deve ser maior que zero.")
+    if interval_hours is not None and interval_hours <= 0:
+        raise ValueError("O intervalo em horas deve ser maior que zero.")
+    if not next_due_date:
+        raise ValueError("Informe a data da primeira manutenção prevista.")
+    if next_due_hours is not None and next_due_hours < 0:
+        raise ValueError("O horímetro previsto não pode ser negativo.")
+    return {
+        "maintenance_type": maintenance_type,
+        "description": description,
+        "responsible_name": _clean_text(form.get("responsible_name")) or user.display_name or user.name,
+        "supplier_name": _clean_text(form.get("supplier_name")),
+        "interval_days": interval_days if interval_days and interval_days > 0 else None,
+        "interval_hours": interval_hours if interval_hours and interval_hours > 0 else None,
+        "next_due_date": next_due_date,
+        "next_due_hours": next_due_hours,
+        "notes": _clean_text(form.get("notes")),
+    }
+
+
 @router.get("/insumos/patrimonio/manutencoes")
 def equipment_maintenance_page(
     request: Request,
@@ -12275,6 +12396,7 @@ def equipment_maintenance_page(
         farm_id=effective_farm_id,
         farm_ids=None if effective_farm_id else context_farm_ids,
     )
+    maintenance_plans = repo.list_equipment_maintenance_plans(farm_id=effective_farm_id)
     edit_maintenance = repo.get_equipment_maintenance(edit_id) if edit_id else None
     if edit_maintenance and (not edit_maintenance.asset or not _farm_matches_scope(edit_maintenance.asset.farm_id, scope)):
         edit_maintenance = None
@@ -12291,6 +12413,8 @@ def equipment_maintenance_page(
             maintenance_search_value=search_value, maintenance_filters_active=filters_active,
             due_maintenances=due_maintenances, upcoming_maintenances=upcoming_maintenances,
             maintenance_total_cost=_maintenance_total_cost, today=today, edit_maintenance=edit_maintenance,
+            maintenance_plans=maintenance_plans,
+            maintenance_plan_label=_maintenance_plan_label,
         ),
     )
 
@@ -12320,6 +12444,105 @@ def _maintenance_form_values(form: dict, *, user: User) -> dict:
         "next_due_date": _date_or_none(form.get("next_due_date")), "next_due_hours": next_due_hours,
         "notes": _clean_text(form.get("notes")),
     }
+
+
+@router.post("/insumos/patrimonio/manutencoes/planos")
+async def create_equipment_maintenance_plan_action(
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    form = await request.form()
+    validate_csrf(request, str(form.get("csrf_token") or ""))
+    repo = _repository(db)
+    scope, denied = _launch_scope_or_redirect(request, repo, "/insumos/patrimonio/manutencoes")
+    if denied:
+        return denied
+    asset = repo.get_equipment_asset(_int_or_none(form.get("asset_id")) or 0)
+    if not asset or not _farm_matches_scope(asset.farm_id, scope):
+        _flash(request, "error", "Selecione um patrimônio pertencente à fazenda ativa.")
+        return _redirect("/insumos/patrimonio/manutencoes")
+    try:
+        plan = EquipmentMaintenancePlan(asset_id=asset.id, **_maintenance_plan_form_values(dict(form), user=user))
+        repo.db.add(plan)
+        repo.db.flush()
+        first_maintenance = EquipmentMaintenance(
+            asset_id=asset.id,
+            plan_id=plan.id,
+            maintenance_date=plan.next_due_date,
+            maintenance_type=plan.maintenance_type,
+            status="agendada",
+            description=plan.description,
+            responsible_name=plan.responsible_name,
+            supplier_name=plan.supplier_name,
+            next_due_date=plan.next_due_date,
+            next_due_hours=plan.next_due_hours,
+            notes=plan.notes,
+        )
+        repo.db.add(first_maintenance)
+        repo.db.commit()
+    except ValueError as exc:
+        repo.db.rollback()
+        _flash(request, "error", str(exc))
+        return _redirect("/insumos/patrimonio/manutencoes")
+    _flash(request, "success", "Plano preventivo criado e primeira manutenção agendada.")
+    return _redirect("/insumos/patrimonio/manutencoes")
+
+
+@router.post("/insumos/patrimonio/manutencoes/planos/{plan_id}/alternar")
+def toggle_equipment_maintenance_plan_action(
+    plan_id: int,
+    request: Request,
+    csrf_token: str = Form(...),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    validate_csrf(request, csrf_token)
+    repo = _repository(db)
+    scope = _global_scope_context(request, repo, user)
+    plan = repo.get_equipment_maintenance_plan(plan_id)
+    if not plan or not plan.asset or not _farm_matches_scope(plan.asset.farm_id, scope):
+        _flash(request, "error", "Plano preventivo não encontrado no contexto ativo.")
+        return _redirect("/insumos/patrimonio/manutencoes")
+    plan.is_active = not plan.is_active
+    if not plan.is_active:
+        (
+            repo.db.query(EquipmentMaintenance)
+            .filter(
+                EquipmentMaintenance.plan_id == plan.id,
+                EquipmentMaintenance.status == "agendada",
+            )
+            .update({EquipmentMaintenance.status: "cancelada"}, synchronize_session=False)
+        )
+    else:
+        scheduled = (
+            repo.db.query(EquipmentMaintenance)
+            .filter(
+                EquipmentMaintenance.plan_id == plan.id,
+                EquipmentMaintenance.status.in_(["agendada", "em_andamento"]),
+            )
+            .first()
+        )
+        if not scheduled:
+            repo.db.add(
+                EquipmentMaintenance(
+                    asset_id=plan.asset_id,
+                    plan_id=plan.id,
+                    maintenance_date=plan.next_due_date or today_in_app_timezone(),
+                    maintenance_type=plan.maintenance_type,
+                    status="agendada",
+                    description=plan.description,
+                    responsible_name=plan.responsible_name,
+                    supplier_name=plan.supplier_name,
+                    next_due_date=plan.next_due_date,
+                    next_due_hours=plan.next_due_hours,
+                    notes=plan.notes,
+                )
+            )
+    repo.db.add(plan)
+    repo.db.commit()
+    _flash(request, "success", "Plano preventivo reativado." if plan.is_active else "Plano preventivo pausado.")
+    return _redirect("/insumos/patrimonio/manutencoes")
 
 
 @router.post("/insumos/patrimonio/manutencoes")
@@ -12371,11 +12594,14 @@ async def update_equipment_maintenance_action(
         return _redirect("/insumos/patrimonio/manutencoes")
     try:
         values = _maintenance_form_values(dict(form), user=user)
+        was_completed = maintenance.status == "concluida"
         maintenance.asset_id = asset.id
         for key, value in values.items():
             setattr(maintenance, key, value)
         _sync_asset_maintenance_status(asset, maintenance.status)
         repo.db.add_all([maintenance, asset])
+        if maintenance.status == "concluida" and not was_completed:
+            _create_next_maintenance_from_plan(repo, maintenance)
         repo.db.commit()
     except ValueError as exc:
         repo.db.rollback()

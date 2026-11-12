@@ -11,6 +11,7 @@ class EquipmentMaintenance(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
     asset_id: Mapped[int] = mapped_column(ForeignKey("equipment_assets.id", ondelete="CASCADE"), nullable=False, index=True)
+    plan_id: Mapped[int] = mapped_column(ForeignKey("equipment_maintenance_plans.id", ondelete="SET NULL"), nullable=True, index=True)
     maintenance_date: Mapped[date] = mapped_column(Date, nullable=False)
     maintenance_type: Mapped[str] = mapped_column(String(30), nullable=False, default="preventiva")
     status: Mapped[str] = mapped_column(String(30), nullable=False, default="agendada")
@@ -26,3 +27,4 @@ class EquipmentMaintenance(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
     asset = relationship("EquipmentAsset", back_populates="maintenance_records")
+    plan = relationship("EquipmentMaintenancePlan", back_populates="maintenance_records")

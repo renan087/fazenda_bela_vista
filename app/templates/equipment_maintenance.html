@@ -10,6 +10,10 @@
                 </div>
             </div>
             {% if can_write_page %}<div class="stock-header-actions stock-header-actions-top stock-actions-row-mobile-adaptive">
+                <button type="button" class="stock-action-button stock-action-button-secondary" data-maintenance-plan-modal-open>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 8v8"/><path d="M8 12h8"/><circle cx="12" cy="12" r="9"/></svg>
+                    <span class="stock-action-button-label">Novo plano</span>
+                </button>
                 <button type="button" class="stock-action-button stock-action-button-primary" data-maintenance-modal-open>
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
                     <span class="stock-action-button-label">Nova manutenção</span>
@@ -34,6 +38,22 @@
             <p class="mt-3 text-3xl font-semibold text-emerald-900">{{ maintenances_pagination.total }}</p>
             <p class="mt-1 text-sm text-emerald-700">Registro(s) de manutenção.</p>
         </article>
+    </section>
+
+    <section class="stock-panel rounded-[2rem] bg-white p-6 shadow-panel" data-stock-fade-panel>
+        <div class="flex flex-wrap items-start justify-between gap-4">
+            <div><p class="text-xs uppercase tracking-[0.35em] text-slate-400">Automação preventiva</p><h3 class="mt-2 text-2xl font-semibold">Planos de manutenção</h3><p class="mt-2 text-sm text-slate-500">Cada plano mantém uma manutenção futura e gera a próxima somente após a conclusão.</p></div>
+            <span class="rounded-full bg-brand-50 px-3 py-1 text-sm font-semibold text-brand-700">{{ maintenance_plans|selectattr('is_active')|list|length }} ativo(s)</span>
+        </div>
+        <div class="mt-5 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            {% for plan in maintenance_plans %}
+            <article class="rounded-[1.5rem] border {% if plan.is_active %}border-brand-100 bg-brand-50/40{% else %}border-slate-200 bg-slate-50{% endif %} p-4">
+                <div class="flex items-start justify-between gap-3"><div class="min-w-0"><p class="truncate text-base font-semibold text-slate-900">{{ plan.asset.name if plan.asset else 'Patrimônio' }}</p><p class="mt-1 text-sm text-slate-600">{{ plan.description }}</p></div><span class="shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold {% if plan.is_active %}bg-emerald-100 text-emerald-700{% else %}bg-slate-200 text-slate-600{% endif %}">{% if plan.is_active %}Ativo{% else %}Pausado{% endif %}</span></div>
+                <div class="mt-4 space-y-1 text-sm text-slate-600"><p>{{ maintenance_plan_label(plan) }}</p><p>Próxima: <strong>{{ plan.next_due_date.strftime('%d/%m/%Y') if plan.next_due_date else '-' }}{% if plan.next_due_hours is not none %} • {{ plan.next_due_hours }} h{% endif %}</strong></p></div>
+                {% if can_write_page %}<form method="post" action="/insumos/patrimonio/manutencoes/planos/{{ plan.id }}/alternar" class="mt-4"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100">{% if plan.is_active %}Pausar plano{% else %}Reativar plano{% endif %}</button></form>{% endif %}
+            </article>
+            {% else %}<p class="py-4 text-sm text-slate-500">Nenhum plano preventivo cadastrado. Crie um plano para agendar as revisões recorrentes.</p>{% endfor %}
+        </div>
     </section>
 
     {% if due_maintenances %}
@@ -113,10 +133,28 @@
     </div>
 </dialog>{% endif %}
 
+{% if can_write_page %}<dialog id="maintenance-plan-modal" class="app-modal w-full max-w-3xl rounded-[2rem] p-0 shadow-2xl">
+    <div class="bg-white p-6 sm:p-8">
+        <div class="flex items-start justify-between gap-4"><div><p class="text-xs uppercase tracking-[0.35em] text-slate-400">Plano preventivo</p><h3 class="mt-2 text-2xl font-semibold">Agendar manutenção recorrente</h3><p class="mt-2 text-sm text-slate-500">O sistema cria a primeira manutenção agora e agenda a próxima quando esta for concluída.</p></div><button type="button" class="modal-close-button" aria-label="Fechar" data-maintenance-plan-modal-close><svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button></div>
+        <div class="mt-6 max-h-[70vh] overflow-y-auto pr-1" data-modal-scroll><form method="post" action="/insumos/patrimonio/manutencoes/planos" class="grid gap-4" data-maintenance-plan-form><input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <div class="grid gap-4 md:grid-cols-2"><label><span class="mb-2 block text-sm font-medium">Patrimônio</span><select name="asset_id" required class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50"><option value="">Selecione o patrimônio</option>{% for asset in assets %}<option value="{{ asset.id }}">{{ asset.name }}{% if asset.farm %} • {{ asset.farm.name }}{% endif %}</option>{% endfor %}</select></label><label><span class="mb-2 block text-sm font-medium">Tipo</span><select name="maintenance_type" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50">{% for option in maintenance_type_options %}<option value="{{ option }}" {% if option == 'preventiva' %}selected{% endif %}>{{ option|title }}</option>{% endfor %}</select></label></div>
+            <label><span class="mb-2 block text-sm font-medium">Serviço preventivo</span><input name="description" required placeholder="Ex.: Revisão de óleo, filtros e correias" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50"></label>
+            <div class="grid gap-4 md:grid-cols-2"><label><span class="mb-2 block text-sm font-medium">Responsável / técnico</span><input name="responsible_name" value="{{ user.display_name or user.name }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50"></label><label><span class="mb-2 block text-sm font-medium">Oficina ou fornecedor</span><input name="supplier_name" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50"></label></div>
+            <div class="rounded-[1.5rem] border border-brand-100 bg-brand-50/40 p-4"><p class="text-xs font-semibold uppercase tracking-[0.25em] text-brand-700">Primeira revisão</p><div class="mt-3 grid gap-4 md:grid-cols-2"><label><span class="mb-2 block text-sm font-medium">Data prevista</span><input type="date" name="next_due_date" required value="{{ today.isoformat() }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-white"></label><label><span class="mb-2 block text-sm font-medium">Horímetro previsto (opcional)</span><input type="number" min="0" step="0.01" name="next_due_hours" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-white" placeholder="Ex.: 500"></label></div></div>
+            <div class="grid gap-4 md:grid-cols-2"><label><span class="mb-2 block text-sm font-medium">Repetir a cada quantos dias?</span><input type="number" min="1" step="1" name="interval_days" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" placeholder="Ex.: 180"></label><label><span class="mb-2 block text-sm font-medium">Repetir a cada quantas horas?</span><input type="number" min="0.01" step="0.01" name="interval_hours" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" placeholder="Ex.: 500"></label></div>
+            <p class="-mt-2 text-xs text-slate-500">Informe pelo menos um intervalo. Você pode combinar dias e horas de uso para acompanhar os dois critérios.</p>
+            <label><span class="mb-2 block text-sm font-medium">Observações</span><textarea name="notes" rows="3" class="w-full rounded-2xl border-slate-200 bg-slate-50" placeholder="Peças, procedimentos ou recomendações do fabricante."></textarea></label>
+            <div class="sticky bottom-0 flex justify-end gap-3 bg-white/95 pt-3 backdrop-blur"><button type="button" class="rounded-2xl bg-slate-100 px-4 py-3 font-semibold text-slate-700 hover:bg-slate-200" data-maintenance-plan-modal-close>Cancelar</button><button class="rounded-2xl bg-brand-500 px-4 py-3 font-semibold text-white hover:bg-brand-700">Criar plano</button></div>
+        </form></div>
+    </div>
+</dialog>{% endif %}
+
 <script>
 (() => {
     const modal = document.getElementById('maintenance-modal');
     const form = modal?.querySelector('[data-maintenance-form]');
+    const planModal = document.getElementById('maintenance-plan-modal');
+    const planForm = planModal?.querySelector('[data-maintenance-plan-form]');
     const open = () => modal?.showModal();
     const close = () => {
         {% if edit_maintenance %}
@@ -129,6 +167,9 @@
     document.querySelector('[data-maintenance-modal-open]')?.addEventListener('click', open);
     document.querySelectorAll('[data-maintenance-modal-close]').forEach((button) => button.addEventListener('click', close));
     modal?.addEventListener('cancel', (event) => { event.preventDefault(); close(); });
+    document.querySelector('[data-maintenance-plan-modal-open]')?.addEventListener('click', () => planModal?.showModal());
+    document.querySelectorAll('[data-maintenance-plan-modal-close]').forEach((button) => button.addEventListener('click', () => { planForm?.reset(); planModal?.close(); }));
+    planModal?.addEventListener('cancel', (event) => { event.preventDefault(); planForm?.reset(); planModal.close(); });
     document.querySelectorAll('[data-maintenance-edit-id]').forEach((button) => button.addEventListener('click', () => { window.location.href = `/insumos/patrimonio/manutencoes?edit_id=${button.dataset.maintenanceEditId}`; }));
     {% if edit_maintenance %}open();{% endif %}
 })();
