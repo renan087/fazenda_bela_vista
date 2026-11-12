@@ -39,3 +39,4 @@ class EquipmentAsset(Base):
     finance_credit_card = relationship("FinanceCreditCard", back_populates="equipment_assets")
     finance_transaction = relationship("FinanceTransaction", back_populates="equipment_assets")
     attachments = relationship("EquipmentAssetAttachment", back_populates="equipment_asset", cascade="all, delete-orphan")
+    maintenance_records = relationship("EquipmentMaintenance", back_populates="asset", cascade="all, delete-orphan")

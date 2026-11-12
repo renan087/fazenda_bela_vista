@@ -69,6 +69,7 @@ from app.models import (
     CropSeason,
     EquipmentAsset,
     EquipmentAssetAttachment,
+    EquipmentMaintenance,
     Farm,
     FarmAttachment,
     FinanceAccount,
@@ -255,6 +256,8 @@ EQUIPMENT_ASSET_STATUS_OPTIONS = [
     "em_construcao",
     "baixado",
 ]
+EQUIPMENT_MAINTENANCE_TYPE_OPTIONS = ["preventiva", "corretiva", "inspecao"]
+EQUIPMENT_MAINTENANCE_STATUS_OPTIONS = ["agendada", "em_andamento", "concluida", "cancelada"]
 EQUIPMENT_ASSET_CATEGORY_PROFILES = {
     "Benfeitoria": {
         "name_label": "Nome da benfeitoria",
@@ -12150,6 +12153,8 @@ def equipment_assets_page(
         or selected_status
         or assets_search_value
     )
+
+
     preserve_filters: dict[str, str] = {}
     if effective_farm_id:
         preserve_filters["farm_id"] = str(effective_farm_id)
@@ -12214,6 +12219,190 @@ def equipment_assets_page(
             ),
         ),
     )
+
+
+def _maintenance_total_cost(maintenance: EquipmentMaintenance) -> float:
+    return round(float(maintenance.service_cost or 0) + float(maintenance.parts_cost or 0), 2)
+
+
+def _sync_asset_maintenance_status(asset: EquipmentAsset, maintenance_status: str) -> None:
+    if maintenance_status == "em_andamento" and asset.status == "ativo":
+        asset.status = "em_manutencao"
+    elif maintenance_status == "concluida" and asset.status == "em_manutencao":
+        asset.status = "ativo"
+
+
+@router.get("/insumos/patrimonio/manutencoes")
+def equipment_maintenance_page(
+    request: Request,
+    edit_id: int | None = None,
+    farm_id: int | None = None,
+    status: str | None = None,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+    csrf_token: str = Depends(get_csrf_token),
+):
+    repo = _repository(db)
+    scope = _global_scope_context(request, repo, user)
+    context_farm_ids = [farm.id for farm in scope.get("context_farms", [])]
+    requested_farm_id = farm_id or _active_farm_id(request)
+    effective_farm_id = requested_farm_id if requested_farm_id in context_farm_ids else None
+    selected_status = status if status in EQUIPMENT_MAINTENANCE_STATUS_OPTIONS else None
+    search_value = (request.query_params.get("maintenance_search") or "").strip()
+    maintenances = repo.list_equipment_maintenances(farm_id=effective_farm_id)
+    if selected_status:
+        maintenances = [item for item in maintenances if item.status == selected_status]
+    if search_value:
+        needle = _normalize_search_value(search_value)
+        maintenances = [
+            item for item in maintenances
+            if needle in _normalize_search_value(" ".join([
+                item.asset.name if item.asset else "", item.description or "", item.responsible_name or "",
+                item.supplier_name or "", item.maintenance_type or "",
+            ]))
+        ]
+    today = today_in_app_timezone()
+    due_maintenances = [
+        item for item in maintenances
+        if item.status not in {"concluida", "cancelada"} and item.maintenance_date <= today
+    ]
+    upcoming_maintenances = [
+        item for item in maintenances
+        if item.status == "agendada" and today < item.maintenance_date <= today + timedelta(days=14)
+    ]
+    pagination = _paginate_collection(request, maintenances, "maintenance_page", per_page=10)
+    assets = repo.list_equipment_assets(
+        farm_id=effective_farm_id,
+        farm_ids=None if effective_farm_id else context_farm_ids,
+    )
+    edit_maintenance = repo.get_equipment_maintenance(edit_id) if edit_id else None
+    if edit_maintenance and (not edit_maintenance.asset or not _farm_matches_scope(edit_maintenance.asset.farm_id, scope)):
+        edit_maintenance = None
+    filters_active = bool((request.query_params.get("farm_id") or "").strip() or selected_status or search_value)
+    return templates.TemplateResponse(
+        "equipment_maintenance.html",
+        _base_context(
+            request, user, csrf_token, "asset_maintenance", _repo=repo,
+            title="Manutenção de Patrimônio", farms=scope["context_farms"], assets=assets,
+            maintenances=pagination["items"], maintenances_pagination=pagination,
+            selected_farm_id=effective_farm_id, selected_maintenance_status=selected_status or "",
+            maintenance_status_options=EQUIPMENT_MAINTENANCE_STATUS_OPTIONS,
+            maintenance_type_options=EQUIPMENT_MAINTENANCE_TYPE_OPTIONS,
+            maintenance_search_value=search_value, maintenance_filters_active=filters_active,
+            due_maintenances=due_maintenances, upcoming_maintenances=upcoming_maintenances,
+            maintenance_total_cost=_maintenance_total_cost, today=today, edit_maintenance=edit_maintenance,
+        ),
+    )
+
+
+def _maintenance_form_values(form: dict, *, user: User) -> dict:
+    maintenance_type = (form.get("maintenance_type") or "").strip().lower()
+    maintenance_status = (form.get("status") or "").strip().lower()
+    if maintenance_type not in EQUIPMENT_MAINTENANCE_TYPE_OPTIONS:
+        raise ValueError("Selecione um tipo de manutenção válido.")
+    if maintenance_status not in EQUIPMENT_MAINTENANCE_STATUS_OPTIONS:
+        raise ValueError("Selecione um status válido para a manutenção.")
+    description = _clean_text(form.get("description"))
+    if not description:
+        raise ValueError("Descreva o serviço de manutenção.")
+    service_cost = _float_or_none(form.get("service_cost"))
+    parts_cost = _float_or_none(form.get("parts_cost"))
+    meter_reading_hours = _float_or_none(form.get("meter_reading_hours"))
+    next_due_hours = _float_or_none(form.get("next_due_hours"))
+    if any(value is not None and value < 0 for value in (service_cost, parts_cost, meter_reading_hours, next_due_hours)):
+        raise ValueError("Custos e leituras não podem ser negativos.")
+    return {
+        "maintenance_date": _date_or_none(form.get("maintenance_date")) or today_in_app_timezone(),
+        "maintenance_type": maintenance_type, "status": maintenance_status, "description": description,
+        "responsible_name": _clean_text(form.get("responsible_name")) or user.display_name or user.name,
+        "supplier_name": _clean_text(form.get("supplier_name")), "meter_reading_hours": meter_reading_hours,
+        "service_cost": service_cost, "parts_cost": parts_cost,
+        "next_due_date": _date_or_none(form.get("next_due_date")), "next_due_hours": next_due_hours,
+        "notes": _clean_text(form.get("notes")),
+    }
+
+
+@router.post("/insumos/patrimonio/manutencoes")
+async def create_equipment_maintenance_action(
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    form = await request.form()
+    validate_csrf(request, str(form.get("csrf_token") or ""))
+    repo = _repository(db)
+    scope, denied = _launch_scope_or_redirect(request, repo, "/insumos/patrimonio/manutencoes")
+    if denied:
+        return denied
+    asset = repo.get_equipment_asset(_int_or_none(form.get("asset_id")) or 0)
+    if not asset or not _farm_matches_scope(asset.farm_id, scope):
+        _flash(request, "error", "Selecione um patrimônio pertencente à fazenda ativa.")
+        return _redirect("/insumos/patrimonio/manutencoes")
+    try:
+        maintenance = EquipmentMaintenance(asset_id=asset.id, **_maintenance_form_values(dict(form), user=user))
+        _sync_asset_maintenance_status(asset, maintenance.status)
+        repo.db.add_all([maintenance, asset])
+        repo.db.commit()
+    except ValueError as exc:
+        repo.db.rollback()
+        _flash(request, "error", str(exc))
+        return _redirect("/insumos/patrimonio/manutencoes")
+    _flash(request, "success", "Manutenção registrada com sucesso.")
+    return _redirect("/insumos/patrimonio/manutencoes")
+
+
+@router.post("/insumos/patrimonio/manutencoes/{maintenance_id}/editar")
+async def update_equipment_maintenance_action(
+    maintenance_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    form = await request.form()
+    validate_csrf(request, str(form.get("csrf_token") or ""))
+    repo = _repository(db)
+    scope, denied = _launch_scope_or_redirect(request, repo, "/insumos/patrimonio/manutencoes")
+    if denied:
+        return denied
+    maintenance = repo.get_equipment_maintenance(maintenance_id)
+    asset = repo.get_equipment_asset(_int_or_none(form.get("asset_id")) or 0)
+    if not maintenance or not maintenance.asset or not _farm_matches_scope(maintenance.asset.farm_id, scope) or not asset or not _farm_matches_scope(asset.farm_id, scope):
+        _flash(request, "error", "Manutenção ou patrimônio não encontrado no contexto ativo.")
+        return _redirect("/insumos/patrimonio/manutencoes")
+    try:
+        values = _maintenance_form_values(dict(form), user=user)
+        maintenance.asset_id = asset.id
+        for key, value in values.items():
+            setattr(maintenance, key, value)
+        _sync_asset_maintenance_status(asset, maintenance.status)
+        repo.db.add_all([maintenance, asset])
+        repo.db.commit()
+    except ValueError as exc:
+        repo.db.rollback()
+        _flash(request, "error", str(exc))
+        return _redirect(f"/insumos/patrimonio/manutencoes?edit_id={maintenance_id}")
+    _flash(request, "success", "Manutenção atualizada com sucesso.")
+    return _redirect("/insumos/patrimonio/manutencoes")
+
+
+@router.post("/insumos/patrimonio/manutencoes/{maintenance_id}/excluir")
+def delete_equipment_maintenance_action(
+    maintenance_id: int,
+    request: Request,
+    csrf_token: str = Form(...),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    validate_csrf(request, csrf_token)
+    repo = _repository(db)
+    scope = _global_scope_context(request, repo, user)
+    maintenance = repo.get_equipment_maintenance(maintenance_id)
+    if not maintenance or not maintenance.asset or not _farm_matches_scope(maintenance.asset.farm_id, scope):
+        _flash(request, "error", "Manutenção não encontrada no contexto ativo.")
+        return _redirect("/insumos/patrimonio/manutencoes")
+    repo.delete(maintenance)
+    _flash(request, "success", "Manutenção excluída com sucesso.")
+    return _redirect("/insumos/patrimonio/manutencoes")
 
 
 @router.get("/insumos/suprimentos")

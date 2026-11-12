@@ -14,6 +14,7 @@ from app.models import (
     CropSeason,
     EquipmentAsset,
     EquipmentAssetAttachment,
+    EquipmentMaintenance,
     Farm,
     FarmAttachment,
     FinanceAccount,
@@ -620,6 +621,25 @@ class FarmRepository:
             self.db.query(EquipmentAssetAttachment)
             .options(joinedload(EquipmentAssetAttachment.equipment_asset).joinedload(EquipmentAsset.farm))
             .filter(EquipmentAssetAttachment.id == attachment_id)
+            .first()
+        )
+
+    def list_equipment_maintenances(self, farm_id: int | None = None) -> list[EquipmentMaintenance]:
+        query = (
+            self.db.query(EquipmentMaintenance)
+            .options(joinedload(EquipmentMaintenance.asset).joinedload(EquipmentAsset.farm))
+            .join(EquipmentAsset, EquipmentAsset.id == EquipmentMaintenance.asset_id)
+            .order_by(EquipmentMaintenance.maintenance_date.desc(), EquipmentMaintenance.id.desc())
+        )
+        if farm_id:
+            query = query.filter(EquipmentAsset.farm_id == farm_id)
+        return query.all()
+
+    def get_equipment_maintenance(self, maintenance_id: int) -> EquipmentMaintenance | None:
+        return (
+            self.db.query(EquipmentMaintenance)
+            .options(joinedload(EquipmentMaintenance.asset).joinedload(EquipmentAsset.farm))
+            .filter(EquipmentMaintenance.id == maintenance_id)
             .first()
         )
 

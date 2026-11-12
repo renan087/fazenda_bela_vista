@@ -226,7 +226,7 @@
                         </div>
                     </div>
                     {% endif %}
-                    {% set asset_pages = ['assets'] %}
+                    {% set asset_pages = ['assets', 'asset_maintenance'] %}
                     {% if menu_visibility.get('assets') %}
                     <div class="rounded-2xl {% if page in asset_pages %}bg-slate-900/80{% endif %}" data-submenu-group>
                         <button type="button" class="erp-sidebar-link flex w-full items-center justify-between rounded-2xl px-4 py-3 text-left transition-all duration-300 ease-in-out {% if page in asset_pages %}text-white{% else %}text-slate-300 hover:bg-slate-900 hover:text-white{% endif %}" data-submenu-toggle="assets-menu" data-submenu-parent aria-haspopup="true" aria-expanded="{% if page in asset_pages %}true{% else %}false{% endif %}">
@@ -237,6 +237,7 @@
                         </button>
                         <div id="assets-menu" class="sidebar-submenu-panel {% if page not in asset_pages %}hidden {% endif %}space-y-1 px-3 pb-3" data-submenu-panel>
                             <a href="/insumos/patrimonio" class="sidebar-submenu-link block rounded-xl px-3 py-2 text-sm {% if page == 'assets' %}bg-brand-500 text-white{% else %}text-slate-300 hover:bg-slate-800 hover:text-white{% endif %}" data-submenu-link>Patrimônio</a>
+                            <a href="/insumos/patrimonio/manutencoes" class="sidebar-submenu-link block rounded-xl px-3 py-2 text-sm {% if page == 'asset_maintenance' %}bg-brand-500 text-white{% else %}text-slate-300 hover:bg-slate-800 hover:text-white{% endif %}" data-submenu-link>Manutenções</a>
                         </div>
                     </div>
                     {% endif %}

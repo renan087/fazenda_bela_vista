@@ -860,6 +860,27 @@ def _sync_schema() -> None:
         )
         """,
         "CREATE INDEX IF NOT EXISTS ix_stock_inventory_items_session_id ON stock_inventory_items(session_id)",
+        """
+        CREATE TABLE IF NOT EXISTS equipment_maintenances (
+            id SERIAL PRIMARY KEY,
+            asset_id INTEGER NOT NULL REFERENCES equipment_assets(id) ON DELETE CASCADE,
+            maintenance_date DATE NOT NULL,
+            maintenance_type VARCHAR(30) NOT NULL DEFAULT 'preventiva',
+            status VARCHAR(30) NOT NULL DEFAULT 'agendada',
+            description VARCHAR(220) NOT NULL,
+            responsible_name VARCHAR(160),
+            supplier_name VARCHAR(180),
+            meter_reading_hours NUMERIC(12,2),
+            service_cost NUMERIC(12,2),
+            parts_cost NUMERIC(12,2),
+            next_due_date DATE,
+            next_due_hours NUMERIC(12,2),
+            notes TEXT,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+        """,
+        "CREATE INDEX IF NOT EXISTS ix_equipment_maintenances_asset_id ON equipment_maintenances(asset_id)",
+        "CREATE INDEX IF NOT EXISTS ix_equipment_maintenances_maintenance_date ON equipment_maintenances(maintenance_date)",
         "ALTER TABLE input_recommendations ADD COLUMN IF NOT EXISTS plot_id INTEGER",
         "ALTER TABLE fertilization_items ADD COLUMN IF NOT EXISTS purchased_input_id INTEGER",
         "ALTER TABLE fertilization_items ADD COLUMN IF NOT EXISTS unit_cost NUMERIC(10,4)",
