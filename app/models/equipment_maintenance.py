@@ -28,3 +28,4 @@ class EquipmentMaintenance(Base):
 
     asset = relationship("EquipmentAsset", back_populates="maintenance_records")
     plan = relationship("EquipmentMaintenancePlan", back_populates="maintenance_records")
+    attachments = relationship("EquipmentMaintenanceAttachment", back_populates="maintenance", cascade="all, delete-orphan")

@@ -11,6 +11,7 @@ from app.models.crop_season import CropSeason
 from app.models.equipment_asset import EquipmentAsset
 from app.models.equipment_asset_attachment import EquipmentAssetAttachment
 from app.models.equipment_maintenance import EquipmentMaintenance
+from app.models.equipment_maintenance_attachment import EquipmentMaintenanceAttachment
 from app.models.equipment_maintenance_plan import EquipmentMaintenancePlan
 from app.models.farm import Farm
 from app.models.farm_attachment import FarmAttachment
@@ -63,6 +64,7 @@ __all__ = [
     "EquipmentAsset",
     "EquipmentAssetAttachment",
     "EquipmentMaintenance",
+    "EquipmentMaintenanceAttachment",
     "EquipmentMaintenancePlan",
     "Farm",
     "FarmAttachment",

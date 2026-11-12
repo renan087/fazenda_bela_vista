@@ -70,6 +70,7 @@ from app.models import (
     EquipmentAsset,
     EquipmentAssetAttachment,
     EquipmentMaintenance,
+    EquipmentMaintenanceAttachment,
     EquipmentMaintenancePlan,
     Farm,
     FarmAttachment,
@@ -3183,6 +3184,33 @@ def _save_equipment_asset_attachments(
         repo.db.rollback()
         raise
     repo.db.refresh(asset)
+    return len(attachments)
+
+
+def _save_equipment_maintenance_attachments(
+    repo: FarmRepository,
+    maintenance: EquipmentMaintenance,
+    attachments: list[tuple[str, str, bytes]],
+) -> int:
+    if not attachments:
+        return 0
+    repo.db.add_all(
+        [
+            EquipmentMaintenanceAttachment(
+                maintenance_id=maintenance.id,
+                filename=filename,
+                content_type=content_type,
+                file_data=payload,
+            )
+            for filename, content_type, payload in attachments
+        ]
+    )
+    try:
+        repo.db.commit()
+    except Exception:
+        repo.db.rollback()
+        raise
+    repo.db.refresh(maintenance)
     return len(attachments)
 
 
@@ -12557,6 +12585,11 @@ async def create_equipment_maintenance_action(
     scope, denied = _launch_scope_or_redirect(request, repo, "/insumos/patrimonio/manutencoes")
     if denied:
         return denied
+    try:
+        attachment_payloads = _read_attachments(await _request_attachments(request))
+    except ValueError as exc:
+        _flash(request, "error", str(exc))
+        return _redirect("/insumos/patrimonio/manutencoes")
     asset = repo.get_equipment_asset(_int_or_none(form.get("asset_id")) or 0)
     if not asset or not _farm_matches_scope(asset.farm_id, scope):
         _flash(request, "error", "Selecione um patrimônio pertencente à fazenda ativa.")
@@ -12570,7 +12603,12 @@ async def create_equipment_maintenance_action(
         repo.db.rollback()
         _flash(request, "error", str(exc))
         return _redirect("/insumos/patrimonio/manutencoes")
-    _flash(request, "success", "Manutenção registrada com sucesso.")
+    try:
+        saved_attachments = _save_equipment_maintenance_attachments(repo, maintenance, attachment_payloads)
+    except Exception:
+        _flash(request, "error", "A manutenção foi salva, mas não foi possível gravar os anexos agora.")
+        return _redirect("/insumos/patrimonio/manutencoes")
+    _flash(request, "success", f"Manutenção registrada com sucesso. {saved_attachments} anexo(s) salvo(s)." if saved_attachments else "Manutenção registrada com sucesso.")
     return _redirect("/insumos/patrimonio/manutencoes")
 
 
@@ -12587,6 +12625,11 @@ async def update_equipment_maintenance_action(
     scope, denied = _launch_scope_or_redirect(request, repo, "/insumos/patrimonio/manutencoes")
     if denied:
         return denied
+    try:
+        attachment_payloads = _read_attachments(await _request_attachments(request))
+    except ValueError as exc:
+        _flash(request, "error", str(exc))
+        return _redirect(f"/insumos/patrimonio/manutencoes?edit_id={maintenance_id}")
     maintenance = repo.get_equipment_maintenance(maintenance_id)
     asset = repo.get_equipment_asset(_int_or_none(form.get("asset_id")) or 0)
     if not maintenance or not maintenance.asset or not _farm_matches_scope(maintenance.asset.farm_id, scope) or not asset or not _farm_matches_scope(asset.farm_id, scope):
@@ -12607,7 +12650,12 @@ async def update_equipment_maintenance_action(
         repo.db.rollback()
         _flash(request, "error", str(exc))
         return _redirect(f"/insumos/patrimonio/manutencoes?edit_id={maintenance_id}")
-    _flash(request, "success", "Manutenção atualizada com sucesso.")
+    try:
+        saved_attachments = _save_equipment_maintenance_attachments(repo, maintenance, attachment_payloads)
+    except Exception:
+        _flash(request, "error", "A manutenção foi atualizada, mas não foi possível gravar os anexos agora.")
+        return _redirect("/insumos/patrimonio/manutencoes")
+    _flash(request, "success", f"Manutenção atualizada com sucesso. {saved_attachments} anexo(s) salvo(s)." if saved_attachments else "Manutenção atualizada com sucesso.")
     return _redirect("/insumos/patrimonio/manutencoes")
 
 
@@ -12629,6 +12677,57 @@ def delete_equipment_maintenance_action(
     repo.delete(maintenance)
     _flash(request, "success", "Manutenção excluída com sucesso.")
     return _redirect("/insumos/patrimonio/manutencoes")
+
+
+@router.get("/insumos/patrimonio/manutencoes/anexos/{attachment_id}")
+def open_equipment_maintenance_attachment(
+    attachment_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    del user
+    repo = _repository(db)
+    attachment = repo.get_equipment_maintenance_attachment(attachment_id)
+    maintenance = attachment.maintenance if attachment else None
+    asset = maintenance.asset if maintenance else None
+    if not attachment or not asset:
+        _flash(request, "error", "Anexo não encontrado.")
+        return _redirect("/insumos/patrimonio/manutencoes")
+    scope = _global_scope_context(request, repo)
+    if not _farm_matches_scope(asset.farm_id, scope):
+        _flash(request, "error", "Este anexo não pertence ao contexto ativo.")
+        return _redirect("/insumos/patrimonio/manutencoes")
+    return _attachment_response(attachment.filename, attachment.content_type, attachment.file_data)
+
+
+@router.post("/insumos/patrimonio/manutencoes/{maintenance_id}/anexos/{attachment_id}/excluir")
+def delete_equipment_maintenance_attachment_action(
+    maintenance_id: int,
+    attachment_id: int,
+    request: Request,
+    csrf_token: str = Form(...),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    del user
+    validate_csrf(request, csrf_token)
+    repo = _repository(db)
+    maintenance = repo.get_equipment_maintenance(maintenance_id)
+    if not maintenance or not maintenance.asset:
+        _flash(request, "error", "Manutenção não encontrada.")
+        return _redirect("/insumos/patrimonio/manutencoes")
+    scope = _global_scope_context(request, repo)
+    if not _farm_matches_scope(maintenance.asset.farm_id, scope):
+        _flash(request, "error", "Esta manutenção não pertence ao contexto ativo.")
+        return _redirect("/insumos/patrimonio/manutencoes")
+    attachment = repo.get_equipment_maintenance_attachment(attachment_id)
+    if not attachment or attachment.maintenance_id != maintenance.id:
+        _flash(request, "error", "Anexo não encontrado.")
+        return _redirect(f"/insumos/patrimonio/manutencoes?edit_id={maintenance_id}")
+    repo.delete(attachment)
+    _flash(request, "success", "Anexo removido com sucesso.")
+    return _redirect(f"/insumos/patrimonio/manutencoes?edit_id={maintenance_id}")
 
 
 @router.get("/insumos/suprimentos")

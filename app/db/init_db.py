@@ -903,6 +903,17 @@ def _sync_schema() -> None:
         "CREATE INDEX IF NOT EXISTS ix_equipment_maintenances_asset_id ON equipment_maintenances(asset_id)",
         "CREATE INDEX IF NOT EXISTS ix_equipment_maintenances_plan_id ON equipment_maintenances(plan_id)",
         "CREATE INDEX IF NOT EXISTS ix_equipment_maintenances_maintenance_date ON equipment_maintenances(maintenance_date)",
+        """
+        CREATE TABLE IF NOT EXISTS equipment_maintenance_attachments (
+            id SERIAL PRIMARY KEY,
+            maintenance_id INTEGER NOT NULL REFERENCES equipment_maintenances(id) ON DELETE CASCADE,
+            filename VARCHAR(255) NOT NULL,
+            content_type VARCHAR(120) NOT NULL,
+            file_data BYTEA NOT NULL,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+        """,
+        "CREATE INDEX IF NOT EXISTS ix_equipment_maintenance_attachments_maintenance_id ON equipment_maintenance_attachments(maintenance_id)",
         "ALTER TABLE input_recommendations ADD COLUMN IF NOT EXISTS plot_id INTEGER",
         "ALTER TABLE fertilization_items ADD COLUMN IF NOT EXISTS purchased_input_id INTEGER",
         "ALTER TABLE fertilization_items ADD COLUMN IF NOT EXISTS unit_cost NUMERIC(10,4)",

@@ -15,6 +15,7 @@ from app.models import (
     EquipmentAsset,
     EquipmentAssetAttachment,
     EquipmentMaintenance,
+    EquipmentMaintenanceAttachment,
     EquipmentMaintenancePlan,
     Farm,
     FarmAttachment,
@@ -628,7 +629,16 @@ class FarmRepository:
     def list_equipment_maintenances(self, farm_id: int | None = None) -> list[EquipmentMaintenance]:
         query = (
             self.db.query(EquipmentMaintenance)
-            .options(joinedload(EquipmentMaintenance.asset).joinedload(EquipmentAsset.farm))
+            .options(
+                joinedload(EquipmentMaintenance.asset).joinedload(EquipmentAsset.farm),
+                joinedload(EquipmentMaintenance.attachments).load_only(
+                    EquipmentMaintenanceAttachment.id,
+                    EquipmentMaintenanceAttachment.maintenance_id,
+                    EquipmentMaintenanceAttachment.filename,
+                    EquipmentMaintenanceAttachment.content_type,
+                    EquipmentMaintenanceAttachment.created_at,
+                ),
+            )
             .join(EquipmentAsset, EquipmentAsset.id == EquipmentMaintenance.asset_id)
             .order_by(EquipmentMaintenance.maintenance_date.desc(), EquipmentMaintenance.id.desc())
         )
@@ -639,8 +649,23 @@ class FarmRepository:
     def get_equipment_maintenance(self, maintenance_id: int) -> EquipmentMaintenance | None:
         return (
             self.db.query(EquipmentMaintenance)
-            .options(joinedload(EquipmentMaintenance.asset).joinedload(EquipmentAsset.farm))
+            .options(
+                joinedload(EquipmentMaintenance.asset).joinedload(EquipmentAsset.farm),
+                joinedload(EquipmentMaintenance.attachments),
+            )
             .filter(EquipmentMaintenance.id == maintenance_id)
+            .first()
+        )
+
+    def get_equipment_maintenance_attachment(self, attachment_id: int) -> EquipmentMaintenanceAttachment | None:
+        return (
+            self.db.query(EquipmentMaintenanceAttachment)
+            .options(
+                joinedload(EquipmentMaintenanceAttachment.maintenance)
+                .joinedload(EquipmentMaintenance.asset)
+                .joinedload(EquipmentAsset.farm)
+            )
+            .filter(EquipmentMaintenanceAttachment.id == attachment_id)
             .first()
         )
 
