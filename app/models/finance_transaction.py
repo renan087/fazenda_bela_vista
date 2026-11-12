@@ -37,4 +37,5 @@ class FinanceTransaction(Base):
     installments = relationship("FinanceTransactionInstallment", back_populates="transaction", cascade="all, delete-orphan")
     purchased_inputs = relationship("PurchasedInput", back_populates="finance_transaction", cascade="all, delete-orphan")
     equipment_assets = relationship("EquipmentAsset", back_populates="finance_transaction", cascade="all, delete-orphan")
+    maintenance_records = relationship("EquipmentMaintenance", back_populates="finance_transaction")
     commercializations = relationship("CoffeeCommercializationRecord", back_populates="finance_transaction", cascade="all, delete-orphan")

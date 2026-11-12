@@ -379,6 +379,7 @@ class FarmRepository:
                 joinedload(FinanceTransaction.farm),
                 joinedload(FinanceTransaction.finance_account),
                 joinedload(FinanceTransaction.credit_card),
+                joinedload(FinanceTransaction.maintenance_records),
                 joinedload(FinanceTransaction.purchased_inputs).joinedload(PurchasedInput.input_catalog),
                 joinedload(FinanceTransaction.attachments).load_only(
                     FinanceTransactionAttachment.id,
@@ -404,6 +405,7 @@ class FarmRepository:
                 joinedload(FinanceTransaction.farm),
                 joinedload(FinanceTransaction.finance_account),
                 joinedload(FinanceTransaction.credit_card),
+                joinedload(FinanceTransaction.maintenance_records),
                 joinedload(FinanceTransaction.attachments).load_only(
                     FinanceTransactionAttachment.id,
                     FinanceTransactionAttachment.finance_transaction_id,
@@ -631,6 +633,7 @@ class FarmRepository:
             self.db.query(EquipmentMaintenance)
             .options(
                 joinedload(EquipmentMaintenance.asset).joinedload(EquipmentAsset.farm),
+                joinedload(EquipmentMaintenance.finance_transaction),
                 joinedload(EquipmentMaintenance.attachments).load_only(
                     EquipmentMaintenanceAttachment.id,
                     EquipmentMaintenanceAttachment.maintenance_id,
@@ -651,6 +654,7 @@ class FarmRepository:
             self.db.query(EquipmentMaintenance)
             .options(
                 joinedload(EquipmentMaintenance.asset).joinedload(EquipmentAsset.farm),
+                joinedload(EquipmentMaintenance.finance_transaction),
                 joinedload(EquipmentMaintenance.attachments),
             )
             .filter(EquipmentMaintenance.id == maintenance_id)

@@ -884,6 +884,7 @@ def _sync_schema() -> None:
             id SERIAL PRIMARY KEY,
             asset_id INTEGER NOT NULL REFERENCES equipment_assets(id) ON DELETE CASCADE,
             plan_id INTEGER REFERENCES equipment_maintenance_plans(id) ON DELETE SET NULL,
+            finance_transaction_id INTEGER REFERENCES finance_transactions(id) ON DELETE SET NULL,
             maintenance_date DATE NOT NULL,
             maintenance_type VARCHAR(30) NOT NULL DEFAULT 'preventiva',
             status VARCHAR(30) NOT NULL DEFAULT 'agendada',
@@ -900,8 +901,10 @@ def _sync_schema() -> None:
         )
         """,
         "ALTER TABLE equipment_maintenances ADD COLUMN IF NOT EXISTS plan_id INTEGER REFERENCES equipment_maintenance_plans(id) ON DELETE SET NULL",
+        "ALTER TABLE equipment_maintenances ADD COLUMN IF NOT EXISTS finance_transaction_id INTEGER REFERENCES finance_transactions(id) ON DELETE SET NULL",
         "CREATE INDEX IF NOT EXISTS ix_equipment_maintenances_asset_id ON equipment_maintenances(asset_id)",
         "CREATE INDEX IF NOT EXISTS ix_equipment_maintenances_plan_id ON equipment_maintenances(plan_id)",
+        "CREATE INDEX IF NOT EXISTS ix_equipment_maintenances_finance_transaction_id ON equipment_maintenances(finance_transaction_id)",
         "CREATE INDEX IF NOT EXISTS ix_equipment_maintenances_maintenance_date ON equipment_maintenances(maintenance_date)",
         """
         CREATE TABLE IF NOT EXISTS equipment_maintenance_attachments (

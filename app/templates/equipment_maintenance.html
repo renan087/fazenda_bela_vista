@@ -139,6 +139,13 @@
             <label><span class="mb-2 block text-sm font-medium">Serviço realizado ou previsto</span><input name="description" required value="{{ edit_maintenance.description if edit_maintenance else '' }}" placeholder="Ex.: Troca de óleo, filtros e inspeção geral" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50"></label>
             <div class="grid gap-4 md:grid-cols-2"><label><span class="mb-2 block text-sm font-medium">Responsável / técnico</span><input name="responsible_name" value="{{ edit_maintenance.responsible_name if edit_maintenance else (user.display_name or user.name) }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50"></label><label><span class="mb-2 block text-sm font-medium">Oficina ou fornecedor</span><input name="supplier_name" value="{{ edit_maintenance.supplier_name if edit_maintenance else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50"></label></div>
             <div class="grid gap-4 md:grid-cols-3"><label><span class="mb-2 block text-sm font-medium">Horímetro atual (h)</span><input type="number" min="0" step="0.01" name="meter_reading_hours" value="{{ edit_maintenance.meter_reading_hours if edit_maintenance and edit_maintenance.meter_reading_hours is not none else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50"></label><label><span class="mb-2 block text-sm font-medium">Custo de peças (R$)</span><input type="hidden" name="parts_cost" value="{{ edit_maintenance.parts_cost if edit_maintenance and edit_maintenance.parts_cost is not none else '' }}" data-currency-raw><input type="text" inputmode="numeric" placeholder="R$ 0,00" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" data-currency-display></label><label><span class="mb-2 block text-sm font-medium">Custo de serviço (R$)</span><input type="hidden" name="service_cost" value="{{ edit_maintenance.service_cost if edit_maintenance and edit_maintenance.service_cost is not none else '' }}" data-currency-raw><input type="text" inputmode="numeric" placeholder="R$ 0,00" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" data-currency-display></label></div>
+            {% if can_create_maintenance_finance_expense %}
+                {% if edit_maintenance and edit_maintenance.finance_transaction_id %}
+                <div class="rounded-[1.5rem] border border-emerald-200 bg-emerald-50/60 p-4 text-sm text-emerald-900"><p class="font-semibold">Despesa financeira já gerada</p><p class="mt-1 text-emerald-800">Esta manutenção está vinculada ao lançamento financeiro #{{ edit_maintenance.finance_transaction_id }}. Os pagamentos continuam sendo gerenciados em Contas.</p><a href="/gestao-financeira/contas?finance_tab=payables" class="mt-3 inline-flex font-semibold text-emerald-700 hover:underline">Abrir Contas a pagar</a></div>
+                {% else %}
+                <label class="hidden rounded-[1.5rem] border border-sky-200 bg-sky-50/60 p-4" data-maintenance-finance-option><span class="flex items-start gap-3"><input type="checkbox" name="create_finance_expense" value="1" class="mt-1 h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500"><span><span class="block text-sm font-semibold text-slate-900">Gerar despesa financeira</span><span class="mt-1 block text-xs leading-5 text-slate-600">Cria uma única conta a pagar com o total de peças e serviços na data desta manutenção. A quitação será feita depois em Contas, e os anexos serão copiados.</span></span></span></label>
+                {% endif %}
+            {% endif %}
             <div class="rounded-[1.5rem] border border-brand-100 bg-brand-50/40 p-4"><p class="text-xs font-semibold uppercase tracking-[0.25em] text-brand-700">Próxima revisão</p><div class="mt-3 grid gap-4 md:grid-cols-2"><label><span class="mb-2 block text-sm font-medium">Data prevista</span><input type="date" name="next_due_date" value="{{ edit_maintenance.next_due_date.isoformat() if edit_maintenance and edit_maintenance.next_due_date else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-white"></label><label><span class="mb-2 block text-sm font-medium">Horímetro previsto (h)</span><input type="number" min="0" step="0.01" name="next_due_hours" value="{{ edit_maintenance.next_due_hours if edit_maintenance and edit_maintenance.next_due_hours is not none else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-white"></label></div></div>
             <label><span class="mb-2 block text-sm font-medium">Observações</span><textarea name="notes" rows="3" class="w-full rounded-2xl border-slate-200 bg-slate-50">{{ edit_maintenance.notes if edit_maintenance else '' }}</textarea></label>
             <label class="rounded-[1.5rem] border border-dashed border-slate-300 bg-slate-50 p-4"><span class="block text-sm font-semibold text-slate-800">Anexos da manutenção</span><span class="mt-1 block text-xs text-slate-500">Inclua nota fiscal, ordem de serviço, comprovantes ou fotos. Até 10 MB por arquivo.</span><input type="file" name="attachments" multiple accept="image/*,.pdf,.txt,.csv,.doc,.docx,.xls,.xlsx,.odt,.ods" class="mt-3 block w-full text-sm text-slate-600 file:mr-4 file:rounded-xl file:border-0 file:bg-brand-50 file:px-3 file:py-2 file:font-semibold file:text-brand-700 hover:file:bg-brand-100"></label>
@@ -186,6 +193,26 @@
     document.querySelectorAll('[data-maintenance-plan-modal-close]').forEach((button) => button.addEventListener('click', () => { planForm?.reset(); planModal?.close(); }));
     planModal?.addEventListener('cancel', (event) => { event.preventDefault(); planForm?.reset(); planModal.close(); });
     document.querySelectorAll('[data-maintenance-edit-id]').forEach((button) => button.addEventListener('click', () => { window.location.href = `/insumos/patrimonio/manutencoes?edit_id=${button.dataset.maintenanceEditId}`; }));
+    const financeOption = form?.querySelector('[data-maintenance-finance-option]');
+    const statusField = form?.querySelector('[name="status"]');
+    const costFields = form ? Array.from(form.querySelectorAll('[name="parts_cost"], [name="service_cost"]')) : [];
+    const syncFinanceOption = () => {
+        if (!financeOption || !statusField) return;
+        const total = costFields.reduce((sum, field) => sum + (Number.parseFloat(field.value || '0') || 0), 0);
+        const shouldShow = statusField.value === 'concluida' && total > 0;
+        financeOption.classList.toggle('hidden', !shouldShow);
+        if (!shouldShow) {
+            const checkbox = financeOption.querySelector('input[type="checkbox"]');
+            if (checkbox) checkbox.checked = false;
+        }
+    };
+    statusField?.addEventListener('change', syncFinanceOption);
+    costFields.forEach((field) => {
+        field.addEventListener('input', syncFinanceOption);
+        field.addEventListener('change', syncFinanceOption);
+    });
+    form?.querySelectorAll('[data-currency-display]').forEach((field) => field.addEventListener('input', () => window.requestAnimationFrame(syncFinanceOption)));
+    syncFinanceOption();
     {% if edit_maintenance %}open();{% endif %}
 })();
 </script>

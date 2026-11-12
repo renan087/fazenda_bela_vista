@@ -4052,6 +4052,8 @@ def _finance_transaction_source_label(source: str | None) -> str:
         return "Suprimentos"
     if normalized in {"patrimônio", "patrimonio"}:
         return "Patrimônio"
+    if normalized in {"manutenção de patrimônio", "manutencao de patrimonio"}:
+        return "Manutenção de Patrimônio"
     if normalized in {"comercialização", "comercializacao"}:
         return "Comercialização"
     return "Contas"
@@ -4069,6 +4071,9 @@ def _finance_transaction_origin_edit_url(transaction: FinanceTransaction) -> str
     if normalized in {"patrimônio", "patrimonio"} and transaction.equipment_assets:
         asset = sorted(transaction.equipment_assets, key=lambda item: item.id)[0]
         return _redirect_with_query("/insumos/patrimonio", edit_id=asset.id)
+    if normalized in {"manutenção de patrimônio", "manutencao de patrimonio"} and transaction.maintenance_records:
+        maintenance = sorted(transaction.maintenance_records, key=lambda item: item.id)[0]
+        return _redirect_with_query("/insumos/patrimonio/manutencoes", edit_id=maintenance.id)
     if normalized in {"comercialização", "comercializacao"} and transaction.commercializations:
         sale = sorted(transaction.commercializations, key=lambda item: item.id)[0]
         return _redirect_with_query("/producao/comercializacao", edit_id=sale.id)
@@ -12536,6 +12541,11 @@ def equipment_maintenance_page(
     if edit_maintenance and (not edit_maintenance.asset or not _farm_matches_scope(edit_maintenance.asset.farm_id, scope)):
         edit_maintenance = None
     filters_active = bool((request.query_params.get("farm_id") or "").strip() or selected_status or search_value)
+    can_create_maintenance_finance_expense = user_has_permission(
+        db,
+        user,
+        write_permission_for_page(PAGE_FINANCE),
+    )
     return templates.TemplateResponse(
         "equipment_maintenance.html",
         _base_context(
@@ -12552,6 +12562,7 @@ def equipment_maintenance_page(
             maintenance_plan_label=_maintenance_plan_label,
             asset_maintenance_indicators=asset_maintenance_indicators,
             maintenance_currency=_format_currency,
+            can_create_maintenance_finance_expense=can_create_maintenance_finance_expense,
         ),
     )
 
@@ -12581,6 +12592,98 @@ def _maintenance_form_values(form: dict, *, user: User) -> dict:
         "next_due_date": _date_or_none(form.get("next_due_date")), "next_due_hours": next_due_hours,
         "notes": _clean_text(form.get("notes")),
     }
+
+
+def _create_maintenance_finance_expense(
+    repo: FarmRepository,
+    maintenance: EquipmentMaintenance,
+) -> FinanceTransaction:
+    """Cria uma única conta a pagar para uma manutenção concluída.
+
+    O vínculo no próprio registro de manutenção é a proteção contra duplicidade.
+    A despesa nasce pendente para que a quitação continue ocorrendo no fluxo
+    financeiro normal, sem lançar custo no extrato antes do pagamento.
+    """
+    if maintenance.finance_transaction_id:
+        transaction = repo.get_finance_transaction(maintenance.finance_transaction_id)
+        if transaction:
+            return transaction
+    if maintenance.status != "concluida":
+        raise ValueError("Conclua a manutenção antes de gerar a despesa financeira.")
+    amount = _maintenance_total_cost(maintenance)
+    if amount <= 0:
+        raise ValueError("Informe custo de peças ou de serviço antes de gerar a despesa financeira.")
+    asset = maintenance.asset
+    if not asset or not asset.farm_id:
+        raise ValueError("O patrimônio precisa estar vinculado a uma fazenda para gerar a despesa.")
+    farm = repo.get_farm(asset.farm_id)
+    if not farm:
+        raise ValueError("A fazenda do patrimônio não foi encontrada.")
+    account = _resolve_finance_transaction_account(repo, active_farm=farm, account_id=None)
+    category = (
+        "Manutenção de Benfeitorias"
+        if (asset.category or "").strip().lower() == "benfeitoria"
+        else "Manutenção de Máquinas e Equipamentos"
+    )
+    transaction = FinanceTransaction(
+        farm_id=farm.id,
+        finance_account_id=account.id,
+        operation_type="despesa",
+        launch_date=maintenance.maintenance_date,
+        amount=amount,
+        category=category,
+        product_service=f"Manutenção: {asset.name}",
+        description=maintenance.description,
+        counterparty_name=maintenance.supplier_name,
+        payment_method="Boleto",
+        payment_condition="a_prazo",
+        installment_count=1,
+        installment_frequency="mensal",
+        first_installment_date=maintenance.maintenance_date,
+        notes=maintenance.notes,
+        source="Manutenção de Patrimônio",
+        created_at=app_now(),
+    )
+    try:
+        repo.db.add(transaction)
+        repo.db.flush()
+        for installment in _build_finance_transaction_installments(
+            amount=amount,
+            payment_condition="a_prazo",
+            payment_method="Boleto",
+            reference_date=maintenance.maintenance_date,
+            installment_count=1,
+            installment_frequency="mensal",
+            first_installment_date=maintenance.maintenance_date,
+        ):
+            repo.db.add(
+                FinanceTransactionInstallment(
+                    finance_transaction_id=transaction.id,
+                    installment_number=installment["installment_number"],
+                    due_date=installment["due_date"],
+                    amount=installment["amount"],
+                    status=installment["status"],
+                )
+            )
+        maintenance.finance_transaction_id = transaction.id
+        repo.db.add(maintenance)
+        repo.db.add_all(
+            [
+                FinanceTransactionAttachment(
+                    finance_transaction_id=transaction.id,
+                    filename=attachment.filename,
+                    content_type=attachment.content_type,
+                    file_data=_attachment_payload_bytes(attachment.file_data),
+                )
+                for attachment in (maintenance.attachments or [])
+            ]
+        )
+        repo.db.commit()
+    except Exception:
+        repo.db.rollback()
+        raise
+    repo.db.refresh(transaction)
+    return transaction
 
 
 @router.post("/insumos/patrimonio/manutencoes/planos")
@@ -12703,6 +12806,10 @@ async def create_equipment_maintenance_action(
     if not asset or not _farm_matches_scope(asset.farm_id, scope):
         _flash(request, "error", "Selecione um patrimônio pertencente à fazenda ativa.")
         return _redirect("/insumos/patrimonio/manutencoes")
+    create_finance_expense = str(form.get("create_finance_expense") or "").strip() in {"1", "true", "on"}
+    if create_finance_expense and not user_has_permission(db, user, write_permission_for_page(PAGE_FINANCE)):
+        _flash(request, "error", "Você não tem permissão para criar despesas financeiras.")
+        return _redirect("/insumos/patrimonio/manutencoes")
     try:
         maintenance = EquipmentMaintenance(asset_id=asset.id, **_maintenance_form_values(dict(form), user=user))
         _sync_asset_maintenance_status(asset, maintenance.status)
@@ -12717,7 +12824,16 @@ async def create_equipment_maintenance_action(
     except Exception:
         _flash(request, "error", "A manutenção foi salva, mas não foi possível gravar os anexos agora.")
         return _redirect("/insumos/patrimonio/manutencoes")
-    _flash(request, "success", f"Manutenção registrada com sucesso. {saved_attachments} anexo(s) salvo(s)." if saved_attachments else "Manutenção registrada com sucesso.")
+    finance_message = ""
+    if create_finance_expense:
+        try:
+            _create_maintenance_finance_expense(repo, repo.get_equipment_maintenance(maintenance.id) or maintenance)
+            finance_message = " Despesa financeira criada em Contas a pagar."
+        except Exception:
+            logger.exception("Falha ao gerar despesa da manutenção %s", maintenance.id)
+            finance_message = " A manutenção foi salva, mas a despesa não pôde ser gerada agora."
+    base_message = f"Manutenção registrada com sucesso. {saved_attachments} anexo(s) salvo(s)." if saved_attachments else "Manutenção registrada com sucesso."
+    _flash(request, "success", base_message + finance_message)
     return _redirect("/insumos/patrimonio/manutencoes")
 
 
@@ -12744,10 +12860,15 @@ async def update_equipment_maintenance_action(
     if not maintenance or not maintenance.asset or not _farm_matches_scope(maintenance.asset.farm_id, scope) or not asset or not _farm_matches_scope(asset.farm_id, scope):
         _flash(request, "error", "Manutenção ou patrimônio não encontrado no contexto ativo.")
         return _redirect("/insumos/patrimonio/manutencoes")
+    create_finance_expense = str(form.get("create_finance_expense") or "").strip() in {"1", "true", "on"}
+    if create_finance_expense and not maintenance.finance_transaction_id and not user_has_permission(db, user, write_permission_for_page(PAGE_FINANCE)):
+        _flash(request, "error", "Você não tem permissão para criar despesas financeiras.")
+        return _redirect(f"/insumos/patrimonio/manutencoes?edit_id={maintenance_id}")
     try:
         values = _maintenance_form_values(dict(form), user=user)
         was_completed = maintenance.status == "concluida"
         maintenance.asset_id = asset.id
+        maintenance.asset = asset
         for key, value in values.items():
             setattr(maintenance, key, value)
         _sync_asset_maintenance_status(asset, maintenance.status)
@@ -12764,7 +12885,16 @@ async def update_equipment_maintenance_action(
     except Exception:
         _flash(request, "error", "A manutenção foi atualizada, mas não foi possível gravar os anexos agora.")
         return _redirect("/insumos/patrimonio/manutencoes")
-    _flash(request, "success", f"Manutenção atualizada com sucesso. {saved_attachments} anexo(s) salvo(s)." if saved_attachments else "Manutenção atualizada com sucesso.")
+    finance_message = ""
+    if create_finance_expense and not maintenance.finance_transaction_id:
+        try:
+            _create_maintenance_finance_expense(repo, repo.get_equipment_maintenance(maintenance.id) or maintenance)
+            finance_message = " Despesa financeira criada em Contas a pagar."
+        except Exception:
+            logger.exception("Falha ao gerar despesa da manutenção %s", maintenance.id)
+            finance_message = " A manutenção foi atualizada, mas a despesa não pôde ser gerada agora."
+    base_message = f"Manutenção atualizada com sucesso. {saved_attachments} anexo(s) salvo(s)." if saved_attachments else "Manutenção atualizada com sucesso."
+    _flash(request, "success", base_message + finance_message)
     return _redirect("/insumos/patrimonio/manutencoes")
 
 
