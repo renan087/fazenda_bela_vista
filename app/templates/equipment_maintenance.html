@@ -18,7 +18,7 @@
         </div>
     </section>
 
-    <section class="grid gap-4 md:grid-cols-3">
+    <section class="grid gap-4 md:grid-cols-3" data-stock-fade-panel>
         <article class="rounded-[1.5rem] border border-rose-100 bg-rose-50/70 p-5 shadow-sm">
             <p class="text-xs font-semibold uppercase tracking-[0.22em] text-rose-500">Vencidas ou para hoje</p>
             <p class="mt-3 text-3xl font-semibold text-rose-900">{{ due_maintenances|length }}</p>
@@ -131,6 +131,74 @@
     modal?.addEventListener('cancel', (event) => { event.preventDefault(); close(); });
     document.querySelectorAll('[data-maintenance-edit-id]').forEach((button) => button.addEventListener('click', () => { window.location.href = `/insumos/patrimonio/manutencoes?edit_id=${button.dataset.maintenanceEditId}`; }));
     {% if edit_maintenance %}open();{% endif %}
+})();
+</script>
+<script>
+(() => {
+    const stickyHeader = document.querySelector('.stock-page-header');
+    const headerIntro = stickyHeader?.querySelector('[data-stock-header-intro]');
+    const fadingPanels = Array.from(document.querySelectorAll('[data-stock-fade-panel]'));
+    const mobileCompactMq = window.matchMedia('(max-width: 899px)');
+    const parseStickyTopPx = (element) => {
+        const raw = getComputedStyle(element).top;
+        if (!raw || raw === 'auto') return 0;
+        const pxMatch = /^([\d.]+)px$/.exec(raw);
+        if (pxMatch) return parseFloat(pxMatch[1]);
+        const remMatch = /^([\d.]+)rem$/.exec(raw);
+        if (remMatch) {
+            const rootPx = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
+            return parseFloat(remMatch[1]) * rootPx;
+        }
+        return 0;
+    };
+
+    let compactRaf = null;
+    const syncHeaderCompact = () => {
+        compactRaf = null;
+        if (!stickyHeader) return;
+        if (!mobileCompactMq.matches) {
+            stickyHeader.classList.remove('is-compact');
+            headerIntro?.removeAttribute('aria-hidden');
+            return;
+        }
+        const topPx = parseStickyTopPx(stickyHeader);
+        const rect = stickyHeader.getBoundingClientRect();
+        const isCompact = stickyHeader.classList.contains('is-compact');
+        const nextCompact = rect.top <= topPx + 2 ? true : rect.top > topPx + 8 ? false : isCompact;
+        stickyHeader.classList.toggle('is-compact', nextCompact);
+        headerIntro?.setAttribute('aria-hidden', nextCompact ? 'true' : 'false');
+    };
+    const scheduleHeaderCompact = () => {
+        if (compactRaf === null) compactRaf = window.requestAnimationFrame(syncHeaderCompact);
+    };
+
+    let fadeRaf = null;
+    const updateFadingPanels = () => {
+        fadeRaf = null;
+        if (!stickyHeader) return;
+        const stickyBottom = stickyHeader.getBoundingClientRect().bottom;
+        fadingPanels.forEach((panel) => {
+            const panelRect = panel.getBoundingClientRect();
+            if (panelRect.top >= stickyBottom || panelRect.height <= 1) {
+                panel.style.setProperty('--stock-fade-cutoff', '0px');
+                panel.style.setProperty('--stock-fade-feather-end', '0px');
+                return;
+            }
+            const overlap = Math.min(Math.max(stickyBottom - panelRect.top, 0), panelRect.height);
+            const featherBand = Math.min(80, Math.max(22, overlap * 0.45 + 16));
+            panel.style.setProperty('--stock-fade-cutoff', `${overlap.toFixed(2)}px`);
+            panel.style.setProperty('--stock-fade-feather-end', `${(overlap + featherBand).toFixed(2)}px`);
+        });
+    };
+    const scheduleFadeUpdate = () => {
+        if (fadeRaf === null) fadeRaf = window.requestAnimationFrame(updateFadingPanels);
+    };
+
+    window.addEventListener('scroll', () => { scheduleHeaderCompact(); scheduleFadeUpdate(); }, { passive: true });
+    window.addEventListener('resize', () => { scheduleHeaderCompact(); scheduleFadeUpdate(); });
+    mobileCompactMq.addEventListener('change', scheduleHeaderCompact);
+    scheduleHeaderCompact();
+    scheduleFadeUpdate();
 })();
 </script>
 {% endblock %}
