@@ -1143,6 +1143,31 @@ def _build_global_notifications(
                     meta="Patrimônio",
                 )
 
+        for maintenance in repo.list_equipment_maintenances(farm_id=active_farm.id):
+            if maintenance.plan_id is not None or maintenance.status not in {"agendada", "em_andamento"}:
+                continue
+            asset_name = maintenance.asset.name if maintenance.asset else "Patrimônio"
+            if maintenance.maintenance_date < today:
+                add_notification(
+                    important,
+                    title="Manutenção agendada atrasada",
+                    message=f"{asset_name}: {maintenance.description} está pendente desde {maintenance.maintenance_date.strftime('%d/%m/%Y')}.",
+                    href=f"/insumos/patrimonio/manutencoes?edit_id={maintenance.id}",
+                    kind="maintenance",
+                    severity="danger",
+                    meta="Patrimônio",
+                )
+            elif maintenance.maintenance_date <= today + timedelta(days=7):
+                add_notification(
+                    operational,
+                    title="Manutenção agendada próxima",
+                    message=f"{asset_name}: {maintenance.description} está prevista para {maintenance.maintenance_date.strftime('%d/%m/%Y')}.",
+                    href=f"/insumos/patrimonio/manutencoes?edit_id={maintenance.id}",
+                    kind="maintenance",
+                    severity="warning",
+                    meta="Patrimônio",
+                )
+
     important.sort(key=lambda item: (item["severity"] != "danger", item["title"]))
     operational.sort(key=lambda item: item["title"])
     return {
