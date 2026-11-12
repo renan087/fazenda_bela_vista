@@ -7858,6 +7858,9 @@ def settle_finance_transaction_installment_action(
     if not active_farm or installment.transaction.farm_id != active_farm.id:
         _flash(request, "error", "Esta parcela não pertence à fazenda ativa.")
         return _redirect(back_url)
+    if installment.transaction.is_reversed:
+        _flash(request, "error", "Esta despesa foi estornada pela manutenção e não pode ser quitada.")
+        return _redirect(back_url)
     try:
         paid_date = date.fromisoformat((paid_at or "").strip())
     except ValueError:
@@ -7917,6 +7920,7 @@ def settle_finance_credit_card_invoice_action(
             FinanceTransaction.credit_card_id == card.id,
             FinanceTransaction.farm_id == active_farm.id,
             FinanceTransaction.operation_type == "despesa",
+            FinanceTransaction.is_reversed.is_(False),
             FinanceTransactionInstallment.due_date == invoice_due_date,
             FinanceTransactionInstallment.status != "pago",
         )
@@ -7975,6 +7979,7 @@ def revert_finance_credit_card_invoice_payment_action(
             FinanceTransaction.credit_card_id == card.id,
             FinanceTransaction.farm_id == active_farm.id,
             FinanceTransaction.operation_type == "despesa",
+            FinanceTransaction.is_reversed.is_(False),
             FinanceTransactionInstallment.due_date == invoice_due_date,
             FinanceTransactionInstallment.status == "pago",
         )
@@ -12532,6 +12537,8 @@ def equipment_maintenance_page(
         farm_ids=None if effective_farm_id else context_farm_ids,
     )
     maintenance_plans = repo.list_equipment_maintenance_plans(farm_id=effective_farm_id)
+    finance_account_options = repo.list_finance_accounts(farm_id=effective_farm_id) if effective_farm_id else []
+    finance_credit_card_options = repo.list_finance_credit_cards(farm_id=effective_farm_id) if effective_farm_id else []
     asset_maintenance_indicators = _build_asset_maintenance_indicators(
         all_maintenances,
         maintenance_plans,
@@ -12563,6 +12570,11 @@ def equipment_maintenance_page(
             asset_maintenance_indicators=asset_maintenance_indicators,
             maintenance_currency=_format_currency,
             can_create_maintenance_finance_expense=can_create_maintenance_finance_expense,
+            finance_account_options=finance_account_options,
+            finance_account_default=next((item for item in finance_account_options if item.is_default), None),
+            finance_credit_card_options=finance_credit_card_options,
+            finance_credit_card_default=next((item for item in finance_credit_card_options if item.is_default), None),
+            finance_expense_payment_methods=FINANCE_TRANSACTION_EXPENSE_PAYMENT_METHODS,
         ),
     )
 
@@ -12594,20 +12606,11 @@ def _maintenance_form_values(form: dict, *, user: User) -> dict:
     }
 
 
-def _create_maintenance_finance_expense(
+def _maintenance_finance_payload(
     repo: FarmRepository,
     maintenance: EquipmentMaintenance,
-) -> FinanceTransaction:
-    """Cria uma única conta a pagar para uma manutenção concluída.
-
-    O vínculo no próprio registro de manutenção é a proteção contra duplicidade.
-    A despesa nasce pendente para que a quitação continue ocorrendo no fluxo
-    financeiro normal, sem lançar custo no extrato antes do pagamento.
-    """
-    if maintenance.finance_transaction_id:
-        transaction = repo.get_finance_transaction(maintenance.finance_transaction_id)
-        if transaction:
-            return transaction
+    form: dict,
+) -> dict:
     if maintenance.status != "concluida":
         raise ValueError("Conclua a manutenção antes de gerar a despesa financeira.")
     amount = _maintenance_total_cost(maintenance)
@@ -12619,54 +12622,93 @@ def _create_maintenance_finance_expense(
     farm = repo.get_farm(asset.farm_id)
     if not farm:
         raise ValueError("A fazenda do patrimônio não foi encontrada.")
-    account = _resolve_finance_transaction_account(repo, active_farm=farm, account_id=None)
     category = (
         "Manutenção de Benfeitorias"
         if (asset.category or "").strip().lower() == "benfeitoria"
         else "Manutenção de Máquinas e Equipamentos"
     )
-    transaction = FinanceTransaction(
-        farm_id=farm.id,
-        finance_account_id=account.id,
+    return _finance_transaction_payload(
+        repo,
+        active_farm=farm,
         operation_type="despesa",
-        launch_date=maintenance.maintenance_date,
-        amount=amount,
+        launch_date=maintenance.maintenance_date.isoformat(),
+        amount=str(amount),
+        finance_account_id=form.get("finance_account_id"),
+        credit_card_id=form.get("finance_credit_card_id"),
+        payment_condition=form.get("finance_payment_condition"),
+        installment_count=form.get("finance_installment_count"),
+        installment_frequency=form.get("finance_installment_frequency"),
+        first_installment_date=form.get("finance_first_installment_date"),
         category=category,
         product_service=f"Manutenção: {asset.name}",
         description=maintenance.description,
         counterparty_name=maintenance.supplier_name,
-        payment_method="Boleto",
-        payment_condition="a_prazo",
-        installment_count=1,
-        installment_frequency="mensal",
-        first_installment_date=maintenance.maintenance_date,
+        document_number=None,
+        payment_method=form.get("finance_payment_method"),
         notes=maintenance.notes,
-        source="Manutenção de Patrimônio",
-        created_at=app_now(),
     )
+
+
+def _save_maintenance_finance_expense(
+    repo: FarmRepository,
+    maintenance: EquipmentMaintenance,
+    form: dict,
+) -> FinanceTransaction:
+    """Cria ou atualiza a despesa vinculada sem duplicar o lançamento."""
+    payload = _maintenance_finance_payload(repo, maintenance, form)
+    transaction = repo.get_finance_transaction(maintenance.finance_transaction_id) if maintenance.finance_transaction_id else None
+    prior_snapshot = _snapshot_finance_installments_for_edit(transaction) if transaction and not transaction.is_reversed else []
+    if transaction:
+        _reject_finance_schedule_change_if_installment_paid(transaction, payload)
+    rows = _build_finance_transaction_installments(
+        amount=payload["amount"],
+        payment_condition=payload["payment_condition"],
+        payment_method=payload["payment_method"],
+        credit_card=payload["credit_card"],
+        reference_date=payload["launch_date"],
+        installment_count=payload["installment_count"],
+        installment_frequency=payload["installment_frequency"],
+        first_installment_date=payload["first_installment_date"],
+    )
+    _validate_installment_edit_against_prior(rows, prior_snapshot)
+    _merge_paid_installment_state_into_rows(rows, prior_snapshot)
     try:
-        repo.db.add(transaction)
-        repo.db.flush()
-        for installment in _build_finance_transaction_installments(
-            amount=amount,
-            payment_condition="a_prazo",
-            payment_method="Boleto",
-            reference_date=maintenance.maintenance_date,
-            installment_count=1,
-            installment_frequency="mensal",
-            first_installment_date=maintenance.maintenance_date,
-        ):
+        if not transaction:
+            transaction = FinanceTransaction(
+                **{key: value for key, value in payload.items() if key != "credit_card"},
+                source="Manutenção de Patrimônio",
+                created_at=app_now(),
+            )
+            repo.db.add(transaction)
+            repo.db.flush()
+            maintenance.finance_transaction_id = transaction.id
+            repo.db.add(maintenance)
+        else:
+            for key, value in payload.items():
+                if key != "credit_card":
+                    setattr(transaction, key, value)
+            transaction.source = "Manutenção de Patrimônio"
+            transaction.is_reversed = False
+            transaction.reversed_at = None
+            for installment in list(transaction.installments or []):
+                repo.db.delete(installment)
+            repo.db.flush()
+        for row in rows:
             repo.db.add(
                 FinanceTransactionInstallment(
                     finance_transaction_id=transaction.id,
-                    installment_number=installment["installment_number"],
-                    due_date=installment["due_date"],
-                    amount=installment["amount"],
-                    status=installment["status"],
+                    installment_number=row["installment_number"],
+                    due_date=row["due_date"],
+                    amount=row["amount"],
+                    status=row["status"],
+                    paid_at=row.get("paid_at"),
+                    payment_notes=row.get("payment_notes"),
                 )
             )
-        maintenance.finance_transaction_id = transaction.id
-        repo.db.add(maintenance)
+        finance_attachment_keys = {
+            (attachment.filename, attachment.content_type)
+            for attachment in (transaction.attachments or [])
+        }
         repo.db.add_all(
             [
                 FinanceTransactionAttachment(
@@ -12676,6 +12718,7 @@ def _create_maintenance_finance_expense(
                     file_data=_attachment_payload_bytes(attachment.file_data),
                 )
                 for attachment in (maintenance.attachments or [])
+                if (attachment.filename, attachment.content_type) not in finance_attachment_keys
             ]
         )
         repo.db.commit()
@@ -12684,6 +12727,27 @@ def _create_maintenance_finance_expense(
         raise
     repo.db.refresh(transaction)
     return transaction
+
+
+def _reverse_maintenance_finance_expense(repo: FarmRepository, maintenance: EquipmentMaintenance) -> bool:
+    """Estorna o efeito financeiro ao reabrir ou cancelar a manutenção."""
+    transaction = repo.get_finance_transaction(maintenance.finance_transaction_id) if maintenance.finance_transaction_id else None
+    if not transaction or transaction.is_reversed:
+        return False
+    try:
+        transaction.is_reversed = True
+        transaction.reversed_at = app_now()
+        for installment in transaction.installments or []:
+            installment.status = "pendente"
+            installment.paid_at = None
+            installment.payment_notes = None
+            repo.db.add(installment)
+        repo.db.add(transaction)
+        repo.db.commit()
+    except Exception:
+        repo.db.rollback()
+        raise
+    return True
 
 
 @router.post("/insumos/patrimonio/manutencoes/planos")
@@ -12807,6 +12871,10 @@ async def create_equipment_maintenance_action(
         _flash(request, "error", "Selecione um patrimônio pertencente à fazenda ativa.")
         return _redirect("/insumos/patrimonio/manutencoes")
     create_finance_expense = str(form.get("create_finance_expense") or "").strip() in {"1", "true", "on"}
+    finance_configured = str(form.get("finance_configured") or "").strip() in {"1", "true", "on"}
+    if create_finance_expense and not finance_configured:
+        _flash(request, "error", "Configure a forma de lançamento da despesa antes de salvar a manutenção.")
+        return _redirect("/insumos/patrimonio/manutencoes")
     if create_finance_expense and not user_has_permission(db, user, write_permission_for_page(PAGE_FINANCE)):
         _flash(request, "error", "Você não tem permissão para criar despesas financeiras.")
         return _redirect("/insumos/patrimonio/manutencoes")
@@ -12827,7 +12895,7 @@ async def create_equipment_maintenance_action(
     finance_message = ""
     if create_finance_expense:
         try:
-            _create_maintenance_finance_expense(repo, repo.get_equipment_maintenance(maintenance.id) or maintenance)
+            _save_maintenance_finance_expense(repo, repo.get_equipment_maintenance(maintenance.id) or maintenance, dict(form))
             finance_message = " Despesa financeira criada em Contas a pagar."
         except Exception:
             logger.exception("Falha ao gerar despesa da manutenção %s", maintenance.id)
@@ -12861,7 +12929,11 @@ async def update_equipment_maintenance_action(
         _flash(request, "error", "Manutenção ou patrimônio não encontrado no contexto ativo.")
         return _redirect("/insumos/patrimonio/manutencoes")
     create_finance_expense = str(form.get("create_finance_expense") or "").strip() in {"1", "true", "on"}
-    if create_finance_expense and not maintenance.finance_transaction_id and not user_has_permission(db, user, write_permission_for_page(PAGE_FINANCE)):
+    finance_configured = str(form.get("finance_configured") or "").strip() in {"1", "true", "on"}
+    if create_finance_expense and not finance_configured:
+        _flash(request, "error", "Configure a forma de lançamento da despesa antes de salvar a manutenção.")
+        return _redirect(f"/insumos/patrimonio/manutencoes?edit_id={maintenance_id}")
+    if create_finance_expense and not user_has_permission(db, user, write_permission_for_page(PAGE_FINANCE)):
         _flash(request, "error", "Você não tem permissão para criar despesas financeiras.")
         return _redirect(f"/insumos/patrimonio/manutencoes?edit_id={maintenance_id}")
     try:
@@ -12886,10 +12958,18 @@ async def update_equipment_maintenance_action(
         _flash(request, "error", "A manutenção foi atualizada, mas não foi possível gravar os anexos agora.")
         return _redirect("/insumos/patrimonio/manutencoes")
     finance_message = ""
-    if create_finance_expense and not maintenance.finance_transaction_id:
+    had_finance_expense = bool(maintenance.finance_transaction_id)
+    if maintenance.status != "concluida" and maintenance.finance_transaction_id:
         try:
-            _create_maintenance_finance_expense(repo, repo.get_equipment_maintenance(maintenance.id) or maintenance)
-            finance_message = " Despesa financeira criada em Contas a pagar."
+            if _reverse_maintenance_finance_expense(repo, maintenance):
+                finance_message = " A despesa financeira vinculada foi estornada."
+        except Exception:
+            logger.exception("Falha ao estornar despesa da manutenção %s", maintenance.id)
+            finance_message = " A manutenção foi atualizada, mas a despesa financeira não pôde ser estornada agora."
+    elif create_finance_expense:
+        try:
+            transaction = _save_maintenance_finance_expense(repo, repo.get_equipment_maintenance(maintenance.id) or maintenance, dict(form))
+            finance_message = " Despesa financeira atualizada." if had_finance_expense else " Despesa financeira criada em Contas a pagar."
         except Exception:
             logger.exception("Falha ao gerar despesa da manutenção %s", maintenance.id)
             finance_message = " A manutenção foi atualizada, mas a despesa não pôde ser gerada agora."

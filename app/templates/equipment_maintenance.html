@@ -141,10 +141,11 @@
             <div class="grid gap-4 md:grid-cols-3"><label><span class="mb-2 block text-sm font-medium">Horímetro atual (h)</span><input type="number" min="0" step="0.01" name="meter_reading_hours" value="{{ edit_maintenance.meter_reading_hours if edit_maintenance and edit_maintenance.meter_reading_hours is not none else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50"></label><label><span class="mb-2 block text-sm font-medium">Custo de peças (R$)</span><input type="hidden" name="parts_cost" value="{{ edit_maintenance.parts_cost if edit_maintenance and edit_maintenance.parts_cost is not none else '' }}" data-currency-raw><input type="text" inputmode="numeric" placeholder="R$ 0,00" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" data-currency-display></label><label><span class="mb-2 block text-sm font-medium">Custo de serviço (R$)</span><input type="hidden" name="service_cost" value="{{ edit_maintenance.service_cost if edit_maintenance and edit_maintenance.service_cost is not none else '' }}" data-currency-raw><input type="text" inputmode="numeric" placeholder="R$ 0,00" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" data-currency-display></label></div>
             {% if can_create_maintenance_finance_expense %}
                 {% if edit_maintenance and edit_maintenance.finance_transaction_id %}
-                <div class="rounded-[1.5rem] border border-emerald-200 bg-emerald-50/60 p-4 text-sm text-emerald-900"><p class="font-semibold">Despesa financeira já gerada</p><p class="mt-1 text-emerald-800">Esta manutenção está vinculada ao lançamento financeiro #{{ edit_maintenance.finance_transaction_id }}. Os pagamentos continuam sendo gerenciados em Contas.</p><a href="/gestao-financeira/contas?finance_tab=payables" class="mt-3 inline-flex font-semibold text-emerald-700 hover:underline">Abrir Contas a pagar</a></div>
+                <div class="rounded-[1.5rem] border {% if edit_maintenance.finance_transaction.is_reversed %}border-amber-200 bg-amber-50/60 text-amber-950{% else %}border-emerald-200 bg-emerald-50/60 text-emerald-900{% endif %} p-4 text-sm"><p class="font-semibold">{% if edit_maintenance.finance_transaction.is_reversed %}Despesa financeira estornada{% else %}Despesa financeira vinculada{% endif %}</p><p class="mt-1 {% if edit_maintenance.finance_transaction.is_reversed %}text-amber-800{% else %}text-emerald-800{% endif %}">Lançamento #{{ edit_maintenance.finance_transaction_id }}{% if edit_maintenance.finance_transaction.is_reversed %}: não afeta os saldos enquanto a manutenção não estiver concluída.{% else %}: os pagamentos continuam sendo gerenciados em Contas.{% endif %}</p><div class="mt-3 flex flex-wrap gap-3"><button type="button" class="font-semibold {% if edit_maintenance.finance_transaction.is_reversed %}text-amber-800{% else %}text-emerald-700{% endif %} hover:underline" data-maintenance-finance-open>Editar dados financeiros</button><a href="/gestao-financeira/contas?finance_tab=payables" class="font-semibold {% if edit_maintenance.finance_transaction.is_reversed %}text-amber-800{% else %}text-emerald-700{% endif %} hover:underline">Abrir Contas a pagar</a></div></div><input type="hidden" name="create_finance_expense" value="" data-maintenance-finance-existing-trigger>
                 {% else %}
-                <label class="hidden rounded-[1.5rem] border border-sky-200 bg-sky-50/60 p-4" data-maintenance-finance-option><span class="flex items-start gap-3"><input type="checkbox" name="create_finance_expense" value="1" class="mt-1 h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500"><span><span class="block text-sm font-semibold text-slate-900">Gerar despesa financeira</span><span class="mt-1 block text-xs leading-5 text-slate-600">Cria uma única conta a pagar com o total de peças e serviços na data desta manutenção. A quitação será feita depois em Contas, e os anexos serão copiados.</span></span></span></label>
+                <label class="hidden rounded-[1.5rem] border border-sky-200 bg-sky-50/60 p-4" data-maintenance-finance-option><span class="flex items-start gap-3"><input type="checkbox" name="create_finance_expense" value="1" class="mt-1 h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500" data-maintenance-finance-checkbox><span><span class="block text-sm font-semibold text-slate-900">Gerar despesa financeira</span><span class="mt-1 block text-xs leading-5 text-slate-600">Informe conta, forma de pagamento, cartão e parcelas antes de salvar. A quitação será feita depois em Contas.</span></span></span></label>
                 {% endif %}
+                <input type="hidden" name="finance_configured" value="" data-maintenance-finance-configured><input type="hidden" name="finance_account_id" value="" data-maintenance-finance-account><input type="hidden" name="finance_credit_card_id" value="" data-maintenance-finance-card><input type="hidden" name="finance_payment_condition" value="" data-maintenance-finance-condition><input type="hidden" name="finance_payment_method" value="" data-maintenance-finance-method><input type="hidden" name="finance_installment_count" value="" data-maintenance-finance-installment-count><input type="hidden" name="finance_installment_frequency" value="" data-maintenance-finance-installment-frequency><input type="hidden" name="finance_first_installment_date" value="" data-maintenance-finance-first-date>
             {% endif %}
             <div class="rounded-[1.5rem] border border-brand-100 bg-brand-50/40 p-4"><p class="text-xs font-semibold uppercase tracking-[0.25em] text-brand-700">Próxima revisão</p><div class="mt-3 grid gap-4 md:grid-cols-2"><label><span class="mb-2 block text-sm font-medium">Data prevista</span><input type="date" name="next_due_date" value="{{ edit_maintenance.next_due_date.isoformat() if edit_maintenance and edit_maintenance.next_due_date else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-white"></label><label><span class="mb-2 block text-sm font-medium">Horímetro previsto (h)</span><input type="number" min="0" step="0.01" name="next_due_hours" value="{{ edit_maintenance.next_due_hours if edit_maintenance and edit_maintenance.next_due_hours is not none else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-white"></label></div></div>
             <label><span class="mb-2 block text-sm font-medium">Observações</span><textarea name="notes" rows="3" class="w-full rounded-2xl border-slate-200 bg-slate-50">{{ edit_maintenance.notes if edit_maintenance else '' }}</textarea></label>
@@ -154,6 +155,17 @@
         </form></div>
     </div>
 </dialog>{% endif %}
+
+{% if can_write_page and can_create_maintenance_finance_expense %}
+{% set maintenance_finance = edit_maintenance.finance_transaction if edit_maintenance and edit_maintenance.finance_transaction else none %}
+{% set selected_finance_account_id = maintenance_finance.finance_account_id if maintenance_finance else (finance_account_default.id if finance_account_default else none) %}
+{% set selected_finance_card_id = maintenance_finance.credit_card_id if maintenance_finance and maintenance_finance.credit_card_id else (finance_credit_card_default.id if finance_credit_card_default else none) %}
+{% set maintenance_condition = maintenance_finance.payment_condition if maintenance_finance and maintenance_finance.payment_condition else 'a_prazo' %}
+{% set maintenance_frequency = maintenance_finance.installment_frequency if maintenance_finance and maintenance_finance.installment_frequency else 'mensal' %}
+<dialog id="maintenance-finance-modal" class="app-modal w-full max-w-3xl rounded-[2rem] p-0 shadow-2xl">
+    <div class="bg-white p-6 sm:p-8"><div class="flex items-start justify-between gap-4"><div><p class="text-xs uppercase tracking-[0.35em] text-slate-400">Lançamento financeiro</p><h3 class="mt-2 text-2xl font-semibold">Configurar despesa da manutenção</h3><p class="mt-2 text-sm text-slate-500">O valor é calculado pelos custos de peças e serviços. Escolha como a despesa será lançada.</p></div><button type="button" class="modal-close-button" aria-label="Fechar" data-maintenance-finance-close><svg class="h-4 w-4" viewBox="0 0 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button></div><div class="mt-6 max-h-[65vh] overflow-y-auto pr-1" data-modal-scroll><div class="grid gap-4" data-maintenance-finance-form><div class="rounded-[1.5rem] border border-brand-100 bg-brand-50/40 p-4"><p class="text-xs font-semibold uppercase tracking-[0.25em] text-brand-700">Valor da despesa</p><p class="mt-2 text-2xl font-bold text-slate-900" data-maintenance-finance-total>R$ 0,00</p></div><div class="grid gap-4 md:grid-cols-2"><label><span class="mb-2 block text-sm font-medium">Conta de pagamento</span><select class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" data-maintenance-finance-account-select><option value="">Selecione a conta</option>{% for account in finance_account_options %}<option value="{{ account.id }}" {% if selected_finance_account_id == account.id %}selected{% endif %}>{{ account.account_name }}{% if account.bank_name %} • {{ account.bank_name }}{% endif %}</option>{% endfor %}</select></label><label><span class="mb-2 block text-sm font-medium">Forma de pagamento</span><select class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" data-maintenance-finance-method-select><option value="">Selecione</option>{% for option in finance_expense_payment_methods %}<option value="{{ option }}" {% if maintenance_finance and maintenance_finance.payment_method == option %}selected{% elif not maintenance_finance and option == 'Boleto' %}selected{% endif %}>{{ option }}</option>{% endfor %}</select></label></div><div class="hidden" data-maintenance-finance-card-wrap><label><span class="mb-2 block text-sm font-medium">Cartão utilizado</span><select class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" data-maintenance-finance-card-select><option value="">{% if finance_credit_card_options %}Selecione o cartão{% else %}Cadastre um cartão em Contas{% endif %}</option>{% for card in finance_credit_card_options %}<option value="{{ card.id }}" {% if selected_finance_card_id == card.id %}selected{% endif %}>{{ card.card_name }} • {{ card.issuer }}{% if card.brand %} • {{ card.brand }}{% endif %}{% if card.is_default %} • padrão{% endif %}</option>{% endfor %}</select></label></div><div class="grid gap-4 md:grid-cols-2"><label><span class="mb-2 block text-sm font-medium">Condição de pagamento</span><select class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" data-maintenance-finance-condition-select><option value="a_vista" {% if maintenance_condition == 'a_vista' %}selected{% endif %}>À vista</option><option value="a_prazo" {% if maintenance_condition == 'a_prazo' %}selected{% endif %}>À prazo</option></select></label></div><div class="rounded-[1.5rem] border border-slate-200 bg-slate-50/80 p-4" data-maintenance-finance-installments><div class="grid gap-4 md:grid-cols-3"><label><span class="mb-2 block text-sm font-medium">Quantidade de parcelas</span><input type="number" min="1" max="999" step="1" value="{{ maintenance_finance.installment_count if maintenance_finance and maintenance_condition == 'a_prazo' else 1 }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-white" data-maintenance-finance-count-select></label><label><span class="mb-2 block text-sm font-medium">Periodicidade</span><select class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-white" data-maintenance-finance-frequency-select><option value="mensal" {% if maintenance_frequency == 'mensal' %}selected{% endif %}>Mensal</option><option value="anual" {% if maintenance_frequency == 'anual' %}selected{% endif %}>Anual</option></select></label><label><span class="mb-2 block text-sm font-medium">Data da primeira parcela</span><input type="date" value="{{ maintenance_finance.first_installment_date.isoformat() if maintenance_finance and maintenance_finance.first_installment_date else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-white" data-maintenance-finance-first-date-select></label></div><div class="mt-4"><p class="text-xs uppercase tracking-[0.25em] text-slate-400">Prévia das parcelas</p><div class="mt-3 grid gap-2 sm:grid-cols-2" data-maintenance-finance-preview></div></div></div><div class="sticky bottom-0 flex justify-end gap-3 bg-white/95 pt-3 backdrop-blur"><button type="button" class="rounded-2xl bg-slate-100 px-4 py-3 font-semibold text-slate-700 hover:bg-slate-200" data-maintenance-finance-close>Cancelar</button><button type="button" class="rounded-2xl bg-brand-500 px-4 py-3 font-semibold text-white hover:bg-brand-700" data-maintenance-finance-confirm>Confirmar lançamento</button></div></div></div></div>
+</dialog>
+{% endif %}
 
 {% if can_write_page %}<dialog id="maintenance-plan-modal" class="app-modal w-full max-w-3xl rounded-[2rem] p-0 shadow-2xl">
     <div class="bg-white p-6 sm:p-8">
@@ -213,6 +225,117 @@
     });
     form?.querySelectorAll('[data-currency-display]').forEach((field) => field.addEventListener('input', () => window.requestAnimationFrame(syncFinanceOption)));
     syncFinanceOption();
+    const financeModal = document.getElementById('maintenance-finance-modal');
+    const financeCheckbox = form?.querySelector('[data-maintenance-finance-checkbox]');
+    const existingFinanceTrigger = form?.querySelector('[data-maintenance-finance-existing-trigger]');
+    const financeOpenButton = form?.querySelector('[data-maintenance-finance-open]');
+    const financeConfigured = form?.querySelector('[data-maintenance-finance-configured]');
+    const financeAccountHidden = form?.querySelector('[data-maintenance-finance-account]');
+    const financeCardHidden = form?.querySelector('[data-maintenance-finance-card]');
+    const financeConditionHidden = form?.querySelector('[data-maintenance-finance-condition]');
+    const financeMethodHidden = form?.querySelector('[data-maintenance-finance-method]');
+    const financeCountHidden = form?.querySelector('[data-maintenance-finance-installment-count]');
+    const financeFrequencyHidden = form?.querySelector('[data-maintenance-finance-installment-frequency]');
+    const financeFirstDateHidden = form?.querySelector('[data-maintenance-finance-first-date]');
+    const financeAccountSelect = financeModal?.querySelector('[data-maintenance-finance-account-select]');
+    const financeMethodSelect = financeModal?.querySelector('[data-maintenance-finance-method-select]');
+    const financeCardSelect = financeModal?.querySelector('[data-maintenance-finance-card-select]');
+    const financeCardWrap = financeModal?.querySelector('[data-maintenance-finance-card-wrap]');
+    const financeConditionSelect = financeModal?.querySelector('[data-maintenance-finance-condition-select]');
+    const financeInstallments = financeModal?.querySelector('[data-maintenance-finance-installments]');
+    const financeCountSelect = financeModal?.querySelector('[data-maintenance-finance-count-select]');
+    const financeFrequencySelect = financeModal?.querySelector('[data-maintenance-finance-frequency-select]');
+    const financeFirstDateSelect = financeModal?.querySelector('[data-maintenance-finance-first-date-select]');
+    const financePreview = financeModal?.querySelector('[data-maintenance-finance-preview]');
+    const financeTotal = financeModal?.querySelector('[data-maintenance-finance-total]');
+    let financeOpenedForNewExpense = false;
+    const financeAmount = () => costFields.reduce((sum, field) => sum + (Number.parseFloat(field.value || '0') || 0), 0);
+    const currency = (value) => Number(value || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+    const addMonths = (base, months) => {
+        const result = new Date(base.getFullYear(), base.getMonth() + months, 1);
+        result.setDate(Math.min(base.getDate(), new Date(result.getFullYear(), result.getMonth() + 1, 0).getDate()));
+        return result;
+    };
+    const renderFinancePreview = () => {
+        if (!financePreview) return;
+        financePreview.replaceChildren();
+        if (financeConditionSelect?.value !== 'a_prazo') return;
+        const count = Math.max(1, Math.min(999, Number.parseInt(financeCountSelect?.value || '0', 10) || 0));
+        const firstDate = financeFirstDateSelect?.value ? new Date(`${financeFirstDateSelect.value}T12:00:00`) : null;
+        if (!firstDate) return;
+        const cents = Math.round(financeAmount() * 100);
+        const base = Math.floor(cents / count);
+        const remainder = cents % count;
+        const visible = Math.min(count, 12);
+        for (let index = 0; index < visible; index += 1) {
+            const due = financeFrequencySelect?.value === 'anual'
+                ? new Date(firstDate.getFullYear() + index, firstDate.getMonth(), firstDate.getDate())
+                : addMonths(firstDate, index);
+            const value = (base + (index < remainder ? 1 : 0)) / 100;
+            const cell = document.createElement('div');
+            cell.className = 'rounded-xl bg-white px-3 py-2 text-xs text-slate-600';
+            cell.textContent = `${index + 1}/${count} • ${due.toLocaleDateString('pt-BR')} • ${currency(value)}`;
+            financePreview.appendChild(cell);
+        }
+        if (count > visible) {
+            const more = document.createElement('p');
+            more.className = 'text-xs text-slate-500';
+            more.textContent = `Mais ${count - visible} parcela(s) serão geradas.`;
+            financePreview.appendChild(more);
+        }
+    };
+    const syncFinanceModal = () => {
+        if (!financeModal) return;
+        if (financeTotal) financeTotal.textContent = currency(financeAmount());
+        const creditCard = financeMethodSelect?.value === 'Cartão de crédito';
+        financeCardWrap?.classList.toggle('hidden', !creditCard);
+        if (!creditCard && financeCardSelect) financeCardSelect.value = '';
+        const isPrazo = financeConditionSelect?.value === 'a_prazo';
+        financeInstallments?.classList.toggle('hidden', !isPrazo);
+        if (isPrazo && !financeFirstDateSelect?.value) {
+            financeFirstDateSelect.value = form?.querySelector('[name="maintenance_date"]')?.value || '';
+        }
+        renderFinancePreview();
+    };
+    const openFinanceModal = (forNewExpense) => {
+        if (!financeModal) return;
+        financeOpenedForNewExpense = forNewExpense;
+        syncFinanceModal();
+        financeModal.showModal();
+    };
+    const closeFinanceModal = () => {
+        if (financeOpenedForNewExpense && financeCheckbox) financeCheckbox.checked = false;
+        financeModal?.close();
+    };
+    financeCheckbox?.addEventListener('change', () => {
+        if (financeCheckbox.checked) openFinanceModal(true);
+        else if (financeConfigured) financeConfigured.value = '';
+    });
+    financeOpenButton?.addEventListener('click', () => openFinanceModal(false));
+    financeModal?.querySelectorAll('[data-maintenance-finance-close]').forEach((button) => button.addEventListener('click', closeFinanceModal));
+    financeModal?.addEventListener('cancel', (event) => { event.preventDefault(); closeFinanceModal(); });
+    [financeMethodSelect, financeConditionSelect, financeCountSelect, financeFrequencySelect, financeFirstDateSelect].forEach((field) => field?.addEventListener('input', syncFinanceModal));
+    financeModal?.querySelector('[data-maintenance-finance-confirm]')?.addEventListener('click', () => {
+        const needsCard = financeMethodSelect?.value === 'Cartão de crédito';
+        const needsInstallments = financeConditionSelect?.value === 'a_prazo';
+        if (!financeAccountSelect?.value || !financeMethodSelect?.value || (needsCard && !financeCardSelect?.value) || (needsInstallments && (!financeCountSelect?.value || !financeFirstDateSelect?.value))) {
+            financeModal.querySelector('[data-maintenance-finance-form]')?.reportValidity();
+            alert('Preencha a conta, a forma de pagamento e os dados de parcelamento necessários.');
+            return;
+        }
+        if (financeConfigured) financeConfigured.value = '1';
+        if (financeCheckbox) financeCheckbox.checked = true;
+        if (existingFinanceTrigger) existingFinanceTrigger.value = '1';
+        if (financeAccountHidden) financeAccountHidden.value = financeAccountSelect.value;
+        if (financeCardHidden) financeCardHidden.value = financeCardSelect?.value || '';
+        if (financeConditionHidden) financeConditionHidden.value = financeConditionSelect?.value || 'a_vista';
+        if (financeMethodHidden) financeMethodHidden.value = financeMethodSelect?.value || '';
+        if (financeCountHidden) financeCountHidden.value = needsInstallments ? financeCountSelect.value : '';
+        if (financeFrequencyHidden) financeFrequencyHidden.value = needsInstallments ? financeFrequencySelect?.value || 'mensal' : '';
+        if (financeFirstDateHidden) financeFirstDateHidden.value = needsInstallments ? financeFirstDateSelect.value : '';
+        financeOpenedForNewExpense = false;
+        financeModal.close();
+    });
     {% if edit_maintenance %}open();{% endif %}
 })();
 </script>

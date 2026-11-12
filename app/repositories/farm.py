@@ -390,6 +390,7 @@ class FarmRepository:
                 ),
                 joinedload(FinanceTransaction.installments),
             )
+            .filter(FinanceTransaction.is_reversed.is_(False))
             .order_by(FinanceTransaction.launch_date.desc(), FinanceTransaction.id.desc())
         )
         if farm_id:
