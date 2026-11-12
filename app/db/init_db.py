@@ -1017,10 +1017,46 @@ def _sync_schema() -> None:
         """,
         "CREATE INDEX IF NOT EXISTS ix_automated_test_suite_results_run_id ON automated_test_suite_results (run_id)",
         "CREATE INDEX IF NOT EXISTS ix_automated_test_suite_results_suite_id ON automated_test_suite_results (suite_id)",
+        """
+        CREATE TABLE IF NOT EXISTS one_time_data_migrations (
+            migration_key VARCHAR(120) PRIMARY KEY,
+            executed_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+        """,
     ]
     with engine.begin() as connection:
         for statement in statements:
             connection.execute(text(statement))
+        migration_key = "remove_orphaned_maintenance_finance_expenses_20261112"
+        migration_started = connection.execute(
+            text(
+                """
+                INSERT INTO one_time_data_migrations (migration_key)
+                VALUES (:migration_key)
+                ON CONFLICT (migration_key) DO NOTHING
+                RETURNING migration_key
+                """
+            ),
+            {"migration_key": migration_key},
+        ).scalar_one_or_none()
+        if migration_started:
+            deleted = connection.execute(
+                text(
+                    """
+                    DELETE FROM finance_transactions AS finance_transaction
+                    WHERE LOWER(COALESCE(finance_transaction.source, '')) IN ('manutenção de patrimônio', 'manutencao de patrimonio')
+                      AND NOT EXISTS (
+                          SELECT 1
+                          FROM equipment_maintenances maintenance
+                          WHERE maintenance.finance_transaction_id = finance_transaction.id
+                      )
+                    """
+                )
+            )
+            logger.info(
+                "Migração pontual de despesas órfãs de manutenção concluída: %s lançamento(s) removido(s).",
+                deleted.rowcount,
+            )
         connection.execute(text("ALTER TABLE irrigation_records ALTER COLUMN water_volume_mm DROP NOT NULL"))
         connection.execute(text("ALTER TABLE irrigation_records ALTER COLUMN method DROP NOT NULL"))
         connection.execute(text("ALTER TABLE input_recommendations ALTER COLUMN purchased_input_id DROP NOT NULL"))
