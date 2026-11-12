@@ -12993,8 +12993,25 @@ def delete_equipment_maintenance_action(
     if not maintenance or not maintenance.asset or not _farm_matches_scope(maintenance.asset.farm_id, scope):
         _flash(request, "error", "Manutenção não encontrada no contexto ativo.")
         return _redirect("/insumos/patrimonio/manutencoes")
-    repo.delete(maintenance)
-    _flash(request, "success", "Manutenção excluída com sucesso.")
+    transaction = repo.get_finance_transaction(maintenance.finance_transaction_id) if maintenance.finance_transaction_id else None
+    is_maintenance_expense = (transaction.source or "").strip().lower() in {"manutenção de patrimônio", "manutencao de patrimonio"} if transaction else False
+    try:
+        if is_maintenance_expense:
+            repo.db.delete(transaction)
+        repo.db.delete(maintenance)
+        repo.db.commit()
+    except Exception:
+        repo.db.rollback()
+        logger.exception("Falha ao excluir manutenção %s e seu lançamento financeiro", maintenance_id)
+        _flash(request, "error", "Não foi possível excluir a manutenção agora. Tente novamente.")
+        return _redirect("/insumos/patrimonio/manutencoes")
+    _flash(
+        request,
+        "success",
+        "Manutenção e despesa financeira vinculada excluídas com sucesso."
+        if is_maintenance_expense
+        else "Manutenção excluída com sucesso.",
+    )
     return _redirect("/insumos/patrimonio/manutencoes")
 
 
