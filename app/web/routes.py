@@ -12322,6 +12322,82 @@ def _maintenance_plan_label(plan: EquipmentMaintenancePlan) -> str:
     return " • ".join(parts) or "Periodicidade não informada"
 
 
+def _build_asset_maintenance_indicators(
+    maintenances: list[EquipmentMaintenance],
+    plans: list[EquipmentMaintenancePlan],
+    *,
+    today: date,
+) -> list[dict]:
+    rows: dict[int, dict] = {}
+    for maintenance in maintenances:
+        asset = maintenance.asset
+        if not asset:
+            continue
+        row = rows.setdefault(
+            asset.id,
+            {
+                "asset": asset,
+                "total_cost": 0.0,
+                "preventive_count": 0,
+                "corrective_count": 0,
+                "records_count": 0,
+                "last_date": None,
+                "ongoing_since": None,
+                "next_due_date": None,
+                "next_due_hours": None,
+            },
+        )
+        row["records_count"] += 1
+        row["total_cost"] += _maintenance_total_cost(maintenance)
+        if maintenance.maintenance_type == "preventiva":
+            row["preventive_count"] += 1
+        elif maintenance.maintenance_type == "corretiva":
+            row["corrective_count"] += 1
+        if not row["last_date"] or maintenance.maintenance_date > row["last_date"]:
+            row["last_date"] = maintenance.maintenance_date
+        if maintenance.status == "em_andamento" and (
+            not row["ongoing_since"] or maintenance.maintenance_date < row["ongoing_since"]
+        ):
+            row["ongoing_since"] = maintenance.maintenance_date
+
+    for plan in plans:
+        if not plan.asset:
+            continue
+        row = rows.setdefault(
+            plan.asset.id,
+            {
+                "asset": plan.asset,
+                "total_cost": 0.0,
+                "preventive_count": 0,
+                "corrective_count": 0,
+                "records_count": 0,
+                "last_date": None,
+                "ongoing_since": None,
+                "next_due_date": None,
+                "next_due_hours": None,
+            },
+        )
+        if plan.is_active and plan.next_due_date and (
+            not row["next_due_date"] or plan.next_due_date < row["next_due_date"]
+        ):
+            row["next_due_date"] = plan.next_due_date
+            row["next_due_hours"] = plan.next_due_hours
+
+    indicators: list[dict] = []
+    for row in rows.values():
+        row["total_cost"] = round(row["total_cost"], 2)
+        row["downtime_days"] = max((today - row["ongoing_since"]).days, 0) if row["ongoing_since"] else 0
+        indicators.append(row)
+    return sorted(
+        indicators,
+        key=lambda item: (
+            item["ongoing_since"] is None,
+            -item["total_cost"],
+            item["asset"].name.lower(),
+        ),
+    )
+
+
 def _create_next_maintenance_from_plan(
     repo: FarmRepository,
     maintenance: EquipmentMaintenance,
@@ -12423,7 +12499,8 @@ def equipment_maintenance_page(
     effective_farm_id = requested_farm_id if requested_farm_id in context_farm_ids else None
     selected_status = status if status in EQUIPMENT_MAINTENANCE_STATUS_OPTIONS else None
     search_value = (request.query_params.get("maintenance_search") or "").strip()
-    maintenances = repo.list_equipment_maintenances(farm_id=effective_farm_id)
+    all_maintenances = repo.list_equipment_maintenances(farm_id=effective_farm_id)
+    maintenances = list(all_maintenances)
     if selected_status:
         maintenances = [item for item in maintenances if item.status == selected_status]
     if search_value:
@@ -12450,6 +12527,11 @@ def equipment_maintenance_page(
         farm_ids=None if effective_farm_id else context_farm_ids,
     )
     maintenance_plans = repo.list_equipment_maintenance_plans(farm_id=effective_farm_id)
+    asset_maintenance_indicators = _build_asset_maintenance_indicators(
+        all_maintenances,
+        maintenance_plans,
+        today=today,
+    )
     edit_maintenance = repo.get_equipment_maintenance(edit_id) if edit_id else None
     if edit_maintenance and (not edit_maintenance.asset or not _farm_matches_scope(edit_maintenance.asset.farm_id, scope)):
         edit_maintenance = None
@@ -12468,6 +12550,8 @@ def equipment_maintenance_page(
             maintenance_total_cost=_maintenance_total_cost, today=today, edit_maintenance=edit_maintenance,
             maintenance_plans=maintenance_plans,
             maintenance_plan_label=_maintenance_plan_label,
+            asset_maintenance_indicators=asset_maintenance_indicators,
+            maintenance_currency=_format_currency,
         ),
     )
 
