@@ -3235,8 +3235,9 @@ body.finance-sortable-cursor {
 }
 
 .stock-action-menu[open] .stock-export-button {
-    background: rgb(248 250 252);
-    border-color: rgb(203 213 225);
+    border-color: rgba(125, 211, 252, 0.6);
+    background: rgb(224 242 254);
+    color: rgb(7 89 133);
 }
 
 .stock-action-menu-chevron {
@@ -3300,9 +3301,17 @@ body.finance-sortable-cursor {
     background: rgb(255 241 242);
 }
 
+.stock-action-menu-item.stock-export-button-pdf {
+    color: rgb(190 24 93);
+}
+
 .stock-action-menu-item.stock-export-button-xlsx:hover,
 .stock-action-menu-item.stock-export-button-xlsx:focus-visible {
     background: rgb(240 253 244);
+}
+
+.stock-action-menu-item.stock-export-button-xlsx {
+    color: rgb(21 128 61);
 }
 
 .stock-action-menu-hint {
@@ -4979,14 +4988,34 @@ input[type="file"] {
     }
 
     .stock-page-header .stock-action-menu-trigger {
-        flex-direction: row;
-        gap: 0.3rem;
+        display: grid;
+        grid-template-columns: 1rem minmax(0, 1fr);
+        grid-template-rows: auto auto;
+        column-gap: 0.3rem;
+        row-gap: 0.05rem;
         padding-inline: 0.45rem;
     }
 
     .stock-page-header .stock-action-menu-trigger .stock-action-button-label {
+        grid-column: 2;
+        grid-row: 1;
         overflow-wrap: normal;
         word-break: normal;
+    }
+
+    .stock-page-header .stock-action-menu-trigger > svg:first-child {
+        grid-column: 1;
+        grid-row: 1;
+    }
+
+    .stock-page-header .stock-action-menu-trigger .stock-action-menu-chevron {
+        grid-column: 1 / -1;
+        grid-row: 2;
+        justify-self: center;
+    }
+
+    .stock-action-menu-hint {
+        display: none;
     }
 
     .stock-action-menu-panel {
