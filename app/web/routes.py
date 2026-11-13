@@ -5082,11 +5082,14 @@ def _collect_finance_installment_rows(
         _finance_installments_period_bounds(request, status_param=status_param, range_prefix=range_prefix)
     )
     search_term = (request.query_params.get(search_param) or "").strip()
+    linked_transaction_id = _int_or_none(request.query_params.get("payables_transaction_id")) if operation_type == "despesa" else None
     selected_status = (request.query_params.get(status_param) or "").strip().lower()
     if selected_status not in {"", "open", "paid", "overdue", "all"}:
         selected_status = ""
     installment_rows: list[dict] = []
     for transaction in transactions:
+        if linked_transaction_id and transaction.id != linked_transaction_id:
+            continue
         if (transaction.operation_type or "").strip().lower() != operation_type:
             continue
         for installment in sorted(transaction.installments or [], key=lambda item: (item.due_date or date.max, item.installment_number or 0)):
@@ -6286,9 +6289,10 @@ def finance_accounts_page(
         or request.query_params.get("start_date")
         or request.query_params.get("end_date")
         or bool(payables_status)
+        or bool(request.query_params.get("payables_transaction_id"))
     )
     payables_clear_params = dict(request.query_params)
-    for key in ("payables_search", "schedule_range", "start_date", "end_date", "payables_page", "payables_status"):
+    for key in ("payables_search", "schedule_range", "start_date", "end_date", "payables_page", "payables_status", "payables_transaction_id"):
         payables_clear_params.pop(key, None)
     payables_clear_params["finance_tab"] = "payables"
     finance_payables_clear_url = f"/gestao-financeira/contas?{urlencode(payables_clear_params)}" if payables_clear_params else "/gestao-financeira/contas?finance_tab=payables"
@@ -6431,6 +6435,8 @@ def finance_accounts_page(
             finance_payables_period_ui_mode=_finance_payables_period_ui_mode(payables_status),
             finance_payables_search=payables_search,
             finance_payables_status=payables_status,
+            finance_payables_transaction_id=_int_or_none(request.query_params.get("payables_transaction_id")),
+            finance_payables_transaction_label=next((row["transaction"].product_service for row in payable_rows if row["transaction"].id == _int_or_none(request.query_params.get("payables_transaction_id"))), None),
             finance_payables_filters_active=finance_payables_filters_active,
             finance_payables_clear_url=finance_payables_clear_url,
             finance_payables_redirect_to=_payables_redirect_url(request),

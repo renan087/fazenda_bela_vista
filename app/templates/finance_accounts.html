@@ -1084,6 +1084,7 @@
         </div>
 
         <div class="stock-history-stage mt-4 hidden" data-finance-tab="payables">
+        {% if finance_payables_transaction_id %}<div class="mb-4 flex flex-wrap items-center gap-2 rounded-xl border border-brand-100 bg-brand-50 px-4 py-3 text-sm text-brand-800"><span>Operação: {{ finance_payables_transaction_label or ('Lançamento #' ~ finance_payables_transaction_id) }}</span><a href="{{ finance_payables_clear_url }}" class="font-semibold underline">Limpar</a></div>{% endif %}
         <div class="stock-filter-bar mb-4 {% if finance_payables_filters_active %}is-mobile-collapsed{% endif %}">
             <div class="stock-filter-mobile-toggle-wrap md:hidden">
                 <button type="button" class="stock-summary-toggle stock-filter-mobile-toggle {% if finance_payables_filters_active %}is-filtered-state{% endif %}" data-finance-payables-filter-toggle data-stock-filter-applied="{% if finance_payables_filters_active %}true{% else %}false{% endif %}" aria-expanded="{% if finance_payables_filters_active %}false{% else %}true{% endif %}">
@@ -1096,6 +1097,7 @@
             </div>
             <form method="get" action="/gestao-financeira/contas" class="stock-filter-grid" data-finance-payables-filter-form data-module-period-filter-root data-finance-payables-period-mode="{{ finance_payables_period_ui_mode|default('past') }}" data-module-range-default="{% if (finance_payables_period_ui_mode|default('past')) == 'custom_only' %}custom{% else %}current_month{% endif %}" data-module-range-placeholder="Filtre por período" data-module-custom-auto-apply="true">
                 <input type="hidden" name="finance_tab" value="payables">
+                {% if finance_payables_transaction_id %}<input type="hidden" name="payables_transaction_id" value="{{ finance_payables_transaction_id }}">{% endif %}
                 <div class="stock-summary-collapse {% if not finance_payables_filters_active %}is-expanded{% endif %}" data-finance-payables-filter-collapse>
                 <div class="stock-summary-collapse-inner">
                 <div class="stock-filter-fields-row finance-payables-filter-fields-row {% if finance_payables_filters_active %}has-clear-action{% endif %}">
@@ -3603,7 +3605,7 @@
     };
     const buildPayablesClearUrl = () => {
         const u = new URL(window.location.href);
-        ['payables_search', 'schedule_range', 'start_date', 'end_date', 'payables_page', 'payables_status', 'payables_partial'].forEach((k) => {
+        ['payables_search', 'schedule_range', 'start_date', 'end_date', 'payables_page', 'payables_status', 'payables_partial', 'payables_transaction_id'].forEach((k) => {
             u.searchParams.delete(k);
         });
         u.searchParams.set('finance_tab', 'payables');
@@ -3616,7 +3618,8 @@
             || (p.get('schedule_range') || '').trim()
             || (p.get('start_date') || '').trim()
             || (p.get('end_date') || '').trim()
-            || (p.get('payables_status') || '').trim(),
+            || (p.get('payables_status') || '').trim()
+            || (p.get('payables_transaction_id') || '').trim(),
         );
     };
     const updatePayablesClearUi = () => {
