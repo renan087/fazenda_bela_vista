@@ -151,4 +151,59 @@
     if (editing) modal?.showModal();
 })();
 </script>
+<script>
+(() => {
+    const stickyHeader = document.querySelector('.stock-page-header');
+    const headerIntro = stickyHeader?.querySelector('[data-stock-header-intro]');
+    const fadingPanels = Array.from(document.querySelectorAll('[data-stock-fade-panel]'));
+    const mobileCompactMq = window.matchMedia('(max-width: 899px)');
+    const stickyTop = () => parseFloat(getComputedStyle(stickyHeader).top) || 0;
+    let compactRaf = null;
+    let fadeRaf = null;
+
+    const syncHeader = () => {
+        compactRaf = null;
+        if (!stickyHeader) return;
+        if (!mobileCompactMq.matches) {
+            stickyHeader.classList.remove('is-compact');
+            headerIntro?.removeAttribute('aria-hidden');
+            return;
+        }
+        const rect = stickyHeader.getBoundingClientRect();
+        const isCompact = stickyHeader.classList.contains('is-compact');
+        const shouldCompact = rect.top <= stickyTop() + 2 ? true : rect.top > stickyTop() + 8 ? false : isCompact;
+        stickyHeader.classList.toggle('is-compact', shouldCompact);
+        headerIntro?.setAttribute('aria-hidden', shouldCompact ? 'true' : 'false');
+    };
+    const syncFadingPanels = () => {
+        fadeRaf = null;
+        if (!stickyHeader) return;
+        const headerBottom = stickyHeader.getBoundingClientRect().bottom;
+        fadingPanels.forEach((panel) => {
+            const rect = panel.getBoundingClientRect();
+            const overlap = Math.min(Math.max(headerBottom - rect.top, 0), rect.height);
+            const feather = Math.min(80, Math.max(22, overlap * 0.45 + 16));
+            panel.style.setProperty('--stock-fade-cutoff', `${overlap.toFixed(2)}px`);
+            panel.style.setProperty('--stock-fade-feather-end', `${(overlap + feather).toFixed(2)}px`);
+            panel.classList.toggle('stock-panel-under-header', mobileCompactMq.matches && overlap > 0.02);
+        });
+    };
+    const scheduleHeader = () => {
+        if (compactRaf === null) compactRaf = window.requestAnimationFrame(syncHeader);
+    };
+    const scheduleFadingPanels = () => {
+        if (fadeRaf === null) fadeRaf = window.requestAnimationFrame(syncFadingPanels);
+    };
+
+    if (!stickyHeader) return;
+    window.addEventListener('scroll', scheduleHeader, { passive: true });
+    window.addEventListener('scroll', scheduleFadingPanels, { passive: true });
+    window.addEventListener('resize', scheduleHeader);
+    window.addEventListener('resize', scheduleFadingPanels);
+    mobileCompactMq.addEventListener?.('change', scheduleHeader);
+    mobileCompactMq.addEventListener?.('change', scheduleFadingPanels);
+    syncHeader();
+    syncFadingPanels();
+})();
+</script>
 {% endblock %}
