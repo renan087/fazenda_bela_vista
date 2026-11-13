@@ -14798,6 +14798,52 @@ def delete_agricultural_operation_action(
     return _redirect("/operacoes")
 
 
+@router.post("/operacoes/{operation_id}/estornar-despesa")
+def reverse_agricultural_operation_expense_action(
+    operation_id: int,
+    request: Request,
+    csrf_token: str = Form(...),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    validate_csrf(request, csrf_token)
+    repo = _repository(db)
+    scope, denied = _launch_scope_or_redirect(request, repo, "/operacoes")
+    if denied:
+        return denied
+    operation = repo.get_agricultural_operation(operation_id)
+    if not operation or not _plot_matches_scope(operation.plot, scope):
+        _flash(request, "error", "Operação não encontrada no contexto ativo.")
+        return _redirect("/operacoes")
+    transaction = repo.get_finance_transaction(operation.finance_transaction_id) if operation.finance_transaction_id else None
+    if not transaction or transaction.farm_id != scope["active_farm"].id:
+        _flash(request, "error", "Não há despesa financeira vinculada a esta operação.")
+        return _redirect("/operacoes")
+    if _normalize_search_value(transaction.source) != _normalize_search_value("Operações Agrícolas"):
+        _flash(request, "error", "O lançamento financeiro vinculado não pode ser estornado por esta operação.")
+        return _redirect("/operacoes")
+    if transaction.is_reversed:
+        _flash(request, "info", "Esta despesa já está estornada.")
+        return _redirect("/operacoes")
+    try:
+        transaction.is_reversed = True
+        transaction.reversed_at = app_now()
+        for installment in transaction.installments or []:
+            installment.status = "pendente"
+            installment.paid_at = None
+            installment.payment_notes = None
+            repo.db.add(installment)
+        repo.db.add(transaction)
+        repo.db.commit()
+    except Exception:
+        repo.db.rollback()
+        logger.exception("Falha ao estornar despesa da operação agrícola %s", operation.id)
+        _flash(request, "error", "Não foi possível estornar a despesa financeira agora.")
+        return _redirect("/operacoes")
+    _flash(request, "success", "Despesa financeira estornada. O lançamento foi mantido apenas para histórico.")
+    return _redirect("/operacoes")
+
+
 @router.post("/operacoes/{operation_id}/editar")
 def update_agricultural_operation_action(
     operation_id: int,
