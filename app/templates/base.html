@@ -182,7 +182,7 @@
                         </div>
                     </div>
                     {% endif %}
-                    {% set operations_pages = ['fertilization', 'input_recommendations'] %}
+                    {% set operations_pages = ['fertilization', 'input_recommendations', 'agricultural_operations'] %}
                     {% if menu_visibility.get('operations') %}
                     <div class="rounded-2xl {% if page in operations_pages %}bg-slate-900/80{% endif %}" data-submenu-group>
                         <button type="button" class="erp-sidebar-link flex w-full items-center justify-between rounded-2xl px-4 py-3 text-left transition-all duration-300 ease-in-out {% if page in operations_pages %}text-white{% else %}text-slate-300 hover:bg-slate-900 hover:text-white{% endif %}" data-submenu-toggle="operations-menu" data-submenu-parent aria-haspopup="true" aria-expanded="{% if page in operations_pages %}true{% else %}false{% endif %}">
@@ -194,6 +194,7 @@
                         <div id="operations-menu" class="sidebar-submenu-panel {% if page not in operations_pages %}hidden {% endif %}space-y-1 px-3 pb-3" data-submenu-panel>
                             <a href="/fertilizacao" class="sidebar-submenu-link block rounded-xl px-3 py-2 text-sm {% if page == 'fertilization' %}bg-brand-500 text-white{% else %}text-slate-300 hover:bg-slate-800 hover:text-white{% endif %}" data-submenu-link>Fertilizacao</a>
                             <a href="/insumos/recomendacao" class="sidebar-submenu-link block rounded-xl px-3 py-2 text-sm {% if page == 'input_recommendations' %}bg-brand-500 text-white{% else %}text-slate-300 hover:bg-slate-800 hover:text-white{% endif %}" data-submenu-link>Recomendacao</a>
+                            <a href="/operacoes" class="sidebar-submenu-link block rounded-xl px-3 py-2 text-sm {% if page == 'agricultural_operations' %}bg-brand-500 text-white{% else %}text-slate-300 hover:bg-slate-800 hover:text-white{% endif %}" data-submenu-link>Operações agrícolas</a>
                         </div>
                     </div>
                     {% endif %}

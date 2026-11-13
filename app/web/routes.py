@@ -62,6 +62,7 @@ from app.db.session import get_db
 from app.models import (
     AsaasPayment,
     AgronomicProfile,
+    AgriculturalOperation,
     BackupRun,
     CoffeeCommercializationRecord,
     CoffeeQuote,
@@ -717,6 +718,16 @@ FINANCE_TRANSACTION_OPERATIONAL_EXPENSE_CATEGORIES = frozenset(
         "Outros Defensivos", "Peças de Máquinas e Equipamentos", "Preparo do Solo", "Sementes e Mudas",
         "Serviços Terceirizados", "Transportes Internos",
     }
+)
+AGRICULTURAL_OPERATION_TYPES = (
+    ("preparo_solo", "Preparo do solo", "Preparo do Solo"),
+    ("rocagem", "Roçagem", "Serviços Terceirizados"),
+    ("pulverizacao", "Pulverização", "Outros Defensivos"),
+    ("poda", "Poda", "Serviços Terceirizados"),
+    ("manejo_mato", "Manejo de plantas daninhas", "Herbicida"),
+    ("colheita", "Colheita", "Serviços Terceirizados"),
+    ("servico_terceirizado", "Serviço terceirizado", "Serviços Terceirizados"),
+    ("outro", "Outra operação", "Outros Itens"),
 )
 FINANCE_TRANSACTION_PAYMENT_METHODS = [
     "PIX",
@@ -4460,7 +4471,10 @@ def _validate_purchased_entry_package_unit(
 
 def _parse_finance_transaction_amount(raw_value: str | None) -> float:
     try:
-        amount = round(abs(float(raw_value or 0)), 2)
+        normalized = str(raw_value or "0").strip().replace("R$", "").replace(" ", "")
+        if "," in normalized:
+            normalized = normalized.replace(".", "").replace(",", ".")
+        amount = round(abs(float(normalized or 0)), 2)
     except (TypeError, ValueError):
         raise ValueError("Informe um valor válido para o lançamento.")
     if amount <= 0:
@@ -14620,6 +14634,119 @@ def sector_costs_page(
             costs=costs,
         ),
     )
+
+
+@router.get("/operacoes")
+def agricultural_operations_page(
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+    csrf_token: str = Depends(get_csrf_token),
+):
+    repo = _repository(db)
+    scope = _global_scope_context(request, repo, user)
+    active_farm = scope.get("active_farm")
+    plots = repo.list_plots(farm_ids=[active_farm.id]) if active_farm else []
+    operations = repo.list_agricultural_operations({plot.id for plot in plots}) if plots else []
+    return templates.TemplateResponse(
+        "agricultural_operations.html",
+        _base_context(
+            request, user, csrf_token, "agricultural_operations", _repo=repo,
+            title="Operações Agrícolas", plots=plots, operations=operations,
+            operation_types=AGRICULTURAL_OPERATION_TYPES,
+            finance_accounts=repo.list_finance_accounts(farm_id=active_farm.id) if active_farm else [],
+            finance_account_default=next((item for item in repo.list_finance_accounts(farm_id=active_farm.id) if item.is_default), None) if active_farm else None,
+            today=today_in_app_timezone(),
+        ),
+    )
+
+
+@router.post("/operacoes")
+def create_agricultural_operation_action(
+    request: Request,
+    csrf_token: str = Form(...),
+    plot_id: int = Form(...),
+    operation_date: str = Form(...),
+    operation_type: str = Form(...),
+    notes: str | None = Form(None),
+    generate_expense: bool = Form(False),
+    expense_amount: str | None = Form(None),
+    finance_account_id: str | None = Form(None),
+    payment_method: str | None = Form("PIX"),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    validate_csrf(request, csrf_token)
+    repo = _repository(db)
+    scope, denied = _launch_scope_or_redirect(request, repo, "/operacoes")
+    if denied:
+        return denied
+    plot = repo.get_plot(plot_id)
+    if not plot or not _plot_matches_scope(plot, scope):
+        _flash(request, "error", "Selecione um setor pertencente ao contexto ativo.")
+        return _redirect("/operacoes")
+    operation_map = {key: (label, category) for key, label, category in AGRICULTURAL_OPERATION_TYPES}
+    if operation_type not in operation_map:
+        _flash(request, "error", "Selecione um tipo de operação válido.")
+        return _redirect("/operacoes")
+    try:
+        parsed_date = date.fromisoformat(operation_date)
+    except ValueError:
+        _flash(request, "error", "Informe uma data válida para a operação.")
+        return _redirect("/operacoes")
+    label, category = operation_map[operation_type]
+    transaction = None
+    try:
+        if generate_expense:
+            payload = _finance_transaction_payload(
+                repo, active_farm=scope["active_farm"], operation_type="despesa", launch_date=operation_date,
+                amount=expense_amount or "", finance_account_id=finance_account_id, credit_card_id=None,
+                payment_condition="a_vista", installment_count=None, installment_frequency=None,
+                first_installment_date=None, category=category, product_service=f"{label} · {plot.name}",
+                description=notes, counterparty_name=None, document_number=None, payment_method=payment_method,
+                notes=notes, plot_id=plot.id, season_id=scope.get("active_season_id"),
+            )
+            transaction = repo.create(FinanceTransaction(
+                farm_id=payload["farm_id"], plot_id=payload["plot_id"], season_id=payload["season_id"],
+                finance_account_id=payload["finance_account_id"], credit_card_id=None, operation_type="despesa",
+                launch_date=payload["launch_date"], amount=payload["amount"], category=category,
+                product_service=payload["product_service"], description=payload["description"],
+                counterparty_name=None, document_number=None, payment_method=payload["payment_method"],
+                payment_condition="a_vista", installment_count=1, installment_frequency=None,
+                first_installment_date=payload["launch_date"], notes=payload["notes"],
+                source="Operações Agrícolas", created_at=app_now(),
+            ))
+        repo.create(AgriculturalOperation(
+            plot_id=plot.id, season_id=scope.get("active_season_id"),
+            finance_transaction_id=transaction.id if transaction else None, operation_date=parsed_date,
+            operation_type=label, responsible_name=user.display_name or user.name or user.email, notes=_clean_text(notes),
+        ))
+    except ValueError as exc:
+        _flash(request, "error", str(exc))
+        return _redirect("/operacoes")
+    _flash(request, "success", "Operação registrada com despesa vinculada." if transaction else "Operação registrada com sucesso.")
+    return _redirect("/operacoes")
+
+
+@router.post("/operacoes/{operation_id}/excluir")
+def delete_agricultural_operation_action(
+    operation_id: int, request: Request, csrf_token: str = Form(...), db: Session = Depends(get_db), user: User = Depends(get_current_user_web),
+):
+    validate_csrf(request, csrf_token)
+    repo = _repository(db)
+    scope = _global_scope_context(request, repo, user)
+    operation = repo.get_agricultural_operation(operation_id)
+    if not operation or not _plot_matches_scope(operation.plot, scope):
+        _flash(request, "error", "Operação não encontrada no contexto ativo.")
+        return _redirect("/operacoes")
+    if operation.finance_transaction_id:
+        transaction = repo.get_finance_transaction(operation.finance_transaction_id)
+        if transaction and _normalize_search_value(transaction.source) == _normalize_search_value("Operações Agrícolas"):
+            repo.db.delete(transaction)
+            repo.db.flush()
+    repo.delete(operation)
+    _flash(request, "success", "Operação excluída com sucesso.")
+    return _redirect("/operacoes")
 
 
 @router.post("/safras")

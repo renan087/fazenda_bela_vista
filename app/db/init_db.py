@@ -913,6 +913,20 @@ def _sync_schema() -> None:
         "CREATE INDEX IF NOT EXISTS ix_equipment_maintenances_finance_transaction_id ON equipment_maintenances(finance_transaction_id)",
         "CREATE INDEX IF NOT EXISTS ix_finance_transactions_is_reversed ON finance_transactions(is_reversed)",
         "CREATE INDEX IF NOT EXISTS ix_finance_transactions_plot_season ON finance_transactions(plot_id, season_id)",
+        """
+        CREATE TABLE IF NOT EXISTS agricultural_operations (
+            id SERIAL PRIMARY KEY,
+            plot_id INTEGER NOT NULL REFERENCES plots(id) ON DELETE CASCADE,
+            season_id INTEGER REFERENCES crop_seasons(id) ON DELETE SET NULL,
+            finance_transaction_id INTEGER REFERENCES finance_transactions(id) ON DELETE SET NULL,
+            operation_date DATE NOT NULL,
+            operation_type VARCHAR(80) NOT NULL,
+            responsible_name VARCHAR(160) NOT NULL,
+            notes TEXT,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+        """,
+        "CREATE INDEX IF NOT EXISTS ix_agricultural_operations_plot_season ON agricultural_operations(plot_id, season_id)",
         "CREATE INDEX IF NOT EXISTS ix_equipment_maintenances_maintenance_date ON equipment_maintenances(maintenance_date)",
         """
         CREATE TABLE IF NOT EXISTS equipment_maintenance_attachments (

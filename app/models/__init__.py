@@ -2,6 +2,7 @@ from app.models.audit_log import AuditLog
 from app.models.automated_test_run import AutomatedTestRun, AutomatedTestSuiteResult
 from app.models.asaas_payment import AsaasPayment
 from app.models.agronomic_profile import AgronomicProfile
+from app.models.agricultural_operation import AgriculturalOperation
 from app.models.backup_automation_setting import BackupAutomationSetting
 from app.models.backup_run import BackupRun
 from app.models.coffee_commercialization import CoffeeCommercializationRecord
@@ -55,6 +56,7 @@ __all__ = [
     "AuditLog",
     "AsaasPayment",
     "AgronomicProfile",
+    "AgriculturalOperation",
     "BackupAutomationSetting",
     "BackupRun",
     "CoffeeCommercializationRecord",

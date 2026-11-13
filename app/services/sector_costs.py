@@ -91,9 +91,9 @@ def build_sector_cost_context(
         row["applications"] += 1
 
     # Compras e manutencoes de outros modulos ja possuem sua propria origem de
-    # custo. Somente despesas manuais do modulo Contas entram aqui.
+    # custo. Entram apenas despesas manuais e as criadas por Operacoes.
     for transaction in finance_transactions or []:
-        if _normalized(transaction.operation_type) != "despesa" or _normalized(transaction.source) != "contas":
+        if _normalized(transaction.operation_type) != "despesa" or _normalized(transaction.source) not in {"contas", "operacoes agricolas"}:
             continue
         if season_id is not None and transaction.season_id != season_id:
             continue

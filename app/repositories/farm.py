@@ -5,6 +5,7 @@ from sqlalchemy import distinct, func, or_, tuple_
 from sqlalchemy.orm import Session, joinedload, load_only
 
 from app.models import (
+    AgriculturalOperation,
     AgronomicProfile,
     BackupRun,
     BackupAutomationSetting,
@@ -1011,6 +1012,28 @@ class FarmRepository:
             self.db.query(PestIncident)
             .options(joinedload(PestIncident.plot))
             .filter(PestIncident.id == record_id)
+            .first()
+        )
+
+    def list_agricultural_operations(self, plot_ids: set[int] | None = None) -> list[AgriculturalOperation]:
+        query = (
+            self.db.query(AgriculturalOperation)
+            .options(
+                joinedload(AgriculturalOperation.plot),
+                joinedload(AgriculturalOperation.season),
+                joinedload(AgriculturalOperation.finance_transaction),
+            )
+            .order_by(AgriculturalOperation.operation_date.desc(), AgriculturalOperation.id.desc())
+        )
+        if plot_ids is not None:
+            query = query.filter(AgriculturalOperation.plot_id.in_(plot_ids or {-1}))
+        return query.all()
+
+    def get_agricultural_operation(self, operation_id: int) -> AgriculturalOperation | None:
+        return (
+            self.db.query(AgriculturalOperation)
+            .options(joinedload(AgriculturalOperation.plot), joinedload(AgriculturalOperation.finance_transaction))
+            .filter(AgriculturalOperation.id == operation_id)
             .first()
         )
 
