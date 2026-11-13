@@ -190,6 +190,8 @@ def _sync_schema() -> None:
         CREATE TABLE IF NOT EXISTS crop_seasons (
             id SERIAL PRIMARY KEY,
             farm_id INTEGER NOT NULL REFERENCES farms(id) ON DELETE CASCADE,
+            plot_id INTEGER REFERENCES plots(id) ON DELETE SET NULL,
+            season_id INTEGER REFERENCES crop_seasons(id) ON DELETE SET NULL,
             variety_id INTEGER REFERENCES coffee_varieties(id) ON DELETE SET NULL,
             name VARCHAR(160) NOT NULL,
             start_date DATE NOT NULL,
@@ -683,6 +685,8 @@ def _sync_schema() -> None:
         "ALTER TABLE finance_credit_cards ADD COLUMN IF NOT EXISTS notes VARCHAR(240)",
         "ALTER TABLE finance_credit_cards ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW()",
         "ALTER TABLE finance_transactions ADD COLUMN IF NOT EXISTS farm_id INTEGER",
+        "ALTER TABLE finance_transactions ADD COLUMN IF NOT EXISTS plot_id INTEGER REFERENCES plots(id) ON DELETE SET NULL",
+        "ALTER TABLE finance_transactions ADD COLUMN IF NOT EXISTS season_id INTEGER REFERENCES crop_seasons(id) ON DELETE SET NULL",
         "ALTER TABLE finance_transactions ADD COLUMN IF NOT EXISTS finance_account_id INTEGER",
         "ALTER TABLE finance_transactions ADD COLUMN IF NOT EXISTS credit_card_id INTEGER REFERENCES finance_credit_cards(id) ON DELETE SET NULL",
         "ALTER TABLE purchased_inputs ADD COLUMN IF NOT EXISTS finance_account_id INTEGER",
@@ -908,6 +912,7 @@ def _sync_schema() -> None:
         "CREATE INDEX IF NOT EXISTS ix_equipment_maintenances_plan_id ON equipment_maintenances(plan_id)",
         "CREATE INDEX IF NOT EXISTS ix_equipment_maintenances_finance_transaction_id ON equipment_maintenances(finance_transaction_id)",
         "CREATE INDEX IF NOT EXISTS ix_finance_transactions_is_reversed ON finance_transactions(is_reversed)",
+        "CREATE INDEX IF NOT EXISTS ix_finance_transactions_plot_season ON finance_transactions(plot_id, season_id)",
         "CREATE INDEX IF NOT EXISTS ix_equipment_maintenances_maintenance_date ON equipment_maintenances(maintenance_date)",
         """
         CREATE TABLE IF NOT EXISTS equipment_maintenance_attachments (

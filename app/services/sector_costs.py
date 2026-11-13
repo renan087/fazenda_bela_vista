@@ -31,6 +31,7 @@ def build_sector_cost_context(
     plots: list,
     stock_outputs: list,
     fertilizations: list,
+    finance_transactions: list | None = None,
     season_id: int | None = None,
     start_date: date | None = None,
     end_date: date | None = None,
@@ -52,6 +53,7 @@ def build_sector_cost_context(
             "fuel_cost": 0.0,
             "stock_movements": 0,
             "applications": 0,
+            "manual_expenses_cost": 0.0,
         }
 
     unallocated_cost = 0.0
@@ -88,9 +90,22 @@ def build_sector_cost_context(
         row = rows[record.plot_id]
         row["applications"] += 1
 
+    # Compras e manutencoes de outros modulos ja possuem sua propria origem de
+    # custo. Somente despesas manuais do modulo Contas entram aqui.
+    for transaction in finance_transactions or []:
+        if _normalized(transaction.operation_type) != "despesa" or _normalized(transaction.source) != "contas":
+            continue
+        if season_id is not None and transaction.season_id != season_id:
+            continue
+        if not _within_period(transaction.launch_date, start_date, end_date):
+            continue
+        row = rows.get(transaction.plot_id)
+        if row is not None:
+            row["manual_expenses_cost"] += _number(transaction.amount)
+
     sector_rows = []
     for row in rows.values():
-        total = round(row["inputs_cost"] + row["fuel_cost"], 2)
+        total = round(row["inputs_cost"] + row["fuel_cost"] + row["manual_expenses_cost"], 2)
         area = row["area_hectares"]
         sector_rows.append(
             {
@@ -98,6 +113,7 @@ def build_sector_cost_context(
                 "inputs_cost": round(row["inputs_cost"], 2),
                 "fuel_cost": round(row["fuel_cost"], 2),
                 "total_cost": total,
+                "manual_expenses_cost": round(row["manual_expenses_cost"], 2),
                 "cost_per_hectare": round(total / area, 2) if area else 0.0,
             }
         )
@@ -117,4 +133,5 @@ def build_sector_cost_context(
         "inputs_total": round(sum(row["inputs_cost"] for row in sector_rows), 2),
         "fuel_total": round(sum(row["fuel_cost"] for row in sector_rows), 2),
         "application_total": 0.0,
+        "manual_expenses_total": round(sum(row["manual_expenses_cost"] for row in sector_rows), 2),
     }

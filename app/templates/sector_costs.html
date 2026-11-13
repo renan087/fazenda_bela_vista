@@ -46,13 +46,13 @@
             <p class="text-sm text-slate-500">Total analisado: <strong class="text-slate-800">R$ {{ costs.total_cost|decimal_br }}</strong></p>
         </div>
         <div class="overflow-x-auto">
-            <table class="min-w-[800px] w-full text-left text-sm">
-                <thead class="border-y border-slate-200 bg-slate-50 text-xs uppercase tracking-[0.18em] text-slate-500"><tr><th class="px-4 py-4">Setor</th><th class="px-4 py-4">Área</th><th class="px-4 py-4">Insumos</th><th class="px-4 py-4">Combustível</th><th class="px-4 py-4">Total</th><th class="px-4 py-4">R$/ha</th></tr></thead>
+            <table class="min-w-[900px] w-full text-left text-sm">
+                <thead class="border-y border-slate-200 bg-slate-50 text-xs uppercase tracking-[0.18em] text-slate-500"><tr><th class="px-4 py-4">Setor</th><th class="px-4 py-4">Área</th><th class="px-4 py-4">Insumos</th><th class="px-4 py-4">Combustível</th><th class="px-4 py-4">Operações</th><th class="px-4 py-4">Total</th><th class="px-4 py-4">R$/ha</th></tr></thead>
                 <tbody class="divide-y divide-slate-100">
                     {% for row in costs.rows %}
-                    <tr class="transition hover:bg-slate-50"><td class="border-l-4 border-emerald-200 px-4 py-4"><a href="/setores?view_id={{ row.plot.id }}" class="font-semibold text-slate-900 hover:text-brand-700">{{ row.plot.name }}</a><p class="mt-1 text-xs text-slate-500">{{ row.stock_movements }} saída(s) · {{ row.applications }} aplicação(ões)</p></td><td class="px-4 py-4 text-slate-600">{{ row.area_hectares|decimal_br }} ha</td><td class="px-4 py-4">R$ {{ row.inputs_cost|decimal_br }}</td><td class="px-4 py-4">R$ {{ row.fuel_cost|decimal_br }}</td><td class="px-4 py-4 font-semibold text-slate-900">R$ {{ row.total_cost|decimal_br }}</td><td class="px-4 py-4 font-semibold text-brand-700">R$ {{ row.cost_per_hectare|decimal_br }}</td></tr>
+                    <tr class="transition hover:bg-slate-50"><td class="border-l-4 border-emerald-200 px-4 py-4"><a href="/setores?view_id={{ row.plot.id }}" class="font-semibold text-slate-900 hover:text-brand-700">{{ row.plot.name }}</a><p class="mt-1 text-xs text-slate-500">{{ row.stock_movements }} saída(s) · {{ row.applications }} aplicação(ões)</p></td><td class="px-4 py-4 text-slate-600">{{ row.area_hectares|decimal_br }} ha</td><td class="px-4 py-4">R$ {{ row.inputs_cost|decimal_br }}</td><td class="px-4 py-4">R$ {{ row.fuel_cost|decimal_br }}</td><td class="px-4 py-4">R$ {{ row.manual_expenses_cost|decimal_br }}</td><td class="px-4 py-4 font-semibold text-slate-900">R$ {{ row.total_cost|decimal_br }}</td><td class="px-4 py-4 font-semibold text-brand-700">R$ {{ row.cost_per_hectare|decimal_br }}</td></tr>
                     {% else %}
-                    <tr><td colspan="6" class="px-4 py-10 text-center text-slate-500">Nenhum setor encontrado no contexto ativo.</td></tr>
+                    <tr><td colspan="7" class="px-4 py-10 text-center text-slate-500">Nenhum setor encontrado no contexto ativo.</td></tr>
                     {% endfor %}
                 </tbody>
             </table>

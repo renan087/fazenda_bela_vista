@@ -1588,6 +1588,22 @@
                             <input type="text" name="product_service" value="{{ edit_finance_transaction.product_service if edit_finance_transaction else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required>
                         </label>
                     </div>
+                    <div class="hidden rounded-[1.5rem] border border-brand-100 bg-brand-50/45 p-4" data-finance-sector-cost-wrap>
+                        <label class="flex cursor-pointer items-center gap-3 text-sm font-semibold text-slate-700">
+                            <input type="checkbox" class="rounded border-slate-300 text-brand-500 focus:ring-brand-500" data-finance-sector-cost-toggle {% if edit_finance_transaction and edit_finance_transaction.plot_id %}checked{% endif %}>
+                            Vincular custo a um setor
+                        </label>
+                        <label class="mt-4 block">
+                            <span class="mb-2 block text-sm font-medium">Setor da despesa</span>
+                            <select name="plot_id" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-white" data-finance-sector-cost-select {% if not (edit_finance_transaction and edit_finance_transaction.plot_id) %}disabled{% endif %}>
+                                <option value="">Selecione o setor</option>
+                                {% for plot in finance_plot_options %}
+                                <option value="{{ plot.id }}" {% if edit_finance_transaction and edit_finance_transaction.plot_id == plot.id %}selected{% endif %}>{{ plot.name }}</option>
+                                {% endfor %}
+                            </select>
+                            <p class="mt-2 text-xs text-slate-500">A fazenda e a safra ativas serão aplicadas automaticamente.</p>
+                        </label>
+                    </div>
                     <div class="grid gap-4 md:grid-cols-2">
                         <label>
                             <span class="mb-2 block text-sm font-medium" data-finance-counterparty-label>Favorecido / pagador</span>
@@ -1741,6 +1757,9 @@
     const transactionAmountDisplayInput = document.querySelector('[data-finance-transaction-amount-display]');
     const transactionTypeSelect = document.querySelector('[data-finance-transaction-type]');
     const transactionCategorySelect = document.querySelector('[data-finance-transaction-category]');
+    const transactionSectorCostWrap = document.querySelector('[data-finance-sector-cost-wrap]');
+    const transactionSectorCostToggle = document.querySelector('[data-finance-sector-cost-toggle]');
+    const transactionSectorCostSelect = document.querySelector('[data-finance-sector-cost-select]');
     const transactionPaymentConditionSelect = document.querySelector('[data-finance-payment-condition]');
     const transactionPaymentMethodSelect = document.querySelector('[data-finance-payment-method]');
     const transactionCreditCardWrap = document.querySelector('[data-finance-credit-card-wrap]');
@@ -1855,6 +1874,7 @@
         despesa: {{ finance_transaction_expense_categories|tojson }},
         receita: {{ finance_transaction_revenue_categories|tojson }},
     };
+    const operationalExpenseCategories = new Set({{ finance_operational_expense_categories|list|tojson }});
     const transactionPaymentMethodOptions = {
         despesa: {{ finance_transaction_expense_payment_methods|tojson }},
         receita: {{ finance_transaction_revenue_payment_methods|tojson }},
@@ -3160,6 +3180,18 @@
         syncTransactionOperationLabels();
         populateTransactionPaymentMethods(typeValue, selectedPaymentMethod || transactionPaymentMethodSelect?.value || '');
         syncTransactionCreditCardSection();
+        syncTransactionSectorCost();
+    };
+
+    const syncTransactionSectorCost = () => {
+        if (!transactionSectorCostWrap || !transactionSectorCostToggle || !transactionSectorCostSelect) return;
+        const eligible = transactionTypeSelect?.value === 'despesa' && operationalExpenseCategories.has(transactionCategorySelect?.value || '');
+        transactionSectorCostWrap.classList.toggle('hidden', !eligible);
+        if (!eligible) {
+            transactionSectorCostToggle.checked = false;
+            transactionSectorCostSelect.value = '';
+        }
+        transactionSectorCostSelect.disabled = !eligible || !transactionSectorCostToggle.checked;
     };
 
     const formatCurrencyLabel = (rawValue) => {
@@ -3517,6 +3549,8 @@
         syncTransactionFinancialMode();
         renderFinanceInstallmentPreview();
     });
+    transactionCategorySelect?.addEventListener('change', syncTransactionSectorCost);
+    transactionSectorCostToggle?.addEventListener('change', syncTransactionSectorCost);
     transactionPaymentMethodSelect?.addEventListener('change', syncTransactionCreditCardSection);
     transactionPaymentConditionSelect?.addEventListener('change', () => {
         syncFinanceInstallmentSection();

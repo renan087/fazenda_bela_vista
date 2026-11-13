@@ -709,6 +709,15 @@ FINANCE_TRANSACTION_REVENUE_CATEGORIES = [
     "Venda Agrícola",
     "Venda Pecuária",
 ]
+FINANCE_TRANSACTION_OPERATIONAL_EXPENSE_CATEGORIES = frozenset(
+    {
+        "Acaricida", "Adjuvante", "Combustíveis", "Corretivos de Solo", "Fertilizantes", "Fretes",
+        "Fungicida", "Herbicida", "Inseticida", "Irrigação", "Lubrificantes",
+        "Manutenção de Máquinas e Equipamentos", "Outros Custos de Insumos", "Outros Custos de Máquinas",
+        "Outros Defensivos", "Peças de Máquinas e Equipamentos", "Preparo do Solo", "Sementes e Mudas",
+        "Serviços Terceirizados", "Transportes Internos",
+    }
+)
 FINANCE_TRANSACTION_PAYMENT_METHODS = [
     "PIX",
     "TED",
@@ -4565,6 +4574,8 @@ def _finance_transaction_payload(
     document_number: str | None,
     payment_method: str | None,
     notes: str | None,
+    plot_id: str | int | None = None,
+    season_id: int | None = None,
 ) -> dict:
     normalized_type = (operation_type or "").strip().lower()
     if normalized_type not in {"despesa", "receita"}:
@@ -4581,6 +4592,15 @@ def _finance_transaction_payload(
     product_service_value = _clean_text(product_service)
     if not product_service_value:
         raise ValueError("Informe o produto ou serviço.")
+    resolved_plot_id = _int_or_none(plot_id)
+    if resolved_plot_id:
+        plot = repo.get_plot(resolved_plot_id)
+        if not plot or plot.farm_id != active_farm.id:
+            raise ValueError("Selecione um setor pertencente à fazenda ativa.")
+        if normalized_type != "despesa" or category_value not in FINANCE_TRANSACTION_OPERATIONAL_EXPENSE_CATEGORIES:
+            raise ValueError("O vínculo a setor está disponível apenas para despesas operacionais.")
+        if not season_id:
+            raise ValueError("Selecione uma safra ativa antes de vincular a despesa a um setor.")
     account = _resolve_finance_transaction_account(repo, active_farm=active_farm, account_id=finance_account_id)
     credit_card = (
         _resolve_optional_finance_credit_card(
@@ -4630,6 +4650,8 @@ def _finance_transaction_payload(
         resolved_first_installment_date = None if credit_card else parsed_launch_date
     return {
         "farm_id": active_farm.id,
+        "plot_id": resolved_plot_id,
+        "season_id": season_id if resolved_plot_id else None,
         "finance_account_id": account.id,
         "credit_card_id": credit_card.id if credit_card else None,
         "credit_card": credit_card,
@@ -6151,6 +6173,7 @@ def finance_accounts_page(
     repo = _repository(db)
     scope = _global_scope_context(request, repo)
     active_farm = scope.get("active_farm")
+    finance_plot_options = repo.list_plots(farm_ids=[active_farm.id]) if active_farm else []
     accounts = repo.list_finance_accounts(farm_id=active_farm.id) if active_farm else []
     credit_cards = repo.list_finance_credit_cards(farm_id=active_farm.id) if active_farm else []
     transactions_all = repo.list_finance_transactions(farm_id=active_farm.id) if active_farm else []
@@ -6424,6 +6447,8 @@ def finance_accounts_page(
             finance_account_balances=account_balances,
             finance_account_transaction_counts=finance_account_transaction_counts,
             finance_credit_card_overviews=finance_credit_card_overviews,
+            finance_plot_options=finance_plot_options,
+            finance_operational_expense_categories=sorted(FINANCE_TRANSACTION_OPERATIONAL_EXPENSE_CATEGORIES),
             today=today,
         ),
     )
@@ -7628,6 +7653,7 @@ async def create_finance_transaction_action(
     document_number: str | None = Form(None),
     payment_method: str | None = Form(None),
     notes: str | None = Form(None),
+    plot_id: str | None = Form(None),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user_web),
 ):
@@ -7659,6 +7685,8 @@ async def create_finance_transaction_action(
             document_number=document_number,
             payment_method=payment_method,
             notes=notes,
+            plot_id=plot_id,
+            season_id=scope.get("active_season_id"),
         )
         attachment_payloads = _read_attachments(await _request_attachments(request))
     except ValueError as exc:
@@ -7668,6 +7696,8 @@ async def create_finance_transaction_action(
     transaction = repo.create(
         FinanceTransaction(
             farm_id=payload["farm_id"],
+            plot_id=payload["plot_id"],
+            season_id=payload["season_id"],
             finance_account_id=payload["finance_account_id"],
             credit_card_id=payload["credit_card_id"],
             operation_type=payload["operation_type"],
@@ -7735,6 +7765,7 @@ async def update_finance_transaction_action(
     document_number: str | None = Form(None),
     payment_method: str | None = Form(None),
     notes: str | None = Form(None),
+    plot_id: str | None = Form(None),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user_web),
 ):
@@ -7771,6 +7802,8 @@ async def update_finance_transaction_action(
             document_number=document_number,
             payment_method=payment_method,
             notes=notes,
+            plot_id=plot_id,
+            season_id=scope.get("active_season_id"),
         )
         _reject_finance_schedule_change_if_installment_paid(transaction, payload)
         attachment_payloads = _read_attachments(await _request_attachments(request))
@@ -14568,6 +14601,7 @@ def sector_costs_page(
         plots=plots,
         stock_outputs=stock_outputs,
         fertilizations=fertilizations,
+        finance_transactions=repo.list_finance_transactions(farm_id=farm_id) if farm_id else [],
         season_id=selected_season.id if selected_season else None,
         start_date=selected_season.start_date if selected_season else None,
         end_date=selected_season.end_date if selected_season else None,

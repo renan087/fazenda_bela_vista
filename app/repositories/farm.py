@@ -377,6 +377,8 @@ class FarmRepository:
             self.db.query(FinanceTransaction)
             .options(
                 joinedload(FinanceTransaction.farm),
+                joinedload(FinanceTransaction.plot),
+                joinedload(FinanceTransaction.season),
                 joinedload(FinanceTransaction.finance_account),
                 joinedload(FinanceTransaction.credit_card),
                 joinedload(FinanceTransaction.maintenance_records),
@@ -404,6 +406,8 @@ class FarmRepository:
             self.db.query(FinanceTransaction)
             .options(
                 joinedload(FinanceTransaction.farm),
+                joinedload(FinanceTransaction.plot),
+                joinedload(FinanceTransaction.season),
                 joinedload(FinanceTransaction.finance_account),
                 joinedload(FinanceTransaction.credit_card),
                 joinedload(FinanceTransaction.maintenance_records),

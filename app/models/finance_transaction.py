@@ -11,6 +11,8 @@ class FinanceTransaction(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
     farm_id: Mapped[int] = mapped_column(ForeignKey("farms.id", ondelete="CASCADE"), nullable=False, index=True)
+    plot_id: Mapped[int] = mapped_column(ForeignKey("plots.id", ondelete="SET NULL"), nullable=True, index=True)
+    season_id: Mapped[int] = mapped_column(ForeignKey("crop_seasons.id", ondelete="SET NULL"), nullable=True, index=True)
     finance_account_id: Mapped[int] = mapped_column(ForeignKey("finance_accounts.id", ondelete="CASCADE"), nullable=False, index=True)
     credit_card_id: Mapped[int] = mapped_column(ForeignKey("finance_credit_cards.id", ondelete="SET NULL"), nullable=True, index=True)
     operation_type: Mapped[str] = mapped_column(String(20), nullable=False)
@@ -33,6 +35,8 @@ class FinanceTransaction(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
     farm = relationship("Farm", back_populates="finance_transactions")
+    plot = relationship("Plot")
+    season = relationship("CropSeason")
     finance_account = relationship("FinanceAccount", back_populates="transactions")
     credit_card = relationship("FinanceCreditCard", back_populates="finance_transactions")
     attachments = relationship("FinanceTransactionAttachment", back_populates="transaction", cascade="all, delete-orphan")
