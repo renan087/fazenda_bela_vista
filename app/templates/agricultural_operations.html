@@ -32,7 +32,7 @@
                         <td class="px-4 py-4 font-semibold">{{ item.operation_date.strftime('%d/%m/%Y') }}</td><td class="px-4 py-4">{{ item.operation_type }}</td><td class="px-4 py-4">{{ item.plot.name if item.plot else '-' }}</td><td class="px-4 py-4">{{ item.responsible_name }}</td>
                         <td class="px-4 py-4">{% if item.finance_transaction and item.finance_transaction.is_reversed %}<span class="stock-level-badge bg-amber-50 text-amber-700">Estornada</span>{% elif item.finance_transaction %}<span class="stock-level-badge bg-emerald-50 text-emerald-700">R$ {{ item.finance_transaction.amount|decimal_br }}</span>{% else %}<span class="text-slate-400">Sem despesa</span>{% endif %}</td>
                         <td class="max-w-[260px] truncate px-4 py-4 text-slate-500">{{ item.notes or '-' }}</td>
-                        <td class="px-4 py-4"><div class="flex items-center justify-end gap-2"><a href="/operacoes?edit_id={{ item.id }}" class="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-100" title="Editar"><svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 1 1 3 3L7 19l-4 1 1-4Z"/></svg></a>{% if item.finance_transaction and not item.finance_transaction.is_reversed %}<button type="button" class="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-amber-200 text-amber-700 hover:bg-amber-50" title="Estornar despesa" data-operation-reverse-open data-operation-id="{{ item.id }}" data-operation-label="{{ item.operation_type }} · {{ item.plot.name if item.plot else 'Setor' }}"><svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 14 4 9l5-5"/><path d="M4 9h10a6 6 0 0 1 0 12h-1"/></svg></button>{% endif %}<form method="post" action="/operacoes/{{ item.id }}/excluir" onsubmit="return confirm('Excluir esta operação{% if item.finance_transaction and not item.finance_transaction.is_reversed %} e a despesa financeira vinculada{% endif %}?');"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button type="submit" class="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 text-rose-600 hover:bg-rose-50" title="Excluir"><svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg></button></form></div></td>
+                        <td class="px-4 py-4">{% set paid_installments = item.finance_transaction.installments|selectattr('status', 'equalto', 'pago')|list if item.finance_transaction else [] %}<div class="flex items-center justify-end gap-2"><a href="/operacoes?edit_id={{ item.id }}" class="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-100" title="Editar"><svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 1 1 3 3L7 19l-4 1 1-4Z"/></svg></a>{% if item.finance_transaction and item.finance_transaction.is_reversed %}<form method="post" action="/operacoes/{{ item.id }}/reativar-despesa"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button type="submit" class="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-emerald-200 text-emerald-700 hover:bg-emerald-50" title="Reativar despesa"><svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 11a8.1 8.1 0 0 0-15.5-2M4 5v4h4"/><path d="M4 13a8.1 8.1 0 0 0 15.5 2M20 19v-4h-4"/></svg></button></form>{% elif paid_installments %}<button type="button" class="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-amber-200 text-amber-700 hover:bg-amber-50" title="Estornar pagamento" data-operation-payment-reversal-open data-operation-id="{{ item.id }}" data-operation-label="{{ item.operation_type }} · {{ item.plot.name if item.plot else 'Setor' }}" data-paid-installments="{{ paid_installments|length }}"><svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 14 4 9l5-5"/><path d="M4 9h10a6 6 0 0 1 0 12h-1"/></svg></button>{% endif %}<form method="post" action="/operacoes/{{ item.id }}/excluir" onsubmit="return confirm('Excluir esta operação{% if item.finance_transaction and not item.finance_transaction.is_reversed %} e a despesa financeira vinculada{% endif %}?');"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button type="submit" class="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 text-rose-600 hover:bg-rose-50" title="Excluir"><svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg></button></form></div></td>
                     </tr>
                     {% else %}<tr><td colspan="7" class="px-4 py-10 text-center text-slate-500">Nenhuma operação registrada para o contexto atual.</td></tr>{% endfor %}
                 </tbody>
@@ -88,17 +88,17 @@
     </div>
 </dialog>
 
-<dialog id="operation-reverse-modal" class="app-modal w-full max-w-lg rounded-[2rem] p-0 shadow-2xl">
+<dialog id="operation-payment-reversal-modal" class="app-modal w-full max-w-lg rounded-[2rem] p-0 shadow-2xl">
     <div class="bg-white p-6 sm:p-8">
         <div class="flex items-start justify-between gap-4">
-            <div><p class="text-xs uppercase tracking-[.3em] text-amber-600">Estorno financeiro</p><h3 class="mt-2 text-2xl font-semibold text-slate-900">Estornar despesa?</h3></div>
-            <button type="button" class="modal-close-button" aria-label="Fechar" data-operation-reverse-close>×</button>
+            <div><p class="text-xs uppercase tracking-[.3em] text-amber-600">Pagamento</p><h3 class="mt-2 text-2xl font-semibold text-slate-900">Estornar pagamento?</h3></div>
+            <button type="button" class="modal-close-button" aria-label="Fechar" data-operation-payment-reversal-close>×</button>
         </div>
-        <p class="mt-5 text-sm leading-6 text-slate-600">A despesa de <strong class="text-slate-900" data-operation-reverse-label></strong> deixará de compor o extrato, as contas a pagar e a fatura do cartão. A operação e o lançamento serão mantidos no histórico como estornados.</p>
-        <form method="post" class="mt-6 flex justify-end gap-3" data-operation-reverse-form>
+        <p class="mt-5 text-sm leading-6 text-slate-600">O pagamento de <strong class="text-slate-900" data-operation-payment-reversal-label></strong> será cancelado. As parcelas quitadas voltarão para pendente em Contas, sem excluir a despesa nem a operação.</p>
+        <form method="post" class="mt-6 flex justify-end gap-3" data-operation-payment-reversal-form>
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-            <button type="button" class="rounded-2xl bg-slate-100 px-5 py-3 font-semibold text-slate-700 hover:bg-slate-200" data-operation-reverse-close>Cancelar</button>
-            <button class="rounded-2xl bg-amber-600 px-5 py-3 font-semibold text-white hover:bg-amber-700">Estornar despesa</button>
+            <button type="button" class="rounded-2xl bg-slate-100 px-5 py-3 font-semibold text-slate-700 hover:bg-slate-200" data-operation-payment-reversal-close>Cancelar</button>
+            <button class="rounded-2xl bg-amber-600 px-5 py-3 font-semibold text-white hover:bg-amber-700">Estornar pagamento</button>
         </form>
     </div>
 </dialog>
@@ -168,18 +168,18 @@
 </script>
 <script>
 (() => {
-    const modal = document.getElementById('operation-reverse-modal');
-    const form = modal?.querySelector('[data-operation-reverse-form]');
-    const label = modal?.querySelector('[data-operation-reverse-label]');
-    document.querySelectorAll('[data-operation-reverse-open]').forEach((button) => {
+    const modal = document.getElementById('operation-payment-reversal-modal');
+    const form = modal?.querySelector('[data-operation-payment-reversal-form]');
+    const label = modal?.querySelector('[data-operation-payment-reversal-label]');
+    document.querySelectorAll('[data-operation-payment-reversal-open]').forEach((button) => {
         button.addEventListener('click', () => {
             if (!form || !button.dataset.operationId) return;
-            form.action = `/operacoes/${button.dataset.operationId}/estornar-despesa`;
+            form.action = `/operacoes/${button.dataset.operationId}/cancelar-pagamento`;
             if (label) label.textContent = button.dataset.operationLabel || 'operação selecionada';
             modal?.showModal();
         });
     });
-    document.querySelectorAll('[data-operation-reverse-close]').forEach((button) => button.addEventListener('click', () => modal?.close()));
+    document.querySelectorAll('[data-operation-payment-reversal-close]').forEach((button) => button.addEventListener('click', () => modal?.close()));
     modal?.addEventListener('cancel', (event) => { event.preventDefault(); modal.close(); });
 })();
 </script>

@@ -1021,7 +1021,7 @@ class FarmRepository:
             .options(
                 joinedload(AgriculturalOperation.plot),
                 joinedload(AgriculturalOperation.season),
-                joinedload(AgriculturalOperation.finance_transaction),
+                joinedload(AgriculturalOperation.finance_transaction).joinedload(FinanceTransaction.installments),
             )
             .order_by(AgriculturalOperation.operation_date.desc(), AgriculturalOperation.id.desc())
         )
@@ -1032,7 +1032,10 @@ class FarmRepository:
     def get_agricultural_operation(self, operation_id: int) -> AgriculturalOperation | None:
         return (
             self.db.query(AgriculturalOperation)
-            .options(joinedload(AgriculturalOperation.plot), joinedload(AgriculturalOperation.finance_transaction))
+            .options(
+                joinedload(AgriculturalOperation.plot),
+                joinedload(AgriculturalOperation.finance_transaction).joinedload(FinanceTransaction.installments),
+            )
             .filter(AgriculturalOperation.id == operation_id)
             .first()
         )
