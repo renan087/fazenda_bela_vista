@@ -106,6 +106,7 @@ from app.services.asaas_customers import (
 from app.services.asaas_payment_sync import upsert_asaas_payment_row, user_owns_asaas_payment_payload
 from app.services.asaas_payments import create_asaas_payment, get_asaas_payment, is_asaas_status_paid
 from app.services.agronomic_profile_suggestions import build_agronomic_profile_suggestions
+from app.services.sector_costs import build_sector_cost_context
 from app.services.backup_service import (
     _create_backup_run,
     delete_backup_run,
@@ -14528,6 +14529,61 @@ def crop_seasons_page(
             season_costs=season_costs,
             edit_season=edit_season,
             view_season=view_season,
+        ),
+    )
+
+
+@router.get("/custos-por-setor")
+def sector_costs_page(
+    request: Request,
+    season_id: str | None = None,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+    csrf_token: str = Depends(get_csrf_token),
+):
+    repo = _repository(db)
+    scope = _global_scope_context(request, repo, user)
+    farm_id = scope.get("active_farm_id")
+    organization_id = scope.get("active_organization_id")
+    seasons = repo.list_crop_seasons(farm_id=farm_id, organization_id=None if farm_id else organization_id)
+    selected_season_id = (
+        _optional_query_int(season_id)
+        if season_id is not None
+        else scope.get("active_season_id")
+    )
+    selected_season = next((item for item in seasons if item.id == selected_season_id), None)
+    if selected_season_id and not selected_season:
+        _flash(request, "error", "A safra selecionada nao pertence a fazenda ativa.")
+        return _redirect("/custos-por-setor")
+
+    context_farm_ids = [farm_id] if farm_id else [farm.id for farm in scope.get("context_farms", [])]
+    plots = repo.list_plots(farm_ids=context_farm_ids)
+    stock_outputs = repo.list_stock_outputs(farm_id=farm_id) if farm_id else repo.list_stock_outputs()
+    if not farm_id:
+        allowed_farm_ids = set(context_farm_ids)
+        stock_outputs = [item for item in stock_outputs if item.farm_id in allowed_farm_ids]
+    fertilizations = repo.list_fertilizations()
+    fertilizations = [item for item in fertilizations if item.plot and item.plot.farm_id in set(context_farm_ids)]
+    costs = build_sector_cost_context(
+        plots=plots,
+        stock_outputs=stock_outputs,
+        fertilizations=fertilizations,
+        season_id=selected_season.id if selected_season else None,
+        start_date=selected_season.start_date if selected_season else None,
+        end_date=selected_season.end_date if selected_season else None,
+    )
+    return templates.TemplateResponse(
+        "sector_costs.html",
+        _base_context(
+            request,
+            user,
+            csrf_token,
+            "sector_costs",
+            _repo=repo,
+            title="Custos por Setor",
+            seasons=seasons,
+            selected_season=selected_season,
+            costs=costs,
         ),
     )
 

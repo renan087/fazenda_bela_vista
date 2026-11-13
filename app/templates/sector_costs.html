@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="stock-page-shell space-y-6">
+    <section class="stock-page-header rounded-[2rem] p-5 shadow-panel">
+        <div class="stock-page-header-intro" data-stock-header-intro>
+            <div class="stock-page-header-intro-inner">
+                <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Gestão de custos</p>
+                <h2 class="stock-page-card-title mt-2">Custos por setor e safra</h2>
+                <p class="stock-page-card-subtitle">Acompanhe os custos operacionais com vínculo direto aos setores da fazenda.</p>
+            </div>
+        </div>
+    </section>
+
+    <section class="stock-panel rounded-[2rem] bg-white p-5 shadow-panel" data-stock-fade-panel>
+        <form method="get" class="grid items-end gap-4 md:grid-cols-[minmax(0,1fr)_auto]">
+            <label class="block min-w-0">
+                <span class="mb-2 block text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">Safra</span>
+                <select name="season_id" class="w-full rounded-2xl border-slate-200 bg-slate-50 px-4 py-3 text-slate-800" onchange="this.form.submit()">
+                    <option value="">Todas as safras</option>
+                    {% for season in seasons %}
+                    <option value="{{ season.id }}" {% if selected_season and selected_season.id == season.id %}selected{% endif %}>{{ season.name }} · {{ season.culture }}</option>
+                    {% endfor %}
+                </select>
+            </label>
+            {% if selected_season %}
+            <a href="/custos-por-setor" class="inline-flex min-h-[3.25rem] items-center justify-center rounded-2xl border border-slate-200 px-5 py-3 text-sm font-semibold text-slate-600 hover:bg-slate-50">Limpar</a>
+            {% endif %}
+        </form>
+        {% if selected_season %}
+        <p class="mt-3 text-sm text-slate-500">Período da safra: {{ selected_season.start_date.strftime('%d/%m/%Y') }} a {{ selected_season.end_date.strftime('%d/%m/%Y') }}.</p>
+        {% else %}
+        <p class="mt-3 text-sm text-slate-500">Exibindo todos os custos com setor informado no contexto selecionado.</p>
+        {% endif %}
+    </section>
+
+    <section class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4" data-stock-fade-panel>
+        <article class="rounded-[1.5rem] border border-emerald-100 bg-emerald-50/70 p-5 shadow-sm"><p class="text-xs font-semibold uppercase tracking-[0.24em] text-emerald-700">Custo alocado</p><p class="mt-2 text-2xl font-semibold text-slate-900">R$ {{ '%.2f'|format(costs.allocated_total) }}</p><p class="mt-1 text-sm text-slate-500">Vinculado a setores</p></article>
+        <article class="rounded-[1.5rem] border border-sky-100 bg-sky-50/70 p-5 shadow-sm"><p class="text-xs font-semibold uppercase tracking-[0.24em] text-sky-700">Custo por hectare</p><p class="mt-2 text-2xl font-semibold text-slate-900">R$ {{ '%.2f'|format(costs.cost_per_hectare) }}</p><p class="mt-1 text-sm text-slate-500">Sobre {{ '%.2f'|format(costs.total_area) }} ha de setores</p></article>
+        <article class="rounded-[1.5rem] border border-amber-100 bg-amber-50/70 p-5 shadow-sm"><p class="text-xs font-semibold uppercase tracking-[0.24em] text-amber-700">Insumos e combustível</p><p class="mt-2 text-2xl font-semibold text-slate-900">R$ {{ '%.2f'|format(costs.inputs_total + costs.fuel_total) }}</p><p class="mt-1 text-sm text-slate-500">Consumo efetivo de estoque</p></article>
+        <article class="rounded-[1.5rem] border border-slate-200 bg-slate-50 p-5 shadow-sm"><p class="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">Sem setor definido</p><p class="mt-2 text-2xl font-semibold text-slate-900">R$ {{ '%.2f'|format(costs.unallocated_total) }}</p><p class="mt-1 text-sm text-slate-500">{{ costs.unallocated_movements }} movimentação(ões) não rateada(s)</p></article>
+    </section>
+
+    <section class="stock-panel overflow-hidden rounded-[2rem] bg-white p-5 shadow-panel" data-stock-fade-panel>
+        <div class="mb-5 flex flex-wrap items-end justify-between gap-3">
+            <div><p class="text-xs uppercase tracking-[0.35em] text-slate-400">Setores</p><h3 class="mt-2 text-2xl font-semibold text-slate-900">Composição dos custos</h3></div>
+            <p class="text-sm text-slate-500">Total analisado: <strong class="text-slate-800">R$ {{ '%.2f'|format(costs.total_cost) }}</strong></p>
+        </div>
+        <div class="overflow-x-auto">
+            <table class="min-w-[800px] w-full text-left text-sm">
+                <thead class="border-y border-slate-200 bg-slate-50 text-xs uppercase tracking-[0.18em] text-slate-500"><tr><th class="px-4 py-4">Setor</th><th class="px-4 py-4">Área</th><th class="px-4 py-4">Insumos</th><th class="px-4 py-4">Combustível</th><th class="px-4 py-4">Total</th><th class="px-4 py-4">R$/ha</th></tr></thead>
+                <tbody class="divide-y divide-slate-100">
+                    {% for row in costs.rows %}
+                    <tr class="transition hover:bg-slate-50"><td class="border-l-4 border-emerald-200 px-4 py-4"><a href="/setores?view_id={{ row.plot.id }}" class="font-semibold text-slate-900 hover:text-brand-700">{{ row.plot.name }}</a><p class="mt-1 text-xs text-slate-500">{{ row.stock_movements }} saída(s) · {{ row.applications }} aplicação(ões)</p></td><td class="px-4 py-4 text-slate-600">{{ '%.2f'|format(row.area_hectares) }} ha</td><td class="px-4 py-4">R$ {{ '%.2f'|format(row.inputs_cost) }}</td><td class="px-4 py-4">R$ {{ '%.2f'|format(row.fuel_cost) }}</td><td class="px-4 py-4 font-semibold text-slate-900">R$ {{ '%.2f'|format(row.total_cost) }}</td><td class="px-4 py-4 font-semibold text-brand-700">R$ {{ '%.2f'|format(row.cost_per_hectare) }}</td></tr>
+                    {% else %}
+                    <tr><td colspan="6" class="px-4 py-10 text-center text-slate-500">Nenhum setor encontrado no contexto ativo.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <p class="mt-5 rounded-2xl bg-slate-50 px-4 py-3 text-sm text-slate-500">Custos de manutenção e outras despesas gerais permanecem fora deste painel até terem um vínculo explícito com setor e safra. Assim, o total por setor não recebe rateios estimados.</p>
+    </section>
+</div>
+{% endblock %}

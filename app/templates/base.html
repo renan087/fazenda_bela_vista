@@ -165,7 +165,7 @@
                         <span class="erp-sidebar-label">Dashboard</span>
                     </a>
                     {% endif %}
-                    {% set productive_unit_pages = ['farms', 'seasons', 'plots'] %}
+                    {% set productive_unit_pages = ['farms', 'seasons', 'plots', 'sector_costs'] %}
                     {% if menu_visibility.get('productive_unit') %}
                     <div class="rounded-2xl {% if page in productive_unit_pages %}bg-slate-900/80{% endif %}" data-submenu-group>
                         <button type="button" class="erp-sidebar-link flex w-full items-center justify-between rounded-2xl px-4 py-3 text-left transition-all duration-300 ease-in-out {% if page in productive_unit_pages %}text-white{% else %}text-slate-300 hover:bg-slate-900 hover:text-white{% endif %}" data-submenu-toggle="productive-unit-menu" data-submenu-parent aria-haspopup="true" aria-expanded="{% if page in productive_unit_pages %}true{% else %}false{% endif %}">
@@ -178,6 +178,7 @@
                             <a href="/fazendas" class="sidebar-submenu-link block rounded-xl px-3 py-2 text-sm {% if page == 'farms' %}bg-brand-500 text-white{% else %}text-slate-300 hover:bg-slate-800 hover:text-white{% endif %}" data-submenu-link>Fazendas</a>
                             <a href="/safras" class="sidebar-submenu-link block rounded-xl px-3 py-2 text-sm {% if page == 'seasons' %}bg-brand-500 text-white{% else %}text-slate-300 hover:bg-slate-800 hover:text-white{% endif %}" data-submenu-link>Safras</a>
                             <a href="/setores" class="sidebar-submenu-link block rounded-xl px-3 py-2 text-sm {% if page == 'plots' %}bg-brand-500 text-white{% else %}text-slate-300 hover:bg-slate-800 hover:text-white{% endif %}" data-submenu-link>Setores</a>
+                            <a href="/custos-por-setor" class="sidebar-submenu-link block rounded-xl px-3 py-2 text-sm {% if page == 'sector_costs' %}bg-brand-500 text-white{% else %}text-slate-300 hover:bg-slate-800 hover:text-white{% endif %}" data-submenu-link>Custos por setor</a>
                         </div>
                     </div>
                     {% endif %}
