@@ -2,7 +2,7 @@
 {% block content %}
 <div class="stock-page-shell space-y-6">
     <section class="stock-page-header rounded-[2rem] p-5 shadow-panel">
-        <div class="stock-page-header-intro" data-stock-header-intro>
+        <div class="min-w-0 stock-page-header-intro" data-stock-header-intro>
             <div class="stock-page-header-intro-inner">
                 <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Gestão de custos</p>
                 <h2 class="stock-page-card-title mt-2">Custos por setor e safra</h2>
@@ -34,23 +34,23 @@
     </section>
 
     <section class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4" data-stock-fade-panel>
-        <article class="rounded-[1.5rem] border border-emerald-100 bg-emerald-50/70 p-5 shadow-sm"><p class="text-xs font-semibold uppercase tracking-[0.24em] text-emerald-700">Custo alocado</p><p class="mt-2 text-2xl font-semibold text-slate-900">R$ {{ '%.2f'|format(costs.allocated_total) }}</p><p class="mt-1 text-sm text-slate-500">Vinculado a setores</p></article>
-        <article class="rounded-[1.5rem] border border-sky-100 bg-sky-50/70 p-5 shadow-sm"><p class="text-xs font-semibold uppercase tracking-[0.24em] text-sky-700">Custo por hectare</p><p class="mt-2 text-2xl font-semibold text-slate-900">R$ {{ '%.2f'|format(costs.cost_per_hectare) }}</p><p class="mt-1 text-sm text-slate-500">Sobre {{ '%.2f'|format(costs.total_area) }} ha de setores</p></article>
-        <article class="rounded-[1.5rem] border border-amber-100 bg-amber-50/70 p-5 shadow-sm"><p class="text-xs font-semibold uppercase tracking-[0.24em] text-amber-700">Insumos e combustível</p><p class="mt-2 text-2xl font-semibold text-slate-900">R$ {{ '%.2f'|format(costs.inputs_total + costs.fuel_total) }}</p><p class="mt-1 text-sm text-slate-500">Consumo efetivo de estoque</p></article>
-        <article class="rounded-[1.5rem] border border-slate-200 bg-slate-50 p-5 shadow-sm"><p class="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">Sem setor definido</p><p class="mt-2 text-2xl font-semibold text-slate-900">R$ {{ '%.2f'|format(costs.unallocated_total) }}</p><p class="mt-1 text-sm text-slate-500">{{ costs.unallocated_movements }} movimentação(ões) não rateada(s)</p></article>
+        <article class="rounded-[1.5rem] border border-emerald-100 bg-emerald-50/70 p-5 shadow-sm"><p class="text-xs font-semibold uppercase tracking-[0.24em] text-emerald-700">Custo alocado</p><p class="mt-2 text-2xl font-semibold text-slate-900">R$ {{ costs.allocated_total|decimal_br }}</p><p class="mt-1 text-sm text-slate-500">Vinculado a setores</p></article>
+        <article class="rounded-[1.5rem] border border-sky-100 bg-sky-50/70 p-5 shadow-sm"><p class="text-xs font-semibold uppercase tracking-[0.24em] text-sky-700">Custo por hectare</p><p class="mt-2 text-2xl font-semibold text-slate-900">R$ {{ costs.cost_per_hectare|decimal_br }}</p><p class="mt-1 text-sm text-slate-500">Sobre {{ costs.total_area|decimal_br }} ha de setores</p></article>
+        <article class="rounded-[1.5rem] border border-amber-100 bg-amber-50/70 p-5 shadow-sm"><p class="text-xs font-semibold uppercase tracking-[0.24em] text-amber-700">Insumos e combustível</p><p class="mt-2 text-2xl font-semibold text-slate-900">R$ {{ (costs.inputs_total + costs.fuel_total)|decimal_br }}</p><p class="mt-1 text-sm text-slate-500">Consumo efetivo de estoque</p></article>
+        <article class="rounded-[1.5rem] border border-slate-200 bg-slate-50 p-5 shadow-sm"><p class="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">Sem setor definido</p><p class="mt-2 text-2xl font-semibold text-slate-900">R$ {{ costs.unallocated_total|decimal_br }}</p><p class="mt-1 text-sm text-slate-500">{{ costs.unallocated_movements }} movimentação(ões) não rateada(s)</p></article>
     </section>
 
     <section class="stock-panel overflow-hidden rounded-[2rem] bg-white p-5 shadow-panel" data-stock-fade-panel>
         <div class="mb-5 flex flex-wrap items-end justify-between gap-3">
             <div><p class="text-xs uppercase tracking-[0.35em] text-slate-400">Setores</p><h3 class="mt-2 text-2xl font-semibold text-slate-900">Composição dos custos</h3></div>
-            <p class="text-sm text-slate-500">Total analisado: <strong class="text-slate-800">R$ {{ '%.2f'|format(costs.total_cost) }}</strong></p>
+            <p class="text-sm text-slate-500">Total analisado: <strong class="text-slate-800">R$ {{ costs.total_cost|decimal_br }}</strong></p>
         </div>
         <div class="overflow-x-auto">
             <table class="min-w-[800px] w-full text-left text-sm">
                 <thead class="border-y border-slate-200 bg-slate-50 text-xs uppercase tracking-[0.18em] text-slate-500"><tr><th class="px-4 py-4">Setor</th><th class="px-4 py-4">Área</th><th class="px-4 py-4">Insumos</th><th class="px-4 py-4">Combustível</th><th class="px-4 py-4">Total</th><th class="px-4 py-4">R$/ha</th></tr></thead>
                 <tbody class="divide-y divide-slate-100">
                     {% for row in costs.rows %}
-                    <tr class="transition hover:bg-slate-50"><td class="border-l-4 border-emerald-200 px-4 py-4"><a href="/setores?view_id={{ row.plot.id }}" class="font-semibold text-slate-900 hover:text-brand-700">{{ row.plot.name }}</a><p class="mt-1 text-xs text-slate-500">{{ row.stock_movements }} saída(s) · {{ row.applications }} aplicação(ões)</p></td><td class="px-4 py-4 text-slate-600">{{ '%.2f'|format(row.area_hectares) }} ha</td><td class="px-4 py-4">R$ {{ '%.2f'|format(row.inputs_cost) }}</td><td class="px-4 py-4">R$ {{ '%.2f'|format(row.fuel_cost) }}</td><td class="px-4 py-4 font-semibold text-slate-900">R$ {{ '%.2f'|format(row.total_cost) }}</td><td class="px-4 py-4 font-semibold text-brand-700">R$ {{ '%.2f'|format(row.cost_per_hectare) }}</td></tr>
+                    <tr class="transition hover:bg-slate-50"><td class="border-l-4 border-emerald-200 px-4 py-4"><a href="/setores?view_id={{ row.plot.id }}" class="font-semibold text-slate-900 hover:text-brand-700">{{ row.plot.name }}</a><p class="mt-1 text-xs text-slate-500">{{ row.stock_movements }} saída(s) · {{ row.applications }} aplicação(ões)</p></td><td class="px-4 py-4 text-slate-600">{{ row.area_hectares|decimal_br }} ha</td><td class="px-4 py-4">R$ {{ row.inputs_cost|decimal_br }}</td><td class="px-4 py-4">R$ {{ row.fuel_cost|decimal_br }}</td><td class="px-4 py-4 font-semibold text-slate-900">R$ {{ row.total_cost|decimal_br }}</td><td class="px-4 py-4 font-semibold text-brand-700">R$ {{ row.cost_per_hectare|decimal_br }}</td></tr>
                     {% else %}
                     <tr><td colspan="6" class="px-4 py-10 text-center text-slate-500">Nenhum setor encontrado no contexto ativo.</td></tr>
                     {% endfor %}
@@ -60,4 +60,56 @@
         <p class="mt-5 rounded-2xl bg-slate-50 px-4 py-3 text-sm text-slate-500">Custos de manutenção e outras despesas gerais permanecem fora deste painel até terem um vínculo explícito com setor e safra. Assim, o total por setor não recebe rateios estimados.</p>
     </section>
 </div>
+<script>
+(() => {
+    const stickyHeader = document.querySelector('.stock-page-header');
+    const headerIntro = stickyHeader?.querySelector('[data-stock-header-intro]');
+    const fadingPanels = Array.from(document.querySelectorAll('[data-stock-fade-panel]'));
+    const mobileCompactMq = window.matchMedia('(max-width: 899px)');
+    const stickyTop = () => parseFloat(getComputedStyle(stickyHeader).top) || 0;
+    let compactRaf = null;
+    const syncHeader = () => {
+        compactRaf = null;
+        if (!stickyHeader) return;
+        if (!mobileCompactMq.matches) {
+            stickyHeader.classList.remove('is-compact');
+            headerIntro?.removeAttribute('aria-hidden');
+            return;
+        }
+        const rect = stickyHeader.getBoundingClientRect();
+        const active = stickyHeader.classList.contains('is-compact');
+        const compact = rect.top <= stickyTop() + 2 ? true : rect.top > stickyTop() + 8 ? false : active;
+        stickyHeader.classList.toggle('is-compact', compact);
+        headerIntro?.setAttribute('aria-hidden', compact ? 'true' : 'false');
+    };
+    const scheduleHeader = () => {
+        if (compactRaf === null) compactRaf = window.requestAnimationFrame(syncHeader);
+    };
+    let fadeRaf = null;
+    const syncFadingPanels = () => {
+        fadeRaf = null;
+        if (!stickyHeader) return;
+        const headerBottom = stickyHeader.getBoundingClientRect().bottom;
+        fadingPanels.forEach((panel) => {
+            const rect = panel.getBoundingClientRect();
+            const overlap = Math.min(Math.max(headerBottom - rect.top, 0), rect.height);
+            const feather = Math.min(80, Math.max(22, overlap * 0.45 + 16));
+            panel.style.setProperty('--stock-fade-cutoff', `${overlap.toFixed(2)}px`);
+            panel.style.setProperty('--stock-fade-feather-end', `${(overlap + feather).toFixed(2)}px`);
+            panel.classList.toggle('stock-panel-under-header', mobileCompactMq.matches && overlap > 0.02);
+        });
+    };
+    const scheduleFadingPanels = () => {
+        if (fadeRaf === null) fadeRaf = window.requestAnimationFrame(syncFadingPanels);
+    };
+    if (!stickyHeader) return;
+    window.addEventListener('scroll', scheduleHeader, { passive: true });
+    window.addEventListener('scroll', scheduleFadingPanels, { passive: true });
+    window.addEventListener('resize', scheduleHeader);
+    window.addEventListener('resize', scheduleFadingPanels);
+    mobileCompactMq.addEventListener?.('change', scheduleHeader);
+    syncHeader();
+    syncFadingPanels();
+})();
+</script>
 {% endblock %}
