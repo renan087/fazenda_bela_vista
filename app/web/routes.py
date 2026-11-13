@@ -14656,6 +14656,9 @@ def agricultural_operations_page(
             operation_types=AGRICULTURAL_OPERATION_TYPES,
             finance_accounts=repo.list_finance_accounts(farm_id=active_farm.id) if active_farm else [],
             finance_account_default=next((item for item in repo.list_finance_accounts(farm_id=active_farm.id) if item.is_default), None) if active_farm else None,
+            finance_credit_cards=repo.list_finance_credit_cards(farm_id=active_farm.id) if active_farm else [],
+            finance_credit_card_default=next((item for item in repo.list_finance_credit_cards(farm_id=active_farm.id) if item.is_default), None) if active_farm else None,
+            finance_payment_methods=FINANCE_TRANSACTION_EXPENSE_PAYMENT_METHODS,
             today=today_in_app_timezone(),
         ),
     )
@@ -14672,6 +14675,11 @@ def create_agricultural_operation_action(
     generate_expense: bool = Form(False),
     expense_amount: str | None = Form(None),
     finance_account_id: str | None = Form(None),
+    credit_card_id: str | None = Form(None),
+    payment_condition: str | None = Form("a_vista"),
+    installment_count: str | None = Form(None),
+    installment_frequency: str | None = Form(None),
+    first_installment_date: str | None = Form(None),
     payment_method: str | None = Form("PIX"),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user_web),
@@ -14700,22 +14708,32 @@ def create_agricultural_operation_action(
         if generate_expense:
             payload = _finance_transaction_payload(
                 repo, active_farm=scope["active_farm"], operation_type="despesa", launch_date=operation_date,
-                amount=expense_amount or "", finance_account_id=finance_account_id, credit_card_id=None,
-                payment_condition="a_vista", installment_count=None, installment_frequency=None,
-                first_installment_date=None, category=category, product_service=f"{label} · {plot.name}",
+                amount=expense_amount or "", finance_account_id=finance_account_id, credit_card_id=credit_card_id,
+                payment_condition=payment_condition, installment_count=installment_count, installment_frequency=installment_frequency,
+                first_installment_date=first_installment_date, category=category, product_service=f"{label} · {plot.name}",
                 description=notes, counterparty_name=None, document_number=None, payment_method=payment_method,
                 notes=notes, plot_id=plot.id, season_id=scope.get("active_season_id"),
             )
             transaction = repo.create(FinanceTransaction(
                 farm_id=payload["farm_id"], plot_id=payload["plot_id"], season_id=payload["season_id"],
-                finance_account_id=payload["finance_account_id"], credit_card_id=None, operation_type="despesa",
+                finance_account_id=payload["finance_account_id"], credit_card_id=payload["credit_card_id"], operation_type="despesa",
                 launch_date=payload["launch_date"], amount=payload["amount"], category=category,
                 product_service=payload["product_service"], description=payload["description"],
                 counterparty_name=None, document_number=None, payment_method=payload["payment_method"],
-                payment_condition="a_vista", installment_count=1, installment_frequency=None,
-                first_installment_date=payload["launch_date"], notes=payload["notes"],
+                payment_condition=payload["payment_condition"], installment_count=payload["installment_count"], installment_frequency=payload["installment_frequency"],
+                first_installment_date=payload["first_installment_date"], notes=payload["notes"],
                 source="Operações Agrícolas", created_at=app_now(),
             ))
+            _replace_finance_transaction_installments(
+                repo,
+                transaction,
+                _build_finance_transaction_installments(
+                    amount=payload["amount"], payment_condition=payload["payment_condition"],
+                    payment_method=payload["payment_method"], credit_card=payload["credit_card"],
+                    reference_date=payload["launch_date"], installment_count=payload["installment_count"],
+                    installment_frequency=payload["installment_frequency"], first_installment_date=payload["first_installment_date"],
+                ),
+            )
         repo.create(AgriculturalOperation(
             plot_id=plot.id, season_id=scope.get("active_season_id"),
             finance_transaction_id=transaction.id if transaction else None, operation_date=parsed_date,
