@@ -14639,6 +14639,11 @@ def sector_costs_page(
 @router.get("/operacoes")
 def agricultural_operations_page(
     request: Request,
+    plot_id_filter: str | None = None,
+    operation_type_filter: str | None = None,
+    start_date: str | None = None,
+    end_date: str | None = None,
+    edit_id: str | None = None,
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user_web),
     csrf_token: str = Depends(get_csrf_token),
@@ -14648,17 +14653,40 @@ def agricultural_operations_page(
     active_farm = scope.get("active_farm")
     plots = repo.list_plots(farm_ids=[active_farm.id]) if active_farm else []
     operations = repo.list_agricultural_operations({plot.id for plot in plots}) if plots else []
+    selected_plot_id = _int_or_none(plot_id_filter)
+    selected_operation_type = _clean_text(operation_type_filter)
+    try:
+        selected_start_date = date.fromisoformat(start_date) if start_date else None
+        selected_end_date = date.fromisoformat(end_date) if end_date else None
+    except ValueError:
+        selected_start_date = None
+        selected_end_date = None
+    if selected_plot_id:
+        operations = [item for item in operations if item.plot_id == selected_plot_id]
+    if selected_operation_type:
+        operations = [item for item in operations if item.operation_type == selected_operation_type]
+    if selected_start_date:
+        operations = [item for item in operations if item.operation_date >= selected_start_date]
+    if selected_end_date:
+        operations = [item for item in operations if item.operation_date <= selected_end_date]
+    edit_operation = repo.get_agricultural_operation(_int_or_none(edit_id)) if _int_or_none(edit_id) else None
+    if edit_operation and not _plot_matches_scope(edit_operation.plot, scope):
+        edit_operation = None
     return templates.TemplateResponse(
         "agricultural_operations.html",
         _base_context(
             request, user, csrf_token, "agricultural_operations", _repo=repo,
-            title="Operações Agrícolas", plots=plots, operations=operations,
+            title="Operações Agrícolas", plots=plots, operations=operations, edit_operation=edit_operation,
             operation_types=AGRICULTURAL_OPERATION_TYPES,
             finance_accounts=repo.list_finance_accounts(farm_id=active_farm.id) if active_farm else [],
             finance_account_default=next((item for item in repo.list_finance_accounts(farm_id=active_farm.id) if item.is_default), None) if active_farm else None,
             finance_credit_cards=repo.list_finance_credit_cards(farm_id=active_farm.id) if active_farm else [],
             finance_credit_card_default=next((item for item in repo.list_finance_credit_cards(farm_id=active_farm.id) if item.is_default), None) if active_farm else None,
             finance_payment_methods=FINANCE_TRANSACTION_EXPENSE_PAYMENT_METHODS,
+            selected_plot_id=selected_plot_id,
+            selected_operation_type=selected_operation_type,
+            selected_start_date=selected_start_date,
+            selected_end_date=selected_end_date,
             today=today_in_app_timezone(),
         ),
     )
@@ -14760,10 +14788,132 @@ def delete_agricultural_operation_action(
     if operation.finance_transaction_id:
         transaction = repo.get_finance_transaction(operation.finance_transaction_id)
         if transaction and _normalize_search_value(transaction.source) == _normalize_search_value("Operações Agrícolas"):
+            if any((item.status or "").strip().lower() == "pago" for item in (transaction.installments or [])):
+                _flash(request, "error", "Esta operação possui parcela já paga. Estorne os pagamentos em Contas antes de excluí-la.")
+                return _redirect("/operacoes")
             repo.db.delete(transaction)
             repo.db.flush()
     repo.delete(operation)
     _flash(request, "success", "Operação excluída com sucesso.")
+    return _redirect("/operacoes")
+
+
+@router.post("/operacoes/{operation_id}/editar")
+def update_agricultural_operation_action(
+    operation_id: int,
+    request: Request,
+    csrf_token: str = Form(...),
+    plot_id: int = Form(...),
+    operation_date: str = Form(...),
+    operation_type: str = Form(...),
+    notes: str | None = Form(None),
+    generate_expense: bool = Form(False),
+    expense_amount: str | None = Form(None),
+    finance_account_id: str | None = Form(None),
+    credit_card_id: str | None = Form(None),
+    payment_condition: str | None = Form("a_vista"),
+    installment_count: str | None = Form(None),
+    installment_frequency: str | None = Form(None),
+    first_installment_date: str | None = Form(None),
+    payment_method: str | None = Form("PIX"),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    validate_csrf(request, csrf_token)
+    repo = _repository(db)
+    scope, denied = _launch_scope_or_redirect(request, repo, "/operacoes")
+    if denied:
+        return denied
+    operation = repo.get_agricultural_operation(operation_id)
+    if not operation or not _plot_matches_scope(operation.plot, scope):
+        _flash(request, "error", "Operação não encontrada no contexto ativo.")
+        return _redirect("/operacoes")
+    plot = repo.get_plot(plot_id)
+    if not plot or not _plot_matches_scope(plot, scope):
+        _flash(request, "error", "Selecione um setor pertencente ao contexto ativo.")
+        return _redirect(f"/operacoes?edit_id={operation_id}")
+    operation_map = {key: (label, category) for key, label, category in AGRICULTURAL_OPERATION_TYPES}
+    if operation_type not in operation_map:
+        _flash(request, "error", "Selecione um tipo de operação válido.")
+        return _redirect(f"/operacoes?edit_id={operation_id}")
+    try:
+        parsed_date = date.fromisoformat(operation_date)
+    except ValueError:
+        _flash(request, "error", "Informe uma data válida para a operação.")
+        return _redirect(f"/operacoes?edit_id={operation_id}")
+
+    label, category = operation_map[operation_type]
+    transaction = repo.get_finance_transaction(operation.finance_transaction_id) if operation.finance_transaction_id else None
+    if transaction and transaction.farm_id != scope["active_farm"].id:
+        _flash(request, "error", "O lançamento financeiro vinculado não pertence à fazenda ativa.")
+        return _redirect("/operacoes")
+    try:
+        if generate_expense:
+            payload = _finance_transaction_payload(
+                repo, active_farm=scope["active_farm"], operation_type="despesa", launch_date=operation_date,
+                amount=expense_amount or "", finance_account_id=finance_account_id, credit_card_id=credit_card_id,
+                payment_condition=payment_condition, installment_count=installment_count, installment_frequency=installment_frequency,
+                first_installment_date=first_installment_date, category=category, product_service=f"{label} · {plot.name}",
+                description=notes, counterparty_name=None, document_number=None, payment_method=payment_method,
+                notes=notes, plot_id=plot.id, season_id=scope.get("active_season_id"),
+            )
+            if transaction:
+                prior_snapshot = _snapshot_finance_installments_for_edit(transaction)
+                _reject_finance_schedule_change_if_installment_paid(transaction, payload)
+                rows = _build_finance_transaction_installments(
+                    amount=payload["amount"], payment_condition=payload["payment_condition"],
+                    payment_method=payload["payment_method"], credit_card=payload["credit_card"],
+                    reference_date=payload["launch_date"], installment_count=payload["installment_count"],
+                    installment_frequency=payload["installment_frequency"], first_installment_date=payload["first_installment_date"],
+                )
+                _validate_installment_edit_against_prior(rows, prior_snapshot)
+                _merge_paid_installment_state_into_rows(rows, prior_snapshot)
+                for key, value in payload.items():
+                    if key != "credit_card":
+                        setattr(transaction, key, value)
+                transaction.source = "Operações Agrícolas"
+                repo.db.add(transaction)
+                repo.db.flush()
+                for installment in list(transaction.installments or []):
+                    repo.db.delete(installment)
+                repo.db.flush()
+                for row in rows:
+                    repo.db.add(FinanceTransactionInstallment(
+                        finance_transaction_id=transaction.id,
+                        installment_number=row["installment_number"], due_date=row["due_date"], amount=row["amount"],
+                        status=row["status"], paid_at=row.get("paid_at"), payment_notes=row.get("payment_notes"),
+                    ))
+            else:
+                transaction = FinanceTransaction(
+                    **{key: value for key, value in payload.items() if key != "credit_card"},
+                    source="Operações Agrícolas", created_at=app_now(),
+                )
+                repo.db.add(transaction)
+                repo.db.flush()
+                for row in _build_finance_transaction_installments(
+                    amount=payload["amount"], payment_condition=payload["payment_condition"],
+                    payment_method=payload["payment_method"], credit_card=payload["credit_card"],
+                    reference_date=payload["launch_date"], installment_count=payload["installment_count"],
+                    installment_frequency=payload["installment_frequency"], first_installment_date=payload["first_installment_date"],
+                ):
+                    repo.db.add(FinanceTransactionInstallment(
+                        finance_transaction_id=transaction.id,
+                        installment_number=row["installment_number"], due_date=row["due_date"], amount=row["amount"],
+                        status=row["status"], paid_at=row.get("paid_at"), payment_notes=row.get("payment_notes"),
+                    ))
+                operation.finance_transaction_id = transaction.id
+        operation.plot_id = plot.id
+        operation.season_id = scope.get("active_season_id")
+        operation.operation_date = parsed_date
+        operation.operation_type = label
+        operation.notes = _clean_text(notes)
+        repo.db.add(operation)
+        repo.db.commit()
+    except ValueError as exc:
+        repo.db.rollback()
+        _flash(request, "error", str(exc))
+        return _redirect(f"/operacoes?edit_id={operation_id}")
+    _flash(request, "success", "Operação atualizada com sucesso.")
     return _redirect("/operacoes")
 
 
