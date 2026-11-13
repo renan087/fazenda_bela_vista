@@ -692,6 +692,7 @@ FINANCE_TRANSACTION_EXPENSE_CATEGORIES = [
     "Outros Investimentos",
     "Outros Itens",
     "Peças de Máquinas e Equipamentos",
+    "Preparo do Solo",
     "Secagem de Grãos",
     "Seguros",
     "Sementes e Mudas",
