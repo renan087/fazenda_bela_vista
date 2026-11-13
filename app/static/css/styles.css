@@ -4592,6 +4592,28 @@ body.finance-sortable-cursor {
         pointer-events: none;
     }
 
+    /* Nesta página não há ações: preserva o título como referência durante a rolagem. */
+    .stock-page-header[data-sector-costs-header].is-compact .stock-page-header-intro {
+        grid-template-rows: 1fr;
+        opacity: 1;
+        transform: translateY(0);
+        pointer-events: auto;
+    }
+
+    [data-sector-costs-description] {
+        max-height: 4rem;
+        opacity: 1;
+        overflow: hidden;
+        transition: max-height 0.32s ease, opacity 0.22s ease, margin 0.32s ease;
+    }
+
+    .stock-page-header[data-sector-costs-header].is-compact [data-sector-costs-description] {
+        max-height: 0;
+        margin-top: 0 !important;
+        opacity: 0;
+        pointer-events: none;
+    }
+
     .purchased-modal-heading,
     .purchased-modal-subtitle {
         display: none;

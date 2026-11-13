@@ -1,12 +1,12 @@
 {% extends "base.html" %}
 {% block content %}
 <div class="stock-page-shell space-y-6">
-    <section class="stock-page-header rounded-[2rem] p-5 shadow-panel">
+    <section class="stock-page-header rounded-[2rem] p-5 shadow-panel" data-sector-costs-header>
         <div class="min-w-0 stock-page-header-intro" data-stock-header-intro>
             <div class="stock-page-header-intro-inner">
                 <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Gestão de custos</p>
                 <h2 class="stock-page-card-title mt-2">Custos por setor e safra</h2>
-                <p class="stock-page-card-subtitle">Acompanhe os custos operacionais com vínculo direto aos setores da fazenda.</p>
+                <p class="stock-page-card-subtitle" data-sector-costs-description>Acompanhe os custos operacionais com vínculo direto aos setores da fazenda.</p>
             </div>
         </div>
     </section>
@@ -63,7 +63,7 @@
 <script>
 (() => {
     const stickyHeader = document.querySelector('.stock-page-header');
-    const headerIntro = stickyHeader?.querySelector('[data-stock-header-intro]');
+    const headerDescription = stickyHeader?.querySelector('[data-sector-costs-description]');
     const fadingPanels = Array.from(document.querySelectorAll('[data-stock-fade-panel]'));
     const mobileCompactMq = window.matchMedia('(max-width: 899px)');
     const stickyTop = () => parseFloat(getComputedStyle(stickyHeader).top) || 0;
@@ -73,14 +73,14 @@
         if (!stickyHeader) return;
         if (!mobileCompactMq.matches) {
             stickyHeader.classList.remove('is-compact');
-            headerIntro?.removeAttribute('aria-hidden');
+            headerDescription?.removeAttribute('aria-hidden');
             return;
         }
         const rect = stickyHeader.getBoundingClientRect();
         const active = stickyHeader.classList.contains('is-compact');
         const compact = rect.top <= stickyTop() + 2 ? true : rect.top > stickyTop() + 8 ? false : active;
         stickyHeader.classList.toggle('is-compact', compact);
-        headerIntro?.setAttribute('aria-hidden', compact ? 'true' : 'false');
+        headerDescription?.setAttribute('aria-hidden', compact ? 'true' : 'false');
     };
     const scheduleHeader = () => {
         if (compactRaf === null) compactRaf = window.requestAnimationFrame(syncHeader);
