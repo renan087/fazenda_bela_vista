@@ -14941,8 +14941,14 @@ def update_agricultural_operation_action(
     if transaction and transaction.farm_id != scope["active_farm"].id:
         _flash(request, "error", "O lançamento financeiro vinculado não pertence à fazenda ativa.")
         return _redirect("/operacoes")
+    has_paid_installments = bool(transaction and any(
+        (item.status or "").strip().lower() == "pago" for item in (transaction.installments or [])
+    ))
     try:
-        if generate_expense:
+        if has_paid_installments:
+            if parsed_date != operation.operation_date or plot.id != operation.plot_id or label != operation.operation_type:
+                raise ValueError("Com parcela paga, data, setor e tipo da operação não podem ser alterados. Estorne os pagamentos primeiro.")
+        elif generate_expense:
             payload = _finance_transaction_payload(
                 repo, active_farm=scope["active_farm"], operation_type="despesa", launch_date=operation_date,
                 amount=expense_amount or "", finance_account_id=finance_account_id, credit_card_id=credit_card_id,
