@@ -54,6 +54,7 @@ def build_sector_cost_context(
             "stock_movements": 0,
             "applications": 0,
             "manual_expenses_cost": 0.0,
+            "details": [],
         }
 
     unallocated_cost = 0.0
@@ -76,8 +77,11 @@ def build_sector_cost_context(
         item_type = _normalized(getattr(output.input_catalog, "item_type", None))
         if item_type == "combustivel":
             row["fuel_cost"] += amount
+            category = "combustivel"
         else:
             row["inputs_cost"] += amount
+            category = "insumos"
+        row["details"].append({"category": category, "date": output.movement_date, "description": getattr(output.input_catalog, "name", None) or "Insumo", "origin": output.origin or "Estoque de insumos", "amount": amount})
         row["stock_movements"] += 1
 
     for record in fertilizations:
@@ -102,9 +106,11 @@ def build_sector_cost_context(
         row = rows.get(transaction.plot_id)
         if row is not None:
             row["manual_expenses_cost"] += _number(transaction.amount)
+            row["details"].append({"category": "operacoes", "date": transaction.launch_date, "description": transaction.product_service or transaction.category, "origin": transaction.source or "Contas", "amount": _number(transaction.amount)})
 
     sector_rows = []
     for row in rows.values():
+        row["details"].sort(key=lambda item: item["date"], reverse=True)
         total = round(row["inputs_cost"] + row["fuel_cost"] + row["manual_expenses_cost"], 2)
         area = row["area_hectares"]
         sector_rows.append(

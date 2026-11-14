@@ -50,7 +50,7 @@
                 <thead class="border-y border-slate-200 bg-slate-50 text-xs uppercase tracking-[0.18em] text-slate-500"><tr><th class="px-4 py-4">Setor</th><th class="px-4 py-4">Área</th><th class="px-4 py-4">Insumos</th><th class="px-4 py-4">Combustível</th><th class="px-4 py-4">Operações</th><th class="px-4 py-4">Total</th><th class="px-4 py-4">R$/ha</th></tr></thead>
                 <tbody class="divide-y divide-slate-100">
                     {% for row in costs.rows %}
-                    <tr class="transition hover:bg-slate-50"><td class="border-l-4 border-emerald-200 px-4 py-4"><a href="/setores?view_id={{ row.plot.id }}" class="font-semibold text-slate-900 hover:text-brand-700">{{ row.plot.name }}</a><p class="mt-1 text-xs text-slate-500">{{ row.stock_movements }} saída(s) · {{ row.applications }} aplicação(ões)</p></td><td class="px-4 py-4 text-slate-600">{{ row.area_hectares|decimal_br }} ha</td><td class="px-4 py-4">R$ {{ row.inputs_cost|decimal_br }}</td><td class="px-4 py-4">R$ {{ row.fuel_cost|decimal_br }}</td><td class="px-4 py-4">R$ {{ row.manual_expenses_cost|decimal_br }}</td><td class="px-4 py-4 font-semibold text-slate-900">R$ {{ row.total_cost|decimal_br }}</td><td class="px-4 py-4 font-semibold text-brand-700">R$ {{ row.cost_per_hectare|decimal_br }}</td></tr>
+                    <tr class="transition hover:bg-slate-50"><td class="border-l-4 border-emerald-200 px-4 py-4"><a href="/setores?view_id={{ row.plot.id }}" class="font-semibold text-slate-900 hover:text-brand-700">{{ row.plot.name }}</a><p class="mt-1 text-xs text-slate-500">{{ row.stock_movements }} saída(s) · {{ row.applications }} aplicação(ões)</p></td><td class="px-4 py-4 text-slate-600">{{ row.area_hectares|decimal_br }} ha</td><td class="px-4 py-4"><button type="button" data-cost-details="{{ row.plot.id }}" data-cost-category="insumos" class="text-left hover:text-brand-700">R$ {{ row.inputs_cost|decimal_br }}</button></td><td class="px-4 py-4"><button type="button" data-cost-details="{{ row.plot.id }}" data-cost-category="combustivel" class="text-left hover:text-brand-700">R$ {{ row.fuel_cost|decimal_br }}</button></td><td class="px-4 py-4"><button type="button" data-cost-details="{{ row.plot.id }}" data-cost-category="operacoes" class="text-left hover:text-brand-700">R$ {{ row.manual_expenses_cost|decimal_br }}</button></td><td class="px-4 py-4 font-semibold text-slate-900"><button type="button" data-cost-details="{{ row.plot.id }}" data-cost-category="todos" class="text-left hover:text-brand-700">R$ {{ row.total_cost|decimal_br }}</button></td><td class="px-4 py-4 font-semibold text-brand-700">R$ {{ row.cost_per_hectare|decimal_br }}</td></tr>
                     {% else %}
                     <tr><td colspan="7" class="px-4 py-10 text-center text-slate-500">Nenhum setor encontrado no contexto ativo.</td></tr>
                     {% endfor %}
@@ -60,6 +60,34 @@
         <p class="mt-5 rounded-2xl bg-slate-50 px-4 py-3 text-sm text-slate-500">Custos de manutenção e outras despesas gerais permanecem fora deste painel até terem um vínculo explícito com setor e safra. Assim, o total por setor não recebe rateios estimados.</p>
     </section>
 </div>
+{% for row in costs.rows %}
+<dialog id="sector-cost-details-{{ row.plot.id }}" class="app-modal w-full max-w-3xl rounded-[2rem] p-0 shadow-2xl">
+    <div class="bg-white p-6 sm:p-8">
+        <div class="flex items-start justify-between gap-4"><div><p class="text-xs uppercase tracking-[.3em] text-slate-400">Composição dos custos</p><h3 class="mt-2 text-2xl font-semibold text-slate-900">{{ row.plot.name }}</h3><p class="mt-2 text-sm text-slate-500" data-cost-details-heading></p></div><button type="button" class="modal-close-button" aria-label="Fechar" data-cost-details-close>×</button></div>
+        <div class="mt-6 max-h-[60vh] space-y-2 overflow-y-auto" data-cost-details-list>
+            {% for detail in row.details %}<article data-cost-detail-category="{{ detail.category }}" class="flex min-w-0 items-start justify-between gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4"><div class="min-w-0"><p class="break-words text-sm font-semibold text-slate-900">{{ detail.description }}</p><p class="mt-1 text-xs text-slate-500">{{ detail.date.strftime('%d/%m/%Y') }} · {{ detail.origin }}</p></div><span class="shrink-0 text-sm font-semibold text-slate-900">R$ {{ detail.amount|decimal_br }}</span></article>{% endfor %}
+            <p class="hidden py-6 text-center text-sm text-slate-500" data-cost-details-empty>Nenhum lançamento para esta categoria.</p>
+        </div>
+        <div class="mt-6 flex justify-end"><button type="button" class="rounded-2xl bg-slate-100 px-5 py-3 font-semibold text-slate-700" data-cost-details-close>Fechar</button></div>
+    </div>
+</dialog>
+{% endfor %}
+<script>
+(() => {
+    const labels = {insumos: 'Insumos', combustivel: 'Combustível', operacoes: 'Operações e despesas', todos: 'Todos os lançamentos'};
+    document.querySelectorAll('[data-cost-details]').forEach((button) => button.addEventListener('click', () => {
+        const modal = document.getElementById(`sector-cost-details-${button.dataset.costDetails}`);
+        if (!modal) return;
+        const category = button.dataset.costCategory;
+        let visible = 0;
+        modal.querySelectorAll('[data-cost-detail-category]').forEach((item) => { const show = category === 'todos' || item.dataset.costDetailCategory === category; item.hidden = !show; if (show) visible += 1; });
+        modal.querySelector('[data-cost-details-empty]').classList.toggle('hidden', visible > 0);
+        modal.querySelector('[data-cost-details-heading]').textContent = labels[category] || labels.todos;
+        modal.showModal();
+    }));
+    document.querySelectorAll('[data-cost-details-close]').forEach((button) => button.addEventListener('click', () => button.closest('dialog')?.close()));
+})();
+</script>
 <script>
 (() => {
     const stickyHeader = document.querySelector('.stock-page-header');
