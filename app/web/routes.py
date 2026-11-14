@@ -14262,6 +14262,12 @@ def input_recommendations_page(
     farm_ids, variety_ids = _scoped_plot_filters(request, scope["active_season"])
     plots = repo.list_plots(farm_ids=farm_ids, variety_ids=variety_ids)
     plot_ids = {plot.id for plot in plots}
+    edit_recommendation = repo.get_input_recommendation(edit_id) if edit_id else None
+    if edit_recommendation and not _farm_matches_scope(edit_recommendation.farm_id, scope):
+        edit_recommendation = None
+    launch_plots = _season_launch_plots(plots, scope)
+    if edit_recommendation and edit_recommendation.plot and _plot_matches_scope(edit_recommendation.plot, scope) and edit_recommendation.plot not in launch_plots:
+        launch_plots = [*launch_plots, edit_recommendation.plot]
     catalog_inputs = repo.list_input_catalog(item_type="insumo_agricola")
     purchase_entries = repo.list_purchased_inputs(include_stock_adjustments=True)
     input_stock = {
@@ -14298,11 +14304,12 @@ def input_recommendations_page(
             title="Recomendacao de Insumos",
             farms=scope["context_farms"],
             plots=plots,
+            launch_plots=launch_plots,
             inputs_catalog=catalog_inputs,
             input_stock=input_stock,
             recommendations=recommendations_pagination["items"],
             recommendations_pagination=recommendations_pagination,
-            edit_recommendation=repo.get_input_recommendation(edit_id) if edit_id else None,
+            edit_recommendation=edit_recommendation,
         ),
     )
 
@@ -14330,6 +14337,9 @@ async def create_input_recommendation_action(
     )
     if denied:
         return denied
+    if plot and not _plot_allowed_for_season_launch(plot, scope):
+        _flash(request, "error", "O setor selecionado não está vinculado à safra ativa.")
+        return _redirect("/insumos/recomendacao")
     notes = str(form.get("notes") or "") or None
     create_input_recommendation(
         repo,
@@ -14374,6 +14384,9 @@ async def update_input_recommendation_action(
     if recommendation.plot_id and not _plot_matches_scope(recommendation.plot, scope):
         _flash(request, "error", "Esta recomendacao nao pertence ao contexto ativo.")
         return _redirect_for_request(request, "/insumos/recomendacao")
+    if plot and plot.id != recommendation.plot_id and not _plot_allowed_for_season_launch(plot, scope):
+        _flash(request, "error", "O setor selecionado não está vinculado à safra ativa.")
+        return _redirect_for_request(request, "/insumos/recomendacao", edit_id=recommendation_id)
     application_name = str(form.get("application_name") or "").strip()
     items = _parse_recommendation_items(form)
     if not application_name or not items:
@@ -15337,6 +15350,12 @@ def irrigation_page(
     data = _irrigation_history_dataset(request, repo, flash_invalid=True)
     scope = data["scope"]
     plots = data["plots"]
+    edit_irrigation = repo.get_irrigation(edit_id) if edit_id else None
+    if edit_irrigation and not _plot_matches_scope(edit_irrigation.plot, scope):
+        edit_irrigation = None
+    launch_plots = _season_launch_plots(plots, scope)
+    if edit_irrigation and edit_irrigation.plot and edit_irrigation.plot not in launch_plots:
+        launch_plots = [*launch_plots, edit_irrigation.plot]
     plots_for_irrigation_filter = data["plots_for_irrigation_filter"]
     filter_start_str = data["filter_start_str"]
     filter_end_str = data["filter_end_str"]
@@ -15376,6 +15395,7 @@ def irrigation_page(
             "irrigation",
             _repo=repo,
             plots=plots,
+            launch_plots=launch_plots,
             plots_for_irrigation_filter=plots_for_irrigation_filter,
             irrigations=irrigations_pagination["items"],
             irrigations_pagination=irrigations_pagination,
@@ -15389,7 +15409,7 @@ def irrigation_page(
             selected_irrigation_plot_all=selected_irrigation_plot_all,
             irrigation_filters_active=irrigation_filters_active,
             irrigation_edit_urls=irrigation_edit_urls,
-            edit_irrigation=repo.get_irrigation(edit_id) if edit_id else None,
+            edit_irrigation=edit_irrigation,
             plot_irrigation_configs=[
                 {
                     "id": plot.id,
@@ -15402,7 +15422,7 @@ def irrigation_page(
                     "sprinkler_count": plot.sprinkler_count,
                     "sprinkler_lph": float(plot.sprinkler_liters_per_hour) if plot.sprinkler_liters_per_hour is not None else None,
                 }
-                for plot in plots
+                for plot in list({plot.id: plot for plot in [*plots, *launch_plots]}.values())
             ],
         ),
     )
@@ -15666,9 +15686,12 @@ async def create_irrigation_action(
         return _redirect("/irrigacao")
     selected_plots = []
     for plot_id in selected_plot_ids:
-        plot, _, denied = _resolve_plot_in_scope(request, repo, plot_id, "/irrigacao")
+        plot, scope, denied = _resolve_plot_in_scope(request, repo, plot_id, "/irrigacao")
         if denied:
             return denied
+        if not _plot_allowed_for_season_launch(plot, scope):
+            _flash(request, "error", "O setor selecionado não está vinculado à safra ativa.")
+            return _redirect("/irrigacao")
         selected_plots.append(plot)
     manual_volume = _float_or_none(form.get("volume_liters"))
     missing_volume_plots = [
@@ -15740,6 +15763,9 @@ def update_irrigation_action(
         return denied
     if not _plot_matches_scope(irrigation.plot, scope):
         _flash(request, "error", "Este registro de irrigacao nao pertence ao contexto ativo.")
+        return _redirect(target_url)
+    if plot.id != irrigation.plot_id and not _plot_allowed_for_season_launch(plot, scope):
+        _flash(request, "error", "O setor selecionado não está vinculado à safra ativa.")
         return _redirect(target_url)
     calculated_volume = calculate_irrigation_volume(plot, duration_minutes)
     manual_volume = _float_or_none(volume_liters)
@@ -17977,6 +18003,12 @@ def pests_page(
     start_date, end_date = _scoped_dates(scope["active_season"])
     plots = repo.list_plots(farm_ids=farm_ids, variety_ids=variety_ids)
     plot_ids = {plot.id for plot in plots}
+    edit_incident = repo.get_pest_incident(edit_id) if edit_id else None
+    if edit_incident and not _plot_matches_scope(edit_incident.plot, scope):
+        edit_incident = None
+    launch_plots = _season_launch_plots(plots, scope)
+    if edit_incident and edit_incident.plot and edit_incident.plot not in launch_plots:
+        launch_plots = [*launch_plots, edit_incident.plot]
     incidents = [
         incident
         for incident in repo.list_pest_incidents()
@@ -17997,9 +18029,10 @@ def pests_page(
             "pests",
             _repo=repo,
             plots=plots,
+            launch_plots=launch_plots,
             incidents=incidents_pagination["items"],
             incidents_pagination=incidents_pagination,
-            edit_incident=repo.get_pest_incident(edit_id) if edit_id else None,
+            edit_incident=edit_incident,
         ),
     )
 
@@ -18021,9 +18054,12 @@ def create_pest_action(
     del user
     validate_csrf(request, csrf_token)
     repo = _repository(db)
-    plot, _, denied = _resolve_plot_in_scope(request, repo, plot_id, "/pragas")
+    plot, scope, denied = _resolve_plot_in_scope(request, repo, plot_id, "/pragas")
     if denied:
         return denied
+    if not _plot_allowed_for_season_launch(plot, scope):
+        _flash(request, "error", "O setor selecionado não está vinculado à safra ativa.")
+        return _redirect("/pragas")
     create_pest_incident(
         repo,
         {
@@ -18068,6 +18104,9 @@ def update_pest_action(
     if not _plot_matches_scope(incident.plot, scope):
         _flash(request, "error", "Esta ocorrencia nao pertence ao contexto ativo.")
         return _redirect_for_request(request, "/pragas")
+    if plot.id != incident.plot_id and not _plot_allowed_for_season_launch(plot, scope):
+        _flash(request, "error", "O setor selecionado não está vinculado à safra ativa.")
+        return _redirect_for_request(request, "/pragas", edit_id=record_id)
     update_pest_incident(
         repo,
         incident,
