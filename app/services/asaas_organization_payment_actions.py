@@ -1,13 +1,14 @@
 """Operações individuais no sandbox, sem retentativas automáticas."""
 
 import httpx
+from app.services.asaas_environment import asaas_api_base, current_asaas_environment
 
 
 def execute_payment_action(*, api_key, payment_id, subscription_id, customer_id, action, payment_date=None, value=None):
     if not payment_id.startswith('pay_') or not payment_id.replace('_', '').isalnum():
         return None, 'Identificador de cobrança inválido.', False
     headers = {'access_token': api_key, 'User-Agent': 'SiSFarm/AsaasIntegration', 'Accept': 'application/json'}
-    url = f'https://api-sandbox.asaas.com/v3/payments/{payment_id}'
+    url = f'{asaas_api_base()}/v3/payments/{payment_id}'
     try:
         with httpx.Client(timeout=20.0) as client:
             response = client.get(url, headers=headers)

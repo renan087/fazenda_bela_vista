@@ -33,6 +33,7 @@ from app.services.asaas_subscriptions import (
 )
 from app.services.commercial_audit import record_commercial_event
 from app.services.organization_subscription_sync import apply_subscription_details, persist_organization_webhook
+from app.services.asaas_environment import asaas_api_key, asaas_env_name, asaas_ready
 
 logger = logging.getLogger(__name__)
 
@@ -179,7 +180,7 @@ def reconcile_organization(db, organization_id: int, api_key: str, *, full: bool
     """Concilia tudo da organizacao. Retorna a lista de pendencias que nao puderam ser resolvidas agora."""
     now = _now()
     issues: list[str] = []
-    billing = db.query(OrganizationBilling).filter_by(organization_id=organization_id, asaas_environment="sandbox").first()
+    billing = db.query(OrganizationBilling).filter_by(organization_id=organization_id, asaas_environment=asaas_env_name()).first()
     migration = db.query(OrganizationCardMigration).filter_by(organization_id=organization_id, is_open=True).with_for_update().first()
     if migration and migration.status == "revisao":
         try:
@@ -190,7 +191,7 @@ def reconcile_organization(db, organization_id: int, api_key: str, *, full: bool
         return issues
     subscriptions = db.query(OrganizationSubscription).filter(
         OrganizationSubscription.organization_id == organization_id,
-        OrganizationSubscription.environment == "sandbox",
+        OrganizationSubscription.environment == asaas_env_name(),
         or_(OrganizationSubscription.is_current.is_(True), OrganizationSubscription.id.in_(
             db.query(OrganizationSubscriptionPayment.subscription_id).filter(or_(
                 OrganizationSubscriptionPayment.operation_state.isnot(None),
@@ -228,7 +229,7 @@ def organizations_needing_reconciliation(db, now: datetime) -> list[int]:
     stale_before = now - FULL_SYNC_INTERVAL
     ids = set()
     ids.update(row[0] for row in db.query(OrganizationSubscription.organization_id).filter(
-        OrganizationSubscription.environment == "sandbox",
+        OrganizationSubscription.environment == asaas_env_name(),
         or_(
             OrganizationSubscription.status.in_(PENDING_SUBSCRIPTION_STATUSES),
             (OrganizationSubscription.is_current.is_(True)) & (OrganizationSubscription.asaas_subscription_id.isnot(None)) & (
@@ -247,9 +248,9 @@ def organizations_needing_reconciliation(db, now: datetime) -> list[int]:
 
 def _tick(limit: int = 20) -> None:
     settings = get_settings()
-    if (settings.asaas_api_base_url or "").rstrip("/") != "https://api-sandbox.asaas.com" or not (settings.asaas_api_key or "").strip():
+    if not asaas_ready(settings):
         return
-    api_key = settings.asaas_api_key.strip()
+    api_key = asaas_api_key(settings)
     with SessionLocal() as db:
         organization_ids = organizations_needing_reconciliation(db, _now())[:limit]
     for organization_id in organization_ids:

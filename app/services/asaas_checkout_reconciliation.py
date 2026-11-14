@@ -6,12 +6,13 @@ Este modulo nao cria checkout, altera assinaturas ou processa pagamentos.
 import uuid
 
 import httpx
+from app.services.asaas_environment import asaas_api_base, current_asaas_environment
 
 
 def _list_payments(client, headers, filters):
     rows = []
     for offset in range(0, 1000, 100):
-        response = client.get('https://api-sandbox.asaas.com/v3/payments', headers=headers, params={**filters, 'limit': 100, 'offset': offset})
+        response = client.get(f'{asaas_api_base()}/v3/payments', headers=headers, params={**filters, 'limit': 100, 'offset': offset})
         response.raise_for_status()
         body = response.json()
         if not isinstance(body, dict) or not isinstance(body.get('data'), list) or not isinstance(body.get('hasMore'), bool):
@@ -52,7 +53,7 @@ def find_paid_checkout_subscription(*, api_key: str, checkout_id: str, customer_
             subscription_id = candidates.pop()
             if not isinstance(subscription_id, str) or not subscription_id.startswith('sub_') or not subscription_id.replace('_', '').isalnum():
                 return None, 'Assinatura não identificada.'
-            response = client.get(f'https://api-sandbox.asaas.com/v3/subscriptions/{subscription_id}', headers=headers)
+            response = client.get(f'{asaas_api_base()}/v3/subscriptions/{subscription_id}', headers=headers)
             response.raise_for_status()
             subscription = response.json()
             if not isinstance(subscription, dict) or subscription.get('id') != subscription_id or subscription.get('customer') != customer_id or subscription.get('billingType') != 'CREDIT_CARD' or subscription.get('status') != 'ACTIVE' or subscription.get('deleted') is True:

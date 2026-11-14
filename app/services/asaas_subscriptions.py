@@ -1,6 +1,7 @@
 """Sandbox subscription creation; failures never trigger an automatic retry."""
 
 import httpx
+from app.services.asaas_environment import asaas_api_base, current_asaas_environment
 
 
 def list_customer_sandbox_subscriptions(*, api_key: str, customer_id: str) -> tuple[list[dict] | None, str | None]:
@@ -10,7 +11,7 @@ def list_customer_sandbox_subscriptions(*, api_key: str, customer_id: str) -> tu
     headers = {'access_token': api_key, 'User-Agent': 'SiSFarm/AsaasIntegration', 'Accept': 'application/json'}
     try:
         with httpx.Client(timeout=20.0) as client:
-            customer = client.get(f'https://api-sandbox.asaas.com/v3/customers/{customer_id}', headers=headers)
+            customer = client.get(f'{asaas_api_base()}/v3/customers/{customer_id}', headers=headers)
             if customer.status_code != 200:
                 return None, 'Não foi possível confirmar o cliente na conta Asaas configurada.'
             customer_data = customer.json()
@@ -18,7 +19,7 @@ def list_customer_sandbox_subscriptions(*, api_key: str, customer_id: str) -> tu
                 return None, 'Cliente Asaas indisponível ou divergente.'
             rows = []
             for offset in range(0, 1000, 100):
-                response = client.get('https://api-sandbox.asaas.com/v3/subscriptions', headers=headers, params={'customer': customer_id, 'includeDeleted': 'true', 'limit': 100, 'offset': offset})
+                response = client.get(f'{asaas_api_base()}/v3/subscriptions', headers=headers, params={'customer': customer_id, 'includeDeleted': 'true', 'limit': 100, 'offset': offset})
                 if response.status_code != 200:
                     return None, f'Não foi possível consultar as assinaturas (HTTP {response.status_code}).'
                 data = response.json()
@@ -39,7 +40,7 @@ def sandbox_subscription_is_missing(*, api_key: str, subscription_id: str) -> tu
         return None, 'Identificador de assinatura inválido.'
     try:
         with httpx.Client(timeout=20.0) as client:
-            response = client.get(f'https://api-sandbox.asaas.com/v3/subscriptions/{subscription_id}', headers={'access_token': api_key, 'User-Agent': 'SiSFarm/AsaasIntegration', 'Accept': 'application/json'})
+            response = client.get(f'{asaas_api_base()}/v3/subscriptions/{subscription_id}', headers={'access_token': api_key, 'User-Agent': 'SiSFarm/AsaasIntegration', 'Accept': 'application/json'})
         if response.status_code == 404:
             return True, None
         if response.status_code == 200:
@@ -60,7 +61,7 @@ def update_sandbox_subscription(*, api_key: str, subscription_id: str, customer_
     headers = {'access_token': api_key, 'User-Agent': 'SiSFarm/AsaasIntegration', 'Accept': 'application/json'}
     try:
         with httpx.Client(timeout=30.0) as client:
-            response = client.put(f'https://api-sandbox.asaas.com/v3/subscriptions/{subscription_id}', headers=headers, json={**payload, 'updatePendingPayments': False})
+            response = client.put(f'{asaas_api_base()}/v3/subscriptions/{subscription_id}', headers=headers, json={**payload, 'updatePendingPayments': False})
         if response.status_code != 200:
             return None, f'Asaas retornou HTTP {response.status_code}. Confira a assinatura antes de tentar novamente.'
         data = response.json()
@@ -74,7 +75,7 @@ def update_sandbox_subscription(*, api_key: str, subscription_id: str, customer_
 def manage_sandbox_subscription(*, api_key: str, subscription_id: str, action: str, next_due_date: str | None = None) -> tuple[dict | None, str | None]:
     if not subscription_id or not subscription_id.startswith('sub_') or not subscription_id.replace('_', '').isalnum() or action not in {'suspender', 'reativar', 'cancelar'}:
         return None, 'Operação ou identificador inválido.'
-    url = f'https://api-sandbox.asaas.com/v3/subscriptions/{subscription_id}'
+    url = f'{asaas_api_base()}/v3/subscriptions/{subscription_id}'
     headers = {'access_token': api_key, 'User-Agent': 'SiSFarm/AsaasIntegration', 'Accept': 'application/json'}
     try:
         with httpx.Client(timeout=20.0) as client:
@@ -105,7 +106,7 @@ def get_sandbox_subscription(*, api_key: str, subscription_id: str) -> tuple[dic
     try:
         with httpx.Client(timeout=20.0) as client:
             response = client.get(
-                f'https://api-sandbox.asaas.com/v3/subscriptions/{subscription_id}',
+                f'{asaas_api_base()}/v3/subscriptions/{subscription_id}',
                 headers={'access_token': api_key, 'User-Agent': 'SiSFarm/AsaasIntegration', 'Accept': 'application/json'},
             )
         if response.status_code != 200:
@@ -126,7 +127,7 @@ def list_sandbox_subscription_payments(*, api_key: str, subscription_id: str) ->
         with httpx.Client(timeout=20.0) as client:
             for offset in range(0, 1000, 100):
                 response = client.get(
-                    f'https://api-sandbox.asaas.com/v3/subscriptions/{subscription_id}/payments',
+                    f'{asaas_api_base()}/v3/subscriptions/{subscription_id}/payments',
                     headers={'access_token': api_key, 'User-Agent': 'SiSFarm/AsaasIntegration', 'Accept': 'application/json'},
                     params={'limit': 100, 'offset': offset},
                 )
@@ -147,7 +148,7 @@ def create_sandbox_subscription(*, api_key: str, payload: dict) -> tuple[dict | 
     try:
         with httpx.Client(timeout=30.0) as client:
             response = client.post(
-                "https://api-sandbox.asaas.com/v3/subscriptions",
+                f"{asaas_api_base()}/v3/subscriptions",
                 headers={"access_token": api_key, "User-Agent": "SiSFarm/AsaasIntegration", "Accept": "application/json"},
                 json=payload,
             )
@@ -168,7 +169,7 @@ def get_sandbox_payment(*, api_key: str, payment_id: str) -> tuple[dict | None, 
     try:
         with httpx.Client(timeout=20.0) as client:
             response = client.get(
-                f'https://api-sandbox.asaas.com/v3/payments/{payment_id}',
+                f'{asaas_api_base()}/v3/payments/{payment_id}',
                 headers={'access_token': api_key, 'User-Agent': 'SiSFarm/AsaasIntegration', 'Accept': 'application/json'},
             )
         if response.status_code == 404:
@@ -185,7 +186,7 @@ def get_sandbox_payment(*, api_key: str, payment_id: str) -> tuple[dict | None, 
 
 def _card_token_from_payment(client, headers, *, payment_id: str, customer_id: str) -> tuple[str | None, str | None]:
     """Busca o token na cobranca paga no cartao. O token nunca e gravado no SiSFarm."""
-    response = client.get(f'https://api-sandbox.asaas.com/v3/payments/{payment_id}', headers=headers)
+    response = client.get(f'{asaas_api_base()}/v3/payments/{payment_id}', headers=headers)
     if response.status_code != 200:
         return None, f'Não foi possível consultar a cobrança do cartão (HTTP {response.status_code}).'
     payment = response.json()
@@ -215,7 +216,7 @@ def switch_sandbox_subscription_to_saved_card(*, api_key: str, subscription_id: 
     if current.get('customer') != customer_id or current.get('status') != 'ACTIVE' or previous_type not in {'PIX', 'BOLETO'}:
         return None, 'A assinatura não está ativa em Pix ou boleto no Asaas.'
     headers = {'access_token': api_key, 'User-Agent': 'SiSFarm/AsaasIntegration', 'Accept': 'application/json'}
-    base = f'https://api-sandbox.asaas.com/v3/subscriptions/{subscription_id}'
+    base = f'{asaas_api_base()}/v3/subscriptions/{subscription_id}'
     try:
         with httpx.Client(timeout=30.0) as client:
             token, error = _card_token_from_payment(client, headers, payment_id=card_payment_id, customer_id=customer_id)

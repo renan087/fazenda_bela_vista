@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hmac
 import logging
 from typing import Any
 
@@ -14,6 +15,7 @@ from app.services.asaas_payment_sync import upsert_asaas_payment_row
 from app.services.organization_subscription_sync import persist_organization_webhook
 from app.models import OrganizationBilling, OrganizationCardMigration
 from app.services.subscription_reconciliation import close_card_checkout
+from app.services.asaas_environment import asaas_env_name
 
 logger = logging.getLogger(__name__)
 
@@ -42,7 +44,8 @@ async def asaas_webhook(request: Request, db: Session = Depends(get_db)):
         raise HTTPException(status_code=503, detail="Webhook não configurado no servidor")
 
     incoming = (_header_token(request) or "").strip()
-    if incoming != expected:
+    # Comparacao em tempo constante: nao revela, pelo tempo de resposta, quantos caracteres conferem.
+    if not hmac.compare_digest(incoming.encode(), expected.encode()):
         logger.warning("Webhook Asaas rejeitado: token inválido.")
         raise HTTPException(status_code=401, detail="Token inválido")
 
@@ -59,7 +62,7 @@ async def asaas_webhook(request: Request, db: Session = Depends(get_db)):
         if event in {'CHECKOUT_PAID', 'CHECKOUT_CANCELED', 'CHECKOUT_EXPIRED'} and isinstance(checkout, dict):
             migration = db.query(OrganizationCardMigration).filter_by(checkout_id=checkout.get('id')).with_for_update().first()
             if migration:
-                billing = db.query(OrganizationBilling).filter_by(organization_id=migration.organization_id, asaas_environment='sandbox').first()
+                billing = db.query(OrganizationBilling).filter_by(organization_id=migration.organization_id, asaas_environment=asaas_env_name()).first()
                 if not billing or checkout.get('customer') != billing.asaas_customer_id:
                     raise ValueError('Cliente do checkout divergente')
                 if event == 'CHECKOUT_PAID' and checkout.get('status') == 'PAID' and migration.status != 'concluido':

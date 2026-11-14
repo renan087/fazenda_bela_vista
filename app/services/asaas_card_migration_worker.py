@@ -8,6 +8,7 @@ import hashlib
 
 from app.core.config import get_settings
 from app.core.timezone import app_now
+from app.services.asaas_environment import asaas_env_name, asaas_ready
 from app.db.session import SessionLocal
 from app.models import OrganizationBilling, OrganizationCardMigration, OrganizationSubscription
 from app.services.asaas_checkout_reconciliation import find_paid_checkout_subscription
@@ -41,14 +42,14 @@ def _process_new_card_subscription(db, migration, api_key, billing):
     new_remote, next_due = _validated_checkout_subscription(api_key, migration, billing.asaas_customer_id, amount=migration.amount, cycle=migration.cycle)
     if db.query(OrganizationSubscription.id).filter_by(asaas_subscription_id=new_remote['id']).first():
         raise ValueError('Nova assinatura já vinculada; verificação manual necessária')
-    new = OrganizationSubscription(organization_id=migration.organization_id, plan_id=migration.plan_id, is_current=True, plan_name=migration.plan_name, amount=migration.amount, cycle=migration.cycle, billing_type='CREDIT_CARD', first_due_date=migration.first_due_date or next_due, next_due_date=next_due, status='criada', environment='sandbox', asaas_subscription_id=new_remote['id'], asaas_status='ACTIVE')
+    new = OrganizationSubscription(organization_id=migration.organization_id, plan_id=migration.plan_id, is_current=True, plan_name=migration.plan_name, amount=migration.amount, cycle=migration.cycle, billing_type='CREDIT_CARD', first_due_date=migration.first_due_date or next_due, next_due_date=next_due, status='criada', environment=asaas_env_name(), asaas_subscription_id=new_remote['id'], asaas_status='ACTIVE')
     db.add(new)
     db.flush()
     return new, None
 
 
 def _process_card_migration(db, migration, api_key, billing):
-    old = db.query(OrganizationSubscription).filter_by(id=migration.old_subscription_id, organization_id=migration.organization_id, is_current=True, environment='sandbox').with_for_update().first()
+    old = db.query(OrganizationSubscription).filter_by(id=migration.old_subscription_id, organization_id=migration.organization_id, is_current=True, environment=asaas_env_name()).with_for_update().first()
     if not old or not old.asaas_subscription_id:
         raise ValueError('Assinatura antiga ou cliente não identificado')
     new_remote, next_due = _validated_checkout_subscription(api_key, migration, billing.asaas_customer_id, amount=old.amount, cycle=old.cycle)
@@ -68,14 +69,14 @@ def _process_card_migration(db, migration, api_key, billing):
     old.status = 'criada'
     old.is_current = False
     db.flush()
-    new = OrganizationSubscription(organization_id=old.organization_id, plan_id=old.plan_id, is_current=True, plan_name=old.plan_name, amount=old.amount, cycle=old.cycle, billing_type='CREDIT_CARD', first_due_date=migration.first_due_date or next_due, next_due_date=next_due, status='criada', environment='sandbox', asaas_subscription_id=new_remote['id'], asaas_status='ACTIVE')
+    new = OrganizationSubscription(organization_id=old.organization_id, plan_id=old.plan_id, is_current=True, plan_name=old.plan_name, amount=old.amount, cycle=old.cycle, billing_type='CREDIT_CARD', first_due_date=migration.first_due_date or next_due, next_due_date=next_due, status='criada', environment=asaas_env_name(), asaas_subscription_id=new_remote['id'], asaas_status='ACTIVE')
     db.add(new)
     db.flush()
     return new, old
 
 
 def process_paid_card_migration(db, migration, api_key):
-    billing = db.query(OrganizationBilling).filter_by(organization_id=migration.organization_id, asaas_environment='sandbox').first()
+    billing = db.query(OrganizationBilling).filter_by(organization_id=migration.organization_id, asaas_environment=asaas_env_name()).first()
     if not billing or not billing.asaas_customer_id:
         raise ValueError('Assinatura antiga ou cliente não identificado')
     if migration.old_subscription_id is None:
@@ -104,7 +105,7 @@ def process_paid_card_migration(db, migration, api_key):
 
 def _tick():
     settings = get_settings()
-    if (settings.asaas_api_base_url or '').rstrip('/') != 'https://api-sandbox.asaas.com' or not (settings.asaas_api_key or '').strip():
+    if not asaas_ready(settings):
         return
     with SessionLocal() as db:
         migration = (db.query(OrganizationCardMigration)

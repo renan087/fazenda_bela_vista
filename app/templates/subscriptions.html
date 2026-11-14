@@ -9,7 +9,7 @@
                     <p class="stock-page-card-subtitle" data-sector-costs-description>Acompanhe planos, cobranças e histórico comercial por organização.</p>
                 </div>
             </div>
-            <span class="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-800">Ambiente de testes · Asaas sandbox</span>
+            {% set env = asaas_env() %}<span class="rounded-2xl border px-4 py-3 text-sm font-semibold {{ 'border-emerald-200 bg-emerald-50 text-emerald-800' if env.is_production else 'border-amber-200 bg-amber-50 text-amber-800' }}">{{ env.label }}</span>
         </div>
     </section>
 
@@ -60,6 +60,13 @@
         {% else %}<p class="mt-4 text-sm text-slate-500">Nenhuma organização cadastrada.</p>{% endif %}
     </section>
 
+    {% if asaas_config_error or not asaas_webhook_ready %}
+    <section class="rounded-[2rem] border border-rose-200 bg-rose-50 p-5 text-sm text-rose-900" data-asaas-config-warning>
+        <p class="font-semibold">Integração com o Asaas incompleta</p>
+        {% if asaas_config_error %}<p class="mt-1">{{ asaas_config_error }} Sem isso, nenhuma assinatura pode ser criada ou atualizada.</p>{% endif %}
+        {% if not asaas_webhook_ready %}<p class="mt-1">Configure ASAAS_WEBHOOK_TOKEN e o mesmo token no webhook do Asaas. Sem o webhook, pagamentos só são percebidos pela conciliação automática (a cada 5 minutos).</p>{% endif %}
+    </section>
+    {% endif %}
     {% if organization %}
     <section id="gerenciamento" class="scroll-mt-28 stock-panel rounded-[2rem] border border-slate-200 bg-white p-5 shadow-panel sm:p-6" data-stock-fade-panel>
         <div class="flex flex-wrap items-start justify-between gap-3"><div><p class="text-xs font-semibold uppercase tracking-[0.25em] text-slate-400">Gerenciamento comercial</p><h3 class="mt-2 text-xl font-semibold text-slate-900">{{ organization.name }}</h3><p class="mt-1 text-sm text-slate-500">Consulte a assinatura atual, as cobranças e as ações disponíveis.</p></div><span class="rounded-full px-3 py-1 text-xs font-semibold {% if billing and billing.asaas_customer_id %}bg-emerald-50 text-emerald-800{% else %}bg-amber-50 text-amber-800{% endif %}">{% if billing and billing.asaas_customer_id %}Cliente Asaas vinculado{% else %}Cliente Asaas não vinculado{% endif %}</span></div>

@@ -7,13 +7,15 @@ from urllib.parse import urlparse
 from uuid import UUID
 
 import httpx
+from app.core.config import get_settings
+from app.services.asaas_environment import app_public_base, asaas_api_base, current_asaas_environment
 
 CHECKOUT_MINUTES_TO_EXPIRE = 1440  # maximo permitido pelo Asaas (24 horas)
 _HEADERS = {'User-Agent': 'SiSFarm/AsaasIntegration', 'Accept': 'application/json'}
 
 
 def sandbox_checkout_link(checkout_id: str) -> str:
-    return f'https://sandbox.asaas.com/checkoutSession/show/{checkout_id}'
+    return f'{current_asaas_environment().web_base}/checkoutSession/show/{checkout_id}'
 
 
 def safe_asaas_link(value) -> str | None:
@@ -31,7 +33,8 @@ def create_sandbox_card_checkout_session(*, api_key, customer_id, reference, pla
     """Retorna ({'id', 'link'}, None) ou (None, erro)."""
     if not api_key or not customer_id or not customer_id.startswith('cus_') or cycle not in {'MONTHLY', 'QUARTERLY', 'SEMIANNUALLY', 'YEARLY'}:
         return None, 'Dados de checkout inválidos.'
-    if callback_base != 'https://app.sisfarm.com.br' or not callback_path.startswith('/') or callback_path.startswith('//'):
+    expected_base = app_public_base()
+    if not expected_base.startswith('https://') or callback_base != expected_base or not callback_path.startswith('/') or callback_path.startswith('//'):
         return None, 'Endereço de retorno não permitido.'
     callback = f'{callback_base}{callback_path}'
     payload = {
@@ -46,7 +49,7 @@ def create_sandbox_card_checkout_session(*, api_key, customer_id, reference, pla
     }
     try:
         with httpx.Client(timeout=60.0) as client:
-            response = client.post('https://api-sandbox.asaas.com/v3/checkouts', headers={'access_token': api_key, **_HEADERS}, json=payload)
+            response = client.post(f'{asaas_api_base()}/v3/checkouts', headers={'access_token': api_key, **_HEADERS}, json=payload)
         if response.status_code != 200:
             return None, f'Asaas retornou HTTP {response.status_code}; confira antes de tentar novamente.'
         data = response.json()
@@ -72,7 +75,7 @@ def cancel_sandbox_checkout(*, api_key: str, checkout_id: str) -> tuple[str | No
         return None, 'Identificador de checkout inválido.'
     try:
         with httpx.Client(timeout=30.0) as client:
-            response = client.post(f'https://api-sandbox.asaas.com/v3/checkouts/{checkout_id}/cancel', headers={'access_token': api_key, **_HEADERS}, json={})
+            response = client.post(f'{asaas_api_base()}/v3/checkouts/{checkout_id}/cancel', headers={'access_token': api_key, **_HEADERS}, json={})
         if response.status_code != 200:
             return None, f'O Asaas não confirmou o cancelamento (HTTP {response.status_code}).'
         data = response.json()

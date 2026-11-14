@@ -4,6 +4,7 @@ from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 
 from app.services.asaas_card_checkout import safe_asaas_link
+from app.services.asaas_environment import asaas_env_name
 from app.models import AsaasWebhookEvent, OrganizationBilling, OrganizationSubscription, OrganizationSubscriptionPayment
 
 
@@ -50,7 +51,7 @@ def persist_organization_webhook(db, body: dict) -> bool:
     remote_id = (payment or {}).get('subscription') if payment else (subscription_data or {}).get('id')
     if not remote_id:
         return False
-    subscription = db.query(OrganizationSubscription).filter_by(asaas_subscription_id=str(remote_id), environment='sandbox').with_for_update().first()
+    subscription = db.query(OrganizationSubscription).filter_by(asaas_subscription_id=str(remote_id), environment=asaas_env_name()).with_for_update().first()
     if not subscription:
         return False
     billing = db.query(OrganizationBilling).filter_by(organization_id=subscription.organization_id).first()

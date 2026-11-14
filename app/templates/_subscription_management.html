@@ -9,7 +9,7 @@
 
 {% if subscription %}
 {% set charges = subscription_payments.get(subscription.id, []) %}
-{% set can_manage = subscription.environment == 'sandbox' and subscription.status == 'criada' and subscription.asaas_status in ['ACTIVE', 'INACTIVE'] and not card_migration %}
+{% set can_manage = subscription.environment == asaas_env().name and subscription.status == 'criada' and subscription.asaas_status in ['ACTIVE', 'INACTIVE'] and not card_migration %}
 {# Cabecalho de status #}
 <div class="mt-4 rounded-2xl border border-slate-200 bg-slate-50/60 p-4 sm:p-5" data-subscription-status>
     <div class="flex flex-wrap items-start justify-between gap-4">
@@ -22,7 +22,7 @@
         </div>
         <div class="text-right">
             <p class="text-xs text-slate-500">Atualizado com o Asaas {{ subscription.last_synced_at|time_ago }}</p>
-            <form method="post" action="/organizacoes/{{ organization.id }}/assinatura-sandbox/atualizar" class="mt-1" data-busy-form>
+            <form method="post" action="/organizacoes/{{ organization.id }}/assinatura/atualizar" class="mt-1" data-busy-form>
                 <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                 <button class="rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50">Atualizar agora</button>
             </form>
@@ -74,7 +74,7 @@
             </span>
             <span class="text-xs text-slate-600">{{ payment_labels.get(charge.billing_type, charge.billing_type or '—') }}</span>
             {% set can_refund = (charge.billing_type == 'PIX' and charge.status == 'RECEIVED') or (charge.billing_type == 'CREDIT_CARD' and charge.status in ['CONFIRMED', 'RECEIVED']) %}
-            {% set has_menu = charge.invoice_url or charge.bank_slip_url or (subscription.environment == 'sandbox' and charge.operation_state is none and (is_open or can_refund)) %}
+            {% set has_menu = charge.invoice_url or charge.bank_slip_url or (subscription.environment == asaas_env().name and charge.operation_state is none and (is_open or can_refund)) %}
             <span class="justify-self-end">
                 {% if has_menu %}
                 <details class="relative" data-row-menu>
@@ -87,7 +87,7 @@
                         <a href="{{ charge.invoice_url }}" target="_blank" rel="noopener noreferrer" class="block rounded-lg px-3 py-2 text-slate-700 hover:bg-slate-50">Ver comprovante / fatura</a>
                         {% endif %}
                         {% if is_open and charge.bank_slip_url %}<a href="{{ charge.bank_slip_url }}" target="_blank" rel="noopener noreferrer" class="block rounded-lg px-3 py-2 text-slate-700 hover:bg-slate-50">Baixar boleto (PDF)</a>{% endif %}
-                        {% if subscription.environment == 'sandbox' and charge.operation_state is none %}
+                        {% if subscription.environment == asaas_env().name and charge.operation_state is none %}
                         {% if is_open %}
                         <button type="button" data-dialog-open="receive-charge-{{ charge.id }}" class="block w-full rounded-lg px-3 py-2 text-left text-slate-700 hover:bg-slate-50">Registrar pagamento recebido fora</button>
                         <button type="button" data-dialog-open="cancel-charge-{{ charge.id }}" class="block w-full rounded-lg px-3 py-2 text-left text-rose-700 hover:bg-rose-50">Cancelar cobrança</button>
@@ -135,7 +135,7 @@
 {% if can_manage %}
 {% set plan_options = available_plans if (not subscription.plan or subscription.plan in available_plans) else [subscription.plan] + available_plans %}
 <dialog id="edit-subscription-{{ organization.id }}" class="app-modal w-full max-w-xl rounded-[2rem] p-0 shadow-2xl">
-    <form method="post" action="/organizacoes/{{ organization.id }}/assinatura-sandbox/editar" class="grid gap-3 bg-white p-6" data-busy-form>
+    <form method="post" action="/organizacoes/{{ organization.id }}/assinatura/editar" class="grid gap-3 bg-white p-6" data-busy-form>
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
         <div><h3 class="text-xl font-semibold text-slate-900">Trocar plano ou forma de pagamento</h3><p class="mt-1 text-sm text-slate-500">Vale para as próximas cobranças. As já geradas continuam como estão.</p></div>
         <label><span class="mb-1 block text-sm font-medium">Plano</span><select name="plan_id" data-plan-select class="min-h-[3rem] w-full rounded-xl border-slate-200 bg-slate-50">{% for plan in plan_options %}<option value="{{ plan.id }}" data-prices='{{ plan_prices_json(plan) }}' {% if subscription.plan_id == plan.id %}selected{% endif %}>{{ plan.name }}{% if plan.version > 1 %} · v{{ plan.version }}{% endif %}{% if plan.status == 'arquivado' %} (versão contratada){% endif %}</option>{% endfor %}<option value="" {% if not subscription.plan_id %}selected{% endif %}>Personalizado (fora do catálogo)</option></select></label>
@@ -156,7 +156,7 @@
     <div class="grid gap-4 bg-white p-6">
         <div><h3 class="text-xl font-semibold text-slate-900">Mudar para cartão de crédito</h3><p class="mt-1 text-sm text-slate-500">Cobranças já geradas em {{ payment_labels.get(subscription.billing_type) }} continuam como estão.</p></div>
         {% if saved_card %}
-        <form method="post" action="/organizacoes/{{ organization.id }}/assinatura-sandbox/cartao-salvo" class="grid gap-3 rounded-2xl border-2 border-brand-500 p-4" data-busy-form>
+        <form method="post" action="/organizacoes/{{ organization.id }}/assinatura/cartao-salvo" class="grid gap-3 rounded-2xl border-2 border-brand-500 p-4" data-busy-form>
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
             <div>
                 <p class="font-semibold text-slate-900">Voltar para o cartão {{ (saved_card.card_brand ~ ' ') if saved_card.card_brand else '' }}final {{ saved_card.card_last4 or '••••' }}</p>
@@ -168,7 +168,7 @@
         <details class="rounded-2xl border border-slate-200 p-4">
             <summary class="cursor-pointer text-sm font-semibold text-slate-700">Usar outro cartão (enviar link ao cliente)</summary>
         {% endif %}
-        <form method="post" action="/organizacoes/{{ organization.id }}/assinatura-sandbox/cartao" class="grid gap-3 {% if saved_card %}mt-3{% endif %}" data-busy-form>
+        <form method="post" action="/organizacoes/{{ organization.id }}/assinatura/cartao" class="grid gap-3 {% if saved_card %}mt-3{% endif %}" data-busy-form>
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
             <p class="text-sm text-slate-600">Geramos um link do Asaas (válido por 24 horas) para o cliente cadastrar o cartão. A assinatura atual continua até o cartão ser aprovado; depois disso, ela é suspensa e a nova assinatura no cartão passa a valer.</p>
             <label><span class="mb-1 block text-sm font-medium">Primeira cobrança no cartão</span><input type="date" name="next_due_date" required min="{{ today_iso }}" value="{{ subscription.next_due_date.isoformat() if subscription.next_due_date and subscription.next_due_date.isoformat() >= today_iso else '' }}" class="min-h-[3rem] w-full rounded-xl border-slate-200 bg-slate-50"><span class="mt-1 block text-xs text-slate-500">Preenchida com a próxima cobrança atual, para manter o período.</span></label>
@@ -182,7 +182,7 @@
 
 {% if subscription.asaas_status == 'ACTIVE' %}
 <dialog id="suspend-subscription-{{ organization.id }}" class="app-modal w-full max-w-md rounded-[2rem] p-0 shadow-2xl">
-    <form method="post" action="/organizacoes/{{ organization.id }}/assinatura-sandbox/gerenciar" class="grid gap-3 bg-white p-6" data-busy-form>
+    <form method="post" action="/organizacoes/{{ organization.id }}/assinatura/gerenciar" class="grid gap-3 bg-white p-6" data-busy-form>
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="action" value="suspender">
         <h3 class="text-xl font-semibold text-slate-900">Suspender assinatura?</h3>
         <p class="text-sm text-slate-600">O Asaas deixa de gerar novas cobranças. As cobranças já geradas continuam abertas e podem ser pagas ou canceladas individualmente. Você pode reativar quando quiser.</p>
@@ -191,7 +191,7 @@
 </dialog>
 {% else %}
 <dialog id="reactivate-subscription-{{ organization.id }}" class="app-modal w-full max-w-md rounded-[2rem] p-0 shadow-2xl">
-    <form method="post" action="/organizacoes/{{ organization.id }}/assinatura-sandbox/gerenciar" class="grid gap-3 bg-white p-6" data-busy-form>
+    <form method="post" action="/organizacoes/{{ organization.id }}/assinatura/gerenciar" class="grid gap-3 bg-white p-6" data-busy-form>
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="action" value="reativar">
         <h3 class="text-xl font-semibold text-slate-900">Reativar assinatura</h3>
         <p class="text-sm text-slate-600">Escolha quando o Asaas deve gerar a próxima cobrança.</p>
@@ -202,7 +202,7 @@
 {% endif %}
 
 <dialog id="cancel-subscription-{{ organization.id }}" class="app-modal w-full max-w-md rounded-[2rem] p-0 shadow-2xl">
-    <form method="post" action="/organizacoes/{{ organization.id }}/assinatura-sandbox/gerenciar" class="grid gap-3 bg-white p-6" data-busy-form>
+    <form method="post" action="/organizacoes/{{ organization.id }}/assinatura/gerenciar" class="grid gap-3 bg-white p-6" data-busy-form>
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="action" value="cancelar">
         <h3 class="text-xl font-semibold text-rose-700">Cancelar a assinatura de {{ organization.name }}?</h3>
         <ul class="list-disc space-y-1 pl-5 text-sm text-slate-600"><li>A recorrência é encerrada definitivamente no Asaas.</li><li>Cobranças pendentes ou vencidas desta assinatura são excluídas pelo Asaas.</li><li>Cobranças pagas e o histórico continuam registrados.</li><li>Depois do cancelamento, já é possível contratar uma nova assinatura.</li></ul>
@@ -212,7 +212,7 @@
 </dialog>
 {% endif %}
 
-{% for charge in charges if subscription.environment == 'sandbox' and charge.operation_state is none %}
+{% for charge in charges if subscription.environment == asaas_env().name and charge.operation_state is none %}
 {% if charge.status in ['PENDING', 'OVERDUE'] %}
 <dialog id="receive-charge-{{ charge.id }}" class="app-modal w-full max-w-md rounded-[2rem] p-0 shadow-2xl">
     <form method="post" action="/organizacoes/{{ organization.id }}/cobrancas/{{ charge.id }}/gerenciar" class="grid gap-3 bg-white p-6" data-busy-form>
@@ -404,9 +404,10 @@
             wizard.querySelector('[data-review-billing]').textContent = billing ? billing.dataset.label : '—';
             wizard.querySelector('[data-review-due]').textContent = due.value ? due.value.split('-').reverse().join('/') : '—';
             const isCard = billing && billing.value === 'CREDIT_CARD';
-            wizard.querySelector('[data-review-note]').textContent = isCard
+            const note = wizard.querySelector('[data-review-note]');
+            note.textContent = `${note.dataset.envLabel}. ` + (isCard
                 ? 'Será gerado um link do Asaas (válido por 24 horas) para o cliente cadastrar o cartão. A assinatura é criada automaticamente após a aprovação do pagamento.'
-                : 'O Asaas cria a assinatura e gera as cobranças conforme a periodicidade. Criar a assinatura não confirma pagamento nem altera o acesso da organização.';
+                : 'O Asaas cria a assinatura e gera as cobranças conforme a periodicidade. Criar a assinatura não confirma pagamento nem altera o acesso da organização.');
         };
 
         const validStep = (number) => {

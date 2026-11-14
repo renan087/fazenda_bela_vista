@@ -55,6 +55,11 @@ class Settings(BaseSettings):
     # Asaas (assinaturas / clientes). Opcional: sem ASAAS_API_KEY o formulário só valida e exibe o JSON.
     asaas_api_key: str | None = None
     asaas_api_base_url: str = "https://api-sandbox.asaas.com"
+    # Ambiente das assinaturas: "sandbox" (testes) ou "production". Producao exige tambem
+    # ASAAS_API_BASE_URL=https://api.asaas.com, para nao ativar cobrancas reais por engano.
+    asaas_environment: str = "sandbox"
+    # Endereco publico do SiSFarm, usado no retorno do checkout do Asaas.
+    app_public_url: str = "https://app.sisfarm.com.br"
     # Token do webhook (campo "Token de autenticação" no Asaas); enviado no header asaas-access-token.
     asaas_webhook_token: str | None = None
     memory_monitor_enabled: bool = True

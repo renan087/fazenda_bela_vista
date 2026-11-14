@@ -96,6 +96,25 @@ Parametros de seguranca do 2FA:
 - `TWO_FACTOR_CODE_MINUTES`
 - `TWO_FACTOR_MAX_ATTEMPTS`
 
+## Assinaturas e Asaas
+
+O módulo de assinaturas (Configuração → Planos e Assinaturas) cobra as organizações pelo Asaas.
+
+- `ASAAS_ENVIRONMENT`: `sandbox` (padrão, testes) ou `production`.
+- `ASAAS_API_BASE_URL`: precisa corresponder ao ambiente (`https://api-sandbox.asaas.com` ou `https://api.asaas.com`). Produção só funciona com as duas variáveis coerentes, para evitar cobranças reais por engano.
+- `ASAAS_API_KEY`: chave da API do ambiente escolhido.
+- `ASAAS_WEBHOOK_TOKEN`: mesmo token configurado no webhook do Asaas (`https://<seu-domínio>/api/webhooks/asaas`).
+- `APP_PUBLIC_URL`: endereço público do SiSFarm, usado no retorno do checkout de cartão.
+
+A situação das assinaturas é conciliada automaticamente com o Asaas a cada 5 minutos (e na hora, após cada operação).
+
+### Ativar a produção
+
+1. Rode `python scripts/encerrar_assinaturas_sandbox.py` para ver o que será encerrado e, em seguida, com `--confirmar`. O histórico de testes é preservado.
+2. Configure `ASAAS_ENVIRONMENT=production`, `ASAAS_API_BASE_URL=https://api.asaas.com`, a chave e o token do webhook de produção.
+3. Vincule novamente o cliente de cada organização em Organizações e contrate as assinaturas.
+4. Para reutilizar o cartão salvo do cliente, peça ao Asaas a liberação da tokenização de cartão.
+
 ## Testes automatizados
 
 Instale dependências de desenvolvimento e execute a suíte:
