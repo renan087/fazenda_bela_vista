@@ -49,11 +49,11 @@ def persist_organization_webhook(db, body: dict) -> bool:
         if not row:
             row = OrganizationSubscriptionPayment(subscription_id=subscription.id, asaas_payment_id=resource_id, status='DESCONHECIDO')
             db.add(row)
-        if row.last_event_at == timestamp and payment.get('status') and row.status != str(payment['status']).strip().upper():
+        status = 'DELETED' if payment.get('deleted') is True or event_type == 'PAYMENT_DELETED' else str(payment.get('status') or '').strip().upper()
+        if row.last_event_at == timestamp and status and row.status != status:
             row.status = 'VERIFICAR'
             row.paid_date = None
         if row.last_event_at is None or timestamp > row.last_event_at:
-            status = str(payment.get('status') or '').strip().upper()
             if status:
                 row.status = status[:40]
             try:

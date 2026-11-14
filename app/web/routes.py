@@ -109,7 +109,7 @@ from app.services.asaas_customers import (
     find_asaas_customers_by_document,
 )
 from app.services.asaas_payment_sync import upsert_asaas_payment_row, user_owns_asaas_payment_payload
-from app.services.asaas_subscriptions import create_sandbox_subscription, list_sandbox_subscription_payments
+from app.services.asaas_subscriptions import create_sandbox_subscription, get_sandbox_subscription, list_sandbox_subscription_payments
 from app.services.organization_subscription_sync import persist_organization_webhook
 from app.services.asaas_payments import create_asaas_payment, get_asaas_payment, is_asaas_status_paid
 from app.services.agronomic_profile_suggestions import build_agronomic_profile_suggestions
@@ -9401,11 +9401,18 @@ def sync_organization_subscription_payments_action(
         _flash(request, "error", "Assinatura de sandbox não encontrada.")
         return _redirect("/organizacoes")
     started_at = app_now().replace(tzinfo=None)
+    remote_subscription, error = get_sandbox_subscription(api_key=settings.asaas_api_key.strip(), subscription_id=subscription.asaas_subscription_id)
+    if error:
+        _flash(request, "error", error)
+        return _redirect("/organizacoes")
     rows, error = list_sandbox_subscription_payments(api_key=settings.asaas_api_key.strip(), subscription_id=subscription.asaas_subscription_id)
     if error:
         _flash(request, "error", error)
         return _redirect("/organizacoes")
     try:
+        key = hashlib.sha256(f"{organization_id}:subscription:{started_at.isoformat()}".encode()).hexdigest()
+        if not persist_organization_webhook(db, {"id": f"sync-{key}", "event": "MANUAL_SYNC", "dateCreated": started_at.isoformat(), "subscription": remote_subscription}):
+            raise ValueError("Assinatura não localizada durante sincronização")
         for payment in rows:
             if not isinstance(payment, dict) or payment.get("subscription") != subscription.asaas_subscription_id or not payment.get("id"):
                 raise ValueError("Cobrança retornada não corresponde à assinatura")
@@ -9418,7 +9425,7 @@ def sync_organization_subscription_payments_action(
         logger.exception("Falha ao sincronizar cobranças da organização %s", organization_id)
         _flash(request, "error", "Não foi possível salvar a sincronização; nenhum resultado parcial foi aplicado.")
         return _redirect("/organizacoes")
-    _flash(request, "success", f"Consulta ao sandbox concluída: {len(rows)} cobrança(s) verificadas.")
+    _flash(request, "success", f"Assinatura e {len(rows)} cobrança(s) verificadas no sandbox.")
     return _redirect("/organizacoes")
 
 

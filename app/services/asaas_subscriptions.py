@@ -3,6 +3,25 @@
 import httpx
 
 
+def get_sandbox_subscription(*, api_key: str, subscription_id: str) -> tuple[dict | None, str | None]:
+    if not subscription_id or not subscription_id.startswith('sub_') or not subscription_id.replace('_', '').isalnum():
+        return None, 'Identificador de assinatura inválido.'
+    try:
+        with httpx.Client(timeout=20.0) as client:
+            response = client.get(
+                f'https://api-sandbox.asaas.com/v3/subscriptions/{subscription_id}',
+                headers={'access_token': api_key, 'User-Agent': 'SiSFarm/AsaasIntegration', 'Accept': 'application/json'},
+            )
+        if response.status_code != 200:
+            return None, f'Não foi possível consultar a assinatura (HTTP {response.status_code}).'
+        data = response.json()
+        if not isinstance(data, dict) or data.get('id') != subscription_id or not data.get('customer') or not data.get('status'):
+            return None, 'O Asaas retornou dados incompletos da assinatura.'
+        return data, None
+    except (httpx.HTTPError, ValueError):
+        return None, 'Não foi possível consultar a assinatura no Asaas.'
+
+
 def list_sandbox_subscription_payments(*, api_key: str, subscription_id: str) -> tuple[list[dict] | None, str | None]:
     if not subscription_id or not subscription_id.startswith('sub_') or not subscription_id.replace('_', '').isalnum():
         return None, 'Identificador de assinatura inválido.'
