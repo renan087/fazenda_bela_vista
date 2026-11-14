@@ -621,6 +621,7 @@ def _sync_schema() -> None:
         "ALTER TABLE organization_billing ADD COLUMN IF NOT EXISTS state VARCHAR(2)",
         "ALTER TABLE organization_billing ADD COLUMN IF NOT EXISTS asaas_environment VARCHAR(20)",
         "ALTER TABLE organization_subscriptions ADD COLUMN IF NOT EXISTS asaas_last_event_at TIMESTAMP",
+        "ALTER TABLE organization_subscriptions ADD COLUMN IF NOT EXISTS next_due_date DATE",
         "ALTER TABLE organization_subscription_payments ADD COLUMN IF NOT EXISTS billing_type VARCHAR(30)",
         "ALTER TABLE organization_subscription_payments ADD COLUMN IF NOT EXISTS operation_state VARCHAR(30)",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS organization_id INTEGER REFERENCES organizations(id) ON DELETE SET NULL",

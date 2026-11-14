@@ -3,6 +3,26 @@
 import httpx
 
 
+def update_sandbox_subscription(*, api_key: str, subscription_id: str, customer_id: str, payload: dict) -> tuple[dict | None, str | None]:
+    current, error = get_sandbox_subscription(api_key=api_key, subscription_id=subscription_id)
+    if error:
+        return None, error
+    if current.get('customer') != customer_id or current.get('status') not in {'ACTIVE', 'INACTIVE'} or current.get('billingType') not in {'PIX', 'BOLETO'}:
+        return None, 'Assinatura ou cliente divergente; confira no Asaas antes de continuar.'
+    headers = {'access_token': api_key, 'User-Agent': 'SiSFarm/AsaasIntegration', 'Accept': 'application/json'}
+    try:
+        with httpx.Client(timeout=30.0) as client:
+            response = client.put(f'https://api-sandbox.asaas.com/v3/subscriptions/{subscription_id}', headers=headers, json={**payload, 'updatePendingPayments': False})
+        if response.status_code != 200:
+            return None, f'Asaas retornou HTTP {response.status_code}. Confira a assinatura antes de tentar novamente.'
+        data = response.json()
+        if not isinstance(data, dict) or data.get('id') != subscription_id or data.get('customer') != customer_id:
+            return None, 'Resposta inconclusiva do Asaas; confira antes de tentar novamente.'
+        return data, None
+    except (httpx.HTTPError, ValueError):
+        return None, 'Resposta inconclusiva do Asaas; confira antes de tentar novamente.'
+
+
 def manage_sandbox_subscription(*, api_key: str, subscription_id: str, action: str, next_due_date: str | None = None) -> tuple[dict | None, str | None]:
     if not subscription_id or not subscription_id.startswith('sub_') or not subscription_id.replace('_', '').isalnum() or action not in {'suspender', 'reativar', 'cancelar'}:
         return None, 'Operação ou identificador inválido.'

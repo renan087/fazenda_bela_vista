@@ -109,10 +109,10 @@ from app.services.asaas_customers import (
     find_asaas_customers_by_document,
 )
 from app.services.asaas_payment_sync import upsert_asaas_payment_row, user_owns_asaas_payment_payload
-from app.services.asaas_subscriptions import create_sandbox_subscription, get_sandbox_subscription, list_sandbox_subscription_payments, manage_sandbox_subscription
+from app.services.asaas_subscriptions import create_sandbox_subscription, get_sandbox_subscription, list_sandbox_subscription_payments, manage_sandbox_subscription, update_sandbox_subscription
 from app.services.asaas_organization_payment_actions import execute_payment_action
 from app.services.commercial_audit import record_commercial_event
-from app.services.organization_subscription_sync import persist_organization_webhook
+from app.services.organization_subscription_sync import apply_subscription_details, persist_organization_webhook
 from app.services.asaas_payments import create_asaas_payment, get_asaas_payment, is_asaas_status_paid
 from app.services.agronomic_profile_suggestions import build_agronomic_profile_suggestions
 from app.services.sector_costs import build_sector_cost_context
@@ -9381,10 +9381,76 @@ def create_organization_sandbox_subscription_action(
         return _redirect("/organizacoes")
     subscription.asaas_subscription_id = result["id"].strip()
     subscription.asaas_status = str(result.get("status") or "")[:30] or None
+    apply_subscription_details(subscription, result)
     subscription.status = "criada"
     record_commercial_event(db, user=user, organization_id=organization_id, resource="assinatura", resource_id=subscription.id, action="criar", outcome="success", details={"situacao": subscription.asaas_status})
     db.commit()
     _flash(request, "success", "Assinatura criada no sandbox. A criação não confirma pagamento nem altera o acesso da organização.")
+    return _redirect("/organizacoes")
+
+
+@router.post("/organizacoes/{organization_id}/assinatura-sandbox/editar")
+def edit_organization_sandbox_subscription_action(
+    organization_id: int, request: Request, csrf_token: str = Form(...), plan_name: str = Form(...),
+    amount: str = Form(...), cycle: str = Form(...), billing_type: str = Form(...), next_due_date: str = Form(""),
+    db: Session = Depends(get_db), user: User = Depends(get_current_user_web),
+):
+    denied = _require_super_admin(request, user)
+    if denied:
+        return denied
+    validate_csrf(request, csrf_token)
+    settings = get_settings()
+    parsed = urlparse(settings.asaas_api_base_url or "")
+    if parsed.scheme != "https" or parsed.hostname != "api-sandbox.asaas.com" or parsed.port not in (None, 443) or parsed.path not in ("", "/") or parsed.query or parsed.fragment or parsed.username or not (settings.asaas_api_key or "").strip():
+        _flash(request, "error", "Configure o sandbox oficial antes de editar a assinatura.")
+        return _redirect("/organizacoes")
+    name = plan_name.strip()
+    try:
+        price = Decimal(amount.strip().replace('.', '').replace(',', '.'))
+        due = date.fromisoformat(next_due_date) if next_due_date else None
+        if not name or len(name) > 120 or not price.is_finite() or price <= 0 or price >= Decimal('10000000000') or price.as_tuple().exponent < -2 or cycle not in {'MONTHLY', 'YEARLY'} or billing_type not in {'PIX', 'BOLETO'} or (due and due < today_in_app_timezone()):
+            raise ValueError()
+    except (ValueError, InvalidOperation):
+        _flash(request, "error", "Confira plano, valor, periodicidade, forma e próximo vencimento.")
+        return _redirect("/organizacoes")
+    subscription = db.query(OrganizationSubscription).filter_by(organization_id=organization_id, environment="sandbox").first()
+    billing = db.query(OrganizationBilling).filter_by(organization_id=organization_id, asaas_environment="sandbox").first()
+    if not subscription or not billing or not billing.asaas_customer_id or not subscription.asaas_subscription_id or subscription.status != 'criada' or subscription.asaas_status not in {'ACTIVE', 'INACTIVE'} or subscription.billing_type not in {'PIX', 'BOLETO'}:
+        _flash(request, "error", "Assinatura indisponível para edição. Atualize e confira no Asaas.")
+        return _redirect("/organizacoes")
+    remote_id = subscription.asaas_subscription_id
+    customer_id = billing.asaas_customer_id
+    subscription_id = subscription.id
+    reserved = db.query(OrganizationSubscription).filter_by(id=subscription_id, status='criada', asaas_status=subscription.asaas_status).update({'status': 'revisao'}, synchronize_session=False)
+    if reserved:
+        record_commercial_event(db, user=user, organization_id=organization_id, resource='assinatura', resource_id=subscription_id, action='editar', outcome='iniciado')
+    db.commit()
+    if not reserved:
+        _flash(request, "error", "Outra operação está em andamento. Atualize a assinatura.")
+        return _redirect("/organizacoes")
+    payload = {'description': name, 'value': float(price), 'cycle': cycle, 'billingType': billing_type}
+    if due:
+        payload['nextDueDate'] = due.isoformat()
+    result, error = update_sandbox_subscription(api_key=settings.asaas_api_key.strip(), subscription_id=remote_id, customer_id=customer_id, payload=payload)
+    try:
+        if error or not result:
+            raise ValueError(error or 'Resposta ausente')
+        if result.get('description') != name or Decimal(str(result.get('value'))) != price or result.get('cycle') != cycle or result.get('billingType') != billing_type or (due and result.get('nextDueDate') != due.isoformat()):
+            raise ValueError('Asaas não confirmou todos os campos')
+        subscription = db.query(OrganizationSubscription).filter_by(id=subscription_id).with_for_update().one()
+        apply_subscription_details(subscription, result)
+        subscription.asaas_status = str(result.get('status') or subscription.asaas_status)[:30]
+        subscription.asaas_last_event_at = app_now().replace(tzinfo=None)
+        subscription.status = 'criada'
+        record_commercial_event(db, user=user, organization_id=organization_id, resource='assinatura', resource_id=subscription_id, action='editar', outcome='success', details={'valor': str(price), 'ciclo': cycle, 'forma': billing_type, 'proximo_vencimento': next_due_date or None})
+        db.commit()
+    except (ValueError, InvalidOperation, TypeError):
+        db.rollback()
+        record_commercial_event(db, user=user, organization_id=organization_id, resource='assinatura', resource_id=subscription_id, action='editar', outcome='verificar')
+        db.commit()
+        _flash(request, "error", "Não foi possível confirmar a alteração. Consulte o Asaas e atualize a assinatura antes de tentar novamente.")
+        return _redirect("/organizacoes")
+    _flash(request, "success", "Assinatura atualizada no sandbox. Cobranças já geradas não foram alteradas.")
     return _redirect("/organizacoes")
 
 
@@ -9511,6 +9577,8 @@ def manage_organization_sandbox_subscription_action(
         if action != "cancelar" and (not billing or result.get("customer") != billing.asaas_customer_id):
             raise ValueError("Cliente da assinatura divergente")
         subscription.asaas_status = "DELETED" if action == "cancelar" else result["status"]
+        if action == "reativar":
+            subscription.next_due_date = due
         subscription.asaas_last_event_at = app_now().replace(tzinfo=None)
         subscription.status = "criada"
         record_commercial_event(db, user=user, organization_id=organization_id, resource="assinatura", resource_id=subscription.id, action=action, outcome="success", details={"situacao": subscription.asaas_status})
@@ -9555,6 +9623,9 @@ def sync_organization_subscription_payments_action(
         key = hashlib.sha256(f"{organization_id}:subscription:{started_at.isoformat()}".encode()).hexdigest()
         if not persist_organization_webhook(db, {"id": f"sync-{key}", "event": "MANUAL_SYNC", "dateCreated": started_at.isoformat(), "subscription": remote_subscription}):
             raise ValueError("Assinatura não localizada durante sincronização")
+        if subscription.status == 'revisao' and any(remote_subscription.get(field) is None for field in ('description', 'value', 'cycle', 'billingType', 'nextDueDate')):
+            raise ValueError('Dados insuficientes para reconciliar uma operação pendente')
+        apply_subscription_details(subscription, remote_subscription)
         for payment in rows:
             if not isinstance(payment, dict) or payment.get("subscription") != subscription.asaas_subscription_id or not payment.get("id"):
                 raise ValueError("Cobrança retornada não corresponde à assinatura")

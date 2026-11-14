@@ -17,6 +17,7 @@ class OrganizationSubscription(Base):
     cycle: Mapped[str] = mapped_column(String(20), nullable=False)
     billing_type: Mapped[str] = mapped_column(String(20), nullable=False)
     first_due_date: Mapped[date] = mapped_column(Date, nullable=False)
+    next_due_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     status: Mapped[str] = mapped_column(String(30), nullable=False, default="criando")
     asaas_subscription_id: Mapped[str | None] = mapped_column(String(80), nullable=True, unique=True)
     asaas_status: Mapped[str | None] = mapped_column(String(30), nullable=True)

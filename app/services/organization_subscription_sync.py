@@ -20,6 +20,29 @@ def _date(raw):
         return None
 
 
+def apply_subscription_details(subscription, data):
+    """Apply only valid fields actually returned by the authoritative API."""
+    if data.get('description'):
+        subscription.plan_name = str(data['description'])[:120]
+    if data.get('value') is not None:
+        try:
+            amount = Decimal(str(data['value']))
+            if not amount.is_finite() or amount <= 0 or amount >= Decimal('10000000000'):
+                raise ValueError('Valor inválido')
+            subscription.amount = amount.quantize(Decimal('0.01'))
+        except (InvalidOperation, ValueError):
+            raise ValueError('Valor da assinatura inválido')
+    if data.get('cycle') in {'MONTHLY', 'YEARLY'}:
+        subscription.cycle = data['cycle']
+    if data.get('billingType') in {'PIX', 'BOLETO'}:
+        subscription.billing_type = data['billingType']
+    if data.get('nextDueDate'):
+        due = _date(data['nextDueDate'])
+        if not due:
+            raise ValueError('Próximo vencimento inválido')
+        subscription.next_due_date = due
+
+
 def persist_organization_webhook(db, body: dict) -> bool:
     payment = body.get('payment') if isinstance(body.get('payment'), dict) else None
     subscription_data = body.get('subscription') if isinstance(body.get('subscription'), dict) else None

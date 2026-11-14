@@ -54,3 +54,54 @@ def test_uncertain_creation_is_not_retried(monkeypatch):
         routes.create_organization_sandbox_subscription_action(**args)
         assert db.query(OrganizationSubscription).one().status == 'revisao'
         assert len(calls) == 1
+
+
+def test_edit_subscription_updates_only_after_confirmation(monkeypatch):
+    engine = create_engine('sqlite:///:memory:')
+    Base.metadata.create_all(engine)
+    monkeypatch.setattr(routes, '_require_super_admin', lambda *args: None)
+    monkeypatch.setattr(routes, 'validate_csrf', lambda *args: None)
+    monkeypatch.setattr(routes, '_flash', lambda *args: None)
+    monkeypatch.setattr(routes, 'get_settings', lambda: SimpleNamespace(asaas_api_base_url='https://api-sandbox.asaas.com', asaas_api_key='key'))
+    calls = []
+    def update(**kwargs):
+        calls.append(kwargs)
+        return {'id': 'sub_test', 'customer': 'cus_test', 'status': 'ACTIVE', **kwargs['payload']}, None
+    monkeypatch.setattr(routes, 'update_sandbox_subscription', update)
+    with Session(engine) as db:
+        from datetime import date
+        from decimal import Decimal
+        org = Organization(name='Teste', slug='edicao', is_active=True)
+        db.add(org); db.flush()
+        db.add(OrganizationBilling(organization_id=org.id, contact_name='Pessoa', contact_email='a@example.com', asaas_customer_id='cus_test', asaas_environment='sandbox'))
+        db.add(OrganizationSubscription(organization_id=org.id, plan_name='Antigo', amount=Decimal('99.90'), cycle='MONTHLY', billing_type='PIX', first_due_date=date(2026, 1, 1), status='criada', environment='sandbox', asaas_subscription_id='sub_test', asaas_status='ACTIVE'))
+        db.commit()
+        args = dict(organization_id=org.id, request=SimpleNamespace(), csrf_token='x', plan_name='Novo', amount='120,50', cycle='YEARLY', billing_type='BOLETO', next_due_date='2099-01-01', db=db, user=SimpleNamespace())
+        routes.edit_organization_sandbox_subscription_action(**args)
+        row = db.query(OrganizationSubscription).one()
+        assert row.plan_name == 'Novo' and row.amount == Decimal('120.50')
+        assert row.next_due_date == date(2099, 1, 1) and row.status == 'criada'
+        assert calls[0]['payload']['billingType'] == 'BOLETO'
+        monkeypatch.setattr(routes, 'update_sandbox_subscription', lambda **kwargs: (None, 'timeout'))
+        routes.edit_organization_sandbox_subscription_action(**args)
+        assert row.status == 'revisao' and row.plan_name == 'Novo'
+
+
+def test_edit_sends_no_pending_payment_update(monkeypatch):
+    from app.services import asaas_subscriptions as service
+    monkeypatch.setattr(service, 'get_sandbox_subscription', lambda **kwargs: ({'id': 'sub_test', 'customer': 'cus_test', 'status': 'ACTIVE', 'billingType': 'PIX'}, None))
+    calls = []
+    class Response:
+        status_code = 200
+        def json(self): return {'id': 'sub_test', 'customer': 'cus_test'}
+    class Client:
+        def __init__(self, **kwargs): pass
+        def __enter__(self): return self
+        def __exit__(self, *args): pass
+        def put(self, url, **kwargs):
+            calls.append(kwargs['json'])
+            return Response()
+    monkeypatch.setattr(service.httpx, 'Client', Client)
+    data, error = service.update_sandbox_subscription(api_key='key', subscription_id='sub_test', customer_id='cus_test', payload={'description': 'Plano', 'updatePendingPayments': True})
+    assert data and not error
+    assert calls[0]['updatePendingPayments'] is False
