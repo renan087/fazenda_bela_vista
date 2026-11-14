@@ -38,3 +38,19 @@ def test_subscription_page_requires_super_admin(monkeypatch):
     monkeypatch.setattr(routes, '_require_super_admin', lambda *args: 'acesso negado')
     result = routes.subscriptions_page(request=SimpleNamespace(), organizacao=None, db=SimpleNamespace(), user=SimpleNamespace(), csrf_token='token')
     assert result == 'acesso negado'
+
+
+def test_subscription_page_shows_portfolio_without_selection(monkeypatch):
+    engine = create_engine('sqlite:///:memory:')
+    Base.metadata.create_all(engine)
+    monkeypatch.setattr(routes, '_require_super_admin', lambda *args: None)
+    monkeypatch.setattr(routes, '_base_context', lambda *args, **kwargs: kwargs)
+    monkeypatch.setattr(routes.templates, 'TemplateResponse', lambda name, context: (name, context))
+    with Session(engine) as db:
+        first = Organization(name='Primeira', slug='primeira', is_active=True)
+        second = Organization(name='Segunda', slug='segunda', is_active=True)
+        db.add_all([first, second]); db.commit()
+        monkeypatch.setattr(routes, '_repository', lambda _db: SimpleNamespace(list_organizations=lambda: [first, second]))
+        _, context = routes.subscriptions_page(request=SimpleNamespace(), organizacao=None, db=db, user=SimpleNamespace(), csrf_token='token')
+        assert context['organization'] is None
+        assert [row.organization.id for row in context['portfolio'].rows] == [first.id, second.id]

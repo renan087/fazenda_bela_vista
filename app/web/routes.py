@@ -117,6 +117,7 @@ from app.services.commercial_audit import record_commercial_event
 from app.services.organization_subscription_sync import apply_subscription_details, persist_organization_webhook
 from app.services.asaas_payments import create_asaas_payment, get_asaas_payment, is_asaas_status_paid
 from app.services.agronomic_profile_suggestions import build_agronomic_profile_suggestions
+from app.services.subscription_portfolio import SITUATION_LABELS, build_subscription_portfolio
 from app.services.sector_costs import build_sector_cost_context
 from app.services.harvest_scope import harvest_matches_season
 from app.services.backup_service import (
@@ -9201,7 +9202,8 @@ def subscriptions_page(
         return denied
     repo = _repository(db)
     organizations = repo.list_organizations()
-    organization = next((item for item in organizations if item.id == organizacao), None) if organizacao is not None else (organizations[0] if organizations else None)
+    portfolio = build_subscription_portfolio(db, organizations, today_in_app_timezone())
+    organization = next((item for item in organizations if item.id == organizacao), None) if organizacao is not None else None
     if organizacao is not None and not organization:
         raise HTTPException(status_code=404, detail="Organização não encontrada")
     billing = None
@@ -9228,7 +9230,7 @@ def subscriptions_page(
         request, user, csrf_token, "subscriptions", title="Assinaturas", organizations=organizations,
         organization=organization, billing=billing, subscriptions_by_organization=current,
         card_migrations_by_organization=migrations, previous_subscriptions_by_organization=previous,
-        subscription_payments=payments, _repo=repo,
+        subscription_payments=payments, portfolio=portfolio, situation_labels=SITUATION_LABELS, _repo=repo,
     ))
 
 

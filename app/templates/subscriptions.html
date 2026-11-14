@@ -13,6 +13,41 @@
         </div>
     </section>
 
+    <section class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4" data-stock-fade-panel data-subscription-portfolio-kpis>
+        <article class="rounded-[1.5rem] border border-emerald-100 bg-emerald-50/70 p-5 shadow-sm"><p class="text-xs font-semibold uppercase tracking-[0.24em] text-emerald-700">Receita recorrente</p><p class="mt-2 text-2xl font-semibold text-slate-900">R$ {{ portfolio.monthly_recurring_revenue|decimal_br }}</p><p class="mt-1 text-sm text-slate-500">Por mês, assinaturas ativas (anuais ÷ 12)</p></article>
+        <article class="rounded-[1.5rem] border border-sky-100 bg-sky-50/70 p-5 shadow-sm"><p class="text-xs font-semibold uppercase tracking-[0.24em] text-sky-700">Assinaturas ativas</p><p class="mt-2 text-2xl font-semibold text-slate-900">{{ portfolio.active_count }}</p><p class="mt-1 text-sm text-slate-500">De {{ portfolio.rows|length }} organização(ões)</p></article>
+        <article class="rounded-[1.5rem] border border-rose-100 bg-rose-50/70 p-5 shadow-sm"><p class="text-xs font-semibold uppercase tracking-[0.24em] text-rose-700">Em atraso</p><p class="mt-2 text-2xl font-semibold text-slate-900">R$ {{ portfolio.overdue_total|decimal_br }}</p><p class="mt-1 text-sm text-slate-500">{{ portfolio.delinquent_count }} organização(ões) inadimplente(s)</p></article>
+        <article class="rounded-[1.5rem] border border-slate-200 bg-slate-50 p-5 shadow-sm"><p class="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">Atenção</p><p class="mt-2 text-2xl font-semibold text-slate-900">{{ portfolio.review_count }}</p><p class="mt-1 text-sm text-slate-500">A conferir no Asaas · {{ portfolio.without_subscription_count }} sem assinatura</p></article>
+    </section>
+
+    <section class="stock-panel overflow-hidden rounded-[2rem] border border-slate-200 bg-white p-5 shadow-panel sm:p-6" data-stock-fade-panel>
+        <div class="mb-4 flex flex-wrap items-end justify-between gap-3">
+            <div><p class="text-xs font-semibold uppercase tracking-[0.25em] text-slate-400">Carteira</p><h3 class="mt-2 text-xl font-semibold text-slate-900">Panorama das assinaturas</h3><p class="mt-1 text-sm text-slate-500">Dados da última sincronização com o Asaas. Organizações que exigem atenção aparecem primeiro.</p></div>
+        </div>
+        {% set situation_styles = {'verificar': 'bg-amber-50 text-amber-800', 'inadimplente': 'bg-rose-50 text-rose-700', 'suspensa': 'bg-slate-100 text-slate-700', 'sem_assinatura': 'bg-slate-100 text-slate-600', 'sem_cliente': 'bg-slate-100 text-slate-500', 'ativa': 'bg-emerald-50 text-emerald-800', 'outra': 'bg-slate-100 text-slate-600'} %}
+        {% set cycle_labels = {'MONTHLY': 'mês', 'YEARLY': 'ano'} %}
+        {% set portfolio_payment_labels = {'PIX': 'Pix', 'BOLETO': 'Boleto', 'CREDIT_CARD': 'Cartão'} %}
+        <div class="overflow-x-auto">
+            <table class="min-w-[860px] w-full text-left text-sm">
+                <thead class="border-y border-slate-200 bg-slate-50 text-xs uppercase tracking-[0.18em] text-slate-500"><tr><th class="px-4 py-3">Organização</th><th class="px-4 py-3">Situação</th><th class="px-4 py-3">Plano</th><th class="px-4 py-3">Valor</th><th class="px-4 py-3">Próximo vencimento</th><th class="px-4 py-3">Em atraso</th></tr></thead>
+                <tbody class="divide-y divide-slate-100">
+                    {% for row in portfolio.rows %}
+                    <tr class="transition hover:bg-slate-50 {% if organization and organization.id == row.organization.id %}bg-emerald-50/40{% endif %}">
+                        <td class="px-4 py-3"><a href="/assinaturas?organizacao={{ row.organization.id }}#gerenciamento" class="font-semibold text-slate-900 hover:text-brand-700">{{ row.organization.name }}</a>{% if not row.organization.is_active %}<p class="mt-1 text-xs text-slate-500">Organização inativa</p>{% endif %}</td>
+                        <td class="px-4 py-3"><span class="whitespace-nowrap rounded-full px-3 py-1 text-xs font-semibold {{ situation_styles[row.situation] }}">{{ row.situation_label }}</span></td>
+                        <td class="px-4 py-3 text-slate-700">{% if row.subscription %}{{ row.subscription.plan_name }}<p class="mt-1 text-xs text-slate-500">{{ portfolio_payment_labels.get(row.subscription.billing_type, row.subscription.billing_type) }}</p>{% else %}<span class="text-slate-400">—</span>{% endif %}</td>
+                        <td class="px-4 py-3 text-slate-700">{% if row.subscription %}R$ {{ row.subscription.amount|decimal_br }}/{{ cycle_labels.get(row.subscription.cycle, row.subscription.cycle) }}{% else %}<span class="text-slate-400">—</span>{% endif %}</td>
+                        <td class="px-4 py-3 text-slate-700">{% if row.subscription and row.subscription.next_due_date %}{{ row.subscription.next_due_date.strftime('%d/%m/%Y') }}{% else %}<span class="text-slate-400">—</span>{% endif %}</td>
+                        <td class="px-4 py-3">{% if row.overdue_count %}<span class="font-semibold text-rose-700">R$ {{ row.overdue_amount|decimal_br }}</span><p class="mt-1 text-xs text-slate-500">{{ row.overdue_count }} cobrança(s) · há {{ row.days_overdue }} dia(s)</p>{% else %}<span class="text-slate-400">—</span>{% endif %}</td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="6" class="px-4 py-10 text-center text-slate-500">Nenhuma organização cadastrada.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </section>
+
     <section class="stock-panel rounded-[2rem] border border-slate-200 bg-white p-5 shadow-panel sm:p-6" data-stock-fade-panel>
         <div class="flex flex-wrap items-end justify-between gap-4">
             <div><p class="text-xs font-semibold uppercase tracking-[0.25em] text-slate-400">Cliente</p><h3 class="mt-2 text-xl font-semibold text-slate-900">Selecione a organização</h3><p class="mt-1 text-sm text-slate-500">Os dados comerciais são cadastrados na página de Organizações.</p></div>
@@ -20,14 +55,14 @@
         </div>
         {% if organizations %}
         <form method="get" action="/assinaturas" class="mt-4 flex flex-wrap items-end gap-3">
-            <label class="min-w-0 flex-1"><span class="mb-1 block text-sm font-medium text-slate-700">Organização</span><select name="organizacao" class="min-h-[3rem] w-full rounded-xl border-slate-200 bg-slate-50">{% for item in organizations %}<option value="{{ item.id }}" {% if organization and organization.id == item.id %}selected{% endif %}>{{ item.name }}{% if not item.is_active %} (inativa){% endif %}</option>{% endfor %}</select></label>
+            <label class="min-w-0 flex-1"><span class="mb-1 block text-sm font-medium text-slate-700">Organização</span><select name="organizacao" required class="min-h-[3rem] w-full rounded-xl border-slate-200 bg-slate-50"><option value="" disabled {% if not organization %}selected{% endif %}>Selecione…</option>{% for item in organizations %}<option value="{{ item.id }}" {% if organization and organization.id == item.id %}selected{% endif %}>{{ item.name }}{% if not item.is_active %} (inativa){% endif %}</option>{% endfor %}</select></label>
             <button class="min-h-[3rem] rounded-xl bg-brand-500 px-5 text-sm font-semibold text-white hover:bg-brand-700">Consultar</button>
         </form>
         {% else %}<p class="mt-4 text-sm text-slate-500">Nenhuma organização cadastrada.</p>{% endif %}
     </section>
 
     {% if organization %}
-    <section class="stock-panel rounded-[2rem] border border-slate-200 bg-white p-5 shadow-panel sm:p-6" data-stock-fade-panel>
+    <section id="gerenciamento" class="scroll-mt-28 stock-panel rounded-[2rem] border border-slate-200 bg-white p-5 shadow-panel sm:p-6" data-stock-fade-panel>
         <div class="flex flex-wrap items-start justify-between gap-3"><div><p class="text-xs font-semibold uppercase tracking-[0.25em] text-slate-400">Gerenciamento comercial</p><h3 class="mt-2 text-xl font-semibold text-slate-900">{{ organization.name }}</h3><p class="mt-1 text-sm text-slate-500">Consulte a assinatura atual, as cobranças e as ações disponíveis.</p></div><span class="rounded-full px-3 py-1 text-xs font-semibold {% if billing and billing.asaas_customer_id %}bg-emerald-50 text-emerald-800{% else %}bg-amber-50 text-amber-800{% endif %}">{% if billing and billing.asaas_customer_id %}Cliente Asaas vinculado{% else %}Cliente Asaas não vinculado{% endif %}</span></div>
         {% include "_subscription_management.html" %}
     </section>
