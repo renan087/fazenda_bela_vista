@@ -13,6 +13,7 @@ from decimal import Decimal
 from sqlalchemy.orm import Session
 
 from app.services.subscription_plans import cycle_months
+from app.services.access_grants import active_grants_by_organization, is_expiring_soon
 from app.models import (
     Organization,
     OrganizationBilling,
@@ -22,9 +23,10 @@ from app.models import (
 )
 
 # Ordem de exibicao: o que exige atencao primeiro.
-SITUATION_ORDER = ("verificar", "inadimplente", "aguardando_cartao", "suspensa", "sem_assinatura", "sem_cliente", "ativa", "outra")
+SITUATION_ORDER = ("verificar", "liberada", "inadimplente", "aguardando_cartao", "suspensa", "sem_assinatura", "sem_cliente", "ativa", "outra")
 SITUATION_LABELS = {
     "verificar": "Sincronizando",
+    "liberada": "Liberada manualmente",
     "inadimplente": "Inadimplente",
     "aguardando_cartao": "Aguardando cartão",
     "suspensa": "Suspensa",
@@ -48,6 +50,8 @@ class PortfolioRow:
     oldest_overdue_due_date: date | None = None
     days_overdue: int = 0
     attention_reason: str | None = None
+    grant: object | None = None
+    grant_expiring: bool = False
 
     @property
     def situation_label(self) -> str:
@@ -63,6 +67,7 @@ class SubscriptionPortfolio:
     overdue_total: Decimal = _ZERO
     without_subscription_count: int = 0
     review_count: int = 0
+    manual_grant_count: int = 0
 
 
 def monthly_amount(subscription: OrganizationSubscription) -> Decimal:
@@ -96,6 +101,7 @@ def build_subscription_portfolio(db: Session, organizations: list[Organization],
     migration_errors = {item.organization_id: item.last_check_error for item in open_migrations if item.last_check_error}
     awaiting_card_contract = {item.organization_id for item in open_migrations if item.old_subscription_id is None and item.status != "revisao"}
 
+    grants = active_grants_by_organization(db, org_ids, today)
     overdue_by_org: dict[int, list[OrganizationSubscriptionPayment]] = defaultdict(list)
     payment_review_orgs: set[int] = set()
     if org_by_subscription:
@@ -127,9 +133,16 @@ def build_subscription_portfolio(db: Session, organizations: list[Organization],
             row.oldest_overdue_due_date = min(due_dates)
             row.days_overdue = max((today - row.oldest_overdue_due_date).days, 0)
 
-        if organization.id in open_migration_review or (subscription and (subscription.status in _PENDING_REVIEW_STATUSES or organization.id in payment_review_orgs)):
-            row.situation = "verificar"
+        needs_review = organization.id in open_migration_review or (subscription and (subscription.status in _PENDING_REVIEW_STATUSES or organization.id in payment_review_orgs))
+        if needs_review:
             row.attention_reason = (subscription.sync_issue if subscription else None) or migration_errors.get(organization.id) or "Conferência automática com o Asaas em andamento."
+        row.grant = grants.get(organization.id)
+        if row.grant:
+            # Liberacao manual prevalece para o acesso; atraso e receita continuam visiveis nos numeros.
+            row.situation = "liberada"
+            row.grant_expiring = is_expiring_soon(row.grant, today)
+        elif needs_review:
+            row.situation = "verificar"
         elif overdue:
             row.situation = "inadimplente"
         elif not subscription and organization.id in awaiting_card_contract:
@@ -154,6 +167,8 @@ def build_subscription_portfolio(db: Session, organizations: list[Organization],
             portfolio.without_subscription_count += 1
         if row.situation == "verificar":
             portfolio.review_count += 1
+        if row.grant:
+            portfolio.manual_grant_count += 1
 
     portfolio.rows.sort(key=lambda row: (SITUATION_ORDER.index(row.situation), -row.days_overdue, (row.organization.name or "").lower()))
     return portfolio

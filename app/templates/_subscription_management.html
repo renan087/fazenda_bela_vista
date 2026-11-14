@@ -7,6 +7,8 @@
 {% set subscription_labels = {'ACTIVE': 'Ativa', 'INACTIVE': 'Suspensa', 'EXPIRED': 'Expirada', 'DELETED': 'Cancelada', 'NOT_FOUND': 'Não encontrada no Asaas'} %}
 {% set situation_styles = {'verificar': 'bg-amber-50 text-amber-800 ring-amber-200', 'inadimplente': 'bg-rose-50 text-rose-700 ring-rose-200', 'aguardando_cartao': 'bg-sky-50 text-sky-700 ring-sky-200', 'suspensa': 'bg-slate-100 text-slate-700 ring-slate-200', 'ativa': 'bg-emerald-50 text-emerald-800 ring-emerald-200'} %}
 
+{% include "partials/access_grant_panel.html" %}
+
 {% if subscription %}
 {% set charges = subscription_payments.get(subscription.id, []) %}
 {% set can_manage = subscription.environment == asaas_env().name and subscription.status == 'criada' and subscription.asaas_status in ['ACTIVE', 'INACTIVE'] and not card_migration %}
@@ -118,6 +120,10 @@
     {% if charges %}
     <p class="mt-3 text-xs text-slate-400">Identificadores das cobranças</p>
     <ul class="mt-1 space-y-1 text-xs text-slate-600">{% for charge in charges %}<li><span class="font-mono">{{ charge.asaas_payment_id }}</span> · {{ charge.due_date.strftime('%d/%m/%Y') if charge.due_date else '—' }} · atualizada {{ charge.updated_at|datetime_sp if charge.updated_at else '—' }}</li>{% endfor %}</ul>
+    {% endif %}
+    {% if access_grants %}
+    <p class="mt-4 text-xs font-semibold uppercase tracking-[0.15em] text-slate-400">Liberações manuais</p>
+    <ul class="mt-1 space-y-1 text-xs text-slate-600">{% for item in access_grants %}<li>{{ item.starts_on.strftime('%d/%m/%Y') }} a {{ item.ends_on.strftime('%d/%m/%Y') }} · {{ grant_reasons.get(item.reason, item.reason) }} · {{ grant_status_label(item, today) }} · {{ item.created_by_email or '—' }}{% if item.revoke_reason %} · encerrada: {{ item.revoke_reason }}{% endif %}</li>{% endfor %}</ul>
     {% endif %}
     {% if previous_subscriptions_by_organization.get(organization.id) %}
     <p class="mt-4 text-xs font-semibold uppercase tracking-[0.15em] text-slate-400">Assinaturas anteriores</p>
@@ -280,6 +286,14 @@
         document.querySelectorAll('details[data-row-menu][open]').forEach((menu) => {
             if (!menu.contains(event.target)) menu.removeAttribute('open');
         });
+    });
+    document.addEventListener('click', (event) => {
+        const preset = event.target.closest('[data-grant-days]');
+        if (!preset) return;
+        const input = preset.closest('form').querySelector('[data-grant-end]');
+        const date = new Date();
+        date.setDate(date.getDate() + Number(preset.dataset.grantDays));
+        input.value = date.toISOString().slice(0, 10);
     });
     document.querySelectorAll('[data-busy-form]').forEach((form) => {
         form.addEventListener('submit', (event) => {

@@ -37,6 +37,7 @@ from app.models.organization import Organization
 from app.models.organization_billing import OrganizationBilling
 from app.models.organization_subscription import OrganizationSubscription
 from app.models.subscription_plan import SubscriptionPlan
+from app.models.organization_access_grant import OrganizationAccessGrant
 from app.models.organization_card_migration import OrganizationCardMigration
 from app.models.organization_subscription_payment import OrganizationSubscriptionPayment, AsaasWebhookEvent
 from app.models.password_reset_token import PasswordResetToken
@@ -63,6 +64,7 @@ __all__ = [
     "OrganizationBilling",
     "OrganizationSubscription",
     "SubscriptionPlan",
+    "OrganizationAccessGrant",
     "OrganizationCardMigration",
     "OrganizationSubscriptionPayment",
     "AsaasWebhookEvent",

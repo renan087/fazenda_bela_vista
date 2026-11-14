@@ -61,6 +61,7 @@ from app.core.timezone import app_now, format_app_datetime, get_app_timezone, to
 from app.core.user_context import persist_user_context, sync_user_context_from_preferences
 from app.db.session import get_db
 from app.models import (
+    OrganizationAccessGrant,
     SubscriptionPlan,
     AgronomicProfile,
     AgriculturalOperation,
@@ -118,6 +119,7 @@ from app.services.commercial_audit import record_commercial_event
 from app.services.organization_subscription_sync import apply_subscription_details, persist_organization_webhook
 from app.services.agronomic_profile_suggestions import build_agronomic_profile_suggestions
 from app.services.subscription_reconciliation import close_card_checkout, reconcile_organization
+from app.services.access_grants import GRANT_REASONS, MAX_GRANT_DAYS, GrantValidationError, active_grant, create_grant, default_grant_end, extend_grant, grant_status_label, is_expiring_soon, revoke_grant
 from app.services.subscription_portfolio import SITUATION_LABELS, build_subscription_portfolio, monthly_amount
 from app.services.subscription_plans import (
     CYCLE_UNIT_LABELS,
@@ -8804,7 +8806,12 @@ def subscriptions_page(
         available_plans=active_plans(db), plan_prices_of=plan_prices, today_iso=today_in_app_timezone().isoformat(),
         selected_row=next((row for row in portfolio.rows if organization and row.organization.id == organization.id), None),
         saved_card=_saved_card_charge(db, organization.id) if organization else None,
-        asaas_config_error=asaas_configuration_error(get_settings()), asaas_webhook_ready=bool((get_settings().asaas_webhook_token or '').strip()), _repo=repo,
+        asaas_config_error=asaas_configuration_error(get_settings()), asaas_webhook_ready=bool((get_settings().asaas_webhook_token or '').strip()),
+        access_grants=db.query(OrganizationAccessGrant).filter_by(organization_id=organization.id).order_by(OrganizationAccessGrant.id.desc()).all() if organization else [],
+        active_access_grant=active_grant(db, organization.id, today_in_app_timezone()) if organization else None,
+        grant_reasons=GRANT_REASONS, grant_max_iso=(today_in_app_timezone() + timedelta(days=MAX_GRANT_DAYS)).isoformat(),
+        grant_default_iso=default_grant_end(today_in_app_timezone()).isoformat(), grant_status_label=grant_status_label,
+        grant_expiring=is_expiring_soon, today=today_in_app_timezone(), _repo=repo,
     ))
 
 
@@ -8967,6 +8974,7 @@ def _customer_subscription_context(db: Session, organization: Organization) -> d
         "plan_module_labels": [module_labels[code] for code in plan_modules(plan)] if plan else [],
         "today_iso": today.isoformat(),
         "support_email": (get_settings().support_email or "").strip() or None,
+        "active_access_grant": active_grant(db, organization.id, today),
     }
 
 
@@ -9028,6 +9036,103 @@ def my_subscription_saved_card_action(request: Request, csrf_token: str = Form(.
     kind, message = _switch_to_saved_card(db, request, user, organization_id=organization.id, api_key=settings.asaas_api_key.strip(), by_customer=True)
     _flash(request, kind, message)
     return _customer_target()
+
+
+def _grant_target(organization_id: int) -> RedirectResponse:
+    return _redirect(f"/assinaturas?organizacao={organization_id}#gerenciamento")
+
+
+def _parse_form_date(value: str | None) -> date | None:
+    try:
+        return date.fromisoformat((value or "").strip())
+    except ValueError:
+        return None
+
+
+@router.post("/organizacoes/{organization_id}/liberacao")
+def create_access_grant_action(
+    organization_id: int, request: Request, csrf_token: str = Form(...), reason: str = Form(""), justification: str = Form(""),
+    ends_on: str = Form(""), plan_id: str = Form(""), confirm: str = Form(""),
+    db: Session = Depends(get_db), user: User = Depends(get_current_user_web),
+):
+    """Libera o plano manualmente (contingencia), sem alterar cobrancas."""
+    denied = _require_super_admin(request, user)
+    if denied:
+        return denied
+    validate_csrf(request, csrf_token)
+    organization = db.get(Organization, organization_id)
+    if not organization:
+        raise HTTPException(status_code=404, detail="Organização não encontrada")
+    if confirm != "1":
+        _flash(request, "error", "Confirme que a liberação não altera as cobranças no Asaas.")
+        return _grant_target(organization_id)
+    try:
+        selected_plan = int(plan_id) if (plan_id or "").strip() else None
+    except ValueError:
+        selected_plan = None
+    try:
+        grant = create_grant(db, organization_id=organization_id, reason=reason, justification=justification, ends_on=_parse_form_date(ends_on),
+                             today=today_in_app_timezone(), plan_id=selected_plan, user=user)
+    except GrantValidationError as exc:
+        db.rollback()
+        _flash(request, "error", str(exc))
+        return _grant_target(organization_id)
+    record_commercial_event(db, user=user, organization_id=organization_id, resource="liberacao", resource_id=grant.id, action="criar", outcome="success",
+                            details={"motivo": grant.reason, "justificativa": grant.justification, "inicio": grant.starts_on, "fim": grant.ends_on, "plano_id": grant.plan_id})
+    db.commit()
+    _flash(request, "success", f"Acesso liberado manualmente até {grant.ends_on.strftime('%d/%m/%Y')}. As cobranças no Asaas não foram alteradas.")
+    return _grant_target(organization_id)
+
+
+@router.post("/organizacoes/{organization_id}/liberacao/{grant_id}/prorrogar")
+def extend_access_grant_action(
+    organization_id: int, grant_id: int, request: Request, csrf_token: str = Form(...), ends_on: str = Form(""), justification: str = Form(""),
+    db: Session = Depends(get_db), user: User = Depends(get_current_user_web),
+):
+    denied = _require_super_admin(request, user)
+    if denied:
+        return denied
+    validate_csrf(request, csrf_token)
+    grant = db.query(OrganizationAccessGrant).filter_by(id=grant_id, organization_id=organization_id).with_for_update().first()
+    if not grant:
+        raise HTTPException(status_code=404, detail="Liberação não encontrada")
+    previous_end = grant.ends_on
+    try:
+        text = extend_grant(grant, ends_on=_parse_form_date(ends_on), justification=justification, today=today_in_app_timezone())
+    except GrantValidationError as exc:
+        db.rollback()
+        _flash(request, "error", str(exc))
+        return _grant_target(organization_id)
+    record_commercial_event(db, user=user, organization_id=organization_id, resource="liberacao", resource_id=grant.id, action="prorrogar", outcome="success",
+                            details={"fim_anterior": previous_end, "novo_fim": grant.ends_on, "justificativa": text})
+    db.commit()
+    _flash(request, "success", f"Liberação prorrogada até {grant.ends_on.strftime('%d/%m/%Y')}.")
+    return _grant_target(organization_id)
+
+
+@router.post("/organizacoes/{organization_id}/liberacao/{grant_id}/encerrar")
+def revoke_access_grant_action(
+    organization_id: int, grant_id: int, request: Request, csrf_token: str = Form(...), revoke_reason: str = Form(""),
+    db: Session = Depends(get_db), user: User = Depends(get_current_user_web),
+):
+    denied = _require_super_admin(request, user)
+    if denied:
+        return denied
+    validate_csrf(request, csrf_token)
+    grant = db.query(OrganizationAccessGrant).filter_by(id=grant_id, organization_id=organization_id).with_for_update().first()
+    if not grant:
+        raise HTTPException(status_code=404, detail="Liberação não encontrada")
+    try:
+        revoke_grant(grant, reason=revoke_reason, user=user)
+    except GrantValidationError as exc:
+        db.rollback()
+        _flash(request, "error", str(exc))
+        return _grant_target(organization_id)
+    record_commercial_event(db, user=user, organization_id=organization_id, resource="liberacao", resource_id=grant.id, action="encerrar", outcome="success",
+                            details={"motivo_encerramento": grant.revoke_reason, "fim_previsto": grant.ends_on})
+    db.commit()
+    _flash(request, "success", "Liberação manual encerrada. O acesso volta a depender da assinatura.")
+    return _grant_target(organization_id)
 
 
 @router.post("/organizacoes/{organization_id}/dados-comerciais")

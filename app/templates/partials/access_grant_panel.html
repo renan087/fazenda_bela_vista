@@ -1,0 +1,71 @@
+{# Liberacao manual (contingencial). Requer: organization, subscription, active_access_grant, grant_reasons, available_plans, csrf_token. #}
+{% set grant = active_access_grant %}
+<div class="mt-4" data-access-grant>
+    {% if grant %}
+    <div class="rounded-2xl border border-violet-200 bg-violet-50 p-4 text-sm text-violet-950">
+        <div class="flex flex-wrap items-start justify-between gap-3">
+            <div class="min-w-0">
+                <p class="text-xs font-semibold uppercase tracking-[0.2em] text-violet-600">Liberação manual ativa</p>
+                <p class="mt-1 text-base font-semibold">Acesso liberado até {{ grant.ends_on.strftime('%d/%m/%Y') }}{% if grant_expiring(grant, today) %} <span class="ml-1 rounded-full bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-800">termina em breve</span>{% endif %}</p>
+                <p class="mt-1">{{ grant_reasons.get(grant.reason, grant.reason) }}{% if grant.plan %} · plano {{ grant.plan.name }}{% if grant.plan.version > 1 %} v{{ grant.plan.version }}{% endif %}{% endif %}</p>
+                <p class="mt-1 text-xs text-violet-800">“{{ grant.justification }}”</p>
+                <p class="mt-1 text-xs text-violet-700">Por {{ grant.created_by_email or 'equipe SiSFarm' }} em {{ grant.created_at|datetime_sp if grant.created_at else grant.starts_on.strftime('%d/%m/%Y') }}{% if grant.extension_count %} · prorrogada {{ grant.extension_count }} vez(es){% endif %}</p>
+            </div>
+            <div class="flex flex-wrap gap-2">
+                <button type="button" data-dialog-open="extend-grant-{{ grant.id }}" class="rounded-xl bg-white px-3 py-2 text-xs font-semibold text-violet-800 ring-1 ring-violet-200 hover:bg-violet-100">Prorrogar</button>
+                <button type="button" data-dialog-open="revoke-grant-{{ grant.id }}" class="rounded-xl px-3 py-2 text-xs font-semibold text-rose-700 hover:bg-rose-50">Encerrar</button>
+            </div>
+        </div>
+        <p class="mt-3 text-xs text-violet-700">A liberação não altera cobranças no Asaas: faturas em aberto continuam devidas e aparecem para o cliente.</p>
+    </div>
+
+    <dialog id="extend-grant-{{ grant.id }}" class="app-modal w-full max-w-md rounded-[2rem] p-0 shadow-2xl">
+        <form method="post" action="/organizacoes/{{ organization.id }}/liberacao/{{ grant.id }}/prorrogar" class="grid gap-3 bg-white p-6" data-busy-form>
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <h3 class="text-xl font-semibold text-slate-900">Prorrogar liberação</h3>
+            <p class="text-sm text-slate-600">Hoje vai até {{ grant.ends_on.strftime('%d/%m/%Y') }}. Máximo de {{ 90 }} dias a partir de hoje.</p>
+            <label><span class="mb-1 block text-sm font-medium">Nova data de fim</span><input type="date" name="ends_on" required min="{{ grant.ends_on.isoformat() }}" max="{{ grant_max_iso }}" class="min-h-[3rem] w-full rounded-xl border-slate-200 bg-slate-50"></label>
+            <label><span class="mb-1 block text-sm font-medium">Justificativa da prorrogação</span><textarea name="justification" required minlength="15" maxlength="500" rows="3" class="w-full rounded-xl border-slate-200 bg-slate-50" placeholder="Ex.: Asaas ainda sem confirmar o estorno; aguardando retorno do suporte."></textarea></label>
+            <div class="mt-2 flex justify-end gap-2"><button type="button" data-dialog-close class="rounded-xl bg-slate-100 px-4 py-2.5 text-sm font-semibold text-slate-700">Voltar</button><button class="rounded-xl bg-violet-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-violet-700">Prorrogar</button></div>
+        </form>
+    </dialog>
+    <dialog id="revoke-grant-{{ grant.id }}" class="app-modal w-full max-w-md rounded-[2rem] p-0 shadow-2xl">
+        <form method="post" action="/organizacoes/{{ organization.id }}/liberacao/{{ grant.id }}/encerrar" class="grid gap-3 bg-white p-6" data-busy-form>
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <h3 class="text-xl font-semibold text-slate-900">Encerrar liberação agora?</h3>
+            <p class="text-sm text-slate-600">O acesso de {{ organization.name }} volta a depender da assinatura e dos pagamentos.</p>
+            <label><span class="mb-1 block text-sm font-medium">Motivo do encerramento</span><input name="revoke_reason" required minlength="5" maxlength="255" class="min-h-[3rem] w-full rounded-xl border-slate-200 bg-slate-50" placeholder="Ex.: pagamento regularizado"></label>
+            <div class="mt-2 flex justify-end gap-2"><button type="button" data-dialog-close class="rounded-xl bg-slate-100 px-4 py-2.5 text-sm font-semibold text-slate-700">Voltar</button><button class="rounded-xl bg-rose-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-rose-700">Encerrar liberação</button></div>
+        </form>
+    </dialog>
+    {% else %}
+    <div class="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-dashed border-slate-300 px-4 py-3 text-sm text-slate-600">
+        <p>Precisa garantir o acesso enquanto um pagamento é ajustado? Libere o plano manualmente por um período.</p>
+        <button type="button" data-dialog-open="create-grant-{{ organization.id }}" class="rounded-xl border border-violet-200 bg-white px-3 py-2 text-xs font-semibold text-violet-800 hover:bg-violet-50">Liberar acesso manualmente</button>
+    </div>
+
+    <dialog id="create-grant-{{ organization.id }}" class="app-modal w-full max-w-lg rounded-[2rem] p-0 shadow-2xl">
+        <form method="post" action="/organizacoes/{{ organization.id }}/liberacao" class="grid gap-3 bg-white p-6" data-busy-form data-grant-form>
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <div><h3 class="text-xl font-semibold text-slate-900">Liberar acesso manualmente</h3><p class="mt-1 text-sm text-slate-500">Garante o plano para {{ organization.name }} durante o período, mesmo sem pagamento confirmado.</p></div>
+            <label><span class="mb-1 block text-sm font-medium">Motivo</span><select name="reason" required class="min-h-[3rem] w-full rounded-xl border-slate-200 bg-slate-50"><option value="" selected disabled>Selecione…</option>{% for code, label in grant_reasons.items() %}<option value="{{ code }}">{{ label }}</option>{% endfor %}</select></label>
+            <label><span class="mb-1 block text-sm font-medium">Justificativa</span><textarea name="justification" required minlength="15" maxlength="500" rows="3" class="w-full rounded-xl border-slate-200 bg-slate-50" placeholder="Ex.: cobrança de novembro gerada em duplicidade pela SiSFarm; mês de bônus combinado com o cliente."></textarea><span class="mt-1 block text-xs text-slate-500">Fica registrada na auditoria e visível apenas para a equipe SiSFarm.</span></label>
+            {% if not subscription %}
+            <label><span class="mb-1 block text-sm font-medium">Plano liberado</span><select name="plan_id" required class="min-h-[3rem] w-full rounded-xl border-slate-200 bg-slate-50"><option value="" selected disabled>Selecione…</option>{% for plan in available_plans %}<option value="{{ plan.id }}">{{ plan.name }}{% if plan.version > 1 %} · v{{ plan.version }}{% endif %}</option>{% endfor %}</select>{% if not available_plans %}<span class="mt-1 block text-xs text-amber-700">Nenhum plano ativo no catálogo. Cadastre um plano antes.</span>{% endif %}</label>
+            {% else %}
+            <p class="rounded-xl bg-slate-50 px-3 py-2 text-sm text-slate-600">Plano liberado: <strong>{{ subscription.plan_name }}</strong> (o da assinatura atual).</p>
+            {% endif %}
+            <div>
+                <span class="mb-1 block text-sm font-medium">Liberado até</span>
+                <div class="flex flex-wrap items-center gap-2">
+                    {% for days in [7, 15, 30] %}<button type="button" data-grant-days="{{ days }}" class="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50">{{ days }} dias</button>{% endfor %}
+                    <input type="date" name="ends_on" required min="{{ today_iso }}" max="{{ grant_max_iso }}" value="{{ grant_default_iso }}" class="min-h-[2.75rem] rounded-xl border-slate-200 bg-slate-50" data-grant-end>
+                </div>
+                <span class="mt-1 block text-xs text-slate-500">Máximo de 90 dias. Pode ser prorrogada ou encerrada antes.</span>
+            </div>
+            <label class="flex items-start gap-2 rounded-xl bg-violet-50 p-3 text-sm text-violet-900"><input type="checkbox" name="confirm" value="1" required class="mt-0.5 rounded border-violet-300 text-violet-600">Entendo que a liberação não cria, quita nem cancela cobranças no Asaas. Para isentar uma fatura, cancele-a na lista de cobranças.</label>
+            <div class="mt-2 flex justify-end gap-2"><button type="button" data-dialog-close class="rounded-xl bg-slate-100 px-4 py-2.5 text-sm font-semibold text-slate-700">Voltar</button><button class="rounded-xl bg-violet-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-violet-700">Liberar acesso</button></div>
+        </form>
+    </dialog>
+    {% endif %}
+</div>
