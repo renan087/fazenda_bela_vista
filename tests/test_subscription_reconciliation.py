@@ -146,7 +146,8 @@ def test_charge_removed_from_asaas_is_marked_deleted(db, monkeypatch):
     _mock_asaas(monkeypatch, subscription=_remote_sub(org), payments=[], single={'pay_gone': {'id': 'pay_gone', 'deleted': True}})
     rec.reconcile_organization(db, org.id, 'key')
     assert db.query(OrganizationSubscriptionPayment).one().status == 'DELETED'
-    assert build_subscription_portfolio(db, [org], NOW.date()).rows[0].situation == 'ativa'
+    # A cobranca cancelada deixa de contar como atraso; sem pagamento confirmado, aguarda o primeiro.
+    assert build_subscription_portfolio(db, [org], NOW.date()).rows[0].situation == 'aguardando_pagamento'
 
 
 def test_failure_keeps_previous_data_and_records_reason(db, monkeypatch):

@@ -23,7 +23,7 @@ from app.models import (
 )
 
 # Ordem de exibicao: o que exige atencao primeiro.
-SITUATION_ORDER = ("verificar", "liberada", "inadimplente", "aguardando_cartao", "suspensa", "sem_assinatura", "sem_cliente", "ativa", "outra")
+SITUATION_ORDER = ("verificar", "liberada", "inadimplente", "aguardando_cartao", "aguardando_pagamento", "suspensa", "sem_assinatura", "sem_cliente", "ativa", "outra")
 SITUATION_LABELS = {
     "verificar": "Sincronizando",
     "liberada": "Liberada manualmente",
@@ -32,10 +32,12 @@ SITUATION_LABELS = {
     "suspensa": "Suspensa",
     "sem_assinatura": "Sem assinatura",
     "sem_cliente": "Sem cliente Asaas",
+    "aguardando_pagamento": "Aguardando 1º pagamento",
     "ativa": "Em dia",
     "outra": "Outra situação",
 }
 _PENDING_REVIEW_STATUSES = {"criando", "revisao"}
+PAID_STATUSES = {"CONFIRMED", "RECEIVED", "RECEIVED_IN_CASH"}
 _ZERO = Decimal("0.00")
 
 
@@ -104,11 +106,14 @@ def build_subscription_portfolio(db: Session, organizations: list[Organization],
     grants = active_grants_by_organization(db, org_ids, today)
     overdue_by_org: dict[int, list[OrganizationSubscriptionPayment]] = defaultdict(list)
     payment_review_orgs: set[int] = set()
+    paid_subscriptions: set[int] = set()
     if org_by_subscription:
         payments = db.query(OrganizationSubscriptionPayment).filter(
             OrganizationSubscriptionPayment.subscription_id.in_(list(org_by_subscription))
         ).all()
         for payment in payments:
+            if payment.status in PAID_STATUSES:
+                paid_subscriptions.add(payment.subscription_id)
             org_id = org_by_subscription[payment.subscription_id]
             if payment.operation_state == "verificar":
                 payment_review_orgs.add(org_id)
@@ -149,6 +154,9 @@ def build_subscription_portfolio(db: Session, organizations: list[Organization],
             row.situation = "aguardando_cartao"
         elif subscription and subscription.asaas_status == "INACTIVE":
             row.situation = "suspensa"
+        elif subscription and subscription.asaas_status == "ACTIVE" and subscription.id not in paid_subscriptions:
+            # Assinatura nova: so fica "Em dia" depois que o primeiro pagamento for confirmado.
+            row.situation = "aguardando_pagamento"
         elif subscription and subscription.asaas_status == "ACTIVE":
             row.situation = "ativa"
         elif not subscription and not row.has_customer:

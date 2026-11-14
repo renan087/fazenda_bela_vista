@@ -54,7 +54,8 @@ def _by_name(portfolio):
 def test_portfolio_totals_and_monthly_revenue():
     with _db() as db:
         monthly, yearly, suspended = _org(db, 'Mensal'), _org(db, 'Anual'), _org(db, 'Suspensa')
-        _sub(db, monthly, amount='99.90')
+        paid = _sub(db, monthly, amount='99.90')
+        _pay(db, paid, 'paid', 'RECEIVED', date(2026, 11, 1), amount='99.90')
         _sub(db, yearly, amount='1200', cycle='YEARLY')
         _sub(db, suspended, asaas_status='INACTIVE')
         db.commit()
@@ -63,6 +64,8 @@ def test_portfolio_totals_and_monthly_revenue():
     assert portfolio.active_count == 2
     assert _by_name(portfolio)['Suspensa'].situation == 'suspensa'
     assert _by_name(portfolio)['Mensal'].situation == 'ativa'
+    assert _by_name(portfolio)['Anual'].situation == 'aguardando_pagamento'
+    assert _by_name(portfolio)['Anual'].situation_label == 'Aguardando 1º pagamento'
 
 
 def test_overdue_includes_late_pending_and_previous_subscriptions():

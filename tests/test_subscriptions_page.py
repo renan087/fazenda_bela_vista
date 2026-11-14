@@ -79,3 +79,29 @@ def test_management_template_renders_status_actions_and_charge_menu(monkeypatch)
     assert 'Copiar link de pagamento' in html and 'id="cancel-charge-' in html
     assert 'Aguardando pagamento' in html and 'Atualizado com o Asaas' in html
     assert 'Liberei após conferir' not in html
+
+
+def test_new_subscription_shows_awaiting_first_payment_until_paid(monkeypatch):
+    from datetime import datetime
+    engine = create_engine('sqlite:///:memory:')
+    Base.metadata.create_all(engine)
+    monkeypatch.setattr(routes, '_require_super_admin', lambda *args: None)
+    monkeypatch.setattr(routes, '_base_context', lambda *args, **kwargs: kwargs)
+    monkeypatch.setattr(routes.templates, 'TemplateResponse', lambda name, context: (name, context))
+    with Session(engine) as db:
+        org = Organization(name='SiSFarm Cliente', slug='cliente', is_active=True)
+        db.add(org); db.flush()
+        db.add(OrganizationBilling(organization_id=org.id, contact_name='P', contact_email='a@example.com', asaas_customer_id='cus_1', asaas_environment='sandbox'))
+        sub = OrganizationSubscription(organization_id=org.id, plan_name='Essencial', amount=Decimal('79.90'), cycle='MONTHLY', billing_type='BOLETO', first_due_date=date(2099, 1, 1), environment='sandbox', status='criada', asaas_status='ACTIVE', asaas_subscription_id='sub_1')
+        db.add(sub); db.flush()
+        charge = OrganizationSubscriptionPayment(subscription_id=sub.id, asaas_payment_id='pay_1', status='PENDING', billing_type='BOLETO', amount=Decimal('79.90'), due_date=date(2099, 1, 1))
+        db.add(charge); db.commit()
+        monkeypatch.setattr(routes, '_repository', lambda _db: SimpleNamespace(list_organizations=lambda: [org]))
+        _, context = routes.subscriptions_page(request=SimpleNamespace(), organizacao=org.id, db=db, user=SimpleNamespace(), csrf_token='t')
+        html = routes.templates.env.get_template('_subscription_management.html').render(**context)
+        assert context['selected_row'].situation == 'aguardando_pagamento'
+        assert 'Aguardando 1º pagamento</span>' in html and 'Em dia</span>' not in html and 'primeiro pagamento ainda não foi confirmado' in html
+        charge.status = 'RECEIVED'
+        db.commit()
+        _, context = routes.subscriptions_page(request=SimpleNamespace(), organizacao=org.id, db=db, user=SimpleNamespace(), csrf_token='t')
+        assert context['selected_row'].situation == 'ativa'

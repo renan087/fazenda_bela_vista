@@ -9448,6 +9448,8 @@ def create_organization_sandbox_subscription_action(
     subscription.status = "criada"
     record_commercial_event(db, user=user, organization_id=organization_id, resource="assinatura", resource_id=subscription.id, action="criar", outcome="success", details={"situacao": subscription.asaas_status})
     db.commit()
+    # Busca na hora a primeira cobranca e o link de pagamento, sem esperar o webhook ou o ciclo automatico.
+    _auto_reconcile(db, organization_id, full=True)
     _flash(request, "success", "Assinatura criada no Asaas. As cobranças serão geradas conforme a periodicidade.")
     return _redirect(f"/assinaturas?organizacao={organization_id}")
 

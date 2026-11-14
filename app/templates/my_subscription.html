@@ -8,6 +8,7 @@
     'aguardando_cartao': ('Aguardando cadastro do cartão', 'bg-sky-50 text-sky-700 ring-sky-200'),
     'verificar': ('Atualizando', 'bg-amber-50 text-amber-800 ring-amber-200'),
     'liberada': ('Acesso liberado', 'bg-violet-50 text-violet-800 ring-violet-200'),
+    'aguardando_pagamento': ('Aguardando 1º pagamento', 'bg-amber-50 text-amber-800 ring-amber-200'),
 } %}
 {% set card_on_file = saved_card if (subscription and subscription.billing_type == 'CREDIT_CARD') else none %}
 <div class="mx-auto max-w-4xl space-y-5" data-my-subscription>
