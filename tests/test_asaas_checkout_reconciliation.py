@@ -75,3 +75,78 @@ def test_checkout_uses_hosted_card_without_card_data(monkeypatch):
     assert calls[0][1]['billingTypes'] == ['CREDIT_CARD']
     assert calls[0][1]['chargeTypes'] == ['RECURRENT']
     assert 'creditCard' not in calls[0][1]
+
+
+def test_paid_migration_preserves_history_and_suspends_only_after_confirmation(monkeypatch):
+    from datetime import date
+    from decimal import Decimal
+    import pytest
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import Session
+    from app.db.base import Base
+    from app.models import Organization, OrganizationBilling, OrganizationCardMigration, OrganizationSubscription, OrganizationSubscriptionPayment
+    from app.services import asaas_card_migration_worker as worker
+    engine = create_engine('sqlite:///:memory:')
+    Base.metadata.create_all(engine)
+    calls = []
+    monkeypatch.setattr(worker, 'find_paid_checkout_subscription', lambda **kwargs: (None, 'Pagamento não confirmado'))
+    monkeypatch.setattr(worker, 'get_sandbox_subscription', lambda **kwargs: ({'customer': 'cus_test', 'status': 'ACTIVE'}, None))
+    monkeypatch.setattr(worker, 'manage_sandbox_subscription', lambda **kwargs: (calls.append(kwargs) or {'customer': 'cus_test', 'status': 'INACTIVE'}, None))
+    monkeypatch.setattr(worker, 'list_sandbox_subscription_payments', lambda **kwargs: ([], None))
+    with Session(engine) as db:
+        org = Organization(name='Teste', slug='migrar', is_active=True)
+        db.add(org); db.flush()
+        db.add(OrganizationBilling(organization_id=org.id, contact_name='Pessoa', contact_email='a@example.com', asaas_customer_id='cus_test', asaas_environment='sandbox'))
+        old = OrganizationSubscription(organization_id=org.id, plan_name='Plano', amount=Decimal('20.00'), cycle='MONTHLY', billing_type='PIX', first_due_date=date(2026, 1, 1), environment='sandbox', status='migrando', asaas_subscription_id='sub_old', is_current=True)
+        db.add(old); db.flush()
+        db.add(OrganizationSubscriptionPayment(subscription_id=old.id, asaas_payment_id='pay_old', status='PENDING'))
+        migration = OrganizationCardMigration(organization_id=org.id, old_subscription_id=old.id, checkout_id=CHECKOUT, first_due_date=date(2099, 1, 1), status='pago')
+        db.add(migration); db.commit()
+        with pytest.raises(ValueError):
+            worker.process_paid_card_migration(db, migration, 'key')
+        assert not calls and old.is_current
+        monkeypatch.setattr(worker, 'find_paid_checkout_subscription', lambda **kwargs: ({'id': 'sub_new', 'value': 20, 'cycle': 'MONTHLY', 'nextDueDate': '2099-02-01'}, None))
+        worker.process_paid_card_migration(db, migration, 'key')
+        db.commit()
+        assert len(calls) == 1 and not old.is_current
+        assert migration.status == 'concluido'
+        assert db.query(OrganizationSubscriptionPayment).one().subscription_id == old.id
+        new = db.query(OrganizationSubscription).filter_by(is_current=True).one()
+        assert new.billing_type == 'CREDIT_CARD' and new.asaas_subscription_id == 'sub_new'
+
+
+def test_checkout_webhook_requires_paid_event_and_matching_customer(monkeypatch):
+    import asyncio
+    from datetime import date
+    from decimal import Decimal
+    from types import SimpleNamespace
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import Session
+    from app.db.base import Base
+    from app.models import Organization, OrganizationBilling, OrganizationCardMigration, OrganizationSubscription
+    from app.routers import asaas_webhook
+
+    engine = create_engine('sqlite:///:memory:')
+    Base.metadata.create_all(engine)
+    monkeypatch.setattr(asaas_webhook, 'get_settings', lambda: SimpleNamespace(asaas_webhook_token='secret'))
+    class Request:
+        headers = {'asaas-access-token': 'secret'}
+        customer = 'cus_other'
+        async def json(self): return {'event': 'CHECKOUT_PAID', 'checkout': {'id': CHECKOUT, 'customer': self.customer, 'status': 'PAID'}}
+    with Session(engine) as db:
+        org = Organization(name='Teste', slug='webhook-card', is_active=True)
+        db.add(org); db.flush()
+        db.add(OrganizationBilling(organization_id=org.id, contact_name='Pessoa', contact_email='a@example.com', asaas_customer_id='cus_test', asaas_environment='sandbox'))
+        old = OrganizationSubscription(organization_id=org.id, plan_name='Plano', amount=Decimal('20.00'), cycle='MONTHLY', billing_type='PIX', first_due_date=date(2026, 1, 1), environment='sandbox')
+        db.add(old); db.flush()
+        migration = OrganizationCardMigration(organization_id=org.id, old_subscription_id=old.id, checkout_id=CHECKOUT, status='aguardando')
+        db.add(migration); db.commit()
+        import pytest
+        from fastapi import HTTPException
+        request = Request()
+        with pytest.raises(HTTPException):
+            asyncio.run(asaas_webhook.asaas_webhook(request, db))
+        assert migration.status == 'aguardando'
+        request.customer = 'cus_test'
+        assert asyncio.run(asaas_webhook.asaas_webhook(request, db)) == {'received': True}
+        assert migration.status == 'pago'

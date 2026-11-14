@@ -89,6 +89,7 @@ from app.models import (
     IrrigationRecord,
     Organization,
     OrganizationBilling,
+    OrganizationCardMigration,
     OrganizationSubscription,
     OrganizationSubscriptionPayment,
     PestIncident,
@@ -111,6 +112,7 @@ from app.services.asaas_customers import (
 from app.services.asaas_payment_sync import upsert_asaas_payment_row, user_owns_asaas_payment_payload
 from app.services.asaas_subscriptions import create_sandbox_subscription, get_sandbox_subscription, list_sandbox_subscription_payments, manage_sandbox_subscription, update_sandbox_subscription
 from app.services.asaas_organization_payment_actions import execute_payment_action
+from app.services.asaas_card_checkout import create_sandbox_card_checkout
 from app.services.commercial_audit import record_commercial_event
 from app.services.organization_subscription_sync import apply_subscription_details, persist_organization_webhook
 from app.services.asaas_payments import create_asaas_payment, get_asaas_payment, is_asaas_status_paid
@@ -9172,6 +9174,7 @@ def organizations_page(
     }
     billing_by_organization = {item.organization_id: item for item in db.query(OrganizationBilling).all()}
     subscriptions_by_organization = {item.organization_id: item for item in db.query(OrganizationSubscription).filter_by(is_current=True).all()}
+    card_migrations_by_organization = {item.organization_id: item for item in db.query(OrganizationCardMigration).filter_by(is_open=True).all()}
     previous_subscriptions_by_organization = defaultdict(list)
     for item in db.query(OrganizationSubscription).filter_by(is_current=False).order_by(OrganizationSubscription.id.desc()).all():
         previous_subscriptions_by_organization[item.organization_id].append(item)
@@ -9190,6 +9193,7 @@ def organizations_page(
             organization_stats=organization_stats,
             billing_by_organization=billing_by_organization,
             subscriptions_by_organization=subscriptions_by_organization,
+            card_migrations_by_organization=card_migrations_by_organization,
             previous_subscriptions_by_organization=previous_subscriptions_by_organization,
             subscription_payments=subscription_payments,
             users=users,
@@ -9391,6 +9395,48 @@ def create_organization_sandbox_subscription_action(
     db.commit()
     _flash(request, "success", "Assinatura criada no sandbox. A criação não confirma pagamento nem altera o acesso da organização.")
     return _redirect("/organizacoes")
+
+
+@router.post("/organizacoes/{organization_id}/assinatura-sandbox/cartao")
+def start_card_migration_action(organization_id: int, request: Request, csrf_token: str = Form(...), next_due_date: str = Form(...), db: Session = Depends(get_db), user: User = Depends(get_current_user_web)):
+    denied = _require_super_admin(request, user)
+    if denied:
+        return denied
+    validate_csrf(request, csrf_token)
+    settings = get_settings()
+    if (settings.asaas_api_base_url or '').rstrip('/') != 'https://api-sandbox.asaas.com' or not (settings.asaas_api_key or '').strip():
+        _flash(request, 'error', 'Configure o sandbox oficial antes de iniciar a migração.')
+        return _redirect('/organizacoes')
+    try:
+        due = date.fromisoformat(next_due_date)
+        if due < today_in_app_timezone():
+            raise ValueError()
+    except ValueError:
+        _flash(request, 'error', 'Informe um primeiro vencimento válido e não anterior a hoje.')
+        return _redirect('/organizacoes')
+    old = db.query(OrganizationSubscription).filter_by(organization_id=organization_id, is_current=True, environment='sandbox').with_for_update().first()
+    billing = db.query(OrganizationBilling).filter_by(organization_id=organization_id, asaas_environment='sandbox').first()
+    if not old or old.status != 'criada' or old.asaas_status != 'ACTIVE' or old.billing_type not in {'PIX', 'BOLETO'} or not old.asaas_subscription_id or not billing or not billing.asaas_customer_id or db.query(OrganizationCardMigration.id).filter_by(organization_id=organization_id, is_open=True).first():
+        _flash(request, 'error', 'Assinatura indisponível ou já há uma migração em andamento.')
+        return _redirect('/organizacoes')
+    migration = OrganizationCardMigration(organization_id=organization_id, old_subscription_id=old.id, first_due_date=due, status='preparando')
+    db.add(migration)
+    old.status = 'migrando'
+    db.flush()
+    migration_id = migration.id
+    record_commercial_event(db, user=user, organization_id=organization_id, resource='assinatura', resource_id=old.id, action='migrar_cartao', outcome='iniciado')
+    db.commit()
+    checkout_id, error = create_sandbox_card_checkout(api_key=settings.asaas_api_key.strip(), customer_id=billing.asaas_customer_id, reference=f'sisfarm-migracao-{migration_id}', plan_name=old.plan_name, amount=old.amount, cycle=old.cycle, next_due_date=due.isoformat(), callback_base='https://app.sisfarm.com.br')
+    migration = db.query(OrganizationCardMigration).filter_by(id=migration_id).with_for_update().one()
+    if error:
+        migration.status = 'revisao'
+        _flash(request, 'error', 'Checkout não confirmado. Confira no Asaas antes de outra tentativa.')
+    else:
+        migration.checkout_id = checkout_id
+        migration.status = 'aguardando'
+        _flash(request, 'success', 'Checkout criado. Envie o link ao cliente para concluir no Asaas sandbox.')
+    db.commit()
+    return _redirect('/organizacoes')
 
 
 @router.post("/organizacoes/{organization_id}/assinatura-sandbox/editar")

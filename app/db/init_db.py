@@ -623,6 +623,7 @@ def _sync_schema() -> None:
         "ALTER TABLE organization_subscriptions ADD COLUMN IF NOT EXISTS asaas_last_event_at TIMESTAMP",
         "ALTER TABLE organization_subscriptions ADD COLUMN IF NOT EXISTS next_due_date DATE",
         "ALTER TABLE organization_subscriptions ADD COLUMN IF NOT EXISTS is_current BOOLEAN NOT NULL DEFAULT TRUE",
+        "ALTER TABLE organization_card_migrations ADD COLUMN IF NOT EXISTS first_due_date DATE",
         "ALTER TABLE organization_subscriptions DROP CONSTRAINT IF EXISTS organization_subscriptions_organization_id_key",
         "DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_indexes WHERE schemaname = current_schema() AND indexname = 'ix_organization_subscriptions_organization_id' AND indexdef LIKE 'CREATE UNIQUE INDEX%') THEN DROP INDEX ix_organization_subscriptions_organization_id; END IF; END $$",
         "CREATE INDEX IF NOT EXISTS ix_organization_subscriptions_organization_id ON organization_subscriptions (organization_id)",

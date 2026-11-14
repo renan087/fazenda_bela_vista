@@ -12,6 +12,7 @@ from app.core.config import get_settings
 from app.db.session import get_db
 from app.services.asaas_payment_sync import upsert_asaas_payment_row
 from app.services.organization_subscription_sync import persist_organization_webhook
+from app.models import OrganizationBilling, OrganizationCardMigration
 
 logger = logging.getLogger(__name__)
 
@@ -53,6 +54,19 @@ async def asaas_webhook(request: Request, db: Session = Depends(get_db)):
     payment = body.get("payment")
 
     try:
+        checkout = body.get('checkout')
+        if event in {'CHECKOUT_PAID', 'CHECKOUT_CANCELED', 'CHECKOUT_EXPIRED'} and isinstance(checkout, dict):
+            migration = db.query(OrganizationCardMigration).filter_by(checkout_id=checkout.get('id')).with_for_update().first()
+            if migration:
+                billing = db.query(OrganizationBilling).filter_by(organization_id=migration.organization_id, asaas_environment='sandbox').first()
+                if not billing or checkout.get('customer') != billing.asaas_customer_id:
+                    raise ValueError('Cliente do checkout divergente')
+                if event == 'CHECKOUT_PAID' and checkout.get('status') == 'PAID' and migration.status != 'concluido':
+                    migration.status = 'pago'
+                elif event in {'CHECKOUT_CANCELED', 'CHECKOUT_EXPIRED'} and migration.status == 'aguardando':
+                    migration.status = 'revisao'
+                db.commit()
+                return {'received': True}
         handled = persist_organization_webhook(db, body)
         if not handled and isinstance(payment, dict) and payment.get("id"):
             upsert_asaas_payment_row(db, payment=payment, last_event=event or None, commit=False)

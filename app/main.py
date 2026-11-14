@@ -30,6 +30,7 @@ from app.services.audit_log_service import append_audit_event, client_ip
 from app.services.backup_service import run_backup_automation_loop, run_backup_repository_monitor_loop
 from app.services.coffee_quotes import seed_cepea_coffee_quotes_from_bundle
 from app.services.coffee_quote_sync_service import run_coffee_quote_sync_loop
+from app.services.asaas_card_migration_worker import run_card_migration_loop
 from app.services.data_change_audit import (
     install_data_change_audit_listeners,
     reset_data_change_audit_context,
@@ -79,6 +80,7 @@ async def lifespan(app: FastAPI):
     background_tasks: list[asyncio.Task] = [
         asyncio.create_task(run_backup_automation_loop()),
         asyncio.create_task(run_backup_repository_monitor_loop()),
+        asyncio.create_task(run_card_migration_loop()),
     ]
     if settings.coffee_quote_sync_enabled:
         background_tasks.append(asyncio.create_task(run_coffee_quote_sync_loop()))

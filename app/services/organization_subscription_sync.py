@@ -34,7 +34,7 @@ def apply_subscription_details(subscription, data):
             raise ValueError('Valor da assinatura inválido')
     if data.get('cycle') in {'MONTHLY', 'YEARLY'}:
         subscription.cycle = data['cycle']
-    if data.get('billingType') in {'PIX', 'BOLETO'}:
+    if data.get('billingType') in {'PIX', 'BOLETO', 'CREDIT_CARD'}:
         subscription.billing_type = data['billingType']
     if data.get('nextDueDate'):
         due = _date(data['nextDueDate'])

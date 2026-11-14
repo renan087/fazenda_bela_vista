@@ -1,6 +1,6 @@
-from datetime import datetime
+from datetime import date, datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Integer, String, func, text
+from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Index, Integer, String, func, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -20,6 +20,7 @@ class OrganizationCardMigration(Base):
     old_subscription_id: Mapped[int] = mapped_column(ForeignKey('organization_subscriptions.id', ondelete='RESTRICT'), nullable=False)
     new_subscription_id: Mapped[int | None] = mapped_column(ForeignKey('organization_subscriptions.id', ondelete='RESTRICT'), nullable=True)
     checkout_id: Mapped[str | None] = mapped_column(String(80), unique=True, nullable=True)
+    first_due_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     status: Mapped[str] = mapped_column(String(40), nullable=False, default='preparando')
     is_open: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default=text('true'))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
