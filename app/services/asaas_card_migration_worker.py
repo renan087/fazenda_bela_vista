@@ -18,20 +18,42 @@ from app.services.organization_subscription_sync import persist_organization_web
 logger = logging.getLogger(__name__)
 
 
-def process_paid_card_migration(db, migration, api_key):
-    old = db.query(OrganizationSubscription).filter_by(id=migration.old_subscription_id, organization_id=migration.organization_id, is_current=True, environment='sandbox').with_for_update().first()
-    billing = db.query(OrganizationBilling).filter_by(organization_id=migration.organization_id, asaas_environment='sandbox').first()
-    if not old or not billing or not billing.asaas_customer_id or not old.asaas_subscription_id:
-        raise ValueError('Assinatura antiga ou cliente não identificado')
-    new_remote, error = find_paid_checkout_subscription(api_key=api_key, checkout_id=migration.checkout_id, customer_id=billing.asaas_customer_id)
+def _validated_checkout_subscription(api_key, migration, customer_id, *, amount, cycle):
+    new_remote, error = find_paid_checkout_subscription(api_key=api_key, checkout_id=migration.checkout_id, customer_id=customer_id)
     if error:
         raise ValueError(error)
     try:
-        if Decimal(str(new_remote.get('value'))) != old.amount or new_remote.get('cycle') != old.cycle or new_remote['id'] == old.asaas_subscription_id:
-            raise ValueError('Dados da nova assinatura não correspondem ao plano')
+        remote_value = Decimal(str(new_remote.get('value')))
         next_due = date.fromisoformat(str(new_remote['nextDueDate'])[:10])
     except (KeyError, InvalidOperation, ValueError):
         raise ValueError('Dados da nova assinatura são inválidos')
+    if remote_value != amount or new_remote.get('cycle') != cycle:
+        raise ValueError('Dados da nova assinatura não correspondem ao plano')
+    return new_remote, next_due
+
+
+def _process_new_card_subscription(db, migration, api_key, billing):
+    """Contratacao direta no cartao: a assinatura local so nasce apos o pagamento confirmado."""
+    if migration.amount is None or not migration.cycle or not migration.plan_name:
+        raise ValueError('Checkout sem dados do plano contratado')
+    if db.query(OrganizationSubscription.id).filter_by(organization_id=migration.organization_id, is_current=True).with_for_update().first():
+        raise ValueError('A organização já possui assinatura atual; verificação manual necessária')
+    new_remote, next_due = _validated_checkout_subscription(api_key, migration, billing.asaas_customer_id, amount=migration.amount, cycle=migration.cycle)
+    if db.query(OrganizationSubscription.id).filter_by(asaas_subscription_id=new_remote['id']).first():
+        raise ValueError('Nova assinatura já vinculada; verificação manual necessária')
+    new = OrganizationSubscription(organization_id=migration.organization_id, plan_id=migration.plan_id, is_current=True, plan_name=migration.plan_name, amount=migration.amount, cycle=migration.cycle, billing_type='CREDIT_CARD', first_due_date=migration.first_due_date or next_due, next_due_date=next_due, status='criada', environment='sandbox', asaas_subscription_id=new_remote['id'], asaas_status='ACTIVE')
+    db.add(new)
+    db.flush()
+    return new, None
+
+
+def _process_card_migration(db, migration, api_key, billing):
+    old = db.query(OrganizationSubscription).filter_by(id=migration.old_subscription_id, organization_id=migration.organization_id, is_current=True, environment='sandbox').with_for_update().first()
+    if not old or not old.asaas_subscription_id:
+        raise ValueError('Assinatura antiga ou cliente não identificado')
+    new_remote, next_due = _validated_checkout_subscription(api_key, migration, billing.asaas_customer_id, amount=old.amount, cycle=old.cycle)
+    if new_remote['id'] == old.asaas_subscription_id:
+        raise ValueError('Dados da nova assinatura não correspondem ao plano')
     current_remote, error = get_sandbox_subscription(api_key=api_key, subscription_id=old.asaas_subscription_id)
     if error or current_remote.get('customer') != billing.asaas_customer_id or current_remote.get('status') not in {'ACTIVE', 'INACTIVE'}:
         raise ValueError('Não foi possível verificar a assinatura anterior')
@@ -46,9 +68,20 @@ def process_paid_card_migration(db, migration, api_key):
     old.status = 'criada'
     old.is_current = False
     db.flush()
-    new = OrganizationSubscription(organization_id=old.organization_id, is_current=True, plan_name=old.plan_name, amount=old.amount, cycle=old.cycle, billing_type='CREDIT_CARD', first_due_date=migration.first_due_date or next_due, next_due_date=next_due, status='criada', environment='sandbox', asaas_subscription_id=new_remote['id'], asaas_status='ACTIVE')
+    new = OrganizationSubscription(organization_id=old.organization_id, plan_id=old.plan_id, is_current=True, plan_name=old.plan_name, amount=old.amount, cycle=old.cycle, billing_type='CREDIT_CARD', first_due_date=migration.first_due_date or next_due, next_due_date=next_due, status='criada', environment='sandbox', asaas_subscription_id=new_remote['id'], asaas_status='ACTIVE')
     db.add(new)
     db.flush()
+    return new, old
+
+
+def process_paid_card_migration(db, migration, api_key):
+    billing = db.query(OrganizationBilling).filter_by(organization_id=migration.organization_id, asaas_environment='sandbox').first()
+    if not billing or not billing.asaas_customer_id:
+        raise ValueError('Assinatura antiga ou cliente não identificado')
+    if migration.old_subscription_id is None:
+        new, old = _process_new_card_subscription(db, migration, api_key, billing)
+    else:
+        new, old = _process_card_migration(db, migration, api_key, billing)
     payments, error = list_sandbox_subscription_payments(api_key=api_key, subscription_id=new.asaas_subscription_id)
     if error:
         raise ValueError('Não foi possível conciliar as cobranças da nova assinatura')
@@ -63,7 +96,10 @@ def process_paid_card_migration(db, migration, api_key):
     migration.status = 'concluido'
     migration.last_check_error = None
     migration.is_open = False
-    record_commercial_event(db, user=None, organization_id=old.organization_id, resource='assinatura', resource_id=new.id, action='migrar_cartao', outcome='success', details={'assinatura_anterior': old.id})
+    if old is None:
+        record_commercial_event(db, user=None, organization_id=new.organization_id, resource='assinatura', resource_id=new.id, action='criar_cartao', outcome='success', details={'plano_id': new.plan_id, 'checkout': migration.checkout_id})
+    else:
+        record_commercial_event(db, user=None, organization_id=old.organization_id, resource='assinatura', resource_id=new.id, action='migrar_cartao', outcome='success', details={'assinatura_anterior': old.id})
 
 
 def _tick():

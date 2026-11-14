@@ -1,13 +1,18 @@
 from datetime import date, datetime
+from decimal import Decimal
 
-from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Index, Integer, String, func, text
+from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Index, Integer, Numeric, String, func, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
 
 
 class OrganizationCardMigration(Base):
-    """Tentativa persistente; nao armazena dados de cartao."""
+    """Checkout de cartao hospedado no Asaas; nao armazena dados de cartao.
+
+    Com ``old_subscription_id`` e uma migracao de Pix/boleto para cartao; sem ele, e a contratacao
+    de uma nova assinatura no cartao, criada somente apos a confirmacao do pagamento.
+    """
 
     __tablename__ = 'organization_card_migrations'
     __table_args__ = (
@@ -17,9 +22,14 @@ class OrganizationCardMigration(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     organization_id: Mapped[int] = mapped_column(ForeignKey('organizations.id', ondelete='RESTRICT'), nullable=False, index=True)
-    old_subscription_id: Mapped[int] = mapped_column(ForeignKey('organization_subscriptions.id', ondelete='RESTRICT'), nullable=False)
+    old_subscription_id: Mapped[int | None] = mapped_column(ForeignKey('organization_subscriptions.id', ondelete='RESTRICT'), nullable=True)
     new_subscription_id: Mapped[int | None] = mapped_column(ForeignKey('organization_subscriptions.id', ondelete='RESTRICT'), nullable=True)
     checkout_id: Mapped[str | None] = mapped_column(String(80), unique=True, nullable=True)
+    checkout_link: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    plan_id: Mapped[int | None] = mapped_column(ForeignKey('subscription_plans.id', ondelete='RESTRICT'), nullable=True)
+    plan_name: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    amount: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
+    cycle: Mapped[str | None] = mapped_column(String(20), nullable=True)
     first_due_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     status: Mapped[str] = mapped_column(String(40), nullable=False, default='preparando')
     last_check_error: Mapped[str | None] = mapped_column(String(255), nullable=True)

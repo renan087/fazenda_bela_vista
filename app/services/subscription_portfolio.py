@@ -22,10 +22,11 @@ from app.models import (
 )
 
 # Ordem de exibicao: o que exige atencao primeiro.
-SITUATION_ORDER = ("verificar", "inadimplente", "suspensa", "sem_assinatura", "sem_cliente", "ativa", "outra")
+SITUATION_ORDER = ("verificar", "inadimplente", "aguardando_cartao", "suspensa", "sem_assinatura", "sem_cliente", "ativa", "outra")
 SITUATION_LABELS = {
     "verificar": "Conferir no Asaas",
     "inadimplente": "Inadimplente",
+    "aguardando_cartao": "Aguardando cartão",
     "suspensa": "Suspensa",
     "sem_assinatura": "Sem assinatura",
     "sem_cliente": "Sem cliente Asaas",
@@ -86,14 +87,12 @@ def build_subscription_portfolio(db: Session, organizations: list[Organization],
     subscriptions = db.query(OrganizationSubscription).filter(OrganizationSubscription.organization_id.in_(org_ids)).all()
     current_by_org = {item.organization_id: item for item in subscriptions if item.is_current}
     org_by_subscription = {item.id: item.organization_id for item in subscriptions}
-    open_migration_review = {
-        item.organization_id
-        for item in db.query(OrganizationCardMigration).filter(
-            OrganizationCardMigration.organization_id.in_(org_ids),
-            OrganizationCardMigration.is_open.is_(True),
-            OrganizationCardMigration.status == "revisao",
-        ).all()
-    }
+    open_migrations = db.query(OrganizationCardMigration).filter(
+        OrganizationCardMigration.organization_id.in_(org_ids),
+        OrganizationCardMigration.is_open.is_(True),
+    ).all()
+    open_migration_review = {item.organization_id for item in open_migrations if item.status == "revisao"}
+    awaiting_card_contract = {item.organization_id for item in open_migrations if item.old_subscription_id is None and item.status != "revisao"}
 
     overdue_by_org: dict[int, list[OrganizationSubscriptionPayment]] = defaultdict(list)
     payment_review_orgs: set[int] = set()
@@ -126,10 +125,12 @@ def build_subscription_portfolio(db: Session, organizations: list[Organization],
             row.oldest_overdue_due_date = min(due_dates)
             row.days_overdue = max((today - row.oldest_overdue_due_date).days, 0)
 
-        if subscription and (subscription.status in _PENDING_REVIEW_STATUSES or organization.id in open_migration_review or organization.id in payment_review_orgs):
+        if organization.id in open_migration_review or (subscription and (subscription.status in _PENDING_REVIEW_STATUSES or organization.id in payment_review_orgs)):
             row.situation = "verificar"
         elif overdue:
             row.situation = "inadimplente"
+        elif not subscription and organization.id in awaiting_card_contract:
+            row.situation = "aguardando_cartao"
         elif subscription and subscription.asaas_status == "INACTIVE":
             row.situation = "suspensa"
         elif subscription and subscription.asaas_status == "ACTIVE":

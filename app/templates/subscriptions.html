@@ -24,7 +24,7 @@
         <div class="mb-4 flex flex-wrap items-end justify-between gap-3">
             <div><p class="text-xs font-semibold uppercase tracking-[0.25em] text-slate-400">Carteira</p><h3 class="mt-2 text-xl font-semibold text-slate-900">Panorama das assinaturas</h3><p class="mt-1 text-sm text-slate-500">Dados da última sincronização com o Asaas. Organizações que exigem atenção aparecem primeiro.</p></div>
         </div>
-        {% set situation_styles = {'verificar': 'bg-amber-50 text-amber-800', 'inadimplente': 'bg-rose-50 text-rose-700', 'suspensa': 'bg-slate-100 text-slate-700', 'sem_assinatura': 'bg-slate-100 text-slate-600', 'sem_cliente': 'bg-slate-100 text-slate-500', 'ativa': 'bg-emerald-50 text-emerald-800', 'outra': 'bg-slate-100 text-slate-600'} %}
+        {% set situation_styles = {'verificar': 'bg-amber-50 text-amber-800', 'inadimplente': 'bg-rose-50 text-rose-700', 'aguardando_cartao': 'bg-sky-50 text-sky-700', 'suspensa': 'bg-slate-100 text-slate-700', 'sem_assinatura': 'bg-slate-100 text-slate-600', 'sem_cliente': 'bg-slate-100 text-slate-500', 'ativa': 'bg-emerald-50 text-emerald-800', 'outra': 'bg-slate-100 text-slate-600'} %}
         {% set portfolio_payment_labels = {'PIX': 'Pix', 'BOLETO': 'Boleto', 'CREDIT_CARD': 'Cartão'} %}
         <div class="overflow-x-auto">
             <table class="min-w-[860px] w-full text-left text-sm">

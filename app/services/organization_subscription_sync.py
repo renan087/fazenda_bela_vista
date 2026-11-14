@@ -3,6 +3,7 @@
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 
+from app.services.asaas_card_checkout import safe_asaas_link
 from app.models import AsaasWebhookEvent, OrganizationBilling, OrganizationSubscription, OrganizationSubscriptionPayment
 
 
@@ -76,6 +77,13 @@ def persist_organization_webhook(db, body: dict) -> bool:
         if row.last_event_at == timestamp and status and row.status != status:
             row.status = 'VERIFICAR'
             row.paid_date = None
+        # Links de pagamento nao dependem da ordem dos eventos: guarda o mais recente valido.
+        invoice_url = safe_asaas_link(payment.get('invoiceUrl'))
+        bank_slip_url = safe_asaas_link(payment.get('bankSlipUrl'))
+        if invoice_url:
+            row.invoice_url = invoice_url
+        if bank_slip_url:
+            row.bank_slip_url = bank_slip_url
         if row.last_event_at is None or timestamp > row.last_event_at:
             if status:
                 row.status = status[:40]

@@ -19,6 +19,8 @@ class OrganizationSubscriptionPayment(Base):
     amount: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
     due_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     paid_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    invoice_url: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    bank_slip_url: Mapped[str | None] = mapped_column(String(255), nullable=True)
     last_event_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=False), nullable=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
     subscription = relationship("OrganizationSubscription")

@@ -113,7 +113,7 @@ from app.services.asaas_customers import (
 from app.services.asaas_payment_sync import upsert_asaas_payment_row, user_owns_asaas_payment_payload
 from app.services.asaas_subscriptions import create_sandbox_subscription, get_sandbox_subscription, list_customer_sandbox_subscriptions, list_sandbox_subscription_payments, manage_sandbox_subscription, sandbox_subscription_is_missing, update_sandbox_subscription
 from app.services.asaas_organization_payment_actions import execute_payment_action
-from app.services.asaas_card_checkout import create_sandbox_card_checkout
+from app.services.asaas_card_checkout import cancel_sandbox_checkout, create_sandbox_card_checkout_session
 from app.services.commercial_audit import record_commercial_event
 from app.services.organization_subscription_sync import apply_subscription_details, persist_organization_webhook
 from app.services.asaas_payments import create_asaas_payment, get_asaas_payment, is_asaas_status_paid
@@ -134,6 +134,7 @@ from app.services.subscription_plans import (
     parse_plan_form,
     plan_is_locked,
     plan_modules,
+    plan_price as plans_price_for,
     plan_prices,
     resolve_plan_selection,
     update_plan,
@@ -9254,7 +9255,7 @@ def subscriptions_page(
         organization=organization, billing=billing, subscriptions_by_organization=current,
         card_migrations_by_organization=migrations, previous_subscriptions_by_organization=previous,
         subscription_payments=payments, portfolio=portfolio, situation_labels=SITUATION_LABELS,
-        available_plans=active_plans(db), _repo=repo,
+        available_plans=active_plans(db), plan_prices_of=plan_prices, today_iso=today_in_app_timezone().isoformat(), _repo=repo,
     ))
 
 
@@ -9568,7 +9569,7 @@ def create_organization_sandbox_subscription_action(
         due = date.fromisoformat(first_due_date)
     except (ValueError, TypeError):
         due = None
-    if not name or len(name) > 120 or value is None or not 0.01 <= value <= 9999999999.99 or cycle not in SUBSCRIPTION_CYCLES or billing_type not in {"PIX", "BOLETO"} or not due or due < today_in_app_timezone():
+    if not name or len(name) > 120 or value is None or not 0.01 <= value <= 9999999999.99 or cycle not in SUBSCRIPTION_CYCLES or billing_type not in {"PIX", "BOLETO", "CREDIT_CARD"} or not due or due < today_in_app_timezone():
         _flash(request, "error", "Confira plano, valor, periodicidade, forma de pagamento e primeiro vencimento.")
         return _redirect(f"/assinaturas?organizacao={organization_id}")
     remote_subscriptions, error = list_customer_sandbox_subscriptions(api_key=settings.asaas_api_key.strip(), customer_id=billing.asaas_customer_id)
@@ -9578,6 +9579,8 @@ def create_organization_sandbox_subscription_action(
     if any(not item['deleted'] and item.get('status') not in {'INACTIVE', 'EXPIRED'} for item in remote_subscriptions):
         _flash(request, "error", "O cliente possui uma assinatura ativa ou de situação não confirmada no Asaas. Confira antes de criar outra.")
         return _redirect(f"/assinaturas?organizacao={organization_id}")
+    if billing_type == "CREDIT_CARD":
+        return _start_card_subscription_checkout(request, db, user, organization_id=organization_id, billing=billing, plan=selected_plan, name=name, amount=Decimal(str(value)).quantize(Decimal("0.01")), cycle=cycle, due=due, api_key=settings.asaas_api_key.strip())
     subscription = OrganizationSubscription(organization_id=organization_id, plan_id=selected_plan.id if selected_plan else None, plan_name=name, amount=Decimal(str(value)).quantize(Decimal("0.01")), cycle=cycle, billing_type=billing_type, first_due_date=due, status="criando", environment="sandbox")
     db.add(subscription)
     db.flush()
@@ -9600,6 +9603,73 @@ def create_organization_sandbox_subscription_action(
     db.commit()
     _flash(request, "success", "Assinatura criada no sandbox. A criação não confirma pagamento nem altera o acesso da organização.")
     return _redirect(f"/assinaturas?organizacao={organization_id}")
+
+
+def _start_card_subscription_checkout(request, db, user, *, organization_id, billing, plan, name, amount, cycle, due, api_key):
+    """Contratacao no cartao: gera o checkout hospedado; a assinatura so e criada apos o pagamento."""
+    migration = OrganizationCardMigration(organization_id=organization_id, old_subscription_id=None, plan_id=plan.id if plan else None, plan_name=name, amount=amount, cycle=cycle, first_due_date=due, status="preparando")
+    db.add(migration)
+    db.flush()
+    migration_id = migration.id
+    record_commercial_event(db, user=user, organization_id=organization_id, resource="assinatura", resource_id=None, action="criar_cartao", outcome="iniciado", details={"checkout_local": migration_id, "plano_id": migration.plan_id, "valor": str(amount), "ciclo": cycle})
+    db.commit()
+    session, error = create_sandbox_card_checkout_session(api_key=api_key, customer_id=billing.asaas_customer_id, reference=f"sisfarm-contratacao-{migration_id}", plan_name=name, amount=amount, cycle=cycle, next_due_date=due.isoformat(), callback_base="https://app.sisfarm.com.br")
+    migration = db.query(OrganizationCardMigration).filter_by(id=migration_id).with_for_update().one()
+    if error:
+        migration.status = "revisao"
+        _flash(request, "error", "O checkout não foi confirmado pelo Asaas. Confira no Asaas e encerre a tentativa antes de gerar outra.")
+    else:
+        migration.checkout_id = session["id"]
+        migration.checkout_link = session["link"]
+        migration.status = "aguardando"
+        _flash(request, "success", "Link de pagamento com cartão gerado. Copie e envie ao cliente; ele vale por 24 horas. A assinatura será criada assim que o Asaas confirmar o pagamento.")
+    db.commit()
+    return _redirect(f"/assinaturas?organizacao={organization_id}#gerenciamento")
+
+
+@router.post("/organizacoes/{organization_id}/assinatura-sandbox/checkout/encerrar")
+def close_card_checkout_action(organization_id: int, request: Request, csrf_token: str = Form(...), db: Session = Depends(get_db), user: User = Depends(get_current_user_web)):
+    """Encerra um checkout de cartao nao pago (contratacao ou migracao), liberando nova tentativa."""
+    denied = _require_super_admin(request, user)
+    if denied:
+        return denied
+    validate_csrf(request, csrf_token)
+    settings = get_settings()
+    target = f"/assinaturas?organizacao={organization_id}#gerenciamento"
+    if (settings.asaas_api_base_url or "").rstrip("/") != "https://api-sandbox.asaas.com" or not (settings.asaas_api_key or "").strip():
+        _flash(request, "error", "Configure o sandbox oficial antes de encerrar o checkout.")
+        return _redirect(target)
+    migration = db.query(OrganizationCardMigration).filter_by(organization_id=organization_id, is_open=True).with_for_update().first()
+    if not migration or migration.status not in {"preparando", "aguardando", "revisao"}:
+        _flash(request, "error", "Não há checkout pendente que possa ser encerrado. Se o pagamento foi aprovado, aguarde o processamento.")
+        return _redirect(target)
+    if migration.checkout_id:
+        remote_status, error = cancel_sandbox_checkout(api_key=settings.asaas_api_key.strip(), checkout_id=migration.checkout_id)
+        if error:
+            _flash(request, "error", error + " Nada foi alterado.")
+            return _redirect(target)
+        if remote_status == "PAID":
+            migration.status = "pago"
+            migration.last_check_error = None
+            db.commit()
+            _flash(request, "info", "O Asaas informa que este checkout já foi pago. A assinatura será processada automaticamente em instantes.")
+            return _redirect(target)
+        if remote_status not in {"CANCELED", "EXPIRED"}:
+            _flash(request, "error", "O Asaas não confirmou o encerramento do checkout. Nada foi alterado.")
+            return _redirect(target)
+    else:
+        remote_status = "SEM_CHECKOUT"
+    if migration.old_subscription_id:
+        old = db.query(OrganizationSubscription).filter_by(id=migration.old_subscription_id, organization_id=organization_id).with_for_update().first()
+        if old and old.status == "migrando":
+            old.status = "criada"
+    migration.status = "encerrado"
+    migration.is_open = False
+    migration.last_check_error = None
+    record_commercial_event(db, user=user, organization_id=organization_id, resource="assinatura", resource_id=migration.old_subscription_id, action="encerrar_checkout", outcome="success", details={"checkout_local": migration.id, "situacao_asaas": remote_status})
+    db.commit()
+    _flash(request, "success", "Checkout encerrado. Já é possível gerar um novo link ou escolher outra forma de pagamento.")
+    return _redirect(target)
 
 
 @router.post("/organizacoes/{organization_id}/assinatura-sandbox/verificar-exclusao")
@@ -9680,23 +9750,24 @@ def start_card_migration_action(organization_id: int, request: Request, csrf_tok
     migration_id = migration.id
     record_commercial_event(db, user=user, organization_id=organization_id, resource='assinatura', resource_id=old.id, action='migrar_cartao', outcome='iniciado')
     db.commit()
-    checkout_id, error = create_sandbox_card_checkout(api_key=settings.asaas_api_key.strip(), customer_id=billing.asaas_customer_id, reference=f'sisfarm-migracao-{migration_id}', plan_name=old.plan_name, amount=old.amount, cycle=old.cycle, next_due_date=due.isoformat(), callback_base='https://app.sisfarm.com.br')
+    session, error = create_sandbox_card_checkout_session(api_key=settings.asaas_api_key.strip(), customer_id=billing.asaas_customer_id, reference=f'sisfarm-migracao-{migration_id}', plan_name=old.plan_name, amount=old.amount, cycle=old.cycle, next_due_date=due.isoformat(), callback_base='https://app.sisfarm.com.br')
     migration = db.query(OrganizationCardMigration).filter_by(id=migration_id).with_for_update().one()
     if error:
         migration.status = 'revisao'
         _flash(request, 'error', 'Checkout não confirmado. Confira no Asaas antes de outra tentativa.')
     else:
-        migration.checkout_id = checkout_id
+        migration.checkout_id = session['id']
+        migration.checkout_link = session['link']
         migration.status = 'aguardando'
-        _flash(request, 'success', 'Checkout criado. Envie o link ao cliente para concluir no Asaas sandbox.')
+        _flash(request, 'success', 'Link de pagamento com cartão gerado. Copie e envie ao cliente; ele vale por 24 horas.')
     db.commit()
     return _redirect(f'/assinaturas?organizacao={organization_id}')
 
 
 @router.post("/organizacoes/{organization_id}/assinatura-sandbox/editar")
 def edit_organization_sandbox_subscription_action(
-    organization_id: int, request: Request, csrf_token: str = Form(...), plan_name: str = Form(...),
-    amount: str = Form(...), cycle: str = Form(...), billing_type: str = Form(...), next_due_date: str = Form(""),
+    organization_id: int, request: Request, csrf_token: str = Form(...), plan_name: str = Form(""),
+    amount: str = Form(""), cycle: str = Form(...), billing_type: str = Form(...), next_due_date: str = Form(""), plan_id: str = Form(""),
     db: Session = Depends(get_db), user: User = Depends(get_current_user_web),
 ):
     denied = _require_super_admin(request, user)
@@ -9708,9 +9779,23 @@ def edit_organization_sandbox_subscription_action(
     if parsed.scheme != "https" or parsed.hostname != "api-sandbox.asaas.com" or parsed.port not in (None, 443) or parsed.path not in ("", "/") or parsed.query or parsed.fragment or parsed.username or not (settings.asaas_api_key or "").strip():
         _flash(request, "error", "Configure o sandbox oficial antes de editar a assinatura.")
         return _redirect(f"/assinaturas?organizacao={organization_id}")
-    name = plan_name.strip()
+    plan_ref = plan_id.strip() if isinstance(plan_id, str) else ""
+    selected_plan = None
+    if plan_ref:
+        current_plan_id = db.query(OrganizationSubscription.plan_id).filter_by(organization_id=organization_id, is_current=True).scalar()
+        try:
+            selected_plan = db.get(SubscriptionPlan, int(plan_ref))
+        except ValueError:
+            selected_plan = None
+        # Planos arquivados continuam valendo para quem ja os contratou.
+        catalog_price = plans_price_for(selected_plan, cycle) if selected_plan and (selected_plan.status == "ativo" or selected_plan.id == current_plan_id) else None
+        if catalog_price is None:
+            _flash(request, "error", "Plano indisponível ou sem preço para a periodicidade escolhida.")
+            return _redirect(f"/assinaturas?organizacao={organization_id}")
+        plan_name, amount = selected_plan.name, f"{catalog_price:.2f}".replace(".", ",")
+    name = (plan_name or "").strip()
     try:
-        price = Decimal(amount.strip().replace('.', '').replace(',', '.'))
+        price = Decimal((amount or "").strip().replace('.', '').replace(',', '.'))
         due = date.fromisoformat(next_due_date) if next_due_date else None
         if not name or len(name) > 120 or not price.is_finite() or price <= 0 or price >= Decimal('10000000000') or price.as_tuple().exponent < -2 or cycle not in SUBSCRIPTION_CYCLES or billing_type not in {'PIX', 'BOLETO', 'CREDIT_CARD'} or (due and due < today_in_app_timezone()):
             raise ValueError()
@@ -9745,10 +9830,11 @@ def edit_organization_sandbox_subscription_action(
             raise ValueError('Asaas não confirmou todos os campos')
         subscription = db.query(OrganizationSubscription).filter_by(id=subscription_id).with_for_update().one()
         apply_subscription_details(subscription, result)
+        subscription.plan_id = selected_plan.id if selected_plan else None
         subscription.asaas_status = str(result.get('status') or subscription.asaas_status)[:30]
         subscription.asaas_last_event_at = app_now().replace(tzinfo=None)
         subscription.status = 'criada'
-        record_commercial_event(db, user=user, organization_id=organization_id, resource='assinatura', resource_id=subscription_id, action='editar', outcome='success', details={'valor': str(price), 'ciclo': cycle, 'forma': billing_type, 'proximo_vencimento': next_due_date or None})
+        record_commercial_event(db, user=user, organization_id=organization_id, resource='assinatura', resource_id=subscription_id, action='editar', outcome='success', details={'valor': str(price), 'ciclo': cycle, 'forma': billing_type, 'proximo_vencimento': next_due_date or None, 'plano_id': selected_plan.id if selected_plan else None, 'plano_versao': selected_plan.version if selected_plan else None})
         db.commit()
     except (ValueError, InvalidOperation, TypeError):
         db.rollback()

@@ -118,3 +118,15 @@ def test_empty_organization_list():
     with _db() as db:
         portfolio = build_subscription_portfolio(db, [], TODAY)
     assert portfolio.rows == [] and portfolio.active_count == 0
+
+
+def test_pending_card_contract_shows_awaiting_card():
+    with _db() as db:
+        waiting, broken = _org(db, 'Aguardando'), _org(db, 'Quebrado')
+        db.add(OrganizationCardMigration(organization_id=waiting.id, old_subscription_id=None, status='aguardando', is_open=True))
+        db.add(OrganizationCardMigration(organization_id=broken.id, old_subscription_id=None, status='revisao', is_open=True))
+        db.commit()
+        portfolio = build_subscription_portfolio(db, [waiting, broken], TODAY)
+    rows = _by_name(portfolio)
+    assert rows['Aguardando'].situation == 'aguardando_cartao' and rows['Aguardando'].situation_label == 'Aguardando cartão'
+    assert rows['Quebrado'].situation == 'verificar'

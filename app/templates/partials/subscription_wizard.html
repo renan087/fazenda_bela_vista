@@ -1,0 +1,105 @@
+{# Assistente de nova assinatura. Requer: organization, billing, available_plans, csrf_token. Sem JS, todos os passos ficam visiveis. #}
+{% set customer_ready = billing and billing.asaas_customer_id and billing.asaas_environment == 'sandbox' %}
+{% set step_titles = ['Cliente', 'Plano', 'Pagamento', 'Revisão'] %}
+{% set default_plan = (available_plans|selectattr('is_featured')|first) or (available_plans|first) %}
+<div class="mt-4" data-subscription-wizard>
+    <ol class="grid grid-cols-4 gap-2" data-wizard-progress>
+        {% for title in step_titles %}
+        <li class="rounded-xl border border-slate-200 px-2 py-2 text-center text-xs font-semibold text-slate-500" data-wizard-indicator="{{ loop.index }}"><span class="block text-[0.65rem] font-normal uppercase tracking-[0.2em]">Passo {{ loop.index }}</span>{{ title }}</li>
+        {% endfor %}
+    </ol>
+
+    <section class="mt-4 rounded-2xl border border-slate-200 p-4" data-wizard-step="1">
+        <h4 class="text-base font-semibold text-slate-900">Quem vai pagar</h4>
+        {% if billing %}
+        <dl class="mt-3 grid gap-2 text-sm sm:grid-cols-2">
+            <div><dt class="text-xs text-slate-500">Responsável financeiro</dt><dd class="font-medium text-slate-800">{{ billing.contact_name }}</dd></div>
+            <div><dt class="text-xs text-slate-500">E-mail de cobrança</dt><dd class="font-medium text-slate-800">{{ billing.contact_email }}</dd></div>
+            <div><dt class="text-xs text-slate-500">CPF/CNPJ</dt><dd class="font-medium text-slate-800">{{ billing.cpf_cnpj or 'Não informado' }}</dd></div>
+            <div><dt class="text-xs text-slate-500">Cliente no Asaas</dt><dd class="font-medium {% if customer_ready %}text-emerald-700{% else %}text-amber-700{% endif %}">{% if customer_ready %}Vinculado{% else %}Não vinculado{% endif %}</dd></div>
+        </dl>
+        {% endif %}
+        {% if customer_ready %}
+        <p class="mt-3 text-xs text-slate-500">Para alterar esses dados, use a página <a href="/organizacoes" class="font-semibold text-emerald-800 underline">Organizações</a>.</p>
+        {% else %}
+        <div class="mt-3 rounded-xl bg-amber-50 p-3 text-sm text-amber-900">
+            <p class="font-semibold">{% if billing %}Falta vincular o cliente no Asaas.{% else %}Faltam os dados comerciais desta organização.{% endif %}</p>
+            <p class="mt-1 text-xs">Cadastre o responsável financeiro e vincule o cliente em Organizações; depois volte aqui para continuar.</p>
+            <a href="/organizacoes" class="mt-2 inline-block rounded-xl bg-white px-3 py-2 text-xs font-semibold text-amber-900 ring-1 ring-amber-200">Abrir Organizações</a>
+        </div>
+        {% endif %}
+    </section>
+
+    {% if customer_ready %}
+    <form method="post" action="/organizacoes/{{ organization.id }}/assinatura-sandbox" class="contents" data-wizard-form>
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <section class="mt-4 rounded-2xl border border-slate-200 p-4" data-wizard-step="2">
+            <h4 class="text-base font-semibold text-slate-900">Escolha o plano</h4>
+            <div class="mt-3 grid gap-3 md:grid-cols-2">
+                {% for plan in available_plans %}
+                <label class="relative flex cursor-pointer flex-col rounded-2xl border border-slate-200 p-4 transition has-[:checked]:border-brand-500 has-[:checked]:ring-2 has-[:checked]:ring-brand-500/30">
+                    <input type="radio" name="plan_id" value="{{ plan.id }}" class="sr-only" data-plan-option data-plan-name="{{ plan.name }}" data-prices='{{ plan_prices_json(plan) }}' data-trial-days="{{ plan.trial_days }}" {% if plan.id == default_plan.id %}checked{% endif %}>
+                    {% if plan.is_featured %}<span class="absolute right-3 top-3 rounded-full bg-sky-50 px-2 py-0.5 text-[0.65rem] font-semibold text-sky-700">Mais escolhido</span>{% endif %}
+                    <span class="font-semibold text-slate-900">{{ plan.name }}</span>
+                    {% if plan.description %}<span class="mt-1 text-xs text-slate-500">{{ plan.description }}</span>{% endif %}
+                    <span class="mt-2 text-xs text-slate-600">{% for code, price in plan_prices_of(plan).items() %}R$ {{ price|decimal_br }}/{{ cycle_unit_labels[code] }}{% if not loop.last %} · {% endif %}{% endfor %}</span>
+                    {% if plan.trial_days %}<span class="mt-1 text-xs font-medium text-emerald-700">{{ plan.trial_days }} dia(s) de teste grátis</span>{% endif %}
+                </label>
+                {% endfor %}
+                <label class="flex cursor-pointer flex-col rounded-2xl border border-dashed border-slate-300 p-4 transition has-[:checked]:border-brand-500 has-[:checked]:ring-2 has-[:checked]:ring-brand-500/30">
+                    <input type="radio" name="plan_id" value="" class="sr-only" data-plan-option data-plan-name="" {% if not available_plans %}checked{% endif %}>
+                    <span class="font-semibold text-slate-900">Personalizado</span>
+                    <span class="mt-1 text-xs text-slate-500">Condição negociada, fora do catálogo.{% if not available_plans %} Nenhum plano ativo: <a href="/planos" class="font-semibold text-emerald-800 underline">cadastre planos</a>.{% endif %}</span>
+                </label>
+            </div>
+            <div class="mt-3 grid gap-3 sm:grid-cols-2" data-custom-plan-fields>
+                <label><span class="mb-1 block text-sm font-medium">Nome do plano</span><input name="plan_name" maxlength="120" class="min-h-[3rem] w-full rounded-xl border-slate-200 bg-slate-50"></label>
+                <label><span class="mb-1 block text-sm font-medium">Valor por período (R$)</span><input name="amount" inputmode="decimal" placeholder="Ex.: 99,90" class="min-h-[3rem] w-full rounded-xl border-slate-200 bg-slate-50"></label>
+            </div>
+            <fieldset class="mt-4">
+                <legend class="text-sm font-medium text-slate-700">Periodicidade</legend>
+                <div class="mt-2 flex flex-wrap gap-2">
+                    {% for code, cycle_info in subscription_cycles.items() %}
+                    <label class="cursor-pointer rounded-xl border border-slate-200 px-4 py-2 text-sm text-slate-700 has-[:checked]:border-brand-500 has-[:checked]:bg-brand-500 has-[:checked]:text-white has-[:disabled]:cursor-not-allowed has-[:disabled]:opacity-40"><input type="radio" name="cycle" value="{{ code }}" class="sr-only" data-cycle-option {% if loop.first %}checked{% endif %}>{{ cycle_info[0] }}</label>
+                    {% endfor %}
+                </div>
+            </fieldset>
+            <p class="mt-3 hidden rounded-xl bg-emerald-50 px-3 py-2 text-sm text-emerald-900" data-plan-price-preview></p>
+        </section>
+
+        <section class="mt-4 rounded-2xl border border-slate-200 p-4" data-wizard-step="3">
+            <h4 class="text-base font-semibold text-slate-900">Forma de pagamento</h4>
+            <div class="mt-3 grid gap-3 md:grid-cols-3">
+                {% for code, title, text in [('PIX', 'Pix', 'O Asaas gera a cobrança a cada período; o cliente paga pelo QR Code ou copia e cola.'), ('BOLETO', 'Boleto', 'O Asaas gera boleto a cada período e envia ao e-mail de cobrança.'), ('CREDIT_CARD', 'Cartão de crédito', 'Você recebe um link para enviar ao cliente. Ele cadastra o cartão no Asaas e as próximas cobranças são automáticas.')] %}
+                <label class="flex cursor-pointer flex-col rounded-2xl border border-slate-200 p-4 transition has-[:checked]:border-brand-500 has-[:checked]:ring-2 has-[:checked]:ring-brand-500/30">
+                    <input type="radio" name="billing_type" value="{{ code }}" class="sr-only" data-billing-option data-label="{{ title }}" {% if loop.first %}checked{% endif %}>
+                    <span class="font-semibold text-slate-900">{{ title }}</span>
+                    <span class="mt-1 text-xs text-slate-500">{{ text }}</span>
+                </label>
+                {% endfor %}
+            </div>
+            <label class="mt-4 block max-w-xs"><span class="mb-1 block text-sm font-medium text-slate-700" data-due-label>Primeiro vencimento</span><input type="date" name="first_due_date" required min="{{ today_iso }}" class="min-h-[3rem] w-full rounded-xl border-slate-200 bg-slate-50"></label>
+            <p class="mt-2 hidden text-xs text-slate-500" data-card-hint>No cartão, a primeira cobrança acontece nesta data; a assinatura só é criada depois que o cliente cadastrar o cartão e o Asaas aprovar.</p>
+        </section>
+
+        <section class="mt-4 rounded-2xl border border-slate-200 p-4" data-wizard-step="4">
+            <h4 class="text-base font-semibold text-slate-900">Revise antes de confirmar</h4>
+            <dl class="mt-3 grid gap-3 text-sm sm:grid-cols-2" data-review>
+                <div><dt class="text-xs text-slate-500">Cliente</dt><dd class="font-medium text-slate-800">{{ organization.name }} · {{ billing.contact_email }}</dd></div>
+                <div><dt class="text-xs text-slate-500">Plano</dt><dd class="font-medium text-slate-800" data-review-plan>—</dd></div>
+                <div><dt class="text-xs text-slate-500">Valor</dt><dd class="font-medium text-slate-800" data-review-amount>—</dd></div>
+                <div><dt class="text-xs text-slate-500">Forma de pagamento</dt><dd class="font-medium text-slate-800" data-review-billing>—</dd></div>
+                <div><dt class="text-xs text-slate-500">Primeiro vencimento</dt><dd class="font-medium text-slate-800" data-review-due>—</dd></div>
+            </dl>
+            <p class="mt-3 rounded-xl bg-slate-50 px-3 py-2 text-xs text-slate-600" data-review-note>Ambiente de testes (Asaas sandbox). Criar a assinatura não confirma pagamento nem altera o acesso da organização.</p>
+        </section>
+
+        <div class="mt-4 flex flex-wrap items-center justify-between gap-2" data-wizard-nav>
+            <button type="button" class="hidden rounded-xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50" data-wizard-back>Voltar</button>
+            <span></span>
+            <button type="button" class="hidden rounded-xl bg-brand-500 px-5 py-3 text-sm font-semibold text-white hover:bg-brand-700" data-wizard-next>Continuar</button>
+            <button type="submit" class="rounded-xl bg-brand-500 px-5 py-3 text-sm font-semibold text-white hover:bg-brand-700" data-wizard-submit>Criar assinatura</button>
+        </div>
+    </form>
+    {% endif %}
+</div>
