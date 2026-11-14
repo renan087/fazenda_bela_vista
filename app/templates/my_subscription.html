@@ -57,6 +57,12 @@
         </div>
         {% endif %}
         {% if subscription and subscription.asaas_status == 'INACTIVE' %}<p class="mt-4 rounded-2xl bg-slate-100 p-4 text-sm text-slate-700">Sua assinatura está suspensa e não gera novas cobranças. Fale com a equipe SiSFarm para reativá-la.</p>{% endif %}
+        {% if subscription or card_migration %}
+        <div class="mt-5 flex flex-wrap gap-2 border-t border-slate-100 pt-4" data-subscription-actions>
+            {% if subscription %}<a href="/planos-disponiveis" class="rounded-xl bg-brand-500 px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-700">Alterar plano</a>{% endif %}
+            <button type="button" data-dialog-open="payment-method-dialog" class="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50">Forma de pagamento{% if card_migration %} · cadastro em andamento{% endif %}</button>
+        </div>
+        {% endif %}
     </section>
 
     {# Faturas em aberto #}
@@ -82,12 +88,12 @@
             </div>
             {% endfor %}
         </div>
-        <p class="mt-3 text-xs text-slate-500">O pagamento é feito na página segura do Asaas, parceiro de pagamentos do SiSFarm. A confirmação aparece aqui automaticamente.</p>
     </section>
     {% endif %}
 
     {# Forma de pagamento #}
-    <section class="rounded-[2rem] bg-white p-5 shadow-panel sm:p-6" data-payment-method>
+    <dialog id="payment-method-dialog" class="app-modal w-full max-w-lg rounded-[2rem] p-0 shadow-2xl">
+    <div class="bg-white p-6" data-payment-method>
         <h3 class="text-lg font-semibold text-slate-900">Forma de pagamento</h3>
         {% if card_migration %}
         <div class="mt-3 rounded-2xl bg-sky-50 p-4 text-sm text-sky-900">
@@ -125,12 +131,14 @@
         {% else %}
         <p class="mt-2 text-sm text-slate-600">{{ payment_labels.get(subscription.billing_type, subscription.billing_type) if subscription else '—' }}</p>
         {% endif %}
-    </section>
+        <div class="mt-5 flex justify-end"><button type="button" data-dialog-close class="rounded-xl bg-slate-100 px-4 py-2.5 text-sm font-semibold text-slate-700">Fechar</button></div>
+    </div>
+    </dialog>
 
     {# Plano #}
     {% if subscription %}
-    <section class="rounded-[2rem] bg-white p-5 shadow-panel sm:p-6" data-plan-details>
-        <h3 class="text-lg font-semibold text-slate-900">O que está incluído</h3>
+    <details class="rounded-[2rem] bg-white p-5 shadow-panel sm:p-6" data-plan-details>
+        <summary class="cursor-pointer text-base font-semibold text-slate-900">O que está incluído no seu plano</summary>
         {% if plan %}
         {% if plan.description %}<p class="mt-1 text-sm text-slate-600">{{ plan.description }}</p>{% endif %}
         <dl class="mt-4 grid gap-3 text-sm sm:grid-cols-3">
@@ -144,7 +152,7 @@
         {% else %}
         <p class="mt-1 text-sm text-slate-600">Plano personalizado, combinado com a equipe SiSFarm.</p>
         {% endif %}
-    </section>
+    </details>
     {% endif %}
 
     {# Historico #}
@@ -167,6 +175,11 @@
 </div>
 <script>
 (() => {
+    document.addEventListener('click', (event) => {
+        const opener = event.target.closest('[data-dialog-open]');
+        if (opener) { document.getElementById(opener.dataset.dialogOpen)?.showModal(); return; }
+        if (event.target.closest('[data-dialog-close]') || event.target.tagName === 'DIALOG') (event.target.closest('dialog') || event.target).close();
+    });
     document.addEventListener('click', async (event) => {
         const button = event.target.closest('[data-copy-link]');
         if (!button) return;

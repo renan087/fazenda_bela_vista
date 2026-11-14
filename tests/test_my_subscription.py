@@ -177,3 +177,14 @@ def test_legacy_asaas_test_page_was_removed():
     paths = {route.path for route in routes.router.routes}
     assert not any(path.startswith('/gestao-financeira/assinatura') for path in paths)
     assert 'gestao-financeira/assinatura/cliente-asaas' not in open('app/templates/base.html').read()
+
+
+def test_page_is_compact_with_plan_and_payment_buttons(monkeypatch):
+    _page_env(monkeypatch)
+    with _db() as db:
+        mine, _ = _org(db, 'minha')
+        _, context = routes.my_subscription_page(request=SimpleNamespace(), db=db, user=_user(mine), csrf_token='t')
+        html = _render(context)
+    assert 'href="/planos-disponiveis"' in html and 'Alterar plano' in html
+    assert 'data-dialog-open="payment-method-dialog"' in html and '<dialog id="payment-method-dialog"' in html
+    assert 'O pagamento é feito na página segura' not in html and '<details' in html
