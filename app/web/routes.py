@@ -17320,7 +17320,14 @@ def production_page(
     farm_ids, variety_ids = _scoped_plot_filters(request, scope["active_season"])
     start_date, end_date = _scoped_dates(scope["active_season"])
     plots = repo.list_plots(farm_ids=farm_ids, variety_ids=variety_ids)
+    plots = list({plot.id: plot for plot in [*plots, *_season_launch_plots(plots, scope)]}.values())
     plot_ids = {plot.id for plot in plots}
+    edit_harvest = repo.get_harvest(edit_id) if edit_id else None
+    if edit_harvest and (not _plot_matches_scope(edit_harvest.plot, scope) or edit_harvest.plot_id not in plot_ids):
+        edit_harvest = None
+    launch_plots = _season_launch_plots(plots, scope)
+    if edit_harvest and edit_harvest.plot and edit_harvest.plot not in launch_plots:
+        launch_plots = [*launch_plots, edit_harvest.plot]
     harvests = [
         harvest
         for harvest in repo.list_harvests()
@@ -17363,10 +17370,10 @@ def production_page(
             csrf_token,
             "harvest",
             _repo=repo,
-            plots=plots,
+            plots=launch_plots,
             harvests=harvests_pagination["items"],
             harvests_pagination=harvests_pagination,
-            edit_harvest=repo.get_harvest(edit_id) if edit_id else None,
+            edit_harvest=edit_harvest,
             harvest_ids_with_commercialization=repo.harvest_ids_linked_to_commercializations(),
             new_harvest_lot_code=_suggest_next_harvest_lot_code(repo),
             harvest_type_options=harvest_type_options,
@@ -17430,9 +17437,12 @@ def create_harvest_action(
     del user
     validate_csrf(request, csrf_token)
     repo = _repository(db)
-    plot, _, denied = _resolve_plot_in_scope(request, repo, plot_id, "/producao")
+    plot, scope, denied = _resolve_plot_in_scope(request, repo, plot_id, "/producao")
     if denied:
         return denied
+    if not _plot_allowed_for_season_launch(plot, scope):
+        _flash(request, "error", "O setor selecionado não está vinculado à safra ativa.")
+        return _redirect("/producao")
     try:
         maturation_value = _validate_harvest_percentage(maturation_percentage, "Percentual de maturação")
         impurity_value = _validate_harvest_percentage(impurity_percentage, "Percentual de impureza")
@@ -17500,6 +17510,9 @@ def update_harvest_action(
     if not _plot_matches_scope(harvest.plot, scope):
         _flash(request, "error", "Este registro de producao nao pertence ao contexto ativo.")
         return _redirect_for_request(request, "/producao")
+    if plot.id != harvest.plot_id and not _plot_allowed_for_season_launch(plot, scope):
+        _flash(request, "error", "O setor selecionado não está vinculado à safra ativa.")
+        return _redirect_for_request(request, f"/producao?edit_id={record_id}")
     try:
         maturation_value = _validate_harvest_percentage(maturation_percentage, "Percentual de maturação")
         impurity_value = _validate_harvest_percentage(impurity_percentage, "Percentual de impureza")
@@ -17599,6 +17612,7 @@ def commercialization_page(
     )
 
     plots = repo.list_plots(farm_ids=farm_ids, variety_ids=variety_ids)
+    plots = list({plot.id: plot for plot in [*plots, *_season_launch_plots(plots, scope)]}.values())
     plot_ids = {plot.id for plot in plots}
     harvests = [
         item
@@ -17616,11 +17630,16 @@ def commercialization_page(
     edit_commercialization = repo.get_coffee_commercialization(edit_id) if edit_id else None
     if edit_commercialization and not _commercialization_record_matches_scope(edit_commercialization, scope):
         edit_commercialization = None
+    if edit_commercialization and edit_commercialization.harvest and all(item.id != edit_commercialization.harvest_id for item in harvests):
+        harvests.append(edit_commercialization.harvest)
 
     harvest_options = []
     total_available_sacks = 0.0
     available_lot_count = 0
     for harvest in harvests:
+        is_current_edit = bool(edit_commercialization and edit_commercialization.harvest_id == harvest.id)
+        if not is_current_edit and not _plot_allowed_for_season_launch(harvest.plot, scope):
+            continue
         available_sacks = _commercialization_available_sacks(
             harvest,
             all_commercializations,
@@ -17746,6 +17765,10 @@ def create_commercialization_action(
     if not harvest or not _plot_matches_scope(harvest.plot, scope):
         _flash(request, "error", "Selecione um lote de colheita válido para o contexto ativo.")
         return _redirect("/producao/comercializacao")
+    season_start, season_end = _scoped_dates(scope.get("active_season"))
+    if not _plot_allowed_for_season_launch(harvest.plot, scope) or not _within_scope(harvest.harvest_date, season_start, season_end):
+        _flash(request, "error", "Selecione um lote de um setor vinculado e colhido no período da safra ativa.")
+        return _redirect("/producao/comercializacao")
     finance_account_id_value = _int_or_none(finance_account_id)
     if finance_account_id_value:
         account = repo.get_finance_account(finance_account_id_value)
@@ -17823,6 +17846,10 @@ def update_commercialization_action(
     harvest = repo.get_harvest(harvest_id)
     if not harvest or not _plot_matches_scope(harvest.plot, scope):
         _flash(request, "error", "Selecione um lote de colheita válido para o contexto ativo.")
+        return _redirect(f"/producao/comercializacao?edit_id={record_id}")
+    season_start, season_end = _scoped_dates(scope.get("active_season"))
+    if harvest.id != commercialization.harvest_id and (not _plot_allowed_for_season_launch(harvest.plot, scope) or not _within_scope(harvest.harvest_date, season_start, season_end)):
+        _flash(request, "error", "Selecione um lote de um setor vinculado e colhido no período da safra ativa.")
         return _redirect(f"/producao/comercializacao?edit_id={record_id}")
     finance_account_id_value = _int_or_none(finance_account_id)
     if finance_account_id_value:
