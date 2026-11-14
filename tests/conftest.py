@@ -17,3 +17,14 @@ INDICADOR DO CAFÉ ROBUSTA CEPEA/ESALQ
 14/05/2026 953,00 -1,10% 0,20% 4,14
 </body></html>
 """
+
+
+@pytest.fixture(autouse=True)
+def _block_real_http(monkeypatch):
+    """Nenhum teste deve chamar o Asaas de verdade; quem precisar simula o cliente HTTP."""
+    import httpx
+
+    def blocked(self, request, *args, **kwargs):
+        raise httpx.ConnectError("Rede bloqueada nos testes", request=request)
+
+    monkeypatch.setattr(httpx.Client, "send", blocked)

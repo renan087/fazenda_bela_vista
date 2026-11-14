@@ -13,6 +13,7 @@ from app.db.session import get_db
 from app.services.asaas_payment_sync import upsert_asaas_payment_row
 from app.services.organization_subscription_sync import persist_organization_webhook
 from app.models import OrganizationBilling, OrganizationCardMigration
+from app.services.subscription_reconciliation import close_card_checkout
 
 logger = logging.getLogger(__name__)
 
@@ -63,8 +64,9 @@ async def asaas_webhook(request: Request, db: Session = Depends(get_db)):
                     raise ValueError('Cliente do checkout divergente')
                 if event == 'CHECKOUT_PAID' and checkout.get('status') == 'PAID' and migration.status != 'concluido':
                     migration.status = 'pago'
-                elif event in {'CHECKOUT_CANCELED', 'CHECKOUT_EXPIRED'} and migration.status == 'aguardando':
-                    migration.status = 'revisao'
+                elif event in {'CHECKOUT_CANCELED', 'CHECKOUT_EXPIRED'} and migration.is_open and migration.status in {'preparando', 'aguardando', 'revisao'}:
+                    # Link que nao pode mais ser pago: encerra sozinho e restaura a assinatura anterior.
+                    close_card_checkout(db, migration, remote_status=checkout.get('status') or event)
                 db.commit()
                 return {'received': True}
         handled = persist_organization_webhook(db, body)

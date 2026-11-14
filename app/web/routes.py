@@ -118,6 +118,7 @@ from app.services.commercial_audit import record_commercial_event
 from app.services.organization_subscription_sync import apply_subscription_details, persist_organization_webhook
 from app.services.asaas_payments import create_asaas_payment, get_asaas_payment, is_asaas_status_paid
 from app.services.agronomic_profile_suggestions import build_agronomic_profile_suggestions
+from app.services.subscription_reconciliation import close_card_checkout, reconcile_organization
 from app.services.subscription_portfolio import SITUATION_LABELS, build_subscription_portfolio, monthly_amount
 from app.services.subscription_plans import (
     CYCLE_UNIT_LABELS,
@@ -9593,7 +9594,12 @@ def create_organization_sandbox_subscription_action(
         subscription.status = "revisao"
         record_commercial_event(db, user=user, organization_id=organization_id, resource="assinatura", resource_id=subscription.id, action="criar", outcome="verificar")
         db.commit()
-        _flash(request, "error", "Não foi possível confirmar a assinatura. Verifique o sandbox do Asaas antes de qualquer nova tentativa; a criação automática foi bloqueada para evitar duplicidade.")
+        _auto_reconcile(db, organization_id)
+        db.refresh(subscription)
+        if subscription.asaas_subscription_id:
+            _flash(request, "success", "Assinatura confirmada com o Asaas.")
+        else:
+            _flash(request, "info", "O Asaas não respondeu a tempo. Para evitar cobrança duplicada, nenhuma nova tentativa foi feita; " + _AUTO_RETRY_MESSAGE)
         return _redirect(f"/assinaturas?organizacao={organization_id}")
     subscription.asaas_subscription_id = result["id"].strip()
     subscription.asaas_status = str(result.get("status") or "")[:30] or None
@@ -9624,6 +9630,40 @@ def _start_card_subscription_checkout(request, db, user, *, organization_id, bil
         migration.status = "aguardando"
         _flash(request, "success", "Link de pagamento com cartão gerado. Copie e envie ao cliente; ele vale por 24 horas. A assinatura será criada assim que o Asaas confirmar o pagamento.")
     db.commit()
+    return _redirect(f"/assinaturas?organizacao={organization_id}#gerenciamento")
+
+
+def _auto_reconcile(db: Session, organization_id: int, *, full: bool = False) -> list[str] | None:
+    """Consulta o Asaas e aplica a situacao real. Retorna pendencias (lista vazia = tudo conciliado) ou None se falhou."""
+    settings = get_settings()
+    if (settings.asaas_api_base_url or "").rstrip("/") != "https://api-sandbox.asaas.com" or not (settings.asaas_api_key or "").strip():
+        return None
+    try:
+        issues = reconcile_organization(db, organization_id, settings.asaas_api_key.strip(), full=full)
+        db.commit()
+        return issues
+    except Exception:
+        db.rollback()
+        logger.exception("Falha na conciliação imediata da organização %s", organization_id)
+        return None
+
+
+_AUTO_RETRY_MESSAGE = "O SiSFarm continuará consultando o Asaas automaticamente e atualizará a situação em poucos minutos."
+
+
+@router.post("/organizacoes/{organization_id}/assinatura-sandbox/atualizar")
+def refresh_organization_subscription_action(organization_id: int, request: Request, csrf_token: str = Form(...), db: Session = Depends(get_db), user: User = Depends(get_current_user_web)):
+    denied = _require_super_admin(request, user)
+    if denied:
+        return denied
+    validate_csrf(request, csrf_token)
+    issues = _auto_reconcile(db, organization_id, full=True)
+    if issues is None:
+        _flash(request, "error", "Não foi possível consultar o Asaas agora. " + _AUTO_RETRY_MESSAGE)
+    elif issues:
+        _flash(request, "error", "Atualizado parcialmente: " + "; ".join(issues)[:300] + ". " + _AUTO_RETRY_MESSAGE)
+    else:
+        _flash(request, "success", "Assinatura e cobranças atualizadas com o Asaas.")
     return _redirect(f"/assinaturas?organizacao={organization_id}#gerenciamento")
 
 
@@ -9659,14 +9699,7 @@ def close_card_checkout_action(organization_id: int, request: Request, csrf_toke
             return _redirect(target)
     else:
         remote_status = "SEM_CHECKOUT"
-    if migration.old_subscription_id:
-        old = db.query(OrganizationSubscription).filter_by(id=migration.old_subscription_id, organization_id=organization_id).with_for_update().first()
-        if old and old.status == "migrando":
-            old.status = "criada"
-    migration.status = "encerrado"
-    migration.is_open = False
-    migration.last_check_error = None
-    record_commercial_event(db, user=user, organization_id=organization_id, resource="assinatura", resource_id=migration.old_subscription_id, action="encerrar_checkout", outcome="success", details={"checkout_local": migration.id, "situacao_asaas": remote_status})
+    close_card_checkout(db, migration, remote_status=remote_status, user=user)
     db.commit()
     _flash(request, "success", "Checkout encerrado. Já é possível gerar um novo link ou escolher outra forma de pagamento.")
     return _redirect(target)
@@ -9840,7 +9873,11 @@ def edit_organization_sandbox_subscription_action(
         db.rollback()
         record_commercial_event(db, user=user, organization_id=organization_id, resource='assinatura', resource_id=subscription_id, action='editar', outcome='verificar')
         db.commit()
-        _flash(request, "error", "Não foi possível confirmar a alteração. Consulte o Asaas e atualize a assinatura antes de tentar novamente.")
+        issues = _auto_reconcile(db, organization_id)
+        if issues == []:
+            _flash(request, "info", "O Asaas não confirmou todos os campos na resposta. A assinatura foi atualizada com a situação real do Asaas; confira os dados abaixo.")
+        else:
+            _flash(request, "info", "O Asaas não confirmou a alteração a tempo. " + _AUTO_RETRY_MESSAGE)
         return _redirect(f"/assinaturas?organizacao={organization_id}")
     _flash(request, "success", "Assinatura atualizada no sandbox. Cobranças já geradas não foram alteradas.")
     return _redirect(f"/assinaturas?organizacao={organization_id}")
@@ -9915,7 +9952,16 @@ def manage_organization_payment_action(
             charge.paid_date = date.fromisoformat(payment_date)
     record_commercial_event(db, user=user, organization_id=organization_id, resource="cobranca", resource_id=payment_id, action=action, outcome="verificar" if sent else "nao_enviado", details={"situacao": charge.status, "resposta": "inconclusiva" if error and sent else "erro" if error else "recebida"})
     db.commit()
-    _flash(request, "error" if error else "success", error or "Operação enviada ao Asaas. Confira o resultado antes de liberar novas ações; estornos podem continuar em processamento.")
+    if sent:
+        issues = _auto_reconcile(db, organization_id)
+        db.refresh(charge)
+        labels = {"cancelar": "Cobrança cancelada.", "receber": "Recebimento registrado.", "estornar": "Estorno solicitado; o Asaas pode levar alguns dias para concluí-lo."}
+        if charge.operation_state is None:
+            _flash(request, "success", labels[action] + " Situação confirmada com o Asaas.")
+        else:
+            _flash(request, "info", "Operação enviada ao Asaas. " + _AUTO_RETRY_MESSAGE)
+    else:
+        _flash(request, "error", error or "Operação não enviada.")
     return _redirect(f"/assinaturas?organizacao={organization_id}")
 
 
@@ -9961,7 +10007,8 @@ def manage_organization_sandbox_subscription_action(
     if error:
         record_commercial_event(db, user=user, organization_id=organization_id, resource="assinatura", resource_id=subscription.id, action=action, outcome="verificar", details={"resposta": "inconclusiva"})
         db.commit()
-        _flash(request, "error", error)
+        issues = _auto_reconcile(db, organization_id)
+        _flash(request, "info", "O Asaas não confirmou a operação na resposta. " + ("A situação foi atualizada com o Asaas; confira abaixo." if issues == [] else _AUTO_RETRY_MESSAGE))
         return _redirect(f"/assinaturas?organizacao={organization_id}")
     try:
         subscription = db.query(OrganizationSubscription).filter_by(organization_id=organization_id, is_current=True).with_for_update().one()
@@ -9980,7 +10027,8 @@ def manage_organization_sandbox_subscription_action(
         logger.exception("Falha ao registrar operação da assinatura da organização %s", organization_id)
         _flash(request, "error", "Operação recebida pelo Asaas, mas não foi possível atualizar o SiSFarm. Confira no Asaas.")
         return _redirect(f"/assinaturas?organizacao={organization_id}")
-    _flash(request, "success", "Operação confirmada no sandbox. Atualize as cobranças para conferir seus estados.")
+    _auto_reconcile(db, organization_id, full=True)
+    _flash(request, "success", {"suspender": "Assinatura suspensa. Novas cobranças não serão geradas.", "reativar": "Assinatura reativada.", "cancelar": "Assinatura cancelada. O histórico foi preservado e já é possível contratar outra."}.get(action, "Operação confirmada pelo Asaas."))
     return _redirect(f"/assinaturas?organizacao={organization_id}")
 
 

@@ -24,7 +24,7 @@ from app.models import (
 # Ordem de exibicao: o que exige atencao primeiro.
 SITUATION_ORDER = ("verificar", "inadimplente", "aguardando_cartao", "suspensa", "sem_assinatura", "sem_cliente", "ativa", "outra")
 SITUATION_LABELS = {
-    "verificar": "Conferir no Asaas",
+    "verificar": "Sincronizando",
     "inadimplente": "Inadimplente",
     "aguardando_cartao": "Aguardando cartão",
     "suspensa": "Suspensa",
@@ -47,6 +47,7 @@ class PortfolioRow:
     overdue_amount: Decimal = _ZERO
     oldest_overdue_due_date: date | None = None
     days_overdue: int = 0
+    attention_reason: str | None = None
 
     @property
     def situation_label(self) -> str:
@@ -92,6 +93,7 @@ def build_subscription_portfolio(db: Session, organizations: list[Organization],
         OrganizationCardMigration.is_open.is_(True),
     ).all()
     open_migration_review = {item.organization_id for item in open_migrations if item.status == "revisao"}
+    migration_errors = {item.organization_id: item.last_check_error for item in open_migrations if item.last_check_error}
     awaiting_card_contract = {item.organization_id for item in open_migrations if item.old_subscription_id is None and item.status != "revisao"}
 
     overdue_by_org: dict[int, list[OrganizationSubscriptionPayment]] = defaultdict(list)
@@ -127,6 +129,7 @@ def build_subscription_portfolio(db: Session, organizations: list[Organization],
 
         if organization.id in open_migration_review or (subscription and (subscription.status in _PENDING_REVIEW_STATUSES or organization.id in payment_review_orgs)):
             row.situation = "verificar"
+            row.attention_reason = (subscription.sync_issue if subscription else None) or migration_errors.get(organization.id) or "Conferência automática com o Asaas em andamento."
         elif overdue:
             row.situation = "inadimplente"
         elif not subscription and organization.id in awaiting_card_contract:

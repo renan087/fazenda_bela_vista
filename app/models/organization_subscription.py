@@ -27,6 +27,8 @@ class OrganizationSubscription(Base):
     asaas_subscription_id: Mapped[str | None] = mapped_column(String(80), nullable=True, unique=True)
     asaas_status: Mapped[str | None] = mapped_column(String(30), nullable=True)
     asaas_last_event_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=False), nullable=True)
+    last_synced_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=False), nullable=True)
+    sync_issue: Mapped[str | None] = mapped_column(String(255), nullable=True)
     environment: Mapped[str] = mapped_column(String(20), nullable=False, default="sandbox")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())

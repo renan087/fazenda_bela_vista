@@ -159,3 +159,25 @@ def create_sandbox_subscription(*, api_key: str, payload: dict) -> tuple[dict | 
         return data, None
     except (httpx.HTTPError, ValueError):
         return None, "Não foi possível confirmar a resposta do Asaas."
+
+
+def get_sandbox_payment(*, api_key: str, payment_id: str) -> tuple[dict | None, str | None]:
+    """Consulta autoritativa de uma cobranca (inclui cobrancas removidas, com ``deleted``)."""
+    if not payment_id or not payment_id.startswith('pay_') or not payment_id.replace('_', '').isalnum():
+        return None, 'Identificador de cobrança inválido.'
+    try:
+        with httpx.Client(timeout=20.0) as client:
+            response = client.get(
+                f'https://api-sandbox.asaas.com/v3/payments/{payment_id}',
+                headers={'access_token': api_key, 'User-Agent': 'SiSFarm/AsaasIntegration', 'Accept': 'application/json'},
+            )
+        if response.status_code == 404:
+            return {'id': payment_id, 'deleted': True}, None
+        if response.status_code != 200:
+            return None, f'Não foi possível consultar a cobrança (HTTP {response.status_code}).'
+        data = response.json()
+        if not isinstance(data, dict) or data.get('id') != payment_id:
+            return None, 'O Asaas retornou dados incompletos da cobrança.'
+        return data, None
+    except (httpx.HTTPError, ValueError):
+        return None, 'Não foi possível consultar a cobrança no Asaas.'
