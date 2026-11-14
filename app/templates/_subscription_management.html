@@ -82,7 +82,7 @@
                 {% if has_menu %}
                 <details class="relative" data-row-menu>
                     <summary class="flex h-9 w-9 cursor-pointer list-none items-center justify-center rounded-xl text-slate-500 hover:bg-slate-100" aria-label="Ações da cobrança">⋯</summary>
-                    <div class="absolute right-0 z-20 mt-1 w-56 rounded-xl border border-slate-200 bg-white p-1 text-sm shadow-lg">
+                    <div class="absolute right-0 z-50 mt-1 w-56 rounded-xl border border-slate-200 bg-white p-1 text-sm shadow-lg" data-row-menu-panel>
                         {% if is_open and charge.invoice_url %}
                         <a href="{{ charge.invoice_url }}" target="_blank" rel="noopener noreferrer" class="block rounded-lg px-3 py-2 text-slate-700 hover:bg-slate-50">Abrir fatura</a>
                         <button type="button" data-copy-link="{{ charge.invoice_url }}" class="block w-full rounded-lg px-3 py-2 text-left text-slate-700 hover:bg-slate-50">Copiar link de pagamento</button>
@@ -296,6 +296,28 @@
         date.setDate(date.getDate() + Number(preset.dataset.grantDays));
         input.value = date.toISOString().slice(0, 10);
     });
+    // Menu "⋯": posicionado pela janela (o painel da pagina corta o que passa da borda) e abre para cima se faltar espaco.
+    const placeMenu = (menu) => {
+        const panel = menu.querySelector('[data-row-menu-panel]');
+        if (!panel) return;
+        const trigger = menu.querySelector('summary').getBoundingClientRect();
+        panel.style.position = 'fixed';
+        panel.style.right = 'auto';
+        panel.style.marginTop = '0';
+        const width = panel.offsetWidth;
+        const height = panel.offsetHeight;
+        const left = Math.min(Math.max(8, trigger.right - width), window.innerWidth - width - 8);
+        const below = trigger.bottom + 4;
+        const top = below + height > window.innerHeight - 8 ? Math.max(8, trigger.top - height - 4) : below;
+        panel.style.left = `${left}px`;
+        panel.style.top = `${top}px`;
+    };
+    document.querySelectorAll('details[data-row-menu]').forEach((menu) => {
+        menu.addEventListener('toggle', () => { if (menu.open) placeMenu(menu); });
+    });
+    const closeMenus = () => document.querySelectorAll('details[data-row-menu][open]').forEach((menu) => menu.removeAttribute('open'));
+    window.addEventListener('scroll', closeMenus, { passive: true });
+    window.addEventListener('resize', closeMenus);
     document.querySelectorAll('[data-busy-form]').forEach((form) => {
         form.addEventListener('submit', (event) => {
             const button = form.querySelector('button:not([type="button"])');
