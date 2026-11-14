@@ -2168,6 +2168,17 @@ def _resolve_plot_in_scope(
     return plot, scope, None
 
 
+def _resolve_farm_plot_in_scope(request: Request, repo: FarmRepository, plot_id: int, redirect_path: str):
+    scope, denied = _launch_scope_or_redirect(request, repo, redirect_path, require_season=False)
+    if denied:
+        return None, None, denied
+    plot = repo.get_plot(plot_id)
+    if not plot or plot.farm_id != scope["active_farm_id"]:
+        _flash(request, "error", "Selecione um setor pertencente à fazenda ativa.")
+        return None, scope, _redirect(redirect_path)
+    return plot, scope, None
+
+
 def _resolve_optional_plot_in_scope(
     request: Request,
     repo: FarmRepository,
@@ -17538,6 +17549,38 @@ def create_harvest_action(
     return _redirect("/producao")
 
 
+@router.post("/producao/{record_id}/vincular-safra")
+def link_legacy_harvest_to_season_action(
+    record_id: int,
+    request: Request,
+    csrf_token: str = Form(...),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    validate_csrf(request, csrf_token)
+    repo = _repository(db)
+    scope, denied = _launch_scope_or_redirect(request, repo, "/producao")
+    if denied:
+        return denied
+    harvest = repo.get_harvest(record_id)
+    season = scope["active_season"]
+    if not harvest or not harvest.plot or harvest.plot.farm_id != scope["active_farm_id"]:
+        _flash(request, "error", "Colheita não encontrada na fazenda ativa.")
+        return _redirect("/producao")
+    if harvest.season_id is not None:
+        _flash(request, "error", "Esta colheita já possui uma safra vinculada.")
+        return _redirect("/producao")
+    if not season.plots or not any(plot.id == harvest.plot_id for plot in season.plots):
+        _flash(request, "error", "O setor da colheita precisa estar vinculado à safra ativa.")
+        return _redirect("/producao")
+    if not _within_scope(harvest.harvest_date, season.start_date, season.end_date):
+        _flash(request, "error", "A data da colheita está fora do período da safra ativa.")
+        return _redirect("/producao")
+    repo.update(harvest, {"season_id": season.id})
+    _flash(request, "success", "Colheita vinculada à safra ativa com sucesso.")
+    return _redirect("/producao")
+
+
 @router.post("/producao/{record_id}/editar")
 def update_harvest_action(
     record_id: int,
@@ -18397,7 +18440,7 @@ def create_soil_analysis_action(
     del user
     validate_csrf(request, csrf_token)
     repo = _repository(db)
-    plot, scope, denied = _resolve_plot_in_scope(request, repo, plot_id, "/analise-solo")
+    plot, scope, denied = _resolve_farm_plot_in_scope(request, repo, plot_id, "/analise-solo")
     if denied:
         return denied
     pdf_filename, pdf_content_type, pdf_data = _read_upload(analysis_pdf)
@@ -18462,14 +18505,14 @@ def update_soil_analysis_action(
     del user
     validate_csrf(request, csrf_token)
     repo = _repository(db)
-    plot, scope, denied = _resolve_plot_in_scope(request, repo, plot_id, "/analise-solo")
+    plot, scope, denied = _resolve_farm_plot_in_scope(request, repo, plot_id, "/analise-solo")
     if denied:
         return denied
     analysis = repo.get_soil_analysis(analysis_id)
     if not analysis:
         _flash(request, "error", "Analise de solo nao encontrada.")
         return _redirect_for_request(request, "/analise-solo")
-    if not _farm_matches_scope(analysis.farm_id, scope) or not _plot_matches_scope(analysis.plot, scope):
+    if analysis.farm_id != scope["active_farm_id"] or not analysis.plot or analysis.plot.farm_id != scope["active_farm_id"]:
         _flash(request, "error", "Esta analise de solo nao pertence ao contexto ativo.")
         return _redirect_for_request(request, "/analise-solo")
     pdf_filename, pdf_content_type, pdf_data = _read_upload(analysis_pdf)
