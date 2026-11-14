@@ -28,7 +28,49 @@ def test_checkout_requires_confirmed_payment_and_unique_active_subscription(monk
     assert result['id'] == 'sub_test' and error is None
     state['customer'] = 'cus_other'
     result, error = reconciliation.find_paid_checkout_subscription(**args)
-    assert result is None and error
+    assert result is None and 'Cliente divergente' in error
+
+
+def test_fallback_by_customer_requires_same_checkout_id(monkeypatch):
+    calls = []
+    linked_checkout = [CHECKOUT]
+    class Response:
+        def __init__(self, data): self.data = data
+        def raise_for_status(self): pass
+        def json(self): return self.data
+    class Client:
+        def __init__(self, **kwargs): pass
+        def __enter__(self): return self
+        def __exit__(self, *args): pass
+        def get(self, url, **kwargs):
+            if url.endswith('/payments'):
+                params = kwargs['params']
+                calls.append(params)
+                if 'checkoutSession' in params:
+                    return Response({'data': [], 'hasMore': False})
+                return Response({'data': [{'customer': 'cus_test', 'checkoutSession': linked_checkout[0], 'subscription': 'sub_test', 'billingType': 'CREDIT_CARD', 'status': 'CONFIRMED'}], 'hasMore': False})
+            return Response({'id': 'sub_test', 'customer': 'cus_test', 'billingType': 'CREDIT_CARD', 'status': 'ACTIVE'})
+    monkeypatch.setattr(reconciliation.httpx, 'Client', Client)
+    result, error = reconciliation.find_paid_checkout_subscription(api_key='sandbox', checkout_id=CHECKOUT, customer_id='cus_test')
+    assert error is None and result['id'] == 'sub_test'
+    assert calls[1]['customer'] == 'cus_test'
+    linked_checkout[0] = 'c7b1c696-b27b-4d3d-80b9-d1c018e387f9'
+    result, error = reconciliation.find_paid_checkout_subscription(api_key='sandbox', checkout_id=CHECKOUT, customer_id='cus_test')
+    assert result is None and 'checkout' in error
+
+
+def test_empty_result_reports_checkout_not_customer(monkeypatch):
+    class Response:
+        def raise_for_status(self): pass
+        def json(self): return {'data': [], 'hasMore': False}
+    class Client:
+        def __init__(self, **kwargs): pass
+        def __enter__(self): return self
+        def __exit__(self, *args): pass
+        def get(self, *args, **kwargs): return Response()
+    monkeypatch.setattr(reconciliation.httpx, 'Client', Client)
+    result, error = reconciliation.find_paid_checkout_subscription(api_key='sandbox', checkout_id=CHECKOUT, customer_id='cus_test')
+    assert result is None and 'checkout' in error and 'divergente' not in error
 
 
 def test_only_one_open_migration_per_organization():
