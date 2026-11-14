@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from app.core.config import get_settings
 from app.db.session import get_db
 from app.services.asaas_payment_sync import upsert_asaas_payment_row
+from app.services.organization_subscription_sync import persist_organization_webhook
 
 logger = logging.getLogger(__name__)
 
@@ -51,11 +52,14 @@ async def asaas_webhook(request: Request, db: Session = Depends(get_db)):
     event = str(body.get("event") or "").strip()
     payment = body.get("payment")
 
-    if isinstance(payment, dict) and payment.get("id"):
-        try:
-            upsert_asaas_payment_row(db, payment=payment, last_event=event or None, commit=True)
-        except Exception:
-            logger.exception("Falha ao persistir webhook Asaas event=%s", event)
-            raise HTTPException(status_code=500, detail="Erro ao processar")
+    try:
+        handled = persist_organization_webhook(db, body)
+        if not handled and isinstance(payment, dict) and payment.get("id"):
+            upsert_asaas_payment_row(db, payment=payment, last_event=event or None, commit=False)
+        db.commit()
+    except Exception:
+        db.rollback()
+        logger.exception("Falha ao persistir webhook Asaas event=%s", event)
+        raise HTTPException(status_code=500, detail="Erro ao processar")
 
     return {"received": True}

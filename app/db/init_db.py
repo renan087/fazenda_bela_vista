@@ -620,6 +620,7 @@ def _sync_schema() -> None:
         "ALTER TABLE organization_billing ADD COLUMN IF NOT EXISTS city VARCHAR(120)",
         "ALTER TABLE organization_billing ADD COLUMN IF NOT EXISTS state VARCHAR(2)",
         "ALTER TABLE organization_billing ADD COLUMN IF NOT EXISTS asaas_environment VARCHAR(20)",
+        "ALTER TABLE organization_subscriptions ADD COLUMN IF NOT EXISTS asaas_last_event_at TIMESTAMP",
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS organization_id INTEGER REFERENCES organizations(id) ON DELETE SET NULL",
         "ALTER TABLE farms ADD COLUMN IF NOT EXISTS organization_id INTEGER REFERENCES organizations(id) ON DELETE SET NULL",
         "CREATE INDEX IF NOT EXISTS ix_organizations_slug ON organizations(slug)",

@@ -90,6 +90,7 @@ from app.models import (
     Organization,
     OrganizationBilling,
     OrganizationSubscription,
+    OrganizationSubscriptionPayment,
     PestIncident,
     Plot,
     PlotAttachment,
@@ -108,7 +109,8 @@ from app.services.asaas_customers import (
     find_asaas_customers_by_document,
 )
 from app.services.asaas_payment_sync import upsert_asaas_payment_row, user_owns_asaas_payment_payload
-from app.services.asaas_subscriptions import create_sandbox_subscription
+from app.services.asaas_subscriptions import create_sandbox_subscription, list_sandbox_subscription_payments
+from app.services.organization_subscription_sync import persist_organization_webhook
 from app.services.asaas_payments import create_asaas_payment, get_asaas_payment, is_asaas_status_paid
 from app.services.agronomic_profile_suggestions import build_agronomic_profile_suggestions
 from app.services.sector_costs import build_sector_cost_context
@@ -9168,6 +9170,9 @@ def organizations_page(
     }
     billing_by_organization = {item.organization_id: item for item in db.query(OrganizationBilling).all()}
     subscriptions_by_organization = {item.organization_id: item for item in db.query(OrganizationSubscription).all()}
+    subscription_payments = defaultdict(list)
+    for payment in db.query(OrganizationSubscriptionPayment).order_by(OrganizationSubscriptionPayment.due_date.desc(), OrganizationSubscriptionPayment.id.desc()).all():
+        subscription_payments[payment.subscription_id].append(payment)
     return templates.TemplateResponse(
         "organizations.html",
         _base_context(
@@ -9180,6 +9185,7 @@ def organizations_page(
             organization_stats=organization_stats,
             billing_by_organization=billing_by_organization,
             subscriptions_by_organization=subscriptions_by_organization,
+            subscription_payments=subscription_payments,
             users=users,
             farms=farms,
             _repo=repo,
@@ -9373,6 +9379,46 @@ def create_organization_sandbox_subscription_action(
     subscription.status = "criada"
     db.commit()
     _flash(request, "success", "Assinatura criada no sandbox. A criação não confirma pagamento nem altera o acesso da organização.")
+    return _redirect("/organizacoes")
+
+
+@router.post("/organizacoes/{organization_id}/assinatura-sandbox/sincronizar")
+def sync_organization_subscription_payments_action(
+    organization_id: int, request: Request, csrf_token: str = Form(...),
+    db: Session = Depends(get_db), user: User = Depends(get_current_user_web),
+):
+    denied = _require_super_admin(request, user)
+    if denied:
+        return denied
+    validate_csrf(request, csrf_token)
+    settings = get_settings()
+    parsed = urlparse(settings.asaas_api_base_url or "")
+    if parsed.scheme != "https" or parsed.hostname != "api-sandbox.asaas.com" or parsed.port not in (None, 443) or parsed.path not in ("", "/") or parsed.query or parsed.fragment or parsed.username or not (settings.asaas_api_key or "").strip():
+        _flash(request, "error", "Configure o sandbox oficial e sua chave antes de sincronizar.")
+        return _redirect("/organizacoes")
+    subscription = db.query(OrganizationSubscription).filter_by(organization_id=organization_id, environment="sandbox").first()
+    if not subscription or not subscription.asaas_subscription_id:
+        _flash(request, "error", "Assinatura de sandbox não encontrada.")
+        return _redirect("/organizacoes")
+    started_at = app_now().replace(tzinfo=None)
+    rows, error = list_sandbox_subscription_payments(api_key=settings.asaas_api_key.strip(), subscription_id=subscription.asaas_subscription_id)
+    if error:
+        _flash(request, "error", error)
+        return _redirect("/organizacoes")
+    try:
+        for payment in rows:
+            if not isinstance(payment, dict) or payment.get("subscription") != subscription.asaas_subscription_id or not payment.get("id"):
+                raise ValueError("Cobrança retornada não corresponde à assinatura")
+            key = hashlib.sha256(f"{organization_id}:{payment['id']}:{started_at.isoformat()}".encode()).hexdigest()
+            if not persist_organization_webhook(db, {"id": f"sync-{key}", "event": "MANUAL_SYNC", "dateCreated": started_at.isoformat(), "payment": payment}):
+                raise ValueError("Assinatura não localizada durante sincronização")
+        db.commit()
+    except Exception:
+        db.rollback()
+        logger.exception("Falha ao sincronizar cobranças da organização %s", organization_id)
+        _flash(request, "error", "Não foi possível salvar a sincronização; nenhum resultado parcial foi aplicado.")
+        return _redirect("/organizacoes")
+    _flash(request, "success", f"Consulta ao sandbox concluída: {len(rows)} cobrança(s) verificadas.")
     return _redirect("/organizacoes")
 
 
