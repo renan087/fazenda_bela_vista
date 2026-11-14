@@ -3,6 +3,7 @@
 {% set gained = modules|reject('in', current_modules)|list %}
 {% set lost = current_modules|reject('in', modules)|list %}
 {% set issues = plan_limit_issues.get(plan.id, []) %}
+{% set change = plan_change_info.get(plan.id, {}) %}
 {% set default_cycle = sub.cycle if sub.cycle in prices else (prices.keys()|list)[0] %}
 {% set current_months = subscription_cycles[sub.cycle][1] if sub.cycle in subscription_cycles else 1 %}
 <dialog id="change-plan-{{ plan.id }}" class="app-modal w-full max-w-xl rounded-[2rem] p-0 shadow-2xl">
@@ -23,8 +24,13 @@
             <div class="rounded-xl bg-slate-50 p-2"><dt class="text-slate-500">{{ label }}</dt><dd class="mt-1 font-semibold text-slate-800">{{ (before|decimal_br(0) if label == 'Área (ha)' else before) if before else '∞' }} → {{ (after|decimal_br(0) if label == 'Área (ha)' else after) if after else '∞' }}</dd></div>
             {% endfor %}
         </dl>
+        {% if change.downgrade %}
+        <p class="rounded-xl bg-slate-50 px-3 py-2 text-sm text-slate-600"><strong>Quando muda:</strong> você continua com o plano {{ sub.plan_name }} até o fim do ciclo já pago{% if sub.next_due_date %}, em <strong>{{ sub.next_due_date.strftime('%d/%m/%Y') }}</strong>{% endif %}. A partir daí valem os módulos, os limites e o valor do novo plano, já na próxima fatura. Você pode cancelar a mudança até essa data.</p>
+        {% else %}
         <p class="rounded-xl bg-slate-50 px-3 py-2 text-sm text-slate-600"><strong>Quando muda:</strong> módulos e limites valem assim que você confirmar. O novo valor será cobrado a partir da próxima cobrança{% if sub.next_due_date %}, em <strong>{{ sub.next_due_date.strftime('%d/%m/%Y') }}</strong>{% endif %}. Cobranças já geradas continuam com o valor atual.</p>
+        {% endif %}
+        {% if change.block %}<p class="rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-900">{{ change.block }}</p>{% endif %}
         {% if issues %}<div class="rounded-xl bg-rose-50 px-3 py-2 text-sm text-rose-800"><p class="font-semibold">Este plano não comporta o seu uso atual</p>{% for issue in issues %}<p class="mt-1">{{ issue }}</p>{% endfor %}<p class="mt-1 text-xs">Ajuste o cadastro ou escolha outro plano.</p></div>{% endif %}
-        <div class="flex justify-end gap-2"><button type="button" data-dialog-close class="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-700">Cancelar</button><button class="rounded-xl bg-brand-500 px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-50" {% if issues %}disabled{% endif %}>Confirmar mudança</button></div>
+        <div class="flex justify-end gap-2"><button type="button" data-dialog-close class="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-700">Cancelar</button><button class="rounded-xl bg-brand-500 px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-50" {% if issues or change.block %}disabled{% endif %}>{{ 'Agendar mudança' if change.downgrade else 'Confirmar mudança' }}</button></div>
     </form>
 </dialog>

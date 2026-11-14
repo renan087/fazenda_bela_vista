@@ -16,6 +16,7 @@ from datetime import date, datetime, timedelta, timezone
 from sqlalchemy.orm import Session
 
 from app.models import OrganizationAccessGrant, OrganizationSubscription, SubscriptionPlan
+from app.services.plan_changes import effective_plan_id
 
 GRANT_REASONS: dict[str, str] = {
     "erro_interno": "Erro ou falha da SiSFarm",
@@ -159,9 +160,10 @@ def organization_access(db: Session, organization_id: int, today: date, *, envir
     if environment:
         query = query.filter_by(environment=environment)
     current = query.first()
+    plan_id = effective_plan_id(current, today)
     if current and current.asaas_status == "ACTIVE":
-        return AccessStatus(True, "assinatura", None, current.plan_id)
-    return AccessStatus(False, None, None, current.plan_id if current else None)
+        return AccessStatus(True, "assinatura", None, plan_id)
+    return AccessStatus(False, None, None, plan_id)
 
 
 def default_grant_end(today: date, days: int = 30) -> date:

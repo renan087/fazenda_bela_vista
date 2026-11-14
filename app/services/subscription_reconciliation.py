@@ -30,9 +30,11 @@ from app.services.asaas_subscriptions import (
     list_customer_sandbox_subscriptions,
     list_sandbox_subscription_payments,
     sandbox_subscription_is_missing,
+    update_sandbox_subscription,
 )
 from app.services.commercial_audit import record_commercial_event
 from app.services.entitlements import invalidate_entitlements
+from app.services.plan_changes import apply_due_plan_changes
 from app.services.organization_subscription_sync import apply_subscription_details, persist_organization_webhook
 from app.services.asaas_environment import asaas_api_key, asaas_env_name, asaas_ready
 
@@ -247,12 +249,30 @@ def organizations_needing_reconciliation(db, now: datetime) -> list[int]:
     return sorted(ids)
 
 
+def _apply_scheduled_plan_changes(db, api_key: str) -> None:
+    """Efetiva reducoes de plano cuja data chegou (renomeia no Asaas; o valor ja foi ajustado)."""
+    def rename(subscription, name):
+        billing = db.query(OrganizationBilling).filter_by(organization_id=subscription.organization_id, asaas_environment=asaas_env_name()).first()
+        if not billing or not subscription.asaas_subscription_id:
+            return False
+        result, error = update_sandbox_subscription(api_key=api_key, subscription_id=subscription.asaas_subscription_id, customer_id=billing.asaas_customer_id, payload={"description": name})
+        return bool(result) and not error
+    try:
+        for organization_id in apply_due_plan_changes(db, _now().date(), _now(), rename):
+            invalidate_entitlements(organization_id)
+        db.commit()
+    except Exception:
+        db.rollback()
+        logger.exception("Falha ao efetivar mudanças de plano agendadas")
+
+
 def _tick(limit: int = 20) -> None:
     settings = get_settings()
     if not asaas_ready(settings):
         return
     api_key = asaas_api_key(settings)
     with SessionLocal() as db:
+        _apply_scheduled_plan_changes(db, api_key)
         organization_ids = organizations_needing_reconciliation(db, _now())[:limit]
     for organization_id in organization_ids:
         with SessionLocal() as db:

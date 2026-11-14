@@ -122,6 +122,7 @@ from app.services.commercial_audit import record_commercial_event
 from app.services.organization_subscription_sync import apply_subscription_details, persist_organization_webhook
 from app.services.agronomic_profile_suggestions import build_agronomic_profile_suggestions
 from app.services.subscription_reconciliation import close_card_checkout, reconcile_organization
+from app.services.plan_changes import clear_pending, downgrade_block_reason, is_downgrade, schedule_downgrade
 from app.services.entitlements import ALWAYS_ALLOWED_PREFIXES, MODULE_PITCH, UNRESTRICTED, Entitlements, MODULE_LABELS, cached_entitlements, farm_limit_error, invalidate_entitlements, user_limit_error
 from app.middleware.subscription_enforcement import upgrade_url
 from app.services.access_grants import GRANT_REASONS, MAX_GRANT_DAYS, GrantValidationError, active_grant, create_grant, default_grant_end, extend_grant, grant_status_label, is_expiring_soon, revoke_grant
@@ -9195,6 +9196,7 @@ def plan_upgrade_page(request: Request, modulo: str | None = Query(None), db: Se
         request, user, csrf_token, "plan_upgrade", current_subscription=subscription, current_modules=current_modules,
         can_change_plan=bool(subscription) and WRITE_FINANCE in permission_codes_for_user(db, user),
         plan_limit_issues={plan.id: _plan_downgrade_issues(db, user.organization_id, plan) for plan in ordered} if subscription else {},
+        plan_change_info=_plan_change_info(db, subscription, ordered) if subscription else {},
         title="Planos disponíveis", module_code=module_code, module_label=MODULE_LABELS.get(module_code),
         module_pitch=MODULE_PITCH.get(module_code), plans_catalog=ordered, current_plan_id=entitlements.plan_id, current_plan_name=entitlements.plan_name,
         plan_modules_of=plan_modules, plan_prices_of=plan_prices, module_labels=MODULE_LABELS, support_email=(get_settings().support_email or "").strip() or None,
@@ -9212,6 +9214,21 @@ def _self_service_subscription(db: Session, user) -> OrganizationSubscription | 
     if db.query(OrganizationCardMigration.id).filter_by(organization_id=user.organization_id, is_open=True).first():
         return None
     return subscription
+
+
+def _plan_change_info(db: Session, subscription: OrganizationSubscription, plans_list) -> dict:
+    """Por plano: se e reducao (agendada para o fim do ciclo) e o motivo que impede pedir agora."""
+    info = {}
+    block = downgrade_block_reason(db, subscription)
+    for plan in plans_list:
+        prices = plan_prices(plan)
+        if not prices:
+            continue
+        cycle = subscription.cycle if subscription.cycle in prices else next(iter(prices))
+        downgrade = is_downgrade(subscription, plan, prices[cycle], cycle)
+        pending = f"Já existe uma mudança para {subscription.pending_plan_name} agendada. Cancele-a em Minha assinatura para escolher outro plano." if subscription.pending_plan_id else None
+        info[plan.id] = {"downgrade": downgrade, "block": pending or (block if downgrade else None)}
+    return info
 
 
 def _plan_downgrade_issues(db: Session, organization_id: int, plan: SubscriptionPlan) -> list[str]:
@@ -9254,13 +9271,23 @@ def self_service_plan_change_action(request: Request, csrf_token: str = Form(...
     if issues:
         _flash(request, "error", "O plano escolhido não comporta o uso atual: " + " ".join(issues))
         return _redirect(target)
+    if subscription.pending_plan_id:
+        _flash(request, "error", f"Já existe uma mudança para {subscription.pending_plan_name} agendada. Cancele-a em Minha assinatura antes de escolher outro plano.")
+        return _redirect(target)
+    downgrade = is_downgrade(subscription, plan, price, cycle)
+    if downgrade:
+        reason = downgrade_block_reason(db, subscription)
+        if reason:
+            _flash(request, "error", reason)
+            return _redirect(target)
     old_plan, old_amount, old_cycle, subscription_id = subscription.plan_name, subscription.amount, subscription.cycle, subscription.id
     reserved = db.query(OrganizationSubscription).filter_by(id=subscription_id, status="criada", asaas_status="ACTIVE").update({"status": "revisao"}, synchronize_session=False)
     db.commit()
     if not reserved:
         _flash(request, "error", "Outra operação está em andamento. Tente novamente em instantes.")
         return _redirect(target)
-    payload = {"description": plan.name, "value": float(price), "cycle": cycle}
+    # No downgrade o nome do plano no Asaas so muda quando ele passar a valer (fim do ciclo pago).
+    payload = {"description": old_plan if downgrade else plan.name, "value": float(price), "cycle": cycle}
     if subscription.billing_type in {"PIX", "BOLETO"}:
         payload["billingType"] = subscription.billing_type
     result, error = update_sandbox_subscription(api_key=settings.asaas_api_key.strip(), subscription_id=subscription.asaas_subscription_id, customer_id=billing.asaas_customer_id, payload=payload)
@@ -9275,16 +9302,52 @@ def self_service_plan_change_action(request: Request, csrf_token: str = Form(...
         _flash(request, "error", "Não foi possível confirmar a mudança com o Asaas. Seu plano atual foi mantido; tente novamente em alguns minutos.")
         return _redirect(target)
     apply_subscription_details(subscription, result)
-    subscription.plan_id = plan.id
     subscription.status = "criada"
     subscription.asaas_last_event_at = app_now().replace(tzinfo=None)
-    record_commercial_event(db, user=user, organization_id=user.organization_id, resource="assinatura", resource_id=subscription_id, action="mudar_plano_cliente", outcome="success",
-                            details={"de": old_plan, "valor_anterior": str(old_amount), "ciclo_anterior": old_cycle, "para": plan.name, "plano_id": plan.id, "versao": plan.version, "valor": str(price), "ciclo": cycle})
+    effective_on = None
+    if downgrade:
+        effective_on = schedule_downgrade(subscription, plan, price, cycle, previous_amount=old_amount, previous_cycle=old_cycle)
+    else:
+        subscription.plan_id = plan.id
+        subscription.plan_changed_at = app_now().replace(tzinfo=None)
+    record_commercial_event(db, user=user, organization_id=user.organization_id, resource="assinatura", resource_id=subscription_id, action="agendar_reducao_plano" if downgrade else "mudar_plano_cliente", outcome="success",
+                            details={"de": old_plan, "valor_anterior": str(old_amount), "ciclo_anterior": old_cycle, "para": plan.name, "plano_id": plan.id, "versao": plan.version, "valor": str(price), "ciclo": cycle, "vale_a_partir_de": effective_on})
     db.commit()
     invalidate_entitlements(user.organization_id)
     due = subscription.next_due_date.strftime("%d/%m/%Y") if subscription.next_due_date else "a próxima cobrança"
-    _flash(request, "success", f"Plano alterado para {plan.name}. Os módulos já estão disponíveis; o novo valor será cobrado a partir de {due}.")
+    if downgrade:
+        _flash(request, "success", f"Mudança para {plan.name} agendada para {due}. Até lá, você continua com o plano {old_plan}; a fatura de {due} já virá com o novo valor.")
+    else:
+        _flash(request, "success", f"Plano alterado para {plan.name}. Os módulos já estão disponíveis; o novo valor será cobrado a partir de {due}.")
     return _redirect("/minha-assinatura")
+
+
+@router.post("/minha-assinatura/cancelar-alteracao")
+def cancel_scheduled_plan_change_action(request: Request, csrf_token: str = Form(...), db: Session = Depends(get_db), user: User = Depends(get_current_user_web)):
+    """Cancela a reducao de plano agendada e devolve o valor atual no Asaas."""
+    validate_csrf(request, csrf_token)
+    settings = get_settings()
+    subscription = db.query(OrganizationSubscription).filter_by(organization_id=user.organization_id, is_current=True, environment=asaas_env_name()).first() if user.organization_id else None
+    billing = db.query(OrganizationBilling).filter_by(organization_id=user.organization_id, asaas_environment=asaas_env_name()).first() if user.organization_id else None
+    if WRITE_FINANCE not in permission_codes_for_user(db, user) or not asaas_ready(settings) or not subscription or not subscription.pending_plan_id or not billing:
+        _flash(request, "error", "Não há mudança de plano agendada que você possa cancelar.")
+        return _customer_target()
+    payload = {"value": float(subscription.pending_previous_amount), "cycle": subscription.pending_previous_cycle}
+    if subscription.billing_type in {"PIX", "BOLETO"}:
+        payload["billingType"] = subscription.billing_type
+    result, error = update_sandbox_subscription(api_key=settings.asaas_api_key.strip(), subscription_id=subscription.asaas_subscription_id, customer_id=billing.asaas_customer_id, payload=payload)
+    if error or not result:
+        _auto_reconcile(db, user.organization_id)
+        _flash(request, "error", "Não foi possível cancelar agora. Tente novamente em alguns minutos.")
+        return _customer_target()
+    apply_subscription_details(subscription, result)
+    cancelled = subscription.pending_plan_name
+    clear_pending(subscription)
+    record_commercial_event(db, user=user, organization_id=user.organization_id, resource="assinatura", resource_id=subscription.id, action="cancelar_reducao_plano", outcome="success", details={"plano_cancelado": cancelled})
+    db.commit()
+    invalidate_entitlements(user.organization_id)
+    _flash(request, "success", f"Mudança para {cancelled} cancelada. Você continua no plano atual.")
+    return _customer_target()
 
 
 @router.post("/planos-disponiveis/solicitar")
@@ -9883,6 +9946,7 @@ def edit_organization_sandbox_subscription_action(
         subscription = db.query(OrganizationSubscription).filter_by(id=subscription_id).with_for_update().one()
         apply_subscription_details(subscription, result)
         subscription.plan_id = selected_plan.id if selected_plan else None
+        clear_pending(subscription)
         subscription.asaas_status = str(result.get('status') or subscription.asaas_status)[:30]
         subscription.asaas_last_event_at = app_now().replace(tzinfo=None)
         subscription.status = 'criada'

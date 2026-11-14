@@ -57,6 +57,12 @@
         </div>
         {% endif %}
         {% if subscription and subscription.asaas_status == 'INACTIVE' %}<p class="mt-4 rounded-2xl bg-slate-100 p-4 text-sm text-slate-700">Sua assinatura está suspensa e não gera novas cobranças. Fale com a equipe SiSFarm para reativá-la.</p>{% endif %}
+        {% if subscription and subscription.pending_plan_id %}
+        <div class="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl bg-sky-50 p-4 text-sm text-sky-900" data-pending-plan>
+            <p>Mudança para <strong>{{ subscription.pending_plan_name }}</strong> agendada para {{ subscription.pending_effective_on.strftime('%d/%m/%Y') }} (R$ {{ subscription.pending_amount|decimal_br }} / {{ cycle_unit_labels.get(subscription.pending_cycle, subscription.pending_cycle) }}). Até lá, seu plano atual continua valendo.</p>
+            {% if can_change_payment %}<form method="post" action="/minha-assinatura/cancelar-alteracao" onsubmit="return confirm('Cancelar a mudança agendada e continuar no plano atual?');"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="rounded-xl bg-white px-3 py-2 text-xs font-semibold text-sky-800 ring-1 ring-sky-200 hover:bg-sky-100">Cancelar mudança</button></form>{% endif %}
+        </div>
+        {% endif %}
         {% if subscription or card_migration %}
         <div class="mt-5 flex flex-wrap gap-2 border-t border-slate-100 pt-4" data-subscription-actions>
             {% if subscription %}<a href="/planos-disponiveis" class="rounded-xl bg-brand-500 px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-700">Alterar plano</a>{% endif %}

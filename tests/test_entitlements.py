@@ -409,3 +409,91 @@ def test_change_dialog_shows_gains_losses_prices_and_date(db, monkeypatch):
     assert 'Você passa a ter' in dialog and 'Gestão financeira' in dialog
     assert 'Você deixa de ter' in dialog and 'Pluviometria' in dialog
     assert '10/01/2099' in dialog and '1 → 3' in dialog
+
+
+# ---- reducao de plano (downgrade) ----
+
+def _downgrade_setup(db, monkeypatch, *, paid=True, open_charge=False, changed_at=None):
+    from datetime import datetime
+    pro = _plan(db, name='Profissional', price_monthly='149,90', modules=['page.productive_unit', 'page.rainfall', 'page.finance'], max_farms='', max_users='', max_hectares='')
+    basic = _plan(db, max_farms='', max_users='', max_hectares='')
+    org = _org(db, plan=pro)
+    sub = db.query(OrganizationSubscription).one()
+    sub.amount, sub.next_due_date, sub.plan_changed_at = Decimal('149.90'), date(2099, 3, 10), changed_at
+    if paid:
+        db.add(OrganizationSubscriptionPayment(subscription_id=sub.id, asaas_payment_id='pay_ok', status='RECEIVED', amount=Decimal('149.90'), due_date=date(2026, 11, 10), paid_date=date(2026, 11, 10)))
+    if open_charge:
+        db.add(OrganizationSubscriptionPayment(subscription_id=sub.id, asaas_payment_id='pay_open', status='PENDING', amount=Decimal('149.90'), due_date=date(2099, 3, 10)))
+    db.commit()
+    flashes = _self_service_env(db, monkeypatch)
+    sent = []
+    def update(**kw):
+        sent.append(kw['payload'])
+        p = kw['payload']
+        return {'id': sub.asaas_subscription_id, 'customer': 'cus_fazenda', 'value': p.get('value', 149.9), 'cycle': p.get('cycle', 'MONTHLY'), 'description': p.get('description'), 'billingType': 'BOLETO', 'nextDueDate': '2099-03-10'}, None
+    monkeypatch.setattr(routes, 'update_sandbox_subscription', update)
+    user = SimpleNamespace(id=3, email='g@f.com', organization_id=org.id)
+    return org, sub, basic, pro, user, flashes, sent
+
+
+def _ask(db, user, plan):
+    return routes.self_service_plan_change_action(request=SimpleNamespace(), csrf_token='x', plan_id=str(plan.id), cycle='MONTHLY', db=db, user=user)
+
+
+@pytest.mark.parametrize('kwargs, message', [
+    (dict(open_charge=True), 'fatura em aberto'),
+    (dict(paid=False), 'Aguarde a confirmação'),
+])
+def test_downgrade_requires_paid_invoice(db, monkeypatch, kwargs, message):
+    org, sub, basic, pro, user, flashes, sent = _downgrade_setup(db, monkeypatch, **kwargs)
+    _ask(db, user, basic)
+    assert message in flashes[-1][1] and sent == [] and sub.pending_plan_id is None
+
+
+def test_downgrade_requires_payment_after_last_upgrade(db, monkeypatch):
+    from datetime import datetime
+    org, sub, basic, pro, user, flashes, sent = _downgrade_setup(db, monkeypatch, changed_at=datetime(2026, 11, 12, 9, 0))
+    _ask(db, user, basic)
+    assert 'Aguarde a confirmação' in flashes[-1][1] and sent == []
+
+
+def test_downgrade_is_scheduled_for_end_of_paid_cycle_and_can_be_cancelled(db, monkeypatch):
+    org, sub, basic, pro, user, flashes, sent = _downgrade_setup(db, monkeypatch)
+    _ask(db, user, basic)
+    db.refresh(sub)
+    assert sent[-1]['description'] == pro.name and sent[-1]['value'] == 79.9
+    assert (sub.plan_id, sub.pending_plan_id, sub.pending_effective_on) == (pro.id, basic.id, date(2099, 3, 10))
+    assert 'agendada para 10/03/2099' in flashes[-1][1]
+    ent.invalidate_entitlements()
+    assert ent.compute_entitlements(db, org.id, TODAY).module_allowed('page.finance')
+    assert not ent.compute_entitlements(db, org.id, date(2099, 3, 10)).module_allowed('page.finance')
+    _ask(db, user, basic)
+    assert 'agendada' in flashes[-1][1] and 'Cancele' in flashes[-1][1]
+    routes.cancel_scheduled_plan_change_action(request=SimpleNamespace(), csrf_token='x', db=db, user=user)
+    db.refresh(sub)
+    assert sub.pending_plan_id is None and sent[-1]['value'] == 149.9 and 'cancelada' in flashes[-1][1]
+
+
+def test_scheduled_downgrade_takes_effect_on_due_date(db, monkeypatch):
+    from datetime import datetime
+    from app.services.plan_changes import apply_due_plan_changes
+    org, sub, basic, pro, user, flashes, sent = _downgrade_setup(db, monkeypatch)
+    _ask(db, user, basic)
+    renamed = []
+    assert apply_due_plan_changes(db, date(2099, 3, 9), datetime(2099, 3, 9), lambda s, n: renamed.append(n) or True) == []
+    assert apply_due_plan_changes(db, date(2099, 3, 10), datetime(2099, 3, 10), lambda s, n: renamed.append(n) or True) == [org.id]
+    assert (sub.plan_id, sub.plan_name, sub.pending_plan_id) == (basic.id, basic.name, None) and renamed == [basic.name]
+
+
+def test_upgrade_stays_immediate_and_marks_change(db, monkeypatch):
+    basic = _plan(db, max_farms='', max_users='', max_hectares='')
+    pro = _plan(db, name='Profissional', price_monthly='149,90', modules=['page.productive_unit', 'page.rainfall', 'page.finance'], max_farms='', max_users='', max_hectares='')
+    org = _org(db, plan=basic)
+    sub = db.query(OrganizationSubscription).one()
+    sub.next_due_date = date(2099, 1, 10)
+    db.commit()
+    _self_service_env(db, monkeypatch)
+    monkeypatch.setattr(routes, 'update_sandbox_subscription', lambda **kw: ({'id': sub.asaas_subscription_id, 'customer': 'cus_fazenda', 'value': 149.9, 'cycle': 'MONTHLY', 'description': 'Profissional', 'billingType': 'BOLETO'}, None))
+    _ask(db, SimpleNamespace(id=3, email='g@f.com', organization_id=org.id), pro)
+    db.refresh(sub)
+    assert sub.plan_id == pro.id and sub.plan_changed_at is not None and sub.pending_plan_id is None
