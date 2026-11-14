@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="stock-page-shell space-y-6">
+    <section class="stock-page-header rounded-[2rem] p-5 shadow-panel" data-sector-costs-header>
+        <div class="flex flex-wrap items-start justify-between gap-4">
+            <div class="min-w-0 stock-page-header-intro" data-stock-header-intro>
+                <div class="stock-page-header-intro-inner">
+                    <h2 class="stock-page-card-title">Assinaturas</h2>
+                    <p class="stock-page-card-subtitle" data-sector-costs-description>Acompanhe planos, cobranças e histórico comercial por organização.</p>
+                </div>
+            </div>
+            <span class="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-800">Ambiente de testes · Asaas sandbox</span>
+        </div>
+    </section>
+
+    <section class="stock-panel rounded-[2rem] border border-slate-200 bg-white p-5 shadow-panel sm:p-6" data-stock-fade-panel>
+        <div class="flex flex-wrap items-end justify-between gap-4">
+            <div><p class="text-xs font-semibold uppercase tracking-[0.25em] text-slate-400">Cliente</p><h3 class="mt-2 text-xl font-semibold text-slate-900">Selecione a organização</h3><p class="mt-1 text-sm text-slate-500">Os dados comerciais são cadastrados na página de Organizações.</p></div>
+            <a href="/organizacoes" class="text-sm font-semibold text-emerald-800 hover:text-emerald-900">Gerenciar organizações</a>
+        </div>
+        {% if organizations %}
+        <form method="get" action="/assinaturas" class="mt-4 flex flex-wrap items-end gap-3">
+            <label class="min-w-0 flex-1"><span class="mb-1 block text-sm font-medium text-slate-700">Organização</span><select name="organizacao" class="min-h-[3rem] w-full rounded-xl border-slate-200 bg-slate-50">{% for item in organizations %}<option value="{{ item.id }}" {% if organization and organization.id == item.id %}selected{% endif %}>{{ item.name }}{% if not item.is_active %} (inativa){% endif %}</option>{% endfor %}</select></label>
+            <button class="min-h-[3rem] rounded-xl bg-brand-500 px-5 text-sm font-semibold text-white hover:bg-brand-700">Consultar</button>
+        </form>
+        {% else %}<p class="mt-4 text-sm text-slate-500">Nenhuma organização cadastrada.</p>{% endif %}
+    </section>
+
+    {% if organization %}
+    <section class="stock-panel rounded-[2rem] border border-slate-200 bg-white p-5 shadow-panel sm:p-6" data-stock-fade-panel>
+        <div class="flex flex-wrap items-start justify-between gap-3"><div><p class="text-xs font-semibold uppercase tracking-[0.25em] text-slate-400">Gerenciamento comercial</p><h3 class="mt-2 text-xl font-semibold text-slate-900">{{ organization.name }}</h3><p class="mt-1 text-sm text-slate-500">Consulte a assinatura atual, as cobranças e as ações disponíveis.</p></div><span class="rounded-full px-3 py-1 text-xs font-semibold {% if billing and billing.asaas_customer_id %}bg-emerald-50 text-emerald-800{% else %}bg-amber-50 text-amber-800{% endif %}">{% if billing and billing.asaas_customer_id %}Cliente Asaas vinculado{% else %}Cliente Asaas não vinculado{% endif %}</span></div>
+        {% include "_subscription_management.html" %}
+    </section>
+    {% endif %}
+</div>
+<script>
+(() => {
+    const header = document.querySelector('.stock-page-header');
+    const description = header?.querySelector('[data-sector-costs-description]');
+    const panels = document.querySelectorAll('[data-stock-fade-panel]');
+    const mobile = window.matchMedia('(max-width: 899px)');
+    let raf = null;
+    const update = () => {
+        raf = null;
+        if (!header) return;
+        const top = parseFloat(getComputedStyle(header).top) || 0;
+        const rect = header.getBoundingClientRect();
+        const current = header.classList.contains('is-compact');
+        const compact = mobile.matches && (rect.top <= top + 2 ? true : rect.top > top + 8 ? false : current);
+        header.classList.toggle('is-compact', compact);
+        if (mobile.matches) description?.setAttribute('aria-hidden', compact ? 'true' : 'false');
+        else description?.removeAttribute('aria-hidden');
+        const bottom = header.getBoundingClientRect().bottom;
+        panels.forEach((panel) => {
+            const bounds = panel.getBoundingClientRect();
+            const overlap = Math.min(Math.max(bottom - bounds.top, 0), bounds.height);
+            const feather = overlap > 0 ? Math.min(80, Math.max(22, overlap * 0.45 + 16)) : 0;
+            panel.style.setProperty('--stock-fade-cutoff', `${overlap.toFixed(2)}px`);
+            panel.style.setProperty('--stock-fade-feather-end', `${(overlap + feather).toFixed(2)}px`);
+            panel.classList.toggle('stock-panel-under-header', mobile.matches && overlap > 0.02);
+        });
+    };
+    const schedule = () => { if (raf === null) raf = window.requestAnimationFrame(update); };
+    window.addEventListener('scroll', schedule, { passive: true });
+    window.addEventListener('resize', schedule);
+    mobile.addEventListener?.('change', schedule);
+    header?.addEventListener('transitionend', schedule);
+    update();
+})();
+</script>
+{% endblock %}

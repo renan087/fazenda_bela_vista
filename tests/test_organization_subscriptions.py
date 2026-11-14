@@ -29,7 +29,8 @@ def test_sandbox_creation_records_attempt_and_prevents_duplicate(monkeypatch):
         db.add(OrganizationBilling(organization_id=org.id, contact_name='Pessoa', contact_email='a@example.com', asaas_customer_id='cus_test', asaas_environment='sandbox'))
         db.commit()
         args = dict(organization_id=org.id, request=SimpleNamespace(), csrf_token='x', plan_name='Teste', amount='99,90', cycle='MONTHLY', billing_type='PIX', first_due_date='2099-01-01', db=db, user=SimpleNamespace())
-        routes.create_organization_sandbox_subscription_action(**args)
+        response = routes.create_organization_sandbox_subscription_action(**args)
+        assert response.headers['location'] == f'/assinaturas?organizacao={org.id}'
         routes.create_organization_sandbox_subscription_action(**args)
         row = db.query(OrganizationSubscription).one()
         assert row.status == 'criada' and row.asaas_subscription_id == 'sub_test'
