@@ -17374,6 +17374,7 @@ def production_page(
             harvests=harvests_pagination["items"],
             harvests_pagination=harvests_pagination,
             edit_harvest=edit_harvest,
+            harvest_active_season=scope.get("active_season"),
             harvest_ids_with_commercialization=repo.harvest_ids_linked_to_commercializations(),
             new_harvest_lot_code=_suggest_next_harvest_lot_code(repo),
             harvest_type_options=harvest_type_options,
@@ -17391,6 +17392,19 @@ def _validate_harvest_percentage(value: str | None, label: str) -> float | None:
     if parsed < 0 or parsed > 100:
         raise ValueError(f"{label} deve estar entre 0 e 100.")
     return parsed
+
+
+def _validate_harvest_date_for_season(raw_date: str, season: CropSeason | None) -> date:
+    try:
+        harvest_day = date.fromisoformat(raw_date)
+    except (TypeError, ValueError):
+        raise ValueError("Informe uma data válida para a colheita.")
+    if season and not _within_scope(harvest_day, season.start_date, season.end_date):
+        raise ValueError(
+            f"A data da colheita deve estar dentro do período da safra ativa: "
+            f"{season.start_date.strftime('%d/%m/%Y')} a {season.end_date.strftime('%d/%m/%Y')}."
+        )
+    return harvest_day
 
 
 def _suggest_next_harvest_lot_code(repo: FarmRepository, reference_date: date | None = None) -> str:
@@ -17444,6 +17458,7 @@ def create_harvest_action(
         _flash(request, "error", "O setor selecionado não está vinculado à safra ativa.")
         return _redirect("/producao")
     try:
+        _validate_harvest_date_for_season(harvest_date, scope.get("active_season"))
         maturation_value = _validate_harvest_percentage(maturation_percentage, "Percentual de maturação")
         impurity_value = _validate_harvest_percentage(impurity_percentage, "Percentual de impureza")
         moisture_value = _validate_harvest_percentage(input_moisture_percentage, "Umidade na entrada")
@@ -17514,6 +17529,7 @@ def update_harvest_action(
         _flash(request, "error", "O setor selecionado não está vinculado à safra ativa.")
         return _redirect_for_request(request, f"/producao?edit_id={record_id}")
     try:
+        _validate_harvest_date_for_season(harvest_date, scope.get("active_season"))
         maturation_value = _validate_harvest_percentage(maturation_percentage, "Percentual de maturação")
         impurity_value = _validate_harvest_percentage(impurity_percentage, "Percentual de impureza")
         moisture_value = _validate_harvest_percentage(input_moisture_percentage, "Umidade na entrada")

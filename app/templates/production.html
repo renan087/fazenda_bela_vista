@@ -217,7 +217,8 @@
                 <div class="grid gap-4 md:grid-cols-3 md:items-end">
                     <label class="flex flex-col gap-2">
                         <span class="text-sm font-medium leading-tight">Data da colheita <span class="text-rose-500">*</span></span>
-                        <input type="date" name="harvest_date" value="{{ edit_harvest.harvest_date.isoformat() if edit_harvest else '' }}" class="h-[3.25rem] w-full rounded-2xl border-slate-200 px-3 {% if harvest_edit_locked %}cursor-not-allowed bg-slate-100 text-slate-700{% else %}bg-slate-50{% endif %}" required {% if harvest_edit_locked %}readonly aria-readonly="true"{% endif %}>
+                        <input type="date" name="harvest_date" value="{{ edit_harvest.harvest_date.isoformat() if edit_harvest else '' }}" {% if harvest_active_season %}min="{{ harvest_active_season.start_date.isoformat() }}" max="{{ harvest_active_season.end_date.isoformat() }}"{% endif %} class="h-[3.25rem] w-full rounded-2xl border-slate-200 px-3 {% if harvest_edit_locked %}cursor-not-allowed bg-slate-100 text-slate-700{% else %}bg-slate-50{% endif %}" required {% if harvest_edit_locked %}readonly aria-readonly="true"{% endif %}>
+                        {% if harvest_active_season and not harvest_edit_locked %}<span class="mt-1 block text-xs text-slate-500">Período da safra: {{ harvest_active_season.start_date.strftime('%d/%m/%Y') }} a {{ harvest_active_season.end_date.strftime('%d/%m/%Y') }}.</span>{% endif %}
                     </label>
                     <label class="flex flex-col gap-2">
                         <span class="text-sm font-medium leading-tight">Quantidade colhida (sacas) <span class="text-rose-500">*</span></span>
