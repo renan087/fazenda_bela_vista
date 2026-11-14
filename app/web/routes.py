@@ -6203,7 +6203,7 @@ def finance_accounts_page(
     repo = _repository(db)
     scope = _global_scope_context(request, repo)
     active_farm = scope.get("active_farm")
-    finance_plot_options = repo.list_plots(farm_ids=[active_farm.id]) if active_farm else []
+    finance_plot_options = _season_launch_plots(repo.list_plots(farm_ids=[active_farm.id]), scope) if active_farm else []
     accounts = repo.list_finance_accounts(farm_id=active_farm.id) if active_farm else []
     credit_cards = repo.list_finance_credit_cards(farm_id=active_farm.id) if active_farm else []
     transactions_all = repo.list_finance_transactions(farm_id=active_farm.id) if active_farm else []
@@ -6388,6 +6388,8 @@ def finance_accounts_page(
     edit_account = repo.get_finance_account(edit_id) if edit_id else None
     edit_credit_card = repo.get_finance_credit_card(card_edit_id) if card_edit_id else None
     edit_transaction = repo.get_finance_transaction(transaction_edit_id) if transaction_edit_id else None
+    if edit_transaction and active_farm and edit_transaction.farm_id == active_farm.id and edit_transaction.plot and all(plot.id != edit_transaction.plot_id for plot in finance_plot_options):
+        finance_plot_options = [*finance_plot_options, edit_transaction.plot]
     bank_options = _finance_bank_choice_options(repo)
     if edit_account and (not active_farm or edit_account.farm_id != active_farm.id):
         _flash(request, "error", "Esta conta não pertence à fazenda ativa.")
@@ -7699,6 +7701,9 @@ async def create_finance_transaction_action(
         _flash(request, "error", "Selecione uma fazenda ativa antes de cadastrar um lançamento.")
         return _redirect("/gestao-financeira/contas")
     try:
+        selected_plot = repo.get_plot(_int_or_none(plot_id)) if _int_or_none(plot_id) else None
+        if selected_plot and not _plot_allowed_for_season_launch(selected_plot, scope):
+            raise ValueError("O setor selecionado não está vinculado à safra ativa.")
         payload = _finance_transaction_payload(
             repo,
             active_farm=active_farm,
@@ -7816,6 +7821,10 @@ async def update_finance_transaction_action(
         return _redirect("/gestao-financeira/contas")
     prior_installment_snapshot = _snapshot_finance_installments_for_edit(transaction)
     try:
+        selected_plot_id = _int_or_none(plot_id)
+        selected_plot = repo.get_plot(selected_plot_id) if selected_plot_id else None
+        if selected_plot and selected_plot_id != transaction.plot_id and not _plot_allowed_for_season_launch(selected_plot, scope):
+            raise ValueError("O setor selecionado não está vinculado à safra ativa.")
         payload = _finance_transaction_payload(
             repo,
             active_farm=active_farm,
@@ -7836,8 +7845,10 @@ async def update_finance_transaction_action(
             payment_method=payment_method,
             notes=notes,
             plot_id=plot_id,
-            season_id=scope.get("active_season_id"),
+            season_id=(transaction.season_id or scope.get("active_season_id")) if selected_plot_id == transaction.plot_id and transaction.plot_id else scope.get("active_season_id"),
         )
+        if selected_plot_id == transaction.plot_id and transaction.plot_id:
+            payload["season_id"] = transaction.season_id
         _reject_finance_schedule_change_if_installment_paid(transaction, payload)
         attachment_payloads = _read_attachments(await _request_attachments(request))
     except ValueError as exc:
@@ -11150,6 +11161,7 @@ def stock_page(
             title="Estoque de Insumos",
             farms=scope["context_farms"],
             plots=repo.list_plots(farm_ids=farm_ids, variety_ids=variety_ids),
+            launch_plots=_season_launch_plots(repo.list_plots(farm_ids=farm_ids, variety_ids=variety_ids), scope),
             selected_farm_id=selected_farm_id,
             selected_input_id=selected_input_id,
             selected_start_date=start_date,
@@ -11224,6 +11236,8 @@ def create_manual_stock_output_action(
     if denied:
         return denied
     try:
+        if plot and not _plot_allowed_for_season_launch(plot, scope):
+            raise ValueError("O setor selecionado não está vinculado à safra ativa.")
         create_manual_stock_output(
             repo,
             {
@@ -11408,6 +11422,8 @@ async def update_stock_output_entry_action(
             )
             if invalid_plot:
                 return invalid_plot
+            if plot and plot.id != output.plot_id and not _plot_allowed_for_season_launch(plot, scope):
+                raise ValueError("O setor selecionado não está vinculado à safra ativa.")
             update_manual_stock_output(
                 repo,
                 output,
