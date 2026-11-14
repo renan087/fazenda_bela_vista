@@ -1,115 +1,277 @@
-                    {% set subscription = subscriptions_by_organization.get(organization.id) %}
-                    {% set card_migration = card_migrations_by_organization.get(organization.id) %}
-                    {% set subscription_labels = {'ACTIVE': 'Ativa', 'INACTIVE': 'Inativa', 'EXPIRED': 'Expirada', 'CANCELLED': 'Cancelada', 'DELETED': 'Excluída', 'NOT_FOUND': 'Não encontrada no Asaas'} %}
-                    {% set charge_labels = {'PENDING': 'Pendente', 'OVERDUE': 'Vencida', 'CONFIRMED': 'Pagamento confirmado, aguardando disponibilidade', 'RECEIVED': 'Pagamento recebido', 'RECEIVED_IN_CASH': 'Recebimento externo registrado', 'REFUNDED': 'Estornada', 'REFUND_REQUESTED': 'Estorno solicitado', 'REFUND_IN_PROGRESS': 'Estorno em andamento', 'CHARGEBACK_REQUESTED': 'Contestação de pagamento', 'CHARGEBACK_DISPUTE': 'Contestação em análise', 'AWAITING_CHARGEBACK_REVERSAL': 'Aguardando reversão da contestação', 'DELETED': 'Excluída', 'VERIFICAR': 'Divergência: consulte o Asaas', 'DESCONHECIDO': 'Não informada'} %}
-                    {% set payment_labels = {'PIX': 'Pix', 'BOLETO': 'Boleto', 'CREDIT_CARD': 'Cartão de crédito', 'DEBIT_CARD': 'Cartão de débito', 'RECEIVED_IN_CASH': 'Recebimento externo (dinheiro ou outra forma)', 'CASH': 'Dinheiro', 'TRANSFER': 'Transferência', 'DEPOSIT': 'Depósito', 'UNDEFINED': 'Não definida'} %}
-                    {% if previous_subscriptions_by_organization.get(organization.id) %}
-                    <details class="mt-3 rounded-2xl border border-slate-200 bg-white p-4">
-                        <summary class="cursor-pointer text-sm font-semibold text-slate-700">Assinaturas anteriores</summary>
-                        {% for old in previous_subscriptions_by_organization.get(organization.id, []) %}
-                        <div class="mt-3 rounded-xl bg-slate-50 p-3 text-sm text-slate-700">
-                            <p class="font-semibold">{{ old.plan_name }} · {{ subscription_labels.get(old.asaas_status, 'Outra situação (' ~ old.asaas_status ~ ')' if old.asaas_status else 'Situação não informada') }}</p>
-                            <p class="mt-1 text-xs text-slate-600">Forma da assinatura: {{ payment_labels.get(old.billing_type, 'Outra forma (' ~ old.billing_type ~ ')' if old.billing_type else 'Não informada') }}</p>
-                            <p class="mt-1 text-xs text-slate-500">ID Asaas: {{ old.asaas_subscription_id or 'Não informado' }}</p>
-                            {% for charge in subscription_payments.get(old.id, []) %}
-                            <p class="mt-2 text-xs text-slate-600"><strong>Vencimento:</strong> {{ charge.due_date.strftime('%d/%m/%Y') if charge.due_date else 'Não informado' }} · <strong>Valor:</strong> {% if charge.amount is not none %}R$ {{ charge.amount|decimal_br }}{% else %}Não informado{% endif %} · <strong>Situação:</strong> {{ charge_labels.get(charge.status, 'Outra situação (' ~ charge.status ~ ')' if charge.status else 'Não informada') }} · <strong>Forma:</strong> {{ payment_labels.get(charge.billing_type, 'Outra forma (' ~ charge.billing_type ~ ')' if charge.billing_type else 'Não informada') }}{% if charge.paid_date %} · <strong>Pagamento:</strong> {{ charge.paid_date.strftime('%d/%m/%Y') }}{% endif %}</p>
-                            {% else %}<p class="mt-2 text-xs text-slate-500">Nenhuma cobrança registrada.</p>{% endfor %}
-                            {% if old.asaas_subscription_id and old.environment == 'sandbox' %}<form method="post" action="/organizacoes/{{ organization.id }}/assinatura-sandbox/sincronizar" class="mt-3"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="subscription_id" value="{{ old.id }}"><button class="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700">Atualizar histórico no Asaas</button></form>{% endif %}
-                        </div>
-                        {% endfor %}
-                    </details>
-                    {% endif %}
-                    <details open class="mt-3 rounded-2xl border border-slate-200 bg-white p-4">
-                        <summary class="cursor-pointer text-sm font-semibold text-slate-700">Assinatura do SiSFarm <span class="ml-2 text-xs font-normal text-slate-500">Sandbox</span></summary>
-                        {% if subscription %}
-                        {% set charges = subscription_payments.get(subscription.id, []) %}
-                        <div class="mt-3 space-y-1 text-sm text-slate-700">
-                            <p><strong>Plano:</strong> {{ subscription.plan_name }} · R$ {{ subscription.amount|decimal_br }} · {{ subscription_cycles.get(subscription.cycle, (subscription.cycle,))[0] }}</p>
-                            <p class="text-xs text-slate-500">{% if subscription.plan %}Catálogo: <a href="/planos#plano-{{ subscription.plan.id }}" class="font-semibold text-emerald-800 hover:underline">{{ subscription.plan.name }} · versão {{ subscription.plan.version }}</a>{% if subscription.plan.status == 'arquivado' %} (arquivada; condições contratadas mantidas){% endif %}{% else %}Plano personalizado (fora do catálogo){% endif %}</p>
-                            <p><strong>Forma:</strong> {{ {'PIX': 'Pix', 'BOLETO': 'Boleto', 'CREDIT_CARD': 'Cartão de crédito'}.get(subscription.billing_type, subscription.billing_type) }} · <strong>Primeiro vencimento:</strong> {{ subscription.first_due_date.strftime('%d/%m/%Y') }}</p>
-                            <p><strong>Próximo vencimento:</strong> {{ subscription.next_due_date.strftime('%d/%m/%Y') if subscription.next_due_date else 'Consulte o Asaas para atualizar' }}</p>
-                            <p><strong>Registro:</strong> {% if subscription.status == 'criada' %}Criada no sandbox{% elif subscription.status == 'revisao' %}Confirmação pendente: verifique no Asaas antes de outra tentativa{% elif subscription.status == 'migrando' %}Migração para cartão em andamento{% else %}Criação em andamento ou aguardando conferência{% endif %}</p>
-                            {% if subscription.asaas_subscription_id %}<p><strong>Situação da assinatura:</strong> {{ subscription_labels.get(subscription.asaas_status, subscription.asaas_status or 'Não informada') }}</p><p><strong>Última atualização da assinatura:</strong> {{ subscription.updated_at|datetime_sp if subscription.updated_at else 'Não informada' }}</p><p class="text-xs text-slate-500">ID Asaas: {{ subscription.asaas_subscription_id }}</p>{% endif %}
-                            <p class="pt-2 text-xs text-slate-500">Assinatura ativa não confirma o pagamento. O acesso da organização não é alterado automaticamente.</p>
-                        </div>
-                        {% if subscription.environment == 'sandbox' %}<form method="post" action="/organizacoes/{{ organization.id }}/assinatura-sandbox/verificar-exclusao" class="mt-3" onsubmit="return confirm('Consultar o Asaas? Se esta assinatura estiver excluída ou não for encontrada e não houver outra ativa, ela será movida para o histórico.');"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">Verificar situação e liberar nova assinatura</button><p class="mt-1 text-xs text-slate-500">Use se a assinatura foi excluída ou não é encontrada no Asaas. O histórico e as cobranças serão preservados.</p></form>{% endif %}
-                        {% if card_migration %}{% include "partials/card_checkout_panel.html" %}{% endif %}
-                        {% if subscription.environment == 'sandbox' and subscription.status == 'criada' and subscription.asaas_status == 'ACTIVE' and subscription.billing_type in ['PIX', 'BOLETO'] and not card_migration %}<details class="mt-4 rounded-xl border border-slate-200 p-3"><summary class="cursor-pointer text-sm font-semibold">Mudar para cartão de crédito</summary><p class="mt-2 text-xs text-slate-600">Gera um link para o cliente cadastrar o cartão no Asaas. A assinatura atual só é suspensa depois que o pagamento no cartão for aprovado; cobranças já geradas continuam como estão.</p><form method="post" action="/organizacoes/{{ organization.id }}/assinatura-sandbox/cartao" class="mt-3 grid gap-3" onsubmit="return confirm('Gerar link de pagamento com cartão para o cliente? Cobranças já geradas continuam como estão.');"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><label class="text-sm">Primeira cobrança no cartão<input type="date" name="next_due_date" required min="{{ today_iso }}" class="mt-1 block w-full rounded-xl border-slate-200"></label><button class="rounded-xl bg-brand-500 px-4 py-3 text-sm font-semibold text-white">Gerar link para o cliente</button></form></details>{% endif %}
-                        {% if subscription.environment == 'sandbox' and subscription.status == 'criada' and subscription.asaas_status in ['ACTIVE', 'INACTIVE'] and subscription.billing_type in ['PIX', 'BOLETO', 'CREDIT_CARD'] %}
-                        <details class="mt-4 rounded-xl border border-slate-200 p-3">
-                            <summary class="cursor-pointer text-sm font-semibold text-slate-700">Editar assinatura</summary>
-                            <p class="mt-2 text-xs leading-5 text-slate-500">As alterações valem apenas para cobranças futuras ainda não geradas. Cobranças existentes, inclusive pagas e pendentes, não serão alteradas. Deixe o próximo vencimento vazio para mantê-lo.</p>
-                            {% if subscription.billing_type == 'CREDIT_CARD' %}<p class="mt-2 text-xs text-slate-500">Você pode manter o cartão atual ou mudar para Pix ou boleto. Cobranças já geradas continuam com a forma anterior e podem ainda ser cobradas no cartão. Alterações de valor ou vencimento no cartão dependem da tokenização habilitada no Asaas.</p>{% endif %}
-                            <form method="post" action="/organizacoes/{{ organization.id }}/assinatura-sandbox/editar" class="mt-3 grid gap-3" onsubmit="return confirm('Salvar a nova configuração da assinatura? Ela vale para as próximas cobranças; as já geradas não mudam.');">
-                                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                                {% set plan_options = available_plans if (not subscription.plan or subscription.plan in available_plans) else [subscription.plan] + available_plans %}
-                                <label><span class="mb-1 block text-sm font-medium">Plano</span><select name="plan_id" data-plan-select class="min-h-[3rem] w-full rounded-xl border-slate-200 bg-slate-50">{% for plan in plan_options %}<option value="{{ plan.id }}" data-prices='{{ plan_prices_json(plan) }}' data-trial-days="0" {% if subscription.plan_id == plan.id %}selected{% endif %}>{{ plan.name }}{% if plan.version > 1 %} · v{{ plan.version }}{% endif %}{% if plan.status == 'arquivado' %} (versão contratada){% endif %}</option>{% endfor %}<option value="" {% if not subscription.plan_id %}selected{% endif %}>Personalizado (fora do catálogo)</option></select></label>
-                                <label><span class="mb-1 block text-sm font-medium">Periodicidade</span><select name="cycle" data-plan-cycle class="min-h-[3rem] w-full rounded-xl border-slate-200 bg-slate-50">{% for code, cycle_info in subscription_cycles.items() %}<option value="{{ code }}" {% if subscription.cycle == code %}selected{% endif %}>{{ cycle_info[0] }}</option>{% endfor %}</select></label>
-                                <p class="hidden rounded-xl bg-emerald-50 px-3 py-2 text-sm text-emerald-900" data-plan-price-preview></p>
-                                <div class="grid gap-3" data-custom-plan-fields>
-                                    <label><span class="mb-1 block text-sm font-medium">Nome do plano</span><input name="plan_name" maxlength="120" value="{{ subscription.plan_name }}" class="min-h-[3rem] w-full rounded-xl border-slate-200 bg-slate-50"></label>
-                                    <label><span class="mb-1 block text-sm font-medium">Valor por período (R$)</span><input name="amount" inputmode="decimal" value="{{ subscription.amount|decimal_br }}" class="min-h-[3rem] w-full rounded-xl border-slate-200 bg-slate-50"></label>
-                                </div>
-                                <label><span class="mb-1 block text-sm font-medium">Forma de pagamento</span><select name="billing_type" class="min-h-[3rem] w-full rounded-xl border-slate-200 bg-slate-50">{% if subscription.billing_type == 'CREDIT_CARD' %}<option value="CREDIT_CARD" selected>Cartão de crédito atual</option>{% endif %}<option value="PIX" {% if subscription.billing_type == 'PIX' %}selected{% endif %}>Pix</option><option value="BOLETO" {% if subscription.billing_type == 'BOLETO' %}selected{% endif %}>Boleto</option></select></label>
-                                <label><span class="mb-1 block text-sm font-medium">Novo próximo vencimento (opcional)</span><input type="date" name="next_due_date" class="min-h-[3rem] w-full rounded-xl border-slate-200 bg-slate-50"></label>
-                                <button class="rounded-xl bg-brand-500 px-4 py-3 text-sm font-semibold text-white">Salvar alterações</button>
-                            </form>
-                        </details>
+{% set subscription = subscriptions_by_organization.get(organization.id) %}
+{% set card_migration = card_migrations_by_organization.get(organization.id) %}
+{% set charge_labels = {'PENDING': 'Aguardando pagamento', 'OVERDUE': 'Vencida', 'CONFIRMED': 'Pago', 'RECEIVED': 'Pago', 'RECEIVED_IN_CASH': 'Pago fora do Asaas', 'REFUNDED': 'Estornada', 'REFUND_REQUESTED': 'Estorno solicitado', 'REFUND_IN_PROGRESS': 'Estorno em andamento', 'CHARGEBACK_REQUESTED': 'Contestação aberta', 'CHARGEBACK_DISPUTE': 'Contestação em análise', 'AWAITING_CHARGEBACK_REVERSAL': 'Aguardando reversão da contestação', 'DELETED': 'Cancelada', 'VERIFICAR': 'Sincronizando', 'DESCONHECIDO': 'Sincronizando'} %}
+{% set charge_notes = {'CONFIRMED': 'Valor em liberação pelo Asaas', 'RECEIVED_IN_CASH': 'Registrado manualmente'} %}
+{% set charge_styles = {'PENDING': 'bg-amber-50 text-amber-800', 'OVERDUE': 'bg-rose-50 text-rose-700', 'CONFIRMED': 'bg-emerald-50 text-emerald-800', 'RECEIVED': 'bg-emerald-50 text-emerald-800', 'RECEIVED_IN_CASH': 'bg-emerald-50 text-emerald-800', 'DELETED': 'bg-slate-100 text-slate-500', 'REFUNDED': 'bg-slate-100 text-slate-600'} %}
+{% set payment_labels = {'PIX': 'Pix', 'BOLETO': 'Boleto', 'CREDIT_CARD': 'Cartão de crédito', 'DEBIT_CARD': 'Cartão de débito', 'RECEIVED_IN_CASH': 'Fora do Asaas', 'CASH': 'Dinheiro', 'TRANSFER': 'Transferência', 'DEPOSIT': 'Depósito', 'UNDEFINED': 'A definir'} %}
+{% set subscription_labels = {'ACTIVE': 'Ativa', 'INACTIVE': 'Suspensa', 'EXPIRED': 'Expirada', 'DELETED': 'Cancelada', 'NOT_FOUND': 'Não encontrada no Asaas'} %}
+{% set situation_styles = {'verificar': 'bg-amber-50 text-amber-800 ring-amber-200', 'inadimplente': 'bg-rose-50 text-rose-700 ring-rose-200', 'aguardando_cartao': 'bg-sky-50 text-sky-700 ring-sky-200', 'suspensa': 'bg-slate-100 text-slate-700 ring-slate-200', 'ativa': 'bg-emerald-50 text-emerald-800 ring-emerald-200'} %}
+
+{% if subscription %}
+{% set charges = subscription_payments.get(subscription.id, []) %}
+{% set can_manage = subscription.environment == 'sandbox' and subscription.status == 'criada' and subscription.asaas_status in ['ACTIVE', 'INACTIVE'] and not card_migration %}
+{# Cabecalho de status #}
+<div class="mt-4 rounded-2xl border border-slate-200 bg-slate-50/60 p-4 sm:p-5" data-subscription-status>
+    <div class="flex flex-wrap items-start justify-between gap-4">
+        <div class="min-w-0">
+            <div class="flex flex-wrap items-center gap-2">
+                <h4 class="text-lg font-semibold text-slate-900">{{ subscription.plan_name }}</h4>
+                {% if selected_row %}<span class="whitespace-nowrap rounded-full px-3 py-1 text-xs font-semibold ring-1 {{ situation_styles.get(selected_row.situation, 'bg-slate-100 text-slate-600 ring-slate-200') }}">{{ selected_row.situation_label }}</span>{% endif %}
+            </div>
+            <p class="mt-1 text-xs text-slate-500">{% if subscription.plan %}<a href="/planos#plano-{{ subscription.plan.id }}" class="font-medium text-emerald-800 hover:underline">Catálogo · versão {{ subscription.plan.version }}</a>{% if subscription.plan.status == 'arquivado' %} · condições contratadas mantidas{% endif %}{% else %}Plano personalizado{% endif %}</p>
+        </div>
+        <div class="text-right">
+            <p class="text-xs text-slate-500">Atualizado com o Asaas {{ subscription.last_synced_at|time_ago }}</p>
+            <form method="post" action="/organizacoes/{{ organization.id }}/assinatura-sandbox/atualizar" class="mt-1" data-busy-form>
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <button class="rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50">Atualizar agora</button>
+            </form>
+        </div>
+    </div>
+    <dl class="mt-4 grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
+        <div><dt class="text-xs text-slate-500">Valor</dt><dd class="font-semibold text-slate-900">R$ {{ subscription.amount|decimal_br }} <span class="font-normal text-slate-500">/ {{ cycle_unit_labels.get(subscription.cycle, subscription.cycle) }}</span></dd></div>
+        <div><dt class="text-xs text-slate-500">Forma de pagamento</dt><dd class="font-semibold text-slate-900">{{ payment_labels.get(subscription.billing_type, subscription.billing_type) }}</dd></div>
+        <div><dt class="text-xs text-slate-500">Próxima cobrança</dt><dd class="font-semibold text-slate-900">{{ subscription.next_due_date.strftime('%d/%m/%Y') if subscription.next_due_date else 'A definir' }}</dd></div>
+        <div><dt class="text-xs text-slate-500">Assinante desde</dt><dd class="font-semibold text-slate-900">{{ subscription.first_due_date.strftime('%d/%m/%Y') }}</dd></div>
+    </dl>
+    {% if selected_row and selected_row.situation == 'inadimplente' %}<p class="mt-3 rounded-xl bg-rose-50 px-3 py-2 text-sm text-rose-800">{{ selected_row.overdue_count }} cobrança(s) vencida(s), total de <strong>R$ {{ selected_row.overdue_amount|decimal_br }}</strong>, em atraso há {{ selected_row.days_overdue }} dia(s). Envie o link de pagamento ao cliente pela lista abaixo.</p>{% endif %}
+    {% if subscription.sync_issue or subscription.status == 'revisao' %}<p class="mt-3 rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-900">Sincronizando com o Asaas{% if subscription.sync_issue %}: {{ subscription.sync_issue }}{% endif %}. O SiSFarm tenta novamente a cada 5 minutos; nenhuma ação é necessária.</p>{% endif %}
+    {% if subscription.asaas_status == 'INACTIVE' %}<p class="mt-3 rounded-xl bg-slate-100 px-3 py-2 text-sm text-slate-700">Assinatura suspensa: o Asaas não gera novas cobranças até a reativação.</p>{% endif %}
+</div>
+
+{% if card_migration %}{% include "partials/card_checkout_panel.html" %}{% endif %}
+
+{# Acoes #}
+{% if can_manage %}
+<div class="mt-4 flex flex-wrap items-center gap-2" data-subscription-actions>
+    <button type="button" data-dialog-open="edit-subscription-{{ organization.id }}" class="rounded-xl bg-brand-500 px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-700">Trocar plano ou forma de pagamento</button>
+    {% if subscription.asaas_status == 'ACTIVE' and subscription.billing_type in ['PIX', 'BOLETO'] %}<button type="button" data-dialog-open="card-subscription-{{ organization.id }}" class="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50">Mudar para cartão</button>{% endif %}
+    {% if subscription.asaas_status == 'ACTIVE' %}
+    <button type="button" data-dialog-open="suspend-subscription-{{ organization.id }}" class="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50">Suspender</button>
+    {% else %}
+    <button type="button" data-dialog-open="reactivate-subscription-{{ organization.id }}" class="rounded-xl border border-emerald-200 bg-white px-4 py-2.5 text-sm font-semibold text-emerald-800 hover:bg-emerald-50">Reativar</button>
+    {% endif %}
+    <button type="button" data-dialog-open="cancel-subscription-{{ organization.id }}" class="ml-auto rounded-xl px-3 py-2.5 text-sm font-semibold text-rose-700 hover:bg-rose-50">Cancelar assinatura</button>
+</div>
+{% endif %}
+
+{# Cobrancas #}
+<div class="mt-5">
+    <div class="flex items-end justify-between gap-2"><h4 class="text-sm font-semibold text-slate-900">Cobranças</h4><p class="text-xs text-slate-500">{{ charges|length }} registrada(s)</p></div>
+    <div class="mt-2 divide-y divide-slate-100 rounded-2xl border border-slate-200 bg-white" data-charges>
+        <div class="hidden grid-cols-[7rem_7rem_minmax(0,1fr)_8rem_3rem] gap-3 px-4 py-2 text-xs font-semibold uppercase tracking-[0.15em] text-slate-400 md:grid"><span>Vencimento</span><span>Valor</span><span>Situação</span><span>Forma</span><span></span></div>
+        {% for charge in charges %}
+        {% set is_open = charge.status in ['PENDING', 'OVERDUE'] %}
+        {% set late = charge.status == 'OVERDUE' or (charge.status == 'PENDING' and charge.due_date and charge.due_date.isoformat() < today_iso) %}
+        <div class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 px-4 py-3 text-sm md:grid-cols-[7rem_7rem_minmax(0,1fr)_8rem_3rem]">
+            <span class="font-medium text-slate-900">{{ charge.due_date.strftime('%d/%m/%Y') if charge.due_date else '—' }}</span>
+            <span class="text-right font-semibold text-slate-900 md:text-left">{% if charge.amount is not none %}R$ {{ charge.amount|decimal_br }}{% else %}—{% endif %}</span>
+            <span class="min-w-0">
+                <span class="whitespace-nowrap rounded-full px-2.5 py-0.5 text-xs font-semibold {{ 'bg-rose-50 text-rose-700' if late else charge_styles.get(charge.status, 'bg-slate-100 text-slate-600') }}">{{ 'Vencida' if late else charge_labels.get(charge.status, charge.status) }}</span>
+                {% if charge.paid_date %}<span class="ml-1 text-xs text-slate-500">em {{ charge.paid_date.strftime('%d/%m/%Y') }}</span>{% endif %}
+                {% if charge_notes.get(charge.status) %}<span class="block text-xs text-slate-500">{{ charge_notes[charge.status] }}</span>{% endif %}
+                {% if charge.operation_state %}<span class="block text-xs text-amber-700">Confirmando a última operação com o Asaas…</span>{% endif %}
+            </span>
+            <span class="text-xs text-slate-600">{{ payment_labels.get(charge.billing_type, charge.billing_type or '—') }}</span>
+            {% set can_refund = (charge.billing_type == 'PIX' and charge.status == 'RECEIVED') or (charge.billing_type == 'CREDIT_CARD' and charge.status in ['CONFIRMED', 'RECEIVED']) %}
+            {% set has_menu = charge.invoice_url or charge.bank_slip_url or (subscription.environment == 'sandbox' and charge.operation_state is none and (is_open or can_refund)) %}
+            <span class="justify-self-end">
+                {% if has_menu %}
+                <details class="relative" data-row-menu>
+                    <summary class="flex h-9 w-9 cursor-pointer list-none items-center justify-center rounded-xl text-slate-500 hover:bg-slate-100" aria-label="Ações da cobrança">⋯</summary>
+                    <div class="absolute right-0 z-20 mt-1 w-56 rounded-xl border border-slate-200 bg-white p-1 text-sm shadow-lg">
+                        {% if is_open and charge.invoice_url %}
+                        <a href="{{ charge.invoice_url }}" target="_blank" rel="noopener noreferrer" class="block rounded-lg px-3 py-2 text-slate-700 hover:bg-slate-50">Abrir fatura</a>
+                        <button type="button" data-copy-link="{{ charge.invoice_url }}" class="block w-full rounded-lg px-3 py-2 text-left text-slate-700 hover:bg-slate-50">Copiar link de pagamento</button>
+                        {% elif charge.invoice_url %}
+                        <a href="{{ charge.invoice_url }}" target="_blank" rel="noopener noreferrer" class="block rounded-lg px-3 py-2 text-slate-700 hover:bg-slate-50">Ver comprovante / fatura</a>
                         {% endif %}
-                        {% if subscription.environment == 'sandbox' and subscription.status == 'criada' and subscription.asaas_status in ['ACTIVE', 'INACTIVE'] %}
-                        <div class="mt-4 flex flex-wrap gap-2 border-t border-slate-100 pt-4">
-                            {% if subscription.asaas_status == 'ACTIVE' %}
-                            <form method="post" action="/organizacoes/{{ organization.id }}/assinatura-sandbox/gerenciar" onsubmit="return confirm('Suspender a assinatura? Novas cobranças não serão geradas; as existentes permanecem inalteradas.');"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="action" value="suspender"><button class="rounded-xl border border-amber-300 px-4 py-2 text-sm font-semibold text-amber-800">Suspender assinatura</button></form>
-                            {% else %}
-                            <form method="post" action="/organizacoes/{{ organization.id }}/assinatura-sandbox/gerenciar" class="flex flex-wrap items-end gap-2" onsubmit="return confirm('Reativar a assinatura com o próximo vencimento informado?');"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="action" value="reativar"><label class="text-xs text-slate-600">Próximo vencimento <input type="date" name="next_due_date" required class="block rounded-xl border-slate-200 text-sm"></label><button class="rounded-xl border border-emerald-300 px-4 py-2 text-sm font-semibold text-emerald-800">Reativar assinatura</button></form>
-                            {% endif %}
-                            <form method="post" action="/organizacoes/{{ organization.id }}/assinatura-sandbox/gerenciar" onsubmit="return confirm('Cancelar definitivamente a assinatura? O Asaas também excluirá as cobranças pendentes ou vencidas vinculadas. Cobranças pagas permanecem registradas.');"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="action" value="cancelar"><button class="rounded-xl border border-rose-200 px-4 py-2 text-sm font-semibold text-rose-700">Cancelar assinatura</button></form>
-                        </div>
+                        {% if is_open and charge.bank_slip_url %}<a href="{{ charge.bank_slip_url }}" target="_blank" rel="noopener noreferrer" class="block rounded-lg px-3 py-2 text-slate-700 hover:bg-slate-50">Baixar boleto (PDF)</a>{% endif %}
+                        {% if subscription.environment == 'sandbox' and charge.operation_state is none %}
+                        {% if is_open %}
+                        <button type="button" data-dialog-open="receive-charge-{{ charge.id }}" class="block w-full rounded-lg px-3 py-2 text-left text-slate-700 hover:bg-slate-50">Registrar pagamento recebido fora</button>
+                        <button type="button" data-dialog-open="cancel-charge-{{ charge.id }}" class="block w-full rounded-lg px-3 py-2 text-left text-rose-700 hover:bg-rose-50">Cancelar cobrança</button>
+                        {% elif can_refund %}
+                        <button type="button" data-dialog-open="refund-charge-{{ charge.id }}" class="block w-full rounded-lg px-3 py-2 text-left text-rose-700 hover:bg-rose-50">Estornar pagamento</button>
                         {% endif %}
-                        <div class="mt-4 border-t border-slate-100 pt-4">
-                            <p class="text-xs font-semibold uppercase tracking-[.2em] text-slate-500">Situação das cobranças</p>
-                            {% for charge in charges %}
-                            <div class="mt-2 rounded-xl bg-slate-50 p-3 text-sm text-slate-700">
-                                <p class="font-semibold">{% if charge.amount is not none %}R$ {{ charge.amount|decimal_br }}{% else %}Valor não informado{% endif %} · {{ charge_labels.get(charge.status, 'Outra situação (' ~ charge.status ~ ')' if charge.status else 'Não informada') }}</p>
-                                <p class="mt-1 text-xs text-slate-500">Forma da cobrança: {{ payment_labels.get(charge.billing_type, 'Outra forma (' ~ charge.billing_type ~ ')' if charge.billing_type else 'Não informada') }}</p>
-                                <p class="mt-1 text-xs text-slate-500">Vencimento: {{ charge.due_date.strftime('%d/%m/%Y') if charge.due_date else 'Não informado' }}{% if charge.paid_date %} · Pagamento: {{ charge.paid_date.strftime('%d/%m/%Y') }}{% endif %}</p>
-                                <p class="mt-1 text-xs text-slate-500">Atualizada: {{ charge.updated_at|datetime_sp if charge.updated_at else 'Não informada' }} · {{ charge.asaas_payment_id }}</p>
-                                {% if charge.billing_type == 'RECEIVED_IN_CASH' %}<p class="mt-1 text-xs text-amber-800">Recebimento registrado fora do Asaas; não representa crédito na conta Asaas.</p>{% endif %}
-                                {% if charge.status in ['PENDING', 'OVERDUE'] and (charge.invoice_url or charge.bank_slip_url) %}
-                                <div class="mt-2 flex flex-wrap items-center gap-2">
-                                    {% if charge.invoice_url %}<a href="{{ charge.invoice_url }}" target="_blank" rel="noopener noreferrer" class="rounded-xl bg-white px-3 py-1.5 text-xs font-semibold text-emerald-800 ring-1 ring-emerald-200 hover:bg-emerald-50">Abrir fatura</a><button type="button" class="rounded-xl bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50" data-copy-link="{{ charge.invoice_url }}">Copiar link de pagamento</button>{% endif %}
-                                    {% if charge.bank_slip_url %}<a href="{{ charge.bank_slip_url }}" target="_blank" rel="noopener noreferrer" class="rounded-xl bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50">Boleto (PDF)</a>{% endif %}
-                                </div>
-                                {% elif charge.status in ['PENDING', 'OVERDUE'] %}<p class="mt-2 text-xs text-slate-500">Link de pagamento ainda não recebido. Use “Atualizar assinatura e cobranças” para buscá-lo.</p>{% endif %}
-                                {% if charge.operation_state == 'executando' %}<p class="mt-2 text-xs text-amber-800">Operação em andamento. Se não concluir, confira o Asaas e aguarde 10 minutos antes de liberar.</p><form method="post" action="/organizacoes/{{ organization.id }}/cobrancas/{{ charge.id }}/gerenciar" class="mt-2" onsubmit="return confirm('Você verificou no Asaas o resultado e aguardou pelo menos 10 minutos?');"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="action" value="liberar"><button class="rounded-xl border border-amber-300 px-3 py-2 text-xs font-semibold text-amber-800">Liberar após conferir</button></form>
-                                {% elif charge.operation_state == 'verificar' %}
-                                <p class="mt-2 text-xs text-amber-800">Confira o resultado no Asaas. Nenhuma nova operação será enviada até a liberação manual.</p>
-                                <form method="post" action="/organizacoes/{{ organization.id }}/cobrancas/{{ charge.id }}/gerenciar" class="mt-2" onsubmit="return confirm('Você conferiu no Asaas o resultado da operação e deseja liberar novas ações nesta cobrança?');"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="action" value="liberar"><button class="rounded-xl border border-amber-300 px-3 py-2 text-xs font-semibold text-amber-800">Liberei após conferir no Asaas</button></form>
-                                {% elif subscription.environment == 'sandbox' %}
-                                <div class="mt-3 flex flex-wrap gap-2">
-                                    {% if charge.status in ['PENDING', 'OVERDUE'] %}
-                                    <form method="post" action="/organizacoes/{{ organization.id }}/cobrancas/{{ charge.id }}/gerenciar" onsubmit="return confirm('Cancelar esta cobrança? A assinatura continuará ativa e poderá gerar novas cobranças.');"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="action" value="cancelar"><button class="rounded-xl border border-rose-200 px-3 py-2 text-xs font-semibold text-rose-700">Cancelar cobrança</button></form>
-                                    <details class="w-full rounded-xl border border-slate-200 p-3"><summary class="cursor-pointer text-xs font-semibold">Registrar recebimento externo</summary><p class="mt-2 text-xs text-slate-600">Somente para pagamento já recebido fora do Asaas. Esta ação não credita saldo na conta Asaas.</p><form method="post" action="/organizacoes/{{ organization.id }}/cobrancas/{{ charge.id }}/gerenciar" class="mt-2 flex flex-wrap items-end gap-2" onsubmit="return confirm('Confirmar que o pagamento foi recebido fora do Asaas? Esta operação registra a baixa manual da cobrança.');"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="action" value="receber"><label class="text-xs">Data do recebimento<input type="date" name="payment_date" required class="block rounded-xl border-slate-200 text-sm"></label><label class="text-xs">Valor recebido (R$)<input name="value" inputmode="decimal" required placeholder="Ex.: 99,90" class="block w-32 rounded-xl border-slate-200 text-sm"></label><button class="rounded-xl bg-brand-500 px-3 py-2 text-xs font-semibold text-white">Registrar recebimento</button></form></details>
-                                    {% elif (charge.billing_type == 'PIX' and charge.status == 'RECEIVED') or (charge.billing_type == 'CREDIT_CARD' and charge.status in ['CONFIRMED', 'RECEIVED']) %}
-                                    <form method="post" action="/organizacoes/{{ organization.id }}/cobrancas/{{ charge.id }}/gerenciar" onsubmit="return confirm('Solicitar estorno integral desta cobrança no sandbox? A devolução pode permanecer em processamento.');"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="action" value="estornar"><button class="rounded-xl border border-rose-200 px-3 py-2 text-xs font-semibold text-rose-700">Solicitar estorno integral</button></form>
-                                    {% endif %}
-                                </div>
-                                {% endif %}
-                            </div>
-                            {% else %}<p class="mt-2 text-sm text-slate-500">Nenhuma cobrança registrada. Consulte o Asaas para verificar.</p>{% endfor %}
-                            {% if subscription.asaas_subscription_id and subscription.environment == 'sandbox' %}<form method="post" action="/organizacoes/{{ organization.id }}/assinatura-sandbox/sincronizar" class="mt-3"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">Atualizar assinatura e cobranças</button></form>{% endif %}
-                        </div>
-                        {% elif card_migration %}
-                        {% include "partials/card_checkout_panel.html" %}
-                        {% else %}
-                        <p class="mt-2 text-sm text-slate-500">Esta organização ainda não tem assinatura. Siga os passos para contratar.</p>
-                        {% include "partials/subscription_wizard.html" %}
                         {% endif %}
-                    </details>
+                    </div>
+                </details>
+                {% endif %}
+            </span>
+        </div>
+        {% else %}
+        <p class="px-4 py-6 text-center text-sm text-slate-500">Nenhuma cobrança gerada ainda. O Asaas cria a primeira próximo ao vencimento.</p>
+        {% endfor %}
+    </div>
+</div>
+
+{# Diagnostico: informacoes tecnicas, raramente necessarias #}
+<details class="mt-5 rounded-2xl border border-slate-200 bg-white p-4 text-sm" data-diagnostics>
+    <summary class="cursor-pointer font-semibold text-slate-600">Diagnóstico e histórico</summary>
+    <dl class="mt-3 grid gap-2 text-xs text-slate-600 sm:grid-cols-2">
+        <div><dt class="text-slate-400">Assinatura no Asaas</dt><dd class="font-mono">{{ subscription.asaas_subscription_id or 'Aguardando confirmação' }}</dd></div>
+        <div><dt class="text-slate-400">Cliente no Asaas</dt><dd class="font-mono">{{ billing.asaas_customer_id if billing else '—' }}</dd></div>
+        <div><dt class="text-slate-400">Situação no Asaas</dt><dd>{{ subscription_labels.get(subscription.asaas_status, subscription.asaas_status or '—') }}</dd></div>
+        <div><dt class="text-slate-400">Última sincronização</dt><dd>{{ subscription.last_synced_at|datetime_sp if subscription.last_synced_at else 'Ainda não sincronizada' }}</dd></div>
+    </dl>
+    {% if charges %}
+    <p class="mt-3 text-xs text-slate-400">Identificadores das cobranças</p>
+    <ul class="mt-1 space-y-1 text-xs text-slate-600">{% for charge in charges %}<li><span class="font-mono">{{ charge.asaas_payment_id }}</span> · {{ charge.due_date.strftime('%d/%m/%Y') if charge.due_date else '—' }} · atualizada {{ charge.updated_at|datetime_sp if charge.updated_at else '—' }}</li>{% endfor %}</ul>
+    {% endif %}
+    {% if previous_subscriptions_by_organization.get(organization.id) %}
+    <p class="mt-4 text-xs font-semibold uppercase tracking-[0.15em] text-slate-400">Assinaturas anteriores</p>
+    {% for old in previous_subscriptions_by_organization.get(organization.id, []) %}
+    <div class="mt-2 rounded-xl bg-slate-50 p-3 text-xs text-slate-600">
+        <p class="font-semibold text-slate-800">{{ old.plan_name }} · R$ {{ old.amount|decimal_br }}/{{ cycle_unit_labels.get(old.cycle, old.cycle) }} · {{ payment_labels.get(old.billing_type, old.billing_type) }} · {{ subscription_labels.get(old.asaas_status, {'falhou': 'Não concluída', 'encerrada': 'Encerrada'}.get(old.status, old.asaas_status or old.status)) }}</p>
+        {% for charge in subscription_payments.get(old.id, []) %}<p class="mt-1">{{ charge.due_date.strftime('%d/%m/%Y') if charge.due_date else '—' }} · {% if charge.amount is not none %}R$ {{ charge.amount|decimal_br }}{% else %}—{% endif %} · {{ charge_labels.get(charge.status, charge.status) }}</p>{% else %}<p class="mt-1 text-slate-400">Sem cobranças.</p>{% endfor %}
+        <p class="mt-1 font-mono text-slate-400">{{ old.asaas_subscription_id or 'sem identificador' }}</p>
+    </div>
+    {% endfor %}
+    {% endif %}
+</details>
+
+{# Janelas de confirmacao #}
+{% if can_manage %}
+{% set plan_options = available_plans if (not subscription.plan or subscription.plan in available_plans) else [subscription.plan] + available_plans %}
+<dialog id="edit-subscription-{{ organization.id }}" class="app-modal w-full max-w-xl rounded-[2rem] p-0 shadow-2xl">
+    <form method="post" action="/organizacoes/{{ organization.id }}/assinatura-sandbox/editar" class="grid gap-3 bg-white p-6" data-busy-form>
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <div><h3 class="text-xl font-semibold text-slate-900">Trocar plano ou forma de pagamento</h3><p class="mt-1 text-sm text-slate-500">Vale para as próximas cobranças. As já geradas continuam como estão.</p></div>
+        <label><span class="mb-1 block text-sm font-medium">Plano</span><select name="plan_id" data-plan-select class="min-h-[3rem] w-full rounded-xl border-slate-200 bg-slate-50">{% for plan in plan_options %}<option value="{{ plan.id }}" data-prices='{{ plan_prices_json(plan) }}' {% if subscription.plan_id == plan.id %}selected{% endif %}>{{ plan.name }}{% if plan.version > 1 %} · v{{ plan.version }}{% endif %}{% if plan.status == 'arquivado' %} (versão contratada){% endif %}</option>{% endfor %}<option value="" {% if not subscription.plan_id %}selected{% endif %}>Personalizado (fora do catálogo)</option></select></label>
+        <label><span class="mb-1 block text-sm font-medium">Periodicidade</span><select name="cycle" data-plan-cycle class="min-h-[3rem] w-full rounded-xl border-slate-200 bg-slate-50">{% for code, cycle_info in subscription_cycles.items() %}<option value="{{ code }}" {% if subscription.cycle == code %}selected{% endif %}>{{ cycle_info[0] }}</option>{% endfor %}</select></label>
+        <p class="hidden rounded-xl bg-emerald-50 px-3 py-2 text-sm text-emerald-900" data-plan-price-preview></p>
+        <div class="grid gap-3 sm:grid-cols-2" data-custom-plan-fields>
+            <label><span class="mb-1 block text-sm font-medium">Nome do plano</span><input name="plan_name" maxlength="120" value="{{ subscription.plan_name }}" class="min-h-[3rem] w-full rounded-xl border-slate-200 bg-slate-50"></label>
+            <label><span class="mb-1 block text-sm font-medium">Valor por período (R$)</span><input name="amount" inputmode="decimal" value="{{ subscription.amount|decimal_br }}" class="min-h-[3rem] w-full rounded-xl border-slate-200 bg-slate-50"></label>
+        </div>
+        <label><span class="mb-1 block text-sm font-medium">Forma de pagamento</span><select name="billing_type" class="min-h-[3rem] w-full rounded-xl border-slate-200 bg-slate-50">{% if subscription.billing_type == 'CREDIT_CARD' %}<option value="CREDIT_CARD" selected>Manter cartão de crédito</option>{% endif %}<option value="PIX" {% if subscription.billing_type == 'PIX' %}selected{% endif %}>Pix</option><option value="BOLETO" {% if subscription.billing_type == 'BOLETO' %}selected{% endif %}>Boleto</option></select>{% if subscription.billing_type != 'CREDIT_CARD' %}<span class="mt-1 block text-xs text-slate-500">Para cartão, use “Mudar para cartão”: o cliente cadastra o cartão pelo link do Asaas.</span>{% endif %}</label>
+        <label><span class="mb-1 block text-sm font-medium">Nova data da próxima cobrança <span class="font-normal text-slate-400">(opcional)</span></span><input type="date" name="next_due_date" min="{{ today_iso }}" class="min-h-[3rem] w-full rounded-xl border-slate-200 bg-slate-50"></label>
+        <div class="mt-2 flex justify-end gap-2"><button type="button" data-dialog-close class="rounded-xl bg-slate-100 px-4 py-2.5 text-sm font-semibold text-slate-700">Voltar</button><button class="rounded-xl bg-brand-500 px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-700">Salvar alterações</button></div>
+    </form>
+</dialog>
+
+{% if subscription.asaas_status == 'ACTIVE' and subscription.billing_type in ['PIX', 'BOLETO'] %}
+<dialog id="card-subscription-{{ organization.id }}" class="app-modal w-full max-w-lg rounded-[2rem] p-0 shadow-2xl">
+    <form method="post" action="/organizacoes/{{ organization.id }}/assinatura-sandbox/cartao" class="grid gap-3 bg-white p-6" data-busy-form>
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <div><h3 class="text-xl font-semibold text-slate-900">Mudar para cartão de crédito</h3><p class="mt-1 text-sm text-slate-500">Geramos um link do Asaas (válido por 24 horas) para o cliente cadastrar o cartão.</p></div>
+        <ul class="list-disc space-y-1 pl-5 text-sm text-slate-600"><li>A assinatura atual em {{ payment_labels.get(subscription.billing_type) }} continua até o cartão ser aprovado.</li><li>Depois da aprovação, ela é suspensa e a nova assinatura no cartão passa a valer.</li><li>Cobranças já geradas continuam como estão.</li></ul>
+        <label><span class="mb-1 block text-sm font-medium">Primeira cobrança no cartão</span><input type="date" name="next_due_date" required min="{{ today_iso }}" value="{{ subscription.next_due_date.isoformat() if subscription.next_due_date and subscription.next_due_date.isoformat() >= today_iso else '' }}" class="min-h-[3rem] w-full rounded-xl border-slate-200 bg-slate-50"></label>
+        <div class="mt-2 flex justify-end gap-2"><button type="button" data-dialog-close class="rounded-xl bg-slate-100 px-4 py-2.5 text-sm font-semibold text-slate-700">Voltar</button><button class="rounded-xl bg-brand-500 px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-700">Gerar link para o cliente</button></div>
+    </form>
+</dialog>
+{% endif %}
+
+{% if subscription.asaas_status == 'ACTIVE' %}
+<dialog id="suspend-subscription-{{ organization.id }}" class="app-modal w-full max-w-md rounded-[2rem] p-0 shadow-2xl">
+    <form method="post" action="/organizacoes/{{ organization.id }}/assinatura-sandbox/gerenciar" class="grid gap-3 bg-white p-6" data-busy-form>
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="action" value="suspender">
+        <h3 class="text-xl font-semibold text-slate-900">Suspender assinatura?</h3>
+        <p class="text-sm text-slate-600">O Asaas deixa de gerar novas cobranças. As cobranças já geradas continuam abertas e podem ser pagas ou canceladas individualmente. Você pode reativar quando quiser.</p>
+        <div class="mt-2 flex justify-end gap-2"><button type="button" data-dialog-close class="rounded-xl bg-slate-100 px-4 py-2.5 text-sm font-semibold text-slate-700">Voltar</button><button class="rounded-xl bg-amber-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-amber-700">Suspender</button></div>
+    </form>
+</dialog>
+{% else %}
+<dialog id="reactivate-subscription-{{ organization.id }}" class="app-modal w-full max-w-md rounded-[2rem] p-0 shadow-2xl">
+    <form method="post" action="/organizacoes/{{ organization.id }}/assinatura-sandbox/gerenciar" class="grid gap-3 bg-white p-6" data-busy-form>
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="action" value="reativar">
+        <h3 class="text-xl font-semibold text-slate-900">Reativar assinatura</h3>
+        <p class="text-sm text-slate-600">Escolha quando o Asaas deve gerar a próxima cobrança.</p>
+        <label><span class="mb-1 block text-sm font-medium">Próxima cobrança</span><input type="date" name="next_due_date" required min="{{ today_iso }}" class="min-h-[3rem] w-full rounded-xl border-slate-200 bg-slate-50"></label>
+        <div class="mt-2 flex justify-end gap-2"><button type="button" data-dialog-close class="rounded-xl bg-slate-100 px-4 py-2.5 text-sm font-semibold text-slate-700">Voltar</button><button class="rounded-xl bg-brand-500 px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-700">Reativar</button></div>
+    </form>
+</dialog>
+{% endif %}
+
+<dialog id="cancel-subscription-{{ organization.id }}" class="app-modal w-full max-w-md rounded-[2rem] p-0 shadow-2xl">
+    <form method="post" action="/organizacoes/{{ organization.id }}/assinatura-sandbox/gerenciar" class="grid gap-3 bg-white p-6" data-busy-form>
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="action" value="cancelar">
+        <h3 class="text-xl font-semibold text-rose-700">Cancelar a assinatura de {{ organization.name }}?</h3>
+        <ul class="list-disc space-y-1 pl-5 text-sm text-slate-600"><li>A recorrência é encerrada definitivamente no Asaas.</li><li>Cobranças pendentes ou vencidas desta assinatura são excluídas pelo Asaas.</li><li>Cobranças pagas e o histórico continuam registrados.</li><li>Depois do cancelamento, já é possível contratar uma nova assinatura.</li></ul>
+        <label class="flex items-start gap-2 rounded-xl bg-rose-50 p-3 text-sm text-rose-800"><input type="checkbox" required class="mt-0.5 rounded border-rose-300 text-rose-600">Entendo que esta ação não pode ser desfeita.</label>
+        <div class="mt-2 flex justify-end gap-2"><button type="button" data-dialog-close class="rounded-xl bg-slate-100 px-4 py-2.5 text-sm font-semibold text-slate-700">Manter assinatura</button><button class="rounded-xl bg-rose-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-rose-700">Cancelar assinatura</button></div>
+    </form>
+</dialog>
+{% endif %}
+
+{% for charge in charges if subscription.environment == 'sandbox' and charge.operation_state is none %}
+{% if charge.status in ['PENDING', 'OVERDUE'] %}
+<dialog id="receive-charge-{{ charge.id }}" class="app-modal w-full max-w-md rounded-[2rem] p-0 shadow-2xl">
+    <form method="post" action="/organizacoes/{{ organization.id }}/cobrancas/{{ charge.id }}/gerenciar" class="grid gap-3 bg-white p-6" data-busy-form>
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="action" value="receber">
+        <h3 class="text-xl font-semibold text-slate-900">Registrar pagamento recebido fora</h3>
+        <p class="text-sm text-slate-600">Use quando o cliente pagou diretamente a você (transferência, dinheiro). A cobrança de {{ charge.due_date.strftime('%d/%m/%Y') if charge.due_date else '—' }} é baixada no Asaas, sem crédito na conta Asaas.</p>
+        <div class="grid gap-3 sm:grid-cols-2">
+            <label><span class="mb-1 block text-sm font-medium">Data do recebimento</span><input type="date" name="payment_date" required max="{{ today_iso }}" value="{{ today_iso }}" class="min-h-[3rem] w-full rounded-xl border-slate-200 bg-slate-50"></label>
+            <label><span class="mb-1 block text-sm font-medium">Valor recebido (R$)</span><input name="value" inputmode="decimal" required value="{{ charge.amount|decimal_br if charge.amount is not none else '' }}" class="min-h-[3rem] w-full rounded-xl border-slate-200 bg-slate-50"></label>
+        </div>
+        <div class="mt-2 flex justify-end gap-2"><button type="button" data-dialog-close class="rounded-xl bg-slate-100 px-4 py-2.5 text-sm font-semibold text-slate-700">Voltar</button><button class="rounded-xl bg-brand-500 px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-700">Registrar pagamento</button></div>
+    </form>
+</dialog>
+<dialog id="cancel-charge-{{ charge.id }}" class="app-modal w-full max-w-md rounded-[2rem] p-0 shadow-2xl">
+    <form method="post" action="/organizacoes/{{ organization.id }}/cobrancas/{{ charge.id }}/gerenciar" class="grid gap-3 bg-white p-6" data-busy-form>
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="action" value="cancelar">
+        <h3 class="text-xl font-semibold text-slate-900">Cancelar esta cobrança?</h3>
+        <p class="text-sm text-slate-600">A cobrança de {% if charge.amount is not none %}R$ {{ charge.amount|decimal_br }}{% endif %} com vencimento em {{ charge.due_date.strftime('%d/%m/%Y') if charge.due_date else '—' }} deixa de existir e o link de pagamento para de funcionar. A assinatura continua ativa e gera as próximas cobranças normalmente.</p>
+        <div class="mt-2 flex justify-end gap-2"><button type="button" data-dialog-close class="rounded-xl bg-slate-100 px-4 py-2.5 text-sm font-semibold text-slate-700">Voltar</button><button class="rounded-xl bg-rose-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-rose-700">Cancelar cobrança</button></div>
+    </form>
+</dialog>
+{% elif (charge.billing_type == 'PIX' and charge.status == 'RECEIVED') or (charge.billing_type == 'CREDIT_CARD' and charge.status in ['CONFIRMED', 'RECEIVED']) %}
+<dialog id="refund-charge-{{ charge.id }}" class="app-modal w-full max-w-md rounded-[2rem] p-0 shadow-2xl">
+    <form method="post" action="/organizacoes/{{ organization.id }}/cobrancas/{{ charge.id }}/gerenciar" class="grid gap-3 bg-white p-6" data-busy-form>
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="action" value="estornar">
+        <h3 class="text-xl font-semibold text-rose-700">Estornar o pagamento?</h3>
+        <p class="text-sm text-slate-600">O valor integral de {% if charge.amount is not none %}R$ {{ charge.amount|decimal_br }}{% endif %} volta para o cliente pelo {{ payment_labels.get(charge.billing_type) }}. O Asaas pode levar alguns dias para concluir; a situação é atualizada automaticamente.</p>
+        <label class="flex items-start gap-2 rounded-xl bg-rose-50 p-3 text-sm text-rose-800"><input type="checkbox" required class="mt-0.5 rounded border-rose-300 text-rose-600">Confirmo o estorno integral desta cobrança.</label>
+        <div class="mt-2 flex justify-end gap-2"><button type="button" data-dialog-close class="rounded-xl bg-slate-100 px-4 py-2.5 text-sm font-semibold text-slate-700">Voltar</button><button class="rounded-xl bg-rose-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-rose-700">Estornar</button></div>
+    </form>
+</dialog>
+{% endif %}
+{% endfor %}
+
+{% elif card_migration %}
+{% include "partials/card_checkout_panel.html" %}
+{% else %}
+<p class="mt-2 text-sm text-slate-500">Esta organização ainda não tem assinatura. Siga os passos para contratar.</p>
+{% include "partials/subscription_wizard.html" %}
+{% if previous_subscriptions_by_organization.get(organization.id) %}
+<details class="mt-5 rounded-2xl border border-slate-200 bg-white p-4 text-sm"><summary class="cursor-pointer font-semibold text-slate-600">Assinaturas anteriores</summary>
+{% for old in previous_subscriptions_by_organization.get(organization.id, []) %}<p class="mt-2 text-xs text-slate-600">{{ old.plan_name }} · R$ {{ old.amount|decimal_br }}/{{ cycle_unit_labels.get(old.cycle, old.cycle) }} · {{ subscription_labels.get(old.asaas_status, {'falhou': 'Não concluída', 'encerrada': 'Encerrada'}.get(old.status, old.asaas_status or old.status)) }}</p>{% endfor %}
+</details>
+{% endif %}
+{% endif %}
+
 <script>
 (() => {
     const money = (value) => Number(value).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
     const cycleLabels = { MONTHLY: 'mês', QUARTERLY: 'trimestre', SEMIANNUALLY: 'semestre', YEARLY: 'ano' };
+
+    // Janelas de confirmacao, menus de linha e protecao contra envio duplo.
+    document.addEventListener('click', (event) => {
+        const opener = event.target.closest('[data-dialog-open]');
+        if (opener) {
+            opener.closest('details[data-row-menu]')?.removeAttribute('open');
+            document.getElementById(opener.dataset.dialogOpen)?.showModal();
+            return;
+        }
+        if (event.target.closest('[data-dialog-close]')) {
+            event.target.closest('dialog')?.close();
+            return;
+        }
+        if (event.target.tagName === 'DIALOG') event.target.close();
+        document.querySelectorAll('details[data-row-menu][open]').forEach((menu) => {
+            if (!menu.contains(event.target)) menu.removeAttribute('open');
+        });
+    });
+    document.querySelectorAll('[data-busy-form]').forEach((form) => {
+        form.addEventListener('submit', (event) => {
+            const button = form.querySelector('button:not([type="button"])');
+            if (form.dataset.sending) { event.preventDefault(); return; }
+            form.dataset.sending = '1';
+            if (button) { button.disabled = true; button.textContent = 'Consultando o Asaas…'; }
+        });
+    });
 
     document.addEventListener('click', async (event) => {
         const button = event.target.closest('[data-copy-link]');

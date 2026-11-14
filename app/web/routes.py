@@ -279,6 +279,26 @@ templates = Jinja2Templates(directory="app/templates")
 templates.env.filters["datetime_sp"] = format_app_datetime
 templates.env.filters["decimal_br"] = lambda value, places=2: _format_decimal_br(value, places)
 templates.env.globals["subscription_cycles"] = SUBSCRIPTION_CYCLES
+
+
+def _time_ago(value) -> str:
+    """'agora', 'há 5 min', 'há 2 h', 'há 3 dias' em relacao ao horario local da aplicacao."""
+    if not value:
+        return "nunca"
+    now = app_now().replace(tzinfo=None)
+    if value.tzinfo:
+        value = value.astimezone(app_now().tzinfo).replace(tzinfo=None)
+    minutes = int((now - value).total_seconds() // 60)
+    if minutes < 1:
+        return "agora"
+    if minutes < 60:
+        return f"há {minutes} min"
+    if minutes < 48 * 60:
+        return f"há {minutes // 60} h"
+    return f"há {minutes // 1440} dias"
+
+
+templates.env.filters["time_ago"] = _time_ago
 templates.env.globals["cycle_unit_labels"] = CYCLE_UNIT_LABELS
 templates.env.globals["plan_prices_json"] = lambda plan: json.dumps({cycle: str(price) for cycle, price in plan_prices(plan).items()})
 templates.env.filters["quantity_br"] = lambda value, unit=None: _format_quantity_br(value, unit)
@@ -9256,7 +9276,8 @@ def subscriptions_page(
         organization=organization, billing=billing, subscriptions_by_organization=current,
         card_migrations_by_organization=migrations, previous_subscriptions_by_organization=previous,
         subscription_payments=payments, portfolio=portfolio, situation_labels=SITUATION_LABELS,
-        available_plans=active_plans(db), plan_prices_of=plan_prices, today_iso=today_in_app_timezone().isoformat(), _repo=repo,
+        available_plans=active_plans(db), plan_prices_of=plan_prices, today_iso=today_in_app_timezone().isoformat(),
+        selected_row=next((row for row in portfolio.rows if organization and row.organization.id == organization.id), None), _repo=repo,
     ))
 
 
