@@ -1955,6 +1955,7 @@ def create_harvest(repository: FarmRepository, form: dict, area_hectares: float)
     return repository.create(
         HarvestRecord(
             plot_id=form["plot_id"],
+            season_id=form.get("season_id"),
             harvest_date=harvest_date_value,
             lot_code=lot_code,
             sacks_produced=sacks,

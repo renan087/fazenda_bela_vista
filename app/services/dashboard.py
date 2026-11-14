@@ -9,6 +9,7 @@ from app.services.coffee_quotes import latest_coffee_quote_context
 from app.services.finance_overview import build_finance_overview_context
 from app.services.forms import fertilization_application_method_label
 from app.services.sector_costs import build_sector_cost_context
+from app.services.harvest_scope import harvest_matches_season
 
 
 def _float(value) -> float:
@@ -418,7 +419,7 @@ def build_dashboard_context(
     harvests = [
         harvest
         for harvest in repository.list_harvests()
-        if harvest.plot_id in plot_ids and _in_season(harvest.harvest_date, season)
+        if harvest.plot_id in plot_ids and harvest_matches_season(harvest, season)
     ]
     irrigations = [
         irrigation

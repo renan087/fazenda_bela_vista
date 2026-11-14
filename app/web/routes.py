@@ -108,6 +108,7 @@ from app.services.asaas_payment_sync import upsert_asaas_payment_row, user_owns_
 from app.services.asaas_payments import create_asaas_payment, get_asaas_payment, is_asaas_status_paid
 from app.services.agronomic_profile_suggestions import build_agronomic_profile_suggestions
 from app.services.sector_costs import build_sector_cost_context
+from app.services.harvest_scope import harvest_matches_season
 from app.services.backup_service import (
     _create_backup_run,
     delete_backup_run,
@@ -17327,13 +17328,15 @@ def production_page(
     edit_harvest = repo.get_harvest(edit_id) if edit_id else None
     if edit_harvest and (not _plot_matches_scope(edit_harvest.plot, scope) or edit_harvest.plot_id not in plot_ids):
         edit_harvest = None
+    if edit_harvest and scope.get("active_season_id") and edit_harvest.season_id is not None and edit_harvest.season_id != scope["active_season_id"]:
+        edit_harvest = None
     launch_plots = _season_launch_plots(plots, scope)
     if edit_harvest and edit_harvest.plot and edit_harvest.plot not in launch_plots:
         launch_plots = [*launch_plots, edit_harvest.plot]
     harvests = [
         harvest
         for harvest in repo.list_harvests()
-        if harvest.plot_id in plot_ids and _within_scope(harvest.harvest_date, start_date, end_date)
+        if harvest.plot_id in plot_ids and harvest_matches_season(harvest, scope.get("active_season"))
     ]
     harvests = _sort_collection_desc(
         harvests,
@@ -17472,6 +17475,7 @@ def create_harvest_action(
         repo,
         {
             "plot_id": plot.id,
+            "season_id": scope["active_season_id"],
             "harvest_date": harvest_date,
             "lot_code": lot_code,
             "sacks_produced": sacks_produced,
@@ -17526,6 +17530,9 @@ def update_harvest_action(
         return _redirect_for_request(request, "/producao")
     if not _plot_matches_scope(harvest.plot, scope):
         _flash(request, "error", "Este registro de producao nao pertence ao contexto ativo.")
+        return _redirect_for_request(request, "/producao")
+    if harvest.season_id is not None and harvest.season_id != scope.get("active_season_id"):
+        _flash(request, "error", "Esta colheita pertence a outra safra.")
         return _redirect_for_request(request, "/producao")
     if plot.id != harvest.plot_id and not _plot_allowed_for_season_launch(plot, scope):
         _flash(request, "error", "O setor selecionado não está vinculado à safra ativa.")
@@ -17635,7 +17642,7 @@ def commercialization_page(
     harvests = [
         item
         for item in repo.list_harvests()
-        if item.plot_id in plot_ids and _within_scope(item.harvest_date, scope_start, scope_end)
+        if item.plot_id in plot_ids and harvest_matches_season(item, active_season)
     ]
     harvests = _sort_collection_desc(harvests, lambda item: item.harvest_date, lambda item: item.id)
 
@@ -17784,7 +17791,7 @@ def create_commercialization_action(
         _flash(request, "error", "Selecione um lote de colheita válido para o contexto ativo.")
         return _redirect("/producao/comercializacao")
     season_start, season_end = _scoped_dates(scope.get("active_season"))
-    if not _plot_allowed_for_season_launch(harvest.plot, scope) or not _within_scope(harvest.harvest_date, season_start, season_end):
+    if not _plot_allowed_for_season_launch(harvest.plot, scope) or not harvest_matches_season(harvest, scope.get("active_season")):
         _flash(request, "error", "Selecione um lote de um setor vinculado e colhido no período da safra ativa.")
         return _redirect("/producao/comercializacao")
     finance_account_id_value = _int_or_none(finance_account_id)
@@ -17866,7 +17873,7 @@ def update_commercialization_action(
         _flash(request, "error", "Selecione um lote de colheita válido para o contexto ativo.")
         return _redirect(f"/producao/comercializacao?edit_id={record_id}")
     season_start, season_end = _scoped_dates(scope.get("active_season"))
-    if harvest.id != commercialization.harvest_id and (not _plot_allowed_for_season_launch(harvest.plot, scope) or not _within_scope(harvest.harvest_date, season_start, season_end)):
+    if harvest.id != commercialization.harvest_id and (not _plot_allowed_for_season_launch(harvest.plot, scope) or not harvest_matches_season(harvest, scope.get("active_season"))):
         _flash(request, "error", "Selecione um lote de um setor vinculado e colhido no período da safra ativa.")
         return _redirect(f"/producao/comercializacao?edit_id={record_id}")
     finance_account_id_value = _int_or_none(finance_account_id)

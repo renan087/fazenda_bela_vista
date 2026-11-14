@@ -11,6 +11,7 @@ class HarvestRecord(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
     plot_id: Mapped[int] = mapped_column(ForeignKey("plots.id"), nullable=False)
+    season_id: Mapped[int | None] = mapped_column(ForeignKey("crop_seasons.id", ondelete="SET NULL"), nullable=True)
     harvest_date: Mapped[date] = mapped_column(Date, nullable=False)
     lot_code: Mapped[str] = mapped_column(String(40), nullable=True)
     sacks_produced: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False)
@@ -27,4 +28,5 @@ class HarvestRecord(Base):
     notes: Mapped[str] = mapped_column(Text, nullable=True)
 
     plot = relationship("Plot", back_populates="harvests")
+    season = relationship("CropSeason")
     commercializations = relationship("CoffeeCommercializationRecord", back_populates="harvest")

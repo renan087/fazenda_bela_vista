@@ -797,6 +797,7 @@ def _sync_schema() -> None:
         "ALTER TABLE irrigation_records ADD COLUMN IF NOT EXISTS origin VARCHAR(40) DEFAULT 'manual'",
         "ALTER TABLE irrigation_records ADD COLUMN IF NOT EXISTS reference_type VARCHAR(40)",
         "ALTER TABLE irrigation_records ADD COLUMN IF NOT EXISTS reference_id INTEGER",
+        "ALTER TABLE harvest_records ADD COLUMN IF NOT EXISTS season_id INTEGER REFERENCES crop_seasons(id) ON DELETE SET NULL",
         "ALTER TABLE harvest_records ADD COLUMN IF NOT EXISTS productivity_per_hectare NUMERIC(10,2)",
         "ALTER TABLE harvest_records ADD COLUMN IF NOT EXISTS lot_code VARCHAR(40)",
         "ALTER TABLE harvest_records ADD COLUMN IF NOT EXISTS harvest_type VARCHAR(40)",
