@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 import app.models  # noqa: F401
 from app.db.base import Base
 from app.models import AsaasWebhookEvent, Organization, OrganizationBilling, OrganizationSubscription, OrganizationSubscriptionPayment
+from app.models.audit_log import AuditLog
 from app.services.organization_subscription_sync import persist_organization_webhook
 from app.web import routes
 
@@ -140,3 +141,7 @@ def test_payment_action_blocks_retries_after_uncertain_response(monkeypatch):
         routes.manage_organization_payment_action(**args)
         assert len(calls) == 1
         assert db.query(OrganizationSubscriptionPayment).one().operation_state == 'verificar'
+        events = db.query(AuditLog).filter(AuditLog.event_type == 'comercial.cobranca.cancelar').order_by(AuditLog.id).all()
+        assert [event.outcome for event in events] == ['iniciado', 'verificar']
+        assert all(event.organization_id == org.id for event in events)
+        assert all('key' not in event.metadata_json for event in events)

@@ -111,6 +111,7 @@ from app.services.asaas_customers import (
 from app.services.asaas_payment_sync import upsert_asaas_payment_row, user_owns_asaas_payment_payload
 from app.services.asaas_subscriptions import create_sandbox_subscription, get_sandbox_subscription, list_sandbox_subscription_payments, manage_sandbox_subscription
 from app.services.asaas_organization_payment_actions import execute_payment_action
+from app.services.commercial_audit import record_commercial_event
 from app.services.organization_subscription_sync import persist_organization_webhook
 from app.services.asaas_payments import create_asaas_payment, get_asaas_payment, is_asaas_status_paid
 from app.services.agronomic_profile_suggestions import build_agronomic_profile_suggestions
@@ -9366,18 +9367,22 @@ def create_organization_sandbox_subscription_action(
         return _redirect("/organizacoes")
     subscription = OrganizationSubscription(organization_id=organization_id, plan_name=name, amount=Decimal(str(value)).quantize(Decimal("0.01")), cycle=cycle, billing_type=billing_type, first_due_date=due, status="criando", environment="sandbox")
     db.add(subscription)
+    db.flush()
+    record_commercial_event(db, user=user, organization_id=organization_id, resource="assinatura", resource_id=subscription.id, action="criar", outcome="iniciado")
     db.commit()
     db.refresh(subscription)
     payload = {"customer": billing.asaas_customer_id, "billingType": billing_type, "value": float(subscription.amount), "nextDueDate": due.isoformat(), "cycle": cycle, "description": name, "externalReference": f"sisfarm-sub-{subscription.id}"}
     result, error = create_sandbox_subscription(api_key=settings.asaas_api_key.strip(), payload=payload)
     if error or not result:
         subscription.status = "revisao"
+        record_commercial_event(db, user=user, organization_id=organization_id, resource="assinatura", resource_id=subscription.id, action="criar", outcome="verificar")
         db.commit()
         _flash(request, "error", "Não foi possível confirmar a assinatura. Verifique o sandbox do Asaas antes de qualquer nova tentativa; a criação automática foi bloqueada para evitar duplicidade.")
         return _redirect("/organizacoes")
     subscription.asaas_subscription_id = result["id"].strip()
     subscription.asaas_status = str(result.get("status") or "")[:30] or None
     subscription.status = "criada"
+    record_commercial_event(db, user=user, organization_id=organization_id, resource="assinatura", resource_id=subscription.id, action="criar", outcome="success", details={"situacao": subscription.asaas_status})
     db.commit()
     _flash(request, "success", "Assinatura criada no sandbox. A criação não confirma pagamento nem altera o acesso da organização.")
     return _redirect("/organizacoes")
@@ -9410,6 +9415,7 @@ def manage_organization_payment_action(
         stale = charge.operation_state == "executando" and updated_at and datetime.now(timezone.utc) - updated_at > timedelta(minutes=10)
         if charge.operation_state == "verificar" or stale:
             charge.operation_state = None
+            record_commercial_event(db, user=user, organization_id=organization_id, resource="cobranca", resource_id=payment_id, action="liberar", outcome="success")
             db.commit()
             _flash(request, "success", "Bloqueio removido. Consulte o Asaas antes de qualquer nova operação.")
         else:
@@ -9430,6 +9436,8 @@ def manage_organization_payment_action(
             _flash(request, "error", "Informe data não futura e valor válido em reais, com até duas casas decimais.")
             return _redirect("/organizacoes")
     reserved = db.query(OrganizationSubscriptionPayment).filter_by(id=charge.id, status=charge.status, operation_state=None).update({"operation_state": "executando"}, synchronize_session=False)
+    if reserved:
+        record_commercial_event(db, user=user, organization_id=organization_id, resource="cobranca", resource_id=payment_id, action=action, outcome="iniciado", details={"valor": str(amount) if amount is not None else None, "data_pagamento": payment_date or None})
     db.commit()
     if not reserved:
         _flash(request, "error", "Já existe uma operação em andamento.")
@@ -9447,6 +9455,7 @@ def manage_organization_payment_action(
             charge.billing_type = str(result["billingType"])[:30]
         if action == "receber" and charge.billing_type == "RECEIVED_IN_CASH":
             charge.paid_date = date.fromisoformat(payment_date)
+    record_commercial_event(db, user=user, organization_id=organization_id, resource="cobranca", resource_id=payment_id, action=action, outcome="verificar" if sent else "nao_enviado", details={"situacao": charge.status, "resposta": "inconclusiva" if error and sent else "erro" if error else "recebida"})
     db.commit()
     _flash(request, "error" if error else "success", error or "Operação enviada ao Asaas. Confira o resultado antes de liberar novas ações; estornos podem continuar em processamento.")
     return _redirect("/organizacoes")
@@ -9484,12 +9493,16 @@ def manage_organization_sandbox_subscription_action(
         return _redirect("/organizacoes")
     remote_id = subscription.asaas_subscription_id
     reserved = db.query(OrganizationSubscription).filter_by(id=subscription.id, status="criada", asaas_status=subscription.asaas_status).update({"status": "revisao"}, synchronize_session=False)
+    if reserved:
+        record_commercial_event(db, user=user, organization_id=organization_id, resource="assinatura", resource_id=subscription.id, action=action, outcome="iniciado", details={"proximo_vencimento": next_due_date or None})
     db.commit()
     if not reserved:
         _flash(request, "error", "Outra operação está em andamento. Atualize a assinatura.")
         return _redirect("/organizacoes")
     result, error = manage_sandbox_subscription(api_key=settings.asaas_api_key.strip(), subscription_id=remote_id, action=action, next_due_date=next_due_date or None)
     if error:
+        record_commercial_event(db, user=user, organization_id=organization_id, resource="assinatura", resource_id=subscription.id, action=action, outcome="verificar", details={"resposta": "inconclusiva"})
+        db.commit()
         _flash(request, "error", error)
         return _redirect("/organizacoes")
     try:
@@ -9500,6 +9513,7 @@ def manage_organization_sandbox_subscription_action(
         subscription.asaas_status = "DELETED" if action == "cancelar" else result["status"]
         subscription.asaas_last_event_at = app_now().replace(tzinfo=None)
         subscription.status = "criada"
+        record_commercial_event(db, user=user, organization_id=organization_id, resource="assinatura", resource_id=subscription.id, action=action, outcome="success", details={"situacao": subscription.asaas_status})
         db.commit()
     except Exception:
         db.rollback()
@@ -9549,6 +9563,7 @@ def sync_organization_subscription_payments_action(
                 raise ValueError("Assinatura não localizada durante sincronização")
         if subscription.status == "revisao":
             subscription.status = "criada"
+        record_commercial_event(db, user=user, organization_id=organization_id, resource="assinatura", resource_id=subscription.id, action="sincronizar", outcome="success", details={"cobrancas": len(rows)})
         db.commit()
     except Exception:
         db.rollback()
