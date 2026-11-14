@@ -26,6 +26,7 @@ from reportlab.lib.enums import TA_LEFT, TA_RIGHT
 from reportlab.lib.pagesizes import A4, landscape
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.platypus import Image, KeepInFrame, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload
 from starlette.datastructures import UploadFile as StarletteUploadFile
 
@@ -9188,12 +9189,102 @@ def plan_upgrade_page(request: Request, modulo: str | None = Query(None), db: Se
     module_code = modulo if modulo in MODULE_LABELS else None
     catalog = active_plans(db)
     ordered = sorted(catalog, key=lambda plan: (0 if module_code and module_code in plan_modules(plan) else 1, plan.display_order, plan.name.lower()))
+    subscription = _self_service_subscription(db, user)
+    current_modules = set(plan_modules(subscription.plan)) if subscription and subscription.plan else set()
     return templates.TemplateResponse("plan_upgrade.html", _base_context(
-        request, user, csrf_token, "plan_upgrade", title="Planos disponíveis", module_code=module_code, module_label=MODULE_LABELS.get(module_code),
+        request, user, csrf_token, "plan_upgrade", current_subscription=subscription, current_modules=current_modules,
+        can_change_plan=bool(subscription) and WRITE_FINANCE in permission_codes_for_user(db, user),
+        plan_limit_issues={plan.id: _plan_downgrade_issues(db, user.organization_id, plan) for plan in ordered} if subscription else {},
+        title="Planos disponíveis", module_code=module_code, module_label=MODULE_LABELS.get(module_code),
         module_pitch=MODULE_PITCH.get(module_code), plans_catalog=ordered, current_plan_id=entitlements.plan_id, current_plan_name=entitlements.plan_name,
         plan_modules_of=plan_modules, plan_prices_of=plan_prices, module_labels=MODULE_LABELS, support_email=(get_settings().support_email or "").strip() or None,
         _repo=_repository(db),
     ))
+
+
+def _self_service_subscription(db: Session, user) -> OrganizationSubscription | None:
+    """Assinatura que o proprio cliente pode trocar de plano: ativa, no catalogo do ambiente, sem operacao pendente."""
+    if not getattr(user, "organization_id", None):
+        return None
+    subscription = db.query(OrganizationSubscription).filter_by(organization_id=user.organization_id, is_current=True, environment=asaas_env_name()).first()
+    if not subscription or subscription.status != "criada" or subscription.asaas_status != "ACTIVE" or not subscription.asaas_subscription_id:
+        return None
+    if db.query(OrganizationCardMigration.id).filter_by(organization_id=user.organization_id, is_open=True).first():
+        return None
+    return subscription
+
+
+def _plan_downgrade_issues(db: Session, organization_id: int, plan: SubscriptionPlan) -> list[str]:
+    """O que a organizacao ja usa alem dos limites do novo plano (bloqueia a mudanca; nada e apagado)."""
+    issues = []
+    if plan.max_farms is not None:
+        farms = db.query(func.count(Farm.id)).filter(Farm.organization_id == organization_id).scalar() or 0
+        if farms > plan.max_farms:
+            issues.append(f"Você tem {farms} fazendas; o plano permite {plan.max_farms}.")
+    if plan.max_hectares is not None:
+        area = Decimal(str(db.query(func.coalesce(func.sum(Farm.total_area), 0)).filter(Farm.organization_id == organization_id).scalar() or 0))
+        if area > Decimal(plan.max_hectares):
+            issues.append(f"Suas fazendas somam {_format_decimal_br(area)} ha; o plano permite {_format_decimal_br(plan.max_hectares)} ha.")
+    if plan.max_users is not None:
+        users = db.query(func.count(User.id)).filter(User.organization_id == organization_id, User.is_active.is_(True)).scalar() or 0
+        if users > plan.max_users:
+            issues.append(f"Você tem {users} usuários ativos; o plano permite {plan.max_users}.")
+    return issues
+
+
+@router.post("/planos-disponiveis/mudar")
+def self_service_plan_change_action(request: Request, csrf_token: str = Form(...), plan_id: str = Form(""), cycle: str = Form(""), db: Session = Depends(get_db), user: User = Depends(get_current_user_web)):
+    """O proprio cliente muda de plano: modulos e limites na hora, novo valor a partir da proxima cobranca."""
+    validate_csrf(request, csrf_token)
+    target = "/planos-disponiveis"
+    settings = get_settings()
+    if WRITE_FINANCE not in permission_codes_for_user(db, user) or not asaas_ready(settings):
+        _flash(request, "error", "Você não pode alterar o plano agora. Peça a um responsável financeiro da organização.")
+        return _redirect(target)
+    subscription = _self_service_subscription(db, user)
+    billing = db.query(OrganizationBilling).filter_by(organization_id=user.organization_id, asaas_environment=asaas_env_name()).first()
+    try:
+        plan, price = resolve_plan_selection(db, int(plan_id), cycle)
+    except (ValueError, PlanValidationError):
+        plan, price = None, None
+    if not subscription or not billing or not plan or plan.id == subscription.plan_id:
+        _flash(request, "error", "Não foi possível mudar de plano. Atualize a página e tente novamente.")
+        return _redirect(target)
+    issues = _plan_downgrade_issues(db, user.organization_id, plan)
+    if issues:
+        _flash(request, "error", "O plano escolhido não comporta o uso atual: " + " ".join(issues))
+        return _redirect(target)
+    old_plan, old_amount, old_cycle, subscription_id = subscription.plan_name, subscription.amount, subscription.cycle, subscription.id
+    reserved = db.query(OrganizationSubscription).filter_by(id=subscription_id, status="criada", asaas_status="ACTIVE").update({"status": "revisao"}, synchronize_session=False)
+    db.commit()
+    if not reserved:
+        _flash(request, "error", "Outra operação está em andamento. Tente novamente em instantes.")
+        return _redirect(target)
+    payload = {"description": plan.name, "value": float(price), "cycle": cycle}
+    if subscription.billing_type in {"PIX", "BOLETO"}:
+        payload["billingType"] = subscription.billing_type
+    result, error = update_sandbox_subscription(api_key=settings.asaas_api_key.strip(), subscription_id=subscription.asaas_subscription_id, customer_id=billing.asaas_customer_id, payload=payload)
+    subscription = db.query(OrganizationSubscription).filter_by(id=subscription_id).with_for_update().one()
+    try:
+        if error or not result or Decimal(str(result.get("value"))) != price or result.get("cycle") != cycle:
+            raise ValueError(error or "Asaas não confirmou o novo valor")
+    except (ValueError, InvalidOperation, TypeError):
+        record_commercial_event(db, user=user, organization_id=user.organization_id, resource="assinatura", resource_id=subscription_id, action="mudar_plano_cliente", outcome="verificar")
+        db.commit()
+        _auto_reconcile(db, user.organization_id)
+        _flash(request, "error", "Não foi possível confirmar a mudança com o Asaas. Seu plano atual foi mantido; tente novamente em alguns minutos.")
+        return _redirect(target)
+    apply_subscription_details(subscription, result)
+    subscription.plan_id = plan.id
+    subscription.status = "criada"
+    subscription.asaas_last_event_at = app_now().replace(tzinfo=None)
+    record_commercial_event(db, user=user, organization_id=user.organization_id, resource="assinatura", resource_id=subscription_id, action="mudar_plano_cliente", outcome="success",
+                            details={"de": old_plan, "valor_anterior": str(old_amount), "ciclo_anterior": old_cycle, "para": plan.name, "plano_id": plan.id, "versao": plan.version, "valor": str(price), "ciclo": cycle})
+    db.commit()
+    invalidate_entitlements(user.organization_id)
+    due = subscription.next_due_date.strftime("%d/%m/%Y") if subscription.next_due_date else "a próxima cobrança"
+    _flash(request, "success", f"Plano alterado para {plan.name}. Os módulos já estão disponíveis; o novo valor será cobrado a partir de {due}.")
+    return _redirect("/minha-assinatura")
 
 
 @router.post("/planos-disponiveis/solicitar")

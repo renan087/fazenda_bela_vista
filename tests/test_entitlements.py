@@ -235,6 +235,7 @@ def test_upgrade_page_highlights_plans_with_module(db, monkeypatch):
     monkeypatch.setattr(routes, '_base_context', lambda *a, **k: k)
     monkeypatch.setattr(routes, '_repository', lambda _db: None)
     monkeypatch.setattr(routes.templates, 'TemplateResponse', lambda name, context: (name, context))
+    monkeypatch.setattr(routes, 'permission_codes_for_user', lambda db, user: frozenset())
     user = SimpleNamespace(id=3, email='gestor@fazenda.com', organization_id=org.id)
     _, ctx = routes.plan_upgrade_page(request=SimpleNamespace(), modulo='page.finance', db=db, user=user, csrf_token='t')
     html = _render('plan_upgrade.html', ctx)
@@ -327,3 +328,84 @@ def test_reactivating_user_respects_limit(db, monkeypatch):
     assert response.status_code == 303 and 'até 2 usuário' in flashes[-1][1]
     db.refresh(inactive)
     assert inactive.is_active is False
+
+
+# ---- mudanca de plano pelo cliente ----
+
+def _self_service_env(db, monkeypatch, *, codes=None):
+    from app.core.permissions_catalog import PAGE_FINANCE, WRITE_FINANCE
+    monkeypatch.setattr(routes, 'validate_csrf', lambda *a: None)
+    monkeypatch.setattr(routes, 'permission_codes_for_user', lambda db, user: codes if codes is not None else frozenset({PAGE_FINANCE, WRITE_FINANCE}))
+    monkeypatch.setattr(routes, 'get_settings', lambda: SimpleNamespace(asaas_api_base_url='https://api-sandbox.asaas.com', asaas_api_key='k', support_email=None))
+    flashes = []
+    monkeypatch.setattr(routes, '_flash', lambda request, kind, message: flashes.append((kind, message)))
+    return flashes
+
+
+def test_customer_changes_plan_with_catalog_price(db, monkeypatch):
+    import json
+    from app.models import AuditLog
+    basic = _plan(db)
+    pro = _plan(db, name='Profissional', price_monthly='149,90', modules=['page.productive_unit', 'page.rainfall', 'page.finance'], max_farms='3', max_users='', max_hectares='300')
+    org = _org(db, plan=basic)
+    sub = db.query(OrganizationSubscription).one()
+    sub.next_due_date = date(2099, 1, 10)
+    db.commit()
+    flashes = _self_service_env(db, monkeypatch)
+    sent = {}
+    def update(**kw):
+        sent.update(kw['payload'])
+        return {'id': sub.asaas_subscription_id, 'customer': 'cus_fazenda', 'value': kw['payload']['value'], 'cycle': kw['payload']['cycle'], 'description': kw['payload']['description'], 'billingType': 'BOLETO', 'nextDueDate': '2099-01-10'}, None
+    monkeypatch.setattr(routes, 'update_sandbox_subscription', update)
+    user = SimpleNamespace(id=3, email='gestor@fazenda.com', organization_id=org.id)
+    response = routes.self_service_plan_change_action(request=SimpleNamespace(), csrf_token='x', plan_id=str(pro.id), cycle='MONTHLY', db=db, user=user)
+    db.refresh(sub)
+    assert response.headers['location'] == '/minha-assinatura' and flashes[-1][0] == 'success' and '10/01/2099' in flashes[-1][1]
+    assert sent == {'description': 'Profissional', 'value': 149.9, 'cycle': 'MONTHLY', 'billingType': 'BOLETO'}
+    assert (sub.plan_id, sub.amount, sub.status) == (pro.id, Decimal('149.90'), 'criada')
+    event = json.loads(db.query(AuditLog).filter(AuditLog.event_type == 'comercial.assinatura.mudar_plano_cliente').one().metadata_json)
+    assert event['de'] == 'Essencial' and event['para'] == 'Profissional'
+    assert ent.compute_entitlements(db, org.id, TODAY).module_allowed('page.finance')
+
+
+def test_downgrade_blocked_when_usage_exceeds_limits(db, monkeypatch):
+    big = _plan(db, name='Grande', max_farms='', max_users='', max_hectares='')
+    small = _plan(db, name='Pequeno', max_farms='1', max_hectares='50')
+    org = _org(db, plan=big)
+    db.add_all([Farm(name='A', location='MG', total_area=Decimal('40'), organization_id=org.id), Farm(name='B', location='MG', total_area=Decimal('30'), organization_id=org.id)])
+    db.commit()
+    flashes = _self_service_env(db, monkeypatch)
+    monkeypatch.setattr(routes, 'update_sandbox_subscription', lambda **kw: pytest.fail('não deve chamar o Asaas'))
+    routes.self_service_plan_change_action(request=SimpleNamespace(), csrf_token='x', plan_id=str(small.id), cycle='MONTHLY', db=db, user=SimpleNamespace(id=3, email='g@f.com', organization_id=org.id))
+    assert flashes[-1][0] == 'error' and '2 fazendas' in flashes[-1][1] and '70,00 ha' in flashes[-1][1]
+
+
+def test_plan_change_requires_finance_write(db, monkeypatch):
+    basic, pro = _plan(db), _plan(db, name='Pro')
+    org = _org(db, plan=basic)
+    flashes = _self_service_env(db, monkeypatch, codes=frozenset())
+    monkeypatch.setattr(routes, 'update_sandbox_subscription', lambda **kw: pytest.fail('não deve chamar o Asaas'))
+    routes.self_service_plan_change_action(request=SimpleNamespace(), csrf_token='x', plan_id=str(pro.id), cycle='MONTHLY', db=db, user=SimpleNamespace(id=3, email='g@f.com', organization_id=org.id))
+    assert 'responsável financeiro' in flashes[-1][1]
+
+
+def test_change_dialog_shows_gains_losses_prices_and_date(db, monkeypatch):
+    basic = _plan(db)
+    pro = _plan(db, name='Profissional', price_monthly='149,90', modules=['page.productive_unit', 'page.finance'], max_farms='3', max_users='', max_hectares='300')
+    org = _org(db, plan=basic)
+    sub = db.query(OrganizationSubscription).one()
+    sub.next_due_date = date(2099, 1, 10)
+    db.commit()
+    _self_service_env(db, monkeypatch)
+    monkeypatch.setattr(routes, '_base_context', lambda *a, **k: k)
+    monkeypatch.setattr(routes, '_repository', lambda _db: None)
+    monkeypatch.setattr(routes.templates, 'TemplateResponse', lambda name, context: (name, context))
+    _, ctx = routes.plan_upgrade_page(request=SimpleNamespace(), modulo=None, db=db, user=SimpleNamespace(id=3, email='g@f.com', organization_id=org.id), csrf_token='t')
+    html = _render('plan_upgrade.html', ctx)
+    dialog = html[html.index(f'id="change-plan-{pro.id}"'):]
+    dialog = dialog[:dialog.index('</dialog>')]
+    assert 'Mudar para Profissional' in html and 'Alteração de plano' in dialog
+    assert 'R$ 79,90 / mês' in dialog and 'data-price="149.90"' in dialog
+    assert 'Você passa a ter' in dialog and 'Gestão financeira' in dialog
+    assert 'Você deixa de ter' in dialog and 'Pluviometria' in dialog
+    assert '10/01/2099' in dialog and '1 → 3' in dialog

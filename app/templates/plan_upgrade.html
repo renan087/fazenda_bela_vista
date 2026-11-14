@@ -42,7 +42,10 @@
                 <li class="flex items-center gap-2 {{ 'text-slate-800' if code in modules else 'text-slate-400 line-through' }} {{ 'font-semibold' if code == module_code and code in modules else '' }}"><span aria-hidden="true">{{ '✓' if code in modules else '–' }}</span>{{ label }}</li>
                 {% endfor %}
             </ul>
-            {% if not is_current %}
+            {% if not is_current and can_change_plan and prices %}
+            <button type="button" data-dialog-open="change-plan-{{ plan.id }}" class="mt-5 w-full rounded-xl {{ 'bg-brand-500 text-white hover:bg-brand-700' if includes_module or (not module_code and plan.is_featured) else 'border border-slate-200 bg-white text-slate-800 hover:bg-slate-50' }} px-4 py-3 text-sm font-semibold">Mudar para {{ plan.name }}</button>
+            {% include "partials/plan_change_dialog.html" %}
+            {% elif not is_current %}
             <form method="post" action="/planos-disponiveis/solicitar" class="mt-5" data-busy-form>
                 <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="plan_id" value="{{ plan.id }}"><input type="hidden" name="modulo" value="{{ module_code or '' }}">
                 <button class="w-full rounded-xl {{ 'bg-brand-500 text-white hover:bg-brand-700' if includes_module or (not module_code and plan.is_featured) else 'border border-slate-200 bg-white text-slate-800 hover:bg-slate-50' }} px-4 py-3 text-sm font-semibold">Quero o plano {{ plan.name }}</button>
@@ -66,6 +69,26 @@
     </section>
 </div>
 <script>
+document.addEventListener('click', (event) => {
+    const opener = event.target.closest('[data-dialog-open]');
+    if (opener) { document.getElementById(opener.dataset.dialogOpen)?.showModal(); return; }
+    if (event.target.closest('[data-dialog-close]') || event.target.tagName === 'DIALOG') (event.target.closest('dialog') || event.target).close();
+});
+const brl = (v) => Number(v).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+document.querySelectorAll('[data-plan-change]').forEach((form) => {
+    const select = form.querySelector('[data-cycle]');
+    const sync = () => {
+        const option = select.selectedOptions[0];
+        const price = Number(option.dataset.price);
+        const current = Number(form.dataset.currentMonthly);
+        const monthly = price / Number(option.dataset.months);
+        form.querySelector('[data-new-price]').textContent = `${brl(price)} / ${option.dataset.unit}`;
+        const diff = monthly - current;
+        form.querySelector('[data-diff]').textContent = Math.abs(diff) < 0.005 ? 'Mesmo valor mensal' : `${diff > 0 ? '+' : '−'} ${brl(Math.abs(diff))} por mês`;
+    };
+    select.addEventListener('change', sync);
+    sync();
+});
 document.querySelectorAll('[data-busy-form]').forEach((form) => form.addEventListener('submit', () => { const b = form.querySelector('button'); if (b) { b.disabled = true; b.textContent = 'Enviando…'; } }));
 </script>
 {% endblock %}
