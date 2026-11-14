@@ -404,11 +404,11 @@ def test_change_dialog_shows_gains_losses_prices_and_date(db, monkeypatch):
     html = _render('plan_upgrade.html', ctx)
     dialog = html[html.index(f'id="change-plan-{pro.id}"'):]
     dialog = dialog[:dialog.index('</dialog>')]
-    assert 'Mudar para Profissional' in html and 'Alteração de plano' in dialog
+    assert 'Mudar para Profissional' in html and 'Redução de plano' in dialog and 'Como fica' in dialog
     assert 'R$ 79,90 / mês' in dialog and 'data-price="149.90"' in dialog
     assert 'Você passa a ter' in dialog and 'Gestão financeira' in dialog
-    assert 'Você deixa de ter' in dialog and 'Pluviometria' in dialog
-    assert '10/01/2099' in dialog and '1 → 3' in dialog
+    assert 'Deixa de ter' in dialog and 'Pluviometria' in dialog
+    assert '10/01/2099' in dialog and '>3<' in dialog and 'line-through' in dialog
 
 
 # ---- reducao de plano (downgrade) ----

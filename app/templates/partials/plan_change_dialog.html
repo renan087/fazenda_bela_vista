@@ -1,36 +1,118 @@
-{# Confirmacao da mudanca de plano pelo cliente. Requer: plan, prices, modules, current_subscription, current_modules, plan_limit_issues, module_labels. #}
+{# Confirmacao da mudanca de plano pelo cliente. Requer: plan, prices, modules, current_subscription, current_modules, plan_limit_issues, plan_change_info, module_labels. #}
 {% set sub = current_subscription %}
 {% set gained = modules|reject('in', current_modules)|list %}
 {% set lost = current_modules|reject('in', modules)|list %}
 {% set issues = plan_limit_issues.get(plan.id, []) %}
 {% set change = plan_change_info.get(plan.id, {}) %}
+{% set blocked = issues or change.block %}
 {% set default_cycle = sub.cycle if sub.cycle in prices else (prices.keys()|list)[0] %}
 {% set current_months = subscription_cycles[sub.cycle][1] if sub.cycle in subscription_cycles else 1 %}
-<dialog id="change-plan-{{ plan.id }}" class="app-modal w-full max-w-xl rounded-[2rem] p-0 shadow-2xl">
-    <form method="post" action="/planos-disponiveis/mudar" class="grid max-h-[90vh] gap-4 overflow-y-auto bg-white p-6" data-plan-change data-current-monthly="{{ (sub.amount / current_months)|round(2) }}" data-busy-form>
+{% set due_label = sub.next_due_date.strftime('%d/%m/%Y') if sub.next_due_date else 'próxima cobrança' %}
+{% set old = sub.plan %}
+<dialog id="change-plan-{{ plan.id }}" class="app-modal w-full max-w-2xl overflow-hidden rounded-[1.75rem] p-0 shadow-2xl" aria-labelledby="change-plan-title-{{ plan.id }}">
+    <form method="post" action="/planos-disponiveis/mudar" class="flex max-h-[90vh] flex-col bg-white" data-plan-change data-current-monthly="{{ (sub.amount / current_months)|round(2) }}" data-busy-form>
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="plan_id" value="{{ plan.id }}">
-        <div class="flex items-start justify-between gap-3"><h3 class="text-xl font-semibold text-slate-900">Alteração de plano</h3><button type="button" data-dialog-close class="text-2xl leading-none text-slate-400 hover:text-slate-600" aria-label="Fechar">×</button></div>
-        <div class="grid items-center gap-3 sm:grid-cols-[1fr_auto_1fr]">
-            <div class="rounded-2xl border border-slate-200 p-4"><p class="text-xs text-slate-500">Plano atual</p><p class="mt-1 font-semibold text-slate-900">{{ sub.plan_name }}</p><p class="text-sm text-slate-600">R$ {{ sub.amount|decimal_br }} / {{ cycle_unit_labels.get(sub.cycle, sub.cycle) }}</p></div>
-            <span class="hidden text-xl text-slate-400 sm:block" aria-hidden="true">→</span>
-            <div class="rounded-2xl border-2 border-brand-500 p-4"><p class="text-xs text-slate-500">Novo plano</p><p class="mt-1 font-semibold text-slate-900">{{ plan.name }}</p><p class="text-sm text-slate-600" data-new-price></p><p class="text-xs font-semibold text-brand-700" data-diff></p></div>
+
+        {# Cabecalho com a comparacao #}
+        <div class="relative bg-gradient-to-br from-emerald-950 via-emerald-900 to-[#446a36] px-6 pb-6 pt-5 text-white">
+            <div class="flex items-start justify-between gap-3">
+                <div>
+                    <p class="text-[0.7rem] font-semibold uppercase tracking-[0.22em] text-emerald-200/80">{{ 'Redução de plano' if change.downgrade else 'Alteração de plano' }}</p>
+                    <h3 id="change-plan-title-{{ plan.id }}" class="mt-1 text-xl font-semibold">Mudar para {{ plan.name }}</h3>
+                </div>
+                <button type="button" data-dialog-close class="-mr-1 rounded-full p-1.5 text-emerald-100/80 hover:bg-white/10 hover:text-white" aria-label="Fechar"><svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
+            </div>
+            <div class="mt-5 grid items-stretch gap-3 sm:grid-cols-[1fr_auto_1fr]">
+                <div class="rounded-2xl bg-white/10 p-4 ring-1 ring-white/15">
+                    <p class="text-[0.7rem] font-medium uppercase tracking-[0.18em] text-emerald-100/70">Atual</p>
+                    <p class="mt-2 flex items-center gap-2 font-semibold"><span class="text-emerald-200">{{ plan_icon(old.icon if old else none) }}</span>{{ sub.plan_name }}</p>
+                    <p class="mt-1 text-sm text-emerald-100/80">R$ {{ sub.amount|decimal_br }} / {{ cycle_unit_labels.get(sub.cycle, sub.cycle) }}</p>
+                </div>
+                <div class="hidden items-center justify-center text-emerald-200/70 sm:flex" aria-hidden="true"><svg class="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></div>
+                <div class="rounded-2xl bg-white p-4 text-slate-900 shadow-lg">
+                    <p class="text-[0.7rem] font-semibold uppercase tracking-[0.18em] text-brand-700">Novo</p>
+                    <p class="mt-2 flex items-center gap-2 font-semibold"><span class="text-brand-700">{{ plan_icon(plan.icon) }}</span>{{ plan.name }}</p>
+                    <p class="mt-1 text-sm text-slate-600"><span data-new-price></span></p>
+                    <span class="mt-2 inline-flex rounded-full bg-emerald-50 px-2.5 py-0.5 text-xs font-semibold text-emerald-800" data-diff></span>
+                </div>
+            </div>
         </div>
-        <label class="{{ 'hidden' if prices|length == 1 else '' }}"><span class="mb-1 block text-sm font-medium">Periodicidade</span><select name="cycle" data-cycle class="min-h-[2.75rem] w-full rounded-xl border-slate-200 bg-slate-50">{% for code, price in prices.items() %}<option value="{{ code }}" data-price="{{ price }}" data-months="{{ subscription_cycles[code][1] }}" data-unit="{{ cycle_unit_labels[code] }}" {% if code == default_cycle %}selected{% endif %}>{{ subscription_cycles[code][0] }} · R$ {{ price|decimal_br }}</option>{% endfor %}</select></label>
-        {% if gained %}<div><p class="text-sm font-semibold text-slate-900">Você passa a ter</p><ul class="mt-2 space-y-1 text-sm text-slate-700">{% for code in gained %}<li class="flex gap-2"><span class="text-emerald-600" aria-hidden="true">✓</span>{{ module_labels[code] }}</li>{% endfor %}</ul></div>{% endif %}
-        {% if lost %}<div><p class="text-sm font-semibold text-slate-900">Você deixa de ter</p><ul class="mt-2 space-y-1 text-sm text-slate-700">{% for code in lost %}<li class="flex gap-2"><span class="text-rose-600" aria-hidden="true">–</span>{{ module_labels[code] }}</li>{% endfor %}</ul><p class="mt-1 text-xs text-slate-500">Os dados desses módulos continuam guardados e voltam se você mudar de plano novamente.</p></div>{% endif %}
-        {% set old = sub.plan %}
-        <dl class="grid grid-cols-3 gap-2 text-center text-xs">
-            {% for label, before, after in [('Fazendas', old.max_farms if old else none, plan.max_farms), ('Usuários', old.max_users if old else none, plan.max_users), ('Área (ha)', old.max_hectares if old else none, plan.max_hectares)] %}
-            <div class="rounded-xl bg-slate-50 p-2"><dt class="text-slate-500">{{ label }}</dt><dd class="mt-1 font-semibold text-slate-800">{{ (before|decimal_br(0) if label == 'Área (ha)' else before) if before else '∞' }} → {{ (after|decimal_br(0) if label == 'Área (ha)' else after) if after else '∞' }}</dd></div>
-            {% endfor %}
-        </dl>
-        {% if change.downgrade %}
-        <p class="rounded-xl bg-slate-50 px-3 py-2 text-sm text-slate-600"><strong>Quando muda:</strong> você continua com o plano {{ sub.plan_name }} até o fim do ciclo já pago{% if sub.next_due_date %}, em <strong>{{ sub.next_due_date.strftime('%d/%m/%Y') }}</strong>{% endif %}. A partir daí valem os módulos, os limites e o valor do novo plano, já na próxima fatura. Você pode cancelar a mudança até essa data.</p>
-        {% else %}
-        <p class="rounded-xl bg-slate-50 px-3 py-2 text-sm text-slate-600"><strong>Quando muda:</strong> módulos e limites valem assim que você confirmar. O novo valor será cobrado a partir da próxima cobrança{% if sub.next_due_date %}, em <strong>{{ sub.next_due_date.strftime('%d/%m/%Y') }}</strong>{% endif %}. Cobranças já geradas continuam com o valor atual.</p>
-        {% endif %}
-        {% if change.block %}<p class="rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-900">{{ change.block }}</p>{% endif %}
-        {% if issues %}<div class="rounded-xl bg-rose-50 px-3 py-2 text-sm text-rose-800"><p class="font-semibold">Este plano não comporta o seu uso atual</p>{% for issue in issues %}<p class="mt-1">{{ issue }}</p>{% endfor %}<p class="mt-1 text-xs">Ajuste o cadastro ou escolha outro plano.</p></div>{% endif %}
-        <div class="flex justify-end gap-2"><button type="button" data-dialog-close class="rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-700">Cancelar</button><button class="rounded-xl bg-brand-500 px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-700 disabled:opacity-50" {% if issues or change.block %}disabled{% endif %}>{{ 'Agendar mudança' if change.downgrade else 'Confirmar mudança' }}</button></div>
+
+        <div class="flex-1 space-y-6 overflow-y-auto px-6 py-6">
+            {# Periodicidade #}
+            <fieldset class="{{ 'hidden' if prices|length == 1 else '' }}">
+                <legend class="text-sm font-semibold text-slate-900">Periodicidade</legend>
+                <div class="mt-2 inline-flex flex-wrap gap-1 rounded-xl bg-slate-100 p-1">
+                    {% for code, price in prices.items() %}
+                    <label class="cursor-pointer"><input type="radio" name="cycle" value="{{ code }}" class="peer sr-only" data-cycle-option data-price="{{ price }}" data-months="{{ subscription_cycles[code][1] }}" data-unit="{{ cycle_unit_labels[code] }}" {% if code == default_cycle %}checked{% endif %}><span class="block rounded-lg px-3 py-1.5 text-sm font-medium text-slate-600 transition peer-checked:bg-white peer-checked:text-slate-900 peer-checked:shadow-sm">{{ subscription_cycles[code][0] }}</span></label>
+                    {% endfor %}
+                </div>
+            </fieldset>
+
+            {# O que muda nos modulos #}
+            {% if gained or lost %}
+            <div class="grid gap-3 {{ 'sm:grid-cols-2' if gained and lost else '' }}">
+                {% if gained %}
+                <div class="rounded-2xl border border-emerald-100 bg-emerald-50/60 p-4">
+                    <p class="text-sm font-semibold text-emerald-900">Você passa a ter</p>
+                    <ul class="mt-2 space-y-1.5 text-sm text-slate-700">{% for code in gained %}<li class="flex items-start gap-2"><svg class="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12 5 5 9-10"/></svg>{{ module_labels[code] }}</li>{% endfor %}</ul>
+                </div>
+                {% endif %}
+                {% if lost %}
+                <div class="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                    <p class="text-sm font-semibold text-slate-900">Deixa de ter</p>
+                    <ul class="mt-2 space-y-1.5 text-sm text-slate-500">{% for code in lost %}<li class="flex items-start gap-2"><svg class="mt-0.5 h-4 w-4 shrink-0 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M6 12h12"/></svg>{{ module_labels[code] }}</li>{% endfor %}</ul>
+                    <p class="mt-3 text-xs text-slate-500">Os dados ficam guardados e voltam se você mudar de plano de novo.</p>
+                </div>
+                {% endif %}
+            </div>
+            {% endif %}
+
+            {# Limites #}
+            <div>
+                <p class="text-sm font-semibold text-slate-900">Limites</p>
+                <div class="mt-2 divide-y divide-slate-100 rounded-2xl border border-slate-200 text-sm">
+                    {% for label, before, after, unit in [('Fazendas', old.max_farms if old else none, plan.max_farms, ''), ('Usuários', old.max_users if old else none, plan.max_users, ''), ('Área', old.max_hectares if old else none, plan.max_hectares, ' ha')] %}
+                    {% set b = ((before|decimal_br(0)) ~ unit) if before else 'Ilimitado' %}
+                    {% set a = ((after|decimal_br(0)) ~ unit) if after else 'Ilimitado' %}
+                    <div class="grid grid-cols-[1fr_auto_auto_auto] items-center gap-3 px-4 py-2.5">
+                        <span class="text-slate-600">{{ label }}</span>
+                        <span class="text-slate-400 {{ 'line-through' if b != a else '' }}">{{ b }}</span>
+                        <span class="text-slate-300" aria-hidden="true">→</span>
+                        <span class="font-semibold {{ 'text-slate-900' if b != a else 'text-slate-500' }}">{{ a }}</span>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+
+            {# Linha do tempo #}
+            <div>
+                <p class="text-sm font-semibold text-slate-900">Como fica</p>
+                <ol class="mt-3 space-y-4 border-l-2 border-slate-200 pl-5">
+                    <li class="relative"><span class="absolute -left-[1.6rem] top-0.5 h-3.5 w-3.5 rounded-full border-2 border-white bg-brand-500 ring-2 ring-brand-500/30"></span>
+                        <p class="text-sm font-semibold text-slate-900">Hoje</p>
+                        <p class="text-sm text-slate-600">{% if change.downgrade %}A mudança fica agendada. Você continua com {{ sub.plan_name }} e pode cancelar até {{ due_label }}.{% else %}Novos módulos e limites liberados assim que você confirmar.{% endif %}</p>
+                    </li>
+                    <li class="relative"><span class="absolute -left-[1.6rem] top-0.5 h-3.5 w-3.5 rounded-full border-2 border-white bg-slate-400"></span>
+                        <p class="text-sm font-semibold text-slate-900">{{ due_label }}</p>
+                        <p class="text-sm text-slate-600">{% if change.downgrade %}{{ plan.name }} passa a valer, com a fatura de <span data-next-price></span>.{% else %}Próxima fatura já com o novo valor: <span data-next-price></span>. Faturas já geradas não mudam.{% endif %}</p>
+                    </li>
+                </ol>
+            </div>
+        </div>
+
+        {# Rodape #}
+        <div class="border-t border-slate-100 bg-slate-50/80 px-6 py-4">
+            {% if blocked %}
+            <div class="mb-3 flex items-start gap-2 text-sm text-amber-900">
+                <svg class="mt-0.5 h-4 w-4 shrink-0 text-amber-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
+                <div>{% if change.block %}<p>{{ change.block }}</p>{% endif %}{% for issue in issues %}<p>{{ issue }}</p>{% endfor %}{% if issues %}<p class="text-xs text-amber-800/80">Ajuste o cadastro ou escolha outro plano.</p>{% endif %}</div>
+            </div>
+            {% endif %}
+            <div class="flex flex-wrap items-center justify-end gap-2">
+                <button type="button" data-dialog-close class="rounded-xl px-4 py-2.5 text-sm font-semibold text-slate-600 hover:bg-slate-100">Cancelar</button>
+                <button class="rounded-xl bg-brand-500 px-5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-40" {% if blocked %}disabled{% endif %}>{{ 'Agendar mudança' if change.downgrade else 'Confirmar mudança' }}</button>
+            </div>
+        </div>
     </form>
 </dialog>

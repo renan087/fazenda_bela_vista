@@ -69,17 +69,19 @@ document.addEventListener('click', (event) => {
 });
 const brl = (v) => Number(v).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 document.querySelectorAll('[data-plan-change]').forEach((form) => {
-    const select = form.querySelector('[data-cycle]');
     const sync = () => {
-        const option = select.selectedOptions[0];
+        const option = form.querySelector('[data-cycle-option]:checked');
+        if (!option) return;
         const price = Number(option.dataset.price);
-        const current = Number(form.dataset.currentMonthly);
-        const monthly = price / Number(option.dataset.months);
-        form.querySelector('[data-new-price]').textContent = `${brl(price)} / ${option.dataset.unit}`;
-        const diff = monthly - current;
-        form.querySelector('[data-diff]').textContent = Math.abs(diff) < 0.005 ? 'Mesmo valor mensal' : `${diff > 0 ? '+' : '−'} ${brl(Math.abs(diff))} por mês`;
+        const label = `${brl(price)} / ${option.dataset.unit}`;
+        form.querySelector('[data-new-price]').textContent = label;
+        form.querySelectorAll('[data-next-price]').forEach((el) => { el.textContent = label; });
+        const diff = price / Number(option.dataset.months) - Number(form.dataset.currentMonthly);
+        const chip = form.querySelector('[data-diff]');
+        chip.textContent = Math.abs(diff) < 0.005 ? 'Mesmo valor mensal' : `${diff > 0 ? '+' : '−'} ${brl(Math.abs(diff))} por mês`;
+        chip.className = `mt-2 inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold ${diff > 0.005 ? 'bg-amber-50 text-amber-800' : 'bg-emerald-50 text-emerald-800'}`;
     };
-    select.addEventListener('change', sync);
+    form.addEventListener('change', (event) => { if (event.target.matches('[data-cycle-option]')) sync(); });
     sync();
 });
 document.querySelectorAll('[data-busy-form]').forEach((form) => form.addEventListener('submit', () => { const b = form.querySelector('button'); if (b) { b.disabled = true; b.textContent = 'Enviando…'; } }));
