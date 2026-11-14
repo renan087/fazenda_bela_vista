@@ -439,6 +439,7 @@ def create_crop_season(repository: FarmRepository, form: dict) -> CropSeason:
             area_unit=form.get("area_unit") or "ha",
             notes=form.get("notes"),
             status=form.get("status") or "planejada",
+            plots=form.get("plots", []),
         )
     )
 
@@ -457,6 +458,7 @@ def update_crop_season(repository: FarmRepository, crop_season: CropSeason, form
             "area_unit": form.get("area_unit") or "ha",
             "notes": form.get("notes"),
             "status": form.get("status") or "planejada",
+            "plots": form.get("plots", []),
         },
     )
 

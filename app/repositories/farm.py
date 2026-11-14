@@ -314,7 +314,7 @@ class FarmRepository:
     ) -> list[CropSeason]:
         query = (
             self.db.query(CropSeason)
-            .options(joinedload(CropSeason.farm), joinedload(CropSeason.variety))
+            .options(joinedload(CropSeason.farm), joinedload(CropSeason.variety), joinedload(CropSeason.plots))
             .order_by(CropSeason.start_date.desc(), CropSeason.id.desc())
         )
         if farm_id:
@@ -326,7 +326,7 @@ class FarmRepository:
     def get_crop_season(self, season_id: int) -> CropSeason | None:
         return (
             self.db.query(CropSeason)
-            .options(joinedload(CropSeason.farm), joinedload(CropSeason.variety))
+            .options(joinedload(CropSeason.farm), joinedload(CropSeason.variety), joinedload(CropSeason.plots))
             .filter(CropSeason.id == season_id)
             .first()
         )

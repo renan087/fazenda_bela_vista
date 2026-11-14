@@ -14577,6 +14577,7 @@ def crop_seasons_page(
             _repo=repo,
             title="Safras",
             farms=scope["context_farms"],
+            season_plots=repo.list_plots(farm_ids=[effective_farm_id]) if effective_farm_id else [],
             varieties=repo.list_varieties(organization_id=scope.get("active_organization_id")),
             crop_seasons=crop_seasons,
             season_costs=season_costs,
@@ -15026,6 +15027,7 @@ def create_crop_season_action(
     end_date: str = Form(...),
     culture: str = Form(...),
     variety_id: str | None = Form(None),
+    plot_ids: list[int] = Form(default=[]),
     cultivated_area: str | None = Form(None),
     area_unit: str = Form("ha"),
     notes: str | None = Form(None),
@@ -15058,6 +15060,10 @@ def create_crop_season_action(
         _flash(request, "error", "A data final da safra nao pode ser anterior a data inicial.")
         return _redirect("/safras")
     selected_variety_id = _int_or_none(variety_id)
+    available_plots = {plot.id: plot for plot in repo.list_plots(farm_ids=[scope["active_farm_id"]])}
+    if any(plot_id not in available_plots for plot_id in plot_ids):
+        _flash(request, "error", "Selecione apenas setores da fazenda ativa.")
+        return _redirect("/safras")
     if selected_variety_id:
         selected_variety = repo.get_variety(selected_variety_id)
         if not _variety_matches_scope(selected_variety, scope):
@@ -15068,6 +15074,7 @@ def create_crop_season_action(
             repo,
             {
                 "farm_id": scope["active_farm_id"],
+                "plots": [available_plots[plot_id] for plot_id in dict.fromkeys(plot_ids)],
                 "name": name,
                 "start_date": start_date,
                 "end_date": end_date,
@@ -15097,6 +15104,7 @@ def update_crop_season_action(
     end_date: str = Form(...),
     culture: str = Form(...),
     variety_id: str | None = Form(None),
+    plot_ids: list[int] = Form(default=[]),
     cultivated_area: str | None = Form(None),
     area_unit: str = Form("ha"),
     notes: str | None = Form(None),
@@ -15136,6 +15144,10 @@ def update_crop_season_action(
         _flash(request, "error", "A data final da safra nao pode ser anterior a data inicial.")
         return _redirect("/safras")
     selected_variety_id = _int_or_none(variety_id)
+    available_plots = {plot.id: plot for plot in repo.list_plots(farm_ids=[scope["active_farm_id"]])}
+    if any(plot_id not in available_plots for plot_id in plot_ids):
+        _flash(request, "error", "Selecione apenas setores da fazenda ativa.")
+        return _redirect("/safras")
     if selected_variety_id:
         selected_variety = repo.get_variety(selected_variety_id)
         if not _variety_matches_scope(selected_variety, scope):
@@ -15147,6 +15159,7 @@ def update_crop_season_action(
             crop_season,
             {
                 "farm_id": scope["active_farm_id"],
+                "plots": [available_plots[plot_id] for plot_id in dict.fromkeys(plot_ids)],
                 "name": name,
                 "start_date": start_date,
                 "end_date": end_date,

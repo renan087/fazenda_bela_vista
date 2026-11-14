@@ -162,6 +162,16 @@
                     </div>
                 </div>
 
+                <div data-season-plot-picker>
+                    <span class="mb-2 block text-sm font-medium">Setores da safra</span>
+                    {% if not season_readonly %}<select class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" data-season-plot-select><option value="">Selecione um setor</option>{% for plot in season_plots %}<option value="{{ plot.id }}" data-name="{{ plot.name }}" data-farm="{{ plot.farm.name if plot.farm else '' }}" {% if sm and plot in sm.plots %}hidden disabled{% endif %}>{{ plot.name }}{% if plot.farm %} • {{ plot.farm.name }}{% endif %}</option>{% endfor %}</select>{% endif %}
+                    <div class="schedule-plot-selected mt-3" data-season-plot-selected>
+                        {% if sm %}{% for plot in sm.plots %}<div class="schedule-plot-chip" data-plot-id="{{ plot.id }}"><div class="schedule-plot-chip-body"><span class="schedule-plot-chip-title">{{ plot.name }}</span><span class="schedule-plot-chip-meta">{{ plot.farm.name if plot.farm else '' }}</span></div>{% if not season_readonly %}<input type="hidden" name="plot_ids" value="{{ plot.id }}"><button type="button" class="schedule-plot-chip-remove" data-season-plot-remove aria-label="Remover {{ plot.name }}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>{% endif %}</div>{% endfor %}{% endif %}
+                        <p class="schedule-plot-selected-empty text-sm text-slate-500 {% if sm and sm.plots %}hidden{% endif %}" data-season-plot-empty>Nenhum setor selecionado.</p>
+                    </div>
+                    {% if not season_readonly %}<p class="mt-2 text-xs text-slate-500">Selecione um ou mais setores da fazenda para vincular à safra.</p>{% endif %}
+                </div>
+
                 <div class="grid gap-4 md:grid-cols-2">
                     <label>
                         <span class="mb-2 block text-sm font-medium">Data inicial</span>
@@ -431,5 +441,47 @@
         window.addEventListener('resize', scheduleFadeUpdate);
         scheduleFadeUpdate();
     })();
+</script>
+<script>
+(() => {
+    const picker = document.querySelector('[data-season-plot-picker]');
+    const select = picker?.querySelector('[data-season-plot-select]');
+    const selected = picker?.querySelector('[data-season-plot-selected]');
+    const empty = picker?.querySelector('[data-season-plot-empty]');
+    if (!select || !selected) return;
+    const initialSelected = selected.innerHTML;
+    const initialOptions = select.innerHTML;
+    picker.closest('form')?.addEventListener('reset', () => {
+        selected.innerHTML = initialSelected;
+        select.innerHTML = initialOptions;
+    });
+    const sync = () => { if (empty) empty.classList.toggle('hidden', Boolean(selected.querySelector('[data-plot-id]'))); };
+    selected.addEventListener('click', (event) => {
+        const button = event.target.closest('[data-season-plot-remove]');
+        const chip = button?.closest('[data-plot-id]');
+        if (!chip) return;
+        const option = Array.from(select.options).find((item) => item.value === chip.dataset.plotId);
+        if (option) { option.hidden = false; option.disabled = false; }
+        chip.remove();
+        sync();
+    });
+    select.addEventListener('change', () => {
+        const option = select.selectedOptions[0];
+        if (!option?.value) return;
+        const chip = document.createElement('div');
+        chip.className = 'schedule-plot-chip';
+        chip.dataset.plotId = option.value;
+        const body = document.createElement('div');
+        body.className = 'schedule-plot-chip-body';
+        const name = document.createElement('span'); name.className = 'schedule-plot-chip-title'; name.textContent = option.dataset.name;
+        const farm = document.createElement('span'); farm.className = 'schedule-plot-chip-meta'; farm.textContent = option.dataset.farm;
+        body.append(name, farm);
+        const input = document.createElement('input'); input.type = 'hidden'; input.name = 'plot_ids'; input.value = option.value;
+        const remove = document.createElement('button'); remove.type = 'button'; remove.className = 'schedule-plot-chip-remove'; remove.dataset.seasonPlotRemove = ''; remove.setAttribute('aria-label', `Remover ${option.dataset.name}`); remove.textContent = '×';
+        chip.append(body, input, remove); selected.appendChild(chip);
+        option.hidden = true; option.disabled = true; select.value = ''; sync();
+    });
+    sync();
+})();
 </script>
 {% endblock %}

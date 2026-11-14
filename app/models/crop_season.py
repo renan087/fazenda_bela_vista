@@ -1,7 +1,14 @@
-from sqlalchemy import Date, ForeignKey, Numeric, String, Text
+from sqlalchemy import Column, Date, ForeignKey, Integer, Numeric, String, Table, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
+
+
+crop_season_plots = Table(
+    "crop_season_plots", Base.metadata,
+    Column("season_id", Integer, ForeignKey("crop_seasons.id", ondelete="CASCADE"), primary_key=True),
+    Column("plot_id", Integer, ForeignKey("plots.id", ondelete="CASCADE"), primary_key=True),
+)
 
 
 class CropSeason(Base):
@@ -21,6 +28,7 @@ class CropSeason(Base):
 
     farm = relationship("Farm", back_populates="crop_seasons")
     variety = relationship("CoffeeVariety", back_populates="crop_seasons")
+    plots = relationship("Plot", secondary=crop_season_plots, order_by="Plot.name")
     fertilizations = relationship("FertilizationRecord", back_populates="season")
     fertilization_schedules = relationship("FertilizationSchedule", back_populates="season")
     stock_outputs = relationship("StockOutput", back_populates="season")
