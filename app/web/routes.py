@@ -88,6 +88,7 @@ from app.models import (
     InputRecommendation,
     IrrigationRecord,
     Organization,
+    OrganizationBilling,
     PestIncident,
     Plot,
     PlotAttachment,
@@ -9162,6 +9163,7 @@ def organizations_page(
         }
         for organization in organizations
     }
+    billing_by_organization = {item.organization_id: item for item in db.query(OrganizationBilling).all()}
     return templates.TemplateResponse(
         "organizations.html",
         _base_context(
@@ -9172,11 +9174,54 @@ def organizations_page(
             title="Organizações",
             organizations=organizations,
             organization_stats=organization_stats,
+            billing_by_organization=billing_by_organization,
             users=users,
             farms=farms,
             _repo=repo,
         ),
     )
+
+
+@router.post("/organizacoes/{organization_id}/dados-comerciais")
+def save_organization_billing_action(
+    organization_id: int,
+    request: Request,
+    csrf_token: str = Form(...),
+    contact_name: str = Form(...),
+    contact_email: str = Form(...),
+    contact_phone: str | None = Form(None),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    denied = _require_super_admin(request, user)
+    if denied:
+        return denied
+    validate_csrf(request, csrf_token)
+    organization = db.get(Organization, organization_id)
+    if not organization:
+        _flash(request, "error", "Organização não encontrada.")
+        return _redirect("/organizacoes")
+    from email_validator import EmailNotValidError, validate_email
+    name = (contact_name or "").strip()
+    phone = (contact_phone or "").strip()
+    try:
+        email = validate_email((contact_email or "").strip(), check_deliverability=False).normalized
+    except EmailNotValidError:
+        _flash(request, "error", "Informe um e-mail válido para o responsável financeiro.")
+        return _redirect("/organizacoes")
+    if not name or len(name) > 160 or len(email) > 254 or len(phone) > 40:
+        _flash(request, "error", "Confira o nome e o telefone do responsável financeiro.")
+        return _redirect("/organizacoes")
+    billing = db.query(OrganizationBilling).filter_by(organization_id=organization.id).first()
+    if billing is None:
+        billing = OrganizationBilling(organization_id=organization.id)
+        db.add(billing)
+    billing.contact_name = name
+    billing.contact_email = email
+    billing.contact_phone = phone or None
+    db.commit()
+    _flash(request, "success", "Dados comerciais da organização salvos. Nenhuma cobrança foi criada.")
+    return _redirect("/organizacoes")
 
 
 @router.get("/auditoria")
