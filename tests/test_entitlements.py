@@ -499,7 +499,14 @@ def test_upgrade_stays_immediate_and_marks_change(db, monkeypatch):
     assert sub.plan_id == pro.id and sub.plan_changed_at is not None and sub.pending_plan_id is None
 
 
-def test_session_flyout_shows_plan_and_manage_link():
+def test_session_flyout_shows_plan_name_clickable_only_with_permission():
+    from jinja2 import Environment
     html = open('app/templates/base.html').read()
-    block = html[html.index('data-session-plan'):html.index('/logout', html.index('data-session-plan'))]
-    assert 'Plano {{ plan_entitlements.plan_name }}' in block and 'href="/minha-assinatura"' in block and 'Gerenciar plano' in block
+    start = html.index('{% if plan_entitlements and plan_entitlements.plan_name %}')
+    end = html.index('<a href="/logout"', start)
+    tpl = Environment().from_string(html[start:end])
+    plan = SimpleNamespace(plan_name='Essencial')
+    can = tpl.render(plan_entitlements=plan, permission_codes=frozenset({'write.finance'}))
+    cannot = tpl.render(plan_entitlements=plan, permission_codes=frozenset({'page.finance'}))
+    assert 'href="/minha-assinatura"' in can and 'Essencial' in can
+    assert 'href=' not in cannot and 'Essencial' in cannot and 'Gerenciar plano' not in html

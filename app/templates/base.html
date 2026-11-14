@@ -520,10 +520,12 @@
                 <div class="erp-header-session-flyout-actions">
                     <a href="/meu-perfil" class="erp-header-session-flyout-btn erp-header-session-flyout-btn--primary{% if page == 'profile' %} is-current{% endif %}">Meu perfil</a>
                     {% if plan_entitlements and plan_entitlements.plan_name %}
-                    <div class="flex items-center justify-between gap-2 rounded-xl border border-white/10 bg-white/5 px-3 py-2" data-session-plan>
-                        <span class="min-w-0 truncate text-sm font-semibold text-white">Plano {{ plan_entitlements.plan_name }}</span>
-                        {% if menu_visibility and menu_visibility.get('finance') %}<a href="/minha-assinatura" class="shrink-0 rounded-lg bg-white/10 px-2.5 py-1 text-xs font-semibold text-white hover:bg-white/20">Gerenciar plano</a>{% endif %}
-                    </div>
+                    {% set plan_label %}<span class="min-w-0"><span class="block text-[0.65rem] font-semibold uppercase tracking-[0.18em] text-slate-400">Plano</span><span class="block truncate text-sm font-semibold text-white">{{ plan_entitlements.plan_name }}</span></span>{% endset %}
+                    {% if 'write.finance' in (permission_codes or []) %}
+                    <a href="/minha-assinatura" class="group flex items-center justify-between gap-2 rounded-xl px-3 py-2 transition hover:bg-white/10" data-session-plan title="Ver e alterar o plano">{{ plan_label }}<svg class="h-4 w-4 shrink-0 text-slate-400 transition group-hover:translate-x-0.5 group-hover:text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg></a>
+                    {% else %}
+                    <div class="px-3 py-2" data-session-plan>{{ plan_label }}</div>
+                    {% endif %}
                     {% endif %}
                     <a href="/logout" class="erp-header-session-flyout-btn erp-header-session-flyout-btn--secondary">Sair</a>
                 </div>
