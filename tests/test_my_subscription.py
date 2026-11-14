@@ -171,3 +171,9 @@ def test_customer_saved_card_switch_is_audited_as_customer(monkeypatch):
         assert sub.billing_type == 'CREDIT_CARD' and flashes[-1][0] == 'success'
         events = [json.loads(row.metadata_json) for row in db.query(AuditLog).all()]
         assert any(item.get('por_cliente') is True for item in events)
+
+
+def test_legacy_asaas_test_page_was_removed():
+    paths = {route.path for route in routes.router.routes}
+    assert not any(path.startswith('/gestao-financeira/assinatura') for path in paths)
+    assert 'gestao-financeira/assinatura/cliente-asaas' not in open('app/templates/base.html').read()

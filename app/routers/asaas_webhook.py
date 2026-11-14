@@ -11,7 +11,6 @@ from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.db.session import get_db
-from app.services.asaas_payment_sync import upsert_asaas_payment_row
 from app.services.organization_subscription_sync import persist_organization_webhook
 from app.models import OrganizationBilling, OrganizationCardMigration
 from app.services.subscription_reconciliation import close_card_checkout
@@ -55,7 +54,6 @@ async def asaas_webhook(request: Request, db: Session = Depends(get_db)):
         raise HTTPException(status_code=400, detail="JSON inválido")
 
     event = str(body.get("event") or "").strip()
-    payment = body.get("payment")
 
     try:
         checkout = body.get('checkout')
@@ -72,9 +70,8 @@ async def asaas_webhook(request: Request, db: Session = Depends(get_db)):
                     close_card_checkout(db, migration, remote_status=checkout.get('status') or event)
                 db.commit()
                 return {'received': True}
-        handled = persist_organization_webhook(db, body)
-        if not handled and isinstance(payment, dict) and payment.get("id"):
-            upsert_asaas_payment_row(db, payment=payment, last_event=event or None, commit=False)
+        # Eventos que nao pertencem a uma assinatura de organizacao sao apenas confirmados.
+        persist_organization_webhook(db, body)
         db.commit()
     except Exception:
         db.rollback()
