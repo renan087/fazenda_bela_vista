@@ -142,3 +142,27 @@ def create_asaas_customer(
     if not isinstance(data, dict):
         return None, "Resposta inesperada do Asaas."
     return data, None
+
+
+def find_asaas_customers_by_document(*, base_url: str, api_key: str, cpf_cnpj: str) -> tuple[list[dict] | None, str | None]:
+    """Fail closed when a search is incomplete, so callers never create from partial results."""
+    customers: list[dict] = []
+    try:
+        with httpx.Client(timeout=20.0) as client:
+            for offset in range(0, 1000, 100):
+                response = client.get(
+                    base_url.rstrip('/') + '/v3/customers',
+                    headers={"access_token": api_key, "User-Agent": "SiSFarm/AsaasIntegration", "Accept": "application/json"},
+                    params={"cpfCnpj": cpf_cnpj, "limit": 100, "offset": offset},
+                )
+                if response.status_code != 200:
+                    return None, f"Não foi possível consultar clientes no Asaas (HTTP {response.status_code})."
+                data = response.json()
+                if not isinstance(data, dict) or not isinstance(data.get('data'), list) or not isinstance(data.get('hasMore'), bool):
+                    return None, "O Asaas retornou uma lista de clientes inválida."
+                customers.extend(item for item in data['data'] if isinstance(item, dict) and asaas_digits(item.get('cpfCnpj')) == cpf_cnpj and item.get('id') and not item.get('deleted'))
+                if not data['hasMore']:
+                    return customers, None
+    except (httpx.HTTPError, ValueError):
+        return None, "Não foi possível consultar o Asaas. Tente novamente antes de criar ou vincular um cliente."
+    return None, "A consulta ao Asaas excedeu o limite seguro de resultados."

@@ -104,6 +104,7 @@ from app.services.asaas_customers import (
     build_asaas_customer_payload,
     create_asaas_customer,
     validate_asaas_customer_form,
+    find_asaas_customers_by_document,
 )
 from app.services.asaas_payment_sync import upsert_asaas_payment_row, user_owns_asaas_payment_payload
 from app.services.asaas_payments import create_asaas_payment, get_asaas_payment, is_asaas_status_paid
@@ -9190,6 +9191,12 @@ def save_organization_billing_action(
     contact_name: str = Form(...),
     contact_email: str = Form(...),
     contact_phone: str | None = Form(None),
+    cpf_cnpj: str | None = Form(None),
+    postal_code: str | None = Form(None),
+    address_number: str | None = Form(None),
+    address: str | None = Form(None),
+    address_complement: str | None = Form(None),
+    province: str | None = Form(None),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user_web),
 ):
@@ -9204,23 +9211,98 @@ def save_organization_billing_action(
     from email_validator import EmailNotValidError, validate_email
     name = (contact_name or "").strip()
     phone = (contact_phone or "").strip()
+    document = asaas_digits(cpf_cnpj)
+    cep = asaas_digits(postal_code)
     try:
         email = validate_email((contact_email or "").strip(), check_deliverability=False).normalized
     except EmailNotValidError:
         _flash(request, "error", "Informe um e-mail válido para o responsável financeiro.")
         return _redirect("/organizacoes")
-    if not name or len(name) > 160 or len(email) > 254 or len(phone) > 40:
+    if not name or len(name) > 160 or len(email) > 254 or len(phone) > 40 or (document and len(document) not in (11, 14)) or (cep and len(cep) != 8) or len(address_number or '') > 40 or len(address or '') > 255 or len(address_complement or '') > 255 or len(province or '') > 120:
         _flash(request, "error", "Confira o nome e o telefone do responsável financeiro.")
         return _redirect("/organizacoes")
     billing = db.query(OrganizationBilling).filter_by(organization_id=organization.id).first()
+    if billing and billing.asaas_customer_id and document != (billing.cpf_cnpj or ''):
+        _flash(request, "error", "O CPF/CNPJ não pode ser alterado enquanto houver cliente Asaas vinculado.")
+        return _redirect("/organizacoes")
     if billing is None:
         billing = OrganizationBilling(organization_id=organization.id)
         db.add(billing)
     billing.contact_name = name
     billing.contact_email = email
     billing.contact_phone = phone or None
+    billing.cpf_cnpj = document or None
+    billing.postal_code = cep or None
+    billing.address_number = (address_number or '').strip() or None
+    billing.address = (address or '').strip() or None
+    billing.address_complement = (address_complement or '').strip() or None
+    billing.province = (province or '').strip() or None
     db.commit()
     _flash(request, "success", "Dados comerciais da organização salvos. Nenhuma cobrança foi criada.")
+    return _redirect("/organizacoes")
+
+
+@router.post("/organizacoes/{organization_id}/asaas-sandbox")
+def organization_asaas_sandbox_action(
+    organization_id: int, request: Request, csrf_token: str = Form(...),
+    action: str = Form("consultar"), customer_id: str | None = Form(None),
+    db: Session = Depends(get_db), user: User = Depends(get_current_user_web),
+):
+    denied = _require_super_admin(request, user)
+    if denied:
+        return denied
+    validate_csrf(request, csrf_token)
+    settings = get_settings()
+    parsed_url = urlparse(settings.asaas_api_base_url or "")
+    if parsed_url.scheme != "https" or parsed_url.hostname != "api-sandbox.asaas.com" or parsed_url.port not in (None, 443) or parsed_url.path not in ("", "/") or parsed_url.query or parsed_url.fragment or parsed_url.username:
+        _flash(request, "error", "A vinculação está disponível somente no sandbox oficial do Asaas.")
+        return _redirect("/organizacoes")
+    if not (settings.asaas_api_key or "").strip():
+        _flash(request, "error", "Configure a chave do sandbox do Asaas antes de consultar.")
+        return _redirect("/organizacoes")
+    organization = db.get(Organization, organization_id)
+    billing = db.query(OrganizationBilling).filter_by(organization_id=organization_id).with_for_update().first()
+    if not organization or not billing:
+        _flash(request, "error", "Cadastre os dados comerciais antes de consultar o Asaas.")
+        return _redirect("/organizacoes")
+    if billing.asaas_customer_id:
+        _flash(request, "info", "Esta organização já possui um cliente Asaas vinculado.")
+        return _redirect("/organizacoes")
+    errors = validate_asaas_customer_form(name=billing.contact_name, cpf_cnpj=billing.cpf_cnpj or '', email=billing.contact_email, mobile_phone=billing.contact_phone or '', postal_code=billing.postal_code or '', address_number=billing.address_number or '', person_type="JURIDICA" if len(billing.cpf_cnpj or '') == 14 else "FISICA")
+    if errors:
+        _flash(request, "error", " ".join(errors))
+        return _redirect("/organizacoes")
+    customers, error = find_asaas_customers_by_document(base_url=settings.asaas_api_base_url, api_key=settings.asaas_api_key.strip(), cpf_cnpj=billing.cpf_cnpj)
+    if error:
+        _flash(request, "error", error)
+        return _redirect("/organizacoes")
+    if action == "consultar":
+        return templates.TemplateResponse("organization_asaas_review.html", _base_context(request, user, csrf_token, "organizations", _repo=_repository(db), title="Cliente Asaas", organization=organization, billing=billing, customers=customers))
+    if action == "vincular":
+        selected = next((item for item in customers if item.get("id") == customer_id), None)
+        if not selected:
+            _flash(request, "error", "Cliente não encontrado na consulta atual. Consulte novamente.")
+            return _redirect("/organizacoes")
+        resolved_id = str(selected["id"])
+    elif action == "criar":
+        if customers:
+            _flash(request, "error", "Já existe cliente com este CPF/CNPJ no Asaas. Revise a consulta antes de vincular.")
+            return _redirect("/organizacoes")
+        payload = build_asaas_customer_payload(name=billing.contact_name, cpf_cnpj_digits=billing.cpf_cnpj, email=billing.contact_email, mobile_phone_digits=asaas_digits(billing.contact_phone), postal_code_digits=billing.postal_code, address_number=billing.address_number, address=billing.address, complement=billing.address_complement, province=billing.province, external_reference=f"sisfarm-org-{organization.id}")
+        created, error = create_asaas_customer(base_url=settings.asaas_api_base_url, api_key=settings.asaas_api_key.strip(), payload=payload)
+        if error or not created or not created.get("id"):
+            _flash(request, "error", "Não foi possível confirmar a criação no Asaas. Consulte novamente antes de tentar criar outro cliente.")
+            return _redirect("/organizacoes")
+        resolved_id = str(created["id"])
+    else:
+        raise HTTPException(status_code=400, detail="Ação inválida")
+    if len(resolved_id) > 40 or db.query(OrganizationBilling).filter(OrganizationBilling.asaas_customer_id == resolved_id, OrganizationBilling.organization_id != organization_id).first():
+        _flash(request, "error", "Este cliente Asaas já está vinculado a outra organização ou possui ID inválido.")
+        return _redirect("/organizacoes")
+    billing.asaas_customer_id = resolved_id
+    billing.asaas_environment = "sandbox"
+    db.commit()
+    _flash(request, "success", "Cliente Asaas do sandbox vinculado à organização. Nenhuma cobrança foi criada.")
     return _redirect("/organizacoes")
 
 
