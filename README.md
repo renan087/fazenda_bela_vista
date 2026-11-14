@@ -108,6 +108,14 @@ O módulo de assinaturas (Configuração → Planos e Assinaturas) cobra as orga
 
 A situação das assinaturas é conciliada automaticamente com o Asaas a cada 5 minutos (e na hora, após cada operação).
 
+### Inadimplência e limites do plano
+
+- Atraso de 1 a 10 dias (`SUBSCRIPTION_GRACE_DAYS`): aviso no topo de todas as páginas e e-mail ao responsável financeiro.
+- A partir do 11º dia: modo somente leitura (consulta e exportação liberadas; cadastrar/editar bloqueado). Minha assinatura, perfil e pagamento continuam disponíveis.
+- 2 dias antes da restrição, novo e-mail. Cada aviso é enviado uma única vez por fatura (requer SMTP configurado).
+- Liberação manual ativa e a organização SiSFarm nunca são restringidas. Organizações sem assinatura ou com plano personalizado não têm limites.
+- Limites do plano: impede cadastrar fazendas, área (soma das fazendas) e usuários ativos acima do contratado, sem apagar nada. Módulos fora do plano aparecem com cadeado e levam a "Planos disponíveis", onde o cliente pede a mudança (aviso por e-mail para `SUPPORT_EMAIL`).
+
 ### Ativar a produção
 
 1. Rode `python scripts/encerrar_assinaturas_sandbox.py` para ver o que será encerrado e, em seguida, com `--confirmar`. O histórico de testes é preservado.

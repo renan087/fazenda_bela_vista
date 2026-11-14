@@ -32,12 +32,14 @@ from app.services.coffee_quotes import seed_cepea_coffee_quotes_from_bundle
 from app.services.coffee_quote_sync_service import run_coffee_quote_sync_loop
 from app.services.asaas_card_migration_worker import run_card_migration_loop
 from app.services.subscription_reconciliation import run_subscription_reconciliation_loop
+from app.services.billing_notices import run_billing_notice_loop
 from app.services.data_change_audit import (
     install_data_change_audit_listeners,
     reset_data_change_audit_context,
     set_data_change_audit_context,
 )
 from app.middleware.web_module_permission import WebModulePermissionMiddleware
+from app.middleware.subscription_enforcement import SubscriptionEnforcementMiddleware
 from app.services.runtime_memory_monitor import get_current_rss_mb, run_runtime_memory_monitor
 from app.web.routes import router as web_router
 
@@ -83,6 +85,7 @@ async def lifespan(app: FastAPI):
         asyncio.create_task(run_backup_repository_monitor_loop()),
         asyncio.create_task(run_card_migration_loop()),
         asyncio.create_task(run_subscription_reconciliation_loop()),
+        asyncio.create_task(run_billing_notice_loop()),
     ]
     if settings.coffee_quote_sync_enabled:
         background_tasks.append(asyncio.create_task(run_coffee_quote_sync_loop()))
@@ -293,6 +296,7 @@ async def global_exception_handler(request: Request, exc: Exception):
 
 
 app.add_middleware(AuditAuthenticatedHttpMiddleware)
+app.add_middleware(SubscriptionEnforcementMiddleware)
 app.add_middleware(WebModulePermissionMiddleware)
 app.add_middleware(
     SessionMiddleware,

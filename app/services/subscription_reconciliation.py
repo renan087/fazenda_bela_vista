@@ -32,6 +32,7 @@ from app.services.asaas_subscriptions import (
     sandbox_subscription_is_missing,
 )
 from app.services.commercial_audit import record_commercial_event
+from app.services.entitlements import invalidate_entitlements
 from app.services.organization_subscription_sync import apply_subscription_details, persist_organization_webhook
 from app.services.asaas_environment import asaas_api_key, asaas_env_name, asaas_ready
 
@@ -258,6 +259,7 @@ def _tick(limit: int = 20) -> None:
             try:
                 reconcile_organization(db, organization_id, api_key)
                 db.commit()
+                invalidate_entitlements(organization_id)
             except Exception:
                 db.rollback()
                 logger.exception("Falha na conciliação automática da organização %s", organization_id)

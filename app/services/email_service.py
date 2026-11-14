@@ -167,3 +167,8 @@ def send_bootstrap_admin_password_email(recipient_email: str, password: str) -> 
         ),
         error_context="two_factor",
     )
+
+
+def send_plain_email(recipient_email: str, subject: str, body: str, error_context: str) -> None:
+    """Envio de e-mail de texto simples (avisos de cobrança e pedidos comerciais)."""
+    _send_email(recipient_email, subject, body, error_context)

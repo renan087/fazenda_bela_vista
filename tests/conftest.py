@@ -28,3 +28,13 @@ def _block_real_http(monkeypatch):
         raise httpx.ConnectError("Rede bloqueada nos testes", request=request)
 
     monkeypatch.setattr(httpx.Client, "send", blocked)
+
+
+@pytest.fixture(autouse=True)
+def _clear_entitlements_cache():
+    """Cada teste usa um banco novo; o cache de direitos nao pode vazar entre eles."""
+    from app.services.entitlements import invalidate_entitlements
+
+    invalidate_entitlements()
+    yield
+    invalidate_entitlements()

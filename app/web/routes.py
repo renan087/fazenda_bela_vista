@@ -8,6 +8,8 @@ import calendar
 
 import hashlib
 import json
+from jinja2 import pass_context
+from markupsafe import Markup
 import logging
 import unicodedata
 import urllib.error
@@ -52,7 +54,7 @@ from app.core.permissions_catalog import (
     all_permission_codes,
     write_permission_for_page,
 )
-from app.core.path_access import required_permissions_for_web_path
+from app.core.path_access import required_permission_for_web_path, required_permissions_for_web_path
 from app.core.csrf import validate_csrf
 from app.core.deps import get_csrf_token, get_current_user_web
 from app.core.security import get_password_hash, verify_password
@@ -119,6 +121,8 @@ from app.services.commercial_audit import record_commercial_event
 from app.services.organization_subscription_sync import apply_subscription_details, persist_organization_webhook
 from app.services.agronomic_profile_suggestions import build_agronomic_profile_suggestions
 from app.services.subscription_reconciliation import close_card_checkout, reconcile_organization
+from app.services.entitlements import ALWAYS_ALLOWED_PREFIXES, MODULE_PITCH, UNRESTRICTED, Entitlements, MODULE_LABELS, cached_entitlements, farm_limit_error, invalidate_entitlements, user_limit_error
+from app.middleware.subscription_enforcement import upgrade_url
 from app.services.access_grants import GRANT_REASONS, MAX_GRANT_DAYS, GrantValidationError, active_grant, create_grant, default_grant_end, extend_grant, grant_status_label, is_expiring_soon, revoke_grant
 from app.services.subscription_portfolio import SITUATION_LABELS, build_subscription_portfolio, monthly_amount
 from app.services.subscription_plans import (
@@ -268,7 +272,7 @@ from app.services.password_change import (
     verify_password_change_code,
 )
 from app.services.password_reset import revoke_user_password_reset_tokens
-from app.services.email_service import send_access_code_email, send_password_change_code_email
+from app.services.email_service import send_access_code_email, send_password_change_code_email, send_plain_email
 from app.services.trusted_browser import revoke_user_trusted_browsers
 from app.services.two_factor import get_active_login_code, issue_login_verification_code, revoke_active_login_codes, verify_login_code
 
@@ -991,8 +995,39 @@ def _base_context(request: Request, user: User, csrf_token: str, page: str, **kw
         }
         context["context_selection_blocking"] = scope_context["context_selection_required"] and not context["context_lock_exempt"]
         context["context_previous_available"] = bool(scope_context.get("previous_context_available"))
+    context["plan_entitlements"] = _entitlements_for(db_session, user)
     context.update(kwargs)
     return context
+
+
+def _entitlements_for(db_session, user) -> Entitlements:
+    """Direitos do plano do usuario logado (equipe SiSFarm e falhas: sem restricoes)."""
+    if db_session is None or not user or is_super_admin_email(getattr(user, "email", "") or ""):
+        return UNRESTRICTED
+    try:
+        return cached_entitlements(db_session, getattr(user, "organization_id", None), today_in_app_timezone())
+    except Exception:
+        logger.exception("Falha ao calcular os direitos do plano")
+        return UNRESTRICTED
+
+
+@pass_context
+def _module_href(ctx, href: str) -> str:
+    entitlements = ctx.get("plan_entitlements") or UNRESTRICTED
+    code = required_permission_for_web_path(href)
+    return href if href.startswith(ALWAYS_ALLOWED_PREFIXES) or entitlements.module_allowed(code) else upgrade_url(code)
+
+
+@pass_context
+def _module_lock(ctx, href: str):
+    entitlements = ctx.get("plan_entitlements") or UNRESTRICTED
+    if href.startswith(ALWAYS_ALLOWED_PREFIXES) or entitlements.module_allowed(required_permission_for_web_path(href)):
+        return ""
+    return Markup('<svg class="ml-1.5 inline h-3.5 w-3.5 align-[-2px] text-amber-300" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-label="Disponível em outro plano"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>')
+
+
+templates.env.globals["module_href"] = _module_href
+templates.env.globals["module_lock"] = _module_lock
 
 
 def _repository(db: Session) -> FarmRepository:
@@ -8511,6 +8546,10 @@ async def create_farm_action(
     user: User = Depends(get_current_user_web),
 ):
     validate_csrf(request, csrf_token)
+    limit_error = farm_limit_error(db, _entitlements_for(db, user), adding_farm=True, area_delta=Decimal(str(total_area or 0)))
+    if limit_error:
+        _flash(request, "error", limit_error)
+        return _redirect("/setores") if redirect_to == "/setores" else _redirect("/fazendas")
     try:
         car_number = normalize_car_number(car_registration_number) if (car_registration_number or "").strip() else None
     except CarPublicLookupError as exc:
@@ -8585,6 +8624,10 @@ async def update_farm_action(
     if not farm or (user.organization_id and farm.organization_id != user.organization_id):
         _flash(request, "error", "Fazenda nao encontrada.")
         return _redirect("/fazendas")
+    limit_error = farm_limit_error(db, _entitlements_for(db, user), adding_farm=False, area_delta=Decimal(str(total_area or 0)) - Decimal(str(farm.total_area or 0)))
+    if limit_error:
+        _flash(request, "error", limit_error)
+        return _redirect_with_query("/fazendas", edit_id=farm_id)
     try:
         car_number = normalize_car_number(car_registration_number) if (car_registration_number or "").strip() else None
     except CarPublicLookupError as exc:
@@ -9080,6 +9123,7 @@ def create_access_grant_action(
     record_commercial_event(db, user=user, organization_id=organization_id, resource="liberacao", resource_id=grant.id, action="criar", outcome="success",
                             details={"motivo": grant.reason, "justificativa": grant.justification, "inicio": grant.starts_on, "fim": grant.ends_on, "plano_id": grant.plan_id})
     db.commit()
+    invalidate_entitlements(organization_id)
     _flash(request, "success", f"Acesso liberado manualmente até {grant.ends_on.strftime('%d/%m/%Y')}. As cobranças no Asaas não foram alteradas.")
     return _grant_target(organization_id)
 
@@ -9106,6 +9150,7 @@ def extend_access_grant_action(
     record_commercial_event(db, user=user, organization_id=organization_id, resource="liberacao", resource_id=grant.id, action="prorrogar", outcome="success",
                             details={"fim_anterior": previous_end, "novo_fim": grant.ends_on, "justificativa": text})
     db.commit()
+    invalidate_entitlements(organization_id)
     _flash(request, "success", f"Liberação prorrogada até {grant.ends_on.strftime('%d/%m/%Y')}.")
     return _grant_target(organization_id)
 
@@ -9131,8 +9176,52 @@ def revoke_access_grant_action(
     record_commercial_event(db, user=user, organization_id=organization_id, resource="liberacao", resource_id=grant.id, action="encerrar", outcome="success",
                             details={"motivo_encerramento": grant.revoke_reason, "fim_previsto": grant.ends_on})
     db.commit()
+    invalidate_entitlements(organization_id)
     _flash(request, "success", "Liberação manual encerrada. O acesso volta a depender da assinatura.")
     return _grant_target(organization_id)
+
+
+@router.get("/planos-disponiveis")
+def plan_upgrade_page(request: Request, modulo: str | None = Query(None), db: Session = Depends(get_db), user: User = Depends(get_current_user_web), csrf_token: str = Depends(get_csrf_token)):
+    """Pagina para conhecer os planos; destino dos modulos com cadeado."""
+    entitlements = _entitlements_for(db, user)
+    module_code = modulo if modulo in MODULE_LABELS else None
+    catalog = active_plans(db)
+    ordered = sorted(catalog, key=lambda plan: (0 if module_code and module_code in plan_modules(plan) else 1, plan.display_order, plan.name.lower()))
+    return templates.TemplateResponse("plan_upgrade.html", _base_context(
+        request, user, csrf_token, "plan_upgrade", title="Planos disponíveis", module_code=module_code, module_label=MODULE_LABELS.get(module_code),
+        module_pitch=MODULE_PITCH.get(module_code), plans_catalog=ordered, current_plan_id=entitlements.plan_id, current_plan_name=entitlements.plan_name,
+        plan_modules_of=plan_modules, plan_prices_of=plan_prices, module_labels=MODULE_LABELS, support_email=(get_settings().support_email or "").strip() or None,
+        _repo=_repository(db),
+    ))
+
+
+@router.post("/planos-disponiveis/solicitar")
+def plan_upgrade_request_action(request: Request, csrf_token: str = Form(...), plan_id: str = Form(""), modulo: str = Form(""), db: Session = Depends(get_db), user: User = Depends(get_current_user_web)):
+    """Registra o interesse do cliente em mudar de plano e avisa a equipe SiSFarm."""
+    validate_csrf(request, csrf_token)
+    try:
+        plan = db.get(SubscriptionPlan, int(plan_id))
+    except (TypeError, ValueError):
+        plan = None
+    if not plan or plan.status != "ativo" or not user.organization_id:
+        _flash(request, "error", "Plano indisponível. Atualize a página e tente novamente.")
+        return _redirect("/planos-disponiveis")
+    record_commercial_event(db, user=user, organization_id=user.organization_id, resource="plano", resource_id=plan.id, action="solicitar_mudanca", outcome="success",
+                            details={"plano": plan.name, "modulo": modulo if modulo in MODULE_LABELS else None, "solicitante": user.email})
+    db.commit()
+    support = (get_settings().support_email or "").strip()
+    if support:
+        organization = user.organization
+        body = (f"A organização {organization.name if organization else user.organization_id} pediu para mudar para o plano {plan.name}.\n"
+                f"Solicitante: {user.email}\n" + (f"Módulo de interesse: {MODULE_LABELS[modulo]}\n" if modulo in MODULE_LABELS else "")
+                + "Ajuste a assinatura em Configuração > Assinaturas.")
+        try:
+            send_plain_email(support, f"Pedido de mudança de plano: {plan.name}", body, "pedido de mudança de plano")
+        except Exception:
+            logger.exception("Falha ao avisar a equipe sobre pedido de mudança de plano")
+    _flash(request, "success", f"Pedido enviado! A equipe SiSFarm vai entrar em contato para ativar o plano {plan.name}.")
+    return _redirect("/planos-disponiveis" + (f"?modulo={modulo}" if modulo in MODULE_LABELS else ""))
 
 
 @router.post("/organizacoes/{organization_id}/dados-comerciais")
@@ -9393,6 +9482,7 @@ def _auto_reconcile(db: Session, organization_id: int, *, full: bool = False) ->
     try:
         issues = reconcile_organization(db, organization_id, settings.asaas_api_key.strip(), full=full)
         db.commit()
+        invalidate_entitlements(organization_id)
         return issues
     except Exception:
         db.rollback()
@@ -10289,6 +10379,11 @@ async def create_user_action(
     if existing:
         _flash(request, "error", "Ja existe um usuario com este email.")
         return _redirect("/usuarios")
+    if _bool_from_form(is_active):
+        limit_error = user_limit_error(db, _entitlements_for(db, user))
+        if limit_error:
+            _flash(request, "error", limit_error)
+            return _redirect("/usuarios")
     new_user = create_user(
         repo,
         {

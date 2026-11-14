@@ -175,10 +175,10 @@
                             </span>
                         </button>
                         <div id="productive-unit-menu" class="sidebar-submenu-panel {% if page not in productive_unit_pages %}hidden {% endif %}space-y-1 px-3 pb-3" data-submenu-panel>
-                            <a href="/fazendas" class="sidebar-submenu-link block rounded-xl px-3 py-2 text-sm {% if page == 'farms' %}bg-brand-500 text-white{% else %}text-slate-300 hover:bg-slate-800 hover:text-white{% endif %}" data-submenu-link>Fazendas</a>
-                            <a href="/safras" class="sidebar-submenu-link block rounded-xl px-3 py-2 text-sm {% if page == 'seasons' %}bg-brand-500 text-white{% else %}text-slate-300 hover:bg-slate-800 hover:text-white{% endif %}" data-submenu-link>Safras</a>
-                            <a href="/setores" class="sidebar-submenu-link block rounded-xl px-3 py-2 text-sm {% if page == 'plots' %}bg-brand-500 text-white{% else %}text-slate-300 hover:bg-slate-800 hover:text-white{% endif %}" data-submenu-link>Setores</a>
-                            <a href="/custos-por-setor" class="sidebar-submenu-link block rounded-xl px-3 py-2 text-sm {% if page == 'sector_costs' %}bg-brand-500 text-white{% else %}text-slate-300 hover:bg-slate-800 hover:text-white{% endif %}" data-submenu-link>Custos por setor</a>
+                            <a href="{{ module_href('/fazendas') }}" class="sidebar-submenu-link block rounded-xl px-3 py-2 text-sm {% if page == 'farms' %}bg-brand-500 text-white{% else %}text-slate-300 hover:bg-slate-800 hover:text-white{% endif %}" data-submenu-link>Fazendas{{ module_lock('/fazendas') }}</a>
+                            <a href="{{ module_href('/safras') }}" class="sidebar-submenu-link block rounded-xl px-3 py-2 text-sm {% if page == 'seasons' %}bg-brand-500 text-white{% else %}text-slate-300 hover:bg-slate-800 hover:text-white{% endif %}" data-submenu-link>Safras{{ module_lock('/safras') }}</a>
+                            <a href="{{ module_href('/setores') }}" class="sidebar-submenu-link block rounded-xl px-3 py-2 text-sm {% if page == 'plots' %}bg-brand-500 text-white{% else %}text-slate-300 hover:bg-slate-800 hover:text-white{% endif %}" data-submenu-link>Setores{{ module_lock('/setores') }}</a>
+                            <a href="{{ module_href('/custos-por-setor') }}" class="sidebar-submenu-link block rounded-xl px-3 py-2 text-sm {% if page == 'sector_costs' %}bg-brand-500 text-white{% else %}text-slate-300 hover:bg-slate-800 hover:text-white{% endif %}" data-submenu-link>Custos por setor{{ module_lock('/custos-por-setor') }}</a>
                         </div>
                     </div>
                     {% endif %}
@@ -192,9 +192,9 @@
                             </span>
                         </button>
                         <div id="operations-menu" class="sidebar-submenu-panel {% if page not in operations_pages %}hidden {% endif %}space-y-1 px-3 pb-3" data-submenu-panel>
-                            <a href="/fertilizacao" class="sidebar-submenu-link block rounded-xl px-3 py-2 text-sm {% if page == 'fertilization' %}bg-brand-500 text-white{% else %}text-slate-300 hover:bg-slate-800 hover:text-white{% endif %}" data-submenu-link>Fertilizacao</a>
-                            <a href="/insumos/recomendacao" class="sidebar-submenu-link block rounded-xl px-3 py-2 text-sm {% if page == 'input_recommendations' %}bg-brand-500 text-white{% else %}text-slate-300 hover:bg-slate-800 hover:text-white{% endif %}" data-submenu-link>Recomendacao</a>
-                            <a href="/operacoes" class="sidebar-submenu-link block rounded-xl px-3 py-2 text-sm {% if page == 'agricultural_operations' %}bg-brand-500 text-white{% else %}text-slate-300 hover:bg-slate-800 hover:text-white{% endif %}" data-submenu-link>Operações agrícolas</a>
+                            <a href="{{ module_href('/fertilizacao') }}" class="sidebar-submenu-link block rounded-xl px-3 py-2 text-sm {% if page == 'fertilization' %}bg-brand-500 text-white{% else %}text-slate-300 hover:bg-slate-800 hover:text-white{% endif %}" data-submenu-link>Fertilizacao{{ module_lock('/fertilizacao') }}</a>
+                            <a href="{{ module_href('/insumos/recomendacao') }}" class="sidebar-submenu-link block rounded-xl px-3 py-2 text-sm {% if page == 'input_recommendations' %}bg-brand-500 text-white{% else %}text-slate-300 hover:bg-slate-800 hover:text-white{% endif %}" data-submenu-link>Recomendacao{{ module_lock('/insumos/recomendacao') }}</a>
+                            <a href="{{ module_href('/operacoes') }}" class="sidebar-submenu-link block rounded-xl px-3 py-2 text-sm {% if page == 'agricultural_operations' %}bg-brand-500 text-white{% else %}text-slate-300 hover:bg-slate-800 hover:text-white{% endif %}" data-submenu-link>Operações agrícolas{{ module_lock('/operacoes') }}</a>
                         </div>
                     </div>
                     {% endif %}
@@ -208,9 +208,9 @@
                             </span>
                         </button>
                         <div id="inputs-menu" class="sidebar-submenu-panel {% if page not in inputs_pages %}hidden {% endif %}space-y-1 px-3 pb-3" data-submenu-panel>
-                            <a href="/insumos/comprados" class="sidebar-submenu-link block rounded-xl px-3 py-2 text-sm {% if page == 'purchased_inputs' %}bg-brand-500 text-white{% else %}text-slate-300 hover:bg-slate-800 hover:text-white{% endif %}" data-submenu-link>Compra de Insumos</a>
-                            <a href="/insumos/estoque" class="sidebar-submenu-link block rounded-xl px-3 py-2 text-sm {% if page == 'stock' %}bg-brand-500 text-white{% else %}text-slate-300 hover:bg-slate-800 hover:text-white{% endif %}" data-submenu-link>Estoque de Insumos</a>
-                            <a href="/insumos/suprimentos" class="sidebar-submenu-link block rounded-xl px-3 py-2 text-sm {% if page == 'supplies' %}bg-brand-500 text-white{% else %}text-slate-300 hover:bg-slate-800 hover:text-white{% endif %}" data-submenu-link>Suprimentos</a>
+                            <a href="{{ module_href('/insumos/comprados') }}" class="sidebar-submenu-link block rounded-xl px-3 py-2 text-sm {% if page == 'purchased_inputs' %}bg-brand-500 text-white{% else %}text-slate-300 hover:bg-slate-800 hover:text-white{% endif %}" data-submenu-link>Compra de Insumos{{ module_lock('/insumos/comprados') }}</a>
+                            <a href="{{ module_href('/insumos/estoque') }}" class="sidebar-submenu-link block rounded-xl px-3 py-2 text-sm {% if page == 'stock' %}bg-brand-500 text-white{% else %}text-slate-300 hover:bg-slate-800 hover:text-white{% endif %}" data-submenu-link>Estoque de Insumos{{ module_lock('/insumos/estoque') }}</a>
+                            <a href="{{ module_href('/insumos/suprimentos') }}" class="sidebar-submenu-link block rounded-xl px-3 py-2 text-sm {% if page == 'supplies' %}bg-brand-500 text-white{% else %}text-slate-300 hover:bg-slate-800 hover:text-white{% endif %}" data-submenu-link>Suprimentos{{ module_lock('/insumos/suprimentos') }}</a>
                         </div>
                     </div>
                     {% endif %}
@@ -224,7 +224,7 @@
                             </span>
                         </button>
                         <div id="agenda-menu" class="sidebar-submenu-panel {% if page not in agenda_pages %}hidden {% endif %}space-y-1 px-3 pb-3" data-submenu-panel>
-                            <a href="/fertilizacao/agendamentos" class="sidebar-submenu-link block rounded-xl px-3 py-2 text-sm {% if page == 'fertilization_schedules' %}bg-brand-500 text-white{% else %}text-slate-300 hover:bg-slate-800 hover:text-white{% endif %}" data-submenu-link>Agendamentos</a>
+                            <a href="{{ module_href('/fertilizacao/agendamentos') }}" class="sidebar-submenu-link block rounded-xl px-3 py-2 text-sm {% if page == 'fertilization_schedules' %}bg-brand-500 text-white{% else %}text-slate-300 hover:bg-slate-800 hover:text-white{% endif %}" data-submenu-link>Agendamentos{{ module_lock('/fertilizacao/agendamentos') }}</a>
                         </div>
                     </div>
                     {% endif %}
@@ -238,8 +238,8 @@
                             </span>
                         </button>
                         <div id="assets-menu" class="sidebar-submenu-panel {% if page not in asset_pages %}hidden {% endif %}space-y-1 px-3 pb-3" data-submenu-panel>
-                            <a href="/insumos/patrimonio" class="sidebar-submenu-link block rounded-xl px-3 py-2 text-sm {% if page == 'assets' %}bg-brand-500 text-white{% else %}text-slate-300 hover:bg-slate-800 hover:text-white{% endif %}" data-submenu-link>Patrimônio</a>
-                            <a href="/insumos/patrimonio/manutencoes" class="sidebar-submenu-link block rounded-xl px-3 py-2 text-sm {% if page == 'asset_maintenance' %}bg-brand-500 text-white{% else %}text-slate-300 hover:bg-slate-800 hover:text-white{% endif %}" data-submenu-link>Manutenções</a>
+                            <a href="{{ module_href('/insumos/patrimonio') }}" class="sidebar-submenu-link block rounded-xl px-3 py-2 text-sm {% if page == 'assets' %}bg-brand-500 text-white{% else %}text-slate-300 hover:bg-slate-800 hover:text-white{% endif %}" data-submenu-link>Patrimônio{{ module_lock('/insumos/patrimonio') }}</a>
+                            <a href="{{ module_href('/insumos/patrimonio/manutencoes') }}" class="sidebar-submenu-link block rounded-xl px-3 py-2 text-sm {% if page == 'asset_maintenance' %}bg-brand-500 text-white{% else %}text-slate-300 hover:bg-slate-800 hover:text-white{% endif %}" data-submenu-link>Manutenções{{ module_lock('/insumos/patrimonio/manutencoes') }}</a>
                         </div>
                     </div>
                     {% endif %}
@@ -253,9 +253,9 @@
                             </span>
                         </button>
                         <div id="finance-menu" class="sidebar-submenu-panel {% if page not in finance_pages %}hidden {% endif %}space-y-1 px-3 pb-3" data-submenu-panel>
-                            <a href="/gestao-financeira" class="sidebar-submenu-link block rounded-xl px-3 py-2 text-sm {% if page == 'finance_management' %}bg-brand-500 text-white{% else %}text-slate-300 hover:bg-slate-800 hover:text-white{% endif %}" data-submenu-link>Extrato</a>
-                            <a href="/gestao-financeira/contas" class="sidebar-submenu-link block rounded-xl px-3 py-2 text-sm {% if page == 'finance_accounts' %}bg-brand-500 text-white{% else %}text-slate-300 hover:bg-slate-800 hover:text-white{% endif %}" data-submenu-link>Contas</a>
-                            <a href="/minha-assinatura" class="sidebar-submenu-link block rounded-xl px-3 py-2 text-sm {% if page == 'my_subscription' %}bg-brand-500 text-white{% else %}text-slate-300 hover:bg-slate-800 hover:text-white{% endif %}" data-submenu-link>Minha assinatura</a>
+                            <a href="{{ module_href('/gestao-financeira') }}" class="sidebar-submenu-link block rounded-xl px-3 py-2 text-sm {% if page == 'finance_management' %}bg-brand-500 text-white{% else %}text-slate-300 hover:bg-slate-800 hover:text-white{% endif %}" data-submenu-link>Extrato{{ module_lock('/gestao-financeira') }}</a>
+                            <a href="{{ module_href('/gestao-financeira/contas') }}" class="sidebar-submenu-link block rounded-xl px-3 py-2 text-sm {% if page == 'finance_accounts' %}bg-brand-500 text-white{% else %}text-slate-300 hover:bg-slate-800 hover:text-white{% endif %}" data-submenu-link>Contas{{ module_lock('/gestao-financeira/contas') }}</a>
+                            <a href="{{ module_href('/minha-assinatura') }}" class="sidebar-submenu-link block rounded-xl px-3 py-2 text-sm {% if page == 'my_subscription' %}bg-brand-500 text-white{% else %}text-slate-300 hover:bg-slate-800 hover:text-white{% endif %}" data-submenu-link>Minha assinatura{{ module_lock('/minha-assinatura') }}</a>
                         </div>
                     </div>
                     {% endif %}
@@ -269,8 +269,8 @@
                             </span>
                         </button>
                         <div id="production-menu" class="sidebar-submenu-panel {% if page not in production_pages %}hidden {% endif %}space-y-1 px-3 pb-3" data-submenu-panel>
-                            <a href="/producao" class="sidebar-submenu-link block rounded-xl px-3 py-2 text-sm {% if page == 'harvest' %}bg-brand-500 text-white{% else %}text-slate-300 hover:bg-slate-800 hover:text-white{% endif %}" data-submenu-link>Colheita</a>
-                            <a href="/producao/comercializacao" class="sidebar-submenu-link block rounded-xl px-3 py-2 text-sm {% if page == 'commercialization' %}bg-brand-500 text-white{% else %}text-slate-300 hover:bg-slate-800 hover:text-white{% endif %}" data-submenu-link>Comercialização</a>
+                            <a href="{{ module_href('/producao') }}" class="sidebar-submenu-link block rounded-xl px-3 py-2 text-sm {% if page == 'harvest' %}bg-brand-500 text-white{% else %}text-slate-300 hover:bg-slate-800 hover:text-white{% endif %}" data-submenu-link>Colheita{{ module_lock('/producao') }}</a>
+                            <a href="{{ module_href('/producao/comercializacao') }}" class="sidebar-submenu-link block rounded-xl px-3 py-2 text-sm {% if page == 'commercialization' %}bg-brand-500 text-white{% else %}text-slate-300 hover:bg-slate-800 hover:text-white{% endif %}" data-submenu-link>Comercialização{{ module_lock('/producao/comercializacao') }}</a>
                         </div>
                     </div>
                     {% endif %}
@@ -286,9 +286,9 @@
                     ] %}
                     {% for key, href, label, mvk in nav %}
                     {% if menu_visibility.get(mvk) %}
-                    <a href="{{ href }}" class="erp-sidebar-link flex items-center justify-start gap-3 rounded-2xl px-4 py-3 transition-all duration-300 ease-in-out {% if page == key %}bg-brand-500 text-white shadow-lg{% else %}text-slate-300 hover:bg-slate-900 hover:text-white{% endif %}">
+                    <a href="{{ module_href(href) }}" class="erp-sidebar-link flex items-center justify-start gap-3 rounded-2xl px-4 py-3 transition-all duration-300 ease-in-out {% if page == key %}bg-brand-500 text-white shadow-lg{% else %}text-slate-300 hover:bg-slate-900 hover:text-white{% endif %}">
                         <span class="erp-sidebar-icon">{{ nav_icon(key) }}</span>
-                        <span class="erp-sidebar-label">{{ label }}</span>
+                        <span class="erp-sidebar-label">{{ label }}{{ module_lock(href) }}</span>
                     </a>
                     {% endif %}
                     {% endfor %}
@@ -321,24 +321,24 @@
                         </button>
                         <div id="config-menu" class="sidebar-submenu-panel {% if page not in config_pages %}hidden {% endif %}space-y-1 px-3 pb-3" data-submenu-panel>
                             {% if menu_visibility.get('users') %}
-                            <a href="/usuarios" class="sidebar-submenu-link block rounded-xl px-3 py-2 text-sm {% if page == 'users' %}bg-brand-500 text-white{% else %}text-slate-300 hover:bg-slate-800 hover:text-white{% endif %}" data-submenu-link>Usuarios</a>
+                            <a href="{{ module_href('/usuarios') }}" class="sidebar-submenu-link block rounded-xl px-3 py-2 text-sm {% if page == 'users' %}bg-brand-500 text-white{% else %}text-slate-300 hover:bg-slate-800 hover:text-white{% endif %}" data-submenu-link>Usuarios{{ module_lock('/usuarios') }}</a>
                             {% endif %}
                             {% if menu_visibility.get('organizations') %}
-                            <a href="/organizacoes" class="sidebar-submenu-link block rounded-xl px-3 py-2 text-sm {% if page == 'organizations' %}bg-brand-500 text-white{% else %}text-slate-300 hover:bg-slate-800 hover:text-white{% endif %}" data-submenu-link>Organizações</a>
-                            <a href="/assinaturas" class="sidebar-submenu-link block rounded-xl px-3 py-2 text-sm {% if page == 'subscriptions' %}bg-brand-500 text-white{% else %}text-slate-300 hover:bg-slate-800 hover:text-white{% endif %}" data-submenu-link>Assinaturas</a>
-                            <a href="/planos" class="sidebar-submenu-link block rounded-xl px-3 py-2 text-sm {% if page == 'subscription_plans' %}bg-brand-500 text-white{% else %}text-slate-300 hover:bg-slate-800 hover:text-white{% endif %}" data-submenu-link>Planos</a>
+                            <a href="{{ module_href('/organizacoes') }}" class="sidebar-submenu-link block rounded-xl px-3 py-2 text-sm {% if page == 'organizations' %}bg-brand-500 text-white{% else %}text-slate-300 hover:bg-slate-800 hover:text-white{% endif %}" data-submenu-link>Organizações{{ module_lock('/organizacoes') }}</a>
+                            <a href="{{ module_href('/assinaturas') }}" class="sidebar-submenu-link block rounded-xl px-3 py-2 text-sm {% if page == 'subscriptions' %}bg-brand-500 text-white{% else %}text-slate-300 hover:bg-slate-800 hover:text-white{% endif %}" data-submenu-link>Assinaturas{{ module_lock('/assinaturas') }}</a>
+                            <a href="{{ module_href('/planos') }}" class="sidebar-submenu-link block rounded-xl px-3 py-2 text-sm {% if page == 'subscription_plans' %}bg-brand-500 text-white{% else %}text-slate-300 hover:bg-slate-800 hover:text-white{% endif %}" data-submenu-link>Planos{{ module_lock('/planos') }}</a>
                             {% endif %}
                             {% if menu_visibility.get('audit_logs') %}
-                            <a href="/auditoria" class="sidebar-submenu-link block rounded-xl px-3 py-2 text-sm {% if page == 'audit_logs' %}bg-brand-500 text-white{% else %}text-slate-300 hover:bg-slate-800 hover:text-white{% endif %}" data-submenu-link>Auditoria</a>
+                            <a href="{{ module_href('/auditoria') }}" class="sidebar-submenu-link block rounded-xl px-3 py-2 text-sm {% if page == 'audit_logs' %}bg-brand-500 text-white{% else %}text-slate-300 hover:bg-slate-800 hover:text-white{% endif %}" data-submenu-link>Auditoria{{ module_lock('/auditoria') }}</a>
                             {% endif %}
                             {% if menu_visibility.get('automated_tests') %}
-                            <a href="/qualidade/testes-automatizados" class="sidebar-submenu-link block rounded-xl px-3 py-2 text-sm {% if page == 'automated_tests' %}bg-brand-500 text-white{% else %}text-slate-300 hover:bg-slate-800 hover:text-white{% endif %}" data-submenu-link>Testes automatizados</a>
+                            <a href="{{ module_href('/qualidade/testes-automatizados') }}" class="sidebar-submenu-link block rounded-xl px-3 py-2 text-sm {% if page == 'automated_tests' %}bg-brand-500 text-white{% else %}text-slate-300 hover:bg-slate-800 hover:text-white{% endif %}" data-submenu-link>Testes automatizados{{ module_lock('/qualidade/testes-automatizados') }}</a>
                             {% endif %}
                             {% if menu_visibility.get('backups') %}
-                            <a href="/backups" class="sidebar-submenu-link block rounded-xl px-3 py-2 text-sm {% if page == 'backups' %}bg-brand-500 text-white{% else %}text-slate-300 hover:bg-slate-800 hover:text-white{% endif %}" data-submenu-link>Backups</a>
+                            <a href="{{ module_href('/backups') }}" class="sidebar-submenu-link block rounded-xl px-3 py-2 text-sm {% if page == 'backups' %}bg-brand-500 text-white{% else %}text-slate-300 hover:bg-slate-800 hover:text-white{% endif %}" data-submenu-link>Backups{{ module_lock('/backups') }}</a>
                             {% endif %}
                             {% if menu_visibility.get('docs') %}
-                            <a href="/docs" target="_blank" class="sidebar-submenu-link block rounded-xl px-3 py-2 text-sm text-slate-300 hover:bg-slate-800 hover:text-white" data-submenu-link>API / Docs</a>
+                            <a href="{{ module_href('/docs') }}" target="_blank" class="sidebar-submenu-link block rounded-xl px-3 py-2 text-sm text-slate-300 hover:bg-slate-800 hover:text-white" data-submenu-link>API / Docs{{ module_lock('/docs') }}</a>
                             {% endif %}
                         </div>
                     </div>
@@ -489,6 +489,7 @@
                 </form>
             </div>
             <div class="mx-auto w-full min-w-0 max-w-7xl flex-1 px-4 py-6 sm:px-6 md:py-8">
+                {% include "partials/billing_banner.html" %}
                 {% if flash %}
                 <div class="mb-6 rounded-2xl px-4 py-3 text-sm font-medium {% if flash.kind == 'success' %}border border-emerald-200 bg-emerald-50 text-emerald-700{% else %}border border-rose-200 bg-rose-50 text-rose-700{% endif %}">
                     {{ flash.message }}

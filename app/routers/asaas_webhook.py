@@ -14,6 +14,7 @@ from app.db.session import get_db
 from app.services.organization_subscription_sync import persist_organization_webhook
 from app.models import OrganizationBilling, OrganizationCardMigration
 from app.services.subscription_reconciliation import close_card_checkout
+from app.services.entitlements import invalidate_entitlements
 from app.services.asaas_environment import asaas_env_name
 
 logger = logging.getLogger(__name__)
@@ -73,6 +74,7 @@ async def asaas_webhook(request: Request, db: Session = Depends(get_db)):
         # Eventos que nao pertencem a uma assinatura de organizacao sao apenas confirmados.
         persist_organization_webhook(db, body)
         db.commit()
+        invalidate_entitlements()
     except Exception:
         db.rollback()
         logger.exception("Falha ao persistir webhook Asaas event=%s", event)

@@ -1,0 +1,16 @@
+{# Aviso de cobranca no topo de todas as paginas da organizacao. #}
+{% set ent = plan_entitlements %}
+{% if ent and not ent.exempt and page not in ['my_subscription', 'plan_upgrade'] %}
+{% set can_pay = menu_visibility and menu_visibility.get('finance') %}
+{% if ent.billing_state == 'restrito' %}
+<div class="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-900" role="alert" data-billing-banner="restrito">
+    <p><strong>Modo somente leitura.</strong> Há pagamento em atraso há {{ ent.days_overdue }} dia(s) (R$ {{ ent.overdue_amount|decimal_br }}). Você pode consultar e exportar, mas não cadastrar nem editar até regularizar.</p>
+    {% if can_pay %}<a href="/minha-assinatura" class="rounded-xl bg-rose-600 px-4 py-2 text-sm font-semibold text-white hover:bg-rose-700">Regularizar pagamento</a>{% else %}<span class="text-xs">Avise o responsável financeiro da sua organização.</span>{% endif %}
+</div>
+{% elif ent.billing_state == 'aviso' %}
+<div class="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900" role="status" data-billing-banner="aviso">
+    <p><strong>Pagamento em atraso há {{ ent.days_overdue }} dia(s).</strong> Regularize até {{ ent.regularize_until.strftime('%d/%m/%Y') if ent.regularize_until else 'o fim do prazo' }} para evitar o modo somente leitura.</p>
+    {% if can_pay %}<a href="/minha-assinatura" class="rounded-xl bg-amber-600 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-700">Pagar agora</a>{% else %}<span class="text-xs">Avise o responsável financeiro da sua organização.</span>{% endif %}
+</div>
+{% endif %}
+{% endif %}
