@@ -14638,6 +14638,7 @@ def sector_costs_page(
         season_id=selected_season.id if selected_season else None,
         start_date=selected_season.start_date if selected_season else None,
         end_date=selected_season.end_date if selected_season else None,
+        linked_plot_ids={plot.id for plot in selected_season.plots} if selected_season and selected_season.plots else None,
     )
     return templates.TemplateResponse(
         "sector_costs.html",
@@ -14650,6 +14651,7 @@ def sector_costs_page(
             title="Custos por Setor",
             seasons=seasons,
             selected_season=selected_season,
+            season_without_linked_plots=bool(selected_season and not selected_season.plots),
             costs=costs,
         ),
     )

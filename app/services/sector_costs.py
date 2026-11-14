@@ -35,6 +35,7 @@ def build_sector_cost_context(
     season_id: int | None = None,
     start_date: date | None = None,
     end_date: date | None = None,
+    linked_plot_ids: set[int] | None = None,
 ) -> dict:
     """Calcula somente custos efetivamente vinculados a um setor.
 
@@ -125,11 +126,18 @@ def build_sector_cost_context(
         )
 
     sector_rows.sort(key=lambda row: (-row["total_cost"], (row["plot"].name or "").lower()))
+    divergent_rows = []
+    if linked_plot_ids is not None:
+        divergent_rows = [row for row in sector_rows if row["plot"].id not in linked_plot_ids and row["total_cost"] != 0]
+        sector_rows = [row for row in sector_rows if row["plot"].id in linked_plot_ids]
     allocated_total = round(sum(row["total_cost"] for row in sector_rows), 2)
+    divergent_total = round(sum(row["total_cost"] for row in divergent_rows), 2)
     total_area = round(sum(row["area_hectares"] for row in sector_rows), 2)
-    total_cost = round(allocated_total + unallocated_cost, 2)
+    total_cost = round(allocated_total + divergent_total + unallocated_cost, 2)
     return {
         "rows": sector_rows,
+        "divergent_rows": divergent_rows,
+        "divergent_total": divergent_total,
         "allocated_total": allocated_total,
         "unallocated_total": round(unallocated_cost, 2),
         "unallocated_movements": unallocated_movements,
