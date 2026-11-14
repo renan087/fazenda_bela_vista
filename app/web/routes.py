@@ -2131,9 +2131,21 @@ def _plot_matches_scope(plot: Plot | None, scope: dict) -> bool:
     if scope.get("active_farm_id") and plot.farm_id != scope["active_farm_id"]:
         return False
     active_season = scope.get("active_season")
-    if active_season and active_season.variety_id and plot.variety_id != active_season.variety_id:
+    if active_season and active_season.variety_id and plot.variety_id != active_season.variety_id and not any(item.id == plot.id for item in active_season.plots):
         return False
     return True
+
+
+def _season_launch_plots(plots: list[Plot], scope: dict) -> list[Plot]:
+    season = scope.get("active_season")
+    if not season or not season.plots:
+        return plots
+    return [plot for plot in season.plots if plot.farm_id == scope.get("active_farm_id")]
+
+
+def _plot_allowed_for_season_launch(plot: Plot, scope: dict) -> bool:
+    season = scope.get("active_season")
+    return not season or not season.plots or any(item.id == plot.id for item in season.plots)
 
 
 def _resolve_plot_in_scope(
@@ -14658,8 +14670,9 @@ def agricultural_operations_page(
     repo = _repository(db)
     scope = _global_scope_context(request, repo, user)
     active_farm = scope.get("active_farm")
-    plots = repo.list_plots(farm_ids=[active_farm.id]) if active_farm else []
-    operations = repo.list_agricultural_operations({plot.id for plot in plots}) if plots else []
+    all_plots = repo.list_plots(farm_ids=[active_farm.id]) if active_farm else []
+    operations = repo.list_agricultural_operations({plot.id for plot in all_plots}) if all_plots else []
+    plots = _season_launch_plots(all_plots, scope)
     selected_plot_id = _int_or_none(plot_id_filter)
     selected_operation_type = _clean_text(operation_type_filter)
     try:
@@ -14679,6 +14692,8 @@ def agricultural_operations_page(
     edit_operation = repo.get_agricultural_operation(_int_or_none(edit_id)) if _int_or_none(edit_id) else None
     if edit_operation and not _plot_matches_scope(edit_operation.plot, scope):
         edit_operation = None
+    if edit_operation and edit_operation.plot and edit_operation.plot not in plots:
+        plots = [*plots, edit_operation.plot]
     return templates.TemplateResponse(
         "agricultural_operations.html",
         _base_context(
@@ -14727,6 +14742,9 @@ def create_agricultural_operation_action(
     plot = repo.get_plot(plot_id)
     if not plot or not _plot_matches_scope(plot, scope):
         _flash(request, "error", "Selecione um setor pertencente ao contexto ativo.")
+        return _redirect("/operacoes")
+    if not _plot_allowed_for_season_launch(plot, scope):
+        _flash(request, "error", "O setor selecionado não está vinculado à safra ativa.")
         return _redirect("/operacoes")
     operation_map = {key: (label, category) for key, label, category in AGRICULTURAL_OPERATION_TYPES}
     if operation_type not in operation_map:
@@ -14926,6 +14944,9 @@ def update_agricultural_operation_action(
     plot = repo.get_plot(plot_id)
     if not plot or not _plot_matches_scope(plot, scope):
         _flash(request, "error", "Selecione um setor pertencente ao contexto ativo.")
+        return _redirect(f"/operacoes?edit_id={operation_id}")
+    if plot.id != operation.plot_id and not _plot_allowed_for_season_launch(plot, scope):
+        _flash(request, "error", "O setor selecionado não está vinculado à safra ativa.")
         return _redirect(f"/operacoes?edit_id={operation_id}")
     operation_map = {key: (label, category) for key, label, category in AGRICULTURAL_OPERATION_TYPES}
     if operation_type not in operation_map:
@@ -16209,8 +16230,13 @@ def fertilization_page(
         else ""
     )
     plots = repo.list_plots(farm_ids=farm_ids, variety_ids=variety_ids)
+    linked_plots = _season_launch_plots(plots, scope)
+    plots = list({plot.id: plot for plot in [*plots, *linked_plots]}.values())
     plot_ids = {plot.id for plot in plots}
     edit_fertilization = repo.get_fertilization(edit_id) if edit_id else None
+    launch_plots = _season_launch_plots(plots, scope)
+    if edit_fertilization and edit_fertilization.plot and edit_fertilization.plot in plots and edit_fertilization.plot not in launch_plots:
+        launch_plots = [*launch_plots, edit_fertilization.plot]
     recommendation_groups: dict[str, list[dict]] = {}
     consolidated_inputs = repo.list_input_catalog(item_type="insumo_agricola")
     purchased_inputs = repo.list_purchased_inputs(include_stock_adjustments=True)
@@ -16264,6 +16290,7 @@ def fertilization_page(
             "fertilization",
             _repo=repo,
             plots=plots,
+            launch_plots=launch_plots,
             inputs_catalog=consolidated_inputs,
             input_stock=input_stock,
             fertilizations=fertilizations_pagination["items"],
@@ -16310,6 +16337,9 @@ async def create_fertilization_action(
         plot, _, denied = _resolve_plot_in_scope(request, repo, plot_id, "/fertilizacao")
         if denied:
             return denied
+        if not _plot_allowed_for_season_launch(plot, scope):
+            _flash(request, "error", "O setor selecionado não está vinculado à safra ativa.")
+            return _redirect("/fertilizacao")
         selected_plots.append(plot)
     items = _parse_fertilization_items(form)
     if not items:
@@ -16364,6 +16394,9 @@ async def update_fertilization_action(
     if not _plot_matches_scope(fertilization.plot, scope):
         _flash(request, "error", "Este registro de fertilizacao nao pertence ao contexto ativo.")
         return _redirect_for_request(request, "/fertilizacao")
+    if plot.id != fertilization.plot_id and not _plot_allowed_for_season_launch(plot, scope):
+        _flash(request, "error", "O setor selecionado não está vinculado à safra ativa.")
+        return _redirect_for_request(request, "/fertilizacao", edit_id=record_id)
     items = _parse_fertilization_items(form)
     if not items:
         _flash(request, "error", "Adicione ao menos um insumo na atividade.")
@@ -16632,8 +16665,13 @@ def fertilization_schedules_page(
         else ""
     )
     plots = repo.list_plots(farm_ids=farm_ids, variety_ids=variety_ids)
+    linked_plots = _season_launch_plots(plots, scope)
+    plots = list({plot.id: plot for plot in [*plots, *linked_plots]}.values())
     plot_ids = {plot.id for plot in plots}
     edit_schedule = repo.get_fertilization_schedule(edit_id) if edit_id else None
+    launch_plots = _season_launch_plots(plots, scope)
+    if edit_schedule and edit_schedule.plot and edit_schedule.plot in plots and edit_schedule.plot not in launch_plots:
+        launch_plots = [*launch_plots, edit_schedule.plot]
     schedules = repo.list_fertilization_schedules_for_scope(plot_ids, start_date, end_date)
     schedule_filter_clear_url = _url_with_query(
         request,
@@ -16732,6 +16770,7 @@ def fertilization_schedules_page(
             _repo=repo,
             title="Agendamento de Fertilizacao",
             plots=plots,
+            launch_plots=launch_plots,
             inputs_catalog=consolidated_inputs,
             input_stock=input_stock,
             active_schedules=active_schedules_pagination["items"],
@@ -17007,7 +17046,7 @@ async def create_fertilization_schedule_action(
     farm_ids, variety_ids = _scoped_plot_filters(request, scope["active_season"])
     allowed_plots = {
         plot.id: plot
-        for plot in repo.list_plots(farm_ids=farm_ids, variety_ids=variety_ids)
+        for plot in _season_launch_plots(repo.list_plots(farm_ids=farm_ids, variety_ids=variety_ids), scope)
     }
     selected_plot_ids = []
     for raw_plot_id in form.getlist("plot_id"):
@@ -17015,6 +17054,9 @@ async def create_fertilization_schedule_action(
         if parsed_plot_id and parsed_plot_id not in selected_plot_ids:
             selected_plot_ids.append(parsed_plot_id)
     selected_plots = [allowed_plots[plot_id] for plot_id in selected_plot_ids if plot_id in allowed_plots]
+    if len(selected_plots) != len(selected_plot_ids) or any(not _plot_allowed_for_season_launch(plot, scope) for plot in selected_plots):
+        _flash(request, "error", "Selecione apenas setores vinculados à safra ativa.")
+        return _redirect("/fertilizacao/agendamentos")
     items = _parse_recommendation_items(form)
     if not selected_plots or not items:
         _flash(request, "error", "Selecione ao menos um setor e adicione ao menos um insumo.")
@@ -17125,6 +17167,9 @@ async def update_fertilization_schedule_action(
         return _redirect(target_url)
     if not _plot_matches_scope(schedule.plot, scope):
         _flash(request, "error", "Este agendamento nao pertence ao contexto ativo.")
+        return _redirect(target_url)
+    if plot.id != schedule.plot_id and not _plot_allowed_for_season_launch(plot, scope):
+        _flash(request, "error", "O setor selecionado não está vinculado à safra ativa.")
         return _redirect(target_url)
     items = _parse_recommendation_items(form)
     if not items:

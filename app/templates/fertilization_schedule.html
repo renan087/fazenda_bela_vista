@@ -393,7 +393,7 @@
                     <label>
                         <span class="mb-2 block text-sm font-medium">Setor</span>
                         <select name="plot_id" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required>
-                            {% for plot in plots %}
+                            {% for plot in launch_plots %}
                             <option value="{{ plot.id }}" {% if edit_schedule.plot_id == plot.id %}selected{% endif %}>{{ plot.name }}{% if plot.farm %} • {{ plot.farm.name }}{% endif %}</option>
                             {% endfor %}
                         </select>
@@ -403,7 +403,7 @@
                         <span class="mb-2 block text-sm font-medium">Setores</span>
                         <select class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" data-schedule-plot-select>
                             <option value="">Selecione um setor</option>
-                            {% for plot in plots %}
+                            {% for plot in launch_plots %}
                             <option value="{{ plot.id }}" data-plot-name="{{ plot.name }}" data-plot-farm="{{ plot.farm.name if plot.farm else 'Sem fazenda vinculada' }}">{{ plot.name }}{% if plot.farm %} • {{ plot.farm.name }}{% endif %}</option>
                             {% endfor %}
                         </select>
