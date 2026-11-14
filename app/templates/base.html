@@ -297,7 +297,7 @@
                         {% set config_pages = config_pages + ['users'] %}
                     {% endif %}
                     {% if menu_visibility.get('organizations') %}
-                        {% set config_pages = config_pages + ['organizations', 'subscriptions'] %}
+                        {% set config_pages = config_pages + ['organizations', 'subscriptions', 'subscription_plans'] %}
                     {% endif %}
                     {% if menu_visibility.get('audit_logs') %}
                         {% set config_pages = config_pages + ['audit_logs'] %}
@@ -326,6 +326,7 @@
                             {% if menu_visibility.get('organizations') %}
                             <a href="/organizacoes" class="sidebar-submenu-link block rounded-xl px-3 py-2 text-sm {% if page == 'organizations' %}bg-brand-500 text-white{% else %}text-slate-300 hover:bg-slate-800 hover:text-white{% endif %}" data-submenu-link>Organizações</a>
                             <a href="/assinaturas" class="sidebar-submenu-link block rounded-xl px-3 py-2 text-sm {% if page == 'subscriptions' %}bg-brand-500 text-white{% else %}text-slate-300 hover:bg-slate-800 hover:text-white{% endif %}" data-submenu-link>Assinaturas</a>
+                            <a href="/planos" class="sidebar-submenu-link block rounded-xl px-3 py-2 text-sm {% if page == 'subscription_plans' %}bg-brand-500 text-white{% else %}text-slate-300 hover:bg-slate-800 hover:text-white{% endif %}" data-submenu-link>Planos</a>
                             {% endif %}
                             {% if menu_visibility.get('audit_logs') %}
                             <a href="/auditoria" class="sidebar-submenu-link block rounded-xl px-3 py-2 text-sm {% if page == 'audit_logs' %}bg-brand-500 text-white{% else %}text-slate-300 hover:bg-slate-800 hover:text-white{% endif %}" data-submenu-link>Auditoria</a>

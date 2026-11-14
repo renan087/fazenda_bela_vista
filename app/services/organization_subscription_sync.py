@@ -32,7 +32,7 @@ def apply_subscription_details(subscription, data):
             subscription.amount = amount.quantize(Decimal('0.01'))
         except (InvalidOperation, ValueError):
             raise ValueError('Valor da assinatura inválido')
-    if data.get('cycle') in {'MONTHLY', 'YEARLY'}:
+    if data.get('cycle') in {'MONTHLY', 'QUARTERLY', 'SEMIANNUALLY', 'YEARLY'}:
         subscription.cycle = data['cycle']
     if data.get('billingType') in {'PIX', 'BOLETO', 'CREDIT_CARD'}:
         subscription.billing_type = data['billingType']

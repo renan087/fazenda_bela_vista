@@ -12,6 +12,7 @@ from decimal import Decimal
 
 from sqlalchemy.orm import Session
 
+from app.services.subscription_plans import cycle_months
 from app.models import (
     Organization,
     OrganizationBilling,
@@ -64,9 +65,7 @@ class SubscriptionPortfolio:
 
 def monthly_amount(subscription: OrganizationSubscription) -> Decimal:
     amount = Decimal(subscription.amount or 0)
-    if subscription.cycle == "YEARLY":
-        return (amount / 12).quantize(Decimal("0.01"))
-    return amount.quantize(Decimal("0.01"))
+    return (amount / cycle_months(subscription.cycle)).quantize(Decimal("0.01"))
 
 
 def _is_overdue(payment: OrganizationSubscriptionPayment, today: date) -> bool:

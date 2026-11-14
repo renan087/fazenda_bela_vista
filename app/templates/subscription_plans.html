@@ -1,0 +1,136 @@
+{% extends "base.html" %}
+{% macro plan_fields(plan=None, locked=False) %}
+    {% set lock_attr = 'disabled' if locked else '' %}
+    <div class="grid gap-4 md:grid-cols-2">
+        <label class="md:col-span-2"><span class="mb-1 block text-sm font-medium text-slate-700">Nome do plano</span><input name="name" maxlength="120" required value="{{ plan.name if plan else '' }}" {{ lock_attr }} class="min-h-[3rem] w-full rounded-xl border-slate-200 bg-slate-50 disabled:text-slate-500"></label>
+        <label class="md:col-span-2"><span class="mb-1 block text-sm font-medium text-slate-700">Descrição para o cliente</span><textarea name="description" maxlength="500" rows="2" class="w-full rounded-xl border-slate-200 bg-slate-50" placeholder="Ex.: Para propriedades de até 50 ha que querem organizar a lavoura.">{{ plan.description if plan and plan.description else '' }}</textarea></label>
+    </div>
+    <fieldset class="mt-4">
+        <legend class="text-sm font-semibold text-slate-800">Preço por periodicidade (R$)</legend>
+        <p class="text-xs text-slate-500">Deixe em branco a periodicidade que não for oferecida. Planos semestrais e anuais combinam com o caixa da safra.</p>
+        <div class="mt-2 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            {% for code, cycle_info in subscription_cycles.items() %}
+            {% set price = plan_prices_of(plan).get(code) if plan else none %}
+            <label><span class="mb-1 block text-xs font-medium text-slate-600">{{ cycle_info[0] }}</span><input name="{{ cycle_info[2] }}" inputmode="decimal" placeholder="Ex.: 149,90" value="{{ price|decimal_br if price is not none else '' }}" {{ lock_attr }} class="min-h-[3rem] w-full rounded-xl border-slate-200 bg-slate-50 disabled:text-slate-500"></label>
+            {% endfor %}
+        </div>
+    </fieldset>
+    <fieldset class="mt-4">
+        <legend class="text-sm font-semibold text-slate-800">Limites</legend>
+        <p class="text-xs text-slate-500">Em branco = ilimitado. Os limites ainda não bloqueiam cadastros; isso virá na próxima etapa.</p>
+        <div class="mt-2 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <label><span class="mb-1 block text-xs font-medium text-slate-600">Fazendas</span><input name="max_farms" inputmode="numeric" value="{{ plan.max_farms if plan and plan.max_farms else '' }}" {{ lock_attr }} class="min-h-[3rem] w-full rounded-xl border-slate-200 bg-slate-50 disabled:text-slate-500"></label>
+            <label><span class="mb-1 block text-xs font-medium text-slate-600">Usuários</span><input name="max_users" inputmode="numeric" value="{{ plan.max_users if plan and plan.max_users else '' }}" {{ lock_attr }} class="min-h-[3rem] w-full rounded-xl border-slate-200 bg-slate-50 disabled:text-slate-500"></label>
+            <label><span class="mb-1 block text-xs font-medium text-slate-600">Hectares</span><input name="max_hectares" inputmode="decimal" value="{{ plan.max_hectares|decimal_br if plan and plan.max_hectares else '' }}" {{ lock_attr }} class="min-h-[3rem] w-full rounded-xl border-slate-200 bg-slate-50 disabled:text-slate-500"></label>
+            <label><span class="mb-1 block text-xs font-medium text-slate-600">Teste grátis (dias)</span><input name="trial_days" inputmode="numeric" value="{{ plan.trial_days if plan and plan.trial_days else '' }}" {{ lock_attr }} class="min-h-[3rem] w-full rounded-xl border-slate-200 bg-slate-50 disabled:text-slate-500"></label>
+        </div>
+    </fieldset>
+    <fieldset class="mt-4">
+        <legend class="text-sm font-semibold text-slate-800">Módulos incluídos</legend>
+        <p class="text-xs text-slate-500">Dashboard e perfil fazem parte de todos os planos. A liberação por módulo será aplicada numa próxima etapa.</p>
+        {% set selected_modules = plan_modules_of(plan) if plan else [] %}
+        <div class="mt-2 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+            {% for code, label in plan_modules_catalog %}
+            <label class="flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-700"><input type="checkbox" name="modules" value="{{ code }}" {% if code in selected_modules %}checked{% endif %} {{ lock_attr }} class="rounded border-slate-300 text-brand-500">{{ label }}</label>
+            {% endfor %}
+        </div>
+    </fieldset>
+    <div class="mt-4 grid gap-3 sm:grid-cols-2">
+        <label><span class="mb-1 block text-xs font-medium text-slate-600">Ordem de exibição</span><input name="display_order" inputmode="numeric" value="{{ plan.display_order if plan else '' }}" class="min-h-[3rem] w-full rounded-xl border-slate-200 bg-slate-50"></label>
+        <label class="flex items-center gap-2 self-end rounded-xl border border-slate-200 px-3 py-3 text-sm text-slate-700"><input type="checkbox" name="is_featured" value="1" {% if plan and plan.is_featured %}checked{% endif %} class="rounded border-slate-300 text-brand-500">Destacar como “Mais escolhido”</label>
+    </div>
+{% endmacro %}
+{% block content %}
+{% set status_styles = {'ativo': 'bg-emerald-50 text-emerald-800', 'rascunho': 'bg-amber-50 text-amber-800', 'arquivado': 'bg-slate-100 text-slate-600'} %}
+<div class="stock-page-shell space-y-6">
+    <section class="stock-page-header rounded-[2rem] p-5 shadow-panel" data-sector-costs-header>
+        <div class="flex flex-wrap items-start justify-between gap-4">
+            <div class="min-w-0 stock-page-header-intro" data-stock-header-intro>
+                <div class="stock-page-header-intro-inner">
+                    <h2 class="stock-page-card-title">Planos de assinatura</h2>
+                    <p class="stock-page-card-subtitle" data-sector-costs-description>Catálogo usado ao criar assinaturas. Assinantes mantêm as condições da versão contratada.</p>
+                </div>
+            </div>
+            <a href="/assinaturas" class="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50">Ver assinaturas</a>
+        </div>
+    </section>
+
+    <section class="stock-panel rounded-[2rem] border border-slate-200 bg-white p-5 shadow-panel sm:p-6" data-stock-fade-panel>
+        <details {% if not plan_families %}open{% endif %}>
+            <summary class="cursor-pointer list-none">
+                <div class="flex flex-wrap items-center justify-between gap-3"><div><p class="text-xs font-semibold uppercase tracking-[0.25em] text-slate-400">Catálogo</p><h3 class="mt-2 text-xl font-semibold text-slate-900">Novo plano</h3><p class="mt-1 text-sm text-slate-500">O plano nasce como rascunho e só aparece nas assinaturas depois de ativado.</p></div><span class="rounded-xl bg-brand-500 px-4 py-3 text-sm font-semibold text-white">Criar plano</span></div>
+            </summary>
+            <form method="post" action="/planos" class="mt-5">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                {{ plan_fields() }}
+                <div class="mt-5 flex justify-end"><button class="rounded-xl bg-brand-500 px-5 py-3 text-sm font-semibold text-white hover:bg-brand-700">Salvar rascunho</button></div>
+            </form>
+        </details>
+    </section>
+
+    {% for versions in plan_families %}
+    {% set head = versions[0] %}
+    <section class="stock-panel rounded-[2rem] border border-slate-200 bg-white p-5 shadow-panel sm:p-6" data-stock-fade-panel>
+        <div class="flex flex-wrap items-start justify-between gap-3">
+            <div class="min-w-0"><p class="text-xs font-semibold uppercase tracking-[0.25em] text-slate-400">Plano · {{ head.code }}</p><h3 class="mt-2 text-xl font-semibold text-slate-900">{{ head.name }}{% if head.is_featured %} <span class="ml-1 rounded-full bg-sky-50 px-2 py-0.5 align-middle text-xs font-semibold text-sky-700">Mais escolhido</span>{% endif %}</h3>{% if head.description %}<p class="mt-1 text-sm text-slate-500">{{ head.description }}</p>{% endif %}</div>
+            <p class="text-sm text-slate-500">{{ versions|length }} versão(ões)</p>
+        </div>
+        <div class="mt-4 space-y-3">
+            {% for plan in versions %}
+            {% set stats = plan_stats[plan.id] %}
+            {% set locked = stats.total > 0 %}
+            <article id="plano-{{ plan.id }}" class="scroll-mt-28 rounded-2xl border {% if plan.status == 'ativo' %}border-emerald-200{% else %}border-slate-200{% endif %} p-4">
+                <div class="flex flex-wrap items-center justify-between gap-2">
+                    <p class="font-semibold text-slate-900">Versão {{ plan.version }} <span class="ml-2 whitespace-nowrap rounded-full px-3 py-1 text-xs font-semibold {{ status_styles[plan.status] }}">{{ plan_status_labels[plan.status] }}</span></p>
+                    <p class="text-sm text-slate-600">{{ stats.current }} assinatura(s) atual(is){% if stats.mrr %} · R$ {{ stats.mrr|decimal_br }}/mês{% endif %}</p>
+                </div>
+                <div class="mt-3 flex flex-wrap gap-2">
+                    {% for code, price in plan_prices_of(plan).items() %}<span class="rounded-xl bg-slate-50 px-3 py-2 text-sm text-slate-800"><strong>R$ {{ price|decimal_br }}</strong> / {{ cycle_unit_labels[code] }}</span>{% endfor %}
+                </div>
+                <p class="mt-3 text-sm text-slate-600">
+                    <strong>Limites:</strong> {{ plan.max_farms ~ ' fazenda(s)' if plan.max_farms else 'fazendas ilimitadas' }} · {{ plan.max_users ~ ' usuário(s)' if plan.max_users else 'usuários ilimitados' }} · {{ (plan.max_hectares|decimal_br) ~ ' ha' if plan.max_hectares else 'área ilimitada' }}{% if plan.trial_days %} · <strong>Teste grátis:</strong> {{ plan.trial_days }} dia(s){% endif %}
+                </p>
+                {% set modules = plan_modules_of(plan) %}
+                <p class="mt-1 text-sm text-slate-600"><strong>Módulos:</strong> {% if modules %}{% for code, label in plan_modules_catalog if code in modules %}{{ label }}{% if not loop.last %}, {% endif %}{% endfor %}{% else %}somente dashboard{% endif %}</p>
+                <div class="mt-4 flex flex-wrap items-center gap-2">
+                    {% if plan.status == 'rascunho' %}
+                    <form method="post" action="/planos/{{ plan.id }}/acao" onsubmit="return confirm('Ativar esta versão para novas assinaturas?{% if versions|selectattr('status', 'equalto', 'ativo')|list %} A versão ativa atual será arquivada; assinantes atuais mantêm o que contrataram.{% endif %}');"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="action" value="ativar"><button class="rounded-xl bg-brand-500 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700">Ativar</button></form>
+                    {% elif plan.status == 'ativo' %}
+                    <form method="post" action="/planos/{{ plan.id }}/acao" onsubmit="return confirm('Arquivar este plano? Ele deixa de aparecer em novas assinaturas; as existentes não mudam.');"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="action" value="arquivar"><button class="rounded-xl border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">Arquivar</button></form>
+                    {% elif plan.status == 'arquivado' %}
+                    <form method="post" action="/planos/{{ plan.id }}/acao" onsubmit="return confirm('Reativar esta versão para novas assinaturas?{% if versions|selectattr('status', 'equalto', 'ativo')|list %} A versão ativa atual será arquivada.{% endif %}');"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="action" value="ativar"><button class="rounded-xl border border-emerald-300 px-4 py-2 text-sm font-semibold text-emerald-800 hover:bg-emerald-50">Reativar</button></form>
+                    {% endif %}
+                    {% if loop.first and not (versions|selectattr('status', 'equalto', 'rascunho')|list) %}
+                    <form method="post" action="/planos/{{ plan.id }}/acao"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="action" value="nova_versao"><button class="rounded-xl border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">Criar nova versão</button></form>
+                    {% endif %}
+                    {% if plan.status == 'rascunho' and not locked %}
+                    <form method="post" action="/planos/{{ plan.id }}/acao" onsubmit="return confirm('Excluir este rascunho? Esta ação não pode ser desfeita.');"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="action" value="excluir"><button class="rounded-xl border border-rose-200 px-4 py-2 text-sm font-semibold text-rose-700 hover:bg-rose-50">Excluir rascunho</button></form>
+                    {% endif %}
+                </div>
+                {% if plan.status != 'arquivado' %}
+                <details class="mt-4 rounded-xl border border-slate-200 p-3">
+                    <summary class="cursor-pointer text-sm font-semibold text-slate-800">Editar versão {{ plan.version }}</summary>
+                    {% if locked %}<p class="mt-2 rounded-xl bg-amber-50 px-3 py-2 text-xs text-amber-900">Esta versão tem {{ stats.total }} assinatura(s). Nome, preços, limites, módulos e teste grátis estão travados; para mudá-los, crie uma nova versão.</p>{% endif %}
+                    <form method="post" action="/planos/{{ plan.id }}/editar" class="mt-3">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                        {% if locked %}
+                        {# Campos travados nao sao enviados pelo navegador; reenvia os valores atuais para a validacao. #}
+                        <input type="hidden" name="name" value="{{ plan.name }}">
+                        {% for code, cycle_info in subscription_cycles.items() %}{% set price = plan_prices_of(plan).get(code) %}<input type="hidden" name="{{ cycle_info[2] }}" value="{{ price|decimal_br if price is not none else '' }}">{% endfor %}
+                        <input type="hidden" name="max_farms" value="{{ plan.max_farms or '' }}"><input type="hidden" name="max_users" value="{{ plan.max_users or '' }}"><input type="hidden" name="max_hectares" value="{{ plan.max_hectares|decimal_br if plan.max_hectares else '' }}"><input type="hidden" name="trial_days" value="{{ plan.trial_days or '' }}">
+                        {% for code in plan_modules_of(plan) %}<input type="hidden" name="modules" value="{{ code }}">{% endfor %}
+                        {% endif %}
+                        {{ plan_fields(plan, locked) }}
+                        <div class="mt-5 flex justify-end"><button class="rounded-xl bg-brand-500 px-5 py-3 text-sm font-semibold text-white hover:bg-brand-700">Salvar alterações</button></div>
+                    </form>
+                </details>
+                {% endif %}
+            </article>
+            {% endfor %}
+        </div>
+    </section>
+    {% else %}
+    <section class="rounded-[2rem] border border-dashed border-slate-300 bg-white p-8 text-center text-sm text-slate-500">Nenhum plano cadastrado ainda. As assinaturas atuais seguem como planos personalizados.</section>
+    {% endfor %}
+</div>
+{% endblock %}

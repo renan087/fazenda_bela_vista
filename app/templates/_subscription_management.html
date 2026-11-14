@@ -24,7 +24,8 @@
                         {% if subscription %}
                         {% set charges = subscription_payments.get(subscription.id, []) %}
                         <div class="mt-3 space-y-1 text-sm text-slate-700">
-                            <p><strong>Plano:</strong> {{ subscription.plan_name }} · R$ {{ subscription.amount|decimal_br }} · {{ 'Mensal' if subscription.cycle == 'MONTHLY' else 'Anual' }}</p>
+                            <p><strong>Plano:</strong> {{ subscription.plan_name }} · R$ {{ subscription.amount|decimal_br }} · {{ subscription_cycles.get(subscription.cycle, (subscription.cycle,))[0] }}</p>
+                            <p class="text-xs text-slate-500">{% if subscription.plan %}Catálogo: <a href="/planos#plano-{{ subscription.plan.id }}" class="font-semibold text-emerald-800 hover:underline">{{ subscription.plan.name }} · versão {{ subscription.plan.version }}</a>{% if subscription.plan.status == 'arquivado' %} (arquivada; condições contratadas mantidas){% endif %}{% else %}Plano personalizado (fora do catálogo){% endif %}</p>
                             <p><strong>Forma:</strong> {{ {'PIX': 'Pix', 'BOLETO': 'Boleto', 'CREDIT_CARD': 'Cartão de crédito'}.get(subscription.billing_type, subscription.billing_type) }} · <strong>Primeiro vencimento:</strong> {{ subscription.first_due_date.strftime('%d/%m/%Y') }}</p>
                             <p><strong>Próximo vencimento:</strong> {{ subscription.next_due_date.strftime('%d/%m/%Y') if subscription.next_due_date else 'Consulte o Asaas para atualizar' }}</p>
                             <p><strong>Registro:</strong> {% if subscription.status == 'criada' %}Criada no sandbox{% elif subscription.status == 'revisao' %}Confirmação pendente: verifique no Asaas antes de outra tentativa{% elif subscription.status == 'migrando' %}Migração para cartão em andamento{% else %}Criação em andamento ou aguardando conferência{% endif %}</p>
@@ -43,7 +44,7 @@
                                 <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                                 <label><span class="mb-1 block text-sm font-medium">Plano</span><input name="plan_name" maxlength="120" value="{{ subscription.plan_name }}" required class="min-h-[3rem] w-full rounded-xl border-slate-200 bg-slate-50"></label>
                                 <label><span class="mb-1 block text-sm font-medium">Valor por período (R$)</span><input name="amount" inputmode="decimal" value="{{ subscription.amount|decimal_br }}" required class="min-h-[3rem] w-full rounded-xl border-slate-200 bg-slate-50"></label>
-                                <label><span class="mb-1 block text-sm font-medium">Periodicidade</span><select name="cycle" class="min-h-[3rem] w-full rounded-xl border-slate-200 bg-slate-50"><option value="MONTHLY" {% if subscription.cycle == 'MONTHLY' %}selected{% endif %}>Mensal</option><option value="YEARLY" {% if subscription.cycle == 'YEARLY' %}selected{% endif %}>Anual</option></select></label>
+                                <label><span class="mb-1 block text-sm font-medium">Periodicidade</span><select name="cycle" class="min-h-[3rem] w-full rounded-xl border-slate-200 bg-slate-50">{% for code, cycle_info in subscription_cycles.items() %}<option value="{{ code }}" {% if subscription.cycle == code %}selected{% endif %}>{{ cycle_info[0] }}</option>{% endfor %}</select></label>
                                 <label><span class="mb-1 block text-sm font-medium">Forma de pagamento</span><select name="billing_type" class="min-h-[3rem] w-full rounded-xl border-slate-200 bg-slate-50">{% if subscription.billing_type == 'CREDIT_CARD' %}<option value="CREDIT_CARD" selected>Cartão de crédito atual</option>{% endif %}<option value="PIX" {% if subscription.billing_type == 'PIX' %}selected{% endif %}>Pix</option><option value="BOLETO" {% if subscription.billing_type == 'BOLETO' %}selected{% endif %}>Boleto</option></select></label>
                                 <label><span class="mb-1 block text-sm font-medium">Novo próximo vencimento (opcional)</span><input type="date" name="next_due_date" class="min-h-[3rem] w-full rounded-xl border-slate-200 bg-slate-50"></label>
                                 <button class="rounded-xl bg-brand-500 px-4 py-3 text-sm font-semibold text-white">Salvar alterações no sandbox</button>
@@ -91,12 +92,53 @@
                         <p class="mt-3 text-xs leading-5 text-slate-500">Cria uma recorrência de teste no Asaas sandbox. Não altera o acesso da organização.</p>
                         <form method="post" action="/organizacoes/{{ organization.id }}/assinatura-sandbox" class="mt-4 grid gap-3" onsubmit="return confirm('Criar esta assinatura recorrente no sandbox do Asaas?');">
                             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                            <label><span class="mb-1 block text-sm font-medium">Nome do plano</span><input name="plan_name" maxlength="120" required class="min-h-[3rem] w-full rounded-xl border-slate-200 bg-slate-50"></label>
-                            <label><span class="mb-1 block text-sm font-medium">Valor por período (R$)</span><input name="amount" inputmode="decimal" placeholder="Ex.: 99,90" required class="min-h-[3rem] w-full rounded-xl border-slate-200 bg-slate-50"></label>
-                            <label><span class="mb-1 block text-sm font-medium">Periodicidade</span><select name="cycle" class="min-h-[3rem] w-full rounded-xl border-slate-200 bg-slate-50"><option value="MONTHLY">Mensal</option><option value="YEARLY">Anual</option></select></label>
+                            <label><span class="mb-1 block text-sm font-medium">Plano</span><select name="plan_id" data-plan-select class="min-h-[3rem] w-full rounded-xl border-slate-200 bg-slate-50">{% for plan in available_plans %}<option value="{{ plan.id }}" data-prices='{{ plan_prices_json(plan) }}' data-trial-days="{{ plan.trial_days }}" {% if loop.first %}selected{% endif %}>{{ plan.name }}{% if plan.version > 1 %} · v{{ plan.version }}{% endif %}</option>{% endfor %}<option value="" {% if not available_plans %}selected{% endif %}>Personalizado (fora do catálogo)</option></select>{% if not available_plans %}<span class="mt-1 block text-xs text-slate-500">Nenhum plano ativo. <a href="/planos" class="font-semibold text-emerald-800 underline">Cadastre planos</a> para padronizar valores.</span>{% endif %}</label>
+                            <label><span class="mb-1 block text-sm font-medium">Periodicidade</span><select name="cycle" data-plan-cycle class="min-h-[3rem] w-full rounded-xl border-slate-200 bg-slate-50">{% for code, cycle_info in subscription_cycles.items() %}<option value="{{ code }}">{{ cycle_info[0] }}</option>{% endfor %}</select></label>
+                            <p class="hidden rounded-xl bg-emerald-50 px-3 py-2 text-sm text-emerald-900" data-plan-price-preview></p>
+                            <div class="grid gap-3" data-custom-plan-fields>
+                                <label><span class="mb-1 block text-sm font-medium">Nome do plano personalizado</span><input name="plan_name" maxlength="120" class="min-h-[3rem] w-full rounded-xl border-slate-200 bg-slate-50"></label>
+                                <label><span class="mb-1 block text-sm font-medium">Valor por período (R$)</span><input name="amount" inputmode="decimal" placeholder="Ex.: 99,90" class="min-h-[3rem] w-full rounded-xl border-slate-200 bg-slate-50"></label>
+                            </div>
                             <label><span class="mb-1 block text-sm font-medium">Forma de pagamento</span><select name="billing_type" class="min-h-[3rem] w-full rounded-xl border-slate-200 bg-slate-50"><option value="PIX">Pix</option><option value="BOLETO">Boleto</option></select></label>
                             <label><span class="mb-1 block text-sm font-medium">Primeiro vencimento</span><input type="date" name="first_due_date" required class="min-h-[3rem] w-full rounded-xl border-slate-200 bg-slate-50"></label>
                             <button class="rounded-xl bg-brand-500 px-4 py-3 text-sm font-semibold text-white hover:bg-brand-700">Criar assinatura de teste</button>
                         </form>
                         {% else %}<p class="mt-3 text-sm text-slate-500">Vincule o cliente no Asaas sandbox para configurar uma assinatura de teste.</p>{% endif %}
                     </details>
+<script>
+(() => {
+    document.querySelectorAll('[data-plan-select]').forEach((select) => {
+        const form = select.closest('form');
+        const cycle = form.querySelector('[data-plan-cycle]');
+        const preview = form.querySelector('[data-plan-price-preview]');
+        const custom = form.querySelector('[data-custom-plan-fields]');
+        const due = form.querySelector('input[name="first_due_date"]');
+        const format = (value) => Number(value).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+        const sync = () => {
+            const option = select.selectedOptions[0];
+            const isCustom = !option || !option.value;
+            custom.classList.toggle('hidden', !isCustom);
+            custom.querySelectorAll('input').forEach((input) => { input.required = isCustom; });
+            const prices = isCustom ? null : JSON.parse(option.dataset.prices || '{}');
+            Array.from(cycle.options).forEach((item) => { item.disabled = !!prices && !(item.value in prices); });
+            if (prices && !(cycle.value in prices)) {
+                const first = Array.from(cycle.options).find((item) => !item.disabled);
+                if (first) cycle.value = first.value;
+            }
+            preview.classList.toggle('hidden', isCustom);
+            if (!isCustom) {
+                const trial = Number(option.dataset.trialDays || 0);
+                preview.textContent = `Valor do catálogo: ${format(prices[cycle.value])} por período.` + (trial ? ` Teste grátis de ${trial} dia(s): considere o primeiro vencimento após esse prazo.` : '');
+                if (trial && due && !due.value) {
+                    const date = new Date();
+                    date.setDate(date.getDate() + trial);
+                    due.value = date.toISOString().slice(0, 10);
+                }
+            }
+        };
+        select.addEventListener('change', sync);
+        cycle.addEventListener('change', sync);
+        sync();
+    });
+})();
+</script>

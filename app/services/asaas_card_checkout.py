@@ -6,7 +6,7 @@ import httpx
 
 
 def create_sandbox_card_checkout(*, api_key, customer_id, reference, plan_name, amount, cycle, next_due_date, callback_base):
-    if not api_key or not customer_id or not customer_id.startswith('cus_') or cycle not in {'MONTHLY', 'YEARLY'}:
+    if not api_key or not customer_id or not customer_id.startswith('cus_') or cycle not in {'MONTHLY', 'QUARTERLY', 'SEMIANNUALLY', 'YEARLY'}:
         return None, 'Dados de checkout inválidos.'
     if callback_base != 'https://app.sisfarm.com.br':
         return None, 'Endereço de retorno não permitido.'

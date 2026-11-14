@@ -60,6 +60,7 @@ from app.core.timezone import app_now, format_app_datetime, get_app_timezone, to
 from app.core.user_context import persist_user_context, sync_user_context_from_preferences
 from app.db.session import get_db
 from app.models import (
+    SubscriptionPlan,
     AsaasPayment,
     AgronomicProfile,
     AgriculturalOperation,
@@ -117,7 +118,26 @@ from app.services.commercial_audit import record_commercial_event
 from app.services.organization_subscription_sync import apply_subscription_details, persist_organization_webhook
 from app.services.asaas_payments import create_asaas_payment, get_asaas_payment, is_asaas_status_paid
 from app.services.agronomic_profile_suggestions import build_agronomic_profile_suggestions
-from app.services.subscription_portfolio import SITUATION_LABELS, build_subscription_portfolio
+from app.services.subscription_portfolio import SITUATION_LABELS, build_subscription_portfolio, monthly_amount
+from app.services.subscription_plans import (
+    CYCLE_UNIT_LABELS,
+    PLAN_MODULES,
+    PLAN_STATUSES,
+    SUBSCRIPTION_CYCLES,
+    PlanValidationError,
+    activate_plan,
+    active_plans,
+    archive_plan,
+    create_new_version,
+    create_plan,
+    delete_plan,
+    parse_plan_form,
+    plan_is_locked,
+    plan_modules,
+    plan_prices,
+    resolve_plan_selection,
+    update_plan,
+)
 from app.services.sector_costs import build_sector_cost_context
 from app.services.harvest_scope import harvest_matches_season
 from app.services.backup_service import (
@@ -256,6 +276,9 @@ router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")
 templates.env.filters["datetime_sp"] = format_app_datetime
 templates.env.filters["decimal_br"] = lambda value, places=2: _format_decimal_br(value, places)
+templates.env.globals["subscription_cycles"] = SUBSCRIPTION_CYCLES
+templates.env.globals["cycle_unit_labels"] = CYCLE_UNIT_LABELS
+templates.env.globals["plan_prices_json"] = lambda plan: json.dumps({cycle: str(price) for cycle, price in plan_prices(plan).items()})
 templates.env.filters["quantity_br"] = lambda value, unit=None: _format_quantity_br(value, unit)
 
 EQUIPMENT_ASSET_CATEGORY_OPTIONS = [
@@ -9230,8 +9253,139 @@ def subscriptions_page(
         request, user, csrf_token, "subscriptions", title="Assinaturas", organizations=organizations,
         organization=organization, billing=billing, subscriptions_by_organization=current,
         card_migrations_by_organization=migrations, previous_subscriptions_by_organization=previous,
-        subscription_payments=payments, portfolio=portfolio, situation_labels=SITUATION_LABELS, _repo=repo,
+        subscription_payments=payments, portfolio=portfolio, situation_labels=SITUATION_LABELS,
+        available_plans=active_plans(db), _repo=repo,
     ))
+
+
+def _plan_form_fields(form) -> dict:
+    return {
+        "name": form.get("name"), "description": form.get("description"),
+        "price_monthly": form.get("price_monthly"), "price_quarterly": form.get("price_quarterly"),
+        "price_semiannual": form.get("price_semiannual"), "price_yearly": form.get("price_yearly"),
+        "max_farms": form.get("max_farms"), "max_users": form.get("max_users"), "max_hectares": form.get("max_hectares"),
+        "modules": form.getlist("modules"), "trial_days": form.get("trial_days"),
+        "display_order": form.get("display_order"), "is_featured": form.get("is_featured"),
+    }
+
+
+@router.get("/planos")
+def subscription_plans_page(
+    request: Request, db: Session = Depends(get_db), user: User = Depends(get_current_user_web), csrf_token: str = Depends(get_csrf_token),
+):
+    denied = _require_super_admin(request, user)
+    if denied:
+        return denied
+    plans = db.query(SubscriptionPlan).order_by(SubscriptionPlan.display_order, SubscriptionPlan.name, SubscriptionPlan.code, SubscriptionPlan.version.desc()).all()
+    stats = {plan.id: {"total": 0, "current": 0, "mrr": Decimal("0.00")} for plan in plans}
+    for subscription in db.query(OrganizationSubscription).filter(OrganizationSubscription.plan_id.isnot(None)).all():
+        entry = stats.get(subscription.plan_id)
+        if not entry:
+            continue
+        entry["total"] += 1
+        if subscription.is_current:
+            entry["current"] += 1
+            if subscription.asaas_status == "ACTIVE":
+                entry["mrr"] += monthly_amount(subscription)
+    families: dict[str, list[SubscriptionPlan]] = {}
+    for plan in plans:
+        families.setdefault(plan.code, []).append(plan)
+    for versions in families.values():
+        versions.sort(key=lambda item: item.version, reverse=True)
+    status_rank = {"ativo": 0, "rascunho": 1, "arquivado": 2}
+    ordered = sorted(families.values(), key=lambda versions: (min(status_rank[item.status] for item in versions), versions[0].display_order, versions[0].name.lower()))
+    return templates.TemplateResponse("subscription_plans.html", _base_context(
+        request, user, csrf_token, "subscription_plans", title="Planos", plan_families=ordered, plan_stats=stats,
+        plan_modules_catalog=PLAN_MODULES, plan_status_labels=PLAN_STATUSES, plan_modules_of=plan_modules,
+        plan_prices_of=plan_prices, _repo=_repository(db),
+    ))
+
+
+@router.post("/planos")
+async def create_subscription_plan_action(
+    request: Request, db: Session = Depends(get_db), user: User = Depends(get_current_user_web),
+):
+    denied = _require_super_admin(request, user)
+    if denied:
+        return denied
+    form = await request.form()
+    validate_csrf(request, form.get("csrf_token"))
+    try:
+        plan = create_plan(db, parse_plan_form(**_plan_form_fields(form)))
+    except PlanValidationError as exc:
+        db.rollback()
+        _flash(request, "error", str(exc))
+        return _redirect("/planos")
+    record_commercial_event(db, user=user, organization_id=None, resource="plano", resource_id=plan.id, action="criar", outcome="success", details={"codigo": plan.code, "versao": plan.version})
+    db.commit()
+    _flash(request, "success", "Plano criado como rascunho. Revise e ative para usá-lo em novas assinaturas.")
+    return _redirect(f"/planos#plano-{plan.id}")
+
+
+@router.post("/planos/{plan_id}/editar")
+async def edit_subscription_plan_action(
+    plan_id: int, request: Request, db: Session = Depends(get_db), user: User = Depends(get_current_user_web),
+):
+    denied = _require_super_admin(request, user)
+    if denied:
+        return denied
+    form = await request.form()
+    validate_csrf(request, form.get("csrf_token"))
+    plan = db.query(SubscriptionPlan).filter_by(id=plan_id).with_for_update().first()
+    if not plan:
+        _flash(request, "error", "Plano não encontrado.")
+        return _redirect("/planos")
+    try:
+        update_plan(db, plan, parse_plan_form(**_plan_form_fields(form)))
+    except PlanValidationError as exc:
+        db.rollback()
+        _flash(request, "error", str(exc))
+        return _redirect(f"/planos#plano-{plan_id}")
+    record_commercial_event(db, user=user, organization_id=None, resource="plano", resource_id=plan.id, action="editar", outcome="success", details={"codigo": plan.code, "versao": plan.version})
+    db.commit()
+    _flash(request, "success", "Plano atualizado. Assinaturas existentes não foram alteradas.")
+    return _redirect(f"/planos#plano-{plan_id}")
+
+
+@router.post("/planos/{plan_id}/acao")
+def manage_subscription_plan_action(
+    plan_id: int, request: Request, csrf_token: str = Form(...), action: str = Form(...),
+    db: Session = Depends(get_db), user: User = Depends(get_current_user_web),
+):
+    denied = _require_super_admin(request, user)
+    if denied:
+        return denied
+    validate_csrf(request, csrf_token)
+    plan = db.query(SubscriptionPlan).filter_by(id=plan_id).with_for_update().first()
+    if not plan:
+        _flash(request, "error", "Plano não encontrado.")
+        return _redirect("/planos")
+    target_id = plan.id
+    details = {"codigo": plan.code, "versao": plan.version}
+    try:
+        if action == "nova_versao":
+            target_id = create_new_version(db, plan).id
+            message = "Nova versão criada como rascunho. Ao ativá-la, a versão atual será arquivada e os assinantes atuais mantêm o que contrataram."
+        elif action == "ativar":
+            archived = activate_plan(db, plan)
+            details["arquivadas"] = [item.version for item in archived]
+            message = "Plano ativado e disponível para novas assinaturas." + (" A versão anterior foi arquivada." if archived else "")
+        elif action == "arquivar":
+            archive_plan(plan)
+            message = "Plano arquivado. As assinaturas existentes continuam inalteradas."
+        elif action == "excluir":
+            delete_plan(db, plan)
+            message = "Rascunho excluído."
+        else:
+            raise PlanValidationError("Ação inválida.")
+    except PlanValidationError as exc:
+        db.rollback()
+        _flash(request, "error", str(exc))
+        return _redirect(f"/planos#plano-{plan_id}")
+    record_commercial_event(db, user=user, organization_id=None, resource="plano", resource_id=plan_id, action=action, outcome="success", details=details)
+    db.commit()
+    _flash(request, "success", message)
+    return _redirect("/planos" if action == "excluir" else f"/planos#plano-{target_id}")
 
 
 @router.post("/organizacoes/{organization_id}/dados-comerciais")
@@ -9374,8 +9528,8 @@ def organization_asaas_sandbox_action(
 @router.post("/organizacoes/{organization_id}/assinatura-sandbox")
 def create_organization_sandbox_subscription_action(
     organization_id: int, request: Request, csrf_token: str = Form(...),
-    plan_name: str = Form(...), amount: str = Form(...), cycle: str = Form(...),
-    billing_type: str = Form(...), first_due_date: str = Form(...),
+    plan_name: str = Form(""), amount: str = Form(""), cycle: str = Form(...),
+    billing_type: str = Form(...), first_due_date: str = Form(...), plan_id: str = Form(""),
     db: Session = Depends(get_db), user: User = Depends(get_current_user_web),
 ):
     denied = _require_super_admin(request, user)
@@ -9398,13 +9552,23 @@ def create_organization_sandbox_subscription_action(
     if db.query(OrganizationCardMigration.id).filter_by(organization_id=organization_id, is_open=True).first():
         _flash(request, "error", "Existe uma migração para cartão em andamento; confira antes de criar outra assinatura.")
         return _redirect(f"/assinaturas?organizacao={organization_id}")
-    name = (plan_name or "").strip()
-    value = _parse_br_decimal(amount)
+    selected_plan = None
+    plan_ref = plan_id.strip() if isinstance(plan_id, str) else ""
+    if plan_ref:
+        try:
+            selected_plan, plan_value = resolve_plan_selection(db, int(plan_ref), cycle)
+        except (ValueError, PlanValidationError) as exc:
+            _flash(request, "error", str(exc) if isinstance(exc, PlanValidationError) else "Plano inválido.")
+            return _redirect(f"/assinaturas?organizacao={organization_id}")
+        name, value = selected_plan.name, float(plan_value)
+    else:
+        name = (plan_name or "").strip()
+        value = _parse_br_decimal(amount)
     try:
         due = date.fromisoformat(first_due_date)
     except (ValueError, TypeError):
         due = None
-    if not name or len(name) > 120 or value is None or not 0.01 <= value <= 9999999999.99 or cycle not in {"MONTHLY", "YEARLY"} or billing_type not in {"PIX", "BOLETO"} or not due or due < today_in_app_timezone():
+    if not name or len(name) > 120 or value is None or not 0.01 <= value <= 9999999999.99 or cycle not in SUBSCRIPTION_CYCLES or billing_type not in {"PIX", "BOLETO"} or not due or due < today_in_app_timezone():
         _flash(request, "error", "Confira plano, valor, periodicidade, forma de pagamento e primeiro vencimento.")
         return _redirect(f"/assinaturas?organizacao={organization_id}")
     remote_subscriptions, error = list_customer_sandbox_subscriptions(api_key=settings.asaas_api_key.strip(), customer_id=billing.asaas_customer_id)
@@ -9414,10 +9578,10 @@ def create_organization_sandbox_subscription_action(
     if any(not item['deleted'] and item.get('status') not in {'INACTIVE', 'EXPIRED'} for item in remote_subscriptions):
         _flash(request, "error", "O cliente possui uma assinatura ativa ou de situação não confirmada no Asaas. Confira antes de criar outra.")
         return _redirect(f"/assinaturas?organizacao={organization_id}")
-    subscription = OrganizationSubscription(organization_id=organization_id, plan_name=name, amount=Decimal(str(value)).quantize(Decimal("0.01")), cycle=cycle, billing_type=billing_type, first_due_date=due, status="criando", environment="sandbox")
+    subscription = OrganizationSubscription(organization_id=organization_id, plan_id=selected_plan.id if selected_plan else None, plan_name=name, amount=Decimal(str(value)).quantize(Decimal("0.01")), cycle=cycle, billing_type=billing_type, first_due_date=due, status="criando", environment="sandbox")
     db.add(subscription)
     db.flush()
-    record_commercial_event(db, user=user, organization_id=organization_id, resource="assinatura", resource_id=subscription.id, action="criar", outcome="iniciado")
+    record_commercial_event(db, user=user, organization_id=organization_id, resource="assinatura", resource_id=subscription.id, action="criar", outcome="iniciado", details={"plano_id": subscription.plan_id, "plano_versao": selected_plan.version if selected_plan else None, "valor": str(subscription.amount), "ciclo": cycle})
     db.commit()
     db.refresh(subscription)
     payload = {"customer": billing.asaas_customer_id, "billingType": billing_type, "value": float(subscription.amount), "nextDueDate": due.isoformat(), "cycle": cycle, "description": name, "externalReference": f"sisfarm-sub-{subscription.id}"}
@@ -9548,7 +9712,7 @@ def edit_organization_sandbox_subscription_action(
     try:
         price = Decimal(amount.strip().replace('.', '').replace(',', '.'))
         due = date.fromisoformat(next_due_date) if next_due_date else None
-        if not name or len(name) > 120 or not price.is_finite() or price <= 0 or price >= Decimal('10000000000') or price.as_tuple().exponent < -2 or cycle not in {'MONTHLY', 'YEARLY'} or billing_type not in {'PIX', 'BOLETO', 'CREDIT_CARD'} or (due and due < today_in_app_timezone()):
+        if not name or len(name) > 120 or not price.is_finite() or price <= 0 or price >= Decimal('10000000000') or price.as_tuple().exponent < -2 or cycle not in SUBSCRIPTION_CYCLES or billing_type not in {'PIX', 'BOLETO', 'CREDIT_CARD'} or (due and due < today_in_app_timezone()):
             raise ValueError()
     except (ValueError, InvalidOperation):
         _flash(request, "error", "Confira plano, valor, periodicidade, forma e próximo vencimento.")

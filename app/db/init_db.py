@@ -623,6 +623,8 @@ def _sync_schema() -> None:
         "ALTER TABLE organization_subscriptions ADD COLUMN IF NOT EXISTS asaas_last_event_at TIMESTAMP",
         "ALTER TABLE organization_subscriptions ADD COLUMN IF NOT EXISTS next_due_date DATE",
         "ALTER TABLE organization_subscriptions ADD COLUMN IF NOT EXISTS is_current BOOLEAN NOT NULL DEFAULT TRUE",
+        "ALTER TABLE organization_subscriptions ADD COLUMN IF NOT EXISTS plan_id INTEGER REFERENCES subscription_plans(id) ON DELETE RESTRICT",
+        "CREATE INDEX IF NOT EXISTS ix_organization_subscriptions_plan_id ON organization_subscriptions (plan_id)",
         "ALTER TABLE organization_card_migrations ADD COLUMN IF NOT EXISTS first_due_date DATE",
         "ALTER TABLE organization_card_migrations ADD COLUMN IF NOT EXISTS last_check_error VARCHAR(255)",
         "ALTER TABLE organization_subscriptions DROP CONSTRAINT IF EXISTS organization_subscriptions_organization_id_key",

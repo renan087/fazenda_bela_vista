@@ -16,6 +16,7 @@ class OrganizationSubscription(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     organization_id: Mapped[int] = mapped_column(Integer, ForeignKey("organizations.id", ondelete="RESTRICT"), nullable=False, index=True)
     is_current: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default=text('true'))
+    plan_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("subscription_plans.id", ondelete="RESTRICT"), nullable=True, index=True)
     plan_name: Mapped[str] = mapped_column(String(120), nullable=False)
     amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
     cycle: Mapped[str] = mapped_column(String(20), nullable=False)
@@ -30,3 +31,4 @@ class OrganizationSubscription(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
     organization = relationship("Organization")
+    plan = relationship("SubscriptionPlan")
