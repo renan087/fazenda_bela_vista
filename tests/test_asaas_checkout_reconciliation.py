@@ -29,3 +29,49 @@ def test_checkout_requires_confirmed_payment_and_unique_active_subscription(monk
     state['customer'] = 'cus_other'
     result, error = reconciliation.find_paid_checkout_subscription(**args)
     assert result is None and error
+
+
+def test_only_one_open_migration_per_organization():
+    from datetime import date
+    from decimal import Decimal
+    import pytest
+    from sqlalchemy import create_engine
+    from sqlalchemy.exc import IntegrityError
+    from sqlalchemy.orm import Session
+    from app.db.base import Base
+    from app.models import Organization, OrganizationCardMigration, OrganizationSubscription
+
+    engine = create_engine('sqlite:///:memory:')
+    Base.metadata.create_all(engine)
+    with Session(engine) as db:
+        org = Organization(name='Teste', slug='cartao', is_active=True)
+        db.add(org); db.flush()
+        old = OrganizationSubscription(organization_id=org.id, plan_name='Plano', amount=Decimal('20.00'), cycle='MONTHLY', billing_type='PIX', first_due_date=date(2026, 1, 1), environment='sandbox')
+        db.add(old); db.flush()
+        db.add(OrganizationCardMigration(organization_id=org.id, old_subscription_id=old.id))
+        db.commit()
+        db.add(OrganizationCardMigration(organization_id=org.id, old_subscription_id=old.id))
+        with pytest.raises(IntegrityError):
+            db.commit()
+        db.rollback()
+
+
+def test_checkout_uses_hosted_card_without_card_data(monkeypatch):
+    from app.services import asaas_card_checkout as checkout
+    calls = []
+    class Response:
+        status_code = 200
+        def json(self): return {'id': CHECKOUT}
+    class Client:
+        def __init__(self, **kwargs): pass
+        def __enter__(self): return self
+        def __exit__(self, *args): pass
+        def post(self, url, **kwargs):
+            calls.append((url, kwargs['json']))
+            return Response()
+    monkeypatch.setattr(checkout.httpx, 'Client', Client)
+    result, error = checkout.create_sandbox_card_checkout(api_key='key', customer_id='cus_test', reference='migration-1', plan_name='Plano', amount=20, cycle='MONTHLY', next_due_date='2099-01-01', callback_base='https://app.sisfarm.com.br')
+    assert result == CHECKOUT and error is None
+    assert calls[0][1]['billingTypes'] == ['CREDIT_CARD']
+    assert calls[0][1]['chargeTypes'] == ['RECURRENT']
+    assert 'creditCard' not in calls[0][1]
