@@ -45,7 +45,7 @@
 {% if can_manage %}
 <div class="mt-4 flex flex-wrap items-center gap-2" data-subscription-actions>
     <button type="button" data-dialog-open="edit-subscription-{{ organization.id }}" class="rounded-xl bg-brand-500 px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-700">Trocar plano ou forma de pagamento</button>
-    {% if subscription.asaas_status == 'ACTIVE' and subscription.billing_type in ['PIX', 'BOLETO'] %}<button type="button" data-dialog-open="card-subscription-{{ organization.id }}" class="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50">Mudar para cartão</button>{% endif %}
+    {% if subscription.asaas_status == 'ACTIVE' and subscription.billing_type in ['PIX', 'BOLETO'] %}<button type="button" data-dialog-open="card-subscription-{{ organization.id }}" class="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50">{% if saved_card %}Voltar para o cartão final {{ saved_card.card_last4 or '••••' }}{% else %}Mudar para cartão{% endif %}</button>{% endif %}
     {% if subscription.asaas_status == 'ACTIVE' %}
     <button type="button" data-dialog-open="suspend-subscription-{{ organization.id }}" class="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50">Suspender</button>
     {% else %}
@@ -153,13 +153,30 @@
 
 {% if subscription.asaas_status == 'ACTIVE' and subscription.billing_type in ['PIX', 'BOLETO'] %}
 <dialog id="card-subscription-{{ organization.id }}" class="app-modal w-full max-w-lg rounded-[2rem] p-0 shadow-2xl">
-    <form method="post" action="/organizacoes/{{ organization.id }}/assinatura-sandbox/cartao" class="grid gap-3 bg-white p-6" data-busy-form>
-        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-        <div><h3 class="text-xl font-semibold text-slate-900">Mudar para cartão de crédito</h3><p class="mt-1 text-sm text-slate-500">Geramos um link do Asaas (válido por 24 horas) para o cliente cadastrar o cartão.</p></div>
-        <ul class="list-disc space-y-1 pl-5 text-sm text-slate-600"><li>A assinatura atual em {{ payment_labels.get(subscription.billing_type) }} continua até o cartão ser aprovado.</li><li>Depois da aprovação, ela é suspensa e a nova assinatura no cartão passa a valer.</li><li>Cobranças já geradas continuam como estão.</li></ul>
-        <label><span class="mb-1 block text-sm font-medium">Primeira cobrança no cartão</span><input type="date" name="next_due_date" required min="{{ today_iso }}" value="{{ subscription.next_due_date.isoformat() if subscription.next_due_date and subscription.next_due_date.isoformat() >= today_iso else '' }}" class="min-h-[3rem] w-full rounded-xl border-slate-200 bg-slate-50"></label>
-        <div class="mt-2 flex justify-end gap-2"><button type="button" data-dialog-close class="rounded-xl bg-slate-100 px-4 py-2.5 text-sm font-semibold text-slate-700">Voltar</button><button class="rounded-xl bg-brand-500 px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-700">Gerar link para o cliente</button></div>
-    </form>
+    <div class="grid gap-4 bg-white p-6">
+        <div><h3 class="text-xl font-semibold text-slate-900">Mudar para cartão de crédito</h3><p class="mt-1 text-sm text-slate-500">Cobranças já geradas em {{ payment_labels.get(subscription.billing_type) }} continuam como estão.</p></div>
+        {% if saved_card %}
+        <form method="post" action="/organizacoes/{{ organization.id }}/assinatura-sandbox/cartao-salvo" class="grid gap-3 rounded-2xl border-2 border-brand-500 p-4" data-busy-form>
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <div>
+                <p class="font-semibold text-slate-900">Voltar para o cartão {{ (saved_card.card_brand ~ ' ') if saved_card.card_brand else '' }}final {{ saved_card.card_last4 or '••••' }}</p>
+                <p class="mt-1 text-sm text-slate-600">Usa o cartão que o cliente já cadastrou no Asaas (último pagamento em {{ (saved_card.paid_date or saved_card.due_date).strftime('%d/%m/%Y') if (saved_card.paid_date or saved_card.due_date) else '—' }}). A assinatura continua a mesma: a próxima cobrança{% if subscription.next_due_date %}, em {{ subscription.next_due_date.strftime('%d/%m/%Y') }},{% endif %} já será no cartão, sem nova data nem link.</p>
+            </div>
+            <label class="flex items-start gap-2 rounded-xl bg-slate-50 p-3 text-sm text-slate-700"><input type="checkbox" name="customer_authorized" value="1" required class="mt-0.5 rounded border-slate-300 text-brand-500">O cliente autorizou voltar a cobrar neste cartão.</label>
+            <button class="rounded-xl bg-brand-500 px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-700">Voltar para o cartão final {{ saved_card.card_last4 or '••••' }}</button>
+        </form>
+        <details class="rounded-2xl border border-slate-200 p-4">
+            <summary class="cursor-pointer text-sm font-semibold text-slate-700">Usar outro cartão (enviar link ao cliente)</summary>
+        {% endif %}
+        <form method="post" action="/organizacoes/{{ organization.id }}/assinatura-sandbox/cartao" class="grid gap-3 {% if saved_card %}mt-3{% endif %}" data-busy-form>
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <p class="text-sm text-slate-600">Geramos um link do Asaas (válido por 24 horas) para o cliente cadastrar o cartão. A assinatura atual continua até o cartão ser aprovado; depois disso, ela é suspensa e a nova assinatura no cartão passa a valer.</p>
+            <label><span class="mb-1 block text-sm font-medium">Primeira cobrança no cartão</span><input type="date" name="next_due_date" required min="{{ today_iso }}" value="{{ subscription.next_due_date.isoformat() if subscription.next_due_date and subscription.next_due_date.isoformat() >= today_iso else '' }}" class="min-h-[3rem] w-full rounded-xl border-slate-200 bg-slate-50"><span class="mt-1 block text-xs text-slate-500">Preenchida com a próxima cobrança atual, para manter o período.</span></label>
+            <button class="rounded-xl {% if saved_card %}border border-slate-200 bg-white text-slate-700 hover:bg-slate-50{% else %}bg-brand-500 text-white hover:bg-brand-700{% endif %} px-4 py-2.5 text-sm font-semibold">Gerar link para o cliente</button>
+        </form>
+        {% if saved_card %}</details>{% endif %}
+        <div class="flex justify-end"><button type="button" data-dialog-close class="rounded-xl bg-slate-100 px-4 py-2.5 text-sm font-semibold text-slate-700">Voltar</button></div>
+    </div>
 </dialog>
 {% endif %}
 

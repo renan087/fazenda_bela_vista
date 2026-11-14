@@ -84,6 +84,15 @@ def persist_organization_webhook(db, body: dict) -> bool:
             row.invoice_url = invoice_url
         if bank_slip_url:
             row.bank_slip_url = bank_slip_url
+        card = payment.get('creditCard') if isinstance(payment.get('creditCard'), dict) else None
+        if card:
+            digits = ''.join(ch for ch in str(card.get('creditCardNumber') or '') if ch.isdigit())[-4:]
+            if len(digits) == 4:
+                row.card_last4 = digits
+            if card.get('creditCardBrand'):
+                row.card_brand = str(card['creditCardBrand'])[:30]
+            if card.get('creditCardToken'):
+                row.card_tokenized = True
         if row.last_event_at is None or timestamp > row.last_event_at:
             if status:
                 row.status = status[:40]

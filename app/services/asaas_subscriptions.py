@@ -181,3 +181,61 @@ def get_sandbox_payment(*, api_key: str, payment_id: str) -> tuple[dict | None, 
         return data, None
     except (httpx.HTTPError, ValueError):
         return None, 'Não foi possível consultar a cobrança no Asaas.'
+
+
+def _card_token_from_payment(client, headers, *, payment_id: str, customer_id: str) -> tuple[str | None, str | None]:
+    """Busca o token na cobranca paga no cartao. O token nunca e gravado no SiSFarm."""
+    response = client.get(f'https://api-sandbox.asaas.com/v3/payments/{payment_id}', headers=headers)
+    if response.status_code != 200:
+        return None, f'Não foi possível consultar a cobrança do cartão (HTTP {response.status_code}).'
+    payment = response.json()
+    card = payment.get('creditCard') if isinstance(payment, dict) else None
+    if not isinstance(payment, dict) or payment.get('id') != payment_id or payment.get('customer') != customer_id or payment.get('billingType') != 'CREDIT_CARD' or payment.get('status') not in {'CONFIRMED', 'RECEIVED'}:
+        return None, 'A cobrança do cartão salvo não pertence a este cliente ou não foi paga.'
+    token = card.get('creditCardToken') if isinstance(card, dict) else None
+    if not isinstance(token, str) or not token.strip() or len(token) > 200:
+        return None, 'O Asaas não disponibilizou o cartão salvo para reutilização (tokenização inativa).'
+    return token.strip(), None
+
+
+def switch_sandbox_subscription_to_saved_card(*, api_key: str, subscription_id: str, customer_id: str, card_payment_id: str, remote_ip: str) -> tuple[dict | None, str | None]:
+    """Volta uma assinatura Pix/boleto para o cartao ja cadastrado pelo cliente, mantendo ciclo e proxima cobranca.
+
+    1) troca a forma da assinatura para cartao; 2) vincula o cartao salvo (token) sem cobrar;
+    se o passo 2 falhar, desfaz o passo 1 para nao deixar a assinatura no cartao sem cartao.
+    """
+    if not card_payment_id or not card_payment_id.startswith('pay_') or not card_payment_id.replace('_', '').isalnum():
+        return None, 'Cobrança de referência do cartão inválida.'
+    if not remote_ip:
+        return None, 'Não foi possível identificar o IP da operação.'
+    current, error = get_sandbox_subscription(api_key=api_key, subscription_id=subscription_id)
+    if error:
+        return None, error
+    previous_type = current.get('billingType')
+    if current.get('customer') != customer_id or current.get('status') != 'ACTIVE' or previous_type not in {'PIX', 'BOLETO'}:
+        return None, 'A assinatura não está ativa em Pix ou boleto no Asaas.'
+    headers = {'access_token': api_key, 'User-Agent': 'SiSFarm/AsaasIntegration', 'Accept': 'application/json'}
+    base = f'https://api-sandbox.asaas.com/v3/subscriptions/{subscription_id}'
+    try:
+        with httpx.Client(timeout=30.0) as client:
+            token, error = _card_token_from_payment(client, headers, payment_id=card_payment_id, customer_id=customer_id)
+            if error:
+                return None, error
+            switched = client.put(base, headers=headers, json={'billingType': 'CREDIT_CARD', 'updatePendingPayments': False})
+            if switched.status_code != 200:
+                return None, f'O Asaas não aceitou a troca para cartão (HTTP {switched.status_code}). Nada foi alterado.'
+            body = {'creditCardToken': token, 'remoteIp': remote_ip}
+            # A documentacao do Asaas cita dois caminhos para trocar o cartao; o segundo so e tentado se o primeiro nao existir.
+            card = client.post(f'{base}/updateCreditCard', headers=headers, json=body)
+            if card.status_code in (404, 405):
+                card = client.put(f'{base}/creditCard', headers=headers, json=body)
+            if card.status_code != 200:
+                reverted = client.put(base, headers=headers, json={'billingType': previous_type, 'updatePendingPayments': False})
+                suffix = 'A forma anterior foi mantida.' if reverted.status_code == 200 else 'A situação será conferida automaticamente.'
+                return None, f'O Asaas não confirmou o cartão salvo (HTTP {card.status_code}). {suffix}'
+            data = card.json()
+            if not isinstance(data, dict) or data.get('id') != subscription_id or data.get('customer') != customer_id or data.get('billingType') != 'CREDIT_CARD':
+                return None, 'Resposta inconclusiva do Asaas; a situação será conferida automaticamente.'
+            return data, None
+    except (httpx.HTTPError, ValueError, AttributeError):
+        return None, 'Resposta inconclusiva do Asaas; a situação será conferida automaticamente.'

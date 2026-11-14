@@ -111,7 +111,7 @@ from app.services.asaas_customers import (
     find_asaas_customers_by_document,
 )
 from app.services.asaas_payment_sync import upsert_asaas_payment_row, user_owns_asaas_payment_payload
-from app.services.asaas_subscriptions import create_sandbox_subscription, get_sandbox_subscription, list_customer_sandbox_subscriptions, list_sandbox_subscription_payments, manage_sandbox_subscription, sandbox_subscription_is_missing, update_sandbox_subscription
+from app.services.asaas_subscriptions import create_sandbox_subscription, get_sandbox_subscription, list_customer_sandbox_subscriptions, list_sandbox_subscription_payments, manage_sandbox_subscription, sandbox_subscription_is_missing, switch_sandbox_subscription_to_saved_card, update_sandbox_subscription
 from app.services.asaas_organization_payment_actions import execute_payment_action
 from app.services.asaas_card_checkout import cancel_sandbox_checkout, create_sandbox_card_checkout_session
 from app.services.commercial_audit import record_commercial_event
@@ -153,7 +153,7 @@ from app.services.backup_service import (
     run_backup_repository_monitor_now,
     update_backup_automation_setting,
 )
-from app.services.audit_log_service import count_audit_logs, list_audit_event_types, query_audit_logs
+from app.services.audit_log_service import client_ip, count_audit_logs, list_audit_event_types, query_audit_logs
 from app.repositories.automated_test_history import AutomatedTestHistoryRepository, resolve_deploy_revision
 from app.services.automated_test_runner import (
     catalog_with_status,
@@ -9277,7 +9277,8 @@ def subscriptions_page(
         card_migrations_by_organization=migrations, previous_subscriptions_by_organization=previous,
         subscription_payments=payments, portfolio=portfolio, situation_labels=SITUATION_LABELS,
         available_plans=active_plans(db), plan_prices_of=plan_prices, today_iso=today_in_app_timezone().isoformat(),
-        selected_row=next((row for row in portfolio.rows if organization and row.organization.id == organization.id), None), _repo=repo,
+        selected_row=next((row for row in portfolio.rows if organization and row.organization.id == organization.id), None),
+        saved_card=_saved_card_charge(db, organization.id) if organization else None, _repo=repo,
     ))
 
 
@@ -9686,6 +9687,72 @@ def refresh_organization_subscription_action(organization_id: int, request: Requ
     else:
         _flash(request, "success", "Assinatura e cobranças atualizadas com o Asaas.")
     return _redirect(f"/assinaturas?organizacao={organization_id}#gerenciamento")
+
+
+def _saved_card_charge(db: Session, organization_id: int) -> OrganizationSubscriptionPayment | None:
+    """Ultima cobranca paga com cartao reutilizavel (tokenizado) desta organizacao, em qualquer assinatura."""
+    return (
+        db.query(OrganizationSubscriptionPayment)
+        .join(OrganizationSubscription, OrganizationSubscription.id == OrganizationSubscriptionPayment.subscription_id)
+        .filter(
+            OrganizationSubscription.organization_id == organization_id,
+            OrganizationSubscriptionPayment.billing_type == "CREDIT_CARD",
+            OrganizationSubscriptionPayment.status.in_(["CONFIRMED", "RECEIVED"]),
+            OrganizationSubscriptionPayment.card_tokenized.is_(True),
+        )
+        .order_by(OrganizationSubscriptionPayment.due_date.desc().nullslast(), OrganizationSubscriptionPayment.id.desc())
+        .first()
+    )
+
+
+@router.post("/organizacoes/{organization_id}/assinatura-sandbox/cartao-salvo")
+def switch_to_saved_card_action(organization_id: int, request: Request, csrf_token: str = Form(...), customer_authorized: str = Form(""), db: Session = Depends(get_db), user: User = Depends(get_current_user_web)):
+    """Volta a cobrar no cartao ja cadastrado, na mesma assinatura: mantem ciclo e proxima cobranca."""
+    denied = _require_super_admin(request, user)
+    if denied:
+        return denied
+    validate_csrf(request, csrf_token)
+    target = f"/assinaturas?organizacao={organization_id}#gerenciamento"
+    settings = get_settings()
+    if (settings.asaas_api_base_url or "").rstrip("/") != "https://api-sandbox.asaas.com" or not (settings.asaas_api_key or "").strip():
+        _flash(request, "error", "Configure o sandbox oficial antes de alterar a forma de pagamento.")
+        return _redirect(target)
+    if customer_authorized != "1":
+        _flash(request, "error", "Confirme que o cliente autorizou voltar a cobrar no cartão cadastrado.")
+        return _redirect(target)
+    subscription = db.query(OrganizationSubscription).filter_by(organization_id=organization_id, environment="sandbox", is_current=True).first()
+    billing = db.query(OrganizationBilling).filter_by(organization_id=organization_id, asaas_environment="sandbox").first()
+    saved = _saved_card_charge(db, organization_id)
+    if not subscription or not billing or not billing.asaas_customer_id or not subscription.asaas_subscription_id or subscription.status != "criada" or subscription.asaas_status != "ACTIVE" or subscription.billing_type not in {"PIX", "BOLETO"} or db.query(OrganizationCardMigration.id).filter_by(organization_id=organization_id, is_open=True).first():
+        _flash(request, "error", "A assinatura precisa estar ativa em Pix ou boleto, sem link de cartão pendente.")
+        return _redirect(target)
+    if not saved:
+        _flash(request, "error", "Não há cartão salvo disponível para esta organização. Gere um link para o cliente cadastrar o cartão.")
+        return _redirect(target)
+    subscription_id = subscription.id
+    reserved = db.query(OrganizationSubscription).filter_by(id=subscription_id, status="criada", asaas_status="ACTIVE").update({"status": "revisao"}, synchronize_session=False)
+    if reserved:
+        record_commercial_event(db, user=user, organization_id=organization_id, resource="assinatura", resource_id=subscription_id, action="voltar_cartao_salvo", outcome="iniciado", details={"cartao_final": saved.card_last4, "autorizado_pelo_cliente": True})
+    db.commit()
+    if not reserved:
+        _flash(request, "error", "Outra operação está em andamento. Atualize a assinatura.")
+        return _redirect(target)
+    result, error = switch_sandbox_subscription_to_saved_card(api_key=settings.asaas_api_key.strip(), subscription_id=subscription.asaas_subscription_id, customer_id=billing.asaas_customer_id, card_payment_id=saved.asaas_payment_id, remote_ip=client_ip(request) or "")
+    subscription = db.query(OrganizationSubscription).filter_by(id=subscription_id).with_for_update().one()
+    if error:
+        record_commercial_event(db, user=user, organization_id=organization_id, resource="assinatura", resource_id=subscription_id, action="voltar_cartao_salvo", outcome="verificar", details={"motivo": error[:200]})
+        db.commit()
+        _auto_reconcile(db, organization_id)
+        _flash(request, "error", error + " Se preferir, gere um link para o cliente cadastrar o cartão.")
+        return _redirect(target)
+    apply_subscription_details(subscription, result)
+    subscription.status = "criada"
+    subscription.asaas_last_event_at = app_now().replace(tzinfo=None)
+    record_commercial_event(db, user=user, organization_id=organization_id, resource="assinatura", resource_id=subscription_id, action="voltar_cartao_salvo", outcome="success", details={"cartao_final": saved.card_last4, "proxima_cobranca": subscription.next_due_date})
+    db.commit()
+    due = subscription.next_due_date.strftime("%d/%m/%Y") if subscription.next_due_date else "a próxima data prevista"
+    _flash(request, "success", f"A assinatura voltou para o cartão final {saved.card_last4 or '****'}. A próxima cobrança, em {due}, será feita nele; cobranças já geradas em Pix ou boleto continuam como estão.")
+    return _redirect(target)
 
 
 @router.post("/organizacoes/{organization_id}/assinatura-sandbox/checkout/encerrar")

@@ -1,7 +1,7 @@
 from datetime import date, datetime
 from decimal import Decimal
 
-from sqlalchemy import Date, DateTime, ForeignKey, Numeric, String, func
+from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Numeric, String, func, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -21,6 +21,10 @@ class OrganizationSubscriptionPayment(Base):
     paid_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     invoice_url: Mapped[str | None] = mapped_column(String(255), nullable=True)
     bank_slip_url: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # Somente dados nao sensiveis do cartao; o token fica no Asaas e e consultado na hora do uso.
+    card_last4: Mapped[str | None] = mapped_column(String(4), nullable=True)
+    card_brand: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    card_tokenized: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, server_default=text('false'))
     last_event_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=False), nullable=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
     subscription = relationship("OrganizationSubscription")
