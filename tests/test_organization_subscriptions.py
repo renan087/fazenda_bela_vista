@@ -16,6 +16,7 @@ def test_sandbox_creation_records_attempt_and_prevents_duplicate(monkeypatch):
     monkeypatch.setattr(routes, 'validate_csrf', lambda *args: None)
     monkeypatch.setattr(routes, '_flash', lambda *args: None)
     monkeypatch.setattr(routes, 'get_settings', lambda: SimpleNamespace(asaas_api_base_url='https://api-sandbox.asaas.com', asaas_api_key='sandbox-key'))
+    monkeypatch.setattr(routes, 'list_customer_sandbox_subscriptions', lambda **kwargs: ([], None))
     calls = []
     def create(**kwargs):
         calls.append(kwargs['payload'])
@@ -42,6 +43,7 @@ def test_uncertain_creation_is_not_retried(monkeypatch):
     monkeypatch.setattr(routes, 'validate_csrf', lambda *args: None)
     monkeypatch.setattr(routes, '_flash', lambda *args: None)
     monkeypatch.setattr(routes, 'get_settings', lambda: SimpleNamespace(asaas_api_base_url='https://api-sandbox.asaas.com', asaas_api_key='key'))
+    monkeypatch.setattr(routes, 'list_customer_sandbox_subscriptions', lambda **kwargs: ([], None))
     calls = []
     monkeypatch.setattr(routes, 'create_sandbox_subscription', lambda **kwargs: (calls.append(1) or None, 'timeout'))
     with Session(engine) as db:
@@ -192,3 +194,102 @@ def test_history_preserves_payments_and_allows_only_one_current_subscription():
         db.add(subscription('sub_duplicate', True))
         with pytest.raises(IntegrityError):
             db.commit()
+
+
+def test_deleted_subscription_moves_to_history_and_allows_new_creation(monkeypatch):
+    from datetime import date
+    from decimal import Decimal
+    from app.models import OrganizationSubscriptionPayment
+    engine = create_engine('sqlite:///:memory:')
+    Base.metadata.create_all(engine)
+    monkeypatch.setattr(routes, '_require_super_admin', lambda *args: None)
+    monkeypatch.setattr(routes, 'validate_csrf', lambda *args: None)
+    messages = []
+    monkeypatch.setattr(routes, '_flash', lambda request, category, message: messages.append((category, message)))
+    monkeypatch.setattr(routes, 'get_settings', lambda: SimpleNamespace(asaas_api_base_url='https://api-sandbox.asaas.com', asaas_api_key='key'))
+    remote = [{'id': 'sub_old', 'customer': 'cus_test', 'deleted': True, 'status': 'ACTIVE'}]
+    monkeypatch.setattr(routes, 'list_customer_sandbox_subscriptions', lambda **kwargs: (remote, None))
+    monkeypatch.setattr(routes, 'create_sandbox_subscription', lambda **kwargs: ({'id': 'sub_new', 'status': 'ACTIVE'}, None))
+    with Session(engine) as db:
+        org = Organization(name='Teste', slug='deleted-recovery', is_active=True)
+        db.add(org); db.flush()
+        db.add(OrganizationBilling(organization_id=org.id, contact_name='Pessoa', contact_email='a@example.com', asaas_customer_id='cus_test', asaas_environment='sandbox'))
+        old = OrganizationSubscription(organization_id=org.id, plan_name='Antigo', amount=Decimal('99.90'), cycle='MONTHLY', billing_type='PIX', first_due_date=date(2026, 1, 1), status='revisao', environment='sandbox', asaas_subscription_id='sub_old', asaas_status='ACTIVE')
+        db.add(old); db.flush()
+        db.add(OrganizationSubscriptionPayment(subscription_id=old.id, asaas_payment_id='pay_old', status='RECEIVED'))
+        db.commit()
+        args = dict(organization_id=org.id, request=SimpleNamespace(), csrf_token='x', db=db, user=SimpleNamespace())
+        routes.reconcile_deleted_sandbox_subscription_action(**args)
+        assert old.is_current is False and old.asaas_status == 'DELETED'
+        routes.create_organization_sandbox_subscription_action(**args, plan_name='Novo', amount='99,90', cycle='MONTHLY', billing_type='PIX', first_due_date='2099-01-01')
+        assert db.query(OrganizationSubscription).filter_by(is_current=True).one().asaas_subscription_id == 'sub_new'
+        assert db.query(OrganizationSubscriptionPayment).one().subscription_id == old.id
+
+
+def test_reconciliation_does_not_assume_deletion_or_ignore_other_active_subscription(monkeypatch):
+    from datetime import date
+    from decimal import Decimal
+    engine = create_engine('sqlite:///:memory:')
+    Base.metadata.create_all(engine)
+    monkeypatch.setattr(routes, '_require_super_admin', lambda *args: None)
+    monkeypatch.setattr(routes, 'validate_csrf', lambda *args: None)
+    monkeypatch.setattr(routes, '_flash', lambda *args: None)
+    monkeypatch.setattr(routes, 'get_settings', lambda: SimpleNamespace(asaas_api_base_url='https://api-sandbox.asaas.com', asaas_api_key='key'))
+    rows = []
+    monkeypatch.setattr(routes, 'list_customer_sandbox_subscriptions', lambda **kwargs: (rows, None))
+    monkeypatch.setattr(routes, 'sandbox_subscription_is_missing', lambda **kwargs: (False, None))
+    with Session(engine) as db:
+        org = Organization(name='Teste', slug='not-confirmed', is_active=True)
+        db.add(org); db.flush()
+        db.add(OrganizationBilling(organization_id=org.id, contact_name='Pessoa', contact_email='a@example.com', asaas_customer_id='cus_test', asaas_environment='sandbox'))
+        old = OrganizationSubscription(organization_id=org.id, plan_name='Teste', amount=Decimal('99.90'), cycle='MONTHLY', billing_type='PIX', first_due_date=date(2026, 1, 1), status='revisao', environment='sandbox', asaas_subscription_id='sub_old')
+        db.add(old); db.commit()
+        args = dict(organization_id=org.id, request=SimpleNamespace(), csrf_token='x', db=db, user=SimpleNamespace())
+        routes.reconcile_deleted_sandbox_subscription_action(**args)
+        assert old.is_current
+        rows.extend([{'id': 'sub_old', 'customer': 'cus_test', 'deleted': True, 'status': 'ACTIVE'}, {'id': 'sub_other', 'customer': 'cus_test', 'deleted': False, 'status': 'ACTIVE'}])
+        routes.reconcile_deleted_sandbox_subscription_action(**args)
+        assert old.is_current
+
+
+def test_missing_subscription_requires_confirmed_404_and_customer_list(monkeypatch):
+    from datetime import date
+    from decimal import Decimal
+    engine = create_engine('sqlite:///:memory:')
+    Base.metadata.create_all(engine)
+    monkeypatch.setattr(routes, '_require_super_admin', lambda *args: None)
+    monkeypatch.setattr(routes, 'validate_csrf', lambda *args: None)
+    monkeypatch.setattr(routes, '_flash', lambda *args: None)
+    monkeypatch.setattr(routes, 'get_settings', lambda: SimpleNamespace(asaas_api_base_url='https://api-sandbox.asaas.com', asaas_api_key='key'))
+    monkeypatch.setattr(routes, 'list_customer_sandbox_subscriptions', lambda **kwargs: ([], None))
+    monkeypatch.setattr(routes, 'sandbox_subscription_is_missing', lambda **kwargs: (True, None))
+    with Session(engine) as db:
+        org = Organization(name='Teste', slug='missing-404', is_active=True)
+        db.add(org); db.flush()
+        db.add(OrganizationBilling(organization_id=org.id, contact_name='Pessoa', contact_email='a@example.com', asaas_customer_id='cus_test', asaas_environment='sandbox'))
+        old = OrganizationSubscription(organization_id=org.id, plan_name='Teste', amount=Decimal('99.90'), cycle='MONTHLY', billing_type='PIX', first_due_date=date(2026, 1, 1), status='revisao', environment='sandbox', asaas_subscription_id='sub_old')
+        db.add(old); db.commit()
+        routes.reconcile_deleted_sandbox_subscription_action(organization_id=org.id, request=SimpleNamespace(), csrf_token='x', db=db, user=SimpleNamespace())
+        assert old.is_current is False and old.asaas_status == 'NOT_FOUND'
+
+
+def test_sandbox_subscription_listing_validates_customer_and_requests_deleted(monkeypatch):
+    from app.services import asaas_subscriptions as service
+    calls = []
+    class Response:
+        status_code = 200
+        def __init__(self, body): self.body = body
+        def json(self): return self.body
+    class Client:
+        def __init__(self, **kwargs): pass
+        def __enter__(self): return self
+        def __exit__(self, *args): pass
+        def get(self, url, **kwargs):
+            if '/customers/' in url:
+                return Response({'id': 'cus_test', 'deleted': False})
+            calls.append(kwargs['params'])
+            return Response({'data': [{'id': 'sub_old', 'customer': 'cus_test', 'deleted': True, 'status': 'ACTIVE'}], 'hasMore': False})
+    monkeypatch.setattr(service.httpx, 'Client', Client)
+    rows, error = service.list_customer_sandbox_subscriptions(api_key='key', customer_id='cus_test')
+    assert not error and rows[0]['deleted'] is True
+    assert calls[0]['includeDeleted'] == 'true'

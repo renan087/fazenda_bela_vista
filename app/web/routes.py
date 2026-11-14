@@ -110,7 +110,7 @@ from app.services.asaas_customers import (
     find_asaas_customers_by_document,
 )
 from app.services.asaas_payment_sync import upsert_asaas_payment_row, user_owns_asaas_payment_payload
-from app.services.asaas_subscriptions import create_sandbox_subscription, get_sandbox_subscription, list_sandbox_subscription_payments, manage_sandbox_subscription, update_sandbox_subscription
+from app.services.asaas_subscriptions import create_sandbox_subscription, get_sandbox_subscription, list_customer_sandbox_subscriptions, list_sandbox_subscription_payments, manage_sandbox_subscription, sandbox_subscription_is_missing, update_sandbox_subscription
 from app.services.asaas_organization_payment_actions import execute_payment_action
 from app.services.asaas_card_checkout import create_sandbox_card_checkout
 from app.services.commercial_audit import record_commercial_event
@@ -9361,8 +9361,11 @@ def create_organization_sandbox_subscription_action(
     if not organization or not billing or not billing.asaas_customer_id or billing.asaas_environment != "sandbox":
         _flash(request, "error", "Vincule primeiro o cliente desta organização ao Asaas sandbox.")
         return _redirect("/organizacoes")
-    if db.query(OrganizationSubscription.id).filter_by(organization_id=organization_id).first():
+    if db.query(OrganizationSubscription.id).filter_by(organization_id=organization_id, is_current=True).first():
         _flash(request, "error", "Já existe uma assinatura ou tentativa registrada para esta organização. Verifique antes de criar outra.")
+        return _redirect("/organizacoes")
+    if db.query(OrganizationCardMigration.id).filter_by(organization_id=organization_id, is_open=True).first():
+        _flash(request, "error", "Existe uma migração para cartão em andamento; confira antes de criar outra assinatura.")
         return _redirect("/organizacoes")
     name = (plan_name or "").strip()
     value = _parse_br_decimal(amount)
@@ -9372,6 +9375,13 @@ def create_organization_sandbox_subscription_action(
         due = None
     if not name or len(name) > 120 or value is None or not 0.01 <= value <= 9999999999.99 or cycle not in {"MONTHLY", "YEARLY"} or billing_type not in {"PIX", "BOLETO"} or not due or due < today_in_app_timezone():
         _flash(request, "error", "Confira plano, valor, periodicidade, forma de pagamento e primeiro vencimento.")
+        return _redirect("/organizacoes")
+    remote_subscriptions, error = list_customer_sandbox_subscriptions(api_key=settings.asaas_api_key.strip(), customer_id=billing.asaas_customer_id)
+    if error:
+        _flash(request, "error", error)
+        return _redirect("/organizacoes")
+    if any(not item['deleted'] and item.get('status') not in {'INACTIVE', 'EXPIRED'} for item in remote_subscriptions):
+        _flash(request, "error", "O cliente possui uma assinatura ativa ou de situação não confirmada no Asaas. Confira antes de criar outra.")
         return _redirect("/organizacoes")
     subscription = OrganizationSubscription(organization_id=organization_id, plan_name=name, amount=Decimal(str(value)).quantize(Decimal("0.01")), cycle=cycle, billing_type=billing_type, first_due_date=due, status="criando", environment="sandbox")
     db.add(subscription)
@@ -9395,6 +9405,55 @@ def create_organization_sandbox_subscription_action(
     db.commit()
     _flash(request, "success", "Assinatura criada no sandbox. A criação não confirma pagamento nem altera o acesso da organização.")
     return _redirect("/organizacoes")
+
+
+@router.post("/organizacoes/{organization_id}/assinatura-sandbox/verificar-exclusao")
+def reconcile_deleted_sandbox_subscription_action(organization_id: int, request: Request, csrf_token: str = Form(...), db: Session = Depends(get_db), user: User = Depends(get_current_user_web)):
+    denied = _require_super_admin(request, user)
+    if denied:
+        return denied
+    validate_csrf(request, csrf_token)
+    settings = get_settings()
+    parsed = urlparse(settings.asaas_api_base_url or '')
+    if parsed.scheme != 'https' or parsed.hostname != 'api-sandbox.asaas.com' or parsed.port not in (None, 443) or parsed.path not in ('', '/') or parsed.query or parsed.fragment or parsed.username or not (settings.asaas_api_key or '').strip():
+        _flash(request, 'error', 'Configure o sandbox oficial antes de consultar a assinatura.')
+        return _redirect('/organizacoes')
+    billing = db.query(OrganizationBilling).filter_by(organization_id=organization_id, asaas_environment='sandbox').with_for_update().first()
+    subscription = db.query(OrganizationSubscription).filter_by(organization_id=organization_id, environment='sandbox', is_current=True).with_for_update().first()
+    if not billing or not billing.asaas_customer_id or not subscription:
+        _flash(request, 'error', 'Cliente ou assinatura atual não encontrado.')
+        return _redirect('/organizacoes')
+    if db.query(OrganizationCardMigration.id).filter_by(organization_id=organization_id, is_open=True).first():
+        _flash(request, 'error', 'Há uma migração para cartão em andamento. Confira-a antes de liberar uma nova assinatura.')
+        return _redirect('/organizacoes')
+    rows, error = list_customer_sandbox_subscriptions(api_key=settings.asaas_api_key.strip(), customer_id=billing.asaas_customer_id)
+    if error:
+        _flash(request, 'error', error)
+        return _redirect('/organizacoes')
+    reference = f'sisfarm-sub-{subscription.id}'
+    matches = [item for item in rows if (subscription.asaas_subscription_id and item['id'] == subscription.asaas_subscription_id) or (not subscription.asaas_subscription_id and item.get('externalReference') == reference)]
+    if len(matches) > 1 or (matches and matches[0]['deleted'] is not True):
+        _flash(request, 'error', 'O Asaas não confirmou a exclusão desta assinatura. Nenhuma alteração foi feita; confira a conta e a assinatura.')
+        return _redirect('/organizacoes')
+    if any(not item['deleted'] and item.get('status') not in {'INACTIVE', 'EXPIRED'} for item in rows):
+        _flash(request, 'error', 'O cliente ainda possui assinatura ativa ou não confirmada no Asaas. Confira antes de liberar outra.')
+        return _redirect('/organizacoes')
+    if not matches:
+        if not subscription.asaas_subscription_id:
+            _flash(request, 'error', 'A tentativa anterior não tem identificador confirmado. Confira no Asaas antes de criar outra.')
+            return _redirect('/organizacoes')
+        missing, error = sandbox_subscription_is_missing(api_key=settings.asaas_api_key.strip(), subscription_id=subscription.asaas_subscription_id)
+        if error or missing is not True:
+            _flash(request, 'error', error or 'A consulta da assinatura não confirmou que ela está ausente. Nenhuma alteração foi feita.')
+            return _redirect('/organizacoes')
+    subscription.asaas_subscription_id = subscription.asaas_subscription_id or matches[0]['id']
+    subscription.asaas_status = 'DELETED' if matches else 'NOT_FOUND'
+    subscription.status = 'encerrada'
+    subscription.is_current = False
+    record_commercial_event(db, user=user, organization_id=organization_id, resource='assinatura', resource_id=subscription.id, action='reconciliar_exclusao', outcome='success')
+    db.commit()
+    _flash(request, 'success', 'Situação verificada no Asaas. O histórico foi preservado e já é possível cadastrar outra assinatura.')
+    return _redirect('/organizacoes')
 
 
 @router.post("/organizacoes/{organization_id}/assinatura-sandbox/cartao")

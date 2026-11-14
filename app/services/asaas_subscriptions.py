@@ -3,6 +3,52 @@
 import httpx
 
 
+def list_customer_sandbox_subscriptions(*, api_key: str, customer_id: str) -> tuple[list[dict] | None, str | None]:
+    """Lista tambem removidas e confirma o cliente na mesma conta autenticada."""
+    if not api_key or not customer_id or not customer_id.startswith('cus_') or not customer_id.replace('_', '').isalnum():
+        return None, 'Cliente Asaas inválido.'
+    headers = {'access_token': api_key, 'User-Agent': 'SiSFarm/AsaasIntegration', 'Accept': 'application/json'}
+    try:
+        with httpx.Client(timeout=20.0) as client:
+            customer = client.get(f'https://api-sandbox.asaas.com/v3/customers/{customer_id}', headers=headers)
+            if customer.status_code != 200:
+                return None, 'Não foi possível confirmar o cliente na conta Asaas configurada.'
+            customer_data = customer.json()
+            if not isinstance(customer_data, dict) or customer_data.get('id') != customer_id or customer_data.get('deleted') is True:
+                return None, 'Cliente Asaas indisponível ou divergente.'
+            rows = []
+            for offset in range(0, 1000, 100):
+                response = client.get('https://api-sandbox.asaas.com/v3/subscriptions', headers=headers, params={'customer': customer_id, 'includeDeleted': 'true', 'limit': 100, 'offset': offset})
+                if response.status_code != 200:
+                    return None, f'Não foi possível consultar as assinaturas (HTTP {response.status_code}).'
+                data = response.json()
+                if not isinstance(data, dict) or not isinstance(data.get('data'), list) or not isinstance(data.get('hasMore'), bool):
+                    return None, 'Resposta inválida da consulta de assinaturas.'
+                if any(not isinstance(item, dict) or item.get('customer') != customer_id or not item.get('id') or not isinstance(item.get('deleted'), bool) for item in data['data']):
+                    return None, 'Assinatura retornada sem identificação ou situação de exclusão válida.'
+                rows.extend(data['data'])
+                if not data['hasMore']:
+                    return rows, None
+    except (httpx.HTTPError, ValueError):
+        return None, 'Não foi possível confirmar as assinaturas no Asaas.'
+    return None, 'A consulta excedeu o limite seguro de assinaturas.'
+
+
+def sandbox_subscription_is_missing(*, api_key: str, subscription_id: str) -> tuple[bool | None, str | None]:
+    if not subscription_id or not subscription_id.startswith('sub_') or not subscription_id.replace('_', '').isalnum():
+        return None, 'Identificador de assinatura inválido.'
+    try:
+        with httpx.Client(timeout=20.0) as client:
+            response = client.get(f'https://api-sandbox.asaas.com/v3/subscriptions/{subscription_id}', headers={'access_token': api_key, 'User-Agent': 'SiSFarm/AsaasIntegration', 'Accept': 'application/json'})
+        if response.status_code == 404:
+            return True, None
+        if response.status_code == 200:
+            return False, None
+        return None, f'Não foi possível confirmar a assinatura (HTTP {response.status_code}).'
+    except httpx.HTTPError:
+        return None, 'Não foi possível confirmar a assinatura no Asaas.'
+
+
 def update_sandbox_subscription(*, api_key: str, subscription_id: str, customer_id: str, payload: dict) -> tuple[dict | None, str | None]:
     current, error = get_sandbox_subscription(api_key=api_key, subscription_id=subscription_id)
     if error:
