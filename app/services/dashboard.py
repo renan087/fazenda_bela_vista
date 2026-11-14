@@ -8,6 +8,7 @@ from app.repositories.farm import FarmRepository
 from app.services.coffee_quotes import latest_coffee_quote_context
 from app.services.finance_overview import build_finance_overview_context
 from app.services.forms import fertilization_application_method_label
+from app.services.sector_costs import build_sector_cost_context
 
 
 def _float(value) -> float:
@@ -407,6 +408,9 @@ def build_dashboard_context(
         farm_ids=scoped_farm_ids,
         variety_ids=[season.variety_id] if season and season.variety_id else None,
     )
+    linked_plots = [plot for plot in season.plots if scoped_farm_id_set is None or plot.farm_id in scoped_farm_id_set] if season and season.plots else []
+    if season and season.plots:
+        plots = linked_plots
     farms = repository.list_farms(organization_id=organization_id)
     if scoped_farm_id_set is not None:
         farms = [farm for farm in farms if farm.id in scoped_farm_id_set]
@@ -466,6 +470,17 @@ def build_dashboard_context(
 
     finance_overview = build_finance_overview_context(repository, farm_id=farm_id, active_season=season)
     operational_cost_season = _float(finance_overview.get("operational_cost_season"))
+    if season and season.plots and farm_id:
+        sector_costs = build_sector_cost_context(
+            plots=plots,
+            stock_outputs=repository.list_stock_outputs(farm_id=farm_id),
+            fertilizations=fertilizations,
+            finance_transactions=repository.list_finance_transactions(farm_id=farm_id),
+            season_id=season.id,
+            start_date=season.start_date,
+            end_date=season.end_date,
+        )
+        operational_cost_season = sector_costs["allocated_total"]
 
     total_area = sum(_float(plot.area_hectares) for plot in plots)
     total_production = sum(_float(item.sacks_produced) for item in harvests)
