@@ -35,41 +35,47 @@
         {% set featured = includes_module or (not module_code and plan.is_featured) %}
         {% set prices = plan_prices_of(plan) %}
         {% set main_cycle = 'MONTHLY' if 'MONTHLY' in prices else ((prices.keys()|list)[0] if prices else none) %}
-        <article class="relative flex flex-col rounded-[1.75rem] p-6 {{ 'bg-gradient-to-b from-[#173d22] to-[#0c2416] text-white shadow-[0_0_0_2px_rgba(163,230,53,0.7),0_25px_50px_-12px_rgba(22,101,52,0.55)] lg:-mt-4' if featured else 'bg-white text-slate-900 shadow-xl ring-1 ring-slate-200' }}">
-            {% if featured %}<span class="absolute -top-3.5 left-1/2 flex -translate-x-1/2 items-center gap-1.5 whitespace-nowrap rounded-full bg-lime-400 px-3 py-1 text-xs font-bold uppercase tracking-wide text-[#0c2416] shadow">{{ plan_icon('crown', 'h-3.5 w-3.5') }}{{ ('Inclui ' ~ module_label) if includes_module else 'Mais escolhido' }}</span>{% endif %}
+        {% set variant = 'featured' if featured else ('premium' if plan.id == premium_plan_id else 'light') %}
+        {% set t = {
+            'featured': {'card': 'bg-gradient-to-b from-[#173d22] to-[#0c2416] text-white shadow-[0_0_0_2px_rgba(163,230,53,0.7),0_25px_50px_-12px_rgba(22,101,52,0.55)] lg:-mt-4', 'badge': 'bg-lime-400 text-[#0c2416]', 'tile': 'bg-gradient-to-br from-lime-400 to-emerald-600 text-white', 'muted': 'text-emerald-50/85', 'line': 'border-white/15', 'price': 'text-lime-400', 'sub': 'text-emerald-50/70', 'strip': 'divide-white/15 bg-white/10 ring-1 ring-lime-400/40', 'icon': 'text-lime-400', 'check': 'text-lime-400', 'lock': 'text-emerald-50/45', 'cta': 'bg-gradient-to-r from-lime-400 to-lime-500 text-[#0c2416] shadow-lg shadow-lime-500/30 hover:from-lime-300 hover:to-lime-400', 'current': 'bg-white/10 text-emerald-50', 'pill': 'bg-white/15 text-white', 'arrow': True},
+            'premium': {'card': 'bg-gradient-to-b from-[#3d3110] via-[#211c0b] to-[#0f1f12] text-white shadow-[0_0_0_2px_rgba(251,191,36,0.75),0_25px_50px_-12px_rgba(180,130,20,0.5)] lg:-mt-4', 'badge': 'bg-gradient-to-r from-amber-300 to-amber-400 text-[#2a1f05]', 'tile': 'bg-gradient-to-br from-amber-300 to-amber-600 text-[#2a1f05]', 'muted': 'text-amber-50/85', 'line': 'border-amber-200/20', 'price': 'text-amber-300', 'sub': 'text-amber-50/70', 'strip': 'divide-amber-200/20 bg-amber-300/10 ring-1 ring-amber-300/50', 'icon': 'text-amber-300', 'check': 'text-amber-300', 'lock': 'text-amber-50/40', 'cta': 'bg-gradient-to-r from-amber-300 to-amber-500 text-[#2a1f05] shadow-lg shadow-amber-500/30 hover:from-amber-200 hover:to-amber-400', 'current': 'bg-white/10 text-amber-50', 'pill': 'bg-white/15 text-white', 'arrow': True},
+            'light': {'card': 'bg-white text-slate-900 shadow-xl ring-1 ring-slate-200', 'badge': '', 'tile': 'bg-emerald-50 text-[#446a36]', 'muted': 'text-slate-500', 'line': 'border-slate-100', 'price': '', 'sub': 'text-slate-500', 'strip': 'divide-slate-200 bg-slate-50', 'icon': 'text-[#446a36]', 'check': 'text-emerald-600', 'lock': 'text-slate-400', 'cta': 'border-2 border-[#446a36] text-[#446a36] hover:bg-emerald-50', 'current': 'bg-slate-100 text-slate-500', 'pill': 'bg-slate-100 text-slate-600', 'arrow': False},
+        }[variant] %}
+        <article class="relative flex flex-col rounded-[1.75rem] p-6 {{ t.card }}">
+            {% if variant != 'light' %}<span class="absolute -top-3.5 left-1/2 flex -translate-x-1/2 items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-1 text-xs font-bold uppercase tracking-wide shadow {{ t.badge }}">{{ plan_icon('crown' if variant == 'featured' else 'diamond', 'h-3.5 w-3.5') }}{{ ('Inclui ' ~ module_label) if includes_module else ('Mais escolhido' if variant == 'featured' else 'Plano mais completo') }}</span>{% endif %}
             <div class="flex items-center gap-3">
-                <span class="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl {{ 'bg-gradient-to-br from-lime-400 to-emerald-600 text-white' if featured else 'bg-emerald-50 text-[#446a36]' }}">{{ plan_icon(plan.icon, 'h-7 w-7') }}</span>
+                <span class="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl {{ t.tile }}">{{ plan_icon(plan.icon, 'h-7 w-7') }}</span>
                 <div class="min-w-0">
                     <h3 class="text-xl font-bold leading-tight">{{ plan.name }}</h3>
-                    {% if is_current %}<span class="mt-1 inline-flex rounded-full px-2 py-0.5 text-[0.7rem] font-semibold {{ 'bg-white/15 text-white' if featured else 'bg-slate-100 text-slate-600' }}">Seu plano</span>{% endif %}
+                    {% if is_current %}<span class="mt-1 inline-flex rounded-full px-2 py-0.5 text-[0.7rem] font-semibold {{ t.pill }}">Seu plano</span>{% endif %}
                 </div>
             </div>
-            {% if plan.description %}<p class="mt-3 text-sm {{ 'text-emerald-50/85' if featured else 'text-slate-500' }}">{{ plan.description }}</p>{% endif %}
-            <div class="mt-5 border-t pt-5 {{ 'border-white/15' if featured else 'border-slate-100' }}">
+            {% if plan.description %}<p class="mt-3 text-sm {{ t.muted }}">{{ plan.description }}</p>{% endif %}
+            <div class="mt-5 border-t pt-5 {{ t.line }}">
                 {% if main_cycle %}
-                <p><span class="text-4xl font-bold tracking-tight {{ 'text-lime-400' if featured else '' }}">R$ {{ prices[main_cycle]|decimal_br }}</span><span class="text-base {{ 'text-emerald-50/80' if featured else 'text-slate-500' }}"> /{{ cycle_unit_labels[main_cycle] }}</span></p>
-                {% if prices|length > 1 %}<p class="mt-1 text-xs {{ 'text-emerald-50/70' if featured else 'text-slate-500' }}">{% for code, price in prices.items() if code != main_cycle %}R$ {{ price|decimal_br }}/{{ cycle_unit_labels[code] }}{% if not loop.last %} · {% endif %}{% endfor %}</p>{% endif %}
+                <p><span class="text-4xl font-bold tracking-tight {{ t.price }}">R$ {{ prices[main_cycle]|decimal_br }}</span><span class="text-base {{ t.sub }}"> /{{ cycle_unit_labels[main_cycle] }}</span></p>
+                {% if prices|length > 1 %}<p class="mt-1 text-xs {{ t.sub }}">{% for code, price in prices.items() if code != main_cycle %}R$ {{ price|decimal_br }}/{{ cycle_unit_labels[code] }}{% if not loop.last %} · {% endif %}{% endfor %}</p>{% endif %}
                 {% endif %}
             </div>
-            <dl class="mt-4 grid grid-cols-3 divide-x rounded-2xl text-center text-xs font-semibold {{ 'divide-white/15 bg-white/10 ring-1 ring-lime-400/40' if featured else 'divide-slate-200 bg-slate-50' }}">
+            <dl class="mt-4 grid grid-cols-3 divide-x rounded-2xl text-center text-xs font-semibold {{ t.strip }}">
                 {% for icon, value in [('tractor', (plan.max_farms ~ (' fazenda' if plan.max_farms == 1 else ' fazendas')) if plan.max_farms else 'Fazendas ilimitadas'), ('shield', (plan.max_users ~ (' usuário' if plan.max_users == 1 else ' usuários')) if plan.max_users else 'Usuários ilimitados'), ('leaf', ('até ' ~ (plan.max_hectares|decimal_br(0)) ~ ' ha') if plan.max_hectares else 'Área ilimitada')] %}
-                <div class="flex flex-col items-center gap-1 px-2 py-3"><span class="{{ 'text-lime-400' if featured else 'text-[#446a36]' }}">{{ plan_icon(icon, 'h-5 w-5') }}</span><dd>{{ value }}</dd></div>
+                <div class="flex flex-col items-center gap-1 px-2 py-3"><span class="{{ t.icon }}">{{ plan_icon(icon, 'h-5 w-5') }}</span><dd>{{ value }}</dd></div>
                 {% endfor %}
             </dl>
             <ul class="mt-5 flex-1 space-y-2 text-sm">
                 {% for code, label in module_labels.items() if code in modules %}
-                <li class="flex items-start gap-2.5 {{ 'font-semibold' if code == module_code else '' }}"><span class="{{ 'text-lime-400' if featured else 'text-emerald-600' }}">{{ i_check|safe }}</span>{{ label }}</li>
+                <li class="flex items-start gap-2.5 {{ 'font-semibold' if code == module_code else '' }}"><span class="{{ t.check }}">{{ i_check|safe }}</span>{{ label }}</li>
                 {% endfor %}
                 {% for code, label in module_labels.items() if code not in modules %}
-                <li class="flex items-start gap-2.5 {{ 'text-emerald-50/45' if featured else 'text-slate-400' }}">{{ i_lock|safe }}{{ label }}</li>
+                <li class="flex items-start gap-2.5 {{ t.lock }}">{{ i_lock|safe }}{{ label }}</li>
                 {% endfor %}
             </ul>
             <div class="mt-6">
-                {% set cta_class = 'bg-gradient-to-r from-lime-400 to-lime-500 text-[#0c2416] shadow-lg shadow-lime-500/30 hover:from-lime-300 hover:to-lime-400' if featured else 'border-2 border-[#446a36] text-[#446a36] hover:bg-emerald-50' %}
+                {% set cta_class = t.cta %}
                 {% if is_current %}
-                <p class="rounded-2xl px-4 py-3 text-center text-sm font-semibold {{ 'bg-white/10 text-emerald-50' if featured else 'bg-slate-100 text-slate-500' }}">Seu plano atual</p>
+                <p class="rounded-2xl px-4 py-3 text-center text-sm font-semibold {{ t.current }}">Seu plano atual</p>
                 {% elif can_change_plan and prices %}
-                <button type="button" data-dialog-open="change-plan-{{ plan.id }}" class="flex w-full items-center justify-center gap-2 rounded-2xl px-4 py-3 text-base font-bold transition {{ cta_class }}">Escolher {{ plan.name }}{% if featured %}<svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg>{% endif %}</button>
+                <button type="button" data-dialog-open="change-plan-{{ plan.id }}" class="flex w-full items-center justify-center gap-2 rounded-2xl px-4 py-3 text-base font-bold transition {{ cta_class }}">Escolher {{ plan.name }}{% if t.arrow %}<svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg>{% endif %}</button>
                 {% include "partials/plan_change_dialog.html" %}
                 {% else %}
                 <form method="post" action="/planos-disponiveis/solicitar" data-busy-form>

@@ -525,3 +525,18 @@ def test_plan_icon_is_saved_and_rendered(db):
     assert ent.compute_entitlements(db, org.id, TODAY).plan_icon == 'coffee'
     html = routes.templates.env.get_template('subscription_plans.html').module if False else open('app/templates/subscription_plans.html').read()
     assert 'name="icon"' in html and 'plan_icon_choices' in html
+
+
+def test_most_expensive_plan_gets_premium_theme(db, monkeypatch):
+    basic = _plan(db)
+    pro = _plan(db, name='Profissional', price_monthly='149,90', is_featured='1')
+    full = _plan(db, name='Gestão Completa', price_monthly='249,90')
+    assert routes._premium_plan_id([basic, pro, full]) == full.id
+    assert routes._premium_plan_id([basic]) is None
+    monkeypatch.setattr(routes, '_base_context', lambda *a, **k: k)
+    monkeypatch.setattr(routes, '_repository', lambda _db: None)
+    monkeypatch.setattr(routes, 'permission_codes_for_user', lambda db, user: frozenset())
+    monkeypatch.setattr(routes.templates, 'TemplateResponse', lambda name, context: (name, context))
+    _, ctx = routes.plan_upgrade_page(request=SimpleNamespace(), modulo=None, db=db, user=SimpleNamespace(id=1, email='g@f.com', organization_id=None), csrf_token='t')
+    html = _render('plan_upgrade.html', ctx)
+    assert 'Plano mais completo' in html and 'Mais escolhido' in html and 'from-amber-300 to-amber-500' in html

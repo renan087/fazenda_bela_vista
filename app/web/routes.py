@@ -9201,6 +9201,7 @@ def plan_upgrade_page(request: Request, modulo: str | None = Query(None), db: Se
         can_change_plan=bool(subscription) and WRITE_FINANCE in permission_codes_for_user(db, user),
         plan_limit_issues={plan.id: _plan_downgrade_issues(db, user.organization_id, plan) for plan in ordered} if subscription else {},
         plan_change_info=_plan_change_info(db, subscription, ordered) if subscription else {},
+        premium_plan_id=_premium_plan_id(ordered),
         title="Planos disponíveis", module_code=module_code, module_label=MODULE_LABELS.get(module_code),
         module_pitch=MODULE_PITCH.get(module_code), plans_catalog=ordered, current_plan_id=entitlements.plan_id, current_plan_name=entitlements.plan_name,
         plan_modules_of=plan_modules, plan_prices_of=plan_prices, module_labels=MODULE_LABELS, support_email=(get_settings().support_email or "").strip() or None,
@@ -9218,6 +9219,15 @@ def _self_service_subscription(db: Session, user) -> OrganizationSubscription | 
     if db.query(OrganizationCardMigration.id).filter_by(organization_id=user.organization_id, is_open=True).first():
         return None
     return subscription
+
+
+def _premium_plan_id(plans_list) -> int | None:
+    """Plano de maior valor mensal (destaque "Plano mais completo"), quando ha mais de um e ele nao e o mais escolhido."""
+    priced = [(min(price / SUBSCRIPTION_CYCLES[code][1] for code, price in plan_prices(plan).items()), plan) for plan in plans_list if plan_prices(plan)]
+    if len(priced) < 2:
+        return None
+    plan = max(priced, key=lambda item: item[0])[1]
+    return None if plan.is_featured else plan.id
 
 
 def _plan_change_info(db: Session, subscription: OrganizationSubscription, plans_list) -> dict:
