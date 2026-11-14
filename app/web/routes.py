@@ -9458,14 +9458,14 @@ def edit_organization_sandbox_subscription_action(
     try:
         price = Decimal(amount.strip().replace('.', '').replace(',', '.'))
         due = date.fromisoformat(next_due_date) if next_due_date else None
-        if not name or len(name) > 120 or not price.is_finite() or price <= 0 or price >= Decimal('10000000000') or price.as_tuple().exponent < -2 or cycle not in {'MONTHLY', 'YEARLY'} or billing_type not in {'PIX', 'BOLETO'} or (due and due < today_in_app_timezone()):
+        if not name or len(name) > 120 or not price.is_finite() or price <= 0 or price >= Decimal('10000000000') or price.as_tuple().exponent < -2 or cycle not in {'MONTHLY', 'YEARLY'} or billing_type not in {'PIX', 'BOLETO', 'CREDIT_CARD'} or (due and due < today_in_app_timezone()):
             raise ValueError()
     except (ValueError, InvalidOperation):
         _flash(request, "error", "Confira plano, valor, periodicidade, forma e próximo vencimento.")
         return _redirect("/organizacoes")
     subscription = db.query(OrganizationSubscription).filter_by(organization_id=organization_id, environment="sandbox", is_current=True).first()
     billing = db.query(OrganizationBilling).filter_by(organization_id=organization_id, asaas_environment="sandbox").first()
-    if not subscription or not billing or not billing.asaas_customer_id or not subscription.asaas_subscription_id or subscription.status != 'criada' or subscription.asaas_status not in {'ACTIVE', 'INACTIVE'} or subscription.billing_type not in {'PIX', 'BOLETO'}:
+    if not subscription or not billing or not billing.asaas_customer_id or not subscription.asaas_subscription_id or subscription.status != 'criada' or subscription.asaas_status not in {'ACTIVE', 'INACTIVE'} or subscription.billing_type not in {'PIX', 'BOLETO', 'CREDIT_CARD'} or (subscription.billing_type != billing_type and 'CREDIT_CARD' in {subscription.billing_type, billing_type}):
         _flash(request, "error", "Assinatura indisponível para edição. Atualize e confira no Asaas.")
         return _redirect("/organizacoes")
     remote_id = subscription.asaas_subscription_id
@@ -9479,6 +9479,8 @@ def edit_organization_sandbox_subscription_action(
         _flash(request, "error", "Outra operação está em andamento. Atualize a assinatura.")
         return _redirect("/organizacoes")
     payload = {'description': name, 'value': float(price), 'cycle': cycle, 'billingType': billing_type}
+    if billing_type == 'CREDIT_CARD':
+        payload.pop('billingType')
     if due:
         payload['nextDueDate'] = due.isoformat()
     result, error = update_sandbox_subscription(api_key=settings.asaas_api_key.strip(), subscription_id=remote_id, customer_id=customer_id, payload=payload)
@@ -9645,7 +9647,7 @@ def manage_organization_sandbox_subscription_action(
 @router.post("/organizacoes/{organization_id}/assinatura-sandbox/sincronizar")
 def sync_organization_subscription_payments_action(
     organization_id: int, request: Request, csrf_token: str = Form(...),
-    db: Session = Depends(get_db), user: User = Depends(get_current_user_web),
+    db: Session = Depends(get_db), user: User = Depends(get_current_user_web), subscription_id: int | None = Form(None),
 ):
     denied = _require_super_admin(request, user)
     if denied:
@@ -9656,7 +9658,8 @@ def sync_organization_subscription_payments_action(
     if parsed.scheme != "https" or parsed.hostname != "api-sandbox.asaas.com" or parsed.port not in (None, 443) or parsed.path not in ("", "/") or parsed.query or parsed.fragment or parsed.username or not (settings.asaas_api_key or "").strip():
         _flash(request, "error", "Configure o sandbox oficial e sua chave antes de sincronizar.")
         return _redirect("/organizacoes")
-    subscription = db.query(OrganizationSubscription).filter_by(organization_id=organization_id, environment="sandbox", is_current=True).first()
+    query = db.query(OrganizationSubscription).filter_by(organization_id=organization_id, environment="sandbox")
+    subscription = query.filter_by(id=subscription_id).first() if isinstance(subscription_id, int) else query.filter_by(is_current=True).first()
     if not subscription or not subscription.asaas_subscription_id:
         _flash(request, "error", "Assinatura de sandbox não encontrada.")
         return _redirect("/organizacoes")
@@ -9670,7 +9673,7 @@ def sync_organization_subscription_payments_action(
         _flash(request, "error", error)
         return _redirect("/organizacoes")
     try:
-        key = hashlib.sha256(f"{organization_id}:subscription:{started_at.isoformat()}".encode()).hexdigest()
+        key = hashlib.sha256(f"{organization_id}:subscription:{subscription.id}:{started_at.isoformat()}".encode()).hexdigest()
         if not persist_organization_webhook(db, {"id": f"sync-{key}", "event": "MANUAL_SYNC", "dateCreated": started_at.isoformat(), "subscription": remote_subscription}):
             raise ValueError("Assinatura não localizada durante sincronização")
         if subscription.status == 'revisao' and any(remote_subscription.get(field) is None for field in ('description', 'value', 'cycle', 'billingType', 'nextDueDate')):

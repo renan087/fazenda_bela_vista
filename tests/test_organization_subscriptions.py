@@ -107,6 +107,43 @@ def test_edit_sends_no_pending_payment_update(monkeypatch):
     assert calls[0]['updatePendingPayments'] is False
 
 
+def test_card_subscription_edit_preserves_payment_method(monkeypatch):
+    from datetime import date
+    from decimal import Decimal
+    engine = create_engine('sqlite:///:memory:')
+    Base.metadata.create_all(engine)
+    monkeypatch.setattr(routes, '_require_super_admin', lambda *args: None)
+    monkeypatch.setattr(routes, 'validate_csrf', lambda *args: None)
+    monkeypatch.setattr(routes, '_flash', lambda *args: None)
+    monkeypatch.setattr(routes, 'get_settings', lambda: SimpleNamespace(asaas_api_base_url='https://api-sandbox.asaas.com', asaas_api_key='key'))
+    calls = []
+    def update(**kwargs):
+        calls.append(kwargs['payload'])
+        return {'id': 'sub_card', 'customer': 'cus_test', 'status': 'ACTIVE', 'billingType': 'CREDIT_CARD', **kwargs['payload']}, None
+    monkeypatch.setattr(routes, 'update_sandbox_subscription', update)
+    with Session(engine) as db:
+        org = Organization(name='Teste', slug='card-edit', is_active=True)
+        db.add(org); db.flush()
+        db.add(OrganizationBilling(organization_id=org.id, contact_name='Pessoa', contact_email='a@example.com', asaas_customer_id='cus_test', asaas_environment='sandbox'))
+        db.add(OrganizationSubscription(organization_id=org.id, plan_name='Antigo', amount=Decimal('99.90'), cycle='MONTHLY', billing_type='CREDIT_CARD', first_due_date=date(2026, 1, 1), status='criada', environment='sandbox', asaas_subscription_id='sub_card', asaas_status='ACTIVE'))
+        db.commit()
+        args = dict(organization_id=org.id, request=SimpleNamespace(), csrf_token='x', plan_name='Novo', amount='120,50', cycle='MONTHLY', billing_type='CREDIT_CARD', next_due_date='', db=db, user=SimpleNamespace())
+        routes.edit_organization_sandbox_subscription_action(**args)
+        row = db.query(OrganizationSubscription).one()
+        assert row.plan_name == 'Novo' and row.billing_type == 'CREDIT_CARD'
+        assert 'billingType' not in calls[0] and 'creditCard' not in calls[0]
+        args['billing_type'] = 'PIX'
+        routes.edit_organization_sandbox_subscription_action(**args)
+        assert len(calls) == 1 and row.billing_type == 'CREDIT_CARD'
+
+
+def test_subscription_service_refuses_implicit_card_conversion(monkeypatch):
+    from app.services import asaas_subscriptions as service
+    monkeypatch.setattr(service, 'get_sandbox_subscription', lambda **kwargs: ({'id': 'sub_test', 'customer': 'cus_test', 'status': 'ACTIVE', 'billingType': 'CREDIT_CARD'}, None))
+    result, error = service.update_sandbox_subscription(api_key='key', subscription_id='sub_test', customer_id='cus_test', payload={'billingType': 'PIX'})
+    assert result is None and error
+
+
 def test_history_preserves_payments_and_allows_only_one_current_subscription():
     from datetime import date
     from decimal import Decimal

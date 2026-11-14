@@ -145,3 +145,25 @@ def test_payment_action_blocks_retries_after_uncertain_response(monkeypatch):
         assert [event.outcome for event in events] == ['iniciado', 'verificar']
         assert all(event.organization_id == org.id for event in events)
         assert all('key' not in event.metadata_json for event in events)
+
+
+def test_sync_previous_subscription_preserves_current_and_updates_payment_method(monkeypatch):
+    engine = create_engine('sqlite:///:memory:')
+    Base.metadata.create_all(engine)
+    monkeypatch.setattr(routes, '_require_super_admin', lambda *args: None)
+    monkeypatch.setattr(routes, 'validate_csrf', lambda *args: None)
+    monkeypatch.setattr(routes, '_flash', lambda *args: None)
+    monkeypatch.setattr(routes, 'get_settings', lambda: SimpleNamespace(asaas_api_base_url='https://api-sandbox.asaas.com', asaas_api_key='key'))
+    monkeypatch.setattr(routes, 'get_sandbox_subscription', lambda **kwargs: ({'id': 'sub_old', 'customer': 'cus_test', 'status': 'INACTIVE'}, None))
+    monkeypatch.setattr(routes, 'list_sandbox_subscription_payments', lambda **kwargs: ([{'id': 'pay_old', 'subscription': 'sub_old', 'customer': 'cus_test', 'status': 'RECEIVED', 'billingType': 'PIX', 'value': 99.90}], None))
+    with Session(engine) as db:
+        org = Organization(name='Teste', slug='sync-old', is_active=True)
+        db.add(org); db.flush()
+        db.add(OrganizationBilling(organization_id=org.id, contact_name='Pessoa', contact_email='a@example.com', asaas_customer_id='cus_test', asaas_environment='sandbox'))
+        def subscription(remote_id, current):
+            return OrganizationSubscription(organization_id=org.id, plan_name='Teste', amount=Decimal('99.90'), cycle='MONTHLY', billing_type='PIX', first_due_date=date(2026, 1, 1), environment='sandbox', asaas_subscription_id=remote_id, is_current=current)
+        old = subscription('sub_old', False)
+        db.add_all([old, subscription('sub_current', True)]); db.commit()
+        routes.sync_organization_subscription_payments_action(organization_id=org.id, subscription_id=old.id, request=SimpleNamespace(), csrf_token='x', db=db, user=SimpleNamespace())
+        assert db.query(OrganizationSubscriptionPayment).one().billing_type == 'PIX'
+        assert db.query(OrganizationSubscription).filter_by(is_current=True).one().asaas_subscription_id == 'sub_current'
