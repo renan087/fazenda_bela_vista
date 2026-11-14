@@ -89,6 +89,7 @@ from app.models import (
     IrrigationRecord,
     Organization,
     OrganizationBilling,
+    OrganizationSubscription,
     PestIncident,
     Plot,
     PlotAttachment,
@@ -107,6 +108,7 @@ from app.services.asaas_customers import (
     find_asaas_customers_by_document,
 )
 from app.services.asaas_payment_sync import upsert_asaas_payment_row, user_owns_asaas_payment_payload
+from app.services.asaas_subscriptions import create_sandbox_subscription
 from app.services.asaas_payments import create_asaas_payment, get_asaas_payment, is_asaas_status_paid
 from app.services.agronomic_profile_suggestions import build_agronomic_profile_suggestions
 from app.services.sector_costs import build_sector_cost_context
@@ -9165,6 +9167,7 @@ def organizations_page(
         for organization in organizations
     }
     billing_by_organization = {item.organization_id: item for item in db.query(OrganizationBilling).all()}
+    subscriptions_by_organization = {item.organization_id: item for item in db.query(OrganizationSubscription).all()}
     return templates.TemplateResponse(
         "organizations.html",
         _base_context(
@@ -9176,6 +9179,7 @@ def organizations_page(
             organizations=organizations,
             organization_stats=organization_stats,
             billing_by_organization=billing_by_organization,
+            subscriptions_by_organization=subscriptions_by_organization,
             users=users,
             farms=farms,
             _repo=repo,
@@ -9317,6 +9321,58 @@ def organization_asaas_sandbox_action(
     billing.asaas_environment = "sandbox"
     db.commit()
     _flash(request, "success", "Cliente Asaas do sandbox vinculado à organização. Nenhuma cobrança foi criada.")
+    return _redirect("/organizacoes")
+
+
+@router.post("/organizacoes/{organization_id}/assinatura-sandbox")
+def create_organization_sandbox_subscription_action(
+    organization_id: int, request: Request, csrf_token: str = Form(...),
+    plan_name: str = Form(...), amount: str = Form(...), cycle: str = Form(...),
+    billing_type: str = Form(...), first_due_date: str = Form(...),
+    db: Session = Depends(get_db), user: User = Depends(get_current_user_web),
+):
+    denied = _require_super_admin(request, user)
+    if denied:
+        return denied
+    validate_csrf(request, csrf_token)
+    settings = get_settings()
+    parsed_url = urlparse(settings.asaas_api_base_url or "")
+    if parsed_url.scheme != "https" or parsed_url.hostname != "api-sandbox.asaas.com" or parsed_url.port not in (None, 443) or parsed_url.path not in ("", "/") or parsed_url.query or parsed_url.fragment or parsed_url.username or not (settings.asaas_api_key or "").strip():
+        _flash(request, "error", "Configure a URL e a chave do sandbox oficial do Asaas.")
+        return _redirect("/organizacoes")
+    organization = db.get(Organization, organization_id)
+    billing = db.query(OrganizationBilling).filter_by(organization_id=organization_id).with_for_update().first()
+    if not organization or not billing or not billing.asaas_customer_id or billing.asaas_environment != "sandbox":
+        _flash(request, "error", "Vincule primeiro o cliente desta organização ao Asaas sandbox.")
+        return _redirect("/organizacoes")
+    if db.query(OrganizationSubscription.id).filter_by(organization_id=organization_id).first():
+        _flash(request, "error", "Já existe uma assinatura ou tentativa registrada para esta organização. Verifique antes de criar outra.")
+        return _redirect("/organizacoes")
+    name = (plan_name or "").strip()
+    value = _parse_br_decimal(amount)
+    try:
+        due = date.fromisoformat(first_due_date)
+    except (ValueError, TypeError):
+        due = None
+    if not name or len(name) > 120 or value is None or not 0.01 <= value <= 9999999999.99 or cycle not in {"MONTHLY", "YEARLY"} or billing_type not in {"PIX", "BOLETO"} or not due or due < today_in_app_timezone():
+        _flash(request, "error", "Confira plano, valor, periodicidade, forma de pagamento e primeiro vencimento.")
+        return _redirect("/organizacoes")
+    subscription = OrganizationSubscription(organization_id=organization_id, plan_name=name, amount=Decimal(str(value)).quantize(Decimal("0.01")), cycle=cycle, billing_type=billing_type, first_due_date=due, status="criando", environment="sandbox")
+    db.add(subscription)
+    db.commit()
+    db.refresh(subscription)
+    payload = {"customer": billing.asaas_customer_id, "billingType": billing_type, "value": float(subscription.amount), "nextDueDate": due.isoformat(), "cycle": cycle, "description": name, "externalReference": f"sisfarm-sub-{subscription.id}"}
+    result, error = create_sandbox_subscription(api_key=settings.asaas_api_key.strip(), payload=payload)
+    if error or not result:
+        subscription.status = "revisao"
+        db.commit()
+        _flash(request, "error", "Não foi possível confirmar a assinatura. Verifique o sandbox do Asaas antes de qualquer nova tentativa; a criação automática foi bloqueada para evitar duplicidade.")
+        return _redirect("/organizacoes")
+    subscription.asaas_subscription_id = result["id"].strip()
+    subscription.asaas_status = str(result.get("status") or "")[:30] or None
+    subscription.status = "criada"
+    db.commit()
+    _flash(request, "success", "Assinatura criada no sandbox. A criação não confirma pagamento nem altera o acesso da organização.")
     return _redirect("/organizacoes")
 
 
@@ -9573,6 +9629,9 @@ def delete_organization_action(
         return _redirect("/organizacoes")
     has_users = db.query(User.id).filter(User.organization_id == organization.id).first()
     has_farms = db.query(Farm.id).filter(Farm.organization_id == organization.id).first()
+    if db.query(OrganizationSubscription.id).filter_by(organization_id=organization.id).first():
+        _flash(request, "error", "Esta organização possui assinatura ou tentativa comercial registrada e não pode ser excluída.")
+        return _redirect("/organizacoes")
     if has_users or has_farms:
         _flash(request, "error", "Exclua ou mova usuarios e fazendas antes de remover esta organizacao.")
         return _redirect("/organizacoes")

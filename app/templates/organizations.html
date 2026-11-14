@@ -125,6 +125,24 @@
                         </form>
                         {% if billing and billing.asaas_customer_id %}<p class="mt-4 rounded-xl bg-emerald-50 px-4 py-3 text-sm text-emerald-800">Asaas {{ billing.asaas_environment or 'ambiente não informado' }}: {{ billing.asaas_customer_id }}</p>{% endif %}
                     </details>
+                    {% set subscription = subscriptions_by_organization.get(organization.id) %}
+                    <details class="mt-3 rounded-2xl border border-slate-200 bg-white p-4">
+                        <summary class="cursor-pointer text-sm font-semibold text-slate-700">Assinatura do SiSFarm <span class="ml-2 text-xs font-normal text-slate-500">Sandbox</span></summary>
+                        {% if subscription %}
+                        <div class="mt-3 space-y-1 text-sm text-slate-700"><p><strong>Plano:</strong> {{ subscription.plan_name }}</p><p><strong>Valor:</strong> R$ {{ subscription.amount|decimal_br }}</p><p><strong>Periodicidade:</strong> {{ 'Mensal' if subscription.cycle == 'MONTHLY' else 'Anual' }}</p><p><strong>Forma:</strong> {{ 'Pix' if subscription.billing_type == 'PIX' else 'Boleto' }}</p><p><strong>Primeiro vencimento:</strong> {{ subscription.first_due_date.strftime('%d/%m/%Y') }}</p><p><strong>Registro:</strong> {% if subscription.status == 'criada' %}Criada no sandbox{% elif subscription.status == 'revisao' %}Confirmação pendente: verifique no Asaas antes de outra tentativa{% else %}Criação em andamento ou aguardando conferência{% endif %}</p>{% if subscription.asaas_subscription_id %}<p><strong>ID Asaas:</strong> {{ subscription.asaas_subscription_id }}</p><p><strong>Status informado na criação:</strong> {{ subscription.asaas_status or 'Não informado' }}</p>{% endif %}<p class="pt-2 text-xs text-slate-500">Este status não confirma pagamento. A sincronização de cobranças será implementada em etapa posterior.</p></div>
+                        {% elif billing and billing.asaas_customer_id and billing.asaas_environment == 'sandbox' %}
+                        <p class="mt-3 text-xs leading-5 text-slate-500">Cria uma recorrência de teste no Asaas sandbox. Não altera o acesso da organização.</p>
+                        <form method="post" action="/organizacoes/{{ organization.id }}/assinatura-sandbox" class="mt-4 grid gap-3" onsubmit="return confirm('Criar esta assinatura recorrente no sandbox do Asaas?');">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                            <label><span class="mb-1 block text-sm font-medium">Nome do plano</span><input name="plan_name" maxlength="120" required class="min-h-[3rem] w-full rounded-xl border-slate-200 bg-slate-50"></label>
+                            <label><span class="mb-1 block text-sm font-medium">Valor por período (R$)</span><input name="amount" inputmode="decimal" placeholder="Ex.: 99,90" required class="min-h-[3rem] w-full rounded-xl border-slate-200 bg-slate-50"></label>
+                            <label><span class="mb-1 block text-sm font-medium">Periodicidade</span><select name="cycle" class="min-h-[3rem] w-full rounded-xl border-slate-200 bg-slate-50"><option value="MONTHLY">Mensal</option><option value="YEARLY">Anual</option></select></label>
+                            <label><span class="mb-1 block text-sm font-medium">Forma de pagamento</span><select name="billing_type" class="min-h-[3rem] w-full rounded-xl border-slate-200 bg-slate-50"><option value="PIX">Pix</option><option value="BOLETO">Boleto</option></select></label>
+                            <label><span class="mb-1 block text-sm font-medium">Primeiro vencimento</span><input type="date" name="first_due_date" required class="min-h-[3rem] w-full rounded-xl border-slate-200 bg-slate-50"></label>
+                            <button class="rounded-xl bg-brand-500 px-4 py-3 text-sm font-semibold text-white hover:bg-brand-700">Criar assinatura de teste</button>
+                        </form>
+                        {% else %}<p class="mt-3 text-sm text-slate-500">Vincule o cliente no Asaas sandbox para configurar uma assinatura de teste.</p>{% endif %}
+                    </details>
                 </article>
                 {% else %}
                 <p class="text-sm text-slate-500">Nenhuma organização cadastrada.</p>

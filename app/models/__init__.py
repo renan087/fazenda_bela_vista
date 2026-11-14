@@ -35,6 +35,7 @@ from app.models.irrigation import IrrigationRecord
 from app.models.login_verification_code import LoginVerificationCode
 from app.models.organization import Organization
 from app.models.organization_billing import OrganizationBilling
+from app.models.organization_subscription import OrganizationSubscription
 from app.models.password_reset_token import PasswordResetToken
 from app.models.password_change_verification import PasswordChangeVerification
 from app.models.pesticide import PestIncident
@@ -57,6 +58,7 @@ __all__ = [
     "AuditLog",
     "AsaasPayment",
     "OrganizationBilling",
+    "OrganizationSubscription",
     "AgronomicProfile",
     "AgriculturalOperation",
     "BackupAutomationSetting",
