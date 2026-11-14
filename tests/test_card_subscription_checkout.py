@@ -87,7 +87,7 @@ def test_checkout_session_returns_link_and_uses_24h_and_subscriptions_callback(m
     session, error = checkout.create_sandbox_card_checkout_session(api_key='k', customer_id='cus_test', reference='r', plan_name='P', amount=10, cycle='SEMIANNUALLY', next_due_date='2099-01-01', callback_base='https://app.sisfarm.com.br')
     assert error is None and session == {'id': CHECKOUT, 'link': LINK}
     assert calls[0]['minutesToExpire'] == 1440
-    assert calls[0]['callback']['successUrl'] == 'https://app.sisfarm.com.br/assinaturas'
+    assert calls[0]['callback']['successUrl'] == 'https://app.sisfarm.com.br/minha-assinatura'
     assert calls[0]['subscription']['cycle'] == 'SEMIANNUALLY'
 
 

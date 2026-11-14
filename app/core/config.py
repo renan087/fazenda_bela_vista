@@ -60,6 +60,8 @@ class Settings(BaseSettings):
     asaas_environment: str = "sandbox"
     # Endereco publico do SiSFarm, usado no retorno do checkout do Asaas.
     app_public_url: str = "https://app.sisfarm.com.br"
+    # Contato exibido ao cliente na pagina "Minha assinatura" (opcional).
+    support_email: str | None = None
     # Token do webhook (campo "Token de autenticação" no Asaas); enviado no header asaas-access-token.
     asaas_webhook_token: str | None = None
     memory_monitor_enabled: bool = True

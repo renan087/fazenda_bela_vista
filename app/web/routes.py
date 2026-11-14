@@ -30,6 +30,7 @@ from starlette.datastructures import UploadFile as StarletteUploadFile
 from app.core.config import get_settings
 from app.core.admin_access import has_admin_access, is_super_admin_email
 from app.core.permissions_catalog import (
+    WRITE_FINANCE,
     BACKUPS_MANAGE,
     PAGE_AGENDA,
     PAGE_AGRONOMIC,
@@ -114,7 +115,7 @@ from app.services.asaas_payment_sync import upsert_asaas_payment_row, user_owns_
 from app.services.asaas_subscriptions import create_sandbox_subscription, get_sandbox_subscription, list_customer_sandbox_subscriptions, list_sandbox_subscription_payments, manage_sandbox_subscription, sandbox_subscription_is_missing, switch_sandbox_subscription_to_saved_card, update_sandbox_subscription
 from app.services.asaas_organization_payment_actions import execute_payment_action
 from app.services.asaas_environment import app_public_base, asaas_api_key, asaas_configuration_error, asaas_env_name, asaas_ready, current_asaas_environment
-from app.services.asaas_card_checkout import cancel_sandbox_checkout, create_sandbox_card_checkout_session
+from app.services.asaas_card_checkout import cancel_sandbox_checkout, create_sandbox_card_checkout_session, safe_asaas_link
 from app.services.commercial_audit import record_commercial_event
 from app.services.organization_subscription_sync import apply_subscription_details, persist_organization_webhook
 from app.services.asaas_payments import create_asaas_payment, get_asaas_payment, is_asaas_status_paid
@@ -9415,6 +9416,98 @@ def manage_subscription_plan_action(
     return _redirect("/planos" if action == "excluir" else f"/planos#plano-{target_id}")
 
 
+def _customer_subscription_context(db: Session, organization: Organization) -> dict:
+    """Tudo o que a organizacao ve sobre a propria assinatura. Nunca recebe id de organizacao da requisicao."""
+    env = asaas_env_name()
+    subscriptions = db.query(OrganizationSubscription).filter_by(organization_id=organization.id, environment=env).order_by(OrganizationSubscription.id.desc()).all()
+    current = next((item for item in subscriptions if item.is_current), None)
+    ids = [item.id for item in subscriptions]
+    charges = []
+    if ids:
+        charges = db.query(OrganizationSubscriptionPayment).filter(OrganizationSubscriptionPayment.subscription_id.in_(ids)).order_by(OrganizationSubscriptionPayment.due_date.desc().nullslast(), OrganizationSubscriptionPayment.id.desc()).all()
+    today = today_in_app_timezone()
+    open_charges = [item for item in charges if item.status in {"PENDING", "OVERDUE"}]
+    open_charges.sort(key=lambda item: item.due_date or today)
+    paid_charges = [item for item in charges if item.status in {"CONFIRMED", "RECEIVED", "RECEIVED_IN_CASH"}][:24]
+    migration = db.query(OrganizationCardMigration).filter_by(organization_id=organization.id, is_open=True).first()
+    portfolio = build_subscription_portfolio(db, [organization], today)
+    plan = current.plan if current else None
+    module_labels = dict(PLAN_MODULES)
+    return {
+        "organization": organization,
+        "subscription": current,
+        "open_charges": open_charges,
+        "paid_charges": paid_charges,
+        "card_migration": migration,
+        "situation": portfolio.rows[0] if portfolio.rows else None,
+        "saved_card": _saved_card_charge(db, organization.id),
+        "plan": plan,
+        "plan_module_labels": [module_labels[code] for code in plan_modules(plan)] if plan else [],
+        "today_iso": today.isoformat(),
+        "support_email": (get_settings().support_email or "").strip() or None,
+    }
+
+
+@router.get("/minha-assinatura")
+def my_subscription_page(request: Request, db: Session = Depends(get_db), user: User = Depends(get_current_user_web), csrf_token: str = Depends(get_csrf_token)):
+    organization = user.organization
+    if not organization:
+        _flash(request, "error", "Seu usuário não está vinculado a uma organização.")
+        return _redirect("/dashboard")
+    context = _customer_subscription_context(db, organization)
+    can_change = WRITE_FINANCE in permission_codes_for_user(db, user)
+    return templates.TemplateResponse("my_subscription.html", _base_context(
+        request, user, csrf_token, "my_subscription", title="Minha assinatura", can_change_payment=can_change, _repo=_repository(db), **context,
+    ))
+
+
+def _customer_target() -> RedirectResponse:
+    return _redirect("/minha-assinatura")
+
+
+@router.post("/minha-assinatura/cartao")
+def my_subscription_card_action(request: Request, csrf_token: str = Form(...), db: Session = Depends(get_db), user: User = Depends(get_current_user_web)):
+    """O proprio cliente cadastra (ou troca) o cartao: abre o checkout do Asaas e o redireciona para ele."""
+    validate_csrf(request, csrf_token)
+    organization = user.organization
+    settings = get_settings()
+    if not organization or not asaas_ready(settings):
+        _flash(request, "error", "Pagamento com cartão indisponível no momento. Tente novamente mais tarde.")
+        return _customer_target()
+    migration = db.query(OrganizationCardMigration).filter_by(organization_id=organization.id, is_open=True).first()
+    if migration and migration.status == "aguardando" and migration.checkout_link:
+        return RedirectResponse(url=migration.checkout_link, status_code=status.HTTP_303_SEE_OTHER)
+    if migration:
+        _flash(request, "info", "Já existe um cadastro de cartão em andamento. Aguarde alguns minutos e atualize a página.")
+        return _customer_target()
+    old = db.query(OrganizationSubscription).filter_by(organization_id=organization.id, is_current=True, environment=asaas_env_name()).with_for_update().first()
+    billing = db.query(OrganizationBilling).filter_by(organization_id=organization.id, asaas_environment=asaas_env_name()).first()
+    if not old or old.status != "criada" or old.asaas_status != "ACTIVE" or old.billing_type not in {"PIX", "BOLETO", "CREDIT_CARD"} or not old.asaas_subscription_id or not billing or not billing.asaas_customer_id:
+        _flash(request, "error", "Sua assinatura não permite cadastrar cartão agora. Fale com a equipe SiSFarm.")
+        return _customer_target()
+    today = today_in_app_timezone()
+    due = old.next_due_date if old.next_due_date and old.next_due_date >= today else today + timedelta(days=1)
+    migration, error = _open_card_migration(db, user, organization_id=organization.id, old=old, billing=billing, due=due, api_key=settings.asaas_api_key.strip())
+    link = safe_asaas_link(migration.checkout_link) if not error else None
+    if not link:
+        _flash(request, "error", "Não foi possível abrir a página de pagamento agora. Tente novamente em alguns minutos.")
+        return _customer_target()
+    return RedirectResponse(url=link, status_code=status.HTTP_303_SEE_OTHER)
+
+
+@router.post("/minha-assinatura/cartao-salvo")
+def my_subscription_saved_card_action(request: Request, csrf_token: str = Form(...), db: Session = Depends(get_db), user: User = Depends(get_current_user_web)):
+    validate_csrf(request, csrf_token)
+    organization = user.organization
+    settings = get_settings()
+    if not organization or not asaas_ready(settings):
+        _flash(request, "error", "Pagamento com cartão indisponível no momento. Tente novamente mais tarde.")
+        return _customer_target()
+    kind, message = _switch_to_saved_card(db, request, user, organization_id=organization.id, api_key=settings.asaas_api_key.strip(), by_customer=True)
+    _flash(request, kind, message)
+    return _customer_target()
+
+
 @router.post("/organizacoes/{organization_id}/dados-comerciais")
 def save_organization_billing_action(
     organization_id: int,
@@ -9732,39 +9825,41 @@ def switch_to_saved_card_action(organization_id: int, request: Request, csrf_tok
     if customer_authorized != "1":
         _flash(request, "error", "Confirme que o cliente autorizou voltar a cobrar no cartão cadastrado.")
         return _redirect(target)
+    kind, message = _switch_to_saved_card(db, request, user, organization_id=organization_id, api_key=settings.asaas_api_key.strip(), by_customer=False)
+    _flash(request, kind, message if kind == "success" else message + " Se preferir, gere um link para o cliente cadastrar o cartão.")
+    return _redirect(target)
+
+
+def _switch_to_saved_card(db: Session, request: Request, user, *, organization_id: int, api_key: str, by_customer: bool) -> tuple[str, str]:
+    """Volta a assinatura atual (Pix/boleto) para o ultimo cartao salvo. Retorna (tipo da mensagem, mensagem)."""
     subscription = db.query(OrganizationSubscription).filter_by(organization_id=organization_id, environment=asaas_env_name(), is_current=True).first()
     billing = db.query(OrganizationBilling).filter_by(organization_id=organization_id, asaas_environment=asaas_env_name()).first()
     saved = _saved_card_charge(db, organization_id)
     if not subscription or not billing or not billing.asaas_customer_id or not subscription.asaas_subscription_id or subscription.status != "criada" or subscription.asaas_status != "ACTIVE" or subscription.billing_type not in {"PIX", "BOLETO"} or db.query(OrganizationCardMigration.id).filter_by(organization_id=organization_id, is_open=True).first():
-        _flash(request, "error", "A assinatura precisa estar ativa em Pix ou boleto, sem link de cartão pendente.")
-        return _redirect(target)
+        return "error", "A assinatura precisa estar ativa em Pix ou boleto, sem link de cartão pendente."
     if not saved:
-        _flash(request, "error", "Não há cartão salvo disponível para esta organização. Gere um link para o cliente cadastrar o cartão.")
-        return _redirect(target)
+        return "error", "Não há cartão salvo disponível."
     subscription_id = subscription.id
     reserved = db.query(OrganizationSubscription).filter_by(id=subscription_id, status="criada", asaas_status="ACTIVE").update({"status": "revisao"}, synchronize_session=False)
     if reserved:
-        record_commercial_event(db, user=user, organization_id=organization_id, resource="assinatura", resource_id=subscription_id, action="voltar_cartao_salvo", outcome="iniciado", details={"cartao_final": saved.card_last4, "autorizado_pelo_cliente": True})
+        record_commercial_event(db, user=user, organization_id=organization_id, resource="assinatura", resource_id=subscription_id, action="voltar_cartao_salvo", outcome="iniciado", details={"cartao_final": saved.card_last4, "autorizado_pelo_cliente": True, "por_cliente": by_customer})
     db.commit()
     if not reserved:
-        _flash(request, "error", "Outra operação está em andamento. Atualize a assinatura.")
-        return _redirect(target)
-    result, error = switch_sandbox_subscription_to_saved_card(api_key=settings.asaas_api_key.strip(), subscription_id=subscription.asaas_subscription_id, customer_id=billing.asaas_customer_id, card_payment_id=saved.asaas_payment_id, remote_ip=client_ip(request) or "")
+        return "error", "Outra operação está em andamento. Atualize a página em instantes."
+    result, error = switch_sandbox_subscription_to_saved_card(api_key=api_key, subscription_id=subscription.asaas_subscription_id, customer_id=billing.asaas_customer_id, card_payment_id=saved.asaas_payment_id, remote_ip=client_ip(request) or "")
     subscription = db.query(OrganizationSubscription).filter_by(id=subscription_id).with_for_update().one()
     if error:
         record_commercial_event(db, user=user, organization_id=organization_id, resource="assinatura", resource_id=subscription_id, action="voltar_cartao_salvo", outcome="verificar", details={"motivo": error[:200]})
         db.commit()
         _auto_reconcile(db, organization_id)
-        _flash(request, "error", error + " Se preferir, gere um link para o cliente cadastrar o cartão.")
-        return _redirect(target)
+        return "error", error
     apply_subscription_details(subscription, result)
     subscription.status = "criada"
     subscription.asaas_last_event_at = app_now().replace(tzinfo=None)
-    record_commercial_event(db, user=user, organization_id=organization_id, resource="assinatura", resource_id=subscription_id, action="voltar_cartao_salvo", outcome="success", details={"cartao_final": saved.card_last4, "proxima_cobranca": subscription.next_due_date})
+    record_commercial_event(db, user=user, organization_id=organization_id, resource="assinatura", resource_id=subscription_id, action="voltar_cartao_salvo", outcome="success", details={"cartao_final": saved.card_last4, "proxima_cobranca": subscription.next_due_date, "por_cliente": by_customer})
     db.commit()
     due = subscription.next_due_date.strftime("%d/%m/%Y") if subscription.next_due_date else "a próxima data prevista"
-    _flash(request, "success", f"A assinatura voltou para o cartão final {saved.card_last4 or '****'}. A próxima cobrança, em {due}, será feita nele; cobranças já geradas em Pix ou boleto continuam como estão.")
-    return _redirect(target)
+    return "success", f"A assinatura voltou para o cartão final {saved.card_last4 or '****'}. A próxima cobrança, em {due}, será feita nele; cobranças já geradas em Pix ou boleto continuam como estão."
 
 
 @router.post("/organizacoes/{organization_id}/assinatura/checkout/encerrar")
@@ -9855,6 +9950,31 @@ def reconcile_deleted_sandbox_subscription_action(organization_id: int, request:
     return _redirect(f'/assinaturas?organizacao={organization_id}')
 
 
+def _open_card_migration(db: Session, user, *, organization_id: int, old: OrganizationSubscription, billing: OrganizationBilling, due: date, api_key: str):
+    """Abre checkout de cartao para substituir a assinatura atual (Pix/boleto ou outro cartao).
+
+    A assinatura atual so e suspensa depois que o Asaas confirmar o pagamento (processo automatico).
+    Retorna (migration, erro).
+    """
+    migration = OrganizationCardMigration(organization_id=organization_id, old_subscription_id=old.id, first_due_date=due, status='preparando')
+    db.add(migration)
+    old.status = 'migrando'
+    db.flush()
+    migration_id = migration.id
+    record_commercial_event(db, user=user, organization_id=organization_id, resource='assinatura', resource_id=old.id, action='migrar_cartao', outcome='iniciado', details={'por_cliente': not is_super_admin_email(getattr(user, 'email', '') or '')})
+    db.commit()
+    session, error = create_sandbox_card_checkout_session(api_key=api_key, customer_id=billing.asaas_customer_id, reference=f'sisfarm-migracao-{migration_id}', plan_name=old.plan_name, amount=old.amount, cycle=old.cycle, next_due_date=due.isoformat(), callback_base=app_public_base(get_settings()))
+    migration = db.query(OrganizationCardMigration).filter_by(id=migration_id).with_for_update().one()
+    if error:
+        migration.status = 'revisao'
+    else:
+        migration.checkout_id = session['id']
+        migration.checkout_link = session['link']
+        migration.status = 'aguardando'
+    db.commit()
+    return migration, error
+
+
 @router.post("/organizacoes/{organization_id}/assinatura/cartao")
 @router.post("/organizacoes/{organization_id}/assinatura-sandbox/cartao")
 def start_card_migration_action(organization_id: int, request: Request, csrf_token: str = Form(...), next_due_date: str = Form(...), db: Session = Depends(get_db), user: User = Depends(get_current_user_web)):
@@ -9878,24 +9998,11 @@ def start_card_migration_action(organization_id: int, request: Request, csrf_tok
     if not old or old.status != 'criada' or old.asaas_status != 'ACTIVE' or old.billing_type not in {'PIX', 'BOLETO'} or not old.asaas_subscription_id or not billing or not billing.asaas_customer_id or db.query(OrganizationCardMigration.id).filter_by(organization_id=organization_id, is_open=True).first():
         _flash(request, 'error', 'Assinatura indisponível ou já há uma migração em andamento.')
         return _redirect(f'/assinaturas?organizacao={organization_id}')
-    migration = OrganizationCardMigration(organization_id=organization_id, old_subscription_id=old.id, first_due_date=due, status='preparando')
-    db.add(migration)
-    old.status = 'migrando'
-    db.flush()
-    migration_id = migration.id
-    record_commercial_event(db, user=user, organization_id=organization_id, resource='assinatura', resource_id=old.id, action='migrar_cartao', outcome='iniciado')
-    db.commit()
-    session, error = create_sandbox_card_checkout_session(api_key=settings.asaas_api_key.strip(), customer_id=billing.asaas_customer_id, reference=f'sisfarm-migracao-{migration_id}', plan_name=old.plan_name, amount=old.amount, cycle=old.cycle, next_due_date=due.isoformat(), callback_base=app_public_base(get_settings()))
-    migration = db.query(OrganizationCardMigration).filter_by(id=migration_id).with_for_update().one()
+    migration, error = _open_card_migration(db, user, organization_id=organization_id, old=old, billing=billing, due=due, api_key=settings.asaas_api_key.strip())
     if error:
-        migration.status = 'revisao'
-        _flash(request, 'error', 'Checkout não confirmado. Confira no Asaas antes de outra tentativa.')
+        _flash(request, 'error', 'O Asaas não confirmou o link de pagamento. O SiSFarm vai conferir automaticamente; tente de novo em alguns minutos.')
     else:
-        migration.checkout_id = session['id']
-        migration.checkout_link = session['link']
-        migration.status = 'aguardando'
         _flash(request, 'success', 'Link de pagamento com cartão gerado. Copie e envie ao cliente; ele vale por 24 horas.')
-    db.commit()
     return _redirect(f'/assinaturas?organizacao={organization_id}')
 
 

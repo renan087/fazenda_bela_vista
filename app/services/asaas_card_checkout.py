@@ -29,7 +29,7 @@ def safe_asaas_link(value) -> str | None:
     return value.strip()
 
 
-def create_sandbox_card_checkout_session(*, api_key, customer_id, reference, plan_name, amount, cycle, next_due_date, callback_base, callback_path='/assinaturas'):
+def create_sandbox_card_checkout_session(*, api_key, customer_id, reference, plan_name, amount, cycle, next_due_date, callback_base, callback_path='/minha-assinatura'):
     """Retorna ({'id', 'link'}, None) ou (None, erro)."""
     if not api_key or not customer_id or not customer_id.startswith('cus_') or cycle not in {'MONTHLY', 'QUARTERLY', 'SEMIANNUALLY', 'YEARLY'}:
         return None, 'Dados de checkout inválidos.'
