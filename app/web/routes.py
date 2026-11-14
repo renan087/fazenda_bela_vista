@@ -10446,6 +10446,12 @@ async def update_user_action(
         if existing:
             _flash(request, "error", "Ja existe outro usuario com este email.")
             return _redirect_with_query("/usuarios", edit_id=user_id)
+        if _bool_from_form(is_active) and not target_user.is_active:
+            # Reativar conta como um novo usuario ativo para o limite do plano.
+            limit_error = user_limit_error(db, _entitlements_for(db, user))
+            if limit_error:
+                _flash(request, "error", limit_error)
+                return _redirect_with_query("/usuarios", edit_id=user_id)
 
         requested_is_admin = _bool_from_form(is_admin)
         requested_is_two_factor_enabled = _bool_from_form(is_two_factor_enabled)

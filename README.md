@@ -114,7 +114,7 @@ A situação das assinaturas é conciliada automaticamente com o Asaas a cada 5 
 - A partir do 11º dia: modo somente leitura (consulta e exportação liberadas; cadastrar/editar bloqueado). Minha assinatura, perfil e pagamento continuam disponíveis.
 - 2 dias antes da restrição, novo e-mail. Cada aviso é enviado uma única vez por fatura (requer SMTP configurado).
 - Liberação manual ativa e a organização SiSFarm nunca são restringidas. Organizações sem assinatura ou com plano personalizado não têm limites.
-- Limites do plano: impede cadastrar fazendas, área (soma das fazendas) e usuários ativos acima do contratado, sem apagar nada. Módulos fora do plano aparecem com cadeado e levam a "Planos disponíveis", onde o cliente pede a mudança (aviso por e-mail para `SUPPORT_EMAIL`).
+- Limites do plano: impede cadastrar fazendas, área (soma das fazendas) e usuários ativos (inclusive reativações) acima do contratado, sem apagar nada. A API JSON (`/api/v1`) segue os mesmos módulos e o modo somente leitura. Módulos fora do plano aparecem com cadeado e levam a "Planos disponíveis", onde o cliente pede a mudança (aviso por e-mail para `SUPPORT_EMAIL`).
 
 ### Ativar a produção
 

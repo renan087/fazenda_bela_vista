@@ -1,13 +1,39 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
+from app.core.admin_access import is_super_admin_email
 from app.core.deps import get_current_user_api
+from app.core.permissions_catalog import PAGE_IRRIGATION, PAGE_OPERATIONS, PAGE_PESTS, PAGE_PRODUCTION, PAGE_PRODUCTIVE_UNIT
+from app.core.timezone import today_in_app_timezone
 from app.db.session import get_db
 from app.models import User
 from app.repositories.farm import FarmRepository
 from app.services.dashboard import build_dashboard_context
+from app.services.entitlements import cached_entitlements
 
-router = APIRouter(prefix="/api/v1", tags=["farm"])
+# Modulo do plano exigido por cada recurso da API (mesmos codigos do menu web).
+API_MODULES = {
+    "/api/v1/plots": PAGE_PRODUCTIVE_UNIT,
+    "/api/v1/irrigations": PAGE_IRRIGATION,
+    "/api/v1/fertilizations": PAGE_OPERATIONS,
+    "/api/v1/harvests": PAGE_PRODUCTION,
+    "/api/v1/pest-incidents": PAGE_PESTS,
+}
+
+
+def enforce_plan(request: Request, db: Session = Depends(get_db), current_user: User = Depends(get_current_user_api)) -> None:
+    """Aplica na API os mesmos direitos das paginas: modulos do plano e modo somente leitura."""
+    if is_super_admin_email(current_user.email):
+        return
+    entitlements = cached_entitlements(db, current_user.organization_id, today_in_app_timezone())
+    module = API_MODULES.get(request.url.path.rstrip("/"))
+    if not entitlements.module_allowed(module):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Este recurso não faz parte do plano da organização.")
+    if entitlements.read_only and request.method not in {"GET", "HEAD", "OPTIONS"}:
+        raise HTTPException(status_code=status.HTTP_402_PAYMENT_REQUIRED, detail="Organização em modo somente leitura por pagamento em atraso.")
+
+
+router = APIRouter(prefix="/api/v1", tags=["farm"], dependencies=[Depends(enforce_plan)])
 
 
 def _repo(db: Session) -> FarmRepository:

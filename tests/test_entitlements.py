@@ -271,3 +271,59 @@ def test_banner_and_menu_lock_render(db):
     rendered = tpl.render(plan_entitlements=restricted)
     href, lock, farms, own = rendered.split('|')
     assert href == '/planos-disponiveis?modulo=page.finance' and '<svg' in lock and farms == '/fazendas' and own == ''
+
+
+# ---- API JSON e reativacao de usuario ----
+
+def _api_request(path, method='GET'):
+    from starlette.requests import Request
+    return Request({'type': 'http', 'method': method, 'path': path, 'headers': [], 'query_string': b'', 'server': ('app', 80), 'scheme': 'http', 'root_path': ''})
+
+
+def test_api_respects_plan_modules_and_read_only(db, monkeypatch):
+    from fastapi import HTTPException
+    from app.routers import api
+    org = _org(db, plan=_plan(db), overdue_days=20)
+    user = SimpleNamespace(email='gestor@fazenda.com', organization_id=org.id)
+    monkeypatch.setattr(api, 'today_in_app_timezone', lambda: TODAY)
+    api.enforce_plan(_api_request('/api/v1/plots'), db, user)  # setores fazem parte do plano
+    api.enforce_plan(_api_request('/api/v1/dashboard'), db, user)
+    with pytest.raises(HTTPException) as locked:
+        api.enforce_plan(_api_request('/api/v1/harvests'), db, user)
+    assert locked.value.status_code == 403
+    with pytest.raises(HTTPException) as read_only:
+        api.enforce_plan(_api_request('/api/v1/plots', 'POST'), db, user)
+    assert read_only.value.status_code == 402
+    monkeypatch.setattr(api, 'is_super_admin_email', lambda email: True)
+    api.enforce_plan(_api_request('/api/v1/harvests'), db, user)
+
+
+def test_api_router_applies_guard_to_every_route():
+    from app.routers import api
+    assert any(dep.dependency is api.enforce_plan for dep in api.router.dependencies)
+
+
+def test_reactivating_user_respects_limit(db, monkeypatch):
+    org = _org(db, plan=_plan(db))
+    admin = User(name='Admin', email='admin@fazenda.com', hashed_password='x', organization_id=org.id, is_active=True)
+    second = User(name='Ativo', email='ativo@fazenda.com', hashed_password='x', organization_id=org.id, is_active=True)
+    inactive = User(name='Inativo', email='inativo@fazenda.com', hashed_password='x', organization_id=org.id, is_active=False)
+    db.add_all([admin, second, inactive])
+    db.commit()
+    monkeypatch.setattr(routes, '_require_admin', lambda *a: None)
+    monkeypatch.setattr(routes, 'validate_csrf', lambda *a: None)
+    monkeypatch.setattr(routes, 'today_in_app_timezone', lambda: TODAY)
+    flashes = []
+    monkeypatch.setattr(routes, '_flash', lambda request, kind, message: flashes.append((kind, message)))
+    monkeypatch.setattr(routes, 'update_user', lambda *a, **k: pytest.fail('não deve reativar'))
+
+    async def form():
+        from starlette.datastructures import FormData
+        return FormData([])
+
+    request = SimpleNamespace(form=form)
+    response = asyncio.run(routes.update_user_action(user_id=inactive.id, request=request, csrf_token='x', name='Inativo', email='inativo@fazenda.com', password=None,
+                                                     is_active='on', is_admin=None, is_two_factor_enabled=None, db=db, user=admin))
+    assert response.status_code == 303 and 'até 2 usuário' in flashes[-1][1]
+    db.refresh(inactive)
+    assert inactive.is_active is False
