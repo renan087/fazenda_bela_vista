@@ -40,7 +40,7 @@
                 <label class="relative flex cursor-pointer flex-col rounded-2xl border border-slate-200 p-4 transition has-[:checked]:border-brand-500 has-[:checked]:ring-2 has-[:checked]:ring-brand-500/30">
                     <input type="radio" name="plan_id" value="{{ plan.id }}" class="sr-only" data-plan-option data-plan-name="{{ plan.name }}" data-prices='{{ plan_prices_json(plan) }}' data-trial-days="{{ plan.trial_days }}" {% if plan.id == default_plan.id %}checked{% endif %}>
                     {% if plan.is_featured %}<span class="absolute right-3 top-3 rounded-full bg-sky-50 px-2 py-0.5 text-[0.65rem] font-semibold text-sky-700">Mais escolhido</span>{% endif %}
-                    <span class="font-semibold text-slate-900">{{ plan.name }}</span>
+                    <span class="flex items-center gap-2 font-semibold text-slate-900"><span class="text-brand-700">{{ plan_icon(plan.icon) }}</span>{{ plan.name }}</span>
                     {% if plan.description %}<span class="mt-1 text-xs text-slate-500">{{ plan.description }}</span>{% endif %}
                     <span class="mt-2 text-xs text-slate-600">{% for code, price in plan_prices_of(plan).items() %}R$ {{ price|decimal_br }}/{{ cycle_unit_labels[code] }}{% if not loop.last %} · {% endif %}{% endfor %}</span>
                     {% if plan.trial_days %}<span class="mt-1 text-xs font-medium text-emerald-700">{{ plan.trial_days }} dia(s) de teste grátis</span>{% endif %}

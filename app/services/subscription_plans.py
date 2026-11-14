@@ -52,6 +52,27 @@ PLAN_MODULES: tuple[tuple[str, str], ...] = (
     (perms.PAGE_MOBILE, "Campo mobile"),
 )
 PLAN_MODULE_CODES = frozenset(code for code, _ in PLAN_MODULES)
+
+# Icones do plano (traco SVG 24x24, stroke=currentColor). Codigo -> (rotulo, conteudo do SVG).
+PLAN_ICONS: dict[str, tuple[str, str]] = {
+    "sprout": ("Broto", '<path d="M12 21v-9"/><path d="M12 12c0-4 3-7 8-7 0 4-3 7-8 7Z"/><path d="M12 14c0-3-2.5-5.5-7-5.5 0 3 2.5 5.5 7 5.5Z"/>'),
+    "leaf": ("Folha", '<path d="M5 19c8 0 14-6 14-14-8 0-14 6-14 14Z"/><path d="M5 19 13 11"/>'),
+    "coffee": ("Grão de café", '<ellipse cx="12" cy="12" rx="6.5" ry="8.5" transform="rotate(35 12 12)"/><path d="M8.5 6.5c3 2.5 4 7.5 7 11"/>'),
+    "tree": ("Árvore", '<path d="M12 22v-6"/><path d="M12 16c-4 0-7-2.5-7-6a7 7 0 0 1 14 0c0 3.5-3 6-7 6Z"/>'),
+    "tractor": ("Trator", '<circle cx="7" cy="16" r="4"/><circle cx="18" cy="17" r="3"/><path d="M3 12V6h7l2 6h6l2 3"/><path d="M10 6v6"/>'),
+    "star": ("Estrela", '<path d="m12 3 2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9L12 3Z"/>'),
+    "crown": ("Coroa", '<path d="m3 7 4.5 4L12 5l4.5 6L21 7l-2 11H5L3 7Z"/>'),
+    "diamond": ("Diamante", '<path d="M6 3h12l3 6-9 12L3 9l3-6Z"/><path d="M3 9h18"/><path d="m9 3 3 6 3-6"/>'),
+    "sun": ("Sol", '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>'),
+    "shield": ("Escudo", '<path d="M12 3 4 6v6c0 5 3.5 8 8 9 4.5-1 8-4 8-9V6l-8-3Z"/><path d="m9 12 2 2 4-4"/>'),
+}
+DEFAULT_PLAN_ICON = "crown"
+
+
+def plan_icon_svg(code: str | None, css_class: str = "h-5 w-5") -> str:
+    """SVG do icone do plano (seguro para Markup: conteudo fixo do catalogo)."""
+    _, body = PLAN_ICONS.get(code or "", PLAN_ICONS[DEFAULT_PLAN_ICON])
+    return f'<svg class="{css_class}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">{body}</svg>'
 _MAX_PRICE = Decimal("10000000000")
 
 
@@ -71,6 +92,7 @@ class PlanForm:
     trial_days: int
     display_order: int
     is_featured: bool
+    icon: str = DEFAULT_PLAN_ICON
 
 
 def cycle_months(cycle: str) -> int:
@@ -121,7 +143,7 @@ def _positive_int(value: str | None, label: str, *, allow_zero: bool = False, ma
 
 
 def parse_plan_form(*, name, description, price_monthly, price_quarterly, price_semiannual, price_yearly,
-                    max_farms, max_users, max_hectares, modules, trial_days, display_order, is_featured) -> PlanForm:
+                    max_farms, max_users, max_hectares, modules, trial_days, display_order, is_featured, icon=None) -> PlanForm:
     clean_name = (name or "").strip()
     if not clean_name or len(clean_name) > 120:
         raise PlanValidationError("Informe o nome do plano (até 120 caracteres).")
@@ -159,6 +181,7 @@ def parse_plan_form(*, name, description, price_monthly, price_quarterly, price_
         trial_days=_positive_int(trial_days, "Dias de teste grátis", allow_zero=True, maximum=365) or 0,
         display_order=_positive_int(display_order, "Ordem de exibição", allow_zero=True, maximum=9999) or 0,
         is_featured=bool(is_featured),
+        icon=icon if icon in PLAN_ICONS else DEFAULT_PLAN_ICON,
     )
 
 
@@ -203,6 +226,7 @@ def _apply_presentation(plan: SubscriptionPlan, form: PlanForm) -> None:
     plan.description = form.description
     plan.display_order = form.display_order
     plan.is_featured = form.is_featured
+    plan.icon = form.icon
 
 
 def create_plan(db: Session, form: PlanForm) -> SubscriptionPlan:
@@ -245,7 +269,7 @@ def create_new_version(db: Session, plan: SubscriptionPlan) -> SubscriptionPlan:
         code=plan.code, version=latest + 1, status="rascunho", name=plan.name, description=plan.description,
         price_monthly=plan.price_monthly, price_quarterly=plan.price_quarterly, price_semiannual=plan.price_semiannual,
         price_yearly=plan.price_yearly, max_farms=plan.max_farms, max_users=plan.max_users, max_hectares=plan.max_hectares,
-        modules_json=plan.modules_json, trial_days=plan.trial_days, display_order=plan.display_order, is_featured=plan.is_featured,
+        modules_json=plan.modules_json, trial_days=plan.trial_days, display_order=plan.display_order, is_featured=plan.is_featured, icon=plan.icon,
     )
     db.add(clone)
     db.flush()

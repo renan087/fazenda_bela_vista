@@ -129,6 +129,7 @@ from app.services.access_grants import GRANT_REASONS, MAX_GRANT_DAYS, GrantValid
 from app.services.subscription_portfolio import SITUATION_LABELS, build_subscription_portfolio, monthly_amount
 from app.services.subscription_plans import (
     CYCLE_UNIT_LABELS,
+    PLAN_ICONS,
     PLAN_MODULES,
     PLAN_STATUSES,
     SUBSCRIPTION_CYCLES,
@@ -140,6 +141,7 @@ from app.services.subscription_plans import (
     create_plan,
     delete_plan,
     parse_plan_form,
+    plan_icon_svg,
     plan_is_locked,
     plan_modules,
     plan_price as plans_price_for,
@@ -287,6 +289,8 @@ templates.env.filters["datetime_sp"] = format_app_datetime
 templates.env.filters["decimal_br"] = lambda value, places=2: _format_decimal_br(value, places)
 templates.env.globals["subscription_cycles"] = SUBSCRIPTION_CYCLES
 templates.env.globals["asaas_env"] = current_asaas_environment
+templates.env.globals["plan_icon"] = lambda code, css_class="h-5 w-5": Markup(plan_icon_svg(code, css_class))
+templates.env.globals["plan_icon_choices"] = PLAN_ICONS
 
 
 def _time_ago(value) -> str:
@@ -8867,7 +8871,7 @@ def _plan_form_fields(form) -> dict:
         "price_semiannual": form.get("price_semiannual"), "price_yearly": form.get("price_yearly"),
         "max_farms": form.get("max_farms"), "max_users": form.get("max_users"), "max_hectares": form.get("max_hectares"),
         "modules": form.getlist("modules"), "trial_days": form.get("trial_days"),
-        "display_order": form.get("display_order"), "is_featured": form.get("is_featured"),
+        "display_order": form.get("display_order"), "is_featured": form.get("is_featured"), "icon": form.get("icon"),
     }
 
 

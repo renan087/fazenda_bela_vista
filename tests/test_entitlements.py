@@ -504,9 +504,24 @@ def test_session_flyout_shows_plan_name_clickable_only_with_permission():
     html = open('app/templates/base.html').read()
     start = html.index('{% if plan_entitlements and plan_entitlements.plan_name %}')
     end = html.index('<a href="/logout"', start)
-    tpl = Environment().from_string(html[start:end])
-    plan = SimpleNamespace(plan_name='Essencial')
+    env = Environment()
+    env.globals['plan_icon'] = routes.templates.env.globals['plan_icon']
+    tpl = env.from_string(html[start:end])
+    plan = SimpleNamespace(plan_name='Essencial', plan_icon='sprout')
     can = tpl.render(plan_entitlements=plan, permission_codes=frozenset({'write.finance'}))
     cannot = tpl.render(plan_entitlements=plan, permission_codes=frozenset({'page.finance'}))
     assert 'href="/minha-assinatura"' in can and 'Essencial' in can
     assert 'href=' not in cannot and 'Essencial' in cannot and 'Gerenciar plano' not in html
+
+
+def test_plan_icon_is_saved_and_rendered(db):
+    plan = _plan(db, icon='coffee')
+    assert plan.icon == 'coffee'
+    assert plans.create_new_version(db, plan).icon == 'coffee'
+    assert _plan(db, name='Sem ícone', icon='inexistente').icon == plans.DEFAULT_PLAN_ICON
+    svg = str(routes.templates.env.globals['plan_icon']('coffee', 'h-4 w-4'))
+    assert svg.startswith('<svg class="h-4 w-4"') and 'ellipse' in svg
+    org = _org(db, plan=plan)
+    assert ent.compute_entitlements(db, org.id, TODAY).plan_icon == 'coffee'
+    html = routes.templates.env.get_template('subscription_plans.html').module if False else open('app/templates/subscription_plans.html').read()
+    assert 'name="icon"' in html and 'plan_icon_choices' in html

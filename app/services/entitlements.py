@@ -47,6 +47,7 @@ class Entitlements:
     exempt: bool = False
     plan_id: int | None = None
     plan_name: str | None = None
+    plan_icon: str | None = None
     modules: frozenset[str] | None = None  # None = todos os modulos
     max_farms: int | None = None
     max_users: int | None = None
@@ -113,6 +114,7 @@ def compute_entitlements(db: Session, organization_id: int | None, today: date) 
         organization_id=organization_id,
         plan_id=plan.id if plan else None,
         plan_name=plan.name if plan else None,
+        plan_icon=plan.icon if plan else None,
         modules=modules,
         max_farms=plan.max_farms if plan else None,
         max_users=plan.max_users if plan else None,
