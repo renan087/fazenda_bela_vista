@@ -134,14 +134,38 @@ def test_card_subscription_edit_preserves_payment_method(monkeypatch):
         assert 'billingType' not in calls[0] and 'creditCard' not in calls[0]
         args['billing_type'] = 'PIX'
         routes.edit_organization_sandbox_subscription_action(**args)
-        assert len(calls) == 1 and row.billing_type == 'CREDIT_CARD'
+        assert len(calls) == 2 and row.billing_type == 'PIX'
+        assert calls[1]['billingType'] == 'PIX'
+        args['billing_type'] = 'CREDIT_CARD'
+        routes.edit_organization_sandbox_subscription_action(**args)
+        assert len(calls) == 2 and row.billing_type == 'PIX'
 
 
 def test_subscription_service_refuses_implicit_card_conversion(monkeypatch):
     from app.services import asaas_subscriptions as service
-    monkeypatch.setattr(service, 'get_sandbox_subscription', lambda **kwargs: ({'id': 'sub_test', 'customer': 'cus_test', 'status': 'ACTIVE', 'billingType': 'CREDIT_CARD'}, None))
-    result, error = service.update_sandbox_subscription(api_key='key', subscription_id='sub_test', customer_id='cus_test', payload={'billingType': 'PIX'})
+    monkeypatch.setattr(service, 'get_sandbox_subscription', lambda **kwargs: ({'id': 'sub_test', 'customer': 'cus_test', 'status': 'ACTIVE', 'billingType': 'PIX'}, None))
+    result, error = service.update_sandbox_subscription(api_key='key', subscription_id='sub_test', customer_id='cus_test', payload={'billingType': 'CREDIT_CARD'})
     assert result is None and error
+
+
+def test_card_to_boleto_does_not_update_pending_payments(monkeypatch):
+    from app.services import asaas_subscriptions as service
+    monkeypatch.setattr(service, 'get_sandbox_subscription', lambda **kwargs: ({'id': 'sub_test', 'customer': 'cus_test', 'status': 'ACTIVE', 'billingType': 'CREDIT_CARD'}, None))
+    calls = []
+    class Response:
+        status_code = 200
+        def json(self): return {'id': 'sub_test', 'customer': 'cus_test', 'billingType': 'BOLETO'}
+    class Client:
+        def __init__(self, **kwargs): pass
+        def __enter__(self): return self
+        def __exit__(self, *args): pass
+        def put(self, url, **kwargs):
+            calls.append(kwargs['json'])
+            return Response()
+    monkeypatch.setattr(service.httpx, 'Client', Client)
+    result, error = service.update_sandbox_subscription(api_key='key', subscription_id='sub_test', customer_id='cus_test', payload={'billingType': 'BOLETO'})
+    assert error is None and result['billingType'] == 'BOLETO'
+    assert calls[0]['updatePendingPayments'] is False
 
 
 def test_history_preserves_payments_and_allows_only_one_current_subscription():

@@ -9,7 +9,7 @@ def update_sandbox_subscription(*, api_key: str, subscription_id: str, customer_
         return None, error
     current_type = current.get('billingType')
     requested_type = payload.get('billingType', current_type)
-    if current.get('customer') != customer_id or current.get('status') not in {'ACTIVE', 'INACTIVE'} or current_type not in {'PIX', 'BOLETO', 'CREDIT_CARD'} or requested_type not in {'PIX', 'BOLETO', 'CREDIT_CARD'} or (current_type != requested_type and 'CREDIT_CARD' in {current_type, requested_type}):
+    if current.get('customer') != customer_id or current.get('status') not in {'ACTIVE', 'INACTIVE'} or current_type not in {'PIX', 'BOLETO', 'CREDIT_CARD'} or requested_type not in {'PIX', 'BOLETO', 'CREDIT_CARD'} or (requested_type == 'CREDIT_CARD' and current_type != 'CREDIT_CARD'):
         return None, 'Assinatura ou cliente divergente; confira no Asaas antes de continuar.'
     headers = {'access_token': api_key, 'User-Agent': 'SiSFarm/AsaasIntegration', 'Accept': 'application/json'}
     try:

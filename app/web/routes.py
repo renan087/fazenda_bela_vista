@@ -9465,7 +9465,7 @@ def edit_organization_sandbox_subscription_action(
         return _redirect("/organizacoes")
     subscription = db.query(OrganizationSubscription).filter_by(organization_id=organization_id, environment="sandbox", is_current=True).first()
     billing = db.query(OrganizationBilling).filter_by(organization_id=organization_id, asaas_environment="sandbox").first()
-    if not subscription or not billing or not billing.asaas_customer_id or not subscription.asaas_subscription_id or subscription.status != 'criada' or subscription.asaas_status not in {'ACTIVE', 'INACTIVE'} or subscription.billing_type not in {'PIX', 'BOLETO', 'CREDIT_CARD'} or (subscription.billing_type != billing_type and 'CREDIT_CARD' in {subscription.billing_type, billing_type}):
+    if not subscription or not billing or not billing.asaas_customer_id or not subscription.asaas_subscription_id or subscription.status != 'criada' or subscription.asaas_status not in {'ACTIVE', 'INACTIVE'} or subscription.billing_type not in {'PIX', 'BOLETO', 'CREDIT_CARD'} or (billing_type == 'CREDIT_CARD' and subscription.billing_type != 'CREDIT_CARD'):
         _flash(request, "error", "Assinatura indisponível para edição. Atualize e confira no Asaas.")
         return _redirect("/organizacoes")
     remote_id = subscription.asaas_subscription_id
