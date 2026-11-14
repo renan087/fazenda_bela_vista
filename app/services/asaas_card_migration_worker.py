@@ -61,6 +61,7 @@ def process_paid_card_migration(db, migration, api_key):
             raise ValueError('Não foi possível vincular cobrança da assinatura')
     migration.new_subscription_id = new.id
     migration.status = 'concluido'
+    migration.last_check_error = None
     migration.is_open = False
     record_commercial_event(db, user=None, organization_id=old.organization_id, resource='assinatura', resource_id=new.id, action='migrar_cartao', outcome='success', details={'assinatura_anterior': old.id})
 
@@ -70,15 +71,27 @@ def _tick():
     if (settings.asaas_api_base_url or '').rstrip('/') != 'https://api-sandbox.asaas.com' or not (settings.asaas_api_key or '').strip():
         return
     with SessionLocal() as db:
-        migration = db.query(OrganizationCardMigration).filter_by(status='pago', is_open=True).with_for_update(skip_locked=True).first()
+        migration = (db.query(OrganizationCardMigration)
+                     .filter(OrganizationCardMigration.status.in_(['pago', 'aguardando']),
+                             OrganizationCardMigration.is_open.is_(True),
+                             OrganizationCardMigration.checkout_id.isnot(None))
+                     .order_by(OrganizationCardMigration.updated_at, OrganizationCardMigration.id)
+                     .with_for_update(skip_locked=True).first())
         if not migration:
             return
+        migration_id = migration.id
         try:
             process_paid_card_migration(db, migration, settings.asaas_api_key.strip())
             db.commit()
-        except Exception:
+        except Exception as exc:
             db.rollback()
-            logger.exception('Migração de cartão pendente de verificação; será novamente consultada')
+            migration = db.query(OrganizationCardMigration).filter_by(id=migration_id, is_open=True).with_for_update().first()
+            if migration and migration.status in {'pago', 'aguardando'}:
+                migration.last_check_error = str(exc)[:255] if isinstance(exc, ValueError) else 'Falha ao consultar o Asaas; verifique os logs.'
+                migration.updated_at = app_now()
+                db.commit()
+            if not isinstance(exc, ValueError):
+                logger.exception('Falha ao conciliar migração de cartão')
 
 
 async def run_card_migration_loop():

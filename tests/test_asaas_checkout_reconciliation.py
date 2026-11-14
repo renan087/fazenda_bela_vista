@@ -150,3 +150,34 @@ def test_checkout_webhook_requires_paid_event_and_matching_customer(monkeypatch)
         request.customer = 'cus_test'
         assert asyncio.run(asaas_webhook.asaas_webhook(request, db)) == {'received': True}
         assert migration.status == 'pago'
+
+
+def test_worker_recovers_paid_checkout_when_webhook_was_not_received(monkeypatch):
+    from datetime import date
+    from decimal import Decimal
+    from types import SimpleNamespace
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import Session
+    from app.db.base import Base
+    from app.models import Organization, OrganizationBilling, OrganizationCardMigration, OrganizationSubscription
+    from app.services import asaas_card_migration_worker as worker
+
+    engine = create_engine('sqlite:///:memory:')
+    Base.metadata.create_all(engine)
+    monkeypatch.setattr(worker, 'SessionLocal', lambda: Session(engine))
+    monkeypatch.setattr(worker, 'get_settings', lambda: SimpleNamespace(asaas_api_base_url='https://api-sandbox.asaas.com', asaas_api_key='key'))
+    monkeypatch.setattr(worker, 'find_paid_checkout_subscription', lambda **kwargs: ({'id': 'sub_new', 'value': 20, 'cycle': 'MONTHLY', 'nextDueDate': '2099-02-01'}, None))
+    monkeypatch.setattr(worker, 'get_sandbox_subscription', lambda **kwargs: ({'customer': 'cus_test', 'status': 'INACTIVE'}, None))
+    monkeypatch.setattr(worker, 'list_sandbox_subscription_payments', lambda **kwargs: ([], None))
+    with Session(engine) as db:
+        org = Organization(name='Teste', slug='recuperar', is_active=True)
+        db.add(org); db.flush()
+        db.add(OrganizationBilling(organization_id=org.id, contact_name='Pessoa', contact_email='a@example.com', asaas_customer_id='cus_test', asaas_environment='sandbox'))
+        old = OrganizationSubscription(organization_id=org.id, plan_name='Plano', amount=Decimal('20.00'), cycle='MONTHLY', billing_type='PIX', first_due_date=date(2026, 1, 1), environment='sandbox', status='migrando', asaas_subscription_id='sub_old', is_current=True)
+        db.add(old); db.flush()
+        db.add(OrganizationCardMigration(organization_id=org.id, old_subscription_id=old.id, checkout_id=CHECKOUT, first_due_date=date(2099, 1, 1), status='aguardando'))
+        db.commit()
+    worker._tick()
+    with Session(engine) as db:
+        assert db.query(OrganizationCardMigration).one().status == 'concluido'
+        assert db.query(OrganizationSubscription).filter_by(is_current=True).one().asaas_subscription_id == 'sub_new'

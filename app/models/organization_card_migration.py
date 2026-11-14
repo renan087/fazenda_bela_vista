@@ -22,6 +22,7 @@ class OrganizationCardMigration(Base):
     checkout_id: Mapped[str | None] = mapped_column(String(80), unique=True, nullable=True)
     first_due_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     status: Mapped[str] = mapped_column(String(40), nullable=False, default='preparando')
+    last_check_error: Mapped[str | None] = mapped_column(String(255), nullable=True)
     is_open: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default=text('true'))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
