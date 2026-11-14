@@ -240,7 +240,7 @@ def test_upgrade_page_highlights_plans_with_module(db, monkeypatch):
     _, ctx = routes.plan_upgrade_page(request=SimpleNamespace(), modulo='page.finance', db=db, user=user, csrf_token='t')
     html = _render('plan_upgrade.html', ctx)
     assert ctx['plans_catalog'][0].id == full.id and ctx['current_plan_id'] == basic.id
-    assert 'Gestão financeira' in html and 'Inclui Gestão financeira' in html and 'Quero o plano Gestão Completa' in html and 'Seu plano' in html
+    assert 'Gestão financeira' in html and 'Inclui Gestão financeira' in html and 'Quero o plano Gestão Completa' in html and 'Seu plano' in html and 'Escolha o plano ideal' not in html
 
 
 def test_upgrade_request_is_audited(db, monkeypatch):
@@ -404,7 +404,7 @@ def test_change_dialog_shows_gains_losses_prices_and_date(db, monkeypatch):
     html = _render('plan_upgrade.html', ctx)
     dialog = html[html.index(f'id="change-plan-{pro.id}"'):]
     dialog = dialog[:dialog.index('</dialog>')]
-    assert 'Mudar para Profissional' in html and 'Redução de plano' in dialog and 'Como fica' in dialog
+    assert 'Escolher Profissional' in html and 'Redução de plano' in dialog and 'Como fica' in dialog
     assert 'R$ 79,90 / mês' in dialog and 'data-price="149.90"' in dialog
     assert 'Você passa a ter' in dialog and 'Gestão financeira' in dialog
     assert 'Deixa de ter' in dialog and 'Pluviometria' in dialog
