@@ -67,7 +67,7 @@ def persist_organization_webhook(db, body: dict) -> bool:
             row.paid_date = _date(payment.get('clientPaymentDate') or payment.get('paymentDate')) if row.status in {'RECEIVED', 'CONFIRMED', 'RECEIVED_IN_CASH'} else None
             row.last_event_at = timestamp
     elif subscription.asaas_last_event_at is None or timestamp > subscription.asaas_last_event_at:
-        status = str(subscription_data.get('status') or '').strip()
+        status = 'DELETED' if subscription_data.get('deleted') is True or event_type == 'SUBSCRIPTION_DELETED' else str(subscription_data.get('status') or '').strip()
         if status:
             subscription.asaas_status = status[:30]
         subscription.asaas_last_event_at = timestamp

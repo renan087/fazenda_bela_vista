@@ -3,6 +3,34 @@
 import httpx
 
 
+def manage_sandbox_subscription(*, api_key: str, subscription_id: str, action: str, next_due_date: str | None = None) -> tuple[dict | None, str | None]:
+    if not subscription_id or not subscription_id.startswith('sub_') or not subscription_id.replace('_', '').isalnum() or action not in {'suspender', 'reativar', 'cancelar'}:
+        return None, 'Operação ou identificador inválido.'
+    url = f'https://api-sandbox.asaas.com/v3/subscriptions/{subscription_id}'
+    headers = {'access_token': api_key, 'User-Agent': 'SiSFarm/AsaasIntegration', 'Accept': 'application/json'}
+    try:
+        with httpx.Client(timeout=20.0) as client:
+            if action == 'cancelar':
+                response = client.delete(url, headers=headers)
+            else:
+                payload = {'status': 'INACTIVE' if action == 'suspender' else 'ACTIVE'}
+                if action == 'reativar':
+                    payload['nextDueDate'] = next_due_date
+                response = client.put(url, headers=headers, json=payload)
+        if response.status_code != 200:
+            return None, f'Asaas retornou HTTP {response.status_code}. Verifique a assinatura antes de tentar novamente.'
+        result = response.json()
+        if not isinstance(result, dict) or result.get('id') != subscription_id:
+            return None, 'O Asaas não confirmou a operação. Consulte a assinatura antes de tentar novamente.'
+        if action == 'cancelar' and result.get('deleted') is not True:
+            return None, 'O Asaas não confirmou o cancelamento. Consulte a assinatura antes de tentar novamente.'
+        if action != 'cancelar' and result.get('status') != ('INACTIVE' if action == 'suspender' else 'ACTIVE'):
+            return None, 'O Asaas não confirmou a situação solicitada. Consulte a assinatura antes de tentar novamente.'
+        return result, None
+    except (httpx.HTTPError, ValueError):
+        return None, 'Resposta inconclusiva do Asaas. Consulte a assinatura antes de tentar novamente.'
+
+
 def get_sandbox_subscription(*, api_key: str, subscription_id: str) -> tuple[dict | None, str | None]:
     if not subscription_id or not subscription_id.startswith('sub_') or not subscription_id.replace('_', '').isalnum():
         return None, 'Identificador de assinatura inválido.'

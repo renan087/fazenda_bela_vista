@@ -87,3 +87,29 @@ def test_deleted_payment_does_not_appear_as_paid():
         persist_organization_webhook(db, event)
         db.commit()
         assert db.query(OrganizationSubscriptionPayment).one().status == 'DELETED'
+
+
+def test_subscription_actions_reserve_and_block_retry_after_uncertain_response(monkeypatch):
+    engine = create_engine('sqlite:///:memory:')
+    Base.metadata.create_all(engine)
+    monkeypatch.setattr(routes, '_require_super_admin', lambda *args: None)
+    monkeypatch.setattr(routes, 'validate_csrf', lambda *args: None)
+    monkeypatch.setattr(routes, '_flash', lambda *args: None)
+    monkeypatch.setattr(routes, 'get_settings', lambda: SimpleNamespace(asaas_api_base_url='https://api-sandbox.asaas.com', asaas_api_key='key'))
+    calls = []
+    def action(**kwargs):
+        calls.append(kwargs)
+        return None, 'Resposta inconclusiva'
+    monkeypatch.setattr(routes, 'manage_sandbox_subscription', action)
+    with Session(engine) as db:
+        org = Organization(name='Teste', slug='actions', is_active=True)
+        db.add(org)
+        db.flush()
+        db.add(OrganizationBilling(organization_id=org.id, contact_name='Pessoa', contact_email='a@example.com', asaas_customer_id='cus_test', asaas_environment='sandbox'))
+        db.add(OrganizationSubscription(organization_id=org.id, plan_name='Teste', amount=Decimal('99.90'), cycle='MONTHLY', billing_type='PIX', first_due_date=date(2026, 1, 1), environment='sandbox', asaas_subscription_id='sub_test', asaas_status='ACTIVE', status='criada'))
+        db.commit()
+        args = dict(organization_id=org.id, request=SimpleNamespace(), csrf_token='x', action='cancelar', next_due_date='', db=db, user=SimpleNamespace())
+        routes.manage_organization_sandbox_subscription_action(**args)
+        routes.manage_organization_sandbox_subscription_action(**args)
+        assert len(calls) == 1
+        assert db.query(OrganizationSubscription).one().status == 'revisao'
