@@ -497,3 +497,9 @@ def test_upgrade_stays_immediate_and_marks_change(db, monkeypatch):
     _ask(db, SimpleNamespace(id=3, email='g@f.com', organization_id=org.id), pro)
     db.refresh(sub)
     assert sub.plan_id == pro.id and sub.plan_changed_at is not None and sub.pending_plan_id is None
+
+
+def test_session_flyout_shows_plan_and_manage_link():
+    html = open('app/templates/base.html').read()
+    block = html[html.index('data-session-plan'):html.index('/logout', html.index('data-session-plan'))]
+    assert 'Plano {{ plan_entitlements.plan_name }}' in block and 'href="/minha-assinatura"' in block and 'Gerenciar plano' in block
