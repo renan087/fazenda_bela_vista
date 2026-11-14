@@ -60,13 +60,6 @@
     <section class="rounded-[2rem] bg-white p-8 text-center shadow-panel"><p class="text-slate-600">Fale com a equipe SiSFarm para conhecer os planos disponíveis.</p></section>
     {% endif %}
 
-    <section class="flex flex-wrap items-center justify-between gap-3 rounded-[2rem] bg-white p-5 text-sm text-slate-600 shadow-panel">
-        <p>Ao pedir um plano, a equipe SiSFarm entra em contato para ajustar sua assinatura. Nada muda antes da sua confirmação.</p>
-        <div class="flex flex-wrap gap-2">
-            {% if support_email %}<a href="mailto:{{ support_email }}" class="rounded-xl border border-slate-200 px-4 py-2 font-semibold text-slate-700 hover:bg-slate-50">Falar com a equipe</a>{% endif %}
-            <a href="/minha-assinatura" class="rounded-xl border border-slate-200 px-4 py-2 font-semibold text-slate-700 hover:bg-slate-50">Minha assinatura</a>
-        </div>
-    </section>
 </div>
 <script>
 document.addEventListener('click', (event) => {
