@@ -56,6 +56,8 @@ def persist_organization_webhook(db, body: dict) -> bool:
         if row.last_event_at is None or timestamp > row.last_event_at:
             if status:
                 row.status = status[:40]
+            if payment.get('billingType'):
+                row.billing_type = str(payment['billingType'])[:30]
             try:
                 amount = Decimal(str(payment['value'])) if payment.get('value') is not None else None
                 if amount is not None and (not amount.is_finite() or amount < 0 or amount >= Decimal('10000000000')):

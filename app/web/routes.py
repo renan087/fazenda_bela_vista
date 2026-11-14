@@ -1,6 +1,6 @@
 from collections import defaultdict
 from datetime import date, datetime, time, timedelta, timezone
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from io import BytesIO
 from pathlib import Path
 from urllib.parse import parse_qsl, quote, urlencode, urlparse
@@ -110,6 +110,7 @@ from app.services.asaas_customers import (
 )
 from app.services.asaas_payment_sync import upsert_asaas_payment_row, user_owns_asaas_payment_payload
 from app.services.asaas_subscriptions import create_sandbox_subscription, get_sandbox_subscription, list_sandbox_subscription_payments, manage_sandbox_subscription
+from app.services.asaas_organization_payment_actions import execute_payment_action
 from app.services.organization_subscription_sync import persist_organization_webhook
 from app.services.asaas_payments import create_asaas_payment, get_asaas_payment, is_asaas_status_paid
 from app.services.agronomic_profile_suggestions import build_agronomic_profile_suggestions
@@ -9379,6 +9380,75 @@ def create_organization_sandbox_subscription_action(
     subscription.status = "criada"
     db.commit()
     _flash(request, "success", "Assinatura criada no sandbox. A criação não confirma pagamento nem altera o acesso da organização.")
+    return _redirect("/organizacoes")
+
+
+@router.post("/organizacoes/{organization_id}/cobrancas/{payment_id}/gerenciar")
+def manage_organization_payment_action(
+    organization_id: int, payment_id: int, request: Request, csrf_token: str = Form(...), action: str = Form(...),
+    payment_date: str = Form(""), value: str = Form(""), db: Session = Depends(get_db), user: User = Depends(get_current_user_web),
+):
+    denied = _require_super_admin(request, user)
+    if denied:
+        return denied
+    validate_csrf(request, csrf_token)
+    settings = get_settings()
+    parsed = urlparse(settings.asaas_api_base_url or "")
+    if parsed.scheme != "https" or parsed.hostname != "api-sandbox.asaas.com" or parsed.port not in (None, 443) or parsed.path not in ("", "/") or parsed.query or parsed.fragment or parsed.username or not (settings.asaas_api_key or "").strip():
+        _flash(request, "error", "Configure o sandbox oficial antes de gerenciar cobranças.")
+        return _redirect("/organizacoes")
+    subscription = db.query(OrganizationSubscription).filter_by(organization_id=organization_id, environment="sandbox").first()
+    billing = db.query(OrganizationBilling).filter_by(organization_id=organization_id, asaas_environment="sandbox").first()
+    charge = db.query(OrganizationSubscriptionPayment).filter_by(id=payment_id, subscription_id=subscription.id).first() if subscription else None
+    if not charge or not billing or not billing.asaas_customer_id or not subscription.asaas_subscription_id:
+        _flash(request, "error", "Cobrança ou cliente não encontrado no sandbox.")
+        return _redirect("/organizacoes")
+    if action == "liberar":
+        updated_at = charge.updated_at
+        if updated_at and updated_at.tzinfo is None:
+            updated_at = updated_at.replace(tzinfo=timezone.utc)
+        stale = charge.operation_state == "executando" and updated_at and datetime.now(timezone.utc) - updated_at > timedelta(minutes=10)
+        if charge.operation_state == "verificar" or stale:
+            charge.operation_state = None
+            db.commit()
+            _flash(request, "success", "Bloqueio removido. Consulte o Asaas antes de qualquer nova operação.")
+        else:
+            _flash(request, "error", "A operação ainda está em andamento. Aguarde pelo menos 10 minutos e confira no Asaas.")
+        return _redirect("/organizacoes")
+    allowed = {"cancelar": {"PENDING", "OVERDUE"}, "receber": {"PENDING", "OVERDUE"}, "estornar": {"RECEIVED", "CONFIRMED"}}
+    if action not in allowed or charge.status not in allowed[action] or charge.operation_state is not None:
+        _flash(request, "error", "Operação indisponível; atualize e confira a cobrança.")
+        return _redirect("/organizacoes")
+    amount = None
+    if action == "receber":
+        try:
+            paid_on = date.fromisoformat(payment_date)
+            amount = Decimal(value.strip().replace(".", "").replace(",", "."))
+            if paid_on > today_in_app_timezone() or not amount.is_finite() or amount <= 0 or amount >= Decimal('10000000000') or amount.as_tuple().exponent < -2:
+                raise ValueError()
+        except (ValueError, InvalidOperation):
+            _flash(request, "error", "Informe data não futura e valor válido em reais, com até duas casas decimais.")
+            return _redirect("/organizacoes")
+    reserved = db.query(OrganizationSubscriptionPayment).filter_by(id=charge.id, status=charge.status, operation_state=None).update({"operation_state": "executando"}, synchronize_session=False)
+    db.commit()
+    if not reserved:
+        _flash(request, "error", "Já existe uma operação em andamento.")
+        return _redirect("/organizacoes")
+    result, error, sent = execute_payment_action(api_key=settings.asaas_api_key.strip(), payment_id=charge.asaas_payment_id, subscription_id=subscription.asaas_subscription_id, customer_id=billing.asaas_customer_id, action=action, payment_date=payment_date, value=amount)
+    charge = db.query(OrganizationSubscriptionPayment).filter_by(id=payment_id, subscription_id=subscription.id).with_for_update().one()
+    charge.operation_state = "verificar" if sent else None
+    if result and action == "cancelar" and result.get("deleted") is True:
+        charge.status = "DELETED"
+        charge.paid_date = None
+    elif result and result.get("subscription") == subscription.asaas_subscription_id and result.get("customer") == billing.asaas_customer_id:
+        if result.get("status"):
+            charge.status = str(result["status"])[:40]
+        if result.get("billingType"):
+            charge.billing_type = str(result["billingType"])[:30]
+        if action == "receber" and charge.billing_type == "RECEIVED_IN_CASH":
+            charge.paid_date = date.fromisoformat(payment_date)
+    db.commit()
+    _flash(request, "error" if error else "success", error or "Operação enviada ao Asaas. Confira o resultado antes de liberar novas ações; estornos podem continuar em processamento.")
     return _redirect("/organizacoes")
 
 

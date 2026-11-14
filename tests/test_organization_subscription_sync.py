@@ -113,3 +113,30 @@ def test_subscription_actions_reserve_and_block_retry_after_uncertain_response(m
         routes.manage_organization_sandbox_subscription_action(**args)
         assert len(calls) == 1
         assert db.query(OrganizationSubscription).one().status == 'revisao'
+
+
+def test_payment_action_blocks_retries_after_uncertain_response(monkeypatch):
+    engine = create_engine('sqlite:///:memory:')
+    Base.metadata.create_all(engine)
+    monkeypatch.setattr(routes, '_require_super_admin', lambda *args: None)
+    monkeypatch.setattr(routes, 'validate_csrf', lambda *args: None)
+    monkeypatch.setattr(routes, '_flash', lambda *args: None)
+    monkeypatch.setattr(routes, 'get_settings', lambda: SimpleNamespace(asaas_api_base_url='https://api-sandbox.asaas.com', asaas_api_key='key'))
+    calls = []
+    monkeypatch.setattr(routes, 'execute_payment_action', lambda **kwargs: (calls.append(kwargs) or None, 'Resposta inconclusiva', True))
+    with Session(engine) as db:
+        org = Organization(name='Teste', slug='payment-action', is_active=True)
+        db.add(org)
+        db.flush()
+        db.add(OrganizationBilling(organization_id=org.id, contact_name='Pessoa', contact_email='a@example.com', asaas_customer_id='cus_test', asaas_environment='sandbox'))
+        subscription = OrganizationSubscription(organization_id=org.id, plan_name='Teste', amount=Decimal('99.90'), cycle='MONTHLY', billing_type='PIX', first_due_date=date(2026, 1, 1), environment='sandbox', asaas_subscription_id='sub_test')
+        db.add(subscription)
+        db.flush()
+        charge = OrganizationSubscriptionPayment(subscription_id=subscription.id, asaas_payment_id='pay_test', status='PENDING')
+        db.add(charge)
+        db.commit()
+        args = dict(organization_id=org.id, payment_id=charge.id, request=SimpleNamespace(), csrf_token='x', action='cancelar', payment_date='', value='', db=db, user=SimpleNamespace())
+        routes.manage_organization_payment_action(**args)
+        routes.manage_organization_payment_action(**args)
+        assert len(calls) == 1
+        assert db.query(OrganizationSubscriptionPayment).one().operation_state == 'verificar'

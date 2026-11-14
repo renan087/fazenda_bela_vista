@@ -14,6 +14,8 @@ class OrganizationSubscriptionPayment(Base):
     subscription_id: Mapped[int] = mapped_column(ForeignKey("organization_subscriptions.id", ondelete="RESTRICT"), nullable=False, index=True)
     asaas_payment_id: Mapped[str] = mapped_column(String(80), nullable=False, unique=True, index=True)
     status: Mapped[str] = mapped_column(String(40), nullable=False)
+    billing_type: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    operation_state: Mapped[str | None] = mapped_column(String(30), nullable=True)
     amount: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
     due_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     paid_date: Mapped[date | None] = mapped_column(Date, nullable=True)
