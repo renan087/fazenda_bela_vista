@@ -20,6 +20,8 @@ class OrganizationBilling(Base):
     address: Mapped[str | None] = mapped_column(String(255), nullable=True)
     address_complement: Mapped[str | None] = mapped_column(String(255), nullable=True)
     province: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    city: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    state: Mapped[str | None] = mapped_column(String(2), nullable=True)
     asaas_customer_id: Mapped[str | None] = mapped_column(String(40), nullable=True, unique=True)
     asaas_environment: Mapped[str | None] = mapped_column(String(20), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())

@@ -9197,6 +9197,9 @@ def save_organization_billing_action(
     address: str | None = Form(None),
     address_complement: str | None = Form(None),
     province: str | None = Form(None),
+    city: str | None = Form(None),
+    state: str | None = Form(None),
+    intent: str = Form("salvar"),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user_web),
 ):
@@ -9213,6 +9216,8 @@ def save_organization_billing_action(
     phone = (contact_phone or "").strip()
     document = asaas_digits(cpf_cnpj)
     cep = asaas_digits(postal_code)
+    city_value = (city or "").strip()
+    state_value = (state or "").strip().upper()
     try:
         email = validate_email((contact_email or "").strip(), check_deliverability=False).normalized
     except EmailNotValidError:
@@ -9221,6 +9226,11 @@ def save_organization_billing_action(
     if not name or len(name) > 160 or len(email) > 254 or len(phone) > 40 or (document and len(document) not in (11, 14)) or (cep and len(cep) != 8) or len(address_number or '') > 40 or len(address or '') > 255 or len(address_complement or '') > 255 or len(province or '') > 120:
         _flash(request, "error", "Confira o nome e o telefone do responsável financeiro.")
         return _redirect("/organizacoes")
+    if len(city_value) > 120 or (state_value and state_value not in {"AC", "AL", "AP", "AM", "BA", "CE", "DF", "ES", "GO", "MA", "MT", "MS", "MG", "PA", "PB", "PR", "PE", "PI", "RJ", "RN", "RS", "RO", "RR", "SC", "SP", "SE", "TO"}):
+        _flash(request, "error", "Informe um município e uma UF válidos.")
+        return _redirect("/organizacoes")
+    if intent not in {"salvar", "consultar"}:
+        raise HTTPException(status_code=400, detail="Ação inválida")
     billing = db.query(OrganizationBilling).filter_by(organization_id=organization.id).first()
     if billing and billing.asaas_customer_id and document != (billing.cpf_cnpj or ''):
         _flash(request, "error", "O CPF/CNPJ não pode ser alterado enquanto houver cliente Asaas vinculado.")
@@ -9237,7 +9247,11 @@ def save_organization_billing_action(
     billing.address = (address or '').strip() or None
     billing.address_complement = (address_complement or '').strip() or None
     billing.province = (province or '').strip() or None
+    billing.city = city_value or None
+    billing.state = state_value or None
     db.commit()
+    if intent == "consultar":
+        return organization_asaas_sandbox_action(organization_id=organization_id, request=request, csrf_token=csrf_token, action="consultar", customer_id=None, db=db, user=user)
     _flash(request, "success", "Dados comerciais da organização salvos. Nenhuma cobrança foi criada.")
     return _redirect("/organizacoes")
 

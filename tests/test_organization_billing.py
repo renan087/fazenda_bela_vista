@@ -26,3 +26,34 @@ def test_each_organization_has_independent_billing_contact():
         db.add(OrganizationBilling(organization_id=first.id, contact_name="Outra", contact_email="outra@example.com"))
         with pytest.raises(IntegrityError):
             db.commit()
+
+
+def test_save_and_consult_uses_newly_entered_address(monkeypatch):
+    from types import SimpleNamespace
+    from app.web import routes
+
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    monkeypatch.setattr(routes, "_require_super_admin", lambda *args: None)
+    monkeypatch.setattr(routes, "validate_csrf", lambda *args: None)
+    observed = {}
+
+    def consult(**kwargs):
+        row = kwargs["db"].query(OrganizationBilling).filter_by(organization_id=kwargs["organization_id"]).one()
+        observed.update(cpf=row.cpf_cnpj, cep=row.postal_code, number=row.address_number, city=row.city, state=row.state)
+        return "consulted"
+
+    monkeypatch.setattr(routes, "organization_asaas_sandbox_action", consult)
+    with Session(engine) as db:
+        org = Organization(name="Fazenda C", slug="fazenda-c", is_active=True)
+        db.add(org)
+        db.commit()
+        result = routes.save_organization_billing_action(
+            organization_id=org.id, request=SimpleNamespace(), csrf_token="token",
+            contact_name="Pessoa Teste", contact_email="teste@example.com", contact_phone="11999999999",
+            cpf_cnpj="123.456.789-01", postal_code="46.430-000", address_number="50", address="Rua A",
+            address_complement=None, province="Centro", city="Guanambi", state="ba", intent="consultar",
+            db=db, user=SimpleNamespace(),
+        )
+        assert result == "consulted"
+        assert observed == {"cpf": "12345678901", "cep": "46430000", "number": "50", "city": "Guanambi", "state": "BA"}
