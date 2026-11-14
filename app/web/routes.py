@@ -9171,7 +9171,10 @@ def organizations_page(
         for organization in organizations
     }
     billing_by_organization = {item.organization_id: item for item in db.query(OrganizationBilling).all()}
-    subscriptions_by_organization = {item.organization_id: item for item in db.query(OrganizationSubscription).all()}
+    subscriptions_by_organization = {item.organization_id: item for item in db.query(OrganizationSubscription).filter_by(is_current=True).all()}
+    previous_subscriptions_by_organization = defaultdict(list)
+    for item in db.query(OrganizationSubscription).filter_by(is_current=False).order_by(OrganizationSubscription.id.desc()).all():
+        previous_subscriptions_by_organization[item.organization_id].append(item)
     subscription_payments = defaultdict(list)
     for payment in db.query(OrganizationSubscriptionPayment).order_by(OrganizationSubscriptionPayment.due_date.desc(), OrganizationSubscriptionPayment.id.desc()).all():
         subscription_payments[payment.subscription_id].append(payment)
@@ -9187,6 +9190,7 @@ def organizations_page(
             organization_stats=organization_stats,
             billing_by_organization=billing_by_organization,
             subscriptions_by_organization=subscriptions_by_organization,
+            previous_subscriptions_by_organization=previous_subscriptions_by_organization,
             subscription_payments=subscription_payments,
             users=users,
             farms=farms,
@@ -9413,7 +9417,7 @@ def edit_organization_sandbox_subscription_action(
     except (ValueError, InvalidOperation):
         _flash(request, "error", "Confira plano, valor, periodicidade, forma e próximo vencimento.")
         return _redirect("/organizacoes")
-    subscription = db.query(OrganizationSubscription).filter_by(organization_id=organization_id, environment="sandbox").first()
+    subscription = db.query(OrganizationSubscription).filter_by(organization_id=organization_id, environment="sandbox", is_current=True).first()
     billing = db.query(OrganizationBilling).filter_by(organization_id=organization_id, asaas_environment="sandbox").first()
     if not subscription or not billing or not billing.asaas_customer_id or not subscription.asaas_subscription_id or subscription.status != 'criada' or subscription.asaas_status not in {'ACTIVE', 'INACTIVE'} or subscription.billing_type not in {'PIX', 'BOLETO'}:
         _flash(request, "error", "Assinatura indisponível para edição. Atualize e confira no Asaas.")
@@ -9468,7 +9472,7 @@ def manage_organization_payment_action(
     if parsed.scheme != "https" or parsed.hostname != "api-sandbox.asaas.com" or parsed.port not in (None, 443) or parsed.path not in ("", "/") or parsed.query or parsed.fragment or parsed.username or not (settings.asaas_api_key or "").strip():
         _flash(request, "error", "Configure o sandbox oficial antes de gerenciar cobranças.")
         return _redirect("/organizacoes")
-    subscription = db.query(OrganizationSubscription).filter_by(organization_id=organization_id, environment="sandbox").first()
+    subscription = db.query(OrganizationSubscription).filter_by(organization_id=organization_id, environment="sandbox", is_current=True).first()
     billing = db.query(OrganizationBilling).filter_by(organization_id=organization_id, asaas_environment="sandbox").first()
     charge = db.query(OrganizationSubscriptionPayment).filter_by(id=payment_id, subscription_id=subscription.id).first() if subscription else None
     if not charge or not billing or not billing.asaas_customer_id or not subscription.asaas_subscription_id:
@@ -9552,7 +9556,7 @@ def manage_organization_sandbox_subscription_action(
         except ValueError:
             _flash(request, "error", "Informe um próximo vencimento válido, não anterior a hoje.")
             return _redirect("/organizacoes")
-    subscription = db.query(OrganizationSubscription).filter_by(organization_id=organization_id, environment="sandbox").first()
+    subscription = db.query(OrganizationSubscription).filter_by(organization_id=organization_id, environment="sandbox", is_current=True).first()
     allowed = {"suspender": {"ACTIVE"}, "reativar": {"INACTIVE"}, "cancelar": {"ACTIVE", "INACTIVE"}}
     if not subscription or not subscription.asaas_subscription_id or subscription.status != "criada" or subscription.asaas_status not in allowed[action]:
         _flash(request, "error", "Operação indisponível. Atualize e confira a assinatura antes de continuar.")
@@ -9572,7 +9576,7 @@ def manage_organization_sandbox_subscription_action(
         _flash(request, "error", error)
         return _redirect("/organizacoes")
     try:
-        subscription = db.query(OrganizationSubscription).filter_by(organization_id=organization_id).with_for_update().one()
+        subscription = db.query(OrganizationSubscription).filter_by(organization_id=organization_id, is_current=True).with_for_update().one()
         billing = db.query(OrganizationBilling).filter_by(organization_id=organization_id).first()
         if action != "cancelar" and (not billing or result.get("customer") != billing.asaas_customer_id):
             raise ValueError("Cliente da assinatura divergente")
@@ -9606,7 +9610,7 @@ def sync_organization_subscription_payments_action(
     if parsed.scheme != "https" or parsed.hostname != "api-sandbox.asaas.com" or parsed.port not in (None, 443) or parsed.path not in ("", "/") or parsed.query or parsed.fragment or parsed.username or not (settings.asaas_api_key or "").strip():
         _flash(request, "error", "Configure o sandbox oficial e sua chave antes de sincronizar.")
         return _redirect("/organizacoes")
-    subscription = db.query(OrganizationSubscription).filter_by(organization_id=organization_id, environment="sandbox").first()
+    subscription = db.query(OrganizationSubscription).filter_by(organization_id=organization_id, environment="sandbox", is_current=True).first()
     if not subscription or not subscription.asaas_subscription_id:
         _flash(request, "error", "Assinatura de sandbox não encontrada.")
         return _redirect("/organizacoes")

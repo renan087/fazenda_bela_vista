@@ -105,3 +105,29 @@ def test_edit_sends_no_pending_payment_update(monkeypatch):
     data, error = service.update_sandbox_subscription(api_key='key', subscription_id='sub_test', customer_id='cus_test', payload={'description': 'Plano', 'updatePendingPayments': True})
     assert data and not error
     assert calls[0]['updatePendingPayments'] is False
+
+
+def test_history_preserves_payments_and_allows_only_one_current_subscription():
+    from datetime import date
+    from decimal import Decimal
+    from sqlalchemy.exc import IntegrityError
+    from app.models import OrganizationSubscriptionPayment
+    import pytest
+    engine = create_engine('sqlite:///:memory:')
+    Base.metadata.create_all(engine)
+    with Session(engine) as db:
+        org = Organization(name='Teste', slug='historico', is_active=True)
+        db.add(org); db.flush()
+        def subscription(remote_id, current):
+            return OrganizationSubscription(organization_id=org.id, plan_name='Plano', amount=Decimal('99.90'), cycle='MONTHLY', billing_type='PIX', first_due_date=date(2026, 1, 1), environment='sandbox', asaas_subscription_id=remote_id, is_current=current)
+        old = subscription('sub_old', True)
+        db.add(old); db.flush()
+        db.add(OrganizationSubscriptionPayment(subscription_id=old.id, asaas_payment_id='pay_old', status='RECEIVED'))
+        old.is_current = False
+        db.flush()
+        current = subscription('sub_new', True)
+        db.add(current); db.commit()
+        assert db.query(OrganizationSubscriptionPayment).one().subscription_id == old.id
+        db.add(subscription('sub_duplicate', True))
+        with pytest.raises(IntegrityError):
+            db.commit()
