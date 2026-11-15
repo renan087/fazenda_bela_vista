@@ -284,12 +284,13 @@ body{margin:0;background:#050f0a}
 .foot .copy{margin-top:56px;padding-top:24px;border-top:1px solid var(--line);font-size:12px;display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap}
 /* scroll-driven */
 @supports (animation-timeline: view()){
-  .reveal{animation:rev linear both;animation-timeline:view();animation-range:entry 0% cover 28%}
   .hero-img{animation:para linear both;animation-timeline:scroll(root);animation-range:0 900px}
   .steps-line{animation:draw linear both;animation-timeline:view();animation-range:entry 10% cover 45%}
   .map-img{animation:mapz linear both;animation-timeline:view()}
 }
-@keyframes rev{from{opacity:0;transform:translateY(48px) scale(.98)}to{opacity:1;transform:none}}
+/* Entrada ao rolar: so esconde quando o JS esta ativo e sempre termina 100% visivel. */
+.js .reveal{opacity:0;translate:0 40px;transition:opacity .8s cubic-bezier(.2,.8,.2,1),translate .8s cubic-bezier(.2,.8,.2,1),transform .5s cubic-bezier(.2,.8,.2,1),border-color .45s}
+.js .reveal.in{opacity:1;translate:none}
 @keyframes para{to{transform:translateY(22%) scale(1.18)}}
 @keyframes draw{from{transform:scaleX(0)}to{transform:scaleX(1)}}
 @keyframes mapz{from{transform:scale(1.3) translateY(-4%)}to{transform:scale(1.08) translateY(4%)}}
