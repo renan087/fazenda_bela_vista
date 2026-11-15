@@ -4,6 +4,12 @@
     <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Interface Mobile</p>
     <h3 class="mt-2 text-2xl font-semibold">Registro rapido para operacoes em campo</h3>
     <p class="mt-2 max-w-3xl text-sm text-slate-500">Tela pensada para celular, com acessos rapidos aos principais apontamentos da lavoura. Use no campo para registrar irrigacao, ocorrencias fitossanitarias e acompanhamentos operacionais.</p>
+    {% if can_use_stock_assistant %}
+    <a href="/mobile/assistente" class="mt-6 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-emerald-950">
+        <span><strong class="block">Assistente SiSFarm</strong><span class="text-sm">Descreva o consumo de insumos e confira antes de registrar.</span></span>
+        <span class="text-sm font-semibold">Abrir assistente &rarr;</span>
+    </a>
+    {% endif %}
     <div class="mt-6 grid gap-4 md:grid-cols-3">
         <a href="/irrigacao" class="rounded-[1.5rem] bg-brand-500 p-5 text-white shadow-lg">
             <p class="text-sm uppercase tracking-[0.25em] text-brand-100/70">Acao rapida</p>

@@ -5,6 +5,7 @@ from decimal import Decimal, InvalidOperation
 from io import BytesIO
 from pathlib import Path
 from urllib.parse import parse_qsl, quote, urlencode, urlparse
+from uuid import uuid4
 import calendar
 
 import hashlib
@@ -32,6 +33,10 @@ from sqlalchemy.orm import Session, joinedload
 from starlette.datastructures import UploadFile as StarletteUploadFile
 
 from app.core.config import get_settings
+from app.models.stock_assistant_draft import StockAssistantDraft
+from app.models.audit_log import AuditLog
+from app.models.input_catalog import InputCatalog
+from app.services.stock_assistant import claim_draft, confirm_consumption, match_exact, parse_consumption, stock_unit
 from app.core.admin_access import has_admin_access, is_super_admin_email
 from app.core.permissions_catalog import (
     WRITE_FINANCE,
@@ -53,6 +58,8 @@ from app.core.permissions_catalog import (
     PAGE_SOIL,
     PAGE_VARIETIES,
     USERS_MANAGE,
+    WRITE_INPUTS,
+    WRITE_MOBILE,
     all_permission_codes,
     write_permission_for_page,
 )
@@ -20560,6 +20567,132 @@ def save_plot_map_geometry(
     return _redirect_with_query("/mapa", edit_plot_id=plot_id)
 
 
+def _can_use_stock_assistant(db, user) -> bool:
+    permissions = permission_codes_for_user(db, user)
+    entitlements = _entitlements_for(db, user)
+    return (
+        {PAGE_MOBILE, WRITE_MOBILE, PAGE_INPUTS, WRITE_INPUTS} <= permissions
+        and not entitlements.read_only
+        and all(entitlements.module_allowed(page) for page in (PAGE_MOBILE, PAGE_INPUTS))
+    )
+
+
+def _assistant_draft(db, user, draft_id):
+    return db.query(StockAssistantDraft).filter_by(
+        id=draft_id, user_id=user.id, organization_id=user.organization_id,
+    ).first()
+
+
+@router.get("/mobile/assistente")
+def stock_assistant_page(
+    request: Request, draft_id: str | None = Query(None, max_length=32),
+    db: Session = Depends(get_db), user: User = Depends(get_current_user_web),
+    csrf_token: str = Depends(get_csrf_token),
+):
+    if not _can_use_stock_assistant(db, user):
+        raise HTTPException(status_code=403, detail="Sem permissão para registrar consumo.")
+    repo = _repository(db)
+    scope = _global_scope_context(request, repo, user)
+    draft = _assistant_draft(db, user, draft_id) if draft_id else None
+    if draft_id and (not draft or (draft.farm_id, draft.season_id) != (scope["active_farm_id"], scope["active_season_id"])):
+        raise HTTPException(status_code=404, detail="Rascunho não encontrado neste contexto.")
+    draft_pending = bool(draft and draft.status == "pending" and
+                         (draft.expires_at if draft.expires_at.tzinfo else draft.expires_at.replace(tzinfo=timezone.utc))
+                         > datetime.now(timezone.utc))
+    return templates.TemplateResponse("stock_assistant.html", _base_context(
+        request, user, csrf_token, "mobile", title="Assistente SiSFarm", _repo=repo,
+        assistant_scope=scope, draft=draft, draft_pending=draft_pending,
+        product=repo.get_input_catalog(draft.input_id) if draft_pending else None,
+        plot=repo.get_plot(draft.plot_id) if draft_pending else None,
+    ))
+
+
+@router.post("/mobile/assistente")
+def prepare_stock_assistant_action(
+    request: Request, message: str = Form(..., max_length=350), csrf_token: str = Form(...),
+    db: Session = Depends(get_db), user: User = Depends(get_current_user_web),
+):
+    validate_csrf(request, csrf_token)
+    if not _can_use_stock_assistant(db, user):
+        raise HTTPException(status_code=403, detail="Sem permissão para registrar consumo.")
+    repo = _repository(db)
+    target = "/mobile/assistente"
+    scope = _global_scope_context(request, repo, user)
+    farm, season = scope["active_farm"], scope["active_season"]
+    try:
+        if not farm or not season or season.farm_id != farm.id:
+            raise ValueError("Selecione a fazenda e a safra no topo.")
+        fields = parse_consumption(message, today_in_app_timezone())
+        _validate_assistant_movement_date(fields["movement_date"], season)
+        product = match_exact(fields["product"], repo.list_input_catalog("insumo_agricola"), "Insumo")
+        plots = _season_launch_plots(repo.list_plots(farm_ids=[farm.id]), scope)
+        plot = match_exact(fields["plot"], [item for item in plots if _plot_matches_scope(item, scope)], "Setor")
+        unit = stock_unit(product, fields["unit"])
+        draft_id = uuid4().hex
+        db.add(StockAssistantDraft(
+            id=draft_id, user_id=user.id, organization_id=user.organization_id,
+            farm_id=farm.id, season_id=season.id, plot_id=plot.id, input_id=product.id,
+            movement_date=fields["movement_date"], quantity=fields["quantity"], unit=unit,
+            expires_at=datetime.now(timezone.utc) + timedelta(minutes=30),
+        ))
+        db.commit()
+    except ValueError as exc:
+        db.rollback()
+        _flash(request, "error", str(exc))
+        return _redirect(target)
+    return _redirect(f"{target}?draft_id={draft_id}")
+
+
+def _validate_assistant_movement_date(movement_date, season):
+    if not season.start_date <= movement_date <= season.end_date or movement_date > today_in_app_timezone():
+        raise ValueError("A data do consumo deve estar dentro da safra ativa e não pode ser futura.")
+
+
+@router.post("/mobile/assistente/{draft_id}/{action}")
+def resolve_stock_assistant_action(
+    request: Request, draft_id: str, action: str, csrf_token: str = Form(...),
+    db: Session = Depends(get_db), user: User = Depends(get_current_user_web),
+):
+    validate_csrf(request, csrf_token)
+    if not _can_use_stock_assistant(db, user):
+        raise HTTPException(status_code=403, detail="Sem permissão para registrar consumo.")
+    if action not in {"confirmar", "descartar"} or len(draft_id) != 32:
+        raise HTTPException(status_code=404)
+    draft = _assistant_draft(db, user, draft_id)
+    repo = _repository(db)
+    scope = _global_scope_context(request, repo, user)
+    if not draft or (draft.farm_id, draft.season_id) != (scope["active_farm_id"], scope["active_season_id"]):
+        raise HTTPException(status_code=404, detail="Rascunho não encontrado neste contexto.")
+    target = "/mobile/assistente"
+    try:
+        if action == "descartar":
+            if not claim_draft(db, draft, "discarded"):
+                raise ValueError("Este rascunho já foi processado ou expirou.")
+            db.commit()
+            _flash(request, "success", "Rascunho descartado. Nenhum consumo foi registrado.")
+            return _redirect(target)
+        season = scope["active_season"]
+        _validate_assistant_movement_date(draft.movement_date, season)
+        plot = repo.get_plot(draft.plot_id)
+        if not _plot_matches_scope(plot, scope) or not _plot_allowed_for_season_launch(plot, scope):
+            raise ValueError("O setor não está disponível na safra ativa.")
+        if stock_unit(db.get(InputCatalog, draft.input_id), draft.unit) != draft.unit:
+            raise ValueError("A unidade cadastrada mudou. Prepare um novo rascunho.")
+        output = confirm_consumption(repo, draft)
+        if output is None:
+            raise ValueError("Este rascunho já foi processado ou expirou. Nenhum novo consumo foi registrado.")
+        db.add(AuditLog(actor_user_id=user.id, actor_email=user.email, organization_id=user.organization_id,
+                        event_type="stock.assistant.confirmed", outcome="success",
+                        metadata_json=json.dumps({"stock_output_id": output.id, "draft_id": draft.id, "channel": "campo_mobile"})))
+        db.commit()
+        _flash(request, "success", "Consumo registrado no estoque.")
+    except ValueError as exc:
+        db.rollback()
+        _flash(request, "error", str(exc))
+        return _redirect(f"{target}?draft_id={draft_id}")
+    return _redirect(target)
+
+
 @router.get("/mobile")
 def mobile_page(
     request: Request,
@@ -20581,6 +20714,7 @@ def mobile_page(
             csrf_token,
             "mobile",
             _repo=repo,
+            can_use_stock_assistant=_can_use_stock_assistant(db, user),
             plots=plots,
             quick_irrigations=[
                 irrigation

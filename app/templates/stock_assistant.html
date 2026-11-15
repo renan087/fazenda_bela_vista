@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="mx-auto max-w-3xl space-y-5 rounded-[2rem] bg-white p-5 shadow-panel sm:p-7">
+    <a href="/mobile" class="text-sm font-semibold text-emerald-800">&larr; Campo Mobile</a>
+    <header>
+        <p class="text-xs font-semibold uppercase tracking-widest text-emerald-800">Piloto de texto</p>
+        <h2 class="mt-2 text-2xl font-semibold text-slate-900">Assistente SiSFarm</h2>
+        <p class="mt-1 text-sm text-slate-600">Registre o consumo de um insumo já cadastrado. Nada sai do estoque sem sua confirmação.</p>
+    </header>
+    {% if not assistant_scope.active_farm or not assistant_scope.active_season %}
+    <p class="rounded-xl bg-amber-50 p-4 text-sm text-amber-900">Selecione a fazenda e a safra no topo para começar.</p>
+    {% else %}
+    <p class="rounded-xl bg-slate-50 p-3 text-sm text-slate-700"><strong>Fazenda:</strong> {{ assistant_scope.active_farm.name }} · <strong>Safra:</strong> {{ assistant_scope.active_season.name }}</p>
+    {% if draft_pending and product and plot %}
+    <article class="space-y-3 rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
+        <h3 class="font-semibold text-emerald-950">Confira a saída de estoque</h3>
+        <dl class="grid gap-2 text-sm text-slate-800 sm:grid-cols-2">
+            <div><dt>Insumo</dt><dd class="font-semibold">{{ product.name }}</dd></div>
+            <div><dt>Quantidade total</dt><dd class="font-semibold">{{ draft.quantity|decimal_br }} {{ draft.unit }}</dd></div>
+            <div><dt>Setor</dt><dd class="font-semibold">{{ plot.name }}</dd></div>
+            <div><dt>Data do consumo</dt><dd class="font-semibold">{{ draft.movement_date.strftime('%d/%m/%Y') }}</dd></div>
+        </dl>
+        <p class="text-xs text-slate-600">O saldo será validado ao confirmar. Para corrigir, descarte o rascunho e reescreva a mensagem.</p>
+        <div class="flex flex-wrap gap-2">
+            <form method="post" action="/mobile/assistente/{{ draft.id }}/confirmar">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <button class="sf-btn sf-btn-primary">Confirmar consumo</button>
+            </form>
+            <form method="post" action="/mobile/assistente/{{ draft.id }}/descartar">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <button class="sf-btn sf-btn-secondary">Descartar rascunho</button>
+            </form>
+        </div>
+    </article>
+    {% else %}
+    {% if draft %}<p class="text-sm text-slate-600">Este rascunho não está mais disponível para confirmação.</p>{% endif %}
+    <form method="post" action="/mobile/assistente" class="space-y-3 rounded-2xl border border-slate-200 p-4">
+        <label for="assistant-message" class="block font-semibold text-slate-900">O que você usou?</label>
+        <p id="assistant-example" class="text-sm text-slate-600">Exemplo: Hoje usei dois sacos de 20 kg de Vita Nit S no Setor 3.</p>
+        <textarea id="assistant-message" name="message" maxlength="350" rows="3" required aria-describedby="assistant-example" class="w-full rounded-xl border-slate-200 bg-slate-50"></textarea>
+        <button class="sf-btn sf-btn-primary">Preparar rascunho</button>
+    </form>
+    {% endif %}
+    {% endif %}
+</section>
+{% endblock %}

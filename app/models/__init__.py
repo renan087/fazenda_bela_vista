@@ -55,6 +55,7 @@ from app.models.farm_rain_settings import FarmRainSettings
 from app.models.cost_classification import CostClassification
 from app.models.soil_analysis import SoilAnalysis
 from app.models.stock_output import StockOutput
+from app.models.stock_assistant_draft import StockAssistantDraft
 from app.models.stock_inventory_item import StockInventoryItem
 from app.models.stock_inventory_session import StockInventorySession
 from app.models.trusted_browser_token import TrustedBrowserToken

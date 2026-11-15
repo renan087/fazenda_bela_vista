@@ -1378,12 +1378,14 @@ def _manual_stock_output_allocations(repository: FarmRepository, output_id: int)
     )
 
 
-def create_manual_stock_output(repository: FarmRepository, form: dict, *, commit: bool = True) -> StockOutput:
+def create_manual_stock_output(repository: FarmRepository, form: dict, *, commit: bool = True, farm_stock_only: bool = False) -> StockOutput:
     input_id = int(form["input_id"])
     quantity = float(form["quantity"])
     if quantity <= 0:
         raise ValueError("Informe uma quantidade valida para a saida manual.")
 
+    # Serialize manual withdrawals for the same product before loading lot balances.
+    repository.db.query(InputCatalog.id).filter_by(id=input_id).with_for_update().first()
     input_catalog = repository.get_input_catalog(input_id)
     if not input_catalog:
         raise ValueError("Insumo nao encontrado para a saida manual.")
@@ -1397,6 +1399,8 @@ def create_manual_stock_output(repository: FarmRepository, form: dict, *, commit
     season_id = _resolve_season_for_farm(repository, farm_id, movement_date, form.get("season_id"))
 
     candidate_lots = _find_candidate_lots(repository, input_catalog.id, None, input_catalog.name, unit, farm_id)
+    if farm_stock_only:
+        candidate_lots = [lot for lot in candidate_lots if lot.farm_id == farm_id]
     candidate_lots = sorted(candidate_lots, key=lambda item: (item.expiration_date or date.max, item.purchase_date or date.max, item.id))
     available = round(sum(_available_stock_for_input(lot) for lot in candidate_lots), 2)
     if quantity > available:
