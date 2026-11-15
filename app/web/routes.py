@@ -5585,6 +5585,55 @@ def _collect_finance_installment_rows(
     )
 
 
+def _finance_accounts_summary(
+    transactions,
+    *,
+    today: date,
+    account_balances: dict,
+    card_overviews: dict,
+    horizon_days: int = 30,
+) -> dict:
+    """Numeros do resumo da pagina Contas: saldo, a pagar/receber no horizonte e faturas de cartao."""
+    horizon = today + timedelta(days=horizon_days)
+    summary = {
+        "balance_total": round(sum(float(value or 0) for value in account_balances.values()), 2),
+        "payables_total": 0.0,
+        "payables_overdue": 0,
+        "receivables_total": 0.0,
+        "receivables_overdue": 0,
+        "receivables_next_due": None,
+        "cards_open_total": 0.0,
+        "cards_next_due": None,
+        "horizon_days": horizon_days,
+    }
+    for transaction in transactions:
+        operation = (transaction.operation_type or "").strip().lower()
+        if operation not in {"despesa", "receita"}:
+            continue
+        if operation == "despesa" and transaction.credit_card_id:
+            continue  # compras no cartao entram no total das faturas
+        prefix = "payables" if operation == "despesa" else "receivables"
+        for installment in transaction.installments or []:
+            if (installment.status or "pendente").strip().lower() == "pago" or not installment.due_date:
+                continue
+            if installment.due_date > horizon:
+                continue
+            summary[f"{prefix}_total"] = round(summary[f"{prefix}_total"] + float(installment.amount or 0), 2)
+            if installment.due_date < today:
+                summary[f"{prefix}_overdue"] += 1
+            elif prefix == "receivables" and (
+                summary["receivables_next_due"] is None or installment.due_date < summary["receivables_next_due"]
+            ):
+                summary["receivables_next_due"] = installment.due_date
+    for overview in card_overviews.values():
+        summary["cards_open_total"] = round(summary["cards_open_total"] + float(overview.get("open_total") or 0), 2)
+        next_invoice = overview.get("next_open_invoice")
+        due = next_invoice.get("due_date") if next_invoice else None
+        if due and (summary["cards_next_due"] is None or due < summary["cards_next_due"]):
+            summary["cards_next_due"] = due
+    return summary
+
+
 def _safe_finance_accounts_return_url(candidate: str | None, *, default: str) -> str:
     """Aceita apenas path+query sob /gestao-financeira/contas (evita open redirect)."""
     raw = (candidate or "").strip()
@@ -6412,6 +6461,12 @@ def finance_accounts_page(
             finance_account_balances=account_balances,
             finance_account_transaction_counts=finance_account_transaction_counts,
             finance_credit_card_overviews=finance_credit_card_overviews,
+            finance_summary=_finance_accounts_summary(
+                transactions_all if active_farm else [],
+                today=today,
+                account_balances=account_balances,
+                card_overviews=finance_credit_card_overviews,
+            ),
             finance_plot_options=finance_plot_options,
             finance_operational_expense_categories=sorted(FINANCE_TRANSACTION_OPERATIONAL_EXPENSE_CATEGORIES),
             today=today,

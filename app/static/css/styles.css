@@ -5311,3 +5311,70 @@ input[type="file"] {
     .ctx-picker-foot p { flex: 1; }
     .ctx-btn { flex: none; }
 }
+
+/* Complementos do padrao sf-* (menus de acao, contagem nas abas, alertas). */
+.sf-header-actions { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; }
+@media (max-width: 639px) { .sf-header-actions { width: 100%; } .sf-header-actions > .sf-btn-primary { flex: 1 1 100%; justify-content: center; order: -1; } .sf-header-actions > .sf-menu { flex: 1 1 0; min-width: 0; } .sf-header-actions > .sf-menu > summary { width: 100%; justify-content: center; } .sf-header-actions > .sf-menu:last-of-type .sf-menu-panel { left: auto; right: 0; } }
+.sf-menu > summary { list-style: none; cursor: pointer; }
+.sf-menu > summary::-webkit-details-marker { display: none; }
+.sf-chevron { transition: transform .2s; }
+.sf-menu[open] .sf-chevron { transform: rotate(180deg); }
+.sf-header-actions .sf-menu-panel { left: 0; right: auto; min-width: 15rem; z-index: 30; }
+@media (min-width: 640px) { .sf-header-actions .sf-menu-panel { left: auto; right: 0; } }
+.sf-menu-label { margin: .25rem .75rem .25rem; font-size: .6875rem; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--sf-muted, #5b6660); }
+.sf-menu-hint { margin: .375rem .75rem; font-size: .8125rem; line-height: 1.4; color: var(--sf-muted, #5b6660); }
+.sf-menu-panel:has([data-finance-header-exports].flex) .sf-export-empty { display: none; }
+.sf-kpi-alert { color: #b42318; font-weight: 600; }
+.sf-tab-count { display: inline-flex; align-items: center; justify-content: center; min-width: 1.375rem; height: 1.25rem; margin-left: .375rem; padding: 0 .375rem; border-radius: 999px; background: #eef1ed; color: #3c4741; font-size: .6875rem; font-weight: 700; }
+.sf-tab-count-alert { background: #fef3f2; color: #b42318; }
+
+/* ==========================================================================
+   Padrao visual unico (2026): aplica o visual sf-* as pecas compartilhadas
+   (stock-*) usadas pelas demais paginas. Nao altera o menu lateral.
+   O prefixo "body" garante prioridade sobre as classes utilitarias do Tailwind.
+   ========================================================================== */
+body .stock-page-shell { --sf-ink: #16201a; --sf-muted: #5b6660; --sf-line: #e3e8e2; --sf-line-strong: #d6ddd5; --sf-soft: #f6f8f5; --sf-brand: #446a36; --sf-brand-dark: #294127; --sf-brand-soft: #eef7ed; color: var(--sf-ink); }
+
+/* Cabecalho da pagina: titulo direto, sem cartao grande. */
+body .stock-page-header { border: 0; border-radius: 0; box-shadow: none; background: rgb(241 245 249 / .94); backdrop-filter: blur(8px); padding: .75rem 0 1rem; }
+body .stock-page-header.finance-accounts-page-header { padding: .75rem 0 1rem; }
+body .stock-page-card-title, body .stock-page-title { margin-top: 0; font-size: 1.625rem; line-height: 1.2; font-weight: 700; letter-spacing: -0.02em; color: var(--sf-ink); }
+body .stock-page-card-subtitle, body .stock-page-subtitle { margin-top: .375rem; font-size: .875rem; line-height: 1.5; color: var(--sf-muted); }
+body .stock-page-eyebrow { font-size: .6875rem; letter-spacing: .08em; color: var(--sf-muted); }
+
+/* Paineis e cartoes de resumo: borda fina, sem sombra pesada. */
+body .stock-panel { background: #fff; border: 1px solid var(--sf-line); border-radius: 1rem; box-shadow: none; }
+body .stock-summary-card, body .finance-summary-card { background: #fff; border: 1px solid var(--sf-line); border-radius: 1rem; box-shadow: none; }
+
+/* Busca */
+body .stock-search-field { border-radius: .75rem; border-color: var(--sf-line-strong); background: #fff; box-shadow: none; min-height: 2.75rem; padding-top: 0; padding-bottom: 0; }
+body .stock-search-field:focus-within { border-color: var(--sf-brand); box-shadow: 0 0 0 3px rgba(68, 106, 54, .15); background: #fff; }
+body .stock-search-field input { font-size: .875rem; }
+
+/* Botoes de acao */
+body .stock-action-button { min-height: 2.75rem; padding: 0 1rem; border-radius: .75rem; font-size: .875rem; box-shadow: none; }
+body .stock-action-button:hover { transform: none; }
+body .stock-action-button-primary { background: var(--sf-brand); border: 1px solid var(--sf-brand); color: #fff; }
+body .stock-action-button-primary:hover { background: var(--sf-brand-dark); }
+body .stock-action-button-secondary, body .finance-transaction-action-button, body .stock-quick-action-secondary, body .stock-quick-action-light { background: #fff; border: 1px solid var(--sf-line-strong); color: var(--sf-ink); box-shadow: none; }
+body .stock-action-button-secondary:hover, body .finance-transaction-action-button:hover, body .stock-quick-action-secondary:hover, body .stock-quick-action-light:hover { background: var(--sf-soft); border-color: var(--sf-line-strong); }
+body .stock-export-button { background: #fff; border: 1px solid var(--sf-line-strong); color: var(--sf-ink); }
+body .stock-export-button:hover { background: var(--sf-soft); }
+body .stock-summary-toggle { border-radius: .75rem; border-color: var(--sf-line-strong); background: #fff; color: var(--sf-ink); min-height: 2.75rem; padding-top: 0; padding-bottom: 0; }
+body .stock-summary-toggle:hover { transform: none; background: var(--sf-soft); }
+body .stock-action-menu-panel { border-radius: .875rem; border: 1px solid var(--sf-line); box-shadow: 0 16px 36px rgba(22, 32, 26, .14); }
+
+/* Etiquetas de situacao */
+body .stock-level-badge { padding: .1875rem .5625rem; font-size: .6875rem; font-weight: 600; }
+
+/* Abas de secao: sublinhado em vez de pilula. */
+body .stock-tab-nav.stock-segmented-control { display: flex; width: 100%; gap: 1.5rem; padding: 0; border: 0; border-bottom: 1px solid var(--sf-line); border-radius: 0; background: transparent; box-shadow: none; overflow-x: auto; scrollbar-width: none; }
+body .stock-tab-nav.stock-segmented-control::-webkit-scrollbar { display: none; }
+body .stock-tab-nav.stock-segmented-control .stock-segmented-indicator { display: none; }
+body .stock-tab-nav.stock-segmented-control .stock-tab-link { flex: none; position: relative; min-height: 3rem; padding: 0 .125rem; border-radius: 0; background: transparent; box-shadow: none; color: var(--sf-muted); font-size: .875rem; font-weight: 600; white-space: nowrap; }
+body .stock-tab-nav.stock-segmented-control .stock-tab-link:hover { color: var(--sf-ink); transform: none; }
+body .stock-tab-nav.stock-segmented-control .stock-tab-link.is-active { color: var(--sf-ink); }
+body .stock-tab-nav.stock-segmented-control .stock-tab-link.is-active::after { content: ""; position: absolute; left: 0; right: 0; bottom: -1px; height: 3px; border-radius: 3px 3px 0 0; background: var(--sf-brand); }
+
+/* Tabelas dentro dos paineis */
+body .stock-panel table thead th { font-size: .6875rem; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--sf-muted); }

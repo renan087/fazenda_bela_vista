@@ -31,7 +31,7 @@
         }
     </script>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-    <link rel="stylesheet" href="{{ url_for('static', path='css/styles.css') }}?v=20261115a">
+    <link rel="stylesheet" href="{{ url_for('static', path='css/styles.css') }}?v=20261115b">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="{{ url_for('static', path='js/currency-mask.js') }}?v=20260425a" defer></script>
@@ -463,6 +463,29 @@
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
                     </button>
             </div>
+            <script>
+            // Menus de acao das paginas (details[data-sf-dropdown]): fecham ao clicar fora, ao escolher um item ou com Esc.
+            (() => {
+                const menus = () => Array.from(document.querySelectorAll('details[data-sf-dropdown]'));
+                document.addEventListener('click', (event) => {
+                    menus().forEach((menu) => {
+                        if (!menu.open) return;
+                        const inside = menu.contains(event.target);
+                        const onItem = inside && event.target.closest('.sf-menu-panel a, .sf-menu-panel button');
+                        if (!inside || onItem) menu.open = false;
+                    });
+                });
+                document.addEventListener('keydown', (event) => {
+                    if (event.key !== 'Escape') return;
+                    menus().forEach((menu) => { if (menu.open) { menu.open = false; menu.querySelector('summary')?.focus(); } });
+                });
+                document.addEventListener('toggle', (event) => {
+                    const menu = event.target;
+                    if (!(menu instanceof HTMLDetailsElement) || !menu.matches('[data-sf-dropdown]') || !menu.open) return;
+                    menus().forEach((other) => { if (other !== menu) other.open = false; });
+                }, true);
+            })();
+            </script>
             <dialog id="context-picker" class="ctx-picker" aria-labelledby="context-picker-title">
                 <form method="post" action="/contexto" class="ctx-picker-form" data-context-picker-form data-season-options='{{ context_season_options|tojson|safe }}'>
                     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
