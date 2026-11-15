@@ -5459,3 +5459,18 @@ body .stock-stock-management-button:hover, body .stock-action-menu[open] .stock-
 @media (min-width: 1024px) { .sf-kpis.sf-kpis-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 /* No celular a barra do topo ja mostra o nome da pagina: o cabecalho da pagina rola junto com o conteudo. */
 @media (max-width: 899px) { body .stock-page-header { position: relative; top: auto; backdrop-filter: none; background: transparent; } }
+/* Menus de acao dentro de tabelas abrem ao lado do botao, para nao serem cortados pela borda da tabela. */
+td .sf-menu > .sf-menu-panel { top: 50%; right: calc(100% + .375rem); transform: translateY(-50%); min-width: 11rem; }
+/* Tabelas antigas no celular (classe aplicada pelo base.html). */
+@media (max-width: 767px) {
+    .sf-table-legacy td.sf-td-full { grid-column: 1 / -1; text-align: center; padding: .75rem 0; }
+    .sf-table-legacy td { white-space: normal; }
+    .sf-table-legacy td.sf-td-actions > div { justify-content: flex-end; }
+    .sf-table-legacy tbody tr > td:not(.sf-td-title):not(.sf-td-actions):not([data-label]):empty { display: none; }
+    .stock-table-shell .overflow-x-auto:has(> .sf-table-legacy), .overflow-x-auto:has(> table.sf-table-legacy) { overflow-x: visible; }
+    table.sf-table-legacy { min-width: 0 !important; width: 100%; }
+}
+@media (max-width: 767px) {
+    table.sf-table-legacy tbody td { padding: 0 !important; }
+    table.sf-table-legacy tbody td.sf-td-actions > div, table.sf-table-legacy tbody td.sf-td-actions { display: flex; gap: .375rem; justify-content: flex-end; align-items: flex-start; }
+}

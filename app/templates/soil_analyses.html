@@ -41,8 +41,8 @@
     </div>
 </dialog>
 {% endmacro %}
-<div class="stock-page-shell space-y-6" data-modal-single-pane>
-    <section class="stock-page-header rounded-[2rem] p-5 shadow-panel">
+<div class="stock-page-shell sf-page" data-modal-single-pane>
+    <section class="stock-page-header">
         <div class="flex flex-wrap items-start justify-between gap-4">
             <div class="min-w-0 stock-page-header-intro" data-stock-header-intro>
                 <div class="stock-page-header-intro-inner">
@@ -149,10 +149,15 @@
                             <button type="button" disabled class="inline-flex h-9 cursor-not-allowed items-center justify-center rounded-xl bg-slate-200 px-4 text-sm font-medium text-slate-500">Gerar IA</button>
                         </span>
                         {% endif %}
-                        <form method="post" action="/analise-solo/{{ item.id }}/excluir" onsubmit="return confirm('Excluir esta análise de solo?');">
-                            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                            <button class="inline-flex h-9 items-center justify-center rounded-xl bg-rose-600 px-4 text-sm font-medium text-white hover:bg-rose-700">Excluir</button>
-                        </form>
+                        <details class="sf-menu" data-sf-dropdown>
+                            <summary class="sf-icon-btn" aria-label="Mais ações" title="Mais ações"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="12" cy="5" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="12" cy="19" r="1.7"/></svg></summary>
+                            <div class="sf-menu-panel">
+                                <form method="post" action="/analise-solo/{{ item.id }}/excluir" onsubmit="return confirm('Excluir esta análise de solo? Esta ação não pode ser desfeita.');">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                                    <button type="submit" class="sf-menu-danger">Excluir análise</button>
+                                </form>
+                            </div>
+                        </details>
                     </div>
                 </div>
 

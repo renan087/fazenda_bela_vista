@@ -31,7 +31,7 @@
         }
     </script>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-    <link rel="stylesheet" href="{{ url_for('static', path='css/styles.css') }}?v=20261115d">
+    <link rel="stylesheet" href="{{ url_for('static', path='css/styles.css') }}?v=20261115e">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="{{ url_for('static', path='js/currency-mask.js') }}?v=20260425a" defer></script>
@@ -485,6 +485,33 @@
                     if (!(menu instanceof HTMLDetailsElement) || !menu.matches('[data-sf-dropdown]') || !menu.open) return;
                     menus().forEach((other) => { if (other !== menu) other.open = false; });
                 }, true);
+            })();
+            // Tabelas antigas (stock-history-table): no celular cada linha vira um cartao com rotulos vindos do cabecalho.
+            (() => {
+                const prepare = (table) => {
+                    const heads = Array.from(table.querySelectorAll('thead th')).map((th) => th.textContent.trim());
+                    if (!heads.length) return;
+                    table.classList.add('sf-table-responsive', 'sf-table-legacy');
+                    table.querySelectorAll('tbody tr:not([data-sf-row])').forEach((row) => {
+                        row.setAttribute('data-sf-row', '');
+                        const cells = Array.from(row.children);
+                        if (cells.length === 1 && cells[0].hasAttribute('colspan')) { cells[0].classList.add('sf-td-full'); return; }
+                        cells.forEach((cell, index) => {
+                            const label = heads[index] || '';
+                            const isActions = /^a[cç][oõ]es$/i.test(label) || (index === cells.length - 1 && !label && cell.querySelector('a, button, details'));
+                            if (index === 0) cell.classList.add('sf-td-title');
+                            else if (isActions) cell.classList.add('sf-td-actions');
+                            else if (label) cell.setAttribute('data-label', label);
+                        });
+                    });
+                };
+                const scan = () => document.querySelectorAll('table.stock-history-table').forEach(prepare);
+                let pending = null;
+                const schedule = () => { if (pending === null) pending = window.requestAnimationFrame(() => { pending = null; scan(); }); };
+                document.addEventListener('DOMContentLoaded', () => {
+                    scan();
+                    new MutationObserver(schedule).observe(document.body, { childList: true, subtree: true });
+                });
             })();
             </script>
             <dialog id="context-picker" class="ctx-picker" aria-labelledby="context-picker-title">
