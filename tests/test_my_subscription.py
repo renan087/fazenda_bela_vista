@@ -247,3 +247,17 @@ def test_seo_robots_sitemap_and_noindex_outside_landing():
     assert headers_for("/login").get("X-Robots-Tag") == "noindex, nofollow"
     assert "X-Robots-Tag" not in headers_for("/")
     assert "X-Robots-Tag" not in headers_for("/static/images/og-sisfarm.jpg")
+
+
+def test_landing_structured_data_has_organization_and_offers():
+    import json
+    from types import SimpleNamespace
+    from decimal import Decimal
+    from app.web.routes import _landing_structured_data
+
+    plans = [SimpleNamespace(price_monthly=Decimal("99.90")), SimpleNamespace(price_monthly=Decimal("299")), SimpleNamespace(price_monthly=None)]
+    data = json.loads(_landing_structured_data("https://app.sisfarm.com.br", plans))
+    types = {item["@type"]: item for item in data["@graph"]}
+    assert types["Organization"]["logo"].startswith("https://")
+    offers = types["SoftwareApplication"]["offers"]
+    assert offers["lowPrice"] == "99.90" and offers["highPrice"] == "299.00" and offers["priceCurrency"] == "BRL"

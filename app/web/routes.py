@@ -3699,14 +3699,14 @@ def _soil_history_chart(analyses: list[SoilAnalysis]) -> str:
     )
 
 
-@router.get("/robots.txt", include_in_schema=False)
+@router.api_route("/robots.txt", methods=["GET", "HEAD"], include_in_schema=False)
 def robots_txt():
     base = app_public_base()
     body = f"User-agent: *\nAllow: /\nDisallow: /api/\n\nSitemap: {base}/sitemap.xml\n"
     return Response(body, media_type="text/plain")
 
 
-@router.get("/sitemap.xml", include_in_schema=False)
+@router.api_route("/sitemap.xml", methods=["GET", "HEAD"], include_in_schema=False)
 def sitemap_xml():
     base = app_public_base()
     body = (
@@ -3718,7 +3718,35 @@ def sitemap_xml():
     return Response(body, media_type="application/xml")
 
 
-@router.get("/")
+SEO_DESCRIPTION = (
+    "Software de gestão agrícola para cafeicultura: talhões no mapa, adubação com recomendação por IA, "
+    "estoque, colheita, financeiro e cotação do café em um só sistema para sua fazenda de café."
+)
+
+
+def _landing_structured_data(site_url: str, catalog) -> str:
+    """JSON-LD da landing (Schema.org), seguro para embutir em <script>."""
+    organization = {
+        "@type": "Organization", "@id": f"{site_url}/#organization", "name": "SiSFarm",
+        "url": f"{site_url}/", "logo": f"{site_url}/static/images/logo.png",
+    }
+    software = {
+        "@type": "SoftwareApplication", "name": "SiSFarm", "url": f"{site_url}/",
+        "applicationCategory": "BusinessApplication", "applicationSubCategory": "Gestão agrícola para cafeicultura",
+        "operatingSystem": "Web", "inLanguage": "pt-BR", "description": SEO_DESCRIPTION,
+        "image": f"{site_url}/static/images/og-sisfarm.jpg", "publisher": {"@id": organization["@id"]},
+    }
+    monthly = [plan.price_monthly for plan in catalog if plan.price_monthly]
+    if monthly:
+        software["offers"] = {
+            "@type": "AggregateOffer", "priceCurrency": "BRL", "offerCount": len(monthly),
+            "lowPrice": f"{min(monthly):.2f}", "highPrice": f"{max(monthly):.2f}",
+        }
+    data = {"@context": "https://schema.org", "@graph": [organization, software]}
+    return json.dumps(data, ensure_ascii=False).replace("</", "<\\/")
+
+
+@router.api_route("/", methods=["GET", "HEAD"])
 def home(request: Request, db: Session = Depends(get_db)):
     """Landing page publica; quem ja esta logado vai direto para o dashboard."""
     if request.session.get("user_email"):
@@ -3731,7 +3759,8 @@ def home(request: Request, db: Session = Depends(get_db)):
         "plan_modules_catalog": PLAN_MODULES, "module_pitch": MODULE_PITCH, "module_details": MODULE_DETAILS,
         "trial_days": max((plan.trial_days or 0 for plan in catalog), default=0),
         "contact_href": f"mailto:{support}?subject=Quero%20conhecer%20o%20SisFarm" if support else "/login",
-        "current_year": today_in_app_timezone().year, "site_url": app_public_base(),
+        "current_year": today_in_app_timezone().year, "site_url": app_public_base(), "seo_description": SEO_DESCRIPTION,
+        "structured_data": _landing_structured_data(app_public_base(), catalog),
     })
 
 
