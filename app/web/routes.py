@@ -4163,6 +4163,38 @@ def dashboard(
     )
 
 
+@router.get("/api/dashboard/clima")
+def dashboard_weather_forecast(
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    import time as time_module
+
+    from app.services.weather_forecast import (
+        CACHE_TTL_SECONDS, farm_coordinates, fetched_at_datetime, get_farm_forecast,
+    )
+
+    if not user_has_permission(db, user, "page.rainfall"):
+        return JSONResponse({"status": "forbidden"}, status_code=403)
+    repo = _repository(db)
+    scope = _global_scope_context(request, repo, user)
+    farm = scope.get("active_farm")
+    if not farm:
+        return JSONResponse({"status": "no_farm"})
+    coords = farm_coordinates(farm)
+    if not coords:
+        return JSONResponse({"status": "no_coords", "farm": farm.name, "farm_id": farm.id})
+    result = get_farm_forecast(coords[0], coords[1])
+    result.update(farm=farm.name, farm_id=farm.id, coords_source=coords[2],
+                  latitude=round(coords[0], 4), longitude=round(coords[1], 4))
+    fetched = result.pop("fetched_at", None)
+    if fetched is not None:
+        result["updated_at"] = format_app_datetime(fetched_at_datetime(fetched), "%d/%m/%Y às %H:%M")
+        result["next_refresh_seconds"] = max(60, int(CACHE_TTL_SECONDS - (time_module.time() - fetched)))
+    return JSONResponse(result, headers={"Cache-Control": "no-store"})
+
+
 @router.post("/api/dashboard/cotacao-cafe/sincronizar-navegador")
 async def sync_browser_coffee_quotes_action(
     request: Request,
