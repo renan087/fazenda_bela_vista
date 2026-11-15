@@ -883,6 +883,13 @@ MENU_ITEM_VISIBILITY_RULES = {
 }
 
 
+def _farm_name_taken(db: Session, organization_id: int | None, name: str, exclude_id: int | None = None) -> bool:
+    query = db.query(Farm.id).filter(Farm.organization_id == organization_id, func.lower(Farm.name) == (name or "").strip().lower())
+    if exclude_id:
+        query = query.filter(Farm.id != exclude_id)
+    return query.first() is not None
+
+
 def _redirect(url: str) -> RedirectResponse:
     return RedirectResponse(url=url, status_code=status.HTTP_303_SEE_OTHER)
 
@@ -8636,6 +8643,10 @@ async def create_farm_action(
     user: User = Depends(get_current_user_web),
 ):
     validate_csrf(request, csrf_token)
+    name = (name or "").strip()
+    if _farm_name_taken(db, user.organization_id, name):
+        _flash(request, "error", f"Já existe uma fazenda chamada {name}. Use outro nome.")
+        return _redirect("/setores") if redirect_to == "/setores" else _redirect("/fazendas")
     limit_error = farm_limit_error(db, _entitlements_for(db, user), adding_farm=True, area_delta=Decimal(str(total_area or 0)))
     if limit_error:
         _flash(request, "error", limit_error)
@@ -8714,6 +8725,10 @@ async def update_farm_action(
     if not farm or (user.organization_id and farm.organization_id != user.organization_id):
         _flash(request, "error", "Fazenda nao encontrada.")
         return _redirect("/fazendas")
+    name = (name or "").strip()
+    if _farm_name_taken(db, farm.organization_id, name, exclude_id=farm.id):
+        _flash(request, "error", f"Já existe uma fazenda chamada {name}. Use outro nome.")
+        return _redirect_with_query("/fazendas", edit_id=farm_id)
     limit_error = farm_limit_error(db, _entitlements_for(db, user), adding_farm=False, area_delta=Decimal(str(total_area or 0)) - Decimal(str(farm.total_area or 0)))
     if limit_error:
         _flash(request, "error", limit_error)

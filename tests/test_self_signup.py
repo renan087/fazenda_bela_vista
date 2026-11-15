@@ -128,3 +128,18 @@ def test_google_signup_skips_password_and_code(flow):
                                           password='', accepted_terms='1', csrf_token='x', db=db)
     assert response.headers['location'] == '/dashboard' and db.query(User).one().email == 'g@x.com'
     assert not [s for s in sent if s[0] == 'g@x.com']
+
+
+def test_farm_names_are_unique_per_organization_only():
+    from app.models import Farm
+    from app.web import routes
+    db = _db()
+    a = signup.create_self_signup(db, email='a@x.com', data=_data('Org A'), password_hash='h', plan_id=None, today=TODAY)
+    b = signup.create_self_signup(db, email='b@x.com', data=_data('Org B'), password_hash='h', plan_id=None, today=TODAY)
+    db.add_all([Farm(name='Fazenda Santa Maria', location='MG', total_area=10, organization_id=a.organization_id),
+                Farm(name='Fazenda Santa Maria', location='SP', total_area=20, organization_id=b.organization_id)])
+    db.commit()
+    assert routes._farm_name_taken(db, a.organization_id, ' fazenda santa maria ')
+    farm_id = db.query(Farm.id).filter_by(organization_id=a.organization_id).scalar()
+    assert not routes._farm_name_taken(db, a.organization_id, 'Fazenda Santa Maria', exclude_id=farm_id)
+    assert not routes._farm_name_taken(db, a.organization_id, 'Outra')

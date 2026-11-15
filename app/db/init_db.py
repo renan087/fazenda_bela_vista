@@ -140,7 +140,7 @@ def _sync_schema() -> None:
         CREATE TABLE IF NOT EXISTS farms (
             id SERIAL PRIMARY KEY,
             organization_id INTEGER REFERENCES organizations(id) ON DELETE SET NULL,
-            name VARCHAR(160) UNIQUE NOT NULL,
+            name VARCHAR(160) NOT NULL,
             location VARCHAR(180) NOT NULL,
             total_area NUMERIC(12,2) NOT NULL,
             boundary_geojson TEXT,
@@ -628,6 +628,9 @@ def _sync_schema() -> None:
         "ALTER TABLE organization_subscriptions ADD COLUMN IF NOT EXISTS sync_issue VARCHAR(255)",
         "ALTER TABLE subscription_plans ADD COLUMN IF NOT EXISTS icon VARCHAR(30) NOT NULL DEFAULT 'crown'",
         "ALTER TABLE organization_access_grants ADD COLUMN IF NOT EXISTS notices_sent VARCHAR(80) NOT NULL DEFAULT ''",
+        # Nome de fazenda passa a ser unico por organizacao (antes era global e quebrava o autocadastro).
+        "ALTER TABLE farms DROP CONSTRAINT IF EXISTS farms_name_key",
+        "CREATE UNIQUE INDEX IF NOT EXISTS uq_farms_organization_name ON farms (organization_id, name)",
         "ALTER TABLE organization_subscriptions ADD COLUMN IF NOT EXISTS plan_changed_at TIMESTAMP",
         "ALTER TABLE organization_subscriptions ADD COLUMN IF NOT EXISTS pending_plan_id INTEGER REFERENCES subscription_plans(id) ON DELETE RESTRICT",
         "ALTER TABLE organization_subscriptions ADD COLUMN IF NOT EXISTS pending_plan_name VARCHAR(120)",
