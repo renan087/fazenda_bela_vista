@@ -265,3 +265,20 @@ def test_new_version_route_saves_edited_terms_as_draft(monkeypatch):
     draft = db.query(SubscriptionPlan).filter_by(code=plan.code, version=2).one()
     assert draft.status == 'rascunho' and draft.price_monthly == Decimal('249.90') and plan.status == 'ativo'
     assert response.headers['location'] == f'/planos#plano-{draft.id}'
+
+
+def test_plans_page_renders_history_and_readonly_modals(monkeypatch):
+    from jinja2 import ChoiceLoader, DictLoader
+    db = _db()
+    plan = plans.create_plan(db, _form())
+    plans.activate_plan(db, plan)
+    db.flush()
+    plans.activate_plan(db, plans.create_new_version(db, plan))
+    db.commit()
+    monkeypatch.setattr(routes, '_base_context', lambda *a, **k: {**k, 'csrf_token': 't'})
+    monkeypatch.setattr(routes, '_require_super_admin', lambda *a: None)
+    monkeypatch.setattr(routes.templates, 'TemplateResponse', lambda name, context: (name, context))
+    name, context = routes.subscription_plans_page(request=None, db=db, user=None, csrf_token='t')
+    env = routes.templates.env.overlay(loader=ChoiceLoader([DictLoader({'base.html': '{% block content %}{% endblock %}'}), routes.templates.env.loader]))
+    html = env.get_template(name).render(**context)
+    assert f'id="plan-history-{plan.code}"' in html and f'id="plan-view-{plan.id}"' in html and '2 versões' in html

@@ -51,6 +51,7 @@
     </div>
 {% endmacro %}
 {% macro plan_view(plan, stats) %}
+{% set status_styles = {'ativo': 'bg-emerald-50 text-emerald-800', 'rascunho': 'bg-amber-50 text-amber-800', 'arquivado': 'bg-slate-100 text-slate-600'} %}
 <dialog id="plan-view-{{ plan.id }}" class="app-modal plan-modal w-full max-w-3xl rounded-[2rem] p-0 shadow-2xl" aria-labelledby="plan-view-{{ plan.id }}-title">
     <div class="flex max-h-[90vh] flex-col bg-white">
         <header class="flex items-start justify-between gap-4 border-b border-slate-100 px-6 pb-4 pt-6">
@@ -71,6 +72,7 @@
 </dialog>
 {% endmacro %}
 {% macro plan_history(versions) %}
+{% set status_styles = {'ativo': 'bg-emerald-50 text-emerald-800', 'rascunho': 'bg-amber-50 text-amber-800', 'arquivado': 'bg-slate-100 text-slate-600'} %}
 <dialog id="plan-history-{{ versions[0].code }}" class="app-modal plan-modal w-full max-w-xl rounded-[2rem] p-0 shadow-2xl" aria-labelledby="plan-history-{{ versions[0].code }}-title">
     <div class="flex max-h-[90vh] flex-col bg-white">
         <header class="flex items-start justify-between gap-4 border-b border-slate-100 px-6 pb-4 pt-6">
