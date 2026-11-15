@@ -19,6 +19,7 @@ from app.core.timezone import utc_now
 from app.db.session import get_db
 from app.models import User
 from app.schemas.auth import Token
+from app.services import login_throttle
 from app.services.audit_log_service import append_audit_event
 from app.services.email_service import send_access_code_email, send_password_reset_email
 from app.services.password_reset import get_valid_password_reset_token, issue_password_reset_token, revoke_user_password_reset_tokens
@@ -552,9 +553,14 @@ def login_web(
 ):
     validate_csrf(request, csrf_token)
     normalized_email = email.strip().lower()
+    ip = _client_ip(request)
+    wait = login_throttle.blocked_for(normalized_email, ip)
+    if wait:
+        return _render_login(request, f"Muitas tentativas de acesso. Aguarde {max(1, wait // 60)} minuto(s) e tente novamente, ou use \"Esqueceu sua senha?\".")
     user = db.query(User).filter(User.email == normalized_email).first()
     _reactivate_super_admin_if_needed(db, user)
     if not authenticate_user(user, password):
+        login_throttle.register_failure(normalized_email, ip)
         append_audit_event(
             request=request,
             actor_user=user if user else None,
@@ -565,6 +571,7 @@ def login_web(
             metadata={"reason": "invalid_credentials"},
         )
         return _render_login(request, "Credenciais invalidas.")
+    login_throttle.register_success(normalized_email)
     return _start_web_login_challenge(request, db, user)
 
 
@@ -702,8 +709,13 @@ def login_api(
     form_data: OAuth2PasswordRequestForm = Depends(),
     db: Session = Depends(get_db),
 ):
+    api_email, ip = (form_data.username or "").strip().lower(), _client_ip(request)
+    wait = login_throttle.blocked_for(api_email, ip)
+    if wait:
+        raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="Muitas tentativas. Tente novamente mais tarde.", headers={"Retry-After": str(wait)})
     user = db.query(User).filter(User.email == form_data.username).first()
     if not authenticate_user(user, form_data.password):
+        login_throttle.register_failure(api_email, ip)
         append_audit_event(
             request=request,
             actor_user=user if user else None,
@@ -715,6 +727,7 @@ def login_api(
         )
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Credenciais invalidas")
 
+    login_throttle.register_success(api_email)
     append_audit_event(request=request, actor_user=user, event_type="auth.api.token.success", outcome="success")
     return Token(access_token=create_access_token(user.email))
 

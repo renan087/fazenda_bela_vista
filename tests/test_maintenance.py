@@ -67,3 +67,18 @@ def test_middleware_blocks_by_mode_and_lets_team_and_essentials_through(monkeypa
     assert post.status_code == 503 and b'modo consulta' in post.body
     assert _call(monkeypatch, read_only, '/logout', method='POST', email='cliente@x').status_code == 200
     assert _call(monkeypatch, svc.OFF, '/fazendas', method='POST', email='cliente@x').status_code == 200
+
+
+def test_login_throttle_blocks_after_failures_and_resets_on_success():
+    from app.services import login_throttle as lt
+    for _ in range(lt.MAX_PER_EMAIL):
+        assert lt.blocked_for('a@x.com', '1.1.1.1', now=1000) == 0
+        lt.register_failure('A@x.com', '1.1.1.1', now=1000)
+    assert lt.blocked_for('a@x.com', '2.2.2.2', now=1001) > 0  # bloqueia o e-mail mesmo vindo de outra rede
+    assert lt.blocked_for('outro@x.com', '1.1.1.1', now=1001) == 0
+    assert lt.blocked_for('a@x.com', '1.1.1.1', now=1000 + lt.WINDOW_SECONDS + 1) == 0  # expira sozinho
+    lt.register_success('a@x.com')
+    assert lt.blocked_for('a@x.com', '1.1.1.1', now=1001) == 0
+    for i in range(lt.MAX_PER_IP):
+        lt.register_failure(f'u{i}@x.com', '9.9.9.9', now=1000)
+    assert lt.blocked_for('novo@x.com', '9.9.9.9', now=1001) > 0  # muitas contas a partir do mesmo IP

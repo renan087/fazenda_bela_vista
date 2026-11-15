@@ -12,7 +12,6 @@ from app.db.session import engine
 from app.models import (
     AgronomicProfile,
     AuditLog,
-    AsaasPayment,
     BackupAutomationSetting,
     BackupRun,
     CoffeeCommercializationRecord,
@@ -682,18 +681,6 @@ def _sync_schema() -> None:
         SET organization_id = (SELECT id FROM organizations WHERE slug = 'sisfarm' LIMIT 1)
         WHERE organization_id IS NULL
         """,
-        """
-        CREATE TABLE IF NOT EXISTS asaas_payments (
-            id SERIAL PRIMARY KEY,
-            payment_id VARCHAR(40) NOT NULL UNIQUE,
-            user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
-            status VARCHAR(40),
-            paid_at TIMESTAMPTZ,
-            last_event VARCHAR(80),
-            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-        )
-        """,
-        "CREATE INDEX IF NOT EXISTS ix_asaas_payments_user_id ON asaas_payments(user_id)",
         "ALTER TABLE backup_automation_settings ADD COLUMN IF NOT EXISTS storage_limit_gb INTEGER DEFAULT 1",
         "ALTER TABLE backup_automation_settings ADD COLUMN IF NOT EXISTS storage_limit_bytes BIGINT",
         "ALTER TABLE backup_automation_settings ADD COLUMN IF NOT EXISTS storage_limit_source VARCHAR(40)",
