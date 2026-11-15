@@ -22,7 +22,7 @@ from app.services.rbac_service import ensure_organization_roles, sync_roles_from
 from app.services.subscription_plans import active_plans, plan_modules
 
 TRIAL_DAYS = 14
-TRIAL_REASON = "teste_gratis"
+from app.services.access_grants import TRIAL_GRANT_REASON as TRIAL_REASON  # noqa: E402
 CODE_TTL_SECONDS = 15 * 60
 CODE_MAX_ATTEMPTS = 5
 RESEND_COOLDOWN_SECONDS = 60

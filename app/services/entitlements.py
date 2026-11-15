@@ -22,8 +22,8 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
-from app.models import Farm, Organization, OrganizationSubscription, OrganizationSubscriptionPayment, SubscriptionPlan, User
-from app.services.access_grants import organization_access
+from app.models import Farm, Organization, OrganizationAccessGrant, OrganizationSubscription, OrganizationSubscriptionPayment, SubscriptionPlan, User
+from app.services.access_grants import TRIAL_GRANT_REASON, organization_access
 from app.services.asaas_environment import asaas_env_name
 from app.services.subscription_plans import PLAN_MODULES, plan_modules
 
@@ -52,7 +52,9 @@ class Entitlements:
     max_farms: int | None = None
     max_users: int | None = None
     max_hectares: Decimal | None = None
-    billing_state: str = "ok"  # ok | aviso | restrito | liberado
+    billing_state: str = "ok"  # ok | aviso | restrito | liberado | teste
+    trial_ends_on: date | None = None
+    trial_ended: bool = False
     days_overdue: int = 0
     overdue_amount: Decimal = Decimal("0.00")
     restrict_on: date | None = None
@@ -102,7 +104,21 @@ def compute_entitlements(db: Session, organization_id: int | None, today: date) 
         overdue_amount = sum((Decimal(row.amount or 0) for row in overdue), Decimal("0.00"))
 
     grace = grace_days()
-    if access.manual:
+    trial_ends_on, trial_ended = None, False
+    if access.grant is not None and access.grant.reason == TRIAL_GRANT_REASON:
+        trial_ends_on = access.grant.ends_on
+    elif not access.has_access:
+        last_trial = (db.query(OrganizationAccessGrant)
+                      .filter_by(organization_id=organization_id, reason=TRIAL_GRANT_REASON)
+                      .order_by(OrganizationAccessGrant.ends_on.desc()).first())
+        # Teste encerrado sem assinatura ativa: modo somente leitura, sem apagar nada.
+        trial_ended = bool(last_trial and last_trial.ends_on < today)
+        trial_ends_on = last_trial.ends_on if trial_ended else None
+    if trial_ends_on and not trial_ended:
+        state = "teste"
+    elif trial_ended:
+        state = "restrito"
+    elif access.manual:
         state = "liberado"
     elif days_overdue <= 0:
         state = "ok"
@@ -125,6 +141,8 @@ def compute_entitlements(db: Session, organization_id: int | None, today: date) 
         restrict_on=(oldest + timedelta(days=grace + 1)) if oldest else None,
         grant_until=access.grant.ends_on if access.grant else None,
         locked_modules=locked,
+        trial_ends_on=trial_ends_on,
+        trial_ended=trial_ended,
     )
 
 

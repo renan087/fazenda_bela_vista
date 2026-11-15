@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from datetime import date
+from datetime import date, timedelta
 
 from sqlalchemy.exc import IntegrityError
 
@@ -114,10 +114,72 @@ def process_organization(db, organization: Organization, today: date, *, send=se
     return delivered
 
 
+def compose_trial_notice(kind: str, *, organization: Organization, ends_on: date) -> tuple[str, str]:
+    link = f"{app_public_base()}/minha-assinatura/contratar"
+    if kind == "teste_3_dias":
+        return (f"Seu teste grátis do SiSFarm termina em {ends_on.strftime('%d/%m/%Y')}",
+                f"Olá!\n\nO teste grátis da {organization.name} no SiSFarm termina em {ends_on.strftime('%d/%m/%Y')}.\n"
+                f"Para continuar usando sem interrupção, contrate seu plano:\n{link}\n\n"
+                "Seus cadastros continuam guardados. Qualquer dúvida, é só responder este e-mail.\n")
+    return ("Seu teste grátis do SiSFarm terminou",
+            f"Olá!\n\nO teste grátis da {organization.name} no SiSFarm terminou em {ends_on.strftime('%d/%m/%Y')}.\n"
+            "O sistema segue disponível para consulta e nenhum dado foi apagado.\n"
+            f"Para voltar a cadastrar e editar, contrate seu plano:\n{link}\n")
+
+
+def trial_notice_kind(ends_on: date, today: date, already_sent: str) -> str | None:
+    """Um aviso 3 dias antes e outro no fim do teste (ate 3 dias depois, para cobrir quedas do servico)."""
+    sent = set(filter(None, (already_sent or "").split(",")))
+    days_left = (ends_on - today).days
+    if days_left < 0 and days_left >= -3 and "teste_fim" not in sent:
+        return "teste_fim"
+    if 0 <= days_left <= 3 and "teste_3_dias" not in sent:
+        return "teste_3_dias"
+    return None
+
+
+def process_trial_notices(db, today: date, *, send=send_plain_email) -> list[tuple[int, str]]:
+    from app.models import OrganizationAccessGrant, User
+    from app.services.access_grants import TRIAL_GRANT_REASON
+
+    delivered = []
+    grants = db.query(OrganizationAccessGrant).filter(
+        OrganizationAccessGrant.reason == TRIAL_GRANT_REASON, OrganizationAccessGrant.revoked_at.is_(None),
+        OrganizationAccessGrant.ends_on >= today - timedelta(days=3), OrganizationAccessGrant.ends_on <= today + timedelta(days=3),
+    ).all()
+    for grant in grants:
+        kind = trial_notice_kind(grant.ends_on, today, grant.notices_sent)
+        if not kind:
+            continue
+        if db.query(OrganizationSubscription.id).filter_by(organization_id=grant.organization_id, is_current=True).first():
+            continue  # ja contratou: nada a avisar
+        organization = db.get(Organization, grant.organization_id)
+        recipients = [row[0] for row in db.query(User.email).filter_by(organization_id=grant.organization_id, is_admin=True, is_active=True)]
+        if not organization or not recipients:
+            continue
+        subject, body = compose_trial_notice(kind, organization=organization, ends_on=grant.ends_on)
+        try:
+            for email in recipients:
+                send(email, subject, body, "aviso de teste grátis")
+        except Exception:
+            logger.exception("Falha ao enviar aviso de teste %s da organização %s", kind, grant.organization_id)
+            continue
+        grant.notices_sent = ",".join(filter(None, [grant.notices_sent, kind]))
+        db.commit()
+        delivered.append((grant.organization_id, kind))
+    return delivered
+
+
 def _tick() -> None:
     if app_now().hour not in BUSINESS_HOURS:
         return
     today = today_in_app_timezone()
+    with SessionLocal() as db:
+        try:
+            process_trial_notices(db, today)
+        except Exception:
+            db.rollback()
+            logger.exception("Falha ao processar avisos de teste grátis")
     with SessionLocal() as db:
         organization_ids = [row[0] for row in db.query(OrganizationSubscription.organization_id).filter_by(environment=asaas_env_name()).distinct().all()]
     for organization_id in organization_ids:

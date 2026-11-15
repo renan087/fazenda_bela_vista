@@ -27,6 +27,7 @@ GRANT_REASONS: dict[str, str] = {
     "teste_gratis": "Teste grátis (autocadastro)",
     "outro": "Outro motivo",
 }
+TRIAL_GRANT_REASON = "teste_gratis"
 MAX_GRANT_DAYS = 90
 MIN_JUSTIFICATION = 15
 EXPIRING_SOON_DAYS = 3

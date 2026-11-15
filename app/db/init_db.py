@@ -627,6 +627,7 @@ def _sync_schema() -> None:
         "ALTER TABLE organization_subscriptions ADD COLUMN IF NOT EXISTS last_synced_at TIMESTAMP",
         "ALTER TABLE organization_subscriptions ADD COLUMN IF NOT EXISTS sync_issue VARCHAR(255)",
         "ALTER TABLE subscription_plans ADD COLUMN IF NOT EXISTS icon VARCHAR(30) NOT NULL DEFAULT 'crown'",
+        "ALTER TABLE organization_access_grants ADD COLUMN IF NOT EXISTS notices_sent VARCHAR(80) NOT NULL DEFAULT ''",
         "ALTER TABLE organization_subscriptions ADD COLUMN IF NOT EXISTS plan_changed_at TIMESTAMP",
         "ALTER TABLE organization_subscriptions ADD COLUMN IF NOT EXISTS pending_plan_id INTEGER REFERENCES subscription_plans(id) ON DELETE RESTRICT",
         "ALTER TABLE organization_subscriptions ADD COLUMN IF NOT EXISTS pending_plan_name VARCHAR(120)",

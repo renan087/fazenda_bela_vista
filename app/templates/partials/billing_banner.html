@@ -1,8 +1,20 @@
 {# Aviso de cobranca no topo de todas as paginas da organizacao. #}
 {% set ent = plan_entitlements %}
-{% if ent and not ent.exempt and page not in ['my_subscription', 'plan_upgrade'] %}
+{% if ent and not ent.exempt and page not in ['my_subscription', 'plan_upgrade', 'subscribe'] %}
 {% set can_pay = menu_visibility and menu_visibility.get('finance') %}
-{% if ent.billing_state == 'restrito' %}
+{% if ent.billing_state == 'restrito' and ent.trial_ended %}
+<div class="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-900" role="alert" data-billing-banner="teste-encerrado">
+    <p><strong>Seu teste grátis terminou em {{ ent.trial_ends_on.strftime('%d/%m/%Y') }}.</strong> O sistema está em modo consulta: seus dados continuam aqui. Contrate um plano para voltar a cadastrar e editar.</p>
+    {% if can_pay %}<a href="/minha-assinatura/contratar" class="rounded-xl bg-rose-600 px-4 py-2 text-sm font-semibold text-white hover:bg-rose-700">Contratar plano</a>{% else %}<span class="text-xs">Avise o responsável pela sua organização.</span>{% endif %}
+</div>
+{% elif ent.billing_state == 'teste' %}
+{% set left = (ent.trial_ends_on - today_date).days if today_date else none %}
+{% set urgent = left is not none and left <= 3 %}
+<div class="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-2xl border px-4 py-3 text-sm {{ 'border-amber-200 bg-amber-50 text-amber-900' if urgent else 'border-emerald-200 bg-emerald-50 text-emerald-900' }}" role="status" data-billing-banner="teste">
+    <p><strong>{% if left is none %}Teste grátis até {{ ent.trial_ends_on.strftime('%d/%m/%Y') }}.{% elif left <= 0 %}Seu teste grátis termina hoje.{% elif left == 1 %}Falta 1 dia do seu teste grátis.{% else %}Faltam {{ left }} dias do seu teste grátis.{% endif %}</strong> {{ 'Contrate um plano para continuar sem interrupção.' if urgent else 'Aproveite para cadastrar sua fazenda e conhecer os módulos.' }}</p>
+    {% if can_pay %}<a href="/minha-assinatura/contratar" class="rounded-xl px-4 py-2 text-sm font-semibold text-white {{ 'bg-amber-600 hover:bg-amber-700' if urgent else 'bg-brand-500 hover:bg-brand-700' }}">Contratar plano</a>{% endif %}
+</div>
+{% elif ent.billing_state == 'restrito' %}
 <div class="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-900" role="alert" data-billing-banner="restrito">
     <p><strong>Modo somente leitura.</strong> Há pagamento em atraso há {{ ent.days_overdue }} dia(s) (R$ {{ ent.overdue_amount|decimal_br }}). Você pode consultar e exportar, mas não cadastrar nem editar até regularizar.</p>
     {% if can_pay %}<a href="/minha-assinatura" class="rounded-xl bg-rose-600 px-4 py-2 text-sm font-semibold text-white hover:bg-rose-700">Regularizar pagamento</a>{% else %}<span class="text-xs">Avise o responsável financeiro da sua organização.</span>{% endif %}

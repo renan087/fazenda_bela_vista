@@ -25,6 +25,7 @@ class OrganizationAccessGrant(Base):
     created_by_user_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     created_by_email: Mapped[str | None] = mapped_column(String(254), nullable=True)
     extension_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default=text("0"))
+    notices_sent: Mapped[str] = mapped_column(String(80), nullable=False, default="", server_default=text("''"))
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     revoked_by_email: Mapped[str | None] = mapped_column(String(254), nullable=True)
     revoke_reason: Mapped[str | None] = mapped_column(String(255), nullable=True)
