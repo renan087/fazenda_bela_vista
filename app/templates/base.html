@@ -165,8 +165,8 @@
                         <span class="erp-sidebar-label">Dashboard</span>
                     </a>
                     {% endif %}
-                    {% set productive_unit_pages = ['farms', 'seasons', 'plots', 'sector_costs'] %}
-                    {% if menu_visibility.get('productive_unit') %}
+                    {% set productive_unit_pages = ['farms', 'seasons', 'plots', 'varieties', 'sector_costs'] %}
+                    {% if menu_visibility.get('productive_unit') or menu_visibility.get('nav_varieties') %}
                     <div class="rounded-2xl {% if page in productive_unit_pages %}bg-slate-900/80{% endif %}" data-submenu-group>
                         <button type="button" class="erp-sidebar-link flex w-full items-center justify-between rounded-2xl px-4 py-3 text-left transition-all duration-300 ease-in-out {% if page in productive_unit_pages %}text-white{% else %}text-slate-300 hover:bg-slate-900 hover:text-white{% endif %}" data-submenu-toggle="productive-unit-menu" data-submenu-parent aria-haspopup="true" aria-expanded="{% if page in productive_unit_pages %}true{% else %}false{% endif %}">
                             <span class="flex items-center gap-3"><span class="erp-sidebar-icon">{{ nav_icon('productive_unit') }}</span><span class="erp-sidebar-label">Unidade Produtiva</span></span>
@@ -175,10 +175,15 @@
                             </span>
                         </button>
                         <div id="productive-unit-menu" class="sidebar-submenu-panel {% if page not in productive_unit_pages %}hidden {% endif %}space-y-1 px-3 pb-3" data-submenu-panel>
+                            {% if menu_visibility.get('productive_unit') %}
                             <a href="{{ module_href('/fazendas') }}" class="sidebar-submenu-link block rounded-xl px-3 py-2 text-sm {% if page == 'farms' %}bg-brand-500 text-white{% else %}text-slate-300 hover:bg-slate-800 hover:text-white{% endif %}" data-submenu-link>Fazendas{{ module_lock('/fazendas') }}</a>
                             <a href="{{ module_href('/safras') }}" class="sidebar-submenu-link block rounded-xl px-3 py-2 text-sm {% if page == 'seasons' %}bg-brand-500 text-white{% else %}text-slate-300 hover:bg-slate-800 hover:text-white{% endif %}" data-submenu-link>Safras{{ module_lock('/safras') }}</a>
                             <a href="{{ module_href('/setores') }}" class="sidebar-submenu-link block rounded-xl px-3 py-2 text-sm {% if page == 'plots' %}bg-brand-500 text-white{% else %}text-slate-300 hover:bg-slate-800 hover:text-white{% endif %}" data-submenu-link>Setores{{ module_lock('/setores') }}</a>
+                            {% endif %}
+                            {% if menu_visibility.get('nav_varieties') %}<a href="{{ module_href('/variedades') }}" class="sidebar-submenu-link block rounded-xl px-3 py-2 text-sm {% if page == 'varieties' %}bg-brand-500 text-white{% else %}text-slate-300 hover:bg-slate-800 hover:text-white{% endif %}" data-submenu-link>Variedades{{ module_lock('/variedades') }}</a>{% endif %}
+                            {% if menu_visibility.get('productive_unit') %}
                             <a href="{{ module_href('/custos-por-setor') }}" class="sidebar-submenu-link block rounded-xl px-3 py-2 text-sm {% if page == 'sector_costs' %}bg-brand-500 text-white{% else %}text-slate-300 hover:bg-slate-800 hover:text-white{% endif %}" data-submenu-link>Custos por setor{{ module_lock('/custos-por-setor') }}</a>
+                            {% endif %}
                         </div>
                     </div>
                     {% endif %}
@@ -275,7 +280,6 @@
                     </div>
                     {% endif %}
                     {% set nav = [
-                        ('varieties', '/variedades', 'Variedades', 'nav_varieties'),
                         ('irrigation', '/irrigacao', 'Irrigacao', 'nav_irrigation'),
                         ('rainfall', '/pluviometria', 'Pluviometria', 'nav_rainfall'),
                         ('pests', '/pragas', 'Pragas e Doencas', 'nav_pests'),
