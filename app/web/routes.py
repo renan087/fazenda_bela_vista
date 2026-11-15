@@ -8409,6 +8409,8 @@ def create_plot_action(
     _flash(request, "success", "Setor salvo com sucesso.")
     if return_to == "safra":
         return _redirect(f"/safras?novo=1&setor={new_plot.id}")
+    if return_to and return_to.startswith("safra:") and return_to[6:].isdigit():
+        return _redirect(f"/safras?edit_id={int(return_to[6:])}&rascunho=1&setor={new_plot.id}")
     return _redirect("/setores")
 
 

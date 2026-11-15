@@ -1217,9 +1217,11 @@
             }
             destroyPlotsBoundaryEditor();
             launchModal?.close();
-            if (new URLSearchParams(window.location.search).get('voltar') === 'safra') {
+            const backQuery = new URLSearchParams(window.location.search);
+            if (backQuery.get('voltar') === 'safra') {
+                const seasonId = (backQuery.get('safra') || '').replace(/\D/g, '');
                 window.showPageLoader?.('Voltando para a safra', 'Seus dados preenchidos serão restaurados.');
-                window.location.href = '/safras?novo=1';
+                window.location.href = seasonId ? `/safras?edit_id=${seasonId}&rascunho=1` : '/safras?novo=1';
             }
         };
 
@@ -1242,7 +1244,7 @@
             const plotForm = launchModal.querySelector('form[action="/setores"]');
             if (plotsQuery.get('voltar') === 'safra' && plotForm) {
                 const back = document.createElement('input');
-                back.type = 'hidden'; back.name = 'return_to'; back.value = 'safra';
+                back.type = 'hidden'; back.name = 'return_to'; back.value = (plotsQuery.get('safra') || '').replace(/\D/g, '') ? `safra:${plotsQuery.get('safra').replace(/\D/g, '')}` : 'safra';
                 plotForm.appendChild(back);
                 plotForm.addEventListener('submit', (event) => {
                     window.setTimeout(() => { if (!event.defaultPrevented) window.showPageLoader?.('Salvando setor', 'Em seguida você volta para a safra.'); }, 0);

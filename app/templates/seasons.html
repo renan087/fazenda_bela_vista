@@ -626,35 +626,43 @@
     // Rascunho: guarda o que ja foi preenchido ao sair para cadastrar um setor.
     const DRAFT_KEY = 'sisfarm.seasonDraft';
     const draftFields = ['start_date', 'end_date', 'name', 'culture', 'variety_id', 'area_unit', 'status', 'notes'];
+    const editId = (form.getAttribute('action').match(/^\/safras\/(\d+)\/editar/) || [])[1] || '';
+    const newPlotOption = select ? [...select.options].find((o) => o.value === '__novo__') : null;
+    if (newPlotOption && editId) newPlotOption.dataset.href = `/setores?novo=1&voltar=safra&safra=${editId}`;
+    const chipIds = () => [...form.querySelectorAll('[data-season-plot-selected] [data-plot-id]')].map((c) => c.dataset.plotId);
     window.saveSeasonDraft = () => {
-        if (form.action.includes('/editar')) return;
-        const data = { plots: [...form.querySelectorAll('[data-season-plot-selected] [data-plot-id]')].map((c) => c.dataset.plotId) };
+        const data = { season: editId, plots: chipIds() };
         draftFields.forEach((name) => { const field = form.elements[name]; if (field) data[name] = field.value; });
         try { sessionStorage.setItem(DRAFT_KEY, JSON.stringify(data)); } catch (error) { /* sem armazenamento: segue sem rascunho */ }
+    };
+    const addPlot = (id) => {
+        if (select && [...select.options].some((o) => o.value === id && !o.disabled)) { select.value = id; select.dispatchEvent(new Event('change')); }
     };
     const restoreDraft = () => {
         let data = null;
         try { data = JSON.parse(sessionStorage.getItem(DRAFT_KEY) || 'null'); sessionStorage.removeItem(DRAFT_KEY); } catch (error) { data = null; }
-        if (!data) return;
+        if (!data || (data.season || '') !== editId) return;
         draftFields.forEach((name) => {
             const field = form.elements[name];
-            if (field && data[name] !== undefined && data[name] !== '') { field.value = data[name]; field.dispatchEvent(new Event('input', { bubbles: true })); field.dispatchEvent(new Event('change', { bubbles: true })); }
+            if (field && data[name] !== undefined) { field.value = data[name]; field.dispatchEvent(new Event('input', { bubbles: true })); field.dispatchEvent(new Event('change', { bubbles: true })); }
         });
-        (data.plots || []).forEach((id) => {
-            if (select && [...select.options].some((o) => o.value === id && !o.disabled)) { select.value = id; select.dispatchEvent(new Event('change')); }
+        const wanted = data.plots || [];
+        form.querySelectorAll('[data-season-plot-selected] [data-plot-id]').forEach((chip) => {
+            if (!wanted.includes(chip.dataset.plotId)) chip.querySelector('[data-season-plot-remove]')?.click();
         });
-        if (input) { input.dispatchEvent(new Event('blur')); }
+        wanted.forEach(addPlot);
+        if (input) input.dispatchEvent(new Event('blur'));
     };
+    // Retorno do cadastro de setor: reabre a safra (nova ou em edicao) com o que ja estava preenchido.
     const query = new URLSearchParams(window.location.search);
-    if (query.get('novo') === '1') {
-        document.getElementById('seasons-launch-modal')?.showModal();
+    const backFromPlot = query.get('novo') === '1' || (editId && query.get('rascunho') === '1');
+    if (backFromPlot) {
+        const modal = document.getElementById('seasons-launch-modal');
+        if (modal && !modal.open) modal.showModal();
         restoreDraft();
         const plotId = query.get('setor');
-        if (plotId && select && [...select.options].some((o) => o.value === plotId && !o.disabled)) {
-            select.value = plotId;
-            select.dispatchEvent(new Event('change'));
-        }
-        window.history.replaceState(null, '', '/safras');
+        if (plotId) addPlot(plotId);
+        window.history.replaceState(null, '', editId ? `/safras?edit_id=${editId}` : '/safras');
     }
 })();
 </script>
