@@ -475,6 +475,7 @@ def build_dashboard_context(
     coffee_market = _build_coffee_market_context(repository, harvests, farm_id, scoped_farm_id_set)
 
     finance_overview = build_finance_overview_context(repository, farm_id=farm_id, active_season=season)
+    sector_cost_per_ha: dict[int, float] = {}
     operational_cost_season = _float(finance_overview.get("operational_cost_season"))
     if season and season.plots and farm_id:
         sector_costs = build_sector_cost_context(
@@ -487,6 +488,9 @@ def build_dashboard_context(
             end_date=season.end_date,
         )
         operational_cost_season = sector_costs["allocated_total"]
+        sector_cost_per_ha = {
+            row["plot"].id: _float(row.get("cost_per_hectare")) for row in sector_costs.get("rows", []) if row.get("plot") is not None
+        }
 
     total_area = sum(_float(plot.area_hectares) for plot in plots)
     total_production = sum(_float(item.sacks_produced) for item in harvests)
@@ -725,7 +729,28 @@ def build_dashboard_context(
     operational_cost_per_hectare_value = round(operational_cost_per_hectare, 2)
     operational_cost_per_sack_value = round(operational_cost_per_sack, 2)
 
+    overview = build_dashboard_overview(
+        repository,
+        farm_id=farm_id,
+        season=season,
+        today=today,
+        plots=plots,
+        total_area=total_area,
+        estimated_production=round(estimated_production or forecast["total_projection"], 2),
+        operational_cost_season=operational_cost_season,
+        coffee_market=coffee_market,
+        finance_flow=finance_flow,
+        low_stock_items=low_stock_items,
+        schedule_alerts=schedule_alerts,
+        incidents=incidents,
+        forecast_plots=forecast["plots"],
+        cost_by_plot=cost_by_plot,
+        sector_cost_per_ha=sector_cost_per_ha,
+        activity_timeline=activity_timeline,
+    )
+
     return {
+        "overview": overview,
         "kpis": {
             "area_total": round(total_area, 2),
             "plot_count": len(plots),
@@ -806,4 +831,269 @@ def build_dashboard_context(
         "map_geojson": json.dumps({"type": "FeatureCollection", "features": map_features}),
         "farms": farms,
         "activity_timeline": activity_timeline,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Painel de comando da safra (Dashboard novo)
+# ---------------------------------------------------------------------------
+HEAVY_RAIN_MM = 30.0
+_MONTHS_SHORT = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"]
+_MONTHS_LONG = ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"]
+
+
+def _brl(value: float, decimals: int = 0) -> str:
+    text = f"{abs(value):,.{decimals}f}".replace(",", "X").replace(".", ",").replace("X", ".")
+    return ("− " if value < 0 else "") + "R$ " + text
+
+
+def _brl_compact(value: float) -> str:
+    sign = "− " if value < 0 else ""
+    amount = abs(value)
+    if amount >= 1_000_000:
+        return f"{sign}R$ " + f"{amount / 1_000_000:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".") + " mi"
+    if amount >= 1_000:
+        return f"{sign}R$ " + f"{amount / 1_000:,.0f}".replace(",", ".") + " mil"
+    return f"{sign}R$ " + f"{amount:,.0f}".replace(",", ".")
+
+
+def _dashboard_cash_weeks(repository: FarmRepository, farm_id: int | None, today: date, weeks: int = 5) -> list[dict]:
+    """Entradas e saidas previstas (parcelas em aberto) por semana, a partir de hoje."""
+    buckets = []
+    start = today
+    for index in range(weeks):
+        end = start + timedelta(days=6)
+        buckets.append({"start": start, "end": end, "in": 0.0, "out": 0.0})
+        start = end + timedelta(days=1)
+    if not farm_id:
+        return buckets
+    horizon = buckets[-1]["end"]
+    for transaction in repository.list_finance_transactions(farm_id=farm_id):
+        if not _finance_transaction_uses_future_settlement(transaction):
+            continue
+        is_revenue = (transaction.operation_type or "").strip().lower() == "receita"
+        for installment in transaction.installments or []:
+            if (installment.status or "pendente").strip().lower() == "pago" or not installment.due_date:
+                continue
+            due = max(installment.due_date, today)  # atrasadas entram na semana atual
+            if due > horizon:
+                continue
+            for bucket in buckets:
+                if bucket["start"] <= due <= bucket["end"]:
+                    bucket["in" if is_revenue else "out"] += abs(_float(installment.amount))
+                    break
+    return buckets
+
+
+def _dashboard_rain(repository: FarmRepository, farm_id: int | None, today: date) -> dict:
+    records = repository.list_rainfalls(farm_id=farm_id) if farm_id else []
+    by_month: dict[tuple[int, int], float] = defaultdict(float)
+    for record in records:
+        if record.rainfall_date:
+            by_month[(record.rainfall_date.year, record.rainfall_date.month)] += _float(record.millimeters)
+    month_total = by_month.get((today.year, today.month), 0.0)
+    previous_years = [value for (year, month), value in by_month.items() if month == today.month and year < today.year]
+    average = sum(previous_years) / len(previous_years) if previous_years else None
+    latest = max((r for r in records if r.rainfall_date), key=lambda r: (r.rainfall_date, r.id), default=None)
+    return {
+        "month_label": _MONTHS_LONG[today.month - 1],
+        "month_total": round(month_total, 1),
+        "average": round(average, 1) if average is not None else None,
+        "pct": min(round(month_total / average * 100), 100) if average else (100 if month_total else 0),
+        "years": len(previous_years),
+        "latest": latest,
+        "latest_days": (today - latest.rainfall_date).days if latest else None,
+        "has_records": bool(records),
+    }
+
+
+def _dashboard_calendar(repository: FarmRepository, plot_ids: set[int], today: date) -> list[dict]:
+    window_start = today - timedelta(days=62)
+    window_end = today + timedelta(days=93)
+    items = []
+    for schedule in repository.list_fertilization_schedules():
+        if schedule.plot_id not in plot_ids or not schedule.scheduled_date:
+            continue
+        if not (window_start <= schedule.scheduled_date <= window_end):
+            continue
+        done = (schedule.status or "").strip().lower() == "completed"
+        status = "done" if done else ("late" if schedule.scheduled_date < today else "plan")
+        products = ", ".join(item.name for item in (schedule.items or []) if item.name) or "Sem insumos informados"
+        items.append(
+            {
+                "id": schedule.id,
+                "date": schedule.scheduled_date.isoformat(),
+                "status": status,
+                "plot": schedule.plot.name if schedule.plot else "Setor removido",
+                "method": fertilization_application_method_label(schedule.application_method),
+                "products": products,
+                "link": f"/fertilizacao/agendamentos?edit_id={schedule.id}",
+            }
+        )
+    items.sort(key=lambda item: (item["date"], item["id"]))
+    return items
+
+
+def build_dashboard_overview(
+    repository: FarmRepository,
+    *,
+    farm_id: int | None,
+    season,
+    today: date,
+    plots: list,
+    total_area: float,
+    estimated_production: float,
+    operational_cost_season: float,
+    coffee_market: dict,
+    finance_flow: dict,
+    low_stock_items: list,
+    schedule_alerts: list,
+    incidents: list,
+    forecast_plots: list,
+    cost_by_plot: dict,
+    sector_cost_per_ha: dict,
+    activity_timeline: list,
+) -> dict:
+    quotes = coffee_market.get("quotes") or {}
+    arabica = quotes.get("arabica")
+    price = _float(arabica.price_brl) if arabica else 0.0
+
+    # Resultado previsto da safra
+    cycle_pct, days_left = None, None
+    if season and season.start_date and season.end_date and season.end_date > season.start_date:
+        total_days = (season.end_date - season.start_date).days
+        elapsed = min(max((today - season.start_date).days, 0), total_days)
+        cycle_pct = round(elapsed / total_days * 100)
+        days_left = max((season.end_date - today).days, 0)
+    revenue = estimated_production * price
+    margin = revenue - operational_cost_season
+    hero = {
+        "season_name": season.name if season else None,
+        "cycle_pct": cycle_pct,
+        "days_left": days_left,
+        "area": round(total_area, 2),
+        "plot_count": len(plots),
+        "sacks": estimated_production,
+        "price": price,
+        "price_date": arabica.quote_date if arabica else None,
+        "cost": round(operational_cost_season, 2),
+        "cost_per_ha": round(operational_cost_season / total_area, 2) if total_area else 0,
+        "cost_per_sack": round(operational_cost_season / estimated_production, 2) if estimated_production else 0,
+        "revenue": round(revenue, 2),
+        "margin": round(margin, 2),
+        "margin_pct": round(margin / revenue * 100) if revenue else None,
+        "ready": bool(season and estimated_production and price),
+    }
+    hero["revenue_fmt"] = _brl_compact(hero["revenue"])
+    hero["cost_fmt"] = _brl_compact(hero["cost"])
+    hero["margin_fmt"] = _brl_compact(hero["margin"])
+
+    # Precisa de voce hoje
+    inbox: list[dict] = []
+    for item in finance_flow.get("action_items", []):
+        if item["status"] not in {"overdue", "today"}:
+            continue
+        verb = "Receber" if item["type"] == "receber" else "Pagar"
+        when = "venceu" if item["status"] == "overdue" else "vence hoje"
+        inbox.append({
+            "tone": "danger" if item["status"] == "overdue" else "warning",
+            "title": f"{item['title']} — {when}",
+            "text": f"{_brl(item['amount'], 2)} · parcela {item['installment']} · {item['source']}",
+            "action": verb, "link": item["link"],
+        })
+    late = [item for item in schedule_alerts if item["status"] == "late"]
+    if late:
+        first = late[0]
+        inbox.append({
+            "tone": "danger",
+            "title": f"{len(late)} aplicação(ões) atrasada(s)" if len(late) > 1 else f"Aplicação atrasada — {first['plot']}",
+            "text": f"{first['application_method_label']} programada para {date.fromisoformat(first['date']).strftime('%d/%m')}",
+            "action": "Ver", "link": first["link"],
+        })
+    for item in low_stock_items[:2]:
+        inbox.append({
+            "tone": "danger" if item["stock_level"] == "critical" else "warning",
+            "title": f"{item['name']}: estoque {item['stock_level_label'].lower()}",
+            "text": f"Restam {item['available_quantity']:g} {item['unit'] or ''} · mínimo {item['low_stock_threshold']:g}".strip(),
+            "action": "Comprar", "link": "/insumos/comprados",
+        })
+    recent_pests = [i for i in incidents if i.occurrence_date and (today - i.occurrence_date).days <= 15 and (i.severity or 0) >= 3]
+    for incident in sorted(recent_pests, key=lambda i: (-(i.severity or 0), i.occurrence_date))[:1]:
+        inbox.append({
+            "tone": "danger" if (incident.severity or 0) >= 4 else "warning",
+            "title": f"{incident.name} — {incident.plot.name if incident.plot else 'setor'}",
+            "text": f"{incident.category} nível {incident.severity} registrada em {incident.occurrence_date.strftime('%d/%m')}",
+            "action": "Ver", "link": f"/pragas?edit_id={incident.id}",
+        })
+    rain = _dashboard_rain(repository, farm_id, today)
+    latest = rain["latest"]
+    if latest and rain["latest_days"] is not None and rain["latest_days"] <= 2 and _float(latest.millimeters) >= HEAVY_RAIN_MM:
+        inbox.append({
+            "tone": "info",
+            "title": f"Chuva forte registrada: {_float(latest.millimeters):g} mm",
+            "text": f"Em {latest.rainfall_date.strftime('%d/%m')} · confira se alguma aplicação recente precisa ser refeita",
+            "action": "Ver", "link": "/pluviometria",
+        })
+
+    # Mapa vivo dos setores
+    forecast_by_plot = {item["plot_id"]: item for item in forecast_plots}
+    tiles = []
+    for plot in plots:
+        area = _float(plot.area_hectares)
+        productivity = _float(forecast_by_plot.get(plot.id, {}).get("productivity"))
+        if plot.id in sector_cost_per_ha:
+            cost_ha = sector_cost_per_ha[plot.id]
+        else:
+            cost_ha = (cost_by_plot.get(plot.name, 0.0) / area) if area else 0.0
+        plot_incidents = [i for i in incidents if i.plot_id == plot.id and i.occurrence_date and (today - i.occurrence_date).days <= 45]
+        worst = max((i.severity or 0 for i in plot_incidents), default=0)
+        health = "critico" if worst >= 4 else "atencao" if worst >= 2 else "ok"
+        last = max(plot_incidents, key=lambda i: i.occurrence_date, default=None)
+        planting = plot.active_planting if hasattr(plot, "active_planting") else None
+        variety = (planting.variety if planting and getattr(planting, "variety", None) else plot.variety)
+        tiles.append({
+            "id": plot.id, "name": plot.name, "area": round(area, 2),
+            "variety": variety.name if variety else "Sem variedade",
+            "prod": round(productivity, 1), "cost": round(cost_ha, 2), "health": health,
+            "health_label": {"ok": "Sem ocorrências", "atencao": "Atenção", "critico": "Crítico"}[health],
+            "health_detail": f"{last.name} (nível {last.severity})" if last else "Sem ocorrências nos últimos 45 dias",
+            "link": f"/setores?view_id={plot.id}",
+        })
+    tiles.sort(key=lambda t: -t["area"])
+
+    # Mercado do cafe (12 meses)
+    history_12m = (coffee_market.get("history") or {}).get("12m") or {"labels": [], "arabica": [], "robusta": []}
+    available = coffee_market.get("available_sacks") or {}
+
+    # Caixa
+    weeks = _dashboard_cash_weeks(repository, farm_id, today)
+    balance = _float(finance_flow.get("balance"))
+    running = balance
+    cash = []
+    for index, bucket in enumerate(weeks):
+        running += bucket["in"] - bucket["out"]
+        label = "Esta semana" if index == 0 else f"{bucket['start'].strftime('%d/%m')}–{bucket['end'].strftime('%d/%m')}"
+        cash.append({"label": label, "in": round(bucket["in"], 2), "out": round(bucket["out"], 2), "net": round(bucket["in"] - bucket["out"], 2)})
+    cash_max = max([c["in"] for c in cash] + [c["out"] for c in cash] + [1])
+
+    return {
+        "today": today,
+        "weekday": ["Segunda-feira", "Terça-feira", "Quarta-feira", "Quinta-feira", "Sexta-feira", "Sábado", "Domingo"][today.weekday()],
+        "date_label": f"{today.day} de {_MONTHS_LONG[today.month - 1]}",
+        "hero": hero,
+        "inbox": inbox[:6],
+        "tiles": tiles,
+        "market": {
+            "history": history_12m,
+            "available_sacks": available,
+            "estimated_value": coffee_market.get("estimated_value") or {},
+            "source": coffee_market.get("source"),
+        },
+        "cash": cash,
+        "cash_max": cash_max,
+        "cash_balance": round(balance, 2),
+        "cash_projected": round(running, 2),
+        "rain": rain,
+        "calendar": _dashboard_calendar(repository, {p.id for p in plots}, today),
+        "activity": activity_timeline[:6],
     }

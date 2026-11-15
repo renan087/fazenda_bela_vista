@@ -8,1650 +8,268 @@
 {% set can_production = 'page.production' in permission_codes %}
 {% set can_rainfall = 'page.rainfall' in permission_codes %}
 {% set can_pests = 'page.pests' in permission_codes %}
-{% set can_soil = 'page.soil' in permission_codes %}
-{% set can_map = 'page.map' in permission_codes %}
-{% macro pager(section) -%}
-<div class="mt-4 border-t border-slate-100 pt-4" data-dashboard-pager-shell="{{ section }}">
-    <div class="flex items-center justify-center gap-2" data-dashboard-dots="{{ section }}"></div>
-</div>
-{%- endmacro %}
+{% set ov = overview %}
+{% set hero = ov.hero %}
+{% set quotes = coffee_market.quotes %}
 
 {% include "partials/onboarding_checklist.html" %}
-<section class="grid gap-6 xl:grid-cols-[minmax(0,65%)_minmax(0,35%)]">
-    <div class="space-y-6">
-        <div class="dashboard-executive-panel rounded-[2rem] p-6 shadow-panel">
-            <div data-dashboard-card="executive_summary" data-dashboard-per-page="6">
-                <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Resumo Executivo</p>
-                <h3 class="mt-2 text-xl font-semibold">Indicadores centrais</h3>
-                <div class="finance-card-paged-shell dashboard-executive-paged-shell" data-dashboard-executive-paged-shell>
-                <button type="button" class="finance-card-page-nav finance-card-page-nav-prev hidden" data-dashboard-executive-page-nav="prev" aria-label="Página anterior do resumo executivo">
-                    <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                        <path d="m15 18-6-6 6-6"/>
-                    </svg>
-                </button>
-                <div class="dashboard-executive-carousel-viewport" data-dashboard-executive-viewport>
-                <div class="dashboard-executive-grid" data-dashboard-list data-dashboard-executive-grid>
-            {% if can_productive_unit %}
-            <a href="/setores" class="dashboard-executive-card is-blue" data-dashboard-item data-dashboard-executive-item>
-                <p class="dashboard-executive-label">Area total plantada</p>
-                <div class="dashboard-executive-value-row">
-                    <span class="dashboard-executive-icon" aria-hidden="true">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <path d="M4 20h16"/>
-                            <path d="M7 20V10"/>
-                            <path d="M12 20V4"/>
-                            <path d="M17 20v-7"/>
-                        </svg>
-                    </span>
-                    <p class="dashboard-executive-value" data-dashboard-count data-count-value="{{ kpis.area_total }}" data-count-suffix=" ha">{{ kpis.area_total }} ha</p>
-                </div>
-            </a>
-            {% endif %}
-            {% if can_productive_unit %}
-            <a href="/setores" class="dashboard-executive-card is-green" data-dashboard-item data-dashboard-executive-item>
-                <p class="dashboard-executive-label">Numero de setores</p>
-                <div class="dashboard-executive-value-row">
-                    <span class="dashboard-executive-icon" aria-hidden="true">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <path d="M3 20h18"/>
-                            <rect x="5" y="9" width="4" height="8" rx="1"/>
-                            <rect x="10" y="6" width="4" height="11" rx="1"/>
-                            <rect x="15" y="11" width="4" height="6" rx="1"/>
-                        </svg>
-                    </span>
-                    <p class="dashboard-executive-value" data-dashboard-count data-count-value="{{ kpis.plot_count }}">{{ kpis.plot_count }}</p>
-                </div>
-            </a>
-            {% endif %}
-            {% if can_production %}
-            <a href="/producao" class="dashboard-executive-card is-orange" data-dashboard-item data-dashboard-executive-item>
-                <p class="dashboard-executive-label">Producao estimada</p>
-                <div class="dashboard-executive-value-row">
-                    <span class="dashboard-executive-icon" aria-hidden="true">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <path d="M12 3v18"/>
-                            <path d="M7 8c0-1.7 1.8-3 5-3s5 1.3 5 3-1.8 3-5 3-5 1.3-5 3 1.8 3 5 3 5-1.3 5-3"/>
-                        </svg>
-                    </span>
-                    <p class="dashboard-executive-value" data-dashboard-count data-count-value="{{ kpis.estimated_production }}" data-count-suffix=" sc">{{ kpis.estimated_production }} sc</p>
-                </div>
-            </a>
-            {% endif %}
-            {% if can_production %}
-            <a href="/producao" class="dashboard-executive-card is-violet" data-dashboard-item data-dashboard-executive-item>
-                <p class="dashboard-executive-label">Producao total</p>
-                <div class="dashboard-executive-value-row">
-                    <span class="dashboard-executive-icon" aria-hidden="true">
-                        <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-                            <path d="M6.1 5.2c-2.4 1.4-3.8 3.6-4 6.5-.2 3.2 1 5.8 3.6 7.8 1.8 1.3 3.9 2 6.3 2 .4 0 .7-.1.8-.3.1-.2 0-.5-.2-.7-2.1-1.8-3.2-4-3.5-6.6-.4-3.5.6-6.4 2.8-8.8.2-.2.2-.5.1-.7-.1-.2-.3-.4-.6-.5-1.8-.4-3.6-.2-5.3.3Z"/>
-                            <path d="M13.6 3.8c-2.1 1.4-3.6 3.2-4.6 5.5-1.1 2.4-1.3 4.8-.7 7.3.4 1.6 1.1 3 2.2 4.4.7.9 1.6 1.4 2.8 1.4 2.4 0 4.5-.6 6.4-2 2.6-1.9 3.9-4.6 4-7.8.1-2.8-1-5.1-3.3-6.9-1.8-1.5-3.9-2.2-6.3-2.4-.2 0-.4.1-.5.3-.1.1-.1.2 0 .4Z"/>
-                            <path d="M18.8 5.7c1.7.2 3.1.8 4.2 2 1.2 1.2 1.7 2.7 1.7 4.5 0 2.1-.8 4-2.4 5.7-1.5 1.5-3.3 2.4-5.4 2.6-.4.1-.6-.1-.7-.4-.1-.3 0-.5.3-.7 1.9-1.5 3-3.5 3.3-5.9.5-3.1-.2-5.8-2-8.2-.2-.2-.2-.5-.1-.7.2-.2.5-.3.8-.3.1.1.2.1.3.1Z"/>
-                        </svg>
-                    </span>
-                    <p class="dashboard-executive-value" data-dashboard-count data-count-value="{{ kpis.total_production }}" data-count-suffix=" sc">{{ kpis.total_production }} sc</p>
-                </div>
-            </a>
-            {% endif %}
-            {% if can_production %}
-            <a href="#produtividade-area" class="dashboard-executive-card is-pink" data-dashboard-item data-dashboard-executive-item>
-                <p class="dashboard-executive-label">Produtividade media</p>
-                <div class="dashboard-executive-value-row">
-                    <span class="dashboard-executive-icon" aria-hidden="true">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <path d="M12 3l7 4v5c0 5-3.5 8.5-7 9-3.5-.5-7-4-7-9V7l7-4z"/>
-                            <path d="M9 12l2 2 4-4"/>
-                        </svg>
-                    </span>
-                    <p class="dashboard-executive-value" data-dashboard-count data-count-value="{{ kpis.productivity_per_hectare }}" data-count-suffix=" sc/ha">{{ kpis.productivity_per_hectare }} sc/ha</p>
-                </div>
-            </a>
-            {% endif %}
-            {% if can_rainfall %}
-            <a href="/pluviometria" class="dashboard-executive-card is-cyan" data-dashboard-item data-dashboard-executive-item>
-                <p class="dashboard-executive-label">Chuva no mes</p>
-                <div class="dashboard-executive-value-row">
-                    <span class="dashboard-executive-icon" aria-hidden="true">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <path d="M7 16a4 4 0 0 1 0-8 5 5 0 0 1 9.6-1.5A3.5 3.5 0 1 1 17.5 16H7z"/>
-                            <path d="M9 19v2"/>
-                            <path d="M15 19v2"/>
-                            <path d="M12 18v3"/>
-                        </svg>
-                    </span>
-                    <p class="dashboard-executive-value" data-dashboard-count data-count-value="{{ kpis.monthly_rainfall }}" data-count-suffix=" mm">{{ kpis.monthly_rainfall }} mm</p>
-                </div>
-            </a>
-            {% endif %}
-            {% if can_production %}
-            <a href="/producao" class="dashboard-executive-card is-blue-soft" data-dashboard-item data-dashboard-executive-item>
-                <p class="dashboard-executive-label">Previsao pelo historico</p>
-                <div class="dashboard-executive-value-row">
-                    <span class="dashboard-executive-icon" aria-hidden="true">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <path d="M4 19h16"/>
-                            <path d="M7 15l4-4 3 2 5-6"/>
-                            <path d="M17 9h2v2"/>
-                        </svg>
-                    </span>
-                    <p class="dashboard-executive-value" data-dashboard-count data-count-value="{{ kpis.forecast_production }}" data-count-suffix=" sc">{{ kpis.forecast_production }} sc</p>
-                </div>
-            </a>
-            {% endif %}
-            {% if can_operations %}
-            <a href="/fertilizacao" class="dashboard-executive-card is-green-soft" data-dashboard-item data-dashboard-executive-item>
-                <p class="dashboard-executive-label">Custo fertilizacao / ha</p>
-                <div class="dashboard-executive-value-row">
-                    <span class="dashboard-executive-icon" aria-hidden="true">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <path d="M12 3v18"/>
-                            <path d="M7 8c0-1.7 1.8-3 5-3s5 1.3 5 3-1.8 3-5 3-5 1.3-5 3 1.8 3 5 3 5-1.3 5-3"/>
-                        </svg>
-                    </span>
-                    <p class="dashboard-executive-value" title="R$ {{ kpis.cost_per_hectare|decimal_br }}" data-dashboard-count data-count-mobile-compact-currency="true" data-count-prefix="R$ " data-count-value="{{ kpis.cost_per_hectare }}">{{ kpis.cost_per_hectare_compact }}</p>
-                </div>
-            </a>
-            {% endif %}
-            {% if can_finance %}
-            <a href="{% if active_season %}/gestao-financeira?extract_season_id={{ active_season.id }}{% else %}/gestao-financeira{% endif %}" class="dashboard-executive-card is-cyan" data-dashboard-item data-dashboard-executive-item>
-                <p class="dashboard-executive-label">Custo operacional / ha</p>
-                <div class="dashboard-executive-value-row">
-                    <span class="dashboard-executive-icon" aria-hidden="true">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <path d="M4 7h16"/>
-                            <path d="M5 7v11a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7"/>
-                            <path d="M8 11h8"/>
-                            <path d="M8 15h5"/>
-                        </svg>
-                    </span>
-                    {% if kpis.operational_cost_ha_available %}
-                    <p class="dashboard-executive-value" title="R$ {{ kpis.operational_cost_per_hectare|decimal_br }}" data-dashboard-count data-count-mobile-compact-currency="true" data-count-prefix="R$ " data-count-value="{{ kpis.operational_cost_per_hectare }}">{{ kpis.operational_cost_per_hectare_compact }}</p>
-                    {% else %}
-                    <p class="dashboard-executive-value">—</p>
-                    {% endif %}
-                </div>
-            </a>
-            {% endif %}
-            {% if can_finance %}
-            <a href="{% if active_season %}/gestao-financeira?extract_season_id={{ active_season.id }}{% else %}/gestao-financeira{% endif %}" class="dashboard-executive-card is-pink" data-dashboard-item data-dashboard-executive-item>
-                <p class="dashboard-executive-label">Custo operacional / sc</p>
-                <div class="dashboard-executive-value-row">
-                    <span class="dashboard-executive-icon" aria-hidden="true">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <path d="M12 3v18"/>
-                            <path d="M7 8c0-1.7 1.8-3 5-3s5 1.3 5 3-1.8 3-5 3-5 1.3-5 3 1.8 3 5 3 5-1.3 5-3"/>
-                        </svg>
-                    </span>
-                    {% if kpis.operational_cost_sack_available %}
-                    <p class="dashboard-executive-value" title="R$ {{ kpis.operational_cost_per_sack|decimal_br }}" data-dashboard-count data-count-mobile-compact-currency="true" data-count-prefix="R$ " data-count-value="{{ kpis.operational_cost_per_sack }}">{{ kpis.operational_cost_per_sack_compact }}</p>
-                    {% else %}
-                    <p class="dashboard-executive-value">—</p>
-                    {% endif %}
-                </div>
-            </a>
-            {% endif %}
-            {% if can_inputs %}
-            <a href="/insumos/comprados" class="dashboard-executive-card is-orange-soft" data-dashboard-item data-dashboard-executive-item>
-                <p class="dashboard-executive-label">Insumos em alerta</p>
-                <div class="dashboard-executive-value-row">
-                    <span class="dashboard-executive-icon" aria-hidden="true">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <path d="M12 9v4"/>
-                            <path d="M12 17h.01"/>
-                            <path d="M10.3 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.7 3.86a2 2 0 0 0-3.4 0z"/>
-                        </svg>
-                    </span>
-                    <p class="dashboard-executive-value" data-dashboard-count data-count-value="{{ kpis.low_stock_count }}">{{ kpis.low_stock_count }}</p>
-                </div>
-            </a>
-            {% endif %}
-            {% if can_agenda %}
-            <a href="/fertilizacao/agendamentos" class="dashboard-executive-card is-violet-soft" data-dashboard-item data-dashboard-executive-item>
-                <p class="dashboard-executive-label">Aplicacoes atrasadas</p>
-                <div class="dashboard-executive-value-row">
-                    <span class="dashboard-executive-icon" aria-hidden="true">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <circle cx="12" cy="12" r="9"/>
-                            <path d="M12 7v6l4 2"/>
-                        </svg>
-                    </span>
-                    <p class="dashboard-executive-value" data-dashboard-count data-count-value="{{ kpis.late_schedule_count }}">{{ kpis.late_schedule_count }}</p>
-                </div>
-            </a>
-            {% endif %}
-            {% if can_finance %}
-            <a href="/gestao-financeira/contas" class="dashboard-executive-card is-green" data-dashboard-item data-dashboard-executive-item>
-                <p class="dashboard-executive-label">Saldo financeiro</p>
-                <div class="dashboard-executive-value-row">
-                    <span class="dashboard-executive-icon" aria-hidden="true">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <path d="M4 7h16"/>
-                            <path d="M5 7v11a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7"/>
-                            <path d="M8 11h8"/>
-                            <path d="M8 15h5"/>
-                        </svg>
-                    </span>
-                    <p class="dashboard-executive-value" title="R$ {{ kpis.finance_balance|decimal_br }}" data-dashboard-count data-count-mobile-compact-currency="true" data-count-prefix="R$ " data-count-value="{{ kpis.finance_balance }}">{{ kpis.finance_balance_compact }}</p>
-                </div>
-            </a>
-            {% endif %}
-            {% if can_finance %}
-            <a href="/gestao-financeira/contas?finance_tab=payables" class="dashboard-executive-card is-orange-soft" data-dashboard-item data-dashboard-executive-item>
-                <p class="dashboard-executive-label">A pagar aberto</p>
-                <div class="dashboard-executive-value-row">
-                    <span class="dashboard-executive-icon" aria-hidden="true">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <path d="M12 3v18"/>
-                            <path d="M7 8c0-1.7 1.8-3 5-3s5 1.3 5 3-1.8 3-5 3-5 1.3-5 3 1.8 3 5 3 5-1.3 5-3"/>
-                        </svg>
-                    </span>
-                    <p class="dashboard-executive-value" title="R$ {{ kpis.finance_payable_open|decimal_br }}" data-dashboard-count data-count-mobile-compact-currency="true" data-count-prefix="R$ " data-count-value="{{ kpis.finance_payable_open }}">{{ kpis.finance_payable_open_compact }}</p>
-                </div>
-            </a>
-            {% endif %}
-            {% if can_finance %}
-            <a href="/gestao-financeira/contas?finance_tab=receivables" class="dashboard-executive-card is-blue-soft" data-dashboard-item data-dashboard-executive-item>
-                <p class="dashboard-executive-label">A receber aberto</p>
-                <div class="dashboard-executive-value-row">
-                    <span class="dashboard-executive-icon" aria-hidden="true">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <path d="M12 3v18"/>
-                            <path d="M17 8c0-1.7-1.8-3-5-3S7 6.3 7 8s1.8 3 5 3 5 1.3 5 3-1.8 3-5 3-5-1.3-5-3"/>
-                            <path d="m16 19 2 2 4-4"/>
-                        </svg>
-                    </span>
-                    <p class="dashboard-executive-value" title="R$ {{ kpis.finance_receivable_open|decimal_br }}" data-dashboard-count data-count-mobile-compact-currency="true" data-count-prefix="R$ " data-count-value="{{ kpis.finance_receivable_open }}">{{ kpis.finance_receivable_open_compact }}</p>
-                </div>
-            </a>
-            {% endif %}
-            {% if can_finance %}
-            <a href="/gestao-financeira?schedule_range=custom&start_date={{ finance_flow.current_month_start }}&end_date={{ finance_flow.current_month_end }}" class="dashboard-executive-card is-violet" data-dashboard-item data-dashboard-executive-item>
-                <p class="dashboard-executive-label">Realizado no mes</p>
-                <div class="dashboard-executive-value-row">
-                    <span class="dashboard-executive-icon" aria-hidden="true">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <path d="M4 19h16"/>
-                            <path d="m7 15 4-4 3 3 5-7"/>
-                            <path d="M17 7h2v2"/>
-                        </svg>
-                    </span>
-                    <p class="dashboard-executive-value" title="R$ {{ kpis.finance_realized_month|decimal_br }}" data-dashboard-count data-count-mobile-compact-currency="true" data-count-prefix="R$ " data-count-value="{{ kpis.finance_realized_month }}">{{ kpis.finance_realized_month_compact }}</p>
-                </div>
-            </a>
-            {% endif %}
-                </div>
-                </div>
-                <button type="button" class="finance-card-page-nav finance-card-page-nav-next hidden" data-dashboard-executive-page-nav="next" aria-label="Próxima página do resumo executivo">
-                    <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                        <path d="m9 6 6 6-6 6"/>
-                    </svg>
-                </button>
-                </div>
-                {{ pager('executive_summary') }}
-            </div>
-        </div>
 
-        {% if can_inputs %}
-        <article class="overflow-hidden rounded-[2rem] bg-white p-6 shadow-panel" data-dashboard-card="stock_alerts">
-            <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Alertas</p>
-            <h3 class="mt-2 text-xl font-semibold">Insumos proximos de acabar</h3>
-            <div class="mt-6 flex h-[24rem] min-h-0 flex-col overflow-hidden">
-                <div class="min-h-0 flex-1 space-y-4 overflow-y-auto pr-2" data-dashboard-list>
-                    {% for item in low_stock_items %}
-                    <a href="/insumos/comprados" class="block rounded-2xl border p-4 transition {% if item.stock_level == 'critical' %}border-rose-200 bg-rose-50 hover:border-rose-300{% else %}border-amber-100 bg-amber-50 hover:border-amber-200{% endif %}" data-dashboard-item>
-                        <div class="flex items-start justify-between gap-4">
-                            <div>
-                                <p class="font-medium text-slate-900">{{ item.name }}</p>
-                                <p class="mt-1 text-sm text-slate-500">{{ item.farm.name if item.farm else "Sem fazenda vinculada" }}</p>
-                            </div>
-                            <span class="stock-level-badge {% if item.stock_level == 'critical' %}stock-level-badge-critical{% else %}stock-level-badge-low{% endif %}">{{ item.stock_level_label }}</span>
-                        </div>
-                        <p class="mt-3 text-sm text-slate-600">Disponivel: {{ item.available_quantity }} {{ item.unit }} • Alerta: {{ item.low_stock_threshold }} {{ item.unit }}</p>
-                    </a>
-                    {% else %}
-                    <p class="text-sm text-slate-500">Nenhum insumo abaixo do limite configurado.</p>
-                    {% endfor %}
+<div class="stock-page-shell sf-page db-page">
+    <header class="db-greeting">
+        <p class="db-muted">{{ ov.weekday }}, {{ ov.date_label }}{% if active_farm %} · {{ active_farm.name }}{% endif %}</p>
+        <h1 class="db-title"><span data-db-greeting>Olá</span>, {{ (((user.display_name or user.name or '')|string|trim).split(' ')[0]) or 'bem-vindo' }}.{% if hero.ready %} {% if hero.margin >= 0 %}A safra está com margem positiva.{% else %}A safra está com margem negativa.{% endif %}{% endif %}</h1>
+    </header>
+
+    <div class="db-row">
+        {% if can_production or can_finance %}
+        <section class="db-hero" aria-label="Resultado previsto da safra" data-db-hero
+            data-sacks="{{ hero.sacks }}" data-cost="{{ hero.cost }}" data-price="{{ hero.price }}">
+            <div class="db-hero-ring-row">
+                <div class="db-ring" role="img" aria-label="{{ hero.cycle_pct if hero.cycle_pct is not none else 0 }}% do ciclo da safra" style="--pct: {{ hero.cycle_pct or 0 }}">
+                    <div><strong>{{ hero.cycle_pct if hero.cycle_pct is not none else '—' }}{% if hero.cycle_pct is not none %}%{% endif %}</strong><span>do ciclo</span></div>
                 </div>
-                {{ pager('stock_alerts') }}
+                <div class="min-w-0">
+                    <p class="db-hero-kicker">{% if hero.season_name %}{{ hero.season_name }}{% else %}Nenhuma safra ativa{% endif %} · {{ hero.area|decimal_br }} ha · {{ hero.plot_count }} setor(es)</p>
+                    {% if hero.ready %}
+                    <p class="db-hero-headline">Margem prevista de <span data-db-margin>{{ hero.margin_fmt }}</span></p>
+                    <p class="db-hero-sub">Colheita estimada em {{ hero.sacks|decimal_br(0) }} sacas{% if hero.days_left is not none %} · faltam {{ hero.days_left }} dias para fechar o ciclo{% endif %}</p>
+                    {% else %}
+                    <p class="db-hero-headline">Resultado previsto da safra</p>
+                    <p class="db-hero-sub">{% if not hero.season_name %}Selecione uma safra no topo para ver a previsão.{% elif not hero.sacks %}Informe a estimativa de produção dos setores para calcular a margem.{% else %}Aguardando a cotação do café para calcular a receita.{% endif %}</p>
+                    {% endif %}
+                </div>
             </div>
-        </article>
+            {% if hero.ready %}
+            <div class="db-hero-stats">
+                <div><span>Receita prevista</span><strong data-db-revenue>{{ hero.revenue_fmt }}</strong><small>{{ hero.sacks|decimal_br(0) }} sc × <span data-db-price-label>{{ hero.price|money_br }}</span></small></div>
+                <div><span>Custo da safra</span><strong>{{ hero.cost_fmt }}</strong><small>{{ hero.cost_per_ha|money_br }}/ha · {{ hero.cost_per_sack|money_br }}/sc</small></div>
+                <div class="is-accent"><span>Margem</span><strong data-db-margin>{{ hero.margin_fmt }}</strong><small><span data-db-margin-pct>{{ hero.margin_pct }}%</span> da receita</small></div>
+            </div>
+            <div class="db-sim">
+                <div class="db-sim-head">
+                    <label for="db-price">E se o café estiver a <strong data-db-price-label>{{ hero.price|money_br }}</strong> por saca?</label>
+                    <span>CEPEA hoje: {{ hero.price|money_br }} · equilíbrio: {{ hero.cost_per_sack|money_br }}/sc</span>
+                </div>
+                <input id="db-price" type="range" min="{{ ((hero.price * 0.4) // 10 * 10)|int }}" max="{{ ((hero.price * 1.6) // 10 * 10)|int }}" step="10" value="{{ hero.price|int }}" data-db-price aria-label="Simular preço da saca">
+            </div>
+            {% endif %}
+        </section>
+        {% endif %}
+
+        <section class="db-card" aria-label="Precisa de você hoje">
+            <div class="db-card-head"><h2>Precisa de você hoje</h2><span class="db-count {% if not ov.inbox %}is-zero{% endif %}">{{ ov.inbox|length }}</span></div>
+            {% for item in ov.inbox %}
+            <div class="db-inbox-item">
+                <span class="db-dot db-dot-{{ item.tone }}" aria-hidden="true"></span>
+                <div class="min-w-0 flex-1"><p class="db-inbox-title">{{ item.title }}</p><p class="db-muted">{{ item.text }}</p></div>
+                <a href="{{ item.link }}" class="sf-btn sf-btn-secondary db-btn-sm">{{ item.action }}</a>
+            </div>
+            {% else %}
+            <div class="db-empty-ok"><strong>Tudo em dia</strong><span>Nada pendente por hoje.</span></div>
+            {% endfor %}
+        </section>
+    </div>
+
+    <div class="db-row">
+        {% if can_productive_unit %}
+        <section class="db-card" aria-label="Mapa dos setores" data-db-tiles>
+            <div class="db-card-head">
+                <div><h2>Mapa vivo dos setores</h2><p class="db-muted">Tamanho = área · cor = <span data-db-metric-label>produtividade (sc/ha)</span></p></div>
+                <div class="db-seg" role="group" aria-label="Cor do mapa">
+                    <button type="button" aria-pressed="true" data-db-metric="prod">Produtividade</button>
+                    <button type="button" aria-pressed="false" data-db-metric="cost">Custo/ha</button>
+                    <button type="button" aria-pressed="false" data-db-metric="health">Sanidade</button>
+                </div>
+            </div>
+            {% if ov.tiles %}
+            <div class="db-tiles">
+                {% for t in ov.tiles %}
+                <button type="button" class="db-tile" data-db-tile data-prod="{{ t.prod }}" data-cost="{{ t.cost }}" data-health="{{ t.health }}"
+                    data-name="{{ t.name }}" data-variety="{{ t.variety }}" data-area="{{ t.area|decimal_br }}" data-health-detail="{{ t.health_detail }}" data-link="{{ t.link }}"
+                    data-cost-label="{{ t.cost|money_br }}/ha" data-health-label="{{ t.health_label }}"
+                    style="flex-grow: {{ [t.area, 0.5]|max }}" aria-pressed="{{ 'true' if loop.first else 'false' }}">
+                    <span class="db-tile-name">{{ t.name }}</span>
+                    <span><strong class="db-tile-value" data-db-tile-value>{{ t.prod|decimal_br(1) }} sc/ha</strong><small>{{ t.area|decimal_br }} ha · {{ t.variety }}</small></span>
+                </button>
+                {% endfor %}
+            </div>
+            <div class="db-tile-detail">
+                <div class="min-w-0 flex-1"><p class="db-inbox-title" data-db-sel-name>{{ ov.tiles[0].name }} · {{ ov.tiles[0].variety }}</p><p class="db-muted" data-db-sel-detail></p></div>
+                <a href="{{ ov.tiles[0].link }}" class="sf-btn sf-btn-secondary db-btn-sm" data-db-sel-link>Abrir setor</a>
+            </div>
+            {% else %}
+            <p class="sf-empty">Nenhum setor no contexto ativo.</p>
+            {% endif %}
+        </section>
+        {% endif %}
+
+        {% if can_production %}
+        <section class="db-card" aria-label="Mercado do café" data-db-market>
+            <div class="db-card-head"><h2>Mercado do café</h2>
+                <div class="db-seg" role="group" aria-label="Tipo de café"><button type="button" aria-pressed="true" data-db-coffee="arabica">Arábica</button><button type="button" aria-pressed="false" data-db-coffee="robusta">Robusta</button></div>
+            </div>
+            <div>
+                <p class="db-muted"><span data-db-coffee-name>Arábica</span> · saca de 60 kg · CEPEA/ESALQ</p>
+                <p class="db-price"><span data-db-coffee-price>{% if quotes.get('arabica') %}{{ quotes.get('arabica').price_brl|money_br }}{% else %}—{% endif %}</span><small data-db-coffee-date>{% if quotes.get('arabica') %}em {{ quotes.get('arabica').quote_date.strftime('%d/%m') }}{% endif %}</small></p>
+            </div>
+            <div class="db-spark" data-db-spark>
+                <svg viewBox="0 0 300 96" preserveAspectRatio="none" role="img" aria-label="Cotação dos últimos 12 meses"><polygon data-db-spark-area fill="rgba(68,106,54,.08)"/><polyline data-db-spark-line fill="none" stroke="#446a36" stroke-width="2.5" stroke-linejoin="round" vector-effect="non-scaling-stroke"/></svg>
+                <div class="db-spark-guide" data-db-spark-guide hidden></div>
+                <div class="db-spark-tip" data-db-spark-tip hidden></div>
+                <p class="db-muted db-spark-empty" data-db-spark-empty hidden>A série aparece após as primeiras atualizações do CEPEA.</p>
+            </div>
+            <div class="db-spark-axis" data-db-spark-axis></div>
+            <dl class="db-mini-stats">
+                <div><dt>Mín. 12 meses</dt><dd data-db-min>—</dd><dd class="db-muted" data-db-min-when></dd></div>
+                <div><dt>Máx. 12 meses</dt><dd data-db-max>—</dd><dd class="db-muted" data-db-max-when></dd></div>
+                <div><dt>Variação</dt><dd data-db-var>—</dd><dd class="db-muted">em 12 meses</dd></div>
+            </dl>
+            <div class="db-card-foot">
+                <span class="db-muted">{% if ov.market.available_sacks.total %}Seu estoque ({{ ov.market.available_sacks.total|decimal_br(0) }} sc) vale <strong class="text-slate-900">{{ ov.market.estimated_value.total|money_br }}</strong>{% else %}Sem café em estoque{% endif %}</span>
+                <button type="button" class="db-link" data-db-history-open>Ver histórico completo →</button>
+            </div>
+        </section>
         {% endif %}
     </div>
-    {% if can_agenda %}
-    <article class="dashboard-agenda-panel overflow-hidden rounded-[2rem] bg-white p-6 shadow-panel" data-dashboard-card="schedules">
-        <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Agenda</p>
-        <h3 class="mt-2 text-xl font-semibold">Proximas aplicacoes</h3>
-        <div class="dashboard-agenda-shell mt-6">
-            <div class="module-filter-calendar dashboard-agenda-calendar" data-dashboard-schedule-calendar>
-                <div class="module-filter-calendar-header">
-                    <button type="button" class="module-filter-calendar-nav" data-dashboard-schedule-prev aria-label="Mês anterior">
-                        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
-                            <path d="m12.5 4.5-5 5 5 5" stroke-linecap="round" stroke-linejoin="round"></path>
-                        </svg>
-                    </button>
-                    <div class="module-filter-calendar-title" data-dashboard-schedule-title></div>
-                    <button type="button" class="module-filter-calendar-nav" data-dashboard-schedule-next aria-label="Próximo mês">
-                        <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
-                            <path d="m7.5 4.5 5 5-5 5" stroke-linecap="round" stroke-linejoin="round"></path>
-                        </svg>
-                    </button>
-                </div>
-                <div class="module-filter-calendar-weekdays">
-                    <span>Dom</span>
-                    <span>Seg</span>
-                    <span>Ter</span>
-                    <span>Qua</span>
-                    <span>Qui</span>
-                    <span>Sex</span>
-                    <span>Sáb</span>
-                </div>
-                <div class="module-filter-calendar-grid" data-dashboard-schedule-grid></div>
-            </div>
-            <template data-dashboard-schedule-empty>
-                <div class="dashboard-agenda-empty-state">
-                    <p class="text-sm text-slate-500">Nenhum agendamento para a data selecionada.</p>
-                </div>
-            </template>
-            <template data-dashboard-schedule-idle>
-                <div class="dashboard-agenda-empty-state">
-                    <p class="text-sm text-slate-500">Selecione uma data destacada para ver os agendamentos do dia.</p>
-                </div>
-            </template>
-            <template data-dashboard-schedule-no-data>
-                <div class="dashboard-agenda-empty-state">
-                    <p class="text-sm text-slate-500">Nenhuma aplicacao programada.</p>
-                </div>
-            </template>
-        </div>
-    </article>
-    <dialog id="dashboard-schedule-modal" class="app-modal rounded-[2rem] p-0 shadow-2xl w-full max-w-3xl overflow-hidden">
-        <div class="dashboard-agenda-modal-shell bg-white p-6 sm:p-8">
-            <div class="flex items-start justify-between gap-4">
-                <div class="min-w-0">
-                    <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Agenda</p>
-                    <h3 class="mt-2 text-2xl font-semibold" data-dashboard-schedule-modal-title>Agendamentos</h3>
-                    <p class="mt-1 text-sm text-slate-500 whitespace-nowrap" data-dashboard-schedule-modal-date>Selecione uma data com agendamento.</p>
-                </div>
-                <button type="button" class="modal-close-button" aria-label="Fechar" data-dashboard-schedule-modal-close>
-                    <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                        <path d="M18 6 6 18"/>
-                        <path d="m6 6 12 12"/>
-                    </svg>
-                </button>
-            </div>
-            <div class="mt-6 min-h-0 flex-1 overflow-y-auto pr-1 dashboard-agenda-modal-list" data-dashboard-schedule-modal-content></div>
-        </div>
-    </dialog>
-    <script type="application/json" id="dashboardScheduleData">{{ schedule_alerts|tojson }}</script>
-    <script type="application/json" id="dashboardScheduleMeta">{{ {"csrfToken": csrf_token, "redirectTo": current_url or request.url.path}|tojson }}</script>
-    {% endif %}
-</section>
 
-{% if can_finance %}
-<section class="mt-6">
-    <article class="dashboard-finance-flow-panel rounded-[2rem] bg-white p-6 shadow-panel">
-        <div class="flex flex-wrap items-start justify-between gap-4">
-            <div>
-                <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Fluxo financeiro</p>
+    <div class="db-row">
+        {% if can_finance %}
+        <section class="db-card" aria-label="Caixa das próximas semanas">
+            <div class="db-card-head">
+                <div><h2>Caixa das próximas semanas</h2><p class="db-muted">Saldo hoje {{ ov.cash_balance|money_br }} · previsão em 5 semanas <strong class="{{ 'text-emerald-700' if ov.cash_projected >= 0 else 'text-rose-700' }}">{{ ov.cash_projected|money_br }}</strong></p></div>
+                <div class="db-legend"><span><i style="background:#446a36"></i>Entradas</span><span><i style="background:#e2a84b"></i>Saídas</span></div>
             </div>
-            <a href="/gestao-financeira/contas" class="inline-flex items-center justify-center rounded-2xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white transition hover:bg-slate-800">Ver contas</a>
-        </div>
-        <div class="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-            <a href="/gestao-financeira/contas?finance_tab=payables{% if finance_flow.payable_next_month_start and finance_flow.payable_next_month_end %}&schedule_range=custom&start_date={{ finance_flow.payable_next_month_start }}&end_date={{ finance_flow.payable_next_month_end }}{% endif %}" class="dashboard-finance-kpi-card rounded-2xl border border-rose-100 bg-rose-50/80 p-4 transition hover:border-rose-200">
-                <p class="text-xs font-semibold uppercase tracking-[0.25em] text-rose-500">A pagar</p>
-                <p class="dashboard-finance-money mt-2 text-2xl font-bold text-slate-900">R$ {{ finance_flow.payable_next_month_total|decimal_br }}</p>
-                <p class="mt-1 text-sm text-slate-500">{{ finance_flow.payable_next_month_label }}</p>
-            </a>
-            <a href="/gestao-financeira/contas?finance_tab=receivables" class="dashboard-finance-kpi-card rounded-2xl border border-emerald-100 bg-emerald-50/80 p-4 transition hover:border-emerald-200">
-                <p class="text-xs font-semibold uppercase tracking-[0.25em] text-emerald-600">A receber</p>
-                <p class="dashboard-finance-money mt-2 text-2xl font-bold text-slate-900">R$ {{ finance_flow.receivable_open_total|decimal_br }}</p>
-                <p class="mt-1 text-sm text-slate-500">Recebíveis ainda em aberto</p>
-            </a>
-            <a href="/gestao-financeira/contas?finance_tab=payables&payables_status=overdue" class="dashboard-finance-kpi-card rounded-2xl border border-amber-100 bg-amber-50/80 p-4 transition hover:border-amber-200">
-                <p class="text-xs font-semibold uppercase tracking-[0.25em] text-amber-600">Vencidos / hoje</p>
-                <p class="mt-2 text-2xl font-bold text-slate-900">{{ finance_flow.overdue_count + finance_flow.due_today_count }}</p>
-                <p class="mt-1 text-sm text-slate-500">R$ {{ (finance_flow.overdue_total + finance_flow.due_today_total)|decimal_br }} exigem atenção</p>
-            </a>
-            <a href="/gestao-financeira?schedule_range=custom&start_date={{ finance_flow.current_month_start }}&end_date={{ finance_flow.current_month_end }}" class="dashboard-finance-kpi-card rounded-2xl border border-slate-200 bg-slate-50 p-4 transition hover:border-slate-300">
-                <p class="text-xs font-semibold uppercase tracking-[0.25em] text-slate-500">Realizado no mês</p>
-                <p class="dashboard-finance-money mt-2 text-2xl font-bold text-slate-900">R$ {{ finance_flow.realized_balance_month|decimal_br }}</p>
-                <p class="mt-1 text-sm text-slate-500">Créditos menos débitos já efetivados</p>
-            </a>
-        </div>
-        <div class="mt-6 grid gap-5 xl:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
-            <div class="dashboard-finance-action-card rounded-[1.5rem] border border-slate-100 bg-slate-50/70 p-4" data-dashboard-card="finance_action_items" data-dashboard-per-page="3" data-dashboard-swipe-mobile="true">
-                <div class="dashboard-finance-action-header flex items-center justify-between gap-4">
-                    <div class="min-w-0">
-                        <p class="text-xs font-semibold uppercase tracking-[0.25em] text-slate-400">Atenção</p>
-                        <h4 class="mt-1 font-semibold text-slate-900">Próximos pagamentos e recebimentos</h4>
+            <div class="db-bars">
+                {% for c in ov.cash %}
+                <div class="db-bar-col">
+                    <div class="db-bar-pair">
+                        <span class="db-bar" style="height: {{ [c['in'] / ov.cash_max * 100, 2]|max }}%; background:#446a36" title="Entradas {{ c['in']|money_br }}"></span>
+                        <span class="db-bar" style="height: {{ [c['out'] / ov.cash_max * 100, 2]|max }}%; background:#e2a84b" title="Saídas {{ c['out']|money_br }}"></span>
                     </div>
-                    <span class="rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate-500 ring-1 ring-slate-200">{{ finance_flow.action_items|length }} item(ns)</span>
+                    <p class="db-bar-label">{{ c.label }}</p>
+                    <p class="db-muted db-bar-net">{{ '+' if c.net >= 0 else '−' }} {{ (c.net|abs)|money_br }}</p>
                 </div>
-                <div class="mt-4 space-y-3" data-dashboard-list>
-                    {% for item in finance_flow.action_items %}
-                    <a href="{{ item.link }}" class="dashboard-finance-action-item flex items-center justify-between gap-4 rounded-2xl bg-white p-3 ring-1 ring-slate-100 transition hover:ring-brand-200" data-dashboard-item>
-                        <div class="min-w-0">
-                            <div class="flex flex-wrap items-center gap-2">
-                                <span class="rounded-full px-2.5 py-1 text-xs font-semibold {% if item.status == 'overdue' %}bg-rose-100 text-rose-700{% elif item.status == 'today' %}bg-amber-100 text-amber-700{% else %}bg-blue-100 text-blue-700{% endif %}">{{ item.status_label }}</span>
-                                <span class="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">{{ item.type }}</span>
-                            </div>
-                            <p class="mt-2 truncate font-semibold text-slate-900">{{ item.title }}</p>
-                            <p class="mt-1 truncate text-sm text-slate-500">{{ item.source }} • Parcela {{ item.installment }}{% if item.date %} • {{ item.date.strftime('%d/%m/%Y') }}{% endif %}</p>
-                        </div>
-                        <p class="dashboard-finance-action-amount shrink-0 text-sm font-bold text-slate-900">R$ {{ item.amount|decimal_br }}</p>
-                    </a>
-                    {% else %}
-                    <p class="rounded-2xl bg-white p-4 text-sm text-slate-500 ring-1 ring-slate-100">Nenhuma parcela vencida ou próxima nos próximos 7 dias.</p>
-                    {% endfor %}
-                </div>
-                {{ pager('finance_action_items') }}
+                {% endfor %}
             </div>
-            <div class="dashboard-finance-extract-card rounded-[1.5rem] border border-slate-100 bg-slate-50/70 p-4">
-                <p class="text-xs font-semibold uppercase tracking-[0.25em] text-slate-400">Extrato</p>
-                <h4 class="mt-1 font-semibold text-slate-900">Movimento efetivado no mês</h4>
-                <div class="mt-4 space-y-3">
-                    <div class="flex items-center justify-between rounded-2xl bg-white p-4 ring-1 ring-emerald-100">
-                        <span class="text-sm font-medium text-slate-600">Créditos recebidos</span>
-                        <span class="font-bold text-emerald-700">R$ {{ finance_flow.realized_credit_month|decimal_br }}</span>
-                    </div>
-                    <div class="flex items-center justify-between rounded-2xl bg-white p-4 ring-1 ring-rose-100">
-                        <span class="text-sm font-medium text-slate-600">Débitos pagos</span>
-                        <span class="font-bold text-rose-700">R$ {{ finance_flow.realized_debit_month|decimal_br }}</span>
-                    </div>
-                    <div class="flex items-center justify-between rounded-2xl bg-white p-4 ring-1 ring-slate-200">
-                        <span class="text-sm font-medium text-slate-600">Saldo das contas</span>
-                        <span class="font-bold text-slate-900">R$ {{ finance_flow.balance|decimal_br }}</span>
-                    </div>
-                </div>
-            </div>
-        </div>
-        <div class="mt-5 rounded-[1.75rem] border border-slate-100 bg-gradient-to-br from-slate-50 via-white to-emerald-50/50 p-5">
-            <div class="flex flex-wrap items-start justify-between gap-4">
-                <div>
-                    <p class="text-xs font-semibold uppercase tracking-[0.25em] text-slate-400">Caixa previsto</p>
-                </div>
-                <p class="text-sm font-semibold {% if finance_flow.projected_balance < 0 %}text-rose-700{% else %}text-emerald-700{% endif %}">
-                    Projetado: R$ {{ finance_flow.projected_balance|decimal_br }}
+        </section>
+        {% endif %}
+
+        {% if can_rainfall %}
+        {% set rain = ov.rain %}
+        <section class="db-card" aria-label="Clima e chuva">
+            <div class="db-card-head"><h2>Clima e chuva</h2></div>
+            <p class="db-muted db-note">Previsão do tempo ainda não integrada ao SisFarm.</p>
+            <div class="db-rain">
+                <div class="db-rain-head"><span>Chuva em {{ rain.month_label }} na fazenda</span><span><strong>{{ rain.month_total|decimal_br(0) }} mm</strong>{% if rain.average is not none %} de {{ rain.average|decimal_br(0) }} mm da média{% endif %}</span></div>
+                <div class="db-rain-track"><span style="width: {{ rain.pct }}%"></span></div>
+                <p class="db-muted db-rain-source">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 3s6 6.5 6 11a6 6 0 0 1-12 0c0-4.5 6-11 6-11Z"/></svg>
+                    {% if rain.latest %}Registrado no pluviômetro da fazenda · último registro {% if rain.latest_days == 0 %}hoje{% elif rain.latest_days == 1 %}ontem{% else %}em {{ rain.latest.rainfall_date.strftime('%d/%m') }}{% endif %}, {{ rain.latest.millimeters|decimal_br(0) }} mm{% else %}Nenhuma chuva registrada na fazenda ainda{% endif %}{% if rain.average is not none %} · média de {{ rain.years }} ano(s){% endif %}
                 </p>
             </div>
-            <div class="mt-5 h-72 overflow-hidden rounded-[1.25rem] bg-white p-4 ring-1 ring-slate-100">
-                <canvas id="financeProjectionChart"></canvas>
-            </div>
-        </div>
-    </article>
-</section>
-{% endif %}
+            <a href="/pluviometria" class="db-link">Ver pluviometria da fazenda →</a>
+        </section>
+        {% endif %}
+    </div>
 
-{% if can_production %}
-<section class="mt-6">
-    <article class="rounded-[2rem] bg-white p-6 shadow-panel">
-        <div class="flex flex-wrap items-start justify-between gap-4">
-            <div>
-                <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Mercado</p>
-                <h3 class="mt-2 text-xl font-semibold">Cotação do café</h3>
-                <p class="mt-2 text-sm text-slate-500">Indicadores CEPEA/ESALQ em R$/saca de 60 kg e estimativa sobre os lotes disponíveis.</p>
+    <div class="db-row">
+        {% if can_agenda %}
+        <section class="db-card" aria-label="Calendário de aplicações" data-db-calendar>
+            <div class="db-card-head">
+                <div><h2>Calendário de aplicações</h2><p class="db-muted" data-db-cal-summary></p></div>
+                <a href="/fertilizacao/agendamentos" class="sf-btn sf-btn-secondary db-btn-sm">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>
+                    Abrir agenda
+                </a>
             </div>
-            <a href="{{ coffee_market.source_url }}" target="_blank" rel="noopener noreferrer" class="inline-flex items-center justify-center rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 transition hover:border-brand-200 hover:bg-brand-50">
-                Fonte {{ coffee_market.source }}
+            <div class="db-cal">
+                <div>
+                    <div class="db-cal-nav">
+                        <button type="button" class="sf-icon-btn" data-db-cal-prev aria-label="Mês anterior"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg></button>
+                        <strong data-db-cal-title></strong>
+                        <button type="button" class="sf-icon-btn" data-db-cal-next aria-label="Próximo mês"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg></button>
+                    </div>
+                    <div class="db-cal-week"><span>D</span><span>S</span><span>T</span><span>Q</span><span>Q</span><span>S</span><span>S</span></div>
+                    <div class="db-cal-grid" data-db-cal-grid></div>
+                    <div class="db-legend db-cal-legend"><span><i style="background:#446a36"></i>Programada</span><span><i style="background:#d9480f"></i>Atrasada</span><span><i style="background:#a3ada6"></i>Concluída</span></div>
+                </div>
+                <div class="db-cal-day">
+                    <p class="db-cal-day-title" data-db-cal-day-title></p>
+                    <div data-db-cal-day-list></div>
+                </div>
+            </div>
+        </section>
+        {% endif %}
+
+        {% if can_operations or can_production %}
+        <section class="db-card" aria-label="Atividade recente">
+            <div class="db-card-head"><h2>Atividade recente</h2></div>
+            {% for item in ov.activity %}
+            <a href="{{ item.link }}" class="db-activity">
+                <span class="db-activity-icon">{{ item.title[:1] }}</span>
+                <span class="min-w-0"><span class="db-inbox-title">{{ item.title }} · {{ item.subtitle }}</span><span class="db-muted block">{{ item.detail }} · {{ item.date[8:10] }}/{{ item.date[5:7] }}</span></span>
             </a>
-        </div>
-        <div class="mt-6 grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.25fr)]">
-            {% set arabica_quote = coffee_market.quotes.get('arabica') %}
-            {% set robusta_quote = coffee_market.quotes.get('robusta') %}
-            <div class="rounded-[1.5rem] border border-emerald-100 bg-emerald-50/70 p-5">
-                <p class="text-xs font-semibold uppercase tracking-[0.25em] text-emerald-700">Arábica CEPEA/ESALQ</p>
-                {% if arabica_quote %}
-                <p class="mt-3 text-3xl font-bold text-slate-900">R$ {{ arabica_quote.price_brl|decimal_br }}</p>
-                <div class="mt-3 flex flex-wrap items-center gap-2 text-xs font-semibold">
-                    <span class="rounded-full bg-white px-3 py-1 {% if arabica_quote.variation_day and arabica_quote.variation_day < 0 %}text-rose-700 ring-rose-100{% else %}text-emerald-700 ring-emerald-100{% endif %} ring-1">Dia: {{ arabica_quote.variation_day|decimal_br }}%</span>
-                    {% if arabica_quote.variation_month is not none %}<span class="rounded-full bg-white px-3 py-1 {% if arabica_quote.variation_month < 0 %}text-rose-700 ring-rose-100{% else %}text-emerald-700 ring-emerald-100{% endif %} ring-1">Mês: {{ arabica_quote.variation_month|decimal_br }}%</span>{% endif %}
-                </div>
-                <p class="mt-3 text-sm text-slate-500">Atualizado em {{ arabica_quote.quote_date.strftime('%d/%m/%Y') }}</p>
-                {% else %}
-                <p class="mt-3 text-lg font-semibold text-slate-700">Sem cotação salva</p>
-                <p class="mt-2 text-sm text-slate-500">A cotação será exibida após a primeira atualização do CEPEA.</p>
-                {% endif %}
-            </div>
-            <div class="rounded-[1.5rem] border border-amber-100 bg-amber-50/70 p-5">
-                <p class="text-xs font-semibold uppercase tracking-[0.25em] text-amber-700">Robusta CEPEA/ESALQ</p>
-                {% if robusta_quote %}
-                <p class="mt-3 text-3xl font-bold text-slate-900">R$ {{ robusta_quote.price_brl|decimal_br }}</p>
-                <div class="mt-3 flex flex-wrap items-center gap-2 text-xs font-semibold">
-                    <span class="rounded-full bg-white px-3 py-1 {% if robusta_quote.variation_day and robusta_quote.variation_day < 0 %}text-rose-700 ring-rose-100{% else %}text-emerald-700 ring-emerald-100{% endif %} ring-1">Dia: {{ robusta_quote.variation_day|decimal_br }}%</span>
-                    {% if robusta_quote.variation_month is not none %}<span class="rounded-full bg-white px-3 py-1 {% if robusta_quote.variation_month < 0 %}text-rose-700 ring-rose-100{% else %}text-emerald-700 ring-emerald-100{% endif %} ring-1">Mês: {{ robusta_quote.variation_month|decimal_br }}%</span>{% endif %}
-                </div>
-                <p class="mt-3 text-sm text-slate-500">Atualizado em {{ robusta_quote.quote_date.strftime('%d/%m/%Y') }}</p>
-                {% else %}
-                <p class="mt-3 text-lg font-semibold text-slate-700">Sem cotação salva</p>
-                <p class="mt-2 text-sm text-slate-500">A cotação será exibida após a primeira atualização do CEPEA.</p>
-                {% endif %}
-            </div>
-            <div class="rounded-[1.5rem] border border-slate-100 bg-slate-50/80 p-5">
-                <p class="text-xs font-semibold uppercase tracking-[0.25em] text-slate-400">Estoque estimado</p>
-                <p class="mt-3 text-3xl font-bold text-slate-900">R$ {{ coffee_market.estimated_value.total|decimal_br }}</p>
-                <p class="mt-2 text-sm text-slate-500">{{ coffee_market.available_sacks.total|decimal_br }} sc disponíveis em {{ coffee_market.available_lots }} lote(s).</p>
-                <div class="mt-4 grid gap-3 sm:grid-cols-2">
-                    <div class="rounded-2xl bg-white p-3 ring-1 ring-slate-100">
-                        <p class="text-xs uppercase tracking-[0.18em] text-slate-400">Arábica</p>
-                        <p class="mt-1 font-semibold text-slate-900">{{ coffee_market.available_sacks.arabica|decimal_br }} sc</p>
-                    </div>
-                    <div class="rounded-2xl bg-white p-3 ring-1 ring-slate-100">
-                        <p class="text-xs uppercase tracking-[0.18em] text-slate-400">Robusta</p>
-                        <p class="mt-1 font-semibold text-slate-900">{{ coffee_market.available_sacks.robusta|decimal_br }} sc</p>
-                    </div>
-                </div>
-            </div>
-        </div>
-        <div class="mt-6 flex items-center justify-center">
-            <div class="hidden overflow-hidden rounded-none border border-brand-500 bg-white text-sm font-medium text-slate-700 md:inline-flex" data-coffee-range-tabs>
-                <button type="button" class="border-r border-brand-500 px-5 py-2 transition hover:bg-brand-50" data-coffee-range="30d">30 dias</button>
-                <button type="button" class="border-r border-brand-500 px-5 py-2 transition hover:bg-brand-50" data-coffee-range="60d">60 dias</button>
-                <button type="button" class="border-r border-brand-500 px-5 py-2 transition hover:bg-brand-50" data-coffee-range="6m">6 meses</button>
-                <button type="button" class="border-r border-brand-500 px-5 py-2 transition hover:bg-brand-50" data-coffee-range="12m">12 meses</button>
-                <button type="button" class="px-5 py-2 transition hover:bg-brand-50" data-coffee-range="24m">2 anos</button>
-            </div>
-            <label class="w-full md:hidden">
-                <span class="sr-only">Periodo do grafico de cotacao</span>
-                <select class="h-12 w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 text-sm font-semibold text-slate-700 outline-none transition focus:border-brand-300 focus:ring-4 focus:ring-brand-100" data-coffee-range-select>
-                    <option value="30d">30 dias</option>
-                    <option value="60d">60 dias</option>
-                    <option value="6m">6 meses</option>
-                    <option value="12m">12 meses</option>
-                    <option value="24m">2 anos</option>
-                </select>
-            </label>
-        </div>
-        <div class="mt-4 h-72 rounded-[1.5rem] bg-slate-50 p-4 ring-1 ring-slate-100">
-            <canvas id="coffeeQuoteChart"></canvas>
-        </div>
-    </article>
-</section>
-{% endif %}
+            {% else %}
+            <p class="db-muted">Sem atividades registradas nesta safra.</p>
+            {% endfor %}
+        </section>
+        {% endif %}
+    </div>
+</div>
 
 {% if can_production %}
-<section class="mt-6 grid gap-6 xl:grid-cols-4">
-    <article class="rounded-[2rem] bg-white p-6 shadow-panel xl:col-span-2">
-        <div class="flex items-center justify-between">
-            <div>
-                <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Graficos</p>
-                <h3 class="mt-2 text-xl font-semibold">Producao por setor</h3>
-            </div>
+<dialog id="db-history-modal" class="app-modal db-history" aria-labelledby="db-history-title">
+    <div class="db-history-shell">
+        <div class="db-history-head">
+            <div class="min-w-0 flex-1"><h2 id="db-history-title">Preços do café</h2><p class="db-muted">Indicador CEPEA/ESALQ · saca de 60 kg{% if quotes.get('arabica') %} · atualizado em {{ quotes.get('arabica').quote_date.strftime('%d/%m/%Y') }}{% endif %}</p></div>
+            <button type="button" class="modal-close-button" aria-label="Fechar" data-db-history-close><svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>
         </div>
-        <div class="mt-6 h-80">
-            <canvas id="productionChart"></canvas>
+        <div class="db-history-controls">
+            <div class="db-seg" role="group" aria-label="Tipo"><button type="button" aria-pressed="true" data-db-h-type="arabica">Arábica</button><button type="button" aria-pressed="false" data-db-h-type="robusta">Robusta</button><button type="button" aria-pressed="false" data-db-h-type="both">Comparar</button></div>
+            <div class="db-seg" role="group" aria-label="Período"><button type="button" aria-pressed="false" data-db-h-range="30d">30 dias</button><button type="button" aria-pressed="false" data-db-h-range="60d">60 dias</button><button type="button" aria-pressed="false" data-db-h-range="6m">6 meses</button><button type="button" aria-pressed="true" data-db-h-range="12m">12 meses</button><button type="button" aria-pressed="false" data-db-h-range="24m">2 anos</button></div>
+            {% if hero.cost_per_sack %}<label class="db-check"><input type="checkbox" checked data-db-h-cost> Mostrar meu custo por saca ({{ hero.cost_per_sack|money_br }})</label>{% endif %}
         </div>
-    </article>
-    <article id="produtividade-area" class="rounded-[2rem] bg-white p-6 shadow-panel">
-        <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Indicador</p>
-        <h3 class="mt-2 text-xl font-semibold">Produtividade por area</h3>
-        <div class="mt-6 h-80">
-            <canvas id="productivityChart"></canvas>
-        </div>
-    </article>
-    <article class="overflow-hidden rounded-[2rem] bg-white p-6 shadow-panel" data-dashboard-card="forecast">
-        <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Forecast</p>
-        <h3 class="mt-2 text-xl font-semibold">Previsao por historico</h3>
-        <div class="mt-6 flex h-80 min-h-0 flex-col overflow-hidden">
-            <div class="min-h-0 flex-1 space-y-4 overflow-y-auto pr-2" data-dashboard-list>
-                {% for item in forecast_plots %}
-                <a href="/setores?edit_id={{ item.plot_id }}" class="block rounded-2xl bg-slate-50 p-4 transition hover:bg-brand-50/40" data-dashboard-item>
-                    <div class="flex items-center justify-between">
-                        <p class="font-medium">{{ item.plot }}</p>
-                        <span class="text-sm font-semibold text-brand-700">{{ item.projected_sacks }} sc</span>
-                    </div>
-                    <p class="mt-2 text-sm text-slate-500">Produtividade projetada: {{ item.productivity }} sc/ha</p>
-                </a>
-                {% else %}
-                <p class="text-sm text-slate-500">Sem dados suficientes para previsao.</p>
-                {% endfor %}
-            </div>
-            {{ pager('forecast') }}
-        </div>
-    </article>
-</section>
-{% endif %}
-
-{% if can_production or can_rainfall %}
-<section class="mt-6 grid gap-6 xl:grid-cols-2">
-    {% if can_production %}
-    <article class="overflow-hidden rounded-[2rem] bg-white p-6 shadow-panel">
-        <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Serie historica</p>
-        <h3 class="mt-2 text-xl font-semibold">Linha de colheita</h3>
-        <div class="mt-6 h-72">
-            <canvas id="timelineChart"></canvas>
-        </div>
-    </article>
-    {% endif %}
-    {% if can_rainfall %}
-    <article class="rounded-[2rem] bg-white p-6 shadow-panel">
-        <div class="flex flex-wrap items-start justify-between gap-4">
-            <div>
-                <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Clima</p>
-                <h3 class="mt-2 text-xl font-semibold">Pluviometria da fazenda</h3>
-                <p class="mt-2 text-sm text-slate-500">Total no periodo filtrado: {{ kpis.rainfall_period_total }} mm</p>
-            </div>
-            <form method="get" action="/dashboard" class="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                <label class="block">
-                    <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Inicio</span>
-                    <input type="date" name="rain_start_date" value="{{ rain_filters.start_date }}" class="w-full rounded-xl border-slate-200 bg-slate-50">
-                </label>
-                <label class="block">
-                    <span class="mb-2 block text-xs font-medium uppercase tracking-[0.2em] text-slate-400">Fim</span>
-                    <input type="date" name="rain_end_date" value="{{ rain_filters.end_date }}" class="w-full rounded-xl border-slate-200 bg-slate-50">
-                </label>
-                <div class="flex items-end gap-3">
-                    <button class="rounded-xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white">Filtrar</button>
-                    <a href="/dashboard" class="rounded-xl bg-slate-100 px-4 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-200">Limpar</a>
+        <div class="db-history-body">
+            <div class="db-history-main">
+                <dl class="db-history-stats" data-db-h-stats></dl>
+                <div class="db-history-chart" data-db-h-chart>
+                    <svg viewBox="0 0 1000 300" preserveAspectRatio="none" role="img" aria-label="Histórico de preços"><g data-db-h-grid></g><line data-db-h-costline stroke="#d9480f" stroke-width="1.5" stroke-dasharray="6 5" vector-effect="non-scaling-stroke"/><polyline data-db-h-line-b fill="none" stroke="#8a6d3b" stroke-width="2" vector-effect="non-scaling-stroke"/><polyline data-db-h-line-a fill="none" stroke="#446a36" stroke-width="2.5" stroke-linejoin="round" vector-effect="non-scaling-stroke"/></svg>
+                    <div class="db-spark-guide" data-db-h-guide hidden></div>
+                    <div class="db-spark-tip" data-db-h-tip hidden></div>
+                    <p class="db-muted db-spark-empty" data-db-h-empty hidden>Sem cotações salvas para este período.</p>
                 </div>
-            </form>
-        </div>
-        <div class="mt-6 h-72">
-            <canvas id="rainfallChart"></canvas>
-        </div>
-    </article>
-    {% endif %}
-</section>
-{% endif %}
-
-{% if can_operations %}
-<section class="mt-6 grid gap-6 xl:grid-cols-1">
-    <article class="rounded-[2rem] bg-white p-6 shadow-panel">
-        <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Fertilizacao</p>
-        <h3 class="mt-2 text-xl font-semibold">Aplicacoes recentes</h3>
-        <div class="mt-6 flex h-[24rem] min-h-0 flex-col overflow-hidden">
-            <div class="min-h-0 flex-1 space-y-4 overflow-y-auto pr-2" data-dashboard-list>
-                {% for item in recent_fertilizations %}
-                <a href="/fertilizacao?edit_id={{ item.id }}" class="block rounded-2xl bg-slate-50 p-4 transition hover:bg-brand-50/40" data-dashboard-item>
-                    <p class="font-medium">{{ item.product }}</p>
-                    <p class="mt-1 text-sm text-slate-500">{{ item.plot.name if item.plot else "Setor removido" }} • {{ item.application_date }}</p>
-                    <p class="mt-2 text-sm text-slate-600">Dose: {{ item.dose }} • Custo: R$ {{ item.cost }}</p>
-                </a>
-                {% else %}
-                <p class="text-sm text-slate-500">Sem registros.</p>
-                {% endfor %}
+                <div class="db-spark-axis" data-db-h-axis></div>
             </div>
-            {{ pager('fertilizations') }}
-        </div>
-    </article>
-</section>
-{% endif %}
-
-{% if can_map or can_rainfall %}
-<section class="mt-6 grid gap-6 xl:grid-cols-2">
-    {% if can_map %}
-    <article class="flex min-h-[35rem] flex-col rounded-[2rem] bg-white p-6 shadow-panel" data-dashboard-card="rainfalls">
-        <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Mapa</p>
-        <h3 class="mt-2 text-xl font-semibold">Fazendas e setores desenhados</h3>
-        {% if dashboard_map_preview_url %}
-        <a href="/mapa" class="group relative mt-6 min-h-0 flex-1 overflow-hidden rounded-2xl bg-slate-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500" aria-label="Abrir Mapa da Fazenda" data-dashboard-map-image-shell>
-            <div class="absolute inset-0 flex flex-col items-center justify-center gap-3 px-6 text-center text-sm text-slate-500" data-dashboard-map-loading>
-                <span class="h-8 w-8 animate-spin rounded-full border-2 border-slate-200 border-t-brand-500" aria-hidden="true"></span>
-                <span>Mapa da fazenda está sendo carregado.</span>
-            </div>
-            <img src="{{ dashboard_map_preview_url }}" alt="Mapa estático com a fazenda e os setores desenhados" width="960" height="540" loading="lazy" decoding="async" class="h-full w-full opacity-0 object-cover transition duration-300 group-hover:scale-[1.015] group-hover:brightness-95" data-dashboard-map-image>
-        </a>
-        {% else %}
-        <div class="mt-6 flex min-h-0 flex-1 items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-6 text-center text-sm text-slate-500">
-            {% if dashboard_map_has_geometry %}
-            A imagem do mapa está sendo preparada. Ela ficará armazenada no servidor e aparecerá automaticamente após a geração.
-            {% else %}
-            Cadastre o perímetro da fazenda e dos setores para gerar a imagem estática do mapa.
-            {% endif %}
-        </div>
-        {% endif %}
-    </article>
-    {% endif %}
-    {% if can_rainfall %}
-    <article class="rounded-[2rem] bg-white p-6 shadow-panel">
-        <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Pluviometria</p>
-        <h3 class="mt-2 text-xl font-semibold">Lancamentos recentes</h3>
-        <div class="mt-6 flex h-[26rem] min-h-0 flex-col overflow-hidden">
-            <div class="min-h-0 flex-1 space-y-4 overflow-y-auto pr-2" data-dashboard-list>
-                {% for item in recent_rainfalls %}
-                <a href="/pluviometria?edit_id={{ item.id }}" class="block rounded-2xl bg-slate-50 p-4 transition hover:bg-brand-50/40" data-dashboard-item>
-                    <div class="flex items-center justify-between gap-4">
-                        <div>
-                            <p class="font-medium text-slate-900">{{ item.farm.name if item.farm else "Fazenda removida" }}</p>
-                            <p class="mt-1 text-sm text-slate-500">{{ item.rainfall_date }}{% if item.source %} • {{ item.source }}{% endif %}</p>
-                        </div>
-                        <span class="rounded-full bg-sky-100 px-3 py-1 text-sm font-semibold text-sky-700">{{ item.millimeters }} mm</span>
-                    </div>
-                    <p class="mt-3 text-sm text-slate-500">{{ item.notes or "Sem observacoes." }}</p>
-                </a>
-                {% else %}
-                <p class="text-sm text-slate-500">Sem registros de chuva.</p>
-                {% endfor %}
-            </div>
-            {{ pager('rainfalls') }}
-        </div>
-    </article>
-    {% endif %}
-</section>
-{% endif %}
-
-{% if can_operations or can_production %}
-<section class="mt-6 grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
-    {% if can_operations or can_production %}
-    <article class="overflow-hidden rounded-[2rem] bg-white p-6 shadow-panel" data-dashboard-card="timeline">
-        <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Timeline</p>
-        <h3 class="mt-2 text-xl font-semibold">Atividades recentes</h3>
-        <div class="mt-6 flex h-[36rem] min-h-0 flex-col overflow-hidden">
-            <div class="min-h-0 flex-1 space-y-4 overflow-y-auto pr-2" data-dashboard-list>
-                {% for item in activity_timeline %}
-                {% if (item.kind == 'fertilizacao' and can_operations) or (item.kind == 'producao' and can_production) %}
-                <a href="{{ item.link }}" class="block rounded-2xl border border-slate-100 bg-slate-50 p-4 transition hover:border-brand-200 hover:bg-brand-50/40" data-dashboard-item>
-                    <div class="flex items-center justify-between gap-4">
-                        <div>
-                            <p class="font-medium text-slate-900">{{ item.title }}</p>
-                            <p class="mt-1 text-sm text-slate-500">{{ item.subtitle }}</p>
-                        </div>
-                        <span class="rounded-full bg-slate-900 px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em] text-white">{{ item.kind }}</span>
-                    </div>
-                    <p class="mt-3 text-sm text-slate-600">{{ item.detail }}</p>
-                    <p class="mt-2 text-xs uppercase tracking-[0.25em] text-slate-400">{{ item.date }}</p>
-                </a>
-                {% endif %}
-                {% else %}
-                <p class="text-sm text-slate-500">Sem atividades recentes.</p>
-                {% endfor %}
-            </div>
-            {{ pager('timeline') }}
-        </div>
-    </article>
-    {% endif %}
-    {% if can_operations or can_production %}
-    <article class="overflow-hidden rounded-[2rem] bg-white p-6 shadow-panel" data-dashboard-card="fertilizations">
-        <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Indicadores</p>
-        <h3 class="mt-2 text-xl font-semibold">Evolucao dos custos e producao</h3>
-        <div class="mt-6 grid gap-4 sm:grid-cols-3">
-            {% if can_production %}
-            <div class="rounded-2xl bg-slate-50 p-4">
-                <p class="text-sm text-slate-500">Producao estimada</p>
-                <p class="mt-2 text-2xl font-semibold text-slate-900">{{ kpis.estimated_production }} sacas</p>
-            </div>
-            <div class="rounded-2xl bg-slate-50 p-4">
-                <p class="text-sm text-slate-500">Producao total</p>
-                <p class="mt-2 text-2xl font-semibold text-slate-900">{{ kpis.total_production }} sacas</p>
-            </div>
-            {% endif %}
-            {% if can_operations %}
-            <div class="rounded-2xl bg-slate-50 p-4">
-                <p class="text-sm text-slate-500">Custo fertilizacao / ha</p>
-                <p class="mt-2 text-2xl font-semibold text-slate-900">R$ {{ kpis.cost_per_hectare }}</p>
-            </div>
-            {% endif %}
-        </div>
-        {% if can_operations %}
-        <div class="mt-6 h-72">
-            <canvas id="costByPlotChart"></canvas>
-        </div>
-        {% endif %}
-    </article>
-    {% endif %}
-</section>
-{% endif %}
-
-{% if can_pests or can_production or can_soil %}
-<section class="mt-6 grid gap-6 xl:grid-cols-3">
-    {% if can_pests %}
-    <article class="overflow-hidden rounded-[2rem] bg-white p-6 shadow-panel" data-dashboard-card="incidents">
-        <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Sanidade</p>
-        <h3 class="mt-2 text-xl font-semibold">Pragas e doencas</h3>
-        <div class="mt-6 flex h-[28rem] min-h-0 flex-col overflow-hidden">
-            <div class="min-h-0 flex-1 space-y-4 overflow-y-auto pr-2" data-dashboard-list>
-                {% for item in recent_incidents %}
-                <a href="/pragas?edit_id={{ item.id }}" class="block rounded-2xl bg-slate-50 p-4 transition hover:bg-brand-50/40" data-dashboard-item>
-                    <div class="flex items-center justify-between">
-                        <p class="font-medium">{{ item.name }}</p>
-                        <span class="rounded-full bg-amber-100 px-2 py-1 text-xs font-semibold text-amber-700">Nivel {{ item.severity }}</span>
-                    </div>
-                    <p class="mt-1 text-sm text-slate-500">{{ item.plot.name if item.plot else "Setor removido" }} • {{ item.occurrence_date }}</p>
-                    <p class="mt-2 text-sm text-slate-600">{{ item.treatment or "Sem tratamento registrado." }}</p>
-                </a>
-                {% else %}
-                <p class="text-sm text-slate-500">Sem ocorrencias recentes.</p>
-                {% endfor %}
-            </div>
-            {{ pager('incidents') }}
-        </div>
-    </article>
-    {% endif %}
-    {% if can_production %}
-    <article class="overflow-hidden rounded-[2rem] bg-white p-6 shadow-panel" data-dashboard-card="harvests">
-        <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Colheitas</p>
-        <h3 class="mt-2 text-xl font-semibold">Registros recentes</h3>
-        <div class="mt-6 flex h-[28rem] min-h-0 flex-col overflow-hidden">
-            <div class="min-h-0 flex-1 space-y-4 overflow-y-auto pr-2" data-dashboard-list>
-                {% for item in recent_harvests %}
-                <a href="/producao?edit_id={{ item.id }}" class="block rounded-2xl bg-slate-50 p-4 transition hover:bg-brand-50/40" data-dashboard-item>
-                    <p class="font-medium">{{ item.plot.name if item.plot else "Setor removido" }}</p>
-                    <p class="mt-1 text-sm text-slate-500">{{ item.harvest_date }}</p>
-                    <p class="mt-2 text-sm text-slate-600">{{ item.sacks_produced }} sacas • {{ item.productivity_per_hectare or 0 }} sc/ha</p>
-                </a>
-                {% else %}
-                <p class="text-sm text-slate-500">Sem colheitas registradas.</p>
-                {% endfor %}
-            </div>
-            {{ pager('harvests') }}
-        </div>
-    </article>
-    {% endif %}
-    {% if can_soil %}
-    <article class="overflow-hidden rounded-[2rem] bg-white p-6 shadow-panel" data-dashboard-card="soil_analyses">
-        <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Analise de Solo</p>
-        <h3 class="mt-2 text-xl font-semibold">Recomendacoes recentes</h3>
-        <div class="mt-6 flex h-[28rem] min-h-0 flex-col overflow-hidden">
-            <div class="min-h-0 flex-1 space-y-4 overflow-y-auto pr-2" data-dashboard-list>
-                {% for item in recent_soil_analyses %}
-                <a href="/analise-solo?edit_id={{ item.id }}&plot_id={{ item.plot_id }}&compare_plot_id={{ item.plot_id }}" class="block rounded-2xl bg-slate-50 p-4 transition hover:bg-brand-50/40" data-dashboard-item>
-                    <p class="font-medium">{{ item.plot.name if item.plot else "Setor removido" }}</p>
-                    <p class="mt-1 text-sm text-slate-500">{{ item.analysis_date }} • {{ item.laboratory }}</p>
-                    <p class="mt-2 text-sm text-slate-600">{% if item.ai_recommendation %}IA: {{ item.ai_status }}{% else %}Recomendacao base calculada{% endif %}</p>
-                </a>
-                {% else %}
-                <p class="text-sm text-slate-500">Sem analises registradas.</p>
-                {% endfor %}
-            </div>
-            {{ pager('soil_analyses') }}
-        </div>
-    </article>
-    {% endif %}
-</section>
-{% endif %}
-
-<script src="{{ url_for('static', path='js/swipe_card_pager.js') }}?v=12"></script>
-<script>
-    const production = {{ production_chart|safe if can_production else '{"labels":[],"values":[]}' }};
-    const productivity = {{ productivity_chart|safe if can_production else '{"labels":[],"values":[]}' }};
-    const timeline = {{ timeline_chart|safe if can_production else '{"labels":[],"values":[]}' }};
-    const rainfall = {{ rainfall_chart|safe if can_rainfall else '{"labels":[],"values":[]}' }};
-    const costByPlot = {{ cost_by_plot_chart|safe if can_operations else '{"labels":[],"values":[]}' }};
-    const financeProjection = {{ finance_flow.projected_chart|tojson if can_finance else '{"labels":[],"values":[]}'|safe }};
-    const coffeeQuoteHistory = {{ coffee_market.history|tojson if can_production else '{"arabica":{"labels":[],"values":[]},"robusta":{"labels":[],"values":[]}}'|safe }};
-    const coffeeQuoteDates = {{ {
-        "arabica": coffee_market.quotes.get("arabica").quote_date.isoformat() if can_production and coffee_market.quotes.get("arabica") else "",
-        "robusta": coffee_market.quotes.get("robusta").quote_date.isoformat() if can_production and coffee_market.quotes.get("robusta") else "",
-    }|tojson if can_production else '{"arabica":"","robusta":""}'|safe }};
-    const dashboardScheduleData = JSON.parse(document.getElementById('dashboardScheduleData')?.textContent || '[]');
-    const dashboardScheduleMeta = JSON.parse(document.getElementById('dashboardScheduleMeta')?.textContent || '{}');
-
-    const createChartIfPresent = (id, config) => {
-        const canvas = document.getElementById(id);
-        if (!canvas) return null;
-        return new Chart(canvas, config);
-    };
-
-    createChartIfPresent('productionChart', {
-        type: 'bar',
-        data: {
-            labels: production.labels,
-            datasets: [{
-                label: 'Sacas produzidas',
-                data: production.values,
-                borderRadius: 12,
-                backgroundColor: '#446a36'
-            }]
-        },
-        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
-    });
-
-    createChartIfPresent('timelineChart', {
-        type: 'line',
-        data: {
-            labels: timeline.labels,
-            datasets: [{
-                label: 'Sacas',
-                data: timeline.values,
-                fill: true,
-                tension: 0.35,
-                borderColor: '#446a36',
-                backgroundColor: 'rgba(68, 106, 54, 0.14)'
-            }]
-        },
-        options: { responsive: true, maintainAspectRatio: false }
-    });
-
-    createChartIfPresent('productivityChart', {
-        type: 'bar',
-        data: {
-            labels: productivity.labels,
-            datasets: [{
-                label: 'sc/ha',
-                data: productivity.values,
-                borderRadius: 12,
-                backgroundColor: '#7b9e6c'
-            }]
-        },
-        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
-    });
-
-    createChartIfPresent('rainfallChart', {
-        type: 'line',
-        data: {
-            labels: rainfall.labels,
-            datasets: [{
-                label: 'mm de chuva',
-                data: rainfall.values,
-                fill: true,
-                tension: 0.35,
-                borderColor: '#0ea5e9',
-                backgroundColor: 'rgba(14, 165, 233, 0.14)'
-            }]
-        },
-        options: { responsive: true, maintainAspectRatio: false }
-    });
-
-    createChartIfPresent('costByPlotChart', {
-        type: 'bar',
-        data: {
-            labels: costByPlot.labels,
-            datasets: [{
-                label: 'R$ por setor',
-                data: costByPlot.values,
-                borderRadius: 12,
-                backgroundColor: '#f59e0b'
-            }]
-        },
-        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
-    });
-
-    createChartIfPresent('financeProjectionChart', {
-        type: 'line',
-        data: {
-            labels: financeProjection.labels,
-            datasets: [{
-                label: 'Caixa previsto',
-                data: financeProjection.values,
-                fill: false,
-                tension: 0.32,
-                borderColor: '#446a36',
-                backgroundColor: '#446a36',
-                pointBackgroundColor: '#ffffff',
-                pointBorderColor: '#446a36',
-                pointBorderWidth: 2,
-                pointRadius: 4,
-                pointHoverRadius: 6,
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: {
-                legend: { display: false },
-                tooltip: {
-                    callbacks: {
-                        label: (ctx) => `R$ ${new Intl.NumberFormat('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(ctx.parsed.y || 0)}`
-                    }
-                }
-            },
-            scales: {
-                y: {
-                    ticks: {
-                        callback: (value) => `R$ ${new Intl.NumberFormat('pt-BR', { notation: 'compact', maximumFractionDigits: 1 }).format(value)}`
-                    },
-                    grid: { color: 'rgba(148, 163, 184, 0.25)' }
-                },
-                x: {
-                    grid: { display: false }
-                }
-            }
-        }
-    });
-
-    const coffeeRangeLabels = {
-        '30d': '30 dias',
-        '60d': '60 dias',
-        '6m': '6 meses',
-        '12m': '12 meses',
-        '24m': '2 anos',
-    };
-    const coffeeRangeKeys = Object.keys(coffeeRangeLabels);
-    const coffeeRangeData = (range) => coffeeQuoteHistory?.[range] || { labels: [], arabica: [], robusta: [] };
-    const coffeeQuoteChart = createChartIfPresent('coffeeQuoteChart', {
-        type: 'line',
-        data: {
-            labels: coffeeRangeData('30d').labels,
-            datasets: [
-                {
-                    label: 'Arábica CEPEA/ESALQ',
-                    data: coffeeRangeData('30d').arabica,
-                    fill: false,
-                    tension: 0.32,
-                    borderColor: '#446a36',
-                    backgroundColor: '#446a36',
-                    pointRadius: 2,
-                    pointHoverRadius: 5,
-                },
-                {
-                    label: 'Robusta CEPEA/ESALQ',
-                    data: coffeeRangeData('30d').robusta,
-                    fill: false,
-                    tension: 0.32,
-                    borderColor: '#d97706',
-                    backgroundColor: '#d97706',
-                    pointRadius: 2,
-                    pointHoverRadius: 5,
-                },
-            ],
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: {
-                tooltip: {
-                    callbacks: {
-                        label: (ctx) => `${ctx.dataset.label}: R$ ${new Intl.NumberFormat('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(ctx.parsed.y || 0)}`
-                    }
-                }
-            },
-            scales: {
-                y: {
-                    ticks: {
-                        callback: (value) => `R$ ${new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 0 }).format(value)}`
-                    }
-                },
-                x: {
-                    ticks: {
-                        maxRotation: 0,
-                        autoSkip: true,
-                        maxTicksLimit: 12,
-                    },
-                    grid: { color: 'rgba(148, 163, 184, 0.22)' }
-                }
-            }
-        }
-    });
-
-    (() => {
-        if (!coffeeQuoteChart) return;
-        const buttons = Array.from(document.querySelectorAll('[data-coffee-range]'));
-        const select = document.querySelector('[data-coffee-range-select]');
-        const activeClasses = ['bg-brand-500', 'text-white'];
-        const inactiveClasses = ['bg-white', 'text-slate-700'];
-        const updateRange = (range) => {
-            const safeRange = coffeeRangeKeys.includes(range) ? range : '30d';
-            const data = coffeeRangeData(safeRange);
-            coffeeQuoteChart.data.labels = data.labels || [];
-            coffeeQuoteChart.data.datasets[0].data = data.arabica || [];
-            coffeeQuoteChart.data.datasets[1].data = data.robusta || [];
-            coffeeQuoteChart.update();
-            buttons.forEach((button) => {
-                const isActive = button.dataset.coffeeRange === safeRange;
-                button.classList.toggle(activeClasses[0], isActive);
-                button.classList.toggle(activeClasses[1], isActive);
-                button.classList.toggle(inactiveClasses[0], !isActive);
-                button.classList.toggle(inactiveClasses[1], !isActive);
-                button.setAttribute('aria-pressed', String(isActive));
-            });
-            if (select instanceof HTMLSelectElement) {
-                select.value = safeRange;
-            }
-        };
-        buttons.forEach((button) => {
-            button.addEventListener('click', () => updateRange(button.dataset.coffeeRange));
-        });
-        if (select instanceof HTMLSelectElement) {
-            select.addEventListener('change', () => updateRange(select.value));
-        }
-        updateRange('30d');
-    })();
-
-    (() => {
-        if (!coffeeQuoteChart || !dashboardScheduleMeta.csrfToken) return;
-        const syncKey = `sisfarm:cepea-browser-sync:${new Date().toISOString().slice(0, 10)}`;
-        if (sessionStorage.getItem(syncKey) === 'done') return;
-
-        const parseBrazilianNumber = (value) => {
-            const cleaned = String(value || '').replace(/[^\d,.-]/g, '').replace(/\./g, '').replace(',', '.');
-            const parsed = Number.parseFloat(cleaned);
-            return Number.isFinite(parsed) ? parsed : null;
-        };
-        const normalizeDate = (value) => {
-            const parts = String(value || '').trim().split('/');
-            if (parts.length !== 3) return '';
-            const [day, month, year] = parts;
-            if (!day || !month || !year) return '';
-            return `${year.padStart(4, '0')}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
-        };
-        const currentMaxDate = () => {
-            const dates = Object.values(coffeeQuoteDates || {}).filter(Boolean).sort();
-            return dates[dates.length - 1] || '';
-        };
-        const parseWidgetQuotes = (doc) => {
-            const rows = Array.from(doc.querySelectorAll('tr'));
-            const quotes = [];
-            rows.forEach((row) => {
-                const cells = Array.from(row.querySelectorAll('td')).map((cell) => cell.textContent.trim());
-                if (cells.length < 3) return;
-                const quoteDate = normalizeDate(cells[0]);
-                const product = cells[1].normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
-                const price = parseBrazilianNumber(cells[2]);
-                if (!quoteDate || !price) return;
-                quotes.push({
-                    quote_type: product.includes('robusta') || product.includes('conillon') ? 'robusta' : 'arabica',
-                    quote_date: quoteDate,
-                    price_brl: price,
-                });
-            });
-            return quotes;
-        };
-        const submitQuotes = async (quotes) => {
-            if (!quotes.length) return;
-            const newestDate = quotes.map((quote) => quote.quote_date).sort().at(-1) || '';
-            if (newestDate <= currentMaxDate()) {
-                return;
-            }
-            const response = await fetch('/api/dashboard/cotacao-cafe/sincronizar-navegador', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ csrf_token: dashboardScheduleMeta.csrfToken, quotes }),
-            });
-            const payload = await response.json().catch(() => ({}));
-            if (!response.ok || !payload.ok) return;
-            sessionStorage.setItem(syncKey, 'done');
-            location.reload();
-        };
-
-        const frame = document.createElement('iframe');
-        frame.className = 'hidden';
-        frame.setAttribute('aria-hidden', 'true');
-        frame.srcdoc = `<!doctype html><html><body><script src="https://www.cepea.org.br/br/widgetproduto.js.php?fonte=arial&tamanho=10&largura=400px&corfundo=dbd6b2&cortexto=333333&corlinha=ede7bf&id_indicador%5B%5D=23&id_indicador%5B%5D=24"><\/script></body></html>`;
-        frame.addEventListener('load', () => {
-            window.setTimeout(() => {
-                try {
-                    const quotes = parseWidgetQuotes(frame.contentDocument || frame.contentWindow?.document);
-                    submitQuotes(quotes).finally(() => frame.remove());
-                } catch (error) {
-                    frame.remove();
-                }
-            }, 900);
-        }, { once: true });
-        document.body.appendChild(frame);
-    })();
-
-    (() => {
-        const image = document.querySelector('[data-dashboard-map-image]');
-        if (!(image instanceof HTMLImageElement)) return;
-        const shell = image.closest('[data-dashboard-map-image-shell]');
-        const loading = shell?.querySelector('[data-dashboard-map-loading]');
-        const reveal = () => {
-            image.classList.remove('opacity-0');
-            image.classList.add('opacity-100');
-            loading?.classList.add('hidden');
-        };
-        if (image.complete && image.naturalWidth > 0) {
-            reveal();
-            return;
-        }
-        image.addEventListener('load', reveal, { once: true });
-    })();
-
-    (() => {
-        const root = document.querySelector('[data-dashboard-schedule-calendar]');
-        if (!(root instanceof HTMLElement)) return;
-
-        const title = root.querySelector('[data-dashboard-schedule-title]');
-        const grid = root.querySelector('[data-dashboard-schedule-grid]');
-        const prev = root.querySelector('[data-dashboard-schedule-prev]');
-        const next = root.querySelector('[data-dashboard-schedule-next]');
-        const modal = document.getElementById('dashboard-schedule-modal');
-        const modalTitle = document.querySelector('[data-dashboard-schedule-modal-title]');
-        const modalDate = document.querySelector('[data-dashboard-schedule-modal-date]');
-        const modalContent = document.querySelector('[data-dashboard-schedule-modal-content]');
-        const modalCloseButtons = document.querySelectorAll('[data-dashboard-schedule-modal-close]');
-        const emptyTemplate = document.querySelector('[data-dashboard-schedule-empty]');
-        const idleTemplate = document.querySelector('[data-dashboard-schedule-idle]');
-        const noDataTemplate = document.querySelector('[data-dashboard-schedule-no-data]');
-        if (!(title instanceof HTMLElement) || !(grid instanceof HTMLElement) || !(modalContent instanceof HTMLElement)) return;
-
-        const monthNames = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
-        const scheduleMap = new Map();
-        const lateDateSet = new Set();
-        const now = new Date();
-        const todayIso = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-        const schedules = Array.isArray(dashboardScheduleData) ? dashboardScheduleData : [];
-        schedules.forEach((item) => {
-            const date = typeof item.date === 'string' ? item.date : '';
-            if (!scheduleMap.has(date)) scheduleMap.set(date, []);
-            scheduleMap.get(date).push(item);
-            if (item.status === 'late') {
-                lateDateSet.add(date);
-            }
-        });
-
-        const escapeHtml = (value) => String(value ?? '')
-            .replace(/&/g, '&amp;')
-            .replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;')
-            .replace(/"/g, '&quot;')
-            .replace(/'/g, '&#39;');
-
-        const formatDateLabel = (isoDate) => {
-            const [year, month, day] = isoDate.split('-').map(Number);
-            const date = new Date(year, (month || 1) - 1, day || 1);
-            return date.toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' });
-        };
-
-        let selectedDate = schedules[0]?.date || null;
-        let currentMonth = (() => {
-            if (selectedDate) {
-                const [year, month] = selectedDate.split('-').map(Number);
-                return new Date(year, (month || 1) - 1, 1);
-            }
-            const now = new Date();
-            return new Date(now.getFullYear(), now.getMonth(), 1);
-        })();
-
-        const renderDetails = () => {
-            const source = selectedDate ? (scheduleMap.get(selectedDate) || []) : [];
-            if (!selectedDate) {
-                modalContent.innerHTML = idleTemplate instanceof HTMLTemplateElement ? idleTemplate.innerHTML : '';
-                return;
-            }
-            if (!source.length) {
-                modalContent.innerHTML = emptyTemplate instanceof HTMLTemplateElement ? emptyTemplate.innerHTML : '';
-                return;
-            }
-            if (modalTitle instanceof HTMLElement) {
-                modalTitle.textContent = 'Agendamentos';
-            }
-            if (modalDate instanceof HTMLElement) {
-                modalDate.textContent = formatDateLabel(selectedDate);
-            }
-            const methodChipClass = (method) => {
-                if (method === 'adubacao_solida') return 'bg-slate-100 text-slate-700 ring-1 ring-slate-200';
-                if (method === 'fertilizacao_foliar') return 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-100';
-                return 'bg-sky-50 text-sky-800 ring-1 ring-sky-100';
-            };
-            modalContent.innerHTML = `
-                <div class="flex items-center justify-between gap-3">
-                    <p class="text-sm font-semibold text-slate-800">${escapeHtml(formatDateLabel(selectedDate))}</p>
-                    <span class="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">${source.length} agendamento(s)</span>
+            <aside class="db-history-side">
+                <div class="db-history-own">
+                    <h3>O seu café ao preço de hoje</h3>
+                    <p><span>Estoque ({{ ov.market.available_sacks.total|default(0)|decimal_br(0) }} sc)</span><strong>{{ ov.market.estimated_value.total|default(0)|money_br }}</strong></p>
+                    {% if hero.ready %}<p><span>Safra prevista ({{ hero.sacks|decimal_br(0) }} sc)</span><strong>{{ hero.revenue|money_br }}</strong></p>
+                    <p><span>Margem sobre o custo</span><strong class="text-emerald-700">{{ (hero.price - hero.cost_per_sack)|money_br }}/sc</strong></p>{% endif %}
                 </div>
-                ${source.map((item) => `
-                    <div class="dashboard-agenda-item ${item.status === 'late' ? 'is-late' : 'is-scheduled'}">
-                        <div class="flex flex-wrap items-start justify-between gap-3">
-                            <a href="${escapeHtml(item.link)}" class="min-w-0 flex-1 font-medium text-slate-900 hover:text-brand-700">${escapeHtml(item.plot)}</a>
-                            <span class="shrink-0 rounded-full px-3 py-1 text-xs font-semibold ${item.status === 'late' ? 'bg-amber-200 text-amber-800' : 'bg-sky-200 text-sky-800'}">
-                                ${item.status === 'late' ? 'Atrasado' : 'Programado'}
-                            </span>
-                        </div>
-                        <div class="mt-3 flex flex-wrap items-center gap-2 text-sm text-slate-500">
-                            <span>Data prevista</span>
-                            <span class="rounded-full bg-white/90 px-3 py-1 font-medium text-slate-700">${escapeHtml(item.date)}</span>
-                            <span class="rounded-full px-3 py-1 text-xs font-semibold ${methodChipClass(item.application_method)}">${escapeHtml(item.application_method_label || 'Fertirrigação')}</span>
-                        </div>
-                        ${item.stock_ok
-                            ? '<p class="mt-3 text-sm text-slate-600">Estoque validado para a aplicação.</p>'
-                            : `<div class="mt-3 space-y-1 text-sm text-rose-700">${(item.shortages || []).map((shortage) => `<p>Comprar ${escapeHtml(shortage.missing)} ${escapeHtml(shortage.unit)} de ${escapeHtml(shortage.name)}.</p>`).join('')}</div>`
-                        }
-                        <div class="mt-4">
-                            <form method="post" action="/fertilizacao/agendamentos/${escapeHtml(item.id)}\/concluir">
-                                <input type="hidden" name="csrf_token" value="${escapeHtml(dashboardScheduleMeta.csrfToken || '')}">
-                                <input type="hidden" name="redirect_to" value="${escapeHtml(dashboardScheduleMeta.redirectTo || window.location.pathname)}">
-                                <button class="rounded-xl border border-emerald-200 bg-white px-3 py-2 text-xs font-medium text-emerald-700 hover:bg-emerald-50">Concluir demanda</button>
-                            </form>
-                        </div>
-                    </div>
-                `).join('')}
-            `;
-        };
+                <h3 class="db-history-table-title">Média mensal · <span data-db-h-table-name>Arábica</span></h3>
+                <div class="db-history-table" data-db-h-table></div>
+            </aside>
+        </div>
+    </div>
+</dialog>
+{% endif %}
 
-        const openModal = () => {
-            if (!(modal instanceof HTMLDialogElement)) return;
-            if (!modal.open) {
-                modal.showModal();
-                document.body.classList.add('dashboard-schedule-modal-open');
-            }
-        };
-
-        const closeModal = () => {
-            if (!(modal instanceof HTMLDialogElement) || !modal.open) return;
-            modal.close();
-            document.body.classList.remove('dashboard-schedule-modal-open');
-        };
-
-        const renderCalendar = () => {
-            title.textContent = `${monthNames[currentMonth.getMonth()]} ${currentMonth.getFullYear()}`;
-            grid.innerHTML = '';
-            const firstDay = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1);
-            const lastDay = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 0);
-            const offset = firstDay.getDay();
-            const totalCells = Math.ceil((offset + lastDay.getDate()) / 7) * 7;
-
-            for (let index = 0; index < totalCells; index += 1) {
-                const dayNumber = index - offset + 1;
-                const cellDate = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), dayNumber);
-                const iso = `${cellDate.getFullYear()}-${String(cellDate.getMonth() + 1).padStart(2, '0')}-${String(cellDate.getDate()).padStart(2, '0')}`;
-                const button = document.createElement('button');
-                button.type = 'button';
-                button.className = 'module-filter-calendar-day';
-                const content = document.createElement('span');
-                content.className = 'module-filter-calendar-day-content';
-                const dayLabel = document.createElement('span');
-                dayLabel.textContent = String(cellDate.getDate());
-                content.appendChild(dayLabel);
-                const daySchedules = scheduleMap.get(iso) || [];
-                const dayMethods = new Set(daySchedules.map((item) => item.application_method || 'fertirrigacao'));
-                if (lateDateSet.has(iso)) {
-                    button.classList.add('is-late-event');
-                } else if (dayMethods.has('fertilizacao_foliar')) {
-                    button.classList.add('is-foliar-event');
-                } else if (dayMethods.has('adubacao_solida')) {
-                    button.classList.add('is-solid-event');
-                } else if (dayMethods.has('fertirrigacao')) {
-                    button.classList.add('is-fertigation-event');
-                }
-                button.appendChild(content);
-                if (cellDate.getMonth() !== currentMonth.getMonth()) button.classList.add('is-outside');
-                if (scheduleMap.has(iso)) button.classList.add('is-has-events');
-                if (iso === todayIso) button.classList.add('is-today');
-                if (selectedDate === iso) button.classList.add('is-selected');
-                button.addEventListener('click', () => {
-                    selectedDate = iso;
-                    renderCalendar();
-                    if (scheduleMap.has(iso)) {
-                        renderDetails();
-                        window.setTimeout(() => {
-                            openModal();
-                        }, 60);
-                    }
-                });
-                grid.appendChild(button);
-            }
-        };
-
-        prev?.addEventListener('click', () => {
-            currentMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1, 1);
-            renderCalendar();
-        });
-
-        next?.addEventListener('click', () => {
-            currentMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 1);
-            renderCalendar();
-        });
-
-        modalCloseButtons.forEach((button) => {
-            button.addEventListener('click', closeModal);
-        });
-
-        if (modal instanceof HTMLDialogElement) {
-            modal.addEventListener('click', (event) => {
-                const rect = modal.getBoundingClientRect();
-                const clickedInside = rect.top <= event.clientY && event.clientY <= rect.bottom && rect.left <= event.clientX && event.clientX <= rect.right;
-                if (!clickedInside) closeModal();
-            });
-            modal.addEventListener('close', () => {
-                document.body.classList.remove('dashboard-schedule-modal-open');
-            });
-        }
-
-        if (!schedules.length) {
-            modalContent.innerHTML = noDataTemplate instanceof HTMLTemplateElement ? noDataTemplate.innerHTML : '';
-        } else {
-            renderDetails();
-        }
-        renderCalendar();
-    })();
-
-    const dashboardCompactCurrencyMq = window.matchMedia('(max-width: 899px)');
-    const formatDashboardCompactCurrency = (value) => {
-        const numeric = Number(value) || 0;
-        const sign = numeric < 0 ? '-' : '';
-        const amount = Math.abs(numeric);
-        if (amount >= 1_000_000_000) {
-            return `${sign}${Math.floor(amount / 1_000_000_000)}bi`;
-        }
-        if (amount >= 1_000_000) {
-            return `${sign}${Math.floor(amount / 1_000_000)}M`;
-        }
-        if (amount >= 1_000) {
-            return `${sign}${Math.floor(amount / 1_000)}k`;
-        }
-        return `${sign}${Math.round(amount)}`;
-    };
-
-    const animateDashboardCount = (element) => {
-        if (!(element instanceof HTMLElement)) return;
-        if (element.dataset.countAnimated === 'true') return;
-        const rawValue = (element.dataset.countValue || '').trim();
-        const prefix = element.dataset.countPrefix || '';
-        const suffix = element.dataset.countSuffix || '';
-        const inExecutiveSummary = Boolean(element.closest('[data-dashboard-card="executive_summary"]'));
-        const useCompactCurrency =
-            (element.dataset.countMobileCompactCurrency === 'true' || prefix.trim() === 'R$') &&
-            (dashboardCompactCurrencyMq.matches || inExecutiveSummary);
-        const normalizedText = rawValue.includes(',')
-            ? rawValue.replace(/\./g, '').replace(',', '.')
-            : rawValue;
-        const normalized = Number.parseFloat(normalizedText);
-        if (!Number.isFinite(normalized)) {
-            element.textContent = `${prefix}${rawValue}${suffix}`;
-            element.dataset.countAnimated = 'true';
-            return;
-        }
-        const decimals = ((rawValue.split(/[.,]/)[1] || '').length);
-        const duration = 900;
-        const start = performance.now();
-        const easeOut = (t) => 1 - Math.pow(1 - t, 3);
-        const formatter = new Intl.NumberFormat('pt-BR', {
-            minimumFractionDigits: decimals,
-            maximumFractionDigits: decimals,
-        });
-        if (useCompactCurrency) {
-            element.title = `R$ ${new Intl.NumberFormat('pt-BR', {
-                minimumFractionDigits: 2,
-                maximumFractionDigits: 2,
-            }).format(normalized)}`;
-        }
-        const step = (now) => {
-            const progress = Math.min(1, (now - start) / duration);
-            const current = normalized * easeOut(progress);
-            if (useCompactCurrency) {
-                element.textContent = formatDashboardCompactCurrency(progress >= 1 ? normalized : current);
-            } else {
-                element.textContent = `${prefix}${formatter.format(progress >= 1 ? normalized : current)}${suffix}`;
-            }
-            if (progress < 1) {
-                window.requestAnimationFrame(step);
-                return;
-            }
-            element.dataset.countAnimated = 'true';
-        };
-        window.requestAnimationFrame(step);
-    };
-
-    const animateDashboardCounts = (scope) => {
-        scope.querySelectorAll('[data-dashboard-item]:not(.hidden) [data-dashboard-count]').forEach((element) => animateDashboardCount(element));
-    };
-
-    const executiveSummaryCard = document.querySelector('[data-dashboard-card="executive_summary"]');
-    const executiveSummaryDots = document.querySelector('[data-dashboard-dots="executive_summary"]');
-    const executiveSummaryGrid = document.querySelector('[data-dashboard-executive-grid]');
-    const executiveSummaryPagerShell = executiveSummaryCard?.querySelector('[data-dashboard-pager-shell="executive_summary"]');
-    const executiveSummaryPageNavButtons = Array.from(document.querySelectorAll('[data-dashboard-executive-page-nav]'));
-    let executiveSummaryPager = null;
-    const executiveMobileMq = window.matchMedia('(max-width: 899px)');
-    const EXEC_CARDS_PER_PAGE_DESKTOP = 6;
-    const EXEC_CARDS_PER_PAGE_MOBILE = 4;
-
-    const flattenExecutiveSummaryGrid = (grid) => {
-        const cards = Array.from(grid.querySelectorAll('[data-dashboard-executive-item]'));
-        grid.replaceChildren(...cards);
-        return cards;
-    };
-
-    const syncExecutiveSummaryPageNav = () => {
-        const total = executiveSummaryPager ? executiveSummaryPager.getTotalPages() : 0;
-        const page = executiveSummaryPager ? executiveSummaryPager.getPage() : 0;
-        executiveSummaryPageNavButtons.forEach((button) => {
-            const direction = button.dataset.dashboardExecutivePageNav;
-            const isUnavailable = total <= 1;
-            button.classList.toggle('hidden', isUnavailable);
-            button.disabled = isUnavailable || (direction === 'prev' && page <= 0) || (direction === 'next' && page >= total - 1);
-        });
-    };
-
-    executiveSummaryPageNavButtons.forEach((button) => {
-        button.addEventListener('click', () => {
-            if (!executiveSummaryPager) return;
-            const direction = button.dataset.dashboardExecutivePageNav;
-            const page = executiveSummaryPager.getPage();
-            executiveSummaryPager.setPage(direction === 'next' ? page + 1 : page - 1, direction);
-            window.setTimeout(syncExecutiveSummaryPageNav, 260);
-        });
-    });
-    executiveSummaryDots?.addEventListener('click', () => window.setTimeout(syncExecutiveSummaryPageNav, 260));
-    window.addEventListener('resize', syncExecutiveSummaryPageNav);
-
-    const setupExecutiveSummaryPager = () => {
-        if (!executiveSummaryCard || !executiveSummaryGrid || !executiveSummaryDots || !window.SiSFarmSwipePager) {
-            return;
-        }
-
-        if (executiveSummaryPager && typeof executiveSummaryPager.destroy === 'function') {
-            executiveSummaryPager.destroy();
-        }
-        executiveSummaryPager = null;
-
-        let cards = flattenExecutiveSummaryGrid(executiveSummaryGrid);
-        if (!cards.length) {
-            return;
-        }
-
-        const isMobile = executiveMobileMq.matches;
-
-        if (isMobile) {
-            executiveSummaryGrid.replaceChildren();
-            for (let i = 0; i < cards.length; i += EXEC_CARDS_PER_PAGE_MOBILE) {
-                const slide = document.createElement('div');
-                slide.className = 'dashboard-executive-page';
-                slide.dataset.dashboardExecutiveSlide = '';
-                cards.slice(i, i + EXEC_CARDS_PER_PAGE_MOBILE).forEach((c) => slide.appendChild(c));
-                executiveSummaryGrid.appendChild(slide);
-            }
-            const slides = Array.from(executiveSummaryGrid.querySelectorAll('[data-dashboard-executive-slide]'));
-            if (slides.length > 1) {
-                executiveSummaryPager = window.SiSFarmSwipePager.create({
-                    root: executiveSummaryGrid,
-                    items: slides,
-                    dotsContainer: executiveSummaryDots,
-                    itemsPerPageDesktop: 1,
-                    itemsPerPageMobile: 1,
-                    mobileOnly: true,
-                    allowInteractiveSwipe: true,
-                    threshold: 30,
-                });
-            } else {
-                slides.forEach((s) => s.classList.remove('hidden'));
-            }
-        } else {
-            cards = flattenExecutiveSummaryGrid(executiveSummaryGrid);
-            const totalPages = Math.ceil(cards.length / EXEC_CARDS_PER_PAGE_DESKTOP);
-            if (totalPages > 1) {
-                executiveSummaryPager = window.SiSFarmSwipePager.create({
-                    root: executiveSummaryGrid,
-                    scrollViewport: null,
-                    items: cards,
-                    dotsContainer: executiveSummaryDots,
-                    itemsPerPageDesktop: EXEC_CARDS_PER_PAGE_DESKTOP,
-                    itemsPerPageMobile: EXEC_CARDS_PER_PAGE_MOBILE,
-                    mobileOnly: true,
-                    allowInteractiveSwipe: false,
-                    threshold: 52,
-                });
-            } else {
-                cards.forEach((c) => c.classList.remove('hidden'));
-            }
-        }
-
-        let totalPagerPages = 0;
-        if (executiveSummaryPager) {
-            totalPagerPages = executiveSummaryPager.getTotalPages();
-        } else if (isMobile) {
-            totalPagerPages = Math.ceil(cards.length / EXEC_CARDS_PER_PAGE_MOBILE);
-        } else {
-            totalPagerPages = Math.ceil(cards.length / EXEC_CARDS_PER_PAGE_DESKTOP);
-        }
-        if (executiveSummaryPagerShell) {
-            executiveSummaryPagerShell.classList.toggle('hidden', totalPagerPages <= 1);
-        }
-        syncExecutiveSummaryPageNav();
-
-        animateDashboardCounts(executiveSummaryCard);
-    };
-
-    setupExecutiveSummaryPager();
-    let executiveSummaryResizeTimer = null;
-    executiveMobileMq.addEventListener('change', () => {
-        window.clearTimeout(executiveSummaryResizeTimer);
-        executiveSummaryResizeTimer = window.setTimeout(() => {
-            setupExecutiveSummaryPager();
-        }, 100);
-    });
-
-    document.querySelectorAll('[data-dashboard-card]').forEach((card) => {
-        if (card === executiveSummaryCard) {
-            return;
-        }
-        const items = Array.from(card.querySelectorAll('[data-dashboard-item]'));
-        const listContainer = card.querySelector('[data-dashboard-list]');
-        const dotsContainer = card.querySelector('[data-dashboard-dots]');
-        const perPage = Number(card.dataset.dashboardPerPage || 4);
-        const pagerShell = card.querySelector('[data-dashboard-pager-shell]');
-        if (!dotsContainer || items.length <= perPage) {
-            items.forEach((item) => item.classList.remove('hidden'));
-            if (pagerShell) {
-                pagerShell.classList.add('hidden');
-            }
-            return;
-        }
-
-        if (card.dataset.dashboardSwipeMobile === 'true' && listContainer && window.SiSFarmSwipePager) {
-            const pager = window.SiSFarmSwipePager.create({
-                root: listContainer,
-                items,
-                dotsContainer,
-                itemsPerPageDesktop: perPage,
-                itemsPerPageMobile: perPage,
-                mobileOnly: true,
-                allowInteractiveSwipe: true,
-                threshold: 30,
-            });
-            if (pagerShell) {
-                pagerShell.classList.toggle('hidden', !pager || pager.getTotalPages() <= 1);
-            }
-            return;
-        }
-
-        let currentPage = 1;
-        const totalPages = Math.ceil(items.length / perPage);
-
-        const renderPage = () => {
-            const start = (currentPage - 1) * perPage;
-            const end = start + perPage;
-            items.forEach((item, index) => {
-                item.classList.toggle('hidden', index < start || index >= end);
-            });
-            Array.from(dotsContainer.children).forEach((dot, index) => {
-                dot.classList.toggle('bg-brand-500', index + 1 === currentPage);
-                dot.classList.toggle('bg-slate-300', index + 1 !== currentPage);
-            });
-            animateDashboardCounts(card);
-        };
-
-        for (let page = 1; page <= totalPages; page += 1) {
-            const dot = document.createElement('button');
-            dot.type = 'button';
-            dot.className = 'h-2.5 w-2.5 rounded-full bg-slate-300 transition hover:bg-slate-400';
-            dot.setAttribute('aria-label', `Ir para pagina ${page}`);
-            dot.addEventListener('click', () => {
-                currentPage = page;
-                renderPage();
-            });
-            dotsContainer.appendChild(dot);
-        }
-
-        renderPage();
-    });
-</script>
+<script type="application/json" id="db-data">{{ {
+    "history": coffee_market.history if can_production else {},
+    "quotes": {
+        "arabica": {"price": quotes.get("arabica").price_brl|float, "date": quotes.get("arabica").quote_date.strftime('%d/%m')} if can_production and quotes.get("arabica") else None,
+        "robusta": {"price": quotes.get("robusta").price_brl|float, "date": quotes.get("robusta").quote_date.strftime('%d/%m')} if can_production and quotes.get("robusta") else None,
+    },
+    "quoteDates": {
+        "arabica": quotes.get("arabica").quote_date.isoformat() if can_production and quotes.get("arabica") else "",
+        "robusta": quotes.get("robusta").quote_date.isoformat() if can_production and quotes.get("robusta") else "",
+    },
+    "costPerSack": hero.cost_per_sack,
+    "calendar": ov.calendar if can_agenda else [],
+    "today": ov.today.isoformat(),
+    "csrf": csrf_token,
+    "redirectTo": current_url or request.url.path,
+}|tojson }}</script>
+<script src="{{ url_for('static', path='js/dashboard.js') }}?v=1"></script>
 {% endblock %}
