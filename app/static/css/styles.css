@@ -5378,3 +5378,49 @@ body .stock-tab-nav.stock-segmented-control .stock-tab-link.is-active::after { c
 
 /* Tabelas dentro dos paineis */
 body .stock-panel table thead th { font-size: .6875rem; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--sf-muted); }
+
+/* Tabela padrao (sf-table-card): no celular cada linha vira um cartao com rotulos. */
+.sf-table-card { border: 1px solid var(--sf-line, #e3e8e2); border-radius: 1rem; background: #fff; overflow: hidden; }
+.sf-table-card .sf-table { min-width: 0; }
+.sf-table td.sf-td-title { font-weight: 600; color: var(--sf-ink, #16201a); }
+.sf-table td.sf-td-num, .sf-table th.sf-td-num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.sf-td-actions { width: 1%; white-space: nowrap; }
+.sf-td-actions > * { vertical-align: middle; }
+.sf-td-actions { text-align: right; }
+.sf-td-actions .sf-menu { display: inline-block; margin-left: .25rem; }
+.sf-table tbody tr:hover td { background: #fafbf9; }
+@media (max-width: 767px) {
+    .sf-table-responsive thead { display: none; }
+    .sf-table-responsive, .sf-table-responsive tbody { display: block; }
+    .sf-table-responsive tr { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: .25rem .75rem; padding: .875rem 1rem; border-bottom: 1px solid #eef1ed; }
+    .sf-table-responsive tr:last-child { border-bottom: 0; }
+    .sf-table-responsive td { display: block; padding: 0; border: 0; font-size: .8125rem; color: var(--sf-muted, #5b6660); }
+    .sf-table-responsive td[data-label]:not(.sf-td-title)::before { content: attr(data-label) ": "; font-weight: 500; }
+    .sf-table-responsive td.sf-td-title { grid-column: 1; font-size: .9375rem; color: var(--sf-ink, #16201a); }
+    .sf-table-responsive td.sf-td-actions { grid-column: 2; grid-row: 1 / span 6; align-self: start; }
+    .sf-table-responsive td:not(.sf-td-title):not(.sf-td-actions) { grid-column: 1; }
+    .sf-table-responsive tbody tr:hover td { background: transparent; }
+}
+
+/* Padrao unico (continuacao): blocos repetidos nas paginas antigas. */
+body .finance-summary-panel { background: transparent; border: 0; padding: 0; box-shadow: none; }
+body .finance-summary-card { padding: 1rem 1.125rem; }
+body .finance-summary-card > p:first-child { font-size: .75rem; font-weight: 600; letter-spacing: 0; text-transform: none; color: var(--sf-muted, #5b6660); }
+body .stock-panel .tracking-\[0\.35em\], body .stock-panel .tracking-\[0\.3em\] { font-size: .6875rem; font-weight: 600; letter-spacing: .08em; color: var(--sf-muted, #5b6660); }
+body .stock-panel h3.text-2xl { font-size: 1.125rem; font-weight: 700; letter-spacing: -0.01em; }
+body .stock-panel article.rounded-\[1\.5rem\] { border-radius: 1rem; background: #fff; border-color: var(--sf-line, #e3e8e2); }
+body .stock-table-shell { border-radius: 1rem; border-color: var(--sf-line, #e3e8e2); }
+.sf-select { display: inline-flex; align-items: center; gap: .5rem; min-height: 2.75rem; padding: 0 .25rem 0 .875rem; border: 1px solid var(--sf-line-strong, #d6ddd5); border-radius: .75rem; background: #fff; flex: 1 1 18rem; max-width: 28rem; }
+.sf-select > span { font-size: .8125rem; font-weight: 600; color: var(--sf-muted, #5b6660); white-space: nowrap; }
+.sf-select select { flex: 1; min-width: 0; border: 0; background-color: transparent; font-size: .875rem; color: var(--sf-ink, #16201a); }
+.sf-select select:focus { box-shadow: none; outline: none; }
+.sf-select:focus-within { border-color: var(--sf-brand, #446a36); box-shadow: 0 0 0 3px rgba(68, 106, 54, .15); }
+.sf-link-btn { color: inherit; text-decoration: underline; text-decoration-color: transparent; text-underline-offset: 3px; }
+.sf-link-btn:hover { color: var(--sf-brand, #446a36); text-decoration-color: currentColor; }
+@media (max-width: 767px) { .sf-table-responsive td.sf-td-num { text-align: left; } }
+.sf-card-pad { padding: 1rem 1.125rem; }
+@media (min-width: 640px) { .sf-card-pad { padding: 1.125rem 1.5rem; } }
+button.sf-card-title { font-size: 1rem; font-weight: 700; color: var(--sf-ink, #16201a); }
+.sf-metrics.sf-metrics-plots { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+@media (min-width: 640px) { .sf-metrics.sf-metrics-plots { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (min-width: 1024px) { .sf-metrics.sf-metrics-plots { grid-template-columns: repeat(6, minmax(0, 1fr)); } }

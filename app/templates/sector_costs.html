@@ -1,21 +1,18 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="stock-page-shell space-y-6">
-    <section class="stock-page-header rounded-[2rem] p-5 shadow-panel" data-sector-costs-header>
-        <div class="min-w-0 stock-page-header-intro" data-stock-header-intro>
-            <div class="stock-page-header-intro-inner">
-                <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Gestão de custos</p>
-                <h2 class="stock-page-card-title mt-2">Custos por setor e safra</h2>
-                <p class="stock-page-card-subtitle" data-sector-costs-description>Acompanhe os custos operacionais com vínculo direto aos setores da fazenda.</p>
-            </div>
+<div class="stock-page-shell sf-page">
+    <header class="sf-page-header">
+        <div class="min-w-0">
+            <h1 class="sf-page-title">Custos por setor</h1>
+            <p class="sf-page-subtitle">Custos operacionais de cada setor da fazenda, por safra.</p>
         </div>
-    </section>
+    </header>
 
-    <section class="stock-panel rounded-[2rem] bg-white p-5 shadow-panel" data-stock-fade-panel>
-        <form method="get" class="grid items-end gap-4 md:grid-cols-[minmax(0,1fr)_auto]">
-            <label class="block min-w-0">
-                <span class="mb-2 block text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">Safra</span>
-                <select name="season_id" class="w-full rounded-2xl border-slate-200 bg-slate-50 px-4 py-3 text-slate-800" onchange="this.form.submit()">
+    <section aria-label="Filtro de safra">
+        <form method="get" class="sf-toolbar">
+            <label class="sf-select">
+                <span>Safra</span>
+                <select name="season_id" onchange="this.form.submit()">
                     <option value="">Todas as safras</option>
                     {% for season in seasons %}
                     <option value="{{ season.id }}" {% if selected_season and selected_season.id == season.id %}selected{% endif %}>{{ season.name }} · {{ season.culture }}</option>
@@ -23,49 +20,49 @@
                 </select>
             </label>
             {% if selected_season %}
-            <a href="/custos-por-setor" class="inline-flex min-h-[3.25rem] items-center justify-center rounded-2xl border border-slate-200 px-5 py-3 text-sm font-semibold text-slate-600 hover:bg-slate-50">Limpar</a>
+            <a href="/custos-por-setor" class="sf-btn sf-btn-secondary">Limpar filtro</a>
             {% endif %}
         </form>
         {% if selected_season %}
-        <p class="mt-3 text-sm text-slate-500">Período da safra: {{ selected_season.start_date.strftime('%d/%m/%Y') }} a {{ selected_season.end_date.strftime('%d/%m/%Y') }}.</p>
+        <p class="mt-2 text-sm text-slate-500">Período da safra: {{ selected_season.start_date.strftime('%d/%m/%Y') }} a {{ selected_season.end_date.strftime('%d/%m/%Y') }}.</p>
         {% if season_without_linked_plots %}<p class="mt-3 rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-800">Esta safra ainda não possui setores vinculados. Exibindo todos os setores da fazenda; edite a safra para definir seus setores.</p>{% endif %}
         {% else %}
-        <p class="mt-3 text-sm text-slate-500">Exibindo todos os custos com setor informado no contexto selecionado.</p>
+        <p class="mt-2 text-sm text-slate-500">Exibindo todos os custos com setor informado no contexto selecionado.</p>
         {% endif %}
     </section>
 
-    <section class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4" data-stock-fade-panel>
-        <article class="rounded-[1.5rem] border border-emerald-100 bg-emerald-50/70 p-5 shadow-sm"><p class="text-xs font-semibold uppercase tracking-[0.24em] text-emerald-700">Custo alocado</p><p class="mt-2 text-2xl font-semibold text-slate-900">R$ {{ costs.allocated_total|decimal_br }}</p><p class="mt-1 text-sm text-slate-500">Vinculado a setores</p></article>
-        <article class="rounded-[1.5rem] border border-sky-100 bg-sky-50/70 p-5 shadow-sm"><p class="text-xs font-semibold uppercase tracking-[0.24em] text-sky-700">Custo por hectare</p><p class="mt-2 text-2xl font-semibold text-slate-900">R$ {{ costs.cost_per_hectare|decimal_br }}</p><p class="mt-1 text-sm text-slate-500">Sobre {{ costs.total_area|decimal_br }} ha de setores</p></article>
-        <article class="rounded-[1.5rem] border border-amber-100 bg-amber-50/70 p-5 shadow-sm"><p class="text-xs font-semibold uppercase tracking-[0.24em] text-amber-700">Insumos e combustível</p><p class="mt-2 text-2xl font-semibold text-slate-900">R$ {{ (costs.inputs_total + costs.fuel_total)|decimal_br }}</p><p class="mt-1 text-sm text-slate-500">Consumo efetivo de estoque</p></article>
-        <article class="rounded-[1.5rem] border border-slate-200 bg-slate-50 p-5 shadow-sm"><p class="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">Sem setor definido</p><p class="mt-2 text-2xl font-semibold text-slate-900">R$ {{ costs.unallocated_total|decimal_br }}</p><p class="mt-1 text-sm text-slate-500">{{ costs.unallocated_movements }} movimentação(ões) não rateada(s)</p></article>
+    <section class="sf-kpis" aria-label="Resumo de custos">
+        <div class="sf-kpi"><span class="sf-kpi-label">Custo alocado</span><span class="sf-kpi-value">R$ {{ costs.allocated_total|decimal_br }}</span><span class="sf-kpi-hint">Vinculado a setores</span></div>
+        <div class="sf-kpi"><span class="sf-kpi-label">Custo por hectare</span><span class="sf-kpi-value">R$ {{ costs.cost_per_hectare|decimal_br }}</span><span class="sf-kpi-hint">Sobre {{ costs.total_area|decimal_br }} ha de setores</span></div>
+        <div class="sf-kpi"><span class="sf-kpi-label">Insumos e combustível</span><span class="sf-kpi-value">R$ {{ (costs.inputs_total + costs.fuel_total)|decimal_br }}</span><span class="sf-kpi-hint">Consumo efetivo de estoque</span></div>
+        <div class="sf-kpi"><span class="sf-kpi-label">Sem setor definido</span><span class="sf-kpi-value">R$ {{ costs.unallocated_total|decimal_br }}</span><span class="sf-kpi-hint">{{ costs.unallocated_movements }} movimentação(ões) não rateada(s)</span></div>
     </section>
 
-    {% if costs.divergent_rows %}<section class="stock-panel rounded-[2rem] border border-amber-200 bg-white p-5 shadow-panel" data-stock-fade-panel>
+    {% if costs.divergent_rows %}<section class="rounded-2xl border border-amber-200 bg-white p-5">
         <p class="text-xs font-semibold uppercase tracking-[0.2em] text-amber-700">Divergências de vínculo</p>
         <h3 class="mt-2 text-lg font-semibold text-slate-900">Custos em setores fora da safra: R$ {{ costs.divergent_total|decimal_br }}</h3>
         <p class="mt-2 text-sm text-slate-600">Estes lançamentos estão associados à safra, mas seus setores não estão vinculados atualmente. Eles permanecem no total analisado e não entram no custo alocado ou na área dos setores da safra.</p>
         <div class="mt-4 space-y-2">{% for row in costs.divergent_rows %}<button type="button" data-cost-details="{{ row.plot.id }}" data-cost-category="todos" class="flex w-full items-center justify-between gap-3 rounded-xl border border-amber-100 bg-amber-50/50 px-4 py-3 text-left text-sm hover:bg-amber-50"><span class="font-semibold text-slate-900">{{ row.plot.name }}</span><span class="shrink-0 font-semibold text-amber-800">R$ {{ row.total_cost|decimal_br }}</span></button>{% endfor %}</div>
     </section>{% endif %}
 
-    <section class="stock-panel overflow-hidden rounded-[2rem] bg-white p-5 shadow-panel" data-stock-fade-panel>
-        <div class="mb-5 flex flex-wrap items-end justify-between gap-3">
-            <div><p class="text-xs uppercase tracking-[0.35em] text-slate-400">Setores</p><h3 class="mt-2 text-2xl font-semibold text-slate-900">Composição dos custos</h3></div>
+    <section class="sf-table-card" aria-label="Composição dos custos">
+        <div class="sf-detail-head">
+            <h2 class="text-base font-bold">Composição dos custos</h2>
             <p class="text-sm text-slate-500">Total analisado: <strong class="text-slate-800">R$ {{ costs.total_cost|decimal_br }}</strong></p>
         </div>
-        <div class="overflow-x-auto">
-            <table class="min-w-[900px] w-full text-left text-sm">
-                <thead class="border-y border-slate-200 bg-slate-50 text-xs uppercase tracking-[0.18em] text-slate-500"><tr><th class="px-4 py-4">Setor</th><th class="px-4 py-4">Área</th><th class="px-4 py-4">Insumos</th><th class="px-4 py-4">Combustível</th><th class="px-4 py-4">Operações</th><th class="px-4 py-4">Total</th><th class="px-4 py-4">R$/ha</th></tr></thead>
+        <div>
+            <table class="sf-table sf-table-responsive">
+                <thead><tr><th>Setor</th><th class="sf-td-num">Área</th><th class="sf-td-num">Insumos</th><th class="sf-td-num">Combustível</th><th class="sf-td-num">Operações</th><th class="sf-td-num">Total</th><th class="sf-td-num">R$/ha</th></tr></thead>
                 <tbody class="divide-y divide-slate-100">
                     {% for row in costs.rows %}
-                    <tr class="transition hover:bg-slate-50"><td class="border-l-4 border-emerald-200 px-4 py-4"><a href="/setores?view_id={{ row.plot.id }}" class="font-semibold text-slate-900 hover:text-brand-700">{{ row.plot.name }}</a><p class="mt-1 text-xs text-slate-500">{{ row.stock_movements }} saída(s) · {{ row.applications }} aplicação(ões)</p></td><td class="px-4 py-4 text-slate-600">{{ row.area_hectares|decimal_br }} ha</td><td class="px-4 py-4"><button type="button" data-cost-details="{{ row.plot.id }}" data-cost-category="insumos" class="text-left hover:text-brand-700">R$ {{ row.inputs_cost|decimal_br }}</button></td><td class="px-4 py-4"><button type="button" data-cost-details="{{ row.plot.id }}" data-cost-category="combustivel" class="text-left hover:text-brand-700">R$ {{ row.fuel_cost|decimal_br }}</button></td><td class="px-4 py-4"><button type="button" data-cost-details="{{ row.plot.id }}" data-cost-category="operacoes" class="text-left hover:text-brand-700">R$ {{ row.manual_expenses_cost|decimal_br }}</button></td><td class="px-4 py-4 font-semibold text-slate-900"><button type="button" data-cost-details="{{ row.plot.id }}" data-cost-category="todos" class="text-left hover:text-brand-700">R$ {{ row.total_cost|decimal_br }}</button></td><td class="px-4 py-4 font-semibold text-brand-700">R$ {{ row.cost_per_hectare|decimal_br }}</td></tr>
+                    <tr><td class="sf-td-title" data-label="Setor"><a href="/setores?view_id={{ row.plot.id }}" class="text-slate-900 hover:text-brand-700">{{ row.plot.name }}</a><span class="block text-xs font-normal text-slate-500">{{ row.stock_movements }} saída(s) · {{ row.applications }} aplicação(ões)</span></td><td class="sf-td-num" data-label="Área">{{ row.area_hectares|decimal_br }} ha</td><td class="sf-td-num" data-label="Insumos"><button type="button" data-cost-details="{{ row.plot.id }}" data-cost-category="insumos" class="sf-link-btn">R$ {{ row.inputs_cost|decimal_br }}</button></td><td class="sf-td-num" data-label="Combustível"><button type="button" data-cost-details="{{ row.plot.id }}" data-cost-category="combustivel" class="sf-link-btn">R$ {{ row.fuel_cost|decimal_br }}</button></td><td class="sf-td-num" data-label="Operações"><button type="button" data-cost-details="{{ row.plot.id }}" data-cost-category="operacoes" class="sf-link-btn">R$ {{ row.manual_expenses_cost|decimal_br }}</button></td><td class="sf-td-num" data-label="Total"><button type="button" data-cost-details="{{ row.plot.id }}" data-cost-category="todos" class="sf-link-btn font-semibold text-slate-900">R$ {{ row.total_cost|decimal_br }}</button></td><td class="sf-td-num font-semibold text-brand-700" data-label="R$/ha">R$ {{ row.cost_per_hectare|decimal_br }}</td></tr>
                     {% else %}
-                    <tr><td colspan="7" class="px-4 py-10 text-center text-slate-500">Nenhum setor encontrado no contexto ativo.</td></tr>
+                    <tr><td colspan="7" class="px-4 py-10 text-center text-slate-500" style="grid-column:1 / -1">Nenhum setor encontrado no contexto ativo.</td></tr>
                     {% endfor %}
                 </tbody>
             </table>
         </div>
-        <p class="mt-5 rounded-2xl bg-slate-50 px-4 py-3 text-sm text-slate-500">Custos de manutenção e outras despesas gerais permanecem fora deste painel até terem um vínculo explícito com setor e safra. Assim, o total por setor não recebe rateios estimados.</p>
+        <p class="border-t border-slate-100 bg-slate-50 px-4 py-3 text-sm text-slate-500">Custos de manutenção e outras despesas gerais permanecem fora deste painel até terem um vínculo explícito com setor e safra. Assim, o total por setor não recebe rateios estimados.</p>
     </section>
 </div>
 {% for row in costs.rows + costs.divergent_rows %}
