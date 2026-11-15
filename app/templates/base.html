@@ -279,13 +279,28 @@
                         ('irrigation', '/irrigacao', 'Irrigacao', 'nav_irrigation'),
                         ('rainfall', '/pluviometria', 'Pluviometria', 'nav_rainfall'),
                         ('pests', '/pragas', 'Pragas e Doencas', 'nav_pests'),
-                        ('soil_analyses', '/analise-solo', 'Analise de Solo', 'nav_soil'),
-                        ('agronomic_profiles', '/perfil-agronomico', 'Perfil Agronomico', 'nav_agronomic'),
+                        ('soil_group', '', '', ''),
                         ('map', '/mapa', 'Mapa da Fazenda', 'nav_map'),
                         ('mobile', '/mobile', 'Campo Mobile', 'nav_mobile')
                     ] %}
+                    {% set soil_pages = ['soil_analyses', 'agronomic_profiles'] %}
                     {% for key, href, label, mvk in nav %}
-                    {% if menu_visibility.get(mvk) %}
+                    {% if key == 'soil_group' %}
+                    {% if menu_visibility.get('nav_soil') or menu_visibility.get('nav_agronomic') %}
+                    <div class="rounded-2xl {% if page in soil_pages %}bg-slate-900/80{% endif %}" data-submenu-group>
+                        <button type="button" class="erp-sidebar-link flex w-full items-center justify-between rounded-2xl px-4 py-3 text-left transition-all duration-300 ease-in-out {% if page in soil_pages %}text-white{% else %}text-slate-300 hover:bg-slate-900 hover:text-white{% endif %}" data-submenu-toggle="soil-menu" data-submenu-parent aria-haspopup="true" aria-expanded="{% if page in soil_pages %}true{% else %}false{% endif %}">
+                            <span class="flex items-center gap-3"><span class="erp-sidebar-icon">{{ nav_icon('soil_analyses') }}</span><span class="erp-sidebar-label">Solo e Nutrição</span></span>
+                            <span class="erp-sidebar-parent-indicator inline-flex h-8 w-8 items-center justify-center rounded-full bg-white/5 text-slate-300/80 transition-transform duration-200 ease-out" aria-hidden="true">
+                                <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+                            </span>
+                        </button>
+                        <div id="soil-menu" class="sidebar-submenu-panel {% if page not in soil_pages %}hidden {% endif %}space-y-1 px-3 pb-3" data-submenu-panel>
+                            {% if menu_visibility.get('nav_soil') %}<a href="{{ module_href('/analise-solo') }}" class="sidebar-submenu-link block rounded-xl px-3 py-2 text-sm {% if page == 'soil_analyses' %}bg-brand-500 text-white{% else %}text-slate-300 hover:bg-slate-800 hover:text-white{% endif %}" data-submenu-link>Análise de Solo{{ module_lock('/analise-solo') }}</a>{% endif %}
+                            {% if menu_visibility.get('nav_agronomic') %}<a href="{{ module_href('/perfil-agronomico') }}" class="sidebar-submenu-link block rounded-xl px-3 py-2 text-sm {% if page == 'agronomic_profiles' %}bg-brand-500 text-white{% else %}text-slate-300 hover:bg-slate-800 hover:text-white{% endif %}" data-submenu-link>Perfil Agronômico{{ module_lock('/perfil-agronomico') }}</a>{% endif %}
+                        </div>
+                    </div>
+                    {% endif %}
+                    {% elif menu_visibility.get(mvk) %}
                     <a href="{{ module_href(href) }}" class="erp-sidebar-link flex items-center justify-start gap-3 rounded-2xl px-4 py-3 transition-all duration-300 ease-in-out {% if page == key %}bg-brand-500 text-white shadow-lg{% else %}text-slate-300 hover:bg-slate-900 hover:text-white{% endif %}">
                         <span class="erp-sidebar-icon">{{ nav_icon(key) }}</span>
                         <span class="erp-sidebar-label">{{ label }}{{ module_lock(href) }}</span>
