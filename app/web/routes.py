@@ -4167,6 +4167,69 @@ def dashboard(
     )
 
 
+def _dashboard_cost_scope(request: Request, repo: FarmRepository, user: User):
+    scope = _global_scope_context(request, repo, user)
+    farm_id, season = scope.get("active_farm_id"), scope.get("active_season")
+    plots = [plot for plot in (season.plots if season else []) if plot.farm_id == farm_id]
+    return farm_id, season, plots
+
+
+@router.get("/api/dashboard/custos")
+def dashboard_cost_tree(
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    from app.services.season_costs import build_cost_tree
+
+    if not user_has_permission(db, user, PAGE_FINANCE):
+        return JSONResponse({"status": "forbidden"}, status_code=403)
+    repo = _repository(db)
+    farm_id, season, plots = _dashboard_cost_scope(request, repo, user)
+    if not farm_id or season is None:
+        return JSONResponse({"status": "no_season"})
+    if not plots:
+        return JSONResponse({"status": "no_plots", "season": season.name})
+    data = build_cost_tree(repo, farm_id=farm_id, season=season, plots=plots, today=today_in_app_timezone())
+    data["can_edit"] = user_has_permission(db, user, WRITE_FINANCE)
+    return JSONResponse(data)
+
+
+@router.post("/api/dashboard/custos/classificar")
+def dashboard_cost_classify(
+    request: Request,
+    csrf_token: str = Form(...),
+    entry_key: str = Form(...),
+    subgroup: str = Form(...),
+    learn_key: str | None = Form(None),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    from app.models.cost_classification import CostClassification
+    import re
+
+    from app.services.season_costs import SUB_INDEX, normalize
+
+    validate_csrf(request, csrf_token)
+    if not user_has_permission(db, user, WRITE_FINANCE):
+        return JSONResponse({"status": "forbidden"}, status_code=403)
+    if subgroup not in SUB_INDEX or not re.fullmatch(r"(fin|stock):\d+", entry_key or ""):
+        return JSONResponse({"status": "invalid"}, status_code=400)
+    repo = _repository(db)
+    farm_id, _season, _plots = _dashboard_cost_scope(request, repo, user)
+    if not farm_id:
+        return JSONResponse({"status": "no_farm"}, status_code=400)
+    row = db.query(CostClassification).filter(CostClassification.farm_id == farm_id, CostClassification.entry_key == entry_key).first()
+    if row is None:
+        row = CostClassification(farm_id=farm_id, entry_key=entry_key)
+        db.add(row)
+    row.group_code, row.subgroup_code = SUB_INDEX[subgroup][0], subgroup
+    row.learn_key = normalize(learn_key)[:200] or None
+    row.user_id = user.id
+    db.commit()
+    return JSONResponse({"status": "ok"})
+
+
 @router.get("/api/dashboard/clima")
 def dashboard_weather_forecast(
     request: Request,

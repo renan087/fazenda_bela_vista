@@ -1059,6 +1059,28 @@ def build_dashboard_overview(
         "margin_pct": round(margin / revenue * 100) if revenue else None,
         "ready": bool(season and estimated_production and price),
     }
+    # Rodape do hero: linha do ciclo (aplicacoes) e composicao do custo
+    calendar_items = _dashboard_calendar(repository, {p.id for p in plots}, today)
+    if cycle_pct is not None:
+        total_days = (season.end_date - season.start_date).days
+        marks = []
+        for item in calendar_items:
+            day = date.fromisoformat(item["date"])
+            if season.start_date <= day <= season.end_date:
+                marks.append({"pos": round((day - season.start_date).days / total_days * 100, 2), "status": item["status"],
+                              "title": f"{day.strftime('%d/%m')} · {item['method']} — {item['plot']}"})
+        hero["timeline"] = {
+            "start": season.start_date.strftime("%d/%m/%Y"), "end": season.end_date.strftime("%d/%m/%Y"),
+            "marks": marks, "done": sum(1 for m in marks if m["status"] == "done"),
+            "late": sum(1 for m in marks if m["status"] == "late"), "total": len(marks),
+        }
+    hero["cost_groups"] = []
+    if season is not None and farm_id and plots and getattr(season, "plots", None):
+        from app.services.season_costs import build_cost_tree, cost_group_summary
+        try:
+            hero["cost_groups"] = cost_group_summary(build_cost_tree(repository, farm_id=farm_id, season=season, plots=plots, today=today, with_previous=False))
+        except Exception:  # o rodape e complementar; nunca derruba o Dashboard
+            hero["cost_groups"] = []
     hero["revenue_fmt"] = _brl_compact(hero["revenue"])
     hero["cost_fmt"] = _brl_compact(hero["cost"])
     hero["margin_fmt"] = _brl_compact(hero["margin"])
@@ -1175,7 +1197,7 @@ def build_dashboard_overview(
         "cash_balance": round(balance, 2),
         "cash_projected": round(running, 2),
         "rain": rain,
-        "calendar": _dashboard_calendar(repository, {p.id for p in plots}, today),
+        "calendar": calendar_items,
         "agenda": _dashboard_agenda(repository, farm_id, {p.id for p in plots}, today),
         "activity": activity_timeline[:6],
     }

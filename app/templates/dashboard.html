@@ -53,6 +53,30 @@
                 <input id="db-price" type="range" min="{{ ((hero.price * 0.4) // 10 * 10)|int }}" max="{{ ((hero.price * 1.6) // 10 * 10)|int }}" step="10" value="{{ hero.price|int }}" data-db-price aria-label="Simular preço da saca">
             </div>
             {% endif %}
+            {% set tl = hero.timeline %}
+            {% set show_mix = can_finance and hero.cost_groups %}
+            {% if tl or show_mix %}
+            <div class="db-hero-foot{% if not (tl and show_mix) %} is-single{% endif %}">
+                {% if tl %}
+                <div class="db-cycle">
+                    <div class="db-hero-foot-head"><span>Linha do ciclo</span><small>{% if tl.total %}{{ tl.done }} de {{ tl.total }} aplicaç{{ 'ão feita' if tl.total == 1 else 'ões feitas' }}{% if tl.late %} · {{ tl.late }} atrasada{{ 's' if tl.late > 1 else '' }}{% endif %}{% else %}Nenhuma aplicação programada{% endif %}</small></div>
+                    <div class="db-cycle-track" role="img" aria-label="{{ hero.cycle_pct }}% do ciclo; {{ tl.done }} de {{ tl.total }} aplicações feitas">
+                        <span class="db-cycle-line"></span><span class="db-cycle-fill" style="width: {{ hero.cycle_pct }}%"></span>
+                        {% for m in tl.marks %}<span class="db-cycle-dot is-{{ m.status }}" style="left: {{ m.pos }}%" title="{{ m.title }}"></span>{% endfor %}
+                        <span class="db-cycle-today" style="left: {{ hero.cycle_pct }}%" aria-hidden="true"></span>
+                    </div>
+                    <div class="db-cycle-labels"><span>Início · {{ tl.start }}</span><strong>Hoje</strong><span>Fim · {{ tl.end }}</span></div>
+                </div>
+                {% endif %}
+                {% if show_mix %}
+                <div class="db-costmix">
+                    <div class="db-hero-foot-head"><span>Para onde vai o custo</span><button type="button" class="db-costmix-link" data-db-cost-open>Detalhar →</button></div>
+                    <div class="db-costmix-bar" aria-hidden="true">{% for g in hero.cost_groups %}<span style="flex: {{ g.value }}; background: {{ g.color }}" title="{{ g.name }} · {{ g.value|money_br }}"></span>{% endfor %}</div>
+                    <ul class="db-costmix-legend">{% for g in hero.cost_groups %}<li><i style="background: {{ g.color }}"></i>{{ g.name }} <strong>{{ g.pct }}%</strong></li>{% endfor %}</ul>
+                </div>
+                {% endif %}
+            </div>
+            {% endif %}
         </section>
         {% endif %}
 
@@ -395,6 +419,22 @@
     "csrf": csrf_token,
     "redirectTo": current_url or request.url.path,
 }|tojson }}</script>
+{% if can_finance %}
+<dialog id="db-cost-modal" class="app-modal db-history db-cost" aria-labelledby="db-cost-title">
+    <div class="db-history-shell">
+        <div class="db-history-head">
+            <div class="min-w-0 flex-1">
+                <h2 id="db-cost-title" data-db-c-title>Custo da safra</h2>
+                <nav class="db-cost-crumbs" aria-label="Caminho" data-db-c-crumbs></nav>
+            </div>
+            <button type="button" class="sf-btn sf-btn-secondary db-btn-sm" data-db-c-back hidden>← Voltar</button>
+            <button type="button" class="modal-close-button" aria-label="Fechar" data-db-cost-close><svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>
+        </div>
+        <div class="db-cost-body" data-db-c-body aria-live="polite"><p class="db-muted">Carregando…</p></div>
+    </div>
+</dialog>
+<script src="{{ url_for('static', path='js/dashboard_costs.js') }}?v=1" defer></script>
+{% endif %}
 <script src="{{ url_for('static', path='js/dashboard.js') }}?v=4"></script>
 {% if can_rainfall %}<script src="{{ url_for('static', path='js/dashboard_weather.js') }}?v=6"></script>{% endif %}
 {% endblock %}
