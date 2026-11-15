@@ -1,6 +1,6 @@
 from datetime import date
 
-from sqlalchemy import Date, ForeignKey, Integer, Numeric, String, Text
+from sqlalchemy import Date, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -8,9 +8,11 @@ from app.db.base import Base
 
 class Plot(Base):
     __tablename__ = "plots"
+    # Nome unico dentro da fazenda (outras fazendas e contas podem repetir "Talhao 1").
+    __table_args__ = (UniqueConstraint("farm_id", "name", name="uq_plots_farm_name"),)
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
-    name: Mapped[str] = mapped_column(String(120), unique=True, nullable=False)
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
     area_hectares: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False)
     location: Mapped[str] = mapped_column(String(120), nullable=True)
     planting_date: Mapped[date] = mapped_column(Date, nullable=True)

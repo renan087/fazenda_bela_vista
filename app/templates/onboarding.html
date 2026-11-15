@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block content %}
+{% set field = 'w-full rounded-xl border-slate-200 bg-slate-50 focus:border-brand-500 focus:ring-brand-500' %}
+<div class="mx-auto max-w-3xl space-y-6">
+    <section class="overflow-hidden rounded-[2rem] bg-gradient-to-br from-emerald-950 via-emerald-900 to-[#446a36] p-6 text-white shadow-xl sm:p-8">
+        <p class="text-xs font-semibold uppercase tracking-[0.22em] text-emerald-200/80">Primeiros passos</p>
+        <h2 class="mt-2 text-2xl font-semibold sm:text-3xl">Bem-vindo{{ ', ' ~ first_name if first_name else '' }}! Vamos configurar sua fazenda.</h2>
+        <p class="mt-2 max-w-xl text-sm text-emerald-100/85">Com a fazenda e a safra cadastradas, todos os módulos ficam liberados. Leva um minuto, e você pode ajustar tudo depois.</p>
+        <ol class="mt-6 flex flex-wrap gap-2 text-xs font-semibold">
+            <li class="rounded-full bg-white px-3 py-1 text-emerald-900">1 · Fazenda</li>
+            <li class="rounded-full bg-white px-3 py-1 text-emerald-900">2 · Safra</li>
+            <li class="rounded-full bg-white/10 px-3 py-1 text-emerald-100 ring-1 ring-white/20">3 · Talhões e equipe (depois)</li>
+        </ol>
+    </section>
+
+    {% if error %}<div class="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700" role="alert">{{ error }}</div>{% endif %}
+
+    <form method="post" action="/primeiros-passos" class="space-y-6" data-busy-form>
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        {% if existing_farm %}
+        <section class="flex items-center gap-3 rounded-[1.5rem] border border-emerald-100 bg-emerald-50/60 p-5">
+            <span class="grid h-8 w-8 place-items-center rounded-full bg-brand-500 text-white"><svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12 5 5 9-10"/></svg></span>
+            <p class="text-sm text-slate-700"><strong class="text-slate-900">{{ existing_farm.name }}</strong> já está cadastrada. Falta só abrir a safra.</p>
+        </section>
+        {% else %}
+        <section class="rounded-[1.5rem] border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+            <div class="flex items-center gap-3"><span class="grid h-8 w-8 place-items-center rounded-full bg-brand-500 text-sm font-bold text-white">1</span><h3 class="font-semibold text-slate-900">Sua fazenda</h3></div>
+            <div class="mt-5 grid gap-4 sm:grid-cols-2">
+                <label class="block sm:col-span-2"><span class="mb-1 block text-sm font-medium text-slate-700">Nome da fazenda</span>
+                    <input name="farm_name" value="{{ form.farm_name }}" class="{{ field }}" placeholder="Fazenda Boa Esperança" required maxlength="160" autofocus></label>
+                <label class="block"><span class="mb-1 block text-sm font-medium text-slate-700">Cidade / UF</span>
+                    <input name="location" value="{{ form.location }}" class="{{ field }}" placeholder="Três Pontas / MG" required maxlength="180"></label>
+                <label class="block"><span class="mb-1 block text-sm font-medium text-slate-700">Área total (ha)</span>
+                    <input name="total_area" value="{{ form.total_area }}" inputmode="decimal" class="{{ field }}" placeholder="120,5" required></label>
+            </div>
+        </section>
+
+        {% endif %}
+        <section class="rounded-[1.5rem] border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+            <div class="flex items-center gap-3"><span class="grid h-8 w-8 place-items-center rounded-full bg-brand-500 text-sm font-bold text-white">2</span><h3 class="font-semibold text-slate-900">Safra atual</h3></div>
+            <p class="mt-2 text-sm text-slate-500">Já sugerimos o ano-safra do café (julho a junho). Ajuste se a sua for diferente.</p>
+            <div class="mt-5 grid gap-4 sm:grid-cols-2">
+                <label class="block"><span class="mb-1 block text-sm font-medium text-slate-700">Início</span>
+                    <input type="date" name="season_start" value="{{ form.season_start }}" class="{{ field }}" required></label>
+                <label class="block"><span class="mb-1 block text-sm font-medium text-slate-700">Fim</span>
+                    <input type="date" name="season_end" value="{{ form.season_end }}" class="{{ field }}" required></label>
+            </div>
+        </section>
+
+        <div class="flex flex-col-reverse items-stretch gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <p class="text-xs text-slate-500">Talhões, equipe e demais dados você cadastra a seguir, pelo checklist do painel.</p>
+            <button class="rounded-xl bg-brand-500 px-6 py-3 text-sm font-semibold text-white shadow-sm hover:bg-brand-700">Começar a usar o SiSFarm</button>
+        </div>
+    </form>
+</div>
+{% endblock %}

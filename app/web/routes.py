@@ -890,6 +890,13 @@ def _farm_name_taken(db: Session, organization_id: int | None, name: str, exclud
     return query.first() is not None
 
 
+def _plot_name_taken(db: Session, farm_id: int, name: str, exclude_id: int | None = None) -> bool:
+    query = db.query(Plot.id).filter(Plot.farm_id == farm_id, func.lower(Plot.name) == (name or "").strip().lower())
+    if exclude_id:
+        query = query.filter(Plot.id != exclude_id)
+    return query.first() is not None
+
+
 def _redirect(url: str) -> RedirectResponse:
     return RedirectResponse(url=url, status_code=status.HTTP_303_SEE_OTHER)
 
@@ -998,6 +1005,7 @@ def _base_context(request: Request, user: User, csrf_token: str, page: str, **kw
             permission_codes,
         )
         context["context_lock_exempt"] = page in {
+            "onboarding",
             "farms",
             "seasons",
             "profile",
@@ -3837,6 +3845,116 @@ def revert_global_context(
     return _redirect(redirect_to)
 
 
+def _coffee_season_window(today: date) -> tuple[date, date]:
+    """Ano-safra do cafe: julho a junho."""
+    start_year = today.year if today.month >= 7 else today.year - 1
+    return date(start_year, 7, 1), date(start_year + 1, 6, 30)
+
+
+def _onboarding_done(db: Session, user: User) -> bool:
+    farm_ids = [row[0] for row in db.query(Farm.id).filter(Farm.organization_id == user.organization_id)]
+    return bool(farm_ids) and db.query(CropSeason.id).filter(CropSeason.farm_id.in_(farm_ids)).first() is not None
+
+
+def _render_onboarding(request, db, user, csrf_token, *, form=None, error=None):
+    start, end = _coffee_season_window(today_in_app_timezone())
+    defaults = {"farm_name": "", "location": "", "total_area": "", "season_start": start.isoformat(), "season_end": end.isoformat()}
+    defaults.update(form or {})
+    return templates.TemplateResponse("onboarding.html", _base_context(
+        request, user, csrf_token, "onboarding", title="Primeiros passos", _repo=_repository(db),
+        form=defaults, error=error, first_name=(user.display_name or user.name or "").split(" ")[0],
+        existing_farm=_first_org_farm(db, user),
+    ), status_code=400 if error else 200)
+
+
+def _first_org_farm(db: Session, user: User) -> Farm | None:
+    return db.query(Farm).filter(Farm.organization_id == user.organization_id).order_by(Farm.id).first()
+
+
+ONBOARDING_WINDOW_DAYS = 60
+
+
+def _onboarding_steps(db: Session, user: User) -> list[dict] | None:
+    """Checklist de primeiros passos para contas novas; None quando concluido, dispensado ou conta antiga."""
+    organization = user.organization
+    if not organization or organization.onboarding_dismissed or organization.slug == "sisfarm":
+        return None
+    created = organization.created_at.date() if organization.created_at else None
+    if created and (today_in_app_timezone() - created).days > ONBOARDING_WINDOW_DAYS:
+        return None
+    farm_ids = [row[0] for row in db.query(Farm.id).filter(Farm.organization_id == organization.id)]
+    has_season = bool(farm_ids) and db.query(CropSeason.id).filter(CropSeason.farm_id.in_(farm_ids)).first() is not None
+    has_plots = bool(farm_ids) and db.query(Plot.id).filter(Plot.farm_id.in_(farm_ids)).first() is not None
+    team = db.query(func.count(User.id)).filter(User.organization_id == organization.id).scalar() or 0
+    steps = [
+        {"title": "Cadastrar a fazenda", "hint": "Nome, localização e área.", "done": bool(farm_ids), "href": "/primeiros-passos"},
+        {"title": "Abrir a safra", "hint": "O período que você vai acompanhar.", "done": has_season, "href": "/primeiros-passos"},
+        {"title": "Cadastrar os talhões", "hint": "Desenhe no mapa ou importe o arquivo.", "done": has_plots, "href": "/setores"},
+        {"title": "Convidar sua equipe", "hint": "Gerente, agrônomo e operadores.", "done": team > 1, "href": "/usuarios"},
+    ]
+    return None if all(step["done"] for step in steps) else steps
+
+
+@router.post("/primeiros-passos/dispensar")
+def onboarding_dismiss_action(request: Request, csrf_token: str = Form(...), db: Session = Depends(get_db), user: User = Depends(get_current_user_web)):
+    validate_csrf(request, csrf_token)
+    if user.organization:
+        user.organization.onboarding_dismissed = True
+        db.commit()
+    return _redirect("/dashboard")
+
+
+@router.get("/primeiros-passos")
+def onboarding_page(request: Request, db: Session = Depends(get_db), user: User = Depends(get_current_user_web), csrf_token: str = Depends(get_csrf_token)):
+    if not user.organization_id or _onboarding_done(db, user):
+        return _redirect("/dashboard")
+    return _render_onboarding(request, db, user, csrf_token)
+
+
+@router.post("/primeiros-passos")
+def onboarding_action(
+    request: Request, csrf_token: str = Form(...), farm_name: str = Form(""), location: str = Form(""),
+    total_area: str = Form(""), season_start: str = Form(""), season_end: str = Form(""),
+    db: Session = Depends(get_db), user: User = Depends(get_current_user_web),
+):
+    """Cria a primeira fazenda e a safra atual e ja ativa o contexto, liberando o sistema."""
+    validate_csrf(request, csrf_token)
+    if not user.organization_id or _onboarding_done(db, user):
+        return _redirect("/dashboard")
+    form = {"farm_name": farm_name, "location": location, "total_area": total_area, "season_start": season_start, "season_end": season_end}
+    name, place = (farm_name or "").strip(), (location or "").strip()
+    area = _parse_br_decimal(total_area)
+    try:
+        start, end = date.fromisoformat(season_start), date.fromisoformat(season_end)
+    except ValueError:
+        start = end = None
+    error = None
+    existing = _first_org_farm(db, user)
+    if existing:  # ja tem fazenda: so falta a safra
+        area = float(existing.total_area or 0) or 1.0
+    elif not name or len(name) > 160:
+        error = "Informe o nome da fazenda."
+    elif not place or len(place) > 180:
+        error = "Informe a cidade e o estado da fazenda."
+    elif area is None or not 0 < area <= 1_000_000:
+        error = "Informe a área total da fazenda em hectares."
+    elif _farm_name_taken(db, user.organization_id, name):
+        error = f"Já existe uma fazenda chamada {name}. Use outro nome."
+    if not error and (not start or not end or end <= start):
+        error = "Confira as datas da safra: o fim precisa ser depois do início."
+    if not error and not existing:
+        error = farm_limit_error(db, _entitlements_for(db, user), adding_farm=True, area_delta=Decimal(str(area)))
+    if error:
+        return _render_onboarding(request, db, user, get_csrf_token(request), form=form, error=error)
+    repo = _repository(db)
+    farm = existing or create_farm(repo, {"name": name, "location": place, "total_area": area, "organization_id": user.organization_id})
+    season = create_crop_season(repo, {"farm_id": farm.id, "start_date": start.isoformat(), "end_date": end.isoformat(), "culture": "Cafe",
+                                       "cultivated_area": area, "area_unit": "ha", "status": "ativa"})
+    persist_user_context(request, db, user, farm.id, season.id)
+    _flash(request, "success", f"Tudo pronto! {farm.name} e a {season.name} já estão ativas.")
+    return _redirect("/dashboard")
+
+
 @router.get("/dashboard")
 def dashboard(
     request: Request,
@@ -3903,6 +4021,7 @@ def dashboard(
             user,
             csrf_token,
             "dashboard",
+            onboarding_steps=_onboarding_steps(db, user),
             rain_filters={
                 "start_date": rain_start_date or "",
                 "end_date": rain_end_date or "",
@@ -8165,6 +8284,9 @@ def create_plot_action(
     if not farm or not _farm_matches_scope(farm.id, scope):
         _flash(request, "error", "A fazenda selecionada nao foi encontrada.")
         return _redirect("/setores")
+    if _plot_name_taken(db, farm.id, name):
+        _flash(request, "error", f"Já existe um setor chamado {name.strip()} nesta fazenda. Use outro nome.")
+        return _redirect_with_query("/setores", selected_farm_id=selected_farm_id)
     geometry, geometry_ok, upload_payload, upload_filename = _resolve_geojson(boundary_geojson_file, boundary_geojson)
     if boundary_geojson_file and boundary_geojson_file.filename and not geometry_ok:
         _flash(request, "error", "O arquivo GeoJSON do setor nao e valido.")
@@ -8255,6 +8377,9 @@ def update_plot_action(
     if not farm or not _farm_matches_scope(farm.id, scope):
         _flash(request, "error", "A fazenda selecionada nao foi encontrada.")
         return _redirect("/setores")
+    if _plot_name_taken(db, farm.id, name, exclude_id=plot.id):
+        _flash(request, "error", f"Já existe um setor chamado {name.strip()} nesta fazenda. Use outro nome.")
+        return _redirect_with_query("/setores", selected_farm_id=farm.id)
     selected_variety_id = _int_or_none(variety_id)
     if selected_variety_id:
         selected_variety = repo.get_variety(selected_variety_id)

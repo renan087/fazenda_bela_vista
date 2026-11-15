@@ -776,7 +776,9 @@ def _finish_signup(request: Request, db: Session, state: dict, password_hash: st
             )
         except Exception:
             logger.exception("Falha ao avisar a equipe sobre novo cadastro")
-    return _complete_web_login(request, db, user)
+    response = _complete_web_login(request, db, user)
+    response.headers["location"] = "/primeiros-passos"
+    return response
 
 
 @router.get("/cadastro")
