@@ -5548,3 +5548,11 @@ dialog.fa-invoices-modal { width: min(56rem, calc(100vw - 2rem)); max-width: non
 .stock-history-stage > p.fa-hint { font-size: .8125rem; font-weight: 400; letter-spacing: 0; text-transform: none; }
 .fa-invoice-tabs .finance-credit-card-invoice-tab.fa-invoice-tab.is-active { border-color: var(--sf-ink, #16201a); background: var(--sf-ink, #16201a); color: #fff; box-shadow: none; }
 @media (max-width: 767px) { table.sf-table-legacy tbody td:not(.sf-td-actions) { text-align: left !important; } }
+
+/* Padrao unico (lote Administracao): paineis brancos avulsos nas paginas com layout proprio. */
+body .erp-main-shell section.rounded-\[2rem\].shadow-panel:not(dialog *) { border-radius: 1rem; border: 1px solid var(--sf-line, #e3e8e2); box-shadow: none; }
+body .erp-main-shell section.rounded-\[2rem\].shadow-panel:not(dialog *) > div > div > p.uppercase:first-child,
+body .erp-main-shell section.rounded-\[2rem\].shadow-panel:not(dialog *) > p.uppercase:first-child { font-size: .6875rem; font-weight: 600; letter-spacing: .08em; color: var(--sf-muted, #5b6660); }
+body .erp-main-shell section.rounded-\[2rem\].shadow-panel:not(dialog *) h2.text-2xl,
+body .erp-main-shell section.rounded-\[2rem\].shadow-panel:not(dialog *) h3.text-2xl { font-size: 1.375rem; font-weight: 700; letter-spacing: -0.02em; }
+body .erp-main-shell .rounded-\[1\.5rem\].shadow-sm:not(dialog *) { border-radius: 1rem; box-shadow: none; }
