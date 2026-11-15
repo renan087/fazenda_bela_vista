@@ -354,415 +354,213 @@
             </div>
         </div>
 
+        {% set kebab_icon %}<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="12" cy="5" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="12" cy="19" r="1.7"/></svg>{% endset %}
+        {% set grip_icon %}<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="9" cy="6" r="1.35"/><circle cx="15" cy="6" r="1.35"/><circle cx="9" cy="12" r="1.35"/><circle cx="15" cy="12" r="1.35"/><circle cx="9" cy="18" r="1.35"/><circle cx="15" cy="18" r="1.35"/></svg>{% endset %}
         <div class="stock-history-stage mt-4" data-finance-tab="accounts">
+        {% if finance_accounts %}<p class="fa-hint">A conta padrão recebe os lançamentos automáticos.<span class="hidden md:inline"> Arraste pelo ícone ⋮⋮ para reorganizar.</span></p>{% endif %}
         <div class="finance-card-paged-shell" data-finance-accounts-paged-shell>
-        {% if finance_accounts|length > 3 %}
-        <button type="button" class="finance-card-page-nav finance-card-page-nav-prev" data-finance-accounts-page-nav="prev" aria-label="Página anterior de contas">
-            <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <path d="m15 18-6-6 6-6"/>
-            </svg>
-        </button>
-        {% endif %}
         <div class="finance-accounts-carousel-viewport min-w-0 w-full" data-finance-accounts-viewport>
-        <div class="mt-5 grid gap-4 lg:grid-cols-2 2xl:grid-cols-3" data-finance-accounts-grid>
+        <div class="fa-grid" data-finance-accounts-grid>
             {% for account in finance_accounts %}
             {% set bank = (finance_bank_options | selectattr('code', 'equalto', account.bank_code) | list | first) %}
-            <article class="min-w-0 max-w-full overflow-hidden rounded-2xl border border-slate-200 bg-white p-5 transition hover:border-slate-300 hover:shadow-md" data-finance-account-row data-finance-account-summary-item data-finance-sortable-item data-finance-sort-id="{{ account.id }}" data-finance-account-search="{{ (account.account_name or '') ~ ' ' ~ (account.bank_name or '') ~ ' ' ~ (account.branch_number or '') ~ ' ' ~ (account.account_number or '') }}">
-                <div class="flex items-start justify-between gap-3">
-                    <div class="min-w-0">
+            {% set acc_balance = finance_account_balances.get(account.id, 0) %}
+            {% set acc_tx = (finance_account_transaction_counts|default({})).get(account.id, 0) %}
+            <article class="fa-card" data-finance-account-row data-finance-account-summary-item data-finance-sortable-item data-finance-sort-id="{{ account.id }}" data-finance-account-search="{{ (account.account_name or '') ~ ' ' ~ (account.bank_name or '') ~ ' ' ~ (account.branch_number or '') ~ ' ' ~ (account.account_number or '') }}">
+                <div class="fa-card-head">
+                    {{ finance_bank_avatar(bank, 'h-11 w-11', 'text-sm', account.bank_code) }}
+                    <div class="min-w-0 flex-1">
                         <div class="flex flex-wrap items-center gap-2">
-                            {{ finance_bank_avatar(bank, 'h-10 w-10', 'text-sm', account.bank_code) }}
-                            <div class="min-w-0">
-                                <p class="truncate text-lg font-semibold text-slate-900">{{ account.account_name }}</p>
-                                <p class="truncate text-sm text-slate-500">({{ account.bank_code }}) {{ account.bank_name }}</p>
-                            </div>
+                            <h3 class="fa-card-title">{{ account.account_name }}</h3>
+                            {% if account.is_default %}<span class="fa-pill-default">★ Padrão</span>{% endif %}
                         </div>
+                        <p class="fa-card-sub">{{ account.bank_name }} ({{ account.bank_code }})</p>
                     </div>
-                    <div class="flex shrink-0 items-center gap-2">
-                        <button type="button" class="finance-sort-handle inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-400 transition hover:border-brand-200 hover:bg-brand-50 hover:text-brand-700" data-finance-sort-handle title="Arrastar para reorganizar" aria-label="Arrastar para reorganizar conta">
-                            <svg class="h-5 w-5" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-                                <circle cx="9" cy="6" r="1.35"/>
-                                <circle cx="15" cy="6" r="1.35"/>
-                                <circle cx="9" cy="12" r="1.35"/>
-                                <circle cx="15" cy="12" r="1.35"/>
-                                <circle cx="9" cy="18" r="1.35"/>
-                                <circle cx="15" cy="18" r="1.35"/>
-                            </svg>
-                        </button>
-                        <form method="post" action="/gestao-financeira/contas/{{ account.id }}/definir-padrao">
-                            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                            <button type="{% if account.is_default %}button{% else %}submit{% endif %}" class="finance-default-star-trigger inline-flex h-10 w-10 items-center justify-center rounded-full border transition {% if account.is_default %}border-amber-200 bg-amber-50 text-amber-500 hover:bg-amber-100{% else %}border-slate-200 bg-white text-slate-300 hover:border-amber-200 hover:bg-amber-50 hover:text-amber-400{% endif %}" title="{% if account.is_default %}Conta padrão{% else %}Definir como padrão{% endif %}" aria-label="{% if account.is_default %}Conta padrão{% else %}Definir como padrão{% endif %}" {% if not account.is_default %}data-finance-default-trigger{% endif %}>
-                                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 24 24" fill="{% if account.is_default %}currentColor{% else %}none{% endif %}" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                                    <path d="m12 3.5 2.63 5.33 5.88.86-4.25 4.14 1 5.84L12 17.1l-5.26 2.57 1-5.84L3.5 9.69l5.88-.86L12 3.5z"/>
-                                </svg>
-                            </button>
-                        </form>
-                    </div>
+                    <button type="button" class="sf-icon-btn fa-grip hidden md:inline-flex" data-finance-sort-handle title="Arrastar para reorganizar" aria-label="Arrastar para reorganizar conta">{{ grip_icon }}</button>
+                    <details class="sf-menu" data-sf-dropdown>
+                        <summary class="sf-icon-btn" aria-label="Mais ações da conta {{ account.account_name }}" title="Mais ações">{{ kebab_icon }}</summary>
+                        <div class="sf-menu-panel">
+                            <a href="/gestao-financeira/contas?finance_tab=accounts&edit_id={{ account.id }}">Editar conta</a>
+                            {% if not account.is_default %}
+                            <form method="post" action="/gestao-financeira/contas/{{ account.id }}/definir-padrao">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                                <button type="submit" data-finance-default-trigger>Definir como padrão</button>
+                            </form>
+                            {% endif %}
+                            {% if acc_tx > 0 %}
+                            <p class="sf-menu-hint">Não dá para excluir: há {{ acc_tx }} lançamento(s) nesta conta.</p>
+                            {% else %}
+                            <form method="post" action="/gestao-financeira/contas/{{ account.id }}/excluir" onsubmit="return confirm('Excluir a conta {{ account.account_name }}? Esta ação não pode ser desfeita.');">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                                <button type="submit" class="sf-menu-danger">Excluir conta</button>
+                            </form>
+                            {% endif %}
+                        </div>
+                    </details>
                 </div>
-                {% set acc_balance = finance_account_balances.get(account.id, 0) %}
-                <div class="mt-4">
-                    <p class="text-xs text-slate-500">Saldo atual</p>
-                    <p class="text-2xl font-bold tracking-tight tabular-nums {% if acc_balance < 0 %}text-rose-600{% else %}text-slate-900{% endif %}">R$ {{ acc_balance|decimal_br }}</p>
+                <div>
+                    <p class="fa-label">Saldo atual</p>
+                    <p class="fa-balance {% if acc_balance < 0 %}text-rose-600{% endif %}">R$ {{ acc_balance|decimal_br }}</p>
                 </div>
-                <dl class="mt-3 grid grid-cols-2 gap-3 rounded-xl bg-slate-50 p-3 sm:grid-cols-3">
-                    <div class="min-w-0"><dt class="text-xs text-slate-500">Agência / conta</dt><dd class="truncate text-sm font-semibold text-slate-900">{{ account.branch_number or "—" }} / {{ account.account_number or "—" }}</dd></div>
-                    <div class="min-w-0"><dt class="text-xs text-slate-500">Saldo inicial</dt><dd class="truncate text-sm font-semibold text-slate-900" title="Data base {{ account.initial_balance_date.strftime('%d/%m/%Y') if account.initial_balance_date else '-' }}">R$ {{ account.initial_balance|decimal_br }}</dd><dd class="text-[11px] text-slate-500">{{ account.initial_balance_date.strftime('%d/%m/%Y') if account.initial_balance_date else "" }}</dd></div>
-                    <div class="min-w-0"><dt class="text-xs text-slate-500">Lançamentos</dt><dd class="text-sm font-semibold text-slate-900">{{ finance_account_transaction_counts.get(account.id, 0) }}</dd></div>
+                <dl class="fa-facts">
+                    <div><dt>Agência / conta</dt><dd>{{ account.branch_number or "—" }} / {{ account.account_number or "—" }}</dd></div>
+                    <div><dt>Saldo inicial</dt><dd title="Data base {{ account.initial_balance_date.strftime('%d/%m/%Y') if account.initial_balance_date else '-' }}">R$ {{ account.initial_balance|decimal_br }}</dd></div>
+                    <div><dt>Lançamentos</dt><dd>{{ acc_tx }}</dd></div>
                 </dl>
-                <div class="mt-4 flex items-center justify-end gap-2">
-                    <a href="/gestao-financeira/contas?finance_tab=accounts&edit_id={{ account.id }}" class="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-100" title="Editar">
-                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <path d="M12 20h9"/>
-                            <path d="M16.5 3.5a2.1 2.1 0 1 1 3 3L7 19l-4 1 1-4Z"/>
-                        </svg>
-                    </a>
-                    {% if (finance_account_transaction_counts|default({})).get(account.id, 0) > 0 %}
-                    <button type="button" disabled class="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 text-slate-400 opacity-60 cursor-not-allowed" title="Não é possível excluir: há lançamentos vinculados a esta conta.">
-                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-                            <path d="M3 6h18"/>
-                            <path d="M8 6V4h8v2"/>
-                            <path d="M19 6l-1 14H6L5 6"/>
-                            <path d="M10 11v6"/>
-                            <path d="M14 11v6"/>
-                        </svg>
-                    </button>
-                    {% else %}
-                    <form method="post" action="/gestao-financeira/contas/{{ account.id }}/excluir" onsubmit="return confirm('Excluir a conta {{ account.account_name }}?');">
-                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                        <button type="submit" class="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 text-rose-600 hover:bg-rose-50" title="Excluir">
-                            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                <path d="M3 6h18"/>
-                                <path d="M8 6V4h8v2"/>
-                                <path d="M19 6l-1 14H6L5 6"/>
-                                <path d="M10 11v6"/>
-                                <path d="M14 11v6"/>
-                            </svg>
-                        </button>
-                    </form>
-                    {% endif %}
-                </div>
+                <a class="fa-link" href="/gestao-financeira/contas?finance_tab=transactions&transactions_account_id={{ account.id }}">Ver extrato da conta →</a>
             </article>
-            {% else %}
-            <div class="rounded-[1.5rem] border border-dashed border-slate-200 bg-slate-50/80 px-6 py-10 text-center text-slate-500 lg:col-span-2 2xl:col-span-3">
-                Nenhuma conta bancária cadastrada para a fazenda ativa.
-            </div>
             {% endfor %}
+            <button type="button" class="fa-add" data-sf-proxy-click="[data-finance-account-open]">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+                Adicionar conta bancária
+            </button>
         </div>
         </div>
-        {% if finance_accounts|length > 3 %}
-        <button type="button" class="finance-card-page-nav finance-card-page-nav-next" data-finance-accounts-page-nav="next" aria-label="Próxima página de contas">
-            <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <path d="m9 6 6 6-6 6"/>
-            </svg>
-        </button>
-        {% endif %}
         </div>
-        {% if finance_accounts|length > 1 %}
-        <div class="mt-5" data-finance-accounts-dots></div>
-        {% endif %}
         <p class="stock-search-empty mt-4 hidden text-sm text-slate-500" data-finance-accounts-empty>Nenhuma conta corresponde à busca digitada.</p>
         </div>
 
         <div class="stock-history-stage mt-4 hidden" data-finance-tab="cards">
         <div class="finance-card-paged-shell" data-finance-cards-paged-shell>
-        {% if finance_credit_cards|length > 3 %}
-        <button type="button" class="finance-card-page-nav finance-card-page-nav-prev" data-finance-cards-page-nav="prev" aria-label="Página anterior de cartões">
-            <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <path d="m15 18-6-6 6-6"/>
-            </svg>
-        </button>
-        {% endif %}
         <div class="finance-cards-carousel-viewport min-w-0 w-full" data-finance-cards-viewport>
-        <div class="mt-5 grid gap-4 lg:grid-cols-2 2xl:grid-cols-3" data-finance-cards-grid>
+        <div class="fa-grid fa-grid-cards" data-finance-cards-grid>
             {% for card in finance_credit_cards %}
             {% set card_overview = finance_credit_card_overviews.get(card.id, {}) %}
             {% set next_invoice = card_overview.get('next_open_invoice') %}
-            <article class="min-w-0 max-w-full overflow-hidden rounded-[1.5rem] border border-slate-200 bg-slate-50/80 p-5 shadow-sm transition hover:border-sky-200 hover:bg-white" data-finance-card-summary-item data-finance-sortable-item data-finance-sort-id="{{ card.id }}">
-                <div class="flex items-start justify-between gap-3">
-                    <div class="min-w-0">
-                        <div class="flex items-center gap-3">
-                            <span class="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-sky-50 text-sky-700 ring-1 ring-sky-100">
-                                <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-                                    <rect x="3" y="6" width="18" height="12" rx="2"/>
-                                    <path d="M3 10h18"/>
-                                    <path d="M8 15h2"/>
-                                </svg>
-                            </span>
-                            <div class="min-w-0">
-                                <p class="truncate text-lg font-semibold text-slate-900">{{ card.card_name }}</p>
-                                <p class="truncate text-sm text-slate-500">{{ card.issuer }}{% if card.brand %} • {{ card.brand }}{% endif %}</p>
-                                <div class="mt-2 flex flex-wrap items-center gap-2">
-                                    <p class="inline-flex rounded-full px-3 py-1 text-xs font-semibold {% if card.is_active %}bg-emerald-50 text-emerald-700{% else %}bg-slate-100 text-slate-500{% endif %}">{{ "Ativo" if card.is_active else "Inativo" }}</p>
-                                    {% if card_overview.get('due_today_total', 0) > 0 %}
-                                    <p class="inline-flex rounded-full bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700">Vence hoje</p>
-                                    {% endif %}
-                                </div>
-                            </div>
+            {% set usage = card_overview.get('usage_percent') %}
+            <article class="fa-card" data-finance-card-summary-item data-finance-sortable-item data-finance-sort-id="{{ card.id }}">
+                <div class="fa-card-head">
+                    <span class="fa-card-chip" aria-hidden="true">{{ (card.brand or card.issuer or 'Cartão')|upper|truncate(8, True, '') }}</span>
+                    <div class="min-w-0 flex-1">
+                        <div class="flex flex-wrap items-center gap-2">
+                            <h3 class="fa-card-title">{{ card.card_name }}</h3>
+                            {% if card.is_default %}<span class="fa-pill-default">★ Padrão</span>{% endif %}
+                            {% if not card.is_active %}<span class="sf-pill">Inativo</span>{% endif %}
+                            {% if card_overview.get('due_today_total', 0) > 0 %}<span class="sf-pill sf-pill-renewed">Vence hoje</span>{% endif %}
                         </div>
+                        <p class="fa-card-sub">{{ card.issuer }}{% if card.brand %} · {{ card.brand }}{% endif %} · fecha dia {{ card.closing_day }}, vence dia {{ card.due_day }}</p>
                     </div>
-                    <div class="flex shrink-0 items-center gap-2">
-                        <button type="button" class="finance-sort-handle inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-400 transition hover:border-sky-200 hover:bg-sky-50 hover:text-sky-700" data-finance-sort-handle title="Arrastar para reorganizar" aria-label="Arrastar para reorganizar cartão">
-                            <svg class="h-5 w-5" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-                                <circle cx="9" cy="6" r="1.35"/>
-                                <circle cx="15" cy="6" r="1.35"/>
-                                <circle cx="9" cy="12" r="1.35"/>
-                                <circle cx="15" cy="12" r="1.35"/>
-                                <circle cx="9" cy="18" r="1.35"/>
-                                <circle cx="15" cy="18" r="1.35"/>
-                            </svg>
-                        </button>
-                        <form method="post" action="/gestao-financeira/cartoes/{{ card.id }}/definir-padrao">
-                            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                            <button type="{% if card.is_default %}button{% else %}submit{% endif %}" class="finance-default-star-trigger inline-flex h-10 w-10 items-center justify-center rounded-full border transition {% if card.is_default %}border-amber-200 bg-amber-50 text-amber-500 hover:bg-amber-100{% else %}border-slate-200 bg-white text-slate-300 hover:border-amber-200 hover:bg-amber-50 hover:text-amber-400{% endif %}" title="{% if card.is_default %}Cartão padrão{% else %}Definir como padrão{% endif %}" aria-label="{% if card.is_default %}Cartão padrão{% else %}Definir como padrão{% endif %}" {% if not card.is_default %}data-finance-default-trigger{% endif %}>
-                                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 24 24" fill="{% if card.is_default %}currentColor{% else %}none{% endif %}" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                                    <path d="m12 3.5 2.63 5.33 5.88.86-4.25 4.14 1 5.84L12 17.1l-5.26 2.57 1-5.84L3.5 9.69l5.88-.86L12 3.5z"/>
-                                </svg>
-                            </button>
-                        </form>
-                    </div>
+                    <button type="button" class="sf-icon-btn fa-grip hidden md:inline-flex" data-finance-sort-handle title="Arrastar para reorganizar" aria-label="Arrastar para reorganizar cartão">{{ grip_icon }}</button>
+                    <details class="sf-menu" data-sf-dropdown>
+                        <summary class="sf-icon-btn" aria-label="Mais ações do cartão {{ card.card_name }}" title="Mais ações">{{ kebab_icon }}</summary>
+                        <div class="sf-menu-panel">
+                            <a href="/gestao-financeira/contas?finance_tab=cards&card_edit_id={{ card.id }}">Editar cartão</a>
+                            {% if not card.is_default %}
+                            <form method="post" action="/gestao-financeira/cartoes/{{ card.id }}/definir-padrao">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                                <button type="submit" data-finance-default-trigger>Definir como padrão</button>
+                            </form>
+                            {% endif %}
+                            <form method="post" action="/gestao-financeira/cartoes/{{ card.id }}/excluir" onsubmit="return confirm('Excluir o cartão {{ card.card_name }}? Esta ação não pode ser desfeita.');">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                                <button type="submit" class="sf-menu-danger">Excluir cartão</button>
+                            </form>
+                        </div>
+                    </details>
                 </div>
-                <div class="mt-4 grid gap-3 xl:grid-cols-2">
-                    <div class="rounded-[1.35rem] border border-sky-100 bg-gradient-to-br from-sky-50 to-white px-4 py-4 shadow-sm">
-                        <p class="text-[0.65rem] font-semibold uppercase tracking-[0.18em] text-slate-400">Limite do cartão</p>
-                        <p class="mt-2 text-lg font-semibold text-slate-900">{% if card.credit_limit is not none %}R$ {{ card.credit_limit|decimal_br }}{% else %}-{% endif %}</p>
-                        <p class="mt-1 text-xs text-slate-500">Disponível: {% if card_overview.get('available_limit') is not none %}R$ {{ card_overview.get('available_limit')|decimal_br }}{% else %}-{% endif %}</p>
-                    </div>
-                    <div class="rounded-[1.35rem] border border-slate-200 bg-white px-4 py-4 shadow-sm">
-                        <p class="text-[0.65rem] font-semibold uppercase tracking-[0.18em] text-slate-400">Próxima fatura</p>
+                <div>
+                    <div class="fa-usage-text"><span>Uso do limite</span><strong>R$ {{ card_overview.get('open_total', 0)|decimal_br }}{% if card.credit_limit is not none %} de R$ {{ card.credit_limit|decimal_br }}{% endif %}</strong></div>
+                    <div class="fa-usage" role="progressbar" aria-label="Uso do limite" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{ (usage or 0)|round(0)|int }}"><span style="width: {{ (usage or 0)|round(1) }}%"></span></div>
+                    {% if card_overview.get('available_limit') is not none %}<p class="fa-label mt-1">Disponível: R$ {{ card_overview.get('available_limit')|decimal_br }}</p>{% endif %}
+                </div>
+                <div class="fa-invoice">
+                    <div class="min-w-0">
                         {% if next_invoice %}
-                        <p class="mt-2 text-lg font-semibold text-slate-900">R$ {{ next_invoice.open_total|decimal_br }}</p>
-                        <p class="mt-1 text-xs text-slate-500">Vencimento {{ next_invoice.due_date_label }}</p>
+                        <p class="fa-label">Próxima fatura · vence {{ next_invoice.due_date_label }}</p>
+                        <p class="fa-invoice-value">R$ {{ next_invoice.open_total|decimal_br }}</p>
                         {% else %}
-                        <p class="mt-2 text-lg font-semibold text-slate-900">Sem pendências</p>
-                        <p class="mt-1 text-xs text-slate-500">Nenhuma fatura em aberto.</p>
+                        <p class="fa-label">Próxima fatura</p>
+                        <p class="fa-invoice-value">Sem pendências</p>
                         {% endif %}
                     </div>
+                    <button type="button" class="sf-btn sf-btn-secondary" data-finance-card-invoices-open data-finance-card-modal-id="finance-credit-card-invoices-modal-{{ card.id }}">Ver faturas</button>
                 </div>
-                <div class="mt-3 grid gap-3 sm:grid-cols-2">
-                    <div class="rounded-2xl bg-white px-4 py-3 ring-1 ring-slate-200/80">
-                        <p class="text-xs uppercase tracking-[0.18em] text-slate-400">Fechamento</p>
-                        <p class="mt-1 text-sm font-semibold text-slate-900">Dia {{ card.closing_day }}</p>
+                <dl class="fa-facts">
+                    <div><dt>Conta para pagamento</dt><dd>{{ card.payment_account.account_name if card.payment_account else "Não vinculada" }}</dd></div>
+                    <div><dt>Parcelas em aberto</dt><dd>{{ card_overview.get('open_installments', 0) }}</dd></div>
+                    <div><dt>Em atraso</dt><dd class="{% if card_overview.get('overdue_total', 0) > 0 %}text-rose-600{% endif %}">R$ {{ card_overview.get('overdue_total', 0)|decimal_br }}</dd></div>
+                </dl>
+            </article>
+            {% endfor %}
+            <button type="button" class="fa-add" data-sf-proxy-click="[data-finance-credit-card-open]">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+                Adicionar cartão de crédito
+            </button>
+        </div>
+        </div>
+        </div>
+        </div>
+
+        {% for card in finance_credit_cards %}
+        {% set card_overview = finance_credit_card_overviews.get(card.id, {}) %}
+        <dialog id="finance-credit-card-invoices-modal-{{ card.id }}" class="app-modal fa-invoices-modal" aria-labelledby="fa-invoices-title-{{ card.id }}">
+            <div class="fa-invoices-shell">
+                <div class="fa-invoices-head">
+                    <div class="min-w-0 flex-1">
+                        <p class="fa-label">Faturas do cartão</p>
+                        <h3 id="fa-invoices-title-{{ card.id }}" class="text-xl font-bold">{{ card.card_name }}</h3>
                     </div>
-                    <div class="rounded-2xl bg-white px-4 py-3 ring-1 ring-slate-200/80">
-                        <p class="text-xs uppercase tracking-[0.18em] text-slate-400">Vencimento</p>
-                        <p class="mt-1 text-sm font-semibold text-slate-900">Dia {{ card.due_day }}</p>
-                    </div>
-                    <div class="rounded-2xl bg-white px-4 py-3 ring-1 ring-slate-200/80">
-                        <p class="text-xs uppercase tracking-[0.18em] text-slate-400">Em aberto</p>
-                        <p class="mt-1 text-sm font-semibold {% if card_overview.get('open_total', 0) > 0 %}text-sky-700{% else %}text-slate-900{% endif %}">R$ {{ card_overview.get('open_total', 0)|decimal_br }}</p>
-                    </div>
-                    <div class="rounded-2xl bg-white px-4 py-3 ring-1 ring-slate-200/80">
-                        <p class="text-xs uppercase tracking-[0.18em] text-slate-400">Em atraso</p>
-                        <p class="mt-1 text-sm font-semibold {% if card_overview.get('overdue_total', 0) > 0 %}text-rose-600{% else %}text-slate-900{% endif %}">R$ {{ card_overview.get('overdue_total', 0)|decimal_br }}</p>
-                    </div>
-                    <div class="rounded-2xl bg-white px-4 py-3 ring-1 ring-slate-200/80">
-                        <p class="text-xs uppercase tracking-[0.18em] text-slate-400">Conta para pagamento</p>
-                        <p class="mt-1 text-sm font-semibold text-slate-900">{{ card.payment_account.account_name if card.payment_account else "Não vinculada" }}</p>
-                    </div>
-                    <div class="rounded-2xl bg-white px-4 py-3 ring-1 ring-slate-200/80">
-                        <p class="text-xs uppercase tracking-[0.18em] text-slate-400">Parcelas</p>
-                        <p class="mt-1 text-sm font-semibold text-slate-900">{{ card_overview.get('open_installments', 0) }} abertas</p>
-                        <p class="mt-1 text-xs text-slate-500">{{ card_overview.get('paid_installments', 0) }} pagas</p>
-                    </div>
-                </div>
-                {% if card_overview.get('usage_percent') is not none %}
-                <div class="mt-3 rounded-[1.25rem] border border-slate-200 bg-white px-4 py-3">
-                    <div class="flex items-center justify-between gap-3 text-sm">
-                        <p class="font-semibold text-slate-700">Uso do limite</p>
-                        <span class="font-semibold text-slate-900">{{ card_overview.get('usage_percent')|round(1) }}%</span>
-                    </div>
-                    <div class="finance-credit-card-usage-rail mt-2">
-                        <div class="finance-credit-card-usage-fill" style="width: {{ card_overview.get('usage_percent')|round(1) }}%;"></div>
-                    </div>
-                </div>
-                {% endif %}
-                <div class="mt-4 rounded-[1.25rem] border border-slate-200 bg-white px-4 py-4">
-                    <div class="flex items-center justify-between gap-3">
-                        <div>
-                            <p class="text-sm font-semibold text-slate-900">Faturas do cartão</p>
-                            <p class="mt-1 text-xs text-slate-500">Abra o detalhamento mensal em um modal com abas por fatura.</p>
-                        </div>
-                        <span class="inline-flex rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">{{ card_overview.get('invoice_groups', [])|length }}</span>
-                    </div>
-                    <button type="button" class="mt-4 inline-flex w-full items-center justify-center rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm font-semibold text-sky-700 transition hover:bg-sky-100" data-finance-card-invoices-open data-finance-card-modal-id="finance-credit-card-invoices-modal-{{ card.id }}">
-                        Ver faturas do cartão
+                    <button type="button" class="modal-close-button" aria-label="Fechar" data-finance-card-invoices-close>
+                        <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
                     </button>
                 </div>
-                <div class="mt-4 flex items-center justify-end gap-2">
-                    <a href="/gestao-financeira/contas?finance_tab=cards&card_edit_id={{ card.id }}" class="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-100" title="Editar">
-                        <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                            <path d="M12 20h9"/>
-                            <path d="M16.5 3.5a2.1 2.1 0 1 1 3 3L7 19l-4 1 1-4Z"/>
-                        </svg>
-                    </a>
-                    <form method="post" action="/gestao-financeira/cartoes/{{ card.id }}/excluir" onsubmit="return confirm('Excluir o cartão {{ card.card_name }}?');">
-                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                        <button type="submit" class="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 text-rose-600 hover:bg-rose-50" title="Excluir">
-                            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                <path d="M3 6h18"/>
-                                <path d="M8 6V4h8v2"/>
-                                <path d="M19 6l-1 14H6L5 6"/>
-                                <path d="M10 11v6"/>
-                                <path d="M14 11v6"/>
-                            </svg>
+                {% if card_overview.get('invoice_groups', []) %}
+                <div class="finance-credit-card-invoice-tabs-shell fa-invoice-tabs" data-finance-card-invoice-tabs-shell data-can-scroll-left="false" data-can-scroll-right="true">
+                    <button type="button" class="finance-credit-card-invoice-nav" data-finance-card-invoices-nav="prev" aria-label="Ver faturas anteriores"><svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg></button>
+                    <div class="finance-credit-card-invoice-tabs-track" role="tablist" aria-label="Faturas de {{ card.card_name }}" data-finance-card-invoice-tabs-track>
+                        {% for invoice in card_overview.get('invoice_groups', []) %}
+                        <button type="button" class="finance-credit-card-invoice-tab fa-invoice-tab {% if loop.first %}is-active{% endif %}" role="tab" aria-selected="{% if loop.first %}true{% else %}false{% endif %}"
+                            data-finance-card-invoice-tab data-tab-group="card-{{ card.id }}" data-tab-target="card-{{ card.id }}-invoice-{{ loop.index0 }}"
+                            data-due-date="{{ invoice.due_date.isoformat() if invoice.due_date else '' }}" data-due-date-label="{{ invoice.due_date_label }}"
+                            data-reference-label="{{ invoice.reference_label }}" data-open-total="{{ invoice.open_total|decimal_br }}"
+                            data-can-pay="{% if invoice.open_total > 0 and invoice.due_date %}true{% else %}false{% endif %}"
+                            data-can-revert="{% if invoice.paid_count > 0 and invoice.due_date %}true{% else %}false{% endif %}">
+                            <span>{{ invoice.reference_label }}</span>
+                            <span class="stock-movement-chip {{ invoice.status_chip_class }}">{{ invoice.status_label }}</span>
                         </button>
-                    </form>
-                </div>
-            </article>
-            <dialog id="finance-credit-card-invoices-modal-{{ card.id }}" class="app-modal max-h-[calc(100dvh-2rem)] rounded-[2rem] p-0 shadow-2xl w-full max-w-6xl overflow-hidden">
-                <div class="flex max-h-[calc(100dvh-2rem)] flex-col bg-white p-6 sm:p-8">
-                    <div class="flex items-start justify-between gap-4">
-                        <div class="min-w-0">
-                            <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Faturas do cartão</p>
-                            <h3 class="mt-2 text-2xl font-semibold">{{ card.card_name }}</h3>
-                            <p class="mt-2 text-sm text-slate-500">Navegue pelas faturas mensais, visualize as compras e quite a fatura completa quando necessário.</p>
-                        </div>
-                        <div class="flex items-center gap-3">
-                            <button type="button" class="hidden rounded-2xl bg-brand-500 px-4 py-3 text-sm font-semibold text-white hover:bg-brand-700" data-finance-card-invoice-pay-trigger data-card-id="{{ card.id }}" data-redirect-url="/gestao-financeira/contas?finance_tab=cards">
-                                Pagar fatura
-                            </button>
-                            <button type="button" class="hidden rounded-2xl bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-700 ring-1 ring-rose-200 transition hover:bg-rose-100" data-finance-card-invoice-revert-trigger data-card-id="{{ card.id }}" data-redirect-url="/gestao-financeira/contas?finance_tab=cards">
-                                Estornar pagamento
-                            </button>
-                            <button type="button" class="modal-close-button" aria-label="Fechar" data-finance-card-invoices-close>
-                                <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                                    <path d="M18 6 6 18"/>
-                                    <path d="m6 6 12 12"/>
-                                </svg>
-                            </button>
-                        </div>
+                        {% endfor %}
                     </div>
-                    <div class="mt-6 flex min-h-0 flex-1 flex-col">
-                        {% if card_overview.get('invoice_groups', []) %}
-                        <div class="finance-credit-card-invoice-tabs-shell" data-finance-card-invoice-tabs-shell data-can-scroll-left="false" data-can-scroll-right="true">
-                            <button type="button" class="finance-credit-card-invoice-nav" data-finance-card-invoices-nav="prev" aria-label="Ver faturas anteriores">
-                                <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                                    <path d="m15 18-6-6 6-6"/>
-                                </svg>
-                            </button>
-                            <div class="finance-credit-card-invoice-tabs-track" role="tablist" aria-label="Faturas de {{ card.card_name }}" data-finance-card-invoice-tabs-track>
-                                {% for invoice in card_overview.get('invoice_groups', []) %}
-                                <button
-                                    type="button"
-                                    class="finance-credit-card-invoice-tab inline-flex shrink-0 items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-600 transition hover:border-sky-200 hover:bg-sky-50 hover:text-sky-700 {% if loop.first %}is-active{% endif %}"
-                                    role="tab"
-                                    aria-selected="{% if loop.first %}true{% else %}false{% endif %}"
-                                    data-finance-card-invoice-tab
-                                    data-tab-group="card-{{ card.id }}"
-                                    data-tab-target="card-{{ card.id }}-invoice-{{ loop.index0 }}"
-                                    data-due-date="{{ invoice.due_date.isoformat() if invoice.due_date else '' }}"
-                                    data-due-date-label="{{ invoice.due_date_label }}"
-                                    data-reference-label="{{ invoice.reference_label }}"
-                                    data-open-total="{{ invoice.open_total|decimal_br }}"
-                                    data-can-pay="{% if invoice.open_total > 0 and invoice.due_date %}true{% else %}false{% endif %}"
-                                    data-can-revert="{% if invoice.paid_count > 0 and invoice.due_date %}true{% else %}false{% endif %}"
-                                >
-                                    <span>{{ invoice.reference_label }}</span>
-                                    <span class="stock-movement-chip {{ invoice.status_chip_class }}">{{ invoice.status_label }}</span>
-                                </button>
-                                {% endfor %}
-                            </div>
-                            <button type="button" class="finance-credit-card-invoice-nav" data-finance-card-invoices-nav="next" aria-label="Ver próximas faturas">
-                                <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                                    <path d="m9 6 6 6-6 6"/>
-                                </svg>
-                            </button>
-                        </div>
-                        <div class="mt-5 min-h-0 flex-1 space-y-4 overflow-hidden">
-                            {% for invoice in card_overview.get('invoice_groups', []) %}
-                            <section
-                                id="card-{{ card.id }}-invoice-{{ loop.index0 }}"
-                                class="{% if not loop.first %}hidden {% endif %}flex min-h-0 flex-col space-y-4"
-                                role="tabpanel"
-                                data-finance-card-invoice-panel
-                                data-tab-group="card-{{ card.id }}"
-                            >
-                                <div class="grid gap-3 md:grid-cols-4">
-                                    <div class="rounded-2xl bg-slate-50 px-4 py-4 ring-1 ring-slate-200/70">
-                                        <p class="text-[0.65rem] font-semibold uppercase tracking-[0.18em] text-slate-400">Fatura</p>
-                                        <p class="mt-2 text-sm font-semibold text-slate-900">{{ invoice.reference_label }}</p>
-                                    </div>
-                                    <div class="rounded-2xl bg-slate-50 px-4 py-4 ring-1 ring-slate-200/70">
-                                        <p class="text-[0.65rem] font-semibold uppercase tracking-[0.18em] text-slate-400">Vencimento</p>
-                                        <p class="mt-2 text-sm font-semibold text-slate-900">{{ invoice.due_date_label }}</p>
-                                    </div>
-                                    <div class="rounded-2xl bg-slate-50 px-4 py-4 ring-1 ring-slate-200/70">
-                                        <p class="text-[0.65rem] font-semibold uppercase tracking-[0.18em] text-slate-400">Total em aberto</p>
-                                        <p class="mt-2 text-sm font-semibold {% if invoice.open_total > 0 %}text-sky-700{% else %}text-slate-900{% endif %}">R$ {{ invoice.open_total|decimal_br }}</p>
-                                    </div>
-                                    <div class="rounded-2xl bg-slate-50 px-4 py-4 ring-1 ring-slate-200/70">
-                                        <p class="text-[0.65rem] font-semibold uppercase tracking-[0.18em] text-slate-400">{{ "Lançamento" if invoice.installment_count == 1 else "Lançamentos" }}</p>
-                                        <p class="mt-2 text-sm font-semibold text-slate-900">{{ invoice.installment_count }}</p>
-                                    </div>
+                    <button type="button" class="finance-credit-card-invoice-nav" data-finance-card-invoices-nav="next" aria-label="Ver próximas faturas"><svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg></button>
+                </div>
+                <div class="fa-invoices-body">
+                    {% for invoice in card_overview.get('invoice_groups', []) %}
+                    <section id="card-{{ card.id }}-invoice-{{ loop.index0 }}" class="{% if not loop.first %}hidden {% endif %}fa-invoice-panel" role="tabpanel" data-finance-card-invoice-panel data-tab-group="card-{{ card.id }}">
+                        <dl class="fa-invoice-stats">
+                            <div><dt>Vencimento</dt><dd>{{ invoice.due_date_label }}</dd></div>
+                            <div><dt>Total em aberto</dt><dd class="{% if invoice.open_total > 0 %}text-slate-900{% else %}text-emerald-700{% endif %}">R$ {{ invoice.open_total|decimal_br }}</dd></div>
+                            <div><dt>Total da fatura</dt><dd>R$ {{ invoice.total|decimal_br }}</dd></div>
+                            <div><dt>{{ "Lançamento" if invoice.installment_count == 1 else "Lançamentos" }}</dt><dd>{{ invoice.installment_count }}</dd></div>
+                        </dl>
+                        <ul class="fa-lines">
+                            {% for item in invoice.line_items %}
+                            <li>
+                                <div class="min-w-0 flex-1">
+                                    <p class="fa-line-title">{{ item.product_service }}</p>
+                                    <p class="fa-line-meta">{{ item.launch_date_label }} · {{ item.category }} · parcela {{ item.installment_label }}{% if item.payment_method and item.payment_method != '-' %} · {{ item.payment_method }}{% endif %}</p>
+                                    <p class="fa-line-meta">{{ item.source_label }}</p>
                                 </div>
-                                <div class="min-h-0 overflow-hidden rounded-[1.5rem] border border-slate-200">
-                                    <div class="finance-credit-card-invoice-lines overflow-x-auto">
-                                        <table class="stock-history-table min-w-full divide-y divide-slate-200 text-sm">
-                                            <thead class="bg-slate-50 text-left text-slate-500">
-                                                <tr>
-                                                    <th class="px-4 py-3 font-medium">Data</th>
-                                                    <th class="px-4 py-3 font-medium">Origem</th>
-                                                    <th class="px-4 py-3 font-medium">Categoria</th>
-                                                    <th class="px-4 py-3 font-medium">Compra</th>
-                                                    <th class="px-4 py-3 font-medium">Parcela</th>
-                                                    <th class="px-4 py-3 font-medium">Forma</th>
-                                                    <th class="px-4 py-3 font-medium">Status</th>
-                                                    <th class="px-4 py-3 font-medium">Valor</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody class="divide-y divide-slate-100 bg-white">
-                                                {% for item in invoice.line_items %}
-                                                <tr data-stock-kind="{% if item.status == 'paid' %}entrada{% else %}info{% endif %}">
-                                                    <td class="px-4 py-3 whitespace-nowrap font-semibold text-slate-900">{{ item.launch_date_label }}</td>
-                                                    <td class="px-4 py-3">{{ item.source_label }}</td>
-                                                    <td class="px-4 py-3 font-semibold text-slate-900">{{ item.category }}</td>
-                                                    <td class="px-4 py-3">
-                                                        <div class="flex flex-col gap-1">
-                                                            <span class="font-semibold text-slate-900">{{ item.product_service }}</span>
-                                                        </div>
-                                                    </td>
-                                                    <td class="px-4 py-3 whitespace-nowrap text-slate-600">{{ item.installment_label }}</td>
-                                                    <td class="px-4 py-3 whitespace-nowrap text-slate-600">{{ item.payment_method }}</td>
-                                                    <td class="px-4 py-3">
-                                                        <span class="stock-movement-chip {{ item.status_chip_class }}">{{ item.status_label }}</span>
-                                                    </td>
-                                                    <td class="px-4 py-3 whitespace-nowrap font-semibold {% if item.status == 'paid' %}text-emerald-700{% else %}text-sky-700{% endif %}">R$ {{ item.amount|decimal_br }}</td>
-                                                </tr>
-                                                {% endfor %}
-                                            </tbody>
-                                        </table>
-                                    </div>
+                                <div class="fa-line-side">
+                                    <span class="fa-line-value {% if item.status == 'paid' %}text-emerald-700{% endif %}">R$ {{ item.amount|decimal_br }}</span>
+                                    <span class="stock-movement-chip {{ item.status_chip_class }}">{{ item.status_label }}</span>
                                 </div>
-                            </section>
+                            </li>
+                            {% else %}
+                            <li class="justify-center text-sm text-slate-500">Nenhum lançamento nesta fatura.</li>
                             {% endfor %}
-                        </div>
-                        {% else %}
-                        <div class="rounded-2xl border border-dashed border-slate-200 bg-slate-50/80 px-4 py-8 text-center text-sm text-slate-500">
-                            Ainda não existem parcelas vinculadas a este cartão.
-                        </div>
-                        {% endif %}
-                    </div>
+                        </ul>
+                    </section>
+                    {% endfor %}
                 </div>
-            </dialog>
-            {% else %}
-            <div class="rounded-[1.5rem] border border-dashed border-slate-200 bg-slate-50/80 px-6 py-10 text-center text-slate-500 lg:col-span-2 2xl:col-span-3">
-                Nenhum cartão de crédito cadastrado para a fazenda ativa.
+                {% else %}
+                <div class="fa-invoices-body"><p class="sf-empty">Ainda não existem parcelas vinculadas a este cartão.</p></div>
+                {% endif %}
+                <div class="fa-invoices-foot">
+                    <button type="button" class="sf-btn sf-btn-secondary" data-finance-card-invoices-close>Fechar</button>
+                    <button type="button" class="hidden sf-btn fa-btn-danger" data-finance-card-invoice-revert-trigger data-card-id="{{ card.id }}" data-redirect-url="/gestao-financeira/contas?finance_tab=cards">Estornar pagamento</button>
+                    <button type="button" class="hidden sf-btn sf-btn-primary" data-finance-card-invoice-pay-trigger data-card-id="{{ card.id }}" data-redirect-url="/gestao-financeira/contas?finance_tab=cards">Pagar fatura</button>
+                </div>
             </div>
-            {% endfor %}
-        </div>
-        </div>
-        {% if finance_credit_cards|length > 3 %}
-        <button type="button" class="finance-card-page-nav finance-card-page-nav-next" data-finance-cards-page-nav="next" aria-label="Próxima página de cartões">
-            <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <path d="m9 6 6 6-6 6"/>
-            </svg>
-        </button>
-        {% endif %}
-        </div>
-        {% if finance_credit_cards|length > 1 %}
-        <div class="mt-5" data-finance-cards-dots></div>
-        {% endif %}
-        </div>
+        </dialog>
+        {% endfor %}
 
         <div class="stock-history-stage mt-4 hidden" data-finance-tab="transactions">
         {% set tx_range_ui = 'past' %}

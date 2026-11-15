@@ -5475,3 +5475,75 @@ td .sf-menu > .sf-menu-panel { top: 50%; right: calc(100% + .375rem); transform:
     table.sf-table-legacy tbody td.sf-td-actions > div, table.sf-table-legacy tbody td.sf-td-actions { display: flex; gap: .375rem; justify-content: flex-end; align-items: flex-start; }
 }
 @media (max-width: 767px) { .sf-table-responsive td.sf-td-actions, table.sf-table-legacy tbody td.sf-td-actions { width: auto; min-width: max-content; } }
+
+/* Contas: cartoes de conta bancaria e de cartao de credito (modelo aprovado). */
+.fa-hint { margin: 0 0 .75rem; font-size: .8125rem; color: var(--sf-muted, #5b6660); }
+.fa-grid { display: grid; gap: 1rem; grid-template-columns: minmax(0, 1fr); }
+@media (min-width: 768px) { .fa-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (min-width: 1280px) { .fa-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+.fa-card { display: flex; flex-direction: column; gap: 1rem; min-width: 0; padding: 1.125rem; border: 1px solid var(--sf-line, #e3e8e2); border-radius: 1rem; background: #fff; transition: border-color .15s, box-shadow .15s; }
+.fa-card:hover { border-color: var(--sf-line-strong, #d6ddd5); box-shadow: 0 6px 20px rgba(22, 32, 26, .06); }
+.fa-card-head { display: flex; align-items: center; gap: .75rem; }
+.fa-card-head .sf-icon-btn { width: 2.5rem; height: 2.5rem; flex: none; }
+.fa-grip { color: #9aa59e; cursor: grab; }
+.fa-card-title { margin: 0; font-size: .9375rem; font-weight: 700; color: var(--sf-ink, #16201a); overflow-wrap: anywhere; }
+.fa-card-sub { margin: .125rem 0 0; font-size: .75rem; color: var(--sf-muted, #5b6660); }
+.fa-pill-default { display: inline-flex; padding: .125rem .5rem; border-radius: 999px; background: var(--sf-brand-soft, #eef7ed); color: var(--sf-brand-dark, #294127); font-size: .6875rem; font-weight: 600; white-space: nowrap; }
+.fa-card-chip { display: flex; align-items: flex-end; flex: none; width: 3rem; height: 2rem; padding: .25rem .375rem; border-radius: .4375rem; background: var(--sf-ink, #16201a); color: #fff; font-size: .5625rem; font-weight: 700; letter-spacing: .02em; box-sizing: border-box; overflow: hidden; }
+.fa-label { margin: 0; font-size: .75rem; color: var(--sf-muted, #5b6660); }
+.fa-balance { margin: 0; font-size: 1.5rem; font-weight: 700; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; color: var(--sf-ink, #16201a); }
+.fa-facts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .75rem; margin: 0; padding: .75rem; border-radius: .75rem; background: var(--sf-soft, #f6f8f5); }
+.fa-facts dt { font-size: .6875rem; color: var(--sf-muted, #5b6660); }
+.fa-facts dd { margin: .125rem 0 0; font-size: .8125rem; font-weight: 600; color: var(--sf-ink, #16201a); overflow-wrap: anywhere; }
+@media (max-width: 420px) { .fa-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.fa-link { margin-top: auto; font-size: .8125rem; font-weight: 600; color: var(--sf-brand, #446a36); }
+.fa-link:hover { color: var(--sf-brand-dark, #294127); text-decoration: underline; text-underline-offset: 3px; }
+.fa-add { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: .5rem; min-height: 9rem; border: 1.5px dashed #c9d2c7; border-radius: 1rem; background: #fafbf9; color: var(--sf-brand, #446a36); font-size: .875rem; font-weight: 600; cursor: pointer; }
+.fa-add:hover { background: var(--sf-brand-soft, #eef7ed); }
+.fa-add svg { width: 1.375rem; height: 1.375rem; }
+.fa-usage-text { display: flex; justify-content: space-between; gap: .5rem; margin-bottom: .375rem; font-size: .75rem; color: var(--sf-muted, #5b6660); }
+.fa-usage-text strong { color: #2a332e; font-weight: 600; text-align: right; }
+.fa-usage { height: .5rem; border-radius: 999px; background: #eef1ed; overflow: hidden; }
+.fa-usage span { display: block; height: 100%; border-radius: inherit; background: var(--sf-brand, #446a36); }
+.fa-invoice { display: flex; align-items: center; justify-content: space-between; gap: .75rem; padding: .75rem; border-radius: .75rem; background: var(--sf-soft, #f6f8f5); }
+.fa-invoice-value { margin: .125rem 0 0; font-size: 1.125rem; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--sf-ink, #16201a); }
+.fa-invoice .sf-btn { min-height: 2.5rem; flex: none; }
+.sf-btn.hidden { display: none; }
+.fa-btn-danger { background: #fff; border: 1px solid #f3c7c2; color: #b42318; }
+.fa-btn-danger:hover { background: #fef3f2; }
+
+/* Janela de faturas: rola por inteiro; no celular ocupa a tela toda. */
+dialog.fa-invoices-modal { width: min(56rem, calc(100vw - 2rem)); max-width: none; max-height: calc(100dvh - 2rem); padding: 0; border: 0; border-radius: 1.25rem; background: #fff; overflow: hidden; }
+.fa-invoices-shell { display: flex; flex-direction: column; max-height: calc(100dvh - 2rem); }
+.fa-invoices-head { display: flex; align-items: flex-start; gap: .75rem; padding: 1.125rem 1.25rem .75rem; }
+.fa-invoice-tabs { padding: 0 1.25rem .75rem; border-bottom: 1px solid var(--sf-line, #e3e8e2); }
+.fa-invoice-tabs .finance-credit-card-invoice-tabs-track { scrollbar-width: none; -webkit-overflow-scrolling: touch; overscroll-behavior-x: contain; touch-action: pan-x; }
+.fa-invoice-tabs .finance-credit-card-invoice-tabs-track::-webkit-scrollbar { display: none; }
+.fa-invoice-tab { display: inline-flex; flex: none; align-items: center; gap: .5rem; min-height: 2.75rem; padding: 0 .875rem; border: 1px solid var(--sf-line-strong, #d6ddd5); border-radius: 999px; background: #fff; color: #3c4741; font-size: .8125rem; font-weight: 600; white-space: nowrap; }
+.fa-invoice-tab.is-active { border-color: var(--sf-ink, #16201a); background: var(--sf-ink, #16201a); color: #fff; }
+.fa-invoice-tab.is-active .stock-movement-chip { background: rgba(255, 255, 255, .16); color: #fff; }
+.fa-invoices-body { flex: 1; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; padding: 1rem 1.25rem; }
+.fa-invoice-panel:not(.hidden) { display: flex; flex-direction: column; gap: 1rem; }
+.fa-invoice-stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .5rem; margin: 0; }
+@media (min-width: 640px) { .fa-invoice-stats { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+.fa-invoice-stats > div { padding: .625rem .75rem; border-radius: .75rem; background: var(--sf-soft, #f6f8f5); }
+.fa-invoice-stats dt { font-size: .6875rem; color: var(--sf-muted, #5b6660); }
+.fa-invoice-stats dd { margin: .125rem 0 0; font-size: .9375rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+.fa-lines { margin: 0; padding: 0; list-style: none; border: 1px solid var(--sf-line, #e3e8e2); border-radius: .875rem; }
+.fa-lines li { display: flex; align-items: flex-start; gap: .75rem; padding: .75rem .875rem; border-top: 1px solid #eef1ed; }
+.fa-lines li:first-child { border-top: 0; }
+.fa-line-title { margin: 0; font-size: .875rem; font-weight: 600; color: var(--sf-ink, #16201a); overflow-wrap: anywhere; }
+.fa-line-meta { margin: .125rem 0 0; font-size: .75rem; color: var(--sf-muted, #5b6660); }
+.fa-line-side { display: flex; flex-direction: column; align-items: flex-end; gap: .25rem; flex: none; }
+.fa-line-value { font-size: .875rem; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.fa-invoices-foot { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: .5rem; padding: .875rem 1.25rem; border-top: 1px solid var(--sf-line, #e3e8e2); background: #fafbf9; }
+@media (max-width: 639px) {
+    dialog.fa-invoices-modal { width: 100vw; max-height: 100dvh; height: 100dvh; margin: 0; border-radius: 0; }
+    .fa-invoices-shell { height: 100dvh; max-height: 100dvh; }
+    .fa-invoices-foot { padding-bottom: calc(.875rem + env(safe-area-inset-bottom)); }
+    .fa-invoices-foot .sf-btn { flex: 1 1 0; justify-content: center; }
+    .fa-invoice-tabs .finance-credit-card-invoice-nav { display: none; }
+}
+.fa-grid, .fa-grid.fa-grid-cards { grid-template-columns: repeat(auto-fill, minmax(min(100%, 22rem), 1fr)); }
+.stock-history-stage > p.fa-hint { font-size: .8125rem; font-weight: 400; letter-spacing: 0; text-transform: none; }
+.fa-invoice-tabs .finance-credit-card-invoice-tab.fa-invoice-tab.is-active { border-color: var(--sf-ink, #16201a); background: var(--sf-ink, #16201a); color: #fff; box-shadow: none; }

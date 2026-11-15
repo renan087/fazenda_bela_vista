@@ -31,7 +31,7 @@
         }
     </script>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-    <link rel="stylesheet" href="{{ url_for('static', path='css/styles.css') }}?v=20261115f">
+    <link rel="stylesheet" href="{{ url_for('static', path='css/styles.css') }}?v=20261115g">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="{{ url_for('static', path='js/currency-mask.js') }}?v=20260425a" defer></script>
@@ -475,6 +475,12 @@
                         const onItem = inside && event.target.closest('.sf-menu-panel a, .sf-menu-panel button');
                         if (!inside || onItem) menu.open = false;
                     });
+                });
+                // Botoes que repetem uma acao ja existente na pagina (ex.: "Adicionar conta" aciona o cadastro do topo).
+                document.addEventListener('click', (event) => {
+                    const proxy = event.target instanceof Element ? event.target.closest('[data-sf-proxy-click]') : null;
+                    if (!proxy) return;
+                    document.querySelector(proxy.getAttribute('data-sf-proxy-click'))?.click();
                 });
                 document.addEventListener('keydown', (event) => {
                     if (event.key !== 'Escape') return;
