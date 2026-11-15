@@ -5646,7 +5646,9 @@ body .erp-main-shell .rounded-\[1\.5rem\].shadow-sm:not(dialog *) { border-radiu
 /* Caixa */
 .db-bars { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: .75rem; }
 .db-bar-col { display: flex; flex-direction: column; align-items: center; gap: .25rem; min-width: 0; }
-.db-bar-pair { display: flex; align-items: flex-end; justify-content: center; gap: .3125rem; width: 100%; height: 9rem; border-bottom: 1px solid var(--sf-line, #e3e8e2); }
+.db-bars { flex: 1 1 auto; }
+.db-bar-col { justify-content: flex-end; }
+.db-bar-pair { display: flex; align-items: flex-end; justify-content: center; gap: .3125rem; width: 100%; height: auto; flex: 1 1 9rem; min-height: 9rem; max-height: 16rem; border-bottom: 1px solid var(--sf-line, #e3e8e2); }
 .db-bar { width: min(40%, 1.75rem); border-radius: .4375rem .4375rem 2px 2px; }
 .db-bar-label { margin: .25rem 0 0; font-size: .75rem; font-weight: 600; text-align: center; }
 .db-bar-net { font-size: .6875rem; text-align: center; font-variant-numeric: tabular-nums; }
@@ -5883,20 +5885,17 @@ input[type="checkbox"].db-switch:focus-visible { outline: 2px solid #3b7bc8; out
 .db-wx-stale { margin-top: .5rem; padding: .375rem .625rem; border-radius: .5rem; background: #fff8e6; color: #8a6d1f; font-size: .6875rem; }
 .db-wx { container-type: inline-size; }
 @container (max-width: 519px) {
-    .db-wx-days { grid-template-columns: 1fr; gap: 0; overflow: visible; border: 1px solid var(--sf-line, #e3e8e2); border-radius: .875rem; }
-    .db-wx-day { display: grid; grid-template-columns: 3.1rem 1.6rem 1fr auto 3.6rem; align-items: center; gap: .5rem; padding: .4rem .625rem; border: 0; border-bottom: 1px solid var(--sf-line, #e3e8e2); border-radius: 0; background: #fff; text-align: left; }
-    .db-wx-day:last-child { border-bottom: 0; }
-    .db-wx-day.is-today { border-radius: 0; }
-    .db-wx-day:first-child { border-radius: .875rem .875rem 0 0; }
-    .db-wx-day:last-child { border-radius: 0 0 .875rem .875rem; }
-    .db-wx-day.is-skel { height: 2.6rem; }
-    .db-wx-wd { grid-column: 1; grid-row: 1; align-self: end; }
-    .db-wx-dt { grid-column: 1; grid-row: 2; align-self: start; }
-    .db-wx-ico { grid-column: 2; grid-row: 1 / span 2; margin: 0; }
-    .db-wx-t { grid-column: 3; grid-row: 1 / span 2; }
-    .db-wx-mm { grid-column: 4; grid-row: 1 / span 2; }
-    .db-wx-prob { grid-column: 5; grid-row: 1 / span 2; text-align: right; }
-    .db-wx-flag { grid-column: 3; grid-row: 2; align-self: end; }
+    .db-wx-days { grid-template-columns: repeat(7, minmax(0, 1fr)); gap: .25rem; overflow: visible; }
+    .db-wx-day { gap: .15rem; padding: .5rem .1rem; border-radius: .75rem; }
+    .db-wx-day.is-skel { height: 8.5rem; }
+    .db-wx-ico { width: 1.35rem; height: 1.35rem; }
+    .db-wx-t { font-size: .75rem; line-height: 1.15; }
+    .db-wx-t small { display: block; font-size: .625rem; }
+    .db-wx-t small .db-wx-sep { display: none; }
+    .db-wx-mm { padding: .05rem .3rem; font-size: .625rem; }
+    .db-wx-pw { display: none; }
+    .db-wx-flag { font-size: 0; }
+    .db-wx-flag::before { content: "*"; font-size: .625rem; }
     .db-wx-cmp table { min-width: 0; }
 }
 .db-wx-cmp td.is-primary-col { background: #f4f8fd; font-weight: 600; }

@@ -159,10 +159,6 @@
         <section class="db-card" aria-label="Clima e chuva">
             <div class="db-card-head">
                 <div class="min-w-0"><h2>Clima e chuva</h2><p class="db-muted" data-db-wx-meta>Previsão para os próximos 7 dias</p></div>
-                <div class="db-wx-tabs" role="tablist" aria-label="Visualização da previsão" data-db-wx-tabs hidden>
-                    <button type="button" role="tab" aria-selected="true" data-db-wx-tab="forecast">Previsão</button>
-                    <button type="button" role="tab" aria-selected="false" data-db-wx-tab="compare">Comparar modelos</button>
-                </div>
             </div>
             <div class="db-wx" data-db-weather data-heavy="{{ (rain_settings.heavy_rain_mm if rain_settings else 30)|float }}" aria-live="polite">
                 <div class="db-wx-days" aria-hidden="true">{% for _ in range(7) %}<div class="db-wx-day is-skel"></div>{% endfor %}</div>
@@ -378,5 +374,5 @@
     "redirectTo": current_url or request.url.path,
 }|tojson }}</script>
 <script src="{{ url_for('static', path='js/dashboard.js') }}?v=3"></script>
-{% if can_rainfall %}<script src="{{ url_for('static', path='js/dashboard_weather.js') }}?v=1"></script>{% endif %}
+{% if can_rainfall %}<script src="{{ url_for('static', path='js/dashboard_weather.js') }}?v=5"></script>{% endif %}
 {% endblock %}

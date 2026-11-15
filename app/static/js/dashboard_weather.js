@@ -1,14 +1,10 @@
-// Dashboard: previsao do tempo da fazenda (Open-Meteo: ECMWF principal, GFS e ICON para comparar).
+// Dashboard: previsao do tempo da fazenda (Open-Meteo; ECMWF principal, GFS/ICON so como reserva no backend).
 (() => {
     const root = document.querySelector('[data-db-weather]');
     if (!root) return;
     const card = root.closest('.db-card');
     const meta = card.querySelector('[data-db-wx-meta]');
-    const tabs = card.querySelector('[data-db-wx-tabs]');
     const heavy = Number(root.dataset.heavy) || 30;
-    const STORE = 'sisfarm.dbWeatherTab';
-    let view = 'forecast';
-    try { view = localStorage.getItem(STORE) === 'compare' ? 'compare' : 'forecast'; } catch (e) {}
     let data = null;
     let timer = null;
 
@@ -39,49 +35,20 @@
 
     function renderForecast() {
         const days = data.days.map((d) => {
-            const fb = Object.keys(d.fallback || {}).length ? `<span class="db-wx-flag" title="${esc(Object.entries(d.fallback).map(([k, m]) => `${{ tmax: 'Máx.', tmin: 'Mín.', precip: 'Chuva', prob: 'Prob.' }[k]}: ${m}`).join(' · '))}">*outro modelo</span>` : '';
-            const t = d.tmax == null ? '—' : `${num(d.tmax)}°${d.tmin == null ? '' : `<small> / ${num(d.tmin)}°</small>`}`;
+            const t = d.tmax == null ? '—' : `${num(d.tmax)}°`;
             return `<div class="db-wx-day${d.date === today ? ' is-today' : ''}">
-                <span class="db-wx-wd">${d.date === today ? 'Hoje' : esc(d.weekday)}</span><span class="db-wx-dt">${esc(d.label)}</span>
-                ${icon(d)}<span class="db-wx-t" title="Temperatura máxima / mínima">${t}</span>
-                ${mmBadge(d.precip)}<span class="db-wx-prob" title="Probabilidade de chuva">${d.prob == null ? '— chance' : `${num(d.prob)}% chance`}</span>${fb}</div>`;
+                <span class="db-wx-wd">${d.date === today ? 'Hoje' : esc(d.weekday)}</span>
+                ${icon(d)}<span class="db-wx-t" title="Temperatura máxima">${t}</span>
+                ${mmBadge(d.precip)}<span class="db-wx-prob" title="Probabilidade de chuva">${d.prob == null ? '—' : `${num(d.prob)}%<span class="db-wx-pw"> chance</span>`}</span></div>`;
         }).join('');
         const heavyDays = data.days.filter((d) => (d.precip ?? 0) >= heavy).length;
         return `<div class="db-wx-days">${days}</div>
-            <div class="db-wx-sum"><span>Chuva prevista em 7 dias: <strong>${mm(data.total_precip)} mm</strong>${heavyDays ? ` · <strong style="color:#b4590e">${heavyDays} dia(s) acima de ${num(heavy)} mm</strong>` : ''}</span>
-            <span>Modelo ${data.primary_available ? 'ECMWF' : 'alternativo (ECMWF indisponível)'}</span></div>`;
-    }
-
-    function renderCompareNarrow() {
-        const models = data.models;
-        const head = models.map((m) => `<th scope="col">${esc(m.label)}${m.available ? '' : '<br><span class="db-wx-dt">indisponível</span>'}</th>`).join('');
-        const rows = data.days.map((d, i) => `<tr><th scope="row">${d.date === today ? 'Hoje' : esc(d.weekday)}<small>${esc(d.label)}</small></th>${models.map((m) => {
-            const v = m.available ? m.precip[i] : null;
-            return `<td class="${v != null && v >= heavy ? 'is-heavy' : ''}${m.primary ? ' is-primary-col' : ''}">${m.available ? mm(v) : '—'}</td>`;
-        }).join('')}</tr>`).join('');
-        const total = `<tr><th scope="row">7 dias</th>${models.map((m) => `<td class="is-total">${m.total == null ? '—' : mm(m.total)}</td>`).join('')}</tr>`;
-        return `<div class="db-wx-cmp"><table><caption class="sr-only">Chuva prevista (mm) por modelo meteorológico</caption><thead><tr><th scope="col" style="text-align:left">mm</th>${head}</tr></thead><tbody>${rows}${total}</tbody></table></div>
-            <p class="db-muted" style="margin-top:.5rem">ECMWF é a previsão principal. Quando os modelos concordam, a previsão é mais confiável.</p>`;
-    }
-
-    function renderCompare() {
-        if (root.clientWidth < 520) return renderCompareNarrow();
-        const max = Math.max(1, ...data.models.flatMap((m) => m.precip.filter((v) => v != null)));
-        const head = data.days.map((d) => `<th scope="col">${d.date === today ? 'Hoje' : esc(d.weekday)}<br><span class="db-wx-dt">${esc(d.label)}</span></th>`).join('');
-        const rows = data.models.map((m) => {
-            const cells = m.available
-                ? m.precip.map((v, i) => `<td class="${v != null && v >= heavy ? 'is-heavy' : ''}" title="${esc(m.label)} · ${esc(data.days[i].label)}${m.prob[i] != null ? ` · ${m.prob[i]}% chance` : ''}">${mm(v)}${v ? `<span class="db-wx-cell" style="width:${Math.max(8, Math.round((v / max) * 100))}%${v >= heavy ? ';background:#f08c2e' : ''}"></span>` : ''}</td>`).join('')
-                : `<td colspan="${data.days.length}">Modelo indisponível no momento</td>`;
-            return `<tr class="${m.primary ? 'is-primary' : ''}${m.available ? '' : ' is-off'}"><th scope="row">${esc(m.label)}<small>${m.primary ? 'principal' : 'comparação'}</small></th>${cells}<td class="is-total">${m.total == null ? '—' : `${mm(m.total)} mm`}</td></tr>`;
-        }).join('');
-        return `<div class="db-wx-cmp"><table><caption class="sr-only">Chuva prevista (mm) por modelo meteorológico</caption><thead><tr><th scope="col" style="text-align:left">Chuva (mm)</th>${head}<th scope="col">7 dias</th></tr></thead><tbody>${rows}</tbody></table></div>
-            <p class="db-muted" style="margin-top:.5rem">Quando os modelos concordam, a previsão é mais confiável. Diferenças grandes indicam incerteza.</p>`;
+            <div class="db-wx-sum"><span>Chuva prevista em 7 dias: <strong>${mm(data.total_precip)} mm</strong>${heavyDays ? ` · <strong style="color:#b4590e">${heavyDays} dia(s) acima de ${num(heavy)} mm</strong>` : ''}</span></div>`;
     }
 
     function render() {
         if (!data) return;
         const ok = data.status === 'ok' || data.status === 'stale';
-        tabs.hidden = !ok;
         if (!ok) {
             meta.textContent = 'Previsão para os próximos 7 dias';
             if (data.status === 'no_farm') root.innerHTML = empty('Selecione uma fazenda no topo da página para ver a previsão do tempo.', INFO);
@@ -90,8 +57,7 @@
             return;
         }
         meta.textContent = `${data.farm} · Open-Meteo · atualizado em ${data.updated_at}`;
-        tabs.querySelectorAll('[data-db-wx-tab]').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.dbWxTab === view)));
-        root.innerHTML = (view === 'compare' ? renderCompare() : renderForecast())
+        root.innerHTML = renderForecast()
             + (data.status === 'stale' ? '<p class="db-wx-stale">Não foi possível atualizar agora; exibindo a última previsão disponível.</p>' : '');
     }
 
@@ -110,13 +76,6 @@
         if (data.status !== 'no_farm' && data.status !== 'no_coords') timer = setTimeout(load, next * 1000);
     }
 
-    tabs.addEventListener('click', (e) => {
-        const btn = e.target.closest('[data-db-wx-tab]');
-        if (!btn) return;
-        view = btn.dataset.dbWxTab;
-        try { localStorage.setItem(STORE, view); } catch (err) {}
-        render();
-    });
     root.addEventListener('click', (e) => { if (e.target.closest('[data-db-wx-retry]')) load(); });
     // Ao voltar para a aba depois de muito tempo, confere se ja passou da hora de atualizar.
     let hiddenAt = 0;
@@ -124,10 +83,5 @@
         if (document.hidden) hiddenAt = Date.now();
         else if (hiddenAt && Date.now() - hiddenAt > 30 * 60 * 1000) load();
     });
-    let lastWide = null;
-    new ResizeObserver(() => {
-        const wide = root.clientWidth >= 520;
-        if (wide !== lastWide) { lastWide = wide; if (view === 'compare') render(); }
-    }).observe(root);
     load();
 })();
