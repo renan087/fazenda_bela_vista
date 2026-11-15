@@ -5846,56 +5846,61 @@ input[type="checkbox"].db-switch:focus-visible { outline: 2px solid #3b7bc8; out
 @media (max-width: 639px) { dialog.db-history.db-agenda { width: 100vw; } }
 
 /* Dashboard: previsao do tempo (Open-Meteo) */
-.db-wx-tabs { display: inline-flex; padding: 3px; border-radius: .75rem; background: #f1f4f0; }
-.db-wx-tabs[hidden] { display: none; }
-.db-wx-tabs button { border: 0; background: none; padding: .3rem .65rem; border-radius: .55rem; font-size: .75rem; font-weight: 600; color: var(--sf-muted, #5b6660); cursor: pointer; }
-.db-wx-tabs button[aria-selected="true"] { background: #fff; color: var(--sf-ink, #16201a); box-shadow: 0 1px 2px rgba(22,32,26,.12); }
 .db-wx { min-width: 0; }
-.db-wx-days { display: grid; grid-template-columns: repeat(7, minmax(4.25rem, 1fr)); gap: .375rem; overflow-x: auto; scrollbar-width: thin; padding-bottom: 2px; }
-.db-wx-day { display: flex; flex-direction: column; align-items: center; gap: .2rem; padding: .55rem .25rem; border: 1px solid var(--sf-line, #e3e8e2); border-radius: .875rem; background: #fbfcfb; text-align: center; font-variant-numeric: tabular-nums; }
-.db-wx-day.is-today { border-color: #b9d3ef; background: #f4f8fd; }
-.db-wx-day.is-skel { height: 9.5rem; background: linear-gradient(90deg, #f3f5f2 25%, #e9ede8 50%, #f3f5f2 75%); background-size: 200% 100%; animation: db-wx-skel 1.2s infinite linear; }
-@keyframes db-wx-skel { to { background-position: -200% 0; } }
-.db-wx-wd { font-size: .6875rem; font-weight: 700; color: var(--sf-ink, #16201a); }
-.db-wx-dt { font-size: .625rem; color: var(--sf-muted, #5b6660); }
-.db-wx-ico { width: 1.6rem; height: 1.6rem; margin: .1rem 0; }
-.db-wx-t { font-size: .8125rem; font-weight: 700; color: var(--sf-ink, #16201a); }
-.db-wx-t small { font-weight: 500; color: var(--sf-muted, #5b6660); }
-.db-wx-mm { display: inline-flex; align-items: baseline; gap: 1px; padding: .1rem .4rem; border-radius: 999px; background: #e8f1fb; color: #245b97; font-size: .6875rem; font-weight: 700; }
-.db-wx-mm.is-heavy { background: #fdeedd; color: #b4590e; }
-.db-wx-mm.is-dry { background: #f1f4f0; color: var(--sf-muted, #5b6660); font-weight: 600; }
-.db-wx-prob { font-size: .625rem; color: var(--sf-muted, #5b6660); }
-.db-wx-flag { font-size: .5625rem; color: #8a6d1f; }
-.db-wx-sum { display: flex; flex-wrap: wrap; gap: .25rem .75rem; justify-content: space-between; margin-top: .5rem; font-size: .75rem; color: var(--sf-muted, #5b6660); }
-.db-wx-sum strong { color: var(--sf-ink, #16201a); }
-.db-wx-cmp { overflow-x: auto; }
-.db-wx-cmp table { width: 100%; min-width: 30rem; border-collapse: separate; border-spacing: 0; font-size: .75rem; font-variant-numeric: tabular-nums; }
-.db-wx-cmp th, .db-wx-cmp td { padding: .45rem .35rem; text-align: center; border-bottom: 1px solid var(--sf-line, #e3e8e2); white-space: nowrap; }
-.db-wx-cmp thead th { font-size: .6875rem; font-weight: 600; color: var(--sf-muted, #5b6660); }
-.db-wx-cmp th[scope="row"] { text-align: left; font-weight: 700; color: var(--sf-ink, #16201a); }
-.db-wx-cmp th[scope="row"] small { display: block; font-weight: 500; font-size: .625rem; color: var(--sf-muted, #5b6660); }
-.db-wx-cmp td.is-heavy { color: #b4590e; font-weight: 700; }
-.db-wx-cmp td.is-total { font-weight: 700; color: var(--sf-ink, #16201a); background: #fafbf9; }
-.db-wx-cmp tr.is-primary th[scope="row"], .db-wx-cmp tr.is-primary td { background: #f4f8fd; }
-.db-wx-cmp tr.is-off td { color: #a3aca6; }
-.db-wx-cell { display: block; height: 4px; margin: .25rem auto 0; max-width: 2.25rem; border-radius: 2px; background: #3b7bc8; }
 .db-wx-empty { display: flex; gap: .625rem; align-items: flex-start; padding: .75rem; border-radius: .75rem; background: #f6f8f5; font-size: .75rem; color: var(--sf-muted, #5b6660); }
 .db-wx-empty svg { width: 1.1rem; height: 1.1rem; flex: none; margin-top: 1px; }
 .db-wx-empty a, .db-wx-empty button { color: var(--sf-brand, #446a36); font-weight: 600; background: none; border: 0; padding: 0; cursor: pointer; text-decoration: underline; }
 .db-wx-stale { margin-top: .5rem; padding: .375rem .625rem; border-radius: .5rem; background: #fff8e6; color: #8a6d1f; font-size: .6875rem; }
 .db-wx { container-type: inline-size; }
-@container (max-width: 519px) {
-    .db-wx-days { grid-template-columns: repeat(7, minmax(0, 1fr)); gap: .25rem; overflow: visible; }
-    .db-wx-day { gap: .15rem; padding: .5rem .1rem; border-radius: .75rem; }
-    .db-wx-day.is-skel { height: 8.5rem; }
-    .db-wx-ico { width: 1.35rem; height: 1.35rem; }
-    .db-wx-t { font-size: .75rem; line-height: 1.15; }
-    .db-wx-t small { display: block; font-size: .625rem; }
-    .db-wx-t small .db-wx-sep { display: none; }
-    .db-wx-mm { padding: .05rem .3rem; font-size: .625rem; }
-    .db-wx-pw { display: none; }
-    .db-wx-flag { font-size: 0; }
-    .db-wx-flag::before { content: "*"; font-size: .625rem; }
-    .db-wx-cmp table { min-width: 0; }
+
+/* Card Clima e chuva (versao limpa) */
+.db-wxcard { gap: 1rem; }
+.db-wx-total { margin-top: .2rem; font-size: .8125rem; color: var(--sf-muted, #5b6660); }
+.db-wx-total strong { font-size: .9375rem; color: var(--sf-ink, #16201a); }
+.db-wx-src { flex: none; display: inline-flex; align-items: center; height: 1.375rem; padding: 0 .5rem; border-radius: 999px; background: #f3f5f2; font-size: .6875rem; color: var(--sf-muted, #5b6660); white-space: nowrap; cursor: default; }
+.db-wx-src[hidden] { display: none; }
+.db-wx-days { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: .25rem; }
+.db-wx-day { position: relative; display: flex; flex-direction: column; align-items: center; gap: .375rem; padding: .5rem 0; border-radius: .75rem; text-align: center; font-variant-numeric: tabular-nums; outline: none; cursor: default; }
+.db-wx-day.is-today { background: #f2f6ef; }
+.db-wx-day:hover, .db-wx-day:focus-visible { background: #eef1ed; }
+.db-wx-day.is-skel { height: 9.75rem; background: linear-gradient(90deg, #f3f5f2 25%, #e9ede8 50%, #f3f5f2 75%); background-size: 200% 100%; animation: db-wx-skel 1.2s infinite linear; }
+.db-wx-wd { font-size: .6875rem; font-weight: 600; color: var(--sf-muted, #5b6660); }
+.db-wx-day.is-today .db-wx-wd { font-weight: 700; color: var(--sf-brand-dark, #294127); }
+.db-wx-ico { width: 1.375rem; height: 1.375rem; }
+.db-wx-t { font-size: .875rem; font-weight: 700; color: var(--sf-ink, #16201a); }
+.db-wx-bar { display: flex; align-items: flex-end; justify-content: center; width: 100%; height: 2.875rem; }
+.db-wx-bar > span { width: .875rem; border-radius: 4px 4px 2px 2px; background: #5b8fcb; }
+.db-wx-bar > span.is-heavy { background: #e8892b; }
+.db-wx-bar > span.is-dry { height: 2px; background: #dde3dc; border-radius: 2px; }
+.db-wx-mm { font-size: .6875rem; font-weight: 700; color: #2f5f95; }
+.db-wx-mm.is-heavy { color: #b4590e; }
+.db-wx-mm.is-dry { color: #a3aca6; font-weight: 600; }
+.db-wx-tip { position: absolute; bottom: calc(100% + 6px); left: 50%; transform: translateX(-50%); z-index: 5; display: none; padding: .45rem .625rem; border-radius: .5625rem; background: #16201a; color: #fff; font-size: .6875rem; line-height: 1.45; white-space: nowrap; text-align: left; box-shadow: 0 6px 16px rgba(0,0,0,.18); pointer-events: none; }
+.db-wx-tip span { color: #b9c2bc; }
+.db-wx-day.is-start .db-wx-tip { left: 0; transform: none; }
+.db-wx-day.is-end .db-wx-tip { left: auto; right: 0; transform: none; }
+.db-wx-day:hover .db-wx-tip, .db-wx-day:focus .db-wx-tip { display: block; }
+.db-wx-alert { display: flex; align-items: center; gap: .5rem; margin-bottom: .625rem; padding: .5rem .625rem; border-radius: .625rem; background: #fff4e8; color: #8a4a0e; font-size: .75rem; }
+.db-wx-alert svg { width: .95rem; height: .95rem; flex: none; color: #c76a12; }
+.db-farmrain { display: flex; align-items: center; gap: .75rem; width: 100%; margin-top: auto; padding: .75rem; border: 0; border-radius: .875rem; background: #f6f8f5; color: inherit; text-align: left; cursor: pointer; font: inherit; }
+.db-farmrain:hover { background: #eef1ed; }
+.db-farmrain:focus-visible { outline: 2px solid var(--sf-brand, #446a36); outline-offset: 2px; }
+.db-farmrain-ico { flex: none; width: 2.125rem; height: 2.125rem; border-radius: .625rem; background: #e4eef8; color: #2f5f95; display: grid; place-items: center; }
+.db-farmrain-ico svg { width: 1.05rem; height: 1.05rem; }
+.db-farmrain-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: .3rem; }
+.db-farmrain-row { display: flex; flex-wrap: wrap; justify-content: space-between; gap: .1rem .5rem; font-size: .8125rem; color: var(--sf-ink, #16201a); }
+.db-farmrain-title { min-width: 0; font-weight: 600; }
+.db-farmrain-row:first-child { flex-wrap: nowrap; }
+.db-farmrain-row strong { white-space: nowrap; }
+.db-wxcard > .db-card-head { flex-wrap: nowrap; align-items: flex-start; }
+.db-farmrain-sub { font-size: .6875rem; color: var(--sf-muted, #5b6660); }
+.db-farmrain-track { display: block; height: 5px; border-radius: 999px; background: #e3e8e2; overflow: hidden; }
+.db-farmrain-track > span { display: block; height: 100%; border-radius: inherit; background: #3b7bc8; }
+.db-farmrain-go { flex: none; width: 1rem; height: 1rem; color: var(--sf-brand, #446a36); }
+@media (max-width: 639px) {
+    .db-wx-days { gap: .125rem; }
+    .db-wx-bar > span { width: .75rem; }
+    .db-farmrain { gap: .625rem; padding: .625rem .75rem; }
+    .db-farmrain-go { display: none; }
 }
-.db-wx-cmp td.is-primary-col { background: #f4f8fd; font-weight: 600; }
+@keyframes db-wx-skel { to { background-position: -200% 0; } }

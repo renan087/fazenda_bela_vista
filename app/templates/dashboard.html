@@ -156,22 +156,23 @@
 
         {% if can_rainfall %}
         {% set rain = ov.rain %}
-        <section class="db-card" aria-label="Clima e chuva">
+        <section class="db-card db-wxcard" aria-label="Clima e chuva">
             <div class="db-card-head">
-                <div class="min-w-0"><h2>Clima e chuva</h2><p class="db-muted" data-db-wx-meta>Previsão para os próximos 7 dias</p></div>
+                <div class="min-w-0"><h2>Clima e chuva</h2><p class="db-wx-total" data-db-wx-meta>Previsão para os próximos 7 dias</p></div>
+                <span class="db-wx-src" data-db-wx-src hidden></span>
             </div>
             <div class="db-wx" data-db-weather data-heavy="{{ (rain_settings.heavy_rain_mm if rain_settings else 30)|float }}" aria-live="polite">
                 <div class="db-wx-days" aria-hidden="true">{% for _ in range(7) %}<div class="db-wx-day is-skel"></div>{% endfor %}</div>
             </div>
-            <div class="db-rain">
-                <div class="db-rain-head"><span>Chuva em {{ rain.month_label }} na fazenda</span><span><strong>{{ rain.month_total|decimal_br(0) }} mm</strong>{% if rain.average is not none %} de {{ rain.average|decimal_br(0) }} mm da média{% endif %}</span></div>
-                <div class="db-rain-track"><span style="width: {{ rain.pct }}%"></span></div>
-                <p class="db-muted db-rain-source">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 3s6 6.5 6 11a6 6 0 0 1-12 0c0-4.5 6-11 6-11Z"/></svg>
-                    {% if rain.latest %}Registrado no pluviômetro da fazenda · último registro {% if rain.latest_days == 0 %}hoje{% elif rain.latest_days == 1 %}ontem{% else %}em {{ rain.latest.rainfall_date.strftime('%d/%m') }}{% endif %}, {{ rain.latest.millimeters|decimal_br(0) }} mm{% else %}Nenhuma chuva registrada na fazenda ainda{% endif %}{% if rain.average is not none %} · média de {{ rain.years }} ano(s){% endif %}
-                </p>
-            </div>
-            <button type="button" class="db-link" data-db-rain-open>Ver pluviometria da fazenda →</button>
+            <button type="button" class="db-farmrain" data-db-rain-open aria-label="Ver pluviometria da fazenda">
+                <span class="db-farmrain-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3s6 6.5 6 11a6 6 0 0 1-12 0c0-4.5 6-11 6-11Z"/></svg></span>
+                <span class="db-farmrain-body">
+                    <span class="db-farmrain-row"><span class="db-farmrain-title">Na fazenda em {{ rain.month_label }}</span><strong>{{ rain.month_total|decimal_br(0) }} mm</strong></span>
+                    {% if rain.average is not none %}<span class="db-farmrain-track"><span style="width: {{ rain.pct }}%"></span></span>{% endif %}
+                    <span class="db-farmrain-row db-farmrain-sub"><span>{% if rain.latest %}Último registro {% if rain.latest_days == 0 %}hoje{% elif rain.latest_days == 1 %}ontem{% else %}em {{ rain.latest.rainfall_date.strftime('%d/%m') }}{% endif %}, {{ rain.latest.millimeters|decimal_br(0) }} mm{% else %}Nenhuma chuva registrada ainda{% endif %}</span>{% if rain.average is not none %}<span>de {{ rain.average|decimal_br(0) }} mm da média</span>{% endif %}</span>
+                </span>
+                <svg class="db-farmrain-go" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>
+            </button>
         </section>
         {% endif %}
     </div>
@@ -374,5 +375,5 @@
     "redirectTo": current_url or request.url.path,
 }|tojson }}</script>
 <script src="{{ url_for('static', path='js/dashboard.js') }}?v=3"></script>
-{% if can_rainfall %}<script src="{{ url_for('static', path='js/dashboard_weather.js') }}?v=5"></script>{% endif %}
+{% if can_rainfall %}<script src="{{ url_for('static', path='js/dashboard_weather.js') }}?v=6"></script>{% endif %}
 {% endblock %}
