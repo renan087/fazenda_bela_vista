@@ -5547,3 +5547,4 @@ dialog.fa-invoices-modal { width: min(56rem, calc(100vw - 2rem)); max-width: non
 .fa-grid, .fa-grid.fa-grid-cards { grid-template-columns: repeat(auto-fill, minmax(min(100%, 22rem), 1fr)); }
 .stock-history-stage > p.fa-hint { font-size: .8125rem; font-weight: 400; letter-spacing: 0; text-transform: none; }
 .fa-invoice-tabs .finance-credit-card-invoice-tab.fa-invoice-tab.is-active { border-color: var(--sf-ink, #16201a); background: var(--sf-ink, #16201a); color: #fff; box-shadow: none; }
+@media (max-width: 767px) { table.sf-table-legacy tbody td:not(.sf-td-actions) { text-align: left !important; } }
