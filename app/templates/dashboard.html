@@ -57,7 +57,7 @@
         {% endif %}
 
         <section class="db-card" aria-label="Precisa de você hoje">
-            <div class="db-card-head"><h2>Precisa de você hoje</h2><span class="db-count {% if not ov.inbox %}is-zero{% endif %}">{{ ov.inbox|length }}</span></div>
+            <div class="db-card-head"><h2>Precisa de você hoje</h2><span class="db-count {% if not ov.inbox_all %}is-zero{% endif %}">{{ ov.inbox_all|length }}</span></div>
             {% for item in ov.inbox %}
             <div class="db-inbox-item">
                 <span class="db-dot db-dot-{{ item.tone }}" aria-hidden="true"></span>
@@ -67,6 +67,7 @@
             {% else %}
             <div class="db-empty-ok"><strong>Tudo em dia</strong><span>Nada pendente por hoje.</span></div>
             {% endfor %}
+            {% if ov.inbox_all|length > 6 %}<button type="button" class="db-link" data-db-attention-open>Ver todas as {{ ov.inbox_all|length }} pendências →</button>{% endif %}
         </section>
     </div>
 
@@ -222,6 +223,26 @@
     </div>
 </div>
 
+{% if ov.inbox_all|length > 6 %}
+<dialog id="db-attention-modal" class="app-modal db-history db-attention-modal" aria-labelledby="db-attention-title">
+    <div class="db-history-shell">
+        <div class="db-history-head">
+            <div class="min-w-0 flex-1"><h2 id="db-attention-title">Precisa de você hoje</h2><p class="db-muted">{{ ov.inbox_all|length }} pendências que precisam de atenção</p></div>
+            <button type="button" class="modal-close-button" aria-label="Fechar" data-db-attention-close><svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>
+        </div>
+        <div class="db-history-body"><div class="db-attention-list">
+            {% for item in ov.inbox_all %}
+            <div class="db-inbox-item">
+                <span class="db-dot db-dot-{{ item.tone }}" aria-hidden="true"></span>
+                <div class="min-w-0 flex-1"><p class="db-inbox-title">{{ item.title }}</p><p class="db-muted">{{ item.text }}</p></div>
+                <a href="{{ item.link }}" class="sf-btn sf-btn-secondary db-btn-sm">{{ item.action }}</a>
+            </div>
+            {% endfor %}
+        </div></div>
+    </div>
+</dialog>
+{% endif %}
+
 {% if can_production %}
 <dialog id="db-history-modal" class="app-modal db-history" aria-labelledby="db-history-title">
     <div class="db-history-shell">
@@ -374,6 +395,6 @@
     "csrf": csrf_token,
     "redirectTo": current_url or request.url.path,
 }|tojson }}</script>
-<script src="{{ url_for('static', path='js/dashboard.js') }}?v=3"></script>
+<script src="{{ url_for('static', path='js/dashboard.js') }}?v=4"></script>
 {% if can_rainfall %}<script src="{{ url_for('static', path='js/dashboard_weather.js') }}?v=6"></script>{% endif %}
 {% endblock %}

@@ -5611,6 +5611,7 @@ body .erp-main-shell .rounded-\[1\.5rem\].shadow-sm:not(dialog *) { border-radiu
 .db-count { display: inline-flex; align-items: center; justify-content: center; min-width: 1.5rem; height: 1.5rem; padding: 0 .375rem; border-radius: 999px; background: #fef3f2; color: #b42318; font-size: .75rem; font-weight: 700; }
 .db-count.is-zero { background: #eef7ed; color: #294127; }
 .db-inbox-item { display: flex; align-items: center; gap: .75rem; padding: .75rem; border: 1px solid #eef1ed; border-radius: .875rem; background: #fafbf9; }
+.db-attention-list { display: flex; flex-direction: column; gap: .625rem; padding: 1rem 1.375rem 1.25rem; }
 .db-inbox-title { margin: 0; font-size: .8125rem; font-weight: 700; color: var(--sf-ink, #16201a); overflow-wrap: anywhere; }
 .db-dot { flex: none; width: .625rem; height: .625rem; border-radius: 50%; }
 .db-dot-danger { background: #b42318; } .db-dot-warning { background: #e59a4c; } .db-dot-info { background: #3b7bc8; }
@@ -5706,6 +5707,8 @@ dialog.db-history { width: min(72rem, calc(100vw - 2rem)); max-width: none; max-
 .db-check input { width: 1rem; height: 1rem; accent-color: var(--sf-brand, #446a36); }
 .db-history-body { flex: 1; min-height: 0; overflow-y: auto; display: grid; grid-template-columns: minmax(0, 1fr); }
 @media (min-width: 900px) { .db-history-body { grid-template-columns: minmax(0, 1fr) 19rem; overflow: hidden; } }
+dialog.db-attention-modal { width: min(48rem, calc(100vw - 2rem)); }
+.db-attention-modal .db-history-body { display: block; overflow-y: auto; }
 .db-history-main { display: flex; flex-direction: column; gap: .875rem; padding: 0 1.375rem 1.25rem; min-height: 0; }
 .db-history-stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .5rem; margin: 0; }
 @media (min-width: 640px) { .db-history-stats { grid-template-columns: repeat(5, minmax(0, 1fr)); } }

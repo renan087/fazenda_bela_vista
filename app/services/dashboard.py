@@ -16,6 +16,12 @@ def _float(value) -> float:
     return float(value or 0)
 
 
+def filter_dashboard_attention(overview: dict, permissions) -> None:
+    items = [item for item in overview.get("inbox_all", []) if item.get("permission") in permissions]
+    overview["inbox_all"] = items
+    overview["inbox"] = items[:6]
+
+
 def _compact_currency_label(value) -> str:
     numeric = _float(value)
     sign = "-" if numeric < 0 else ""
@@ -201,6 +207,7 @@ def _build_dashboard_finance_flow(repository: FarmRepository, farm_id: int | Non
             "current_month_start": month_start.isoformat(),
             "current_month_end": today.isoformat(),
             "action_items": [],
+            "all_action_items": [],
         }
 
     upcoming_limit = today + timedelta(days=7)
@@ -352,6 +359,7 @@ def _build_dashboard_finance_flow(repository: FarmRepository, farm_id: int | Non
         "current_month_start": month_start.isoformat(),
         "current_month_end": today.isoformat(),
         "action_items": action_items[:6],
+        "all_action_items": action_items,
     }
 
 
@@ -1057,36 +1065,39 @@ def build_dashboard_overview(
 
     # Precisa de voce hoje
     inbox: list[dict] = []
-    for item in finance_flow.get("action_items", []):
+    for item in finance_flow.get("all_action_items", finance_flow.get("action_items", [])):
         if item["status"] not in {"overdue", "today"}:
             continue
         verb = "Receber" if item["type"] == "receber" else "Pagar"
         when = "venceu" if item["status"] == "overdue" else "vence hoje"
         inbox.append({
+            "permission": "page.finance",
             "tone": "danger" if item["status"] == "overdue" else "warning",
             "title": f"{item['title']} — {when}",
             "text": f"{_brl(item['amount'], 2)} · parcela {item['installment']} · {item['source']}",
             "action": verb, "link": item["link"],
         })
     late = [item for item in schedule_alerts if item["status"] == "late"]
-    if late:
-        first = late[0]
+    for item in late:
         inbox.append({
+            "permission": "page.agenda",
             "tone": "danger",
-            "title": f"{len(late)} aplicação(ões) atrasada(s)" if len(late) > 1 else f"Aplicação atrasada — {first['plot']}",
-            "text": f"{first['application_method_label']} programada para {date.fromisoformat(first['date']).strftime('%d/%m')}",
-            "action": "Ver", "link": first["link"],
+            "title": f"Aplicação atrasada — {item['plot']}",
+            "text": f"{item['application_method_label']} programada para {date.fromisoformat(item['date']).strftime('%d/%m')}",
+            "action": "Ver", "link": item["link"],
         })
-    for item in low_stock_items[:2]:
+    for item in low_stock_items:
         inbox.append({
+            "permission": "page.inputs",
             "tone": "danger" if item["stock_level"] == "critical" else "warning",
             "title": f"{item['name']}: estoque {item['stock_level_label'].lower()}",
             "text": f"Restam {item['available_quantity']:g} {item['unit'] or ''} · mínimo {item['low_stock_threshold']:g}".strip(),
             "action": "Comprar", "link": "/insumos/comprados",
         })
     recent_pests = [i for i in incidents if i.occurrence_date and (today - i.occurrence_date).days <= 15 and (i.severity or 0) >= 3]
-    for incident in sorted(recent_pests, key=lambda i: (-(i.severity or 0), i.occurrence_date))[:1]:
+    for incident in sorted(recent_pests, key=lambda i: (-(i.severity or 0), i.occurrence_date)):
         inbox.append({
+            "permission": "page.pests",
             "tone": "danger" if (incident.severity or 0) >= 4 else "warning",
             "title": f"{incident.name} — {incident.plot.name if incident.plot else 'setor'}",
             "text": f"{incident.category} nível {incident.severity} registrada em {incident.occurrence_date.strftime('%d/%m')}",
@@ -1097,6 +1108,7 @@ def build_dashboard_overview(
     rain_alert_on = rain_settings.get("alert_registered", True) and rain_settings.get("notify_dashboard", True)
     if rain_alert_on and latest and rain["latest_days"] is not None and rain["latest_days"] <= 2 and _float(latest.millimeters) >= heavy_rain_mm:
         inbox.append({
+            "permission": "page.rainfall",
             "tone": "info",
             "title": f"Chuva forte registrada: {_float(latest.millimeters):g} mm",
             "text": f"Em {latest.rainfall_date.strftime('%d/%m')} · confira se alguma aplicação recente precisa ser refeita",
@@ -1150,6 +1162,7 @@ def build_dashboard_overview(
         "date_label": f"{today.day} de {_MONTHS_LONG[today.month - 1]}",
         "hero": hero,
         "inbox": inbox[:6],
+        "inbox_all": inbox,
         "tiles": tiles,
         "market": {
             "history": history_12m,

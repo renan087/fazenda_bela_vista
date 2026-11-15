@@ -15,6 +15,13 @@
     };
     const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
+    const attentionModal = document.getElementById('db-attention-modal');
+    if (attentionModal) {
+        $$('[data-db-attention-open]').forEach((button) => button.addEventListener('click', () => attentionModal.showModal()));
+        $$('[data-db-attention-close]', attentionModal).forEach((button) => button.addEventListener('click', () => attentionModal.close()));
+        attentionModal.addEventListener('click', (event) => { if (event.target === attentionModal) attentionModal.close(); });
+    }
+
     // Saudação conforme a hora
     const greet = $('[data-db-greeting]');
     if (greet) { const h = new Date().getHours(); greet.textContent = h < 12 ? 'Bom dia' : h < 18 ? 'Boa tarde' : 'Boa noite'; }

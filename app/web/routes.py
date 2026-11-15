@@ -177,7 +177,7 @@ from app.services.automated_test_runner import (
     run_automated_tests_background,
 )
 from app.services.coffee_quotes import CEPEA_SOURCE, CEPEA_WIDGET_URL, persist_browser_cepea_quotes
-from app.services.dashboard import build_dashboard_context
+from app.services.dashboard import build_dashboard_context, filter_dashboard_attention
 from app.services.dashboard_map_preview import (
     dashboard_map_fingerprint,
     dashboard_map_preview_fs_path,
@@ -4101,6 +4101,10 @@ def dashboard(
             "timeline": _page_number(timeline_page),
         },
     )
+    overview = data.get("overview") or {}
+    entitlements = _entitlements_for(db, user)
+    allowed_pages = {code for code in permission_codes_for_user(db, user) if entitlements.module_allowed(code)}
+    filter_dashboard_attention(overview, allowed_pages)
     dashboard_map_preview_url = None
     dashboard_map_geojson = data.get("map_geojson") or ""
     dashboard_map_has_geometry = False
