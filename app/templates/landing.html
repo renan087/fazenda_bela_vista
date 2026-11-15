@@ -9,16 +9,25 @@
 <meta property="og:type" content="website">
 <meta property="og:title" content="SiSFarm — Gestão para fazendas de café">
 <meta property="og:description" content="Do plantio à venda, em um só lugar: mapa, fertilização com IA, estoque, financeiro, colheita e cotação do café.">
-<meta property="og:image" content="/static/images/planos-hero.webp">
+<link rel="canonical" href="{{ site_url }}/">
+<meta name="robots" content="index, follow, max-image-preview:large">
+<meta property="og:url" content="{{ site_url }}/">
+<meta property="og:site_name" content="SiSFarm">
+<meta property="og:image" content="{{ site_url }}/static/images/og-sisfarm.jpg">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="SiSFarm — gestão para fazendas de café">
+<meta name="twitter:card" content="summary_large_image">
 <meta property="og:locale" content="pt_BR">
 <link rel="icon" href="/static/favicon.svg">
+<link rel="apple-touch-icon" href="/static/favicon.png">
 <link rel="preload" as="image" href="/static/images/planos-hero.webp" fetchpriority="high">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/static/css/landing.css">
 <script>document.documentElement.classList.add('js')</script>
-<script type="application/ld+json">{"@context":"https://schema.org","@type":"SoftwareApplication","name":"SiSFarm","applicationCategory":"BusinessApplication","operatingSystem":"Web","inLanguage":"pt-BR","description":"Gestão agrícola para fazendas de café: talhões no mapa, fertilização com recomendação por IA, estoque, financeiro, colheita e cotação do café."}</script>
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"SoftwareApplication","name":"SiSFarm","applicationCategory":"BusinessApplication","operatingSystem":"Web","url":"{{ site_url }}/","inLanguage":"pt-BR","description":"Gestão agrícola para fazendas de café: talhões no mapa, fertilização com recomendação por IA, estoque, financeiro, colheita e cotação do café."}</script>
 </head>
 {% set check %}<svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12 4.5 4.5L19 7"/></svg>{% endset %}
 {% set arrow %}<svg class="ico arr" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg>{% endset %}

@@ -225,3 +225,25 @@ def test_landing_page_shows_trial_from_catalog(monkeypatch):
         html = routes.templates.env.get_template(name).render(**ctx)
     assert 'Teste grátis por 14 dias' in html and 'O SiSFarm oferece teste gratuito?' in html
     assert 'Todos os 15 módulos' in html and 'data-cycle-btn="YEARLY"' in html and 'R$ 799,00' in html
+
+
+def test_seo_robots_sitemap_and_noindex_outside_landing():
+    import asyncio
+    from types import SimpleNamespace
+    from starlette.responses import Response as StarletteResponse
+    from app.main import search_engine_indexing
+    from app.web.routes import robots_txt, sitemap_xml
+
+    assert "Sitemap: https://" in robots_txt().body.decode()
+    assert "<loc>https://" in sitemap_xml().body.decode()
+
+    async def call_next(_request):
+        return StarletteResponse("ok")
+
+    def headers_for(path):
+        request = SimpleNamespace(url=SimpleNamespace(path=path))
+        return asyncio.run(search_engine_indexing(request, call_next)).headers
+
+    assert headers_for("/login").get("X-Robots-Tag") == "noindex, nofollow"
+    assert "X-Robots-Tag" not in headers_for("/")
+    assert "X-Robots-Tag" not in headers_for("/static/images/og-sisfarm.jpg")

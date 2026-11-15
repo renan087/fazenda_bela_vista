@@ -3699,6 +3699,25 @@ def _soil_history_chart(analyses: list[SoilAnalysis]) -> str:
     )
 
 
+@router.get("/robots.txt", include_in_schema=False)
+def robots_txt():
+    base = app_public_base()
+    body = f"User-agent: *\nAllow: /\nDisallow: /api/\n\nSitemap: {base}/sitemap.xml\n"
+    return Response(body, media_type="text/plain")
+
+
+@router.get("/sitemap.xml", include_in_schema=False)
+def sitemap_xml():
+    base = app_public_base()
+    body = (
+        '<?xml version="1.0" encoding="UTF-8"?>\n'
+        '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'
+        f"<url><loc>{base}/</loc><changefreq>weekly</changefreq><priority>1.0</priority></url>"
+        "</urlset>\n"
+    )
+    return Response(body, media_type="application/xml")
+
+
 @router.get("/")
 def home(request: Request, db: Session = Depends(get_db)):
     """Landing page publica; quem ja esta logado vai direto para o dashboard."""
@@ -3712,7 +3731,7 @@ def home(request: Request, db: Session = Depends(get_db)):
         "plan_modules_catalog": PLAN_MODULES, "module_pitch": MODULE_PITCH, "module_details": MODULE_DETAILS,
         "trial_days": max((plan.trial_days or 0 for plan in catalog), default=0),
         "contact_href": f"mailto:{support}?subject=Quero%20conhecer%20o%20SisFarm" if support else "/login",
-        "current_year": today_in_app_timezone().year,
+        "current_year": today_in_app_timezone().year, "site_url": app_public_base(),
     })
 
 

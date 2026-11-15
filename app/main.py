@@ -148,6 +148,19 @@ def _custom_openapi_schema() -> dict:
     return app.openapi_schema
 
 
+INDEXABLE_PATHS = {"/", "/robots.txt", "/sitemap.xml"}
+
+
+@app.middleware("http")
+async def search_engine_indexing(request: Request, call_next):
+    """Somente a landing publica entra no Google; o restante do sistema fica fora do indice."""
+    response = await call_next(request)
+    path = request.url.path or "/"
+    if path not in INDEXABLE_PATHS and not path.startswith("/static/"):
+        response.headers.setdefault("X-Robots-Tag", "noindex, nofollow")
+    return response
+
+
 @app.middleware("http")
 async def request_memory_diagnostics(request: Request, call_next):
     path = request.url.path or ""
