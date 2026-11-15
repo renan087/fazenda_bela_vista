@@ -148,7 +148,7 @@ def _custom_openapi_schema() -> dict:
     return app.openapi_schema
 
 
-INDEXABLE_PATHS = {"/", "/robots.txt", "/sitemap.xml"}
+INDEXABLE_PATHS = {"/", "/robots.txt", "/sitemap.xml", "/cadastro", "/termos", "/privacidade"}
 
 
 @app.middleware("http")

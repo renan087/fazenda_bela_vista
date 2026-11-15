@@ -20,7 +20,7 @@
 
     {% if active_access_grant %}
     <section class="rounded-[2rem] border border-violet-200 bg-violet-50 p-5 text-sm text-violet-950" data-access-grant-banner>
-        <p class="font-semibold">Seu acesso está liberado pela equipe SiSFarm até {{ active_access_grant.ends_on.strftime('%d/%m/%Y') }}.</p>
+        <p class="font-semibold">{% if active_access_grant.reason == 'teste_gratis' %}Você está no teste grátis até {{ active_access_grant.ends_on.strftime('%d/%m/%Y') }}.{% else %}Seu acesso está liberado pela equipe SiSFarm até {{ active_access_grant.ends_on.strftime('%d/%m/%Y') }}.{% endif %}</p>
         <p class="mt-1 text-violet-800">{% if open_charges %}Mesmo com a liberação, as faturas em aberto abaixo continuam válidas. {% endif %}Em caso de dúvida, fale com a equipe SiSFarm.</p>
     </section>
     {% endif %}

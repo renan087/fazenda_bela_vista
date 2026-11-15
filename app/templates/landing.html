@@ -49,7 +49,7 @@
     </ul>
     <div class="nav-cta">
       <a href="/login" class="btn btn-ghost ghost-hide">Entrar</a>
-      <a href="{{ contact_href }}" class="btn btn-pri">{{ nav_cta_label }}</a>
+      <a href="{{ signup_href }}" class="btn btn-pri">{{ nav_cta_label }}</a>
     </div>
   </div>
 </nav>
@@ -66,7 +66,7 @@
       <h1 class="h1"><span class="line"><span>Sua fazenda de café,</span></span><span class="line"><span class="grad">do plantio à venda,</span></span><span class="line"><span>em um só lugar.</span></span></h1>
       <p class="lead fade-in" style="max-width:540px;font-size:19px">Talhões no mapa, adubação, estoque, colheita, financeiro e cotação do café. Decisões melhores com dados da sua própria lavoura — no computador ou no celular.</p>
       <div class="fade-in" style="display:flex;flex-wrap:wrap;gap:14px;margin-top:36px">
-        <a href="{{ contact_href }}" class="btn btn-pri" style="min-height:58px;padding:0 30px;font-size:16px">{{ cta_label }} {{ arrow }}</a>
+        <a href="{{ signup_href }}" class="btn btn-pri" style="min-height:58px;padding:0 30px;font-size:16px">{{ cta_label }} {{ arrow }}</a>
         <a href="#funcionalidades" class="btn btn-ghost" style="min-height:58px;padding:0 28px;font-size:16px">Conhecer o sistema</a>
       </div>
       <ul class="checks fade-in">
@@ -205,7 +205,7 @@
             <div class="rec-row"><div><p class="t">Potássio (K₂O)</p><p class="s">Junto ao N nas 3 parcelas</p></div><p class="d mono">300 kg/ha</p></div>
           </div>
           <div style="display:flex;gap:10px;margin-top:16px;flex-wrap:wrap">
-            <a href="{{ contact_href }}" class="btn btn-pri" style="flex:1;min-height:46px;font-size:14px">{{ cta_label }}</a>
+            <a href="{{ signup_href }}" class="btn btn-pri" style="flex:1;min-height:46px;font-size:14px">{{ cta_label }}</a>
             <button class="btn btn-ghost" type="button" style="min-height:46px;font-size:14px" data-ai-reset>Refazer</button>
           </div>
         </div>
@@ -288,7 +288,7 @@
           <li>{{ check }}<a class="mod-link" href="#modulos">{{ ('Todos os ' ~ total_modules ~ ' módulos') if n_mods >= total_modules else (n_mods ~ ' de ' ~ total_modules ~ ' módulos') }} · ver detalhes</a></li>
         </ul>
         {% if plan.trial_days %}<p class="trial-note">{{ plan.trial_days }} dias grátis para testar</p>{% endif %}
-        <a href="{{ contact_href }}" class="btn {{ {'featured': 'btn-pri', 'premium': 'btn-gold', 'light': 'btn-out'}[variant] }}">Quero o {{ plan.name }}{% if variant == 'featured' %} {{ arrow }}{% endif %}</a>
+        <a href="{{ signup_href }}?plano={{ plan.id }}" class="btn {{ {'featured': 'btn-pri', 'premium': 'btn-gold', 'light': 'btn-out'}[variant] }}">Quero o {{ plan.name }}{% if variant == 'featured' %} {{ arrow }}{% endif %}</a>
         {% if variant == 'premium' %}<p class="excl"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true" style="width:16px;height:16px;color:#f3c969"><path d="M12 3 4 6v6c0 4.5 3.4 8.2 8 9 4.6-.8 8-4.5 8-9V6Z"/></svg>Para operações que exigem o máximo</p>{% endif %}
       </article>
       {% endfor %}
@@ -368,7 +368,7 @@
       <h2 class="h2" id="cta-titulo" style="margin:0">Pronto para colher <span class="grad">mais resultado?</span></h2>
       {% if trial_days %}<p class="lead" style="color:#d6e7dd">Experimente o SiSFarm grátis por {{ trial_days }} dias, com todas as funcionalidades liberadas, e cadastre sua fazenda hoje mesmo.</p>
       {% else %}<p class="lead" style="color:#d6e7dd">Fale com a equipe e veja o SiSFarm funcionando com os dados da sua fazenda.</p>{% endif %}
-      <a href="{{ contact_href }}" class="btn btn-pri" style="margin-top:34px;min-height:58px;padding:0 30px;font-size:16px">{{ cta_label }} {{ arrow }}</a>
+      <a href="{{ signup_href }}" class="btn btn-pri" style="margin-top:34px;min-height:58px;padding:0 30px;font-size:16px">{{ cta_label }} {{ arrow }}</a>
     </div>
   </div>
 </section>
@@ -381,9 +381,9 @@
         <p class="logo" style="margin:0"><img class="logo-mark" src="/static/images/logo-icon.png" alt="" width="52" height="47" loading="lazy"><img class="logo-word" src="/static/images/logo-wordmark.png" alt="SiSFarm" width="116" height="34" loading="lazy"></p>
         <p style="margin:16px 0 0;max-width:280px;line-height:1.6">Gestão agrícola para fazendas de café.</p>
       </div>
-      <div><h4>Produto</h4><ul><li><a href="#funcionalidades">Funcionalidades</a></li><li><a href="#ia">IA agronômica</a></li>{% if plans_catalog %}<li><a href="#planos">Planos</a></li>{% endif %}<li><a href="/login">Entrar</a></li></ul></div>
+      <div><h4>Produto</h4><ul><li><a href="#funcionalidades">Funcionalidades</a></li><li><a href="#ia">IA agronômica</a></li>{% if plans_catalog %}<li><a href="#planos">Planos</a></li>{% endif %}<li><a href="/cadastro">Criar conta</a></li><li><a href="/login">Entrar</a></li></ul></div>
       <div><h4>Empresa</h4><ul><li><a href="{{ contact_href }}">Contato</a></li><li><a href="{{ contact_href }}">Suporte</a></li></ul></div>
-      <div><h4>Legal</h4><ul><li>Termos de uso</li><li>Privacidade (LGPD)</li></ul></div>
+      <div><h4>Legal</h4><ul><li><a href="/termos">Termos de uso</a></li><li><a href="/privacidade">Privacidade (LGPD)</a></li></ul></div>
     </div>
     <div class="copy"><span>© {{ current_year }} SiSFarm. Todos os direitos reservados.</span><span class="mono">Feito para o café brasileiro</span></div>
   </div>

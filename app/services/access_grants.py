@@ -24,6 +24,7 @@ GRANT_REASONS: dict[str, str] = {
     "negociacao_comercial": "Negociação comercial em andamento",
     "bonus_cortesia": "Bônus ou cortesia",
     "implantacao": "Implantação / período de avaliação",
+    "teste_gratis": "Teste grátis (autocadastro)",
     "outro": "Outro motivo",
 }
 MAX_GRANT_DAYS = 90

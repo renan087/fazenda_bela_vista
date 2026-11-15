@@ -116,6 +116,7 @@ from app.services.asaas_customers import (
 )
 from app.services.asaas_subscriptions import create_sandbox_subscription, get_sandbox_subscription, list_customer_sandbox_subscriptions, list_sandbox_subscription_payments, manage_sandbox_subscription, sandbox_subscription_is_missing, switch_sandbox_subscription_to_saved_card, update_sandbox_subscription
 from app.services.asaas_organization_payment_actions import execute_payment_action
+from app.services.self_signup import TRIAL_DAYS as SELF_SIGNUP_TRIAL_DAYS
 from app.services.asaas_environment import app_public_base, asaas_api_key, asaas_configuration_error, asaas_env_name, asaas_ready, current_asaas_environment
 from app.services.asaas_card_checkout import cancel_sandbox_checkout, create_sandbox_card_checkout_session, safe_asaas_link
 from app.services.commercial_audit import record_commercial_event
@@ -3713,6 +3714,9 @@ def sitemap_xml():
         '<?xml version="1.0" encoding="UTF-8"?>\n'
         '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'
         f"<url><loc>{base}/</loc><changefreq>weekly</changefreq><priority>1.0</priority></url>"
+        f"<url><loc>{base}/cadastro</loc><priority>0.8</priority></url>"
+        f"<url><loc>{base}/termos</loc><priority>0.3</priority></url>"
+        f"<url><loc>{base}/privacidade</loc><priority>0.3</priority></url>"
         "</urlset>\n"
     )
     return Response(body, media_type="application/xml")
@@ -3746,6 +3750,24 @@ def _landing_structured_data(site_url: str, catalog) -> str:
     return json.dumps(data, ensure_ascii=False).replace("</", "<\\/")
 
 
+def _legal_page(request: Request, page: str):
+    support = (get_settings().support_email or "").strip()
+    return templates.TemplateResponse(f"legal_{page}.html", {
+        "request": request, "support_email": support or "contato@sisfarm.com.br",
+        "updated_on": "14/11/2026", "site_url": app_public_base(),
+    })
+
+
+@router.api_route("/termos", methods=["GET", "HEAD"])
+def terms_page(request: Request):
+    return _legal_page(request, "termos")
+
+
+@router.api_route("/privacidade", methods=["GET", "HEAD"])
+def privacy_page(request: Request):
+    return _legal_page(request, "privacidade")
+
+
 @router.api_route("/", methods=["GET", "HEAD"])
 def home(request: Request, db: Session = Depends(get_db)):
     """Landing page publica; quem ja esta logado vai direto para o dashboard."""
@@ -3757,8 +3779,9 @@ def home(request: Request, db: Session = Depends(get_db)):
         "request": request, "plans_catalog": catalog, "premium_plan_id": _premium_plan_id(catalog),
         "plan_prices_of": plan_prices, "plan_modules_of": plan_modules,
         "plan_modules_catalog": PLAN_MODULES, "module_pitch": MODULE_PITCH, "module_details": MODULE_DETAILS,
-        "trial_days": max((plan.trial_days or 0 for plan in catalog), default=0),
-        "contact_href": f"mailto:{support}?subject=Quero%20conhecer%20o%20SisFarm" if support else "/login",
+        "trial_days": SELF_SIGNUP_TRIAL_DAYS,
+        "contact_href": f"mailto:{support}?subject=Quero%20conhecer%20o%20SisFarm" if support else "/cadastro",
+        "signup_href": "/cadastro",
         "current_year": today_in_app_timezone().year, "site_url": app_public_base(), "seo_description": SEO_DESCRIPTION,
         "structured_data": _landing_structured_data(app_public_base(), catalog),
     })

@@ -1,0 +1,103 @@
+{% extends "base.html" %}
+{% block auth_content %}
+{% set form = form or {} %}
+{% set field = 'w-full rounded-2xl border-slate-200 bg-slate-50 focus:border-brand-500 focus:ring-brand-500' %}
+<div class="min-h-screen bg-slate-950 px-4 py-8 sm:px-6 sm:py-12">
+    <div class="mx-auto grid max-w-6xl gap-8 lg:grid-cols-[1.05fr_0.95fr] lg:items-stretch">
+        <section class="order-2 hidden h-full rounded-[2rem] border border-white/10 bg-gradient-to-br from-brand-700 via-slate-900 to-slate-950 p-10 text-white shadow-2xl lg:order-1 lg:flex lg:items-center">
+            <div>
+                <img src="{{ url_for('static', path='images/logo.png') }}" alt="SiSFarm" class="h-[96px] w-[150px] object-contain">
+                <h1 class="mt-8 max-w-md text-4xl font-semibold leading-tight">Comece hoje a gestão da sua fazenda de café.</h1>
+                <ul class="mt-8 space-y-4 text-slate-200">
+                    {% for item in [trial_days ~ ' dias grátis, com tudo liberado', 'Sem cartão de crédito para começar', 'Seus dados ficam guardados se decidir assinar'] %}
+                    <li class="flex items-center gap-3"><span class="grid h-7 w-7 place-items-center rounded-full bg-brand-500/20 text-brand-300"><svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12 5 5 9-10"/></svg></span>{{ item }}</li>
+                    {% endfor %}
+                </ul>
+            </div>
+        </section>
+
+        <section class="order-1 flex h-full flex-col justify-center rounded-[2rem] bg-white p-6 shadow-panel sm:p-8 lg:order-2">
+            <a href="/" class="lg:hidden"><img src="{{ url_for('static', path='images/logo.png') }}" alt="SiSFarm" class="h-14 w-auto object-contain"></a>
+            <p class="mt-4 text-xs uppercase tracking-[0.35em] text-slate-400 lg:mt-0">Teste grátis · {{ trial_days }} dias</p>
+
+            {% if error %}<div class="mt-5 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700" role="alert">{{ error }}{% if existing_account %} <a href="/login" class="font-semibold underline">Entrar</a>{% endif %}</div>{% endif %}
+            {% if info %}<div class="mt-5 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{{ info }}</div>{% endif %}
+
+            {% if step == 'email' %}
+            <h2 class="mt-4 text-3xl font-semibold text-slate-900">Crie sua conta</h2>
+            <p class="mt-2 text-sm text-slate-500">Leva menos de um minuto.</p>
+            {% if google_login_enabled %}
+            <a href="/cadastro/google" class="mt-7 inline-flex w-full items-center justify-center gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 font-semibold text-slate-700 transition hover:bg-slate-50">
+                <svg viewBox="0 0 24 24" class="h-5 w-5" aria-hidden="true"><path fill="#EA4335" d="M12 10.2v3.9h5.5c-.24 1.26-.96 2.33-2.03 3.04l3.28 2.54c1.91-1.76 3.01-4.34 3.01-7.39 0-.7-.06-1.37-.17-2.02H12z"/><path fill="#34A853" d="M12 22c2.7 0 4.96-.9 6.61-2.43l-3.28-2.54c-.91.61-2.08.97-3.33.97-2.56 0-4.73-1.73-5.5-4.05H3.11v2.62A9.99 9.99 0 0 0 12 22z"/><path fill="#4A90E2" d="M6.5 13.95A5.99 5.99 0 0 1 6.2 12c0-.68.12-1.34.3-1.95V7.43H3.11A10 10 0 0 0 2 12c0 1.61.38 3.13 1.11 4.57l3.39-2.62z"/><path fill="#FBBC05" d="M12 5.98c1.47 0 2.8.5 3.84 1.49l2.88-2.88C16.95 2.95 14.7 2 12 2A9.99 9.99 0 0 0 3.11 7.43l3.39 2.62C7.27 7.71 9.44 5.98 12 5.98z"/></svg>
+                <span>Continuar com Google</span>
+            </a>
+            <div class="my-5 flex items-center gap-3"><span class="h-px flex-1 bg-slate-200"></span><span class="text-xs font-medium uppercase tracking-[0.2em] text-slate-400">ou</span><span class="h-px flex-1 bg-slate-200"></span></div>
+            {% endif %}
+            <form method="post" action="/cadastro" class="{{ '' if google_login_enabled else 'mt-7' }} space-y-4" data-busy-form>
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <div class="absolute -left-[9999px]" aria-hidden="true"><label>Site <input type="text" name="website" tabindex="-1" autocomplete="off"></label></div>
+                <label class="block"><span class="mb-2 block text-sm font-medium text-slate-700">E-mail</span>
+                    <input type="email" name="email" value="{{ state.email or '' }}" class="{{ field }}" placeholder="voce@fazenda.com.br" autocomplete="email" required autofocus></label>
+                <button class="inline-flex w-full items-center justify-center rounded-2xl bg-brand-500 px-4 py-3 font-semibold text-white hover:bg-brand-700">Continuar com e-mail</button>
+            </form>
+            <p class="mt-6 text-center text-sm text-slate-500">Já tem uma conta? <a href="/login" class="font-semibold text-brand-700 hover:text-brand-500">Entrar</a></p>
+
+            {% elif step == 'dados' %}
+            <h2 class="mt-4 text-3xl font-semibold text-slate-900">Seus dados</h2>
+            <p class="mt-2 text-sm text-slate-500">Falta pouco para acessar o SiSFarm.</p>
+            <form method="post" action="/cadastro/dados" class="mt-6 space-y-4" data-busy-form>
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <label class="block"><span class="mb-2 block text-sm font-medium text-slate-700">E-mail</span>
+                    <div class="flex items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-slate-100 px-4 py-3 text-slate-600">
+                        <span class="truncate">{{ state.email }}</span>
+                        {% if state.google %}<span class="shrink-0 rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-700">Google</span>{% else %}<a href="/cadastro" class="shrink-0 text-sm font-semibold text-brand-700">Alterar</a>{% endif %}
+                    </div></label>
+                <div class="grid gap-4 sm:grid-cols-2">
+                    <label class="block"><span class="mb-2 block text-sm font-medium text-slate-700">Nome</span>
+                        <input name="first_name" value="{{ form.first_name or state.first_name or '' }}" class="{{ field }}" autocomplete="given-name" required maxlength="60" autofocus></label>
+                    <label class="block"><span class="mb-2 block text-sm font-medium text-slate-700">Sobrenome</span>
+                        <input name="last_name" value="{{ form.last_name or state.last_name or '' }}" class="{{ field }}" autocomplete="family-name" required maxlength="60"></label>
+                </div>
+                <label class="block"><span class="mb-2 block text-sm font-medium text-slate-700">WhatsApp</span>
+                    <input name="phone" type="tel" inputmode="tel" value="{{ form.phone or '' }}" class="{{ field }}" placeholder="(35) 99999-9999" autocomplete="tel-national" required maxlength="20" data-phone-mask></label>
+                <label class="block"><span class="mb-2 block text-sm font-medium text-slate-700">Nome da fazenda ou empresa</span>
+                    <input name="organization_name" value="{{ form.organization_name or '' }}" class="{{ field }}" placeholder="Fazenda Boa Esperança" autocomplete="organization" required maxlength="140"></label>
+                {% if not state.google %}
+                <label class="block"><span class="mb-2 block text-sm font-medium text-slate-700">Crie uma senha</span>
+                    <input name="password" type="password" class="{{ field }}" placeholder="Mínimo de {{ min_password }} caracteres" autocomplete="new-password" required minlength="{{ min_password }}"></label>
+                {% endif %}
+                <label class="flex items-start gap-3 text-sm text-slate-600">
+                    <input type="checkbox" name="accepted_terms" value="1" class="mt-0.5 h-4 w-4 rounded border-slate-300 text-brand-500 focus:ring-brand-500" required>
+                    <span>Li e aceito os <a href="/termos" target="_blank" class="font-semibold text-brand-700 underline">Termos de Uso</a> e a <a href="/privacidade" target="_blank" class="font-semibold text-brand-700 underline">Política de Privacidade</a>.</span>
+                </label>
+                <button class="inline-flex w-full items-center justify-center rounded-2xl bg-brand-500 px-4 py-3 font-semibold text-white hover:bg-brand-700">{{ 'Criar conta' if state.google else 'Continuar' }}</button>
+            </form>
+
+            {% else %}
+            <h2 class="mt-4 text-3xl font-semibold text-slate-900">Confirme seu e-mail</h2>
+            <p class="mt-2 text-sm text-slate-500">Enviamos um código de 6 dígitos para <strong class="text-slate-700">{{ state.email }}</strong>. Confira também a caixa de spam.</p>
+            <form method="post" action="/cadastro/confirmar" class="mt-6 space-y-4" data-busy-form>
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <input name="code" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code" required autofocus class="{{ field }} text-center text-2xl font-semibold tracking-[0.5em]" placeholder="••••••" aria-label="Código de 6 dígitos">
+                <button class="inline-flex w-full items-center justify-center rounded-2xl bg-brand-500 px-4 py-3 font-semibold text-white hover:bg-brand-700">Criar conta</button>
+            </form>
+            <form method="post" action="/cadastro/reenviar" class="mt-4 text-center">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <button class="text-sm font-semibold text-brand-700 hover:text-brand-500">Reenviar código</button>
+                <span class="mx-2 text-slate-300">·</span><a href="/cadastro/dados" class="text-sm text-slate-500 hover:text-slate-700">Voltar</a>
+            </form>
+            {% endif %}
+        </section>
+    </div>
+</div>
+<script>
+document.querySelectorAll('[data-phone-mask]').forEach((input) => {
+    input.addEventListener('input', () => {
+        const d = input.value.replace(/\D/g, '').slice(0, 11);
+        if (d.length < 3) { input.value = d ? '(' + d : ''; return; }
+        const mid = d.length > 10 ? 5 : 4;
+        input.value = '(' + d.slice(0, 2) + ') ' + d.slice(2, 2 + mid) + (d.length > 2 + mid ? '-' + d.slice(2 + mid) : '');
+    });
+});
+</script>
+{% endblock %}

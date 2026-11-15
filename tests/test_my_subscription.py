@@ -206,8 +206,8 @@ def test_landing_page_for_visitors_and_redirect_for_logged_users(monkeypatch):
     assert name == 'landing.html'
     assert 'Sua fazenda de café' in html and 'R$ 79,90' in html and 'Mais escolhido' in html
     assert 'mailto:contato@sisfarm.test' in html and 'href="/login"' in html
-    assert '14 dias' not in html and 'Depoimento' not in html
-    assert 'Solicitar demonstração' in html and 'O que cada plano inclui' in html
+    assert 'Teste grátis por 14 dias' in html and 'href="/cadastro"' in html and 'Depoimento' not in html
+    assert 'href="/termos"' in html and 'O que cada plano inclui' in html
     assert 'Incluído no Essencial' in html and 'Não incluído no Essencial' in html and 'Contas a receber' in html
     assert '1 de 15 módulos' in html
 

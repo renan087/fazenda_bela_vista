@@ -1,5 +1,6 @@
 import logging
 import secrets
+import time
 from urllib.parse import urlencode
 
 import httpx
@@ -404,7 +405,13 @@ def login_google_callback(
     user = db.query(User).filter(User.email == email).first()
     _reactivate_super_admin_if_needed(db, user)
     if not user:
-        return _render_login(request, "Seu email Google nao esta cadastrado no sistema. Solicite acesso ao administrador.")
+        # Sem conta: segue para o autocadastro com o e-mail ja confirmado pelo Google.
+        previous = request.session.get(SIGNUP_SESSION) or {}
+        request.session[SIGNUP_SESSION] = {
+            "email": email, "google": True, "plan_id": previous.get("plan_id"),
+            "first_name": (claims.get("given_name") or "").strip(), "last_name": (claims.get("family_name") or "").strip(),
+        }
+        return RedirectResponse(url="/cadastro/dados", status_code=status.HTTP_303_SEE_OTHER)
     if not user.is_active:
         return _render_login(request, "Seu usuario esta inativo no sistema. Entre em contato com o administrador.")
     return _start_web_login_challenge(request, db, user)
@@ -710,3 +717,219 @@ def login_api(
 
     append_audit_event(request=request, actor_user=user, event_type="auth.api.token.success", outcome="success")
     return Token(access_token=create_access_token(user.email))
+
+
+# ---------------------------------------------------------------------------
+# Autocadastro: e-mail (ou Google) -> dados -> codigo por e-mail -> conta criada
+# ---------------------------------------------------------------------------
+SIGNUP_SESSION = "signup"
+
+
+def _signup_state(request: Request) -> dict:
+    return dict(request.session.get(SIGNUP_SESSION) or {})
+
+
+def _save_signup(request: Request, state: dict) -> None:
+    request.session[SIGNUP_SESSION] = state
+
+
+def _render_signup(request: Request, step: str, error: str | None = None, info: str | None = None, **extra):
+    from app.services.self_signup import TRIAL_DAYS, MIN_PASSWORD
+
+    state = _signup_state(request)
+    context = {
+        "request": request, "step": step, "error": error, "info": info, "state": state,
+        "csrf_token": ensure_csrf_token(request), "page": "login", "trial_days": TRIAL_DAYS,
+        "min_password": MIN_PASSWORD, "google_login_enabled": _google_login_enabled(), **extra,
+    }
+    return templates.TemplateResponse("signup.html", context, status_code=status.HTTP_400_BAD_REQUEST if error else status.HTTP_200_OK)
+
+
+def _client_ip(request: Request) -> str | None:
+    forwarded = request.headers.get("x-forwarded-for", "")
+    return forwarded.split(",")[0].strip() or (request.client.host if request.client else None)
+
+
+def _finish_signup(request: Request, db: Session, state: dict, password_hash: str | None):
+    from app.services.email_service import send_plain_email
+    from app.services.self_signup import SignupData, SignupError, create_self_signup, TRIAL_DAYS
+    from app.core.timezone import today_in_app_timezone
+
+    data = SignupData(**state["data"])
+    try:
+        user = create_self_signup(db, email=state["email"], data=data, password_hash=password_hash,
+                                  plan_id=state.get("plan_id"), today=today_in_app_timezone())
+    except SignupError as exc:
+        db.rollback()
+        return _render_signup(request, "email", str(exc))
+    request.session.pop(SIGNUP_SESSION, None)
+    append_audit_event(request=request, actor_user=user, event_type="auth.signup", outcome="success",
+                       metadata={"organization_id": user.organization_id, "via": "google" if state.get("google") else "email"})
+    support = (get_settings().support_email or "").strip()
+    if support:
+        try:
+            send_plain_email(
+                support, f"Novo cadastro no SiSFarm: {user.organization.name}",
+                f"Nova conta criada pelo site (teste de {TRIAL_DAYS} dias).\n\n"
+                f"Organização: {user.organization.name}\nNome: {user.name}\nE-mail: {user.email}\nWhatsApp: {user.phone}\n",
+                "aviso de novo cadastro",
+            )
+        except Exception:
+            logger.exception("Falha ao avisar a equipe sobre novo cadastro")
+    return _complete_web_login(request, db, user)
+
+
+@router.get("/cadastro")
+def signup_page(request: Request, plano: int | None = None):
+    clear_expired_session(request)
+    if request.session.get("user_email"):
+        return RedirectResponse(url="/dashboard", status_code=status.HTTP_303_SEE_OTHER)
+    state = _signup_state(request)
+    if plano:
+        state["plan_id"] = plano
+        _save_signup(request, state)
+    return _render_signup(request, "email")
+
+
+@router.post("/cadastro")
+def signup_email_action(
+    request: Request,
+    email: str = Form(""),
+    website: str = Form(""),
+    csrf_token: str = Form(...),
+    db: Session = Depends(get_db),
+):
+    from app.services.self_signup import SignupError, normalize_email, rate_limited
+
+    validate_csrf(request, csrf_token)
+    if website:  # campo invisivel: so robos preenchem
+        return RedirectResponse(url="/cadastro", status_code=status.HTTP_303_SEE_OTHER)
+    if rate_limited(_client_ip(request)):
+        return _render_signup(request, "email", "Muitas tentativas a partir desta rede. Tente novamente mais tarde.")
+    try:
+        normalized = normalize_email(email)
+    except SignupError as exc:
+        return _render_signup(request, "email", str(exc))
+    if db.query(User.id).filter(User.email == normalized).first():
+        return _render_signup(request, "email", "Este e-mail já tem uma conta.", existing_account=True)
+    state = _signup_state(request)
+    _save_signup(request, {"email": normalized, "plan_id": state.get("plan_id")})
+    return RedirectResponse(url="/cadastro/dados", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@router.get("/cadastro/google")
+def signup_google_start(request: Request):
+    if not _google_login_enabled():
+        return RedirectResponse(url="/cadastro", status_code=status.HTTP_303_SEE_OTHER)
+    return RedirectResponse(url=_build_google_authorization_url(request), status_code=status.HTTP_302_FOUND)
+
+
+@router.get("/cadastro/dados")
+def signup_details_page(request: Request):
+    if not _signup_state(request).get("email"):
+        return RedirectResponse(url="/cadastro", status_code=status.HTTP_303_SEE_OTHER)
+    return _render_signup(request, "dados")
+
+
+@router.post("/cadastro/dados")
+def signup_details_action(
+    request: Request,
+    first_name: str = Form(""),
+    last_name: str = Form(""),
+    phone: str = Form(""),
+    organization_name: str = Form(""),
+    password: str = Form(""),
+    accepted_terms: str | None = Form(None),
+    csrf_token: str = Form(...),
+    db: Session = Depends(get_db),
+):
+    from app.services.email_service import send_plain_email
+    from app.services.self_signup import (
+        CODE_TTL_SECONDS, SignupError, code_digest, new_code, validate_password, validate_signup,
+    )
+
+    validate_csrf(request, csrf_token)
+    state = _signup_state(request)
+    if not state.get("email"):
+        return RedirectResponse(url="/cadastro", status_code=status.HTTP_303_SEE_OTHER)
+    form = {"first_name": first_name, "last_name": last_name, "phone": phone, "organization_name": organization_name}
+    try:
+        data = validate_signup(first_name, last_name, phone, organization_name, accepted_terms)
+        password_hash = None if state.get("google") else get_password_hash(validate_password(password))
+    except SignupError as exc:
+        return _render_signup(request, "dados", str(exc), form=form)
+    state["data"] = data.__dict__
+    if state.get("google"):  # e-mail ja confirmado pelo Google
+        return _finish_signup(request, db, state, None)
+
+    code = new_code()
+    try:
+        send_plain_email(
+            state["email"], f"{code} é o seu código do SiSFarm",
+            f"Olá, {data.first_name}!\n\nSeu código para criar a conta no SiSFarm é: {code}\n\n"
+            "Ele vale por 15 minutos. Se você não pediu este cadastro, ignore este e-mail.\n",
+            "codigo de cadastro",
+        )
+    except Exception:
+        logger.exception("Falha ao enviar codigo de cadastro")
+        return _render_signup(request, "dados", "Não foi possível enviar o código agora. Tente novamente em instantes.", form=form)
+    state.update(password_hash=password_hash, code=code_digest(state["email"], code),
+                 code_expires=time.time() + CODE_TTL_SECONDS, code_sent_at=time.time(), attempts=0)
+    _save_signup(request, state)
+    return RedirectResponse(url="/cadastro/confirmar", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@router.get("/cadastro/confirmar")
+def signup_confirm_page(request: Request):
+    if not _signup_state(request).get("code"):
+        return RedirectResponse(url="/cadastro", status_code=status.HTTP_303_SEE_OTHER)
+    return _render_signup(request, "confirmar")
+
+
+@router.post("/cadastro/confirmar")
+def signup_confirm_action(
+    request: Request,
+    code: str = Form(""),
+    csrf_token: str = Form(...),
+    db: Session = Depends(get_db),
+):
+    from app.services.self_signup import CODE_MAX_ATTEMPTS, code_matches
+
+    validate_csrf(request, csrf_token)
+    state = _signup_state(request)
+    if not state.get("code"):
+        return RedirectResponse(url="/cadastro", status_code=status.HTTP_303_SEE_OTHER)
+    if time.time() > state.get("code_expires", 0) or state.get("attempts", 0) >= CODE_MAX_ATTEMPTS:
+        return _render_signup(request, "confirmar", "Este código expirou. Clique em reenviar para receber outro.")
+    if not code_matches(state["email"], code, state["code"]):
+        state["attempts"] = state.get("attempts", 0) + 1
+        _save_signup(request, state)
+        return _render_signup(request, "confirmar", "Código incorreto. Confira o e-mail e tente de novo.")
+    return _finish_signup(request, db, state, state.get("password_hash"))
+
+
+@router.post("/cadastro/reenviar")
+def signup_resend_action(request: Request, csrf_token: str = Form(...)):
+    from app.services.email_service import send_plain_email
+    from app.services.self_signup import CODE_TTL_SECONDS, RESEND_COOLDOWN_SECONDS, code_digest, new_code, rate_limited
+
+    validate_csrf(request, csrf_token)
+    state = _signup_state(request)
+    if not state.get("code"):
+        return RedirectResponse(url="/cadastro", status_code=status.HTTP_303_SEE_OTHER)
+    wait = int(RESEND_COOLDOWN_SECONDS - (time.time() - state.get("code_sent_at", 0)))
+    if wait > 0:
+        return _render_signup(request, "confirmar", f"Aguarde {wait}s para pedir um novo código.")
+    if rate_limited(_client_ip(request)):
+        return _render_signup(request, "confirmar", "Muitas tentativas a partir desta rede. Tente novamente mais tarde.")
+    code = new_code()
+    try:
+        send_plain_email(state["email"], f"{code} é o seu código do SiSFarm",
+                         f"Seu novo código para criar a conta no SiSFarm é: {code}\n\nEle vale por 15 minutos.\n", "codigo de cadastro")
+    except Exception:
+        logger.exception("Falha ao reenviar codigo de cadastro")
+        return _render_signup(request, "confirmar", "Não foi possível reenviar o código agora.")
+    state.update(code=code_digest(state["email"], code), code_expires=time.time() + CODE_TTL_SECONDS,
+                 code_sent_at=time.time(), attempts=0)
+    _save_signup(request, state)
+    return _render_signup(request, "confirmar", info="Enviamos um novo código.")

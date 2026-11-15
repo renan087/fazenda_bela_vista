@@ -1,0 +1,42 @@
+{% extends "legal_base.html" %}
+{% block title %}Política de Privacidade{% endblock %}
+{% block description %}Como o SiSFarm coleta, usa e protege dados pessoais, conforme a LGPD.{% endblock %}
+{% block content %}
+<p>Esta Política explica como o SiSFarm trata dados pessoais, de acordo com a Lei Geral de Proteção de Dados (Lei nº 13.709/2018 — LGPD).</p>
+
+<h2>1. Dados que coletamos</h2>
+<ul>
+<li><strong>Cadastro:</strong> nome, e-mail, WhatsApp, nome da fazenda ou empresa e senha (guardada de forma criptografada). No login com Google, recebemos nome e e-mail da sua conta Google.</li>
+<li><strong>Cobrança:</strong> CPF ou CNPJ, endereço e dados de pagamento, informados ao contratar um plano. Dados de cartão são tratados diretamente pelo Asaas; o SiSFarm não armazena o número do cartão.</li>
+<li><strong>Uso da Plataforma:</strong> registros que você cadastra (fazendas, talhões, operações, estoque, financeiro e outros) e registros técnicos de acesso, como data, hora, endereço IP e navegador, para segurança e auditoria.</li>
+</ul>
+
+<h2>2. Para que usamos</h2>
+<ul>
+<li>Criar e manter sua conta e prestar o serviço contratado (execução de contrato).</li>
+<li>Enviar códigos de acesso, avisos da conta e de cobrança (execução de contrato).</li>
+<li>Entrar em contato sobre o teste grátis e ajudar na implantação (legítimo interesse; você pode pedir para não ser contatado).</li>
+<li>Prevenir fraudes, proteger o acesso e cumprir obrigações legais e fiscais (obrigação legal e legítimo interesse).</li>
+</ul>
+
+<h2>3. Com quem compartilhamos</h2>
+<p>Não vendemos dados pessoais. Compartilhamos apenas o necessário com fornecedores que viabilizam o serviço: hospedagem e banco de dados, envio de e-mails, processamento de pagamentos (Asaas), login com Google e serviços de inteligência artificial usados nas recomendações, sempre limitados à finalidade de prestar o serviço. Também podemos compartilhar dados quando exigido por lei ou ordem judicial.</p>
+
+<h2>4. Por quanto tempo guardamos</h2>
+<p>Mantemos os dados enquanto a conta estiver ativa. Após o encerramento, podemos guardar registros pelo tempo exigido por lei (por exemplo, registros de acesso e documentos fiscais) e depois os excluímos ou anonimizamos.</p>
+
+<h2>5. Segurança</h2>
+<p>Usamos conexão criptografada (HTTPS), senhas com hash, verificação de acesso por código, controle de permissões por usuário, separação dos dados por organização e cópias de segurança. Nenhum sistema é totalmente imune a incidentes; se algum afetar seus dados, você será comunicado conforme a LGPD.</p>
+
+<h2>6. Seus direitos</h2>
+<p>Você pode pedir confirmação do tratamento, acesso, correção, portabilidade, anonimização ou exclusão dos seus dados, além de informações sobre compartilhamento e revogação de consentimento, quando aplicável. Basta escrever para <a href="mailto:{{ support_email }}">{{ support_email }}</a>.</p>
+
+<h2>7. Cookies</h2>
+<p>Usamos apenas cookies necessários para manter você conectado com segurança e lembrar navegadores confiáveis. Não usamos cookies de publicidade.</p>
+
+<h2>8. Contato do encarregado (DPO)</h2>
+<p>Para assuntos de privacidade e proteção de dados, fale com o encarregado pelo e-mail <a href="mailto:{{ support_email }}">{{ support_email }}</a>.</p>
+
+<h2>9. Alterações</h2>
+<p>Esta Política pode ser atualizada. A data da última atualização fica indicada no topo desta página, e mudanças relevantes serão comunicadas.</p>
+{% endblock %}
