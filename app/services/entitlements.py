@@ -203,3 +203,59 @@ MODULE_PITCH: dict[str, str] = {
     "page.agronomic": "Monte o perfil agronômico da fazenda com sugestões automáticas.",
     "page.mobile": "Registre as atividades direto do campo pelo celular.",
 }
+
+# Detalhe de cada modulo na landing page: grupos (titulo, itens) em linguagem do produtor.
+MODULE_DETAILS: dict[str, tuple[tuple[str, tuple[str, ...]], ...]] = {
+    "page.productive_unit": (
+        ("Fazendas", ("Cadastro de uma ou mais fazendas com localização", "Troca rápida entre fazendas")),
+        ("Safras e setores", ("Safras com início e fim", "Setores (talhões) com área, variedade e mapa", "Custos por setor e por safra, com a composição detalhada")),
+    ),
+    "page.map": (
+        ("No mapa", ("Setores desenhados sobre a imagem de satélite", "Importação do CAR ou desenho manual das áreas", "Navegação entre fazendas e setores")),
+    ),
+    "page.operations": (
+        ("Planejamento", ("Recomendação de insumos por setor", "Doses e produtos definidos para cada área")),
+        ("Execução", ("Registro das aplicações realizadas", "Operações agrícolas com seus custos", "Histórico completo por setor e safra")),
+    ),
+    "page.agenda": (
+        ("Agenda", ("Calendário das aplicações planejadas", "Mudança de data de vários agendamentos de uma vez", "Lembretes do que vence na semana")),
+    ),
+    "page.inputs": (
+        ("Compras", ("Registro de compras de insumos", "Lote do fabricante e validade de cada produto", "Compra lançada direto no financeiro")),
+        ("Estoque", ("Saldo atual de cada insumo", "Baixa automática a cada aplicação", "Consumo avulso e suprimentos de uso geral", "Inventário físico para conferir e corrigir o saldo")),
+    ),
+    "page.assets": (
+        ("Patrimônio", ("Cadastro de máquinas e equipamentos", "Valor e compra lançados no financeiro")),
+        ("Manutenção", ("Planos de manutenção recorrente", "Registro das manutenções com despesas", "Indicadores de custo por equipamento")),
+    ),
+    "page.finance": (
+        ("Extrato", ("Todas as receitas e despesas da fazenda", "Filtros por período, conta e categoria", "Exportação em PDF e Excel")),
+        ("Contas", ("Contas bancárias com saldo atualizado", "Cartões de crédito com faturas e parcelas", "Contas a pagar, com marcação de pagamento", "Contas a receber", "Organização por categorias")),
+    ),
+    "page.production": (
+        ("Colheita", ("Registro da colheita por setor e por lote", "Produtividade em sacas por hectare")),
+        ("Comercialização", ("Lotes disponíveis para venda", "Registro das vendas por lote de origem", "Histórico de comercialização", "Cotação do café atualizada diariamente")),
+    ),
+    "page.varieties": (
+        ("Variedades", ("Catálogo das variedades de café", "Variedade vinculada a cada setor", "Comparação de desempenho entre variedades")),
+    ),
+    "page.irrigation": (
+        ("Irrigação", ("Registro das irrigações por setor", "Volume de água aplicado", "Histórico das últimas irrigações")),
+    ),
+    "page.rainfall": (
+        ("Chuvas", ("Registro diário de chuvas", "Total de chuva no mês no painel", "Histórico de chuvas por período")),
+    ),
+    "page.pests": (
+        ("Sanidade", ("Ocorrências por setor e por tipo", "Acompanhamento da evolução", "Registro dos tratamentos aplicados")),
+    ),
+    "page.soil": (
+        ("Análises", ("Cadastro dos laudos do laboratório", "Evolução da fertilidade ao longo do tempo")),
+        ("Inteligência artificial", ("Recomendação de adubação gerada por IA", "Histórico das recomendações geradas")),
+    ),
+    "page.agronomic": (
+        ("Perfil da lavoura", ("Cultivar, sistema de produção e fase da lavoura", "Clima, tipo de solo, altitude e declividade", "Irrigação, espaçamento e meta de produtividade", "Sugestões automáticas para preencher")),
+    ),
+    "page.mobile": (
+        ("No campo", ("Tela de registro rápido pensada para o celular", "Lançamentos feitos na lavoura entram no sistema na hora")),
+    ),
+}

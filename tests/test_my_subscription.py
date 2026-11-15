@@ -207,3 +207,21 @@ def test_landing_page_for_visitors_and_redirect_for_logged_users(monkeypatch):
     assert 'Sua fazenda de café' in html and 'R$ 79,90' in html and 'Mais escolhido' in html
     assert 'mailto:contato@sisfarm.test' in html and 'href="/login"' in html
     assert '14 dias' not in html and 'Depoimento' not in html
+    assert 'Solicitar demonstração' in html and 'O que cada plano inclui' in html
+    assert 'Incluído no Essencial' in html and 'Não incluído no Essencial' in html and 'Contas a receber' in html
+    assert '1 de 15 módulos' in html
+
+
+def test_landing_page_shows_trial_from_catalog(monkeypatch):
+    from types import SimpleNamespace as NS
+    monkeypatch.setattr(routes, 'get_settings', lambda: NS(support_email=''))
+    with _db() as db:
+        plan = plans.create_plan(db, plans.parse_plan_form(name='Profissional', description='', price_monthly='149,90', price_quarterly='', price_semiannual='', price_yearly='799,00',
+                                                           max_farms='3', max_users='', max_hectares='', modules=[code for code, _ in plans.PLAN_MODULES], trial_days='14', display_order='', is_featured='1'))
+        plans.activate_plan(db, plan)
+        db.commit()
+        monkeypatch.setattr(routes.templates, 'TemplateResponse', lambda name, context: (name, context))
+        name, ctx = routes.home(request=NS(session={}), db=db)
+        html = routes.templates.env.get_template(name).render(**ctx)
+    assert 'Teste grátis por 14 dias' in html and 'O SiSFarm oferece teste gratuito?' in html
+    assert 'Todos os 15 módulos' in html and 'data-cycle-btn="YEARLY"' in html and 'R$ 799,00' in html

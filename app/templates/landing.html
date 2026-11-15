@@ -3,187 +3,424 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>SisFarm — Gestão para fazendas de café</title>
-<meta name="description" content="SisFarm: gestão agrícola para fazendas de café. Talhões no mapa, adubação, estoque, colheita, financeiro e cotação do café em um só lugar.">
+<title>SiSFarm — Gestão para fazendas de café</title>
+<meta name="description" content="SiSFarm: gestão agrícola para fazendas de café. Talhões no mapa, adubação com recomendação por IA, estoque, colheita, financeiro e cotação do café em um só lugar.">
+<meta name="theme-color" content="#050f0a">
+<meta property="og:type" content="website">
+<meta property="og:title" content="SiSFarm — Gestão para fazendas de café">
+<meta property="og:description" content="Do plantio à venda, em um só lugar: mapa, fertilização com IA, estoque, financeiro, colheita e cotação do café.">
+<meta property="og:image" content="/static/images/planos-hero.webp">
+<meta property="og:locale" content="pt_BR">
 <link rel="icon" href="/static/favicon.svg">
-<script src="https://cdn.tailwindcss.com"></script>
-<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<style>
-  body { font-family: 'Plus Jakarta Sans', system-ui, sans-serif; }
-  .ico { width: 1.5rem; height: 1.5rem; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
-  .glow { box-shadow: 0 0 0 2px rgba(163,230,53,.7), 0 30px 60px -15px rgba(22,101,52,.6); }
-  .gold { box-shadow: 0 0 0 2px rgba(251,191,36,.75), 0 30px 60px -15px rgba(180,130,20,.5); }
-</style>
+<link rel="preload" as="image" href="/static/images/planos-hero.webp" fetchpriority="high">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/css/landing.css">
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"SoftwareApplication","name":"SiSFarm","applicationCategory":"BusinessApplication","operatingSystem":"Web","inLanguage":"pt-BR","description":"Gestão agrícola para fazendas de café: talhões no mapa, fertilização com recomendação por IA, estoque, financeiro, colheita e cotação do café."}</script>
 </head>
-<body class="bg-[#f4f7f2] text-slate-900">
+{% set check %}<svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12 4.5 4.5L19 7"/></svg>{% endset %}
+{% set arrow %}<svg class="ico arr" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg>{% endset %}
+{% set cta_label = ('Teste grátis por ' ~ trial_days ~ ' dias') if trial_days else 'Solicitar demonstração' %}
+{% set nav_cta_label = 'Teste grátis' if trial_days else 'Solicitar demonstração' %}
+<body>
+<a class="skip" href="#conteudo">Pular para o conteúdo</a>
+<div class="sf">
 
-<!-- HERO -->
-<header class="relative overflow-hidden bg-[#0c2416] text-white">
-  <div class="absolute inset-0 bg-cover bg-right" style="background-image:url('/static/images/planos-hero.webp')"></div>
-  <div class="absolute inset-0" style="background:linear-gradient(90deg,#0c2416 0%,rgba(12,36,22,.93) 35%,rgba(12,36,22,.35) 65%,rgba(12,36,22,.05) 100%),linear-gradient(0deg,#0c2416 0%,rgba(12,36,22,0) 40%)"></div>
-  <nav class="relative mx-auto flex max-w-7xl items-center justify-between px-8 py-6">
-    <p class="flex items-center gap-2 text-2xl font-extrabold"><svg class="ico h-8 w-8 text-lime-400" viewBox="0 0 24 24"><path d="M5 19c8 0 14-6 14-14-8 0-14 6-14 14Z"/><path d="M5 19 13 11"/></svg>SisFarm</p>
-    <ul class="hidden gap-8 text-sm font-medium text-emerald-50/90 lg:flex"><li><a href="#funcionalidades" class="hover:text-white">Funcionalidades</a></li><li><a href="#como-funciona" class="hover:text-white">Como funciona</a></li><li><a href="#planos" class="hover:text-white">Planos</a></li><li><a href="#duvidas" class="hover:text-white">Dúvidas</a></li></ul>
-    <div class="flex items-center gap-3 text-sm font-semibold"><a href="/login" class="rounded-xl px-4 py-2.5 text-white ring-1 ring-white/30 hover:bg-white/10">Entrar</a><a href="{{ contact_href }}" class="rounded-xl bg-lime-400 px-5 py-2.5 text-[#0c2416] hover:bg-lime-300">Solicitar demonstração</a></div>
-  </nav>
-  <div class="relative mx-auto grid max-w-7xl gap-10 px-8 pb-28 pt-16 lg:grid-cols-2">
+<nav class="nav" aria-label="Principal">
+  <div class="wrap nav-in">
+    <a href="#topo" class="logo" aria-label="SiSFarm — início"><img class="logo-mark" src="/static/images/logo-icon.png" alt="" width="52" height="47"><img class="logo-word" src="/static/images/logo-wordmark.png" alt="SiSFarm" width="116" height="34"></a>
+    <ul class="nav-links">
+      <li><a href="#funcionalidades">Funcionalidades</a></li>
+      <li><a href="#ia">IA agronômica</a></li>
+      <li><a href="#como-funciona">Como funciona</a></li>
+      {% if plans_catalog %}<li><a href="#planos">Planos</a></li>{% endif %}
+      <li><a href="#duvidas">Dúvidas</a></li>
+    </ul>
+    <div class="nav-cta">
+      <a href="/login" class="btn btn-ghost ghost-hide">Entrar</a>
+      <a href="{{ contact_href }}" class="btn btn-pri">{{ nav_cta_label }}</a>
+    </div>
+  </div>
+</nav>
+
+<header class="hero" id="topo">
+  <img class="hero-img" src="/static/images/planos-hero.webp" alt="" fetchpriority="high" decoding="async">
+  <div class="hero-shade"></div>
+  <div class="hero-grid"></div>
+  <div class="orb orb-a"></div>
+  <div class="orb orb-b"></div>
+  <div class="wrap hero-in">
     <div>
-      <p class="inline-flex items-center gap-2 rounded-full bg-white/10 px-4 py-1.5 text-xs font-semibold uppercase tracking-[0.2em] text-lime-300 ring-1 ring-white/15">Gestão agrícola para o café</p>
-      <h1 class="mt-6 text-4xl font-extrabold sm:text-6xl leading-[1.05]">Sua fazenda de café, <span class="text-lime-400">do plantio à venda</span>, em um só lugar.</h1>
-      <p class="mt-6 max-w-xl text-lg text-emerald-50/90">Talhões no mapa, adubação, estoque, colheita, financeiro e cotação do café. Decisões melhores com dados da sua própria lavoura, no computador ou no celular.</p>
-      <div class="mt-9 flex flex-wrap gap-4">
-        <a href="{{ contact_href }}" class="flex items-center gap-2 rounded-2xl bg-gradient-to-r from-lime-400 to-lime-500 px-7 py-4 text-base font-bold text-[#0c2416] shadow-lg shadow-lime-500/30 hover:from-lime-300 hover:to-lime-400">Solicitar demonstração <svg class="ico h-5 w-5" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
-        <a href="#funcionalidades" class="rounded-2xl px-7 py-4 text-base font-semibold ring-1 ring-white/40 hover:bg-white/10">Conhecer o sistema</a>
+      <p class="pill glass fade-in" style="margin:0"><span class="pill-tag">NOVO</span>Recomendação de adubação com IA</p>
+      <h1 class="h1"><span class="line"><span>Sua fazenda de café,</span></span><span class="line"><span class="grad">do plantio à venda,</span></span><span class="line"><span>em um só lugar.</span></span></h1>
+      <p class="lead fade-in" style="max-width:540px;font-size:19px">Talhões no mapa, adubação, estoque, colheita, financeiro e cotação do café. Decisões melhores com dados da sua própria lavoura — no computador ou no celular.</p>
+      <div class="fade-in" style="display:flex;flex-wrap:wrap;gap:14px;margin-top:36px">
+        <a href="{{ contact_href }}" class="btn btn-pri" style="min-height:58px;padding:0 30px;font-size:16px">{{ cta_label }} {{ arrow }}</a>
+        <a href="#funcionalidades" class="btn btn-ghost" style="min-height:58px;padding:0 28px;font-size:16px">Conhecer o sistema</a>
       </div>
-      <ul class="mt-9 flex flex-wrap gap-6 text-sm text-emerald-50/85">
-        <li class="flex items-center gap-2"><span class="text-lime-400">✓</span>Funciona no computador e no celular</li>
-        <li class="flex items-center gap-2"><span class="text-lime-400">✓</span>Dados na nuvem, com backup</li>
-        <li class="flex items-center gap-2"><span class="text-lime-400">✓</span>Suporte em português</li>
+      <ul class="checks fade-in">
+        {% if trial_days %}<li>{{ check }}{{ trial_days }} dias grátis, tudo liberado</li>{% endif %}
+        <li>{{ check }}Computador e celular</li>
+        <li>{{ check }}Nuvem com backup</li>
+        <li>{{ check }}Suporte em português</li>
       </ul>
     </div>
-    <!-- Mockup do painel -->
-    <div class="relative self-end">
-      <div class="rounded-[1.75rem] bg-white/95 p-5 text-slate-900 shadow-2xl ring-1 ring-white/40 backdrop-blur">
-        <div class="flex items-center justify-between"><p class="font-bold">Painel da fazenda</p><span class="rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-800">Safra 2026/2027</span></div>
-        <div class="mt-4 grid grid-cols-3 gap-3">
-          <div class="rounded-2xl bg-emerald-50 p-3"><p class="text-[11px] text-emerald-800">Produtividade</p><p class="text-xl font-extrabold">38,4 <span class="text-xs font-semibold">sc/ha</span></p></div>
-          <div class="rounded-2xl bg-amber-50 p-3"><p class="text-[11px] text-amber-800">Café arábica</p><p class="text-xl font-extrabold">R$ 1.637</p></div>
-          <div class="rounded-2xl bg-sky-50 p-3"><p class="text-[11px] text-sky-800">Chuva no mês</p><p class="text-xl font-extrabold">142 <span class="text-xs font-semibold">mm</span></p></div>
+
+    <div class="stage" aria-hidden="true">
+      <div class="dash glass" style="background:linear-gradient(160deg,rgba(14,40,27,.88),rgba(6,18,12,.92))">
+        <div class="dash-top"><p style="margin:0;font-weight:700">Painel da fazenda</p><span class="chip"><span class="dot"></span>Safra 2026/2027</span></div>
+        <div class="kpis">
+          <div class="kpi"><p class="k">Produtividade</p><p class="v">38,4 <small>sc/ha</small></p></div>
+          <div class="kpi"><p class="k">Café arábica</p><p class="v" style="color:#f3c969">R$ 1.637</p></div>
+          <div class="kpi"><p class="k">Chuva no mês</p><p class="v">142 <small>mm</small></p></div>
         </div>
-        <div class="mt-4 rounded-2xl border border-slate-100 p-4">
-          <p class="text-xs font-semibold text-slate-500">Produção por setor (sacas)</p>
-          <div class="mt-3 flex h-28 items-end gap-3">
-            <div class="flex-1 rounded-t-lg bg-[#446a36]" style="height:62%"></div><div class="flex-1 rounded-t-lg bg-[#446a36]" style="height:88%"></div><div class="flex-1 rounded-t-lg bg-lime-500" style="height:100%"></div><div class="flex-1 rounded-t-lg bg-[#446a36]" style="height:70%"></div><div class="flex-1 rounded-t-lg bg-[#446a36]" style="height:54%"></div><div class="flex-1 rounded-t-lg bg-[#446a36]" style="height:80%"></div>
-          </div>
-          <div class="mt-2 grid grid-cols-6 text-center text-[10px] text-slate-400"><span>Setor 1</span><span>Setor 2</span><span>Setor 3</span><span>Setor 4</span><span>Setor 5</span><span>Setor 6</span></div>
+        <div class="kpi" style="margin-top:10px;padding:16px">
+          <p class="k">Produção por setor (sacas)</p>
+          <div class="bars"><div class="bar" style="height:62%"></div><div class="bar" style="height:86%"></div><div class="bar hi" style="height:100%"></div><div class="bar" style="height:70%"></div><div class="bar" style="height:52%"></div><div class="bar" style="height:78%"></div></div>
+          <div class="mono" style="display:grid;grid-template-columns:repeat(6,minmax(0,1fr));text-align:center;font-size:10px;color:#7c9a8b;margin-top:8px"><span>S1</span><span>S2</span><span>S3</span><span>S4</span><span>S5</span><span>S6</span></div>
         </div>
-        <div class="mt-4 flex items-center gap-3 rounded-2xl bg-[#0c2416] p-3 text-white"><span class="flex h-9 w-9 items-center justify-center rounded-xl bg-lime-400 text-[#0c2416]">✓</span><p class="text-sm">Adubação do Setor 3 agendada para amanhã · 12 sacas em estoque</p></div>
+      </div>
+      <div class="float glass f2" style="background:rgba(10,28,19,.85)">
+        <svg class="ico" viewBox="0 0 24 24" style="color:#f3c969"><path d="M3 17l6-6 4 4 8-8"/><path d="M14 7h7v7"/></svg>
+        <div><p style="font-size:11px;color:#a3bfb0">CEPEA hoje</p><p style="font-weight:800">Arábica em alta</p></div>
+      </div>
+      <div class="float glass f1" style="background:rgba(10,28,19,.9)">
+        <span class="ai-badge"><svg class="ico" viewBox="0 0 24 24"><path d="M12 3v3M12 18v3M3 12h3M18 12h3M6.3 6.3l2 2M15.7 15.7l2 2M6.3 17.7l2-2M15.7 8.3l2-2"/><circle cx="12" cy="12" r="3"/></svg></span>
+        <div><p style="font-weight:700">Recomendação pronta</p><p style="font-size:12px;color:#a3bfb0;margin-top:2px">Setor 3 · adubação de cobertura</p></div>
       </div>
     </div>
   </div>
 </header>
 
-<!-- FAIXA DE CONFIANÇA -->
-<section class="mx-auto -mt-12 max-w-6xl px-8">
-  <div class="relative grid grid-cols-2 gap-y-4 lg:grid-cols-4 lg:divide-x divide-slate-200 rounded-[1.75rem] bg-white p-6 text-center shadow-xl ring-1 ring-slate-100">
-    <div><p class="text-3xl font-extrabold text-[#446a36]">+15</p><p class="text-sm text-slate-500">módulos integrados</p></div>
-    <div><p class="text-3xl font-extrabold text-[#446a36]">100%</p><p class="text-sm text-slate-500">na nuvem, com backup</p></div>
-    <div><p class="text-3xl font-extrabold text-[#446a36]">CEPEA</p><p class="text-sm text-slate-500">cotação do café diária</p></div>
-    <div><p class="text-3xl font-extrabold text-[#446a36]">Mobile</p><p class="text-sm text-slate-500">registro direto do campo</p></div>
+<main id="conteudo">
+<div class="marquee" aria-hidden="true"><div class="track">
+  {% for _ in range(2) %}<span>Talhões e mapa</span><span>Fertilização</span><span>Análise de solo</span><span>Estoque de insumos</span><span>Financeiro</span><span>Colheita e venda</span><span>Cotação CEPEA</span><span>Máquinas</span><span>Campo mobile</span><span>Recomendação com IA</span>{% endfor %}
+</div></div>
+
+<section class="wrap" aria-label="O SiSFarm em números">
+  <div class="stats glass reveal" style="background:linear-gradient(180deg,rgba(16,40,28,.9),rgba(8,22,15,.9));margin-top:72px">
+    <div class="stat"><p class="n grad">+{{ plan_modules_catalog|length }}</p><p class="l">módulos integrados</p></div>
+    <div class="stat"><p class="n grad">100%</p><p class="l">na nuvem, com backup</p></div>
+    <div class="stat"><p class="n grad">CEPEA</p><p class="l">cotação do café diária</p></div>
+    <div class="stat"><p class="n grad">Mobile</p><p class="l">registro direto do campo</p></div>
   </div>
 </section>
 
-<!-- PROBLEMA -> SOLUÇÃO -->
-<section class="mx-auto max-w-6xl px-8 py-24 text-center">
-  <p class="text-xs font-bold uppercase tracking-[0.25em] text-[#446a36]">Por que SisFarm</p>
-  <h2 class="mx-auto mt-3 max-w-3xl text-4xl font-extrabold leading-tight">Chega de planilhas soltas, cadernos de campo e custos que ninguém sabe de onde vieram.</h2>
-  <div class="mt-14 grid gap-6 text-left md:grid-cols-3">
-    <div class="rounded-[1.5rem] bg-white p-7 shadow-sm ring-1 ring-slate-100"><span class="flex h-12 w-12 items-center justify-center rounded-2xl bg-emerald-50 text-[#446a36]"><svg class="ico" viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="m7 15 4-4 3 3 5-6"/></svg></span><h3 class="mt-5 text-lg font-bold">Custo real por setor</h3><p class="mt-2 text-slate-500">Insumos, operações e máquinas rateados por talhão e por safra, com custo por hectare e por saca.</p></div>
-    <div class="rounded-[1.5rem] bg-white p-7 shadow-sm ring-1 ring-slate-100"><span class="flex h-12 w-12 items-center justify-center rounded-2xl bg-emerald-50 text-[#446a36]"><svg class="ico" viewBox="0 0 24 24"><path d="M12 21v-9"/><path d="M12 12c0-4 3-7 8-7 0 4-3 7-8 7Z"/><path d="M12 14c0-3-2.5-5.5-7-5.5 0 3 2.5 5.5 7 5.5Z"/></svg></span><h3 class="mt-5 text-lg font-bold">Lavoura sob controle</h3><p class="mt-2 text-slate-500">Adubação agendada, análise de solo, pragas e chuva registrados no histórico de cada setor.</p></div>
-    <div class="rounded-[1.5rem] bg-white p-7 shadow-sm ring-1 ring-slate-100"><span class="flex h-12 w-12 items-center justify-center rounded-2xl bg-emerald-50 text-[#446a36]"><svg class="ico" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v10M9.5 9.5c0-1.2 1.1-2 2.5-2s2.5.8 2.5 2-1.1 1.8-2.5 2.2-2.5 1-2.5 2.3 1.1 2 2.5 2 2.5-.8 2.5-2"/></svg></span><h3 class="mt-5 text-lg font-bold">Venda na hora certa</h3><p class="mt-2 text-slate-500">Acompanhe a cotação do café, sua produção e a comercialização para negociar com segurança.</p></div>
-  </div>
-</section>
-
-<!-- FUNCIONALIDADES -->
-<section id="funcionalidades" class="scroll-mt-6 bg-white py-24">
-  <div class="mx-auto max-w-6xl px-8">
-    <div class="flex flex-wrap items-end justify-between gap-8">
-      <div><p class="text-xs font-bold uppercase tracking-[0.25em] text-[#446a36]">Funcionalidades</p><h2 class="mt-3 max-w-2xl text-4xl font-extrabold">Tudo o que a fazenda precisa, conectado.</h2></div>
-      <p class="max-w-sm text-slate-500">Cada registro alimenta os demais: a adubação baixa o estoque, que entra no custo, que aparece no financeiro.</p>
-    </div>
-    <div class="mt-12 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
-      <div class="rounded-[1.5rem] border border-slate-100 bg-[#f7faf5] p-6"><span class="flex h-11 w-11 items-center justify-center rounded-xl bg-emerald-100 text-[#446a36]">{{ plan_icon('tree', 'h-6 w-6') }}</span><h3 class="mt-3 font-bold">Talhões e mapa</h3><p class="mt-1 text-sm text-slate-500">Setores desenhados no mapa, com área e imagem de satélite.</p></div>
-      <div class="rounded-[1.5rem] border border-slate-100 bg-[#f7faf5] p-6"><span class="flex h-11 w-11 items-center justify-center rounded-xl bg-emerald-100 text-[#446a36]">{{ plan_icon('sprout', 'h-6 w-6') }}</span><h3 class="mt-3 font-bold">Fertilização</h3><p class="mt-1 text-sm text-slate-500">Recomendações, agenda e aplicações por setor.</p></div>
-      <div class="rounded-[1.5rem] border border-slate-100 bg-[#f7faf5] p-6"><span class="flex h-11 w-11 items-center justify-center rounded-xl bg-emerald-100 text-[#446a36]">{{ plan_icon('shield', 'h-6 w-6') }}</span><h3 class="mt-3 font-bold">Estoque de insumos</h3><p class="mt-1 text-sm text-slate-500">Lotes, validades e inventário com baixa automática.</p></div>
-      <div class="rounded-[1.5rem] border border-slate-100 bg-[#f7faf5] p-6"><span class="flex h-11 w-11 items-center justify-center rounded-xl bg-emerald-100 text-[#446a36]">{{ plan_icon('star', 'h-6 w-6') }}</span><h3 class="mt-3 font-bold">Financeiro</h3><p class="mt-1 text-sm text-slate-500">Contas, cartões, parcelas e extrato da fazenda.</p></div>
-      <div class="rounded-[1.5rem] border border-slate-100 bg-[#f7faf5] p-6"><span class="flex h-11 w-11 items-center justify-center rounded-xl bg-emerald-100 text-[#446a36]">{{ plan_icon('coffee', 'h-6 w-6') }}</span><h3 class="mt-3 font-bold">Colheita e venda</h3><p class="mt-1 text-sm text-slate-500">Produtividade por hectare e comercialização do café.</p></div>
-      <div class="rounded-[1.5rem] border border-slate-100 bg-[#f7faf5] p-6"><span class="flex h-11 w-11 items-center justify-center rounded-xl bg-emerald-100 text-[#446a36]">{{ plan_icon('sun', 'h-6 w-6') }}</span><h3 class="mt-3 font-bold">Cotação CEPEA</h3><p class="mt-1 text-sm text-slate-500">Arábica e robusta atualizados todos os dias.</p></div>
-      <div class="rounded-[1.5rem] border border-slate-100 bg-[#f7faf5] p-6"><span class="flex h-11 w-11 items-center justify-center rounded-xl bg-emerald-100 text-[#446a36]">{{ plan_icon('tractor', 'h-6 w-6') }}</span><h3 class="mt-3 font-bold">Máquinas</h3><p class="mt-1 text-sm text-slate-500">Patrimônio e manutenção preventiva com alertas.</p></div>
-      <div class="rounded-[1.5rem] border border-slate-100 bg-[#f7faf5] p-6"><span class="flex h-11 w-11 items-center justify-center rounded-xl bg-emerald-100 text-[#446a36]">{{ plan_icon('leaf', 'h-6 w-6') }}</span><h3 class="mt-3 font-bold">Campo mobile</h3><p class="mt-1 text-sm text-slate-500">Registro rápido direto da lavoura, pelo celular.</p></div>
+<section class="sec">
+  <div class="wrap center">
+    <p class="eyebrow reveal">Por que SiSFarm</p>
+    <h2 class="h2 reveal" style="max-width:900px;margin-left:auto;margin-right:auto">Chega de planilhas soltas, cadernos de campo e <span class="grad">custos sem origem.</span></h2>
+    <div class="cards3" style="text-align:left">
+      <article class="card glass reveal"><span class="num mono">01</span><span class="icon-box"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3v18h18"/><path d="m7 15 4-4 3 3 5-6"/></svg></span><h3>Custo real por setor</h3><p>Insumos, operações e máquinas rateados por talhão e por safra, com custo por hectare e por saca.</p></article>
+      <article class="card glass reveal"><span class="num mono">02</span><span class="icon-box"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 21v-9"/><path d="M12 12c0-4 3-7 8-7 0 4-3 7-8 7Z"/><path d="M12 14c0-3-2.5-5.5-7-5.5 0 3 2.5 5.5 7 5.5Z"/></svg></span><h3>Lavoura sob controle</h3><p>Adubação agendada, análise de solo, pragas e chuva registrados no histórico de cada setor.</p></article>
+      <article class="card glass reveal"><span class="num mono">03</span><span class="icon-box"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M14.5 9.5c0-1.2-1.1-2-2.5-2s-2.5.8-2.5 2 1.1 1.8 2.5 2.2 2.5 1 2.5 2.3-1.1 2-2.5 2-2.5-.8-2.5-2M12 6v1.5M12 16.5V18"/></svg></span><h3>Venda na hora certa</h3><p>Acompanhe a cotação do café, sua produção e a comercialização para negociar com segurança.</p></article>
     </div>
   </div>
 </section>
 
-<!-- DESTAQUE: MAPA -->
-<section class="mx-auto grid max-w-6xl items-center gap-14 px-8 py-24 lg:grid-cols-2">
-  <div class="relative overflow-hidden rounded-[2rem] bg-[#173d22] p-6 shadow-2xl">
-    <div class="h-72 rounded-[1.25rem] bg-cover bg-center" style="background-image:url('/static/images/planos-hero.webp')"></div>
-    <div class="absolute left-12 top-14 h-24 w-40 -rotate-6 rounded-xl border-2 border-lime-400 bg-lime-400/20"></div>
-    <div class="absolute left-56 top-28 h-28 w-36 rotate-3 rounded-xl border-2 border-amber-300 bg-amber-300/20"></div>
-    <div class="mt-5 grid grid-cols-3 gap-3 text-white"><div class="rounded-xl bg-white/10 p-3"><p class="text-[11px] text-emerald-100/80">Setor 3 · Catuaí</p><p class="font-bold">12,4 ha</p></div><div class="rounded-xl bg-white/10 p-3"><p class="text-[11px] text-emerald-100/80">Custo/ha</p><p class="font-bold">R$ 8.420</p></div><div class="rounded-xl bg-white/10 p-3"><p class="text-[11px] text-emerald-100/80">Última adubação</p><p class="font-bold">há 18 dias</p></div></div>
-  </div>
-  <div>
-    <p class="text-xs font-bold uppercase tracking-[0.25em] text-[#446a36]">Mapa da fazenda</p>
-    <h2 class="mt-3 text-4xl font-extrabold leading-tight">Enxergue cada talhão como ele é.</h2>
-    <p class="mt-4 text-lg text-slate-500">Importe o CAR ou desenhe os setores. Cada área guarda variedade, histórico de adubação, pragas, chuvas e produção.</p>
-    <ul class="mt-6 space-y-3 text-slate-700"><li class="flex gap-3"><span class="text-[#446a36]">✓</span>Importação do CAR e de arquivos GeoJSON/KML</li><li class="flex gap-3"><span class="text-[#446a36]">✓</span>Custos e produtividade por setor e por safra</li><li class="flex gap-3"><span class="text-[#446a36]">✓</span>Histórico completo para auditoria e certificações</li></ul>
-  </div>
-</section>
-
-<!-- COMO FUNCIONA -->
-<section id="como-funciona" class="scroll-mt-6 bg-[#0c2416] py-24 text-white">
-  <div class="mx-auto max-w-6xl px-8 text-center">
-    <p class="text-xs font-bold uppercase tracking-[0.25em] text-lime-400">Como funciona</p>
-    <h2 class="mt-3 text-4xl font-extrabold">Comece a usar em uma tarde.</h2>
-    <div class="mt-14 grid gap-8 text-left md:grid-cols-3">
-      <div class="rounded-[1.5rem] bg-white/5 p-7 ring-1 ring-white/10"><span class="flex h-12 w-12 items-center justify-center rounded-2xl bg-lime-400 text-xl font-extrabold text-[#0c2416]">1</span><h3 class="mt-5 text-lg font-bold">Cadastre a fazenda</h3><p class="mt-2 text-emerald-50/75">Importe o CAR, defina os setores e as variedades plantadas.</p></div>
-      <div class="rounded-[1.5rem] bg-white/5 p-7 ring-1 ring-white/10"><span class="flex h-12 w-12 items-center justify-center rounded-2xl bg-lime-400 text-xl font-extrabold text-[#0c2416]">2</span><h3 class="mt-5 text-lg font-bold">Registre o dia a dia</h3><p class="mt-2 text-emerald-50/75">Compras, adubações, chuvas e colheitas, do escritório ou do campo.</p></div>
-      <div class="rounded-[1.5rem] bg-white/5 p-7 ring-1 ring-white/10"><span class="flex h-12 w-12 items-center justify-center rounded-2xl bg-lime-400 text-xl font-extrabold text-[#0c2416]">3</span><h3 class="mt-5 text-lg font-bold">Decida com dados</h3><p class="mt-2 text-emerald-50/75">Painéis de custo, produtividade e previsão de produção prontos.</p></div>
+{% set features = [
+  ('Talhões e mapa', 'Setores desenhados no mapa, com área e imagem de satélite.', ['Importação do CAR, GeoJSON e KML', 'Área calculada automaticamente', 'Histórico completo por setor'], 'Setor 3 · Catuaí', '12,4 ha', 'Custo/ha', 'R$ 8.420'),
+  ('Fertilização', 'Recomendações, agenda e aplicações por setor.', ['Recomendação com IA a partir da análise de solo', 'Agenda de adubação com lembretes', 'Aplicações registradas por setor'], 'Próxima aplicação', 'Amanhã', 'Setores agendados', '4 de 6'),
+  ('Estoque de insumos', 'Lotes, validades e inventário com baixa automática.', ['Controle por lote e validade', 'Baixa automática a cada aplicação', 'Inventário e conferência de saldo'], 'Em estoque', '12 sacas', 'Lotes a vencer', '2'),
+  ('Financeiro', 'Contas, cartões, parcelas e extrato da fazenda.', ['Contas bancárias e cartões', 'Contas a pagar e a receber', 'Custos integrados ao campo'], 'Custo por saca', 'R$ 642', 'Parcelas no mês', '7'),
+  ('Colheita e venda', 'Produtividade por hectare e comercialização do café.', ['Produção por setor e por safra', 'Produtividade em sacas por hectare', 'Registro das vendas por lote'], 'Produtividade', '38,4 sc/ha', 'Safra', '2026/2027'),
+  ('Cotação CEPEA', 'Arábica e robusta atualizados todos os dias.', ['Indicador CEPEA diário', 'Arábica e robusta lado a lado', 'Histórico para decidir a venda'], 'Café arábica', 'R$ 1.637', 'Atualização', 'Diária'),
+  ('Máquinas', 'Patrimônio e manutenção preventiva com alertas.', ['Cadastro do patrimônio', 'Manutenção preventiva programada', 'Indicadores de custo por equipamento'], 'Máquinas', '9', 'Revisões próximas', '2'),
+  ('Campo mobile', 'Registro rápido direto da lavoura, pelo celular.', ['Tela de registro rápido', 'Pensado para uso no campo', 'Sincroniza com todo o sistema'], 'Registro', 'Em segundos', 'Dispositivo', 'Celular'),
+] %}
+<section class="sec" id="funcionalidades" style="padding-top:40px">
+  <div class="wrap">
+    <div style="display:flex;flex-wrap:wrap;justify-content:space-between;align-items:flex-end;gap:32px">
+      <div><p class="eyebrow reveal">Funcionalidades</p><h2 class="h2 reveal" style="max-width:640px">Tudo o que a fazenda precisa, <span class="grad">conectado.</span></h2></div>
+      <p class="lead reveal" style="max-width:400px;margin:0">Cada registro alimenta os demais: a adubação baixa o estoque, que entra no custo, que aparece no financeiro.</p>
+    </div>
+    <div class="feat reveal" data-tabs>
+      <div class="tabs" role="tablist" aria-label="Módulos do SiSFarm">
+        {% for f in features %}
+        <button class="tab{{ ' on' if loop.first }}" type="button" role="tab" id="tab-{{ loop.index }}" aria-controls="painel-{{ loop.index }}" aria-selected="{{ 'true' if loop.first else 'false' }}" tabindex="{{ '0' if loop.first else '-1' }}"><span class="idx mono">{{ '%02d' % loop.index }}</span>{{ f[0] }}<span class="bar-r"></span></button>
+        {% endfor %}
+      </div>
+      <div class="panel glass" style="background:linear-gradient(160deg,rgba(16,48,32,.75),rgba(6,18,12,.9))">
+        <div class="panel-glow"></div>
+        {% for f in features %}
+        <div class="panel-swap" role="tabpanel" id="painel-{{ loop.index }}" aria-labelledby="tab-{{ loop.index }}" style="display:flex;flex-direction:column;flex:1;position:relative"{{ ' hidden' if not loop.first }}>
+          <p class="mono" style="margin:0;font-size:13px;color:#bef264">MÓDULO {{ '%02d' % loop.index }} / {{ '%02d' % features|length }}</p>
+          <h3>{{ f[0] }}</h3>
+          <p class="lead" style="margin-top:12px;max-width:520px">{{ f[1] }}</p>
+          <ul class="blist">{% for b in f[2] %}<li>{{ check }}{{ b }}</li>{% endfor %}</ul>
+          <div class="metrics" aria-hidden="true"><div class="metric"><p class="k">{{ f[3] }}</p><p class="v">{{ f[4] }}</p></div><div class="metric"><p class="k">{{ f[5] }}</p><p class="v">{{ f[6] }}</p></div></div>
+        </div>
+        {% endfor %}
+      </div>
     </div>
   </div>
 </section>
 
-<!-- PLANOS -->
+<section class="sec ai" id="ia">
+  <div class="wrap ai-grid">
+    <div>
+      <p class="eyebrow reveal">Inteligência agronômica</p>
+      <h2 class="h2 reveal">A análise de solo vira <span class="grad">recomendação de adubação</span> em segundos.</h2>
+      <p class="lead reveal">A IA do SiSFarm cruza o laudo do laboratório com o perfil agronômico da fazenda — cultivar, fase da lavoura, irrigação, espaçamento, altitude e meta de produtividade — e entrega uma recomendação para o agrônomo revisar e aplicar.</p>
+      <ol class="flow reveal">
+        <li><span class="st mono">01</span><div><b>Envie a análise de solo</b><span>pH, V%, fósforo, potássio, cálcio, magnésio e matéria orgânica.</span></div></li>
+        <li><span class="st mono">02</span><div><b>A IA lê o contexto da fazenda</b><span>Histórico de manejo e perfil agronômico de cada setor.</span></div></li>
+        <li><span class="st mono">03</span><div><b>Receba doses e parcelamento</b><span>Transforme em agenda de fertilização com um clique.</span></div></li>
+      </ol>
+    </div>
+    <div class="console glass reveal" style="background:linear-gradient(160deg,rgba(12,34,23,.92),rgba(4,12,8,.96))" data-ai>
+      <div class="con-head">
+        <span style="display:flex;align-items:center;gap:10px"><span class="ai-badge" style="width:30px;height:30px;border-radius:9px"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true" style="width:18px;height:18px"><path d="M12 3v3M12 18v3M3 12h3M18 12h3"/><circle cx="12" cy="12" r="3.5"/></svg></span><b style="color:#ecfdf5">SiSFarm IA</b> · Setor 3 · Catuaí</span>
+        <span class="mono" style="font-size:11px">EXEMPLO ILUSTRATIVO</span>
+      </div>
+      <div class="con-body">
+        <p class="mono" style="margin:0 0 12px;font-size:12px;color:#7c9a8b">ANÁLISE DE SOLO · 0–20 cm</p>
+        <div class="soil">
+          <div><p class="k">pH (CaCl₂)</p><p class="v">5,1</p></div><div><p class="k">V%</p><p class="v">48</p></div><div><p class="k">P (mg/dm³)</p><p class="v">9,4</p></div><div><p class="k">K (mg/dm³)</p><p class="v">86</p></div>
+          <div><p class="k">Ca (cmol)</p><p class="v">2,3</p></div><div><p class="k">Mg (cmol)</p><p class="v">0,7</p></div><div><p class="k">M.O. (dag/kg)</p><p class="v">2,6</p></div><div><p class="k">Meta</p><p class="v">45 sc/ha</p></div>
+        </div>
+        <div data-ai-step="idle">
+          <button class="btn btn-pri" type="button" style="width:100%;margin-top:20px" data-ai-run><svg class="ico" viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9Z"/><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8Z"/></svg>Gerar recomendação com IA</button>
+        </div>
+        <div data-ai-step="busy" hidden>
+          <div class="scan"><i></i></div>
+          <p class="typing mono">Cruzando laudo com perfil agronômico da fazenda<span class="caret"></span></p>
+        </div>
+        <div data-ai-step="done" hidden aria-live="polite">
+          <div class="rec">
+            <div class="rec-row"><div><p class="t">Calagem</p><p class="s">Elevar V% para 60 · aplicar antes das chuvas</p></div><p class="d mono">1,8 t/ha</p></div>
+            <div class="rec-row"><div><p class="t">Nitrogênio (N)</p><p class="s">Parcelar em 3 aplicações, out → fev</p></div><p class="d mono">350 kg/ha</p></div>
+            <div class="rec-row"><div><p class="t">Fósforo (P₂O₅)</p><p class="s">Aplicação única no início das águas</p></div><p class="d mono">80 kg/ha</p></div>
+            <div class="rec-row"><div><p class="t">Potássio (K₂O)</p><p class="s">Junto ao N nas 3 parcelas</p></div><p class="d mono">300 kg/ha</p></div>
+          </div>
+          <div style="display:flex;gap:10px;margin-top:16px;flex-wrap:wrap">
+            <a href="{{ contact_href }}" class="btn btn-pri" style="flex:1;min-height:46px;font-size:14px">{{ cta_label }}</a>
+            <button class="btn btn-ghost" type="button" style="min-height:46px;font-size:14px" data-ai-reset>Refazer</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="sec">
+  <div class="wrap map-grid">
+    <div class="map reveal">
+      <img class="map-img" src="/static/images/planos-hero.webp" alt="" loading="lazy" decoding="async">
+      <svg class="plots" viewBox="0 0 500 400" role="img" aria-label="Mapa com cinco talhões desenhados, Setor 3 selecionado">
+        <path class="plot" d="M40 70 L170 45 L190 140 L60 170 Z"/><path class="plot sel" d="M200 60 L330 80 L320 190 L205 175 Z"/><path class="plot" d="M345 70 L460 95 L450 200 L338 190 Z"/><path class="plot" d="M55 185 L190 158 L200 250 L70 270 Z"/><path class="plot" d="M212 192 L330 205 L340 260 L215 262 Z"/>
+      </svg>
+      <span class="map-pin glass" style="background:rgba(6,18,12,.8)" aria-hidden="true"><span class="dot" style="background:#bef264"></span>Setor 3</span>
+      <div class="map-card glass" style="background:rgba(6,18,12,.78)">
+        <div><p class="k">Setor 3 · Catuaí</p><p class="v">12,4 ha</p></div><div><p class="k">Custo/ha</p><p class="v">R$ 8.420</p></div><div><p class="k">Última adubação</p><p class="v">há 18 dias</p></div>
+      </div>
+    </div>
+    <div>
+      <p class="eyebrow reveal">Mapa da fazenda</p>
+      <h2 class="h2 reveal">Enxergue cada talhão <span class="grad">como ele é.</span></h2>
+      <p class="lead reveal">Importe o CAR ou desenhe os setores. Cada área guarda variedade, histórico de adubação, pragas, chuvas e produção.</p>
+      <ul class="blist reveal" style="margin-top:30px"><li>{{ check }}Importação do CAR e de arquivos GeoJSON/KML</li><li>{{ check }}Custos e produtividade por setor e por safra</li><li>{{ check }}Histórico completo para auditoria e certificações</li></ul>
+    </div>
+  </div>
+</section>
+
+<section class="sec" id="como-funciona" style="background:linear-gradient(180deg,transparent,#08170f 30%,#08170f 70%,transparent)">
+  <div class="wrap center">
+    <p class="eyebrow reveal">Como funciona</p>
+    <h2 class="h2 reveal">Comece a usar <span class="grad">em uma tarde.</span></h2>
+    <ol class="steps" style="list-style:none;padding:0">
+      <li class="steps-line" aria-hidden="true"></li>
+      <li class="step reveal"><span class="step-n" aria-hidden="true">1</span><h3>Cadastre a fazenda</h3><p>Importe o CAR, defina os setores e as variedades plantadas.</p></li>
+      <li class="step reveal"><span class="step-n" aria-hidden="true">2</span><h3>Registre o dia a dia</h3><p>Compras, adubações, chuvas e colheitas, do escritório ou do campo.</p></li>
+      <li class="step reveal"><span class="step-n" aria-hidden="true">3</span><h3>Decida com dados</h3><p>Painéis de custo, produtividade e previsão de produção prontos.</p></li>
+    </ol>
+  </div>
+</section>
+
 {% if plans_catalog %}
-<section id="planos" class="mx-auto max-w-6xl scroll-mt-6 px-8 py-24">
-  <div class="text-center"><p class="text-xs font-bold uppercase tracking-[0.25em] text-[#446a36]">Planos</p><h2 class="mt-3 text-4xl font-extrabold">Um plano para cada tamanho de fazenda.</h2><p class="mt-3 text-slate-500">Escolha a periodicidade que combina com o seu caixa. Mude de plano quando quiser.</p></div>
-  <div class="mt-14 grid items-start gap-6 lg:grid-cols-3">
-    {% for plan in plans_catalog %}
-    {% set prices = plan_prices_of(plan) %}
-    {% set cycle = 'MONTHLY' if 'MONTHLY' in prices else (prices.keys()|list)[0] %}
-    {% set variant = 'featured' if plan.is_featured else ('premium' if plan.id == premium_plan_id else 'light') %}
-    {% set modules = plan_modules_of(plan) %}
-    <div class="relative rounded-[1.75rem] p-7 {{ {'featured': 'glow bg-gradient-to-b from-[#173d22] to-[#0c2416] text-white lg:-mt-4', 'premium': 'gold bg-gradient-to-b from-[#3d3110] via-[#211c0b] to-[#0f1f12] text-white', 'light': 'bg-white shadow-xl ring-1 ring-slate-200'}[variant] }}">
-      {% if variant != 'light' %}<span class="absolute -top-3.5 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-full px-3 py-1 text-xs font-bold uppercase {{ 'bg-lime-400 text-[#0c2416]' if variant == 'featured' else 'bg-amber-300 text-[#2a1f05]' }}">{{ 'Mais escolhido' if variant == 'featured' else 'Plano mais completo' }}</span>{% endif %}
-      <p class="flex items-center gap-2 text-xl font-bold"><span class="{{ 'text-lime-400' if variant == 'featured' else ('text-amber-300' if variant == 'premium' else 'text-[#446a36]') }}">{{ plan_icon(plan.icon, 'h-6 w-6') }}</span>{{ plan.name }}</p>
-      {% if plan.description %}<p class="mt-1 text-sm {{ 'text-slate-500' if variant == 'light' else 'text-white/75' }}">{{ plan.description }}</p>{% endif %}
-      <p class="mt-6"><span class="text-4xl font-extrabold {{ 'text-lime-400' if variant == 'featured' else ('text-amber-300' if variant == 'premium' else '') }}">R$ {{ prices[cycle]|decimal_br }}</span><span class="{{ 'text-slate-500' if variant == 'light' else 'text-white/75' }}"> /{{ cycle_unit_labels[cycle] }}</span></p>
-      <ul class="mt-6 space-y-2 text-sm">
-        <li>✓ {{ plan.max_farms ~ (' fazenda' if plan.max_farms == 1 else ' fazendas') if plan.max_farms else 'Fazendas ilimitadas' }} · {{ ('até ' ~ (plan.max_hectares|decimal_br(0)) ~ ' ha') if plan.max_hectares else 'área ilimitada' }}</li>
-        <li>✓ {{ plan.max_users ~ (' usuário' if plan.max_users == 1 else ' usuários') if plan.max_users else 'Usuários ilimitados' }}</li>
-        <li>✓ {{ modules|length }} módulos incluídos</li>
-      </ul>
-      <a href="{{ contact_href }}" class="mt-8 block rounded-2xl py-3 text-center font-bold {{ {'featured': 'bg-gradient-to-r from-lime-400 to-lime-500 text-[#0c2416]', 'premium': 'bg-gradient-to-r from-amber-300 to-amber-500 text-[#2a1f05]', 'light': 'border-2 border-[#446a36] text-[#446a36] hover:bg-emerald-50'}[variant] }}">Quero o {{ plan.name }}</a>
+{% set ns = namespace(cycles=[], mods={}) %}
+{% for code in subscription_cycles %}{% for plan in plans_catalog %}{% if code in plan_prices_of(plan) and code not in ns.cycles %}{% set ns.cycles = ns.cycles + [code] %}{% endif %}{% endfor %}{% endfor %}
+{% set default_cycle = 'MONTHLY' if 'MONTHLY' in ns.cycles else (ns.cycles[0] if ns.cycles else '') %}
+{% for plan in plans_catalog %}{% set _ = ns.mods.update({plan.id: plan_modules_of(plan)}) %}{% endfor %}
+{% set total_modules = plan_modules_catalog|length %}
+<section class="sec plans-bg" id="planos">
+  <div class="wrap center">
+    <p class="eyebrow reveal">Planos</p>
+    <h2 class="h2 reveal">Um plano para cada <span class="grad">tamanho de fazenda.</span></h2>
+    <p class="lead reveal">Escolha a periodicidade que combina com o seu caixa. Mude de plano quando quiser.</p>
+    {% if ns.cycles|length > 1 %}
+    <div class="cycle glass" role="group" aria-label="Periodicidade da cobrança" data-cycles>
+      {% for code in ns.cycles %}<button class="cy{{ ' on' if code == default_cycle }}" type="button" aria-pressed="{{ 'true' if code == default_cycle else 'false' }}" data-cycle-btn="{{ code }}">{{ subscription_cycles[code][0] }}</button>{% endfor %}
     </div>
-    {% endfor %}
+    {% endif %}
+
+    <div class="plans" style="text-align:left;--plans:{{ [plans_catalog|length, 3]|min }}">
+      {% for plan in plans_catalog %}
+      {% set prices = plan_prices_of(plan) %}
+      {% set variant = 'featured' if plan.is_featured else ('premium' if plan.id == premium_plan_id else 'light') %}
+      {% set n_mods = ns.mods[plan.id]|length %}
+      <article class="plan reveal {{ {'featured': 'p-pro', 'premium': 'glass p-gold', 'light': 'glass p-base'}[variant] }}">
+        {% if variant == 'featured' %}<span class="badge">Mais escolhido</span>{% elif variant == 'premium' %}<span class="badge">Plano mais completo</span>{% endif %}
+        <h3><span style="color:{{ {'featured': '#bef264', 'premium': '#f3c969', 'light': '#34d399'}[variant] }}">{{ plan_icon(plan.icon, 'ico') }}</span>{{ plan.name }}</h3>
+        {% if plan.description %}<p class="desc"{% if variant == 'featured' %} style="color:#b9d6c6"{% endif %}>{{ plan.description }}</p>{% endif %}
+        <div class="price">
+          {% for code in ns.cycles %}
+          <span data-cycle="{{ code }}"{{ ' hidden' if code != default_cycle }}>
+            {% if code in prices %}<b>R$ {{ prices[code]|decimal_br }}</b><span{% if variant == 'featured' %} style="color:#b9d6c6"{% endif %}> /{{ cycle_unit_labels[code] }}</span>
+            {% else %}<span class="price-na">Indisponível no plano {{ subscription_cycles[code][0]|lower }}</span>{% endif %}
+          </span>
+          {% endfor %}
+        </div>
+        <ul class="pl">
+          <li>{{ check }}{{ plan.max_farms ~ (' fazenda' if plan.max_farms == 1 else ' fazendas') if plan.max_farms else 'Fazendas ilimitadas' }} · {{ ('até ' ~ (plan.max_hectares|decimal_br(0)) ~ ' ha') if plan.max_hectares else 'área ilimitada' }}</li>
+          <li>{{ check }}{{ plan.max_users ~ (' usuário' if plan.max_users == 1 else ' usuários') if plan.max_users else 'Usuários ilimitados' }}</li>
+          <li>{{ check }}<a class="mod-link" href="#modulos">{{ ('Todos os ' ~ total_modules ~ ' módulos') if n_mods >= total_modules else (n_mods ~ ' de ' ~ total_modules ~ ' módulos') }} · ver detalhes</a></li>
+        </ul>
+        {% if plan.trial_days %}<p class="trial-note">{{ plan.trial_days }} dias grátis para testar</p>{% endif %}
+        <a href="{{ contact_href }}" class="btn {{ {'featured': 'btn-pri', 'premium': 'btn-gold', 'light': 'btn-out'}[variant] }}">Quero o {{ plan.name }}{% if variant == 'featured' %} {{ arrow }}{% endif %}</a>
+        {% if variant == 'premium' %}<p class="excl"><svg class="ico" viewBox="0 0 24 24" aria-hidden="true" style="width:16px;height:16px;color:#f3c969"><path d="M12 3 4 6v6c0 4.5 3.4 8.2 8 9 4.6-.8 8-4.5 8-9V6Z"/></svg>Para operações que exigem o máximo</p>{% endif %}
+      </article>
+      {% endfor %}
+    </div>
+
+    <div class="mods" id="modulos">
+      <div style="text-align:center">
+        <p class="eyebrow reveal">Módulos</p>
+        <h3 class="h2 reveal" style="font-size:clamp(28px,3.2vw,40px)">O que cada plano inclui</h3>
+        <p class="lead reveal" style="margin-bottom:40px">Toque em um módulo para ver tudo o que ele oferece.</p>
+      </div>
+      <div class="mods-scroll" style="--cols:{{ plans_catalog|length }}">
+        <div>
+          <div class="mods-head" aria-hidden="true">
+            <p class="mh-t">Módulo</p>
+            {% for plan in plans_catalog %}{% set variant = 'featured' if plan.is_featured else ('premium' if plan.id == premium_plan_id else 'light') %}<p style="color:{{ {'featured': '#bef264', 'premium': '#f3c969', 'light': '#34d399'}[variant] }}">{{ plan.name }}</p>{% endfor %}
+          </div>
+          {% for code, label in plan_modules_catalog %}
+          <details class="mod glass">
+            <summary>
+              <span class="mod-name"><svg class="ico chev" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>{{ label }}</span>
+              {% for plan in plans_catalog %}
+              {% set premium = plan.id == premium_plan_id %}
+              {% if code in ns.mods[plan.id] %}<span class="cell"><span class="yes{{ ' g' if premium }}">{{ check }}</span><span class="visually-hidden">Incluído no {{ plan.name }}</span></span>
+              {% else %}<span class="cell"><span class="no"></span><span class="visually-hidden">Não incluído no {{ plan.name }}</span></span>{% endif %}
+              {% endfor %}
+            </summary>
+            <div class="mod-body">
+              {% if module_pitch.get(code) %}<p class="md">{{ module_pitch[code] }}</p>{% endif %}
+              {% if module_details.get(code) %}
+              <div class="groups">
+                {% for title, items in module_details[code] %}
+                <div class="grp"><h4>{{ title }}</h4><ul>{% for item in items %}<li>{{ item }}</li>{% endfor %}</ul></div>
+                {% endfor %}
+              </div>
+              {% endif %}
+            </div>
+          </details>
+          {% endfor %}
+        </div>
+      </div>
+      <p class="mods-note">Painel da fazenda e perfil de usuário estão disponíveis em todos os planos.</p>
+    </div>
   </div>
 </section>
 {% endif %}
 
-<!-- FAQ -->
-<section id="duvidas" class="mx-auto max-w-4xl scroll-mt-6 px-8 py-24">
-  <div class="text-center"><p class="text-xs font-bold uppercase tracking-[0.25em] text-[#446a36]">Dúvidas</p><h2 class="mt-3 text-4xl font-extrabold">Perguntas frequentes</h2></div>
-  <div class="mt-10 divide-y divide-slate-200 rounded-[1.5rem] bg-white shadow-sm ring-1 ring-slate-100"><details class="group p-6"><summary class="flex cursor-pointer list-none items-center justify-between font-semibold">Preciso instalar algum programa?<span class="text-2xl text-[#446a36] transition group-open:rotate-45">+</span></summary><p class="mt-3 text-slate-500">Não. O SisFarm funciona no navegador, no computador ou no celular, sem instalação.</p></details><details class="group p-6" open><summary class="flex cursor-pointer list-none items-center justify-between font-semibold">Funciona no celular, no meio da lavoura?<span class="text-2xl text-[#446a36] transition group-open:rotate-45">+</span></summary><p class="mt-3 text-slate-500">Sim. Há uma tela de registro rápido para o campo, pensada para o celular.</p></details><details class="group p-6"><summary class="flex cursor-pointer list-none items-center justify-between font-semibold">Meus dados ficam seguros?<span class="text-2xl text-[#446a36] transition group-open:rotate-45">+</span></summary><p class="mt-3 text-slate-500">Sim. Os dados ficam na nuvem, com acesso por usuário, verificação em duas etapas e backup automático.</p></details><details class="group p-6"><summary class="flex cursor-pointer list-none items-center justify-between font-semibold">Posso mudar de plano depois?<span class="text-2xl text-[#446a36] transition group-open:rotate-45">+</span></summary><p class="mt-3 text-slate-500">Sim. Você pode subir de plano na hora ou reduzir ao fim do ciclo já pago.</p></details><details class="group p-6"><summary class="flex cursor-pointer list-none items-center justify-between font-semibold">Quais formas de pagamento são aceitas?<span class="text-2xl text-[#446a36] transition group-open:rotate-45">+</span></summary><p class="mt-3 text-slate-500">Pix, boleto ou cartão de crédito, em cobrança mensal, trimestral, semestral ou anual.</p></details></div>
-</section>
-
-<!-- CTA FINAL -->
-<section class="mx-auto max-w-6xl px-8 pb-24">
-  <div class="relative overflow-hidden rounded-[2rem] bg-[#0c2416] px-12 py-16 text-white">
-    <div class="absolute inset-0 bg-cover bg-center opacity-40" style="background-image:url('/static/images/planos-hero.webp')"></div>
-    <div class="absolute inset-0 bg-gradient-to-r from-[#0c2416] via-[#0c2416]/80 to-transparent"></div>
-    <div class="relative max-w-xl"><h2 class="text-4xl font-extrabold leading-tight">Pronto para colher <span class="text-lime-400">mais resultado</span>?</h2><p class="mt-4 text-lg text-emerald-50/90">Fale com a equipe e veja o SisFarm funcionando com os dados da sua fazenda.</p><a href="{{ contact_href }}" class="mt-8 inline-flex items-center gap-2 rounded-2xl bg-gradient-to-r from-lime-400 to-lime-500 px-7 py-4 font-bold text-[#0c2416]">Solicitar demonstração →</a></div>
+{% set plan_names = plans_catalog|map(attribute='name')|list %}
+<section class="sec" id="duvidas" style="padding-top:60px">
+  <div class="wrap center">
+    <p class="eyebrow reveal">Dúvidas</p>
+    <h2 class="h2 reveal">Perguntas frequentes</h2>
+    <div class="faq" style="text-align:left">
+      {% if trial_days %}<details class="glass" open><summary>O SiSFarm oferece teste gratuito? Como funciona?<span class="pm" aria-hidden="true">+</span></summary><p>Sim! Você pode experimentar o SiSFarm gratuitamente por {{ trial_days }} dias, com acesso liberado a todas as funcionalidades do sistema. Durante esse período, você poderá conhecer as ferramentas, cadastrar sua fazenda e testar os recursos disponíveis, incluindo as funcionalidades mais avançadas da plataforma.</p></details>{% endif %}
+      <details class="glass"{% if not trial_days %} open{% endif %}><summary>É difícil começar a utilizar o SiSFarm?<span class="pm" aria-hidden="true">+</span></summary><p>Não! O SiSFarm foi desenvolvido para facilitar a gestão da sua propriedade rural. Basta criar sua conta, cadastrar sua fazenda e começar a utilizar as ferramentas disponíveis. Tudo de maneira simples, rápida e intuitiva.</p></details>
+      <details class="glass"><summary>Preciso ter conhecimentos avançados de tecnologia para usar o SiSFarm?<span class="pm" aria-hidden="true">+</span></summary><p>De forma alguma! O SiSFarm possui uma interface intuitiva e organizada, desenvolvida para facilitar o dia a dia do produtor rural. Mesmo quem tem pouca experiência com sistemas de gestão consegue utilizar as funcionalidades da plataforma.</p></details>
+      <details class="glass"><summary>O SiSFarm atende propriedades rurais de todos os tamanhos?<span class="pm" aria-hidden="true">+</span></summary><p>Sim! O SiSFarm oferece planos para diferentes necessidades, desde pequenos produtores até propriedades com múltiplas fazendas. Você escolhe o plano mais adequado à sua operação e pode ampliá-lo conforme seu negócio cresce.</p></details>
+      <details class="glass"><summary>Quais tipos de culturas agrícolas posso gerenciar no SiSFarm?<span class="pm" aria-hidden="true">+</span></summary><p>O SiSFarm foi desenvolvido especialmente para a cafeicultura, oferecendo ferramentas específicas para acompanhar todas as etapas da produção de café, do plantio à comercialização. Com a plataforma, você gerencia safras, talhões, fertilização, irrigação, estoque, custos e muito mais, tudo em um só lugar.</p></details>
+      <details class="glass"><summary>Como funciona a recomendação agronômica com inteligência artificial?<span class="pm" aria-hidden="true">+</span></summary><p>O SiSFarm utiliza inteligência artificial para gerar recomendações personalizadas com base nas informações da sua propriedade. Após configurar o perfil agronômico e cadastrar a análise química do solo, você poderá gerar uma recomendação considerando as características da sua lavoura, auxiliando no planejamento do manejo e da fertilização.</p></details>
+      <details class="glass"><summary>Preciso instalar algum programa?<span class="pm" aria-hidden="true">+</span></summary><p>Não. O SiSFarm funciona no navegador, no computador ou no celular, sem instalação.</p></details>
+      <details class="glass"><summary>Funciona no celular, no meio da lavoura?<span class="pm" aria-hidden="true">+</span></summary><p>Sim. Há uma tela de registro rápido para o campo, pensada para o celular.</p></details>
+      <details class="glass"><summary>Posso utilizar o SiSFarm sem conexão com a internet?<span class="pm" aria-hidden="true">+</span></summary><p>O SiSFarm é uma plataforma online e necessita de conexão com a internet para acessar e sincronizar as informações. Você pode utilizá-lo pelo computador ou celular, de onde estiver, desde que tenha acesso à internet.</p></details>
+      <details class="glass"><summary>Meus dados ficam seguros?<span class="pm" aria-hidden="true">+</span></summary><p>Sim. Os dados ficam na nuvem, com acesso por usuário, verificação em duas etapas e backup automático.</p></details>
+      <details class="glass"><summary>Posso exportar relatórios e informações do SiSFarm?<span class="pm" aria-hidden="true">+</span></summary><p>Sim! O SiSFarm permite exportar informações e relatórios em formatos como PDF e Excel, facilitando o acompanhamento dos dados, a organização dos registros e o compartilhamento de informações da propriedade.</p></details>
+      <details class="glass"><summary>O SiSFarm pode ser integrado ao meu sistema de contabilidade?<span class="pm" aria-hidden="true">+</span></summary><p>O SiSFarm possui ferramentas de gestão financeira que ajudam a organizar receitas, despesas e custos da produção. A integração direta com sistemas contábeis depende da disponibilidade de integrações específicas.</p></details>
+      <details class="glass"><summary>Posso mudar de plano depois de contratar o SiSFarm?<span class="pm" aria-hidden="true">+</span></summary><p>Sim! {% if plan_names|length > 1 %}Você pode escolher entre os planos {{ plan_names[:-1]|join(', ') }} e {{ plan_names[-1] }}, de acordo com as necessidades da sua propriedade. {% endif %}Caso precise de mais recursos ou capacidade, poderá solicitar a mudança para outro plano, conforme as condições da assinatura.</p></details>
+      <details class="glass"><summary>Quais formas de pagamento são aceitas?<span class="pm" aria-hidden="true">+</span></summary><p>Pix, boleto ou cartão de crédito, em cobrança mensal, trimestral, semestral ou anual.</p></details>
+    </div>
   </div>
 </section>
 
-<!-- RODAPÉ -->
-<footer class="bg-[#071a0f] py-14 text-sm text-emerald-50/70">
-  <div class="mx-auto grid max-w-6xl grid-cols-2 gap-10 lg:grid-cols-4 px-8">
-    <div><p class="flex items-center gap-2 text-xl font-extrabold text-white"><svg class="ico h-6 w-6 text-lime-400" viewBox="0 0 24 24"><path d="M5 19c8 0 14-6 14-14-8 0-14 6-14 14Z"/><path d="M5 19 13 11"/></svg>SisFarm</p><p class="mt-3">Gestão agrícola para fazendas de café.</p></div>
-    <div><p class="font-semibold text-white">Produto</p><ul class="mt-3 space-y-2"><li><a href="#funcionalidades">Funcionalidades</a></li><li><a href="#planos">Planos</a></li><li><a href="/login">Entrar</a></li></ul></div>
-    <div><p class="font-semibold text-white">Empresa</p><ul class="mt-3 space-y-2"><li><a href="{{ contact_href }}">Contato</a></li><li><a href="{{ contact_href }}">Suporte</a></li></ul></div>
-    <div><p class="font-semibold text-white">Legal</p><ul class="mt-3 space-y-2"><li>Termos de uso</li><li>Privacidade (LGPD)</li></ul></div>
+<section class="wrap" style="padding-bottom:120px" aria-labelledby="cta-titulo">
+  <div class="cta reveal">
+    <img class="cta-img" src="/static/images/planos-hero.webp" alt="" loading="lazy" decoding="async">
+    <div class="cta-shade"></div>
+    <div style="max-width:600px">
+      <h2 class="h2" id="cta-titulo" style="margin:0">Pronto para colher <span class="grad">mais resultado?</span></h2>
+      {% if trial_days %}<p class="lead" style="color:#d6e7dd">Experimente o SiSFarm grátis por {{ trial_days }} dias, com todas as funcionalidades liberadas, e cadastre sua fazenda hoje mesmo.</p>
+      {% else %}<p class="lead" style="color:#d6e7dd">Fale com a equipe e veja o SiSFarm funcionando com os dados da sua fazenda.</p>{% endif %}
+      <a href="{{ contact_href }}" class="btn btn-pri" style="margin-top:34px;min-height:58px;padding:0 30px;font-size:16px">{{ cta_label }} {{ arrow }}</a>
+    </div>
   </div>
-  <p class="mx-auto mt-10 max-w-6xl border-t border-white/10 px-8 pt-6 text-xs">© {{ current_year }} SisFarm. Todos os direitos reservados.</p>
+</section>
+</main>
+
+<footer class="foot">
+  <div class="wrap">
+    <div class="foot-grid">
+      <div>
+        <p class="logo" style="margin:0"><img class="logo-mark" src="/static/images/logo-icon.png" alt="" width="52" height="47" loading="lazy"><img class="logo-word" src="/static/images/logo-wordmark.png" alt="SiSFarm" width="116" height="34" loading="lazy"></p>
+        <p style="margin:16px 0 0;max-width:280px;line-height:1.6">Gestão agrícola para fazendas de café.</p>
+      </div>
+      <div><h4>Produto</h4><ul><li><a href="#funcionalidades">Funcionalidades</a></li><li><a href="#ia">IA agronômica</a></li>{% if plans_catalog %}<li><a href="#planos">Planos</a></li>{% endif %}<li><a href="/login">Entrar</a></li></ul></div>
+      <div><h4>Empresa</h4><ul><li><a href="{{ contact_href }}">Contato</a></li><li><a href="{{ contact_href }}">Suporte</a></li></ul></div>
+      <div><h4>Legal</h4><ul><li>Termos de uso</li><li>Privacidade (LGPD)</li></ul></div>
+    </div>
+    <div class="copy"><span>© {{ current_year }} SiSFarm. Todos os direitos reservados.</span><span class="mono">Feito para o café brasileiro</span></div>
+  </div>
 </footer>
+</div>
+
+<script>
+(function () {
+  var tabs = document.querySelectorAll('[data-tabs] [role="tab"]');
+  function select(tab) {
+    tabs.forEach(function (t) {
+      var on = t === tab;
+      t.classList.toggle('on', on);
+      t.setAttribute('aria-selected', on ? 'true' : 'false');
+      t.tabIndex = on ? 0 : -1;
+      document.getElementById(t.getAttribute('aria-controls')).hidden = !on;
+    });
+  }
+  tabs.forEach(function (tab, i) {
+    tab.addEventListener('click', function () { select(tab); });
+    tab.addEventListener('keydown', function (e) {
+      var d = e.key === 'ArrowDown' || e.key === 'ArrowRight' ? 1 : e.key === 'ArrowUp' || e.key === 'ArrowLeft' ? -1 : 0;
+      if (!d) return;
+      e.preventDefault();
+      var next = tabs[(i + d + tabs.length) % tabs.length];
+      select(next); next.focus();
+    });
+  });
+
+  document.querySelectorAll('[data-cycle-btn]').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var code = btn.getAttribute('data-cycle-btn');
+      document.querySelectorAll('[data-cycle-btn]').forEach(function (b) {
+        var on = b === btn; b.classList.toggle('on', on); b.setAttribute('aria-pressed', on ? 'true' : 'false');
+      });
+      document.querySelectorAll('[data-cycle]').forEach(function (el) { el.hidden = el.getAttribute('data-cycle') !== code; });
+    });
+  });
+
+  var ai = document.querySelector('[data-ai]');
+  if (ai) {
+    var timer;
+    var show = function (step) { ai.querySelectorAll('[data-ai-step]').forEach(function (el) { el.hidden = el.getAttribute('data-ai-step') !== step; }); };
+    ai.querySelector('[data-ai-run]').addEventListener('click', function () { show('busy'); clearTimeout(timer); timer = setTimeout(function () { show('done'); }, 1800); });
+    ai.querySelector('[data-ai-reset]').addEventListener('click', function () { clearTimeout(timer); show('idle'); });
+  }
+})();
+</script>
 </body>
 </html>

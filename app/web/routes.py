@@ -123,7 +123,7 @@ from app.services.organization_subscription_sync import apply_subscription_detai
 from app.services.agronomic_profile_suggestions import build_agronomic_profile_suggestions
 from app.services.subscription_reconciliation import close_card_checkout, reconcile_organization
 from app.services.plan_changes import clear_pending, downgrade_block_reason, is_downgrade, schedule_downgrade
-from app.services.entitlements import ALWAYS_ALLOWED_PREFIXES, MODULE_PITCH, UNRESTRICTED, Entitlements, MODULE_LABELS, cached_entitlements, farm_limit_error, invalidate_entitlements, user_limit_error
+from app.services.entitlements import ALWAYS_ALLOWED_PREFIXES, MODULE_DETAILS, MODULE_PITCH, UNRESTRICTED, Entitlements, MODULE_LABELS, cached_entitlements, farm_limit_error, invalidate_entitlements, user_limit_error
 from app.middleware.subscription_enforcement import upgrade_url
 from app.services.access_grants import GRANT_REASONS, MAX_GRANT_DAYS, GrantValidationError, active_grant, create_grant, default_grant_end, extend_grant, grant_status_label, is_expiring_soon, revoke_grant
 from app.services.subscription_portfolio import SITUATION_LABELS, build_subscription_portfolio, monthly_amount
@@ -3709,6 +3709,8 @@ def home(request: Request, db: Session = Depends(get_db)):
     return templates.TemplateResponse("landing.html", {
         "request": request, "plans_catalog": catalog, "premium_plan_id": _premium_plan_id(catalog),
         "plan_prices_of": plan_prices, "plan_modules_of": plan_modules,
+        "plan_modules_catalog": PLAN_MODULES, "module_pitch": MODULE_PITCH, "module_details": MODULE_DETAILS,
+        "trial_days": max((plan.trial_days or 0 for plan in catalog), default=0),
         "contact_href": f"mailto:{support}?subject=Quero%20conhecer%20o%20SisFarm" if support else "/login",
         "current_year": today_in_app_timezone().year,
     })
