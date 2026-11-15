@@ -1,4 +1,21 @@
 {% extends "base.html" %}
+{% macro culture_icon(name) -%}
+{%- set n = (name or '')|lower -%}
+{%- set paths = {
+    'caf': '<ellipse cx="12" cy="12" rx="6" ry="8.5" transform="rotate(35 12 12)"/><path d="M8.5 17.5c3.5-2.5 3.5-8.5 7-11"/>',
+    'milho': '<path d="M12 3c3 0 4.5 4 4.5 8.5S14.5 20 12 21c-2.5-1-4.5-5-4.5-9.5S9 3 12 3z"/><path d="M8 9h8M7.6 13h8.8M8.6 17h6.8M12 3v18"/>',
+    'soja': '<path d="M5 19C5 11 10 5 19 5c0 9-6 14-14 14z"/><circle cx="9" cy="15" r="1.2"/><circle cx="12" cy="12" r="1.2"/><circle cx="15" cy="9" r="1.2"/>',
+    'feij': '<path d="M9 4c4-1 7 2 6 5-.4 1.5.5 2.7 2 3.4 3 1.5 2.4 7-2.6 7.6C8.5 20.6 4 16.5 4 11c0-3.6 2-6.3 5-7z"/>',
+    'arroz': '<path d="M12 21V8"/><path d="M12 8c0-2.5 1-4 3-5 0 2.5-1 4-3 5zM12 12c-1.5-2-3.5-2.5-5-2 .5 2 2.5 3 5 2zM12 12c1.5-2 3.5-2.5 5-2-.5 2-2.5 3-5 2zM12 16c-1.5-2-3.5-2.5-5-2 .5 2 2.5 3 5 2zM12 16c1.5-2 3.5-2.5 5-2-.5 2-2.5 3-5 2z"/>',
+    'trigo': '<path d="M12 22V6"/><path d="M12 6c-1.2-1-1.2-3 0-4 1.2 1 1.2 3 0 4zM12 10c-2-.2-3.3-1.5-3.5-3.5 2 .2 3.3 1.5 3.5 3.5zM12 10c2-.2 3.3-1.5 3.5-3.5-2 .2-3.3 1.5-3.5 3.5zM12 14c-2-.2-3.3-1.5-3.5-3.5 2 .2 3.3 1.5 3.5 3.5zM12 14c2-.2 3.3-1.5 3.5-3.5-2 .2-3.3 1.5-3.5 3.5zM12 18c-2-.2-3.3-1.5-3.5-3.5 2 .2 3.3 1.5 3.5 3.5zM12 18c2-.2 3.3-1.5 3.5-3.5-2 .2-3.3 1.5-3.5 3.5z"/>',
+    'cana': '<path d="M9 21V4M15 21V7M7.5 9h3M7.5 15h3M13.5 12h3M13.5 17h3"/><path d="M15 7c1-2 3-3 5-3-1 2-3 3-5 3zM9 4C8 6 6 7 4 7c1-2 3-3 5-3z"/>',
+    'algod': '<path d="M8 13a3 3 0 1 1 1-5.8A3 3 0 0 1 15 7a3 3 0 1 1 1 6"/><path d="M8 13c1.2 1.6 6.8 1.6 8 0M12 15v6M9 18l3 1 3-1"/>',
+    'laranj': '<circle cx="12" cy="13.5" r="7"/><path d="M12 6.5c0-2 1.5-3.5 3.5-3.5-.2 2-1.5 3.5-3.5 3.5z"/><path d="M12 10.5v6M9 13.5h6"/>',
+} -%}
+{%- set ns = namespace(d='<path d="M5 19C5 11 11 5 19 5c0 8-6 14-14 14z"/><path d="M5 19l7-7"/>') -%}
+{%- for key, d in paths.items() if key in n %}{% set ns.d = d %}{% endfor -%}
+<svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">{{ ns.d|safe }}</svg>
+{%- endmacro %}
 {% block content %}
 <div class="stock-page-shell space-y-6" data-modal-single-pane>
     <section class="stock-page-header rounded-[2rem] p-5 shadow-panel">
@@ -162,16 +179,6 @@
                     </div>
                 </div>
 
-                <div data-season-plot-picker>
-                    <span class="mb-2 block text-sm font-medium">Setores da safra</span>
-                    {% if not season_readonly %}<select class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" data-season-plot-select><option value="">Selecione um setor</option>{% for plot in season_plots %}<option value="{{ plot.id }}" data-name="{{ plot.name }}" data-farm="{{ plot.farm.name if plot.farm else '' }}" {% if sm and plot in sm.plots %}hidden disabled{% endif %}>{{ plot.name }}{% if plot.farm %} • {{ plot.farm.name }}{% endif %}</option>{% endfor %}</select>{% endif %}
-                    <div class="schedule-plot-selected mt-3" data-season-plot-selected>
-                        {% if sm %}{% for plot in sm.plots %}<div class="schedule-plot-chip" data-plot-id="{{ plot.id }}"><div class="schedule-plot-chip-body"><span class="schedule-plot-chip-title">{{ plot.name }}</span><span class="schedule-plot-chip-meta">{{ plot.farm.name if plot.farm else '' }}</span></div>{% if not season_readonly %}<input type="hidden" name="plot_ids" value="{{ plot.id }}"><button type="button" class="schedule-plot-chip-remove" data-season-plot-remove aria-label="Remover {{ plot.name }}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>{% endif %}</div>{% endfor %}{% endif %}
-                        <p class="schedule-plot-selected-empty text-sm text-slate-500 {% if sm and sm.plots %}hidden{% endif %}" data-season-plot-empty>Nenhum setor selecionado.</p>
-                    </div>
-                    {% if not season_readonly %}<p class="mt-2 text-xs text-slate-500">Selecione um ou mais setores da fazenda para vincular à safra.</p>{% endif %}
-                </div>
-
                 <div class="grid gap-4 md:grid-cols-2">
                     <label>
                         <span class="mb-2 block text-sm font-medium">Data inicial</span>
@@ -192,10 +199,22 @@
                 </label>
 
                 <div class="grid gap-4 md:grid-cols-2">
-                    <label>
-                        <span class="mb-2 block text-sm font-medium">Cultura</span>
-                        <input name="culture" value="{{ sm.culture if sm else 'Cafe' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50 {% if season_readonly %}cursor-default bg-slate-100 text-slate-700{% endif %}" {% if not season_readonly %}required{% endif %} {% if season_readonly %}readonly tabindex="-1"{% endif %}>
-                    </label>
+                    <div class="relative" data-culture-combo>
+                        <label for="season-culture" class="mb-2 block text-sm font-medium">Cultura</label>
+                        <div class="relative">
+                            <span class="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-500" data-culture-icon>{{ culture_icon(sm.culture if sm else 'Café') }}</span>
+                            <input id="season-culture" name="culture" value="{{ sm.culture if sm else 'Café' }}" maxlength="80" autocomplete="off" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50 pl-12 pr-10 {% if season_readonly %}cursor-default bg-slate-100 text-slate-700{% endif %}" {% if not season_readonly %}required role="combobox" aria-expanded="false" aria-controls="season-culture-list" aria-autocomplete="list" data-culture-input{% else %}readonly tabindex="-1"{% endif %} placeholder="Escolha ou digite a cultura">
+                            {% if not season_readonly %}<svg class="pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>{% endif %}
+                        </div>
+                        {% if not season_readonly %}
+                        <ul id="season-culture-list" role="listbox" class="absolute z-30 mt-2 hidden max-h-72 w-full overflow-y-auto rounded-2xl border border-slate-200 bg-white p-1.5 shadow-xl" data-culture-list>
+                            {% for label in ['Café', 'Milho', 'Soja', 'Feijão', 'Arroz', 'Trigo', 'Cana-de-açúcar', 'Algodão', 'Laranja', 'Eucalipto'] %}
+                            <li role="option" data-value="{{ label }}" class="flex cursor-pointer items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-slate-700 hover:bg-slate-50 aria-selected:bg-emerald-50 aria-selected:text-brand-700"><span class="h-5 w-5 shrink-0 text-slate-500">{{ culture_icon(label) }}</span>{{ label }}</li>
+                            {% endfor %}
+                            <li role="option" class="hidden cursor-pointer items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-slate-700 hover:bg-slate-50 aria-selected:bg-emerald-50" data-culture-custom><span class="h-5 w-5 shrink-0 text-slate-500">{{ culture_icon('') }}</span><span>Usar “<strong data-culture-custom-text></strong>”</span></li>
+                        </ul>
+                        {% endif %}
+                    </div>
                     <label>
                         <span class="mb-2 block text-sm font-medium">Variedade</span>
                         <select name="variety_id" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50 {% if season_readonly %}cursor-default bg-slate-100 text-slate-700{% endif %}" {% if season_readonly %}disabled tabindex="-1"{% endif %}>
@@ -207,14 +226,32 @@
                     </label>
                 </div>
 
+                <fieldset class="grid gap-4 rounded-[1.5rem] border border-slate-200 p-4">
+                    <legend class="px-1 text-sm font-semibold text-slate-800">Área cultivada</legend>
+                {% if not season_readonly and not season_plots and not (sm and sm.plots) %}
+                <div class="flex flex-col gap-3 rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-4 sm:flex-row sm:items-center sm:justify-between">
+                    <p class="text-sm text-slate-600">Nenhum setor cadastrado nesta fazenda. Cadastre os setores para vincular à safra e calcular a área.</p>
+                    <a href="/setores?novo=1&voltar=safra" class="inline-flex shrink-0 items-center justify-center gap-1 rounded-xl bg-brand-500 px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-700">+ Cadastrar setor</a>
+                </div>
+                {% else %}
+                <div data-season-plot-picker>
+                                        {% if not season_readonly %}<select class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" data-season-plot-select><option value="">Adicionar setor…</option>{% for plot in season_plots %}<option value="{{ plot.id }}" data-name="{{ plot.name }}" data-farm="{{ plot.farm.name if plot.farm else '' }}" data-area="{{ plot.area_hectares }}" {% if sm and plot in sm.plots %}hidden disabled{% endif %}>{{ plot.name }}{% if plot.farm %} • {{ plot.farm.name }}{% endif %}</option>{% endfor %}</select>{% endif %}
+                    <div class="schedule-plot-selected mt-3" data-season-plot-selected>
+                        {% if sm %}{% for plot in sm.plots %}<div class="schedule-plot-chip" data-plot-id="{{ plot.id }}" data-area="{{ plot.area_hectares }}"><div class="schedule-plot-chip-body"><span class="schedule-plot-chip-title">{{ plot.name }}</span><span class="schedule-plot-chip-meta">{{ plot.farm.name if plot.farm else '' }}</span></div>{% if not season_readonly %}<input type="hidden" name="plot_ids" value="{{ plot.id }}"><button type="button" class="schedule-plot-chip-remove" data-season-plot-remove aria-label="Remover {{ plot.name }}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>{% endif %}</div>{% endfor %}{% endif %}
+                        <p class="schedule-plot-selected-empty text-sm text-slate-500 {% if sm and sm.plots %}hidden{% endif %}" data-season-plot-empty>Nenhum setor selecionado.</p>
+                    </div>
+                    {% if not season_readonly %}<p class="mt-2 text-xs text-slate-500">Selecione os setores plantados nesta safra; a área é somada automaticamente e pode ser ajustada.</p>{% endif %}
+                </div>
+
+                {% endif %}
                 <div class="grid gap-4 md:grid-cols-3">
                     <label class="md:col-span-2">
-                        <span class="mb-2 block text-sm font-medium">Área cultivada</span>
-                        <input type="number" step="0.01" name="cultivated_area" value="{{ sm.cultivated_area if sm else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50 {% if season_readonly %}cursor-default bg-slate-100 text-slate-700{% endif %}" {% if not season_readonly %}required{% endif %} {% if season_readonly %}readonly tabindex="-1"{% endif %}>
+                        <span class="mb-2 block text-sm font-medium">Total</span>
+                        <input type="number" step="0.01" name="cultivated_area" data-season-area-input value="{{ sm.cultivated_area if sm else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50 {% if season_readonly %}cursor-default bg-slate-100 text-slate-700{% endif %}" {% if not season_readonly %}required{% endif %} {% if season_readonly %}readonly tabindex="-1"{% endif %}>
                     </label>
                     <label>
                         <span class="mb-2 block text-sm font-medium">Unidade de área</span>
-                        <select name="area_unit" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50 {% if season_readonly %}cursor-default bg-slate-100 text-slate-700{% endif %}" {% if not season_readonly %}required{% endif %} {% if season_readonly %}disabled tabindex="-1"{% endif %}>
+                        <select name="area_unit" data-season-area-unit class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50 {% if season_readonly %}cursor-default bg-slate-100 text-slate-700{% endif %}" {% if not season_readonly %}required{% endif %} {% if season_readonly %}disabled tabindex="-1"{% endif %}>
                             {% set selected_area_unit = sm.area_unit if sm else 'ha' %}
                             {% for unit in ['ha', 'm2', 'alq'] %}
                             <option value="{{ unit }}" {% if selected_area_unit == unit %}selected{% endif %}>{{ unit }}</option>
@@ -222,6 +259,8 @@
                         </select>
                     </label>
                 </div>
+                    <p class="hidden text-xs text-slate-500" data-season-area-hint></p>
+                </fieldset>
 
                 <label>
                     <span class="mb-2 block text-sm font-medium">Status</span>
@@ -482,6 +521,100 @@
         option.hidden = true; option.disabled = true; select.value = ''; sync();
     });
     sync();
+})();
+</script>
+<script>
+(() => {
+    const form = document.querySelector('[data-season-form]');
+    if (!form || form.dataset.seasonReadonly) return;
+    // Cultura: lista com busca; aceita texto livre.
+    const combo = form.querySelector('[data-culture-combo]');
+    const input = combo?.querySelector('[data-culture-input]');
+    const list = combo?.querySelector('[data-culture-list]');
+    if (input && list) {
+        const iconSlot = combo.querySelector('[data-culture-icon]');
+        const options = [...list.querySelectorAll('[data-value]')];
+        const custom = list.querySelector('[data-culture-custom]');
+        const fallbackIcon = custom.querySelector('svg').outerHTML;
+        const plain = (v) => (v || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+        let active = -1;
+        const visible = () => [...list.querySelectorAll('[role="option"]')].filter((o) => !o.classList.contains('hidden'));
+        const setIcon = () => {
+            const match = options.find((o) => plain(o.dataset.value) === plain(input.value));
+            iconSlot.innerHTML = match ? match.querySelector('svg').outerHTML : fallbackIcon;
+        };
+        const highlight = (index) => {
+            const items = visible();
+            items.forEach((o, i) => o.setAttribute('aria-selected', i === index ? 'true' : 'false'));
+            active = index;
+            items[index]?.scrollIntoView({ block: 'nearest' });
+        };
+        const filter = () => {
+            const q = plain(input.value);
+            let exact = false;
+            options.forEach((o) => { const v = plain(o.dataset.value); o.classList.toggle('hidden', q && !v.includes(q)); if (v === q) exact = true; });
+            custom.classList.toggle('hidden', !q || exact);
+            custom.classList.toggle('flex', Boolean(q) && !exact);
+            custom.querySelector('[data-culture-custom-text]').textContent = input.value.trim();
+            highlight(visible().length ? 0 : -1);
+        };
+        const open = (all) => {
+            if (all) { options.forEach((o) => o.classList.remove('hidden')); custom.classList.add('hidden'); custom.classList.remove('flex'); highlight(-1); }
+            list.classList.remove('hidden'); input.setAttribute('aria-expanded', 'true');
+        };
+        const close = () => { list.classList.add('hidden'); input.setAttribute('aria-expanded', 'false'); };
+        const choose = (option) => {
+            input.value = option.dataset.value || input.value.trim();
+            setIcon(); close();
+        };
+        input.addEventListener('focus', () => open(true));
+        input.addEventListener('click', () => open(true));
+        input.addEventListener('input', () => { open(false); filter(); setIcon(); });
+        input.addEventListener('keydown', (event) => {
+            const items = visible();
+            if (event.key === 'ArrowDown') { event.preventDefault(); open(false); highlight(Math.min(active + 1, items.length - 1)); }
+            else if (event.key === 'ArrowUp') { event.preventDefault(); highlight(Math.max(active - 1, 0)); }
+            else if (event.key === 'Enter' && !list.classList.contains('hidden') && items[active]) { event.preventDefault(); choose(items[active]); }
+            else if (event.key === 'Escape' && !list.classList.contains('hidden')) { event.preventDefault(); event.stopPropagation(); close(); }
+        });
+        list.addEventListener('mousedown', (event) => {
+            const option = event.target.closest('[role="option"]');
+            if (option) { event.preventDefault(); choose(option); }
+        });
+        input.addEventListener('blur', () => { input.value = input.value.trim(); const m = options.find((o) => plain(o.dataset.value) === plain(input.value)); if (m) input.value = m.dataset.value; setIcon(); close(); });
+        setIcon();
+    }
+    // Area cultivada: soma os setores selecionados.
+    const areaInput = form.querySelector('[data-season-area-input]');
+    const unit = form.querySelector('[data-season-area-unit]');
+    const hint = form.querySelector('[data-season-area-hint]');
+    const selected = form.querySelector('[data-season-plot-selected]');
+    const select = form.querySelector('[data-season-plot-select]');
+    const recalc = () => {
+        const chips = selected ? [...selected.querySelectorAll('[data-plot-id]')] : [];
+        if (!chips.length || !areaInput) { hint?.classList.add('hidden'); return; }
+        const total = chips.reduce((sum, chip) => {
+            const id = chip.dataset.plotId;
+            const area = chip.dataset.area || [...(select?.options || [])].find((o) => o.value === id)?.dataset.area;
+            return sum + (parseFloat(area) || 0);
+        }, 0);
+        areaInput.value = total.toFixed(2);
+        if (unit) unit.value = 'ha';
+        hint.textContent = `Soma de ${chips.length} setor(es): ${total.toLocaleString('pt-BR', { maximumFractionDigits: 2 })} ha. Ajuste se a área plantada for diferente.`;
+        hint.classList.remove('hidden');
+    };
+    if (selected) new MutationObserver(recalc).observe(selected, { childList: true });
+    // Retorno do cadastro de setor: reabre a nova safra com o setor ja escolhido.
+    const query = new URLSearchParams(window.location.search);
+    if (query.get('novo') === '1') {
+        document.getElementById('seasons-launch-modal')?.showModal();
+        const plotId = query.get('setor');
+        if (plotId && select && [...select.options].some((o) => o.value === plotId && !o.disabled)) {
+            select.value = plotId;
+            select.dispatchEvent(new Event('change'));
+        }
+        window.history.replaceState(null, '', '/safras');
+    }
 })();
 </script>
 {% endblock %}

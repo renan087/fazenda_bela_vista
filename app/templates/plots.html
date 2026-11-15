@@ -1232,6 +1232,19 @@
             });
         });
 
+        // Vindo do cadastro de safra: abre o novo setor e volta para a safra ao salvar.
+        const plotsQuery = new URLSearchParams(window.location.search);
+        if (!isEditing && plotsQuery.get('novo') === '1' && launchModal) {
+            const plotForm = launchModal.querySelector('form[action="/setores"]');
+            if (plotsQuery.get('voltar') === 'safra' && plotForm) {
+                const back = document.createElement('input');
+                back.type = 'hidden'; back.name = 'return_to'; back.value = 'safra';
+                plotForm.appendChild(back);
+            }
+            launchModal.showModal();
+            afterPlotsModalOpen();
+        }
+
         closeButtons.forEach((button) => {
             button.addEventListener('click', () => closePlotsModal());
         });

@@ -8338,6 +8338,7 @@ def create_plot_action(
     sprinkler_count: str | None = Form(None),
     sprinkler_liters_per_hour: str | None = Form(None),
     notes: str | None = Form(None),
+    return_to: str | None = Form(None),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user_web),
 ):
@@ -8406,6 +8407,8 @@ def create_plot_action(
         is_new_plot=True,
     )
     _flash(request, "success", "Setor salvo com sucesso.")
+    if return_to == "safra":
+        return _redirect(f"/safras?novo=1&setor={new_plot.id}")
     return _redirect("/setores")
 
 
