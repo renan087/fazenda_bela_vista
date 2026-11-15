@@ -5456,3 +5456,6 @@ body .stock-stock-management-button:hover, body .stock-action-menu[open] .stock-
     body .stock-page-header .stock-header-actions .sf-menu-panel { left: 0; right: auto; }
     body .stock-page-header .stock-header-actions > .sf-menu:last-of-type:not(:first-child) .sf-menu-panel { left: auto; right: 0; }
 }
+@media (min-width: 1024px) { .sf-kpis.sf-kpis-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+/* No celular a barra do topo ja mostra o nome da pagina: o cabecalho da pagina rola junto com o conteudo. */
+@media (max-width: 899px) { body .stock-page-header { position: relative; top: auto; backdrop-filter: none; background: transparent; } }
