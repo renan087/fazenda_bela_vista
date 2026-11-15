@@ -1,4 +1,5 @@
 from collections import defaultdict
+import contextlib
 from datetime import date, datetime, time, timedelta, timezone
 from decimal import Decimal, InvalidOperation
 from io import BytesIO
@@ -61,6 +62,9 @@ from app.core.deps import get_csrf_token, get_current_user_web
 from app.core.security import get_password_hash, verify_password
 from app.core.session import clear_expired_session, touch_session_activity
 from app.core.timezone import app_now, format_app_datetime, get_app_timezone, today_in_app_timezone
+from app.models.system_maintenance import SystemMaintenance
+from app.services.audit_log_service import append_audit_event
+from app.services.maintenance import MODES as MAINTENANCE_MODES, MaintenanceError, compute_state as compute_maintenance_state, current_state as current_maintenance_state, save_state as save_maintenance_state
 from app.core.user_context import persist_user_context, sync_user_context_from_preferences
 from app.db.session import get_db
 from app.models import (
@@ -289,6 +293,7 @@ templates = Jinja2Templates(directory="app/templates")
 templates.env.filters["datetime_sp"] = format_app_datetime
 templates.env.filters["decimal_br"] = lambda value, places=2: _format_decimal_br(value, places)
 templates.env.globals["subscription_cycles"] = SUBSCRIPTION_CYCLES
+templates.env.globals["format_app_datetime"] = format_app_datetime
 templates.env.globals["asaas_env"] = current_asaas_environment
 templates.env.globals["plan_icon"] = lambda code, css_class="h-5 w-5": Markup(plan_icon_svg(code, css_class))
 templates.env.globals["plan_icon_choices"] = PLAN_ICONS
@@ -1006,6 +1011,7 @@ def _base_context(request: Request, user: User, csrf_token: str, page: str, **kw
         )
         context["context_lock_exempt"] = page in {
             "onboarding",
+            "maintenance",
             "farms",
             "seasons",
             "profile",
@@ -1019,6 +1025,9 @@ def _base_context(request: Request, user: User, csrf_token: str, page: str, **kw
         context["context_previous_available"] = bool(scope_context.get("previous_context_available"))
     context["plan_entitlements"] = _entitlements_for(db_session, user)
     context.setdefault("today_date", today_in_app_timezone())
+    context["maintenance_state"] = current_maintenance_state(lambda: contextlib.nullcontext(db_session)) if db_session is not None else None
+    context["now_utc"] = datetime.now(timezone.utc)
+    context["is_super_admin"] = bool(user and is_super_admin_email(user.email))
     context.update(kwargs)
     return context
 
@@ -3902,6 +3911,71 @@ def onboarding_dismiss_action(request: Request, csrf_token: str = Form(...), db:
         user.organization.onboarding_dismissed = True
         db.commit()
     return _redirect("/dashboard")
+
+
+def _local_input_to_utc(value: str | None):
+    """Converte o campo datetime-local (horario do sistema) para UTC."""
+    raw = (value or "").strip()
+    if not raw:
+        return None
+    try:
+        return datetime.fromisoformat(raw).replace(tzinfo=get_app_timezone()).astimezone(timezone.utc)
+    except ValueError:
+        raise MaintenanceError("Data ou hora inválida.")
+
+
+def _render_maintenance_settings(request, db, user, csrf_token, *, error=None, form=None):
+    row = db.get(SystemMaintenance, 1)
+    tz = get_app_timezone()
+    to_local = lambda value: value.replace(tzinfo=value.tzinfo or timezone.utc).astimezone(tz).strftime("%Y-%m-%dT%H:%M") if value else ""
+    defaults = {"mode": "off", "message": "", "announce_at": "", "ends_at": ""}
+    if row:
+        defaults.update(mode=row.mode, message=row.message or "", announce_at=to_local(row.announce_at), ends_at=to_local(row.ends_at))
+    defaults.update(form or {})
+    response = templates.TemplateResponse("maintenance_settings.html", _base_context(
+        request, user, csrf_token, "maintenance", title="Manutenção", _repo=_repository(db),
+        form=defaults, error=error, modes=MAINTENANCE_MODES, state=compute_maintenance_state(db, datetime.now(timezone.utc)),
+        row=row, env_forced=bool((get_settings().maintenance_mode or "").strip()),
+    ))
+    if error:
+        response.status_code = 400
+    return response
+
+
+@router.get("/manutencao")
+def maintenance_settings_page(request: Request, db: Session = Depends(get_db), user: User = Depends(get_current_user_web), csrf_token: str = Depends(get_csrf_token)):
+    denied = _require_super_admin(request, user)
+    return denied or _render_maintenance_settings(request, db, user, csrf_token)
+
+
+@router.post("/manutencao")
+def maintenance_settings_action(
+    request: Request, csrf_token: str = Form(...), mode: str = Form("off"), message: str = Form(""),
+    announce_at: str = Form(""), ends_at: str = Form(""), intent: str = Form("salvar"),
+    db: Session = Depends(get_db), user: User = Depends(get_current_user_web),
+):
+    denied = _require_super_admin(request, user)
+    if denied:
+        return denied
+    validate_csrf(request, csrf_token)
+    form = {"mode": mode, "message": message, "announce_at": announce_at, "ends_at": ends_at}
+    now = datetime.now(timezone.utc)
+    previous = compute_maintenance_state(db, now)
+    try:
+        if intent == "encerrar":
+            mode, message, start, end = "off", "", None, None
+        else:
+            start, end = _local_input_to_utc(announce_at), _local_input_to_utc(ends_at)
+        save_maintenance_state(db, mode=mode, message=message, announce_at=start if mode == "off" else None, ends_at=end, user_email=user.email, now=now)
+    except MaintenanceError as exc:
+        return _render_maintenance_settings(request, db, user, get_csrf_token(request), error=str(exc), form=form)
+    append_audit_event(request=request, actor_user=user, event_type="system.maintenance", outcome="success",
+                       metadata={"de": previous.mode, "para": mode, "aviso": announce_at or None, "fim": ends_at or None, "mensagem": message or None})
+    labels = {"off": "Sistema liberado para todos." if previous.active else ("Aviso de manutenção programada salvo." if start else "Configuração salva."),
+              "leitura": "Modo somente leitura ativado. Você (equipe SiSFarm) continua com acesso total.",
+              "fora_do_ar": "Sistema fora do ar para os clientes. Você (equipe SiSFarm) continua com acesso total."}
+    _flash(request, "success", labels[mode])
+    return _redirect("/manutencao")
 
 
 @router.get("/primeiros-passos")

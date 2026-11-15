@@ -297,7 +297,7 @@
                         {% set config_pages = config_pages + ['users'] %}
                     {% endif %}
                     {% if menu_visibility.get('organizations') %}
-                        {% set config_pages = config_pages + ['organizations', 'subscriptions', 'subscription_plans'] %}
+                        {% set config_pages = config_pages + ['organizations', 'subscriptions', 'subscription_plans', 'maintenance'] %}
                     {% endif %}
                     {% if menu_visibility.get('audit_logs') %}
                         {% set config_pages = config_pages + ['audit_logs'] %}
@@ -327,6 +327,7 @@
                             <a href="{{ module_href('/organizacoes') }}" class="sidebar-submenu-link block rounded-xl px-3 py-2 text-sm {% if page == 'organizations' %}bg-brand-500 text-white{% else %}text-slate-300 hover:bg-slate-800 hover:text-white{% endif %}" data-submenu-link>Organizações{{ module_lock('/organizacoes') }}</a>
                             <a href="{{ module_href('/assinaturas') }}" class="sidebar-submenu-link block rounded-xl px-3 py-2 text-sm {% if page == 'subscriptions' %}bg-brand-500 text-white{% else %}text-slate-300 hover:bg-slate-800 hover:text-white{% endif %}" data-submenu-link>Assinaturas{{ module_lock('/assinaturas') }}</a>
                             <a href="{{ module_href('/planos') }}" class="sidebar-submenu-link block rounded-xl px-3 py-2 text-sm {% if page == 'subscription_plans' %}bg-brand-500 text-white{% else %}text-slate-300 hover:bg-slate-800 hover:text-white{% endif %}" data-submenu-link>Planos{{ module_lock('/planos') }}</a>
+                            <a href="{{ '/manutencao' }}" class="sidebar-submenu-link block rounded-xl px-3 py-2 text-sm {% if page == 'maintenance' %}bg-brand-500 text-white{% else %}text-slate-300 hover:bg-slate-800 hover:text-white{% endif %}" data-submenu-link>Manutenção</a>
                             {% endif %}
                             {% if menu_visibility.get('audit_logs') %}
                             <a href="{{ module_href('/auditoria') }}" class="sidebar-submenu-link block rounded-xl px-3 py-2 text-sm {% if page == 'audit_logs' %}bg-brand-500 text-white{% else %}text-slate-300 hover:bg-slate-800 hover:text-white{% endif %}" data-submenu-link>Auditoria{{ module_lock('/auditoria') }}</a>
@@ -489,6 +490,7 @@
                 </form>
             </div>
             <div class="mx-auto w-full min-w-0 max-w-7xl flex-1 px-4 py-6 sm:px-6 md:py-8">
+                {% include "partials/maintenance_banner.html" %}
                 {% include "partials/billing_banner.html" %}
                 {% if flash %}
                 <div class="mb-6 rounded-2xl px-4 py-3 text-sm font-medium {% if flash.kind == 'success' %}border border-emerald-200 bg-emerald-50 text-emerald-700{% else %}border border-rose-200 bg-rose-50 text-rose-700{% endif %}">

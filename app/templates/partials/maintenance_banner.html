@@ -1,0 +1,18 @@
+{# Avisos de manutencao no topo das paginas logadas. #}
+{% set mstate = maintenance_state %}
+{% if mstate %}
+{% if mstate.active and is_super_admin %}
+<div class="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-900" role="status" data-maintenance-banner="equipe">
+    <p><strong>Manutenção ativa ({{ 'somente leitura' if mstate.mode == 'leitura' else 'fora do ar' }}).</strong> Os clientes estão bloqueados; você navega com acesso total.</p>
+    <a href="/manutencao" class="rounded-xl bg-rose-600 px-4 py-2 text-sm font-semibold text-white hover:bg-rose-700">Gerenciar</a>
+</div>
+{% elif mstate.mode == 'leitura' %}
+<div class="mb-6 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900" role="status" data-maintenance-banner="leitura">
+    <strong>Manutenção em andamento.</strong> O sistema está em modo consulta: cadastros e alterações voltam em instantes{% if mstate.ends_at %} (previsão: {{ format_app_datetime(mstate.ends_at, '%H:%M') }}){% endif %}.{% if mstate.message %} {{ mstate.message }}{% endif %}
+</div>
+{% elif mstate.announce_at and now_utc and mstate.announce_at > now_utc %}
+<div class="mb-6 rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-900" role="status" data-maintenance-banner="aviso">
+    <strong>Manutenção programada para {{ format_app_datetime(mstate.announce_at, '%d/%m às %H:%M') }}{% if mstate.ends_at %} (até {{ format_app_datetime(mstate.ends_at, '%H:%M') }}){% endif %}.</strong> Salve seu trabalho antes desse horário.{% if mstate.message %} {{ mstate.message }}{% endif %}
+</div>
+{% endif %}
+{% endif %}

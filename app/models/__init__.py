@@ -38,6 +38,7 @@ from app.models.organization_billing import OrganizationBilling
 from app.models.organization_subscription import OrganizationSubscription
 from app.models.subscription_plan import SubscriptionPlan
 from app.models.organization_access_grant import OrganizationAccessGrant
+from app.models.system_maintenance import SystemMaintenance
 from app.models.subscription_notice import SubscriptionNotice
 from app.models.organization_card_migration import OrganizationCardMigration
 from app.models.organization_subscription_payment import OrganizationSubscriptionPayment, AsaasWebhookEvent
@@ -66,6 +67,7 @@ __all__ = [
     "OrganizationSubscription",
     "SubscriptionPlan",
     "OrganizationAccessGrant",
+    "SystemMaintenance",
     "SubscriptionNotice",
     "OrganizationCardMigration",
     "OrganizationSubscriptionPayment",
