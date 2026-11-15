@@ -30,6 +30,7 @@ from app.models import (
     CoffeeCommercializationRecord,
     PestIncident,
     Plot,
+    PlotPlanting,
     PurchasedInput,
     RainfallRecord,
     SoilAnalysis,
@@ -350,11 +351,30 @@ def create_plot(repository: FarmRepository, form: dict) -> Plot:
         farm_id=form.get("farm_id"),
         variety_id=form.get("variety_id"),
     )
+    plot.plantings.append(PlotPlanting(culture="Café", **_planting_values(plot)))
     return repository.create(plot)
 
 
+PLANTING_FIELDS = ("variety_id", "planting_date", "plant_count", "spacing_row_meters", "spacing_plant_meters", "estimated_yield_sacks")
+
+
+def _planting_values(plot: Plot) -> dict:
+    return {field: getattr(plot, field) for field in PLANTING_FIELDS}
+
+
+def sync_active_planting(plot: Plot) -> PlotPlanting:
+    """Os campos de plantio do setor espelham o plantio ativo; editar o setor corrige o plantio ativo."""
+    planting = plot.active_planting
+    if planting is None:
+        planting = PlotPlanting(culture="Café")
+        plot.plantings.append(planting)
+    for field, value in _planting_values(plot).items():
+        setattr(planting, field, value)
+    return planting
+
+
 def update_plot(repository: FarmRepository, plot: Plot, form: dict) -> Plot:
-    return repository.update(
+    plot = repository.update(
         plot,
         {
             "name": form["name"],
@@ -380,6 +400,9 @@ def update_plot(repository: FarmRepository, plot: Plot, form: dict) -> Plot:
             "variety_id": form.get("variety_id"),
         },
     )
+    sync_active_planting(plot)
+    repository.db.commit()
+    return plot
 
 
 def update_farm(repository: FarmRepository, farm: Farm, form: dict) -> Farm:

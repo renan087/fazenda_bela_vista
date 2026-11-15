@@ -631,6 +631,13 @@ def _sync_schema() -> None:
         "ALTER TABLE organizations ADD COLUMN IF NOT EXISTS onboarding_dismissed BOOLEAN NOT NULL DEFAULT false",
         "ALTER TABLE plots DROP CONSTRAINT IF EXISTS plots_name_key",
         "CREATE UNIQUE INDEX IF NOT EXISTS uq_plots_farm_name ON plots (farm_id, name)",
+        # Historico de plantios: cada setor existente ganha um plantio ativo com os dados atuais.
+        """
+        INSERT INTO plot_plantings (plot_id, culture, variety_id, planting_date, plant_count, spacing_row_meters, spacing_plant_meters, estimated_yield_sacks, created_at)
+        SELECT p.id, 'Café', p.variety_id, p.planting_date, p.plant_count, p.spacing_row_meters, p.spacing_plant_meters, p.estimated_yield_sacks, NOW()
+        FROM plots p
+        WHERE NOT EXISTS (SELECT 1 FROM plot_plantings pp WHERE pp.plot_id = p.id)
+        """,
         "ALTER TABLE farms DROP CONSTRAINT IF EXISTS farms_name_key",
         "CREATE UNIQUE INDEX IF NOT EXISTS uq_farms_organization_name ON farms (organization_id, name)",
         "ALTER TABLE organization_subscriptions ADD COLUMN IF NOT EXISTS plan_changed_at TIMESTAMP",

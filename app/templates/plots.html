@@ -247,19 +247,44 @@
                         </select>
                         {% endif %}
                     </label>
-                    <label><span class="mb-2 block text-sm font-medium">Data de plantio</span><input type="date" name="planting_date" value="{{ edit_plot.planting_date.isoformat() if edit_plot and edit_plot.planting_date else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50"></label>
-                    <label><span class="mb-2 block text-sm font-medium">Número de plantas</span><input type="number" name="plant_count" value="{{ edit_plot.plant_count if edit_plot else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required></label>
-                    <label><span class="mb-2 block text-sm font-medium">Espaçamento entre linhas (m)</span><input type="number" step="0.01" name="spacing_row_meters" value="{{ edit_plot.spacing_row_meters if edit_plot else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50"></label>
-                    <label><span class="mb-2 block text-sm font-medium">Espaçamento entre plantas (cm)</span><input type="number" step="0.01" name="spacing_plant_centimeters" value="{{ ((edit_plot.spacing_plant_meters * 100) if edit_plot and edit_plot.spacing_plant_meters is not none else '') }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50"></label>
-                    <label><span class="mb-2 block text-sm font-medium">Produção estimada (sacas)</span><input type="number" step="0.01" name="estimated_yield_sacks" value="{{ edit_plot.estimated_yield_sacks if edit_plot else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50"></label>
-                    <label><span class="mb-2 block text-sm font-medium">Variedade</span>
-                        <select name="variety_id" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50">
-                            <option value="">Selecione</option>
-                            {% for variety in form_varieties %}
-                            <option value="{{ variety.id }}" {% if edit_plot and edit_plot.variety_id == variety.id %}selected{% endif %}>{{ variety.name }}</option>
-                            {% endfor %}
-                        </select>
-                    </label>
+                </div>
+
+                <fieldset class="rounded-[1.5rem] border border-emerald-100 bg-emerald-50/40 p-4">
+                    <legend class="px-1 text-sm font-semibold text-slate-800">Plantio atual</legend>
+                    <p class="mb-4 text-xs text-slate-500">{% if edit_plot and edit_plot.active_planting %}Lavoura de {{ edit_plot.active_planting.culture }}{% if edit_plot.active_planting.planting_date %} plantada em {{ edit_plot.active_planting.planting_date.strftime('%d/%m/%Y') }}{% endif %}. Corrija aqui os dados deste plantio; os plantios anteriores ficam guardados no histórico.{% else %}Dados da lavoura plantada hoje neste setor. Ao trocar a lavoura no futuro, estes dados ficam guardados no histórico.{% endif %}</p>
+                    <div class="grid gap-4 md:grid-cols-2">
+                        <label><span class="mb-2 block text-sm font-medium">Data de plantio</span><input type="date" name="planting_date" value="{{ edit_plot.planting_date.isoformat() if edit_plot and edit_plot.planting_date else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50"></label>
+                        <label><span class="mb-2 block text-sm font-medium">Número de plantas</span><input type="number" name="plant_count" value="{{ edit_plot.plant_count if edit_plot else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" required></label>
+                        <label><span class="mb-2 block text-sm font-medium">Espaçamento entre linhas (m)</span><input type="number" step="0.01" name="spacing_row_meters" value="{{ edit_plot.spacing_row_meters if edit_plot else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50"></label>
+                        <label><span class="mb-2 block text-sm font-medium">Espaçamento entre plantas (cm)</span><input type="number" step="0.01" name="spacing_plant_centimeters" value="{{ ((edit_plot.spacing_plant_meters * 100) if edit_plot and edit_plot.spacing_plant_meters is not none else '') }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50"></label>
+                        <label><span class="mb-2 block text-sm font-medium">Produção estimada (sacas)</span><input type="number" step="0.01" name="estimated_yield_sacks" value="{{ edit_plot.estimated_yield_sacks if edit_plot else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50"></label>
+                        <label><span class="mb-2 block text-sm font-medium">Variedade</span>
+                            <select name="variety_id" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50">
+                                <option value="">Selecione</option>
+                                {% for variety in form_varieties %}
+                                <option value="{{ variety.id }}" {% if edit_plot and edit_plot.variety_id == variety.id %}selected{% endif %}>{{ variety.name }}</option>
+                                {% endfor %}
+                            </select>
+                        </label>
+                    </div>
+                </fieldset>
+                {% if edit_plot and edit_plot.past_plantings %}
+                <section class="rounded-[1.5rem] border border-slate-200 p-4">
+                    <h4 class="text-sm font-semibold text-slate-800">Histórico de plantios</h4>
+                    <ol class="mt-3 space-y-2">
+                        {% for planting in edit_plot.past_plantings %}
+                        <li class="rounded-xl bg-slate-50 px-3 py-2 text-sm text-slate-600">
+                            <span class="font-semibold text-slate-800">{{ planting.culture }}{% if planting.variety %} · {{ planting.variety.name }}{% endif %}</span>
+                            · {{ planting.planting_date.strftime('%m/%Y') if planting.planting_date else '—' }} a {{ planting.ended_on.strftime('%m/%Y') }}
+                            {% if planting.end_reason %}<span class="ml-1 rounded-full bg-white px-2 py-0.5 text-xs text-slate-500 ring-1 ring-slate-200">{{ {'renovacao': 'Renovação', 'erradicacao': 'Erradicação', 'troca_cultura': 'Troca de cultura', 'perda': 'Perda da lavoura', 'outro': 'Outro'}.get(planting.end_reason, planting.end_reason) }}</span>{% endif %}
+                            <span class="block text-xs text-slate-500">{{ planting.plant_count or '—' }} plantas{% if planting.spacing_row_meters %} · {{ planting.spacing_row_meters|decimal_br }} m entre linhas{% endif %}</span>
+                        </li>
+                        {% endfor %}
+                    </ol>
+                </section>
+                {% endif %}
+
+                <div class="grid gap-4 md:grid-cols-2">
                     <label><span class="mb-2 block text-sm font-medium">Latitude</span><input type="number" step="0.000001" name="centroid_lat" value="{{ edit_plot.centroid_lat if edit_plot else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" placeholder="Opcional"></label>
                     <label><span class="mb-2 block text-sm font-medium">Longitude</span><input type="number" step="0.000001" name="centroid_lng" value="{{ edit_plot.centroid_lng if edit_plot else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" placeholder="Opcional"></label>
                 </div>

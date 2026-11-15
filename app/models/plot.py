@@ -45,3 +45,15 @@ class Plot(Base):
     fertilization_schedules = relationship("FertilizationSchedule", back_populates="plot", cascade="all, delete-orphan")
     stock_outputs = relationship("StockOutput", back_populates="plot", cascade="all, delete-orphan")
     attachments = relationship("PlotAttachment", back_populates="plot", cascade="all, delete-orphan")
+    plantings = relationship(
+        "PlotPlanting", back_populates="plot", cascade="all, delete-orphan", passive_deletes=True,
+        order_by="(PlotPlanting.ended_on.is_(None).desc(), PlotPlanting.planting_date.desc(), PlotPlanting.id.desc())",
+    )
+
+    @property
+    def active_planting(self):
+        return next((planting for planting in self.plantings if planting.ended_on is None), None)
+
+    @property
+    def past_plantings(self):
+        return [planting for planting in self.plantings if planting.ended_on is not None]
