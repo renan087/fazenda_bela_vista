@@ -5474,3 +5474,4 @@ td .sf-menu > .sf-menu-panel { top: 50%; right: calc(100% + .375rem); transform:
     table.sf-table-legacy tbody td { padding: 0 !important; }
     table.sf-table-legacy tbody td.sf-td-actions > div, table.sf-table-legacy tbody td.sf-td-actions { display: flex; gap: .375rem; justify-content: flex-end; align-items: flex-start; }
 }
+@media (max-width: 767px) { .sf-table-responsive td.sf-td-actions, table.sf-table-legacy tbody td.sf-td-actions { width: auto; min-width: max-content; } }
