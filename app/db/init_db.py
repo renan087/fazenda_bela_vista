@@ -638,6 +638,18 @@ def _sync_schema() -> None:
         FROM plots p
         WHERE NOT EXISTS (SELECT 1 FROM plot_plantings pp WHERE pp.plot_id = p.id)
         """,
+        "ALTER TABLE crop_season_plots ADD COLUMN IF NOT EXISTS planting_id INTEGER REFERENCES plot_plantings(id) ON DELETE SET NULL",
+        # Safras antigas apontam para o plantio que valia no periodo delas.
+        """
+        UPDATE crop_season_plots csp SET planting_id = (
+            SELECT pp.id FROM plot_plantings pp JOIN crop_seasons cs ON cs.id = csp.season_id
+            WHERE pp.plot_id = csp.plot_id
+              AND (pp.planting_date IS NULL OR pp.planting_date <= cs.end_date)
+              AND (pp.ended_on IS NULL OR pp.ended_on >= cs.start_date)
+            ORDER BY pp.planting_date DESC NULLS LAST, pp.id DESC LIMIT 1
+        )
+        WHERE csp.planting_id IS NULL
+        """,
         "ALTER TABLE farms DROP CONSTRAINT IF EXISTS farms_name_key",
         "CREATE UNIQUE INDEX IF NOT EXISTS uq_farms_organization_name ON farms (organization_id, name)",
         "ALTER TABLE organization_subscriptions ADD COLUMN IF NOT EXISTS plan_changed_at TIMESTAMP",

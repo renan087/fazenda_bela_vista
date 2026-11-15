@@ -494,8 +494,32 @@ def update_variety(repository: FarmRepository, variety: CoffeeVariety, form: dic
     )
 
 
+def planting_for_season(plot: Plot, start, end):
+    """Plantio do setor que valia no periodo da safra; sem correspondencia, usa o plantio ativo."""
+    candidates = [
+        planting for planting in plot.plantings
+        if (planting.planting_date is None or planting.planting_date <= end) and (planting.ended_on is None or planting.ended_on >= start)
+    ]
+    candidates.sort(key=lambda planting: (planting.planting_date or date.min, planting.id or 0), reverse=True)
+    return candidates[0] if candidates else plot.active_planting
+
+
+def link_season_plantings(repository: FarmRepository, season: CropSeason) -> None:
+    from app.models.crop_season import crop_season_plots
+
+    for plot in season.plots:
+        planting = planting_for_season(plot, season.start_date, season.end_date)
+        repository.db.execute(
+            crop_season_plots.update()
+            .where(crop_season_plots.c.season_id == season.id, crop_season_plots.c.plot_id == plot.id)
+            .values(planting_id=planting.id if planting else None)
+        )
+    repository.db.commit()
+    repository.db.expire(season, ["plantings"])
+
+
 def create_crop_season(repository: FarmRepository, form: dict) -> CropSeason:
-    return repository.create(
+    season = repository.create(
         CropSeason(
             farm_id=form["farm_id"],
             variety_id=form.get("variety_id"),
@@ -510,10 +534,12 @@ def create_crop_season(repository: FarmRepository, form: dict) -> CropSeason:
             plots=form.get("plots", []),
         )
     )
+    link_season_plantings(repository, season)
+    return season
 
 
 def update_crop_season(repository: FarmRepository, crop_season: CropSeason, form: dict) -> CropSeason:
-    return repository.update(
+    season = repository.update(
         crop_season,
         {
             "farm_id": form["farm_id"],
@@ -529,6 +555,8 @@ def update_crop_season(repository: FarmRepository, crop_season: CropSeason, form
             "plots": form.get("plots", []),
         },
     )
+    link_season_plantings(repository, season)
+    return season
 
 
 def create_irrigation(repository: FarmRepository, form: dict) -> IrrigationRecord:

@@ -365,6 +365,11 @@ def calculate_forecast(
     plots = {plot.id: plot for plot in (plots if plots is not None else repository.list_plots())}
 
     for harvest in harvests:
+        plot = plots.get(harvest.plot_id) or harvest.plot
+        current = plot.active_planting if plot is not None else None
+        # Colheitas de um plantio anterior (antes da renovacao) nao entram na previsao da lavoura atual.
+        if current and current.planting_date and harvest.harvest_date and harvest.harvest_date < current.planting_date:
+            continue
         productivity = _float(harvest.productivity_per_hectare)
         if not productivity and harvest.plot:
             productivity = _float(harvest.sacks_produced) / max(_float(harvest.plot.area_hectares), 1)
@@ -486,7 +491,8 @@ def build_dashboard_context(
     total_area = sum(_float(plot.area_hectares) for plot in plots)
     total_production = sum(_float(item.sacks_produced) for item in harvests)
     productivity_per_hectare = total_production / total_area if total_area else 0
-    estimated_production = sum(_float(plot.estimated_yield_sacks) for plot in plots)
+    season_plantings = season.planting_by_plot if season is not None and hasattr(season, "planting_by_plot") else {}
+    estimated_production = sum(_float((season_plantings.get(plot.id) or plot).estimated_yield_sacks) for plot in plots)
     total_cost = sum(_float(item.cost) for item in fertilizations)
     cost_per_hectare = total_cost / total_area if total_area else 0
     operational_cost_per_hectare = operational_cost_season / total_area if total_area else 0

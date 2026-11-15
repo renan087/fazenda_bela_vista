@@ -8,6 +8,8 @@ crop_season_plots = Table(
     "crop_season_plots", Base.metadata,
     Column("season_id", Integer, ForeignKey("crop_seasons.id", ondelete="CASCADE"), primary_key=True),
     Column("plot_id", Integer, ForeignKey("plots.id", ondelete="CASCADE"), primary_key=True),
+    # Plantio do setor que valia nesta safra (historico: renovacoes posteriores nao alteram safras antigas).
+    Column("planting_id", Integer, ForeignKey("plot_plantings.id", ondelete="SET NULL"), nullable=True),
 )
 
 
@@ -29,6 +31,15 @@ class CropSeason(Base):
     farm = relationship("Farm", back_populates="crop_seasons")
     variety = relationship("CoffeeVariety", back_populates="crop_seasons")
     plots = relationship("Plot", secondary=crop_season_plots, order_by="Plot.name")
+    plantings = relationship(
+        "PlotPlanting", secondary=crop_season_plots, viewonly=True,
+        primaryjoin="CropSeason.id == crop_season_plots.c.season_id",
+        secondaryjoin="PlotPlanting.id == crop_season_plots.c.planting_id",
+    )
+
+    @property
+    def planting_by_plot(self) -> dict:
+        return {planting.plot_id: planting for planting in self.plantings}
     fertilizations = relationship("FertilizationRecord", back_populates="season")
     fertilization_schedules = relationship("FertilizationSchedule", back_populates="season")
     stock_outputs = relationship("StockOutput", back_populates="season")

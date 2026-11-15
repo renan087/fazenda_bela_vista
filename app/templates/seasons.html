@@ -108,6 +108,14 @@
                             <p>Cultura: <strong>R$ {{ '%.2f'|format(costs.get('culture_cost', 0)) }}</strong></p>
                             <p>{% if season.variety %}Variedade: <strong>R$ {{ '%.2f'|format(costs.get('variety_cost', 0)) }}</strong>{% else %}Variedade: <strong>-</strong>{% endif %}</p>
                         </div>
+                        {% if season.plots %}
+                        {% set links = season.planting_by_plot %}
+                        <ul class="mt-3 flex flex-wrap gap-2 text-xs text-slate-600">
+                            {% for plot in season.plots %}{% set pl = links.get(plot.id) %}
+                            <li class="rounded-full bg-white px-3 py-1 ring-1 ring-slate-200"><strong class="text-slate-800">{{ plot.name }}</strong>{% if pl %} · {{ pl.culture }}{% if pl.variety %} {{ pl.variety.name }}{% endif %}{% if pl.planting_date %} · plantio {{ pl.planting_date.strftime('%m/%Y') }}{% endif %}{% if pl.ended_on %} · <span class="text-amber-700">renovado em {{ pl.ended_on.strftime('%m/%Y') }}</span>{% endif %}{% endif %}</li>
+                            {% endfor %}
+                        </ul>
+                        {% endif %}
                         {% if season.notes %}
                         <p class="mt-3 text-sm text-slate-500">{{ season.notes }}</p>
                         {% endif %}
@@ -237,7 +245,7 @@
                 <div data-season-plot-picker>
                                         {% if not season_readonly %}<select class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" data-season-plot-select><option value="">Adicionar setor…</option>{% for plot in season_plots %}<option value="{{ plot.id }}" data-name="{{ plot.name }}" data-farm="{{ plot.area_hectares|decimal_br }} ha" data-area="{{ plot.area_hectares }}" {% if sm and plot in sm.plots %}hidden disabled{% endif %}>{{ plot.name }} — {{ plot.area_hectares|decimal_br }} ha</option>{% endfor %}<option value="__novo__" data-href="/setores?novo=1&voltar=safra">+ Cadastrar novo setor</option></select>{% endif %}
                     <div class="schedule-plot-selected mt-3" data-season-plot-selected>
-                        {% if sm %}{% for plot in sm.plots %}<div class="schedule-plot-chip" data-plot-id="{{ plot.id }}" data-area="{{ plot.area_hectares }}"><div class="schedule-plot-chip-body"><span class="schedule-plot-chip-title">{{ plot.name }}</span><span class="schedule-plot-chip-meta">{{ plot.area_hectares|decimal_br }} ha</span></div>{% if not season_readonly %}<input type="hidden" name="plot_ids" value="{{ plot.id }}"><button type="button" class="schedule-plot-chip-remove" data-season-plot-remove aria-label="Remover {{ plot.name }}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>{% endif %}</div>{% endfor %}{% endif %}
+                        {% if sm %}{% for plot in sm.plots %}<div class="schedule-plot-chip" data-plot-id="{{ plot.id }}" data-area="{{ plot.area_hectares }}"><div class="schedule-plot-chip-body"><span class="schedule-plot-chip-title">{{ plot.name }}</span><span class="schedule-plot-chip-meta">{{ plot.area_hectares|decimal_br }} ha{% set pl = sm.planting_by_plot.get(plot.id) %}{% if pl and pl.planting_date %} · plantio {{ pl.planting_date.strftime('%m/%Y') }}{% if pl.ended_on %} (anterior){% endif %}{% endif %}</span></div>{% if not season_readonly %}<input type="hidden" name="plot_ids" value="{{ plot.id }}"><button type="button" class="schedule-plot-chip-remove" data-season-plot-remove aria-label="Remover {{ plot.name }}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>{% endif %}</div>{% endfor %}{% endif %}
                         <p class="schedule-plot-selected-empty text-sm text-slate-500 {% if sm and sm.plots %}hidden{% endif %}" data-season-plot-empty>Nenhum setor selecionado.</p>
                     </div>
                     {% if not season_readonly %}<p class="mt-2 text-xs text-slate-500">Selecione os setores plantados nesta safra. A área total é a soma das áreas dos setores.</p>{% endif %}
