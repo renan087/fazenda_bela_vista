@@ -241,6 +241,182 @@
         render();
     }
 
+    // Janela de pluviometria
+    const rainModal = document.getElementById('db-rain-modal');
+    if (rainModal && D.rain) {
+        const R = D.rain, S = R.settings || {};
+        const heavy = Number(S.heavy_rain_mm) || 30, rainyMin = Number(S.rainy_day_mm) || 0, since = S.average_since_year ? Number(S.average_since_year) : null;
+        const today = new Date(D.today + 'T12:00:00');
+        const iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+        const mShort = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
+        const mLong = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
+        const mmFmt = (v) => Number(v || 0).toLocaleString('pt-BR', { maximumFractionDigits: 1 }) + ' mm';
+        let gauge = '', period = '12m', cmp = 'avg', hov = null;
+        const gaugeSel = $('[data-db-r-gauge]', rainModal);
+        [...new Set(R.records.map((r) => r.src).filter(Boolean))].sort().forEach((src) => { const o = document.createElement('option'); o.value = src; o.textContent = src; gaugeSel.appendChild(o); });
+        const sinceSel = $('[data-db-r-since]', rainModal);
+        [...new Set(R.records.map((r) => Number(r.d.slice(0, 4))))].sort().forEach((y) => { const o = document.createElement('option'); o.value = y; o.textContent = y; if (since === y) o.selected = true; sinceSel.appendChild(o); });
+        const fromInput = $('[data-db-r-from]', rainModal), toInput = $('[data-db-r-to]', rainModal);
+        fromInput.value = `${today.getFullYear()}-01-01`; toInput.value = iso(today);
+        const recs = () => R.records.filter((r) => !gauge || r.src === gauge);
+        const byDay = () => { const m = {}; recs().forEach((r) => { m[r.d] = (m[r.d] || 0) + r.mm; }); return m; };
+        const sumRange = (days, a, b) => Object.entries(days).reduce((t, [d, v]) => (d >= a && d <= b ? t + v : t), 0);
+        const monthKey = (y, m) => `${y}-${String(m + 1).padStart(2, '0')}`;
+        const monthTotals = (days) => { const m = {}; Object.entries(days).forEach(([d, v]) => { const k = d.slice(0, 7); m[k] = (m[k] || 0) + v; }); return m; };
+        const histAvg = (totalsByKey, matchFn, untilYear) => {
+            const vals = Object.entries(totalsByKey).filter(([k]) => { const y = Number(k.slice(0, 4)); return matchFn(k) && y < untilYear && (!since || y >= since); }).map(([, v]) => v);
+            return vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : null;
+        };
+        const build = () => {
+            const days = byDay(), months = monthTotals(days);
+            const bars = [];
+            const addMonth = (y, m, partial) => {
+                const k = monthKey(y, m);
+                bars.push({ x: mShort[m] + ((period === '12m' || period === 'custom') && window.innerWidth >= 640 ? `/${String(y).slice(2)}` : ''), label: `${mLong[m]} de ${y}${partial ? ' (até hoje)' : ''}`, v: months[k] || 0,
+                    avg: histAvg(months, (kk) => kk.slice(5) === k.slice(5), y), prev: months[monthKey(y - 1, m)] || 0, day: false });
+            };
+            let a, b;
+            if (period === 'month') {
+                const y = today.getFullYear(), m = today.getMonth();
+                a = iso(new Date(y, m, 1)); b = iso(today);
+                for (let d = 1; d <= today.getDate(); d++) {
+                    const k = `${monthKey(y, m)}-${String(d).padStart(2, '0')}`;
+                    const sameDay = Object.entries(days).filter(([dd]) => dd.slice(5) === k.slice(5) && Number(dd.slice(0, 4)) < y && (!since || Number(dd.slice(0, 4)) >= since));
+                    const yearsWithData = new Set(Object.keys(days).map((dd) => dd.slice(0, 4)).filter((yy) => Number(yy) < y && (!since || Number(yy) >= since))).size;
+                    bars.push({ x: String(d), label: `${d} de ${mLong[m]}`, v: days[k] || 0, avg: yearsWithData ? sameDay.reduce((t, [, v]) => t + v, 0) / yearsWithData : null, prev: days[`${y - 1}${k.slice(4)}`] || 0, day: true });
+                }
+            } else if (period === '5y') {
+                const y0 = today.getFullYear() - 4; a = `${y0}-01-01`; b = iso(today);
+                const years = {}; Object.entries(days).forEach(([d, v]) => { const y = Number(d.slice(0, 4)); years[y] = (years[y] || 0) + v; });
+                for (let y = y0; y <= today.getFullYear(); y++) {
+                    const prevYears = Object.entries(years).filter(([yy]) => Number(yy) < y && Number(yy) < today.getFullYear() && (!since || Number(yy) >= since)).map(([, v]) => v);
+                    bars.push({ x: String(y), label: y === today.getFullYear() ? `${y} (até hoje)` : String(y), v: years[y] || 0, avg: prevYears.length ? prevYears.reduce((p, q) => p + q, 0) / prevYears.length : null, prev: years[y - 1] || 0, day: false });
+                }
+            } else {
+                let start, end;
+                if (period === '12m') { start = new Date(today.getFullYear(), today.getMonth() - 11, 1); end = today; }
+                else if (period === 'season') { start = R.season.start ? new Date(R.season.start + 'T12:00:00') : new Date(today.getFullYear(), 0, 1); end = R.season.end ? new Date(Math.min(new Date(R.season.end + 'T12:00:00'), today)) : today; }
+                else { start = fromInput.value ? new Date(fromInput.value + 'T12:00:00') : new Date(today.getFullYear(), 0, 1); end = toInput.value ? new Date(toInput.value + 'T12:00:00') : today; }
+                if (end < start) [start, end] = [end, start];
+                a = iso(start); b = iso(end);
+                const spanDays = (end - start) / 864e5;
+                if (period === 'custom' && spanDays <= 62) {
+                    for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) { const k = iso(d); bars.push({ x: String(d.getDate()), label: `${d.getDate()} de ${mLong[d.getMonth()]}`, v: days[k] || 0, avg: null, prev: days[`${d.getFullYear() - 1}${k.slice(4)}`] || 0, day: true }); }
+                } else {
+                    for (let d = new Date(start.getFullYear(), start.getMonth(), 1); d <= end; d.setMonth(d.getMonth() + 1)) addMonth(d.getFullYear(), d.getMonth(), d.getFullYear() === today.getFullYear() && d.getMonth() === today.getMonth());
+                }
+            }
+            return { bars, a, b, days };
+        };
+        const render = () => {
+            const { bars, a, b, days } = build();
+            const cmpVals = cmp === 'none' ? null : bars.map((x) => (cmp === 'avg' ? x.avg : x.prev));
+            const top = Math.max(1, ...bars.map((x) => x.v), ...(cmpVals || []).filter((v) => v != null)) * 1.15;
+            const chart = $('[data-db-r-chart]', rainModal);
+            chart.style.setProperty('--n', bars.length);
+            chart.innerHTML = `<div class="db-rain-yaxis">${[1, .75, .5, .25, 0].map((t) => `<span>${Math.round(top * t)}</span>`).join('')}</div><div class="db-rain-plot">${bars.map((x, i) => {
+                const c = cmpVals ? cmpVals[i] : null;
+                const isHeavy = x.day && x.v >= heavy;
+                return `<div class="db-rain-col${hov === i ? ' is-hov' : ''}" data-i="${i}"><span class="db-rain-bar${isHeavy ? ' is-heavy' : ''}" style="height:${Math.max(0.5, x.v / top * 100)}%"></span>${c != null ? `<span class="db-rain-cmp" style="bottom:${c / top * 100}%"></span>` : ''}${hov === i ? `<span class="db-rain-tip"><span class="db-tip-date">${esc(x.label)}</span><strong>${mmFmt(x.v)}</strong>${c != null ? `<span>${cmp === 'avg' ? 'Média' : 'Ano anterior'}: ${mmFmt(c)}</span>` : ''}</span>` : ''}<span class="db-rain-x">${esc(x.x)}</span></div>`;
+            }).join('')}</div>`;
+            $$('.db-rain-col', chart).forEach((col) => {
+                col.addEventListener('mouseenter', () => { hov = Number(col.dataset.i); render(); });
+                col.addEventListener('click', () => { hov = Number(col.dataset.i); render(); });
+            });
+            chart.onmouseleave = () => { if (hov !== null) { hov = null; render(); } };
+            const total = bars.reduce((t, x) => t + x.v, 0);
+            const cmpTotal = cmpVals && cmpVals.some((v) => v != null) ? cmpVals.reduce((t, v) => t + (v || 0), 0) : null;
+            const diff = cmpTotal ? (total / cmpTotal - 1) * 100 : null;
+            const inRange = Object.entries(days).filter(([d]) => d >= a && d <= b);
+            const rainy = inRange.filter(([, v]) => v >= Math.max(rainyMin, 0.01)).length;
+            const maxDay = inRange.reduce((m, e) => (e[1] > m[1] ? e : m), ['', 0]);
+            const lastRain = Object.entries(days).filter(([d, v]) => v >= Math.max(rainyMin, 0.01) && d <= iso(today)).map(([d]) => d).sort().pop();
+            const sinceDays = lastRain ? Math.round((today - new Date(lastRain + 'T12:00:00')) / 864e5) : null;
+            const fmtDate = (d) => (d ? `${d.slice(8, 10)}/${d.slice(5, 7)}/${d.slice(0, 4)}` : '—');
+            const stat = (l, v, s = '', style = '') => `<div><dt>${l}</dt><dd style="${style}">${v}</dd><dd class="db-muted">${s}</dd></div>`;
+            $('[data-db-r-stats]', rainModal).innerHTML = stat('Total no período', mmFmt(total), '', 'color:#1f4e86')
+                + stat(cmp === 'prev' ? 'Ano anterior' : 'Média histórica', cmpTotal == null ? '—' : mmFmt(cmpTotal), cmp === 'none' ? 'sem comparação' : 'mesmo período')
+                + stat('Diferença', diff == null ? '—' : (diff >= 0 ? '+' : '') + Math.round(diff) + '%', diff == null ? '' : diff >= 0 ? 'acima' : 'abaixo', diff == null ? '' : 'color:' + (diff >= 0 ? '#1f7a3a' : '#b43c0b'))
+                + stat('Dias com chuva', String(rainy), `≥ ${rainyMin.toLocaleString('pt-BR')} mm`)
+                + stat('Maior chuva', maxDay[1] ? mmFmt(maxDay[1]) : '—', fmtDate(maxDay[0]))
+                + stat('Sem chuva há', sinceDays == null ? '—' : sinceDays === 0 ? 'hoje choveu' : `${sinceDays} dia(s)`, lastRain ? 'último: ' + fmtDate(lastRain) : '');
+            $('[data-db-r-cmp-legend]', rainModal).hidden = cmp === 'none';
+            $('[data-db-r-cmp-name]', rainModal).textContent = cmp === 'avg' ? 'Média histórica' : 'Ano anterior';
+            const list = recs().slice().sort((x, y) => (x.d < y.d ? 1 : -1)).slice(0, 8);
+            $('[data-db-r-records]', rainModal).innerHTML = list.length ? list.map((r) => `<div class="db-rain-rec"><span class="db-rain-rec-mm"><strong>${Number(r.mm).toLocaleString('pt-BR', { maximumFractionDigits: 1 })}</strong><small>mm</small></span><span class="min-w-0"><span class="db-inbox-title">${fmtDate(r.d)}</span><span class="db-muted block">${esc([r.src, r.notes].filter(Boolean).join(' · ') || 'Registro manual')}</span></span></div>`).join('') : '<p class="db-muted">Nenhum registro de chuva.</p>';
+        };
+        const pick = (attr, setter) => $$(`[${attr}]`, rainModal).forEach((btn) => btn.addEventListener('click', () => {
+            $$(`[${attr}]`, rainModal).forEach((x) => x.setAttribute('aria-pressed', x === btn ? 'true' : 'false'));
+            setter(btn.getAttribute(attr)); hov = null; render();
+        }));
+        pick('data-db-r-period', (v) => { period = v; $('[data-db-r-custom]', rainModal).hidden = v !== 'custom'; });
+        pick('data-db-r-cmp', (v) => { cmp = v; });
+        gaugeSel.addEventListener('change', () => { gauge = gaugeSel.value; render(); });
+        [fromInput, toInput].forEach((el) => el.addEventListener('change', render));
+        const settingsForm = $('[data-db-r-settings]', rainModal), mainSide = $('[data-db-r-main-side]', rainModal);
+        $('[data-db-r-settings-open]', rainModal)?.addEventListener('click', () => { settingsForm.hidden = false; mainSide.hidden = true; });
+        $$('[data-db-r-settings-close]', rainModal).forEach((b2) => b2.addEventListener('click', () => { settingsForm.hidden = true; mainSide.hidden = false; settingsForm.reset(); }));
+        $$('[data-db-rain-open]').forEach((b2) => b2.addEventListener('click', () => { rainModal.showModal(); render(); }));
+        $$('[data-db-rain-close]', rainModal).forEach((b2) => b2.addEventListener('click', () => rainModal.close()));
+        rainModal.addEventListener('click', (e) => { if (e.target === rainModal) rainModal.close(); });
+    }
+
+    // Janela da agenda completa
+    const agendaModal = document.getElementById('db-agenda-modal');
+    if (agendaModal) {
+        const allowed = new Set(D.agendaTypes || []);
+        const events = (D.agenda || []).filter((e) => allowed.has(e.type));
+        const T = { app: ['Aplicações', 'Aplicação', '#446a36', '#eef7ed', '#294127'], pay: ['Pagamentos', 'Pagamento', '#b42318', '#fef3f2', '#912018'], rec: ['Recebimentos', 'Recebimento', '#1f7a3a', '#e3f1df', '#1f5a22'], maint: ['Manutenção', 'Manutenção', '#5b6660', '#eef1ed', '#3c4741'] };
+        const statusLabel = { plan: 'Programada', late: 'Atrasada', done: 'Concluída' };
+        const today = new Date(D.today + 'T12:00:00');
+        const iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+        const mLong = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
+        const wd = ['Domingo', 'Segunda-feira', 'Terça-feira', 'Quarta-feira', 'Quinta-feira', 'Sexta-feira', 'Sábado'];
+        let view = new Date(today.getFullYear(), today.getMonth(), 1), sel = iso(today), type = 'all';
+        const filtered = () => events.filter((e) => type === 'all' || e.type === type);
+        const render = () => {
+            const y = view.getFullYear(), m = view.getMonth();
+            $('[data-db-a-title]', agendaModal).textContent = `${mLong[m][0].toUpperCase()}${mLong[m].slice(1)} de ${y}`;
+            const types = ['all', ...Object.keys(T).filter((k) => allowed.has(k))];
+            $('[data-db-a-filters]', agendaModal).innerHTML = types.map((k) => {
+                const n = events.filter((e) => k === 'all' || e.type === k).length;
+                const color = k === 'all' ? '#16201a' : T[k][2];
+                return `<button type="button" class="db-a-chip" aria-pressed="${type === k}" data-type="${k}"><i style="background:${type === k ? '#fff' : color}"></i>${k === 'all' ? 'Todas' : T[k][0]} <span>${n}</span></button>`;
+            }).join('');
+            $$('[data-type]', agendaModal).forEach((b2) => b2.addEventListener('click', () => { type = b2.dataset.type; render(); }));
+            const first = new Date(y, m, 1).getDay(), days = new Date(y, m + 1, 0).getDate();
+            const list = filtered();
+            let html = '';
+            for (let i = 0; i < first; i++) html += '<span class="db-a-cell is-empty"></span>';
+            for (let d = 1; d <= days; d++) {
+                const key = `${y}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+                const evs = list.filter((e) => e.date === key);
+                const chips = evs.slice(0, 3).map((e) => { const t = T[e.type]; const late = e.status === 'late'; return `<span class="db-a-ev${e.status === 'done' ? ' is-done' : ''}" style="background:${late ? '#fff0e8' : t[3]};color:${late ? '#b43c0b' : t[4]};border-left-color:${late ? '#d9480f' : t[2]}">${esc(e.title)}</span>`; }).join('');
+                html += `<button type="button" class="db-a-cell${key === sel ? ' is-selected' : ''}${key < iso(today) ? ' is-past' : ''}" data-day="${key}" aria-label="${d} de ${mLong[m]}, ${evs.length} atividade(s)"><span class="db-a-num${key === iso(today) ? ' is-today' : ''}">${d}</span>${chips}${evs.length > 3 ? `<span class="db-a-more">+${evs.length - 3} mais</span>` : ''}</button>`;
+            }
+            const grid = $('[data-db-a-grid]', agendaModal);
+            grid.innerHTML = html;
+            $$('[data-day]', grid).forEach((b2) => b2.addEventListener('click', () => { sel = b2.dataset.day; render(); }));
+            const sd = new Date(sel + 'T12:00:00');
+            $('[data-db-a-weekday]', agendaModal).textContent = wd[sd.getDay()] + (sel === iso(today) ? ' · hoje' : '');
+            $('[data-db-a-day-title]', agendaModal).textContent = `${sd.getDate()} de ${mLong[sd.getMonth()]}`;
+            const dayList = list.filter((e) => e.date === sel);
+            $('[data-db-a-day-list]', agendaModal).innerHTML = dayList.length ? dayList.map((e) => {
+                const t = T[e.type];
+                const action = e.type === 'app' && e.status !== 'done'
+                    ? `<form method="post" action="/fertilizacao/agendamentos/${e.schedule_id}/concluir"><input type="hidden" name="csrf_token" value="${esc(D.csrf)}"><input type="hidden" name="redirect_to" value="${esc(D.redirectTo)}"><button class="sf-btn sf-btn-primary db-btn-sm">Concluir</button></form>`
+                    : (e.type === 'pay' || e.type === 'rec') && e.status !== 'done' ? `<a class="sf-btn sf-btn-primary db-btn-sm" href="${esc(e.link)}">${e.type === 'pay' ? 'Pagar' : 'Confirmar'}</a>` : '';
+                return `<article class="db-a-item${e.status === 'late' ? ' is-late' : ''}"><div class="db-a-item-type"><i style="background:${t[2]}"></i>${t[1]}<span class="db-cal-pill is-${e.status}">${statusLabel[e.status]}</span></div><p class="db-inbox-title">${esc(e.title)}</p><p class="db-muted">${esc(e.meta)}</p><div class="db-cal-actions">${action}<a class="sf-btn sf-btn-secondary db-btn-sm" href="${esc(e.link)}">Abrir</a></div></article>`;
+            }).join('') : '<p class="db-cal-empty">Nada programado neste dia.</p>';
+        };
+        $('[data-db-a-prev]', agendaModal).addEventListener('click', () => { view = new Date(view.getFullYear(), view.getMonth() - 1, 1); render(); });
+        $('[data-db-a-next]', agendaModal).addEventListener('click', () => { view = new Date(view.getFullYear(), view.getMonth() + 1, 1); render(); });
+        $('[data-db-a-today]', agendaModal).addEventListener('click', () => { view = new Date(today.getFullYear(), today.getMonth(), 1); sel = iso(today); render(); });
+        $$('[data-db-agenda-open]').forEach((b2) => b2.addEventListener('click', () => { agendaModal.showModal(); render(); }));
+        $$('[data-db-agenda-close]', agendaModal).forEach((b2) => b2.addEventListener('click', () => agendaModal.close()));
+        agendaModal.addEventListener('click', (e) => { if (e.target === agendaModal) agendaModal.close(); });
+    }
+
     // Sincronização diária da cotação do CEPEA pelo navegador (mantida do Dashboard anterior)
     (() => {
         if (!market || !D.csrf) return;

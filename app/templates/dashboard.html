@@ -167,7 +167,7 @@
                     {% if rain.latest %}Registrado no pluviômetro da fazenda · último registro {% if rain.latest_days == 0 %}hoje{% elif rain.latest_days == 1 %}ontem{% else %}em {{ rain.latest.rainfall_date.strftime('%d/%m') }}{% endif %}, {{ rain.latest.millimeters|decimal_br(0) }} mm{% else %}Nenhuma chuva registrada na fazenda ainda{% endif %}{% if rain.average is not none %} · média de {{ rain.years }} ano(s){% endif %}
                 </p>
             </div>
-            <a href="/pluviometria" class="db-link">Ver pluviometria da fazenda →</a>
+            <button type="button" class="db-link" data-db-rain-open>Ver pluviometria da fazenda →</button>
         </section>
         {% endif %}
     </div>
@@ -177,10 +177,10 @@
         <section class="db-card" aria-label="Calendário de aplicações" data-db-calendar>
             <div class="db-card-head">
                 <div><h2>Calendário de aplicações</h2><p class="db-muted" data-db-cal-summary></p></div>
-                <a href="/fertilizacao/agendamentos" class="sf-btn sf-btn-secondary db-btn-sm">
+                <button type="button" class="sf-btn sf-btn-secondary db-btn-sm" data-db-agenda-open>
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>
                     Abrir agenda
-                </a>
+                </button>
             </div>
             <div class="db-cal">
                 <div>
@@ -255,6 +255,101 @@
 </dialog>
 {% endif %}
 
+
+{% if can_rainfall %}
+{% set rs = rain_settings %}
+<dialog id="db-rain-modal" class="app-modal db-history db-rain-modal" aria-labelledby="db-rain-title">
+    <div class="db-history-shell">
+        <div class="db-history-head">
+            <div class="min-w-0 flex-1"><h2 id="db-rain-title">Pluviometria da fazenda</h2><p class="db-muted">Chuva registrada nos pluviômetros{% if active_farm %} da {{ active_farm.name }}{% endif %} · não inclui previsão</p></div>
+            <a href="/pluviometria/exportar.xlsx" class="sf-btn sf-btn-secondary db-btn-sm db-hide-sm">Exportar</a>
+            <a href="/pluviometria" class="sf-btn sf-btn-primary db-btn-sm db-btn-blue">+ Registrar chuva</a>
+            <button type="button" class="modal-close-button" aria-label="Fechar" data-db-rain-close><svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>
+        </div>
+        <div class="db-history-controls db-rain-controls">
+            <label class="db-field"><span>Pluviômetro</span><select data-db-r-gauge><option value="">Todos os pontos</option></select></label>
+            <div class="db-field"><span>Período</span><div class="db-seg" role="group" aria-label="Período">
+                <button type="button" aria-pressed="false" data-db-r-period="month">Mês atual</button>
+                <button type="button" aria-pressed="true" data-db-r-period="12m">12 meses</button>
+                <button type="button" aria-pressed="false" data-db-r-period="season">Safra atual</button>
+                <button type="button" aria-pressed="false" data-db-r-period="5y">5 anos</button>
+                <button type="button" aria-pressed="false" data-db-r-period="custom">Personalizado</button>
+            </div></div>
+            <div class="db-field db-r-custom" data-db-r-custom hidden><span>De / até</span><div class="db-r-dates"><input type="date" data-db-r-from><input type="date" data-db-r-to></div></div>
+            <div class="db-field"><span>Comparar com</span><div class="db-seg" role="group" aria-label="Comparação">
+                <button type="button" aria-pressed="true" data-db-r-cmp="avg">Média histórica</button>
+                <button type="button" aria-pressed="false" data-db-r-cmp="prev">Ano anterior</button>
+                <button type="button" aria-pressed="false" data-db-r-cmp="none">Nada</button>
+            </div></div>
+        </div>
+        <div class="db-history-body">
+            <div class="db-history-main">
+                <dl class="db-history-stats db-rain-stats" data-db-r-stats></dl>
+                <div class="db-rain-chart" data-db-r-chart></div>
+                <div class="db-legend"><span><i style="background:#3b7bc8"></i>Chuva registrada</span><span><i style="background:#f08c2e"></i>Acima de {{ rs.heavy_rain_mm|decimal_br(0) }} mm (no dia)</span><span data-db-r-cmp-legend><i style="background:#16201a;height:3px"></i><b data-db-r-cmp-name>Média histórica</b></span></div>
+            </div>
+            <aside class="db-history-side">
+                <div data-db-r-main-side>
+                    <h3>Últimos registros</h3>
+                    <div class="db-rain-records" data-db-r-records></div>
+                    <a href="/pluviometria" class="db-link">Ver todos →</a>
+                    <div class="db-rain-alert">
+                        <span class="db-rain-alert-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 8a6 6 0 1 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.9 1.9 0 0 0 3.4 0"/></svg></span>
+                        <div class="min-w-0 flex-1"><p class="db-inbox-title">Alerta acima de {{ rs.heavy_rain_mm|decimal_br(0) }} mm</p><p class="db-muted">{% set w = [] %}{% if rs.alert_registered %}{% set _ = w.append('chuva registrada') %}{% endif %}{% if rs.alert_forecast %}{% set _ = w.append('previsão') %}{% endif %}{% set c = [] %}{% if rs.notify_dashboard %}{% set _ = c.append('Dashboard') %}{% endif %}{% if rs.notify_bell %}{% set _ = c.append('sino') %}{% endif %}{% if w and c %}Avisa por {{ w|join(' e ') }} · no {{ c|join(' e no ') }}{% else %}Alertas desligados{% endif %}</p></div>
+                        <button type="button" class="sf-btn sf-btn-secondary db-btn-sm" data-db-r-settings-open>Configurar</button>
+                    </div>
+                </div>
+                <form method="post" action="/pluviometria/configuracoes" class="db-rain-settings" data-db-r-settings hidden>
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    <input type="hidden" name="redirect_to" value="/dashboard">
+                    <div class="db-rs-head"><button type="button" class="sf-icon-btn" aria-label="Voltar" data-db-r-settings-close><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg></button><h3>Configurações</h3></div>
+                    <p class="db-rs-sec">Limites</p>
+                    <div class="db-rs-row"><div><p class="db-rs-t">Chuva forte</p><p class="db-muted">Acima disso a barra fica laranja e o alerta dispara</p></div><label class="db-mm"><input type="number" name="heavy_rain_mm" value="{{ rs.heavy_rain_mm|int }}" min="1" max="500" step="1" aria-label="Limite de chuva forte em mm"><span>mm</span></label></div>
+                    <div class="db-rs-row"><div><p class="db-rs-t">Dia com chuva</p><p class="db-muted">Conta como dia de chuva a partir de</p></div><label class="db-mm"><input type="number" name="rainy_day_mm" value="{{ rs.rainy_day_mm }}" min="0" max="50" step="0.5" aria-label="Mínimo para dia com chuva em mm"><span>mm</span></label></div>
+                    <p class="db-rs-sec">Alertas de chuva forte</p>
+                    <label class="db-rs-row"><div><p class="db-rs-t">Chuva registrada</p><p class="db-muted">Avisa depois que alguém registrar chuva acima do limite</p></div><input type="checkbox" class="db-switch" name="alert_registered" {% if rs.alert_registered %}checked{% endif %}></label>
+                    <label class="db-rs-row"><div><p class="db-rs-t">Previsão do tempo</p><p class="db-muted">Avisa antes, se a previsão indicar chuva acima do limite · disponível quando a previsão for integrada</p></div><input type="checkbox" class="db-switch" name="alert_forecast" {% if rs.alert_forecast %}checked{% endif %}></label>
+                    <div class="db-rs-row"><div><p class="db-rs-t">Onde avisar</p></div><div class="db-rs-pills"><label class="db-pill-check"><input type="checkbox" name="notify_dashboard" {% if rs.notify_dashboard %}checked{% endif %}><span>Dashboard</span></label><label class="db-pill-check"><input type="checkbox" name="notify_bell" {% if rs.notify_bell %}checked{% endif %}><span>Sino</span></label></div></div>
+                    <p class="db-rs-sec">Comparação</p>
+                    <div class="db-rs-row"><div><p class="db-rs-t">Média histórica desde</p></div><select name="average_since_year" class="db-rs-select" data-db-r-since><option value="">Todo o histórico</option></select></div>
+                    <div class="db-rs-actions"><button type="button" class="sf-btn sf-btn-secondary" data-db-r-settings-close>Cancelar</button><button class="sf-btn sf-btn-primary">Salvar</button></div>
+                </form>
+            </aside>
+        </div>
+    </div>
+</dialog>
+{% endif %}
+
+{% if can_agenda or can_finance %}
+<dialog id="db-agenda-modal" class="app-modal db-history db-agenda" aria-labelledby="db-agenda-title">
+    <div class="db-history-shell">
+        <div class="db-history-head db-agenda-head">
+            <div class="min-w-0 flex-1"><h2 id="db-agenda-title">Agenda</h2><p class="db-muted">{% if active_farm %}{{ active_farm.name }} · {% endif %}atividades com data marcada</p></div>
+            <div class="db-agenda-nav">
+                <button type="button" class="sf-icon-btn" aria-label="Mês anterior" data-db-a-prev><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg></button>
+                <strong data-db-a-title></strong>
+                <button type="button" class="sf-icon-btn" aria-label="Próximo mês" data-db-a-next><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg></button>
+                <button type="button" class="sf-btn sf-btn-secondary db-btn-sm" data-db-a-today>Hoje</button>
+            </div>
+            {% if can_agenda %}<a href="/fertilizacao/agendamentos" class="sf-btn sf-btn-primary db-btn-sm db-hide-sm">+ Nova aplicação</a>{% endif %}
+            <button type="button" class="modal-close-button" aria-label="Fechar" data-db-agenda-close><svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>
+        </div>
+        <div class="db-agenda-filters" role="group" aria-label="Tipos de atividade" data-db-a-filters></div>
+        <div class="db-history-body">
+            <div class="db-agenda-month">
+                <div class="db-agenda-week"><span>Dom</span><span>Seg</span><span>Ter</span><span>Qua</span><span>Qui</span><span>Sex</span><span>Sáb</span></div>
+                <div class="db-agenda-grid" data-db-a-grid></div>
+            </div>
+            <aside class="db-history-side">
+                <p class="db-muted" data-db-a-weekday></p>
+                <h3 class="db-agenda-day-title" data-db-a-day-title></h3>
+                <div data-db-a-day-list></div>
+            </aside>
+        </div>
+    </div>
+</dialog>
+{% endif %}
+
 <script type="application/json" id="db-data">{{ {
     "history": coffee_market.history if can_production else {},
     "quotes": {
@@ -267,9 +362,12 @@
     },
     "costPerSack": hero.cost_per_sack,
     "calendar": ov.calendar if can_agenda else [],
+    "agenda": ov.agenda if (can_agenda or can_finance) else [],
+    "agendaTypes": (['app'] if can_agenda else []) + (['pay', 'rec'] if can_finance else []) + (['maint'] if 'page.assets' in permission_codes else []),
+    "rain": {"records": dashboard_rain_records|default([]), "settings": rain_settings|default({}), "season": {"start": active_season.start_date.isoformat() if active_season and active_season.start_date else "", "end": active_season.end_date.isoformat() if active_season and active_season.end_date else ""}} if can_rainfall else None,
     "today": ov.today.isoformat(),
     "csrf": csrf_token,
     "redirectTo": current_url or request.url.path,
 }|tojson }}</script>
-<script src="{{ url_for('static', path='js/dashboard.js') }}?v=1"></script>
+<script src="{{ url_for('static', path='js/dashboard.js') }}?v=3"></script>
 {% endblock %}

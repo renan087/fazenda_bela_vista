@@ -51,6 +51,7 @@ from app.models.rbac import Permission, Role
 from app.models.purchased_input import PurchasedInput
 from app.models.purchased_input_attachment import PurchasedInputAttachment
 from app.models.rainfall import RainfallRecord
+from app.models.farm_rain_settings import FarmRainSettings
 from app.models.soil_analysis import SoilAnalysis
 from app.models.stock_output import StockOutput
 from app.models.stock_inventory_item import StockInventoryItem
@@ -115,6 +116,7 @@ __all__ = [
     "PurchasedInput",
     "PurchasedInputAttachment",
     "RainfallRecord",
+    "FarmRainSettings",
     "SoilAnalysis",
     "StockOutput",
     "StockInventoryItem",

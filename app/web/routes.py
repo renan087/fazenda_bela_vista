@@ -62,6 +62,7 @@ from app.core.deps import get_csrf_token, get_current_user_web
 from app.core.security import get_password_hash, verify_password
 from app.core.session import clear_expired_session, touch_session_activity
 from app.core.timezone import app_now, format_app_datetime, get_app_timezone, today_in_app_timezone
+from app.models.farm_rain_settings import FarmRainSettings
 from app.models.system_maintenance import SystemMaintenance
 from app.services.audit_log_service import append_audit_event
 from app.services.maintenance import MODES as MAINTENANCE_MODES, MaintenanceError, compute_state as compute_maintenance_state, current_state as current_maintenance_state, save_state as save_maintenance_state
@@ -1238,6 +1239,26 @@ def _build_global_notifications(
                         severity="warning",
                         meta=transaction.finance_account.account_name if transaction.finance_account else meta_fallback,
                     )
+
+    if PAGE_RAINFALL in permission_codes:
+        rain_settings = _farm_rain_settings(repo.db, active_farm.id)
+        if rain_settings["alert_registered"] and rain_settings["notify_bell"]:
+            recent_rain = repo.list_rainfalls(farm_id=active_farm.id, start_date=today - timedelta(days=2), end_date=today)
+            heavy = [item for item in recent_rain if float(item.millimeters or 0) >= rain_settings["heavy_rain_mm"]]
+            if heavy:
+                latest = max(heavy, key=lambda item: (item.rainfall_date, item.id))
+                add_notification(
+                    operational,
+                    title="Chuva forte registrada",
+                    message=(
+                        f"{float(latest.millimeters):g} mm em {latest.rainfall_date.strftime('%d/%m/%Y')}, acima do limite de "
+                        f"{rain_settings['heavy_rain_mm']:g} mm. Confira se alguma aplicação recente precisa ser refeita."
+                    ),
+                    href="/pluviometria",
+                    kind="rainfall",
+                    severity="warning",
+                    meta="Pluviometria",
+                )
 
     if can_view_agenda and active_season:
         farm_ids, variety_ids = _scoped_plot_filters(request, active_season)
@@ -4060,8 +4081,10 @@ def dashboard(
 ):
     repo = _repository(db)
     scope = _global_scope_context(request, repo)
+    rain_settings = _farm_rain_settings(db, scope["active_farm_id"])
     data = build_dashboard_context(
         repo,
+        rain_settings=rain_settings,
         rain_start_date=_date_or_none(rain_start_date),
         rain_end_date=_date_or_none(rain_end_date),
         farm_id=scope["active_farm_id"],
@@ -4122,6 +4145,17 @@ def dashboard(
                 "timeline_page": _page_number(timeline_page),
             },
             dashboard_map_preview_url=dashboard_map_preview_url,
+            rain_settings=rain_settings,
+            dashboard_rain_records=[
+                {
+                    "d": record.rainfall_date.isoformat(),
+                    "mm": float(record.millimeters or 0),
+                    "src": (record.source or "").strip(),
+                    "notes": (record.notes or "").strip()[:120],
+                }
+                for record in (repo.list_rainfalls(farm_id=scope["active_farm_id"]) if scope["active_farm_id"] else [])
+                if record.rainfall_date
+            ],
             dashboard_map_has_geometry=dashboard_map_has_geometry,
             _repo=repo,
             **data,
@@ -17599,6 +17633,78 @@ def rainfall_page(
             edit_rainfall=repo.get_rainfall(edit_id) if edit_id else None,
         ),
     )
+
+
+RAIN_SETTINGS_DEFAULTS = {
+    "heavy_rain_mm": 30.0,
+    "rainy_day_mm": 1.0,
+    "alert_registered": True,
+    "alert_forecast": True,
+    "notify_dashboard": True,
+    "notify_bell": True,
+    "average_since_year": None,
+}
+
+
+def _farm_rain_settings(db: Session, farm_id: int | None) -> dict:
+    """Configuracoes de chuva da fazenda (valores padrao quando ainda nao foram salvas)."""
+    settings = dict(RAIN_SETTINGS_DEFAULTS)
+    if not farm_id:
+        return settings
+    row = db.query(FarmRainSettings).filter(FarmRainSettings.farm_id == farm_id).first()
+    if row:
+        settings.update(
+            heavy_rain_mm=float(row.heavy_rain_mm or 30),
+            rainy_day_mm=float(row.rainy_day_mm or 0),
+            alert_registered=bool(row.alert_registered),
+            alert_forecast=bool(row.alert_forecast),
+            notify_dashboard=bool(row.notify_dashboard),
+            notify_bell=bool(row.notify_bell),
+            average_since_year=row.average_since_year,
+        )
+    return settings
+
+
+@router.post("/pluviometria/configuracoes")
+def save_rain_settings_action(
+    request: Request,
+    csrf_token: str = Form(...),
+    heavy_rain_mm: float = Form(30),
+    rainy_day_mm: float = Form(1),
+    alert_registered: str | None = Form(None),
+    alert_forecast: str | None = Form(None),
+    notify_dashboard: str | None = Form(None),
+    notify_bell: str | None = Form(None),
+    average_since_year: str | None = Form(None),
+    redirect_to: str | None = Form(None),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    del user
+    validate_csrf(request, csrf_token)
+    repo = _repository(db)
+    scope, denied = _launch_scope_or_redirect(request, repo, "/pluviometria", require_season=False)
+    if denied:
+        return denied
+    farm_id = scope["active_farm_id"]
+    row = db.query(FarmRainSettings).filter(FarmRainSettings.farm_id == farm_id).first()
+    if row is None:
+        row = FarmRainSettings(farm_id=farm_id)
+        db.add(row)
+    row.heavy_rain_mm = min(max(float(heavy_rain_mm or 30), 1), 500)
+    row.rainy_day_mm = min(max(float(rainy_day_mm or 0), 0), 50)
+    row.alert_registered = alert_registered is not None
+    row.alert_forecast = alert_forecast is not None
+    row.notify_dashboard = notify_dashboard is not None
+    row.notify_bell = notify_bell is not None
+    year = _int_or_none(average_since_year)
+    row.average_since_year = year if year and 1950 <= year <= today_in_app_timezone().year else None
+    db.commit()
+    _flash(request, "success", "Configurações de chuva salvas.")
+    target = (redirect_to or "").strip()
+    if not target.startswith("/") or target.startswith("//"):
+        target = "/dashboard"
+    return _redirect(target)
 
 
 @router.post("/pluviometria")

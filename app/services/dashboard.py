@@ -406,6 +406,7 @@ def build_dashboard_context(
     season=None,
     organization_id: int | None = None,
     context_farm_ids: list[int] | None = None,
+    rain_settings: dict | None = None,
 ) -> dict:
     pages = pages or {}
     scoped_farm_ids = [farm_id] if farm_id else context_farm_ids
@@ -747,6 +748,7 @@ def build_dashboard_context(
         cost_by_plot=cost_by_plot,
         sector_cost_per_ha=sector_cost_per_ha,
         activity_timeline=activity_timeline,
+        rain_settings=rain_settings,
     )
 
     return {
@@ -885,14 +887,17 @@ def _dashboard_cash_weeks(repository: FarmRepository, farm_id: int | None, today
     return buckets
 
 
-def _dashboard_rain(repository: FarmRepository, farm_id: int | None, today: date) -> dict:
+def _dashboard_rain(repository: FarmRepository, farm_id: int | None, today: date, since_year: int | None = None) -> dict:
     records = repository.list_rainfalls(farm_id=farm_id) if farm_id else []
     by_month: dict[tuple[int, int], float] = defaultdict(float)
     for record in records:
         if record.rainfall_date:
             by_month[(record.rainfall_date.year, record.rainfall_date.month)] += _float(record.millimeters)
     month_total = by_month.get((today.year, today.month), 0.0)
-    previous_years = [value for (year, month), value in by_month.items() if month == today.month and year < today.year]
+    previous_years = [
+        value for (year, month), value in by_month.items()
+        if month == today.month and year < today.year and (not since_year or year >= since_year)
+    ]
     average = sum(previous_years) / len(previous_years) if previous_years else None
     latest = max((r for r in records if r.rainfall_date), key=lambda r: (r.rainfall_date, r.id), default=None)
     return {
@@ -934,6 +939,65 @@ def _dashboard_calendar(repository: FarmRepository, plot_ids: set[int], today: d
     return items
 
 
+def _dashboard_agenda(repository: FarmRepository, farm_id: int | None, plot_ids: set[int], today: date) -> list[dict]:
+    """Todas as atividades com data: aplicacoes, parcelas a pagar/receber e manutencoes."""
+    start, end = today - timedelta(days=62), today + timedelta(days=184)
+    events: list[dict] = []
+    for item in _dashboard_calendar(repository, plot_ids, today):
+        if start.isoformat() <= item["date"] <= end.isoformat():
+            events.append({
+                "id": f"app-{item['id']}", "schedule_id": item["id"], "date": item["date"], "type": "app",
+                "title": f"{item['method']} — {item['plot']}", "meta": item["products"], "status": item["status"],
+                "link": item["link"],
+            })
+    if farm_id:
+        for transaction in repository.list_finance_transactions(farm_id=farm_id):
+            if not _finance_transaction_uses_future_settlement(transaction):
+                continue
+            is_revenue = (transaction.operation_type or "").strip().lower() == "receita"
+            parts = int(transaction.installment_count or 0) or len(transaction.installments or []) or 1
+            for installment in transaction.installments or []:
+                due = installment.due_date
+                if not due or not (start <= due <= end):
+                    continue
+                paid = (installment.status or "pendente").strip().lower() == "pago"
+                events.append({
+                    "id": f"fin-{installment.id}", "date": due.isoformat(), "type": "rec" if is_revenue else "pay",
+                    "title": transaction.product_service or transaction.category or ("Recebimento" if is_revenue else "Pagamento"),
+                    "meta": f"{_brl(_float(installment.amount), 2)} · parcela {installment.installment_number}/{parts}"
+                            + (f" · {transaction.finance_account.account_name}" if getattr(transaction, "finance_account", None) else ""),
+                    "status": "done" if paid else ("late" if due < today else "plan"),
+                    "link": f"/gestao-financeira/contas?finance_tab={'receivables' if is_revenue else 'payables'}",
+                })
+        for maintenance in repository.list_equipment_maintenances(farm_id=farm_id):
+            day = maintenance.maintenance_date
+            if not day or not (start <= day <= end) or (maintenance.status or "") == "cancelada":
+                continue
+            done = (maintenance.status or "") == "concluida"
+            asset = getattr(maintenance, "asset", None)
+            events.append({
+                "id": f"mnt-{maintenance.id}", "date": day.isoformat(), "type": "maint",
+                "title": f"{(maintenance.maintenance_type or 'Manutenção').capitalize()} — {asset.name if asset else 'equipamento'}",
+                "meta": maintenance.description or maintenance.responsible_name or "",
+                "status": "done" if done else ("late" if day < today else "plan"),
+                "link": f"/insumos/patrimonio/manutencoes?edit_id={maintenance.id}",
+            })
+        for plan in repository.list_equipment_maintenance_plans(farm_id=farm_id):
+            day = plan.next_due_date
+            if not plan.is_active or not day or not (start <= day <= end):
+                continue
+            asset = getattr(plan, "asset", None)
+            events.append({
+                "id": f"plan-{plan.id}", "date": day.isoformat(), "type": "maint",
+                "title": f"Revisão prevista — {asset.name if asset else 'equipamento'}",
+                "meta": plan.description or "Plano de manutenção",
+                "status": "late" if day < today else "plan",
+                "link": "/insumos/patrimonio/manutencoes",
+            })
+    events.sort(key=lambda e: (e["date"], e["type"], e["title"]))
+    return events
+
+
 def build_dashboard_overview(
     repository: FarmRepository,
     *,
@@ -953,7 +1017,10 @@ def build_dashboard_overview(
     cost_by_plot: dict,
     sector_cost_per_ha: dict,
     activity_timeline: list,
+    rain_settings: dict | None = None,
 ) -> dict:
+    rain_settings = rain_settings or {}
+    heavy_rain_mm = float(rain_settings.get("heavy_rain_mm") or HEAVY_RAIN_MM)
     quotes = coffee_market.get("quotes") or {}
     arabica = quotes.get("arabica")
     price = _float(arabica.price_brl) if arabica else 0.0
@@ -1025,9 +1092,10 @@ def build_dashboard_overview(
             "text": f"{incident.category} nível {incident.severity} registrada em {incident.occurrence_date.strftime('%d/%m')}",
             "action": "Ver", "link": f"/pragas?edit_id={incident.id}",
         })
-    rain = _dashboard_rain(repository, farm_id, today)
+    rain = _dashboard_rain(repository, farm_id, today, since_year=rain_settings.get("average_since_year"))
     latest = rain["latest"]
-    if latest and rain["latest_days"] is not None and rain["latest_days"] <= 2 and _float(latest.millimeters) >= HEAVY_RAIN_MM:
+    rain_alert_on = rain_settings.get("alert_registered", True) and rain_settings.get("notify_dashboard", True)
+    if rain_alert_on and latest and rain["latest_days"] is not None and rain["latest_days"] <= 2 and _float(latest.millimeters) >= heavy_rain_mm:
         inbox.append({
             "tone": "info",
             "title": f"Chuva forte registrada: {_float(latest.millimeters):g} mm",
@@ -1095,5 +1163,6 @@ def build_dashboard_overview(
         "cash_projected": round(running, 2),
         "rain": rain,
         "calendar": _dashboard_calendar(repository, {p.id for p in plots}, today),
+        "agenda": _dashboard_agenda(repository, farm_id, {p.id for p in plots}, today),
         "activity": activity_timeline[:6],
     }
