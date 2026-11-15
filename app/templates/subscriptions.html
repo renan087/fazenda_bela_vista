@@ -61,7 +61,7 @@
     </section>
 
     {% if asaas_config_error or not asaas_webhook_ready %}
-    <section class="rounded-[2rem] border border-rose-200 bg-rose-50 p-5 text-sm text-rose-900" data-asaas-config-warning>
+    <section class="rounded-[2rem] border border-rose-200 bg-rose-50 p-5 text-sm text-rose-900" data-stock-fade-panel data-asaas-config-warning>
         <p class="font-semibold">Integração com o Asaas incompleta</p>
         {% if asaas_config_error %}<p class="mt-1">{{ asaas_config_error }} Sem isso, nenhuma assinatura pode ser criada ou atualizada.</p>{% endif %}
         {% if not asaas_webhook_ready %}<p class="mt-1">Configure ASAAS_WEBHOOK_TOKEN e o mesmo token no webhook do Asaas. Sem o webhook, pagamentos só são percebidos pela conciliação automática (a cada 5 minutos).</p>{% endif %}
