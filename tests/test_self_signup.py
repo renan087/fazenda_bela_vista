@@ -103,7 +103,7 @@ def test_email_signup_flow_creates_account_after_code(flow):
     wrong = auth.signup_confirm_action(request, code='000000' if code != '000000' else '111111', csrf_token='x', db=db)
     assert wrong.status_code == 400 and not db.query(User).count()
     done = auth.signup_confirm_action(request, code=code, csrf_token='x', db=db)
-    assert done.headers['location'] == '/primeiros-passos' and session['user_email'] == 'ana@fazenda.com.br'
+    assert done.headers['location'] == '/primeiros-passos?cadastro=concluido' and session['user_email'] == 'ana@fazenda.com.br'
     user = db.query(User).one()
     assert auth.verify_password('senha-forte', user.hashed_password) and db.query(Organization).one().name == 'Fazenda Sol'
 
@@ -126,7 +126,7 @@ def test_google_signup_skips_password_and_code(flow):
     session = {'signup': {'email': 'g@x.com', 'google': True, 'first_name': 'Gil', 'last_name': 'Lima'}}
     response = auth.signup_details_action(_request(session), first_name='Gil', last_name='Lima', phone='3533334444', organization_name='Sítio G',
                                           password='', accepted_terms='1', csrf_token='x', db=db)
-    assert response.headers['location'] == '/primeiros-passos' and db.query(User).one().email == 'g@x.com'
+    assert response.headers['location'] == '/primeiros-passos?cadastro=concluido' and db.query(User).one().email == 'g@x.com'
     assert not [s for s in sent if s[0] == 'g@x.com']
 
 

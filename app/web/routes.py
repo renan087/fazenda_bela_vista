@@ -299,6 +299,7 @@ templates.env.filters["money_br"] = lambda value: _format_currency(value)
 templates.env.globals["subscription_cycles"] = SUBSCRIPTION_CYCLES
 templates.env.globals["format_app_datetime"] = format_app_datetime
 templates.env.globals["asaas_env"] = current_asaas_environment
+templates.env.globals["google_tag_id"] = lambda: (getattr(get_settings(), "google_tag_id", None) or "").strip()
 templates.env.globals["plan_icon"] = lambda code, css_class="h-5 w-5": Markup(plan_icon_svg(code, css_class))
 templates.env.globals["plan_icon_choices"] = PLAN_ICONS
 

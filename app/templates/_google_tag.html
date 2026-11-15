@@ -1,0 +1,39 @@
+{% set gtag_id = google_tag_id() if google_tag_id is defined else '' %}
+{% if gtag_id %}
+<script>
+window.dataLayer = window.dataLayer || [];
+function gtag(){dataLayer.push(arguments);}
+(function () {
+    var KEY = "sisfarm.cookieConsent", choice = null;
+    try { choice = localStorage.getItem(KEY); } catch (e) {}
+    var state = choice === "granted" ? "granted" : "denied";
+    gtag("consent", "default", {ad_storage: state, ad_user_data: state, ad_personalization: state, analytics_storage: state, wait_for_update: 500});
+    gtag("js", new Date());
+    if (/[?&]cadastro=concluido\b/.test(location.search)) {
+        gtag("event", "sign_up", {method: "site"});
+        dataLayer.push({event: "cadastro_concluido"});
+    }
+    window.setCookieConsent = function (value) {
+        try { localStorage.setItem(KEY, value); } catch (e) {}
+        gtag("consent", "update", {ad_storage: value, ad_user_data: value, ad_personalization: value, analytics_storage: value});
+        var bar = document.getElementById("cookie-consent"); if (bar) bar.remove();
+    };
+    if (choice) return;
+    document.addEventListener("DOMContentLoaded", function () {
+        var bar = document.createElement("div");
+        bar.id = "cookie-consent";
+        bar.setAttribute("role", "region");
+        bar.setAttribute("aria-label", "Aviso de cookies");
+        bar.style.cssText = "position:fixed;left:16px;right:16px;bottom:16px;z-index:9999;max-width:560px;margin:0 auto;background:#0f172a;color:#e2e8f0;border-radius:16px;padding:14px 16px;box-shadow:0 12px 32px rgba(15,23,42,.35);font:14px/1.45 system-ui,-apple-system,sans-serif;display:flex;flex-wrap:wrap;align-items:center;gap:10px 14px";
+        bar.innerHTML = '<span style="flex:1 1 260px">Usamos cookies para medir o desempenho dos nossos anúncios. <a href="/privacidade" style="color:#6ee7b7;text-decoration:underline">Saiba mais</a></span>'
+            + '<span style="display:flex;gap:8px;margin-left:auto"><button type="button" data-consent="denied" style="border:1px solid #475569;background:transparent;color:#e2e8f0;border-radius:10px;padding:8px 14px;font-weight:600;cursor:pointer">Recusar</button>'
+            + '<button type="button" data-consent="granted" style="border:0;background:#10b981;color:#fff;border-radius:10px;padding:8px 14px;font-weight:600;cursor:pointer">Aceitar</button></span>';
+        bar.addEventListener("click", function (event) {
+            var btn = event.target.closest("[data-consent]"); if (btn) window.setCookieConsent(btn.dataset.consent);
+        });
+        document.body.appendChild(bar);
+    });
+})();
+</script>
+<script async src="https://www.googletagmanager.com/gtm.js?id={{ gtag_id }}"></script>
+{% endif %}

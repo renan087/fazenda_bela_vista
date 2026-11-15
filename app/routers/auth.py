@@ -31,6 +31,7 @@ from app.services.trusted_browser import (
 from app.services.two_factor import get_active_login_code, issue_login_verification_code, revoke_active_login_codes, verify_login_code
 
 templates = Jinja2Templates(directory="app/templates")
+templates.env.globals["google_tag_id"] = lambda: (getattr(get_settings(), "google_tag_id", None) or "").strip()
 router = APIRouter()
 api_router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
 logger = logging.getLogger(__name__)
@@ -790,7 +791,7 @@ def _finish_signup(request: Request, db: Session, state: dict, password_hash: st
         except Exception:
             logger.exception("Falha ao avisar a equipe sobre novo cadastro")
     response = _complete_web_login(request, db, user)
-    response.headers["location"] = "/primeiros-passos"
+    response.headers["location"] = "/primeiros-passos?cadastro=concluido"
     return response
 
 

@@ -61,6 +61,8 @@ class Settings(BaseSettings):
     app_public_url: str = "https://app.sisfarm.com.br"
     # Contato exibido ao cliente na pagina "Minha assinatura" (opcional).
     support_email: str | None = None
+    # Tag do Google (Google Ads/GTM). Vazio desliga a tag.
+    google_tag_id: str | None = "GTM-P9XTDXZW"
     maintenance_mode: str | None = None  # plano B: "leitura" ou "fora_do_ar" pelo painel do Render
     # Dias de atraso tolerados antes do modo somente leitura.
     subscription_grace_days: int = 10
