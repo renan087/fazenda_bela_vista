@@ -188,3 +188,22 @@ def test_page_is_compact_with_plan_and_payment_buttons(monkeypatch):
     assert 'href="/planos-disponiveis"' in html and 'Alterar plano' in html
     assert 'data-dialog-open="payment-method-dialog"' in html and '<dialog id="payment-method-dialog"' in html
     assert 'O pagamento é feito na página segura' not in html and '<details' in html
+
+
+def test_landing_page_for_visitors_and_redirect_for_logged_users(monkeypatch):
+    from types import SimpleNamespace as NS
+    monkeypatch.setattr(routes, 'get_settings', lambda: NS(support_email='contato@sisfarm.test'))
+    logged = routes.home(request=NS(session={'user_email': 'a@b.com'}), db=None)
+    assert logged.headers['location'] == '/dashboard'
+    with _db() as db:
+        plan = plans.create_plan(db, plans.parse_plan_form(name='Essencial', description='Para começar', price_monthly='79,90', price_quarterly='', price_semiannual='', price_yearly='',
+                                                           max_farms='1', max_users='', max_hectares='100', modules=['page.map'], trial_days='', display_order='', is_featured='1'))
+        plans.activate_plan(db, plan)
+        db.commit()
+        monkeypatch.setattr(routes.templates, 'TemplateResponse', lambda name, context: (name, context))
+        name, ctx = routes.home(request=NS(session={}), db=db)
+        html = routes.templates.env.get_template(name).render(**ctx)
+    assert name == 'landing.html'
+    assert 'Sua fazenda de café' in html and 'R$ 79,90' in html and 'Mais escolhido' in html
+    assert 'mailto:contato@sisfarm.test' in html and 'href="/login"' in html
+    assert '14 dias' not in html and 'Depoimento' not in html

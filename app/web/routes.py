@@ -3700,8 +3700,18 @@ def _soil_history_chart(analyses: list[SoilAnalysis]) -> str:
 
 
 @router.get("/")
-def home():
-    return _redirect("/dashboard")
+def home(request: Request, db: Session = Depends(get_db)):
+    """Landing page publica; quem ja esta logado vai direto para o dashboard."""
+    if request.session.get("user_email"):
+        return _redirect("/dashboard")
+    catalog = active_plans(db)
+    support = (get_settings().support_email or "").strip()
+    return templates.TemplateResponse("landing.html", {
+        "request": request, "plans_catalog": catalog, "premium_plan_id": _premium_plan_id(catalog),
+        "plan_prices_of": plan_prices, "plan_modules_of": plan_modules,
+        "contact_href": f"mailto:{support}?subject=Quero%20conhecer%20o%20SisFarm" if support else "/login",
+        "current_year": today_in_app_timezone().year,
+    })
 
 
 @router.post("/contexto")

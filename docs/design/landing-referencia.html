@@ -1,0 +1,188 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SisFarm — Gestão para fazendas de café</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  body { font-family: 'Plus Jakarta Sans', system-ui, sans-serif; }
+  .ico { width: 1.5rem; height: 1.5rem; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+  .glow { box-shadow: 0 0 0 2px rgba(163,230,53,.7), 0 30px 60px -15px rgba(22,101,52,.6); }
+  .gold { box-shadow: 0 0 0 2px rgba(251,191,36,.75), 0 30px 60px -15px rgba(180,130,20,.5); }
+</style>
+</head>
+<body class="bg-[#f4f7f2] text-slate-900">
+
+<!-- HERO -->
+<header class="relative overflow-hidden bg-[#0c2416] text-white">
+  <div class="absolute inset-0 bg-cover bg-right" style="background-image:url('../../app/static/images/planos-hero.webp')"></div>
+  <div class="absolute inset-0" style="background:linear-gradient(90deg,#0c2416 0%,rgba(12,36,22,.93) 35%,rgba(12,36,22,.35) 65%,rgba(12,36,22,.05) 100%),linear-gradient(0deg,#0c2416 0%,rgba(12,36,22,0) 40%)"></div>
+  <nav class="relative mx-auto flex max-w-7xl items-center justify-between px-8 py-6">
+    <p class="flex items-center gap-2 text-2xl font-extrabold"><svg class="ico h-8 w-8 text-lime-400" viewBox="0 0 24 24"><path d="M5 19c8 0 14-6 14-14-8 0-14 6-14 14Z"/><path d="M5 19 13 11"/></svg>SisFarm</p>
+    <ul class="flex gap-8 text-sm font-medium text-emerald-50/90"><li>Funcionalidades</li><li>Como funciona</li><li>Planos</li><li>Depoimentos</li><li>Dúvidas</li></ul>
+    <div class="flex items-center gap-3 text-sm font-semibold"><span class="rounded-xl px-4 py-2.5 text-white ring-1 ring-white/30">Entrar</span><span class="rounded-xl bg-lime-400 px-5 py-2.5 text-[#0c2416]">Teste grátis</span></div>
+  </nav>
+  <div class="relative mx-auto grid max-w-7xl gap-10 px-8 pb-28 pt-16 lg:grid-cols-2">
+    <div>
+      <p class="inline-flex items-center gap-2 rounded-full bg-white/10 px-4 py-1.5 text-xs font-semibold uppercase tracking-[0.2em] text-lime-300 ring-1 ring-white/15">Gestão agrícola para o café</p>
+      <h1 class="mt-6 text-6xl font-extrabold leading-[1.05]">Sua fazenda de café, <span class="text-lime-400">do plantio à venda</span>, em um só lugar.</h1>
+      <p class="mt-6 max-w-xl text-lg text-emerald-50/90">Talhões no mapa, adubação, estoque, colheita, financeiro e cotação do café. Decisões melhores com dados da sua própria lavoura, no computador ou no celular.</p>
+      <div class="mt-9 flex flex-wrap gap-4">
+        <span class="flex items-center gap-2 rounded-2xl bg-gradient-to-r from-lime-400 to-lime-500 px-7 py-4 text-base font-bold text-[#0c2416] shadow-lg shadow-lime-500/30">Começar teste grátis <svg class="ico h-5 w-5" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg></span>
+        <span class="rounded-2xl px-7 py-4 text-base font-semibold ring-1 ring-white/40">Ver demonstração</span>
+      </div>
+      <ul class="mt-9 flex flex-wrap gap-6 text-sm text-emerald-50/85">
+        <li class="flex items-center gap-2"><span class="text-lime-400">✓</span>14 dias grátis</li>
+        <li class="flex items-center gap-2"><span class="text-lime-400">✓</span>Sem cartão para começar</li>
+        <li class="flex items-center gap-2"><span class="text-lime-400">✓</span>Suporte em português</li>
+      </ul>
+    </div>
+    <!-- Mockup do painel -->
+    <div class="relative self-end">
+      <div class="rounded-[1.75rem] bg-white/95 p-5 text-slate-900 shadow-2xl ring-1 ring-white/40 backdrop-blur">
+        <div class="flex items-center justify-between"><p class="font-bold">Painel da fazenda</p><span class="rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-800">Safra 2026/2027</span></div>
+        <div class="mt-4 grid grid-cols-3 gap-3">
+          <div class="rounded-2xl bg-emerald-50 p-3"><p class="text-[11px] text-emerald-800">Produtividade</p><p class="text-xl font-extrabold">38,4 <span class="text-xs font-semibold">sc/ha</span></p></div>
+          <div class="rounded-2xl bg-amber-50 p-3"><p class="text-[11px] text-amber-800">Café arábica</p><p class="text-xl font-extrabold">R$ 1.637</p></div>
+          <div class="rounded-2xl bg-sky-50 p-3"><p class="text-[11px] text-sky-800">Chuva no mês</p><p class="text-xl font-extrabold">142 <span class="text-xs font-semibold">mm</span></p></div>
+        </div>
+        <div class="mt-4 rounded-2xl border border-slate-100 p-4">
+          <p class="text-xs font-semibold text-slate-500">Produção por setor (sacas)</p>
+          <div class="mt-3 flex h-28 items-end gap-3">
+            <div class="flex-1 rounded-t-lg bg-[#446a36]" style="height:62%"></div><div class="flex-1 rounded-t-lg bg-[#446a36]" style="height:88%"></div><div class="flex-1 rounded-t-lg bg-lime-500" style="height:100%"></div><div class="flex-1 rounded-t-lg bg-[#446a36]" style="height:70%"></div><div class="flex-1 rounded-t-lg bg-[#446a36]" style="height:54%"></div><div class="flex-1 rounded-t-lg bg-[#446a36]" style="height:80%"></div>
+          </div>
+          <div class="mt-2 grid grid-cols-6 text-center text-[10px] text-slate-400"><span>Setor 1</span><span>Setor 2</span><span>Setor 3</span><span>Setor 4</span><span>Setor 5</span><span>Setor 6</span></div>
+        </div>
+        <div class="mt-4 flex items-center gap-3 rounded-2xl bg-[#0c2416] p-3 text-white"><span class="flex h-9 w-9 items-center justify-center rounded-xl bg-lime-400 text-[#0c2416]">✓</span><p class="text-sm">Adubação do Setor 3 agendada para amanhã · 12 sacas em estoque</p></div>
+      </div>
+    </div>
+  </div>
+</header>
+
+<!-- FAIXA DE CONFIANÇA -->
+<section class="mx-auto -mt-12 max-w-6xl px-8">
+  <div class="relative grid grid-cols-4 divide-x divide-slate-200 rounded-[1.75rem] bg-white p-6 text-center shadow-xl ring-1 ring-slate-100">
+    <div><p class="text-3xl font-extrabold text-[#446a36]">+15</p><p class="text-sm text-slate-500">módulos integrados</p></div>
+    <div><p class="text-3xl font-extrabold text-[#446a36]">100%</p><p class="text-sm text-slate-500">na nuvem, com backup</p></div>
+    <div><p class="text-3xl font-extrabold text-[#446a36]">CEPEA</p><p class="text-sm text-slate-500">cotação do café diária</p></div>
+    <div><p class="text-3xl font-extrabold text-[#446a36]">Mobile</p><p class="text-sm text-slate-500">registro direto do campo</p></div>
+  </div>
+</section>
+
+<!-- PROBLEMA -> SOLUÇÃO -->
+<section class="mx-auto max-w-6xl px-8 py-24 text-center">
+  <p class="text-xs font-bold uppercase tracking-[0.25em] text-[#446a36]">Por que SisFarm</p>
+  <h2 class="mx-auto mt-3 max-w-3xl text-4xl font-extrabold leading-tight">Chega de planilhas soltas, cadernos de campo e custos que ninguém sabe de onde vieram.</h2>
+  <div class="mt-14 grid grid-cols-3 gap-6 text-left">
+    <div class="rounded-[1.5rem] bg-white p-7 shadow-sm ring-1 ring-slate-100"><span class="flex h-12 w-12 items-center justify-center rounded-2xl bg-emerald-50 text-[#446a36]"><svg class="ico" viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="m7 15 4-4 3 3 5-6"/></svg></span><h3 class="mt-5 text-lg font-bold">Custo real por setor</h3><p class="mt-2 text-slate-500">Insumos, operações e máquinas rateados por talhão e por safra, com custo por hectare e por saca.</p></div>
+    <div class="rounded-[1.5rem] bg-white p-7 shadow-sm ring-1 ring-slate-100"><span class="flex h-12 w-12 items-center justify-center rounded-2xl bg-emerald-50 text-[#446a36]"><svg class="ico" viewBox="0 0 24 24"><path d="M12 21v-9"/><path d="M12 12c0-4 3-7 8-7 0 4-3 7-8 7Z"/><path d="M12 14c0-3-2.5-5.5-7-5.5 0 3 2.5 5.5 7 5.5Z"/></svg></span><h3 class="mt-5 text-lg font-bold">Lavoura sob controle</h3><p class="mt-2 text-slate-500">Adubação agendada, análise de solo, pragas e chuva registrados no histórico de cada setor.</p></div>
+    <div class="rounded-[1.5rem] bg-white p-7 shadow-sm ring-1 ring-slate-100"><span class="flex h-12 w-12 items-center justify-center rounded-2xl bg-emerald-50 text-[#446a36]"><svg class="ico" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v10M9.5 9.5c0-1.2 1.1-2 2.5-2s2.5.8 2.5 2-1.1 1.8-2.5 2.2-2.5 1-2.5 2.3 1.1 2 2.5 2 2.5-.8 2.5-2"/></svg></span><h3 class="mt-5 text-lg font-bold">Venda na hora certa</h3><p class="mt-2 text-slate-500">Acompanhe a cotação do café, sua produção e a comercialização para negociar com segurança.</p></div>
+  </div>
+</section>
+
+<!-- FUNCIONALIDADES -->
+<section class="bg-white py-24">
+  <div class="mx-auto max-w-6xl px-8">
+    <div class="flex items-end justify-between gap-8">
+      <div><p class="text-xs font-bold uppercase tracking-[0.25em] text-[#446a36]">Funcionalidades</p><h2 class="mt-3 max-w-2xl text-4xl font-extrabold">Tudo o que a fazenda precisa, conectado.</h2></div>
+      <p class="max-w-sm text-slate-500">Cada registro alimenta os demais: a adubação baixa o estoque, que entra no custo, que aparece no financeiro.</p>
+    </div>
+    <div class="mt-12 grid grid-cols-4 gap-5">
+      <div class="rounded-[1.5rem] border border-slate-100 bg-[#f7faf5] p-6"><span class="text-2xl">🗺️</span><h3 class="mt-3 font-bold">Talhões e mapa</h3><p class="mt-1 text-sm text-slate-500">Setores desenhados no mapa, com área e imagem de satélite.</p></div>
+      <div class="rounded-[1.5rem] border border-slate-100 bg-[#f7faf5] p-6"><span class="text-2xl">🧪</span><h3 class="mt-3 font-bold">Fertilização</h3><p class="mt-1 text-sm text-slate-500">Recomendações, agenda e aplicações por setor.</p></div>
+      <div class="rounded-[1.5rem] border border-slate-100 bg-[#f7faf5] p-6"><span class="text-2xl">📦</span><h3 class="mt-3 font-bold">Estoque de insumos</h3><p class="mt-1 text-sm text-slate-500">Lotes, validades e inventário com baixa automática.</p></div>
+      <div class="rounded-[1.5rem] border border-slate-100 bg-[#f7faf5] p-6"><span class="text-2xl">💰</span><h3 class="mt-3 font-bold">Financeiro</h3><p class="mt-1 text-sm text-slate-500">Contas, cartões, parcelas e extrato da fazenda.</p></div>
+      <div class="rounded-[1.5rem] border border-slate-100 bg-[#f7faf5] p-6"><span class="text-2xl">☕</span><h3 class="mt-3 font-bold">Colheita e venda</h3><p class="mt-1 text-sm text-slate-500">Produtividade por hectare e comercialização do café.</p></div>
+      <div class="rounded-[1.5rem] border border-slate-100 bg-[#f7faf5] p-6"><span class="text-2xl">📈</span><h3 class="mt-3 font-bold">Cotação CEPEA</h3><p class="mt-1 text-sm text-slate-500">Arábica e robusta atualizados todos os dias.</p></div>
+      <div class="rounded-[1.5rem] border border-slate-100 bg-[#f7faf5] p-6"><span class="text-2xl">🚜</span><h3 class="mt-3 font-bold">Máquinas</h3><p class="mt-1 text-sm text-slate-500">Patrimônio e manutenção preventiva com alertas.</p></div>
+      <div class="rounded-[1.5rem] border border-slate-100 bg-[#f7faf5] p-6"><span class="text-2xl">📱</span><h3 class="mt-3 font-bold">Campo mobile</h3><p class="mt-1 text-sm text-slate-500">Registro rápido direto da lavoura, pelo celular.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- DESTAQUE: MAPA -->
+<section class="mx-auto grid max-w-6xl items-center gap-14 px-8 py-24 lg:grid-cols-2">
+  <div class="relative overflow-hidden rounded-[2rem] bg-[#173d22] p-6 shadow-2xl">
+    <div class="h-72 rounded-[1.25rem] bg-cover bg-center" style="background-image:url('../../app/static/images/planos-hero.webp')"></div>
+    <div class="absolute left-12 top-14 h-24 w-40 -rotate-6 rounded-xl border-2 border-lime-400 bg-lime-400/20"></div>
+    <div class="absolute left-56 top-28 h-28 w-36 rotate-3 rounded-xl border-2 border-amber-300 bg-amber-300/20"></div>
+    <div class="mt-5 grid grid-cols-3 gap-3 text-white"><div class="rounded-xl bg-white/10 p-3"><p class="text-[11px] text-emerald-100/80">Setor 3 · Catuaí</p><p class="font-bold">12,4 ha</p></div><div class="rounded-xl bg-white/10 p-3"><p class="text-[11px] text-emerald-100/80">Custo/ha</p><p class="font-bold">R$ 8.420</p></div><div class="rounded-xl bg-white/10 p-3"><p class="text-[11px] text-emerald-100/80">Última adubação</p><p class="font-bold">há 18 dias</p></div></div>
+  </div>
+  <div>
+    <p class="text-xs font-bold uppercase tracking-[0.25em] text-[#446a36]">Mapa da fazenda</p>
+    <h2 class="mt-3 text-4xl font-extrabold leading-tight">Enxergue cada talhão como ele é.</h2>
+    <p class="mt-4 text-lg text-slate-500">Importe o CAR ou desenhe os setores. Cada área guarda variedade, histórico de adubação, pragas, chuvas e produção.</p>
+    <ul class="mt-6 space-y-3 text-slate-700"><li class="flex gap-3"><span class="text-[#446a36]">✓</span>Importação do CAR e de arquivos GeoJSON/KML</li><li class="flex gap-3"><span class="text-[#446a36]">✓</span>Custos e produtividade por setor e por safra</li><li class="flex gap-3"><span class="text-[#446a36]">✓</span>Histórico completo para auditoria e certificações</li></ul>
+  </div>
+</section>
+
+<!-- COMO FUNCIONA -->
+<section class="bg-[#0c2416] py-24 text-white">
+  <div class="mx-auto max-w-6xl px-8 text-center">
+    <p class="text-xs font-bold uppercase tracking-[0.25em] text-lime-400">Como funciona</p>
+    <h2 class="mt-3 text-4xl font-extrabold">Comece a usar em uma tarde.</h2>
+    <div class="mt-14 grid grid-cols-3 gap-8 text-left">
+      <div class="rounded-[1.5rem] bg-white/5 p-7 ring-1 ring-white/10"><span class="flex h-12 w-12 items-center justify-center rounded-2xl bg-lime-400 text-xl font-extrabold text-[#0c2416]">1</span><h3 class="mt-5 text-lg font-bold">Cadastre a fazenda</h3><p class="mt-2 text-emerald-50/75">Importe o CAR, defina os setores e as variedades plantadas.</p></div>
+      <div class="rounded-[1.5rem] bg-white/5 p-7 ring-1 ring-white/10"><span class="flex h-12 w-12 items-center justify-center rounded-2xl bg-lime-400 text-xl font-extrabold text-[#0c2416]">2</span><h3 class="mt-5 text-lg font-bold">Registre o dia a dia</h3><p class="mt-2 text-emerald-50/75">Compras, adubações, chuvas e colheitas, do escritório ou do campo.</p></div>
+      <div class="rounded-[1.5rem] bg-white/5 p-7 ring-1 ring-white/10"><span class="flex h-12 w-12 items-center justify-center rounded-2xl bg-lime-400 text-xl font-extrabold text-[#0c2416]">3</span><h3 class="mt-5 text-lg font-bold">Decida com dados</h3><p class="mt-2 text-emerald-50/75">Painéis de custo, produtividade e previsão de produção prontos.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- PLANOS -->
+<section class="mx-auto max-w-6xl px-8 py-24">
+  <div class="text-center"><p class="text-xs font-bold uppercase tracking-[0.25em] text-[#446a36]">Planos</p><h2 class="mt-3 text-4xl font-extrabold">Um plano para cada tamanho de fazenda.</h2><p class="mt-3 text-slate-500">Mensal, trimestral, semestral ou anual. Mude de plano quando quiser.</p></div>
+  <div class="mt-14 grid grid-cols-3 items-start gap-6">
+    <div class="rounded-[1.75rem] bg-white p-7 shadow-xl ring-1 ring-slate-200"><p class="text-xl font-bold">Essencial</p><p class="mt-1 text-sm text-slate-500">Para organizar a lavoura e o financeiro.</p><p class="mt-6"><span class="text-4xl font-extrabold">R$ 79,90</span><span class="text-slate-500"> /mês</span></p><ul class="mt-6 space-y-2 text-sm text-slate-700"><li>✓ 1 fazenda · até 100 ha</li><li>✓ Setores, safras e mapa</li><li>✓ Fertilização e estoque</li><li>✓ Financeiro e colheita</li></ul><p class="mt-8 rounded-2xl border-2 border-[#446a36] py-3 text-center font-bold text-[#446a36]">Escolher Essencial</p></div>
+    <div class="glow relative -mt-4 rounded-[1.75rem] bg-gradient-to-b from-[#173d22] to-[#0c2416] p-7 text-white"><span class="absolute -top-3.5 left-1/2 -translate-x-1/2 rounded-full bg-lime-400 px-3 py-1 text-xs font-bold uppercase text-[#0c2416]">Mais escolhido</span><p class="text-xl font-bold">Profissional</p><p class="mt-1 text-sm text-emerald-50/80">Solo, irrigação e sanidade da lavoura.</p><p class="mt-6"><span class="text-4xl font-extrabold text-lime-400">R$ 149,90</span><span class="text-emerald-50/80"> /mês</span></p><ul class="mt-6 space-y-2 text-sm"><li>✓ 3 fazendas · até 1.000 ha</li><li>✓ Tudo do Essencial</li><li>✓ Irrigação, chuva e pragas</li><li>✓ Análise de solo e campo mobile</li></ul><p class="mt-8 rounded-2xl bg-gradient-to-r from-lime-400 to-lime-500 py-3 text-center font-bold text-[#0c2416]">Escolher Profissional →</p></div>
+    <div class="gold relative rounded-[1.75rem] bg-gradient-to-b from-[#3d3110] via-[#211c0b] to-[#0f1f12] p-7 text-white"><span class="absolute -top-3.5 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-full bg-amber-300 px-3 py-1 text-xs font-bold uppercase text-[#2a1f05]">Plano mais completo</span><p class="text-xl font-bold">Gestão Completa</p><p class="mt-1 text-sm text-amber-50/80">Várias fazendas, equipes e patrimônio.</p><p class="mt-6"><span class="text-4xl font-extrabold text-amber-300">R$ 249,90</span><span class="text-amber-50/80"> /mês</span></p><ul class="mt-6 space-y-2 text-sm"><li>✓ 10 fazendas · área ilimitada</li><li>✓ Tudo do Profissional</li><li>✓ Patrimônio e manutenção</li><li>✓ Suporte prioritário</li></ul><p class="mt-8 rounded-2xl bg-gradient-to-r from-amber-300 to-amber-500 py-3 text-center font-bold text-[#2a1f05]">Escolher Gestão Completa →</p></div>
+  </div>
+</section>
+
+<!-- DEPOIMENTOS -->
+<section class="bg-white py-24">
+  <div class="mx-auto max-w-6xl px-8">
+    <div class="text-center"><p class="text-xs font-bold uppercase tracking-[0.25em] text-[#446a36]">Depoimentos</p><h2 class="mt-3 text-4xl font-extrabold">Quem planta café, aprova.</h2></div>
+    <div class="mt-12 grid grid-cols-3 gap-6">
+      <figure class="rounded-[1.5rem] bg-[#f7faf5] p-7"><p class="text-amber-400">★★★★★</p><blockquote class="mt-3 text-slate-700">“[Depoimento real do produtor sobre controle de custos por setor.]”</blockquote><figcaption class="mt-5 flex items-center gap-3"><span class="h-10 w-10 rounded-full bg-[#446a36]/20"></span><span><b class="block text-sm">Nome do produtor</b><span class="text-xs text-slate-500">Fazenda · Cidade/UF</span></span></figcaption></figure>
+      <figure class="rounded-[1.5rem] bg-[#f7faf5] p-7"><p class="text-amber-400">★★★★★</p><blockquote class="mt-3 text-slate-700">“[Depoimento real sobre adubação e estoque integrados.]”</blockquote><figcaption class="mt-5 flex items-center gap-3"><span class="h-10 w-10 rounded-full bg-[#446a36]/20"></span><span><b class="block text-sm">Nome do produtor</b><span class="text-xs text-slate-500">Fazenda · Cidade/UF</span></span></figcaption></figure>
+      <figure class="rounded-[1.5rem] bg-[#f7faf5] p-7"><p class="text-amber-400">★★★★★</p><blockquote class="mt-3 text-slate-700">“[Depoimento real sobre usar o sistema no celular, no campo.]”</blockquote><figcaption class="mt-5 flex items-center gap-3"><span class="h-10 w-10 rounded-full bg-[#446a36]/20"></span><span><b class="block text-sm">Nome do produtor</b><span class="text-xs text-slate-500">Fazenda · Cidade/UF</span></span></figcaption></figure>
+    </div>
+  </div>
+</section>
+
+<!-- FAQ -->
+<section class="mx-auto max-w-4xl px-8 py-24">
+  <div class="text-center"><p class="text-xs font-bold uppercase tracking-[0.25em] text-[#446a36]">Dúvidas</p><h2 class="mt-3 text-4xl font-extrabold">Perguntas frequentes</h2></div>
+  <div class="mt-10 divide-y divide-slate-200 rounded-[1.5rem] bg-white shadow-sm ring-1 ring-slate-100">
+    <div class="flex items-center justify-between p-6"><p class="font-semibold">Preciso instalar algum programa?</p><span class="text-2xl text-[#446a36]">+</span></div>
+    <div class="p-6"><div class="flex items-center justify-between"><p class="font-semibold">Funciona no celular, no meio da lavoura?</p><span class="text-2xl text-[#446a36]">−</span></div><p class="mt-3 text-slate-500">Sim. O SisFarm funciona no navegador do celular e tem uma tela de registro rápido para o campo.</p></div>
+    <div class="flex items-center justify-between p-6"><p class="font-semibold">Meus dados ficam seguros?</p><span class="text-2xl text-[#446a36]">+</span></div>
+    <div class="flex items-center justify-between p-6"><p class="font-semibold">Posso mudar de plano depois?</p><span class="text-2xl text-[#446a36]">+</span></div>
+    <div class="flex items-center justify-between p-6"><p class="font-semibold">Quais formas de pagamento são aceitas?</p><span class="text-2xl text-[#446a36]">+</span></div>
+  </div>
+</section>
+
+<!-- CTA FINAL -->
+<section class="mx-auto max-w-6xl px-8 pb-24">
+  <div class="relative overflow-hidden rounded-[2rem] bg-[#0c2416] px-12 py-16 text-white">
+    <div class="absolute inset-0 bg-cover bg-center opacity-40" style="background-image:url('../../app/static/images/planos-hero.webp')"></div>
+    <div class="absolute inset-0 bg-gradient-to-r from-[#0c2416] via-[#0c2416]/80 to-transparent"></div>
+    <div class="relative max-w-xl"><h2 class="text-4xl font-extrabold leading-tight">Pronto para colher <span class="text-lime-400">mais resultado</span>?</h2><p class="mt-4 text-lg text-emerald-50/90">Teste o SisFarm por 14 dias, sem compromisso.</p><span class="mt-8 inline-flex items-center gap-2 rounded-2xl bg-gradient-to-r from-lime-400 to-lime-500 px-7 py-4 font-bold text-[#0c2416]">Começar teste grátis →</span></div>
+  </div>
+</section>
+
+<!-- RODAPÉ -->
+<footer class="bg-[#071a0f] py-14 text-sm text-emerald-50/70">
+  <div class="mx-auto grid max-w-6xl grid-cols-4 gap-10 px-8">
+    <div><p class="flex items-center gap-2 text-xl font-extrabold text-white"><svg class="ico h-6 w-6 text-lime-400" viewBox="0 0 24 24"><path d="M5 19c8 0 14-6 14-14-8 0-14 6-14 14Z"/><path d="M5 19 13 11"/></svg>SisFarm</p><p class="mt-3">Gestão agrícola para fazendas de café.</p></div>
+    <div><p class="font-semibold text-white">Produto</p><ul class="mt-3 space-y-2"><li>Funcionalidades</li><li>Planos</li><li>Campo mobile</li></ul></div>
+    <div><p class="font-semibold text-white">Empresa</p><ul class="mt-3 space-y-2"><li>Sobre</li><li>Contato</li><li>Suporte</li></ul></div>
+    <div><p class="font-semibold text-white">Legal</p><ul class="mt-3 space-y-2"><li>Termos de uso</li><li>Privacidade (LGPD)</li></ul></div>
+  </div>
+  <p class="mx-auto mt-10 max-w-6xl border-t border-white/10 px-8 pt-6 text-xs">© 2026 SisFarm. Todos os direitos reservados.</p>
+</footer>
+</body>
+</html>
