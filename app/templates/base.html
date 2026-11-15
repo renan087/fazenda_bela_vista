@@ -1467,6 +1467,9 @@
         })();
     </script>
 <style>
+/* Com qualquer janela (dialog) aberta, a pagina de tras nao rola. */
+html:has(dialog[open]), html.has-open-dialog { overflow: hidden; }
+dialog, dialog [data-modal-scroll], dialog .overflow-y-auto { overscroll-behavior: contain; }
 .page-loader { border: 0; padding: 0; background: transparent; max-width: none; max-height: none; width: 100%; height: 100%; display: grid; place-items: center; opacity: 0; transition: opacity .18s ease; }
 .page-loader:not([open]) { display: none; }
 .page-loader.is-visible { opacity: 1; }
@@ -1497,6 +1500,12 @@
     };
     window.hidePageLoader = () => { loader.classList.remove('is-visible'); if (loader.open) loader.close(); };
     window.addEventListener('pageshow', () => window.hidePageLoader());
+    // Navegadores sem :has(): marca o <html> enquanto houver dialog aberto.
+    if (!CSS.supports?.('selector(:has(*))')) {
+        const sync = () => document.documentElement.classList.toggle('has-open-dialog', Boolean(document.querySelector('dialog[open]')));
+        new MutationObserver(sync).observe(document.body, { attributes: true, attributeFilter: ['open'], subtree: true });
+        sync();
+    }
 })();
 </script>
 </body>
