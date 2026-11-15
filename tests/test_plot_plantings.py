@@ -47,3 +47,18 @@ def test_ended_plantings_stay_in_history_and_new_one_becomes_active():
     repo.db.refresh(plot)
     assert plot.active_planting.plant_count == 35000
     assert [p.plant_count for p in plot.past_plantings] == [30000]
+
+
+def test_renew_planting_moves_current_to_history_and_updates_plot():
+    import pytest
+    repo, farm = _repo()
+    plot = forms.create_plot(repo, _form(farm))
+    with pytest.raises(forms.PlantingRenewalError):
+        forms.renew_planting(repo, plot, ended_on=date(2014, 1, 1), end_reason='renovacao', new={'plant_count': 100})
+    with pytest.raises(forms.PlantingRenewalError):
+        forms.renew_planting(repo, plot, ended_on=date(2019, 8, 1), end_reason='renovacao', new={'plant_count': 100, 'planting_date': date(2019, 7, 1)})
+    new = forms.renew_planting(repo, plot, ended_on=date(2019, 8, 1), end_reason='renovacao',
+                               new={'culture': 'Café', 'planting_date': date(2020, 1, 15), 'plant_count': 35000, 'spacing_row_meters': 3.5})
+    assert plot.active_planting.id == new.id and plot.plant_count == 35000 and plot.planting_date == date(2020, 1, 15)
+    old = plot.past_plantings[0]
+    assert old.plant_count == 30000 and old.ended_on == date(2019, 8, 1) and old.end_reason == 'renovacao'

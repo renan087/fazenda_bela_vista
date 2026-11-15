@@ -220,6 +220,9 @@ from app.services.rbac_service import (
     user_has_permission,
 )
 from app.services.forms import (
+    PLANTING_END_REASONS,
+    PlantingRenewalError,
+    renew_planting,
     calculate_geojson_area_hectares,
     calculate_irrigation_volume,
     calculate_soil_recommendations,
@@ -8291,6 +8294,7 @@ def plots_page(
             plots_field_variety_filtered=plots_field_variety_filtered,
             plots_field_sort_filtered=plots_field_sort_filtered,
             edit_plot=edit_plot,
+            planting_end_reasons=PLANTING_END_REASONS,
             open_plot_map_modal=open_plot_map_modal,
             selected_farm_id=selected_farm_id or scope["active_farm_id"],
             plot_farm_boundaries_json=plot_farm_boundaries_json,
@@ -8415,6 +8419,57 @@ def create_plot_action(
 
 
 @router.post("/talhoes/{plot_id}/editar", include_in_schema=False)
+@router.post("/setores/{plot_id}/renovar-plantio")
+def renew_plot_planting_action(
+    plot_id: int,
+    request: Request,
+    csrf_token: str = Form(...),
+    ended_on: str = Form(...),
+    end_reason: str = Form(...),
+    culture: str | None = Form("Café"),
+    variety_id: str | None = Form(None),
+    planting_date: str | None = Form(None),
+    plant_count: str | None = Form(None),
+    spacing_row_meters: str | None = Form(None),
+    spacing_plant_centimeters: str | None = Form(None),
+    estimated_yield_sacks: str | None = Form(None),
+    notes: str | None = Form(None),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    validate_csrf(request, csrf_token)
+    repo = _repository(db)
+    scope = _global_scope_context(request, repo, user)
+    plot = repo.get_plot(plot_id)
+    if not plot or not _farm_matches_scope(plot.farm_id, scope):
+        _flash(request, "error", "Setor nao encontrado.")
+        return _redirect("/setores")
+    back = f"/setores?edit_id={plot.id}"
+    selected_variety_id = _int_or_none(variety_id)
+    if selected_variety_id and not _variety_matches_scope(repo.get_variety(selected_variety_id), scope):
+        _flash(request, "error", "A variedade selecionada nao pertence a organizacao atual.")
+        return _redirect(back)
+    try:
+        parsed_end = date.fromisoformat(ended_on)
+        parsed_planting = date.fromisoformat(planting_date) if planting_date else None
+    except ValueError:
+        _flash(request, "error", "Informe datas válidas para o encerramento e o novo plantio.")
+        return _redirect(back)
+    try:
+        renew_planting(repo, plot, ended_on=parsed_end, end_reason=end_reason, new={
+            "culture": culture, "variety_id": selected_variety_id, "planting_date": parsed_planting,
+            "plant_count": _int_or_none(plant_count), "spacing_row_meters": _float_or_none(spacing_row_meters),
+            "spacing_plant_meters": _meters_from_cm(spacing_plant_centimeters), "estimated_yield_sacks": _float_or_none(estimated_yield_sacks),
+            "notes": notes,
+        })
+    except PlantingRenewalError as exc:
+        db.rollback()
+        _flash(request, "error", str(exc))
+        return _redirect(back)
+    _flash(request, "success", "Plantio renovado. O plantio anterior foi guardado no histórico do setor.")
+    return _redirect(back)
+
+
 @router.post("/setores/{plot_id}/editar")
 def update_plot_action(
     plot_id: int,

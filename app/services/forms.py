@@ -405,6 +405,51 @@ def update_plot(repository: FarmRepository, plot: Plot, form: dict) -> Plot:
     return plot
 
 
+PLANTING_END_REASONS = {
+    "renovacao": "Renovação",
+    "erradicacao": "Erradicação",
+    "troca_cultura": "Troca de cultura",
+    "perda": "Perda da lavoura",
+    "outro": "Outro",
+}
+
+
+class PlantingRenewalError(ValueError):
+    pass
+
+
+def renew_planting(repository: FarmRepository, plot: Plot, *, ended_on: date, end_reason: str, new: dict) -> PlotPlanting:
+    """Encerra o plantio ativo (vira historico) e abre um novo plantio ativo no mesmo setor."""
+    if end_reason not in PLANTING_END_REASONS:
+        raise PlantingRenewalError("Informe o motivo do encerramento do plantio atual.")
+    current = sync_active_planting(plot) if plot.active_planting is None else plot.active_planting
+    if current.planting_date and ended_on < current.planting_date:
+        raise PlantingRenewalError("O encerramento não pode ser antes da data de plantio atual.")
+    planting_date = new.get("planting_date")
+    if planting_date and planting_date < ended_on:
+        raise PlantingRenewalError("O novo plantio não pode começar antes do encerramento do anterior.")
+    if not new.get("plant_count") or new["plant_count"] <= 0:
+        raise PlantingRenewalError("Informe o número de plantas do novo plantio.")
+    current.ended_on = ended_on
+    current.end_reason = end_reason
+    planting = PlotPlanting(
+        culture=(new.get("culture") or "Café").strip()[:80],
+        variety_id=new.get("variety_id"),
+        planting_date=planting_date,
+        plant_count=new["plant_count"],
+        spacing_row_meters=new.get("spacing_row_meters"),
+        spacing_plant_meters=new.get("spacing_plant_meters"),
+        estimated_yield_sacks=new.get("estimated_yield_sacks"),
+        notes=(new.get("notes") or "").strip() or None,
+    )
+    plot.plantings.append(planting)
+    for field in PLANTING_FIELDS:
+        setattr(plot, field, getattr(planting, field))
+    repository.db.commit()
+    repository.db.refresh(plot)
+    return planting
+
+
 def update_farm(repository: FarmRepository, farm: Farm, form: dict) -> Farm:
     return repository.update(
         farm,
