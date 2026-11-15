@@ -5424,3 +5424,35 @@ button.sf-card-title { font-size: 1rem; font-weight: 700; color: var(--sf-ink, #
 .sf-metrics.sf-metrics-plots { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 @media (min-width: 640px) { .sf-metrics.sf-metrics-plots { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 @media (min-width: 1024px) { .sf-metrics.sf-metrics-plots { grid-template-columns: repeat(6, minmax(0, 1fr)); } }
+
+/* Padrao unico (lote Operacoes e insumos): menus no cabecalho e grupos das listas. */
+body .stock-page-header:has(details[open]) { overflow: visible; z-index: 40; }
+body .stock-header-actions .sf-menu-panel { min-width: 13rem; z-index: 40; }
+.sf-menu-panel .stock-action-button, .sf-menu-panel .stock-action-menu-item { display: flex; width: 100%; min-height: 2.5rem; justify-content: flex-start; gap: .5rem; padding: 0 .75rem; border: 0; border-radius: .5rem; background: none; box-shadow: none; color: var(--sf-ink, #16201a); font-size: .875rem; font-weight: 500; }
+.sf-menu-panel .stock-action-button:hover { background: var(--sf-soft, #f6f8f5); transform: none; }
+.sf-menu-panel .stock-action-button svg { width: 1rem; height: 1rem; color: var(--sf-muted, #5b6660); }
+.sf-menu-panel form { margin: 0; }
+.sf-menu-panel button:disabled { opacity: .5; cursor: not-allowed; }
+td .sf-menu, article .sf-menu { display: inline-block; }
+body .stock-panel section.rounded-\[1\.75rem\] { border-radius: 1rem; background: #fafbf9; border-color: var(--sf-line, #e3e8e2); box-shadow: none; }
+body .stock-panel .stock-history-table thead { background: #fafbf9; }
+body .stock-panel .stock-history-table thead th { font-size: .6875rem; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--sf-muted, #5b6660); }
+body .stock-panel a.inline-flex.h-9.w-9, body .stock-panel button.inline-flex.h-9.w-9 { border-radius: .75rem; border-color: var(--sf-line-strong, #d6ddd5); }
+body .stock-stock-management-button { background: #fff; border: 1px solid var(--sf-line-strong, #d6ddd5); color: var(--sf-ink, #16201a); }
+body .stock-stock-management-button:hover, body .stock-action-menu[open] .stock-stock-management-button { background: var(--sf-soft, #f6f8f5); }
+@media (min-width: 1180px) {
+    body .stock-filter-fields-row { --stock-filter-col-type: minmax(0, .92fr); --stock-filter-col-farm: minmax(0, 1.34fr); --stock-filter-col-input: minmax(0, 1.08fr); --stock-filter-col-period: minmax(0, .98fr); --stock-filter-col-movement: minmax(0, .72fr); }
+    body .stock-filter-fields-row.has-clear-action { --stock-filter-col-farm: minmax(0, 1.12fr); --stock-filter-col-input: minmax(0, 1fr); --stock-filter-col-period: minmax(0, .94fr); }
+}
+@media (max-width: 899px) {
+    body .stock-page-header .stock-header-actions, body .stock-page-header .stock-header-actions.stock-actions-row-mobile-adaptive { display: flex; flex-wrap: wrap; width: 100%; gap: .5rem; grid-auto-rows: auto; }
+    body .stock-page-header .stock-header-actions > *, body .stock-page-header .stock-action-menu-trigger, body .stock-page-header .stock-action-button-primary { height: auto; }
+    body .stock-page-header .stock-header-actions .stock-action-button, body .stock-page-header .stock-action-menu-trigger { display: inline-flex; flex-direction: row; align-items: center; justify-content: center; gap: .5rem; min-height: 2.75rem; }
+    body .stock-page-header .stock-header-actions > .sf-menu, body .stock-page-header .stock-header-actions > .stock-action-menu, body .stock-page-header .stock-header-actions > .stock-action-button:not(.stock-action-button-primary) { flex: 1 1 0; min-width: 0; }
+    body .stock-page-header .stock-header-actions > .sf-menu > summary, body .stock-page-header .stock-header-actions > .stock-action-menu > summary { width: 100%; justify-content: center; }
+}
+@media (max-width: 639px) {
+    body .stock-page-header .stock-header-actions > .stock-action-button-primary { flex: 1 1 100%; order: -1; }
+    body .stock-page-header .stock-header-actions .sf-menu-panel { left: 0; right: auto; }
+    body .stock-page-header .stock-header-actions > .sf-menu:last-of-type:not(:first-child) .sf-menu-panel { left: auto; right: 0; }
+}

@@ -1,8 +1,8 @@
 {% extends "base.html" %}
 {% from "partials/module_history_filter_toolbar.html" import module_period_picker_inline %}
 {% block content %}
-<div class="stock-page-shell space-y-6">
-    <section class="stock-page-header rounded-[2rem] p-5 shadow-panel">
+<div class="stock-page-shell sf-page">
+    <section class="stock-page-header">
         <div class="flex flex-wrap items-start justify-between gap-4">
             <div class="min-w-0 stock-page-header-intro" data-stock-header-intro>
                 <div class="stock-page-header-intro-inner">
@@ -18,8 +18,8 @@
                         <svg class="stock-action-menu-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
                     </summary>
                     <div class="stock-action-menu-panel" role="menu">
-                        <a href="/insumos/estoque/exportar.pdf{% if stock_export_query %}?{{ stock_export_query }}{% endif %}" class="stock-action-menu-item stock-export-button-pdf" role="menuitem"><span>Exportar PDF</span><span class="stock-action-menu-hint">Relatório</span></a>
-                        <a href="/insumos/estoque/exportar.xlsx{% if stock_export_query %}?{{ stock_export_query }}{% endif %}" class="stock-action-menu-item stock-export-button-xlsx" role="menuitem"><span>Exportar Excel</span><span class="stock-action-menu-hint">Planilha</span></a>
+                                <a href="/insumos/estoque/exportar.pdf{% if stock_export_query %}?{{ stock_export_query }}{% endif %}" class="stock-action-menu-item stock-export-button-pdf" role="menuitem"><span>Exportar PDF</span><span class="stock-action-menu-hint">Relatório</span></a>
+                                <a href="/insumos/estoque/exportar.xlsx{% if stock_export_query %}?{{ stock_export_query }}{% endif %}" class="stock-action-menu-item stock-export-button-xlsx" role="menuitem"><span>Exportar Excel</span><span class="stock-action-menu-hint">Planilha</span></a>
                     </div>
                 </details>
                 <details class="stock-action-menu">
