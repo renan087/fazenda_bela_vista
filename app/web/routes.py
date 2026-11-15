@@ -16095,7 +16095,7 @@ def crop_seasons_page(
         application_cost = round(sum(float(record.cost or 0) for record in season_fertilizations), 2)
         consumed_inputs_cost = round(input_cost + fuel_cost, 2)
         operational_total = round(consumed_inputs_cost + application_cost, 2)
-        cultivated_area = float(season.cultivated_area or 0)
+        cultivated_area = _season_area_hectares(season)
         season_costs[season.id] = {
             "input_cost": input_cost,
             "fuel_cost": fuel_cost,
@@ -16118,6 +16118,7 @@ def crop_seasons_page(
             title="Safras",
             farms=scope["context_farms"],
             season_plots=repo.list_plots(farm_ids=[effective_farm_id]) if effective_farm_id else [],
+            season_area_units=SEASON_AREA_UNITS,
             varieties=repo.list_varieties(organization_id=scope.get("active_organization_id")),
             crop_seasons=crop_seasons,
             season_costs=season_costs,
@@ -16569,6 +16570,19 @@ def update_agricultural_operation_action(
     return _redirect("/operacoes")
 
 
+# Unidades de area da safra: hectares por unidade. Setores sao cadastrados em hectares.
+SEASON_AREA_UNITS = {"ha": ("Hectares (ha)", 1.0), "m2": ("Metros quadrados (m²)", 0.0001), "alq": ("Alqueire mineiro (4,84 ha)", 4.84), "alq_sp": ("Alqueire paulista (2,42 ha)", 2.42)}
+
+
+def _season_area_from_plots(plots, unit: str) -> float:
+    hectares = sum(float(plot.area_hectares or 0) for plot in plots)
+    return round(hectares / SEASON_AREA_UNITS.get(unit, SEASON_AREA_UNITS["ha"])[1], 2)
+
+
+def _season_area_hectares(season) -> float:
+    return float(season.cultivated_area or 0) * SEASON_AREA_UNITS.get(season.area_unit or "ha", SEASON_AREA_UNITS["ha"])[1]
+
+
 @router.post("/safras")
 def create_crop_season_action(
     request: Request,
@@ -16598,15 +16612,6 @@ def create_crop_season_action(
     except ValueError:
         _flash(request, "error", "Informe datas validas para a safra.")
         return _redirect("/safras")
-    try:
-        normalized_area = str(cultivated_area or "").strip().replace(",", ".")
-        parsed_cultivated_area = float(normalized_area)
-    except ValueError:
-        _flash(request, "error", "Informe uma area cultivada valida.")
-        return _redirect("/safras")
-    if parsed_cultivated_area <= 0:
-        _flash(request, "error", "A area cultivada deve ser maior que zero.")
-        return _redirect("/safras")
     if parsed_end_date < parsed_start_date:
         _flash(request, "error", "A data final da safra nao pode ser anterior a data inicial.")
         return _redirect("/safras")
@@ -16614,6 +16619,16 @@ def create_crop_season_action(
     available_plots = {plot.id: plot for plot in repo.list_plots(farm_ids=[scope["active_farm_id"]])}
     if any(plot_id not in available_plots for plot_id in plot_ids):
         _flash(request, "error", "Selecione apenas setores da fazenda ativa.")
+        return _redirect("/safras")
+    if area_unit not in SEASON_AREA_UNITS:
+        area_unit = "ha"
+    if plot_ids:
+        parsed_cultivated_area = _season_area_from_plots([available_plots[plot_id] for plot_id in dict.fromkeys(plot_ids)], area_unit)
+    else:
+        _flash(request, "error", "Selecione ao menos um setor da safra; a área cultivada é a soma dos setores.")
+        return _redirect("/safras")
+    if parsed_cultivated_area <= 0:
+        _flash(request, "error", "A area cultivada deve ser maior que zero.")
         return _redirect("/safras")
     if selected_variety_id:
         selected_variety = repo.get_variety(selected_variety_id)
@@ -16682,15 +16697,6 @@ def update_crop_season_action(
     except ValueError:
         _flash(request, "error", "Informe datas validas para a safra.")
         return _redirect("/safras")
-    try:
-        normalized_area = str(cultivated_area or "").strip().replace(",", ".")
-        parsed_cultivated_area = float(normalized_area)
-    except ValueError:
-        _flash(request, "error", "Informe uma area cultivada valida.")
-        return _redirect("/safras")
-    if parsed_cultivated_area <= 0:
-        _flash(request, "error", "A area cultivada deve ser maior que zero.")
-        return _redirect("/safras")
     if parsed_end_date < parsed_start_date:
         _flash(request, "error", "A data final da safra nao pode ser anterior a data inicial.")
         return _redirect("/safras")
@@ -16698,6 +16704,18 @@ def update_crop_season_action(
     available_plots = {plot.id: plot for plot in repo.list_plots(farm_ids=[scope["active_farm_id"]])}
     if any(plot_id not in available_plots for plot_id in plot_ids):
         _flash(request, "error", "Selecione apenas setores da fazenda ativa.")
+        return _redirect("/safras")
+    if area_unit not in SEASON_AREA_UNITS:
+        area_unit = "ha"
+    if plot_ids:
+        parsed_cultivated_area = _season_area_from_plots([available_plots[plot_id] for plot_id in dict.fromkeys(plot_ids)], area_unit)
+    else:
+        try:
+            parsed_cultivated_area = float(str(cultivated_area or "").strip().replace(",", "."))
+        except ValueError:
+            parsed_cultivated_area = 0
+    if parsed_cultivated_area <= 0:
+        _flash(request, "error", "A area cultivada deve ser maior que zero.")
         return _redirect("/safras")
     if selected_variety_id:
         selected_variety = repo.get_variety(selected_variety_id)

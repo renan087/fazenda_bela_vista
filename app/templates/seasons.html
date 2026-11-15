@@ -101,7 +101,7 @@
                 <div class="stock-summary-collapse" data-seasons-detail-collapse>
                     <div class="stock-summary-collapse-inner">
                         <div class="mt-1 grid gap-3 text-sm text-slate-600 sm:grid-cols-2 xl:grid-cols-3">
-                            <p>Área cultivada: <strong>{{ season.cultivated_area }} {{ season.area_unit }}</strong></p>
+                            <p>Área cultivada: <strong>{{ season.cultivated_area|decimal_br }} {{ {"ha": "ha", "m2": "m²", "alq": "alq. mineiro", "alq_sp": "alq. paulista"}.get(season.area_unit, season.area_unit) }}</strong></p>
                             <p>Insumos consumidos: <strong>R$ {{ '%.2f'|format(costs.get('consumed_inputs_cost', 0)) }}</strong></p>
                             <p>Custo operacional total: <strong>R$ {{ '%.2f'|format(costs.get('operational_total', 0)) }}</strong></p>
                             <p>Custo por hectare: <strong>R$ {{ '%.2f'|format(costs.get('cost_per_hectare', 0)) }}/ha</strong></p>
@@ -235,26 +235,26 @@
                 </div>
                 {% else %}
                 <div data-season-plot-picker>
-                                        {% if not season_readonly %}<select class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" data-season-plot-select><option value="">Adicionar setor…</option>{% for plot in season_plots %}<option value="{{ plot.id }}" data-name="{{ plot.name }}" data-farm="{{ plot.farm.name if plot.farm else '' }}" data-area="{{ plot.area_hectares }}" {% if sm and plot in sm.plots %}hidden disabled{% endif %}>{{ plot.name }}{% if plot.farm %} • {{ plot.farm.name }}{% endif %}</option>{% endfor %}</select>{% endif %}
+                                        {% if not season_readonly %}<select class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50" data-season-plot-select><option value="">Adicionar setor…</option>{% for plot in season_plots %}<option value="{{ plot.id }}" data-name="{{ plot.name }}" data-farm="{{ plot.area_hectares|decimal_br }} ha" data-area="{{ plot.area_hectares }}" {% if sm and plot in sm.plots %}hidden disabled{% endif %}>{{ plot.name }} — {{ plot.area_hectares|decimal_br }} ha</option>{% endfor %}<option value="__novo__" data-href="/setores?novo=1&voltar=safra">+ Cadastrar novo setor</option></select>{% endif %}
                     <div class="schedule-plot-selected mt-3" data-season-plot-selected>
-                        {% if sm %}{% for plot in sm.plots %}<div class="schedule-plot-chip" data-plot-id="{{ plot.id }}" data-area="{{ plot.area_hectares }}"><div class="schedule-plot-chip-body"><span class="schedule-plot-chip-title">{{ plot.name }}</span><span class="schedule-plot-chip-meta">{{ plot.farm.name if plot.farm else '' }}</span></div>{% if not season_readonly %}<input type="hidden" name="plot_ids" value="{{ plot.id }}"><button type="button" class="schedule-plot-chip-remove" data-season-plot-remove aria-label="Remover {{ plot.name }}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>{% endif %}</div>{% endfor %}{% endif %}
+                        {% if sm %}{% for plot in sm.plots %}<div class="schedule-plot-chip" data-plot-id="{{ plot.id }}" data-area="{{ plot.area_hectares }}"><div class="schedule-plot-chip-body"><span class="schedule-plot-chip-title">{{ plot.name }}</span><span class="schedule-plot-chip-meta">{{ plot.area_hectares|decimal_br }} ha</span></div>{% if not season_readonly %}<input type="hidden" name="plot_ids" value="{{ plot.id }}"><button type="button" class="schedule-plot-chip-remove" data-season-plot-remove aria-label="Remover {{ plot.name }}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>{% endif %}</div>{% endfor %}{% endif %}
                         <p class="schedule-plot-selected-empty text-sm text-slate-500 {% if sm and sm.plots %}hidden{% endif %}" data-season-plot-empty>Nenhum setor selecionado.</p>
                     </div>
-                    {% if not season_readonly %}<p class="mt-2 text-xs text-slate-500">Selecione os setores plantados nesta safra; a área é somada automaticamente e pode ser ajustada.</p>{% endif %}
+                    {% if not season_readonly %}<p class="mt-2 text-xs text-slate-500">Selecione os setores plantados nesta safra. A área total é a soma das áreas dos setores.</p>{% endif %}
                 </div>
 
                 {% endif %}
                 <div class="grid gap-4 md:grid-cols-3">
                     <label class="md:col-span-2">
-                        <span class="mb-2 block text-sm font-medium">Total</span>
-                        <input type="number" step="0.01" name="cultivated_area" data-season-area-input value="{{ sm.cultivated_area if sm else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50 {% if season_readonly %}cursor-default bg-slate-100 text-slate-700{% endif %}" {% if not season_readonly %}required{% endif %} {% if season_readonly %}readonly tabindex="-1"{% endif %}>
+                        <span class="mb-2 block text-sm font-medium">Área total</span>
+                        <input type="text" name="cultivated_area" data-season-area-input value="{{ sm.cultivated_area if sm else '' }}" readonly tabindex="-1" placeholder="Selecione os setores" class="min-h-[3.25rem] w-full cursor-default rounded-2xl border-slate-200 bg-slate-100 font-semibold text-slate-800">
                     </label>
                     <label>
-                        <span class="mb-2 block text-sm font-medium">Unidade de área</span>
-                        <select name="area_unit" data-season-area-unit class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50 {% if season_readonly %}cursor-default bg-slate-100 text-slate-700{% endif %}" {% if not season_readonly %}required{% endif %} {% if season_readonly %}disabled tabindex="-1"{% endif %}>
+                        <span class="mb-2 block text-sm font-medium">Exibir em</span>
+                        <select name="area_unit" data-season-area-unit class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50 {% if season_readonly %}cursor-default bg-slate-100 text-slate-700{% endif %}" {% if season_readonly %}disabled tabindex="-1"{% endif %}>
                             {% set selected_area_unit = sm.area_unit if sm else 'ha' %}
-                            {% for unit in ['ha', 'm2', 'alq'] %}
-                            <option value="{{ unit }}" {% if selected_area_unit == unit %}selected{% endif %}>{{ unit }}</option>
+                            {% for unit, info in season_area_units.items() %}
+                            <option value="{{ unit }}" data-factor="{{ info[1] }}" {% if selected_area_unit == unit %}selected{% endif %}>{{ info[0] }}</option>
                             {% endfor %}
                         </select>
                     </label>
@@ -507,6 +507,11 @@
     select.addEventListener('change', () => {
         const option = select.selectedOptions[0];
         if (!option?.value) return;
+        if (option.value === '__novo__') {
+            select.value = '';
+            if (!selected.querySelector('[data-plot-id]') || window.confirm('Abrir o cadastro de setor? Os dados desta safra ainda não salvos serão perdidos.')) window.location.href = option.dataset.href;
+            return;
+        }
         const chip = document.createElement('div');
         chip.className = 'schedule-plot-chip';
         chip.dataset.plotId = option.value;
@@ -592,18 +597,29 @@
     const select = form.querySelector('[data-season-plot-select]');
     const recalc = () => {
         const chips = selected ? [...selected.querySelectorAll('[data-plot-id]')] : [];
-        if (!chips.length || !areaInput) { hint?.classList.add('hidden'); return; }
-        const total = chips.reduce((sum, chip) => {
+        if (!chips.length || !areaInput) {
+            if (areaInput && selected) areaInput.value = '';
+            hint?.classList.add('hidden');
+            return;
+        }
+        const hectares = chips.reduce((sum, chip) => {
             const id = chip.dataset.plotId;
             const area = chip.dataset.area || [...(select?.options || [])].find((o) => o.value === id)?.dataset.area;
             return sum + (parseFloat(area) || 0);
         }, 0);
-        areaInput.value = total.toFixed(2);
-        if (unit) unit.value = 'ha';
-        hint.textContent = `Soma de ${chips.length} setor(es): ${total.toLocaleString('pt-BR', { maximumFractionDigits: 2 })} ha. Ajuste se a área plantada for diferente.`;
+        const factor = parseFloat(unit?.selectedOptions[0]?.dataset.factor) || 1;
+        const value = hectares / factor;
+        const fmt = (n) => n.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        areaInput.value = value.toFixed(2).replace('.', ',');
+        const label = unit?.selectedOptions[0]?.textContent.trim() || 'ha';
+        hint.textContent = factor === 1
+            ? `Soma de ${chips.length} setor(es).`
+            : `Soma de ${chips.length} setor(es): ${fmt(hectares)} ha = ${fmt(value)} em ${label.toLowerCase()}.`;
         hint.classList.remove('hidden');
     };
+    unit?.addEventListener('change', recalc);
     if (selected) new MutationObserver(recalc).observe(selected, { childList: true });
+    recalc();
     // Retorno do cadastro de setor: reabre a nova safra com o setor ja escolhido.
     const query = new URLSearchParams(window.location.search);
     if (query.get('novo') === '1') {
