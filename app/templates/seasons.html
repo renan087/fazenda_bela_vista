@@ -509,7 +509,8 @@
         if (!option?.value) return;
         if (option.value === '__novo__') {
             select.value = '';
-            if (!selected.querySelector('[data-plot-id]') || window.confirm('Abrir o cadastro de setor? Os dados desta safra ainda não salvos serão perdidos.')) window.location.href = option.dataset.href;
+            window.saveSeasonDraft?.();
+            window.location.href = option.dataset.href;
             return;
         }
         const chip = document.createElement('div');
@@ -621,9 +622,32 @@
     if (selected) new MutationObserver(recalc).observe(selected, { childList: true });
     recalc();
     // Retorno do cadastro de setor: reabre a nova safra com o setor ja escolhido.
+    // Rascunho: guarda o que ja foi preenchido ao sair para cadastrar um setor.
+    const DRAFT_KEY = 'sisfarm.seasonDraft';
+    const draftFields = ['start_date', 'end_date', 'name', 'culture', 'variety_id', 'area_unit', 'status', 'notes'];
+    window.saveSeasonDraft = () => {
+        if (form.action.includes('/editar')) return;
+        const data = { plots: [...form.querySelectorAll('[data-season-plot-selected] [data-plot-id]')].map((c) => c.dataset.plotId) };
+        draftFields.forEach((name) => { const field = form.elements[name]; if (field) data[name] = field.value; });
+        try { sessionStorage.setItem(DRAFT_KEY, JSON.stringify(data)); } catch (error) { /* sem armazenamento: segue sem rascunho */ }
+    };
+    const restoreDraft = () => {
+        let data = null;
+        try { data = JSON.parse(sessionStorage.getItem(DRAFT_KEY) || 'null'); sessionStorage.removeItem(DRAFT_KEY); } catch (error) { data = null; }
+        if (!data) return;
+        draftFields.forEach((name) => {
+            const field = form.elements[name];
+            if (field && data[name] !== undefined && data[name] !== '') { field.value = data[name]; field.dispatchEvent(new Event('input', { bubbles: true })); field.dispatchEvent(new Event('change', { bubbles: true })); }
+        });
+        (data.plots || []).forEach((id) => {
+            if (select && [...select.options].some((o) => o.value === id && !o.disabled)) { select.value = id; select.dispatchEvent(new Event('change')); }
+        });
+        if (input) { input.dispatchEvent(new Event('blur')); }
+    };
     const query = new URLSearchParams(window.location.search);
     if (query.get('novo') === '1') {
         document.getElementById('seasons-launch-modal')?.showModal();
+        restoreDraft();
         const plotId = query.get('setor');
         if (plotId && select && [...select.options].some((o) => o.value === plotId && !o.disabled)) {
             select.value = plotId;
