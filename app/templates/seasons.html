@@ -510,6 +510,7 @@
         if (option.value === '__novo__') {
             select.value = '';
             window.saveSeasonDraft?.();
+            window.showPageLoader?.('Abrindo cadastro de setor', 'Os dados desta safra ficam guardados.');
             window.location.href = option.dataset.href;
             return;
         }

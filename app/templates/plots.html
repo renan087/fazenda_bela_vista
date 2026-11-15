@@ -1217,6 +1217,10 @@
             }
             destroyPlotsBoundaryEditor();
             launchModal?.close();
+            if (new URLSearchParams(window.location.search).get('voltar') === 'safra') {
+                window.showPageLoader?.('Voltando para a safra', 'Seus dados preenchidos serão restaurados.');
+                window.location.href = '/safras?novo=1';
+            }
         };
 
         openButtons.forEach((button) => {
@@ -1240,6 +1244,9 @@
                 const back = document.createElement('input');
                 back.type = 'hidden'; back.name = 'return_to'; back.value = 'safra';
                 plotForm.appendChild(back);
+                plotForm.addEventListener('submit', (event) => {
+                    window.setTimeout(() => { if (!event.defaultPrevented) window.showPageLoader?.('Salvando setor', 'Em seguida você volta para a safra.'); }, 0);
+                });
             }
             launchModal.showModal();
             afterPlotsModalOpen();
