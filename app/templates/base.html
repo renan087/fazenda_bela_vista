@@ -31,7 +31,7 @@
         }
     </script>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-    <link rel="stylesheet" href="{{ url_for('static', path='css/styles.css') }}?v=20260426a">
+    <link rel="stylesheet" href="{{ url_for('static', path='css/styles.css') }}?v=20261115a">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="{{ url_for('static', path='js/currency-mask.js') }}?v=20260425a" defer></script>
@@ -411,30 +411,14 @@
                         </div>
                     </div>
                     <div class="flex min-w-0 shrink-0 items-center gap-3 md:gap-4">
-                    <form method="post" action="/contexto" class="hidden min-w-[20rem] rounded-2xl border border-slate-200 bg-mist/80 px-4 py-3 md:block" data-global-context-form data-season-options='{{ context_season_options|tojson|safe }}'>
-                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                        <input type="hidden" name="redirect_to" value="{{ current_url or request.url.path }}">
-                        <div class="grid gap-3 lg:grid-cols-2">
-                            <label class="block text-left">
-                                <span class="mb-1 block text-[11px] uppercase tracking-[0.25em] text-slate-400">Fazenda ativa</span>
-                                <select name="farm_id" class="w-full rounded-xl border-slate-200 bg-white/90 text-sm font-medium text-slate-700">
-                                    <option value="">Selecione uma fazenda</option>
-                                    {% for farm_option in context_farms|default([]) %}
-                                    <option value="{{ farm_option.id }}" {% if active_farm_id == farm_option.id %}selected{% endif %}>{{ farm_option.name }}</option>
-                                    {% endfor %}
-                                </select>
-                            </label>
-                            <label class="block text-left">
-                                <span class="mb-1 block text-[11px] uppercase tracking-[0.25em] text-slate-400">Safra ativa</span>
-                                <select name="season_id" class="w-full rounded-xl border-slate-200 bg-white/90 text-sm font-medium text-slate-700" data-context-season-select>
-                                    <option value="">{% if active_farm_id %}Selecione uma safra{% else %}Selecione uma fazenda primeiro{% endif %}</option>
-                                    {% for season_option in context_seasons|default([]) %}
-                                    <option value="{{ season_option.id }}" {% if active_season_id == season_option.id %}selected{% endif %}>{{ season_option.name }}</option>
-                                    {% endfor %}
-                                </select>
-                            </label>
-                        </div>
-                    </form>
+                    <button type="button" class="ctx-trigger hidden md:flex" data-context-picker-open aria-haspopup="dialog" aria-controls="context-picker" aria-expanded="false">
+                        <span class="ctx-dot {% if not (active_farm and active_season) %}is-empty{% endif %}" aria-hidden="true"></span>
+                        <span class="ctx-trigger-text">
+                            <span class="ctx-trigger-label">Contexto ativo</span>
+                            <span class="ctx-trigger-value">{% if active_farm %}{{ active_farm.name }}{% if active_season %} · {{ active_season.name }}{% else %} · selecione a safra{% endif %}{% else %}Selecionar fazenda e safra{% endif %}</span>
+                        </span>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+                    </button>
                     <div class="relative shrink-0">
                         <button
                             type="button"
@@ -470,44 +454,179 @@
                 </div>
             </div>
             <div class="mx-auto w-full min-w-0 max-w-7xl px-4 pt-4 sm:px-6 md:hidden">
-                <form method="post" action="/contexto" class="box-border w-full min-w-0 max-w-full rounded-2xl border border-slate-200 bg-mist/80 p-4 shadow-sm sm:p-5" data-global-context-form data-season-options='{{ context_season_options|tojson|safe }}'>
+                    <button type="button" class="ctx-trigger flex w-full" data-context-picker-open aria-haspopup="dialog" aria-controls="context-picker" aria-expanded="false">
+                        <span class="ctx-dot {% if not (active_farm and active_season) %}is-empty{% endif %}" aria-hidden="true"></span>
+                        <span class="ctx-trigger-text">
+                            <span class="ctx-trigger-label">Contexto ativo</span>
+                            <span class="ctx-trigger-value">{% if active_farm %}{{ active_farm.name }}{% if active_season %} · {{ active_season.name }}{% else %} · selecione a safra{% endif %}{% else %}Selecionar fazenda e safra{% endif %}</span>
+                        </span>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+                    </button>
+            </div>
+            <dialog id="context-picker" class="ctx-picker" aria-labelledby="context-picker-title">
+                <form method="post" action="/contexto" class="ctx-picker-form" data-context-picker-form data-season-options='{{ context_season_options|tojson|safe }}'>
                     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                     <input type="hidden" name="redirect_to" value="{{ current_url or request.url.path }}">
-                    <div class="flex items-center justify-end">
-                        <button type="button" class="stock-summary-toggle px-4 py-3 text-sm" data-mobile-context-toggle aria-expanded="false">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
-                                <path d="M12 5v14" data-mobile-context-toggle-plus></path>
-                                <path d="M5 12h14"></path>
-                            </svg>
-                            <span data-mobile-context-toggle-label>Mostrar Contexto</span>
+                    <div class="ctx-picker-grip" aria-hidden="true"></div>
+                    <div class="ctx-picker-head">
+                        <h2 id="context-picker-title">Trabalhar em…</h2>
+                        <button type="button" class="ctx-picker-close" data-context-picker-close aria-label="Fechar">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>
                         </button>
                     </div>
-                    <div class="stock-summary-collapse" data-mobile-context-collapse>
-                        <div class="stock-summary-collapse-inner">
-                            <div class="grid grid-cols-1 gap-4 md:grid-cols-2 md:gap-3">
-                                <label class="block min-w-0 w-full text-left">
-                                    <span class="mb-1 block text-[10px] uppercase tracking-[0.22em] text-slate-400">Fazenda ativa</span>
-                                    <select name="farm_id" class="min-h-[2.75rem] w-full min-w-0 max-w-full rounded-xl border-slate-200 bg-white/90 text-base font-medium text-slate-700 sm:text-sm">
-                                        <option value="">Selecione uma fazenda</option>
-                                        {% for farm_option in context_farms|default([]) %}
-                                        <option value="{{ farm_option.id }}" {% if active_farm_id == farm_option.id %}selected{% endif %}>{{ farm_option.name }}</option>
-                                        {% endfor %}
-                                    </select>
-                                </label>
-                                <label class="block min-w-0 w-full text-left">
-                                    <span class="mb-1 block text-[10px] uppercase tracking-[0.22em] text-slate-400">Safra ativa</span>
-                                    <select name="season_id" class="min-h-[2.75rem] w-full min-w-0 max-w-full rounded-xl border-slate-200 bg-white/90 text-base font-medium text-slate-700 sm:text-sm" data-context-season-select>
-                                        <option value="">{% if active_farm_id %}Selecione uma safra{% else %}Selecione uma fazenda primeiro{% endif %}</option>
-                                        {% for season_option in context_seasons|default([]) %}
-                                        <option value="{{ season_option.id }}" {% if active_season_id == season_option.id %}selected{% endif %}>{{ season_option.name }}</option>
-                                        {% endfor %}
-                                    </select>
-                                </label>
-                            </div>
+                    <label class="ctx-picker-search">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+                        <span class="sr-only">Buscar fazenda ou safra</span>
+                        <input type="search" placeholder="Buscar fazenda ou safra" autocomplete="off" data-context-picker-search>
+                    </label>
+                    <div class="ctx-picker-body">
+                        <fieldset class="ctx-picker-col ctx-picker-farms">
+                            <legend class="ctx-picker-group">Fazenda</legend>
+                            {% for farm_option in context_farms|default([]) %}
+                            <label class="ctx-option" data-context-farm-option data-search="{{ farm_option.name|lower }}">
+                                <input type="radio" name="farm_id" value="{{ farm_option.id }}" class="sr-only" {% if active_farm_id == farm_option.id %}checked{% endif %}>
+                                <span class="ctx-option-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M3 21V10l9-6 9 6v11"/><path d="M9 21v-6h6v6"/></svg></span>
+                                <span class="ctx-option-text"><span class="ctx-option-name">{{ farm_option.name }}</span><span class="ctx-option-meta" data-context-farm-count="{{ farm_option.id }}"></span></span>
+                                <svg class="ctx-option-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="m5 12 5 5 9-10"/></svg>
+                            </label>
+                            {% else %}
+                            <p class="ctx-picker-empty">Nenhuma fazenda cadastrada.</p>
+                            {% endfor %}
+                            <a href="/fazendas" class="ctx-picker-link">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+                                Cadastrar fazenda
+                            </a>
+                        </fieldset>
+                        <fieldset class="ctx-picker-col" data-context-season-list>
+                            <legend class="sr-only">Safra</legend>
+                        </fieldset>
+                    </div>
+                    <div class="ctx-picker-foot">
+                        <p>Vale para todas as páginas: lançamentos, custos e relatórios passam a usar esta fazenda e safra.</p>
+                        <div class="ctx-picker-actions">
+                            <button type="button" class="ctx-btn ctx-btn-secondary" data-context-picker-close>Cancelar</button>
+                            <button type="submit" class="ctx-btn ctx-btn-primary" data-context-picker-apply>Aplicar</button>
                         </div>
                     </div>
                 </form>
-            </div>
+            </dialog>
+            <script>
+            (() => {
+                const dialog = document.getElementById('context-picker');
+                const form = dialog?.querySelector('[data-context-picker-form]');
+                if (!dialog || !form) return;
+                const triggers = Array.from(document.querySelectorAll('[data-context-picker-open]'));
+                const seasonList = form.querySelector('[data-context-season-list]');
+                const searchInput = form.querySelector('[data-context-picker-search]');
+                const applyButton = form.querySelector('[data-context-picker-apply]');
+                const farmOptions = Array.from(form.querySelectorAll('[data-context-farm-option]'));
+                const seasons = JSON.parse(form.dataset.seasonOptions || '[]');
+                const activeSeasonId = '{{ active_season_id or "" }}';
+                const groups = [['ativa', 'Safras em andamento'], ['planejada', 'Planejadas'], ['encerrada', 'Encerradas']];
+                const statusText = { ativa: 'Em andamento', planejada: 'Planejada', encerrada: 'Encerrada' };
+                const plain = (v) => (v || '').toString().normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
+                let chosenSeason = activeSeasonId;
+
+                farmOptions.forEach((option) => {
+                    const id = option.querySelector('input').value;
+                    const total = seasons.filter((s) => String(s.farm_id) === id).length;
+                    const meta = option.querySelector('[data-context-farm-count]');
+                    if (meta) meta.textContent = total === 1 ? '1 safra' : `${total} safras`;
+                });
+
+                const selectedFarm = () => form.querySelector('input[name="farm_id"]:checked')?.value || '';
+
+                const renderSeasons = () => {
+                    const farmId = selectedFarm();
+                    const query = plain(searchInput?.value);
+                    const list = seasons.filter((s) => String(s.farm_id) === farmId && (!query || plain(s.name).includes(query)));
+                    if (!list.some((s) => String(s.id) === chosenSeason)) chosenSeason = '';
+                    seasonList.querySelectorAll(':scope > :not(legend)').forEach((node) => node.remove());
+                    if (!farmId) {
+                        seasonList.insertAdjacentHTML('beforeend', '<p class="ctx-picker-empty">Escolha uma fazenda para ver as safras.</p>');
+                    } else if (!list.length) {
+                        seasonList.insertAdjacentHTML('beforeend', `<p class="ctx-picker-empty">${query ? 'Nenhuma safra encontrada.' : 'Nenhuma safra cadastrada nesta fazenda.'}</p><a href="/safras" class="ctx-picker-link">Cadastrar safra</a>`);
+                    }
+                    groups.forEach(([status, title]) => {
+                        const items = list.filter((s) => s.status === status);
+                        if (!items.length) return;
+                        const heading = document.createElement('p');
+                        heading.className = 'ctx-picker-group';
+                        heading.textContent = title;
+                        seasonList.appendChild(heading);
+                        items.forEach((season) => {
+                            const label = document.createElement('label');
+                            label.className = 'ctx-option';
+                            const input = document.createElement('input');
+                            Object.assign(input, { type: 'radio', name: 'season_id', value: String(season.id), className: 'sr-only', checked: String(season.id) === chosenSeason });
+                            input.addEventListener('change', () => { chosenSeason = input.value; syncApply(); });
+                            const text = document.createElement('span');
+                            text.className = 'ctx-option-text';
+                            const name = document.createElement('span');
+                            name.className = 'ctx-option-name';
+                            name.textContent = season.name;
+                            const meta = document.createElement('span');
+                            meta.className = 'ctx-option-meta';
+                            meta.textContent = season.start && season.end ? `${season.start} – ${season.end}` : '';
+                            text.append(name, meta);
+                            const pill = document.createElement('span');
+                            pill.className = `sf-pill sf-pill-${season.status}`;
+                            pill.textContent = statusText[season.status] || season.status;
+                            label.append(input, text, pill);
+                            label.insertAdjacentHTML('beforeend', '<svg class="ctx-option-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="m5 12 5 5 9-10"/></svg>');
+                            seasonList.appendChild(label);
+                        });
+                    });
+                    syncApply();
+                };
+                const syncApply = () => {
+                    const farmId = selectedFarm();
+                    const hasSeasons = seasons.some((s) => String(s.farm_id) === farmId);
+                    applyButton.disabled = !farmId || (hasSeasons && !chosenSeason);
+                };
+
+                const placeDesktop = (trigger) => {
+                    if (!window.matchMedia('(min-width: 768px)').matches) { dialog.style.removeProperty('--ctx-top'); dialog.style.removeProperty('--ctx-right'); return; }
+                    const rect = trigger.getBoundingClientRect();
+                    dialog.style.setProperty('--ctx-top', `${Math.round(rect.bottom + 8)}px`);
+                    dialog.style.setProperty('--ctx-right', `${Math.max(16, Math.round(window.innerWidth - rect.right))}px`);
+                };
+                const open = (trigger) => {
+                    form.reset();
+                    chosenSeason = activeSeasonId;
+                    if (searchInput) searchInput.value = '';
+                    farmOptions.forEach((o) => o.classList.remove('hidden'));
+                    renderSeasons();
+                    placeDesktop(trigger);
+                    dialog.showModal();
+                    triggers.forEach((t) => t.setAttribute('aria-expanded', 'true'));
+                    if (window.matchMedia('(min-width: 768px)').matches) searchInput?.focus();
+                };
+                const close = () => dialog.close();
+                dialog.addEventListener('close', () => triggers.forEach((t) => t.setAttribute('aria-expanded', 'false')));
+                triggers.forEach((trigger) => trigger.addEventListener('click', () => open(trigger)));
+                dialog.querySelectorAll('[data-context-picker-close]').forEach((b) => b.addEventListener('click', close));
+                dialog.addEventListener('click', (event) => { if (event.target === dialog) close(); });
+                form.addEventListener('change', (event) => { if (event.target.name === 'farm_id') renderSeasons(); });
+                searchInput?.addEventListener('input', () => {
+                    const query = plain(searchInput.value);
+                    farmOptions.forEach((o) => {
+                        const farmId = o.querySelector('input').value;
+                        const matchesSeason = seasons.some((s) => String(s.farm_id) === farmId && plain(s.name).includes(query));
+                        o.classList.toggle('hidden', Boolean(query) && !o.dataset.search.includes(query) && !matchesSeason);
+                    });
+                    renderSeasons();
+                });
+                form.addEventListener('submit', () => window.showPageLoader?.('Trocando contexto', 'Atualizando os dados da fazenda e safra.'));
+                window.addEventListener('resize', () => { if (dialog.open) placeDesktop(triggers.find((t) => t.offsetParent) || triggers[0]); });
+                document.addEventListener('keydown', (event) => {
+                    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k' && !dialog.open) {
+                        const trigger = triggers.find((t) => t.offsetParent);
+                        if (trigger) { event.preventDefault(); open(trigger); }
+                    }
+                });
+            })();
+            </script>
             <div class="mx-auto w-full min-w-0 max-w-7xl flex-1 px-4 py-6 sm:px-6 md:py-8">
                 {% include "partials/maintenance_banner.html" %}
                 {% include "partials/billing_banner.html" %}

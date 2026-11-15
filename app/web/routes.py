@@ -295,6 +295,7 @@ router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")
 templates.env.filters["datetime_sp"] = format_app_datetime
 templates.env.filters["decimal_br"] = lambda value, places=2: _format_decimal_br(value, places)
+templates.env.filters["money_br"] = lambda value: _format_currency(value)
 templates.env.globals["subscription_cycles"] = SUBSCRIPTION_CYCLES
 templates.env.globals["format_app_datetime"] = format_app_datetime
 templates.env.globals["asaas_env"] = current_asaas_environment
@@ -1985,7 +1986,14 @@ def _global_scope_context(request: Request, repo: FarmRepository, user: User | N
         season for season in all_seasons if active_farm_id and season.farm_id == active_farm_id
     ]
     context_season_options = [
-        {"id": season.id, "farm_id": season.farm_id, "name": season.name}
+        {
+            "id": season.id,
+            "farm_id": season.farm_id,
+            "name": season.name,
+            "status": season.status,
+            "start": season.start_date.strftime("%m/%Y") if season.start_date else "",
+            "end": season.end_date.strftime("%m/%Y") if season.end_date else "",
+        }
         for season in all_seasons
     ]
     current_url = request.url.path
@@ -16164,6 +16172,22 @@ def crop_seasons_page(
             "culture_cost": operational_total,
             "variety_cost": operational_total if season.variety_id else 0,
         }
+    today = date.today()
+    season_timing = {season.id: _season_timing(season, today) for season in crop_seasons}
+    running = [season for season in crop_seasons if season.status == "ativa"]
+    running_area = sum(_season_area_hectares(season) for season in running)
+    running_cost = sum(season_costs[season.id]["operational_total"] for season in running)
+    season_summary = {
+        "counts": {
+            status: sum(1 for season in crop_seasons if season.status == status)
+            for status in ("ativa", "planejada", "encerrada")
+        },
+        "total": len(crop_seasons),
+        "running_plots": len({plot.id for season in running for plot in season.plots}),
+        "running_area": running_area,
+        "running_cost": running_cost,
+        "running_cost_per_ha": round(running_cost / running_area, 2) if running_area else 0,
+    }
     return templates.TemplateResponse(
         "seasons.html",
         _base_context(
@@ -16179,6 +16203,8 @@ def crop_seasons_page(
             varieties=repo.list_varieties(organization_id=scope.get("active_organization_id")),
             crop_seasons=crop_seasons,
             season_costs=season_costs,
+            season_timing=season_timing,
+            season_summary=season_summary,
             edit_season=edit_season,
             view_season=view_season,
         ),
@@ -16634,6 +16660,21 @@ SEASON_AREA_UNITS = {"ha": ("Hectares (ha)", 1.0), "m2": ("Metros quadrados (m²
 def _season_area_from_plots(plots, unit: str) -> float:
     hectares = sum(float(plot.area_hectares or 0) for plot in plots)
     return round(hectares / SEASON_AREA_UNITS.get(unit, SEASON_AREA_UNITS["ha"])[1], 2)
+
+
+def _season_timing(season, today: date) -> dict:
+    """Quanto do ciclo da safra ja passou, para a barra de progresso da lista."""
+    start, end = season.start_date, season.end_date
+    if not start or not end or end < start:
+        return {"pct": 0, "label": "Período não informado"}
+    if today < start:
+        days = (start - today).days
+        return {"pct": 0, "label": "Começa amanhã" if days == 1 else f"Começa em {days} dias"}
+    if today > end:
+        return {"pct": 100, "label": "Ciclo concluído"}
+    total = max((end - start).days, 1)
+    pct = round((today - start).days * 100 / total)
+    return {"pct": pct, "label": f"{pct}% do ciclo"}
 
 
 def _season_area_hectares(season) -> float:

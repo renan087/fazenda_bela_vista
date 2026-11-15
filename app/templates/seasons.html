@@ -17,118 +17,208 @@
 <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">{{ ns.d|safe }}</svg>
 {%- endmacro %}
 {% block content %}
-<div class="stock-page-shell space-y-6" data-modal-single-pane>
-    <section class="stock-page-header rounded-[2rem] p-5 shadow-panel">
-        <div class="flex flex-wrap items-start justify-between gap-4">
-            <div class="min-w-0 stock-page-header-intro" data-stock-header-intro>
-                <div class="stock-page-header-intro-inner">
-                    <h2 class="stock-page-card-title">Safras</h2>
-                    <p class="stock-page-card-subtitle">Planeje ciclos produtivos, acompanhe custos operacionais e organize a safra no mesmo padrão visual do sistema.</p>
-                </div>
-            </div>
-            <div class="stock-header-actions stock-header-actions-top stock-actions-row-mobile-adaptive max-[899px]:w-full">
-                <button type="button" class="stock-action-button stock-action-button-primary {% if not active_farm_id %}pointer-events-none opacity-60{% endif %}" data-seasons-launch-open {% if not active_farm_id %}disabled{% endif %}>
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-                        <path d="M12 5v14"/>
-                        <path d="M5 12h14"/>
-                    </svg>
-                    <span class="stock-action-button-label"><span class="sm:hidden">Nova</span><span class="hidden sm:inline">Nova safra</span></span>
-                </button>
-            </div>
+{% set area_units = {"ha": "ha", "m2": "m²", "alq": "alq. mineiro", "alq_sp": "alq. paulista"} %}
+{% set status_labels = {"ativa": "Em andamento", "planejada": "Planejada", "encerrada": "Encerrada"} %}
+<div class="sf-page" data-modal-single-pane>
+    <header class="sf-page-header">
+        <div class="min-w-0">
+            <h1 class="sf-page-title">Safras</h1>
+            <p class="sf-page-subtitle">Planeje ciclos produtivos e acompanhe área, setores e custos de cada safra.</p>
+        </div>
+        <button type="button" class="sf-btn sf-btn-primary hidden sm:inline-flex" data-seasons-launch-open {% if not active_farm_id %}disabled title="Selecione uma fazenda no topo da página"{% endif %}>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+            Nova safra
+        </button>
+    </header>
+
+    <section class="sf-kpis" aria-label="Resumo das safras">
+        <div class="sf-kpi">
+            <span class="sf-kpi-label">Safras em andamento</span>
+            <span class="sf-kpi-value">{{ season_summary.counts.ativa }}</span>
+            <span class="sf-kpi-hint">{% if season_summary.counts.planejada %}{{ season_summary.counts.planejada }} planejada(s){% else %}de {{ season_summary.total }} cadastrada(s){% endif %}</span>
+        </div>
+        <div class="sf-kpi">
+            <span class="sf-kpi-label">Setores em produção</span>
+            <span class="sf-kpi-value">{{ season_summary.running_plots }}</span>
+            <span class="sf-kpi-hint">{{ season_summary.running_area|decimal_br }} ha nas safras em andamento</span>
+        </div>
+        <div class="sf-kpi">
+            <span class="sf-kpi-label">Custo operacional</span>
+            <span class="sf-kpi-value">{{ season_summary.running_cost|money_br }}</span>
+            <span class="sf-kpi-hint">insumos e aplicações</span>
+        </div>
+        <div class="sf-kpi">
+            <span class="sf-kpi-label">Custo médio por hectare</span>
+            <span class="sf-kpi-value">{{ season_summary.running_cost_per_ha|money_br }}</span>
+            <span class="sf-kpi-hint">safras em andamento</span>
         </div>
     </section>
 
-    <section class="stock-panel rounded-[2rem] bg-white p-6 shadow-panel" data-stock-fade-panel>
-        <div class="flex flex-wrap items-start justify-between gap-4">
-            <div class="min-w-0">
-                <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Planejamento agrícola</p>
-                <h3 class="mt-2 text-2xl font-semibold">Safras cadastradas</h3>
-            </div>
-            <div class="stock-search-field">
-                <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
-                    <circle cx="8.5" cy="8.5" r="5.75"></circle>
-                    <path d="M13 13l4 4"></path>
-                </svg>
-                <input type="search" placeholder="Buscar safra, fazenda, cultura, variedade ou observação" data-seasons-search>
-            </div>
+    <section class="sf-toolbar" aria-label="Busca e filtros">
+        <label class="sf-search">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+            <span class="sr-only">Buscar safras</span>
+            <input type="search" placeholder="Buscar safra, cultura, variedade ou observação" data-seasons-search>
+        </label>
+        <div class="sf-chips" role="group" aria-label="Filtrar por situação">
+            <button type="button" class="sf-chip" aria-pressed="true" data-seasons-filter="">Todas <span>{{ season_summary.total }}</span></button>
+            {% for key in ["ativa", "planejada", "encerrada"] %}
+            <button type="button" class="sf-chip" aria-pressed="false" data-seasons-filter="{{ key }}">{{ {"ativa": "Em andamento", "planejada": "Planejadas", "encerrada": "Encerradas"}[key] }} <span>{{ season_summary.counts[key] }}</span></button>
+            {% endfor %}
         </div>
+        <label class="sf-sort">
+            <span class="sr-only">Ordenar safras</span>
+            <select data-seasons-sort>
+                <option value="recentes">Mais recentes</option>
+                <option value="antigas">Mais antigas</option>
+                <option value="nome">Nome (A–Z)</option>
+                <option value="area">Maior área</option>
+            </select>
+        </label>
+    </section>
 
-        <div class="mt-5 space-y-4" data-seasons-list>
-            {% for season in crop_seasons %}
-            {% set costs = season_costs.get(season.id, {}) %}
-            <article class="rounded-[1.5rem] border border-slate-100 bg-slate-50 p-5 lg:p-4" data-seasons-row data-seasons-search-text="{{ season.name }} {{ season.farm.name if season.farm else '' }} {{ season.culture }} {{ season.variety.name if season.variety else '' }} {{ season.status }} {{ season.notes or '' }}">
-                <div class="flex flex-wrap items-start justify-between gap-4 lg:gap-3">
-                    <div class="min-w-0 flex-1">
-                        <a href="/safras?view_id={{ season.id }}" class="inline-block text-left text-lg font-semibold text-slate-900 underline-offset-4 transition hover:text-brand-700 hover:underline lg:text-base">{{ season.name }}</a>
-                        <p class="mt-1 text-sm text-slate-500 lg:mt-0.5 lg:text-[13px]">{{ season.farm.name if season.farm else "Fazenda não informada" }} • {{ season.culture }}</p>
-                        <div class="mt-3 flex flex-wrap gap-2">
-                            <span class="stock-level-badge bg-brand-50 text-brand-700 ring-1 ring-brand-100">{{ season.variety.name if season.variety else "Sem variedade" }}</span>
-                            <span class="stock-level-badge bg-white text-slate-700 ring-1 ring-slate-200/80">{{ season.start_date.strftime('%d-%m-%Y') if season.start_date else '-' }} até {{ season.end_date.strftime('%d-%m-%Y') if season.end_date else '-' }}</span>
-                            <span class="stock-level-badge {% if season.status == 'ativa' %}bg-emerald-50 text-emerald-700 ring-1 ring-emerald-100{% elif season.status == 'encerrada' %}bg-slate-200 text-slate-700{% else %}bg-amber-50 text-amber-700 ring-1 ring-amber-100{% endif %}">{{ season.status }}</span>
+    <section class="sf-list" aria-label="Safras cadastradas" data-seasons-list>
+        {% for season in crop_seasons %}
+        {% set costs = season_costs.get(season.id, {}) %}
+        {% set timing = season_timing.get(season.id, {"pct": 0, "label": ""}) %}
+        {% set unit = area_units.get(season.area_unit, season.area_unit) %}
+        <article class="sf-card" data-seasons-row
+            data-status="{{ season.status }}"
+            data-name="{{ season.name|lower }}"
+            data-start="{{ season.start_date.isoformat() if season.start_date else '' }}"
+            data-area="{{ season.cultivated_area or 0 }}"
+            data-seasons-search-text="{{ season.name }} {{ season.farm.name if season.farm else '' }} {{ season.culture }} {{ season.variety.name if season.variety else '' }} {{ status_labels.get(season.status, season.status) }} {{ season.notes or '' }}">
+            <div class="sf-card-main">
+                <div class="sf-card-id">
+                    <span class="sf-card-icon">{{ culture_icon(season.culture) }}</span>
+                    <div class="min-w-0">
+                        <div class="flex flex-wrap items-center gap-2">
+                            <h2 class="sf-card-title"><a href="/safras?view_id={{ season.id }}">{{ season.name }}</a></h2>
+                            <span class="sf-pill sf-pill-{{ season.status }}">{{ status_labels.get(season.status, season.status) }}</span>
+                            {% if active_season_id == season.id %}<span class="sf-pill sf-pill-current">Em uso</span>{% endif %}
                         </div>
+                        <p class="sf-card-sub">{{ season.farm.name if season.farm else "Fazenda não informada" }} · {{ season.culture }}{% if season.variety %} · {{ season.variety.name }}{% endif %}</p>
                     </div>
-                    <div class="flex items-center gap-2 lg:gap-1.5">
-                        <a href="/safras?view_id={{ season.id }}" class="inline-flex h-9 items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 hover:bg-slate-100" title="Ver detalhes da safra"><svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>Detalhes</a>
-                        <a href="/safras?edit_id={{ season.id }}" class="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-100" title="Editar">
-                            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                <path d="M12 20h9"/>
-                                <path d="M16.5 3.5a2.1 2.1 0 1 1 3 3L7 19l-4 1 1-4Z"/>
-                            </svg>
-                        </a>
-                        <form method="post" action="/safras/{{ season.id }}/excluir" onsubmit="return confirm('Excluir a safra {{ season.name }}?');">
-                            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                            <button type="submit" class="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 text-rose-600 hover:bg-rose-50" title="Excluir">
-                                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                    <path d="M3 6h18"/>
-                                    <path d="M8 6V4h8v2"/>
-                                    <path d="M19 6l-1 14H6L5 6"/>
-                                    <path d="M10 11v6"/>
-                                    <path d="M14 11v6"/>
-                                </svg>
-                            </button>
-                        </form>
-                    </div>
-                </div>
-                <div class="mt-3 flex justify-center">
-                    <button type="button" class="stock-summary-toggle" data-seasons-detail-toggle aria-expanded="false">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-                            <path d="M5 12h14"/>
-                            <path d="M12 5v14" data-seasons-detail-toggle-plus></path>
-                        </svg>
-                        <span data-seasons-detail-toggle-label>Ver custos e detalhes</span>
-                    </button>
                 </div>
 
-                <div class="stock-summary-collapse" data-seasons-detail-collapse>
-                    <div class="stock-summary-collapse-inner">
-                        <div class="mt-1 grid gap-3 text-sm text-slate-600 sm:grid-cols-2 xl:grid-cols-3">
-                            <p>Área cultivada: <strong>{{ season.cultivated_area|decimal_br }} {{ {"ha": "ha", "m2": "m²", "alq": "alq. mineiro", "alq_sp": "alq. paulista"}.get(season.area_unit, season.area_unit) }}</strong></p>
-                            <p>Insumos consumidos: <strong>R$ {{ '%.2f'|format(costs.get('consumed_inputs_cost', 0)) }}</strong></p>
-                            <p>Custo operacional total: <strong>R$ {{ '%.2f'|format(costs.get('operational_total', 0)) }}</strong></p>
-                            <p>Custo por hectare: <strong>R$ {{ '%.2f'|format(costs.get('cost_per_hectare', 0)) }}/ha</strong></p>
-                            <p>Cultura: <strong>R$ {{ '%.2f'|format(costs.get('culture_cost', 0)) }}</strong></p>
-                            <p>{% if season.variety %}Variedade: <strong>R$ {{ '%.2f'|format(costs.get('variety_cost', 0)) }}</strong>{% else %}Variedade: <strong>-</strong>{% endif %}</p>
+                <div class="sf-card-cycle">
+                    <div class="sf-card-cycle-text">
+                        <span>{{ season.start_date.strftime('%d/%m/%Y') if season.start_date else '—' }} – {{ season.end_date.strftime('%d/%m/%Y') if season.end_date else '—' }}</span>
+                        <strong>{{ timing.label }}</strong>
+                    </div>
+                    <div class="sf-progress" role="progressbar" aria-label="Andamento do ciclo" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{ timing.pct }}"><span style="width: {{ timing.pct }}%"></span></div>
+                </div>
+
+                <dl class="sf-metrics">
+                    <div><dt>Área</dt><dd>{{ season.cultivated_area|decimal_br }} {{ unit }}</dd></div>
+                    <div><dt>Setores</dt><dd>{{ season.plots|length }}</dd></div>
+                    <div class="sf-metric-total"><dt>Custo total</dt><dd>{{ costs.get('operational_total', 0)|money_br }}</dd></div>
+                    <div><dt>Custo/ha</dt><dd>{{ costs.get('cost_per_hectare', 0)|money_br }}</dd></div>
+                </dl>
+
+                <div class="sf-card-actions">
+                    <button type="button" class="sf-btn sf-btn-secondary sf-card-toggle" data-seasons-detail-toggle aria-expanded="false" aria-controls="season-detail-{{ season.id }}">
+                        <span data-seasons-detail-toggle-label>Detalhes</span>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+                    </button>
+                    <a href="/safras?edit_id={{ season.id }}" class="sf-icon-btn hidden md:inline-flex" aria-label="Editar {{ season.name }}" title="Editar">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 1 1 3 3L7 19l-4 1 1-4Z"/></svg>
+                    </a>
+                    <details class="sf-menu" data-seasons-menu>
+                        <summary class="sf-icon-btn" aria-label="Mais ações para {{ season.name }}" title="Mais ações">
+                            <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="12" cy="5" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="12" cy="19" r="1.7"/></svg>
+                        </summary>
+                        <div class="sf-menu-panel">
+                            <a href="/safras?view_id={{ season.id }}">Abrir painel da safra</a>
+                            <a href="/safras?edit_id={{ season.id }}">Editar</a>
+                            <form method="post" action="/safras/{{ season.id }}/excluir" onsubmit="return confirm('Excluir a safra {{ season.name }}? Esta ação não pode ser desfeita.');">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                                <button type="submit" class="sf-menu-danger">Excluir safra</button>
+                            </form>
+                        </div>
+                    </details>
+                </div>
+            </div>
+
+            <div class="sf-card-detail" id="season-detail-{{ season.id }}" data-seasons-detail-collapse hidden>
+                <div class="sf-detail-grid">
+                    <div class="sf-detail-box">
+                        <div class="sf-detail-head">
+                            <h3>Setores vinculados</h3>
+                            <a href="/setores">Gerenciar setores</a>
                         </div>
                         {% if season.plots %}
                         {% set links = season.planting_by_plot %}
-                        <ul class="mt-3 flex flex-wrap gap-2 text-xs text-slate-600">
+                        <div class="hidden overflow-x-auto md:block">
+                            <table class="sf-table">
+                                <thead><tr><th>Setor</th><th>Área</th><th>Variedade</th><th>Plantio</th><th>Situação</th></tr></thead>
+                                <tbody>
+                                    {% for plot in season.plots %}{% set pl = links.get(plot.id) %}
+                                    <tr>
+                                        <td class="font-semibold text-slate-900">{{ plot.name }}</td>
+                                        <td>{{ plot.area_hectares|decimal_br }} ha</td>
+                                        <td>{% if pl %}{% if pl.culture|lower != season.culture|lower %}{{ pl.culture }} · {% endif %}{{ pl.variety.name if pl.variety else 'Sem variedade' }}{% else %}—{% endif %}</td>
+                                        <td>{{ pl.planting_date.strftime('%m/%Y') if pl and pl.planting_date else '—' }}</td>
+                                        <td>{% if pl and pl.ended_on %}<span class="sf-pill sf-pill-renewed">Renovado em {{ pl.ended_on.strftime('%m/%Y') }}</span>{% elif pl %}<span class="sf-pill sf-pill-ativa">Vigente</span>{% else %}—{% endif %}</td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                        <ul class="sf-plot-list md:hidden">
                             {% for plot in season.plots %}{% set pl = links.get(plot.id) %}
-                            <li class="rounded-full bg-white px-3 py-1 ring-1 ring-slate-200"><strong class="text-slate-800">{{ plot.name }}</strong>{% if pl %} · {{ pl.culture }}{% if pl.variety %} {{ pl.variety.name }}{% endif %}{% if pl.planting_date %} · plantio {{ pl.planting_date.strftime('%m/%Y') }}{% endif %}{% if pl.ended_on %} · <span class="text-amber-700">renovado em {{ pl.ended_on.strftime('%m/%Y') }}</span>{% endif %}{% endif %}</li>
+                            <li>
+                                <div class="min-w-0 flex-1">
+                                    <p class="font-semibold text-slate-900">{{ plot.name }}</p>
+                                    <p class="text-xs text-slate-500">{{ plot.area_hectares|decimal_br }} ha{% if pl %} · {{ pl.variety.name if pl.variety else 'Sem variedade' }}{% if pl.planting_date %} · plantio {{ pl.planting_date.strftime('%m/%Y') }}{% endif %}{% endif %}</p>
+                                </div>
+                                {% if pl and pl.ended_on %}<span class="sf-pill sf-pill-renewed">Renovado</span>{% elif pl %}<span class="sf-pill sf-pill-ativa">Vigente</span>{% endif %}
+                            </li>
                             {% endfor %}
                         </ul>
-                        {% endif %}
-                        {% if season.notes %}
-                        <p class="mt-3 text-sm text-slate-500">{{ season.notes }}</p>
+                        {% else %}
+                        <p class="px-4 pb-4 text-sm text-slate-500">Nenhum setor vinculado a esta safra.</p>
                         {% endif %}
                     </div>
+                    <div class="flex flex-col gap-3">
+                        <div class="sf-detail-box p-4">
+                            <h3 class="mb-3 text-sm font-semibold text-slate-900">Composição de custos</h3>
+                            <dl class="sf-metrics sf-metrics-2">
+                                <div><dt>Insumos consumidos</dt><dd>{{ costs.get('consumed_inputs_cost', 0)|money_br }}</dd></div>
+                                <div><dt>Aplicações</dt><dd>{{ costs.get('application_cost', 0)|money_br }}</dd></div>
+                                <div><dt>Combustível</dt><dd>{{ costs.get('fuel_cost', 0)|money_br }}</dd></div>
+                                <div><dt>Total</dt><dd>{{ costs.get('operational_total', 0)|money_br }}</dd></div>
+                            </dl>
+                        </div>
+                        {% if season.notes %}
+                        <div class="sf-detail-box p-4">
+                            <h3 class="mb-1 text-sm font-semibold text-slate-900">Observações</h3>
+                            <p class="whitespace-pre-line text-sm text-slate-600">{{ season.notes }}</p>
+                        </div>
+                        {% endif %}
+                        <a href="/safras?view_id={{ season.id }}" class="sf-btn sf-btn-primary justify-center">
+                            Abrir painel da safra
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M5 12h14m-6-6 6 6-6 6"/></svg>
+                        </a>
+                    </div>
                 </div>
-            </article>
-            {% else %}
-            <p class="text-sm text-slate-500">Nenhuma safra cadastrada.</p>
-            {% endfor %}
+            </div>
+        </article>
+        {% else %}
+        <div class="sf-empty">
+            <span class="sf-card-icon">{{ culture_icon('') }}</span>
+            <p class="font-semibold text-slate-900">Nenhuma safra cadastrada</p>
+            <p class="text-sm text-slate-500">{% if active_farm_id %}Cadastre a primeira safra desta fazenda para acompanhar setores e custos.{% else %}Selecione uma fazenda no topo da página para cadastrar safras.{% endif %}</p>
         </div>
-        <p class="stock-search-empty mt-4 hidden text-sm text-slate-500" data-seasons-search-empty>Nenhuma safra corresponde à busca digitada.</p>
+        {% endfor %}
     </section>
+    <p class="sf-empty hidden" data-seasons-search-empty>Nenhuma safra corresponde à busca ou ao filtro escolhido.</p>
+    {% if crop_seasons %}<p class="text-center text-sm text-slate-500" data-seasons-count>{{ crop_seasons|length }} safra(s)</p>{% endif %}
+
+    <button type="button" class="sf-fab sm:hidden" data-seasons-launch-open {% if not active_farm_id %}disabled{% endif %}>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+        Nova safra
+    </button>
 </div>
 
 {% set sm = edit_season or view_season %}
@@ -368,12 +458,6 @@
         const launchModal = document.getElementById('seasons-launch-modal');
         const openButtons = Array.from(document.querySelectorAll('[data-seasons-launch-open]'));
         const closeButtons = Array.from(document.querySelectorAll('[data-seasons-launch-close]'));
-        const searchInput = document.querySelector('[data-seasons-search]');
-        const rows = Array.from(document.querySelectorAll('[data-seasons-row]'));
-        const emptyState = document.querySelector('[data-seasons-search-empty]');
-        const stickyHeader = document.querySelector('.stock-page-header');
-        const headerIntro = stickyHeader?.querySelector('[data-stock-header-intro]');
-        const fadingPanels = Array.from(document.querySelectorAll('[data-stock-fade-panel]'));
         const isEditing = {{ 'true' if edit_season else 'false' }};
         const isViewing = {{ 'true' if view_season and not edit_season else 'false' }};
 
@@ -396,171 +480,82 @@
                 launchModal?.showModal();
             });
         });
-
-        closeButtons.forEach((button) => {
-            button.addEventListener('click', () => closeModal());
-        });
-
+        closeButtons.forEach((button) => button.addEventListener('click', () => closeModal()));
         launchModal?.addEventListener('cancel', (event) => {
             event.preventDefault();
             closeModal();
         });
-
         if (isEditing || isViewing) launchModal?.showModal();
 
-        document.querySelector('[data-seasons-list]')?.addEventListener('click', (event) => {
+        // Lista: detalhes, menu de acoes, busca, filtro por situacao e ordenacao.
+        const list = document.querySelector('[data-seasons-list]');
+        const rows = Array.from(document.querySelectorAll('[data-seasons-row]'));
+        const searchInput = document.querySelector('[data-seasons-search]');
+        const filterButtons = Array.from(document.querySelectorAll('[data-seasons-filter]'));
+        const sortSelect = document.querySelector('[data-seasons-sort]');
+        const emptyState = document.querySelector('[data-seasons-search-empty]');
+        const countLabel = document.querySelector('[data-seasons-count]');
+        let statusFilter = '';
+
+        list?.addEventListener('click', (event) => {
             const toggle = event.target instanceof Element ? event.target.closest('[data-seasons-detail-toggle]') : null;
             if (!toggle) return;
             const article = toggle.closest('[data-seasons-row]');
-            const collapse = article?.querySelector('[data-seasons-detail-collapse]');
-            const label = toggle.querySelector('[data-seasons-detail-toggle-label]');
-            const plus = toggle.querySelector('[data-seasons-detail-toggle-plus]');
-            if (!collapse) return;
-            const expanded = !collapse.classList.contains('is-expanded');
-            collapse.classList.toggle('is-expanded', expanded);
+            const detail = article?.querySelector('[data-seasons-detail-collapse]');
+            if (!detail) return;
+            const expanded = detail.hidden;
+            detail.hidden = !expanded;
+            article.classList.toggle('is-open', expanded);
             toggle.setAttribute('aria-expanded', expanded ? 'true' : 'false');
-            if (label) label.textContent = expanded ? 'Ocultar custos e detalhes' : 'Ver custos e detalhes';
-            if (plus) plus.classList.toggle('hidden', expanded);
+            const label = toggle.querySelector('[data-seasons-detail-toggle-label]');
+            if (label) label.textContent = expanded ? 'Recolher' : 'Detalhes';
         });
 
-        const contextToggle = document.querySelector('[data-seasons-context-toggle]');
-        const contextCollapse = document.querySelector('[data-seasons-context-collapse]');
-        const contextToggleLabel = document.querySelector('[data-seasons-context-toggle-label]');
-        const contextTogglePlus = document.querySelector('[data-seasons-context-toggle-plus]');
-        const syncContextToggle = (expanded) => {
-            if (!contextCollapse || !contextToggle) return;
-            contextCollapse.classList.toggle('is-expanded', expanded);
-            contextToggle.setAttribute('aria-expanded', expanded ? 'true' : 'false');
-            if (contextToggleLabel) contextToggleLabel.textContent = expanded ? 'Recolher' : 'Expandir';
-            if (contextTogglePlus) contextTogglePlus.classList.toggle('hidden', expanded);
-        };
-        syncContextToggle(false);
-        contextToggle?.addEventListener('click', () => {
-            const expanded = !contextCollapse?.classList.contains('is-expanded');
-            syncContextToggle(!!expanded);
+        const menus = Array.from(document.querySelectorAll('[data-seasons-menu]'));
+        menus.forEach((menu) => menu.addEventListener('toggle', () => {
+            if (menu.open) menus.forEach((other) => { if (other !== menu) other.open = false; });
+        }));
+        document.addEventListener('click', (event) => {
+            menus.forEach((menu) => { if (menu.open && !menu.contains(event.target)) menu.open = false; });
+        });
+        document.addEventListener('keydown', (event) => {
+            if (event.key !== 'Escape') return;
+            menus.forEach((menu) => { if (menu.open) { menu.open = false; menu.querySelector('summary')?.focus(); } });
         });
 
-        const form = document.querySelector('[data-season-form]');
-        const formReadonly = form?.hasAttribute('data-season-readonly');
-        const startInput = form?.querySelector('[data-season-start]');
-        const endInput = form?.querySelector('[data-season-end]');
-        const nameInput = form?.querySelector('[data-season-name]');
-        let manualName = !!(nameInput?.value || '').trim();
-
-        const suggestion = () => {
-            if (!startInput?.value || !endInput?.value) return '';
-            const startYear = new Date(startInput.value).getUTCFullYear();
-            const endYear = new Date(endInput.value).getUTCFullYear();
-            if (!startYear || !endYear) return '';
-            return `Safra ${startYear}/${endYear}`;
-        };
-
-        const syncName = () => {
-            if (!nameInput || manualName) return;
-            const value = suggestion();
-            if (value) nameInput.value = value;
-        };
-
-        if (!formReadonly) {
-            nameInput?.addEventListener('input', () => {
-                manualName = !!nameInput.value.trim();
-            });
-            startInput?.addEventListener('change', syncName);
-            endInput?.addEventListener('change', syncName);
-            if (!manualName) syncName();
-        } else {
-            form?.addEventListener('submit', (e) => e.preventDefault());
-        }
-
-        const normalizeText = (value) => (value || '').toString().normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
-        const applyLocalSearch = () => {
+        const normalizeText = (value) => (value || '').toString().normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
+        const applyFilters = () => {
             const query = normalizeText(searchInput?.value || '');
             let visible = 0;
             rows.forEach((row) => {
                 const haystack = normalizeText(row.dataset.seasonsSearchText || row.textContent);
-                const matches = !query || haystack.includes(query);
+                const matches = (!query || haystack.includes(query)) && (!statusFilter || row.dataset.status === statusFilter);
                 row.classList.toggle('hidden', !matches);
                 if (matches) visible += 1;
             });
-            emptyState?.classList.toggle('hidden', visible !== 0);
+            emptyState?.classList.toggle('hidden', !rows.length || visible !== 0);
+            if (countLabel) countLabel.textContent = visible === rows.length ? `${rows.length} safra(s)` : `Mostrando ${visible} de ${rows.length} safra(s)`;
         };
-        searchInput?.addEventListener('input', applyLocalSearch);
-        applyLocalSearch();
-
-        const mobileCompactMq = window.matchMedia('(max-width: 899px)');
-        const parseStickyTopPx = (el) => {
-            const raw = getComputedStyle(el).top;
-            if (!raw || raw === 'auto') return 0;
-            const pxMatch = /^([\d.]+)px$/.exec(raw);
-            if (pxMatch) return parseFloat(pxMatch[1]);
-            const remMatch = /^([\d.]+)rem$/.exec(raw);
-            if (remMatch) {
-                const rootPx = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
-                return parseFloat(remMatch[1]) * rootPx;
-            }
-            return 0;
-        };
-
-        let compactRaf = null;
-        const syncHeaderCompact = () => {
-            compactRaf = null;
-            if (!stickyHeader) return;
-            if (!mobileCompactMq.matches) {
-                stickyHeader.classList.remove('is-compact');
-                if (headerIntro) headerIntro.removeAttribute('aria-hidden');
-                return;
-            }
-            const topPx = parseStickyTopPx(stickyHeader);
-            const rect = stickyHeader.getBoundingClientRect();
-            const isCompact = stickyHeader.classList.contains('is-compact');
-            let nextCompact = isCompact;
-            if (rect.top <= topPx + 2) nextCompact = true;
-            else if (rect.top > topPx + 8) nextCompact = false;
-            stickyHeader.classList.toggle('is-compact', nextCompact);
-            if (headerIntro) headerIntro.setAttribute('aria-hidden', nextCompact ? 'true' : 'false');
-        };
-
-        const scheduleHeaderCompact = () => {
-            if (compactRaf !== null) return;
-            compactRaf = window.requestAnimationFrame(syncHeaderCompact);
-        };
-
-        if (stickyHeader) {
-            window.addEventListener('scroll', scheduleHeaderCompact, { passive: true });
-            window.addEventListener('resize', scheduleHeaderCompact);
-            mobileCompactMq.addEventListener('change', scheduleHeaderCompact);
-            scheduleHeaderCompact();
-        }
-
-        if (!stickyHeader || !fadingPanels.length) return;
-        let rafId = null;
-        const updateFadingPanels = () => {
-            rafId = null;
-            const stickyRect = stickyHeader.getBoundingClientRect();
-            const stickyBottom = stickyRect.bottom;
-            fadingPanels.forEach((panel) => {
-                const panelRect = panel.getBoundingClientRect();
-                const panelTop = panelRect.top;
-                const panelH = panelRect.height;
-                if (panelTop >= stickyBottom || panelH <= 1) {
-                    panel.style.setProperty('--stock-fade-cutoff', '0px');
-                    panel.style.setProperty('--stock-fade-feather-end', '0px');
-                    return;
-                }
-                const rawOverlap = Math.max(stickyBottom - panelTop, 0);
-                const overlap = Math.min(rawOverlap, panelH);
-                const featherBand = Math.min(80, Math.max(22, overlap * 0.45 + 16));
-                panel.style.setProperty('--stock-fade-cutoff', `${overlap.toFixed(2)}px`);
-                panel.style.setProperty('--stock-fade-feather-end', `${(overlap + featherBand).toFixed(2)}px`);
+        const applySort = () => {
+            if (!list || !sortSelect) return;
+            const mode = sortSelect.value;
+            const sorted = [...rows].sort((a, b) => {
+                if (mode === 'nome') return a.dataset.name.localeCompare(b.dataset.name, 'pt-BR');
+                if (mode === 'area') return (parseFloat(b.dataset.area) || 0) - (parseFloat(a.dataset.area) || 0);
+                const diff = (a.dataset.start || '').localeCompare(b.dataset.start || '');
+                return mode === 'antigas' ? diff : -diff;
             });
+            sorted.forEach((row) => list.appendChild(row));
         };
-        const scheduleFadeUpdate = () => {
-            if (rafId !== null) return;
-            rafId = window.requestAnimationFrame(updateFadingPanels);
-        };
-        window.addEventListener('scroll', scheduleFadeUpdate, { passive: true });
-        window.addEventListener('resize', scheduleFadeUpdate);
-        scheduleFadeUpdate();
+        filterButtons.forEach((button) => button.addEventListener('click', () => {
+            statusFilter = button.dataset.seasonsFilter || '';
+            filterButtons.forEach((other) => other.setAttribute('aria-pressed', other === button ? 'true' : 'false'));
+            applyFilters();
+        }));
+        searchInput?.addEventListener('input', applyFilters);
+        sortSelect?.addEventListener('change', applySort);
+        applySort();
+        applyFilters();
     })();
 </script>
 <script>
