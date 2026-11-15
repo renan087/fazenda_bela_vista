@@ -140,7 +140,43 @@
         </div>
     </section>
     {% else %}
-    <section class="rounded-[2rem] border border-dashed border-slate-300 bg-white p-8 text-center text-sm text-slate-500">Nenhum plano cadastrado ainda. As assinaturas atuais seguem como planos personalizados.</section>
+    <section data-stock-fade-panel class="rounded-[2rem] border border-dashed border-slate-300 bg-white p-8 text-center text-sm text-slate-500">Nenhum plano cadastrado ainda. As assinaturas atuais seguem como planos personalizados.</section>
     {% endfor %}
 </div>
+<script>
+(() => {
+    const header = document.querySelector('.stock-page-header');
+    const description = header?.querySelector('[data-sector-costs-description]');
+    const panels = document.querySelectorAll('[data-stock-fade-panel]');
+    const mobile = window.matchMedia('(max-width: 899px)');
+    let raf = null;
+    const update = () => {
+        raf = null;
+        if (!header) return;
+        const top = parseFloat(getComputedStyle(header).top) || 0;
+        const rect = header.getBoundingClientRect();
+        const current = header.classList.contains('is-compact');
+        const compact = mobile.matches && (rect.top <= top + 2 ? true : rect.top > top + 8 ? false : current);
+        header.classList.toggle('is-compact', compact);
+        if (mobile.matches) description?.setAttribute('aria-hidden', compact ? 'true' : 'false');
+        else description?.removeAttribute('aria-hidden');
+        const bottom = header.getBoundingClientRect().bottom;
+        panels.forEach((panel) => {
+            const bounds = panel.getBoundingClientRect();
+            const overlap = Math.min(Math.max(bottom - bounds.top, 0), bounds.height);
+            const feather = overlap > 0 ? Math.min(80, Math.max(22, overlap * 0.45 + 16)) : 0;
+            panel.style.setProperty('--stock-fade-cutoff', `${overlap.toFixed(2)}px`);
+            panel.style.setProperty('--stock-fade-feather-end', `${(overlap + feather).toFixed(2)}px`);
+            panel.classList.toggle('stock-panel-under-header', mobile.matches && overlap > 0.02);
+        });
+    };
+    const schedule = () => { if (raf === null) raf = window.requestAnimationFrame(update); };
+    window.addEventListener('scroll', schedule, { passive: true });
+    window.addEventListener('resize', schedule);
+    mobile.addEventListener?.('change', schedule);
+    header?.addEventListener('transitionend', schedule);
+    document.addEventListener("toggle", schedule, true);
+    update();
+})();
+</script>
 {% endblock %}
