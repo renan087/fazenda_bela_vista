@@ -50,6 +50,36 @@
         <label class="flex items-center gap-2 self-end rounded-xl border border-slate-200 px-3 py-3 text-sm text-slate-700"><input type="checkbox" name="is_featured" value="1" {% if plan and plan.is_featured %}checked{% endif %} class="rounded border-slate-300 text-brand-500">Destacar como “Mais escolhido”</label>
     </div>
 {% endmacro %}
+{% macro plan_modal(id, action, eyebrow, title, subtitle, submit, plan=None, locked=False, note=None, note_tone='slate', hidden_locked=False) %}
+<dialog id="{{ id }}" class="app-modal plan-modal w-full max-w-3xl rounded-[2rem] p-0 shadow-2xl" aria-labelledby="{{ id }}-title">
+    <form method="post" action="{{ action }}" class="flex max-h-[90vh] flex-col bg-white" data-busy-form>
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <header class="flex items-start justify-between gap-4 border-b border-slate-100 px-6 pb-4 pt-6">
+            <div class="min-w-0">
+                <p class="text-xs font-semibold uppercase tracking-[0.25em] text-slate-400">{{ eyebrow }}</p>
+                <h3 id="{{ id }}-title" class="mt-1 text-xl font-semibold text-slate-900">{{ title }}</h3>
+                <p class="mt-1 text-sm text-slate-500">{{ subtitle }}</p>
+            </div>
+            <button type="button" data-dialog-close class="grid h-10 w-10 shrink-0 place-items-center rounded-full text-slate-400 hover:bg-slate-100 hover:text-slate-700" aria-label="Fechar"><svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
+        </header>
+        <div class="flex-1 overflow-y-auto px-6 py-5" data-modal-scroll>
+            {% if note %}<p class="mb-4 rounded-xl px-3 py-2 text-sm {{ 'bg-amber-50 text-amber-900' if note_tone == 'amber' else 'bg-emerald-50 text-emerald-900' }}">{{ note }}</p>{% endif %}
+            {% if hidden_locked %}
+            {# Campos travados nao sao enviados pelo navegador; reenvia os valores atuais para a validacao. #}
+            <input type="hidden" name="name" value="{{ plan.name }}">
+            {% for code, cycle_info in subscription_cycles.items() %}{% set price = plan_prices_of(plan).get(code) %}<input type="hidden" name="{{ cycle_info[2] }}" value="{{ price|decimal_br if price is not none else '' }}">{% endfor %}
+            <input type="hidden" name="max_farms" value="{{ plan.max_farms or '' }}"><input type="hidden" name="max_users" value="{{ plan.max_users or '' }}"><input type="hidden" name="max_hectares" value="{{ plan.max_hectares|decimal_br if plan.max_hectares else '' }}"><input type="hidden" name="trial_days" value="{{ plan.trial_days or '' }}">
+            {% for code in plan_modules_of(plan) %}<input type="hidden" name="modules" value="{{ code }}">{% endfor %}
+            {% endif %}
+            {{ plan_fields(plan, locked) }}
+        </div>
+        <footer class="flex flex-col-reverse gap-2 border-t border-slate-100 bg-slate-50/60 px-6 py-4 sm:flex-row sm:justify-end">
+            <button type="button" data-dialog-close class="rounded-xl bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50">Cancelar</button>
+            <button class="rounded-xl bg-brand-500 px-5 py-2.5 text-sm font-semibold text-white hover:bg-brand-700">{{ submit }}</button>
+        </footer>
+    </form>
+</dialog>
+{% endmacro %}
 {% block content %}
 {% set status_styles = {'ativo': 'bg-emerald-50 text-emerald-800', 'rascunho': 'bg-amber-50 text-amber-800', 'arquivado': 'bg-slate-100 text-slate-600'} %}
 <div class="stock-page-shell space-y-6">
@@ -61,21 +91,11 @@
                     <p class="stock-page-card-subtitle" data-sector-costs-description>Catálogo usado ao criar assinaturas. Assinantes mantêm as condições da versão contratada.</p>
                 </div>
             </div>
-            <a href="/assinaturas" class="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50">Ver assinaturas</a>
+            <div class="flex flex-wrap gap-2">
+                <a href="/assinaturas" class="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 hover:bg-slate-50">Ver assinaturas</a>
+                <button type="button" data-dialog-open="plan-new" class="rounded-2xl bg-brand-500 px-4 py-3 text-sm font-semibold text-white hover:bg-brand-700">+ Novo plano</button>
+            </div>
         </div>
-    </section>
-
-    <section class="stock-panel rounded-[2rem] border border-slate-200 bg-white p-5 shadow-panel sm:p-6" data-stock-fade-panel>
-        <details {% if not plan_families %}open{% endif %}>
-            <summary class="cursor-pointer list-none">
-                <div class="flex flex-wrap items-center justify-between gap-3"><div><p class="text-xs font-semibold uppercase tracking-[0.25em] text-slate-400">Catálogo</p><h3 class="mt-2 text-xl font-semibold text-slate-900">Novo plano</h3><p class="mt-1 text-sm text-slate-500">O plano nasce como rascunho e só aparece nas assinaturas depois de ativado.</p></div><span class="rounded-xl bg-brand-500 px-4 py-3 text-sm font-semibold text-white">Criar plano</span></div>
-            </summary>
-            <form method="post" action="/planos" class="mt-5">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                {{ plan_fields() }}
-                <div class="mt-5 flex justify-end"><button class="rounded-xl bg-brand-500 px-5 py-3 text-sm font-semibold text-white hover:bg-brand-700">Salvar rascunho</button></div>
-            </form>
-        </details>
     </section>
 
     {% for versions in plan_families %}
@@ -103,6 +123,7 @@
                 {% set modules = plan_modules_of(plan) %}
                 <p class="mt-1 text-sm text-slate-600"><strong>Módulos:</strong> {% if modules %}{% for code, label in plan_modules_catalog if code in modules %}{{ label }}{% if not loop.last %}, {% endif %}{% endfor %}{% else %}somente dashboard{% endif %}</p>
                 <div class="mt-4 flex flex-wrap items-center gap-2">
+                    {% if plan.status != 'arquivado' %}<button type="button" data-dialog-open="plan-edit-{{ plan.id }}" class="rounded-xl border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">Editar</button>{% endif %}
                     {% if plan.status == 'rascunho' %}
                     <form method="post" action="/planos/{{ plan.id }}/acao" onsubmit="return confirm('Ativar esta versão para novas assinaturas?{% if versions|selectattr('status', 'equalto', 'ativo')|list %} A versão ativa atual será arquivada; assinantes atuais mantêm o que contrataram.{% endif %}');"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="action" value="ativar"><button class="rounded-xl bg-brand-500 px-4 py-2 text-sm font-semibold text-white hover:bg-brand-700">Ativar</button></form>
                     {% elif plan.status == 'ativo' %}
@@ -111,38 +132,39 @@
                     <form method="post" action="/planos/{{ plan.id }}/acao" onsubmit="return confirm('Reativar esta versão para novas assinaturas?{% if versions|selectattr('status', 'equalto', 'ativo')|list %} A versão ativa atual será arquivada.{% endif %}');"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="action" value="ativar"><button class="rounded-xl border border-emerald-300 px-4 py-2 text-sm font-semibold text-emerald-800 hover:bg-emerald-50">Reativar</button></form>
                     {% endif %}
                     {% if loop.first and not (versions|selectattr('status', 'equalto', 'rascunho')|list) %}
-                    <form method="post" action="/planos/{{ plan.id }}/acao"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="action" value="nova_versao"><button class="rounded-xl border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">Criar nova versão</button></form>
+                    <button type="button" data-dialog-open="plan-version-{{ plan.id }}" class="rounded-xl border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50">Criar nova versão</button>
                     {% endif %}
                     {% if plan.status == 'rascunho' and not locked %}
                     <form method="post" action="/planos/{{ plan.id }}/acao" onsubmit="return confirm('Excluir este rascunho? Esta ação não pode ser desfeita.');"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="action" value="excluir"><button class="rounded-xl border border-rose-200 px-4 py-2 text-sm font-semibold text-rose-700 hover:bg-rose-50">Excluir rascunho</button></form>
                     {% endif %}
                 </div>
-                {% if plan.status != 'arquivado' %}
-                <details class="mt-4 rounded-xl border border-slate-200 p-3">
-                    <summary class="cursor-pointer text-sm font-semibold text-slate-800">Editar versão {{ plan.version }}</summary>
-                    {% if locked %}<p class="mt-2 rounded-xl bg-amber-50 px-3 py-2 text-xs text-amber-900">Esta versão tem {{ stats.total }} assinatura(s). Nome, preços, limites, módulos e teste grátis estão travados; para mudá-los, crie uma nova versão.</p>{% endif %}
-                    <form method="post" action="/planos/{{ plan.id }}/editar" class="mt-3">
-                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                        {% if locked %}
-                        {# Campos travados nao sao enviados pelo navegador; reenvia os valores atuais para a validacao. #}
-                        <input type="hidden" name="name" value="{{ plan.name }}">
-                        {% for code, cycle_info in subscription_cycles.items() %}{% set price = plan_prices_of(plan).get(code) %}<input type="hidden" name="{{ cycle_info[2] }}" value="{{ price|decimal_br if price is not none else '' }}">{% endfor %}
-                        <input type="hidden" name="max_farms" value="{{ plan.max_farms or '' }}"><input type="hidden" name="max_users" value="{{ plan.max_users or '' }}"><input type="hidden" name="max_hectares" value="{{ plan.max_hectares|decimal_br if plan.max_hectares else '' }}"><input type="hidden" name="trial_days" value="{{ plan.trial_days or '' }}">
-                        {% for code in plan_modules_of(plan) %}<input type="hidden" name="modules" value="{{ code }}">{% endfor %}
-                        {% endif %}
-                        {{ plan_fields(plan, locked) }}
-                        <div class="mt-5 flex justify-end"><button class="rounded-xl bg-brand-500 px-5 py-3 text-sm font-semibold text-white hover:bg-brand-700">Salvar alterações</button></div>
-                    </form>
-                </details>
-                {% endif %}
             </article>
+            {% if plan.status != 'arquivado' %}
+            {{ plan_modal('plan-edit-' ~ plan.id, '/planos/' ~ plan.id ~ '/editar', 'Plano · ' ~ plan.code, 'Editar versão ' ~ plan.version, 'As mudanças valem para novas assinaturas desta versão.', 'Salvar alterações', plan, locked,
+                ('Esta versão tem ' ~ stats.total ~ ' assinatura(s). Nome, preços, limites, módulos e teste grátis ficam travados; para mudá-los, crie uma nova versão.') if locked else none, 'amber', locked) }}
+            {% endif %}
+            {% if loop.first and not (versions|selectattr('status', 'equalto', 'rascunho')|list) %}
+            {{ plan_modal('plan-version-' ~ plan.id, '/planos/' ~ plan.id ~ '/nova-versao', 'Plano · ' ~ plan.code, 'Nova versão ' ~ (plan.version + 1), 'Partimos da versão ' ~ plan.version ~ '. Ajuste o que mudar e salve como rascunho.', 'Salvar rascunho', plan, false,
+                'Assinantes atuais continuam na versão que contrataram. A nova versão só vale para novas assinaturas depois de ativada.', 'emerald') }}
+            {% endif %}
             {% endfor %}
         </div>
     </section>
     {% else %}
-    <section data-stock-fade-panel class="rounded-[2rem] border border-dashed border-slate-300 bg-white p-8 text-center text-sm text-slate-500">Nenhum plano cadastrado ainda. As assinaturas atuais seguem como planos personalizados.</section>
+    <section data-stock-fade-panel class="rounded-[2rem] border border-dashed border-slate-300 bg-white p-8 text-center text-sm text-slate-500">Nenhum plano cadastrado ainda. As assinaturas atuais seguem como planos personalizados.<div class="mt-4"><button type="button" data-dialog-open="plan-new" class="rounded-xl bg-brand-500 px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-700">Criar o primeiro plano</button></div></section>
     {% endfor %}
 </div>
+{{ plan_modal('plan-new', '/planos', 'Catálogo', 'Novo plano', 'O plano nasce como rascunho e só aparece nas assinaturas depois de ativado.', 'Salvar rascunho') }}
+<script>
+(() => {
+    document.addEventListener('click', (event) => {
+        const opener = event.target.closest('[data-dialog-open]');
+        if (opener) { document.getElementById(opener.dataset.dialogOpen)?.showModal(); return; }
+        if (event.target.closest('[data-dialog-close]')) { event.target.closest('dialog')?.close(); return; }
+        if (event.target.matches('dialog.plan-modal')) event.target.close();
+    });
+})();
+</script>
 <script>
 (() => {
     const header = document.querySelector('.stock-page-header');

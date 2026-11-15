@@ -9251,6 +9251,32 @@ async def edit_subscription_plan_action(
     return _redirect(f"/planos#plano-{plan_id}")
 
 
+@router.post("/planos/{plan_id}/nova-versao")
+async def new_subscription_plan_version_action(
+    plan_id: int, request: Request, db: Session = Depends(get_db), user: User = Depends(get_current_user_web),
+):
+    denied = _require_super_admin(request, user)
+    if denied:
+        return denied
+    form = await request.form()
+    validate_csrf(request, form.get("csrf_token"))
+    plan = db.query(SubscriptionPlan).filter_by(id=plan_id).with_for_update().first()
+    if not plan:
+        _flash(request, "error", "Plano não encontrado.")
+        return _redirect("/planos")
+    try:
+        clone = create_new_version(db, plan)
+        update_plan(db, clone, parse_plan_form(**_plan_form_fields(form)))
+    except PlanValidationError as exc:
+        db.rollback()
+        _flash(request, "error", str(exc))
+        return _redirect(f"/planos#plano-{plan_id}")
+    record_commercial_event(db, user=user, organization_id=None, resource="plano", resource_id=clone.id, action="nova_versao", outcome="success", details={"codigo": clone.code, "versao": clone.version})
+    db.commit()
+    _flash(request, "success", "Nova versão criada como rascunho. Ao ativá-la, a versão atual será arquivada e os assinantes atuais mantêm o que contrataram.")
+    return _redirect(f"/planos#plano-{clone.id}")
+
+
 @router.post("/planos/{plan_id}/acao")
 def manage_subscription_plan_action(
     plan_id: int, request: Request, csrf_token: str = Form(...), action: str = Form(...),

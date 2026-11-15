@@ -243,3 +243,25 @@ def test_plan_form_routes_create_and_edit(monkeypatch):
         asyncio.run(routes.edit_subscription_plan_action(plan_id=plan.id, request=request([('csrf_token', 't'), ('name', '')]), db=db, user=SimpleNamespace()))
         assert messages[-1][0] == 'error' and plan.name == 'Essencial'
         assert db.query(AuditLog).filter(AuditLog.event_type.like('comercial.plano.%')).count() == 2
+
+
+def test_new_version_route_saves_edited_terms_as_draft(monkeypatch):
+    import asyncio
+    db = _db()
+    plan = plans.create_plan(db, _form())
+    plans.activate_plan(db, plan)
+    db.commit()
+    data = dict(csrf_token='t', name='Profissional', price_monthly='249,90', modules=['page.finance'], max_farms='3')
+
+    class Req(SimpleNamespace):
+        async def form(self):
+            return SimpleNamespace(get=lambda k, d=None: data.get(k, d), getlist=lambda k: data.get(k) or [])
+
+    monkeypatch.setattr(routes, '_require_super_admin', lambda *a: None)
+    monkeypatch.setattr(routes, 'validate_csrf', lambda *a: None)
+    monkeypatch.setattr(routes, 'record_commercial_event', lambda *a, **k: None)
+    monkeypatch.setattr(routes, '_flash', lambda *a: None)
+    response = asyncio.run(routes.new_subscription_plan_version_action(plan.id, Req(), db=db, user=SimpleNamespace()))
+    draft = db.query(SubscriptionPlan).filter_by(code=plan.code, version=2).one()
+    assert draft.status == 'rascunho' and draft.price_monthly == Decimal('249.90') and plan.status == 'ativo'
+    assert response.headers['location'] == f'/planos#plano-{draft.id}'
