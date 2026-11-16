@@ -33,7 +33,8 @@
         {% endif %}
 
         {% if code %}
-        <div class="rounded-xl border border-emerald-200 bg-emerald-50/50 px-4 py-4 text-center space-y-2">
+        <div class="rounded-xl border border-emerald-200 bg-emerald-50/50 px-4 py-4 text-center space-y-2"
+             data-wa-watch data-wa-initial="{{ link.verified_at.isoformat() if linked else '' }}" data-wa-minutes="{{ code_minutes }}">
             {% if wa_qr %}
             <div class="mx-auto h-48 w-48 rounded-xl bg-white p-2 shadow-sm">{{ wa_qr }}</div>
             <p class="text-sm font-medium text-slate-700">Aponte a câmera do celular para o QR code</p>
@@ -46,7 +47,9 @@
             {% if wa_url %}
             <a href="{{ wa_url }}" target="_blank" rel="noopener" class="inline-flex items-center justify-center rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-emerald-700">Abrir no WhatsApp</a>
             {% endif %}
-            <p class="text-xs text-slate-500">Depois de enviar, atualize esta página.</p>
+            <p class="inline-flex items-center gap-2 text-xs text-slate-500" data-wa-waiting>
+                <span class="h-2 w-2 animate-pulse rounded-full bg-emerald-500"></span>Aguardando sua mensagem — esta tela avisa assim que o vínculo acontecer.
+            </p>
         </div>
         {% else %}
         <form method="post" action="/mobile/assistente/whatsapp/codigo" class="space-y-2">
@@ -74,4 +77,56 @@
         {% endif %}
     </div>
 </div>
+<div class="fixed inset-0 z-50 hidden items-center justify-center bg-slate-900/50 px-4" data-wa-modal role="dialog" aria-modal="true" aria-labelledby="wa-modal-title">
+    <div class="w-full max-w-sm rounded-2xl bg-white p-6 text-center shadow-xl space-y-3">
+        <span class="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-emerald-100 text-emerald-600">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5 10 17 19 7"/></svg>
+        </span>
+        <h2 id="wa-modal-title" class="text-lg font-semibold text-slate-900">WhatsApp vinculado!</h2>
+        <p class="text-sm text-slate-600" data-wa-modal-text>Seu WhatsApp está pronto para conversar com o assistente.</p>
+        <p class="text-xs text-slate-500">Envie, por exemplo: “usei 20 litros de diesel hoje”. Tudo que for lançado aparece antes para você confirmar.</p>
+        <div class="flex flex-col gap-2 pt-2 sm:flex-row-reverse">
+            <a href="/mobile/assistente" class="flex-1 rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-emerald-700">Ir para o assistente</a>
+            <button type="button" class="flex-1 rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50" data-wa-modal-close>Fechar</button>
+        </div>
+    </div>
+</div>
+<script>
+(function () {
+    var box = document.querySelector('[data-wa-watch]');
+    var modal = document.querySelector('[data-wa-modal]');
+    if (!box || !modal) return;
+    var initial = box.getAttribute('data-wa-initial') || '';
+    var deadline = Date.now() + (parseInt(box.getAttribute('data-wa-minutes'), 10) || 15) * 60000 + 30000;
+    var timer = null, done = false;
+
+    function show(data) {
+        done = true;
+        var parts = ['Número terminado em ' + data.phone_end];
+        if (data.farm) parts.push('fazenda ' + data.farm + (data.season ? ' · safra ' + data.season : ''));
+        modal.querySelector('[data-wa-modal-text]').textContent = parts.join(' — ') + '.';
+        modal.classList.remove('hidden');
+        modal.classList.add('flex');
+        modal.querySelector('a').focus();
+    }
+    function check() {
+        if (done || document.hidden) return;
+        if (Date.now() > deadline) { clearInterval(timer); return; }
+        fetch('/mobile/assistente/whatsapp/status', {credentials: 'same-origin', headers: {'Accept': 'application/json'}})
+            .then(function (r) { return r.ok ? r.json() : null; })
+            .then(function (data) {
+                if (data && data.linked && !data.pending_code && data.verified_at !== initial) {
+                    clearInterval(timer);
+                    show(data);
+                }
+            })
+            .catch(function () {});
+    }
+    function close() { window.location.href = '/mobile/assistente/whatsapp'; }
+    modal.querySelector('[data-wa-modal-close]').addEventListener('click', close);
+    document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && done) close(); });
+    document.addEventListener('visibilitychange', check);
+    timer = setInterval(check, 3000);
+})();
+</script>
 {% endblock %}

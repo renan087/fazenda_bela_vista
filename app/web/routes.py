@@ -21173,6 +21173,23 @@ def whatsapp_link_page(
     ))
 
 
+@router.get("/mobile/assistente/whatsapp/status")
+def whatsapp_link_status(db: Session = Depends(get_db), user: User = Depends(get_current_user_web)):
+    """Consultado pela tela enquanto o codigo esta aberto, para avisar quando o vinculo acontecer."""
+    if not _can_use_stock_assistant(db, user):
+        raise HTTPException(status_code=403, detail="Sem permissão para usar o assistente.")
+    link = _whatsapp_link_for(db, user)
+    linked = bool(link and link.wa_id and link.verified_at)
+    farm = db.get(Farm, link.farm_id) if linked else None
+    season = db.get(CropSeason, link.season_id) if linked else None
+    return JSONResponse({
+        "linked": linked, "pending_code": bool(link and link.code_hash),
+        "verified_at": link.verified_at.isoformat() if linked else None,
+        "phone_end": mask_phone(link.wa_id)[-4:] if linked else None,
+        "farm": farm.name if farm else None, "season": season.name if season else None,
+    }, headers={"Cache-Control": "no-store"})
+
+
 @router.post("/mobile/assistente/whatsapp/codigo")
 def whatsapp_link_code(
     request: Request, csrf_token: str = Form(...), db: Session = Depends(get_db),

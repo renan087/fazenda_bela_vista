@@ -257,3 +257,17 @@ def test_link_page_qr_code_points_to_whatsapp_with_code():
 
     svg = str(routes._whatsapp_qr_svg("https://wa.me/5535999990000?text=SISFARM%20ABCD2345"))
     assert svg.startswith("<svg") and "QR code" in svg and 'class="h-full w-full"' in svg
+
+
+def test_link_status_endpoint_reports_new_link(monkeypatch):
+    _settings(monkeypatch)
+    routes, db, user, scope, *_ = _route_env(monkeypatch, [])
+    status = lambda: json.loads(routes.whatsapp_link_status(db=db, user=user).body)
+    assert status() == {"linked": False, "pending_code": False, "verified_at": None, "phone_end": None, "farm": None, "season": None}
+    code = whatsapp_bot.start_link(db, user, scope["active_farm"], scope["active_season"])
+    assert status()["pending_code"] is True and status()["linked"] is False
+    _receive(db, FakeClient(), _payload("557781177667", "m1", f"SISFARM {code}"))
+    data = status()
+    assert data["linked"] and not data["pending_code"] and data["phone_end"] == "7667"
+    assert data["farm"] == "Bela Vista" and data["season"] == "Café 2026" and data["verified_at"]
+    assert "557781177667" not in json.dumps(data)
