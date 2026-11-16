@@ -102,10 +102,13 @@ def summarize(payload: dict) -> str:
             statuses += len(value.get("statuses") or [])
             for status in value.get("statuses") or []:
                 for error in status.get("errors") or []:
-                    errors.append(f"{status.get('status')}:{error.get('code')}")
+                    reason = " ".join(str(error.get("title") or error.get("message") or "").split())[:80]
+                    detail = " ".join(str((error.get("error_data") or {}).get("details") or "").split())[:120]
+                    errors.append(f"{status.get('status')}:{error.get('code')} ({reason}{' - ' + detail if detail else ''})"
+                                  f" para {mask_phone(str(status.get('recipient_id') or ''))}")
     return (f"objeto={payload.get('object') if isinstance(payload, dict) else '?'} campos={','.join(fields) or '-'} "
             f"mensagens={messages} status={statuses} outro_phone_number_id={other_numbers}"
-            + (f" erros_entrega={','.join(errors[:5])}" if errors else ""))
+            + (f" erros_entrega={'; '.join(errors[:5])}" if errors else ""))
 
 
 class WhatsAppError(RuntimeError):

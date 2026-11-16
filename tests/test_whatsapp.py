@@ -176,3 +176,13 @@ def test_brazil_ninth_digit_retry(monkeypatch):
 
     whatsapp.WhatsAppClient(http=Http()).send_text("553588887777", "oi")
     assert calls == ["553588887777", "5535988887777"]
+
+
+def test_summary_shows_delivery_error_reason(monkeypatch):
+    _settings(monkeypatch)
+    payload = {"object": "whatsapp_business_account", "entry": [{"changes": [{"field": "messages", "value": {
+        "metadata": {"phone_number_id": "123"}, "statuses": [{"status": "failed", "recipient_id": "5535988887667",
+        "errors": [{"code": 131031, "title": "Business Account locked", "error_data": {"details": "Conta bloqueada"}}]}]}}]}]}
+    summary = whatsapp.summarize(payload)
+    assert "failed:131031 (Business Account locked - Conta bloqueada) para ***7667" in summary
+    assert "5535988887667" not in summary
