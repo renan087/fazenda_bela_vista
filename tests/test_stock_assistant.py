@@ -227,9 +227,12 @@ def _route_env(monkeypatch, replies):
         if isinstance(reply, dict):
             reply = dict(reply)
             tool = reply.pop("_tool", "preparar_consumo")
+            expect_error = reply.pop("_expect_error", False)
             if reply.get("item_id") == 0:
                 reply["item_id"] = next(iter(assistant.items))
             result = assistant.call_tool(tool, __import__("json").dumps(reply))
+            if expect_error:
+                return {"resposta": result["erro"], "draft_id": None}
             assert "erro" not in result, result
             return {"resposta": "Preparei o lançamento.", "draft_id": assistant.draft_id}
         return {"resposta": reply, "draft_id": None}
@@ -399,3 +402,32 @@ def test_purchase_payment_and_lot_degrade_gracefully(monkeypatch):
     assert lot.payment_condition == "a_prazo" and lot.installment_count == 3 and lot.credit_card_id is not None
     assert str(lot.expiration_date) == "2027-05-01" and float(lot.low_stock_threshold) == 20
     assert db.query(FinanceTransaction).count() == 1
+
+
+def test_assistant_never_picks_a_card_when_there_are_several(monkeypatch):
+    from app.models import FinanceAccount, FinanceCreditCard
+    base = {"_tool": "preparar_compra", "item_id": 0, "nome_novo": None, "tipo": None, "categoria": None, "unidade": "L",
+            "quantidade_embalagens": 1, "tamanho_embalagem": 50, "preco_por_embalagem": 300, "valor_total": None,
+            "data": "2026-11-15", "fornecedor": None, "observacao": None, "forma_pagamento": "Cartão de crédito",
+            "condicao": None, "parcelas": None, "periodicidade": None, "primeira_parcela": None, "conta_id": None,
+            "cartao_id": None, "cartao_desconhecido": False, "lote": None, "fabricacao": None, "validade": None,
+            "estoque_minimo": None}
+    replies = [{**base, "_expect_error": True}, {**base, "cartao_id": -1}, {**base, "cartao_desconhecido": True}]
+    routes, db, user, scope, send, sent, thread_history = _route_env(monkeypatch, replies)
+    farm = scope["active_farm"]
+    account = FinanceAccount(farm_id=farm.id, account_name="Sicoob", initial_balance=0, initial_balance_date=date(2026, 1, 1),
+                             is_default=True, bank_code="756", bank_name="Sicoob", display_order=0, created_at=datetime.now(timezone.utc))
+    db.add(account); db.flush()
+    cards = [FinanceCreditCard(farm_id=farm.id, payment_account_id=account.id, card_name=name, issuer=name, brand="Visa",
+                               closing_day=5, due_day=12, is_default=name == "Nubank", is_active=True, display_order=0,
+                               created_at=datetime.now(timezone.utc)) for name in ("Nubank", "Sicredi")]
+    db.add_all(cards); db.commit()
+
+    send("comprei 50 litros de gasolina no cartão")
+    assert "Nubank, Sicredi" in thread_history()[-1]["content"] and not db.query(StockAssistantDraft).count()
+    replies[0]["cartao_id"] = cards[1].id  # proxima resposta: usuario escolheu o Sicredi
+    send("foi no Sicredi")
+    assert "Sicredi" in thread_history()[-1]["draft"]["payment"]
+    send("na verdade não lembro o cartão")
+    card = thread_history()[-1]["draft"]
+    assert card["payment"] == "À vista" and "cartão" not in card["finance"]

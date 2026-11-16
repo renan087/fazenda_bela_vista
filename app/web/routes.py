@@ -20837,9 +20837,14 @@ def prepare_stock_assistant_action(
         if extras.get("cartao_id") or (method and key(method) == key("Cartão de crédito")):
             method = "Cartão de crédito"
             card = next((c for c in credit_cards if c.id == extras.get("cartao_id")), None)
-            card = card or next((c for c in credit_cards if c.is_default), None) or (credit_cards[0] if len(credit_cards) == 1 else None)
+            if card is None and len(credit_cards) > 1 and not extras.get("cartao_desconhecido"):
+                names = ", ".join(c.card_name for c in credit_cards)
+                raise ValueError(f"Há {len(credit_cards)} cartões cadastrados ({names}). Não escolha sozinho: pergunte ao "
+                                 "usuário, com naturalidade e citando os nomes, em qual deles foi a compra.")
+            card = card or (credit_cards[0] if len(credit_cards) == 1 else None)
             if card is None:
-                adjustments.append("não achei o cartão de crédito cadastrado na fazenda, então lancei à vista sem cartão")
+                adjustments.append("você não lembrou o cartão, então lancei à vista sem cartão" if extras.get("cartao_desconhecido")
+                                   else "não achei o cartão de crédito cadastrado na fazenda, então lancei à vista sem cartão")
                 method, condition, installments = None, "a_vista", 1
         account = next((a for a in finance_accounts if a.id == extras.get("conta_id")), None)
         account = account or next((a for a in finance_accounts if a.is_default), None)

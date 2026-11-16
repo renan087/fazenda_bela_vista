@@ -79,7 +79,7 @@ PURCHASE_TOOL = {"type": "function", "function": {
                    "required": ["item_id", "nome_novo", "tipo", "categoria", "unidade", "quantidade_embalagens",
                                 "tamanho_embalagem", "preco_por_embalagem", "valor_total", "data", "fornecedor", "observacao",
                                 "forma_pagamento", "condicao", "parcelas", "periodicidade", "primeira_parcela", "conta_id",
-                                "cartao_id", "lote", "fabricacao", "validade", "estoque_minimo"],
+                                "cartao_id", "cartao_desconhecido", "lote", "fabricacao", "validade", "estoque_minimo"],
                    "properties": {
                        "item_id": {"type": ["integer", "null"], "description": "Item já cadastrado (de buscar_itens) ou null se for novo."},
                        "nome_novo": {"type": ["string", "null"], "description": "Nome do item novo, como o produtor chama (ex.: 'Ureia 46%'). null se item_id."},
@@ -99,7 +99,8 @@ PURCHASE_TOOL = {"type": "function", "function": {
                        "periodicidade": {"type": ["string", "null"], "enum": ["mensal", "anual", None]},
                        "primeira_parcela": {"type": ["string", "null"], "description": "Vencimento da 1ª parcela AAAA-MM-DD, se informado."},
                        "conta_id": {"type": ["integer", "null"], "description": "Conta bancária de listar_formas_pagamento, se o usuário disse qual."},
-                       "cartao_id": {"type": ["integer", "null"], "description": "Cartão de listar_formas_pagamento, se pagou no cartão de crédito."},
+                       "cartao_id": {"type": ["integer", "null"], "description": "Cartão ESCOLHIDO PELO USUÁRIO (de listar_formas_pagamento). Nunca escolha por conta própria."},
+                       "cartao_desconhecido": {"type": "boolean", "description": "true só se o usuário disse que não sabe/não lembra o cartão."},
                        "lote": {"type": ["string", "null"], "description": "Número do lote do fabricante."},
                        "fabricacao": {"type": ["string", "null"], "description": "Data de fabricação AAAA-MM-DD."},
                        "validade": {"type": ["string", "null"], "description": "Data de validade AAAA-MM-DD."},
@@ -107,7 +108,7 @@ PURCHASE_TOOL = {"type": "function", "function": {
                    }},
 }}
 PURCHASE_OPTIONAL_FIELDS = ("forma_pagamento", "condicao", "parcelas", "periodicidade", "primeira_parcela", "conta_id",
-                            "cartao_id", "lote", "fabricacao", "validade", "estoque_minimo")
+                            "cartao_id", "cartao_desconhecido", "lote", "fabricacao", "validade", "estoque_minimo")
 
 PAYMENT_OPTIONS_TOOL = {"type": "function", "function": {
     "name": "listar_formas_pagamento",
@@ -349,7 +350,11 @@ class FarmAssistant:
                "o preço (por embalagem ou o total) e a data.\n"
                "- Depois do essencial, puxe os complementos numa conversa leve, UMA pergunta por vez, na ordem:\n"
                "  a) Pagamento: 'E como foi o pagamento? À vista, no cartão, boleto, parcelado?'. Use listar_formas_pagamento "
-               "para saber os cartões e contas da fazenda. Se foi no cartão e houver mais de um, pergunte qual pelo nome. "
+               "para saber os cartões e contas da fazenda. Se foi no cartão e houver mais de um cadastrado, NUNCA escolha "
+               "sozinho (nem o padrão): ofereça as opções pelo nome, de forma natural, ex.: 'Foi em qual cartão: no Nubank ou "
+               "no Sicredi?' (com 3 ou mais, cite todos numa frase só). Se houver um só, confirme de leve ('Foi no Nubank, né?'). "
+               "Se o usuário não lembrar, use cartao_desconhecido=true. Para conta bancária, mesma ideia quando houver mais "
+               "de uma e for parcelado/boleto. "
                "Parcelado = condicao a_prazo com o número de parcelas; pergunte o vencimento da 1ª parcela só se fizer sentido "
                "(no cartão não precisa). Boleto para 30 dias = a_prazo, 1 parcela.\n"
                "  b) Rastreabilidade: 'Você tem aí o número do lote e a validade? Se quiser, manda uma foto da embalagem ou da "
