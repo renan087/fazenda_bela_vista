@@ -509,3 +509,33 @@ def test_purchase_rejects_category_as_product_and_records_manufacturer():
     assert captured["category"] == "Herbicida"
     assert captured["supplier"] == "Revenda A"
     assert captured["notes"] == "Fabricante: Fabricante B"
+
+
+def test_assistant_knows_registered_items_and_matches_partial_names():
+    prepared, calls = [], []
+    assistant = _assistant(prepared)
+    assistant.items[3] = SimpleNamespace(id=3, name="Diesel S10", default_unit="L", item_type="combustivel", is_active=True)
+    assert [item.name for item in assistant.matching_items("comprei 100 l de diesel")] == ["Diesel S10"]
+    assert assistant.matching_items("bom dia") == []
+    result = assistant.run([{"role": "user", "content": "Comprei 100 l de diesel"}],
+                           client=_fake_client(["Beleza, lanço no Diesel S10? Quanto pagou?"], calls), model="gpt-4o-mini")
+    messages = calls[0]["messages"]
+    assert "Diesel S10 [item_id 3]" in messages[0]["content"] and "NÃO pergunte se é item novo" in messages[0]["content"]
+    assert messages[-2]["role"] == "system" and "Diesel S10 [item_id 3]" in messages[-2]["content"]
+    assert messages[-1] == {"role": "user", "content": "Comprei 100 l de diesel"}
+    assert calls[0]["temperature"] == 0.2 and 3 in assistant.seen and result["resposta"].startswith("Beleza")
+    _assistant([]).run([{"role": "user", "content": "oi"}], client=_fake_client(["Oi!"], calls), model="gpt-5-mini")
+    assert "temperature" not in calls[-1]
+
+
+def test_route_remembers_items_between_turns(monkeypatch):
+    routes, db, user, scope, send, sent, history = _route_env(monkeypatch, [
+        {"_tool": "buscar_itens", "termo": "gasolina"},
+        "Foi hoje?",
+    ])
+    send("comprei gasolina")
+    assert history()[-1]["items"][0]["nome"] == "Gasolina"
+    send("paguei 300 reais")
+    notes = [m["content"] for m in sent[1][0] if m["role"] == "system"]
+    assert any("Gasolina [item_id" in note for note in notes)
+    assert sent[1][0][-1] == {"role": "user", "content": "paguei 300 reais"}

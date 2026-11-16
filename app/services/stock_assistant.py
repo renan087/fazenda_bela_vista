@@ -26,6 +26,7 @@ _PACK_PRODUCT_FIRST = re.compile(rf"{_START}{_PACKS}(?P<product>.+?) de {_AMOUNT
 
 
 AGENT_MAX_STEPS = 8
+CATALOG_PROMPT_LIMIT = 80  # ate esse tamanho o cadastro inteiro vai no prompt
 DRAFT_READY_REPLY = "Preparei o lançamento abaixo. Confira os dados e confirme para registrar."
 _WEEKDAYS = ("segunda-feira", "terça-feira", "quarta-feira", "quinta-feira", "sexta-feira", "sábado", "domingo")
 
@@ -132,6 +133,7 @@ class FarmAssistant:
         self.today = today
         self.prepare_draft = prepare_draft
         self.draft_id = None
+        self.seen = {}  # itens que a IA viu neste turno (lembrados no proximo turno da conversa)
         self.trace = []  # o que o agente consultou, mostrado ao usuario abaixo da resposta
         self.extra_tools = list(extra_tools)  # [(schema, handler)] de consultas somente leitura
         self.prepare_purchase = prepare_purchase
@@ -153,10 +155,35 @@ class FarmAssistant:
 
     # ---------------------------------------------------------------- ferramentas
     def _item_view(self, item):
+        self.seen[item.id] = {"item_id": item.id, "nome": item.name, "unidade": item.default_unit}
         return {"item_id": item.id, "nome": item.name, "unidade": item.default_unit,
                 "tipo": "combustível" if item.item_type == "combustivel" else "insumo agrícola",
                 "categoria": getattr(item, "category", None),
                 "saldo_na_fazenda": round(float(self.balances.get(item.id, 0)), 2)}
+
+    def _item_line(self, item):
+        kind = "combustível" if item.item_type == "combustivel" else "insumo agrícola"
+        balance = round(float(self.balances.get(item.id, 0)), 2)
+        return f"{item.name} [item_id {item.id}] — {kind}, {item.default_unit}, saldo {balance:g}"
+
+    def catalog_text(self):
+        if not self.items:
+            return "Nenhum item cadastrado ainda nesta conta."
+        if len(self.items) > CATALOG_PROMPT_LIMIT:
+            return "Há muitos itens cadastrados: use buscar_itens para achar o item citado."
+        return "\n".join(f"- {self._item_line(item)}" for item in sorted(self.items.values(), key=lambda i: normalized(i.name)))
+
+    def matching_items(self, text, limit=6):
+        """Itens cadastrados cujo nome combina com palavras da mensagem (ex.: 'diesel' -> 'Diesel S10')."""
+        words = {word for word in re.findall(r"[a-z0-9]+", normalized(str(text or ""))) if len(word) >= 3}
+        scored = []
+        for item in self.items.values():
+            tokens = [token for token in re.findall(r"[a-z0-9]+", normalized(item.name)) if len(token) >= 3]
+            hits = sum(1 for token in tokens if token in words or (len(token) >= 4 and any(
+                len(word) >= 4 and (word.startswith(token) or token.startswith(word)) for word in words)))
+            if hits:
+                scored.append((-hits, normalized(item.name), item))
+        return [entry[-1] for entry in sorted(scored)[:limit]]
 
     def buscar_itens(self, termo=""):
         tokens = normalized(str(termo)).split()
@@ -331,7 +358,15 @@ class FarmAssistant:
             + "3) RESPONDE perguntas sobre a fazenda com as consultas disponíveis (chuva, previsão do tempo, aplicações, "
             "colheitas, consumos, estoque, financeiro, cotação do café, safra).\n"
             "Regras gerais:\n"
-            "- Use buscar_itens para achar o item citado; nunca invente item. Se houver mais de um parecido, pergunte qual.\n"
+            "- Itens cadastrados nesta conta (nome [item_id] — tipo, unidade, saldo na fazenda):\n"
+            f"{self.catalog_text()}\n"
+            "- Quando o usuário citar um produto que combina com um item cadastrado, mesmo pelo nome parcial ou popular "
+            "(ex.: 'diesel' -> 'Diesel S10', 'adubo 20-05-20' -> '20-05-20 Fertilizante'), ASSUMA esse item e siga a "
+            "conversa com o nome dele (ex.: 'Beleza, lanço no Diesel S10?'). NÃO pergunte se é item novo ou já cadastrado. "
+            "Se dois ou mais itens combinarem, pergunte qual citando os nomes. Só trate como item novo se nada combinar ou "
+            "se o usuário disser que é outro produto. Nunca invente item nem item_id.\n"
+            "- Lembre-se do que já foi dito na conversa (item, quantidade, preço, data): não pergunte de novo o que o "
+            "usuário já respondeu.\n"
             "- Pergunte só o que falta, um ou dois dados por vez, de forma natural (ex.: 'Foi hoje?' em vez de 'Informe a data'). "
             "Não invente valores. 'hoje', 'ontem' e '15/11' são datas válidas; sem ano, use o ano atual. Data futura não vale.\n"
             "- Use a unidade do cadastro e converta só o óbvio (litros->L, quilos->kg, 500 g->0,5 kg).\n"
@@ -348,8 +383,8 @@ class FarmAssistant:
             "- Quantidade por área (kg/ha) não é total: peça o total. Multiplique embalagens só se número e tamanho forem ditos.\n"
             "- Detalhes extras (máquina abastecida, operador, motivo, serviço) vão na observação; não pergunte se não foi dito.\n"
             + ("Compra:\n"
-               "- Primeiro busque o item. Se já existir, use-o (tipo, categoria e unidade vêm do cadastro). Se não existir, "
-               "confirme com o usuário que é um item novo e descubra o tipo e a categoria pelo contexto (ex.: diesel -> "
+               "- Se o produto combina com um item cadastrado, use-o direto (tipo, categoria e unidade vêm do cadastro). Se não "
+               "combinar com nenhum, confirme com o usuário que é um item novo e descubra o tipo e a categoria pelo contexto (ex.: diesel -> "
                "combustível/Combustíveis; ureia -> insumo agrícola/Fertilizantes); pergunte só se não der para deduzir.\n"
                "- O nome do produto é o nome específico informado pelo usuário, nunca a categoria: glifosato é o produto, "
                "herbicida é a categoria. Se só souber a categoria, pergunte qual produto foi comprado.\n"
@@ -392,9 +427,22 @@ class FarmAssistant:
                 {"type": "text", "text": messages[-1]["content"]},
                 attachment,
             ]}
+        last_user = next((index for index in range(len(messages) - 1, 0, -1) if messages[index]["role"] == "user"), None)
+        if last_user is not None:
+            content = messages[last_user]["content"]
+            text = content if isinstance(content, str) else " ".join(part.get("text", "") for part in content if isinstance(part, dict))
+            matches = self.matching_items(text)
+            if matches:
+                for item in matches:
+                    self._item_view(item)
+                messages.insert(last_user, {"role": "system", "content": (
+                    "Itens cadastrados que combinam com a próxima mensagem do usuário (use um deles se for esse o produto; "
+                    "se houver só um, assuma e confirme pelo nome):\n" + "\n".join(f"- {self._item_line(item)}" for item in matches))})
+        # Modelos de raciocinio (gpt-5, o*) nao aceitam temperature; nos demais, menos criatividade = menos invencao.
+        sampling = {} if model.startswith(("gpt-5", "o1", "o3", "o4")) else {"temperature": 0.2}
         for _ in range(AGENT_MAX_STEPS):
             response = client.chat.completions.create(
-                model=model, messages=messages, tools=self.tools, tool_choice="auto", parallel_tool_calls=False,
+                model=model, messages=messages, tools=self.tools, tool_choice="auto", parallel_tool_calls=False, **sampling,
             )
             message = response.choices[0].message
             calls = getattr(message, "tool_calls", None) or []

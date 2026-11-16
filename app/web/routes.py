@@ -20779,6 +20779,8 @@ def _assistant_turn(db, user, repo, scope, thread, message, *, image=None, attac
                 pending_purchase = row
                 break
 
+    assistant_ref = {}
+
     def reply(text, *, error=False, tools=None, draft=None):
         item = {"role": "assistant", "content": text[:600], "at": _assistant_now_iso()}
         if not error and not draft and len(credit_cards) > 1:
@@ -20793,6 +20795,8 @@ def _assistant_turn(db, user, repo, scope, thread, message, *, image=None, attac
             item["error"] = True
         if tools:
             item["tools"] = tools[:6]
+        if not error and getattr(assistant_ref.get("agent"), "seen", None):
+            item["items"] = list(assistant_ref["agent"].seen.values())[:8]
         if draft:
             item["draft"] = draft
             for old in history:  # um rascunho novo substitui o anterior ainda pendente
@@ -21019,8 +21023,18 @@ def _assistant_turn(db, user, repo, scope, thread, message, *, image=None, attac
                               plots=plots, today=today_in_app_timezone(), prepare_draft=prepare_draft,
                               extra_tools=queries.tools(), prepare_purchase=prepare_purchase,
                               purchase_rules=purchase_rules, payment_options=payment_options)
+    assistant_ref["agent"] = assistant
     # A IA recebe so mensagens validas (sem os avisos de erro) e as mais recentes.
-    ai_history = [{"role": item["role"], "content": item["content"]} for item in history if not item.get("error")][-10:]
+    ai_history = [{"role": item["role"], "content": item["content"]} for item in history if not item.get("error")][-20:]
+    remembered = {}
+    for entry in history[-12:]:
+        for known in entry.get("items") or []:
+            if isinstance(known, dict) and known.get("item_id") in assistant.items:
+                remembered[known["item_id"]] = known
+    if remembered:
+        ai_history.insert(len(ai_history) - 1, {"role": "system", "content": (
+            "Itens do cadastro já identificados nesta conversa (continue com eles, sem perguntar de novo): "
+            + "; ".join(f"{known['nome']} [item_id {known['item_id']}]" for known in remembered.values()))})
     if pending_purchase:
         try:
             pending_payload = json.loads(pending_purchase.payload_json or "{}")
