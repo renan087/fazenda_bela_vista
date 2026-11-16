@@ -12,6 +12,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.middleware.sessions import SessionMiddleware
+from starlette.concurrency import run_in_threadpool
 
 from app.core.admin_access import is_super_admin_email
 from app.core.config import get_settings
@@ -199,6 +200,14 @@ async def request_memory_diagnostics(request: Request, call_next):
                     )
 
 
+def _audit_actor_for_email(email):
+    with SessionLocal() as db:
+        actor = db.query(User).filter(User.email == email, User.is_active.is_(True)).first()
+        if actor:
+            return {"actor_user_id": actor.id, "actor_email": actor.email, "organization_id": actor.organization_id}
+    return None
+
+
 class AuditAuthenticatedHttpMiddleware(BaseHTTPMiddleware):
     """Deve ficar *depois* de SessionMiddleware no stack para existir request.session."""
 
@@ -216,21 +225,15 @@ class AuditAuthenticatedHttpMiddleware(BaseHTTPMiddleware):
             except AssertionError:
                 email = None
             if email:
-                with SessionLocal() as db:
-                    actor = db.query(User).filter(User.email == email, User.is_active.is_(True)).first()
-                    if actor:
-                        actor_payload = {
-                            "actor_user_id": actor.id,
-                            "actor_email": actor.email,
-                            "organization_id": actor.organization_id,
-                        }
-                        audit_token = set_data_change_audit_context(
-                            **actor_payload,
-                            http_method=request.method,
-                            path=path[:500],
-                            ip_address=client_ip(request) or None,
-                            user_agent=(request.headers.get("user-agent") or "")[:400] or None,
-                        )
+                actor_payload = await run_in_threadpool(_audit_actor_for_email, email)
+                if actor_payload:
+                    audit_token = set_data_change_audit_context(
+                        **actor_payload,
+                        http_method=request.method,
+                        path=path[:500],
+                        ip_address=client_ip(request) or None,
+                        user_agent=(request.headers.get("user-agent") or "")[:400] or None,
+                    )
         except Exception:
             logger.exception("Falha ao preparar contexto de auditoria de dados")
         try:
@@ -247,17 +250,11 @@ class AuditAuthenticatedHttpMiddleware(BaseHTTPMiddleware):
                     except AssertionError:
                         email = None
                     if email:
-                        with SessionLocal() as db:
-                            actor = db.query(User).filter(User.email == email, User.is_active.is_(True)).first()
-                            if actor:
-                                actor_payload = {
-                                    "actor_user_id": actor.id,
-                                    "actor_email": actor.email,
-                                    "organization_id": actor.organization_id,
-                                }
+                        actor_payload = await run_in_threadpool(_audit_actor_for_email, email)
                 # Nunca use "return" aqui: em finally isso substitui o return do try e devolve None ao Starlette.
                 if actor_payload:
-                    append_audit_event(
+                    await run_in_threadpool(
+                        append_audit_event,
                         event_type="http.request",
                         outcome="success" if status_code < 400 else "failure",
                         request=request,

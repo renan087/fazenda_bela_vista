@@ -22,10 +22,12 @@ def delete_expired_audio(db):
 
 async def audio_retention_loop():
     from app.db.session import SessionLocal
+    def cleanup():
+        with SessionLocal() as db:
+            delete_expired_audio(db)
     while True:
         try:
-            with SessionLocal() as db:
-                delete_expired_audio(db)
+            await asyncio.to_thread(cleanup)
         except Exception:
             logging.getLogger(__name__).exception("Falha ao remover áudios expirados")
         await asyncio.sleep(3600)

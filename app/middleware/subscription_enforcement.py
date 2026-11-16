@@ -7,6 +7,7 @@ import logging
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import RedirectResponse, Response
+from starlette.concurrency import run_in_threadpool
 
 from app.core.admin_access import is_super_admin_email
 from app.core.path_access import is_public_web_prefix, required_permission_for_web_path
@@ -30,6 +31,12 @@ def upgrade_url(module_code: str | None) -> str:
     return f"/planos-disponiveis?modulo={module_code}" if module_code else "/planos-disponiveis"
 
 
+def _entitlements_for_email(email):
+    with SessionLocal() as db:
+        user = db.query(User).filter(User.email == email, User.is_active.is_(True)).first()
+        return cached_entitlements(db, user.organization_id if user else None, today_in_app_timezone())
+
+
 class SubscriptionEnforcementMiddleware(BaseHTTPMiddleware):
     """Roda dentro do SessionMiddleware. A equipe SiSFarm (super administrador) nunca e limitada."""
 
@@ -44,9 +51,7 @@ class SubscriptionEnforcementMiddleware(BaseHTTPMiddleware):
         if not email or is_super_admin_email(email):
             return await call_next(request)
         try:
-            with SessionLocal() as db:
-                user = db.query(User).filter(User.email == email, User.is_active.is_(True)).first()
-                entitlements = cached_entitlements(db, user.organization_id if user else None, today_in_app_timezone())
+            entitlements = await run_in_threadpool(_entitlements_for_email, email)
         except Exception:
             # Falha ao calcular direitos nunca derruba o sistema do cliente.
             logger.exception("Falha ao verificar o plano da organizacao")

@@ -8,6 +8,7 @@ from fastapi.templating import Jinja2Templates
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import JSONResponse
+from starlette.concurrency import run_in_threadpool
 
 from app.core.admin_access import is_super_admin_email
 from app.core.timezone import app_now
@@ -30,7 +31,7 @@ class MaintenanceMiddleware(BaseHTTPMiddleware):
         path = request.url.path or "/"
         if path.startswith(("/static/", "/health")):
             return await call_next(request)
-        state = current_state(SessionLocal)
+        state = await run_in_threadpool(current_state, SessionLocal)
         if not state.active or is_super_admin_email(_session_email(request)):
             return await call_next(request)
         if state.mode == "leitura":
