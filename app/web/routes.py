@@ -37,6 +37,7 @@ from starlette.datastructures import UploadFile as StarletteUploadFile
 
 from app.core.config import get_settings
 from app.models.assistant_thread import AssistantThread
+from app.models.assistant_audio import AssistantAudio
 from app.models.whatsapp import WhatsAppLink
 from app.services import whatsapp_bot
 from app.services.whatsapp import is_configured as whatsapp_is_configured, mask_phone
@@ -20700,9 +20701,16 @@ def _assistant_thread_list(db, threads, active_id):
 def _assistant_view_messages(db, messages):
     view, last_day = [], None
     today = today_in_app_timezone()
+    ids = [item.get("audio_id") for item in messages if item.get("audio_id")]
+    available = {row[0] for row in db.query(AssistantAudio.id).filter(
+        AssistantAudio.id.in_(ids), AssistantAudio.expires_at > datetime.now(timezone.utc)
+    ).all()} if ids else set()
     for index, item in enumerate(messages):
         local = _assistant_local(item.get("at"))
         entry = {**item, "index": index, "time": local.strftime("%H:%M") if local else ""}
+        if item.get("audio_id") and item["audio_id"] not in available:
+            entry["audio_id"] = None
+            entry["audio_removed"] = True
         if local and local.date() != last_day:
             last_day = local.date()
             day = "Hoje" if last_day == today else "Ontem" if (today - last_day).days == 1 else last_day.strftime("%d/%m/%Y")
@@ -20749,18 +20757,63 @@ async def transcribe_assistant_audio(
     if not _can_use_stock_assistant(db, user):
         raise HTTPException(status_code=403, detail="Sem permissão para usar o assistente.")
     from app.services.assistant_audio import MAX_AUDIO_BYTES, transcribe_audio
+    scope = _global_scope_context(request, _repository(db), user)
+    if not scope.get("active_farm") or not scope.get("active_season"):
+        return JSONResponse({"error": "Selecione a fazenda e a safra."}, status_code=400)
     data = await audio.read(MAX_AUDIO_BYTES + 1)
     try:
         text = transcribe_audio(data, (audio.content_type or "").split(";")[0].lower())
     except ValueError as exc:
         return JSONResponse({"error": str(exc)}, status_code=400)
-    return JSONResponse({"text": text})
+    pending = AssistantAudio(id=uuid4().hex, user_id=user.id, organization_id=user.organization_id,
+                             farm_id=scope["active_farm_id"], season_id=scope["active_season_id"],
+                             mime=(audio.content_type or "").split(";")[0].lower(), data=data,
+                             expires_at=datetime.now(timezone.utc) + timedelta(hours=24))
+    db.add(pending)
+    db.commit()
+    return JSONResponse({"text": text, "audio_id": pending.id})
+
+
+def _assistant_audio_for_user(db, user, scope, audio_id):
+    return db.query(AssistantAudio).filter_by(id=audio_id, user_id=user.id, organization_id=user.organization_id,
+                                               farm_id=scope["active_farm_id"], season_id=scope["active_season_id"]).first()
+
+
+@router.get("/mobile/assistente/audio/{audio_id}")
+def assistant_audio_file(audio_id: str, request: Request, db: Session = Depends(get_db),
+                         user: User = Depends(get_current_user_web)):
+    if not _can_use_stock_assistant(db, user):
+        raise HTTPException(status_code=403)
+    scope = _global_scope_context(request, _repository(db), user)
+    audio = _assistant_audio_for_user(db, user, scope, audio_id)
+    now = datetime.now(timezone.utc)
+    expires = audio.expires_at.replace(tzinfo=timezone.utc) if audio and not audio.expires_at.tzinfo else (audio.expires_at if audio else None)
+    if not audio or not audio.thread_id or expires <= now:
+        raise HTTPException(status_code=404)
+    return Response(audio.data, media_type=audio.mime, headers={"Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff"})
+
+
+@router.post("/mobile/assistente/audio/{audio_id}/excluir")
+def delete_assistant_audio(audio_id: str, request: Request, csrf_token: str = Form(...),
+                           db: Session = Depends(get_db), user: User = Depends(get_current_user_web)):
+    validate_csrf(request, csrf_token)
+    if not _can_use_stock_assistant(db, user):
+        raise HTTPException(status_code=403)
+    scope = _global_scope_context(request, _repository(db), user)
+    audio = _assistant_audio_for_user(db, user, scope, audio_id)
+    if not audio:
+        raise HTTPException(status_code=404)
+    thread_id = audio.thread_id
+    db.delete(audio)
+    db.commit()
+    return _redirect(_assistant_url(thread_id))
 
 
 @router.post("/mobile/assistente")
 def prepare_stock_assistant_action(
     request: Request, message: str = Form(..., max_length=600), csrf_token: str = Form(...),
     thread_id: str | None = Form(None, max_length=32), photo: UploadFile | None = File(None),
+    audio_id: str | None = Form(None, max_length=32),
     db: Session = Depends(get_db), user: User = Depends(get_current_user_web),
 ):
     validate_csrf(request, csrf_token)
@@ -20792,18 +20845,33 @@ def prepare_stock_assistant_action(
         return _redirect(target)
 
     attachment_type = ("pdf" if photo.content_type == "application/pdf" else "image") if image else None
-    thread, _ = _assistant_turn(db, user, repo, scope, thread, message, image=image, attachment_type=attachment_type)
+    audio_id = audio_id if isinstance(audio_id, str) and audio_id else None
+    audio = _assistant_audio_for_user(db, user, scope, audio_id) if audio_id else None
+    expires = (audio.expires_at.replace(tzinfo=timezone.utc) if audio and not audio.expires_at.tzinfo
+               else audio.expires_at if audio else None)
+    if audio_id and (not audio or audio.thread_id or expires <= datetime.now(timezone.utc)):
+        _flash(request, "error", "Áudio indisponível. Grave novamente.")
+        return _redirect(target)
+    thread, _ = _assistant_turn(db, user, repo, scope, thread, message, image=image, attachment_type=attachment_type, audio=audio)
     return _redirect(_assistant_url(thread.id))
 
 
-def _assistant_turn(db, user, repo, scope, thread, message, *, image=None, attachment_type=None, title_prefix=""):
+def _assistant_turn(db, user, repo, scope, thread, message, *, image=None, attachment_type=None, title_prefix="", audio=None):
     """Um turno do assistente (web e WhatsApp): roda o agente, salva a conversa e devolve (thread, resposta)."""
     farm, season = scope["active_farm"], scope["active_season"]
     if thread is None:
         now = datetime.now(timezone.utc)
         thread = AssistantThread(id=uuid4().hex, user_id=user.id, organization_id=user.organization_id,
                                  farm_id=farm.id, season_id=season.id, title=(title_prefix + message)[:60], created_at=now, updated_at=now)
+    if audio:
+        from app.services.assistant_audio import AUDIO_RETENTION_DAYS
+        db.add(thread)
+        db.flush()
+        audio.thread_id = thread.id
+        audio.expires_at = datetime.now(timezone.utc) + timedelta(days=AUDIO_RETENTION_DAYS)
+        db.add(audio)
     history = _thread_messages(thread) + [{"role": "user", "content": message, "at": _assistant_now_iso(),
+                                           **({"audio_id": audio.id} if audio else {}),
                                            **({"photo": True, "attachment_type": attachment_type or "image"} if image else {})}]
     pending_purchase = None
     for entry in reversed(history[:-1]):

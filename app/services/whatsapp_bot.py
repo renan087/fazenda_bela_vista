@@ -358,14 +358,20 @@ def _handle(db, row, client) -> str | None:
         return None
 
     image = attachment_type = None
+    audio_record = None
     if row.msg_type == "audio":
-        from app.services.assistant_audio import transcribe_audio
+        from app.models.assistant_audio import AssistantAudio
+        from app.services.assistant_audio import AUDIO_RETENTION_DAYS, transcribe_audio
+        from uuid import uuid4
         try:
             data, mime = client.download_media(str((message.get("audio") or {}).get("id") or ""))
             text = transcribe_audio(data, mime)
         except (WhatsAppError, ValueError) as exc:
             client.send_text(row.wa_id, str(exc))
             return None
+        audio_record = AssistantAudio(id=uuid4().hex, user_id=user.id, organization_id=user.organization_id,
+                                      farm_id=farm.id, season_id=season.id, mime=mime, data=data,
+                                      expires_at=_now() + timedelta(days=AUDIO_RETENTION_DAYS))
         client.send_text(row.wa_id, f"Entendi no áudio: {text}\n\nSe algo estiver errado, me corrija. Vou preparar os dados para você conferir.")
     if row.msg_type in ("image", "document"):
         try:
@@ -382,7 +388,8 @@ def _handle(db, row, client) -> str | None:
     if not text:
         return None
     thread, item = routes._assistant_turn(db, user, repo, scope, thread, text, image=image,
-                                          attachment_type=attachment_type, title_prefix="WhatsApp · ")
+                                          attachment_type=attachment_type, title_prefix="WhatsApp · ",
+                                          **({"audio": audio_record} if audio_record else {}))
     link = db.get(WhatsAppLink, link.id)
     link.thread_id = thread.id
     db.commit()

@@ -1,12 +1,34 @@
 """Transcrição de mensagens de voz recebidas pelo assistente."""
 
 from io import BytesIO
+import asyncio
+import logging
+from datetime import datetime, timezone
 
 from app.core.config import get_settings
 
 AUDIO_TYPES = {"audio/ogg": "voz.ogg", "audio/mpeg": "voz.mp3", "audio/mp4": "voz.m4a",
                "audio/webm": "voz.webm", "audio/wav": "voz.wav"}
 MAX_AUDIO_BYTES = 5 * 1024 * 1024
+AUDIO_RETENTION_DAYS = 30
+
+
+def delete_expired_audio(db):
+    from app.models.assistant_audio import AssistantAudio
+    count = db.query(AssistantAudio).filter(AssistantAudio.expires_at <= datetime.now(timezone.utc)).delete(synchronize_session=False)
+    db.commit()
+    return count
+
+
+async def audio_retention_loop():
+    from app.db.session import SessionLocal
+    while True:
+        try:
+            with SessionLocal() as db:
+                delete_expired_audio(db)
+        except Exception:
+            logging.getLogger(__name__).exception("Falha ao remover áudios expirados")
+        await asyncio.sleep(3600)
 
 
 def transcribe_audio(data: bytes, mime: str) -> str:

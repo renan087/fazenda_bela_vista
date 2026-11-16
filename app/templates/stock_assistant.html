@@ -121,7 +121,9 @@
                 {% if m.day_label %}<div class="as-day"><span>{{ m.day_label }}</span></div>{% endif %}
                 {% if m.role == 'user' %}
                 <div class="as-msg-user">
-                    <div class="as-ubub">{% if m.photo %}<span class="as-photo-tag">{{ ic('image', 14) }}{{ 'PDF enviado' if m.attachment_type == 'pdf' else 'Foto enviada' }}</span>{% endif %}{{ m.content }}</div>
+                    <div class="as-ubub">{% if m.photo %}<span class="as-photo-tag">{{ ic('image', 14) }}{{ 'PDF enviado' if m.attachment_type == 'pdf' else 'Foto enviada' }}</span>{% endif %}{% if m.audio_id %}<audio controls preload="none" src="/mobile/assistente/audio/{{ m.audio_id }}" aria-label="Reproduzir áudio"></audio>{% endif %}{{ m.content }}</div>
+                    {% if m.audio_id %}<form method="post" action="/mobile/assistente/audio/{{ m.audio_id }}/excluir"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="as-hint" type="submit">Excluir áudio · manter transcrição</button></form>{% endif %}
+                    {% if m.audio_removed %}<span class="as-hint">Áudio excluído; transcrição preservada.</span>{% endif %}
                     <div class="as-time">{{ m.time }}</div>
                 </div>
                 {% else %}
@@ -218,10 +220,12 @@
                 <form method="post" action="/mobile/assistente" enctype="multipart/form-data" class="as-box" data-as-form>
                     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                     <input type="hidden" name="thread_id" value="{{ thread_id }}">
+                    <input type="hidden" name="audio_id" data-as-audio-id value="">
                     <label for="assistant-message" class="sr-only">Sua mensagem</label>
                     <div class="as-attach" data-as-attach hidden>{{ ic('image', 14) }}<span data-as-attach-name></span><button type="button" data-as-attach-clear aria-label="Remover arquivo">{{ ic('x', 14) }}</button></div>
                     <audio controls data-as-audio-preview hidden aria-label="Ouvir gravação"></audio>
                     <span class="as-hint" data-as-audio-status aria-live="polite"></span>
+                    <div class="as-recording" data-as-recording hidden><span class="as-recording-dot"></span><span data-as-duration>0:00</span><span class="as-wave" data-as-wave aria-hidden="true"></span><button type="button" data-as-stop>Parar</button></div>
                     <textarea id="assistant-message" name="message" maxlength="600" rows="1" required
                               placeholder="Pergunte ou descreva o que aconteceu na fazenda…" data-as-input></textarea>
                     <div class="as-box-bar">
@@ -234,7 +238,7 @@
                         <button class="as-send" data-as-send aria-label="Enviar">{{ ic('send', 18, 2.2) }}</button>
                     </div>
                 </form>
-                <p class="as-disclaimer">{{ ic('shield', 12) }} Arquivos e áudios são enviados à IA. Áudios não ficam salvos no histórico. Confira os dados antes de confirmar.</p>
+                <p class="as-disclaimer">{{ ic('shield', 12) }} Áudios são enviados à IA e mantidos por até 30 dias. Você pode excluí-los sem apagar a transcrição.</p>
             </div>
         </footer>
         {% endif %}

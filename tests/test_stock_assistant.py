@@ -314,6 +314,34 @@ def test_route_keeps_conversation_on_error_and_drafts_fuel_without_plot(monkeypa
     assert card["balance"] == "50" or card["balance"].startswith("50")
 
 
+def test_audio_timeline_access_delete_and_retention(monkeypatch):
+    from app.models.assistant_audio import AssistantAudio
+    from app.services.assistant_audio import delete_expired_audio
+    routes, db, user, scope, send, sent, history = _route_env(monkeypatch, ["Entendi"])
+    now = datetime.now(timezone.utc)
+    audio = AssistantAudio(id="a" * 32, user_id=user.id, organization_id=user.organization_id,
+                           farm_id=scope["active_farm_id"], season_id=scope["active_season_id"],
+                           mime="audio/ogg", data=b"voz", expires_at=now + timedelta(days=30))
+    db.add(audio); db.commit()
+    req = SimpleNamespace(session={})
+    routes.prepare_stock_assistant_action(req, message="Minha transcrição", csrf_token="x", thread_id=None,
+                                           photo=None, audio_id=audio.id, db=db, user=user)
+    assert audio.thread_id
+    thread = db.get(routes.AssistantThread, audio.thread_id)
+    assert routes._thread_messages(thread)[0]["audio_id"] == audio.id
+    assert routes.assistant_audio_file(audio.id, req, db=db, user=user).body == b"voz"
+    other = SimpleNamespace(id=user.id + 1, organization_id=user.organization_id)
+    assert routes._assistant_audio_for_user(db, other, scope, audio.id) is None
+    routes.delete_assistant_audio(audio.id, req, csrf_token="x", db=db, user=user)
+    assert db.get(AssistantAudio, audio.id) is None
+    assert routes._thread_messages(thread)[0]["content"] == "Minha transcrição"
+    expired = AssistantAudio(id="b" * 32, user_id=user.id, organization_id=user.organization_id,
+                             farm_id=scope["active_farm_id"], season_id=scope["active_season_id"],
+                             mime="audio/ogg", data=b"voz", expires_at=now - timedelta(seconds=1))
+    db.add(expired); db.commit()
+    assert delete_expired_audio(db) == 1
+
+
 def test_new_draft_replaces_pending_one_and_confirm_updates_thread(monkeypatch):
     draft_reply = {"item_id": 0, "quantidade": 5, "unidade": "L", "data": "2026-11-15", "setor": None}
     routes, db, user, scope, send, sent, thread_history = _route_env(monkeypatch, [draft_reply, {**draft_reply, "quantidade": 4}])

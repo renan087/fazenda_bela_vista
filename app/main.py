@@ -74,6 +74,7 @@ def _session_value(request: Request, key: str):
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    from app.services.assistant_audio import audio_retention_loop
     create_tables()
     with SessionLocal() as db:
         seed_admin(db)
@@ -83,6 +84,7 @@ async def lifespan(app: FastAPI):
         if seeded_coffee_quotes:
             logger.info("Serie historica CEPEA de cafe sincronizada a partir do bundle: %s registros.", seeded_coffee_quotes)
     background_tasks: list[asyncio.Task] = [
+        asyncio.create_task(audio_retention_loop()),
         asyncio.create_task(run_backup_automation_loop()),
         asyncio.create_task(run_backup_repository_monitor_loop()),
         asyncio.create_task(run_card_migration_loop()),

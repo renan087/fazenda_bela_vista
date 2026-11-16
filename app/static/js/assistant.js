@@ -139,23 +139,30 @@
     const mic = $('[data-as-mic]', form);
     if (window.MediaRecorder && navigator.mediaDevices && navigator.mediaDevices.getUserMedia && mic) {
         mic.hidden = false;
-        let recorder = null, busy = false, previewUrl = null;
+        let recorder = null, busy = false, previewUrl = null, meterTimer = null, audioContext = null;
+        const recording = $('[data-as-recording]', form);
+        const wave = $('[data-as-wave]', form);
+        $('[data-as-stop]', form).addEventListener('click', () => { if (recorder) recorder.stop(); });
         mic.addEventListener('click', async () => {
             if (busy) return;
             if (recorder) { recorder.stop(); return; }
             try {
                 const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                $('[data-as-audio-id]', form).value = '';
+                form.dataset.audioBusy = '1';
                 const chunks = [];
                 recorder = new MediaRecorder(stream);
                 recorder.ondataavailable = (event) => { if (event.data.size) chunks.push(event.data); };
                 recorder.onstop = async () => {
                     const status = $('[data-as-audio-status]', form);
+                    clearInterval(meterTimer); recording.hidden = true;
+                    if (audioContext) { audioContext.close(); audioContext = null; }
                     const type = (recorder.mimeType || 'audio/webm').split(';')[0];
                     const blob = new Blob(chunks, { type });
                     stream.getTracks().forEach((track) => track.stop());
                     recorder = null;
                     mic.setAttribute('aria-pressed', 'false');
-                    if (blob.size > 5 * 1024 * 1024) { window.alert('O áudio precisa ter até 5 MB.'); return; }
+                    if (blob.size > 5 * 1024 * 1024) { delete form.dataset.audioBusy; window.alert('O áudio precisa ter até 5 MB.'); return; }
                     const preview = $('[data-as-audio-preview]', form);
                     if (previewUrl) URL.revokeObjectURL(previewUrl);
                     previewUrl = URL.createObjectURL(blob);
@@ -168,16 +175,35 @@
                         const response = await fetch('/mobile/assistente/transcrever', { method: 'POST', body: data });
                         const result = await response.json();
                         if (!response.ok) throw new Error(result.error || result.detail || 'Não foi possível transcrever.');
+                        $('[data-as-audio-id]', form).value = result.audio_id;
                         box.value = (box.value.trim() ? box.value.trim() + ' ' : '') + result.text;
                         grow(); box.focus(); status.textContent = 'Confira e edite a transcrição antes de enviar.';
                     } catch (error) { window.alert(error.message || 'Não foi possível transcrever.'); }
-                    finally { busy = false; mic.disabled = false; }
+                    finally { busy = false; mic.disabled = false; delete form.dataset.audioBusy; }
                 };
                 recorder.start();
+                recording.hidden = false;
+                wave.replaceChildren(...Array.from({length: 24}, () => document.createElement('i')));
+                const started = Date.now();
+                let analyser = null;
+                try {
+                    const AC = window.AudioContext || window.webkitAudioContext;
+                    if (AC) { audioContext = new AC(); analyser = audioContext.createAnalyser(); analyser.fftSize = 256;
+                        audioContext.createMediaStreamSource(stream).connect(analyser); }
+                } catch (error) { /* O cronômetro continua disponível sem medidor. */ }
+                meterTimer = setInterval(() => {
+                    const elapsed = Math.floor((Date.now() - started) / 1000);
+                    $('[data-as-duration]', form).textContent = `${Math.floor(elapsed / 60)}:${String(elapsed % 60).padStart(2, '0')}`;
+                    if (analyser) {
+                        const samples = new Uint8Array(analyser.frequencyBinCount); analyser.getByteFrequencyData(samples);
+                        wave.querySelectorAll('i').forEach((bar, index) => { bar.style.height = `${3 + samples[index * 2] / 12}px`; });
+                    }
+                    if (elapsed >= 180 && recorder) recorder.stop();
+                }, 120);
                 mic.setAttribute('aria-pressed', 'true');
                 mic.title = 'Parar gravação e transcrever';
                 $('[data-as-audio-status]', form).textContent = 'Gravando. Toque novamente para parar.';
-            } catch (error) { window.alert('Não foi possível acessar o microfone.'); }
+            } catch (error) { delete form.dataset.audioBusy; window.alert('Não foi possível acessar o microfone.'); }
         });
     }
 
@@ -209,6 +235,7 @@
 
     // Envio: mostra a mensagem e o "Pensando…" enquanto o servidor responde
     form.addEventListener('submit', (e) => {
+        if (form.dataset.audioBusy) { e.preventDefault(); window.alert('Aguarde a transcrição do áudio.'); return; }
         const text = box.value.trim();
         if (!text || form.dataset.sending) { if (form.dataset.sending) e.preventDefault(); return; }
         form.dataset.sending = '1';
