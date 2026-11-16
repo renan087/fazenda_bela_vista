@@ -17,6 +17,7 @@ class AssistantThread(Base):
     farm_id: Mapped[int] = mapped_column(ForeignKey("farms.id", ondelete="CASCADE"), index=True)
     season_id: Mapped[int] = mapped_column(ForeignKey("crop_seasons.id", ondelete="CASCADE"))
     title: Mapped[str] = mapped_column(String(80), default="Nova conversa")
+    channel: Mapped[str | None] = mapped_column(String(20), nullable=True)
     messages_json: Mapped[str] = mapped_column(Text, default="[]")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)

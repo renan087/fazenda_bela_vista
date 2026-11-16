@@ -48,6 +48,7 @@
             <div class="as-grp" data-as-grp>{{ group.label }}</div>
             {% for item in group['items'] %}
             <a href="/mobile/assistente?c={{ item.id }}" class="as-cv{% if item.active %} is-active{% endif %}" data-as-cv{% if item.active %} aria-current="page"{% endif %}>
+                <span class="as-channel">{{ ic('wa' if item.channel == 'whatsapp' else 'spark', 13) }}{{ 'WhatsApp' if item.channel == 'whatsapp' else 'SiSFarm' }}</span>
                 <b>{{ item.title }}</b>
                 <span>{% if item.pending %}<i class="as-dot-warn"></i>{% endif %}{{ item.subtitle }}</span>
             </a>
@@ -64,6 +65,7 @@
     <section class="as-chat" aria-label="Conversa com o assistente">
         <header class="as-head">
             <a href="/mobile" class="as-ico as-only-mobile" aria-label="Voltar ao Campo Mobile">{{ ic('back', 22, 2) }}</a>
+            <button type="button" class="as-ico as-only-desktop" data-as-threads-toggle aria-controls="as-threads" aria-expanded="true" aria-label="Recolher histórico" title="Recolher histórico">{{ ic('hist', 20) }}</button>
             <span class="as-av as-av-ai as-only-mobile">{{ ic('spark', 17, 1.9) }}</span>
             <div class="as-head-text">
                 <div class="as-head-title">
@@ -72,14 +74,14 @@
                 </div>
                 <div class="as-head-sub">
                     <span class="as-only-mobile">{% if ready %}{{ assistant_scope.active_farm.name }} · {{ assistant_scope.active_season.name }}{% else %}Selecione fazenda e safra{% endif %}</span>
-                    <span class="as-hide-mobile"><i class="as-dot-ok"></i>Assistente ativo · lê estoque e setores da safra</span>
+                    <span class="as-hide-mobile"><i class="as-dot-ok"></i>{% if thread_channel == 'whatsapp' %}WhatsApp · somente consulta{% else %}Assistente ativo · lê estoque e setores da safra{% endif %}</span>
                 </div>
             </div>
             <a href="/mobile/assistente/whatsapp" class="as-ico" aria-label="Usar pelo WhatsApp" title="Usar pelo WhatsApp">{{ ic('wa', 20) }}</a>
             <button type="button" class="as-ico as-hide-wide" data-as-threads-open aria-controls="as-threads" aria-label="Conversas">{{ ic('hist', 20) }}</button>
             <a href="/mobile/assistente" class="as-ico as-only-mobile" aria-label="Nova conversa">{{ ic('plus', 20, 2) }}</a>
             <button type="button" class="as-ico as-only-xl" data-as-ctx-toggle aria-controls="as-ctx" aria-pressed="true" aria-label="Painel de contexto">{{ ic('panel') }}</button>
-            {% if thread %}
+            {% if thread and thread_channel != 'whatsapp' %}
             <details class="as-menu">
                 <summary class="as-ico" aria-label="Mais opções">{{ ic('more') }}</summary>
                 <div class="as-menu-pop">
@@ -121,8 +123,9 @@
                 {% if m.day_label %}<div class="as-day"><span>{{ m.day_label }}</span></div>{% endif %}
                 {% if m.role == 'user' %}
                 <div class="as-msg-user">
+                    <span class="as-message-channel">{{ ic('wa' if thread_channel == 'whatsapp' else 'spark', 13) }}{{ 'WhatsApp' if thread_channel == 'whatsapp' else 'SiSFarm' }}</span>
                     <div class="as-ubub">{% if m.photo %}<span class="as-photo-tag">{{ ic('image', 14) }}{{ 'PDF enviado' if m.attachment_type == 'pdf' else 'Foto enviada' }}</span>{% endif %}{% if m.audio_id %}<div class="as-voice" data-as-voice><audio preload="metadata" src="/mobile/assistente/audio/{{ m.audio_id }}"></audio><div class="as-voice-player"><button type="button" data-voice-play aria-label="Reproduzir áudio">&#9654;</button><span class="as-voice-wave" data-voice-wave aria-hidden="true"></span><span data-voice-time>0:00</span></div><div class="as-voice-actions"><button type="button" data-voice-transcript aria-expanded="false">Ver transcrição</button><a href="/mobile/assistente/audio/{{ m.audio_id }}?download=1" download="audio-sisfarm">Baixar áudio</a></div><div class="as-voice-text" data-voice-text hidden>{{ m.content }}</div></div>{% else %}{{ m.content }}{% endif %}</div>
-                    {% if m.audio_id %}<form method="post" action="/mobile/assistente/audio/{{ m.audio_id }}/excluir"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="as-hint" type="submit">Excluir áudio · manter transcrição</button></form>{% endif %}
+                    {% if m.audio_id and thread_channel != 'whatsapp' %}<form method="post" action="/mobile/assistente/audio/{{ m.audio_id }}/excluir"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="as-hint" type="submit">Excluir áudio · manter transcrição</button></form>{% endif %}
                     {% if m.audio_removed %}<span class="as-hint">Áudio excluído; transcrição preservada.</span>{% endif %}
                     <div class="as-time">{{ m.time }}</div>
                 </div>
@@ -130,7 +133,7 @@
                 <div class="as-msg-ai">
                     <span class="as-av as-av-ai{% if m.error %} as-av-err{% endif %}">{{ ic('spark', 17, 1.9) }}</span>
                     <div class="as-msg-body">
-                        <div class="as-who">Assistente SiSFarm<span>{{ m.time }}</span></div>
+                        <div class="as-who">Assistente SiSFarm <span class="as-message-channel">{{ ic('wa' if thread_channel == 'whatsapp' else 'spark', 13) }}{{ 'WhatsApp' if thread_channel == 'whatsapp' else 'SiSFarm' }}</span><span>{{ m.time }}</span></div>
                         {% if m.tools %}<div class="as-tools">{% for t in m.tools %}<span class="as-tool"><i></i>{{ t }}</span>{% endfor %}</div>{% endif %}
                         <p class="as-txt{% if m.error %} as-txt-err{% endif %}" data-as-text>{{ m.content }}</p>
                         {% if m.draft %}{% set d = m.draft %}
@@ -172,7 +175,7 @@
                                 {% endif %}
                             </dl>
                             {% endif %}
-                            {% if d.state == 'pending' %}
+                            {% if d.state == 'pending' and thread_channel != 'whatsapp' %}
                             <div class="as-draft-actions">
                                 <form method="post" action="/mobile/assistente/{{ d.id }}/confirmar" data-as-busy="Registrando…">
                                     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
@@ -191,7 +194,7 @@
                             {% endif %}
                         </div>
                         {% endif %}
-                        {% if not m.error %}
+                        {% if not m.error and thread_channel != 'whatsapp' %}
                         <div class="as-acts" data-as-rate="{{ m.index }}">
                             <button type="button" class="as-ico as-ico-sm" data-as-copy aria-label="Copiar resposta" title="Copiar">{{ ic('copy', 15) }}</button>
                             <button type="button" class="as-ico as-ico-sm" data-as-fb="up" aria-pressed="{{ 'true' if m.fb == 'up' else 'false' }}" aria-label="Resposta útil" title="Útil">{{ ic('up', 15) }}</button>
@@ -206,7 +209,9 @@
             </div>
         </div>
 
-        {% if ready %}
+        {% if ready and thread_channel == 'whatsapp' %}
+        <div class="as-readonly">{{ ic('wa', 17) }} Conversa do WhatsApp em modo de consulta. Para responder ou confirmar um lançamento, use o WhatsApp.</div>
+        {% elif ready %}
         <footer class="as-composer">
             <div class="as-col">
                 {% if thread %}

@@ -640,6 +640,7 @@ def _sync_schema() -> None:
         """,
         "ALTER TABLE crop_season_plots ADD COLUMN IF NOT EXISTS planting_id INTEGER REFERENCES plot_plantings(id) ON DELETE SET NULL",
         "ALTER TABLE stock_assistant_drafts ALTER COLUMN plot_id DROP NOT NULL",
+        "ALTER TABLE assistant_threads ADD COLUMN IF NOT EXISTS channel VARCHAR(20)",
         "ALTER TABLE stock_assistant_drafts ADD COLUMN IF NOT EXISTS notes TEXT",
         "ALTER TABLE stock_assistant_drafts ADD COLUMN IF NOT EXISTS kind VARCHAR(16) NOT NULL DEFAULT 'consumo'",
         "ALTER TABLE stock_assistant_drafts ADD COLUMN IF NOT EXISTS payload_json TEXT",

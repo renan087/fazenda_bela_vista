@@ -117,6 +117,23 @@ def test_prepare_form_includes_csrf_token():
     assert 'name="csrf_token" value="test-token"' in form
 
 
+def test_whatsapp_conversation_template_is_read_only():
+    templates_dir = Path(__file__).resolve().parents[1] / "app" / "templates"
+    env = Environment(loader=ChoiceLoader([
+        DictLoader({"base.html": "{% block content %}{% endblock %}"}), FileSystemLoader(templates_dir),
+    ]), autoescape=True)
+    env.globals["url_for"] = lambda *a, **k: "/static/x"
+    html = env.get_template("stock_assistant.html").render(
+        assistant_scope={"active_farm": {"name": "Fazenda"}, "active_season": {"name": "Safra"}},
+        thread=SimpleNamespace(id="t", title="WhatsApp · teste"), thread_channel="whatsapp", csrf_token="x",
+        messages=[{"role": "assistant", "content": "Confira", "time": "", "draft": {
+            "id": "draft", "kind": "compra", "state": "pending", "item": "Café", "unit": "kg"}}],
+    )
+    assert "modo de consulta" in html and "WhatsApp" in html
+    assert 'action="/mobile/assistente/draft/confirmar"' not in html
+    assert 'data-as-form' not in html
+
+
 def _tool_call(name, args, call_id="c1"):
     import json as _json
     return SimpleNamespace(id=call_id, function=SimpleNamespace(name=name, arguments=_json.dumps(args)))

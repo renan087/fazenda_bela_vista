@@ -29,6 +29,21 @@
     };
     $$('[data-as-threads-open]').forEach((b) => b.addEventListener('click', () => openThreads(true)));
     $$('[data-as-threads-close]').forEach((b) => b.addEventListener('click', () => openThreads(false)));
+    const threadsToggle = $('[data-as-threads-toggle]');
+    const setThreadsCollapsed = (collapsed) => {
+        shell.classList.toggle('is-threads-collapsed', collapsed);
+        if (threadsToggle) {
+            threadsToggle.setAttribute('aria-expanded', String(!collapsed));
+            threadsToggle.setAttribute('aria-label', collapsed ? 'Abrir histórico' : 'Recolher histórico');
+            threadsToggle.title = collapsed ? 'Abrir histórico' : 'Recolher histórico';
+        }
+    };
+    setThreadsCollapsed(store.get('sisfarm_assistant_threads_collapsed') === '1');
+    if (threadsToggle) threadsToggle.addEventListener('click', () => {
+        const collapsed = !shell.classList.contains('is-threads-collapsed');
+        setThreadsCollapsed(collapsed);
+        store.set('sisfarm_assistant_threads_collapsed', collapsed ? '1' : '0');
+    });
     if (scrim) scrim.addEventListener('click', () => openThreads(false));
     document.addEventListener('keydown', (e) => { if (e.key === 'Escape') openThreads(false); });
 

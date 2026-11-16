@@ -20641,6 +20641,12 @@ def _thread_messages(thread):
     return [item for item in messages if isinstance(item, dict) and item.get("role") in ("user", "assistant")]
 
 
+def _assistant_thread_channel(thread):
+    if not thread:
+        return "web"
+    return thread.channel or ("whatsapp" if (thread.title or "").startswith("WhatsApp · ") else "web")
+
+
 def _save_thread(db, thread, messages):
     thread.messages_json = json.dumps(messages[-ASSISTANT_MAX_MESSAGES:], ensure_ascii=False, default=str)
     thread.updated_at = datetime.now(timezone.utc)
@@ -20693,7 +20699,7 @@ def _assistant_thread_list(db, threads, active_id):
         if label not in groups:
             groups[label] = []
             order.append(label)
-        groups[label].append({"id": thread.id, "title": thread.title, "subtitle": subtitle,
+        groups[label].append({"id": thread.id, "title": thread.title, "subtitle": subtitle, "channel": _assistant_thread_channel(thread),
                               "pending": pending, "active": thread.id == active_id})
     return [{"label": label, "items": groups[label]} for label in order]
 
@@ -20742,6 +20748,7 @@ def stock_assistant_page(
     return templates.TemplateResponse("stock_assistant.html", _base_context(
         request, user, csrf_token, "mobile", title="Assistente SiSFarm", _repo=repo,
         assistant_scope=scope, thread=thread, messages=messages, registered=registered, pending_draft=pending,
+        thread_channel=_assistant_thread_channel(thread),
         thread_groups=_assistant_thread_list(db, threads, thread.id if thread else None),
         recent_threads=[item for group in _assistant_thread_list(db, threads[:4], None) for item in group["items"]],
         greeting="Bom dia" if app_now().hour < 12 else "Boa tarde" if app_now().hour < 18 else "Boa noite",
@@ -20807,6 +20814,9 @@ def delete_assistant_audio(audio_id: str, request: Request, csrf_token: str = Fo
     audio = _assistant_audio_for_user(db, user, scope, audio_id)
     if not audio:
         raise HTTPException(status_code=404)
+    thread = _assistant_thread(db, user, scope, audio.thread_id) if audio.thread_id else None
+    if _assistant_thread_channel(thread) == "whatsapp":
+        raise HTTPException(status_code=403, detail="Conversa do WhatsApp disponível apenas para consulta.")
     thread_id = audio.thread_id
     db.delete(audio)
     db.commit()
@@ -20828,6 +20838,10 @@ def prepare_stock_assistant_action(
     scope = _global_scope_context(request, repo, user)
     farm, season = scope["active_farm"], scope["active_season"]
     thread = _assistant_thread(db, user, scope, thread_id) if thread_id else None
+    if thread_id and not thread:
+        raise HTTPException(status_code=404, detail="Conversa não encontrada.")
+    if _assistant_thread_channel(thread) == "whatsapp":
+        raise HTTPException(status_code=403, detail="Conversa do WhatsApp disponível apenas para consulta.")
     target = _assistant_url(thread.id if thread else None)
     image = None
     audio = None
@@ -20879,7 +20893,8 @@ def _assistant_turn(db, user, repo, scope, thread, message, *, image=None, attac
     if thread is None:
         now = datetime.now(timezone.utc)
         thread = AssistantThread(id=uuid4().hex, user_id=user.id, organization_id=user.organization_id,
-                                 farm_id=farm.id, season_id=season.id, title=(title_prefix + message)[:60], created_at=now, updated_at=now)
+                                 farm_id=farm.id, season_id=season.id, title=(title_prefix + message)[:60],
+                                 channel="whatsapp" if title_prefix == "WhatsApp · " else "web", created_at=now, updated_at=now)
     if audio:
         from app.services.assistant_audio import AUDIO_RETENTION_DAYS
         db.add(thread)
@@ -21247,6 +21262,8 @@ def delete_stock_assistant_thread(
     scope = _global_scope_context(request, _repository(db), user)
     thread = _assistant_thread(db, user, scope, thread_id)
     if thread:
+        if _assistant_thread_channel(thread) == "whatsapp":
+            raise HTTPException(status_code=403, detail="Conversa do WhatsApp disponível apenas para consulta.")
         db.delete(thread)
         db.commit()
         _flash(request, "success", "Conversa excluída.")
@@ -21266,6 +21283,8 @@ def rate_stock_assistant_message(
     messages = _thread_messages(thread)
     if not thread or index >= len(messages) or messages[index]["role"] != "assistant":
         raise HTTPException(status_code=404)
+    if _assistant_thread_channel(thread) == "whatsapp":
+        raise HTTPException(status_code=403, detail="Conversa do WhatsApp disponível apenas para consulta.")
     if value:
         messages[index]["fb"] = value
     else:
@@ -21406,6 +21425,10 @@ def resolve_stock_assistant_action(
     if not draft or (draft.farm_id, draft.season_id) != (scope["active_farm_id"], scope["active_season_id"]):
         raise HTTPException(status_code=404, detail="Rascunho não encontrado neste contexto.")
     thread = _assistant_thread(db, user, scope, thread_id) if thread_id else None
+    if not thread or not any((entry.get("draft") or {}).get("id") == draft_id for entry in _thread_messages(thread)):
+        raise HTTPException(status_code=404, detail="Rascunho não encontrado na conversa.")
+    if _assistant_thread_channel(thread) == "whatsapp":
+        raise HTTPException(status_code=403, detail="Confirme ou descarte este lançamento pelo WhatsApp.")
     target = _assistant_url(thread.id if thread else None)
     try:
         _assistant_resolve_draft(db, user, repo, scope, draft, action, thread)

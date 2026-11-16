@@ -4,6 +4,8 @@ import json
 import time
 from types import SimpleNamespace
 
+import pytest
+from fastapi import HTTPException
 from app.models.stock_assistant_draft import StockAssistantDraft
 from app.models.stock_output import StockOutput
 from app.models.whatsapp import WhatsAppInboundMessage, WhatsAppLink
@@ -132,6 +134,24 @@ def test_link_chat_confirm_and_isolation(monkeypatch):
     kind, to, body, buttons = client.sent[-1]
     draft = db.query(StockAssistantDraft).one()
     assert kind == "buttons" and to == "5535999" and "Gasolina" in body and buttons[0][0] == f"sf:confirmar:{draft.id}"
+    whatsapp_thread = db.get(routes.AssistantThread, db.query(WhatsAppLink).one().thread_id)
+    assert whatsapp_thread.channel == "whatsapp"
+    with pytest.raises(HTTPException) as exc:
+        routes.resolve_stock_assistant_action(SimpleNamespace(session={}), draft.id, "confirmar", csrf_token="x",
+                                              thread_id=whatsapp_thread.id, db=db, user=user)
+    assert exc.value.status_code == 403
+    with pytest.raises(HTTPException) as exc:
+        routes.prepare_stock_assistant_action(SimpleNamespace(session={}), message="oi", csrf_token="x",
+                                               thread_id=whatsapp_thread.id, photo=None, db=db, user=user)
+    assert exc.value.status_code == 403
+    with pytest.raises(HTTPException) as exc:
+        routes.delete_stock_assistant_thread(SimpleNamespace(session={}), whatsapp_thread.id, csrf_token="x", db=db, user=user)
+    assert exc.value.status_code == 403
+    # O identificador de uma conversa interna não pode ser usado para contornar o bloqueio.
+    with pytest.raises(HTTPException) as exc:
+        routes.resolve_stock_assistant_action(SimpleNamespace(session={}), draft.id, "confirmar", csrf_token="x",
+                                              thread_id=None, db=db, user=user)
+    assert exc.value.status_code == 404
     # reentrega da Meta (mesmo wamid) nao processa de novo
     assert _receive(db, client, _payload("5535999", "m2", "usei 5 litros de gasolina hoje")) == []
 
@@ -142,6 +162,12 @@ def test_link_chat_confirm_and_isolation(monkeypatch):
     assert db.query(StockOutput).filter_by(purchased_input_id=None).count() == 1 and "Registrei a saída" in client.sent[-1][2]
     thread = db.get(routes.AssistantThread, db.query(WhatsAppLink).one().thread_id)
     assert thread.title.startswith("WhatsApp")
+
+
+def test_legacy_whatsapp_thread_is_read_only():
+    from app.web.routes import _assistant_thread_channel
+    assert _assistant_thread_channel(SimpleNamespace(channel=None, title="WhatsApp · Olá")) == "whatsapp"
+    assert _assistant_thread_channel(SimpleNamespace(channel="web", title="WhatsApp · assunto")) == "web"
 
 
 def test_denied_expired_and_failure(monkeypatch):

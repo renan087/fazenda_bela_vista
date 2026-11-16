@@ -6048,6 +6048,9 @@ dialog.db-cost { width: min(70rem, calc(100vw - 2rem)); }
 .as-cv.is-active { background: #EEF3EB; }
 .as-cv b, .as-recent-item b { display: block; font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .as-cv span, .as-recent-item span { display: block; font-size: 12px; color: #7A857E; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.as-cv .as-channel, .as-message-channel { display: inline-flex; align-items: center; gap: 4px; color: #4c7940; font-size: 10px; font-weight: 700; }
+.as-message-channel { margin-bottom: 4px; }
+.as-readonly { display: flex; align-items: center; gap: 8px; padding: 14px 24px; border-top: 1px solid var(--as-line); color: #46643c; background: #f3f7f1; font-size: 13px; }
 .as-empty-list { padding: 18px 10px; font-size: 13px; color: var(--as-faint); }
 .as-scrim { position: absolute; inset: 0; z-index: 20; background: rgba(15, 21, 19, .35); }
 .as-only-drawer { display: none; }
@@ -6181,7 +6184,7 @@ dialog.db-cost { width: min(70rem, calc(100vw - 2rem)); }
 .as-can svg { color: var(--as-g); }
 .as-privacy { margin: auto 0 0; font-size: 12px; color: var(--as-faint); line-height: 1.5; display: flex; gap: 8px; }
 
-.as-only-mobile, .as-only-xl { display: none; }
+.as-only-mobile, .as-only-xl, .as-only-desktop { display: none; }
 @media (min-width: 1400px) {
     .as-ctx { display: flex; }
     .as-only-xl { display: inline-flex; }
@@ -6192,7 +6195,11 @@ dialog.db-cost { width: min(70rem, calc(100vw - 2rem)); }
     .as-shell.is-threads-open .as-threads { transform: none; }
     .as-only-drawer { display: inline-flex; }
 }
-@media (min-width: 1024px) { .as-hide-wide { display: none !important; } }
+@media (min-width: 1024px) {
+    .as-hide-wide { display: none !important; }
+    .as-only-desktop { display: inline-flex; }
+    .as-shell.is-threads-collapsed .as-threads { display: none; }
+}
 @media (max-width: 639px) {
     .as-shell { margin: 0 -1rem -1.5rem; border-radius: 0; border-left: 0; border-right: 0; }
     .as-only-mobile { display: inline-flex; }
