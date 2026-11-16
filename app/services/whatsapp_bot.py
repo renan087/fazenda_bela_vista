@@ -22,7 +22,8 @@ from app.models.whatsapp import WhatsAppInboundMessage, WhatsAppLink
 from app.services.stock_assistant import normalized
 from app.services.whatsapp import SERVICE_WINDOW_SECONDS, InboundMessage, WhatsAppClient, WhatsAppError, mask_phone
 
-logger = logging.getLogger(__name__)
+# Filho do logger do uvicorn: aparece no log do Render tambem em nivel INFO.
+logger = logging.getLogger("uvicorn.error.whatsapp")
 
 LINK_CODE_MINUTES = 15
 LINK_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
@@ -141,6 +142,7 @@ def process_inbound(db, row_id: int, client: WhatsAppClient) -> str | None:
         row = db.get(WhatsAppInboundMessage, row_id)
         row.status, row.error, row.processed_at = status, error, _now()
         db.commit()
+        logger.info("WhatsApp: mensagem de %s tipo=%s tentativa=%s -> %s", mask_phone(wa_id), row.msg_type, row.attempts, status)
         return status
 
 

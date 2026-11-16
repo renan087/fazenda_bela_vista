@@ -15,7 +15,8 @@ import httpx
 
 from app.core.config import get_settings
 
-logger = logging.getLogger(__name__)
+# Filho do logger do uvicorn: aparece no log do Render tambem em nivel INFO.
+logger = logging.getLogger("uvicorn.error.whatsapp")
 
 GRAPH_URL = "https://graph.facebook.com"
 TEXT_LIMIT = 4096
@@ -85,6 +86,26 @@ def extract_messages(payload: dict) -> list[InboundMessage]:
                     timestamp = 0
                 found.append(InboundMessage(wamid, wa_id, str(message.get("type") or "unknown")[:24], timestamp, message))
     return found
+
+
+def summarize(payload: dict) -> str:
+    """Resumo do evento para o log, sem conteudo das mensagens nem numeros completos."""
+    phone_number_id = (get_settings().whatsapp_phone_number_id or "").strip()
+    fields, messages, statuses, other_numbers, errors = [], 0, 0, 0, []
+    for entry in (payload.get("entry") or []) if isinstance(payload, dict) else []:
+        for change in (entry or {}).get("changes") or []:
+            fields.append(str((change or {}).get("field")))
+            value = (change or {}).get("value") or {}
+            if str((value.get("metadata") or {}).get("phone_number_id") or "") not in ("", phone_number_id):
+                other_numbers += 1
+            messages += len(value.get("messages") or [])
+            statuses += len(value.get("statuses") or [])
+            for status in value.get("statuses") or []:
+                for error in status.get("errors") or []:
+                    errors.append(f"{status.get('status')}:{error.get('code')}")
+    return (f"objeto={payload.get('object') if isinstance(payload, dict) else '?'} campos={','.join(fields) or '-'} "
+            f"mensagens={messages} status={statuses} outro_phone_number_id={other_numbers}"
+            + (f" erros_entrega={','.join(errors[:5])}" if errors else ""))
 
 
 class WhatsAppError(RuntimeError):

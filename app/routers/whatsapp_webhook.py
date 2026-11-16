@@ -17,9 +17,10 @@ from fastapi.responses import PlainTextResponse
 from app.core.config import get_settings
 from app.db.session import SessionLocal
 from app.services import whatsapp_bot
-from app.services.whatsapp import WhatsAppClient, extract_messages, valid_signature, verify_subscription
+from app.services.whatsapp import WhatsAppClient, extract_messages, summarize, valid_signature, verify_subscription
 
-logger = logging.getLogger(__name__)
+# Filho do logger do uvicorn: aparece no log do Render tambem em nivel INFO.
+logger = logging.getLogger("uvicorn.error.whatsapp")
 
 router = APIRouter(prefix="/api/webhooks", tags=["whatsapp-webhook"])
 MAX_BODY_BYTES = 1_000_000
@@ -65,8 +66,8 @@ async def whatsapp_receive(request: Request, background_tasks: BackgroundTasks):
     except ValueError:
         raise HTTPException(status_code=400, detail="JSON inválido") from None
     messages = extract_messages(payload)
-    if messages:
-        ids = await run_in_threadpool(_store, messages)
-        if ids:
-            background_tasks.add_task(process_queue, ids)
+    ids = await run_in_threadpool(_store, messages) if messages else []
+    logger.info("Webhook WhatsApp recebido: %s aceitas=%s novas=%s", summarize(payload), len(messages), len(ids))
+    if ids:
+        background_tasks.add_task(process_queue, ids)
     return {"status": "ok"}
