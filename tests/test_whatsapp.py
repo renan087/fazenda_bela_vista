@@ -117,7 +117,7 @@ def test_link_chat_confirm_and_isolation(monkeypatch):
 
     # numero desconhecido: so instrucoes, uma vez por dia, sem dados
     assert _receive(db, client, _payload("5511000", "u1", "quanto tenho de gasolina?")) == ["unknown"]
-    assert _receive(db, client, _payload("5511000", "u2", "oi")) == ["unknown"]
+    assert _receive(db, client, _payload("5511000", "u2", "oi")) == ["unknown_silenced"]
     assert len(client.sent) == 1 and client.sent[0][2] == whatsapp_bot.UNKNOWN_TEXT
 
     code = whatsapp_bot.start_link(db, user, scope["active_farm"], scope["active_season"])
@@ -186,3 +186,43 @@ def test_summary_shows_delivery_error_reason(monkeypatch):
     summary = whatsapp.summarize(payload)
     assert "failed:131031 (Business Account locked - Conta bloqueada) para ***7667" in summary
     assert "5535988887667" not in summary
+
+
+def test_brazilian_number_with_and_without_ninth_digit(monkeypatch):
+    _settings(monkeypatch)
+    routes, db, user, scope, *_ = _route_env(monkeypatch, ["Oi! Em que posso ajudar?", "Claro."])
+    client = FakeClient()
+    assert whatsapp.wa_id_variants("557781177667") == ["557781177667", "5577981177667"]
+    assert whatsapp.wa_id_variants("5577981177667") == ["5577981177667", "557781177667"]
+    assert whatsapp.wa_id_variants("5511000") == ["5511000"]
+
+    code = whatsapp_bot.start_link(db, user, scope["active_farm"], scope["active_season"])
+    assert _receive(db, client, _payload("557781177667", "m1", f"SISFARM {code}")) == ["linked"]
+    # a Meta passa a entregar o mesmo celular com o 9: continua reconhecido e a resposta vai no formato novo
+    assert _receive(db, client, _payload("5577981177667", "m2", "oi")) == ["done"]
+    assert client.sent[-1][:2] == ("text", "5577981177667")
+    assert db.query(WhatsAppLink).one().wa_id == "5577981177667"
+    assert _receive(db, client, _payload("557781177667", "m3", "e agora?")) == ["done"]
+
+    # outro usuario que vincula o mesmo celular (em qualquer formato) tira o numero do vinculo anterior
+    other = routes.User(name="Bia", email="bia@x.com", hashed_password="x", organization_id=user.organization_id, is_active=True)
+    db.add(other); db.commit()
+    code = whatsapp_bot.start_link(db, other, scope["active_farm"], scope["active_season"])
+    assert _receive(db, client, _payload("557781177667", "m4", f"SISFARM {code}")) == ["linked"]
+    links = {link.user_id: link.wa_id for link in db.query(WhatsAppLink)}
+    assert links == {user.id: None, other.id: "557781177667"}
+
+
+def test_unknown_instruction_is_resent_after_an_hour(monkeypatch):
+    from datetime import datetime, timedelta, timezone
+
+    _settings(monkeypatch)
+    routes, db, *_ = _route_env(monkeypatch, [])
+    client = FakeClient()
+    assert _receive(db, client, _payload("557781177667", "u1", "oi")) == ["unknown"]
+    assert _receive(db, client, _payload("5577981177667", "u2", "oi")) == ["unknown_silenced"]
+    first = db.query(WhatsAppInboundMessage).filter_by(wamid="u1").one()
+    first.received_at = datetime.now(timezone.utc) - timedelta(hours=2)
+    db.commit()
+    assert _receive(db, client, _payload("5577981177667", "u3", "oi")) == ["unknown"]
+    assert [item[2] for item in client.sent] == [whatsapp_bot.UNKNOWN_TEXT] * 2

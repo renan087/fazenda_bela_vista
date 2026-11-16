@@ -20,7 +20,8 @@ from app.models import Farm, User
 from app.models.crop_season import CropSeason
 from app.models.whatsapp import WhatsAppInboundMessage, WhatsAppLink
 from app.services.stock_assistant import normalized
-from app.services.whatsapp import SERVICE_WINDOW_SECONDS, InboundMessage, WhatsAppClient, WhatsAppError, mask_phone
+from app.services.whatsapp import (SERVICE_WINDOW_SECONDS, InboundMessage, WhatsAppClient, WhatsAppError, mask_phone,
+                                   wa_id_variants)
 
 # Filho do logger do uvicorn: aparece no log do Render tambem em nivel INFO.
 logger = logging.getLogger("uvicorn.error.whatsapp")
@@ -29,6 +30,7 @@ LINK_CODE_MINUTES = 15
 LINK_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 LINK_CODE_RE = re.compile(r"\bSISFARM[\s:-]*([A-Z0-9]{8})\b")
 MAX_ATTEMPTS = 3
+UNKNOWN_REPLY_INTERVAL = timedelta(hours=1)  # a instrucao de vinculo pode ter falhado na entrega; nao silenciar por 24 h
 UNKNOWN_TEXT = ("Olá! Este número ainda não está vinculado a uma conta SiSFarm. Para usar o assistente pelo WhatsApp, "
                 "entre no SiSFarm, abra Assistente > WhatsApp e gere o seu código de vínculo.")
 NEW_THREAD_WORDS = {"novo", "nova conversa", "/novo", "reiniciar"}
@@ -228,7 +230,7 @@ def _verify_link(db, row, client, code: str) -> str:
     if link is None or not link.code_expires_at or _aware(link.code_expires_at) < _now():
         client.send_text(row.wa_id, "Esse código é inválido ou expirou. Gere um novo no SiSFarm em Assistente > WhatsApp.")
         return "link_failed"
-    for other in db.query(WhatsAppLink).filter(WhatsAppLink.wa_id == row.wa_id, WhatsAppLink.id != link.id).all():
+    for other in db.query(WhatsAppLink).filter(WhatsAppLink.wa_id.in_(wa_id_variants(row.wa_id)), WhatsAppLink.id != link.id).all():
         other.wa_id, other.verified_at, other.thread_id = None, None, None  # o numero passa a ser so deste usuario
     db.flush()
     now = _now()
@@ -247,6 +249,18 @@ def _verify_link(db, row, client, code: str) -> str:
     return "linked"
 
 
+def _find_link(db, wa_id: str) -> WhatsAppLink | None:
+    """Vinculo verificado do numero, aceitando o celular brasileiro com ou sem o nono digito."""
+    links = (db.query(WhatsAppLink)
+             .filter(WhatsAppLink.wa_id.in_(wa_id_variants(wa_id)), WhatsAppLink.verified_at.isnot(None)).all())
+    link = next((item for item in links if item.wa_id == wa_id), links[0] if links else None)
+    if link is not None and link.wa_id != wa_id:
+        logger.info("WhatsApp: vinculo de %s atualizado para o formato recebido da Meta", mask_phone(wa_id))
+        link.wa_id = wa_id  # responde sempre no formato que a Meta acabou de usar
+        db.commit()
+    return link
+
+
 def _handle(db, row, client) -> str | None:
     from app.web import routes  # import tardio: routes importa muita coisa
 
@@ -259,13 +273,16 @@ def _handle(db, row, client) -> str | None:
     if code:
         return _verify_link(db, row, client, code.group(1))
 
-    link = db.query(WhatsAppLink).filter(WhatsAppLink.wa_id == row.wa_id, WhatsAppLink.verified_at.isnot(None)).first()
+    link = _find_link(db, row.wa_id)
     if link is None:
         recent = (db.query(WhatsAppInboundMessage.id)
-                  .filter(WhatsAppInboundMessage.wa_id == row.wa_id, WhatsAppInboundMessage.status == "unknown",
-                          WhatsAppInboundMessage.received_at > _now() - timedelta(hours=24)).first())
-        if not recent:
-            client.send_text(row.wa_id, UNKNOWN_TEXT)
+                  .filter(WhatsAppInboundMessage.wa_id.in_(wa_id_variants(row.wa_id)), WhatsAppInboundMessage.id != row.id,
+                          WhatsAppInboundMessage.status == "unknown",
+                          WhatsAppInboundMessage.received_at > _now() - UNKNOWN_REPLY_INTERVAL).first())
+        if recent:
+            logger.info("WhatsApp: %s sem vinculo; instrucao ja enviada na ultima hora", mask_phone(row.wa_id))
+            return "unknown_silenced"
+        client.send_text(row.wa_id, UNKNOWN_TEXT)
         return "unknown"
 
     user = db.get(User, link.user_id)

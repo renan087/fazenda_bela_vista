@@ -120,6 +120,17 @@ class WhatsAppError(RuntimeError):
 RECIPIENT_NOT_ALLOWED = 131030
 
 
+def wa_id_variants(wa_id: str) -> list[str]:
+    """O mesmo celular brasileiro pode chegar com ou sem o nono digito; devolve as duas formas (a recebida primeiro)."""
+    digits = re.sub(r"\D", "", wa_id or "")
+    variants = [digits] if digits else []
+    if len(digits) == 13 and digits.startswith("55") and digits[4] == "9" and digits[5] in "6789":
+        variants.append(digits[:4] + digits[5:])
+    elif br_ninth_digit(digits):
+        variants.append(br_ninth_digit(digits))
+    return variants
+
+
 def br_ninth_digit(wa_id: str) -> str | None:
     """A Meta entrega celulares do Brasil sem o 9 (55 + DDD + 8 digitos); a lista de teste costuma ter o 9."""
     digits = re.sub(r"\D", "", wa_id or "")
