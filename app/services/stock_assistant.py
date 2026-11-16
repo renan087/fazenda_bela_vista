@@ -120,12 +120,28 @@ PAYMENT_OPTIONS_TOOL = {"type": "function", "function": {
     "parameters": {"type": "object", "additionalProperties": False, "properties": {}},
 }}
 
+ADJUST_DRAFT_TOOL = {"type": "function", "function": {
+    "name": "ajustar_rascunho",
+    "description": "Altera somente os campos explicitamente solicitados pelo usuário no rascunho pendente. Não registra a operação.",
+    "parameters": {"type": "object", "additionalProperties": False, "required": ["alteracoes"], "properties": {
+        "alteracoes": {"type": "object", "additionalProperties": False, "properties": {
+            "quantidade": {"type": "number"}, "quantidade_embalagens": {"type": "number"},
+            "tamanho_embalagem": {"type": "number"}, "preco_por_embalagem": {"type": "number"},
+            "valor_total": {"type": "number"}, "data": {"type": "string"},
+            "setor": {"type": ["string", "null"]}, "fornecedor": {"type": ["string", "null"]},
+            "observacao": {"type": ["string", "null"]}, "lote": {"type": ["string", "null"]},
+            "fabricacao": {"type": ["string", "null"]}, "validade": {"type": ["string", "null"]},
+            "estoque_minimo": {"type": ["number", "null"]}
+        }}
+    }}
+}}
+
 
 class FarmAssistant:
     """Agente com ferramentas: a IA consulta o SiSFarm e so prepara rascunhos; o servidor valida tudo."""
 
     def __init__(self, *, farm_name, season, items, balances, plots, today, prepare_draft, extra_tools=(),
-                 prepare_purchase=None, purchase_rules=None, payment_options=None):
+                 prepare_purchase=None, purchase_rules=None, payment_options=None, pending_draft=None, require_patch=False):
         self.farm_name = farm_name
         self.season = season
         self.items = {item.id: item for item in items if item.is_active and item.item_type in STOCK_ITEM_TYPES}
@@ -143,6 +159,10 @@ class FarmAssistant:
         self.handlers = {"buscar_itens": self.buscar_itens, "listar_setores": self.listar_setores,
                          "consultar_saldo": self.consultar_saldo, "preparar_consumo": self.preparar_consumo}
         self.payment_options = payment_options
+        self.pending_draft = pending_draft
+        self.require_patch = require_patch
+        if pending_draft:
+            self.handlers["ajustar_rascunho"] = self.ajustar_rascunho
         if prepare_purchase:
             self.handlers["preparar_compra"] = self.preparar_compra
         if payment_options:
@@ -153,7 +173,31 @@ class FarmAssistant:
     @property
     def tools(self):
         return (AGENT_TOOLS + ([PURCHASE_TOOL] if self.prepare_purchase else [])
-                + ([PAYMENT_OPTIONS_TOOL] if self.payment_options else []) + [schema for schema, _ in self.extra_tools])
+                + ([PAYMENT_OPTIONS_TOOL] if self.payment_options else [])
+                + ([ADJUST_DRAFT_TOOL] if self.pending_draft else []) + [schema for schema, _ in self.extra_tools])
+
+    def ajustar_rascunho(self, alteracoes):
+        if not isinstance(alteracoes, dict) or not alteracoes:
+            raise ValueError("Pergunte qual informação do rascunho deve ser alterada.")
+        kind = self.pending_draft["kind"]
+        allowed = ({"quantidade", "data", "setor", "observacao"} if kind == "consumo" else
+                   {"quantidade_embalagens", "tamanho_embalagem", "preco_por_embalagem", "valor_total",
+                    "data", "fornecedor", "observacao", "lote", "fabricacao", "validade", "estoque_minimo"})
+        if set(alteracoes) - allowed:
+            raise ValueError("Esse campo ainda não pode ser ajustado com segurança neste rascunho. Descarte e prepare outro.")
+        if "preco_por_embalagem" in alteracoes and "valor_total" in alteracoes:
+            raise ValueError("Informe apenas o valor total ou o preço por embalagem.")
+        values = dict(self.pending_draft["args"])
+        values.update(alteracoes)
+        if "valor_total" in alteracoes:
+            values["preco_por_embalagem"] = None
+        if "preco_por_embalagem" in alteracoes:
+            values["valor_total"] = None
+        self.adjusting = True
+        try:
+            return self.preparar_consumo(**values) if kind == "consumo" else self.preparar_compra(**values)
+        finally:
+            self.adjusting = False
 
     # ---------------------------------------------------------------- ferramentas
     def _item_view(self, item):
@@ -341,6 +385,8 @@ class FarmAssistant:
             args = json.loads(raw_args or "{}")
             if not isinstance(args, dict):
                 raise ValueError("Argumentos inválidos.")
+            if self.require_patch and name in ("preparar_consumo", "preparar_compra"):
+                raise ValueError("Há um rascunho pendente. Para ajustes use ajustar_rascunho com apenas os campos pedidos pelo usuário.")
             handler = self.handlers.get(name)
             if handler is None:
                 raise ValueError(f"Ferramenta desconhecida: {name}")
@@ -404,6 +450,8 @@ class FarmAssistant:
             "- Use a unidade do cadastro e converta só o óbvio (litros->L, quilos->kg, 500 g->0,5 kg).\n"
             "- Quando tiver tudo, prepare o lançamento e diga, em uma frase, que deixou pronto para conferir. Nunca diga que "
             "registrou: quem confirma é o usuário, no botão. Se a preparação voltar com erro, explique com simplicidade e peça o ajuste.\n"
+            "- Se houver rascunho pendente e o usuário pedir correção, use ajustar_rascunho somente com os campos que ele pediu. "
+            "Nunca inclua campos não mencionados; se ele quiser mudar algo não suportado, peça para descartar e refazer.\n"
             "- Consultas: responda só com os números devolvidos, citando o período, valores como R$ 1.234,56. "
             "Converta datas relativas ('este mês', 'semana passada'). Se não houver consulta para o assunto, diga que ainda "
             "não tem acesso a essa informação.\n"
@@ -506,6 +554,8 @@ def _num_br(value) -> str:
 def _trace_label(name, result):
     if not isinstance(result, dict):
         return None
+    if name == "ajustar_rascunho":
+        return "Ajustou rascunho" if result.get("ok") else "Validou ajuste · precisa de atenção"
     if name == "buscar_itens":
         items = result.get("itens") or []
         return f"Buscou item · {items[0]['nome']}" if items else "Buscou item · nada encontrado"

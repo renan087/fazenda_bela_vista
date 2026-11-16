@@ -20956,12 +20956,14 @@ def _assistant_turn(db, user, repo, scope, thread, message, *, image=None, attac
                                            **({"audio_id": audio.id} if audio else {}),
                                            **({"photo": True, "attachment_type": attachment_type or "image"} if image else {})}]
     pending_purchase = None
+    pending_draft = None
     for entry in reversed(history[:-1]):
         previous = entry.get("draft") or {}
-        if previous.get("kind") == "compra" and previous.get("id"):
+        if previous.get("id"):
             row = _assistant_draft(db, user, previous["id"])
-            if row and row.kind == "compra" and row.status == "pending" and _assistant_draft_state(db, previous) == "pending":
-                pending_purchase = row
+            if row and row.status == "pending" and _assistant_draft_state(db, previous) == "pending":
+                pending_draft = row
+                pending_purchase = row if row.kind == "compra" else None
                 break
 
     assistant_ref = {}
@@ -21013,13 +21015,20 @@ def _assistant_turn(db, user, repo, scope, thread, message, *, image=None, attac
 
     def prepare_draft(*, item, plot, quantity, unit, movement_date, notes=None):
         draft_id = uuid4().hex
+        if pending_draft and getattr(assistant_ref.get("agent"), "adjusting", False):
+            if not claim_draft(db, pending_draft, "discarded"):
+                raise ValueError("O rascunho foi alterado, confirmado ou expirou. Abra-o novamente antes de ajustar.")
         db.add(StockAssistantDraft(
             id=draft_id, user_id=user.id, organization_id=user.organization_id,
             farm_id=farm.id, season_id=season.id, plot_id=plot.id if plot else None, input_id=item.id,
             movement_date=movement_date, quantity=quantity, unit=unit, notes=notes,
             expires_at=datetime.now(timezone.utc) + timedelta(minutes=30),
         ))
-        db.commit()
+        try:
+            db.commit()
+        except Exception:
+            db.rollback()
+            raise
         balance = Decimal(str(balances.get(item.id, 0)))
         drafted.update({
             "id": draft_id, "state": "pending", "item": item.name, "fuel": item.item_type == "combustivel",
@@ -21157,7 +21166,44 @@ def _assistant_turn(db, user, repo, scope, thread, message, *, image=None, attac
         draft_id = uuid4().hex
         total_quantity = packs * size
         total_cost = (packs * unit_price).quantize(Decimal("0.01"))
-        finance, adjustments = resolve_purchase_extras(extras or {}, purchase_date)
+        if pending_purchase and getattr(assistant_ref.get("agent"), "adjusting", False):
+            previous = json.loads(pending_purchase.payload_json or "{}")
+            account_id, card_id = previous.get("finance_account_id"), previous.get("credit_card_id")
+            if account_id and not any(account.id == account_id for account in finance_accounts):
+                raise ValueError("A conta do rascunho não está mais disponível. Descarte e prepare novamente.")
+            if card_id and not any(card.id == card_id for card in credit_cards):
+                raise ValueError("O cartão do rascunho não está mais disponível. Descarte e prepare novamente.")
+            finance = {field: previous.get(field) for field in (
+                "payment_method", "payment_condition", "installment_count", "installment_frequency",
+                "first_installment_date", "credit_card_id", "credit_card_name", "finance_account_id", "finance_account_name",
+                "batch_number", "manufacture_date", "expiration_date", "low_stock_threshold",
+            )}
+            for key, field in (("lote", "batch_number"), ("fabricacao", "manufacture_date"),
+                               ("validade", "expiration_date"), ("estoque_minimo", "low_stock_threshold")):
+                finance[field] = (extras or {}).get(key)
+            if finance["batch_number"] is not None:
+                if not isinstance(finance["batch_number"], str):
+                    raise ValueError("Número do lote inválido.")
+                finance["batch_number"] = " ".join(finance["batch_number"].split())[:80] or None
+            if finance["low_stock_threshold"] is not None:
+                finance["low_stock_threshold"] = str(finance["low_stock_threshold"])
+            try:
+                manufacture = date.fromisoformat(finance["manufacture_date"]) if finance["manufacture_date"] else None
+                expiration = date.fromisoformat(finance["expiration_date"]) if finance["expiration_date"] else None
+            except (TypeError, ValueError):
+                raise ValueError("Data de fabricação ou validade inválida.") from None
+            if manufacture and expiration and manufacture > expiration:
+                raise ValueError("A fabricação não pode ser posterior à validade.")
+            if finance["low_stock_threshold"] is not None:
+                try:
+                    minimum = Decimal(finance["low_stock_threshold"])
+                    if not minimum.is_finite() or minimum <= 0:
+                        raise ValueError
+                except (ValueError, InvalidOperation):
+                    raise ValueError("O estoque mínimo deve ser um valor positivo.") from None
+            adjustments = []
+        else:
+            finance, adjustments = resolve_purchase_extras(extras or {}, purchase_date)
         if not purchase_traceability_enabled(item_type, category):
             finance.update(batch_number=None, manufacture_date=None, expiration_date=None)
         payload = {
@@ -21166,6 +21212,9 @@ def _assistant_turn(db, user, repo, scope, thread, message, *, image=None, attac
             "purchase_date": purchase_date.isoformat(), "supplier_name": supplier, "notes": notes, "is_new": is_new,
             **finance,
         }
+        if pending_draft and getattr(assistant_ref.get("agent"), "adjusting", False):
+            if not claim_draft(db, pending_draft, "discarded"):
+                raise ValueError("O rascunho foi alterado, confirmado ou expirou. Abra-o novamente antes de ajustar.")
         db.add(StockAssistantDraft(
             id=draft_id, user_id=user.id, organization_id=user.organization_id, kind="compra",
             farm_id=farm.id, season_id=season.id, plot_id=None, input_id=item.id if item else None,
@@ -21173,7 +21222,11 @@ def _assistant_turn(db, user, repo, scope, thread, message, *, image=None, attac
             payload_json=json.dumps(payload, ensure_ascii=False),
             expires_at=datetime.now(timezone.utc) + timedelta(minutes=30),
         ))
-        db.commit()
+        try:
+            db.commit()
+        except Exception:
+            db.rollback()
+            raise
         balance = Decimal(str(balances.get(item.id, 0))) if item else Decimal(0)
         drafted.clear()
         drafted.update({
@@ -21209,10 +21262,42 @@ def _assistant_turn(db, user, repo, scope, thread, message, *, image=None, attac
         repo=repo, farm=farm, season=season, plots=plots, today=today_in_app_timezone(),
         allowed=lambda page: page in permission_codes and entitlements.module_allowed(page),
     )
+    pending_memory = None
+    if pending_draft:
+        if pending_draft.kind == "compra":
+            try:
+                p = json.loads(pending_draft.payload_json or "{}")
+                pending_memory = {"kind": "compra", "args": {
+                    "item_id": pending_draft.input_id, "nome_novo": p.get("name"), "tipo": p.get("item_type"),
+                    "categoria": p.get("category"), "unidade": p.get("package_unit"),
+                    "quantidade_embalagens": p.get("quantity_purchased"), "tamanho_embalagem": p.get("package_size"),
+                    "preco_por_embalagem": p.get("unit_price"), "valor_total": None, "data": p.get("purchase_date"),
+                    "fornecedor": p.get("supplier_name"), "observacao": p.get("notes"),
+                    "forma_pagamento": p.get("payment_method"), "condicao": p.get("payment_condition"),
+                    "parcelas": p.get("installment_count"), "periodicidade": p.get("installment_frequency"),
+                    "primeira_parcela": p.get("first_installment_date"), "conta_id": p.get("finance_account_id"),
+                    "cartao_id": p.get("credit_card_id"), "cartao_desconhecido": False,
+                    "lote": p.get("batch_number"), "fabricacao": p.get("manufacture_date"),
+                    "validade": p.get("expiration_date"), "estoque_minimo": p.get("low_stock_threshold"),
+                }}
+            except (TypeError, ValueError):
+                logging.getLogger(__name__).warning("Rascunho de compra inválido: %s", pending_draft.id)
+        else:
+            plot = repo.get_plot(pending_draft.plot_id) if pending_draft.plot_id else None
+            pending_memory = {"kind": "consumo", "args": {
+                "item_id": pending_draft.input_id, "quantidade": str(pending_draft.quantity),
+                "unidade": pending_draft.unit, "data": pending_draft.movement_date.isoformat(),
+                "setor": plot.name if plot else None, "observacao": pending_draft.notes,
+            }}
+    explicit_adjustment = bool(re.search(
+        r"\b(ajust\w*|corrig\w*|corrija|alter\w*|troqu\w*|mud\w*|na verdade|ao inves|em vez)\b",
+        normalized(message),
+    ))
     assistant = FarmAssistant(farm_name=farm.name, season=season, items=products, balances=balances,
                               plots=plots, today=today_in_app_timezone(), prepare_draft=prepare_draft,
                               extra_tools=queries.tools(), prepare_purchase=prepare_purchase,
-                              purchase_rules=purchase_rules, payment_options=payment_options)
+                              purchase_rules=purchase_rules, payment_options=payment_options,
+                              pending_draft=pending_memory, require_patch=bool(pending_memory and explicit_adjustment))
     assistant_ref["agent"] = assistant
     # A IA recebe so mensagens validas (sem os avisos de erro) e as mais recentes.
     ai_history = [{"role": item["role"], "content": item["content"]} for item in history if not item.get("error")][-20:]
@@ -21234,16 +21319,12 @@ def _assistant_turn(db, user, repo, scope, thread, message, *, image=None, attac
         ai_history.insert(len(ai_history) - 1, {"role": "system", "content": (
             "Itens do cadastro já identificados nesta conversa (continue com eles, sem perguntar de novo): "
             + "; ".join(f"{known['nome']} [item_id {known['item_id']}]" for known in remembered.values()))})
-    if pending_purchase:
-        try:
-            pending_payload = json.loads(pending_purchase.payload_json or "{}")
-            ai_history.insert(0, {"role": "system", "content": (
-                "Rascunho de compra pendente nesta conversa, para pedidos de ajuste: "
-                + json.dumps(pending_payload, ensure_ascii=False)
-                + ". Preserve os dados não alterados pelo usuário. Ao ajustar, prepare um novo rascunho para conferência."
-            )})
-        except (ValueError, TypeError):
-            logging.getLogger(__name__).warning("Rascunho de compra inválido: %s", pending_purchase.id)
+    if pending_memory:
+        ai_history.insert(0, {"role": "system", "content": (
+            "Rascunho de " + pending_memory["kind"] + " pendente nesta conversa, para pedidos de ajuste: "
+            + json.dumps(pending_memory["args"], ensure_ascii=False)
+            + ". Use ajustar_rascunho somente com campos explicitamente alterados e mantenha o restante."
+        )})
     try:
         result = run_farm_assistant(ai_history, assistant, **({"image": image} if image else {}))
     except ValueError as exc:

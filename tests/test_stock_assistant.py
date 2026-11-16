@@ -1,4 +1,5 @@
 from datetime import date, datetime, timedelta, timezone
+import json
 from decimal import Decimal
 from pathlib import Path
 from types import SimpleNamespace
@@ -383,14 +384,14 @@ def test_voice_submission_transcribes_and_records_audio(monkeypatch):
 
 def test_new_draft_replaces_pending_one_and_confirm_updates_thread(monkeypatch):
     draft_reply = {"item_id": 0, "quantidade": 5, "unidade": "L", "data": "2026-11-15", "setor": None}
-    routes, db, user, scope, send, sent, thread_history = _route_env(monkeypatch, [draft_reply, {**draft_reply, "quantidade": 4}])
+    routes, db, user, scope, send, sent, thread_history = _route_env(monkeypatch, [draft_reply, {"_tool": "ajustar_rascunho", "alteracoes": {"quantidade": 4}}])
     send("5 litros de gasolina hoje")
     send("na verdade foram 4")
     first, second = db.query(StockAssistantDraft).order_by(StockAssistantDraft.quantity.desc()).all()
     assert first.status == "discarded" and second.status == "pending"
     history = thread_history()
     assert history[1]["draft"]["state"] == "replaced" and history[3]["draft"]["state"] == "pending"
-    assert history[3]["tools"] == ["Preparou rascunho de consumo"]
+    assert history[3]["draft"]["quantity"] in ("4", "4,00")
     location = routes.resolve_stock_assistant_action(
         SimpleNamespace(session={}), second.id, "confirmar", csrf_token="x",
         thread_id=db.query(routes.AssistantThread).one().id, db=db, user=user,
@@ -400,6 +401,82 @@ def test_new_draft_replaces_pending_one_and_confirm_updates_thread(monkeypatch):
     assert history[3]["draft"]["state"] == "confirmed" and history[-1]["content"].startswith("Pronto!")
     summary = db.query(StockOutput).filter_by(purchased_input_id=None).one()
     assert float(summary.quantity) == 4
+
+
+def test_adjusting_consumption_preserves_other_fields(monkeypatch):
+    draft_reply = {"item_id": 0, "quantidade": 5, "unidade": "L", "data": "2026-11-15", "setor": None,
+                   "observacao": "Trator"}
+    adjust = {"_tool": "ajustar_rascunho", "alteracoes": {"quantidade": 4}}
+    routes, db, user, scope, send, sent, history = _route_env(monkeypatch, [draft_reply, adjust])
+    send("usei 5 litros de gasolina no trator hoje")
+    first = db.query(StockAssistantDraft).one()
+    send("quero ajustar a quantidade para 4")
+    second = db.query(StockAssistantDraft).filter_by(status="pending").one()
+    assert first.status == "discarded" and second.quantity == 4
+    assert second.input_id == first.input_id and second.movement_date == first.movement_date
+    assert second.unit == first.unit and second.notes == "Trator"
+    assert "Rascunho de consumo pendente" in sent[1][0][0]["content"]
+
+
+def test_explicit_adjustment_rejects_full_recreation_and_unsupported_field():
+    assistant = _assistant([])
+    assistant.pending_draft = {"kind": "consumo", "args": {"item_id": 1, "quantidade": 5, "unidade": "L",
+                                                               "data": "2026-11-15", "setor": None}}
+    assistant.require_patch = True
+    assistant.handlers["ajustar_rascunho"] = assistant.ajustar_rascunho
+    assert "use ajustar_rascunho" in assistant.call_tool("preparar_consumo", '{}')["erro"]
+    assert "não pode ser ajustado" in assistant.call_tool("ajustar_rascunho", '{"alteracoes":{"item_id":2}}')["erro"]
+
+
+def test_adjusting_purchase_preserves_unmodified_fields(monkeypatch):
+    purchase = {"_tool": "preparar_compra", "item_id": 0, "nome_novo": None, "tipo": None, "categoria": None,
+                "unidade": "L", "quantidade_embalagens": 2, "tamanho_embalagem": 20,
+                "preco_por_embalagem": 100, "valor_total": None, "data": "2026-11-15",
+                "fornecedor": "Revenda", "observacao": "Nota 7", "forma_pagamento": None,
+                "condicao": "a_vista", "parcelas": None, "periodicidade": None, "primeira_parcela": None,
+                "conta_id": None, "cartao_id": None, "cartao_desconhecido": False, "lote": "L7"}
+    adjust = {"_tool": "ajustar_rascunho", "alteracoes": {"preco_por_embalagem": 120}}
+    routes, db, user, scope, send, sent, history = _route_env(monkeypatch, [purchase, adjust])
+    send("comprei gasolina")
+    first = db.query(StockAssistantDraft).one()
+    old = json.loads(first.payload_json)
+    send("ajuste o preço para 120 por embalagem")
+    second = db.query(StockAssistantDraft).filter_by(status="pending").one()
+    updated = json.loads(second.payload_json)
+    assert first.status == "discarded" and updated["unit_price"] == "120.0000"
+    for field in ("name", "quantity_purchased", "package_size", "purchase_date", "supplier_name",
+                  "notes", "payment_method", "payment_condition", "credit_card_id", "finance_account_id"):
+        assert updated[field] == old[field]
+
+
+def test_adjusting_supplier_does_not_change_card(monkeypatch):
+    from app.models import FinanceAccount, FinanceCreditCard
+    purchase = {"_tool": "preparar_compra", "item_id": 0, "nome_novo": None, "tipo": None, "categoria": None,
+                "unidade": "L", "quantidade_embalagens": 1, "tamanho_embalagem": 20, "preco_por_embalagem": 100,
+                "valor_total": None, "data": "2026-11-15", "fornecedor": "Loja", "observacao": None,
+                "forma_pagamento": "Cartão de crédito", "condicao": "a_prazo", "parcelas": 3,
+                "periodicidade": "mensal", "primeira_parcela": None, "conta_id": None, "cartao_id": None,
+                "cartao_desconhecido": False}
+    adjust = {"_tool": "ajustar_rascunho", "alteracoes": {"fornecedor": "Nubank"}}
+    routes, db, user, scope, send, sent, history = _route_env(monkeypatch, [purchase, adjust])
+    farm = scope["active_farm"]
+    account = FinanceAccount(farm_id=farm.id, account_name="Conta", initial_balance=0,
+                             initial_balance_date=date(2026, 1, 1), bank_code="756", bank_name="Banco",
+                             created_at=datetime.now(timezone.utc))
+    db.add(account); db.flush()
+    cards = [FinanceCreditCard(farm_id=farm.id, payment_account_id=account.id, card_name=name, issuer=name,
+                               brand="Visa", closing_day=5, due_day=12, is_active=True,
+                               created_at=datetime.now(timezone.utc)) for name in ("Nubank", "Ourocard")]
+    db.add_all(cards); db.commit()
+    purchase["cartao_id"] = cards[1].id
+    send("comprei gasolina no Ourocard em 3 parcelas")
+    old = json.loads(db.query(StockAssistantDraft).one().payload_json)
+    send("ajuste o fornecedor para Nubank")
+    new = json.loads(db.query(StockAssistantDraft).filter_by(status="pending").one().payload_json)
+    assert new["supplier_name"] == "Nubank"
+    for field in ("credit_card_id", "finance_account_id", "payment_method", "payment_condition",
+                  "installment_count", "installment_frequency", "first_installment_date"):
+        assert new[field] == old[field]
 
 
 def test_purchase_of_new_and_existing_items(monkeypatch):
@@ -513,7 +590,7 @@ def test_assistant_never_picks_a_card_when_there_are_several(monkeypatch):
             "condicao": None, "parcelas": None, "periodicidade": None, "primeira_parcela": None, "conta_id": None,
             "cartao_id": None, "cartao_desconhecido": False, "lote": None, "fabricacao": None, "validade": None,
             "estoque_minimo": None}
-    replies = [{**base, "_expect_error": True}, {**base, "cartao_id": -1}, {**base, "cartao_desconhecido": True}]
+    replies = [{**base, "_expect_error": True}, {**base, "cartao_id": -1}, {**base, "cartao_desconhecido": True, "_expect_error": True}]
     routes, db, user, scope, send, sent, thread_history = _route_env(monkeypatch, replies)
     farm = scope["active_farm"]
     account = FinanceAccount(farm_id=farm.id, account_name="Sicoob", initial_balance=0, initial_balance_date=date(2026, 1, 1),
@@ -530,8 +607,8 @@ def test_assistant_never_picks_a_card_when_there_are_several(monkeypatch):
     send("foi no Sicredi")
     assert "Sicredi" in thread_history()[-1]["draft"]["payment"]
     send("na verdade não lembro o cartão")
-    card = thread_history()[-1]["draft"]
-    assert card["payment"] == "À vista" and "cartão" not in card["finance"]
+    assert "ajustar_rascunho" in thread_history()[-1]["content"]
+    assert "Sicredi" in thread_history()[-3]["draft"]["payment"]
 
 
 @pytest.mark.parametrize("answer", ["2", "ourocard"])
