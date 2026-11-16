@@ -224,7 +224,7 @@
                     <input type="file" name="voice" data-as-voice-input hidden accept="audio/*">
                     <label for="assistant-message" class="sr-only">Sua mensagem</label>
                     <div class="as-attach" data-as-attach hidden>{{ ic('image', 14) }}<span data-as-attach-name></span><button type="button" data-as-attach-clear aria-label="Remover arquivo">{{ ic('x', 14) }}</button></div>
-                    <audio controls data-as-audio-preview hidden aria-label="Ouvir gravação"></audio>
+                    <div class="as-voice" data-as-audio-preview hidden><audio preload="metadata"></audio><div class="as-voice-player"><button type="button" data-voice-play aria-label="Reproduzir áudio">&#9654;</button><span class="as-voice-wave" data-voice-wave aria-hidden="true"></span><span data-voice-time>0:00</span></div></div>
                     <span class="as-hint" data-as-audio-status aria-live="polite"></span>
                     <div class="as-recording" data-as-recording hidden><span class="as-recording-dot"></span><span data-as-duration>0:00</span><span class="as-wave" data-as-wave aria-hidden="true"></span><button type="button" data-as-stop>Parar</button></div>
                     <textarea id="assistant-message" name="message" maxlength="600" rows="1"

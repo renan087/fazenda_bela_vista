@@ -140,15 +140,25 @@
     let recorder = null, sendWhenStopped = false, recordedUrl = null;
     if (window.MediaRecorder && navigator.mediaDevices && navigator.mediaDevices.getUserMedia && mic) {
         mic.hidden = false;
-        let meterTimer = null, audioContext = null;
+        let meterTimer = null, audioContext = null, opening = false;
         const recording = $('[data-as-recording]', form);
         const wave = $('[data-as-wave]', form);
         $('[data-as-stop]', form).addEventListener('click', () => { if (recorder) recorder.stop(); });
         mic.addEventListener('click', async () => {
             if (recorder) { recorder.stop(); return; }
+            if (opening) return;
+            opening = true;
+            const preview = $('[data-as-audio-preview]', form);
+            const previewAudio = preview.querySelector('audio');
+            previewAudio.pause(); previewAudio.removeAttribute('src'); preview.hidden = true;
+            $('[data-voice-time]', preview).textContent = '0:00';
+            preview.querySelectorAll('[data-voice-wave] i').forEach((bar) => bar.classList.remove('played'));
+            $('[data-as-voice-input]', form).value = '';
+            $('[data-as-audio-id]', form).value = '';
+            $('[data-as-audio-status]', form).textContent = '';
+            if (recordedUrl) { URL.revokeObjectURL(recordedUrl); recordedUrl = null; }
             try {
                 const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                $('[data-as-audio-id]', form).value = '';
                 const chunks = [];
                 recorder = new MediaRecorder(stream);
                 recorder.ondataavailable = (event) => { if (event.data.size) chunks.push(event.data); };
@@ -168,8 +178,7 @@
                         $('[data-as-voice-input]', form).files = transfer.files;
                         if (recordedUrl) URL.revokeObjectURL(recordedUrl);
                         recordedUrl = URL.createObjectURL(blob);
-                        const preview = $('[data-as-audio-preview]', form);
-                        preview.src = recordedUrl; preview.hidden = false;
+                        previewAudio.src = recordedUrl; preview.hidden = false;
                         status.textContent = 'Áudio pronto para enviar.';
                         if (sendWhenStopped) { sendWhenStopped = false; form.requestSubmit(); }
                     } catch (error) { sendWhenStopped = false; window.alert(error.message || 'Não foi possível preparar o áudio.'); }
@@ -197,6 +206,7 @@
                 mic.title = 'Parar gravação';
                 $('[data-as-audio-status]', form).textContent = 'Gravando. Toque na seta para enviar.';
             } catch (error) { window.alert('Não foi possível acessar o microfone.'); }
+            finally { opening = false; }
         });
     }
 
@@ -251,6 +261,7 @@
         if (toggle && transcript) toggle.addEventListener('click', () => { transcript.hidden = !transcript.hidden; toggle.textContent = transcript.hidden ? 'Ver transcrição' : 'Ocultar transcrição'; toggle.setAttribute('aria-expanded', String(!transcript.hidden)); });
     };
     $$('[data-as-voice]').forEach(initVoice);
+    initVoice($('[data-as-audio-preview]', form));
 
     // Envio: mostra a mensagem e o "Pensando…" enquanto o servidor responde
     form.addEventListener('submit', (e) => {
@@ -277,7 +288,8 @@
             bubble.append(voice);
             initVoice(voice);
             const preview = $('[data-as-audio-preview]', form);
-            preview.pause(); preview.hidden = true; preview.removeAttribute('src');
+            const previewAudio = preview.querySelector('audio');
+            previewAudio.pause(); preview.hidden = true; previewAudio.removeAttribute('src');
             $('[data-as-audio-status]', form).textContent = '';
         } else bubble.textContent = text;
         mine.append(bubble);
