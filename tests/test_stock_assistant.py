@@ -437,6 +437,39 @@ def test_voice_submission_transcribes_and_records_audio(monkeypatch):
     assert db.get(AssistantAudio, entry["audio_id"]).data == b"voice"
 
 
+def test_attachment_persists_in_history_and_is_private(monkeypatch):
+    from io import BytesIO
+    from starlette.datastructures import Headers, UploadFile
+    from app.models.assistant_attachment import AssistantAttachment
+    from fastapi import HTTPException
+    routes, db, user, scope, send, sent, history = _route_env(monkeypatch, [])
+    monkeypatch.setattr(routes, "run_farm_assistant", lambda history, assistant, **kw: {"resposta": "Recebi.", "draft_id": None})
+    upload = UploadFile(file=BytesIO(b"%PDF-1.4 test"), filename="nota.pdf", headers=Headers({"content-type": "application/pdf"}))
+    req = SimpleNamespace(session={})
+    response = routes.prepare_stock_assistant_action(req, message="Analise", csrf_token="x", thread_id=None,
+                                                     photo=upload, audio_id=None, voice=None, db=db, user=user)
+    thread = db.get(routes.AssistantThread, response.headers["location"].split("c=")[-1])
+    messages = routes._thread_messages(thread)
+    attachment_id = messages[0]["attachment_id"]
+    attachment = db.get(AssistantAttachment, attachment_id)
+    assert attachment.filename == "nota.pdf" and attachment.thread_id == thread.id
+    assert routes.assistant_attachment_file(attachment_id, req, db=db, user=user).body == b"%PDF-1.4 test"
+    other = SimpleNamespace(id=user.id + 1, organization_id=user.organization_id)
+    with pytest.raises(HTTPException) as exc:
+        routes.assistant_attachment_file(attachment_id, req, db=db, user=other)
+    assert exc.value.status_code == 404
+    routes._save_thread(db, thread, messages + [{"role": "user", "content": str(i)} for i in range(50)])
+    assert routes._thread_messages(thread)[0]["attachment_id"] == attachment_id
+    routes.delete_assistant_attachment(attachment_id, req, csrf_token="x", db=db, user=user)
+    assert db.get(AssistantAttachment, attachment_id) is None
+
+
+def test_assistant_rejects_attachment_with_wrong_signature():
+    from app.web.routes import _assistant_attachment_data
+    with pytest.raises(ValueError, match="não corresponde"):
+        _assistant_attachment_data(b"not an image", "image/png")
+
+
 def test_new_draft_replaces_pending_one_and_confirm_updates_thread(monkeypatch):
     draft_reply = {"item_id": 0, "quantidade": 5, "unidade": "L", "data": "2026-11-15", "setor": None}
     routes, db, user, scope, send, sent, thread_history = _route_env(monkeypatch, [draft_reply, {"_tool": "ajustar_rascunho", "alteracoes": {"quantidade": 4}}])

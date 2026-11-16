@@ -243,6 +243,31 @@ def test_audio_gets_one_contextual_reply_without_transcription_message(monkeypat
     assert routes._thread_messages(thread)[0]["content"] == "Tem gasolina?"
 
 
+def test_whatsapp_document_is_saved_read_only(monkeypatch):
+    from app.models.assistant_attachment import AssistantAttachment
+    _settings(monkeypatch)
+    routes, db, user, scope, *_ = _route_env(monkeypatch, [])
+    monkeypatch.setattr(routes, "run_farm_assistant", lambda history, assistant, **kw: {"resposta": "Recebi.", "draft_id": None})
+    class DocumentClient(FakeClient):
+        def download_media(self, media_id):
+            return b"%PDF-1.4 test", "application/pdf"
+    client = DocumentClient()
+    code = whatsapp_bot.start_link(db, user, scope["active_farm"], scope["active_season"])
+    _receive(db, client, _payload("5535999", "link-document", f"SISFARM {code}"))
+    payload = _payload("5535999", "document-id", "")
+    msg = payload["entry"][0]["changes"][0]["value"]["messages"][0]
+    msg.update(type="document", document={"id": "media-id", "filename": "nota.pdf"})
+    assert _receive(db, client, payload) == ["done"]
+    thread = db.get(routes.AssistantThread, db.query(WhatsAppLink).one().thread_id)
+    attachment_id = routes._thread_messages(thread)[0]["attachment_id"]
+    assert db.get(AssistantAttachment, attachment_id).filename == "nota.pdf"
+    req = SimpleNamespace(session={})
+    assert routes.assistant_attachment_file(attachment_id, req, db=db, user=user).body == b"%PDF-1.4 test"
+    with pytest.raises(HTTPException) as exc:
+        routes.delete_assistant_attachment(attachment_id, req, csrf_token="x", db=db, user=user)
+    assert exc.value.status_code == 403
+
+
 def test_summary_shows_delivery_error_reason(monkeypatch):
     _settings(monkeypatch)
     payload = {"object": "whatsapp_business_account", "entry": [{"changes": [{"field": "messages", "value": {

@@ -38,6 +38,7 @@ from starlette.datastructures import UploadFile as StarletteUploadFile
 from app.core.config import get_settings
 from app.models.assistant_thread import AssistantThread
 from app.models.assistant_audio import AssistantAudio
+from app.models.assistant_attachment import AssistantAttachment
 from app.models.whatsapp import WhatsAppLink
 from app.services import whatsapp_bot
 from app.services.whatsapp import is_configured as whatsapp_is_configured, mask_phone
@@ -20702,6 +20703,27 @@ ASSISTANT_PHOTO_TYPES = {"image/jpeg", "image/png", "image/webp", "application/p
 ASSISTANT_PHOTO_MAX_BYTES = 5 * 1024 * 1024
 
 
+def _assistant_attachment_data(data, mime):
+    if mime not in ASSISTANT_PHOTO_TYPES or not data or len(data) > ASSISTANT_PHOTO_MAX_BYTES:
+        raise ValueError("Envie uma foto JPG, PNG, WEBP ou PDF de até 5 MB.")
+    valid = {
+        "application/pdf": data.startswith(b"%PDF-"),
+        "image/jpeg": data.startswith(b"\xff\xd8\xff"),
+        "image/png": data.startswith(b"\x89PNG\r\n\x1a\n"),
+        "image/webp": data.startswith(b"RIFF") and data[8:12] == b"WEBP",
+    }
+    if not valid[mime]:
+        raise ValueError("O conteúdo do arquivo não corresponde ao formato informado.")
+
+
+def _new_assistant_attachment(user, farm, season, data, mime, filename):
+    _assistant_attachment_data(data, mime)
+    name = str(filename or ("documento.pdf" if mime == "application/pdf" else "imagem"))
+    name = name.replace("\\", "/").rsplit("/", 1)[-1].strip()[:180] or "arquivo"
+    return AssistantAttachment(id=uuid4().hex, user_id=user.id, organization_id=user.organization_id,
+                               farm_id=farm.id, season_id=season.id, filename=name, mime=mime, data=data)
+
+
 def _assistant_threads(db, user, scope, limit=40):
     return (db.query(AssistantThread)
             .filter_by(user_id=user.id, organization_id=user.organization_id,
@@ -20735,7 +20757,10 @@ def _assistant_thread_channel(thread):
 
 
 def _save_thread(db, thread, messages):
-    thread.messages_json = json.dumps(messages[-ASSISTANT_MAX_MESSAGES:], ensure_ascii=False, default=str)
+    # Preserve attachment messages even when the normal conversation window is trimmed.
+    cutoff = max(0, len(messages) - ASSISTANT_MAX_MESSAGES)
+    kept = [entry for index, entry in enumerate(messages) if index >= cutoff or entry.get("attachment_id")]
+    thread.messages_json = json.dumps(kept, ensure_ascii=False, default=str)
     thread.updated_at = datetime.now(timezone.utc)
     db.add(thread)
     db.commit()
@@ -20798,12 +20823,17 @@ def _assistant_view_messages(db, messages):
     available = {row[0] for row in db.query(AssistantAudio.id).filter(
         AssistantAudio.id.in_(ids), AssistantAudio.expires_at > datetime.now(timezone.utc)
     ).all()} if ids else set()
+    attachment_ids = [item.get("attachment_id") for item in messages if item.get("attachment_id")]
+    attachments = {row.id: row.filename for row in db.query(AssistantAttachment.id, AssistantAttachment.filename)
+                   .filter(AssistantAttachment.id.in_(attachment_ids)).all()} if attachment_ids else {}
     for index, item in enumerate(messages):
         local = _assistant_local(item.get("at"))
         entry = {**item, "index": index, "time": local.strftime("%H:%M") if local else ""}
         if item.get("audio_id") and item["audio_id"] not in available:
             entry["audio_id"] = None
             entry["audio_removed"] = True
+        if item.get("attachment_id"):
+            entry["attachment_name"] = attachments.get(item["attachment_id"])
         if local and local.date() != last_day:
             last_day = local.date()
             day = "Hoje" if last_day == today else "Ontem" if (today - last_day).days == 1 else last_day.strftime("%d/%m/%Y")
@@ -20911,6 +20941,52 @@ def delete_assistant_audio(audio_id: str, request: Request, csrf_token: str = Fo
     return _redirect(_assistant_url(thread_id))
 
 
+def _assistant_attachment_for_user(db, user, scope, attachment_id):
+    return db.query(AssistantAttachment).filter_by(
+        id=attachment_id, user_id=user.id, organization_id=user.organization_id,
+        farm_id=scope["active_farm_id"], season_id=scope["active_season_id"],
+    ).first()
+
+
+@router.get("/mobile/assistente/arquivo/{attachment_id}")
+def assistant_attachment_file(attachment_id: str, request: Request, db: Session = Depends(get_db),
+                              user: User = Depends(get_current_user_web)):
+    if not _can_use_stock_assistant(db, user):
+        raise HTTPException(status_code=403)
+    scope = _global_scope_context(request, _repository(db), user)
+    attachment = _assistant_attachment_for_user(db, user, scope, attachment_id)
+    if not attachment or not _assistant_thread(db, user, scope, attachment.thread_id):
+        raise HTTPException(status_code=404)
+    return Response(attachment.data, media_type=attachment.mime, headers={
+        "Content-Disposition": "inline", "Cache-Control": "private, no-store",
+        "X-Content-Type-Options": "nosniff", "Content-Security-Policy": "sandbox; default-src 'none'",
+    })
+
+
+@router.post("/mobile/assistente/arquivo/{attachment_id}/excluir")
+def delete_assistant_attachment(attachment_id: str, request: Request, csrf_token: str = Form(...),
+                                db: Session = Depends(get_db), user: User = Depends(get_current_user_web)):
+    validate_csrf(request, csrf_token)
+    if not _can_use_stock_assistant(db, user):
+        raise HTTPException(status_code=403)
+    scope = _global_scope_context(request, _repository(db), user)
+    attachment = _assistant_attachment_for_user(db, user, scope, attachment_id)
+    thread = _assistant_thread(db, user, scope, attachment.thread_id) if attachment else None
+    if not thread:
+        raise HTTPException(status_code=404)
+    if _assistant_thread_channel(thread) == "whatsapp":
+        raise HTTPException(status_code=403, detail="Conversa do WhatsApp disponível apenas para consulta.")
+    thread_id = thread.id
+    messages = _thread_messages(thread)
+    for entry in messages:
+        if entry.get("attachment_id") == attachment.id:
+            entry.pop("attachment_id", None)
+            entry["attachment_deleted"] = True
+    db.delete(attachment)
+    _save_thread(db, thread, messages)
+    return _redirect(_assistant_url(thread_id))
+
+
 @router.post("/mobile/assistente")
 def prepare_stock_assistant_action(
     request: Request, message: str = Form(..., max_length=600), csrf_token: str = Form(...),
@@ -20933,6 +21009,7 @@ def prepare_stock_assistant_action(
     target = _assistant_url(thread.id if thread else None)
     image = None
     audio = None
+    attachment = None
     try:
         if not farm or not season or season.farm_id != farm.id:
             raise ValueError("Selecione a fazenda e a safra no topo.")
@@ -20954,10 +21031,7 @@ def prepare_stock_assistant_action(
             if (photo.content_type or "") not in ASSISTANT_PHOTO_TYPES:
                 raise ValueError("Envie um PDF ou uma imagem JPG, PNG ou WEBP.")
             data = photo.file.read(ASSISTANT_PHOTO_MAX_BYTES + 1)
-            if not data or len(data) > ASSISTANT_PHOTO_MAX_BYTES:
-                raise ValueError("O arquivo precisa ter até 5 MB.")
-            if photo.content_type == "application/pdf" and not data.startswith(b"%PDF-"):
-                raise ValueError("O arquivo enviado não é um PDF válido.")
+            attachment = _new_assistant_attachment(user, farm, season, data, photo.content_type, photo.filename)
             image = f"data:{photo.content_type};base64,{base64.b64encode(data).decode()}"
     except ValueError as exc:
         _flash(request, "error", str(exc))
@@ -20971,11 +21045,12 @@ def prepare_stock_assistant_action(
     if audio_id and (not audio or audio.thread_id or expires <= datetime.now(timezone.utc)):
         _flash(request, "error", "Áudio indisponível. Grave novamente.")
         return _redirect(target)
-    thread, _ = _assistant_turn(db, user, repo, scope, thread, message, image=image, attachment_type=attachment_type, audio=audio)
+    thread, _ = _assistant_turn(db, user, repo, scope, thread, message, image=image, attachment_type=attachment_type,
+                                 audio=audio, attachment=attachment)
     return _redirect(_assistant_url(thread.id))
 
 
-def _assistant_turn(db, user, repo, scope, thread, message, *, image=None, attachment_type=None, title_prefix="", audio=None):
+def _assistant_turn(db, user, repo, scope, thread, message, *, image=None, attachment_type=None, title_prefix="", audio=None, attachment=None):
     """Um turno do assistente (web e WhatsApp): roda o agente, salva a conversa e devolve (thread, resposta)."""
     farm, season = scope["active_farm"], scope["active_season"]
     if thread is None:
@@ -20990,8 +21065,14 @@ def _assistant_turn(db, user, repo, scope, thread, message, *, image=None, attac
         audio.thread_id = thread.id
         audio.expires_at = datetime.now(timezone.utc) + timedelta(days=AUDIO_RETENTION_DAYS)
         db.add(audio)
+    if attachment:
+        db.add(thread)
+        db.flush()
+        attachment.thread_id = thread.id
+        db.add(attachment)
     history = _thread_messages(thread) + [{"role": "user", "content": message, "at": _assistant_now_iso(),
                                            **({"audio_id": audio.id} if audio else {}),
+                                           **({"attachment_id": attachment.id} if attachment else {}),
                                            **({"photo": True, "attachment_type": attachment_type or "image"} if image else {})}]
     pending_purchase = None
     pending_draft = None

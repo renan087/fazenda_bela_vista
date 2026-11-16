@@ -360,6 +360,7 @@ def _handle(db, row, client) -> str | None:
 
     image = attachment_type = None
     audio_record = None
+    attachment_record = None
     if row.msg_type == "audio":
         from app.models.assistant_audio import AssistantAudio
         from app.services.assistant_audio import AUDIO_RETENTION_DAYS, transcribe_audio
@@ -381,6 +382,12 @@ def _handle(db, row, client) -> str | None:
             return None
         image = f"data:{mime};base64,{base64.b64encode(data).decode()}"
         attachment_type = "pdf" if mime == "application/pdf" else "image"
+        try:
+            filename = (message.get(row.msg_type) or {}).get("filename")
+            attachment_record = routes._new_assistant_attachment(user, farm, season, data, mime, filename)
+        except ValueError as exc:
+            client.send_text(row.wa_id, str(exc))
+            return None
     elif row.msg_type not in ("text", "interactive", "button", "audio"):
         client.send_text(row.wa_id, "Por enquanto eu entendo mensagens de texto, fotos e PDF. Pode escrever para mim?")
         return None
@@ -389,7 +396,8 @@ def _handle(db, row, client) -> str | None:
         return None
     thread, item = routes._assistant_turn(db, user, repo, scope, thread, text, image=image,
                                           attachment_type=attachment_type, title_prefix="WhatsApp · ",
-                                          **({"audio": audio_record} if audio_record else {}))
+                                          **({"audio": audio_record} if audio_record else {}),
+                                          **({"attachment": attachment_record} if attachment_record else {}))
     link = db.get(WhatsAppLink, link.id)
     link.thread_id = thread.id
     db.commit()

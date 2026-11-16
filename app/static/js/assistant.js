@@ -338,6 +338,14 @@
         mine.className = 'as-msg-user';
         const bubble = document.createElement('div');
         bubble.className = 'as-ubub';
+        if (hasAttachment) {
+            const pendingFile = document.createElement('span');
+            pendingFile.className = 'as-photo-tag';
+            pendingFile.textContent = `${photo.files[0].name} · Enviando arquivo...`;
+            bubble.append(pendingFile);
+            chip.hidden = true;
+            attachmentStatus.textContent = '';
+        }
         if (hasVoice && recordedUrl) {
             const voice = document.createElement('div');
             voice.className = 'as-voice';
@@ -352,7 +360,7 @@
             const previewAudio = preview.querySelector('audio');
             previewAudio.pause(); preview.hidden = true; previewAudio.removeAttribute('src');
             $('[data-as-audio-status]', form).textContent = '';
-        } else bubble.textContent = text;
+        } else bubble.append(document.createTextNode(text));
         mine.append(bubble);
         const ai = document.createElement('div');
         ai.className = 'as-msg-ai';

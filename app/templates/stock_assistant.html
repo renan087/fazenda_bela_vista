@@ -126,7 +126,8 @@
                 {% if m.role == 'user' %}
                 <div class="as-msg-user">
                     <span class="as-message-channel">{{ ic('wa' if thread_channel == 'whatsapp' else 'spark', 13) }}{{ 'WhatsApp' if thread_channel == 'whatsapp' else 'SiSFarm' }}</span>
-                    <div class="as-ubub">{% if m.photo %}<span class="as-photo-tag">{{ ic('image', 14) }}{{ 'PDF enviado' if m.attachment_type == 'pdf' else 'Foto enviada' }}</span>{% endif %}{% if m.audio_id %}<div class="as-voice" data-as-voice><audio preload="metadata" src="/mobile/assistente/audio/{{ m.audio_id }}"></audio><div class="as-voice-player"><button type="button" data-voice-play aria-label="Reproduzir áudio">&#9654;</button><span class="as-voice-wave" data-voice-wave aria-hidden="true"></span><span data-voice-time>0:00</span></div><div class="as-voice-actions"><button type="button" data-voice-transcript aria-expanded="false">Ver transcrição</button><a href="/mobile/assistente/audio/{{ m.audio_id }}?download=1" download="audio-sisfarm">Baixar áudio</a></div><div class="as-voice-text" data-voice-text hidden>{{ m.content }}</div></div>{% else %}{{ m.content }}{% endif %}</div>
+                    <div class="as-ubub">{% if m.attachment_name %}<a class="as-photo-tag as-file-link" href="/mobile/assistente/arquivo/{{ m.attachment_id }}" target="_blank" rel="noopener noreferrer">{{ ic('image', 14) }}{{ m.attachment_name }} · Abrir arquivo</a>{% elif m.photo %}<span class="as-photo-tag">{{ ic('image', 14) }}Arquivo indisponível</span>{% endif %}{% if m.audio_id %}<div class="as-voice" data-as-voice><audio preload="metadata" src="/mobile/assistente/audio/{{ m.audio_id }}"></audio><div class="as-voice-player"><button type="button" data-voice-play aria-label="Reproduzir áudio">&#9654;</button><span class="as-voice-wave" data-voice-wave aria-hidden="true"></span><span data-voice-time>0:00</span></div><div class="as-voice-actions"><button type="button" data-voice-transcript aria-expanded="false">Ver transcrição</button><a href="/mobile/assistente/audio/{{ m.audio_id }}?download=1" download="audio-sisfarm">Baixar áudio</a></div><div class="as-voice-text" data-voice-text hidden>{{ m.content }}</div></div>{% else %}{{ m.content }}{% endif %}</div>
+                    {% if m.attachment_name and thread_channel != 'whatsapp' %}<form method="post" action="/mobile/assistente/arquivo/{{ m.attachment_id }}/excluir" data-as-confirm="Excluir este arquivo da conversa? A mensagem será mantida."><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="as-hint" type="submit">Excluir arquivo</button></form>{% endif %}
                     {% if m.audio_id and thread_channel != 'whatsapp' %}<form method="post" action="/mobile/assistente/audio/{{ m.audio_id }}/excluir"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button class="as-hint" type="submit">Excluir áudio · manter transcrição</button></form>{% endif %}
                     {% if m.audio_removed %}<span class="as-hint">Áudio excluído; transcrição preservada.</span>{% endif %}
                     <div class="as-time">{{ m.time }}</div>
@@ -247,7 +248,7 @@
                         <button class="as-send" data-as-send aria-label="Enviar">{{ ic('send', 18, 2.2) }}</button>
                     </div>
                 </form>
-                <p class="as-disclaimer">{{ ic('shield', 12) }} Áudios são enviados à IA e mantidos por até 30 dias. Você pode excluí-los sem apagar a transcrição.</p>
+                <p class="as-disclaimer">{{ ic('shield', 12) }} Arquivos e áudios são enviados à IA. Arquivos ficam na conversa; áudios são mantidos por até 30 dias.</p>
             </div>
         </footer>
         {% endif %}
@@ -290,5 +291,5 @@
         <p class="as-privacy">{{ ic('shield', 15) }}<span>As mensagens e fotos são enviadas ao modelo de IA para interpretação. Nenhum dado é alterado sem confirmação.</span></p>
     </aside>
 </div>
-<script src="{{ url_for('static', path='js/assistant.js') }}?v=5" defer></script>
+<script src="{{ url_for('static', path='js/assistant.js') }}?v=6" defer></script>
 {% endblock %}
