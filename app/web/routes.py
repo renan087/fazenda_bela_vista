@@ -20780,7 +20780,7 @@ def _assistant_audio_for_user(db, user, scope, audio_id):
 
 
 @router.get("/mobile/assistente/audio/{audio_id}")
-def assistant_audio_file(audio_id: str, request: Request, db: Session = Depends(get_db),
+def assistant_audio_file(audio_id: str, request: Request, download: bool = False, db: Session = Depends(get_db),
                          user: User = Depends(get_current_user_web)):
     if not _can_use_stock_assistant(db, user):
         raise HTTPException(status_code=403)
@@ -20790,7 +20790,11 @@ def assistant_audio_file(audio_id: str, request: Request, db: Session = Depends(
     expires = audio.expires_at.replace(tzinfo=timezone.utc) if audio and not audio.expires_at.tzinfo else (audio.expires_at if audio else None)
     if not audio or not audio.thread_id or expires <= now:
         raise HTTPException(status_code=404)
-    return Response(audio.data, media_type=audio.mime, headers={"Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff"})
+    from app.services.assistant_audio import AUDIO_TYPES
+    headers = {"Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff"}
+    if download:
+        headers["Content-Disposition"] = f'attachment; filename="{AUDIO_TYPES.get(audio.mime, "audio")}"'
+    return Response(audio.data, media_type=audio.mime, headers=headers)
 
 
 @router.post("/mobile/assistente/audio/{audio_id}/excluir")
@@ -20814,6 +20818,7 @@ def prepare_stock_assistant_action(
     request: Request, message: str = Form(..., max_length=600), csrf_token: str = Form(...),
     thread_id: str | None = Form(None, max_length=32), photo: UploadFile | None = File(None),
     audio_id: str | None = Form(None, max_length=32),
+    voice: UploadFile | None = File(None),
     db: Session = Depends(get_db), user: User = Depends(get_current_user_web),
 ):
     validate_csrf(request, csrf_token)
@@ -20825,10 +20830,22 @@ def prepare_stock_assistant_action(
     thread = _assistant_thread(db, user, scope, thread_id) if thread_id else None
     target = _assistant_url(thread.id if thread else None)
     image = None
+    audio = None
     try:
         if not farm or not season or season.farm_id != farm.id:
             raise ValueError("Selecione a fazenda e a safra no topo.")
         message = message.strip()
+        if voice is not None and getattr(voice, "filename", None):
+            from app.services.assistant_audio import MAX_AUDIO_BYTES, transcribe_audio
+            mime = (voice.content_type or "").split(";")[0].lower()
+            data = voice.file.read(MAX_AUDIO_BYTES + 1)
+            transcript = transcribe_audio(data, mime)
+            message = transcript if message == "[mensagem de áudio]" else f"{message} {transcript}".strip()
+            if len(message) > 600:
+                raise ValueError("A mensagem com a transcrição ficou longa demais. Envie um áudio mais curto.")
+            audio = AssistantAudio(id=uuid4().hex, user_id=user.id, organization_id=user.organization_id,
+                                   farm_id=farm.id, season_id=season.id, mime=mime, data=data,
+                                   expires_at=datetime.now(timezone.utc) + timedelta(hours=24))
         if not message:
             raise ValueError("Escreva uma mensagem para o assistente.")
         if photo is not None and photo.filename:
@@ -20846,7 +20863,7 @@ def prepare_stock_assistant_action(
 
     attachment_type = ("pdf" if photo.content_type == "application/pdf" else "image") if image else None
     audio_id = audio_id if isinstance(audio_id, str) and audio_id else None
-    audio = _assistant_audio_for_user(db, user, scope, audio_id) if audio_id else None
+    audio = _assistant_audio_for_user(db, user, scope, audio_id) if audio_id and not audio else audio
     expires = (audio.expires_at.replace(tzinfo=timezone.utc) if audio and not audio.expires_at.tzinfo
                else audio.expires_at if audio else None)
     if audio_id and (not audio or audio.thread_id or expires <= datetime.now(timezone.utc)):

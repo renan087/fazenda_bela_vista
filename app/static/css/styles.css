@@ -6077,6 +6077,15 @@ dialog.db-cost { width: min(70rem, calc(100vw - 2rem)); }
 .as-msg-user { align-self: flex-end; max-width: 78%; }
 .as-ubub { background: #EEF3EB; border: 1px solid #DCE6D7; border-radius: 14px 14px 4px 14px; padding: 10px 14px; font-size: 14.5px; line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; }
 .as-ubub audio { display: block; max-width: 100%; margin-bottom: 8px; }
+.as-voice { min-width: min(270px, 68vw); max-width: 320px; white-space: normal; }
+.as-voice-player { display: flex; gap: 9px; align-items: center; color: #3f6a34; }
+.as-voice-player button { width: 32px; height: 32px; flex: none; border-radius: 50%; background: #426b35; color: white; }
+.as-voice-player span[data-voice-time] { font-size: 12px; font-variant-numeric: tabular-nums; }
+.as-voice-wave { display: flex; flex: 1; align-items: center; gap: 2px; height: 36px; cursor: pointer; overflow: hidden; }
+.as-voice-wave i { width: 3px; min-width: 2px; border-radius: 3px; background: #a8c49f; }
+.as-voice-wave i.played { background: #426b35; }
+.as-voice-actions { display: flex; justify-content: space-between; gap: 12px; border-top: 1px solid #d8e5d5; margin-top: 7px; padding-top: 7px; font-size: 12px; font-weight: 600; color: #3f6a34; }
+.as-voice-text:not([hidden]) { margin-top: 10px; padding-top: 9px; border-top: 1px solid #d8e5d5; white-space: pre-wrap; font-size: 13px; }
 .as-recording:not([hidden]) { display: flex; align-items: center; gap: 10px; padding: 8px 12px; color: #335b29; font-size: 13px; }
 .as-recording-dot { width: 9px; height: 9px; background: #e74955; border-radius: 50%; animation: as-record-pulse 1s infinite; }
 .as-wave { display: flex; align-items: center; height: 28px; gap: 2px; flex: 1; overflow: hidden; }

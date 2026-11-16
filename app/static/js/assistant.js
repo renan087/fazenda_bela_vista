@@ -135,25 +135,24 @@
         $('[data-as-attach-clear]', chip).addEventListener('click', () => { photo.value = ''; showPhoto(); });
     }
 
-    // Gravação local, com transcrição para revisão antes do envio ao chat.
+    // Gravação local; a transcrição acontece após o envio.
     const mic = $('[data-as-mic]', form);
+    let recorder = null, sendWhenStopped = false, recordedUrl = null;
     if (window.MediaRecorder && navigator.mediaDevices && navigator.mediaDevices.getUserMedia && mic) {
         mic.hidden = false;
-        let recorder = null, busy = false, previewUrl = null, meterTimer = null, audioContext = null;
+        let meterTimer = null, audioContext = null;
         const recording = $('[data-as-recording]', form);
         const wave = $('[data-as-wave]', form);
         $('[data-as-stop]', form).addEventListener('click', () => { if (recorder) recorder.stop(); });
         mic.addEventListener('click', async () => {
-            if (busy) return;
             if (recorder) { recorder.stop(); return; }
             try {
                 const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
                 $('[data-as-audio-id]', form).value = '';
-                form.dataset.audioBusy = '1';
                 const chunks = [];
                 recorder = new MediaRecorder(stream);
                 recorder.ondataavailable = (event) => { if (event.data.size) chunks.push(event.data); };
-                recorder.onstop = async () => {
+                recorder.onstop = () => {
                     const status = $('[data-as-audio-status]', form);
                     clearInterval(meterTimer); recording.hidden = true;
                     if (audioContext) { audioContext.close(); audioContext = null; }
@@ -162,24 +161,18 @@
                     stream.getTracks().forEach((track) => track.stop());
                     recorder = null;
                     mic.setAttribute('aria-pressed', 'false');
-                    if (blob.size > 5 * 1024 * 1024) { delete form.dataset.audioBusy; window.alert('O áudio precisa ter até 5 MB.'); return; }
-                    const preview = $('[data-as-audio-preview]', form);
-                    if (previewUrl) URL.revokeObjectURL(previewUrl);
-                    previewUrl = URL.createObjectURL(blob);
-                    preview.src = previewUrl; preview.hidden = false;
-                    const data = new FormData();
-                    data.append('csrf_token', $('[name="csrf_token"]', form).value);
-                    data.append('audio', blob, 'voz');
-                    busy = true; mic.disabled = true; status.textContent = 'Transcrevendo áudio...';
                     try {
-                        const response = await fetch('/mobile/assistente/transcrever', { method: 'POST', body: data });
-                        const result = await response.json();
-                        if (!response.ok) throw new Error(result.error || result.detail || 'Não foi possível transcrever.');
-                        $('[data-as-audio-id]', form).value = result.audio_id;
-                        box.value = (box.value.trim() ? box.value.trim() + ' ' : '') + result.text;
-                        grow(); box.focus(); status.textContent = 'Confira e edite a transcrição antes de enviar.';
-                    } catch (error) { window.alert(error.message || 'Não foi possível transcrever.'); }
-                    finally { busy = false; mic.disabled = false; delete form.dataset.audioBusy; }
+                        if (!blob.size || blob.size > 5 * 1024 * 1024) throw new Error('O áudio precisa ter até 5 MB.');
+                        const transfer = new DataTransfer();
+                        transfer.items.add(new File([blob], 'voz', { type }));
+                        $('[data-as-voice-input]', form).files = transfer.files;
+                        if (recordedUrl) URL.revokeObjectURL(recordedUrl);
+                        recordedUrl = URL.createObjectURL(blob);
+                        const preview = $('[data-as-audio-preview]', form);
+                        preview.src = recordedUrl; preview.hidden = false;
+                        status.textContent = 'Áudio pronto para enviar.';
+                        if (sendWhenStopped) { sendWhenStopped = false; form.requestSubmit(); }
+                    } catch (error) { sendWhenStopped = false; window.alert(error.message || 'Não foi possível preparar o áudio.'); }
                 };
                 recorder.start();
                 recording.hidden = false;
@@ -201,9 +194,9 @@
                     if (elapsed >= 180 && recorder) recorder.stop();
                 }, 120);
                 mic.setAttribute('aria-pressed', 'true');
-                mic.title = 'Parar gravação e transcrever';
-                $('[data-as-audio-status]', form).textContent = 'Gravando. Toque novamente para parar.';
-            } catch (error) { delete form.dataset.audioBusy; window.alert('Não foi possível acessar o microfone.'); }
+                mic.title = 'Parar gravação';
+                $('[data-as-audio-status]', form).textContent = 'Gravando. Toque na seta para enviar.';
+            } catch (error) { window.alert('Não foi possível acessar o microfone.'); }
         });
     }
 
@@ -233,11 +226,37 @@
         setTimeout(() => { swap(); setInterval(swap, 2200); }, 1400);
     };
 
+    $$('[data-as-voice]').forEach((voice) => {
+        const audio = voice.querySelector('audio');
+        const play = $('[data-voice-play]', voice);
+        const wave = $('[data-voice-wave]', voice);
+        const time = $('[data-voice-time]', voice);
+        const transcript = $('[data-voice-text]', voice);
+        const toggle = $('[data-voice-transcript]', voice);
+        wave.replaceChildren(...Array.from({length: 36}, (_, i) => {
+            const bar = document.createElement('i');
+            bar.style.height = `${5 + ((i * 17 + i * i * 3) % 22)}px`;
+            return bar;
+        }));
+        play.addEventListener('click', () => { if (audio.paused) audio.play().catch(() => window.alert('Áudio indisponível.')); else audio.pause(); });
+        audio.addEventListener('play', () => { play.textContent = '❚❚'; play.setAttribute('aria-label', 'Pausar áudio'); });
+        audio.addEventListener('pause', () => { play.textContent = '▶'; play.setAttribute('aria-label', 'Reproduzir áudio'); });
+        const update = () => {
+            const seconds = Math.floor(audio.currentTime || 0);
+            time.textContent = `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
+            wave.querySelectorAll('i').forEach((bar, i) => bar.classList.toggle('played', audio.duration > 0 && i / 36 < audio.currentTime / audio.duration));
+        };
+        audio.addEventListener('timeupdate', update);
+        wave.addEventListener('click', (event) => { if (audio.duration) audio.currentTime = audio.duration * Math.max(0, Math.min(1, (event.clientX - wave.getBoundingClientRect().left) / wave.clientWidth)); });
+        toggle.addEventListener('click', () => { transcript.hidden = !transcript.hidden; toggle.textContent = transcript.hidden ? 'Ver transcrição' : 'Ocultar transcrição'; toggle.setAttribute('aria-expanded', String(!transcript.hidden)); });
+    });
+
     // Envio: mostra a mensagem e o "Pensando…" enquanto o servidor responde
     form.addEventListener('submit', (e) => {
-        if (form.dataset.audioBusy) { e.preventDefault(); window.alert('Aguarde a transcrição do áudio.'); return; }
-        const text = box.value.trim();
-        if (!text || form.dataset.sending) { if (form.dataset.sending) e.preventDefault(); return; }
+        if (recorder) { e.preventDefault(); if (!sendWhenStopped) { sendWhenStopped = true; recorder.stop(); } return; }
+        const hasVoice = !!$('[data-as-voice-input]', form).files.length;
+        const text = box.value.trim() || (hasVoice ? '[mensagem de áudio]' : '');
+        if (!text || form.dataset.sending) { e.preventDefault(); return; }
         form.dataset.sending = '1';
         const chat = $('[data-as-chat]');
         const welcome = $('.as-welcome', chat);
@@ -246,7 +265,10 @@
         mine.className = 'as-msg-user';
         const bubble = document.createElement('div');
         bubble.className = 'as-ubub';
-        bubble.textContent = text;
+        if (hasVoice && recordedUrl) {
+            const audio = document.createElement('audio'); audio.controls = true; audio.src = recordedUrl;
+            bubble.append(audio, document.createTextNode('Enviando áudio...'));
+        } else bubble.textContent = text;
         mine.append(bubble);
         const ai = document.createElement('div');
         ai.className = 'as-msg-ai';
@@ -257,6 +279,8 @@
         startThinking(ai.querySelector('[data-as-thinking]'));
         scroller.scrollTop = scroller.scrollHeight;
         $('[data-as-send]', form).disabled = true;
+        const submitted = document.createElement('input'); submitted.type = 'hidden'; submitted.name = 'message'; submitted.value = text;
+        form.append(submitted); box.removeAttribute('name'); box.value = ''; grow();
         box.readOnly = true;
     });
 })();

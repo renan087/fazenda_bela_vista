@@ -342,6 +342,23 @@ def test_audio_timeline_access_delete_and_retention(monkeypatch):
     assert delete_expired_audio(db) == 1
 
 
+def test_voice_submission_transcribes_and_records_audio(monkeypatch):
+    from io import BytesIO
+    from app.models.assistant_audio import AssistantAudio
+    from app.services import assistant_audio
+    from starlette.datastructures import Headers, UploadFile
+    routes, db, user, scope, send, sent, history = _route_env(monkeypatch, ["Entendi"])
+    monkeypatch.setattr(assistant_audio, "transcribe_audio", lambda data, mime: "Tem gasolina no estoque?")
+    upload = UploadFile(file=BytesIO(b"voice"), filename="voz.webm", headers=Headers({"content-type": "audio/webm"}))
+    request = SimpleNamespace(session={})
+    response = routes.prepare_stock_assistant_action(request, message="[mensagem de áudio]", csrf_token="x",
+                                                      thread_id=None, photo=None, audio_id=None, voice=upload, db=db, user=user)
+    thread = db.get(routes.AssistantThread, response.headers["location"].split("c=")[-1])
+    entry = routes._thread_messages(thread)[0]
+    assert entry["content"] == "Tem gasolina no estoque?"
+    assert db.get(AssistantAudio, entry["audio_id"]).data == b"voice"
+
+
 def test_new_draft_replaces_pending_one_and_confirm_updates_thread(monkeypatch):
     draft_reply = {"item_id": 0, "quantidade": 5, "unidade": "L", "data": "2026-11-15", "setor": None}
     routes, db, user, scope, send, sent, thread_history = _route_env(monkeypatch, [draft_reply, {**draft_reply, "quantidade": 4}])
