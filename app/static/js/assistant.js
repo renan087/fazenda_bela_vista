@@ -6,11 +6,11 @@
     const store = { get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
                     set(k, v) { try { localStorage.setItem(k, v); } catch (e) { /* sem armazenamento */ } } };
 
-    // Altura: a conversa ocupa a tela, com o campo de mensagem sempre visível.
+    // Altura: a página inteira (cabeçalho, conversa e rodapé) cabe na tela, sem a conversa
+    // rolar por baixo do cabeçalho fixo; o campo de mensagem e o rodapé ficam sempre visíveis.
     const fit = () => {
-        const top = shell.getBoundingClientRect().top + window.scrollY;
-        const bottom = window.innerWidth < 640 ? 0 : 24;
-        shell.style.setProperty('--as-h', Math.max(448, window.innerHeight - top - bottom) + 'px');
+        const overflow = document.documentElement.scrollHeight - window.innerHeight;
+        shell.style.setProperty('--as-h', Math.max(448, shell.offsetHeight - overflow) + 'px');
     };
     fit();
     window.addEventListener('resize', fit);
