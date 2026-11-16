@@ -20740,6 +20740,23 @@ def stock_assistant_page(
     ))
 
 
+@router.post("/mobile/assistente/transcrever")
+async def transcribe_assistant_audio(
+    request: Request, audio: UploadFile = File(...), csrf_token: str = Form(...),
+    db: Session = Depends(get_db), user: User = Depends(get_current_user_web),
+):
+    validate_csrf(request, csrf_token)
+    if not _can_use_stock_assistant(db, user):
+        raise HTTPException(status_code=403, detail="Sem permissão para usar o assistente.")
+    from app.services.assistant_audio import MAX_AUDIO_BYTES, transcribe_audio
+    data = await audio.read(MAX_AUDIO_BYTES + 1)
+    try:
+        text = transcribe_audio(data, (audio.content_type or "").split(";")[0].lower())
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=400)
+    return JSONResponse({"text": text})
+
+
 @router.post("/mobile/assistente")
 def prepare_stock_assistant_action(
     request: Request, message: str = Form(..., max_length=600), csrf_token: str = Form(...),

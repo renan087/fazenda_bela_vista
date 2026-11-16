@@ -358,6 +358,15 @@ def _handle(db, row, client) -> str | None:
         return None
 
     image = attachment_type = None
+    if row.msg_type == "audio":
+        from app.services.assistant_audio import transcribe_audio
+        try:
+            data, mime = client.download_media(str((message.get("audio") or {}).get("id") or ""))
+            text = transcribe_audio(data, mime)
+        except (WhatsAppError, ValueError) as exc:
+            client.send_text(row.wa_id, str(exc))
+            return None
+        client.send_text(row.wa_id, f"Entendi no áudio: {text}\n\nSe algo estiver errado, me corrija. Vou preparar os dados para você conferir.")
     if row.msg_type in ("image", "document"):
         try:
             data, mime = client.download_media(str((message.get(row.msg_type) or {}).get("id") or ""))
@@ -366,7 +375,7 @@ def _handle(db, row, client) -> str | None:
             return None
         image = f"data:{mime};base64,{base64.b64encode(data).decode()}"
         attachment_type = "pdf" if mime == "application/pdf" else "image"
-    elif row.msg_type not in ("text", "interactive", "button"):
+    elif row.msg_type not in ("text", "interactive", "button", "audio"):
         client.send_text(row.wa_id, "Por enquanto eu entendo mensagens de texto, fotos e PDF. Pode escrever para mim?")
         return None
     text = (text or ("Segue o arquivo." if image else "")).strip()[:600]

@@ -22,7 +22,7 @@ GRAPH_URL = "https://graph.facebook.com"
 TEXT_LIMIT = 4096
 INTERACTIVE_BODY_LIMIT = 1024
 MEDIA_MAX_BYTES = 5 * 1024 * 1024
-MEDIA_TYPES = {"image/jpeg", "image/png", "image/webp", "application/pdf"}
+MEDIA_TYPES = {"image/jpeg", "image/png", "image/webp", "application/pdf", "audio/ogg", "audio/mpeg", "audio/mp4", "audio/webm", "audio/wav"}
 SERVICE_WINDOW_SECONDS = 24 * 3600
 
 
@@ -209,7 +209,7 @@ class WhatsAppClient:
             info = meta.json()
             mime = str(info.get("mime_type") or "").split(";")[0].strip()
             if mime not in MEDIA_TYPES:
-                raise WhatsAppError("Envie um PDF ou uma foto JPG, PNG ou WEBP.")
+                raise WhatsAppError("Envie um áudio, PDF ou uma foto JPG, PNG ou WEBP.")
             if int(info.get("file_size") or 0) > MEDIA_MAX_BYTES:
                 raise WhatsAppError("O arquivo precisa ter até 5 MB.")
             media = self.http.get(info["url"], headers=self._headers)

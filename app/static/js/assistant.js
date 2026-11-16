@@ -135,26 +135,49 @@
         $('[data-as-attach-clear]', chip).addEventListener('click', () => { photo.value = ''; showPhoto(); });
     }
 
-    // Voz (ditado do navegador, quando disponível)
-    const Rec = window.SpeechRecognition || window.webkitSpeechRecognition;
+    // Gravação local, com transcrição para revisão antes do envio ao chat.
     const mic = $('[data-as-mic]', form);
-    if (Rec && mic) {
+    if (window.MediaRecorder && navigator.mediaDevices && navigator.mediaDevices.getUserMedia && mic) {
         mic.hidden = false;
-        let rec = null;
-        mic.addEventListener('click', () => {
-            if (rec) { rec.stop(); return; }
-            rec = new Rec();
-            rec.lang = 'pt-BR';
-            rec.interimResults = true;
-            const base = box.value ? box.value.replace(/\s*$/, ' ') : '';
-            rec.onresult = (ev) => {
-                box.value = base + Array.from(ev.results).map((r) => r[0].transcript).join('');
-                grow();
-            };
-            rec.onend = () => { rec = null; mic.setAttribute('aria-pressed', 'false'); box.focus(); };
-            rec.onerror = rec.onend;
-            mic.setAttribute('aria-pressed', 'true');
-            rec.start();
+        let recorder = null, busy = false, previewUrl = null;
+        mic.addEventListener('click', async () => {
+            if (busy) return;
+            if (recorder) { recorder.stop(); return; }
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                const chunks = [];
+                recorder = new MediaRecorder(stream);
+                recorder.ondataavailable = (event) => { if (event.data.size) chunks.push(event.data); };
+                recorder.onstop = async () => {
+                    const status = $('[data-as-audio-status]', form);
+                    const type = (recorder.mimeType || 'audio/webm').split(';')[0];
+                    const blob = new Blob(chunks, { type });
+                    stream.getTracks().forEach((track) => track.stop());
+                    recorder = null;
+                    mic.setAttribute('aria-pressed', 'false');
+                    if (blob.size > 5 * 1024 * 1024) { window.alert('O áudio precisa ter até 5 MB.'); return; }
+                    const preview = $('[data-as-audio-preview]', form);
+                    if (previewUrl) URL.revokeObjectURL(previewUrl);
+                    previewUrl = URL.createObjectURL(blob);
+                    preview.src = previewUrl; preview.hidden = false;
+                    const data = new FormData();
+                    data.append('csrf_token', $('[name="csrf_token"]', form).value);
+                    data.append('audio', blob, 'voz');
+                    busy = true; mic.disabled = true; status.textContent = 'Transcrevendo áudio...';
+                    try {
+                        const response = await fetch('/mobile/assistente/transcrever', { method: 'POST', body: data });
+                        const result = await response.json();
+                        if (!response.ok) throw new Error(result.error || result.detail || 'Não foi possível transcrever.');
+                        box.value = (box.value.trim() ? box.value.trim() + ' ' : '') + result.text;
+                        grow(); box.focus(); status.textContent = 'Confira e edite a transcrição antes de enviar.';
+                    } catch (error) { window.alert(error.message || 'Não foi possível transcrever.'); }
+                    finally { busy = false; mic.disabled = false; }
+                };
+                recorder.start();
+                mic.setAttribute('aria-pressed', 'true');
+                mic.title = 'Parar gravação e transcrever';
+                $('[data-as-audio-status]', form).textContent = 'Gravando. Toque novamente para parar.';
+            } catch (error) { window.alert('Não foi possível acessar o microfone.'); }
         });
     }
 
