@@ -226,3 +226,27 @@ def test_unknown_instruction_is_resent_after_an_hour(monkeypatch):
     db.commit()
     assert _receive(db, client, _payload("5577981177667", "u3", "oi")) == ["unknown"]
     assert [item[2] for item in client.sent] == [whatsapp_bot.UNKNOWN_TEXT] * 2
+
+
+def test_link_code_is_recognized_in_common_variations(monkeypatch):
+    _settings(monkeypatch)
+    routes, db, user, scope, *_ = _route_env(monkeypatch, [])
+    client = FakeClient()
+    candidate = whatsapp_bot._link_code_candidate
+    assert candidate("SISFARM ABCD2345") == ("ABCD2345", True)
+    assert candidate("sisfarm: abcd-2345") == ("ABCD2345", True)
+    assert candidate("*SISFARM* ABCD 2345") == ("ABCD2345", True)
+    assert candidate("Sis Farm A B C D 2 3 4 5") == ("ABCD2345", True)
+    assert candidate("ABCD 2345") == ("ABCD2345", False)
+    assert candidate("obrigado") == (None, False)
+
+    # uma palavra de 8 letras nao vira tentativa de vinculo se nao existir codigo pendente igual
+    assert _receive(db, client, _payload("557781177667", "u1", "PERGUNTA")) == ["unknown"]
+    # citou SISFARM mas o codigo veio quebrado: responde mesmo que a instrucao tenha sido enviada ha pouco
+    assert _receive(db, client, _payload("557781177667", "u2", "sisfarm 1234")) == ["link_failed"]
+    assert "Não reconheci o código" in client.sent[-1][2]
+
+    code = whatsapp_bot.start_link(db, user, scope["active_farm"], scope["active_season"])
+    spaced = f"{code[:4]} {code[4:]}".lower()
+    assert _receive(db, client, _payload("557781177667", "u3", spaced)) == ["linked"]
+    assert db.query(WhatsAppLink).one().wa_id == "557781177667"

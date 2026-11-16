@@ -225,9 +225,33 @@ def send_assistant_reply(client: WhatsAppClient, wa_id: str, item: dict) -> None
     client.send_text(wa_id, item.get("content") or "Pode me contar um pouco mais?")
 
 
-def _verify_link(db, row, client, code: str) -> str:
+def _link_code_candidate(text: str) -> tuple[str | None, bool]:
+    """Codigo de vinculo na mensagem, tolerando espacos, hifens, pontuacao e o codigo enviado sozinho.
+
+    Devolve (codigo, citou_sisfarm). Codigo sem a palavra SISFARM so vale se existir um vinculo pendente com ele.
+    """
+    upper = (text or "").upper()
+    match = LINK_CODE_RE.search(upper)
+    if match:
+        return match.group(1), True
+    compact = re.sub(r"[^A-Z0-9]", "", upper)
+    explicit = "SISFARM" in compact
+    rest = compact.replace("SISFARM", "", 1)
+    if len(rest) == 8 and all(char in LINK_CODE_ALPHABET for char in rest):
+        return rest, explicit
+    return None, explicit
+
+
+def _pending_code_link(db, code: str) -> WhatsAppLink | None:
     link = db.query(WhatsAppLink).filter_by(code_hash=code_hash(code)).first()
     if link is None or not link.code_expires_at or _aware(link.code_expires_at) < _now():
+        return None
+    return link
+
+
+def _verify_link(db, row, client, code: str) -> str:
+    link = _pending_code_link(db, code)
+    if link is None:
         client.send_text(row.wa_id, "Esse código é inválido ou expirou. Gere um novo no SiSFarm em Assistente > WhatsApp.")
         return "link_failed"
     for other in db.query(WhatsAppLink).filter(WhatsAppLink.wa_id.in_(wa_id_variants(row.wa_id)), WhatsAppLink.id != link.id).all():
@@ -269,11 +293,15 @@ def _handle(db, row, client) -> str | None:
         logger.info("WhatsApp: mensagem %s fora da janela de 24 h, sem resposta", row.wamid)
         return "expired"
     text = _message_text(message).strip()
-    code = LINK_CODE_RE.search(text.upper())
-    if code:
-        return _verify_link(db, row, client, code.group(1))
+    code, explicit = _link_code_candidate(text)
+    if code and (explicit or _pending_code_link(db, code) is not None):
+        return _verify_link(db, row, client, code)
 
     link = _find_link(db, row.wa_id)
+    if link is None and explicit:
+        client.send_text(row.wa_id, "Não reconheci o código. Envie exatamente como aparece no SiSFarm, por exemplo: "
+                                    "SISFARM ABCD2345 (o código tem 8 letras e números).")
+        return "link_failed"
     if link is None:
         recent = (db.query(WhatsAppInboundMessage.id)
                   .filter(WhatsAppInboundMessage.wa_id.in_(wa_id_variants(row.wa_id)), WhatsAppInboundMessage.id != row.id,
