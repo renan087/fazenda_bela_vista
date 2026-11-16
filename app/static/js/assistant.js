@@ -128,7 +128,7 @@
         const file = photo.files && photo.files[0];
         chip.hidden = !file;
         $('[data-as-attach-name]', chip).textContent = file ? file.name : '';
-        if (file && file.size > 5 * 1024 * 1024) { window.alert('A foto precisa ter até 5 MB.'); photo.value = ''; chip.hidden = true; }
+        if (file && file.size > 5 * 1024 * 1024) { window.alert('O arquivo precisa ter até 5 MB.'); photo.value = ''; chip.hidden = true; }
     };
     if (photo && chip) {
         photo.addEventListener('change', showPhoto);

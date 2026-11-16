@@ -169,6 +169,37 @@ def test_agent_tool_errors_go_back_to_the_model():
     assert any("erro" in m["content"] for m in calls[1]["messages"] if m.get("role") == "tool")
 
 
+def test_agent_sends_pdf_as_file_not_image():
+    calls = []
+    pdf = "data:application/pdf;base64,JVBERi0xLjQ="
+    _assistant([]).run([{"role": "user", "content": "Leia a nota"}],
+                       client=_fake_client(["Pode confirmar os dados?"], calls), model="m", image=pdf)
+    content = calls[0]["messages"][-1]["content"]
+    assert content[1] == {"type": "file", "file": {"filename": "documento.pdf", "file_data": pdf}}
+
+
+def test_assistant_template_accepts_pdf():
+    template = (Path(__file__).resolve().parents[1] / "app/templates/stock_assistant.html").read_text()
+    assert 'accept="image/jpeg,image/png,image/webp,application/pdf"' in template
+
+
+def test_openai_sdk_serializes_pdf_file_part(monkeypatch):
+    import json
+    import httpx
+    from openai import OpenAI
+    requests = []
+    def handler(request):
+        requests.append(json.loads(request.content))
+        return httpx.Response(200, request=request, json={"id": "chat-test", "object": "chat.completion", "created": 0,
+                                        "model": "test", "choices": [{"index": 0, "finish_reason": "stop",
+                                        "message": {"role": "assistant", "content": "Confira a nota."}}]})
+    client = OpenAI(api_key="test", http_client=httpx.Client(transport=httpx.MockTransport(handler)))
+    monkeypatch.setattr(client._client, "send", lambda request, **kwargs: handler(request))
+    _assistant([]).run([{"role": "user", "content": "Leia"}], client=client, model="test",
+                       image="data:application/pdf;base64,JVBERi0xLjQ=")
+    assert requests[0]["messages"][-1]["content"][1]["type"] == "file"
+
+
 def test_agent_validations():
     assistant = _assistant([])
     assert assistant.call_tool("preparar_consumo", '{"item_id": 2, "quantidade": 40, "unidade": "kg", "data": "2026-11-15", "setor": "Setor 1"}')["erro"].startswith("Saldo insuficiente")

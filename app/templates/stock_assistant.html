@@ -119,7 +119,7 @@
                 {% if m.day_label %}<div class="as-day"><span>{{ m.day_label }}</span></div>{% endif %}
                 {% if m.role == 'user' %}
                 <div class="as-msg-user">
-                    <div class="as-ubub">{% if m.photo %}<span class="as-photo-tag">{{ ic('image', 14) }}Foto enviada</span>{% endif %}{{ m.content }}</div>
+                    <div class="as-ubub">{% if m.photo %}<span class="as-photo-tag">{{ ic('image', 14) }}{{ 'PDF enviado' if m.attachment_type == 'pdf' else 'Foto enviada' }}</span>{% endif %}{{ m.content }}</div>
                     <div class="as-time">{{ m.time }}</div>
                 </div>
                 {% else %}
@@ -217,20 +217,20 @@
                     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                     <input type="hidden" name="thread_id" value="{{ thread_id }}">
                     <label for="assistant-message" class="sr-only">Sua mensagem</label>
-                    <div class="as-attach" data-as-attach hidden>{{ ic('image', 14) }}<span data-as-attach-name></span><button type="button" data-as-attach-clear aria-label="Remover foto">{{ ic('x', 14) }}</button></div>
+                    <div class="as-attach" data-as-attach hidden>{{ ic('image', 14) }}<span data-as-attach-name></span><button type="button" data-as-attach-clear aria-label="Remover arquivo">{{ ic('x', 14) }}</button></div>
                     <textarea id="assistant-message" name="message" maxlength="600" rows="1" required
                               placeholder="Pergunte ou descreva o que aconteceu na fazenda…" data-as-input></textarea>
                     <div class="as-box-bar">
-                        <label class="as-ico" title="Anexar foto (nota, etiqueta, bomba)">
-                            {{ ic('clip') }}<span class="sr-only">Anexar foto</span>
-                            <input type="file" name="photo" accept="image/jpeg,image/png,image/webp" class="sr-only" data-as-photo>
+                        <label class="as-ico" title="Anexar foto ou PDF (até 5 MB)">
+                            {{ ic('clip') }}<span class="sr-only">Anexar foto ou PDF</span>
+                            <input type="file" name="photo" accept="image/jpeg,image/png,image/webp,application/pdf" class="sr-only" data-as-photo>
                         </label>
                         <button type="button" class="as-ico" data-as-mic aria-pressed="false" aria-label="Falar a mensagem" title="Falar" hidden>{{ ic('mic') }}</button>
                         <span class="as-hint">Enter envia · Shift+Enter quebra linha</span>
                         <button class="as-send" data-as-send aria-label="Enviar">{{ ic('send', 18, 2.2) }}</button>
                     </div>
                 </form>
-                <p class="as-disclaimer">{{ ic('shield', 12) }} Nada é registrado sem a sua confirmação. A IA pode errar — confira os dados.</p>
+                <p class="as-disclaimer">{{ ic('shield', 12) }} Arquivos enviados são analisados pela IA e não ficam anexados ao lançamento. Confira os dados antes de confirmar.</p>
             </div>
         </footer>
         {% endif %}

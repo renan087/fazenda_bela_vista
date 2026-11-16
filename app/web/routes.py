@@ -20588,7 +20588,7 @@ def _assistant_draft(db, user, draft_id):
 
 
 ASSISTANT_MAX_MESSAGES = 40
-ASSISTANT_PHOTO_TYPES = {"image/jpeg", "image/png", "image/webp"}
+ASSISTANT_PHOTO_TYPES = {"image/jpeg", "image/png", "image/webp", "application/pdf"}
 ASSISTANT_PHOTO_MAX_BYTES = 5 * 1024 * 1024
 
 
@@ -20741,10 +20741,12 @@ def prepare_stock_assistant_action(
             raise ValueError("Escreva uma mensagem para o assistente.")
         if photo is not None and photo.filename:
             if (photo.content_type or "") not in ASSISTANT_PHOTO_TYPES:
-                raise ValueError("Envie a foto em JPG, PNG ou WEBP.")
+                raise ValueError("Envie um PDF ou uma imagem JPG, PNG ou WEBP.")
             data = photo.file.read(ASSISTANT_PHOTO_MAX_BYTES + 1)
             if not data or len(data) > ASSISTANT_PHOTO_MAX_BYTES:
-                raise ValueError("A foto precisa ter até 5 MB.")
+                raise ValueError("O arquivo precisa ter até 5 MB.")
+            if photo.content_type == "application/pdf" and not data.startswith(b"%PDF-"):
+                raise ValueError("O arquivo enviado não é um PDF válido.")
             image = f"data:{photo.content_type};base64,{base64.b64encode(data).decode()}"
     except ValueError as exc:
         _flash(request, "error", str(exc))
@@ -20755,7 +20757,7 @@ def prepare_stock_assistant_action(
         thread = AssistantThread(id=uuid4().hex, user_id=user.id, organization_id=user.organization_id,
                                  farm_id=farm.id, season_id=season.id, title=message[:60], created_at=now, updated_at=now)
     history = _thread_messages(thread) + [{"role": "user", "content": message, "at": _assistant_now_iso(),
-                                           **({"photo": True} if image else {})}]
+                                           **({"photo": True, "attachment_type": "pdf" if photo.content_type == "application/pdf" else "image"} if image else {})}]
     pending_purchase = None
     for entry in reversed(history[:-1]):
         previous = entry.get("draft") or {}
