@@ -215,14 +215,15 @@ def _draft_summary(draft: dict) -> str:
     return "\n".join(line for line in lines if line)
 
 
-def send_assistant_reply(client: WhatsAppClient, wa_id: str, item: dict) -> None:
+def send_assistant_reply(client: WhatsAppClient, wa_id: str, item: dict, *, reply_to: str | None = None) -> None:
+    context = {"reply_to": reply_to} if reply_to else {}
     draft = item.get("draft")
     if draft and draft.get("id"):
         body = f"{item.get('content') or 'Confere o lançamento?'}\n\n{_draft_summary(draft)}"
         client.send_buttons(wa_id, body, [(f"sf:confirmar:{draft['id']}", "Confirmar"),
-                                          (f"sf:descartar:{draft['id']}", "Descartar")])
+                                          (f"sf:descartar:{draft['id']}", "Descartar")], **context)
         return
-    client.send_text(wa_id, item.get("content") or "Pode me contar um pouco mais?")
+    client.send_text(wa_id, item.get("content") or "Pode me contar um pouco mais?", **context)
 
 
 def _link_code_candidate(text: str) -> tuple[str | None, bool]:
@@ -367,12 +368,11 @@ def _handle(db, row, client) -> str | None:
             data, mime = client.download_media(str((message.get("audio") or {}).get("id") or ""))
             text = transcribe_audio(data, mime)
         except (WhatsAppError, ValueError) as exc:
-            client.send_text(row.wa_id, str(exc))
+            client.send_text(row.wa_id, str(exc), reply_to=row.wamid)
             return None
         audio_record = AssistantAudio(id=uuid4().hex, user_id=user.id, organization_id=user.organization_id,
                                       farm_id=farm.id, season_id=season.id, mime=mime, data=data,
                                       expires_at=_now() + timedelta(days=AUDIO_RETENTION_DAYS))
-        client.send_text(row.wa_id, f"Entendi no áudio: {text}\n\nSe algo estiver errado, me corrija. Vou preparar os dados para você conferir.")
     if row.msg_type in ("image", "document"):
         try:
             data, mime = client.download_media(str((message.get(row.msg_type) or {}).get("id") or ""))
@@ -393,5 +393,5 @@ def _handle(db, row, client) -> str | None:
     link = db.get(WhatsAppLink, link.id)
     link.thread_id = thread.id
     db.commit()
-    send_assistant_reply(client, row.wa_id, item)
+    send_assistant_reply(client, row.wa_id, item, **({"reply_to": row.wamid} if row.msg_type == "audio" else {}))
     return None

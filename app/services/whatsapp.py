@@ -179,18 +179,24 @@ class WhatsAppClient:
             logger.info("WhatsApp: reenviando para %s com o nono digito", mask_phone(alternative))
             return self._post({**payload, "to": alternative})
 
-    def send_text(self, to: str, body: str) -> dict:
-        return self._send({"messaging_product": "whatsapp", "recipient_type": "individual", "to": to, "type": "text",
-                           "text": {"body": (body or "").strip()[:TEXT_LIMIT] or "…", "preview_url": False}})
+    def send_text(self, to: str, body: str, *, reply_to: str | None = None) -> dict:
+        payload = {"messaging_product": "whatsapp", "recipient_type": "individual", "to": to, "type": "text",
+                   "text": {"body": (body or "").strip()[:TEXT_LIMIT] or "…", "preview_url": False}}
+        if reply_to:
+            payload["context"] = {"message_id": reply_to}
+        return self._send(payload)
 
-    def send_buttons(self, to: str, body: str, buttons: list[tuple[str, str]]) -> dict:
+    def send_buttons(self, to: str, body: str, buttons: list[tuple[str, str]], *, reply_to: str | None = None) -> dict:
         """Ate 3 botoes de resposta rapida (titulo ate 20 caracteres)."""
-        return self._send({
+        payload = {
             "messaging_product": "whatsapp", "recipient_type": "individual", "to": to, "type": "interactive",
             "interactive": {"type": "button", "body": {"text": body[:INTERACTIVE_BODY_LIMIT]}, "action": {"buttons": [
                 {"type": "reply", "reply": {"id": button_id[:256], "title": title[:20]}} for button_id, title in buttons[:3]
             ]}},
-        })
+        }
+        if reply_to:
+            payload["context"] = {"message_id": reply_to}
+        return self._send(payload)
 
     def mark_read(self, wamid: str) -> None:
         """Marca como lida e mostra 'digitando...' enquanto o assistente pensa (melhor esforco)."""

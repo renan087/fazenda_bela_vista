@@ -178,6 +178,45 @@ def test_brazil_ninth_digit_retry(monkeypatch):
     assert calls == ["553588887777", "5535988887777"]
 
 
+def test_reply_context_is_included_for_text_and_buttons(monkeypatch):
+    _settings(monkeypatch)
+    payloads = []
+    class Http:
+        def post(self, url, json, headers):
+            payloads.append(json)
+            return SimpleNamespace(status_code=200, json=lambda: {"messages": [{"id": "sent"}]})
+    client = whatsapp.WhatsAppClient(http=Http())
+    whatsapp_bot.send_assistant_reply(client, "5535999", {"content": "Olá"}, reply_to="wamid.audio")
+    whatsapp_bot.send_assistant_reply(client, "5535999", {"content": "Confira", "draft": {
+        "id": "draft", "kind": "compra", "item": "Insumo", "quantity": "1", "unit": "L",
+        "date_label": "16/11/2026", "balance": "0", "after": "1"}}, reply_to="wamid.audio")
+    assert [payload["context"] for payload in payloads] == [{"message_id": "wamid.audio"}] * 2
+    assert payloads[1]["type"] == "interactive"
+
+
+def test_audio_gets_one_contextual_reply_without_transcription_message(monkeypatch):
+    from app.services import assistant_audio
+    _settings(monkeypatch)
+    routes, db, user, scope, *_ = _route_env(monkeypatch, ["Há gasolina em estoque."])
+    class AudioClient(FakeClient):
+        def download_media(self, media_id):
+            return b"audio", "audio/ogg"
+        def send_text(self, to, body, *, reply_to=None):
+            self.sent.append(("text", to, body, reply_to))
+    monkeypatch.setattr(assistant_audio, "transcribe_audio", lambda data, mime: "Tem gasolina?")
+    client = AudioClient()
+    code = whatsapp_bot.start_link(db, user, scope["active_farm"], scope["active_season"])
+    _receive(db, client, _payload("5535999", "link", f"SISFARM {code}"))
+    client.sent.clear()
+    payload = _payload("5535999", "audio-id", "")
+    msg = payload["entry"][0]["changes"][0]["value"]["messages"][0]
+    msg.update(type="audio", audio={"id": "media-id"})
+    assert _receive(db, client, payload) == ["done"]
+    assert client.sent == [("text", "5535999", "Há gasolina em estoque.", "audio-id")]
+    thread = db.get(routes.AssistantThread, db.query(WhatsAppLink).one().thread_id)
+    assert routes._thread_messages(thread)[0]["content"] == "Tem gasolina?"
+
+
 def test_summary_shows_delivery_error_reason(monkeypatch):
     _settings(monkeypatch)
     payload = {"object": "whatsapp_business_account", "entry": [{"changes": [{"field": "messages", "value": {
