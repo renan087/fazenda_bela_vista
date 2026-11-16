@@ -64,6 +64,7 @@
 
     {# ---------- Conversa ---------- #}
     <section class="as-chat" aria-label="Conversa com o assistente">
+        {% if ready and thread_channel != 'whatsapp' %}<div class="as-drop-overlay" data-as-drop-overlay aria-hidden="true"><div>{{ ic('clip', 26) }}<strong>Solte o arquivo aqui</strong><span>Foto ou PDF de até 5 MB</span></div></div>{% endif %}
         <header class="as-head">
             <a href="/mobile" class="as-ico as-only-mobile" aria-label="Voltar ao Campo Mobile">{{ ic('back', 22, 2) }}</a>
             <button type="button" class="as-ico as-threads-expand" data-as-threads-toggle aria-controls="as-threads" aria-expanded="false" aria-label="Abrir histórico" title="Abrir histórico">{{ ic('panel') }}</button>
@@ -230,6 +231,7 @@
                     <input type="file" name="voice" data-as-voice-input hidden accept="audio/*">
                     <label for="assistant-message" class="sr-only">Sua mensagem</label>
                     <div class="as-attach" data-as-attach hidden>{{ ic('image', 14) }}<span data-as-attach-name></span><button type="button" data-as-attach-clear aria-label="Remover arquivo">{{ ic('x', 14) }}</button></div>
+                    <span class="as-hint as-attachment-status" data-as-attachment-status role="status" aria-live="polite"></span>
                     <div class="as-voice" data-as-audio-preview hidden><audio preload="metadata"></audio><div class="as-voice-player"><button type="button" data-voice-play aria-label="Reproduzir áudio">&#9654;</button><span class="as-voice-wave" data-voice-wave aria-hidden="true"></span><span data-voice-time>0:00</span></div></div>
                     <span class="as-hint" data-as-audio-status aria-live="polite"></span>
                     <div class="as-recording" data-as-recording hidden><span class="as-recording-dot"></span><span data-as-duration>0:00</span><span class="as-wave" data-as-wave aria-hidden="true"></span><button type="button" data-as-stop>Parar</button></div>
@@ -288,5 +290,5 @@
         <p class="as-privacy">{{ ic('shield', 15) }}<span>As mensagens e fotos são enviadas ao modelo de IA para interpretação. Nenhum dado é alterado sem confirmação.</span></p>
     </aside>
 </div>
-<script src="{{ url_for('static', path='js/assistant.js') }}?v=3" defer></script>
+<script src="{{ url_for('static', path='js/assistant.js') }}?v=4" defer></script>
 {% endblock %}

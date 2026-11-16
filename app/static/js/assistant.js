@@ -159,18 +159,65 @@
         if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); form.requestSubmit(); }
     });
 
-    // Foto
+    // Fotos e PDFs compartilham a validação do seletor e do arrastar e soltar.
     const photo = $('[data-as-photo]', form);
     const chip = $('[data-as-attach]', form);
+    const attachmentStatus = $('[data-as-attachment-status]', form);
+    const allowedAttachments = new Set(['image/jpeg', 'image/png', 'image/webp', 'application/pdf']);
+    const attachmentError = (file) => {
+        if (!file || !allowedAttachments.has(file.type)) return 'Selecione uma foto JPG, PNG, WEBP ou um PDF.';
+        if (!file.size || file.size > 5 * 1024 * 1024) return 'O arquivo precisa ter conteúdo e no máximo 5 MB.';
+        return '';
+    };
     const showPhoto = () => {
         const file = photo.files && photo.files[0];
+        const error = file ? attachmentError(file) : '';
+        if (error) { photo.value = ''; chip.hidden = true; attachmentStatus.textContent = error; return; }
+        attachmentStatus.textContent = '';
         chip.hidden = !file;
         $('[data-as-attach-name]', chip).textContent = file ? file.name : '';
-        if (file && file.size > 5 * 1024 * 1024) { window.alert('O arquivo precisa ter até 5 MB.'); photo.value = ''; chip.hidden = true; }
     };
     if (photo && chip) {
         photo.addEventListener('change', showPhoto);
         $('[data-as-attach-clear]', chip).addEventListener('click', () => { photo.value = ''; showPhoto(); });
+        const dropZone = shell.querySelector('.as-chat');
+        let dragDepth = 0;
+        const isFileDrag = (event) => Array.from(event.dataTransfer?.types || []).includes('Files');
+        dropZone.addEventListener('dragenter', (event) => {
+            if (!isFileDrag(event)) return;
+            event.preventDefault();
+            dragDepth += 1;
+            dropZone.classList.add('is-file-dragging');
+        });
+        dropZone.addEventListener('dragover', (event) => {
+            if (!isFileDrag(event)) return;
+            event.preventDefault();
+            event.dataTransfer.dropEffect = 'copy';
+        });
+        dropZone.addEventListener('dragleave', (event) => {
+            if (!isFileDrag(event)) return;
+            dragDepth = Math.max(0, dragDepth - 1);
+            if (!dragDepth) dropZone.classList.remove('is-file-dragging');
+        });
+        dropZone.addEventListener('drop', (event) => {
+            if (!isFileDrag(event)) return;
+            event.preventDefault();
+            dragDepth = 0;
+            dropZone.classList.remove('is-file-dragging');
+            const files = event.dataTransfer.files;
+            if (files.length !== 1) { attachmentStatus.textContent = 'Envie apenas um arquivo por vez.'; return; }
+            const error = attachmentError(files[0]);
+            if (error) { attachmentStatus.textContent = error; return; }
+            try {
+                const transfer = new DataTransfer();
+                transfer.items.add(files[0]);
+                photo.files = transfer.files;
+                showPhoto();
+                box.focus();
+            } catch (error) {
+                attachmentStatus.textContent = 'Não foi possível anexar o arquivo. Use o botão de anexo.';
+            }
+        });
     }
 
     // Gravação local; a transcrição acontece após o envio.
@@ -280,7 +327,8 @@
     form.addEventListener('submit', (e) => {
         if (recorder) { e.preventDefault(); if (!sendWhenStopped) { sendWhenStopped = true; recorder.stop(); } return; }
         const hasVoice = !!$('[data-as-voice-input]', form).files.length;
-        const text = box.value.trim() || (hasVoice ? '[mensagem de áudio]' : '');
+        const hasAttachment = !!(photo && photo.files && photo.files.length);
+        const text = box.value.trim() || (hasVoice ? '[mensagem de áudio]' : hasAttachment ? 'Analise o arquivo enviado.' : '');
         if (!text || form.dataset.sending) { e.preventDefault(); return; }
         form.dataset.sending = '1';
         const chat = $('[data-as-chat]');

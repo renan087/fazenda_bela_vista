@@ -248,6 +248,19 @@ def test_assistant_template_accepts_pdf():
     assert 'accept="image/jpeg,image/png,image/webp,application/pdf"' in template
 
 
+def test_drag_and_drop_is_available_only_for_editable_chat():
+    templates_dir = Path(__file__).resolve().parents[1] / "app" / "templates"
+    env = Environment(loader=ChoiceLoader([
+        DictLoader({"base.html": "{% block content %}{% endblock %}"}), FileSystemLoader(templates_dir),
+    ]), autoescape=True)
+    env.globals["url_for"] = lambda *a, **k: "/static/x"
+    common = {"assistant_scope": {"active_farm": {"name": "Fazenda"}, "active_season": {"name": "Safra"}},
+              "csrf_token": "x"}
+    template = env.get_template("stock_assistant.html")
+    assert "data-as-drop-overlay" in template.render(**common, thread_channel="web")
+    assert "data-as-drop-overlay" not in template.render(**common, thread_channel="whatsapp")
+
+
 def test_openai_sdk_serializes_pdf_file_part(monkeypatch):
     import json
     import httpx
