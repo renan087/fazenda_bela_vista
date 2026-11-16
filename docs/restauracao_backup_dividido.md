@@ -1,7 +1,7 @@
 # Reconstrução de backups divididos
 
-Backups maiores que 5 MiB são enviados ao Supabase como um manifesto JSON e
-partes de até 5 MiB. Backups antigos e arquivos menores permanecem inalterados.
+Backups maiores que 40 MiB são enviados ao Supabase como um manifesto JSON e
+partes de até 40 MiB. Backups antigos e arquivos menores permanecem inalterados.
 O manifesto é enviado depois de todas as partes; o histórico somente indica
 sucesso quando o envio é concluído.
 
@@ -21,6 +21,6 @@ restaura o banco automaticamente: a importação do dump deve ser feita
 separadamente, após validação, no ambiente apropriado.
 
 O limite de arquivo global e o limite do bucket precisam aceitar arquivos de
-até 5 MiB. Se o Supabase estiver configurado com um limite menor, ajuste-o antes
+até 40 MiB. Se o Supabase estiver configurado com um limite menor, ajuste-o antes
 de executar o backup. A reserva de armazenamento e a retenção continuam
 aplicadas; remover backups antigos não altera o limite por arquivo.
