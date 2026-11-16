@@ -225,8 +225,12 @@ def _route_env(monkeypatch, replies):
         if isinstance(reply, Exception):
             raise reply
         if isinstance(reply, dict):
-            reply = {**reply, "item_id": reply["item_id"] or next(iter(assistant.items))}
-            assistant.call_tool("preparar_consumo", __import__("json").dumps(reply))
+            reply = dict(reply)
+            tool = reply.pop("_tool", "preparar_consumo")
+            if reply.get("item_id") == 0:
+                reply["item_id"] = next(iter(assistant.items))
+            result = assistant.call_tool(tool, __import__("json").dumps(reply))
+            assert "erro" not in result, result
             return {"resposta": "Preparei o lançamento.", "draft_id": assistant.draft_id}
         return {"resposta": reply, "draft_id": None}
 
@@ -285,7 +289,7 @@ def test_new_draft_replaces_pending_one_and_confirm_updates_thread(monkeypatch):
     assert first.status == "discarded" and second.status == "pending"
     history = thread_history()
     assert history[1]["draft"]["state"] == "replaced" and history[3]["draft"]["state"] == "pending"
-    assert history[3]["tools"] == ["Preparou rascunho"]
+    assert history[3]["tools"] == ["Preparou rascunho de consumo"]
     location = routes.resolve_stock_assistant_action(
         SimpleNamespace(session={}), second.id, "confirmar", csrf_token="x",
         thread_id=db.query(routes.AssistantThread).one().id, db=db, user=user,
@@ -295,3 +299,59 @@ def test_new_draft_replaces_pending_one_and_confirm_updates_thread(monkeypatch):
     assert history[3]["draft"]["state"] == "confirmed" and history[-1]["content"].startswith("Pronto!")
     summary = db.query(StockOutput).filter_by(purchased_input_id=None).one()
     assert float(summary.quantity) == 4
+
+
+def test_purchase_of_new_and_existing_items(monkeypatch):
+    from app.models import PurchasedInput as Lot
+    new_item = {"_tool": "preparar_compra", "item_id": None, "nome_novo": "Ureia 46%", "tipo": "insumo_agricola",
+                "categoria": "fertilizantes", "unidade": "kg", "quantidade_embalagens": 10, "tamanho_embalagem": 50,
+                "preco_por_embalagem": None, "valor_total": 1800, "data": "2026-11-14", "fornecedor": "Cooperativa",
+                "observacao": "Nota 123"}
+    fuel = {"_tool": "preparar_compra", "item_id": 0, "nome_novo": None, "tipo": None, "categoria": None, "unidade": "litros",
+            "quantidade_embalagens": 1, "tamanho_embalagem": 200, "preco_por_embalagem": 1200, "valor_total": None,
+            "data": "2026-11-15", "fornecedor": None, "observacao": None}
+    routes, db, user, scope, send, sent, thread_history = _route_env(monkeypatch, [new_item, fuel])
+    thread_id = lambda: db.query(routes.AssistantThread).one().id
+
+    send("comprei 10 sacos de ureia 46% de 50 kg, paguei 1800")
+    draft = db.query(StockAssistantDraft).one()
+    assert draft.kind == "compra" and draft.input_id is None and float(draft.quantity) == 500
+    card = thread_history()[-1]["draft"]
+    assert card["is_new"] and card["total"] == "R$ 1.800,00" and card["packs_label"] == "10 × 50 kg"
+    routes.resolve_stock_assistant_action(SimpleNamespace(session={}), draft.id, "confirmar", csrf_token="x",
+                                          thread_id=thread_id(), db=db, user=user)
+    lot = db.query(Lot).filter(Lot.name == "Ureia 46%").one()
+    assert float(lot.total_quantity) == 500 and float(lot.total_cost) == 1800 and lot.input_catalog.category == "Fertilizantes"
+    assert "Nota 123" in lot.notes and thread_history()[-1]["content"].startswith("Prontinho!")
+    assert lot.supplier_name == "Cooperativa"
+
+    send("comprei 200 litros de gasolina por 1200 hoje")
+    fuel_draft = db.query(StockAssistantDraft).filter_by(status="pending").one()
+    assert fuel_draft.unit == "L" and thread_history()[-1]["draft"]["after"] == "250,00"
+    req = SimpleNamespace(session={})
+    routes.resolve_stock_assistant_action(req, fuel_draft.id, "confirmar", csrf_token="x",
+                                          thread_id=thread_id(), db=db, user=user)
+    assert not req.session.get("flash"), req.session
+    assert db.query(Lot).filter(Lot.name == "Gasolina").count() == 2
+
+
+def test_purchase_validations():
+    from app.services.stock_assistant import FarmAssistant
+    import json
+    item = SimpleNamespace(id=1, name="Diesel S10", default_unit="L", item_type="combustivel", category="Combustíveis", is_active=True)
+    assistant = FarmAssistant(farm_name="F", season=None, items=[item], balances={1: 0}, plots=[], today=date(2026, 11, 15),
+                              prepare_draft=lambda **kw: None, prepare_purchase=lambda **kw: "x" * 32,
+                              purchase_rules={"combustivel": {"Combustíveis": ["L", "ml"]}})
+    base = {"item_id": None, "nome_novo": "Gasolina aditivada", "tipo": "combustivel", "categoria": "Combustíveis",
+            "unidade": "L", "quantidade_embalagens": 1, "tamanho_embalagem": 50, "preco_por_embalagem": None,
+            "valor_total": None, "data": "2026-11-15", "fornecedor": None, "observacao": None}
+    call = lambda **kw: assistant.call_tool("preparar_compra", json.dumps({**base, **kw}))
+    assert "preço" in call()["erro"]
+    assert "Unidade inválida" in call(unidade="kg", valor_total=10)["erro"]
+    assert "Categoria inválida" in call(categoria="Fungicida", valor_total=10)["erro"]
+    assert "já está cadastrado" in call(nome_novo="diesel s10", valor_total=10)["erro"]
+    assert "futura" in call(data="2026-11-16", valor_total=10)["erro"]
+    assert call(valor_total=300)["ok"]
+    # consumo de item sem saldo pede a compra antes
+    assert "não tem saldo" in assistant.call_tool("preparar_consumo", json.dumps(
+        {"item_id": 1, "quantidade": 1, "unidade": "L", "data": "2026-11-15", "setor": None, "observacao": None}))["erro"]

@@ -20774,14 +20774,16 @@ def prepare_stock_assistant_action(
         _save_thread(db, thread, history + [item])
         return _redirect(_assistant_url(thread.id))
 
+    # Itens que esta organizacao ja comprou (o catalogo e compartilhado; nao expor itens de outras contas).
+    org_farm_ids = {row[0] for row in db.query(Farm.id).filter(Farm.organization_id == user.organization_id)} | {farm.id}
     products, balances = [], {}
     for item in repo.list_input_catalog():
         if not item.is_active or item.item_type not in STOCK_ITEM_TYPES:
             continue
-        farm_lots = [entry for entry in item.purchase_entries if entry.farm_id == farm.id]
-        if farm_lots:
+        org_lots = [entry for entry in item.purchase_entries if entry.farm_id in org_farm_ids]
+        if org_lots:
             products.append(item)
-            balances[item.id] = round(sum(float(entry.available_quantity or 0) for entry in farm_lots), 2)
+            balances[item.id] = round(sum(float(entry.available_quantity or 0) for entry in org_lots if entry.farm_id == farm.id), 2)
     plots = _season_launch_plots(repo.list_plots(farm_ids=[farm.id]), scope)
     plots = [item for item in plots if _plot_matches_scope(item, scope)]
     drafted = {}
@@ -20806,6 +20808,43 @@ def prepare_stock_assistant_action(
         })
         return draft_id
 
+    def prepare_purchase(*, item, name, item_type, category, unit, packs, size, unit_price, purchase_date,
+                         supplier, notes, is_new):
+        draft_id = uuid4().hex
+        total_quantity = packs * size
+        total_cost = (packs * unit_price).quantize(Decimal("0.01"))
+        payload = {
+            "name": name, "item_type": item_type, "category": category, "package_unit": unit,
+            "quantity_purchased": str(packs), "package_size": str(size), "unit_price": str(unit_price),
+            "purchase_date": purchase_date.isoformat(), "supplier_name": supplier, "notes": notes, "is_new": is_new,
+        }
+        db.add(StockAssistantDraft(
+            id=draft_id, user_id=user.id, organization_id=user.organization_id, kind="compra",
+            farm_id=farm.id, season_id=season.id, plot_id=None, input_id=item.id if item else None,
+            movement_date=purchase_date, quantity=total_quantity, unit=unit, notes=notes,
+            payload_json=json.dumps(payload, ensure_ascii=False),
+            expires_at=datetime.now(timezone.utc) + timedelta(minutes=30),
+        ))
+        db.commit()
+        balance = Decimal(str(balances.get(item.id, 0))) if item else Decimal(0)
+        drafted.clear()
+        drafted.update({
+            "id": draft_id, "kind": "compra", "state": "pending", "item": name, "fuel": item_type == "combustivel",
+            "is_new": is_new, "category": category,
+            "quantity": _format_decimal_br(total_quantity, 2), "unit": unit,
+            "packs_label": f"{_format_decimal_br(packs, 2 if packs % 1 else 0)} × {_format_decimal_br(size, 2 if size % 1 else 0)} {unit}",
+            "unit_price": _format_currency(unit_price), "total": _format_currency(total_cost),
+            "supplier": supplier or "", "plot": supplier or "Compra", "date": purchase_date.isoformat(),
+            "date_label": purchase_date.strftime("%d/%m/%Y"), "notes": notes or "",
+            "balance": _format_decimal_br(balance, 2), "after": _format_decimal_br(balance + total_quantity, 2),
+        })
+        return draft_id
+
+    purchase_rules = {
+        kind: {category: list(_purchase_input_category_profile(category).get("units") or [])
+               for category in categories}
+        for kind, categories in PURCHASE_INPUT_CATEGORY_OPTIONS_BY_TYPE.items()
+    }
     permission_codes = permission_codes_for_user(db, user)
     entitlements = _entitlements_for(db, user)
     queries = AssistantQueries(
@@ -20814,7 +20853,8 @@ def prepare_stock_assistant_action(
     )
     assistant = FarmAssistant(farm_name=farm.name, season=season, items=products, balances=balances,
                               plots=plots, today=today_in_app_timezone(), prepare_draft=prepare_draft,
-                              extra_tools=queries.tools())
+                              extra_tools=queries.tools(), prepare_purchase=prepare_purchase,
+                              purchase_rules=purchase_rules)
     # A IA recebe so mensagens validas (sem os avisos de erro) e as mais recentes.
     ai_history = [{"role": item["role"], "content": item["content"]} for item in history if not item.get("error")][-10:]
     try:
@@ -20908,6 +20948,40 @@ def resolve_stock_assistant_action(
                 raise ValueError("Este rascunho já foi processado ou expirou.")
             db.commit()
             say("Tudo bem, descartei esse lançamento e nada foi registrado. O que você quer corrigir?", "discarded")
+            return _redirect(target)
+        if draft.kind == "compra":
+            payload = json.loads(draft.payload_json or "{}")
+            if draft.movement_date > today_in_app_timezone():
+                raise ValueError("A data da compra não pode ser futura.")
+            catalog = db.get(InputCatalog, draft.input_id) if draft.input_id else None
+            if catalog is not None:  # item ja cadastrado: identidade vem do cadastro
+                resolved_type, resolved_category = catalog.item_type, catalog.category
+                resolved_unit = stock_unit(catalog, payload["package_unit"])
+            else:
+                resolved_type, resolved_category, resolved_unit, _ = _validate_purchased_entry_package_unit(
+                    repo, item_type=payload["item_type"], category=payload["category"], name=payload["name"],
+                    package_unit=payload["package_unit"], package_unit_override=None,
+                )
+            if resolved_unit != payload["package_unit"]:
+                raise ValueError("A unidade cadastrada desse item mudou. Peça um novo lançamento ao assistente.")
+            if not claim_draft(db, draft, "confirmed"):
+                raise ValueError("Este rascunho já foi processado ou expirou. Nenhuma compra foi registrada.")
+            purchase = create_purchased_input(repo, {
+                "farm_id": draft.farm_id, "item_type": resolved_type, "category": resolved_category,
+                "name": payload["name"], "quantity_purchased": payload["quantity_purchased"],
+                "package_size": payload["package_size"], "package_unit": resolved_unit,
+                "unit_price": payload["unit_price"], "purchase_date": payload["purchase_date"],
+                "payment_condition": "a_vista", "supplier_name": payload.get("supplier_name"),
+                "notes": "; ".join(part for part in (payload.get("notes"), "Lançado pelo Assistente SiSFarm") if part),
+            })
+            db.add(AuditLog(actor_user_id=user.id, actor_email=user.email, organization_id=user.organization_id,
+                            event_type="stock.assistant.purchase_confirmed", outcome="success",
+                            metadata_json=json.dumps({"purchased_input_id": purchase.id, "draft_id": draft.id,
+                                                      "new_item": bool(payload.get("is_new")), "channel": "campo_mobile"})))
+            db.commit()
+            new_note = " e já deixei o item cadastrado" if payload.get("is_new") else ""
+            say(f"Prontinho! Dei entrada de {_format_decimal_br(draft.quantity, 2)} {draft.unit} de {purchase.name} no estoque"
+                f"{new_note}. Precisa de mais alguma coisa?", "confirmed")
             return _redirect(target)
         season = scope["active_season"]
         _validate_assistant_movement_date(draft.movement_date, season)

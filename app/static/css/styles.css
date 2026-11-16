@@ -6205,3 +6205,6 @@ dialog.db-cost { width: min(70rem, calc(100vw - 2rem)); }
 .as-typing [data-as-thinking].is-swapping { opacity: 0; transform: translateY(3px); }
 @media (prefers-reduced-motion: reduce) { .as-typing [data-as-thinking] { transition: none; } }
 .as-dl > .as-dl-wide { grid-column: 1 / -1; }
+.as-dl dd small { display: block; margin-top: 2px; font-size: 11px; font-weight: 500; color: var(--as-mute, #6b7a71); }
+.as-dl dd small.as-new { color: #1d6b3a; }
+.as-draft-ico.is-buy { background: #e7f4ec; color: #1d6b3a; }

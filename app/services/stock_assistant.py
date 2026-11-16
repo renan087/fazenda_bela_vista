@@ -70,10 +70,36 @@ AGENT_TOOLS = [
 ]
 
 
+PURCHASE_TOOL = {"type": "function", "function": {
+    "name": "preparar_compra",
+    "description": "Prepara um rascunho de COMPRA (entrada no estoque) para o usuário conferir e confirmar. Serve para item já "
+                   "cadastrado (informe item_id) ou para um item novo (item_id null + nome_novo, tipo e categoria). "
+                   "Não registra nada sozinho.",
+    "parameters": {"type": "object", "additionalProperties": False,
+                   "required": ["item_id", "nome_novo", "tipo", "categoria", "unidade", "quantidade_embalagens",
+                                "tamanho_embalagem", "preco_por_embalagem", "valor_total", "data", "fornecedor", "observacao"],
+                   "properties": {
+                       "item_id": {"type": ["integer", "null"], "description": "Item já cadastrado (de buscar_itens) ou null se for novo."},
+                       "nome_novo": {"type": ["string", "null"], "description": "Nome do item novo, como o produtor chama (ex.: 'Ureia 46%'). null se item_id."},
+                       "tipo": {"type": ["string", "null"], "enum": ["insumo_agricola", "combustivel", None], "description": "Só para item novo."},
+                       "categoria": {"type": ["string", "null"], "description": "Só para item novo; uma das categorias permitidas do tipo."},
+                       "unidade": {"type": "string", "description": "Unidade da embalagem (para item cadastrado, a unidade do cadastro)."},
+                       "quantidade_embalagens": {"type": "number", "description": "Quantas embalagens/volumes (ex.: 10 sacos -> 10; 200 litros a granel -> 1)."},
+                       "tamanho_embalagem": {"type": "number", "description": "Conteúdo de cada embalagem na unidade (ex.: saco de 50 kg -> 50; 200 L a granel -> 200)."},
+                       "preco_por_embalagem": {"type": ["number", "null"], "description": "Preço de cada embalagem em R$, se informado."},
+                       "valor_total": {"type": ["number", "null"], "description": "Valor total da compra em R$, se informado."},
+                       "data": {"type": "string", "description": "Data da compra, AAAA-MM-DD."},
+                       "fornecedor": {"type": ["string", "null"], "description": "Loja/fornecedor, se o usuário contou."},
+                       "observacao": {"type": ["string", "null"], "description": "Outros detalhes úteis que o usuário contou (nota, forma de pagamento, lote)."},
+                   }},
+}}
+
+
 class FarmAssistant:
     """Agente com ferramentas: a IA consulta o SiSFarm e so prepara rascunhos; o servidor valida tudo."""
 
-    def __init__(self, *, farm_name, season, items, balances, plots, today, prepare_draft, extra_tools=()):
+    def __init__(self, *, farm_name, season, items, balances, plots, today, prepare_draft, extra_tools=(),
+                 prepare_purchase=None, purchase_rules=None):
         self.farm_name = farm_name
         self.season = season
         self.items = {item.id: item for item in items if item.is_active and item.item_type in STOCK_ITEM_TYPES}
@@ -84,19 +110,24 @@ class FarmAssistant:
         self.draft_id = None
         self.trace = []  # o que o agente consultou, mostrado ao usuario abaixo da resposta
         self.extra_tools = list(extra_tools)  # [(schema, handler)] de consultas somente leitura
+        self.prepare_purchase = prepare_purchase
+        self.purchase_rules = purchase_rules or {}  # {tipo: {categoria: [unidades]}}
         self.handlers = {"buscar_itens": self.buscar_itens, "listar_setores": self.listar_setores,
                          "consultar_saldo": self.consultar_saldo, "preparar_consumo": self.preparar_consumo}
+        if prepare_purchase:
+            self.handlers["preparar_compra"] = self.preparar_compra
         for schema, handler in self.extra_tools:
             self.handlers[schema["function"]["name"]] = handler
 
     @property
     def tools(self):
-        return AGENT_TOOLS + [schema for schema, _ in self.extra_tools]
+        return AGENT_TOOLS + ([PURCHASE_TOOL] if self.prepare_purchase else []) + [schema for schema, _ in self.extra_tools]
 
     # ---------------------------------------------------------------- ferramentas
     def _item_view(self, item):
         return {"item_id": item.id, "nome": item.name, "unidade": item.default_unit,
                 "tipo": "combustível" if item.item_type == "combustivel" else "insumo agrícola",
+                "categoria": getattr(item, "category", None),
                 "saldo_na_fazenda": round(float(self.balances.get(item.id, 0)), 2)}
 
     def buscar_itens(self, termo=""):
@@ -109,7 +140,8 @@ class FarmAssistant:
                 scored.append((-(hits == len(tokens)), -hits, item.name, item))
         found = [self._item_view(entry[-1]) for entry in sorted(scored)[:8]]
         if not found:
-            return {"itens": [], "aviso": "Nenhum item com estoque nesta fazenda corresponde. O usuário precisa lançar a compra antes."}
+            return {"itens": [], "aviso": "Nenhum item cadastrado com esse nome. Para consumo, é preciso lançar a compra antes; "
+                                          "se for uma compra, dá para cadastrar como item novo."}
         return {"itens": found}
 
     def listar_setores(self):
@@ -152,10 +184,70 @@ class FarmAssistant:
         if plot is None and item.item_type != "combustivel":
             raise ValueError("Insumo agrícola precisa de setor. Pergunte ao usuário em qual setor foi usado.")
         balance = Decimal(str(self.balances.get(item.id, 0)))
+        if balance <= 0:
+            raise ValueError(f"{item.name} não tem saldo nesta fazenda. Lance a compra antes do consumo.")
         if quantity > balance:
             raise ValueError(f"Saldo insuficiente: há {balance} {unit} de {item.name} nesta fazenda.")
         notes = " ".join(str(observacao or "").split())[:300] or None
         self.draft_id = self.prepare_draft(item=item, plot=plot, quantity=quantity, unit=unit, movement_date=movement_date, notes=notes)
+        return {"ok": True, "rascunho": self.draft_id}
+
+    def preparar_compra(self, item_id=None, nome_novo=None, tipo=None, categoria=None, unidade="", quantidade_embalagens=None,
+                        tamanho_embalagem=None, preco_por_embalagem=None, valor_total=None, data=None, fornecedor=None,
+                        observacao=None):
+        def positive(value, label):
+            number = Decimal(str(value)) if value is not None else Decimal(0)
+            if not number.is_finite() or not 0 < number < Decimal("10000000000"):
+                raise ValueError(f"{label} inválido(a).")
+            return number
+
+        packs = positive(quantidade_embalagens, "Quantidade de embalagens")
+        size = positive(tamanho_embalagem, "Tamanho da embalagem")
+        if preco_por_embalagem is not None:
+            unit_price = positive(preco_por_embalagem, "Preço por embalagem")
+        elif valor_total is not None:
+            unit_price = positive(valor_total, "Valor total") / packs
+        else:
+            raise ValueError("Falta o preço: pergunte o valor total ou o preço de cada embalagem.")
+        unit_price = unit_price.quantize(Decimal("0.0001"))
+        try:
+            purchase_date = date.fromisoformat(str(data))
+        except ValueError:
+            raise ValueError("Data inválida: use AAAA-MM-DD.") from None
+        if purchase_date > self.today:
+            raise ValueError("A data da compra não pode ser futura.")
+
+        if item_id:
+            item = self.items.get(int(item_id))
+            if not item:
+                raise ValueError("Item não encontrado. Use buscar_itens ou cadastre como novo.")
+            unit = stock_unit(item, unidade)
+            name, item_type, category, is_new = item.name, item.item_type, item.category, False
+        else:
+            name = " ".join(str(nome_novo or "").split())[:160]
+            if len(name) < 2:
+                raise ValueError("Informe o nome do item novo.")
+            existing = [entry for entry in self.items.values() if normalized(entry.name) == normalized(name)]
+            if existing:
+                raise ValueError(f"{existing[0].name} já está cadastrado (item_id {existing[0].id}); use o item_id.")
+            if tipo not in self.purchase_rules:
+                raise ValueError("Tipo do item novo: insumo_agricola ou combustivel.")
+            categories = self.purchase_rules[tipo]
+            category = next((c for c in categories if normalized(c) == normalized(categoria or "")), None)
+            if not category:
+                raise ValueError(f"Categoria inválida para {tipo}. Opções: {', '.join(categories)}.")
+            allowed_units = categories[category]
+            unit = next((u for u in allowed_units if _unit_key(u) == _unit_key(unidade)), None)
+            if not unit:
+                raise ValueError(f"Unidade inválida para {category}. Opções: {', '.join(allowed_units)}.")
+            item_type, is_new = tipo, True
+        notes = " ".join(str(observacao or "").split())[:300] or None
+        supplier = " ".join(str(fornecedor or "").split())[:160] or None
+        self.draft_id = self.prepare_purchase(
+            item=self.items.get(int(item_id)) if item_id else None, name=name, item_type=item_type, category=category,
+            unit=unit, packs=packs, size=size, unit_price=unit_price, purchase_date=purchase_date,
+            supplier=supplier, notes=notes, is_new=is_new,
+        )
         return {"ok": True, "rascunho": self.draft_id}
 
     def call_tool(self, name, raw_args):
@@ -181,34 +273,55 @@ class FarmAssistant:
     def instructions(self):
         season = self.season
         period = f"{season.start_date:%d/%m/%Y} a {season.end_date:%d/%m/%Y}" if season else "não definida"
+        purchase_rules = "; ".join(
+            f"{'combustível' if kind == 'combustivel' else 'insumo agrícola'} ({kind}): "
+            + ", ".join(f"{category} [{'/'.join(units)}]" for category, units in categories.items())
+            for kind, categories in self.purchase_rules.items()
+        )
+        purchases_on = bool(self.prepare_purchase)
         return (
-            "Você é o Assistente SiSFarm, o ajudante de campo do produtor rural. Você faz duas coisas: "
-            "(1) LANÇA o consumo (saída de estoque) de insumos agrícolas e combustíveis e "
-            "(2) RESPONDE perguntas sobre a fazenda usando as ferramentas de consulta disponíveis "
-            "(chuva, previsão do tempo, aplicações, colheitas, consumos, estoque, financeiro, cotação do café, safra). "
-            "Fale em português do Brasil, de forma natural, breve e cordial, como no WhatsApp.\n"
+            "Você é o Assistente SiSFarm, o parceiro de campo do produtor de café. Converse como uma pessoa da roça que "
+            "entende de lavoura e de sistema: português do Brasil simples, caloroso e direto, frases curtas, como numa conversa "
+            "de WhatsApp. Pode usar expressões do dia a dia ('beleza', 'pode deixar', 'fechou') com moderação; nada de "
+            "linguagem robótica, listas longas ou termos técnicos do sistema (não fale em item_id, JSON, ferramenta, rascunho "
+            "técnico). Chame o que vai para a tela de 'lançamento para você conferir'. Não use emojis em excesso (no máximo um).\n"
             f"Hoje é {_WEEKDAYS[self.today.weekday()]}, {self.today:%d/%m/%Y}. Fazenda: {self.farm_name}. "
             f"Safra ativa: {season.name if season else '-'} ({period}).\n"
-            "Consultas: use sempre a ferramenta adequada e responda só com os números que ela devolver, citando o período. "
-            "Converta datas relativas ('este mês', 'semana passada') para AAAA-MM-DD. Se não houver ferramenta para o assunto, "
-            "diga que você ainda não tem acesso a essa informação. Formate valores em reais como R$ 1.234,56.\n"
-            "Lançamento de consumo:\n"
-            "- Use buscar_itens para achar o item citado (nunca invente item_id). Se houver mais de um parecido, pergunte qual.\n"
-            "- Se o item não tiver estoque nesta fazenda, explique e sugira lançar a compra antes.\n"
-            "- Insumo agrícola precisa de setor (use listar_setores se precisar). Combustível pode ser de uso geral: "
-            "pergunte o setor uma vez e aceite 'geral' ou 'nenhum' (setor null).\n"
-            "- Se a data não foi dita, pergunte se foi hoje. 'hoje', 'ontem' e '15/11' são válidas; sem ano, use o ano atual.\n"
-            "- Use a unidade do cadastro; converta só o óbvio (litros->L, quilos->kg, 500 g->0,5 kg). Quantidade por área "
-            "(kg/ha) não é total: peça o total. Multiplique embalagens só se número e tamanho forem informados.\n"
-            "- Pergunte o que faltar, no máximo um ou dois dados por vez. Não invente valores.\n"
-            "- Detalhes extras que o usuário contar (máquina/equipamento abastecido, operador, motivo, serviço) vão em "
-            "'observacao' do preparar_consumo; não pergunte por eles se o usuário não falou.\n"
-            "- Quando tiver tudo, chame preparar_consumo. Se ela devolver erro, explique ao usuário e peça o ajuste.\n"
-            "- Nunca diga que registrou: o usuário confirma na tela.\n"
-            "- Se o usuário enviar uma foto (nota, etiqueta, bomba de combustível), use os dados legíveis dela e confirme "
-            "o que não estiver claro.\n"
-            "- Nesta versão você prepara consumo, informa saldo de itens e lista setores. Para compra, despesa, chuva ou outro lançamento, explique com gentileza "
-            "que ainda não faz isso, sem transformar em consumo. Não responda assuntos fora do SiSFarm."
+            "O que você faz:\n"
+            "1) LANÇA o consumo (saída de estoque) de insumos agrícolas e combustíveis.\n"
+            + ("2) LANÇA compras (entrada no estoque), inclusive de itens que ainda não têm cadastro.\n" if purchases_on else "")
+            + "3) RESPONDE perguntas sobre a fazenda com as consultas disponíveis (chuva, previsão do tempo, aplicações, "
+            "colheitas, consumos, estoque, financeiro, cotação do café, safra).\n"
+            "Regras gerais:\n"
+            "- Use buscar_itens para achar o item citado; nunca invente item. Se houver mais de um parecido, pergunte qual.\n"
+            "- Pergunte só o que falta, um ou dois dados por vez, de forma natural (ex.: 'Foi hoje?' em vez de 'Informe a data'). "
+            "Não invente valores. 'hoje', 'ontem' e '15/11' são datas válidas; sem ano, use o ano atual. Data futura não vale.\n"
+            "- Use a unidade do cadastro e converta só o óbvio (litros->L, quilos->kg, 500 g->0,5 kg).\n"
+            "- Quando tiver tudo, prepare o lançamento e diga, em uma frase, que deixou pronto para conferir. Nunca diga que "
+            "registrou: quem confirma é o usuário, no botão. Se a preparação voltar com erro, explique com simplicidade e peça o ajuste.\n"
+            "- Consultas: responda só com os números devolvidos, citando o período, valores como R$ 1.234,56. "
+            "Converta datas relativas ('este mês', 'semana passada'). Se não houver consulta para o assunto, diga que ainda "
+            "não tem acesso a essa informação.\n"
+            "- Se o usuário mandar foto (nota fiscal, etiqueta, bomba de combustível), aproveite os dados legíveis e confirme o "
+            "que não estiver claro.\n"
+            "Consumo:\n"
+            "- Insumo agrícola precisa de setor (use listar_setores se precisar). Combustível pode ser de uso geral: pergunte o "
+            "setor uma vez e aceite 'geral' ou 'nenhum'.\n"
+            "- Quantidade por área (kg/ha) não é total: peça o total. Multiplique embalagens só se número e tamanho forem ditos.\n"
+            "- Detalhes extras (máquina abastecida, operador, motivo, serviço) vão na observação; não pergunte se não foi dito.\n"
+            + ("Compra:\n"
+               "- Primeiro busque o item. Se já existir, use-o (tipo, categoria e unidade vêm do cadastro). Se não existir, "
+               "confirme com o usuário que é um item novo e descubra o tipo e a categoria pelo contexto (ex.: diesel -> "
+               "combustível/Combustíveis; ureia -> insumo agrícola/Fertilizantes); pergunte só se não der para deduzir.\n"
+               f"- Categorias e unidades permitidas para item novo: {purchase_rules}.\n"
+               "- Precisa de: quantas embalagens, o conteúdo de cada uma (ex.: 10 sacos de 50 kg; 200 L a granel = 1 x 200 L), "
+               "o preço (por embalagem ou o total) e a data. Fornecedor e outros detalhes (nota, pagamento) são opcionais: "
+               "registre se o usuário contar, mas não insista.\n"
+               "- A compra entra no estoque desta fazenda; não lança no financeiro. Se o usuário perguntar, diga que dá para "
+               "vincular a conta depois, na tela de compras.\n" if purchases_on else
+               "- Compras ainda não podem ser lançadas por aqui; explique com gentileza.\n")
+            + "- Para outros lançamentos (despesa, chuva, aplicação, colheita), explique com gentileza que ainda não faz isso por "
+            "aqui, sem transformar em consumo ou compra. Não responda assuntos fora da fazenda e do SiSFarm."
         )
 
     def run(self, history, *, client, model, image=None):
@@ -254,8 +367,9 @@ def _trace_label(name, result):
         return f"Listou setores · {len(result.get('setores') or [])}"
     if name == "consultar_saldo" and "saldo_na_fazenda" in result:
         return f"Conferiu saldo · {_num_br(result['saldo_na_fazenda'])} {result.get('unidade') or ''}".strip()
-    if name == "preparar_consumo":
-        return "Preparou rascunho" if result.get("ok") else "Validou dados · precisa de ajuste"
+    if name in ("preparar_consumo", "preparar_compra"):
+        kind = "compra" if name == "preparar_compra" else "consumo"
+        return f"Preparou rascunho de {kind}" if result.get("ok") else "Validou dados · precisa de ajuste"
     label = _QUERY_LABELS.get(name)
     if label:
         return f"{label} · indisponível" if result.get("erro") else label

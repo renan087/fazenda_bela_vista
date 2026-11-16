@@ -98,12 +98,12 @@
                 <div class="as-welcome">
                     <span class="as-av as-av-ai as-av-lg">{{ ic('spark', 24) }}</span>
                     <h1>{{ greeting }}</h1>
-                    <p>Conte o que foi usado na fazenda ou pergunte sobre o estoque. Eu preparo o lançamento e você confirma.</p>
+                    <p>Me conte o que foi usado ou comprado na fazenda, ou pergunte o que quiser saber. Eu deixo o lançamento prontinho e você só confirma.</p>
                     <div class="as-sugs">
                         <button type="button" class="as-sug" data-as-fill="Abasteci o trator com 80 litros de diesel hoje">{{ ic('fuel', 16) }}<span>Abasteci o trator com 80 L de diesel</span></button>
                         <button type="button" class="as-sug" data-as-fill="Usei 6 sacos de 20-05-20 no setor ">{{ ic('box', 16) }}<span>Usei 6 sacos de 20-05-20 no setor 2</span></button>
                         <button type="button" class="as-sug" data-as-fill="Quanto tenho de glifosato em estoque?">{{ ic('search', 16) }}<span>Quanto tenho de glifosato?</span></button>
-                        <button type="button" class="as-sug" data-as-fill="Quais setores estão na safra?">{{ ic('map', 16) }}<span>Quais setores estão na safra?</span></button>
+                        <button type="button" class="as-sug" data-as-fill="Comprei 10 sacos de ureia de 50 kg por R$ 180 cada">{{ ic('box', 16) }}<span>Comprei 10 sacos de ureia</span></button>
                     </div>
                     {% if recent_threads %}
                     <div class="as-recent as-hide-wide">
@@ -132,13 +132,27 @@
                         {% if m.draft %}{% set d = m.draft %}
                         <div class="as-draft as-draft-{{ d.state }}">
                             <div class="as-draft-head">
-                                <span class="as-draft-ico{% if d.fuel %} is-fuel{% endif %}">{{ ic('fuel' if d.fuel else 'box', 16) }}</span>
+                                <span class="as-draft-ico{% if d.fuel %} is-fuel{% endif %}{% if d.kind == 'compra' %} is-buy{% endif %}">{{ ic('fuel' if d.fuel else 'box', 16) }}</span>
                                 <div class="as-grow">
-                                    <div class="as-draft-title">Saída de estoque · {{ 'combustível' if d.fuel else 'insumo' }}</div>
+                                    <div class="as-draft-title">{% if d.kind == 'compra' %}Compra · entrada no estoque{% if d.is_new %} · item novo{% endif %}{% else %}Saída de estoque · {{ 'combustível' if d.fuel else 'insumo' }}{% endif %}</div>
                                     <div class="as-draft-sub">{% if d.state == 'pending' %}Rascunho — ainda não registrado{% elif d.state == 'confirmed' %}Registrado no estoque{% elif d.state == 'discarded' %}Nada foi registrado{% elif d.state == 'replaced' %}Substituído por um novo rascunho{% else %}O prazo de 30 minutos acabou{% endif %}</div>
                                 </div>
                                 <span class="as-badge as-badge-{{ d.state }}">{% if d.state == 'pending' %}Aguardando você{% elif d.state == 'confirmed' %}Registrado{% elif d.state == 'discarded' %}Descartado{% elif d.state == 'replaced' %}Substituído{% else %}Expirado{% endif %}</span>
                             </div>
+                            {% if d.kind == 'compra' %}
+                            <dl class="as-dl">
+                                <div><dt>Item</dt><dd>{{ d.item }}{% if d.is_new %}<small class="as-new">novo cadastro · {{ d.category }}</small>{% endif %}</dd></div>
+                                <div><dt>Quantidade</dt><dd>{{ d.packs_label }}<small>{{ d.quantity }} {{ d.unit }} no total</small></dd></div>
+                                <div><dt>Valor</dt><dd>{{ d.total }}<small>{{ d.unit_price }} por embalagem</small></dd></div>
+                                <div><dt>Data</dt><dd>{{ d.date_label }}</dd></div>
+                                {% if d.supplier %}<div class="as-dl-wide"><dt>Fornecedor</dt><dd>{{ d.supplier }}</dd></div>{% endif %}
+                                {% if d.notes %}<div class="as-dl-wide"><dt>Observação</dt><dd>{{ d.notes }}</dd></div>{% endif %}
+                                {% if d.state == 'pending' %}
+                                <div><dt>Estoque atual</dt><dd>{{ d.balance }} {{ d.unit }}</dd></div>
+                                <div><dt>Estoque após</dt><dd class="as-ok">{{ d.after }} {{ d.unit }}</dd></div>
+                                {% endif %}
+                            </dl>
+                            {% else %}
                             <dl class="as-dl">
                                 <div><dt>Item</dt><dd>{{ d.item }}</dd></div>
                                 <div><dt>Quantidade</dt><dd>{{ d.quantity }} {{ d.unit }}</dd></div>
@@ -150,6 +164,7 @@
                                 <div><dt>Saldo após</dt><dd class="as-ok">{{ d.after }} {{ d.unit }}</dd></div>
                                 {% endif %}
                             </dl>
+                            {% endif %}
                             {% if d.state == 'pending' %}
                             <div class="as-draft-actions">
                                 <form method="post" action="/mobile/assistente/{{ d.id }}/confirmar" data-as-busy="Registrando…">
@@ -158,7 +173,7 @@
                                     <button class="as-btn as-btn-primary">{{ ic('check', 16, 2.2) }}Confirmar e registrar</button>
                                 </form>
                                 <div class="as-draft-secondary">
-                                    <button type="button" class="as-btn as-btn-secondary" data-as-fill="Quero ajustar: " data-as-fill-hint="Diga o que ajustar: quantidade, setor ou data">{{ ic('edit', 15) }}Ajustar</button>
+                                    <button type="button" class="as-btn as-btn-secondary" data-as-fill="Quero ajustar: " data-as-fill-hint="{{ 'Diga o que ajustar: quantidade, preço, fornecedor ou data' if d.kind == 'compra' else 'Diga o que ajustar: quantidade, setor ou data' }}">{{ ic('edit', 15) }}Ajustar</button>
                                     <form method="post" action="/mobile/assistente/{{ d.id }}/descartar">
                                         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                                         <input type="hidden" name="thread_id" value="{{ thread_id }}">
@@ -245,6 +260,8 @@
             <ul class="as-can">
                 <li>{{ ic('box', 16) }}Registrar consumo de insumos</li>
                 <li>{{ ic('fuel', 16) }}Lançar abastecimento de combustível</li>
+                <li>{{ ic('check', 16) }}Lançar compras e cadastrar itens novos</li>
+                <li>{{ ic('search', 16) }}Consultar chuva, previsão, colheita e financeiro</li>
                 <li>{{ ic('search', 16) }}Consultar saldo de estoque</li>
                 <li>{{ ic('map', 16) }}Listar os setores da safra</li>
                 <li>{{ ic('image', 16) }}Ler dados de uma foto (nota, etiqueta)</li>
