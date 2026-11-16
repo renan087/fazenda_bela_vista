@@ -201,6 +201,48 @@ def test_agent_sends_pdf_as_file_not_image():
     assert content[1] == {"type": "file", "file": {"filename": "documento.pdf", "file_data": pdf}}
 
 
+def test_invoice_items_are_presented_without_creating_a_draft():
+    prepared, calls = [], []
+    assistant = _assistant(prepared)
+    assistant.prepare_purchase = lambda **kwargs: ("never", [])
+    assistant.handlers["apresentar_itens_nota"] = assistant.apresentar_itens_nota
+    invoice = {"itens": [{"nome": "Glifosato", "quantidade": "2", "unidade": "L", "valor": "total R$ 80"},
+                         {"nome": "Ureia", "quantidade": None, "unidade": "kg", "valor": None}],
+               "aviso": "Quantidade da ureia ilegível"}
+    result = assistant.run([{"role": "user", "content": "Leia a nota"}], client=_fake_client(
+        [[_tool_call("apresentar_itens_nota", invoice)]], calls), model="m", image="data:application/pdf;base64,JVBERg==")
+    assert result["draft_id"] is None and not prepared
+    assert "1. Glifosato" in result["resposta"] and "2. Ureia" in result["resposta"]
+    assert "não identificado" in result["resposta"] and assistant.invoice == invoice
+
+
+def test_invoice_requires_attachment_and_disallows_draft_during_reading():
+    assistant = _assistant([])
+    assistant.handlers["apresentar_itens_nota"] = assistant.apresentar_itens_nota
+    assert "anexada" in assistant.call_tool("apresentar_itens_nota", json.dumps({"itens": [{"nome": "X"}]}))["erro"]
+    assistant.reading_attachment = True
+    assert "aguarde" in assistant.call_tool("preparar_compra", '{}')["erro"]
+
+
+def test_invoice_list_is_remembered_for_followup(monkeypatch):
+    routes, db, user, scope, send, sent, history = _route_env(monkeypatch, [])
+    calls = []
+    invoice = {"itens": [{"nome": "Glifosato", "quantidade": "2", "unidade": "L", "valor": "R$ 80"},
+                         {"nome": "Ureia", "quantidade": None, "unidade": "kg", "valor": None}], "aviso": None}
+    def run(history, assistant, **kwargs):
+        calls.append(history)
+        if len(calls) == 1:
+            assistant.invoice = invoice
+            return {"resposta": "1. Glifosato\n2. Ureia", "draft_id": None}
+        return {"resposta": "Vamos conferir a ureia.", "draft_id": None}
+    monkeypatch.setattr(routes, "run_farm_assistant", run)
+    send("leia a nota")
+    assert history()[-1]["invoice"] == invoice
+    send("quero o item 2")
+    assert any("Glifosato" in entry["content"] and "Ureia" in entry["content"]
+               for entry in calls[1] if entry["role"] == "system")
+
+
 def test_assistant_template_accepts_pdf():
     template = (Path(__file__).resolve().parents[1] / "app/templates/stock_assistant.html").read_text()
     assert 'accept="image/jpeg,image/png,image/webp,application/pdf"' in template
