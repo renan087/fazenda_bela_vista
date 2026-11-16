@@ -3,7 +3,7 @@
 {% set pz_img = url_for('static', path='img/pezinho/') %}
 <div class="pzw" data-pzw hidden
      data-img-base="{{ pz_img }}" data-available="{{ 'true' if pz.available else 'false' }}"
-     data-pending="{{ pz.pending.id if pz.pending else '' }}" data-name="{{ pz.name }}">
+     data-pending="{{ pz.pending.id if pz.pending else '' }}" data-name="{{ pz.name }}" data-scope="{{ pz.scope_key }}">
     <div class="pzw-bubble" role="status" data-pzw-bubble hidden>
         <p data-pzw-bubble-text></p>
         <button type="button" class="pzw-x" aria-label="Dispensar" data-pzw-dismiss>
@@ -23,24 +23,27 @@
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>
             </button>
         </header>
-        <div class="pzw-body">
+        <div class="pzw-body" data-pzw-body aria-live="polite">
+            <div data-pzw-welcome>
             {% if not pz.available %}
             <p class="pzw-say">{{ pz.greeting }}{% if pz.name %}, {{ pz.name }}{% endif %}! Estou descansando agora: a inteligência artificial está fora do ar. Tente de novo daqui a pouco.</p>
             {% elif not pz.ready %}
             <p class="pzw-say">{{ pz.greeting }}{% if pz.name %}, {{ pz.name }}{% endif %}! Escolha a fazenda e a safra no topo da tela para eu poder ajudar.</p>
             {% else %}
-            <p class="pzw-say">{{ pz.greeting }}{% if pz.name %}, {{ pz.name }}{% endif %}! Me conta o que foi usado na lavoura que eu deixo o lançamento prontinho pra você conferir.</p>
+            <p class="pzw-say">{{ pz.greeting }}{% if pz.name %}, {{ pz.name }}{% endif %}! Pode perguntar sobre a fazenda ou me contar uma compra ou consumo. Antes de registrar, eu mostro tudo para você conferir.</p>
             {% if pz.pending %}
-            <a class="pzw-pending" href="{{ pz.pending.href }}">
+            <a class="pzw-pending" href="{{ pz.pending.href }}" data-pzw-pending-thread="{{ pz.pending.thread_id }}">
                 <i></i><span><b>{{ pz.pending.label }}</b> aguardando sua confirmação</span><span class="pzw-pending-go">Ver</span>
             </a>
             {% endif %}
             <div class="pzw-sugs">
-                {% for title, example in [('Abastecimento', 'Abasteci o trator com 80 L de diesel'), ('Consumo de insumo', 'Usei 6 sacos de 20-05-20 no setor 2'), ('Consultar saldo', 'Quanto tenho de glifosato?')] %}
-                <a class="pzw-sug" href="/mobile/assistente?q={{ example|urlencode }}"><i></i><span><b>{{ title }}</b><span>“{{ example }}”</span></span></a>
+                {% for title, example in pz.suggestions %}
+                <button type="button" class="pzw-sug" data-pzw-suggestion="{{ example }}"><i></i><span><b>{{ title }}</b><span>“{{ example }}”</span></span></button>
                 {% endfor %}
             </div>
             {% endif %}
+            </div>
+            <div class="pzw-messages" data-pzw-messages></div>
         </div>
         {% if pz.available and pz.ready %}
         <form class="pzw-form" method="post" action="/mobile/assistente" data-pzw-form>
@@ -53,7 +56,7 @@
         </form>
         {% endif %}
         <footer class="pzw-foot">
-            <a href="/mobile/assistente">Abrir conversa completa</a>
+            <a href="/mobile/assistente" data-pzw-full>Nova conversa no assistente</a>
             <button type="button" data-pzw-hide>Esconder por hoje</button>
         </footer>
     </section>
@@ -63,4 +66,4 @@
         <span class="pzw-dot" data-pzw-dot {% if not pz.pending %}hidden{% endif %}></span>
     </button>
 </div>
-<script src="{{ url_for('static', path='js/pezinho.js') }}?v=1" defer></script>
+<script src="{{ url_for('static', path='js/pezinho.js') }}?v=2" defer></script>

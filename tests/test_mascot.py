@@ -31,10 +31,11 @@ def _ctx(**extra):
 
 def test_pezinho_context_needs_assistant_permission():
     request = NS(url=NS(path="/dashboard"))
-    user = NS(display_name="Renan Correia", name="Renan")
+    user = NS(id=1, display_name="Renan Correia", name="Renan")
     assert _pezinho_context(request, None, user, _ctx(permission_codes={PAGE_MOBILE})) is None
     data = _pezinho_context(request, None, user, _ctx())
     assert data["name"] == "Renan" and data["ready"] is False and data["pending"] is None
+    assert [item[0] for item in data["suggestions"]] == ["Estoque", "Safra"]
 
 
 def test_pezinho_hidden_on_assistant_page_and_modals():

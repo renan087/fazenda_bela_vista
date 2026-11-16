@@ -1082,16 +1082,25 @@ def _pezinho_context(request: Request, db, user, context: dict) -> dict | None:
         try:
             scope = {"active_farm_id": context.get("active_farm_id"), "active_season_id": context.get("active_season_id")}
             for thread in _assistant_threads(db, user, scope, limit=6):
+                if _assistant_thread_channel(thread) == "whatsapp":
+                    continue
                 draft = next((m["draft"] for m in reversed(_thread_messages(thread))
                               if isinstance(m.get("draft"), dict) and m["draft"].get("state") == "pending"), None)
                 if draft and _assistant_draft_state(db, draft) == "pending":
                     label = " · ".join(filter(None, [draft.get("item"), " ".join(filter(None, [draft.get("quantity"), draft.get("unit")]))]))
-                    pending = {"id": draft.get("id"), "label": label or "Lançamento", "href": _assistant_url(thread.id)}
+                    pending = {"id": draft.get("id"), "label": label or "Lançamento", "href": _assistant_url(thread.id), "thread_id": thread.id}
                     break
         except Exception:
             logger.exception("Falha ao procurar rascunhos pendentes do assistente")
     hour = app_now().hour
     name = ((getattr(user, "display_name", None) or getattr(user, "name", None) or "").strip().split(" ") or [""])[0]
+    suggestions = [("Estoque", "Qual é o saldo dos insumos da fazenda?"),
+                   ("Safra", "Quais setores estão na safra ativa?")]
+    permissions = set(context.get("permission_codes") or ())
+    if PAGE_RAINFALL in permissions and entitlements.module_allowed(PAGE_RAINFALL):
+        suggestions.append(("Chuva", "Quanto choveu nos últimos 30 dias?"))
+    elif PAGE_DASHBOARD in permissions and entitlements.module_allowed(PAGE_DASHBOARD):
+        suggestions.append(("Mercado", "Qual é a cotação mais recente do café?"))
     return {
         "ready": bool(farm and season),
         "available": bool((get_settings().openai_api_key or "").strip()),
@@ -1099,6 +1108,8 @@ def _pezinho_context(request: Request, db, user, context: dict) -> dict | None:
         "name": name,
         "greeting": "Bom dia" if hour < 12 else "Boa tarde" if hour < 18 else "Boa noite",
         "context_label": f"{farm.name} · {season.name}" if farm and season else "",
+        "scope_key": f"{user.id}:{getattr(user, 'organization_id', '')}:{getattr(farm, 'id', '')}:{getattr(season, 'id', '')}",
+        "suggestions": suggestions,
     }
 
 
@@ -21503,6 +21514,77 @@ def _assistant_purchase_finance(repo, farm, payload: dict) -> dict:
 def _validate_assistant_movement_date(movement_date, season):
     if not season.start_date <= movement_date <= season.end_date or movement_date > today_in_app_timezone():
         raise ValueError("A data do consumo deve estar dentro da safra ativa e não pode ser futura.")
+
+
+def _pezinho_thread_payload(db, thread):
+    messages = _assistant_view_messages(db, _thread_messages(thread))[-30:]
+    result = []
+    for item in messages:
+        entry = {key: item[key] for key in ("role", "content", "time", "error", "draft", "attachment_id",
+                                             "attachment_name", "audio_id") if key in item}
+        result.append(entry)
+    return {"thread_id": thread.id, "messages": result}
+
+
+def _pezinho_scope(db, user, request):
+    if not _can_use_stock_assistant(db, user):
+        raise HTTPException(status_code=403, detail="Sem permissão para usar o assistente.")
+    repo = _repository(db)
+    scope = _global_scope_context(request, repo, user)
+    farm, season = scope.get("active_farm"), scope.get("active_season")
+    if not farm or not season or season.farm_id != farm.id:
+        raise HTTPException(status_code=400, detail="Selecione a fazenda e a safra.")
+    return repo, scope
+
+
+def _pezinho_thread(db, user, scope, thread_id):
+    thread = _assistant_thread(db, user, scope, thread_id)
+    if not thread or _assistant_thread_channel(thread) != "web":
+        raise HTTPException(status_code=404, detail="Conversa não encontrada neste contexto.")
+    return thread
+
+
+@router.get("/mobile/assistente/pezinho")
+def pezinho_get_chat(request: Request, thread_id: str = Query(..., max_length=32),
+                     db: Session = Depends(get_db), user: User = Depends(get_current_user_web)):
+    _, scope = _pezinho_scope(db, user, request)
+    return JSONResponse(_pezinho_thread_payload(db, _pezinho_thread(db, user, scope, thread_id)),
+                        headers={"Cache-Control": "no-store"})
+
+
+@router.post("/mobile/assistente/pezinho")
+def pezinho_send_message(request: Request, message: str = Form(..., max_length=600),
+                          csrf_token: str = Form(...), thread_id: str | None = Form(None, max_length=32),
+                          db: Session = Depends(get_db), user: User = Depends(get_current_user_web)):
+    validate_csrf(request, csrf_token)
+    repo, scope = _pezinho_scope(db, user, request)
+    message = message.strip()
+    if not message:
+        raise HTTPException(status_code=400, detail="Escreva uma mensagem.")
+    thread = _pezinho_thread(db, user, scope, thread_id) if thread_id else None
+    thread, _ = _assistant_turn(db, user, repo, scope, thread, message)
+    return JSONResponse(_pezinho_thread_payload(db, thread), headers={"Cache-Control": "no-store"})
+
+
+@router.post("/mobile/assistente/pezinho/{draft_id}/{action}")
+def pezinho_resolve_draft(request: Request, draft_id: str, action: str,
+                           csrf_token: str = Form(...), thread_id: str = Form(..., max_length=32),
+                           db: Session = Depends(get_db), user: User = Depends(get_current_user_web)):
+    validate_csrf(request, csrf_token)
+    repo, scope = _pezinho_scope(db, user, request)
+    if action not in {"confirmar", "descartar"} or len(draft_id) != 32:
+        raise HTTPException(status_code=404)
+    thread = _pezinho_thread(db, user, scope, thread_id)
+    draft = _assistant_draft(db, user, draft_id)
+    if (not draft or (draft.farm_id, draft.season_id) != (scope["active_farm_id"], scope["active_season_id"])
+            or not any((item.get("draft") or {}).get("id") == draft_id for item in _thread_messages(thread))):
+        raise HTTPException(status_code=404, detail="Rascunho não encontrado nesta conversa.")
+    try:
+        _assistant_resolve_draft(db, user, repo, scope, draft, action, thread, channel="campo_mobile")
+    except ValueError as exc:
+        db.rollback()
+        return JSONResponse({"detail": str(exc)}, status_code=409)
+    return JSONResponse(_pezinho_thread_payload(db, thread), headers={"Cache-Control": "no-store"})
 
 
 def _set_thread_draft_state(messages, draft_id, state):

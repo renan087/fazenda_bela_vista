@@ -192,6 +192,59 @@ def test_agent_tool_errors_go_back_to_the_model():
     assert any("erro" in m["content"] for m in calls[1]["messages"] if m.get("role") == "tool")
 
 
+def test_pezinho_conversation_and_confirmation_stay_in_same_thread(monkeypatch):
+    draft = {"item_id": 0, "quantidade": 5, "unidade": "L", "data": "2026-11-15", "setor": None}
+    routes, db, user, scope, send, sent, history = _route_env(monkeypatch, ["Foi hoje?", draft])
+    req = SimpleNamespace(session={})
+    response = routes.pezinho_send_message(req, message="Usei gasolina", csrf_token="x", thread_id=None, db=db, user=user)
+    first = json.loads(response.body)
+    assert first["messages"][-1]["content"] == "Foi hoje?"
+    thread_id = first["thread_id"]
+    response = routes.pezinho_send_message(req, message="Sim, 5 litros", csrf_token="x", thread_id=thread_id, db=db, user=user)
+    second = json.loads(response.body)
+    assert second["thread_id"] == thread_id and second["messages"][-1]["draft"]["state"] == "pending"
+    assert db.query(StockOutput).filter_by(purchased_input_id=None).count() == 0
+    draft_id = second["messages"][-1]["draft"]["id"]
+    response = routes.pezinho_resolve_draft(req, draft_id, "confirmar", csrf_token="x", thread_id=thread_id, db=db, user=user)
+    assert json.loads(response.body)["messages"][-1]["content"].startswith("Pronto!")
+    assert db.query(StockOutput).filter_by(purchased_input_id=None).count() == 1
+
+
+def test_pezinho_rejects_whatsapp_and_foreign_thread(monkeypatch):
+    from fastapi import HTTPException
+    routes, db, user, scope, send, sent, history = _route_env(monkeypatch, ["Oi"])
+    send("Oi")
+    thread = db.query(routes.AssistantThread).one()
+    thread.channel = "whatsapp"; db.commit()
+    req = SimpleNamespace(session={})
+    with pytest.raises(HTTPException) as exc:
+        routes.pezinho_get_chat(req, thread_id=thread.id, db=db, user=user)
+    assert exc.value.status_code == 404
+    with pytest.raises(HTTPException):
+        routes.pezinho_send_message(req, message="Outro texto", csrf_token="x", thread_id=thread.id, db=db, user=user)
+    other = SimpleNamespace(id=user.id + 1, organization_id=user.organization_id)
+    with pytest.raises(HTTPException):
+        routes.pezinho_get_chat(req, thread_id=thread.id, db=db, user=other)
+
+
+def test_pezinho_purchase_remains_draft_until_confirmation(monkeypatch):
+    purchase = {"_tool": "preparar_compra", "item_id": 0, "nome_novo": None, "tipo": None, "categoria": None,
+                "unidade": "L", "quantidade_embalagens": 1, "tamanho_embalagem": 10,
+                "preco_por_embalagem": 50, "valor_total": None, "data": "2026-11-15", "fornecedor": None,
+                "observacao": None, "forma_pagamento": None, "condicao": None, "parcelas": None,
+                "periodicidade": None, "primeira_parcela": None, "conta_id": None, "cartao_id": None,
+                "cartao_desconhecido": False}
+    routes, db, user, scope, send, sent, history = _route_env(monkeypatch, [purchase])
+    request = SimpleNamespace(session={})
+    response = routes.pezinho_send_message(request, message="Comprei gasolina", csrf_token="x", thread_id=None, db=db, user=user)
+    payload = json.loads(response.body)
+    draft = payload["messages"][-1]["draft"]
+    assert draft["state"] == "pending" and draft["total"] == "R$ 50,00"
+    assert db.query(PurchasedInput).count() == 1
+    routes.pezinho_resolve_draft(request, draft["id"], "confirmar", csrf_token="x", thread_id=payload["thread_id"], db=db, user=user)
+    assert db.query(PurchasedInput).count() == 2
+
+
 def test_agent_sends_pdf_as_file_not_image():
     calls = []
     pdf = "data:application/pdf;base64,JVBERi0xLjQ="

@@ -88,24 +88,147 @@
 
     $('[data-pzw-hide]').addEventListener('click', () => { store.set('sf-pz-hidden', today); root.remove(); });
 
-    // Envio: ele pensa enquanto a página do Assistente carrega a resposta.
+    // A conversa usa o mesmo motor e os mesmos rascunhos da página do assistente.
     const form = $('[data-pzw-form]');
     if (form) {
         const input = $('[data-pzw-input]');
+        const body = $('[data-pzw-body]');
+        const welcome = $('[data-pzw-welcome]');
+        const messages = $('[data-pzw-messages]');
+        const full = $('[data-pzw-full]');
+        const send = $('[data-pzw-send]');
+        const csrf = form.querySelector('[name="csrf_token"]').value;
+        const key = `sf-pz-thread:${root.dataset.scope}`;
+        let threadId = store.get(key) || '';
+        let busy = false;
+        let restored = false;
+        const make = (tag, css, text) => {
+            const element = document.createElement(tag);
+            if (css) element.className = css;
+            if (text != null) element.textContent = text;
+            return element;
+        };
+        const scroll = () => { body.scrollTop = body.scrollHeight; };
+        const setBusy = (on) => {
+            busy = on; send.disabled = on; input.readOnly = on;
+            if (on) { set('pensando'); if (head) head.src = `${base}cabeca-pensando.svg`; }
+            else { set(available ? 'pronto' : 'dormindo'); if (head) head.src = `${base}cabeca-pronto.svg`; }
+        };
+        const showError = (text) => { messages.append(make('p', 'pzw-error', text)); scroll(); };
+        const request = async (url, options) => {
+            const response = await fetch(url, { credentials: 'same-origin', ...options });
+            let data;
+            try { data = await response.json(); } catch (e) { throw new Error('Não consegui concluir agora. Tente novamente.'); }
+            if (!response.ok) {
+                const error = new Error(typeof data.detail === 'string' ? data.detail : 'Não consegui concluir agora. Tente novamente.');
+                error.status = response.status;
+                throw error;
+            }
+            return data;
+        };
+        const render = (data) => {
+            threadId = data.thread_id; store.set(key, threadId);
+            full.href = `/mobile/assistente?c=${encodeURIComponent(threadId)}`;
+            full.textContent = 'Abrir conversa completa';
+            welcome.hidden = true; messages.replaceChildren();
+            for (const entry of data.messages || []) {
+                const row = make('div', `pzw-message ${entry.role === 'user' ? 'is-user' : 'is-assistant'}`);
+                const text = make('p', 'pzw-message-text', entry.content || '');
+                row.append(text);
+                if (entry.attachment_id && entry.attachment_name) {
+                    const link = make('a', 'pzw-file', `Abrir ${entry.attachment_name}`);
+                    link.href = `/mobile/assistente/arquivo/${encodeURIComponent(entry.attachment_id)}`;
+                    link.target = '_blank'; link.rel = 'noopener noreferrer'; row.append(link);
+                }
+                if (entry.audio_id) {
+                    const audio = document.createElement('audio'); audio.controls = true; audio.preload = 'none';
+                    audio.src = `/mobile/assistente/audio/${encodeURIComponent(entry.audio_id)}`; row.append(audio);
+                }
+                const d = entry.draft;
+                if (d) {
+                    const card = make('div', 'pzw-draft');
+                    card.append(make('strong', '', d.kind === 'compra' ? 'Compra para conferir' : 'Consumo para conferir'));
+                    const details = [d.item, d.is_new ? `Novo cadastro · ${d.category || ''}` : '',
+                        d.packs_label || (d.quantity ? `${d.quantity} ${d.unit || ''}` : ''),
+                        d.packs_label && d.quantity ? `Total: ${d.quantity} ${d.unit || ''}` : '',
+                        d.total, d.unit_price ? `${d.unit_price} por embalagem` : '',
+                        d.plot && d.kind !== 'compra' ? d.plot : '', d.date_label, d.payment, d.finance,
+                        d.supplier ? `Fornecedor: ${d.supplier}` : '', d.lot,
+                        d.minimum ? `Avisar estoque baixo: ${d.minimum}` : '', d.notes,
+                        d.balance != null ? `Estoque: ${d.balance} → ${d.after} ${d.unit || ''}` : ''].filter(Boolean);
+                    details.forEach((value) => card.append(make('div', 'pzw-draft-line', value)));
+                    if (d.state === 'pending') {
+                        card.append(make('p', 'pzw-draft-hint', 'Nada será registrado sem sua confirmação.'));
+                        const actions = make('div', 'pzw-actions');
+                        for (const [action, label] of [['confirmar', 'Confirmar'], ['ajustar', 'Ajustar'], ['descartar', 'Descartar']]) {
+                            const button = make('button', action === 'confirmar' ? 'is-primary' : '', label);
+                            button.type = 'button'; button.dataset.action = action; button.dataset.draftId = d.id; actions.append(button);
+                        }
+                        card.append(actions);
+                    } else card.append(make('p', 'pzw-draft-hint', ({confirmed: 'Registrado', discarded: 'Descartado', replaced: 'Substituído', expired: 'Expirado'})[d.state] || 'Indisponível'));
+                    row.append(card);
+                }
+                messages.append(row);
+            }
+            scroll();
+        };
+        const loadThread = async (id) => {
+            if (!id || busy) return;
+            setBusy(true);
+            try { render(await request(`/mobile/assistente/pezinho?thread_id=${encodeURIComponent(id)}`)); }
+            catch (error) {
+                if (error.status === 404) { store.set(key, ''); threadId = ''; }
+                else restored = false;
+                showError(error.message);
+            }
+            finally { setBusy(false); }
+        };
+        fab.addEventListener('click', () => {
+            if (isOpen() && !restored && threadId) { restored = true; loadThread(threadId); }
+        });
+        bubble.addEventListener('click', (event) => {
+            if (!event.target.closest('[data-pzw-dismiss]') && isOpen() && !restored && threadId) {
+                restored = true; loadThread(threadId);
+            }
+        });
+        const pendingLink = $('[data-pzw-pending-thread]');
+        if (pendingLink) pendingLink.addEventListener('click', (event) => {
+            event.preventDefault(); restored = true; loadThread(pendingLink.dataset.pzwPendingThread);
+        });
+        root.querySelectorAll('[data-pzw-suggestion]').forEach((button) => button.addEventListener('click', () => {
+            if (busy) return;
+            input.value = button.dataset.pzwSuggestion; form.requestSubmit();
+        }));
+        messages.addEventListener('click', async (event) => {
+            const button = event.target.closest('[data-action]');
+            if (!button || busy) return;
+            if (button.dataset.action === 'ajustar') { input.value = 'Quero ajustar: '; input.focus(); grow(); return; }
+            if (button.dataset.action === 'confirmar' && !window.confirm('Confirmar este lançamento?')) return;
+            const data = new FormData(); data.append('csrf_token', csrf); data.append('thread_id', threadId);
+            setBusy(true);
+            try { render(await request(`/mobile/assistente/pezinho/${encodeURIComponent(button.dataset.draftId)}/${button.dataset.action}`, {method: 'POST', body: data})); }
+            catch (error) { showError(error.message); }
+            finally { setBusy(false); }
+        });
         const grow = () => { input.style.height = ''; input.style.height = Math.min(input.scrollHeight, 120) + 'px'; };
         input.addEventListener('input', grow);
         input.addEventListener('keydown', (e) => {
             if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); if (input.value.trim()) form.requestSubmit(); }
         });
-        form.addEventListener('submit', (e) => {
-            if (!input.value.trim()) { e.preventDefault(); return; }
-            set('pensando');
-            if (head) head.src = `${base}cabeca-pensando.svg`;
-            $('[data-pzw-send]').disabled = true;
-            input.readOnly = true;
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const text = input.value.trim();
+            if (!text || busy) return;
+            const data = new FormData(); data.append('csrf_token', csrf); data.append('message', text);
+            if (threadId) data.append('thread_id', threadId);
+            welcome.hidden = true; messages.append(make('p', 'pzw-message is-user', text));
+            const thinking = make('p', 'pzw-thinking', 'Pezinho está pensando...'); messages.append(thinking); scroll();
+            input.value = ''; grow(); setBusy(true);
+            try { render(await request('/mobile/assistente/pezinho', {method: 'POST', body: data})); restored = true; }
+            catch (error) { thinking.remove(); input.value = text; grow(); showError(error.message); }
+            finally { setBusy(false); }
         });
     }
-    root.querySelectorAll('.pzw-sug, .pzw-pending').forEach((a) => a.addEventListener('click', () => set('pensando')));
 
     // Outras telas podem mudar a pose: window.Pezinho.set('comemorando', 3000)
     window.Pezinho = {
