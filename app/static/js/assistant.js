@@ -226,7 +226,7 @@
         setTimeout(() => { swap(); setInterval(swap, 2200); }, 1400);
     };
 
-    $$('[data-as-voice]').forEach((voice) => {
+    const initVoice = (voice) => {
         const audio = voice.querySelector('audio');
         const play = $('[data-voice-play]', voice);
         const wave = $('[data-voice-wave]', voice);
@@ -248,8 +248,9 @@
         };
         audio.addEventListener('timeupdate', update);
         wave.addEventListener('click', (event) => { if (audio.duration) audio.currentTime = audio.duration * Math.max(0, Math.min(1, (event.clientX - wave.getBoundingClientRect().left) / wave.clientWidth)); });
-        toggle.addEventListener('click', () => { transcript.hidden = !transcript.hidden; toggle.textContent = transcript.hidden ? 'Ver transcrição' : 'Ocultar transcrição'; toggle.setAttribute('aria-expanded', String(!transcript.hidden)); });
-    });
+        if (toggle && transcript) toggle.addEventListener('click', () => { transcript.hidden = !transcript.hidden; toggle.textContent = transcript.hidden ? 'Ver transcrição' : 'Ocultar transcrição'; toggle.setAttribute('aria-expanded', String(!transcript.hidden)); });
+    };
+    $$('[data-as-voice]').forEach(initVoice);
 
     // Envio: mostra a mensagem e o "Pensando…" enquanto o servidor responde
     form.addEventListener('submit', (e) => {
@@ -266,8 +267,18 @@
         const bubble = document.createElement('div');
         bubble.className = 'as-ubub';
         if (hasVoice && recordedUrl) {
-            const audio = document.createElement('audio'); audio.controls = true; audio.src = recordedUrl;
-            bubble.append(audio, document.createTextNode('Enviando áudio...'));
+            const voice = document.createElement('div');
+            voice.className = 'as-voice';
+            voice.innerHTML = '<audio preload="metadata"></audio><div class="as-voice-player">'
+                + '<button type="button" data-voice-play aria-label="Reproduzir áudio">&#9654;</button>'
+                + '<span class="as-voice-wave" data-voice-wave aria-hidden="true"></span><span data-voice-time>0:00</span>'
+                + '</div><div class="as-voice-actions"><span>Enviando áudio...</span></div>';
+            voice.querySelector('audio').src = recordedUrl;
+            bubble.append(voice);
+            initVoice(voice);
+            const preview = $('[data-as-audio-preview]', form);
+            preview.pause(); preview.hidden = true; preview.removeAttribute('src');
+            $('[data-as-audio-status]', form).textContent = '';
         } else bubble.textContent = text;
         mine.append(bubble);
         const ai = document.createElement('div');
