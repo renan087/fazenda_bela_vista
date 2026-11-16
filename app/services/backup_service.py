@@ -51,6 +51,8 @@ SUPABASE_STORAGE_QUOTA_BY_PLAN_GIB = {
 }
 PG_DUMP_TIMEOUT_SECONDS = 300
 BACKUP_UPLOAD_TIMEOUT_SECONDS = 600.0
+BACKUP_PART_SIZE_BYTES = 5 * 1024 * 1024
+BACKUP_MANIFEST_RESERVE_BYTES = 128 * 1024
 STALE_RUNNING_BACKUP_TTL = timedelta(minutes=10)
 STORAGE_LIMIT_ERROR_HINTS = (
     "limit",
@@ -144,7 +146,9 @@ def execute_backup_run(db: Session, run_id: int) -> BackupRun:
             if item
         )
         if prepared_size:
-            storage_preflight = _ensure_backup_storage_capacity(db, required_bytes=prepared_size)
+            storage_preflight = _ensure_backup_storage_capacity(
+                db, required_bytes=prepared_size + 2 * BACKUP_MANIFEST_RESERVE_BYTES
+            )
         if prepared_database:
             _update_backup_progress(db, run.id, stage="database_uploading")
             _upload_prepared_backup(prepared_database)
@@ -643,20 +647,14 @@ def mark_backup_run_storage_deleted(
     for label, bucket, object_path in objects_to_delete:
         if not bucket or not object_path:
             continue
-        try:
-            deleted, missing = _delete_object_from_supabase(bucket=bucket, object_path=object_path)
-            if missing or not deleted:
-                warning_message = f"O arquivo de {label} ja nao existia mais no storage."
-                warnings.append(warning_message)
-                logger.warning("%s BackupRun id=%s path=%s", warning_message, run.id, object_path)
-        except Exception as exc:
-            logger.exception(
-                "Falha ao excluir arquivo de backup no Supabase. run_id=%s bucket=%s object=%s",
-                run.id,
-                bucket,
-                object_path,
-            )
-            storage_errors.append(f"{label.title()}: {exc}")
+        for path in _backup_object_paths(run, label, object_path):
+            try:
+                deleted, missing = _delete_object_from_supabase(bucket=bucket, object_path=path)
+                if missing or not deleted:
+                    warnings.append(f"Um arquivo de {label} ja nao existia mais no storage.")
+            except Exception as exc:
+                logger.exception("Falha ao excluir backup. run_id=%s bucket=%s object=%s", run.id, bucket, path)
+                storage_errors.append(f"{label.title()}: {exc}")
 
     if storage_errors:
         raise RuntimeError(" ".join(storage_errors))
@@ -938,7 +936,9 @@ def _backup_database_dump(started_at: datetime, on_upload_start=None, *, upload:
         if upload:
             if callable(on_upload_start):
                 on_upload_start()
-            _upload_prepared_backup({**result, "local_path": gzip_path})
+            result["local_path"] = gzip_path
+            _upload_prepared_backup(result)
+            result.pop("local_path", None)
         else:
             result["local_path"] = gzip_path
         return result
@@ -1003,7 +1003,9 @@ def _backup_files_archive(started_at: datetime, on_upload_start=None, *, upload:
         if upload:
             if callable(on_upload_start):
                 on_upload_start()
-            _upload_prepared_backup({**result, "local_path": archive_path})
+            result["local_path"] = archive_path
+            _upload_prepared_backup(result)
+            result.pop("local_path", None)
         else:
             result["local_path"] = archive_path
         return result
@@ -1016,12 +1018,60 @@ def _upload_prepared_backup(prepared: dict) -> None:
     local_path = prepared.get("local_path")
     if not isinstance(local_path, Path):
         raise RuntimeError("Arquivo local do backup nao foi preparado corretamente.")
-    _upload_file_to_supabase(
-        bucket=str(prepared["bucket"]),
-        object_path=str(prepared["object_path"]),
-        file_path=local_path,
-        content_type=str(prepared["content_type"]),
-    )
+    bucket, original_path = str(prepared["bucket"]), str(prepared["object_path"])
+    if local_path.stat().st_size <= BACKUP_PART_SIZE_BYTES:
+        _upload_file_to_supabase(bucket, original_path, local_path, str(prepared["content_type"]))
+        return
+
+    manifest_path = original_path + ".manifest.json"
+    uploaded = []
+    parts = []
+    digest = hashlib.sha256()
+    try:
+        with local_path.open("rb") as source, tempfile.TemporaryDirectory(prefix="backup_parts_") as temp_dir:
+            while chunk := source.read(BACKUP_PART_SIZE_BYTES):
+                digest.update(chunk)
+                path = f"{original_path}.parts/part-{len(parts) + 1:06d}"
+                part_file = Path(temp_dir) / "part"
+                part_file.write_bytes(chunk)
+                _upload_file_to_supabase(bucket, path, part_file, "application/octet-stream")
+                uploaded.append(path)
+                parts.append({"path": path, "size_bytes": len(chunk), "sha256": hashlib.sha256(chunk).hexdigest()})
+            manifest = {
+                "version": 1, "original_name": Path(original_path).name,
+                "size_bytes": local_path.stat().st_size, "sha256": digest.hexdigest(), "parts": parts,
+            }
+            manifest_file = Path(temp_dir) / "manifest.json"
+            manifest_file.write_text(json.dumps(manifest, ensure_ascii=False), encoding="utf-8")
+            _upload_file_to_supabase(bucket, manifest_path, manifest_file, "application/json")
+            uploaded.append(manifest_path)
+        prepared["object_path"] = manifest_path
+        prepared["details"]["multipart"] = {"version": 1, "parts": [part["path"] for part in parts]}
+    except Exception:
+        for path in reversed(uploaded):
+            try:
+                _delete_object_from_supabase(bucket, path)
+            except Exception:
+                logger.exception("Nao foi possivel limpar parte incompleta do backup: %s", path)
+        raise
+
+
+def _backup_object_paths(run: BackupRun, label: str, object_path: str) -> list[str]:
+    try:
+        details = json.loads(run.details_json or "{}")
+        section = details.get("database" if label == "banco" else "files") or {}
+        multipart = section.get("multipart") or {}
+        parts = multipart.get("parts") or []
+        if not isinstance(parts, list) or any(not isinstance(path, str) for path in parts):
+            raise ValueError("Lista de partes invalida")
+        if parts and (not object_path.endswith(".manifest.json") or any(
+            path != f'{object_path[:-len(".manifest.json")]}.parts/part-{index:06d}'
+            for index, path in enumerate(parts, 1)
+        )):
+            raise ValueError("Caminhos de partes invalidos")
+        return parts + [object_path]
+    except (ValueError, TypeError, AttributeError) as exc:
+        raise RuntimeError("Nao foi possivel identificar os arquivos deste backup com seguranca.") from exc
 
 
 def _cleanup_prepared_backup(prepared: dict | None) -> None:
@@ -1117,7 +1167,9 @@ def _reconcile_backup_history_with_storage(db: Session, usage: dict[str, object]
         missing_labels = [
             label
             for label, (bucket, object_path) in zip(("banco", "arquivos"), expected_paths)
-            if bucket and object_path and (bucket, object_path) not in remote_paths
+            if bucket and object_path and any(
+                (bucket, path) not in remote_paths for path in _backup_object_paths(run, label, object_path)
+            )
         ]
         if not missing_labels:
             continue
