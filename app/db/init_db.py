@@ -640,6 +640,7 @@ def _sync_schema() -> None:
         """,
         "ALTER TABLE crop_season_plots ADD COLUMN IF NOT EXISTS planting_id INTEGER REFERENCES plot_plantings(id) ON DELETE SET NULL",
         "ALTER TABLE stock_assistant_drafts ALTER COLUMN plot_id DROP NOT NULL",
+        "ALTER TABLE stock_assistant_drafts ADD COLUMN IF NOT EXISTS notes TEXT",
         # Safras antigas apontam para o plantio que valia no periodo delas.
         """
         UPDATE crop_season_plots csp SET planting_id = (

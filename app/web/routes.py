@@ -20786,12 +20786,12 @@ def prepare_stock_assistant_action(
     plots = [item for item in plots if _plot_matches_scope(item, scope)]
     drafted = {}
 
-    def prepare_draft(*, item, plot, quantity, unit, movement_date):
+    def prepare_draft(*, item, plot, quantity, unit, movement_date, notes=None):
         draft_id = uuid4().hex
         db.add(StockAssistantDraft(
             id=draft_id, user_id=user.id, organization_id=user.organization_id,
             farm_id=farm.id, season_id=season.id, plot_id=plot.id if plot else None, input_id=item.id,
-            movement_date=movement_date, quantity=quantity, unit=unit,
+            movement_date=movement_date, quantity=quantity, unit=unit, notes=notes,
             expires_at=datetime.now(timezone.utc) + timedelta(minutes=30),
         ))
         db.commit()
@@ -20802,6 +20802,7 @@ def prepare_stock_assistant_action(
             "plot": plot.name if plot else "Uso geral da fazenda", "date": movement_date.isoformat(),
             "date_label": movement_date.strftime("%d/%m/%Y"),
             "balance": _format_decimal_br(balance, 2), "after": _format_decimal_br(balance - quantity, 2),
+            "notes": notes or "",
         })
         return draft_id
 

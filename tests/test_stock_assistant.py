@@ -61,10 +61,11 @@ def scenario():
 
 def test_confirm_consumes_once(scenario):
     repo, draft, lot, shared_lot = scenario
+    draft.notes = "Abastecimento do tratorito"
     assert repo.db.query(StockOutput).count() == 0 and lot.available_quantity == 50
     output = confirm_consumption(repo, draft)
     repo.db.commit()
-    assert output.quantity == 40 and output.origin == "Assistente SiSFarm"
+    assert output.quantity == 40 and output.origin == "Assistente SiSFarm" and output.notes == "Abastecimento do tratorito"
     assert confirm_consumption(repo, draft) is None
     assert lot.available_quantity == 10 and shared_lot.available_quantity == 50
     assert repo.db.query(StockOutput).filter_by(purchased_input_id=None).count() == 1
@@ -145,11 +146,13 @@ def test_agent_searches_item_then_prepares_draft():
     prepared, calls = [], []
     steps = [
         [_tool_call("buscar_itens", {"termo": "gasolina"})],
-        [_tool_call("preparar_consumo", {"item_id": 1, "quantidade": 5, "unidade": "litros", "data": "2026-11-15", "setor": None}, "c2")],
+        [_tool_call("preparar_consumo", {"item_id": 1, "quantidade": 5, "unidade": "litros", "data": "2026-11-15", "setor": None,
+                                         "observacao": "Abastecimento  do tratorito"}, "c2")],
     ]
     result = _assistant(prepared).run([{"role": "user", "content": "usei 5 litros de gasolina hoje"}],
                                       client=_fake_client(steps, calls), model="m")
     assert result["draft_id"] == "d" * 32 and prepared[0]["unit"] == "L" and prepared[0]["plot"] is None
+    assert prepared[0]["notes"] == "Abastecimento do tratorito"
     tool_replies = [m["content"] for m in calls[1]["messages"] if m.get("role") == "tool"]
     assert "Gasolina comum" in tool_replies[0] and '"saldo_na_fazenda": 50' in tool_replies[0]
     assert "15/11/2026" in calls[0]["messages"][0]["content"] and calls[0]["tools"]

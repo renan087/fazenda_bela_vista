@@ -144,6 +144,7 @@
                                 <div><dt>Quantidade</dt><dd>{{ d.quantity }} {{ d.unit }}</dd></div>
                                 <div><dt>Setor</dt><dd>{{ d.plot }}</dd></div>
                                 <div><dt>Data</dt><dd>{{ d.date_label }}</dd></div>
+                                {% if d.notes %}<div class="as-dl-wide"><dt>Observação</dt><dd>{{ d.notes }}</dd></div>{% endif %}
                                 {% if d.state == 'pending' %}
                                 <div><dt>Saldo atual</dt><dd>{{ d.balance }} {{ d.unit }}</dd></div>
                                 <div><dt>Saldo após</dt><dd class="as-ok">{{ d.after }} {{ d.unit }}</dd></div>

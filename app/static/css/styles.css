@@ -6204,3 +6204,4 @@ dialog.db-cost { width: min(70rem, calc(100vw - 2rem)); }
 .as-typing [data-as-thinking] { display: inline-block; transition: opacity .22s ease, transform .22s ease; }
 .as-typing [data-as-thinking].is-swapping { opacity: 0; transform: translateY(3px); }
 @media (prefers-reduced-motion: reduce) { .as-typing [data-as-thinking] { transition: none; } }
+.as-dl > .as-dl-wide { grid-column: 1 / -1; }

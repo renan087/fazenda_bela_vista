@@ -20,6 +20,7 @@ class StockAssistantDraft(Base):
     movement_date: Mapped[date] = mapped_column(Date)
     quantity: Mapped[Decimal] = mapped_column(Numeric(12, 2))
     unit: Mapped[str] = mapped_column(String(20))
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     status: Mapped[str] = mapped_column(String(16), default="pending")
 

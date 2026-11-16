@@ -54,13 +54,17 @@ AGENT_TOOLS = [
                        "Não registra nada sozinho. Só chame quando item, quantidade total, unidade e data estiverem claros "
                        "(e o setor, se for insumo agrícola).",
         "parameters": {"type": "object", "additionalProperties": False,
-                       "required": ["item_id", "quantidade", "unidade", "data", "setor"],
+                       "required": ["item_id", "quantidade", "unidade", "data", "setor", "observacao"],
                        "properties": {
                            "item_id": {"type": "integer"},
                            "quantidade": {"type": "number", "description": "Quantidade total consumida."},
                            "unidade": {"type": "string", "description": "Unidade do cadastro do item."},
                            "data": {"type": "string", "description": "Data do consumo, AAAA-MM-DD."},
                            "setor": {"type": ["string", "null"], "description": "Nome do setor; null só para combustível de uso geral."},
+                           "observacao": {"type": ["string", "null"], "description":
+                               "Detalhes úteis que o usuário contou e que não cabem nos outros campos (máquina ou equipamento "
+                               "abastecido, operador, motivo, serviço, condição). Frase curta e objetiva, ex.: "
+                               "'Abastecimento do tratorito'. null se não houver."},
                        }},
     }},
 ]
@@ -127,7 +131,7 @@ class FarmAssistant:
         options = ", ".join(plot.name for plot in (partial or self.plots)[:10])
         raise ValueError(f"Setor '{name}' não encontrado ou ambíguo. Opções: {options or 'nenhum setor na safra'}.")
 
-    def preparar_consumo(self, item_id, quantidade, unidade, data, setor=None):
+    def preparar_consumo(self, item_id, quantidade, unidade, data, setor=None, observacao=None):
         item = self.items.get(int(item_id))
         if not item:
             raise ValueError("Item não encontrado nesta fazenda. Use buscar_itens.")
@@ -150,7 +154,8 @@ class FarmAssistant:
         balance = Decimal(str(self.balances.get(item.id, 0)))
         if quantity > balance:
             raise ValueError(f"Saldo insuficiente: há {balance} {unit} de {item.name} nesta fazenda.")
-        self.draft_id = self.prepare_draft(item=item, plot=plot, quantity=quantity, unit=unit, movement_date=movement_date)
+        notes = " ".join(str(observacao or "").split())[:300] or None
+        self.draft_id = self.prepare_draft(item=item, plot=plot, quantity=quantity, unit=unit, movement_date=movement_date, notes=notes)
         return {"ok": True, "rascunho": self.draft_id}
 
     def call_tool(self, name, raw_args):
@@ -196,6 +201,8 @@ class FarmAssistant:
             "- Use a unidade do cadastro; converta só o óbvio (litros->L, quilos->kg, 500 g->0,5 kg). Quantidade por área "
             "(kg/ha) não é total: peça o total. Multiplique embalagens só se número e tamanho forem informados.\n"
             "- Pergunte o que faltar, no máximo um ou dois dados por vez. Não invente valores.\n"
+            "- Detalhes extras que o usuário contar (máquina/equipamento abastecido, operador, motivo, serviço) vão em "
+            "'observacao' do preparar_consumo; não pergunte por eles se o usuário não falou.\n"
             "- Quando tiver tudo, chame preparar_consumo. Se ela devolver erro, explique ao usuário e peça o ajuste.\n"
             "- Nunca diga que registrou: o usuário confirma na tela.\n"
             "- Se o usuário enviar uma foto (nota, etiqueta, bomba de combustível), use os dados legíveis dela e confirme "
@@ -382,4 +389,5 @@ def confirm_consumption(repo, draft):
         "input_id": draft.input_id, "farm_id": draft.farm_id, "season_id": draft.season_id,
         "plot_id": draft.plot_id, "movement_date": draft.movement_date.isoformat(),
         "quantity": draft.quantity, "unit": draft.unit, "origin": "Assistente SiSFarm",
+        "notes": getattr(draft, "notes", None),
     }, commit=False, farm_stock_only=True)
