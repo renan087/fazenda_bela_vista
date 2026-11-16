@@ -88,7 +88,20 @@ def extract_messages(payload: dict) -> list[InboundMessage]:
 
 
 class WhatsAppError(RuntimeError):
-    pass
+    def __init__(self, message: str, code: int | None = None):
+        super().__init__(message)
+        self.code = code
+
+
+RECIPIENT_NOT_ALLOWED = 131030
+
+
+def br_ninth_digit(wa_id: str) -> str | None:
+    """A Meta entrega celulares do Brasil sem o 9 (55 + DDD + 8 digitos); a lista de teste costuma ter o 9."""
+    digits = re.sub(r"\D", "", wa_id or "")
+    if len(digits) == 12 and digits.startswith("55") and digits[4] in "6789":
+        return f"{digits[:4]}9{digits[4:]}"
+    return None
 
 
 class WhatsAppClient:
@@ -118,16 +131,26 @@ class WhatsAppClient:
             except ValueError:
                 error = {}
             raise WhatsAppError(f"Meta recusou o envio (HTTP {response.status_code}, código {error.get('code')}): "
-                                f"{str(error.get('message') or '')[:150]}")
+                                f"{str(error.get('message') or '')[:150]}", code=error.get("code"))
         return response.json()
 
+    def _send(self, payload: dict) -> dict:
+        try:
+            return self._post(payload)
+        except WhatsAppError as exc:
+            alternative = br_ninth_digit(payload.get("to", ""))
+            if exc.code != RECIPIENT_NOT_ALLOWED or not alternative:
+                raise
+            logger.info("WhatsApp: reenviando para %s com o nono digito", mask_phone(alternative))
+            return self._post({**payload, "to": alternative})
+
     def send_text(self, to: str, body: str) -> dict:
-        return self._post({"messaging_product": "whatsapp", "recipient_type": "individual", "to": to, "type": "text",
+        return self._send({"messaging_product": "whatsapp", "recipient_type": "individual", "to": to, "type": "text",
                            "text": {"body": (body or "").strip()[:TEXT_LIMIT] or "…", "preview_url": False}})
 
     def send_buttons(self, to: str, body: str, buttons: list[tuple[str, str]]) -> dict:
         """Ate 3 botoes de resposta rapida (titulo ate 20 caracteres)."""
-        return self._post({
+        return self._send({
             "messaging_product": "whatsapp", "recipient_type": "individual", "to": to, "type": "interactive",
             "interactive": {"type": "button", "body": {"text": body[:INTERACTIVE_BODY_LIMIT]}, "action": {"buttons": [
                 {"type": "reply", "reply": {"id": button_id[:256], "title": title[:20]}} for button_id, title in buttons[:3]

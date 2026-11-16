@@ -159,3 +159,20 @@ def test_denied_expired_and_failure(monkeypatch):
     monkeypatch.setattr(routes, "_can_use_stock_assistant", lambda *a: False)
     assert _receive(db, client, _payload("5535999", "m3", "oi")) == ["denied"]
     assert "permissão" in client.sent[-1][2]
+
+
+def test_brazil_ninth_digit_retry(monkeypatch):
+    _settings(monkeypatch)
+    assert whatsapp.br_ninth_digit("553588887777") == "5535988887777"
+    assert whatsapp.br_ninth_digit("5535988887777") is None and whatsapp.br_ninth_digit("553532221111") is None
+    calls = []
+
+    class Http:
+        def post(self, url, json, headers):
+            calls.append(json["to"])
+            if json["to"] == "553588887777":
+                return SimpleNamespace(status_code=400, json=lambda: {"error": {"code": 131030, "message": "not allowed"}})
+            return SimpleNamespace(status_code=200, json=lambda: {"messages": [{"id": "x"}]})
+
+    whatsapp.WhatsAppClient(http=Http()).send_text("553588887777", "oi")
+    assert calls == ["553588887777", "5535988887777"]
