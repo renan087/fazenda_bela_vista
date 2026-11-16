@@ -11,7 +11,7 @@
     <p class="rounded-xl bg-amber-50 p-4 text-sm text-amber-900">Selecione a fazenda e a safra no topo para começar.</p>
     {% else %}
     <p class="rounded-xl bg-slate-50 p-3 text-sm text-slate-700"><strong>Fazenda:</strong> {{ assistant_scope.active_farm.name }} · <strong>Safra:</strong> {{ assistant_scope.active_season.name }}</p>
-    <div class="space-y-3" aria-live="polite">
+    <div class="space-y-3" aria-live="polite" data-assistant-chat>
         <div class="max-w-[90%] rounded-2xl rounded-tl-sm bg-slate-100 p-4 text-sm text-slate-700">Olá! Conte o que você usou na fazenda. Se precisar de algum detalhe, eu pergunto. Por enquanto, posso ajudar com consumo de insumos agrícolas já cadastrados.</div>
         {% for item in chat_history|default([]) %}
         <div class="{{ 'ml-auto rounded-tr-sm bg-emerald-700 text-white' if item.role == 'user' else 'rounded-tl-sm bg-slate-100 text-slate-700' }} max-w-[90%] whitespace-pre-wrap rounded-2xl p-4 text-sm">{{ item.content }}</div>
@@ -40,14 +40,50 @@
     </article>
     {% else %}
     {% if draft %}<p class="text-sm text-slate-600">Este rascunho não está mais disponível para confirmação.</p>{% endif %}
-    <form method="post" action="/mobile/assistente" class="space-y-3 rounded-2xl border border-slate-200 p-4">
+    <form method="post" action="/mobile/assistente" class="space-y-3 rounded-2xl border border-slate-200 p-4" data-assistant-form>
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
         <label for="assistant-message" class="block font-semibold text-slate-900">Sua mensagem</label>
         <textarea id="assistant-message" name="message" maxlength="350" rows="3" required placeholder="Conte o que aconteceu..." class="w-full rounded-xl border-slate-200 bg-slate-50"></textarea>
-        <button class="sf-btn sf-btn-primary">Enviar mensagem</button>
+        <div class="flex items-center justify-between gap-3"><span class="hidden text-xs text-slate-400 sm:inline">Enter envia · Shift+Enter quebra linha</span><button class="sf-btn sf-btn-primary" data-assistant-send>Enviar mensagem</button></div>
         <p class="text-xs text-slate-500">A conversa é enviada à IA para interpretação. Nenhum consumo é registrado sem confirmação.</p>
     </form>
     {% endif %}
     {% endif %}
 </section>
+<style>
+.assistant-typing span { display:inline-block; width:.45rem; height:.45rem; margin:0 1px; border-radius:999px; background:#94a3b8; animation: assistant-dot 1s infinite ease-in-out; }
+.assistant-typing span:nth-child(2) { animation-delay:.15s } .assistant-typing span:nth-child(3) { animation-delay:.3s }
+@keyframes assistant-dot { 0%,80%,100% { transform:translateY(0); opacity:.5 } 40% { transform:translateY(-4px); opacity:1 } }
+</style>
+<script>
+(() => {
+    const chat = document.querySelector('[data-assistant-chat]');
+    const form = document.querySelector('[data-assistant-form]');
+    const last = document.querySelector('[data-assistant-form], article') || chat;
+    if (chat && chat.children.length > 1) last.scrollIntoView({ block: 'end' });
+    if (!form) return;
+    const box = form.querySelector('textarea');
+    box.focus({ preventScroll: true });
+    box.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); form.requestSubmit(); }
+    });
+    form.addEventListener('submit', (e) => {
+        const text = box.value.trim();
+        if (!text || form.dataset.sending) { if (form.dataset.sending) e.preventDefault(); return; }
+        form.dataset.sending = '1';
+        const mine = document.createElement('div');
+        mine.className = 'ml-auto max-w-[90%] whitespace-pre-wrap rounded-2xl rounded-tr-sm bg-emerald-700 p-4 text-sm text-white';
+        mine.textContent = text;
+        const typing = document.createElement('div');
+        typing.className = 'assistant-typing w-fit rounded-2xl rounded-tl-sm bg-slate-100 px-4 py-3';
+        typing.setAttribute('aria-label', 'Assistente digitando');
+        typing.innerHTML = '<span></span><span></span><span></span>';
+        chat.append(mine, typing);
+        typing.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        const btn = form.querySelector('[data-assistant-send]');
+        btn.disabled = true; btn.textContent = 'Enviando...';
+        box.readOnly = true;
+    });
+})();
+</script>
 {% endblock %}

@@ -23,6 +23,7 @@ class Settings(BaseSettings):
     super_admin_email: str | None = None
     openai_api_key: str | None = None
     openai_recommendation_model: str = "gpt-5-mini"
+    openai_assistant_model: str = "gpt-4o-mini"
     openai_timeout_seconds: float = 25.0
     smtp_host: str | None = None
     smtp_port: int = 587

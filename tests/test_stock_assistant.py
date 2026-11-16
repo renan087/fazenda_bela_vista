@@ -136,3 +136,20 @@ def test_conversation_uses_history_and_catalog(monkeypatch):
     assert result["resposta"] == "Em qual setor?"
     assert calls["messages"][-1] == history[0]
     assert "Setor 1" in calls["messages"][0]["content"]
+
+
+def _openai_error(cls, status, code):
+    import httpx
+    request = httpx.Request("POST", "https://api.openai.com/v1/chat/completions")
+    body = {"message": "x", "type": "x", "code": code}
+    return cls("x", response=httpx.Response(status, request=request, json={"error": body}), body=body)
+
+
+def test_openai_errors_get_specific_messages():
+    import openai
+    from app.services.stock_assistant import explain_openai_error
+    assert "sem créditos" in explain_openai_error(_openai_error(openai.RateLimitError, 429, "insufficient_quota"), "gpt-4o-mini")
+    assert "Aguarde" in explain_openai_error(_openai_error(openai.RateLimitError, 429, "rate_limit_exceeded"), "gpt-4o-mini")
+    assert "inválida" in explain_openai_error(_openai_error(openai.AuthenticationError, 401, "invalid_api_key"), "m")
+    assert "acesso ao modelo gpt-x" in explain_openai_error(_openai_error(openai.NotFoundError, 404, "model_not_found"), "gpt-x")
+    assert "Tente novamente" in explain_openai_error(RuntimeError("boom"), "m")

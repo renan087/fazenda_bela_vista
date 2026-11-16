@@ -52,19 +52,46 @@ def converse_consumption(history, products, plots, today):
         "Se faltar ou houver dúvida, campos deve ser null. Contexto cadastrado: "
         + json.dumps(context, ensure_ascii=False)
     )
+    model = (os.getenv("OPENAI_ASSISTANT_MODEL") or get_settings().openai_assistant_model or "gpt-4o-mini").strip()
     try:
-        response = OpenAI(api_key=api_key, timeout=25, max_retries=0).chat.completions.create(
-            model=os.getenv("OPENAI_ASSISTANT_MODEL", "gpt-4o-mini"),
+        response = OpenAI(api_key=api_key, timeout=get_settings().openai_timeout_seconds, max_retries=1).chat.completions.create(
+            model=model,
             response_format={"type": "json_object"},
             messages=[{"role": "system", "content": instructions}] + history,
         )
-        result = json.loads(response.choices[0].message.content)
+    except Exception as exc:
+        logging.getLogger(__name__).exception("Falha ao consultar IA do assistente de estoque (modelo %s)", model)
+        raise ValueError(explain_openai_error(exc, model)) from None
+    try:
+        result = json.loads(response.choices[0].message.content or "")
         if not isinstance(result, dict) or not isinstance(result.get("resposta"), str):
             raise ValueError("Resposta inválida")
-        return result
-    except Exception:
-        logging.getLogger(__name__).exception("Falha ao consultar IA do assistente de estoque")
-        raise ValueError("Não consegui consultar a IA agora. Tente novamente em instantes.") from None
+    except (ValueError, TypeError, IndexError, AttributeError):
+        logging.getLogger(__name__).warning("IA do assistente devolveu formato inesperado")
+        raise ValueError("Não entendi bem. Pode reescrever a mensagem com o insumo, a quantidade, o setor e a data?") from None
+    return result
+
+
+def explain_openai_error(exc: Exception, model: str) -> str:
+    """Mensagem clara para cada falha comum da OpenAI (o detalhe tecnico vai para o log)."""
+    import openai
+
+    admin = " Avise o administrador do SiSFarm."
+    body = getattr(exc, "body", None)
+    code = (body.get("code") if isinstance(body, dict) else None) or getattr(exc, "code", None) or ""
+    if isinstance(exc, openai.AuthenticationError):
+        return "A chave da OpenAI configurada no SiSFarm é inválida ou foi revogada." + admin
+    if isinstance(exc, openai.RateLimitError):
+        if code == "insufficient_quota":
+            return "A conta da OpenAI usada pelo SiSFarm está sem créditos." + admin
+        return "Muitas mensagens em pouco tempo. Aguarde alguns segundos e tente de novo."
+    if isinstance(exc, (openai.NotFoundError, openai.PermissionDeniedError)) or code == "model_not_found":
+        return f"A chave da OpenAI não tem acesso ao modelo {model}." + admin
+    if isinstance(exc, openai.BadRequestError):
+        return "A IA recusou a mensagem. Tente reescrever de forma mais simples."
+    if isinstance(exc, (openai.APITimeoutError, openai.APIConnectionError)):
+        return "A IA demorou para responder. Tente novamente em instantes."
+    return "Não consegui consultar a IA agora. Tente novamente em instantes."
 
 
 def normalized(value: str) -> str:
