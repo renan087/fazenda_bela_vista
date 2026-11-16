@@ -37,6 +37,7 @@
         <div class="as-threads-top">
             <div class="as-threads-row">
                 <a href="/mobile/assistente" class="as-btn as-btn-primary as-grow">{{ ic('plus', 16, 2.2) }}Nova conversa</a>
+                <button type="button" class="as-ico as-only-desktop" data-as-threads-toggle aria-controls="as-threads" aria-expanded="true" aria-label="Recolher histórico" title="Recolher histórico">{{ ic('panel') }}</button>
                 <button type="button" class="as-ico as-only-drawer" data-as-threads-close aria-label="Fechar conversas">{{ ic('x') }}</button>
             </div>
             <label class="as-search">{{ ic('search', 15) }}<span class="sr-only">Buscar conversas</span>
@@ -59,13 +60,13 @@
             <p class="as-empty-list" data-as-noresult hidden>Nenhuma conversa encontrada.</p>
         </nav>
     </aside>
-    <button type="button" class="as-history-toggle as-only-desktop" data-as-threads-toggle aria-controls="as-threads" aria-expanded="true" aria-label="Recolher histórico" title="Recolher histórico">{{ ic('back', 16, 2) }}</button>
     <div class="as-scrim" data-as-scrim hidden></div>
 
     {# ---------- Conversa ---------- #}
     <section class="as-chat" aria-label="Conversa com o assistente">
         <header class="as-head">
             <a href="/mobile" class="as-ico as-only-mobile" aria-label="Voltar ao Campo Mobile">{{ ic('back', 22, 2) }}</a>
+            <button type="button" class="as-ico as-threads-expand" data-as-threads-toggle aria-controls="as-threads" aria-expanded="false" aria-label="Abrir histórico" title="Abrir histórico">{{ ic('panel') }}</button>
             <span class="as-av as-av-ai as-only-mobile">{{ ic('spark', 17, 1.9) }}</span>
             <div class="as-head-text">
                 <div class="as-head-title">

@@ -29,21 +29,19 @@
     };
     $$('[data-as-threads-open]').forEach((b) => b.addEventListener('click', () => openThreads(true)));
     $$('[data-as-threads-close]').forEach((b) => b.addEventListener('click', () => openThreads(false)));
-    const threadsToggle = $('[data-as-threads-toggle]');
+    const threadsToggles = $$('[data-as-threads-toggle]');
     const setThreadsCollapsed = (collapsed) => {
         shell.classList.toggle('is-threads-collapsed', collapsed);
-        if (threadsToggle) {
-            threadsToggle.setAttribute('aria-expanded', String(!collapsed));
-            threadsToggle.setAttribute('aria-label', collapsed ? 'Abrir histórico' : 'Recolher histórico');
-            threadsToggle.title = collapsed ? 'Abrir histórico' : 'Recolher histórico';
-        }
+        threadsToggles.forEach((b) => b.setAttribute('aria-expanded', String(!collapsed)));
     };
     setThreadsCollapsed(store.get('sisfarm_assistant_threads_collapsed') === '1');
-    if (threadsToggle) threadsToggle.addEventListener('click', () => {
+    threadsToggles.forEach((b) => b.addEventListener('click', () => {
         const collapsed = !shell.classList.contains('is-threads-collapsed');
         setThreadsCollapsed(collapsed);
         store.set('sisfarm_assistant_threads_collapsed', collapsed ? '1' : '0');
-    });
+        const next = collapsed ? $('.as-threads-expand') : $('.as-threads-row [data-as-threads-toggle]');
+        if (next) next.focus({ preventScroll: true });
+    }));
     if (scrim) scrim.addEventListener('click', () => openThreads(false));
     document.addEventListener('keydown', (e) => { if (e.key === 'Escape') openThreads(false); });
 
