@@ -558,6 +558,16 @@ PURCHASE_INPUT_CATEGORY_OPTIONS_BY_TYPE = {
         "Outros Itens",
     ],
 }
+# Lote, fabricacao e validade so fazem sentido para insumos com rotulo de lote (defensivos, fertilizantes, corretivos...).
+# Combustivel e lubrificante sao abastecidos a granel, e "Outros Custos de Insumos" nao e produto estocado com lote.
+PURCHASE_TRACEABILITY_EXEMPT_TYPES = {"combustivel"}
+PURCHASE_TRACEABILITY_EXEMPT_CATEGORIES = {"Outros Custos de Insumos"}
+
+
+def purchase_traceability_enabled(item_type: str | None, category: str | None) -> bool:
+    return item_type not in PURCHASE_TRACEABILITY_EXEMPT_TYPES and category not in PURCHASE_TRACEABILITY_EXEMPT_CATEGORIES
+
+
 PURCHASE_INPUT_CATEGORY_PROFILES = {
     "Combustíveis": {
         "name_label": "Nome do combustível",
@@ -12132,6 +12142,10 @@ def purchased_inputs_page(
             selected_farm_id=effective_farm_id,
             purchase_input_category_options_by_type=PURCHASE_INPUT_CATEGORY_OPTIONS_BY_TYPE,
             purchase_input_category_profiles=PURCHASE_INPUT_CATEGORY_PROFILES,
+            purchase_traceability_categories={
+                kind: [category for category in categories if purchase_traceability_enabled(kind, category)]
+                for kind, categories in PURCHASE_INPUT_CATEGORY_OPTIONS_BY_TYPE.items()
+            },
             inputs=purchase_entries_pagination["items"],
             inputs_pagination=purchase_entries_pagination,
             inputs_catalog=stock_context["catalog_inputs"],
@@ -12243,6 +12257,8 @@ async def create_purchased_input_action(
     except ValueError as exc:
         _flash(request, "error", str(exc))
         return _redirect_with_query("/insumos/comprados", item_type=item_type)
+    if not purchase_traceability_enabled(resolved_item_type, resolved_category):
+        batch_number = manufacture_date = expiration_date = None
     try:
         item = create_purchased_input(
             repo,
@@ -12368,6 +12384,8 @@ async def update_purchased_input_action(
     except ValueError as exc:
         _flash(request, "error", str(exc))
         return _redirect_for_request(request, "/insumos/comprados", edit_id=input_id, item_type=item_type)
+    if not purchase_traceability_enabled(resolved_item_type, resolved_category):
+        batch_number = manufacture_date = expiration_date = None
     try:
         update_purchased_input(
             repo,
@@ -20970,6 +20988,8 @@ def _assistant_turn(db, user, repo, scope, thread, message, *, image=None, attac
         total_quantity = packs * size
         total_cost = (packs * unit_price).quantize(Decimal("0.01"))
         finance, adjustments = resolve_purchase_extras(extras or {}, purchase_date)
+        if not purchase_traceability_enabled(item_type, category):
+            finance.update(batch_number=None, manufacture_date=None, expiration_date=None)
         payload = {
             "name": name, "item_type": item_type, "category": category, "package_unit": unit,
             "quantity_purchased": str(packs), "package_size": str(size), "unit_price": str(unit_price),

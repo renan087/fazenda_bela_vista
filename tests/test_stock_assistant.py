@@ -406,6 +406,8 @@ def test_purchase_payment_and_lot_degrade_gracefully(monkeypatch):
         {**base, "forma_pagamento": "Cartão de crédito", "parcelas": 3, "lote": "A1", "validade": "2027-05-01", "estoque_minimo": 20},
     ]
     routes, db, user, scope, send, sent, thread_history = _route_env(monkeypatch, replies)
+    # o item do cenario e combustivel (sem lote); aqui o foco e a degradacao segura dos dados de lote
+    monkeypatch.setattr(routes, "purchase_traceability_enabled", lambda *a: True)
     send("comprei 100 litros de gasolina por 600 no cartão em 10x")
     card = thread_history()[-1]["draft"]
     assert card["payment"] == "À vista" and card["finance"] == "Sem lançamento no financeiro" and card["lot"] == "Lote L-77"
@@ -539,3 +541,29 @@ def test_route_remembers_items_between_turns(monkeypatch):
     notes = [m["content"] for m in sent[1][0] if m["role"] == "system"]
     assert any("Gasolina [item_id" in note for note in notes)
     assert sent[1][0][-1] == {"role": "user", "content": "paguei 300 reais"}
+
+
+def test_purchase_traceability_depends_on_type_and_category():
+    from app.web.routes import PURCHASE_INPUT_CATEGORY_OPTIONS_BY_TYPE, purchase_traceability_enabled
+
+    assert not any(purchase_traceability_enabled("combustivel", c) for c in PURCHASE_INPUT_CATEGORY_OPTIONS_BY_TYPE["combustivel"])
+    assert not purchase_traceability_enabled("insumo_agricola", "Outros Custos de Insumos")
+    for category in ("Fungicida", "Herbicida", "Inseticida", "Acaricida", "Adjuvante", "Fertilizantes",
+                     "Corretivos de Solo", "Outros Defensivos", "Outros Itens"):
+        assert purchase_traceability_enabled("insumo_agricola", category)
+    agent = _assistant([])
+    agent.prepare_purchase = lambda **kwargs: None
+    assert "NÃO pergunte lote" in agent.instructions()
+
+
+def test_assistant_fuel_purchase_drops_lot_data(monkeypatch):
+    routes, db, user, scope, send, sent, history = _route_env(monkeypatch, [
+        {"_tool": "preparar_compra", "item_id": 0, "quantidade_embalagens": 1, "tamanho_embalagem": 100,
+         "preco_por_embalagem": 600, "valor_total": None, "data": "2026-11-15", "unidade": "L",
+         "lote": "LT-9", "validade": "2027-01-01", "fabricacao": "2026-10-01"},
+    ])
+    send("comprei 100 l de gasolina por 600")
+    draft = db.query(StockAssistantDraft).one()
+    payload = __import__("json").loads(draft.payload_json)
+    assert payload["batch_number"] is None and payload["expiration_date"] is None and payload["manufacture_date"] is None
+    assert history()[-1]["draft"]["lot"] == ""

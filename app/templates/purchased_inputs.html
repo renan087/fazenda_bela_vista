@@ -382,12 +382,13 @@
                     <label><span class="mb-2 block text-sm font-medium">Data da compra</span><input type="date" name="purchase_date" value="{{ edit_input.purchase_date.isoformat() if edit_input and edit_input.purchase_date else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50"></label>
                 </div>
                 <div class="rounded-[1.5rem] border border-slate-200 bg-slate-50/70 p-4">
-                    <div class="mb-4"><p class="text-xs uppercase tracking-[0.25em] text-slate-400">Rastreabilidade do lote</p><p class="mt-1 text-sm text-slate-500">Opcional. Informe quando houver dados na embalagem para priorizar o uso e alertar vencimentos.</p></div>
-                    <div class="grid gap-4 md:grid-cols-2">
-                        <label><span class="mb-2 block text-sm font-medium">Fornecedor</span><input name="supplier_name" value="{{ (edit_input.supplier_name or '') if edit_input else '' }}" maxlength="160" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-white" placeholder="Ex.: distribuidora ou revenda"></label>
-                        <label><span class="mb-2 block text-sm font-medium">Número do lote</span><input name="batch_number" value="{{ (edit_input.batch_number or '') if edit_input else '' }}" maxlength="120" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-white" placeholder="Ex.: LT-2026-001"></label>
+                    <div class="mb-4">
+                        <p class="text-xs uppercase tracking-[0.25em] text-slate-400" data-trace-title>Rastreabilidade do lote</p>
+                        <p class="mt-1 text-sm text-slate-500" data-trace-help>Opcional. Informe quando houver dados na embalagem para priorizar o uso e alertar vencimentos.</p>
                     </div>
-                    <div class="mt-4 grid gap-4 md:grid-cols-2">
+                    <label class="block"><span class="mb-2 block text-sm font-medium">Fornecedor</span><input name="supplier_name" value="{{ (edit_input.supplier_name or '') if edit_input else '' }}" maxlength="160" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-white" placeholder="Ex.: distribuidora ou revenda"></label>
+                    <div class="mt-4 grid gap-4 md:grid-cols-3" data-lot-traceability>
+                        <label><span class="mb-2 block text-sm font-medium">Número do lote</span><input name="batch_number" value="{{ (edit_input.batch_number or '') if edit_input else '' }}" maxlength="120" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-white" placeholder="Ex.: LT-2026-001"></label>
                         <label><span class="mb-2 block text-sm font-medium">Data de fabricação</span><input type="date" name="manufacture_date" value="{{ edit_input.manufacture_date.isoformat() if edit_input and edit_input.manufacture_date else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-white"></label>
                         <label><span class="mb-2 block text-sm font-medium">Data de validade</span><input type="date" name="expiration_date" value="{{ edit_input.expiration_date.isoformat() if edit_input and edit_input.expiration_date else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-white"></label>
                     </div>
@@ -826,6 +827,7 @@
         const initialPackageUnit = {{ (edit_input.package_unit if edit_input else '')|tojson }};
         const categoryOptionsByType = {{ purchase_input_category_options_by_type|tojson }};
         const categoryProfiles = {{ purchase_input_category_profiles|tojson }};
+        const traceabilityCategories = {{ purchase_traceability_categories|tojson }};
         const nameLabel = form.querySelector('[data-purchased-name-label]');
         const quantityLabel = form.querySelector('[data-purchased-quantity-label]');
         const packageSizeLabel = form.querySelector('[data-purchased-package-size-label]');
@@ -1065,7 +1067,24 @@
             if (unitPriceLabel) unitPriceLabel.textContent = profile.unit_price_label || 'Valor por embalagem (R$)';
         };
 
+        const lotTraceability = form.querySelector('[data-lot-traceability]');
+        const traceTitle = form.querySelector('[data-trace-title]');
+        const traceHelp = form.querySelector('[data-trace-help]');
+        const syncTraceability = () => {
+            if (!lotTraceability) return;
+            const kind = itemTypeField?.value || 'insumo_agricola';
+            const enabled = (traceabilityCategories[kind] || []).includes(categoryField?.value || '');
+            lotTraceability.classList.toggle('hidden', !enabled);
+            lotTraceability.querySelectorAll('input').forEach((input) => { input.disabled = !enabled; });
+            if (traceTitle) traceTitle.textContent = enabled ? 'Rastreabilidade do lote' : 'Fornecedor';
+            if (traceHelp) {
+                traceHelp.textContent = enabled
+                    ? 'Opcional. Informe quando houver dados na embalagem para priorizar o uso e alertar vencimentos.'
+                    : 'Opcional. Lote, fabricação e validade não se aplicam a esta categoria.';
+            }
+        };
         const syncProfileLabels = (profile) => {
+            syncTraceability();
             if (nameLabel) nameLabel.textContent = profile.name_label || 'Nome do insumo';
             if (purchasedNameInput) purchasedNameInput.placeholder = profile.name_placeholder || 'Ex.: Fertilizante, diesel ou defensivo';
             if (quantityLabel) quantityLabel.textContent = profile.quantity_label || 'Quantidade comprada';
