@@ -25,7 +25,7 @@ _PATTERN = re.compile(
 _PACK_PRODUCT_FIRST = re.compile(rf"{_START}{_PACKS}(?P<product>.+?) de {_AMOUNT}{_END}")
 
 
-AGENT_MAX_STEPS = 6
+AGENT_MAX_STEPS = 8
 DRAFT_READY_REPLY = "Preparei o lançamento abaixo. Confira os dados e confirme para registrar."
 _WEEKDAYS = ("segunda-feira", "terça-feira", "quarta-feira", "quinta-feira", "sexta-feira", "sábado", "domingo")
 
@@ -69,7 +69,7 @@ AGENT_TOOLS = [
 class FarmAssistant:
     """Agente com ferramentas: a IA consulta o SiSFarm e so prepara rascunhos; o servidor valida tudo."""
 
-    def __init__(self, *, farm_name, season, items, balances, plots, today, prepare_draft):
+    def __init__(self, *, farm_name, season, items, balances, plots, today, prepare_draft, extra_tools=()):
         self.farm_name = farm_name
         self.season = season
         self.items = {item.id: item for item in items if item.is_active and item.item_type in STOCK_ITEM_TYPES}
@@ -79,6 +79,15 @@ class FarmAssistant:
         self.prepare_draft = prepare_draft
         self.draft_id = None
         self.trace = []  # o que o agente consultou, mostrado ao usuario abaixo da resposta
+        self.extra_tools = list(extra_tools)  # [(schema, handler)] de consultas somente leitura
+        self.handlers = {"buscar_itens": self.buscar_itens, "listar_setores": self.listar_setores,
+                         "consultar_saldo": self.consultar_saldo, "preparar_consumo": self.preparar_consumo}
+        for schema, handler in self.extra_tools:
+            self.handlers[schema["function"]["name"]] = handler
+
+    @property
+    def tools(self):
+        return AGENT_TOOLS + [schema for schema, _ in self.extra_tools]
 
     # ---------------------------------------------------------------- ferramentas
     def _item_view(self, item):
@@ -149,13 +158,15 @@ class FarmAssistant:
             args = json.loads(raw_args or "{}")
             if not isinstance(args, dict):
                 raise ValueError("Argumentos inválidos.")
-            handler = {"buscar_itens": self.buscar_itens, "listar_setores": self.listar_setores,
-                       "consultar_saldo": self.consultar_saldo, "preparar_consumo": self.preparar_consumo}.get(name)
+            handler = self.handlers.get(name)
             if handler is None:
                 raise ValueError(f"Ferramenta desconhecida: {name}")
             result = handler(**args)
         except (ValueError, TypeError, ArithmeticError) as exc:
             result = {"erro": str(exc) or "Dados inválidos."}
+        except Exception:  # consulta com falha nao derruba a conversa
+            logging.getLogger(__name__).exception("Falha na ferramenta %s do assistente", name)
+            result = {"erro": "Não foi possível consultar essa informação agora."}
         label = _trace_label(name, result)
         if label and label not in self.trace:
             self.trace.append(label)
@@ -166,12 +177,17 @@ class FarmAssistant:
         season = self.season
         period = f"{season.start_date:%d/%m/%Y} a {season.end_date:%d/%m/%Y}" if season else "não definida"
         return (
-            "Você é o Assistente SiSFarm, que ajuda o produtor rural a lançar no sistema, por conversa, o CONSUMO "
-            "(saída de estoque) de insumos agrícolas e combustíveis. Fale em português do Brasil, de forma natural, breve e "
-            "cordial, como no WhatsApp.\n"
+            "Você é o Assistente SiSFarm, o ajudante de campo do produtor rural. Você faz duas coisas: "
+            "(1) LANÇA o consumo (saída de estoque) de insumos agrícolas e combustíveis e "
+            "(2) RESPONDE perguntas sobre a fazenda usando as ferramentas de consulta disponíveis "
+            "(chuva, previsão do tempo, aplicações, colheitas, consumos, estoque, financeiro, cotação do café, safra). "
+            "Fale em português do Brasil, de forma natural, breve e cordial, como no WhatsApp.\n"
             f"Hoje é {_WEEKDAYS[self.today.weekday()]}, {self.today:%d/%m/%Y}. Fazenda: {self.farm_name}. "
             f"Safra ativa: {season.name if season else '-'} ({period}).\n"
-            "Como trabalhar:\n"
+            "Consultas: use sempre a ferramenta adequada e responda só com os números que ela devolver, citando o período. "
+            "Converta datas relativas ('este mês', 'semana passada') para AAAA-MM-DD. Se não houver ferramenta para o assunto, "
+            "diga que você ainda não tem acesso a essa informação. Formate valores em reais como R$ 1.234,56.\n"
+            "Lançamento de consumo:\n"
             "- Use buscar_itens para achar o item citado (nunca invente item_id). Se houver mais de um parecido, pergunte qual.\n"
             "- Se o item não tiver estoque nesta fazenda, explique e sugira lançar a compra antes.\n"
             "- Insumo agrícola precisa de setor (use listar_setores se precisar). Combustível pode ser de uso geral: "
@@ -197,7 +213,7 @@ class FarmAssistant:
             ]}
         for _ in range(AGENT_MAX_STEPS):
             response = client.chat.completions.create(
-                model=model, messages=messages, tools=AGENT_TOOLS, tool_choice="auto", parallel_tool_calls=False,
+                model=model, messages=messages, tools=self.tools, tool_choice="auto", parallel_tool_calls=False,
             )
             message = response.choices[0].message
             calls = getattr(message, "tool_calls", None) or []
@@ -233,7 +249,23 @@ def _trace_label(name, result):
         return f"Conferiu saldo · {_num_br(result['saldo_na_fazenda'])} {result.get('unidade') or ''}".strip()
     if name == "preparar_consumo":
         return "Preparou rascunho" if result.get("ok") else "Validou dados · precisa de ajuste"
+    label = _QUERY_LABELS.get(name)
+    if label:
+        return f"{label} · indisponível" if result.get("erro") else label
     return None
+
+
+_QUERY_LABELS = {
+    "resumo_safra": "Consultou a safra",
+    "consultar_chuva": "Consultou a chuva",
+    "consultar_previsao_tempo": "Consultou a previsão do tempo",
+    "consultar_aplicacoes": "Consultou as aplicações",
+    "consultar_colheitas": "Consultou as colheitas",
+    "consultar_consumos": "Consultou os consumos",
+    "consultar_saldos_estoque": "Consultou o estoque",
+    "consultar_financeiro": "Consultou o financeiro",
+    "consultar_cotacao_cafe": "Consultou a cotação do café",
+}
 
 
 def run_farm_assistant(history, assistant: "FarmAssistant", image=None):

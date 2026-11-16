@@ -158,6 +158,32 @@
         });
     }
 
+    // Frases do dia a dia do cafeicultor, alternadas enquanto a resposta nao chega
+    const THINKING = [
+        'Esperando o vento baixar...', 'Adubando o raciocínio...', 'Lubrificando as engrenagens...',
+        'Eita, que o café vai dar bom esse ano...', 'Conferindo o pluviômetro...', 'Passando um cafezinho rapidinho...',
+        'Contando as sacas no terreiro...', 'Esperando a florada abrir...', 'Rodando o café no terreiro...',
+        'Calibrando o pulverizador...', 'Olhando se a broca deu as caras...', 'Subindo o morro do talhão 3...',
+        'Desatolando o trator...', 'Medindo a umidade do grão...', 'Chamando a turma da colheita...',
+        'Abanando a peneira...', 'Fazendo a conta da saca na ponta do lápis...', 'Afiando a derriçadeira...',
+        'Esperando a chuva do caju...', 'Torcendo pra geada passar longe...', 'Tirando o barro da botina...',
+        'Consultando o compadre da fazenda vizinha...', 'Escolhendo o grão cereja...', 'Abastecendo a caminhonete...',
+        'Conferindo a cotação na cooperativa...', 'Espantando a seriema do terreiro...', 'Ligando o secador...',
+        'Contando os pés de café, um por um...', 'Arruando debaixo da saia do café...', 'Pegando sinal no alto do morro...',
+    ];
+    const startThinking = (label) => {
+        const pool = THINKING.slice().sort(() => Math.random() - 0.5);
+        let index = 0;
+        const swap = () => {
+            label.classList.add('is-swapping');
+            setTimeout(() => {
+                label.textContent = pool[index++ % pool.length];
+                label.classList.remove('is-swapping');
+            }, 220);
+        };
+        setTimeout(() => { swap(); setInterval(swap, 2200); }, 1400);
+    };
+
     // Envio: mostra a mensagem e o "Pensando…" enquanto o servidor responde
     form.addEventListener('submit', (e) => {
         const text = box.value.trim();
@@ -175,9 +201,10 @@
         const ai = document.createElement('div');
         ai.className = 'as-msg-ai';
         ai.innerHTML = '<span class="as-av as-av-ai"></span><div class="as-msg-body"><div class="as-who">Assistente SiSFarm</div>'
-            + '<div class="as-typing" role="status"><i></i><i></i><i></i>Pensando…</div></div>';
+            + '<div class="as-typing" role="status" aria-live="polite"><i></i><i></i><i></i><span data-as-thinking>Pensando...</span></div></div>';
         ai.firstChild.innerHTML = shell.querySelector('.as-av-ai svg') ? shell.querySelector('.as-av-ai svg').outerHTML : '';
         chat.append(mine, ai);
+        startThinking(ai.querySelector('[data-as-thinking]'));
         scroller.scrollTop = scroller.scrollHeight;
         $('[data-as-send]', form).disabled = true;
         box.readOnly = true;

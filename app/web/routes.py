@@ -38,6 +38,7 @@ from app.models.assistant_thread import AssistantThread
 from app.models.stock_assistant_draft import StockAssistantDraft
 from app.models.audit_log import AuditLog
 from app.models.input_catalog import InputCatalog
+from app.services.assistant_queries import AssistantQueries
 from app.services.stock_assistant import STOCK_ITEM_TYPES, FarmAssistant, claim_draft, confirm_consumption, run_farm_assistant, stock_unit
 from app.core.admin_access import has_admin_access, is_super_admin_email
 from app.core.permissions_catalog import (
@@ -20804,8 +20805,15 @@ def prepare_stock_assistant_action(
         })
         return draft_id
 
+    permission_codes = permission_codes_for_user(db, user)
+    entitlements = _entitlements_for(db, user)
+    queries = AssistantQueries(
+        repo=repo, farm=farm, season=season, plots=plots, today=today_in_app_timezone(),
+        allowed=lambda page: page in permission_codes and entitlements.module_allowed(page),
+    )
     assistant = FarmAssistant(farm_name=farm.name, season=season, items=products, balances=balances,
-                              plots=plots, today=today_in_app_timezone(), prepare_draft=prepare_draft)
+                              plots=plots, today=today_in_app_timezone(), prepare_draft=prepare_draft,
+                              extra_tools=queries.tools())
     # A IA recebe so mensagens validas (sem os avisos de erro) e as mais recentes.
     ai_history = [{"role": item["role"], "content": item["content"]} for item in history if not item.get("error")][-10:]
     try:
