@@ -153,3 +153,68 @@ def test_openai_errors_get_specific_messages():
     assert "inválida" in explain_openai_error(_openai_error(openai.AuthenticationError, 401, "invalid_api_key"), "m")
     assert "acesso ao modelo gpt-x" in explain_openai_error(_openai_error(openai.NotFoundError, 404, "model_not_found"), "gpt-x")
     assert "Tente novamente" in explain_openai_error(RuntimeError("boom"), "m")
+
+
+def _route_env(monkeypatch, replies):
+    from app.models import Farm, Organization, User
+    from app.models.crop_season import CropSeason
+    from app.web import routes
+
+    engine = create_engine("sqlite://")
+    Base.metadata.create_all(engine)
+    db = Session(engine)
+    org = Organization(name="Org", slug="org", is_active=True)
+    db.add(org); db.flush()
+    user = User(name="Ana", email="ana@x.com", hashed_password="x", organization_id=org.id, is_active=True)
+    farm = Farm(name="Bela Vista", location="MG", total_area=10, organization_id=org.id)
+    db.add_all([user, farm]); db.flush()
+    season = CropSeason(name="Café 2026", farm_id=farm.id, culture="Café", start_date=date(2026, 1, 1),
+                        end_date=date(2026, 12, 31), cultivated_area=0, area_unit="ha", status="ativa")
+    fuel = InputCatalog(name="Gasolina", normalized_name="gasolina", item_type="combustivel", default_unit="L")
+    db.add_all([season, fuel]); db.flush()
+    db.add(PurchasedInput(farm_id=farm.id, input_id=fuel.id, name="Gasolina", quantity_purchased=1, package_size=50,
+                          package_unit="L", unit_price=300, total_quantity=50, available_quantity=50, total_cost=300))
+    db.commit()
+    scope = {"active_farm": farm, "active_season": season, "active_farm_id": farm.id, "active_season_id": season.id}
+    sent = []
+
+    def fake_converse(history, products, plots, today):
+        sent.append((history, [p.name for p in products]))
+        reply = replies.pop(0)
+        if isinstance(reply, Exception):
+            raise reply
+        return reply
+
+    monkeypatch.setattr(routes, "validate_csrf", lambda *a: None)
+    monkeypatch.setattr(routes, "_can_use_stock_assistant", lambda *a: True)
+    monkeypatch.setattr(routes, "_global_scope_context", lambda *a, **k: scope)
+    monkeypatch.setattr(routes, "_season_launch_plots", lambda plots, scope: plots)
+    monkeypatch.setattr(routes, "_plot_matches_scope", lambda plot, scope: True)
+    monkeypatch.setattr(routes, "converse_consumption", fake_converse)
+    monkeypatch.setattr(routes, "today_in_app_timezone", lambda: date(2026, 11, 15))
+    request = SimpleNamespace(session={})
+    send = lambda text: routes.prepare_stock_assistant_action(request, message=text, csrf_token="x", db=db, user=user)
+    return routes, db, user, scope, send, sent
+
+
+def test_route_keeps_conversation_on_error_and_drafts_fuel_without_plot(monkeypatch):
+    replies = [
+        ValueError("A conta da OpenAI usada pelo SiSFarm está sem créditos."),
+        {"resposta": "Foi hoje?", "campos": None},
+        {"resposta": "Preparei o lançamento.", "campos": {"product": "Gasolina", "plot": None, "quantity": 5,
+                                                          "unit": "litros", "movement_date": "2026-11-15"}},
+    ]
+    routes, db, user, scope, send, sent = _route_env(monkeypatch, replies)
+    send("Utilizei 5 litros de gasolina")
+    history = routes._assistant_history(db, user, scope)
+    assert [m["role"] for m in history] == ["user", "assistant"] and history[1]["error"]
+    send("Utilizei 5 litros de gasolina")
+    # o aviso de erro nao vai para a IA; o item de combustivel com estoque na fazenda vai
+    assert sent[1][0] == [{"role": "user", "content": "Utilizei 5 litros de gasolina"},
+                          {"role": "user", "content": "Utilizei 5 litros de gasolina"}]
+    assert sent[1][1] == ["Gasolina"]
+    response = send("sim, hoje")
+    assert "draft_id=" in response.headers["location"]
+    draft = db.query(StockAssistantDraft).one()
+    assert draft.plot_id is None and draft.unit == "L" and draft.quantity == 5
+    assert len(routes._assistant_history(db, user, scope)) == 6

@@ -5,25 +5,25 @@
     <header>
         <p class="text-xs font-semibold uppercase tracking-widest text-emerald-800">Assistente de campo</p>
         <h2 class="mt-2 text-2xl font-semibold text-slate-900">Assistente SiSFarm</h2>
-        <p class="mt-1 text-sm text-slate-600">Converse sobre o consumo de insumos. Vou ajudar com os detalhes e pedir sua confirmação antes de registrar.</p>
+        <p class="mt-1 text-sm text-slate-600">Converse sobre o consumo de insumos e combustíveis. Vou ajudar com os detalhes e pedir sua confirmação antes de registrar.</p>
     </header>
     {% if not assistant_scope.active_farm or not assistant_scope.active_season %}
     <p class="rounded-xl bg-amber-50 p-4 text-sm text-amber-900">Selecione a fazenda e a safra no topo para começar.</p>
     {% else %}
     <p class="rounded-xl bg-slate-50 p-3 text-sm text-slate-700"><strong>Fazenda:</strong> {{ assistant_scope.active_farm.name }} · <strong>Safra:</strong> {{ assistant_scope.active_season.name }}</p>
     <div class="space-y-3" aria-live="polite" data-assistant-chat>
-        <div class="max-w-[90%] rounded-2xl rounded-tl-sm bg-slate-100 p-4 text-sm text-slate-700">Olá! Conte o que você usou na fazenda. Se precisar de algum detalhe, eu pergunto. Por enquanto, posso ajudar com consumo de insumos agrícolas já cadastrados.</div>
+        <div class="max-w-[90%] rounded-2xl rounded-tl-sm bg-slate-100 p-4 text-sm text-slate-700">Olá! Conte o que você usou na fazenda. Se precisar de algum detalhe, eu pergunto. Por enquanto, registro o consumo de insumos e combustíveis que já têm estoque nesta fazenda.</div>
         {% for item in chat_history|default([]) %}
-        <div class="{{ 'ml-auto rounded-tr-sm bg-emerald-700 text-white' if item.role == 'user' else 'rounded-tl-sm bg-slate-100 text-slate-700' }} max-w-[90%] whitespace-pre-wrap rounded-2xl p-4 text-sm">{{ item.content }}</div>
+        <div class="{{ 'ml-auto rounded-tr-sm bg-emerald-700 text-white' if item.role == 'user' else ('rounded-tl-sm bg-rose-50 text-rose-800 ring-1 ring-rose-200' if item.error else 'rounded-tl-sm bg-slate-100 text-slate-700') }} max-w-[90%] whitespace-pre-wrap rounded-2xl p-4 text-sm">{{ item.content }}</div>
         {% endfor %}
     </div>
-    {% if draft_pending and product and plot %}
+    {% if draft_pending and product %}
     <article class="space-y-3 rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
-        <h3 class="font-semibold text-emerald-950">Confira a saída de estoque</h3>
+        <h3 class="font-semibold text-emerald-950">Confira o lançamento</h3>
         <dl class="grid gap-2 text-sm text-slate-800 sm:grid-cols-2">
-            <div><dt>Insumo</dt><dd class="font-semibold">{{ product.name }}</dd></div>
+            <div><dt>Item</dt><dd class="font-semibold">{{ product.name }}</dd></div>
             <div><dt>Quantidade total</dt><dd class="font-semibold">{{ draft.quantity|decimal_br }} {{ draft.unit }}</dd></div>
-            <div><dt>Setor</dt><dd class="font-semibold">{{ plot.name }}</dd></div>
+            <div><dt>Setor</dt><dd class="font-semibold">{{ plot.name if plot else "Uso geral da fazenda" }}</dd></div>
             <div><dt>Data do consumo</dt><dd class="font-semibold">{{ draft.movement_date.strftime('%d/%m/%Y') }}</dd></div>
         </dl>
         <p class="text-xs text-slate-600">O saldo será validado ao confirmar. Para corrigir, descarte o rascunho e reescreva a mensagem.</p>

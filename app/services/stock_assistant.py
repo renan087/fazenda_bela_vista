@@ -25,6 +25,37 @@ _PATTERN = re.compile(
 _PACK_PRODUCT_FIRST = re.compile(rf"{_START}{_PACKS}(?P<product>.+?) de {_AMOUNT}{_END}")
 
 
+RESPONSE_SCHEMA = {
+    "name": "assistente_consumo",
+    "strict": True,
+    "schema": {
+        "type": "object",
+        "additionalProperties": False,
+        "required": ["resposta", "campos"],
+        "properties": {
+            "resposta": {"type": "string", "description": "Mensagem para o usuário."},
+            "campos": {
+                "anyOf": [
+                    {"type": "null"},
+                    {
+                        "type": "object",
+                        "additionalProperties": False,
+                        "required": ["product", "plot", "quantity", "unit", "movement_date"],
+                        "properties": {
+                            "product": {"type": "string", "description": "Nome exato do item no cadastro."},
+                            "plot": {"type": ["string", "null"], "description": "Nome exato do setor; null só para combustível de uso geral."},
+                            "quantity": {"type": "number"},
+                            "unit": {"type": "string"},
+                            "movement_date": {"type": "string", "description": "AAAA-MM-DD"},
+                        },
+                    },
+                ]
+            },
+        },
+    },
+}
+
+
 def converse_consumption(history, products, plots, today):
     """Interpret a conversation; the caller must independently validate every field."""
     api_key = os.getenv("OPENAI_API_KEY") or get_settings().openai_api_key
@@ -33,41 +64,52 @@ def converse_consumption(history, products, plots, today):
     from openai import OpenAI
     context = {
         "hoje": today.isoformat(),
-        "insumos": [{"nome": p.name, "unidade": p.default_unit} for p in products if p.is_active],
+        "itens_em_estoque": [
+            {"nome": p.name, "unidade": p.default_unit, "tipo": "combustível" if getattr(p, "item_type", None) == "combustivel" else "insumo agrícola"}
+            for p in products if p.is_active
+        ],
         "setores": [p.name for p in plots],
     }
     instructions = (
-        "Você é o Assistente SiSFarm. Converse de forma natural, breve e cordial em português brasileiro. "
-        "Nesta versão você apenas prepara saída por consumo de insumo agrícola; não registra compras, "
-        "despesas ou outros tipos de movimentação. Explique essa limitação se necessário, sem converter compra em consumo. "
-        "Use o histórico para identificar consumo, insumo, quantidade total, unidade, setor e data. "
-        "Pergunte o que faltar ou estiver ambíguo, sem inventar valores; hoje e ontem são datas explícitas. "
-        "Resolva nomes apenas quando houver correspondência inequívoca nos cadastros fornecidos; "
-        "use o nome exato do cadastro. Quantidades por área não são quantidade total. "
-        "Multiplique embalagens somente quando quantidade e tamanho forem informados. "
-        "Não diga que registrou algo: o usuário precisa revisar e confirmar. "
-        "Retorne somente JSON com resposta (texto para o usuário) e campos (objeto ou null). "
-        "Só preencha campos quando todos os dados estiverem claros e a intenção for consumo: "
-        "product, plot, quantity (número total), unit, movement_date (AAAA-MM-DD). "
-        "Se faltar ou houver dúvida, campos deve ser null. Contexto cadastrado: "
+        "Você é o Assistente SiSFarm, que ajuda o produtor rural a lançar no sistema, por conversa, o CONSUMO "
+        "(saída de estoque) de insumos agrícolas e combustíveis. Fale em português do Brasil, de forma natural, breve e cordial, "
+        "como num WhatsApp. Nesta versão você só prepara consumo: se o usuário falar de compra, despesa ou outro lançamento, "
+        "explique com gentileza que por enquanto registra apenas consumo, sem converter em consumo.\n"
+        "Dados necessários: item (de itens_em_estoque), quantidade total, unidade, data e setor. "
+        "O setor é obrigatório para insumo agrícola e opcional para combustível (sem setor = uso geral da fazenda; "
+        "pergunte o setor do combustível apenas uma vez e aceite 'geral', 'nenhum' ou 'não sei').\n"
+        "Se faltar algum dado, pergunte de forma objetiva, um ou dois itens por vez, sem inventar. Se a data não for dita, "
+        "pergunte se foi hoje. 'hoje', 'ontem' e datas como 15/11 são válidas (sem ano = ano de hoje). Datas futuras não valem.\n"
+        "Associe o que o usuário disser ao cadastro (ex.: 'gasolina' -> item com gasolina no nome; 'litros' -> L; 'quilos' -> kg) "
+        "somente quando a correspondência for clara; se houver mais de uma opção, pergunte qual. Se o item não estiver em "
+        "itens_em_estoque, diga que ele não tem estoque nesta fazenda e sugira cadastrar a compra antes.\n"
+        "A unidade deve ser a do cadastro do item; converta apenas casos óbvios (litros->L, quilos->kg, 500 g->0,5 kg). "
+        "Quantidade por área (kg/ha) não é total: peça o total. Multiplique embalagens só quando número e tamanho forem informados.\n"
+        "Nunca diga que registrou: quando tiver tudo, preencha 'campos' e diga que preparou o lançamento para o usuário conferir "
+        "e confirmar. Enquanto faltar algo, 'campos' deve ser null.\n"
+        "Responda sempre no formato JSON pedido. Cadastros desta fazenda e safra: "
         + json.dumps(context, ensure_ascii=False)
     )
     model = (os.getenv("OPENAI_ASSISTANT_MODEL") or get_settings().openai_assistant_model or "gpt-4o-mini").strip()
     try:
         response = OpenAI(api_key=api_key, timeout=get_settings().openai_timeout_seconds, max_retries=1).chat.completions.create(
             model=model,
-            response_format={"type": "json_object"},
+            response_format={"type": "json_schema", "json_schema": RESPONSE_SCHEMA},
             messages=[{"role": "system", "content": instructions}] + history,
         )
     except Exception as exc:
         logging.getLogger(__name__).exception("Falha ao consultar IA do assistente de estoque (modelo %s)", model)
         raise ValueError(explain_openai_error(exc, model)) from None
     try:
-        result = json.loads(response.choices[0].message.content or "")
+        message = response.choices[0].message
+        if getattr(message, "refusal", None):
+            return {"resposta": "Não posso ajudar com isso. Posso registrar o consumo de um insumo ou combustível.", "campos": None}
+        result = json.loads(message.content or "")
         if not isinstance(result, dict) or not isinstance(result.get("resposta"), str):
             raise ValueError("Resposta inválida")
     except (ValueError, TypeError, IndexError, AttributeError):
-        logging.getLogger(__name__).warning("IA do assistente devolveu formato inesperado")
+        logging.getLogger(__name__).warning("IA do assistente devolveu formato inesperado: %.300r",
+                                            getattr(getattr(response.choices[0], "message", None), "content", None) if getattr(response, "choices", None) else None)
         raise ValueError("Não entendi bem. Pode reescrever a mensagem com o insumo, a quantidade, o setor e a data?") from None
     return result
 
@@ -129,11 +171,26 @@ def match_exact(name, options, label):
     return matches[0]
 
 
+_UNIT_ALIASES = {
+    "l": "l", "lt": "l", "lts": "l", "litro": "l", "litros": "l",
+    "ml": "ml", "mililitro": "ml", "mililitros": "ml",
+    "kg": "kg", "quilo": "kg", "quilos": "kg", "kilo": "kg", "kilos": "kg", "quilograma": "kg", "quilogramas": "kg",
+    "g": "g", "grama": "g", "gramas": "g",
+    "un": "un", "und": "un", "unidade": "un", "unidades": "un",
+}
+STOCK_ITEM_TYPES = ("insumo_agricola", "combustivel")
+
+
+def _unit_key(value) -> str:
+    key = normalized(str(value or "")).rstrip(".")
+    return _UNIT_ALIASES.get(key, key)
+
+
 def stock_unit(input_item, requested):
-    if not input_item or not input_item.is_active or input_item.item_type != "insumo_agricola":
-        raise ValueError("Selecione um insumo agrícola ativo.")
+    if not input_item or not input_item.is_active or input_item.item_type not in STOCK_ITEM_TYPES:
+        raise ValueError("Selecione um insumo agrícola ou combustível ativo.")
     unit = (input_item.default_unit or "").strip()
-    if not unit or normalized(unit) != normalized(requested):
+    if not unit or _unit_key(unit) != _unit_key(requested):
         raise ValueError(f"Informe a quantidade na unidade cadastrada do insumo: {unit or 'não definida'}.")
     return unit
 
