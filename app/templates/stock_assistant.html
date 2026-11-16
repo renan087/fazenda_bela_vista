@@ -145,7 +145,10 @@
                                 <div><dt>Quantidade</dt><dd>{{ d.packs_label }}<small>{{ d.quantity }} {{ d.unit }} no total</small></dd></div>
                                 <div><dt>Valor</dt><dd>{{ d.total }}<small>{{ d.unit_price }} por embalagem</small></dd></div>
                                 <div><dt>Data</dt><dd>{{ d.date_label }}</dd></div>
+                                {% if d.payment %}<div class="as-dl-wide"><dt>Pagamento</dt><dd>{{ d.payment }}{% if d.finance %}<small>{{ d.finance }}</small>{% endif %}</dd></div>{% endif %}
                                 {% if d.supplier %}<div class="as-dl-wide"><dt>Fornecedor</dt><dd>{{ d.supplier }}</dd></div>{% endif %}
+                                {% if d.lot %}<div class="as-dl-wide"><dt>Rastreabilidade</dt><dd>{{ d.lot }}</dd></div>{% endif %}
+                                {% if d.minimum %}<div class="as-dl-wide"><dt>Avisar estoque baixo</dt><dd>abaixo de {{ d.minimum }}</dd></div>{% endif %}
                                 {% if d.notes %}<div class="as-dl-wide"><dt>Observação</dt><dd>{{ d.notes }}</dd></div>{% endif %}
                                 {% if d.state == 'pending' %}
                                 <div><dt>Estoque atual</dt><dd>{{ d.balance }} {{ d.unit }}</dd></div>
@@ -173,7 +176,7 @@
                                     <button class="as-btn as-btn-primary">{{ ic('check', 16, 2.2) }}Confirmar e registrar</button>
                                 </form>
                                 <div class="as-draft-secondary">
-                                    <button type="button" class="as-btn as-btn-secondary" data-as-fill="Quero ajustar: " data-as-fill-hint="{{ 'Diga o que ajustar: quantidade, preço, fornecedor ou data' if d.kind == 'compra' else 'Diga o que ajustar: quantidade, setor ou data' }}">{{ ic('edit', 15) }}Ajustar</button>
+                                    <button type="button" class="as-btn as-btn-secondary" data-as-fill="Quero ajustar: " data-as-fill-hint="{{ 'Diga o que ajustar: quantidade, preço, pagamento, lote ou data' if d.kind == 'compra' else 'Diga o que ajustar: quantidade, setor ou data' }}">{{ ic('edit', 15) }}Ajustar</button>
                                     <form method="post" action="/mobile/assistente/{{ d.id }}/descartar">
                                         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                                         <input type="hidden" name="thread_id" value="{{ thread_id }}">

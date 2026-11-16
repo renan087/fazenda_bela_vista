@@ -77,7 +77,9 @@ PURCHASE_TOOL = {"type": "function", "function": {
                    "Não registra nada sozinho.",
     "parameters": {"type": "object", "additionalProperties": False,
                    "required": ["item_id", "nome_novo", "tipo", "categoria", "unidade", "quantidade_embalagens",
-                                "tamanho_embalagem", "preco_por_embalagem", "valor_total", "data", "fornecedor", "observacao"],
+                                "tamanho_embalagem", "preco_por_embalagem", "valor_total", "data", "fornecedor", "observacao",
+                                "forma_pagamento", "condicao", "parcelas", "periodicidade", "primeira_parcela", "conta_id",
+                                "cartao_id", "lote", "fabricacao", "validade", "estoque_minimo"],
                    "properties": {
                        "item_id": {"type": ["integer", "null"], "description": "Item já cadastrado (de buscar_itens) ou null se for novo."},
                        "nome_novo": {"type": ["string", "null"], "description": "Nome do item novo, como o produtor chama (ex.: 'Ureia 46%'). null se item_id."},
@@ -90,8 +92,28 @@ PURCHASE_TOOL = {"type": "function", "function": {
                        "valor_total": {"type": ["number", "null"], "description": "Valor total da compra em R$, se informado."},
                        "data": {"type": "string", "description": "Data da compra, AAAA-MM-DD."},
                        "fornecedor": {"type": ["string", "null"], "description": "Loja/fornecedor, se o usuário contou."},
-                       "observacao": {"type": ["string", "null"], "description": "Outros detalhes úteis que o usuário contou (nota, forma de pagamento, lote)."},
+                       "observacao": {"type": ["string", "null"], "description": "Outros detalhes úteis que o usuário contou (ex.: número da nota)."},
+                       "forma_pagamento": {"type": ["string", "null"], "description": "Uma das formas de listar_formas_pagamento (ex.: PIX, Boleto, Cartão de crédito). null se não souber."},
+                       "condicao": {"type": ["string", "null"], "enum": ["a_vista", "a_prazo", None], "description": "a_prazo para parcelado/boleto para depois. null se não souber (vira à vista)."},
+                       "parcelas": {"type": ["integer", "null"], "description": "Número de parcelas, se a prazo."},
+                       "periodicidade": {"type": ["string", "null"], "enum": ["mensal", "anual", None]},
+                       "primeira_parcela": {"type": ["string", "null"], "description": "Vencimento da 1ª parcela AAAA-MM-DD, se informado."},
+                       "conta_id": {"type": ["integer", "null"], "description": "Conta bancária de listar_formas_pagamento, se o usuário disse qual."},
+                       "cartao_id": {"type": ["integer", "null"], "description": "Cartão de listar_formas_pagamento, se pagou no cartão de crédito."},
+                       "lote": {"type": ["string", "null"], "description": "Número do lote do fabricante."},
+                       "fabricacao": {"type": ["string", "null"], "description": "Data de fabricação AAAA-MM-DD."},
+                       "validade": {"type": ["string", "null"], "description": "Data de validade AAAA-MM-DD."},
+                       "estoque_minimo": {"type": ["number", "null"], "description": "Quantidade (na unidade) para avisar estoque baixo."},
                    }},
+}}
+PURCHASE_OPTIONAL_FIELDS = ("forma_pagamento", "condicao", "parcelas", "periodicidade", "primeira_parcela", "conta_id",
+                            "cartao_id", "lote", "fabricacao", "validade", "estoque_minimo")
+
+PAYMENT_OPTIONS_TOOL = {"type": "function", "function": {
+    "name": "listar_formas_pagamento",
+    "description": "Formas de pagamento, contas bancárias e cartões de crédito cadastrados desta fazenda. "
+                   "Use quando o usuário contar como pagou (ou para perguntar qual cartão/conta).",
+    "parameters": {"type": "object", "additionalProperties": False, "properties": {}},
 }}
 
 
@@ -99,7 +121,7 @@ class FarmAssistant:
     """Agente com ferramentas: a IA consulta o SiSFarm e so prepara rascunhos; o servidor valida tudo."""
 
     def __init__(self, *, farm_name, season, items, balances, plots, today, prepare_draft, extra_tools=(),
-                 prepare_purchase=None, purchase_rules=None):
+                 prepare_purchase=None, purchase_rules=None, payment_options=None):
         self.farm_name = farm_name
         self.season = season
         self.items = {item.id: item for item in items if item.is_active and item.item_type in STOCK_ITEM_TYPES}
@@ -114,14 +136,18 @@ class FarmAssistant:
         self.purchase_rules = purchase_rules or {}  # {tipo: {categoria: [unidades]}}
         self.handlers = {"buscar_itens": self.buscar_itens, "listar_setores": self.listar_setores,
                          "consultar_saldo": self.consultar_saldo, "preparar_consumo": self.preparar_consumo}
+        self.payment_options = payment_options
         if prepare_purchase:
             self.handlers["preparar_compra"] = self.preparar_compra
+        if payment_options:
+            self.handlers["listar_formas_pagamento"] = payment_options
         for schema, handler in self.extra_tools:
             self.handlers[schema["function"]["name"]] = handler
 
     @property
     def tools(self):
-        return AGENT_TOOLS + ([PURCHASE_TOOL] if self.prepare_purchase else []) + [schema for schema, _ in self.extra_tools]
+        return (AGENT_TOOLS + ([PURCHASE_TOOL] if self.prepare_purchase else [])
+                + ([PAYMENT_OPTIONS_TOOL] if self.payment_options else []) + [schema for schema, _ in self.extra_tools])
 
     # ---------------------------------------------------------------- ferramentas
     def _item_view(self, item):
@@ -194,7 +220,8 @@ class FarmAssistant:
 
     def preparar_compra(self, item_id=None, nome_novo=None, tipo=None, categoria=None, unidade="", quantidade_embalagens=None,
                         tamanho_embalagem=None, preco_por_embalagem=None, valor_total=None, data=None, fornecedor=None,
-                        observacao=None):
+                        observacao=None, **extras):
+        extras = {key: extras.get(key) for key in PURCHASE_OPTIONAL_FIELDS}
         def positive(value, label):
             number = Decimal(str(value)) if value is not None else Decimal(0)
             if not number.is_finite() or not 0 < number < Decimal("10000000000"):
@@ -243,12 +270,16 @@ class FarmAssistant:
             item_type, is_new = tipo, True
         notes = " ".join(str(observacao or "").split())[:300] or None
         supplier = " ".join(str(fornecedor or "").split())[:160] or None
-        self.draft_id = self.prepare_purchase(
+        self.draft_id, adjustments = self.prepare_purchase(
             item=self.items.get(int(item_id)) if item_id else None, name=name, item_type=item_type, category=category,
             unit=unit, packs=packs, size=size, unit_price=unit_price, purchase_date=purchase_date,
-            supplier=supplier, notes=notes, is_new=is_new,
+            supplier=supplier, notes=notes, is_new=is_new, extras=extras,
         )
-        return {"ok": True, "rascunho": self.draft_id}
+        result = {"ok": True, "rascunho": self.draft_id}
+        if adjustments:
+            result["ajustes_feitos"] = adjustments
+            result["avise_o_usuario"] = "Conte esses ajustes com naturalidade e diga que dá para corrigir depois na tela de compras."
+        return result
 
     def call_tool(self, name, raw_args):
         try:
@@ -314,11 +345,23 @@ class FarmAssistant:
                "confirme com o usuário que é um item novo e descubra o tipo e a categoria pelo contexto (ex.: diesel -> "
                "combustível/Combustíveis; ureia -> insumo agrícola/Fertilizantes); pergunte só se não der para deduzir.\n"
                f"- Categorias e unidades permitidas para item novo: {purchase_rules}.\n"
-               "- Precisa de: quantas embalagens, o conteúdo de cada uma (ex.: 10 sacos de 50 kg; 200 L a granel = 1 x 200 L), "
-               "o preço (por embalagem ou o total) e a data. Fornecedor e outros detalhes (nota, pagamento) são opcionais: "
-               "registre se o usuário contar, mas não insista.\n"
-               "- A compra entra no estoque desta fazenda; não lança no financeiro. Se o usuário perguntar, diga que dá para "
-               "vincular a conta depois, na tela de compras.\n" if purchases_on else
+               "- Essencial: quantas embalagens, o conteúdo de cada uma (ex.: 10 sacos de 50 kg; 200 L a granel = 1 x 200 L), "
+               "o preço (por embalagem ou o total) e a data.\n"
+               "- Depois do essencial, puxe os complementos numa conversa leve, UMA pergunta por vez, na ordem:\n"
+               "  a) Pagamento: 'E como foi o pagamento? À vista, no cartão, boleto, parcelado?'. Use listar_formas_pagamento "
+               "para saber os cartões e contas da fazenda. Se foi no cartão e houver mais de um, pergunte qual pelo nome. "
+               "Parcelado = condicao a_prazo com o número de parcelas; pergunte o vencimento da 1ª parcela só se fizer sentido "
+               "(no cartão não precisa). Boleto para 30 dias = a_prazo, 1 parcela.\n"
+               "  b) Rastreabilidade: 'Você tem aí o número do lote e a validade? Se quiser, manda uma foto da embalagem ou da "
+               "nota que eu leio.' Aceite o que vier (lote, fabricação, validade).\n"
+               "  c) Só para item novo: 'Quer que eu avise quando o estoque estiver baixo? A partir de quanto?'.\n"
+               "  d) Fornecedor, se ainda não foi dito, pode entrar junto de outra pergunta, sem insistir.\n"
+               "- Se o usuário não souber, não tiver, disser 'pode lançar', 'tanto faz' ou ignorar a pergunta, siga em frente "
+               "sem aquele dado: pagamento desconhecido vira à vista. Nunca trave o lançamento por um complemento.\n"
+               "- Se o usuário já contou tudo de uma vez, não repita perguntas: prepare direto.\n"
+               "- Se a preparação devolver 'ajustes_feitos', conte isso com naturalidade (ex.: 'Lancei à vista porque não achei "
+               "conta para o parcelado; depois é só ajustar na tela de compras').\n"
+               "" if purchases_on else
                "- Compras ainda não podem ser lançadas por aqui; explique com gentileza.\n")
             + "- Para outros lançamentos (despesa, chuva, aplicação, colheita), explique com gentileza que ainda não faz isso por "
             "aqui, sem transformar em consumo ou compra. Não responda assuntos fora da fazenda e do SiSFarm."

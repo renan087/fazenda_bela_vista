@@ -39,7 +39,7 @@ from app.models.stock_assistant_draft import StockAssistantDraft
 from app.models.audit_log import AuditLog
 from app.models.input_catalog import InputCatalog
 from app.services.assistant_queries import AssistantQueries
-from app.services.stock_assistant import STOCK_ITEM_TYPES, FarmAssistant, claim_draft, confirm_consumption, run_farm_assistant, stock_unit
+from app.services.stock_assistant import STOCK_ITEM_TYPES, FarmAssistant, claim_draft, confirm_consumption, normalized, run_farm_assistant, stock_unit
 from app.core.admin_access import has_admin_access, is_super_admin_email
 from app.core.permissions_catalog import (
     WRITE_FINANCE,
@@ -20808,15 +20808,98 @@ def prepare_stock_assistant_action(
         })
         return draft_id
 
+    finance_accounts = repo.list_finance_accounts(farm_id=farm.id)
+    credit_cards = [card for card in repo.list_finance_credit_cards(farm_id=farm.id) if card.is_active]
+
+    def payment_options():
+        return {
+            "formas": FINANCE_TRANSACTION_EXPENSE_PAYMENT_METHODS,
+            "contas": [{"conta_id": a.id, "nome": a.account_name, "banco": a.bank_name, "padrao": bool(a.is_default)}
+                       for a in finance_accounts],
+            "cartoes": [{"cartao_id": c.id, "nome": c.card_name, "emissor": c.issuer, "bandeira": c.brand,
+                         "padrao": bool(c.is_default)} for c in credit_cards],
+            "observacao": "Sem conta nem cartão a compra entra no estoque, mas não gera despesa no financeiro.",
+        }
+
+    def resolve_purchase_extras(extras, purchase_date):
+        """Pagamento e rastreabilidade com degradacao segura: o que nao fecha vira a vista e entra em 'ajustes'."""
+        adjustments = []
+        key = lambda value: normalized(str(value or ""))
+        method = next((m for m in FINANCE_TRANSACTION_EXPENSE_PAYMENT_METHODS if key(m) == key(extras.get("forma_pagamento"))), None)
+        if extras.get("forma_pagamento") and not method:
+            adjustments.append(f"não reconheci a forma de pagamento '{extras['forma_pagamento']}', deixei sem forma")
+        condition = extras.get("condicao") if extras.get("condicao") in ("a_vista", "a_prazo") else "a_vista"
+        installments = int(extras.get("parcelas") or 1) if str(extras.get("parcelas") or "1").isdigit() else 1
+        installments = max(1, min(installments, 120))
+        if installments > 1:
+            condition = "a_prazo"
+        card = None
+        if extras.get("cartao_id") or (method and key(method) == key("Cartão de crédito")):
+            method = "Cartão de crédito"
+            card = next((c for c in credit_cards if c.id == extras.get("cartao_id")), None)
+            card = card or next((c for c in credit_cards if c.is_default), None) or (credit_cards[0] if len(credit_cards) == 1 else None)
+            if card is None:
+                adjustments.append("não achei o cartão de crédito cadastrado na fazenda, então lancei à vista sem cartão")
+                method, condition, installments = None, "a_vista", 1
+        account = next((a for a in finance_accounts if a.id == extras.get("conta_id")), None)
+        account = account or next((a for a in finance_accounts if a.is_default), None)
+        if card is not None and not card.payment_account_id and account is None:
+            adjustments.append("o cartão não tem conta de pagamento vinculada, então lancei à vista sem cartão")
+            card, method, condition, installments = None, None, "a_vista", 1
+        if condition == "a_prazo" and not card and not account:
+            adjustments.append("não há conta bancária cadastrada para acompanhar o parcelado, então lancei à vista")
+            condition, installments = "a_vista", 1
+        first_installment = None
+        frequency = None
+        if condition == "a_prazo":
+            frequency = extras.get("periodicidade") if extras.get("periodicidade") in ("mensal", "anual") else "mensal"
+            try:
+                first_installment = date.fromisoformat(str(extras.get("primeira_parcela"))) if extras.get("primeira_parcela") else None
+            except ValueError:
+                first_installment = None
+            if first_installment is None:
+                first_installment = _finance_add_months_safe(purchase_date, 1)
+                if not card:
+                    adjustments.append(f"coloquei a 1ª parcela para {first_installment:%d/%m/%Y}")
+
+        def parse_day(value):
+            try:
+                return date.fromisoformat(str(value)) if value else None
+            except ValueError:
+                return None
+        manufacture, expiration = parse_day(extras.get("fabricacao")), parse_day(extras.get("validade"))
+        if manufacture and expiration and manufacture > expiration:
+            adjustments.append("a fabricação ficou depois da validade, então deixei essas datas em branco")
+            manufacture = expiration = None
+        try:
+            minimum = Decimal(str(extras.get("estoque_minimo"))) if extras.get("estoque_minimo") is not None else None
+        except (InvalidOperation, ValueError):
+            minimum = None
+        minimum = minimum if minimum is not None and minimum.is_finite() and minimum > 0 else None
+        batch = " ".join(str(extras.get("lote") or "").split())[:80] or None
+        return {
+            "payment_method": method, "payment_condition": condition, "installment_count": installments,
+            "installment_frequency": frequency, "first_installment_date": first_installment.isoformat() if first_installment else None,
+            "credit_card_id": card.id if card else None, "credit_card_name": card.card_name if card else None,
+            # Cartao paga pela conta vinculada a ele (igual ao formulario de compra).
+            "finance_account_id": (card.payment_account_id if card and card.payment_account_id else (account.id if account else None)),
+            "finance_account_name": account.account_name if account and not card else None,
+            "batch_number": batch, "manufacture_date": manufacture.isoformat() if manufacture else None,
+            "expiration_date": expiration.isoformat() if expiration else None,
+            "low_stock_threshold": str(minimum) if minimum is not None else None,
+        }, adjustments
+
     def prepare_purchase(*, item, name, item_type, category, unit, packs, size, unit_price, purchase_date,
-                         supplier, notes, is_new):
+                         supplier, notes, is_new, extras=None):
         draft_id = uuid4().hex
         total_quantity = packs * size
         total_cost = (packs * unit_price).quantize(Decimal("0.01"))
+        finance, adjustments = resolve_purchase_extras(extras or {}, purchase_date)
         payload = {
             "name": name, "item_type": item_type, "category": category, "package_unit": unit,
             "quantity_purchased": str(packs), "package_size": str(size), "unit_price": str(unit_price),
             "purchase_date": purchase_date.isoformat(), "supplier_name": supplier, "notes": notes, "is_new": is_new,
+            **finance,
         }
         db.add(StockAssistantDraft(
             id=draft_id, user_id=user.id, organization_id=user.organization_id, kind="compra",
@@ -20837,8 +20920,18 @@ def prepare_stock_assistant_action(
             "supplier": supplier or "", "plot": supplier or "Compra", "date": purchase_date.isoformat(),
             "date_label": purchase_date.strftime("%d/%m/%Y"), "notes": notes or "",
             "balance": _format_decimal_br(balance, 2), "after": _format_decimal_br(balance + total_quantity, 2),
+            "payment": _assistant_payment_label(finance),
+            "finance": ("Gera despesa no financeiro" + (f" · cartão {finance['credit_card_name']}" if finance["credit_card_name"]
+                        else f" · conta {finance['finance_account_name']}")) if (finance["credit_card_id"] or finance["finance_account_id"])
+                       else "Sem lançamento no financeiro",
+            "lot": " · ".join(part for part in (
+                f"Lote {finance['batch_number']}" if finance["batch_number"] else "",
+                f"Fab. {date.fromisoformat(finance['manufacture_date']):%d/%m/%Y}" if finance["manufacture_date"] else "",
+                f"Val. {date.fromisoformat(finance['expiration_date']):%d/%m/%Y}" if finance["expiration_date"] else "",
+            ) if part),
+            "minimum": f"{_format_decimal_br(Decimal(finance['low_stock_threshold']), 2)} {unit}" if finance["low_stock_threshold"] else "",
         })
-        return draft_id
+        return draft_id, adjustments
 
     purchase_rules = {
         kind: {category: list(_purchase_input_category_profile(category).get("units") or [])
@@ -20854,7 +20947,7 @@ def prepare_stock_assistant_action(
     assistant = FarmAssistant(farm_name=farm.name, season=season, items=products, balances=balances,
                               plots=plots, today=today_in_app_timezone(), prepare_draft=prepare_draft,
                               extra_tools=queries.tools(), prepare_purchase=prepare_purchase,
-                              purchase_rules=purchase_rules)
+                              purchase_rules=purchase_rules, payment_options=payment_options)
     # A IA recebe so mensagens validas (sem os avisos de erro) e as mais recentes.
     ai_history = [{"role": item["role"], "content": item["content"]} for item in history if not item.get("error")][-10:]
     try:
@@ -20865,6 +20958,42 @@ def prepare_stock_assistant_action(
     text = (result.get("resposta") or "").strip() or "Pode me contar um pouco mais?"
     return reply(text, tools=list(getattr(assistant, "trace", []) or []),
                  draft=dict(drafted) if result.get("draft_id") and drafted.get("id") == result.get("draft_id") else None)
+
+
+def _finance_add_months_safe(base: date, months: int) -> date:
+    month_index = base.month - 1 + months
+    year, month = base.year + month_index // 12, month_index % 12 + 1
+    return date(year, month, min(base.day, calendar.monthrange(year, month)[1]))
+
+
+def _assistant_payment_label(finance: dict) -> str:
+    parts = []
+    if finance.get("payment_condition") == "a_prazo":
+        count = finance.get("installment_count") or 1
+        parts.append(f"Parcelado em {count}x" if count > 1 else "A prazo")
+    else:
+        parts.append("À vista")
+    if finance.get("payment_method"):
+        parts.append(finance["payment_method"] + (f" {finance['credit_card_name']}" if finance.get("credit_card_name") else ""))
+    if finance.get("first_installment_date") and not finance.get("credit_card_id"):
+        parts.append(f"1ª parcela {date.fromisoformat(finance['first_installment_date']):%d/%m/%Y}")
+    return " · ".join(parts)
+
+
+def _assistant_purchase_finance(repo, farm, payload: dict) -> dict:
+    """Revalida conta e cartao na confirmacao (pertencem a fazenda ativa)."""
+    account = _resolve_optional_finance_account(repo, active_farm=farm, account_id=payload.get("finance_account_id")) \
+        if payload.get("finance_account_id") else None
+    card = _resolve_optional_finance_credit_card(repo, active_farm=farm, credit_card_id=payload.get("credit_card_id"),
+                                                 payment_method=payload.get("payment_method")) if payload.get("credit_card_id") else None
+    return {
+        "finance_account_id": account.id if account else None, "credit_card_id": card.id if card else None,
+        "payment_method": payload.get("payment_method"), "payment_condition": payload.get("payment_condition") or "a_vista",
+        "installment_count": payload.get("installment_count") or 1, "installment_frequency": payload.get("installment_frequency"),
+        "first_installment_date": payload.get("first_installment_date"), "batch_number": payload.get("batch_number"),
+        "manufacture_date": payload.get("manufacture_date"), "expiration_date": payload.get("expiration_date"),
+        "low_stock_threshold": payload.get("low_stock_threshold"),
+    }
 
 
 def _validate_assistant_movement_date(movement_date, season):
@@ -20971,7 +21100,7 @@ def resolve_stock_assistant_action(
                 "name": payload["name"], "quantity_purchased": payload["quantity_purchased"],
                 "package_size": payload["package_size"], "package_unit": resolved_unit,
                 "unit_price": payload["unit_price"], "purchase_date": payload["purchase_date"],
-                "payment_condition": "a_vista", "supplier_name": payload.get("supplier_name"),
+                "supplier_name": payload.get("supplier_name"), **_assistant_purchase_finance(repo, scope["active_farm"], payload),
                 "notes": "; ".join(part for part in (payload.get("notes"), "Lançado pelo Assistente SiSFarm") if part),
             })
             db.add(AuditLog(actor_user_id=user.id, actor_email=user.email, organization_id=user.organization_id,

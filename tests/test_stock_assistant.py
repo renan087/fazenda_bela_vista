@@ -340,7 +340,7 @@ def test_purchase_validations():
     import json
     item = SimpleNamespace(id=1, name="Diesel S10", default_unit="L", item_type="combustivel", category="Combustíveis", is_active=True)
     assistant = FarmAssistant(farm_name="F", season=None, items=[item], balances={1: 0}, plots=[], today=date(2026, 11, 15),
-                              prepare_draft=lambda **kw: None, prepare_purchase=lambda **kw: "x" * 32,
+                              prepare_draft=lambda **kw: None, prepare_purchase=lambda **kw: ("x" * 32, []),
                               purchase_rules={"combustivel": {"Combustíveis": ["L", "ml"]}})
     base = {"item_id": None, "nome_novo": "Gasolina aditivada", "tipo": "combustivel", "categoria": "Combustíveis",
             "unidade": "L", "quantidade_embalagens": 1, "tamanho_embalagem": 50, "preco_por_embalagem": None,
@@ -355,3 +355,47 @@ def test_purchase_validations():
     # consumo de item sem saldo pede a compra antes
     assert "não tem saldo" in assistant.call_tool("preparar_consumo", json.dumps(
         {"item_id": 1, "quantidade": 1, "unidade": "L", "data": "2026-11-15", "setor": None, "observacao": None}))["erro"]
+
+
+def test_purchase_payment_and_lot_degrade_gracefully(monkeypatch):
+    from app.models import FinanceAccount, FinanceCreditCard, FinanceTransaction, PurchasedInput as Lot
+    base = {"_tool": "preparar_compra", "item_id": 0, "nome_novo": None, "tipo": None, "categoria": None, "unidade": "L",
+            "quantidade_embalagens": 1, "tamanho_embalagem": 100, "preco_por_embalagem": 600, "valor_total": None,
+            "data": "2026-11-15", "fornecedor": None, "observacao": None, "forma_pagamento": None, "condicao": None,
+            "parcelas": None, "periodicidade": None, "primeira_parcela": None, "conta_id": None, "cartao_id": None,
+            "lote": None, "fabricacao": None, "validade": None, "estoque_minimo": None}
+    replies = [
+        # cartao sem nenhum cartao cadastrado e datas de lote invertidas -> a vista, sem datas
+        {**base, "forma_pagamento": "cartão de crédito", "parcelas": 10, "lote": "L-77",
+         "fabricacao": "2026-12-01", "validade": "2026-01-01"},
+        # parcelado no cartao (agora existe) com lote e estoque minimo
+        {**base, "forma_pagamento": "Cartão de crédito", "parcelas": 3, "lote": "A1", "validade": "2027-05-01", "estoque_minimo": 20},
+    ]
+    routes, db, user, scope, send, sent, thread_history = _route_env(monkeypatch, replies)
+    send("comprei 100 litros de gasolina por 600 no cartão em 10x")
+    card = thread_history()[-1]["draft"]
+    assert card["payment"] == "À vista" and card["finance"] == "Sem lançamento no financeiro" and card["lot"] == "Lote L-77"
+    payload = __import__("json").loads(db.query(StockAssistantDraft).one().payload_json)
+    assert payload["payment_condition"] == "a_vista" and payload["manufacture_date"] is None
+
+    farm = scope["active_farm"]
+    account = FinanceAccount(farm_id=farm.id, account_name="Sicoob", initial_balance=0, initial_balance_date=date(2026, 1, 1), is_default=True,
+                             bank_code="756", bank_name="Sicoob", display_order=0, created_at=datetime.now(timezone.utc))
+    db.add(account); db.flush()
+    db.add(FinanceCreditCard(farm_id=farm.id, payment_account_id=account.id, card_name="Nubank", issuer="Nubank",
+                             brand="Visa", closing_day=5, due_day=12, is_default=True, is_active=True,
+                             display_order=0, created_at=datetime.now(timezone.utc)))
+    db.commit()
+    send("comprei de novo, no cartão em 3x")
+    card = thread_history()[-1]["draft"]
+    assert card["payment"].startswith("Parcelado em 3x · Cartão de crédito Nubank") and "cartão Nubank" in card["finance"]
+    assert card["lot"] == "Lote A1 · Val. 01/05/2027" and card["minimum"] == "20,00 L"
+    draft = db.query(StockAssistantDraft).filter_by(status="pending").one()
+    req = SimpleNamespace(session={})
+    routes.resolve_stock_assistant_action(req, draft.id, "confirmar", csrf_token="x",
+                                          thread_id=db.query(routes.AssistantThread).one().id, db=db, user=user)
+    assert not req.session.get("flash"), req.session
+    lot = db.query(Lot).filter(Lot.batch_number == "A1").one()
+    assert lot.payment_condition == "a_prazo" and lot.installment_count == 3 and lot.credit_card_id is not None
+    assert str(lot.expiration_date) == "2027-05-01" and float(lot.low_stock_threshold) == 20
+    assert db.query(FinanceTransaction).count() == 1
