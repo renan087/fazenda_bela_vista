@@ -34,6 +34,12 @@
 
         {% if code %}
         <div class="rounded-xl border border-emerald-200 bg-emerald-50/50 px-4 py-4 text-center space-y-2">
+            {% if wa_qr %}
+            <div class="mx-auto h-48 w-48 rounded-xl bg-white p-2 shadow-sm">{{ wa_qr }}</div>
+            <p class="text-sm font-medium text-slate-700">Aponte a câmera do celular para o QR code</p>
+            <p class="text-xs text-slate-500">Ele abre a conversa com o SiSFarm no WhatsApp já com o código. É só tocar em enviar.</p>
+            <p class="pt-1 text-xs uppercase tracking-wide text-slate-400">ou envie manualmente</p>
+            {% endif %}
             <p class="text-sm text-slate-600">Envie esta mensagem, <strong>do seu WhatsApp</strong>, para o número do SiSFarm{% if display_number %} <strong>{{ display_number }}</strong>{% endif %}:</p>
             <p class="font-mono text-2xl font-bold tracking-widest text-slate-900 select-all">SISFARM {{ code }}</p>
             <p class="text-xs text-slate-500">Vale por {{ code_minutes }} minutos e só pode ser usado uma vez.</p>

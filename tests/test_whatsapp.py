@@ -250,3 +250,10 @@ def test_link_code_is_recognized_in_common_variations(monkeypatch):
     spaced = f"{code[:4]} {code[4:]}".lower()
     assert _receive(db, client, _payload("557781177667", "u3", spaced)) == ["linked"]
     assert db.query(WhatsAppLink).one().wa_id == "557781177667"
+
+
+def test_link_page_qr_code_points_to_whatsapp_with_code():
+    from app.web import routes
+
+    svg = str(routes._whatsapp_qr_svg("https://wa.me/5535999990000?text=SISFARM%20ABCD2345"))
+    assert svg.startswith("<svg") and "QR code" in svg and 'class="h-full w-full"' in svg

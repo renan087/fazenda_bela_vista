@@ -13,6 +13,7 @@ import base64
 import json
 from jinja2 import pass_context
 from markupsafe import Markup
+import segno
 import logging
 import re
 import unicodedata
@@ -21132,6 +21133,13 @@ def _whatsapp_link_for(db, user):
     return db.query(WhatsAppLink).filter_by(user_id=user.id).first()
 
 
+def _whatsapp_qr_svg(url: str) -> Markup:
+    """QR code gerado no servidor (SVG), sem enviar o codigo de vinculo a servicos externos."""
+    qr = segno.make(url, error="m")
+    return Markup(qr.svg_inline(scale=6, border=2, dark="#0f172a", light="#ffffff", omitsize=True,
+                                svgclass="h-full w-full", title="QR code para abrir a conversa com o SiSFarm"))
+
+
 @router.get("/mobile/assistente/whatsapp")
 def whatsapp_link_page(
     request: Request, db: Session = Depends(get_db), user: User = Depends(get_current_user_web),
@@ -21152,6 +21160,7 @@ def whatsapp_link_page(
         code = saved
     settings = get_settings()
     display = re.sub(r"\D", "", settings.whatsapp_display_number or "")
+    wa_url = f"https://wa.me/{display}?text={quote('SISFARM ' + code)}" if code and display else None
     return templates.TemplateResponse("whatsapp_link.html", _base_context(
         request, user, csrf_token, "mobile", title="Assistente no WhatsApp", _repo=repo, assistant_scope=scope,
         link=link, linked=bool(link and link.wa_id and link.verified_at),
@@ -21159,7 +21168,7 @@ def whatsapp_link_page(
         link_season=repo.get_crop_season(link.season_id) if link else None,
         masked_phone=mask_phone(link.wa_id) if link and link.wa_id else "",
         code=code, code_minutes=whatsapp_bot.LINK_CODE_MINUTES,
-        wa_url=f"https://wa.me/{display}?text={quote('SISFARM ' + code)}" if code and display else None,
+        wa_url=wa_url, wa_qr=_whatsapp_qr_svg(wa_url) if wa_url else None,
         display_number=settings.whatsapp_display_number or "", configured=whatsapp_is_configured(),
     ))
 
