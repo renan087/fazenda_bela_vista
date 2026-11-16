@@ -52,15 +52,15 @@ AGENT_TOOLS = [
     {"type": "function", "function": {
         "name": "preparar_consumo",
         "description": "Prepara um rascunho de consumo (saída de estoque) para o usuário conferir e confirmar. "
-                       "Não registra nada sozinho. Só chame quando item, quantidade total, unidade e data estiverem claros "
-                       "(e o setor, se for insumo agrícola).",
+                       "Não registra nada sozinho. Chame assim que souber o item; o que ainda não souber vai como null e o "
+                       "retorno lista tudo o que falta perguntar.",
         "parameters": {"type": "object", "additionalProperties": False,
                        "required": ["item_id", "quantidade", "unidade", "data", "setor", "observacao"],
                        "properties": {
                            "item_id": {"type": "integer"},
-                           "quantidade": {"type": "number", "description": "Quantidade total consumida."},
+                           "quantidade": {"type": ["number", "null"], "description": "Quantidade total consumida (null se não souber)."},
                            "unidade": {"type": "string", "description": "Unidade do cadastro do item."},
-                           "data": {"type": "string", "description": "Data do consumo, AAAA-MM-DD."},
+                           "data": {"type": ["string", "null"], "description": "Data do consumo, AAAA-MM-DD."},
                            "setor": {"type": ["string", "null"], "description": "Nome do setor; null só para combustível de uso geral."},
                            "observacao": {"type": ["string", "null"], "description":
                                "Detalhes úteis que o usuário contou e que não cabem nos outros campos (máquina ou equipamento "
@@ -75,7 +75,8 @@ PURCHASE_TOOL = {"type": "function", "function": {
     "name": "preparar_compra",
     "description": "Prepara um rascunho de COMPRA (entrada no estoque) para o usuário conferir e confirmar. Serve para item já "
                    "cadastrado (informe item_id) ou para um item novo (item_id null + nome_novo, tipo e categoria). "
-                   "Não registra nada sozinho.",
+                   "Não registra nada sozinho. Pode chamar com o que já souber (desconhecido = null): o retorno lista "
+                   "tudo o que falta perguntar.",
     "parameters": {"type": "object", "additionalProperties": False,
                    "required": ["item_id", "nome_novo", "tipo", "categoria", "unidade", "quantidade_embalagens",
                                 "tamanho_embalagem", "preco_por_embalagem", "valor_total", "data", "fornecedor", "observacao",
@@ -134,6 +135,7 @@ class FarmAssistant:
         self.prepare_draft = prepare_draft
         self.draft_id = None
         self.seen = {}  # itens que a IA viu neste turno (lembrados no proximo turno da conversa)
+        self.partial = None  # lancamento em andamento que ainda nao fechou (dados ja informados + o que falta)
         self.trace = []  # o que o agente consultou, mostrado ao usuario abaixo da resposta
         self.extra_tools = list(extra_tools)  # [(schema, handler)] de consultas somente leitura
         self.prepare_purchase = prepare_purchase
@@ -218,7 +220,16 @@ class FarmAssistant:
         options = ", ".join(plot.name for plot in (partial or self.plots)[:10])
         raise ValueError(f"Setor '{name}' não encontrado ou ambíguo. Opções: {options or 'nenhum setor na safra'}.")
 
-    def preparar_consumo(self, item_id, quantidade, unidade, data, setor=None, observacao=None):
+    def preparar_consumo(self, item_id=None, quantidade=None, unidade="", data=None, setor=None, observacao=None):
+        item = self.items.get(int(item_id)) if item_id else None
+        missing = [label for label, absent in (
+            ("qual item foi usado", item is None),
+            ("a quantidade total usada", quantidade in (None, "", 0)),
+            ("a data (pode ser 'hoje')", not data),
+            ("o setor", item is not None and item.item_type != "combustivel" and not setor),
+        ) if absent]
+        if missing:
+            raise ValueError("Faltam dados: " + "; ".join(missing) + ". Pergunte só isso, numa frase natural.")
         item = self.items.get(int(item_id))
         if not item:
             raise ValueError("Item não encontrado nesta fazenda. Use buscar_itens.")
@@ -251,6 +262,15 @@ class FarmAssistant:
                         tamanho_embalagem=None, preco_por_embalagem=None, valor_total=None, data=None, fornecedor=None,
                         observacao=None, **extras):
         extras = {key: extras.get(key) for key in PURCHASE_OPTIONAL_FIELDS}
+        missing = [label for label, absent in (
+            ("qual produto foi comprado", not item_id and not nome_novo),
+            ("quantas embalagens (ou o volume total, se for a granel)", quantidade_embalagens in (None, "", 0)),
+            ("o conteúdo de cada embalagem", tamanho_embalagem in (None, "", 0)),
+            ("o preço (total ou por embalagem)", preco_por_embalagem in (None, "") and valor_total in (None, "")),
+            ("a data da compra (pode ser 'hoje')", not data),
+        ) if absent]
+        if missing:
+            raise ValueError("Faltam dados: " + "; ".join(missing) + ". Pergunte só isso, numa frase natural.")
         def positive(value, label):
             number = Decimal(str(value)) if value is not None else Decimal(0)
             if not number.is_finite() or not 0 < number < Decimal("10000000000"):
@@ -316,6 +336,7 @@ class FarmAssistant:
         return result
 
     def call_tool(self, name, raw_args):
+        args = None
         try:
             args = json.loads(raw_args or "{}")
             if not isinstance(args, dict):
@@ -329,6 +350,15 @@ class FarmAssistant:
         except Exception:  # consulta com falha nao derruba a conversa
             logging.getLogger(__name__).exception("Falha na ferramenta %s do assistente", name)
             result = {"erro": "Não foi possível consultar essa informação agora."}
+        if name in ("preparar_consumo", "preparar_compra"):
+            if result.get("erro") and isinstance(args, dict):
+                known = {key: value for key, value in args.items() if value not in (None, "", False)}
+                if known.get("item_id") and self.items.get(_int_or_none(known["item_id"])):
+                    known["item"] = self.items[_int_or_none(known["item_id"])].name
+                self.partial = {"acao": "compra" if name == "preparar_compra" else "consumo", "dados": known,
+                                "pendente": result["erro"]}
+            elif result.get("ok"):
+                self.partial = None
         label = _trace_label(name, result)
         if label and label not in self.trace:
             self.trace.append(label)
@@ -366,7 +396,9 @@ class FarmAssistant:
             "Se dois ou mais itens combinarem, pergunte qual citando os nomes. Só trate como item novo se nada combinar ou "
             "se o usuário disser que é outro produto. Nunca invente item nem item_id.\n"
             "- Lembre-se do que já foi dito na conversa (item, quantidade, preço, data): não pergunte de novo o que o "
-            "usuário já respondeu.\n"
+            "usuário já respondeu. Se houver uma ficha de 'lançamento em andamento', continue a partir dela.\n"
+            "- Para lançar, chame a preparação assim que souber o item, mandando null no que ainda não sabe: o retorno "
+            "diz exatamente o que falta, e você pergunta só isso.\n"
             "- Pergunte só o que falta, um ou dois dados por vez, de forma natural (ex.: 'Foi hoje?' em vez de 'Informe a data'). "
             "Não invente valores. 'hoje', 'ontem' e '15/11' são datas válidas; sem ano, use o ano atual. Data futura não vale.\n"
             "- Use a unidade do cadastro e converta só o óbvio (litros->L, quilos->kg, 500 g->0,5 kg).\n"
@@ -503,6 +535,21 @@ _QUERY_LABELS = {
 }
 
 
+def _int_or_none(value):
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def partial_note(partial: dict) -> str:
+    """Ficha do lancamento em andamento, devolvida a IA no turno seguinte para ela nao se perder."""
+    data = ", ".join(f"{key}={value}" for key, value in (partial.get("dados") or {}).items())
+    return (f"Lançamento de {partial.get('acao')} em andamento nesta conversa. Dados já informados pelo usuário: "
+            f"{data or 'nenhum'}. Pendência da última tentativa: {partial.get('pendente')}. Continue deste ponto: "
+            "use estes dados, complete com a resposta do usuário e chame a preparação de novo. Não pergunte de novo o que já foi informado.")
+
+
 def is_reasoning_model(model: str) -> bool:
     return (model or "").startswith(("gpt-5", "o1", "o3", "o4"))
 
@@ -514,7 +561,7 @@ def run_farm_assistant(history, assistant: "FarmAssistant", image=None):
         raise ValueError("O assistente de IA ainda não está configurado. Contate o administrador.")
     from openai import OpenAI
 
-    model = (os.getenv("OPENAI_ASSISTANT_MODEL") or get_settings().openai_assistant_model or "gpt-5-mini").strip()
+    model = (os.getenv("OPENAI_ASSISTANT_MODEL") or get_settings().openai_assistant_model or "gpt-4o-mini").strip()
     timeout = get_settings().openai_timeout_seconds
     if is_reasoning_model(model):
         timeout = max(timeout, 60.0)  # o raciocinio leva alguns segundos a mais por etapa

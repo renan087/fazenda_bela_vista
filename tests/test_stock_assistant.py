@@ -567,3 +567,33 @@ def test_assistant_fuel_purchase_drops_lot_data(monkeypatch):
     payload = __import__("json").loads(draft.payload_json)
     assert payload["batch_number"] is None and payload["expiration_date"] is None and payload["manufacture_date"] is None
     assert history()[-1]["draft"]["lot"] == ""
+
+
+def test_missing_fields_are_listed_at_once_and_kept_as_partial():
+    agent = _assistant([])
+    result = agent.call_tool("preparar_consumo", __import__("json").dumps({"item_id": 2, "quantidade": None, "unidade": "kg",
+                                                                          "data": None, "setor": None, "observacao": None}))
+    assert "a quantidade total usada" in result["erro"] and "a data" in result["erro"] and "o setor" in result["erro"]
+    assert agent.partial["acao"] == "consumo" and agent.partial["dados"]["item"] == "Ureia"
+    agent.prepare_purchase = lambda **kwargs: ("p" * 32, [])
+    agent.handlers["preparar_compra"] = agent.preparar_compra
+    result = agent.call_tool("preparar_compra", __import__("json").dumps({"item_id": 1, "quantidade_embalagens": 1,
+                                                                         "tamanho_embalagem": 100, "unidade": "L"}))
+    assert "o preço" in result["erro"] and "a data da compra" in result["erro"] and "embalagens" not in result["erro"]
+    assert agent.partial["acao"] == "compra" and agent.partial["dados"]["tamanho_embalagem"] == 100
+    from app.services.stock_assistant import partial_note
+    assert "Gasolina comum" in partial_note(agent.partial) and "o preço" in partial_note(agent.partial)
+
+
+def test_route_carries_partial_launch_to_next_turn(monkeypatch):
+    routes, db, user, scope, send, sent, history = _route_env(monkeypatch, [
+        {"_tool": "preparar_compra", "_expect_error": True, "item_id": 0, "quantidade_embalagens": 1,
+         "tamanho_embalagem": 100, "unidade": "L"},
+        "Foi hoje?",
+    ])
+    send("comprei 100 l de gasolina")
+    assert history()[-1]["partial"]["pendente"].startswith("Faltam dados")
+    send("paguei 600")
+    notes = [m["content"] for m in sent[1][0] if m["role"] == "system"]
+    assert any("Lançamento de compra em andamento" in note and "tamanho_embalagem=100" in note for note in notes)
+    assert sent[1][0][-1] == {"role": "user", "content": "paguei 600"}

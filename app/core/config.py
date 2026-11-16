@@ -23,7 +23,7 @@ class Settings(BaseSettings):
     super_admin_email: str | None = None
     openai_api_key: str | None = None
     openai_recommendation_model: str = "gpt-5-mini"
-    openai_assistant_model: str = "gpt-5-mini"
+    openai_assistant_model: str = "gpt-4o-mini"
     openai_timeout_seconds: float = 25.0
     whatsapp_verify_token: str | None = None
     whatsapp_access_token: str | None = None

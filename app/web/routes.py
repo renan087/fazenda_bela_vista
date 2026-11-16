@@ -44,7 +44,7 @@ from app.models.stock_assistant_draft import StockAssistantDraft
 from app.models.audit_log import AuditLog
 from app.models.input_catalog import InputCatalog
 from app.services.assistant_queries import AssistantQueries
-from app.services.stock_assistant import STOCK_ITEM_TYPES, FarmAssistant, claim_draft, confirm_consumption, normalized, run_farm_assistant, stock_unit
+from app.services.stock_assistant import STOCK_ITEM_TYPES, FarmAssistant, claim_draft, confirm_consumption, normalized, partial_note, run_farm_assistant, stock_unit
 from app.core.admin_access import has_admin_access, is_super_admin_email
 from app.core.permissions_catalog import (
     WRITE_FINANCE,
@@ -20813,8 +20813,11 @@ def _assistant_turn(db, user, repo, scope, thread, message, *, image=None, attac
             item["error"] = True
         if tools:
             item["tools"] = tools[:6]
-        if not error and getattr(assistant_ref.get("agent"), "seen", None):
-            item["items"] = list(assistant_ref["agent"].seen.values())[:8]
+        agent = assistant_ref.get("agent")
+        if not error and getattr(agent, "seen", None):
+            item["items"] = list(agent.seen.values())[:8]
+        if not error and not draft and getattr(agent, "partial", None):
+            item["partial"] = agent.partial
         if draft:
             item["draft"] = draft
             for old in history:  # um rascunho novo substitui o anterior ainda pendente
@@ -21051,6 +21054,15 @@ def _assistant_turn(db, user, repo, scope, thread, message, *, image=None, attac
         for known in entry.get("items") or []:
             if isinstance(known, dict) and known.get("item_id") in assistant.items:
                 remembered[known["item_id"]] = known
+    partial = None
+    for entry in reversed(history[:-1][-8:]):
+        if entry.get("draft"):
+            break
+        if entry.get("role") == "assistant" and isinstance(entry.get("partial"), dict):
+            partial = entry["partial"]
+            break
+    if partial:
+        ai_history.insert(len(ai_history) - 1, {"role": "system", "content": partial_note(partial)})
     if remembered:
         ai_history.insert(len(ai_history) - 1, {"role": "system", "content": (
             "Itens do cadastro já identificados nesta conversa (continue com eles, sem perguntar de novo): "
