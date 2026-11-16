@@ -36,6 +36,9 @@ from starlette.datastructures import UploadFile as StarletteUploadFile
 
 from app.core.config import get_settings
 from app.models.assistant_thread import AssistantThread
+from app.models.whatsapp import WhatsAppLink
+from app.services import whatsapp_bot
+from app.services.whatsapp import is_configured as whatsapp_is_configured, mask_phone
 from app.models.stock_assistant_draft import StockAssistantDraft
 from app.models.audit_log import AuditLog
 from app.models.input_catalog import InputCatalog
@@ -20752,12 +20755,20 @@ def prepare_stock_assistant_action(
         _flash(request, "error", str(exc))
         return _redirect(target)
 
+    attachment_type = ("pdf" if photo.content_type == "application/pdf" else "image") if image else None
+    thread, _ = _assistant_turn(db, user, repo, scope, thread, message, image=image, attachment_type=attachment_type)
+    return _redirect(_assistant_url(thread.id))
+
+
+def _assistant_turn(db, user, repo, scope, thread, message, *, image=None, attachment_type=None, title_prefix=""):
+    """Um turno do assistente (web e WhatsApp): roda o agente, salva a conversa e devolve (thread, resposta)."""
+    farm, season = scope["active_farm"], scope["active_season"]
     if thread is None:
         now = datetime.now(timezone.utc)
         thread = AssistantThread(id=uuid4().hex, user_id=user.id, organization_id=user.organization_id,
-                                 farm_id=farm.id, season_id=season.id, title=message[:60], created_at=now, updated_at=now)
+                                 farm_id=farm.id, season_id=season.id, title=(title_prefix + message)[:60], created_at=now, updated_at=now)
     history = _thread_messages(thread) + [{"role": "user", "content": message, "at": _assistant_now_iso(),
-                                           **({"photo": True, "attachment_type": "pdf" if photo.content_type == "application/pdf" else "image"} if image else {})}]
+                                           **({"photo": True, "attachment_type": attachment_type or "image"} if image else {})}]
     pending_purchase = None
     for entry in reversed(history[:-1]):
         previous = entry.get("draft") or {}
@@ -20791,7 +20802,7 @@ def prepare_stock_assistant_action(
                         claim_draft(db, row, "discarded")
                     previous["state"] = "replaced"
         _save_thread(db, thread, history + [item])
-        return _redirect(_assistant_url(thread.id))
+        return thread, item
 
     # Itens que esta organizacao ja comprou (o catalogo e compartilhado; nao expor itens de outras contas).
     org_farm_ids = {row[0] for row in db.query(Farm.id).filter(Farm.organization_id == user.organization_id)} | {farm.id}
@@ -21114,6 +21125,96 @@ def rate_stock_assistant_message(
     return Response(status_code=204)
 
 
+WHATSAPP_CODE_SESSION_KEY = "wa_link_code"
+
+
+def _whatsapp_link_for(db, user):
+    return db.query(WhatsAppLink).filter_by(user_id=user.id).first()
+
+
+@router.get("/mobile/assistente/whatsapp")
+def whatsapp_link_page(
+    request: Request, db: Session = Depends(get_db), user: User = Depends(get_current_user_web),
+    csrf_token: str = Depends(get_csrf_token),
+):
+    if not _can_use_stock_assistant(db, user):
+        raise HTTPException(status_code=403, detail="Sem permissão para usar o assistente.")
+    repo = _repository(db)
+    scope = _global_scope_context(request, repo, user)
+    link = _whatsapp_link_for(db, user)
+    code = None
+    saved = request.session.get(WHATSAPP_CODE_SESSION_KEY)
+    expires = link.code_expires_at if link else None
+    if expires is not None and expires.tzinfo is None:
+        expires = expires.replace(tzinfo=timezone.utc)
+    if saved and link and link.code_hash and expires and expires > datetime.now(timezone.utc) \
+            and whatsapp_bot.code_hash(saved) == link.code_hash:
+        code = saved
+    settings = get_settings()
+    display = re.sub(r"\D", "", settings.whatsapp_display_number or "")
+    return templates.TemplateResponse("whatsapp_link.html", _base_context(
+        request, user, csrf_token, "mobile", title="Assistente no WhatsApp", _repo=repo, assistant_scope=scope,
+        link=link, linked=bool(link and link.wa_id and link.verified_at),
+        link_farm=repo.get_farm(link.farm_id) if link else None,
+        link_season=repo.get_crop_season(link.season_id) if link else None,
+        masked_phone=mask_phone(link.wa_id) if link and link.wa_id else "",
+        code=code, code_minutes=whatsapp_bot.LINK_CODE_MINUTES,
+        wa_url=f"https://wa.me/{display}?text={quote('SISFARM ' + code)}" if code and display else None,
+        display_number=settings.whatsapp_display_number or "", configured=whatsapp_is_configured(),
+    ))
+
+
+@router.post("/mobile/assistente/whatsapp/codigo")
+def whatsapp_link_code(
+    request: Request, csrf_token: str = Form(...), db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    validate_csrf(request, csrf_token)
+    if not _can_use_stock_assistant(db, user):
+        raise HTTPException(status_code=403, detail="Sem permissão para usar o assistente.")
+    scope = _global_scope_context(request, _repository(db), user)
+    farm, season = scope["active_farm"], scope["active_season"]
+    if not farm or not season or season.farm_id != farm.id:
+        _flash(request, "error", "Selecione a fazenda e a safra no topo antes de vincular o WhatsApp.")
+        return _redirect("/mobile/assistente/whatsapp")
+    request.session[WHATSAPP_CODE_SESSION_KEY] = whatsapp_bot.start_link(db, user, farm, season)
+    return _redirect("/mobile/assistente/whatsapp")
+
+
+@router.post("/mobile/assistente/whatsapp/contexto")
+def whatsapp_link_context(
+    request: Request, csrf_token: str = Form(...), db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    validate_csrf(request, csrf_token)
+    if not _can_use_stock_assistant(db, user):
+        raise HTTPException(status_code=403, detail="Sem permissão para usar o assistente.")
+    scope = _global_scope_context(request, _repository(db), user)
+    farm, season, link = scope["active_farm"], scope["active_season"], _whatsapp_link_for(db, user)
+    if link and farm and season and season.farm_id == farm.id:
+        link.farm_id, link.season_id, link.organization_id, link.thread_id = farm.id, season.id, user.organization_id, None
+        db.commit()
+        _flash(request, "success", f"O WhatsApp agora lança em {farm.name} · {season.name}.")
+    return _redirect("/mobile/assistente/whatsapp")
+
+
+@router.post("/mobile/assistente/whatsapp/desvincular")
+def whatsapp_unlink(
+    request: Request, csrf_token: str = Form(...), db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    validate_csrf(request, csrf_token)
+    link = _whatsapp_link_for(db, user)
+    if link:
+        db.delete(link)
+        db.add(AuditLog(actor_user_id=user.id, actor_email=user.email, organization_id=user.organization_id,
+                        event_type="assistant.whatsapp.unlinked", outcome="success", metadata_json="{}"))
+        db.commit()
+    request.session.pop(WHATSAPP_CODE_SESSION_KEY, None)
+    _flash(request, "success", "WhatsApp desvinculado. Esse número não acessa mais seus dados.")
+    return _redirect("/mobile/assistente/whatsapp")
+
+
 @router.post("/mobile/assistente/{draft_id}/{action}")
 def resolve_stock_assistant_action(
     request: Request, draft_id: str, action: str, csrf_token: str = Form(...),
@@ -21132,77 +21233,82 @@ def resolve_stock_assistant_action(
         raise HTTPException(status_code=404, detail="Rascunho não encontrado neste contexto.")
     thread = _assistant_thread(db, user, scope, thread_id) if thread_id else None
     target = _assistant_url(thread.id if thread else None)
+    try:
+        _assistant_resolve_draft(db, user, repo, scope, draft, action, thread)
+    except ValueError as exc:
+        db.rollback()
+        _flash(request, "error", str(exc))
+    return _redirect(target)
+
+
+def _assistant_resolve_draft(db, user, repo, scope, draft, action, thread, channel="campo_mobile"):
+    """Confirma ou descarta um rascunho do assistente (web e WhatsApp). Erros sobem como ValueError."""
     messages = _thread_messages(thread)
 
     def say(text, state):
         if thread is None:
             return
-        _set_thread_draft_state(messages, draft_id, state)
+        _set_thread_draft_state(messages, draft.id, state)
         _save_thread(db, thread, messages + [{"role": "assistant", "content": text, "at": _assistant_now_iso()}])
 
-    try:
-        if action == "descartar":
-            if not claim_draft(db, draft, "discarded"):
-                raise ValueError("Este rascunho já foi processado ou expirou.")
-            db.commit()
-            say("Tudo bem, descartei esse lançamento e nada foi registrado. O que você quer corrigir?", "discarded")
-            return _redirect(target)
-        if draft.kind == "compra":
-            payload = json.loads(draft.payload_json or "{}")
-            if draft.movement_date > today_in_app_timezone():
-                raise ValueError("A data da compra não pode ser futura.")
-            catalog = db.get(InputCatalog, draft.input_id) if draft.input_id else None
-            if catalog is not None:  # item ja cadastrado: identidade vem do cadastro
-                resolved_type, resolved_category = catalog.item_type, catalog.category
-                resolved_unit = stock_unit(catalog, payload["package_unit"])
-            else:
-                resolved_type, resolved_category, resolved_unit, _ = _validate_purchased_entry_package_unit(
-                    repo, item_type=payload["item_type"], category=payload["category"], name=payload["name"],
-                    package_unit=payload["package_unit"], package_unit_override=None,
-                )
-            if resolved_unit != payload["package_unit"]:
-                raise ValueError("A unidade cadastrada desse item mudou. Peça um novo lançamento ao assistente.")
-            if not claim_draft(db, draft, "confirmed"):
-                raise ValueError("Este rascunho já foi processado ou expirou. Nenhuma compra foi registrada.")
-            purchase = create_purchased_input(repo, {
-                "farm_id": draft.farm_id, "item_type": resolved_type, "category": resolved_category,
-                "name": payload["name"], "quantity_purchased": payload["quantity_purchased"],
-                "package_size": payload["package_size"], "package_unit": resolved_unit,
-                "unit_price": payload["unit_price"], "purchase_date": payload["purchase_date"],
-                "supplier_name": payload.get("supplier_name"), **_assistant_purchase_finance(repo, scope["active_farm"], payload),
-                "notes": "; ".join(part for part in (payload.get("notes"), "Lançado pelo Assistente SiSFarm") if part),
-            })
-            db.add(AuditLog(actor_user_id=user.id, actor_email=user.email, organization_id=user.organization_id,
-                            event_type="stock.assistant.purchase_confirmed", outcome="success",
-                            metadata_json=json.dumps({"purchased_input_id": purchase.id, "draft_id": draft.id,
-                                                      "new_item": bool(payload.get("is_new")), "channel": "campo_mobile"})))
-            db.commit()
-            new_note = " e já deixei o item cadastrado" if payload.get("is_new") else ""
-            say(f"Prontinho! Dei entrada de {_format_decimal_br(draft.quantity, 2)} {draft.unit} de {purchase.name} no estoque"
-                f"{new_note}. Precisa de mais alguma coisa?", "confirmed")
-            return _redirect(target)
-        season = scope["active_season"]
-        _validate_assistant_movement_date(draft.movement_date, season)
-        plot = repo.get_plot(draft.plot_id) if draft.plot_id else None
-        if draft.plot_id and (not plot or not _plot_matches_scope(plot, scope) or not _plot_allowed_for_season_launch(plot, scope)):
-            raise ValueError("O setor não está disponível na safra ativa.")
-        if stock_unit(db.get(InputCatalog, draft.input_id), draft.unit) != draft.unit:
-            raise ValueError("A unidade cadastrada mudou. Prepare um novo rascunho.")
-        output = confirm_consumption(repo, draft)
-        if output is None:
-            raise ValueError("Este rascunho já foi processado ou expirou. Nenhum novo consumo foi registrado.")
-        db.add(AuditLog(actor_user_id=user.id, actor_email=user.email, organization_id=user.organization_id,
-                        event_type="stock.assistant.confirmed", outcome="success",
-                        metadata_json=json.dumps({"stock_output_id": output.id, "draft_id": draft.id, "channel": "campo_mobile"})))
+    if action == "descartar":
+        if not claim_draft(db, draft, "discarded"):
+            raise ValueError("Este rascunho já foi processado ou expirou.")
         db.commit()
-        item = db.get(InputCatalog, draft.input_id)
-        where = f" no {plot.name}" if plot else " (uso geral da fazenda)"
-        say(f"Pronto! Registrei a saída de {_format_decimal_br(draft.quantity, 2)} {draft.unit} de {item.name}{where} "
-            f"em {draft.movement_date.strftime('%d/%m/%Y')}. Quer lançar mais algum consumo?", "confirmed")
-    except ValueError as exc:
-        db.rollback()
-        _flash(request, "error", str(exc))
-    return _redirect(target)
+        say("Tudo bem, descartei esse lançamento e nada foi registrado. O que você quer corrigir?", "discarded")
+        return
+    if draft.kind == "compra":
+        payload = json.loads(draft.payload_json or "{}")
+        if draft.movement_date > today_in_app_timezone():
+            raise ValueError("A data da compra não pode ser futura.")
+        catalog = db.get(InputCatalog, draft.input_id) if draft.input_id else None
+        if catalog is not None:  # item ja cadastrado: identidade vem do cadastro
+            resolved_type, resolved_category = catalog.item_type, catalog.category
+            resolved_unit = stock_unit(catalog, payload["package_unit"])
+        else:
+            resolved_type, resolved_category, resolved_unit, _ = _validate_purchased_entry_package_unit(
+                repo, item_type=payload["item_type"], category=payload["category"], name=payload["name"],
+                package_unit=payload["package_unit"], package_unit_override=None,
+            )
+        if resolved_unit != payload["package_unit"]:
+            raise ValueError("A unidade cadastrada desse item mudou. Peça um novo lançamento ao assistente.")
+        if not claim_draft(db, draft, "confirmed"):
+            raise ValueError("Este rascunho já foi processado ou expirou. Nenhuma compra foi registrada.")
+        purchase = create_purchased_input(repo, {
+            "farm_id": draft.farm_id, "item_type": resolved_type, "category": resolved_category,
+            "name": payload["name"], "quantity_purchased": payload["quantity_purchased"],
+            "package_size": payload["package_size"], "package_unit": resolved_unit,
+            "unit_price": payload["unit_price"], "purchase_date": payload["purchase_date"],
+            "supplier_name": payload.get("supplier_name"), **_assistant_purchase_finance(repo, scope["active_farm"], payload),
+            "notes": "; ".join(part for part in (payload.get("notes"), "Lançado pelo Assistente SiSFarm") if part),
+        })
+        db.add(AuditLog(actor_user_id=user.id, actor_email=user.email, organization_id=user.organization_id,
+                        event_type="stock.assistant.purchase_confirmed", outcome="success",
+                        metadata_json=json.dumps({"purchased_input_id": purchase.id, "draft_id": draft.id,
+                                                  "new_item": bool(payload.get("is_new")), "channel": channel})))
+        db.commit()
+        new_note = " e já deixei o item cadastrado" if payload.get("is_new") else ""
+        say(f"Prontinho! Dei entrada de {_format_decimal_br(draft.quantity, 2)} {draft.unit} de {purchase.name} no estoque"
+            f"{new_note}. Precisa de mais alguma coisa?", "confirmed")
+        return
+    season = scope["active_season"]
+    _validate_assistant_movement_date(draft.movement_date, season)
+    plot = repo.get_plot(draft.plot_id) if draft.plot_id else None
+    if draft.plot_id and (not plot or not _plot_matches_scope(plot, scope) or not _plot_allowed_for_season_launch(plot, scope)):
+        raise ValueError("O setor não está disponível na safra ativa.")
+    if stock_unit(db.get(InputCatalog, draft.input_id), draft.unit) != draft.unit:
+        raise ValueError("A unidade cadastrada mudou. Prepare um novo rascunho.")
+    output = confirm_consumption(repo, draft)
+    if output is None:
+        raise ValueError("Este rascunho já foi processado ou expirou. Nenhum novo consumo foi registrado.")
+    db.add(AuditLog(actor_user_id=user.id, actor_email=user.email, organization_id=user.organization_id,
+                    event_type="stock.assistant.confirmed", outcome="success",
+                    metadata_json=json.dumps({"stock_output_id": output.id, "draft_id": draft.id, "channel": channel})))
+    db.commit()
+    item = db.get(InputCatalog, draft.input_id)
+    where = f" no {plot.name}" if plot else " (uso geral da fazenda)"
+    say(f"Pronto! Registrei a saída de {_format_decimal_br(draft.quantity, 2)} {draft.unit} de {item.name}{where} "
+        f"em {draft.movement_date.strftime('%d/%m/%Y')}. Quer lançar mais algum consumo?", "confirmed")
 
 
 @router.get("/mobile")

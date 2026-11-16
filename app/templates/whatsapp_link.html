@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="mx-auto w-full max-w-xl px-4 py-6 space-y-4">
+    <a href="/mobile/assistente" class="inline-flex items-center gap-1 text-sm text-slate-500 hover:text-slate-800">&larr; Voltar ao assistente</a>
+    <div class="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm space-y-4">
+        <div class="flex items-center gap-3">
+            <span class="flex h-11 w-11 items-center justify-center rounded-full bg-emerald-100 text-emerald-700">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 11.5a8.5 8.5 0 0 1-12.4 7.6L3 21l1.9-5.4A8.5 8.5 0 1 1 21 11.5z"/></svg>
+            </span>
+            <div>
+                <h1 class="text-lg font-semibold text-slate-900">Assistente no WhatsApp</h1>
+                <p class="text-sm text-slate-500">Lance consumos, compras e consulte a fazenda conversando pelo WhatsApp.</p>
+            </div>
+        </div>
+
+        {% if not configured %}
+        <p class="rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-800">A integração com o WhatsApp ainda não foi configurada no servidor.</p>
+        {% endif %}
+
+        {% if linked %}
+        <div class="rounded-xl bg-emerald-50 px-4 py-3 text-sm text-emerald-900 space-y-1">
+            <p><strong>Vinculado</strong> ao número terminado em {{ masked_phone[-4:] }}.</p>
+            <p>Lançamentos em <strong>{{ link_farm.name if link_farm else '-' }}</strong> · safra <strong>{{ link_season.name if link_season else '-' }}</strong>.</p>
+        </div>
+        {% if assistant_scope.active_farm and assistant_scope.active_season and (assistant_scope.active_farm.id != link.farm_id or assistant_scope.active_season.id != link.season_id) %}
+        <form method="post" action="/mobile/assistente/whatsapp/contexto">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <button class="w-full rounded-xl border border-slate-300 px-4 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50">
+                Passar a lançar em {{ assistant_scope.active_farm.name }} · {{ assistant_scope.active_season.name }}
+            </button>
+        </form>
+        {% endif %}
+        {% endif %}
+
+        {% if code %}
+        <div class="rounded-xl border border-emerald-200 bg-emerald-50/50 px-4 py-4 text-center space-y-2">
+            <p class="text-sm text-slate-600">Envie esta mensagem, <strong>do seu WhatsApp</strong>, para o número do SiSFarm{% if display_number %} <strong>{{ display_number }}</strong>{% endif %}:</p>
+            <p class="font-mono text-2xl font-bold tracking-widest text-slate-900 select-all">SISFARM {{ code }}</p>
+            <p class="text-xs text-slate-500">Vale por {{ code_minutes }} minutos e só pode ser usado uma vez.</p>
+            {% if wa_url %}
+            <a href="{{ wa_url }}" target="_blank" rel="noopener" class="inline-flex items-center justify-center rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-emerald-700">Abrir no WhatsApp</a>
+            {% endif %}
+            <p class="text-xs text-slate-500">Depois de enviar, atualize esta página.</p>
+        </div>
+        {% else %}
+        <form method="post" action="/mobile/assistente/whatsapp/codigo" class="space-y-2">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            {% if assistant_scope.active_farm and assistant_scope.active_season %}
+            <p class="text-sm text-slate-600">O WhatsApp vai lançar em <strong>{{ assistant_scope.active_farm.name }}</strong> · safra <strong>{{ assistant_scope.active_season.name }}</strong> (a fazenda e a safra selecionadas no topo).</p>
+            {% endif %}
+            <button class="w-full rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-emerald-700">
+                {{ 'Vincular outro número' if linked else 'Gerar código de vínculo' }}
+            </button>
+        </form>
+        {% endif %}
+
+        <ul class="list-disc space-y-1 pl-5 text-sm text-slate-600">
+            <li>Só o número que enviar o código terá acesso, com as mesmas permissões do seu usuário.</li>
+            <li>Todo lançamento aparece para você confirmar antes de ser gravado.</li>
+            <li>Envie <strong>novo</strong> para começar outra conversa. As conversas também aparecem aqui no assistente.</li>
+        </ul>
+
+        {% if link %}
+        <form method="post" action="/mobile/assistente/whatsapp/desvincular" onsubmit="return confirm('Desvincular o WhatsApp? O número deixa de acessar o SiSFarm.')">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <button class="text-sm font-medium text-red-600 hover:underline">Desvincular WhatsApp</button>
+        </form>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

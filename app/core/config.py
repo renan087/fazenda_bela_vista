@@ -25,6 +25,12 @@ class Settings(BaseSettings):
     openai_recommendation_model: str = "gpt-5-mini"
     openai_assistant_model: str = "gpt-4o-mini"
     openai_timeout_seconds: float = 25.0
+    whatsapp_verify_token: str | None = None
+    whatsapp_access_token: str | None = None
+    whatsapp_phone_number_id: str | None = None
+    whatsapp_app_secret: str | None = None
+    whatsapp_graph_version: str = "v23.0"
+    whatsapp_display_number: str | None = None
     smtp_host: str | None = None
     smtp_port: int = 587
     smtp_username: str | None = None
