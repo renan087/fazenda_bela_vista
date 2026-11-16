@@ -129,9 +129,14 @@ def test_whatsapp_conversation_template_is_read_only():
         messages=[{"role": "assistant", "content": "Confira", "time": "", "draft": {
             "id": "draft", "kind": "compra", "state": "pending", "item": "Café", "unit": "kg"}}],
     )
-    assert "modo de consulta" in html and "WhatsApp" in html
+    assert "Conversa do WhatsApp em modo consulta." in html
     assert 'action="/mobile/assistente/draft/confirmar"' not in html
     assert 'data-as-form' not in html
+
+
+def test_voice_controls_initialize_without_composer():
+    script = (Path(__file__).resolve().parents[1] / "app/static/js/assistant.js").read_text()
+    assert script.index("$$('[data-as-voice]').forEach(initVoice)") < script.index("if (!form || !box) return")
 
 
 def _tool_call(name, args, call_id="c1"):

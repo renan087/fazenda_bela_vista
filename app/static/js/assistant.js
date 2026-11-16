@@ -127,6 +127,31 @@
         }));
     });
 
+    const initVoice = (voice) => {
+        const audio = voice.querySelector('audio');
+        const play = $('[data-voice-play]', voice);
+        const wave = $('[data-voice-wave]', voice);
+        const time = $('[data-voice-time]', voice);
+        const transcript = $('[data-voice-text]', voice);
+        const toggle = $('[data-voice-transcript]', voice);
+        wave.replaceChildren(...Array.from({length: 36}, (_, i) => {
+            const bar = document.createElement('i');
+            bar.style.height = `${5 + ((i * 17 + i * i * 3) % 22)}px`;
+            return bar;
+        }));
+        play.addEventListener('click', () => { if (audio.paused) audio.play().catch(() => window.alert('Áudio indisponível.')); else audio.pause(); });
+        audio.addEventListener('play', () => { play.textContent = '❚❚'; play.setAttribute('aria-label', 'Pausar áudio'); });
+        audio.addEventListener('pause', () => { play.textContent = '▶'; play.setAttribute('aria-label', 'Reproduzir áudio'); });
+        const update = () => {
+            const seconds = Math.floor(audio.currentTime || 0);
+            time.textContent = `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
+            wave.querySelectorAll('i').forEach((bar, i) => bar.classList.toggle('played', audio.duration > 0 && i / 36 < audio.currentTime / audio.duration));
+        };
+        audio.addEventListener('timeupdate', update);
+        wave.addEventListener('click', (event) => { if (audio.duration) audio.currentTime = audio.duration * Math.max(0, Math.min(1, (event.clientX - wave.getBoundingClientRect().left) / wave.clientWidth)); });
+        if (toggle && transcript) toggle.addEventListener('click', () => { transcript.hidden = !transcript.hidden; toggle.textContent = transcript.hidden ? 'Ver transcrição' : 'Ocultar transcrição'; toggle.setAttribute('aria-expanded', String(!transcript.hidden)); });
+    };
+    $$('[data-as-voice]').forEach(initVoice);
     if (!form || !box) return;
     if (window.matchMedia('(max-width: 639px)').matches) box.placeholder = 'Escreva uma mensagem…';
     grow();
@@ -251,31 +276,6 @@
         setTimeout(() => { swap(); setInterval(swap, 2200); }, 1400);
     };
 
-    const initVoice = (voice) => {
-        const audio = voice.querySelector('audio');
-        const play = $('[data-voice-play]', voice);
-        const wave = $('[data-voice-wave]', voice);
-        const time = $('[data-voice-time]', voice);
-        const transcript = $('[data-voice-text]', voice);
-        const toggle = $('[data-voice-transcript]', voice);
-        wave.replaceChildren(...Array.from({length: 36}, (_, i) => {
-            const bar = document.createElement('i');
-            bar.style.height = `${5 + ((i * 17 + i * i * 3) % 22)}px`;
-            return bar;
-        }));
-        play.addEventListener('click', () => { if (audio.paused) audio.play().catch(() => window.alert('Áudio indisponível.')); else audio.pause(); });
-        audio.addEventListener('play', () => { play.textContent = '❚❚'; play.setAttribute('aria-label', 'Pausar áudio'); });
-        audio.addEventListener('pause', () => { play.textContent = '▶'; play.setAttribute('aria-label', 'Reproduzir áudio'); });
-        const update = () => {
-            const seconds = Math.floor(audio.currentTime || 0);
-            time.textContent = `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
-            wave.querySelectorAll('i').forEach((bar, i) => bar.classList.toggle('played', audio.duration > 0 && i / 36 < audio.currentTime / audio.duration));
-        };
-        audio.addEventListener('timeupdate', update);
-        wave.addEventListener('click', (event) => { if (audio.duration) audio.currentTime = audio.duration * Math.max(0, Math.min(1, (event.clientX - wave.getBoundingClientRect().left) / wave.clientWidth)); });
-        if (toggle && transcript) toggle.addEventListener('click', () => { transcript.hidden = !transcript.hidden; toggle.textContent = transcript.hidden ? 'Ver transcrição' : 'Ocultar transcrição'; toggle.setAttribute('aria-expanded', String(!transcript.hidden)); });
-    };
-    $$('[data-as-voice]').forEach(initVoice);
     initVoice($('[data-as-audio-preview]', form));
 
     // Envio: mostra a mensagem e o "Pensando…" enquanto o servidor responde
