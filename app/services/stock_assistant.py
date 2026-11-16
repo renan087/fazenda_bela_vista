@@ -79,7 +79,7 @@ PURCHASE_TOOL = {"type": "function", "function": {
                    "required": ["item_id", "nome_novo", "tipo", "categoria", "unidade", "quantidade_embalagens",
                                 "tamanho_embalagem", "preco_por_embalagem", "valor_total", "data", "fornecedor", "observacao",
                                 "forma_pagamento", "condicao", "parcelas", "periodicidade", "primeira_parcela", "conta_id",
-                                "cartao_id", "cartao_desconhecido", "lote", "fabricacao", "validade", "estoque_minimo"],
+                                "cartao_id", "cartao_desconhecido", "lote", "fabricacao", "validade", "estoque_minimo", "fabricante"],
                    "properties": {
                        "item_id": {"type": ["integer", "null"], "description": "Item já cadastrado (de buscar_itens) ou null se for novo."},
                        "nome_novo": {"type": ["string", "null"], "description": "Nome do item novo, como o produtor chama (ex.: 'Ureia 46%'). null se item_id."},
@@ -91,7 +91,8 @@ PURCHASE_TOOL = {"type": "function", "function": {
                        "preco_por_embalagem": {"type": ["number", "null"], "description": "Preço de cada embalagem em R$, se informado."},
                        "valor_total": {"type": ["number", "null"], "description": "Valor total da compra em R$, se informado."},
                        "data": {"type": "string", "description": "Data da compra, AAAA-MM-DD."},
-                       "fornecedor": {"type": ["string", "null"], "description": "Loja/fornecedor, se o usuário contou."},
+                       "fornecedor": {"type": ["string", "null"], "description": "Revenda ou distribuidora de quem foi comprado, não o fabricante."},
+                       "fabricante": {"type": ["string", "null"], "description": "Empresa que fabricou o produto, apenas se informada."},
                        "observacao": {"type": ["string", "null"], "description": "Outros detalhes úteis que o usuário contou (ex.: número da nota)."},
                        "forma_pagamento": {"type": ["string", "null"], "description": "Uma das formas de listar_formas_pagamento (ex.: PIX, Boleto, Cartão de crédito). null se não souber."},
                        "condicao": {"type": ["string", "null"], "enum": ["a_vista", "a_prazo", None], "description": "a_prazo para parcelado/boleto para depois. null se não souber (vira à vista)."},
@@ -108,7 +109,7 @@ PURCHASE_TOOL = {"type": "function", "function": {
                    }},
 }}
 PURCHASE_OPTIONAL_FIELDS = ("forma_pagamento", "condicao", "parcelas", "periodicidade", "primeira_parcela", "conta_id",
-                            "cartao_id", "cartao_desconhecido", "lote", "fabricacao", "validade", "estoque_minimo")
+                            "cartao_id", "cartao_desconhecido", "lote", "fabricacao", "validade", "estoque_minimo", "fabricante")
 
 PAYMENT_OPTIONS_TOOL = {"type": "function", "function": {
     "name": "listar_formas_pagamento",
@@ -264,12 +265,17 @@ class FarmAssistant:
             category = next((c for c in categories if normalized(c) == normalized(categoria or "")), None)
             if not category:
                 raise ValueError(f"Categoria inválida para {tipo}. Opções: {', '.join(categories)}.")
+            if normalized(name) == normalized(category):
+                raise ValueError(f"'{name}' é a categoria. Pergunte o nome do produto comprado, por exemplo glifosato, sem substituí-lo pela categoria.")
             allowed_units = categories[category]
             unit = next((u for u in allowed_units if _unit_key(u) == _unit_key(unidade)), None)
             if not unit:
                 raise ValueError(f"Unidade inválida para {category}. Opções: {', '.join(allowed_units)}.")
             item_type, is_new = tipo, True
         notes = " ".join(str(observacao or "").split())[:300] or None
+        manufacturer = " ".join(str(extras.get("fabricante") or "").split())[:160]
+        if manufacturer and normalized(manufacturer) not in ("none", "null", "nao informado"):
+            notes = "; ".join(filter(None, (f"Fabricante: {manufacturer}", notes)))[:300]
         supplier = " ".join(str(fornecedor or "").split())[:160] or None
         self.draft_id, adjustments = self.prepare_purchase(
             item=self.items.get(int(item_id)) if item_id else None, name=name, item_type=item_type, category=category,
@@ -345,6 +351,8 @@ class FarmAssistant:
                "- Primeiro busque o item. Se já existir, use-o (tipo, categoria e unidade vêm do cadastro). Se não existir, "
                "confirme com o usuário que é um item novo e descubra o tipo e a categoria pelo contexto (ex.: diesel -> "
                "combustível/Combustíveis; ureia -> insumo agrícola/Fertilizantes); pergunte só se não der para deduzir.\n"
+               "- O nome do produto é o nome específico informado pelo usuário, nunca a categoria: glifosato é o produto, "
+               "herbicida é a categoria. Se só souber a categoria, pergunte qual produto foi comprado.\n"
                f"- Categorias e unidades permitidas para item novo: {purchase_rules}.\n"
                "- Essencial: quantas embalagens, o conteúdo de cada uma (ex.: 10 sacos de 50 kg; 200 L a granel = 1 x 200 L), "
                "o preço (por embalagem ou o total) e a data.\n"
@@ -357,10 +365,12 @@ class FarmAssistant:
                "de uma e for parcelado/boleto. "
                "Parcelado = condicao a_prazo com o número de parcelas; pergunte o vencimento da 1ª parcela só se fizer sentido "
                "(no cartão não precisa). Boleto para 30 dias = a_prazo, 1 parcela.\n"
-               "  b) Rastreabilidade: 'Você tem aí o número do lote e a validade? Se quiser, manda uma foto da embalagem ou da "
-               "nota que eu leio.' Aceite o que vier (lote, fabricação, validade).\n"
+               "  b) Rastreabilidade: explique que revenda/fornecedor é quem vendeu e fabricante é quem produziu. Pergunte "
+               "se sabe a revenda, o fabricante, número do lote, data de fabricação e validade, indicando que todos são "
+               "opcionais e que pode informar apenas o que tiver; aceite foto da embalagem ou nota. Nunca troque fabricante "
+               "por fornecedor. Guarde fabricante informado em fabricante e revenda em fornecedor.\n"
                "  c) Só para item novo: 'Quer que eu avise quando o estoque estiver baixo? A partir de quanto?'.\n"
-               "  d) Fornecedor, se ainda não foi dito, pode entrar junto de outra pergunta, sem insistir.\n"
+               "  d) Não insista em dados opcionais que o usuário não souber.\n"
                "- Se o usuário não souber, não tiver, disser 'pode lançar', 'tanto faz' ou ignorar a pergunta, siga em frente "
                "sem aquele dado: pagamento desconhecido vira à vista. Nunca trave o lançamento por um complemento.\n"
                "- Se o usuário já contou tudo de uma vez, não repita perguntas: prepare direto.\n"

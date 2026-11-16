@@ -390,6 +390,7 @@ def test_purchase_payment_and_lot_degrade_gracefully(monkeypatch):
                              display_order=0, created_at=datetime.now(timezone.utc)))
     db.commit()
     send("comprei de novo, no cartão em 3x")
+    assert sent[1][0][0]["role"] == "system" and "Rascunho de compra pendente" in sent[1][0][0]["content"]
     card = thread_history()[-1]["draft"]
     assert card["payment"].startswith("Parcelado em 3x · Cartão de crédito Nubank") and "cartão Nubank" in card["finance"]
     assert card["lot"] == "Lote A1 · Val. 01/05/2027" and card["minimum"] == "20,00 L"
@@ -425,9 +426,30 @@ def test_assistant_never_picks_a_card_when_there_are_several(monkeypatch):
 
     send("comprei 50 litros de gasolina no cartão")
     assert "Nubank, Sicredi" in thread_history()[-1]["content"] and not db.query(StockAssistantDraft).count()
-    replies[0]["cartao_id"] = cards[1].id  # proxima resposta: usuario escolheu o Sicredi
+    replies[0]["cartao_id"] = cards[0].id  # IA errou: usuario escolheu Sicredi, nao Nubank
     send("foi no Sicredi")
     assert "Sicredi" in thread_history()[-1]["draft"]["payment"]
     send("na verdade não lembro o cartão")
     card = thread_history()[-1]["draft"]
     assert card["payment"] == "À vista" and "cartão" not in card["finance"]
+
+
+def test_purchase_rejects_category_as_product_and_records_manufacturer():
+    from app.services.stock_assistant import FarmAssistant
+    captured = {}
+    assistant = FarmAssistant(
+        farm_name="Fazenda", season=None, items=[], balances={}, plots=[], today=date(2026, 11, 15),
+        prepare_draft=lambda **kwargs: None,
+        prepare_purchase=lambda **kwargs: (captured.update(kwargs) or "draft", []),
+        purchase_rules={"insumo_agricola": {"Herbicida": ["L"]}},
+    )
+    base = dict(item_id=None, nome_novo="Herbicida", tipo="insumo_agricola", categoria="Herbicida",
+                unidade="L", quantidade_embalagens=5, tamanho_embalagem=20, preco_por_embalagem=300,
+                data="2026-11-15", fornecedor="Revenda A", fabricante="Fabricante B")
+    with pytest.raises(ValueError, match="é a categoria"):
+        assistant.preparar_compra(**base)
+    assistant.preparar_compra(**{**base, "nome_novo": "Glifosato"})
+    assert captured["name"] == "Glifosato"
+    assert captured["category"] == "Herbicida"
+    assert captured["supplier"] == "Revenda A"
+    assert captured["notes"] == "Fabricante: Fabricante B"

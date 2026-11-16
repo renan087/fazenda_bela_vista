@@ -384,8 +384,8 @@
                 <div class="rounded-[1.5rem] border border-slate-200 bg-slate-50/70 p-4">
                     <div class="mb-4"><p class="text-xs uppercase tracking-[0.25em] text-slate-400">Rastreabilidade do lote</p><p class="mt-1 text-sm text-slate-500">Opcional. Informe quando houver dados na embalagem para priorizar o uso e alertar vencimentos.</p></div>
                     <div class="grid gap-4 md:grid-cols-2">
-                        <label><span class="mb-2 block text-sm font-medium">Fornecedor</span><input name="supplier_name" value="{{ edit_input.supplier_name if edit_input else '' }}" maxlength="160" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-white" placeholder="Ex.: distribuidora ou revenda"></label>
-                        <label><span class="mb-2 block text-sm font-medium">Número do lote</span><input name="batch_number" value="{{ edit_input.batch_number if edit_input else '' }}" maxlength="120" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-white" placeholder="Ex.: LT-2026-001"></label>
+                        <label><span class="mb-2 block text-sm font-medium">Fornecedor</span><input name="supplier_name" value="{{ (edit_input.supplier_name or '') if edit_input else '' }}" maxlength="160" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-white" placeholder="Ex.: distribuidora ou revenda"></label>
+                        <label><span class="mb-2 block text-sm font-medium">Número do lote</span><input name="batch_number" value="{{ (edit_input.batch_number or '') if edit_input else '' }}" maxlength="120" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-white" placeholder="Ex.: LT-2026-001"></label>
                     </div>
                     <div class="mt-4 grid gap-4 md:grid-cols-2">
                         <label><span class="mb-2 block text-sm font-medium">Data de fabricação</span><input type="date" name="manufacture_date" value="{{ edit_input.manufacture_date.isoformat() if edit_input and edit_input.manufacture_date else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-white"></label>

@@ -14,6 +14,7 @@ import json
 from jinja2 import pass_context
 from markupsafe import Markup
 import logging
+import re
 import unicodedata
 import urllib.error
 import urllib.request
@@ -20755,6 +20756,14 @@ def prepare_stock_assistant_action(
                                  farm_id=farm.id, season_id=season.id, title=message[:60], created_at=now, updated_at=now)
     history = _thread_messages(thread) + [{"role": "user", "content": message, "at": _assistant_now_iso(),
                                            **({"photo": True} if image else {})}]
+    pending_purchase = None
+    for entry in reversed(history[:-1]):
+        previous = entry.get("draft") or {}
+        if previous.get("kind") == "compra" and previous.get("id"):
+            row = _assistant_draft(db, user, previous["id"])
+            if row and row.kind == "compra" and row.status == "pending" and _assistant_draft_state(db, previous) == "pending":
+                pending_purchase = row
+                break
 
     def reply(text, *, error=False, tools=None, draft=None):
         item = {"role": "assistant", "content": text[:600], "at": _assistant_now_iso()}
@@ -20836,12 +20845,29 @@ def prepare_stock_assistant_action(
         card = None
         if extras.get("cartao_id") or (method and key(method) == key("Cartão de crédito")):
             method = "Cartão de crédito"
-            card = next((c for c in credit_cards if c.id == extras.get("cartao_id")), None)
+            mentioned = []
+            for entry in ([] if extras.get("cartao_desconhecido") else reversed(history)):
+                if (entry.get("draft") or {}).get("id"):
+                    break
+                if entry.get("role") != "user":
+                    continue
+                text = key(entry.get("content"))
+                mentioned = [c for c in credit_cards if re.search(r"(?<!\w)" + re.escape(key(c.card_name)) + r"(?!\w)", text)]
+                if mentioned:
+                    break
+            if len(mentioned) > 1:
+                raise ValueError("Mais de um cartão foi mencionado. Pergunte qual foi usado nesta compra.")
+            if mentioned:
+                card = mentioned[0]
+            elif pending_purchase and not extras.get("cartao_desconhecido"):
+                previous_payload = json.loads(pending_purchase.payload_json or "{}")
+                card = next((c for c in credit_cards if c.id == previous_payload.get("credit_card_id")), None)
+            if card is None and len(credit_cards) == 1 and not extras.get("cartao_desconhecido"):
+                card = credit_cards[0]
             if card is None and len(credit_cards) > 1 and not extras.get("cartao_desconhecido"):
                 names = ", ".join(c.card_name for c in credit_cards)
                 raise ValueError(f"Há {len(credit_cards)} cartões cadastrados ({names}). Não escolha sozinho: pergunte ao "
                                  "usuário, com naturalidade e citando os nomes, em qual deles foi a compra.")
-            card = card or (credit_cards[0] if len(credit_cards) == 1 else None)
             if card is None:
                 adjustments.append("você não lembrou o cartão, então lancei à vista sem cartão" if extras.get("cartao_desconhecido")
                                    else "não achei o cartão de crédito cadastrado na fazenda, então lancei à vista sem cartão")
@@ -20882,6 +20908,8 @@ def prepare_stock_assistant_action(
             minimum = None
         minimum = minimum if minimum is not None and minimum.is_finite() and minimum > 0 else None
         batch = " ".join(str(extras.get("lote") or "").split())[:80] or None
+        if batch and key(batch) in ("none", "null", "nao informado"):
+            batch = None
         return {
             "payment_method": method, "payment_condition": condition, "installment_count": installments,
             "installment_frequency": frequency, "first_installment_date": first_installment.isoformat() if first_installment else None,
@@ -20955,6 +20983,16 @@ def prepare_stock_assistant_action(
                               purchase_rules=purchase_rules, payment_options=payment_options)
     # A IA recebe so mensagens validas (sem os avisos de erro) e as mais recentes.
     ai_history = [{"role": item["role"], "content": item["content"]} for item in history if not item.get("error")][-10:]
+    if pending_purchase:
+        try:
+            pending_payload = json.loads(pending_purchase.payload_json or "{}")
+            ai_history.insert(0, {"role": "system", "content": (
+                "Rascunho de compra pendente nesta conversa, para pedidos de ajuste: "
+                + json.dumps(pending_payload, ensure_ascii=False)
+                + ". Preserve os dados não alterados pelo usuário. Ao ajustar, prepare um novo rascunho para conferência."
+            )})
+        except (ValueError, TypeError):
+            logging.getLogger(__name__).warning("Rascunho de compra inválido: %s", pending_purchase.id)
     try:
         result = run_farm_assistant(ai_history, assistant, **({"image": image} if image else {}))
     except ValueError as exc:
