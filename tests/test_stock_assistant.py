@@ -1,7 +1,9 @@
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
+from pathlib import Path
 
 import pytest
+from jinja2 import ChoiceLoader, DictLoader, Environment, FileSystemLoader
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 
@@ -90,3 +92,23 @@ def test_expired_draft_cannot_be_confirmed(scenario):
     draft.expires_at = datetime.now(timezone.utc) - timedelta(minutes=1)
     repo.db.commit()
     assert confirm_consumption(repo, draft) is None and lot.available_quantity == 50
+
+
+def test_purchase_is_explained_without_preparing_a_consumption():
+    with pytest.raises(ValueError, match="descreve uma compra"):
+        parse_consumption("Comprei 20 litros de gasolina, R$5,70 o litro", date(2026, 11, 15))
+
+
+def test_prepare_form_includes_csrf_token():
+    templates_dir = Path(__file__).resolve().parents[1] / "app" / "templates"
+    env = Environment(loader=ChoiceLoader([
+        DictLoader({"base.html": "{% block content %}{% endblock %}"}),
+        FileSystemLoader(templates_dir),
+    ]), autoescape=True)
+    env.filters["decimal_br"] = str
+    html = env.get_template("stock_assistant.html").render(
+        assistant_scope={"active_farm": {"name": "Fazenda"}, "active_season": {"name": "Safra"}},
+        csrf_token="test-token",
+    )
+    form = html.split('action="/mobile/assistente"', 1)[1].split("</form>", 1)[0]
+    assert 'name="csrf_token" value="test-token"' in form
