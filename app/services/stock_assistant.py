@@ -441,8 +441,10 @@ class FarmAssistant:
                 messages.insert(last_user, {"role": "system", "content": (
                     "Itens cadastrados que combinam com a próxima mensagem do usuário (use um deles se for esse o produto; "
                     "se houver só um, assuma e confirme pelo nome):\n" + "\n".join(f"- {self._item_line(item)}" for item in matches))})
-        # Modelos de raciocinio (gpt-5, o*) nao aceitam temperature; nos demais, menos criatividade = menos invencao.
-        sampling = {} if model.startswith(("gpt-5", "o1", "o3", "o4")) else {"temperature": 0.2}
+        # Modelos de raciocinio (gpt-5, o*) nao aceitam temperature: usam esforco de raciocinio baixo (resposta rapida).
+        # Nos demais, menos criatividade = menos invencao.
+        sampling = ({"reasoning_effort": (os.getenv("OPENAI_ASSISTANT_REASONING_EFFORT") or "low").strip()}
+                    if is_reasoning_model(model) else {"temperature": 0.2})
         for _ in range(AGENT_MAX_STEPS):
             response = client.chat.completions.create(
                 model=model, messages=messages, tools=self.tools, tool_choice="auto", parallel_tool_calls=False, **sampling,
@@ -501,6 +503,10 @@ _QUERY_LABELS = {
 }
 
 
+def is_reasoning_model(model: str) -> bool:
+    return (model or "").startswith(("gpt-5", "o1", "o3", "o4"))
+
+
 def run_farm_assistant(history, assistant: "FarmAssistant", image=None):
     """Executa o agente; erros da OpenAI viram ValueError com mensagem clara."""
     api_key = os.getenv("OPENAI_API_KEY") or get_settings().openai_api_key
@@ -508,8 +514,11 @@ def run_farm_assistant(history, assistant: "FarmAssistant", image=None):
         raise ValueError("O assistente de IA ainda não está configurado. Contate o administrador.")
     from openai import OpenAI
 
-    model = (os.getenv("OPENAI_ASSISTANT_MODEL") or get_settings().openai_assistant_model or "gpt-4o-mini").strip()
-    client = OpenAI(api_key=api_key, timeout=get_settings().openai_timeout_seconds, max_retries=1)
+    model = (os.getenv("OPENAI_ASSISTANT_MODEL") or get_settings().openai_assistant_model or "gpt-5-mini").strip()
+    timeout = get_settings().openai_timeout_seconds
+    if is_reasoning_model(model):
+        timeout = max(timeout, 60.0)  # o raciocinio leva alguns segundos a mais por etapa
+    client = OpenAI(api_key=api_key, timeout=timeout, max_retries=1)
     try:
         return assistant.run(history, client=client, model=model, image=image)
     except Exception as exc:

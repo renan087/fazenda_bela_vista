@@ -527,7 +527,7 @@ def test_assistant_knows_registered_items_and_matches_partial_names():
     assert messages[-1] == {"role": "user", "content": "Comprei 100 l de diesel"}
     assert calls[0]["temperature"] == 0.2 and 3 in assistant.seen and result["resposta"].startswith("Beleza")
     _assistant([]).run([{"role": "user", "content": "oi"}], client=_fake_client(["Oi!"], calls), model="gpt-5-mini")
-    assert "temperature" not in calls[-1]
+    assert "temperature" not in calls[-1] and calls[-1]["reasoning_effort"] == "low"
 
 
 def test_route_remembers_items_between_turns(monkeypatch):
