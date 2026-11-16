@@ -1,4 +1,5 @@
 from app.models.audit_log import AuditLog
+from app.models.assistant_thread import AssistantThread
 from app.models.automated_test_run import AutomatedTestRun, AutomatedTestSuiteResult
 from app.models.agronomic_profile import AgronomicProfile
 from app.models.agricultural_operation import AgriculturalOperation
@@ -62,6 +63,7 @@ from app.models.trusted_browser_token import TrustedBrowserToken
 from app.models.user import User
 
 __all__ = [
+    "AssistantThread",
     "AutomatedTestRun",
     "AutomatedTestSuiteResult",
     "AuditLog",

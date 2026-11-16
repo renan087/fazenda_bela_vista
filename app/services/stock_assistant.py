@@ -78,6 +78,7 @@ class FarmAssistant:
         self.today = today
         self.prepare_draft = prepare_draft
         self.draft_id = None
+        self.trace = []  # o que o agente consultou, mostrado ao usuario abaixo da resposta
 
     # ---------------------------------------------------------------- ferramentas
     def _item_view(self, item):
@@ -152,9 +153,13 @@ class FarmAssistant:
                        "consultar_saldo": self.consultar_saldo, "preparar_consumo": self.preparar_consumo}.get(name)
             if handler is None:
                 raise ValueError(f"Ferramenta desconhecida: {name}")
-            return handler(**args)
+            result = handler(**args)
         except (ValueError, TypeError, ArithmeticError) as exc:
-            return {"erro": str(exc) or "Dados inválidos."}
+            result = {"erro": str(exc) or "Dados inválidos."}
+        label = _trace_label(name, result)
+        if label and label not in self.trace:
+            self.trace.append(label)
+        return result
 
     # ---------------------------------------------------------------- conversa
     def instructions(self):
@@ -177,12 +182,19 @@ class FarmAssistant:
             "- Pergunte o que faltar, no máximo um ou dois dados por vez. Não invente valores.\n"
             "- Quando tiver tudo, chame preparar_consumo. Se ela devolver erro, explique ao usuário e peça o ajuste.\n"
             "- Nunca diga que registrou: o usuário confirma na tela.\n"
-            "- Nesta versão você só prepara consumo. Para compra, despesa, chuva ou outro lançamento, explique com gentileza "
+            "- Se o usuário enviar uma foto (nota, etiqueta, bomba de combustível), use os dados legíveis dela e confirme "
+            "o que não estiver claro.\n"
+            "- Nesta versão você prepara consumo, informa saldo de itens e lista setores. Para compra, despesa, chuva ou outro lançamento, explique com gentileza "
             "que ainda não faz isso, sem transformar em consumo. Não responda assuntos fora do SiSFarm."
         )
 
-    def run(self, history, *, client, model):
+    def run(self, history, *, client, model, image=None):
         messages = [{"role": "system", "content": self.instructions()}] + list(history)
+        if image and messages[-1]["role"] == "user":
+            messages[-1] = {"role": "user", "content": [
+                {"type": "text", "text": messages[-1]["content"]},
+                {"type": "image_url", "image_url": {"url": image, "detail": "low"}},
+            ]}
         for _ in range(AGENT_MAX_STEPS):
             response = client.chat.completions.create(
                 model=model, messages=messages, tools=AGENT_TOOLS, tool_choice="auto", parallel_tool_calls=False,
@@ -204,7 +216,27 @@ class FarmAssistant:
         return {"resposta": "Não consegui concluir. Pode me dizer de novo o item, a quantidade, o setor e a data?", "draft_id": self.draft_id}
 
 
-def run_farm_assistant(history, assistant: "FarmAssistant"):
+def _num_br(value) -> str:
+    text = f"{float(value):,.2f}".rstrip("0").rstrip(".")
+    return text.replace(",", "X").replace(".", ",").replace("X", ".")
+
+
+def _trace_label(name, result):
+    if not isinstance(result, dict):
+        return None
+    if name == "buscar_itens":
+        items = result.get("itens") or []
+        return f"Buscou item · {items[0]['nome']}" if items else "Buscou item · nada encontrado"
+    if name == "listar_setores":
+        return f"Listou setores · {len(result.get('setores') or [])}"
+    if name == "consultar_saldo" and "saldo_na_fazenda" in result:
+        return f"Conferiu saldo · {_num_br(result['saldo_na_fazenda'])} {result.get('unidade') or ''}".strip()
+    if name == "preparar_consumo":
+        return "Preparou rascunho" if result.get("ok") else "Validou dados · precisa de ajuste"
+    return None
+
+
+def run_farm_assistant(history, assistant: "FarmAssistant", image=None):
     """Executa o agente; erros da OpenAI viram ValueError com mensagem clara."""
     api_key = os.getenv("OPENAI_API_KEY") or get_settings().openai_api_key
     if not api_key:
@@ -214,7 +246,7 @@ def run_farm_assistant(history, assistant: "FarmAssistant"):
     model = (os.getenv("OPENAI_ASSISTANT_MODEL") or get_settings().openai_assistant_model or "gpt-4o-mini").strip()
     client = OpenAI(api_key=api_key, timeout=get_settings().openai_timeout_seconds, max_retries=1)
     try:
-        return assistant.run(history, client=client, model=model)
+        return assistant.run(history, client=client, model=model, image=image)
     except Exception as exc:
         if assistant.draft_id:  # rascunho ja criado: segue para a conferencia mesmo se algo falhar depois
             return {"resposta": DRAFT_READY_REPLY, "draft_id": assistant.draft_id}

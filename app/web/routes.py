@@ -9,6 +9,7 @@ from uuid import uuid4
 import calendar
 
 import hashlib
+import base64
 import json
 from jinja2 import pass_context
 from markupsafe import Markup
@@ -33,7 +34,8 @@ from sqlalchemy.orm import Session, joinedload
 from starlette.datastructures import UploadFile as StarletteUploadFile
 
 from app.core.config import get_settings
-from app.models.stock_assistant_draft import StockAssistantConversation, StockAssistantDraft
+from app.models.assistant_thread import AssistantThread
+from app.models.stock_assistant_draft import StockAssistantDraft
 from app.models.audit_log import AuditLog
 from app.models.input_catalog import InputCatalog
 from app.services.stock_assistant import STOCK_ITEM_TYPES, FarmAssistant, claim_draft, confirm_consumption, run_farm_assistant, stock_unit
@@ -20583,37 +20585,113 @@ def _assistant_draft(db, user, draft_id):
     ).first()
 
 
-def _assistant_scope_key(user, scope) -> str:
-    return f'{user.organization_id}:{scope["active_farm_id"]}:{scope["active_season_id"]}'
+ASSISTANT_MAX_MESSAGES = 40
+ASSISTANT_PHOTO_TYPES = {"image/jpeg", "image/png", "image/webp"}
+ASSISTANT_PHOTO_MAX_BYTES = 5 * 1024 * 1024
 
 
-def _assistant_history(db, user, scope):
-    row = db.get(StockAssistantConversation, user.id)
-    if row is None:
-        return []
-    if row.scope_key != _assistant_scope_key(user, scope):
+def _assistant_threads(db, user, scope, limit=40):
+    return (db.query(AssistantThread)
+            .filter_by(user_id=user.id, organization_id=user.organization_id,
+                       farm_id=scope["active_farm_id"], season_id=scope["active_season_id"])
+            .order_by(AssistantThread.updated_at.desc()).limit(limit).all())
+
+
+def _assistant_thread(db, user, scope, thread_id):
+    if not thread_id or len(thread_id) != 32:
+        return None
+    return db.query(AssistantThread).filter_by(
+        id=thread_id, user_id=user.id, organization_id=user.organization_id,
+        farm_id=scope["active_farm_id"], season_id=scope["active_season_id"],
+    ).first()
+
+
+def _thread_messages(thread):
+    if thread is None:
         return []
     try:
-        messages = json.loads(row.messages_json or "[]")
+        messages = json.loads(thread.messages_json or "[]")
     except ValueError:
         return []
     return [item for item in messages if isinstance(item, dict) and item.get("role") in ("user", "assistant")]
 
 
-def _save_assistant_history(db, user, scope, history):
-    row = db.get(StockAssistantConversation, user.id) or StockAssistantConversation(user_id=user.id)
-    row.scope_key = _assistant_scope_key(user, scope)
-    row.messages_json = json.dumps([
-        {k: v for k, v in item.items() if k in ("role", "content", "error")} for item in history[-12:]
-    ], ensure_ascii=False)
-    row.updated_at = datetime.now(timezone.utc)
-    db.add(row)
+def _save_thread(db, thread, messages):
+    thread.messages_json = json.dumps(messages[-ASSISTANT_MAX_MESSAGES:], ensure_ascii=False, default=str)
+    thread.updated_at = datetime.now(timezone.utc)
+    db.add(thread)
     db.commit()
+
+
+def _assistant_url(thread_id=None):
+    return f"/mobile/assistente?c={thread_id}" if thread_id else "/mobile/assistente"
+
+
+def _assistant_now_iso():
+    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
+def _assistant_local(value):
+    try:
+        moment = datetime.fromisoformat(value)
+    except (TypeError, ValueError):
+        return None
+    if moment.tzinfo is None:
+        moment = moment.replace(tzinfo=timezone.utc)
+    return moment.astimezone(get_app_timezone())
+
+
+def _assistant_draft_state(db, message_draft):
+    """Estado atual do rascunho citado na conversa (pendente, registrado, descartado ou expirado)."""
+    state = message_draft.get("state") or "pending"
+    if state != "pending":
+        return state
+    draft = db.get(StockAssistantDraft, message_draft.get("id"))
+    if not draft or draft.status != "pending":
+        return "expired"
+    expires = draft.expires_at if draft.expires_at.tzinfo else draft.expires_at.replace(tzinfo=timezone.utc)
+    return "pending" if expires > datetime.now(timezone.utc) else "expired"
+
+
+def _assistant_thread_list(db, threads, active_id):
+    today = today_in_app_timezone()
+    groups, order = {}, []
+    for thread in threads:
+        messages = _thread_messages(thread)
+        pending = any((m.get("draft") or {}).get("state", "pending") == "pending" and m.get("draft") and
+                      _assistant_draft_state(db, m["draft"]) == "pending" for m in messages)
+        last = next((m for m in reversed(messages) if not m.get("error")), None)
+        subtitle = "Rascunho aguardando confirmação" if pending else ((last or {}).get("content") or "Sem mensagens")[:80]
+        local = _assistant_local(thread.updated_at.isoformat() if thread.updated_at else None)
+        days = (today - local.date()).days if local else 99
+        label = "Hoje" if days <= 0 else "Ontem" if days == 1 else "Últimos 7 dias" if days < 7 else "Anteriores"
+        if label not in groups:
+            groups[label] = []
+            order.append(label)
+        groups[label].append({"id": thread.id, "title": thread.title, "subtitle": subtitle,
+                              "pending": pending, "active": thread.id == active_id})
+    return [{"label": label, "items": groups[label]} for label in order]
+
+
+def _assistant_view_messages(db, messages):
+    view, last_day = [], None
+    today = today_in_app_timezone()
+    for index, item in enumerate(messages):
+        local = _assistant_local(item.get("at"))
+        entry = {**item, "index": index, "time": local.strftime("%H:%M") if local else ""}
+        if local and local.date() != last_day:
+            last_day = local.date()
+            day = "Hoje" if last_day == today else "Ontem" if (today - last_day).days == 1 else last_day.strftime("%d/%m/%Y")
+            entry["day_label"] = f"{day} · {entry['time']}"
+        if item.get("draft"):
+            entry["draft"] = {**item["draft"], "state": _assistant_draft_state(db, item["draft"])}
+        view.append(entry)
+    return view
 
 
 @router.get("/mobile/assistente")
 def stock_assistant_page(
-    request: Request, draft_id: str | None = Query(None, max_length=32),
+    request: Request, c: str | None = Query(None, max_length=32),
     db: Session = Depends(get_db), user: User = Depends(get_current_user_web),
     csrf_token: str = Depends(get_csrf_token),
 ):
@@ -20621,50 +20699,79 @@ def stock_assistant_page(
         raise HTTPException(status_code=403, detail="Sem permissão para registrar consumo.")
     repo = _repository(db)
     scope = _global_scope_context(request, repo, user)
-    draft = _assistant_draft(db, user, draft_id) if draft_id else None
-    if draft_id and (not draft or (draft.farm_id, draft.season_id) != (scope["active_farm_id"], scope["active_season_id"])):
-        raise HTTPException(status_code=404, detail="Rascunho não encontrado neste contexto.")
-    draft_pending = bool(draft and draft.status == "pending" and
-                         (draft.expires_at if draft.expires_at.tzinfo else draft.expires_at.replace(tzinfo=timezone.utc))
-                         > datetime.now(timezone.utc))
+    ready = bool(scope["active_farm"] and scope["active_season"])
+    thread = _assistant_thread(db, user, scope, c) if ready and c else None
+    if c and ready and thread is None:
+        return _redirect(_assistant_url())
+    messages = _assistant_view_messages(db, _thread_messages(thread))
+    registered = [m["draft"] for m in messages if m.get("draft") and m["draft"]["state"] == "confirmed"]
+    pending = next((m["draft"] for m in reversed(messages) if m.get("draft") and m["draft"]["state"] == "pending"), None)
+    threads = _assistant_threads(db, user, scope) if ready else []
     return templates.TemplateResponse("stock_assistant.html", _base_context(
         request, user, csrf_token, "mobile", title="Assistente SiSFarm", _repo=repo,
-        assistant_scope=scope, draft=draft, draft_pending=draft_pending,
-        chat_history=_assistant_history(db, user, scope),
-        product=repo.get_input_catalog(draft.input_id) if draft_pending else None,
-        plot=repo.get_plot(draft.plot_id) if draft_pending and draft.plot_id else None,
+        assistant_scope=scope, thread=thread, messages=messages, registered=registered, pending_draft=pending,
+        thread_groups=_assistant_thread_list(db, threads, thread.id if thread else None),
+        recent_threads=[item for group in _assistant_thread_list(db, threads[:4], None) for item in group["items"]],
+        greeting="Bom dia" if app_now().hour < 12 else "Boa tarde" if app_now().hour < 18 else "Boa noite",
     ))
 
 
 @router.post("/mobile/assistente")
 def prepare_stock_assistant_action(
-    request: Request, message: str = Form(..., max_length=350), csrf_token: str = Form(...),
+    request: Request, message: str = Form(..., max_length=600), csrf_token: str = Form(...),
+    thread_id: str | None = Form(None, max_length=32), photo: UploadFile | None = File(None),
     db: Session = Depends(get_db), user: User = Depends(get_current_user_web),
 ):
     validate_csrf(request, csrf_token)
     if not _can_use_stock_assistant(db, user):
         raise HTTPException(status_code=403, detail="Sem permissão para registrar consumo.")
     repo = _repository(db)
-    target = "/mobile/assistente"
     scope = _global_scope_context(request, repo, user)
     farm, season = scope["active_farm"], scope["active_season"]
+    thread = _assistant_thread(db, user, scope, thread_id) if thread_id else None
+    target = _assistant_url(thread.id if thread else None)
+    image = None
     try:
         if not farm or not season or season.farm_id != farm.id:
             raise ValueError("Selecione a fazenda e a safra no topo.")
         message = message.strip()
         if not message:
             raise ValueError("Escreva uma mensagem para o assistente.")
-        history = _assistant_history(db, user, scope) + [{"role": "user", "content": message}]
+        if photo is not None and photo.filename:
+            if (photo.content_type or "") not in ASSISTANT_PHOTO_TYPES:
+                raise ValueError("Envie a foto em JPG, PNG ou WEBP.")
+            data = photo.file.read(ASSISTANT_PHOTO_MAX_BYTES + 1)
+            if not data or len(data) > ASSISTANT_PHOTO_MAX_BYTES:
+                raise ValueError("A foto precisa ter até 5 MB.")
+            image = f"data:{photo.content_type};base64,{base64.b64encode(data).decode()}"
     except ValueError as exc:
         _flash(request, "error", str(exc))
         return _redirect(target)
 
-    def reply_only(text, *, error=False):
-        item = {"role": "assistant", "content": text[:500]}
+    if thread is None:
+        now = datetime.now(timezone.utc)
+        thread = AssistantThread(id=uuid4().hex, user_id=user.id, organization_id=user.organization_id,
+                                 farm_id=farm.id, season_id=season.id, title=message[:60], created_at=now, updated_at=now)
+    history = _thread_messages(thread) + [{"role": "user", "content": message, "at": _assistant_now_iso(),
+                                           **({"photo": True} if image else {})}]
+
+    def reply(text, *, error=False, tools=None, draft=None):
+        item = {"role": "assistant", "content": text[:600], "at": _assistant_now_iso()}
         if error:
             item["error"] = True
-        _save_assistant_history(db, user, scope, history + [item])
-        return _redirect(target)
+        if tools:
+            item["tools"] = tools[:6]
+        if draft:
+            item["draft"] = draft
+            for old in history:  # um rascunho novo substitui o anterior ainda pendente
+                previous = old.get("draft") or {}
+                if previous.get("state", "pending") == "pending" and previous.get("id"):
+                    row = db.get(StockAssistantDraft, previous["id"])
+                    if row is not None and row.status == "pending":
+                        claim_draft(db, row, "discarded")
+                    previous["state"] = "replaced"
+        _save_thread(db, thread, history + [item])
+        return _redirect(_assistant_url(thread.id))
 
     products, balances = [], {}
     for item in repo.list_input_catalog():
@@ -20676,6 +20783,7 @@ def prepare_stock_assistant_action(
             balances[item.id] = round(sum(float(entry.available_quantity or 0) for entry in farm_lots), 2)
     plots = _season_launch_plots(repo.list_plots(farm_ids=[farm.id]), scope)
     plots = [item for item in plots if _plot_matches_scope(item, scope)]
+    drafted = {}
 
     def prepare_draft(*, item, plot, quantity, unit, movement_date):
         draft_id = uuid4().hex
@@ -20686,6 +20794,14 @@ def prepare_stock_assistant_action(
             expires_at=datetime.now(timezone.utc) + timedelta(minutes=30),
         ))
         db.commit()
+        balance = Decimal(str(balances.get(item.id, 0)))
+        drafted.update({
+            "id": draft_id, "state": "pending", "item": item.name, "fuel": item.item_type == "combustivel",
+            "quantity": _format_decimal_br(quantity, 2), "unit": unit,
+            "plot": plot.name if plot else "Uso geral da fazenda", "date": movement_date.isoformat(),
+            "date_label": movement_date.strftime("%d/%m/%Y"),
+            "balance": _format_decimal_br(balance, 2), "after": _format_decimal_br(balance - quantity, 2),
+        })
         return draft_id
 
     assistant = FarmAssistant(farm_name=farm.name, season=season, items=products, balances=balances,
@@ -20693,16 +20809,13 @@ def prepare_stock_assistant_action(
     # A IA recebe so mensagens validas (sem os avisos de erro) e as mais recentes.
     ai_history = [{"role": item["role"], "content": item["content"]} for item in history if not item.get("error")][-10:]
     try:
-        result = run_farm_assistant(ai_history, assistant)
+        result = run_farm_assistant(ai_history, assistant, **({"image": image} if image else {}))
     except ValueError as exc:
         db.rollback()
-        return reply_only(str(exc), error=True)
-    reply = (result.get("resposta") or "").strip()[:600] or "Pode me contar um pouco mais?"
-    draft_id = result.get("draft_id")
-    if not draft_id:
-        return reply_only(reply)
-    _save_assistant_history(db, user, scope, history + [{"role": "assistant", "content": reply}])
-    return _redirect(f"{target}?draft_id={draft_id}")
+        return reply(str(exc), error=True)
+    text = (result.get("resposta") or "").strip() or "Pode me contar um pouco mais?"
+    return reply(text, tools=list(getattr(assistant, "trace", []) or []),
+                 draft=dict(drafted) if result.get("draft_id") and drafted.get("id") == result.get("draft_id") else None)
 
 
 def _validate_assistant_movement_date(movement_date, season):
@@ -20710,9 +20823,54 @@ def _validate_assistant_movement_date(movement_date, season):
         raise ValueError("A data do consumo deve estar dentro da safra ativa e não pode ser futura.")
 
 
+def _set_thread_draft_state(messages, draft_id, state):
+    for item in messages:
+        if (item.get("draft") or {}).get("id") == draft_id:
+            item["draft"]["state"] = state
+
+
+@router.post("/mobile/assistente/conversa/{thread_id}/excluir")
+def delete_stock_assistant_thread(
+    request: Request, thread_id: str, csrf_token: str = Form(...),
+    db: Session = Depends(get_db), user: User = Depends(get_current_user_web),
+):
+    validate_csrf(request, csrf_token)
+    if not _can_use_stock_assistant(db, user):
+        raise HTTPException(status_code=403)
+    scope = _global_scope_context(request, _repository(db), user)
+    thread = _assistant_thread(db, user, scope, thread_id)
+    if thread:
+        db.delete(thread)
+        db.commit()
+        _flash(request, "success", "Conversa excluída.")
+    return _redirect(_assistant_url())
+
+
+@router.post("/mobile/assistente/conversa/{thread_id}/avaliar")
+def rate_stock_assistant_message(
+    request: Request, thread_id: str, index: int = Form(..., ge=0), value: str = Form(..., max_length=4),
+    csrf_token: str = Form(...), db: Session = Depends(get_db), user: User = Depends(get_current_user_web),
+):
+    validate_csrf(request, csrf_token)
+    if not _can_use_stock_assistant(db, user) or value not in {"up", "down", ""}:
+        raise HTTPException(status_code=403)
+    scope = _global_scope_context(request, _repository(db), user)
+    thread = _assistant_thread(db, user, scope, thread_id)
+    messages = _thread_messages(thread)
+    if not thread or index >= len(messages) or messages[index]["role"] != "assistant":
+        raise HTTPException(status_code=404)
+    if value:
+        messages[index]["fb"] = value
+    else:
+        messages[index].pop("fb", None)
+    _save_thread(db, thread, messages)
+    return Response(status_code=204)
+
+
 @router.post("/mobile/assistente/{draft_id}/{action}")
 def resolve_stock_assistant_action(
     request: Request, draft_id: str, action: str, csrf_token: str = Form(...),
+    thread_id: str | None = Form(None, max_length=32),
     db: Session = Depends(get_db), user: User = Depends(get_current_user_web),
 ):
     validate_csrf(request, csrf_token)
@@ -20725,14 +20883,22 @@ def resolve_stock_assistant_action(
     scope = _global_scope_context(request, repo, user)
     if not draft or (draft.farm_id, draft.season_id) != (scope["active_farm_id"], scope["active_season_id"]):
         raise HTTPException(status_code=404, detail="Rascunho não encontrado neste contexto.")
-    target = "/mobile/assistente"
+    thread = _assistant_thread(db, user, scope, thread_id) if thread_id else None
+    target = _assistant_url(thread.id if thread else None)
+    messages = _thread_messages(thread)
+
+    def say(text, state):
+        if thread is None:
+            return
+        _set_thread_draft_state(messages, draft_id, state)
+        _save_thread(db, thread, messages + [{"role": "assistant", "content": text, "at": _assistant_now_iso()}])
+
     try:
         if action == "descartar":
             if not claim_draft(db, draft, "discarded"):
                 raise ValueError("Este rascunho já foi processado ou expirou.")
             db.commit()
-            _save_assistant_history(db, user, scope, _assistant_history(db, user, scope) + [
-                {"role": "assistant", "content": "Tudo bem, descartei esse lançamento e nada foi registrado. O que você quer corrigir?"}])
+            say("Tudo bem, descartei esse lançamento e nada foi registrado. O que você quer corrigir?", "discarded")
             return _redirect(target)
         season = scope["active_season"]
         _validate_assistant_movement_date(draft.movement_date, season)
@@ -20750,13 +20916,11 @@ def resolve_stock_assistant_action(
         db.commit()
         item = db.get(InputCatalog, draft.input_id)
         where = f" no {plot.name}" if plot else " (uso geral da fazenda)"
-        _save_assistant_history(db, user, scope, [{"role": "assistant", "content":
-            f"Pronto! Registrei a saída de {_format_decimal_br(draft.quantity, 2)} {draft.unit} de {item.name}{where} "
-            f"em {draft.movement_date.strftime('%d/%m/%Y')}. Quer lançar mais algum consumo?"}])
+        say(f"Pronto! Registrei a saída de {_format_decimal_br(draft.quantity, 2)} {draft.unit} de {item.name}{where} "
+            f"em {draft.movement_date.strftime('%d/%m/%Y')}. Quer lançar mais algum consumo?", "confirmed")
     except ValueError as exc:
         db.rollback()
         _flash(request, "error", str(exc))
-        return _redirect(f"{target}?draft_id={draft_id}")
     return _redirect(target)
 
 

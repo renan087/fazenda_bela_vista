@@ -107,6 +107,7 @@ def test_prepare_form_includes_csrf_token():
         FileSystemLoader(templates_dir),
     ]), autoescape=True)
     env.filters["decimal_br"] = str
+    env.globals["url_for"] = lambda *a, **k: "/static/x"
     html = env.get_template("stock_assistant.html").render(
         assistant_scope={"active_farm": {"name": "Fazenda"}, "active_season": {"name": "Safra"}},
         csrf_token="test-token",
@@ -234,8 +235,17 @@ def _route_env(monkeypatch, replies):
     monkeypatch.setattr(routes, "run_farm_assistant", fake_run)
     monkeypatch.setattr(routes, "today_in_app_timezone", lambda: date(2026, 11, 15))
     request = SimpleNamespace(session={})
-    send = lambda text: routes.prepare_stock_assistant_action(request, message=text, csrf_token="x", db=db, user=user)
-    return routes, db, user, scope, send, sent
+    state = {"thread": None}
+
+    def send(text):
+        response = routes.prepare_stock_assistant_action(request, message=text, csrf_token="x", thread_id=state["thread"],
+                                                         photo=None, db=db, user=user)
+        state["thread"] = response.headers["location"].split("c=")[-1]
+        return response
+
+    def history():
+        return routes._thread_messages(routes._assistant_thread(db, user, scope, state["thread"]))
+    return routes, db, user, scope, send, sent, history
 
 
 def test_route_keeps_conversation_on_error_and_drafts_fuel_without_plot(monkeypatch):
@@ -244,17 +254,41 @@ def test_route_keeps_conversation_on_error_and_drafts_fuel_without_plot(monkeypa
         "Foi hoje?",
         {"item_id": 0, "quantidade": 5, "unidade": "litros", "data": "2026-11-15", "setor": None},
     ]
-    routes, db, user, scope, send, sent = _route_env(monkeypatch, replies)
+    routes, db, user, scope, send, sent, thread_history = _route_env(monkeypatch, replies)
     send("Utilizei 5 litros de gasolina")
-    history = routes._assistant_history(db, user, scope)
+    history = thread_history()
     assert [m["role"] for m in history] == ["user", "assistant"] and history[1]["error"]
     send("Utilizei 5 litros de gasolina")
     # o aviso de erro nao vai para a IA; o item de combustivel com estoque na fazenda vai
     assert sent[1][0] == [{"role": "user", "content": "Utilizei 5 litros de gasolina"},
                           {"role": "user", "content": "Utilizei 5 litros de gasolina"}]
     assert sent[1][1] == ["Gasolina"]
-    response = send("sim, hoje")
-    assert "draft_id=" in response.headers["location"]
+    send("sim, hoje")
     draft = db.query(StockAssistantDraft).one()
     assert draft.plot_id is None and draft.unit == "L" and draft.quantity == 5
-    assert len(routes._assistant_history(db, user, scope)) == 6
+    history = thread_history()
+    assert len(history) == 6
+    card = history[-1]["draft"]
+    assert card["id"] == draft.id and card["state"] == "pending" and card["plot"] == "Uso geral da fazenda"
+    assert card["balance"] == "50" or card["balance"].startswith("50")
+
+
+def test_new_draft_replaces_pending_one_and_confirm_updates_thread(monkeypatch):
+    draft_reply = {"item_id": 0, "quantidade": 5, "unidade": "L", "data": "2026-11-15", "setor": None}
+    routes, db, user, scope, send, sent, thread_history = _route_env(monkeypatch, [draft_reply, {**draft_reply, "quantidade": 4}])
+    send("5 litros de gasolina hoje")
+    send("na verdade foram 4")
+    first, second = db.query(StockAssistantDraft).order_by(StockAssistantDraft.quantity.desc()).all()
+    assert first.status == "discarded" and second.status == "pending"
+    history = thread_history()
+    assert history[1]["draft"]["state"] == "replaced" and history[3]["draft"]["state"] == "pending"
+    assert history[3]["tools"] == ["Preparou rascunho"]
+    location = routes.resolve_stock_assistant_action(
+        SimpleNamespace(session={}), second.id, "confirmar", csrf_token="x",
+        thread_id=db.query(routes.AssistantThread).one().id, db=db, user=user,
+    ).headers["location"]
+    assert "c=" in location
+    history = thread_history()
+    assert history[3]["draft"]["state"] == "confirmed" and history[-1]["content"].startswith("Pronto!")
+    summary = db.query(StockOutput).filter_by(purchased_input_id=None).one()
+    assert float(summary.quantity) == 4

@@ -1,89 +1,256 @@
 {% extends "base.html" %}
+{% macro ic(name, size=18, w=1.8) -%}
+<svg width="{{ size }}" height="{{ size }}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="{{ w }}" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+{%- if name == 'plus' %}<path d="M12 5v14M5 12h14"/>
+{%- elif name == 'search' %}<circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>
+{%- elif name == 'spark' %}<path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/><path d="M19 15l.7 2 2 .7-2 .7-.7 2-.7-2-2-.7 2-.7z"/>
+{%- elif name == 'send' %}<path d="M5 12h13M13 6l6 6-6 6"/>
+{%- elif name == 'clip' %}<path d="M21 11.5 12.6 20a5.5 5.5 0 0 1-7.8-7.8l8.5-8.5a3.7 3.7 0 0 1 5.2 5.2l-8.5 8.5a1.8 1.8 0 0 1-2.6-2.6L15 7"/>
+{%- elif name == 'mic' %}<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/>
+{%- elif name == 'copy' %}<rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/>
+{%- elif name == 'up' %}<path d="M7 10v11M15 5.9 14 10h5.8a2 2 0 0 1 2 2.3l-1.4 7A2 2 0 0 1 18.4 21H7V10l4-8a2.5 2.5 0 0 1 4 3.9z"/>
+{%- elif name == 'down' %}<path d="M17 14V3M9 18.1 10 14H4.2a2 2 0 0 1-2-2.3l1.4-7A2 2 0 0 1 5.6 3H17v11l-4 8a2.5 2.5 0 0 1-4-3.9z"/>
+{%- elif name == 'check' %}<path d="M5 12.5 10 17 19 7"/>
+{%- elif name == 'edit' %}<path d="M4 20h4L19 9l-4-4L4 16z"/>
+{%- elif name == 'x' %}<path d="M6 6l12 12M18 6 6 18"/>
+{%- elif name == 'more' %}<circle cx="5" cy="12" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="19" cy="12" r="1.3"/>
+{%- elif name == 'panel' %}<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M15 4v16"/>
+{%- elif name == 'box' %}<path d="M21 8 12 3 3 8v8l9 5 9-5z"/><path d="M3 8l9 5 9-5M12 13v8"/>
+{%- elif name == 'fuel' %}<path d="M4 21V5a2 2 0 0 1 2-2h7a2 2 0 0 1 2 2v16M3 21h13M15 9h2a2 2 0 0 1 2 2v5a1.5 1.5 0 0 0 3 0V8l-3-3"/><path d="M7 8h5"/>
+{%- elif name == 'map' %}<path d="M9 4 3 6v14l6-2 6 2 6-2V4l-6 2z"/><path d="M9 4v14M15 6v14"/>
+{%- elif name == 'back' %}<path d="M15 6l-6 6 6 6"/>
+{%- elif name == 'shield' %}<path d="M12 3 4 6v6c0 5 3.5 8 8 9 4.5-1 8-4 8-9V6z"/><path d="m9 12 2 2 4-4"/>
+{%- elif name == 'hist' %}<path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5M12 7v5l3 2"/>
+{%- elif name == 'trash' %}<path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/>
+{%- elif name == 'image' %}<rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="m21 16-5-5-9 9"/>
+{%- endif -%}
+</svg>
+{%- endmacro %}
 {% block content %}
-<section class="mx-auto max-w-3xl space-y-5 rounded-[2rem] bg-white p-5 shadow-panel sm:p-7">
-    <a href="/mobile" class="text-sm font-semibold text-emerald-800">&larr; Campo Mobile</a>
-    <header>
-        <p class="text-xs font-semibold uppercase tracking-widest text-emerald-800">Assistente de campo</p>
-        <h2 class="mt-2 text-2xl font-semibold text-slate-900">Assistente SiSFarm</h2>
-        <p class="mt-1 text-sm text-slate-600">Converse sobre o consumo de insumos e combustíveis. Vou ajudar com os detalhes e pedir sua confirmação antes de registrar.</p>
-    </header>
-    {% if not assistant_scope.active_farm or not assistant_scope.active_season %}
-    <p class="rounded-xl bg-amber-50 p-4 text-sm text-amber-900">Selecione a fazenda e a safra no topo para começar.</p>
-    {% else %}
-    <p class="rounded-xl bg-slate-50 p-3 text-sm text-slate-700"><strong>Fazenda:</strong> {{ assistant_scope.active_farm.name }} · <strong>Safra:</strong> {{ assistant_scope.active_season.name }}</p>
-    <div class="space-y-3" aria-live="polite" data-assistant-chat>
-        <div class="max-w-[90%] rounded-2xl rounded-tl-sm bg-slate-100 p-4 text-sm text-slate-700">Olá! Conte o que você usou na fazenda. Se precisar de algum detalhe, eu pergunto. Por enquanto, registro o consumo de insumos e combustíveis que já têm estoque nesta fazenda.</div>
-        {% for item in chat_history|default([]) %}
-        <div class="{{ 'ml-auto rounded-tr-sm bg-emerald-700 text-white' if item.role == 'user' else ('rounded-tl-sm bg-rose-50 text-rose-800 ring-1 ring-rose-200' if item.error else 'rounded-tl-sm bg-slate-100 text-slate-700') }} max-w-[90%] whitespace-pre-wrap rounded-2xl p-4 text-sm">{{ item.content }}</div>
-        {% endfor %}
-    </div>
-    {% if draft_pending and product %}
-    <article class="space-y-3 rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
-        <h3 class="font-semibold text-emerald-950">Confira o lançamento</h3>
-        <dl class="grid gap-2 text-sm text-slate-800 sm:grid-cols-2">
-            <div><dt>Item</dt><dd class="font-semibold">{{ product.name }}</dd></div>
-            <div><dt>Quantidade total</dt><dd class="font-semibold">{{ draft.quantity|decimal_br }} {{ draft.unit }}</dd></div>
-            <div><dt>Setor</dt><dd class="font-semibold">{{ plot.name if plot else "Uso geral da fazenda" }}</dd></div>
-            <div><dt>Data do consumo</dt><dd class="font-semibold">{{ draft.movement_date.strftime('%d/%m/%Y') }}</dd></div>
-        </dl>
-        <p class="text-xs text-slate-600">O saldo será validado ao confirmar. Para corrigir, descarte o rascunho e reescreva a mensagem.</p>
-        <div class="flex flex-wrap gap-2">
-            <form method="post" action="/mobile/assistente/{{ draft.id }}/confirmar">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                <button class="sf-btn sf-btn-primary">Confirmar consumo</button>
-            </form>
-            <form method="post" action="/mobile/assistente/{{ draft.id }}/descartar">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                <button class="sf-btn sf-btn-secondary">Descartar rascunho</button>
-            </form>
+{% set ready = assistant_scope.active_farm and assistant_scope.active_season %}
+{% set thread_id = thread.id if thread else '' %}
+<div class="as-shell" data-as-shell>
+
+    {# ---------- Lista de conversas (coluna no desktop, gaveta no celular) ---------- #}
+    <aside class="as-threads" id="as-threads" data-as-threads aria-label="Conversas">
+        <div class="as-threads-top">
+            <div class="as-threads-row">
+                <a href="/mobile/assistente" class="as-btn as-btn-primary as-grow">{{ ic('plus', 16, 2.2) }}Nova conversa</a>
+                <button type="button" class="as-ico as-only-drawer" data-as-threads-close aria-label="Fechar conversas">{{ ic('x') }}</button>
+            </div>
+            <label class="as-search">{{ ic('search', 15) }}<span class="sr-only">Buscar conversas</span>
+                <input type="search" placeholder="Buscar conversas" data-as-search autocomplete="off">
+            </label>
         </div>
-    </article>
-    {% else %}
-    {% if draft %}<p class="text-sm text-slate-600">Este rascunho não está mais disponível para confirmação.</p>{% endif %}
-    <form method="post" action="/mobile/assistente" class="space-y-3 rounded-2xl border border-slate-200 p-4" data-assistant-form>
-        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-        <label for="assistant-message" class="block font-semibold text-slate-900">Sua mensagem</label>
-        <textarea id="assistant-message" name="message" maxlength="350" rows="3" required placeholder="Conte o que aconteceu..." class="w-full rounded-xl border-slate-200 bg-slate-50"></textarea>
-        <div class="flex items-center justify-between gap-3"><span class="hidden text-xs text-slate-400 sm:inline">Enter envia · Shift+Enter quebra linha</span><button class="sf-btn sf-btn-primary" data-assistant-send>Enviar mensagem</button></div>
-        <p class="text-xs text-slate-500">A conversa é enviada à IA para interpretação. Nenhum consumo é registrado sem confirmação.</p>
-    </form>
-    {% endif %}
-    {% endif %}
-</section>
-<style>
-.assistant-typing span { display:inline-block; width:.45rem; height:.45rem; margin:0 1px; border-radius:999px; background:#94a3b8; animation: assistant-dot 1s infinite ease-in-out; }
-.assistant-typing span:nth-child(2) { animation-delay:.15s } .assistant-typing span:nth-child(3) { animation-delay:.3s }
-@keyframes assistant-dot { 0%,80%,100% { transform:translateY(0); opacity:.5 } 40% { transform:translateY(-4px); opacity:1 } }
-</style>
-<script>
-(() => {
-    const chat = document.querySelector('[data-assistant-chat]');
-    const form = document.querySelector('[data-assistant-form]');
-    const last = document.querySelector('[data-assistant-form], article') || chat;
-    if (chat && chat.children.length > 1) last.scrollIntoView({ block: 'end' });
-    if (!form) return;
-    const box = form.querySelector('textarea');
-    box.focus({ preventScroll: true });
-    box.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); form.requestSubmit(); }
-    });
-    form.addEventListener('submit', (e) => {
-        const text = box.value.trim();
-        if (!text || form.dataset.sending) { if (form.dataset.sending) e.preventDefault(); return; }
-        form.dataset.sending = '1';
-        const mine = document.createElement('div');
-        mine.className = 'ml-auto max-w-[90%] whitespace-pre-wrap rounded-2xl rounded-tr-sm bg-emerald-700 p-4 text-sm text-white';
-        mine.textContent = text;
-        const typing = document.createElement('div');
-        typing.className = 'assistant-typing w-fit rounded-2xl rounded-tl-sm bg-slate-100 px-4 py-3';
-        typing.setAttribute('aria-label', 'Assistente digitando');
-        typing.innerHTML = '<span></span><span></span><span></span>';
-        chat.append(mine, typing);
-        typing.scrollIntoView({ block: 'center', behavior: 'smooth' });
-        const btn = form.querySelector('[data-assistant-send]');
-        btn.disabled = true; btn.textContent = 'Enviando...';
-        box.readOnly = true;
-    });
-})();
-</script>
+        <nav class="as-threads-list" data-as-list>
+            {% for group in thread_groups %}
+            <div class="as-grp" data-as-grp>{{ group.label }}</div>
+            {% for item in group['items'] %}
+            <a href="/mobile/assistente?c={{ item.id }}" class="as-cv{% if item.active %} is-active{% endif %}" data-as-cv{% if item.active %} aria-current="page"{% endif %}>
+                <b>{{ item.title }}</b>
+                <span>{% if item.pending %}<i class="as-dot-warn"></i>{% endif %}{{ item.subtitle }}</span>
+            </a>
+            {% endfor %}
+            {% else %}
+            <p class="as-empty-list">Suas conversas aparecem aqui.</p>
+            {% endfor %}
+            <p class="as-empty-list" data-as-noresult hidden>Nenhuma conversa encontrada.</p>
+        </nav>
+    </aside>
+    <div class="as-scrim" data-as-scrim hidden></div>
+
+    {# ---------- Conversa ---------- #}
+    <section class="as-chat" aria-label="Conversa com o assistente">
+        <header class="as-head">
+            <a href="/mobile" class="as-ico as-only-mobile" aria-label="Voltar ao Campo Mobile">{{ ic('back', 22, 2) }}</a>
+            <span class="as-av as-av-ai as-only-mobile">{{ ic('spark', 17, 1.9) }}</span>
+            <div class="as-head-text">
+                <div class="as-head-title">
+                    <span class="as-only-mobile">Assistente SiSFarm</span>
+                    <span class="as-hide-mobile">{{ thread.title if thread else 'Nova conversa' }}</span>
+                </div>
+                <div class="as-head-sub">
+                    <span class="as-only-mobile">{% if ready %}{{ assistant_scope.active_farm.name }} · {{ assistant_scope.active_season.name }}{% else %}Selecione fazenda e safra{% endif %}</span>
+                    <span class="as-hide-mobile"><i class="as-dot-ok"></i>Assistente ativo · lê estoque e setores da safra</span>
+                </div>
+            </div>
+            <button type="button" class="as-ico as-hide-wide" data-as-threads-open aria-controls="as-threads" aria-label="Conversas">{{ ic('hist', 20) }}</button>
+            <a href="/mobile/assistente" class="as-ico as-only-mobile" aria-label="Nova conversa">{{ ic('plus', 20, 2) }}</a>
+            <button type="button" class="as-ico as-only-xl" data-as-ctx-toggle aria-controls="as-ctx" aria-pressed="true" aria-label="Painel de contexto">{{ ic('panel') }}</button>
+            {% if thread %}
+            <details class="as-menu">
+                <summary class="as-ico" aria-label="Mais opções">{{ ic('more') }}</summary>
+                <div class="as-menu-pop">
+                    <form method="post" action="/mobile/assistente/conversa/{{ thread.id }}/excluir" data-as-confirm="Excluir esta conversa? Os lançamentos já registrados continuam no estoque.">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                        <button class="as-menu-item as-danger">{{ ic('trash', 16) }}Excluir conversa</button>
+                    </form>
+                </div>
+            </details>
+            {% endif %}
+        </header>
+
+        <div class="as-scroll" data-as-scroll>
+            <div class="as-col" aria-live="polite" data-as-chat>
+            {% if not ready %}
+                <div class="as-warn">Selecione a fazenda e a safra no topo para começar.</div>
+            {% elif not thread %}
+                <div class="as-welcome">
+                    <span class="as-av as-av-ai as-av-lg">{{ ic('spark', 24) }}</span>
+                    <h1>{{ greeting }}</h1>
+                    <p>Conte o que foi usado na fazenda ou pergunte sobre o estoque. Eu preparo o lançamento e você confirma.</p>
+                    <div class="as-sugs">
+                        <button type="button" class="as-sug" data-as-fill="Abasteci o trator com 80 litros de diesel hoje">{{ ic('fuel', 16) }}<span>Abasteci o trator com 80 L de diesel</span></button>
+                        <button type="button" class="as-sug" data-as-fill="Usei 6 sacos de 20-05-20 no setor ">{{ ic('box', 16) }}<span>Usei 6 sacos de 20-05-20 no setor 2</span></button>
+                        <button type="button" class="as-sug" data-as-fill="Quanto tenho de glifosato em estoque?">{{ ic('search', 16) }}<span>Quanto tenho de glifosato?</span></button>
+                        <button type="button" class="as-sug" data-as-fill="Quais setores estão na safra?">{{ ic('map', 16) }}<span>Quais setores estão na safra?</span></button>
+                    </div>
+                    {% if recent_threads %}
+                    <div class="as-recent as-hide-wide">
+                        <div class="as-label">Conversas recentes</div>
+                        {% for item in recent_threads %}
+                        <a href="/mobile/assistente?c={{ item.id }}" class="as-recent-item"><b>{{ item.title }}</b><span>{% if item.pending %}<i class="as-dot-warn"></i>{% endif %}{{ item.subtitle }}</span></a>
+                        {% endfor %}
+                    </div>
+                    {% endif %}
+                </div>
+            {% else %}
+                {% for m in messages %}
+                {% if m.day_label %}<div class="as-day"><span>{{ m.day_label }}</span></div>{% endif %}
+                {% if m.role == 'user' %}
+                <div class="as-msg-user">
+                    <div class="as-ubub">{% if m.photo %}<span class="as-photo-tag">{{ ic('image', 14) }}Foto enviada</span>{% endif %}{{ m.content }}</div>
+                    <div class="as-time">{{ m.time }}</div>
+                </div>
+                {% else %}
+                <div class="as-msg-ai">
+                    <span class="as-av as-av-ai{% if m.error %} as-av-err{% endif %}">{{ ic('spark', 17, 1.9) }}</span>
+                    <div class="as-msg-body">
+                        <div class="as-who">Assistente SiSFarm<span>{{ m.time }}</span></div>
+                        {% if m.tools %}<div class="as-tools">{% for t in m.tools %}<span class="as-tool"><i></i>{{ t }}</span>{% endfor %}</div>{% endif %}
+                        <p class="as-txt{% if m.error %} as-txt-err{% endif %}" data-as-text>{{ m.content }}</p>
+                        {% if m.draft %}{% set d = m.draft %}
+                        <div class="as-draft as-draft-{{ d.state }}">
+                            <div class="as-draft-head">
+                                <span class="as-draft-ico{% if d.fuel %} is-fuel{% endif %}">{{ ic('fuel' if d.fuel else 'box', 16) }}</span>
+                                <div class="as-grow">
+                                    <div class="as-draft-title">Saída de estoque · {{ 'combustível' if d.fuel else 'insumo' }}</div>
+                                    <div class="as-draft-sub">{% if d.state == 'pending' %}Rascunho — ainda não registrado{% elif d.state == 'confirmed' %}Registrado no estoque{% elif d.state == 'discarded' %}Nada foi registrado{% elif d.state == 'replaced' %}Substituído por um novo rascunho{% else %}O prazo de 30 minutos acabou{% endif %}</div>
+                                </div>
+                                <span class="as-badge as-badge-{{ d.state }}">{% if d.state == 'pending' %}Aguardando você{% elif d.state == 'confirmed' %}Registrado{% elif d.state == 'discarded' %}Descartado{% elif d.state == 'replaced' %}Substituído{% else %}Expirado{% endif %}</span>
+                            </div>
+                            <dl class="as-dl">
+                                <div><dt>Item</dt><dd>{{ d.item }}</dd></div>
+                                <div><dt>Quantidade</dt><dd>{{ d.quantity }} {{ d.unit }}</dd></div>
+                                <div><dt>Setor</dt><dd>{{ d.plot }}</dd></div>
+                                <div><dt>Data</dt><dd>{{ d.date_label }}</dd></div>
+                                {% if d.state == 'pending' %}
+                                <div><dt>Saldo atual</dt><dd>{{ d.balance }} {{ d.unit }}</dd></div>
+                                <div><dt>Saldo após</dt><dd class="as-ok">{{ d.after }} {{ d.unit }}</dd></div>
+                                {% endif %}
+                            </dl>
+                            {% if d.state == 'pending' %}
+                            <div class="as-draft-actions">
+                                <form method="post" action="/mobile/assistente/{{ d.id }}/confirmar" data-as-busy="Registrando…">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                                    <input type="hidden" name="thread_id" value="{{ thread_id }}">
+                                    <button class="as-btn as-btn-primary">{{ ic('check', 16, 2.2) }}Confirmar e registrar</button>
+                                </form>
+                                <div class="as-draft-secondary">
+                                    <button type="button" class="as-btn as-btn-secondary" data-as-fill="Quero ajustar: " data-as-fill-hint="Diga o que ajustar: quantidade, setor ou data">{{ ic('edit', 15) }}Ajustar</button>
+                                    <form method="post" action="/mobile/assistente/{{ d.id }}/descartar">
+                                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                                        <input type="hidden" name="thread_id" value="{{ thread_id }}">
+                                        <button class="as-btn as-btn-ghost">Descartar</button>
+                                    </form>
+                                </div>
+                            </div>
+                            {% endif %}
+                        </div>
+                        {% endif %}
+                        {% if not m.error %}
+                        <div class="as-acts" data-as-rate="{{ m.index }}">
+                            <button type="button" class="as-ico as-ico-sm" data-as-copy aria-label="Copiar resposta" title="Copiar">{{ ic('copy', 15) }}</button>
+                            <button type="button" class="as-ico as-ico-sm" data-as-fb="up" aria-pressed="{{ 'true' if m.fb == 'up' else 'false' }}" aria-label="Resposta útil" title="Útil">{{ ic('up', 15) }}</button>
+                            <button type="button" class="as-ico as-ico-sm" data-as-fb="down" aria-pressed="{{ 'true' if m.fb == 'down' else 'false' }}" aria-label="Resposta não útil" title="Não útil">{{ ic('down', 15) }}</button>
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+                {% endif %}
+                {% endfor %}
+            {% endif %}
+            </div>
+        </div>
+
+        {% if ready %}
+        <footer class="as-composer">
+            <div class="as-col">
+                {% if thread %}
+                <div class="as-chips">
+                    <button type="button" class="as-chip" data-as-fill="Abasteci com ">Registrar abastecimento</button>
+                    <button type="button" class="as-chip" data-as-fill="Usei adubo no setor ">Registrar uso de adubo</button>
+                    <button type="button" class="as-chip" data-as-fill="Qual o saldo de ">Consultar saldo</button>
+                    <button type="button" class="as-chip" data-as-fill="Quais setores estão na safra?">Setores da safra</button>
+                </div>
+                {% endif %}
+                <form method="post" action="/mobile/assistente" enctype="multipart/form-data" class="as-box" data-as-form>
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    <input type="hidden" name="thread_id" value="{{ thread_id }}">
+                    <label for="assistant-message" class="sr-only">Sua mensagem</label>
+                    <div class="as-attach" data-as-attach hidden>{{ ic('image', 14) }}<span data-as-attach-name></span><button type="button" data-as-attach-clear aria-label="Remover foto">{{ ic('x', 14) }}</button></div>
+                    <textarea id="assistant-message" name="message" maxlength="600" rows="1" required
+                              placeholder="Pergunte ou descreva o que aconteceu na fazenda…" data-as-input></textarea>
+                    <div class="as-box-bar">
+                        <label class="as-ico" title="Anexar foto (nota, etiqueta, bomba)">
+                            {{ ic('clip') }}<span class="sr-only">Anexar foto</span>
+                            <input type="file" name="photo" accept="image/jpeg,image/png,image/webp" class="sr-only" data-as-photo>
+                        </label>
+                        <button type="button" class="as-ico" data-as-mic aria-pressed="false" aria-label="Falar a mensagem" title="Falar" hidden>{{ ic('mic') }}</button>
+                        <span class="as-hint">Enter envia · Shift+Enter quebra linha</span>
+                        <button class="as-send" data-as-send aria-label="Enviar">{{ ic('send', 18, 2.2) }}</button>
+                    </div>
+                </form>
+                <p class="as-disclaimer">{{ ic('shield', 12) }} Nada é registrado sem a sua confirmação. A IA pode errar — confira os dados.</p>
+            </div>
+        </footer>
+        {% endif %}
+    </section>
+
+    {# ---------- Contexto ---------- #}
+    <aside class="as-ctx" id="as-ctx" data-as-ctx aria-label="Contexto da conversa">
+        <section>
+            <div class="as-label">Contexto da conversa</div>
+            <div class="as-kvbox">
+                <div class="as-kv"><span>Fazenda</span><b>{{ assistant_scope.active_farm.name if assistant_scope.active_farm else '—' }}</b></div>
+                <div class="as-kv"><span>Safra</span><b>{{ assistant_scope.active_season.name if assistant_scope.active_season else '—' }}</b></div>
+                <div class="as-kv"><span>Data padrão</span><b>Hoje, {{ today_date.strftime('%d/%m') if today_date else '' }}</b></div>
+            </div>
+        </section>
+        <section>
+            <div class="as-label">Registrado nesta conversa</div>
+            {% if registered %}
+            <div class="as-kvbox">
+                {% for d in registered %}
+                <div class="as-reg"><span class="as-dot-ok"></span><div><b>{{ d.item }} · {{ d.quantity }} {{ d.unit }}</b><span>{{ d.plot }} · {{ d.date_label }}</span></div></div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <div class="as-dashed">Nenhum lançamento ainda.{% if pending_draft %} O rascunho de <b>{{ pending_draft.item }} · {{ pending_draft.quantity }} {{ pending_draft.unit }}</b> aguarda sua confirmação.{% endif %}</div>
+            {% endif %}
+        </section>
+        <section>
+            <div class="as-label">O que posso fazer</div>
+            <ul class="as-can">
+                <li>{{ ic('box', 16) }}Registrar consumo de insumos</li>
+                <li>{{ ic('fuel', 16) }}Lançar abastecimento de combustível</li>
+                <li>{{ ic('search', 16) }}Consultar saldo de estoque</li>
+                <li>{{ ic('map', 16) }}Listar os setores da safra</li>
+                <li>{{ ic('image', 16) }}Ler dados de uma foto (nota, etiqueta)</li>
+            </ul>
+        </section>
+        <p class="as-privacy">{{ ic('shield', 15) }}<span>As mensagens e fotos são enviadas ao modelo de IA para interpretação. Nenhum dado é alterado sem confirmação.</span></p>
+    </aside>
+</div>
+<script src="{{ url_for('static', path='js/assistant.js') }}?v=1" defer></script>
 {% endblock %}
