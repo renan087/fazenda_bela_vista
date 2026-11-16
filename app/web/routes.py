@@ -20767,6 +20767,14 @@ def prepare_stock_assistant_action(
 
     def reply(text, *, error=False, tools=None, draft=None):
         item = {"role": "assistant", "content": text[:600], "at": _assistant_now_iso()}
+        if not error and not draft and len(credit_cards) > 1:
+            normalized_reply = normalized(text)
+            named = sum(normalized(card.card_name) in normalized_reply for card in credit_cards)
+            if named >= 2 and ("cart" in normalized_reply or "?" in text):
+                item["content"] = "Em qual cartão foi a compra? Responda com o número ou o nome:\n" + "\n".join(
+                    f"{index}. {card.card_name}" for index, card in enumerate(credit_cards, 1)
+                )
+                item["card_options"] = [{"id": card.id, "name": card.card_name} for card in credit_cards]
         if error:
             item["error"] = True
         if tools:
@@ -20846,6 +20854,17 @@ def prepare_stock_assistant_action(
         if extras.get("cartao_id") or (method and key(method) == key("Cartão de crédito")):
             method = "Cartão de crédito"
             mentioned = []
+            latest_options = next((entry.get("card_options") for entry in reversed(history[:-1])
+                                   if entry.get("role") == "assistant"), None)
+            selection = re.fullmatch(r"\s*(?:op[cç][aã]o\s*)?(\d{1,3})\s*[.)]?\s*", message, re.IGNORECASE)
+            if selection and isinstance(latest_options, list):
+                selected = int(selection.group(1))
+                if not 1 <= selected <= len(latest_options):
+                    raise ValueError("Número de cartão inválido. Escolha uma das opções apresentadas.")
+                option = latest_options[selected - 1]
+                card = next((c for c in credit_cards if c.id == option.get("id") and c.card_name == option.get("name")), None)
+                if card is None:
+                    raise ValueError("A lista de cartões mudou. Pergunte novamente qual cartão foi usado.")
             for entry in ([] if extras.get("cartao_desconhecido") else reversed(history)):
                 if (entry.get("draft") or {}).get("id"):
                     break
@@ -20853,11 +20872,16 @@ def prepare_stock_assistant_action(
                     continue
                 text = key(entry.get("content"))
                 mentioned = [c for c in credit_cards if re.search(r"(?<!\w)" + re.escape(key(c.card_name)) + r"(?!\w)", text)]
+                if not mentioned:
+                    words = {word for word in re.findall(r"\w+", text) if len(word) >= 4}
+                    mentioned = [c for c in credit_cards if words.intersection(key(c.card_name).split())]
                 if mentioned:
                     break
             if len(mentioned) > 1:
                 raise ValueError("Mais de um cartão foi mencionado. Pergunte qual foi usado nesta compra.")
-            if mentioned:
+            if card is not None:
+                pass
+            elif mentioned:
                 card = mentioned[0]
             elif pending_purchase and not extras.get("cartao_desconhecido"):
                 previous_payload = json.loads(pending_purchase.payload_json or "{}")

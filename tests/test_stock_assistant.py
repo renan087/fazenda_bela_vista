@@ -425,13 +425,38 @@ def test_assistant_never_picks_a_card_when_there_are_several(monkeypatch):
     db.add_all(cards); db.commit()
 
     send("comprei 50 litros de gasolina no cartão")
-    assert "Nubank, Sicredi" in thread_history()[-1]["content"] and not db.query(StockAssistantDraft).count()
+    assert "1. Nubank\n2. Sicredi" in thread_history()[-1]["content"] and not db.query(StockAssistantDraft).count()
     replies[0]["cartao_id"] = cards[0].id  # IA errou: usuario escolheu Sicredi, nao Nubank
     send("foi no Sicredi")
     assert "Sicredi" in thread_history()[-1]["draft"]["payment"]
     send("na verdade não lembro o cartão")
     card = thread_history()[-1]["draft"]
     assert card["payment"] == "À vista" and "cartão" not in card["finance"]
+
+
+@pytest.mark.parametrize("answer", ["2", "ourocard"])
+def test_selects_card_by_number_or_unique_partial_name(monkeypatch, answer):
+    from app.models import FinanceAccount, FinanceCreditCard
+    base = {"_tool": "preparar_compra", "item_id": 0, "nome_novo": None, "tipo": None, "categoria": None,
+            "unidade": "L", "quantidade_embalagens": 1, "tamanho_embalagem": 50, "preco_por_embalagem": 300,
+            "valor_total": None, "data": "2026-11-15", "fornecedor": None, "observacao": None,
+            "forma_pagamento": "Cartão de crédito", "condicao": None, "parcelas": None, "periodicidade": None,
+            "primeira_parcela": None, "conta_id": None, "cartao_id": None, "cartao_desconhecido": False}
+    replies = [{**base, "_expect_error": True}, {**base, "cartao_id": 1}]
+    routes, db, user, scope, send, sent, history = _route_env(monkeypatch, replies)
+    account = FinanceAccount(farm_id=scope["active_farm"].id, account_name="Conta", initial_balance=0,
+                             initial_balance_date=date(2026, 1, 1), bank_code="756", bank_name="Banco",
+                             created_at=datetime.now(timezone.utc))
+    db.add(account); db.flush()
+    for name in ("Nubank Ultravioleta", "Ourocard Infinite"):
+        db.add(FinanceCreditCard(farm_id=scope["active_farm"].id, payment_account_id=account.id, card_name=name,
+                                 issuer=name, brand="Visa", closing_day=5, due_day=12, is_active=True,
+                                 created_at=datetime.now(timezone.utc)))
+    db.commit()
+    send("comprei gasolina no cartão")
+    assert "2. Ourocard Infinite" in history()[-1]["content"]
+    send(answer)
+    assert "Ourocard Infinite" in history()[-1]["draft"]["payment"]
 
 
 def test_purchase_rejects_category_as_product_and_records_manufacturer():
