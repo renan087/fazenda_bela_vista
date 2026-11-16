@@ -1,494 +1,502 @@
 {% extends "base.html" %}
+{% macro ic(name, size=18, sw=1.8) -%}
+<svg width="{{ size }}" height="{{ size }}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="{{ sw }}" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+{%- if name == 'area' %}<path d="M4 7 9 4l11 4-2 12-12-2z"/>
+{%- elif name == 'map' %}<path d="M9 4 3 6v14l6-2 6 2 6-2V4l-6 2z"/><path d="M9 4v14M15 6v14"/>
+{%- elif name == 'pin' %}<path d="M12 21s7-6.2 7-12a7 7 0 0 0-14 0c0 5.8 7 12 7 12z"/><circle cx="12" cy="9" r="2.5"/>
+{%- elif name == 'bag' %}<path d="M6 8h12l1 12H5z"/><path d="M9 8V6a3 3 0 0 1 6 0v2"/>
+{%- elif name == 'dl' %}<path d="M12 4v11M7 10l5 5 5-5M5 20h14"/>
+{%- elif name == 'plus' %}<path d="M12 5v14M5 12h14"/>
+{%- elif name == 'minus' %}<path d="M5 12h14"/>
+{%- elif name == 'fit' %}<path d="M4 8V4h4M16 4h4v4M20 16v4h-4M8 20H4v-4"/><rect x="9" y="9" width="6" height="6" rx="1"/>
+{%- elif name == 'full' %}<path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/>
+{%- elif name == 'locate' %}<path d="M12 2v3M12 19v3M2 12h3M19 12h3"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2" fill="currentColor"/>
+{%- elif name == 'search' %}<circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>
+{%- elif name == 'edit' %}<path d="M4 20h4L19 9l-4-4L4 16z"/>
+{%- elif name == 'open' %}<path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/>
+{%- elif name == 'undo' %}<path d="M9 14 4 9l5-5"/><path d="M4 9h11a5 5 0 0 1 0 10h-3"/>
+{%- elif name == 'trash' %}<path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/>
+{%- elif name == 'check' %}<path d="M5 12.5 10 17 19 7"/>
+{%- elif name == 'x' %}<path d="M6 6l12 12M18 6 6 18"/>
+{%- endif -%}
+</svg>
+{%- endmacro %}
 {% block content %}
-<div class="stock-page-shell sf-page">
-    <section class="stock-page-header">
-        <div class="flex flex-wrap items-start justify-between gap-4">
-            <div class="min-w-0 stock-page-header-intro" data-stock-header-intro>
-                <div class="stock-page-header-intro-inner">
-                    <h2 class="stock-page-card-title">Mapa da Fazenda</h2>
-                    <p class="stock-page-card-subtitle">Visualize fazendas e setores georreferenciados.</p>
+{% set k = map_kpis %}
+<div class="stock-page-shell sf-page fm-page" data-fm>
+    <header class="sf-page-header fm-header">
+        <div class="min-w-0">
+            <p class="sf-page-subtitle fm-intro">{% if map_farm_label %}{{ map_farm_label }} · {% endif %}clique num setor para ver os dados ou editar o perímetro.</p>
+        </div>
+        <div class="fm-actions">
+            {% if map_kml_href %}<a href="{{ map_kml_href }}" class="sf-btn sf-btn-secondary db-btn-sm">{{ ic('dl', 16) }}Baixar KML</a>{% endif %}
+            <a href="/setores" class="sf-btn sf-btn-primary db-btn-sm">{{ ic('plus', 16, 2.2) }}Cadastrar setor</a>
+        </div>
+    </header>
+
+    <div class="fm-kpis">
+        <div class="fm-kpi"><span class="fm-kpi-ic">{{ ic('area', 20) }}</span><div class="min-w-0"><p class="fm-kpi-l">Área da fazenda</p><p class="fm-kpi-v">{% if k.farm_area %}{{ k.farm_area|decimal_br(1) }} ha{% else %}—{% endif %}</p><p class="fm-kpi-s">{% if k.farm_area %}Perímetro cadastrado{% else %}Sem perímetro da fazenda{% endif %}</p></div></div>
+        <div class="fm-kpi"><span class="fm-kpi-ic">{{ ic('map', 20) }}</span><div class="min-w-0"><p class="fm-kpi-l">Área em setores</p><p class="fm-kpi-v">{{ k.plots_area|decimal_br(1) }} ha</p><p class="fm-kpi-s">{% if k.plots_share is not none %}{{ k.plots_share|decimal_br(0) }}% da fazenda{% else %}{{ k.total }} setor(es){% endif %}</p></div></div>
+        <div class="fm-kpi"><span class="fm-kpi-ic">{{ ic('pin', 20) }}</span><div class="min-w-0"><p class="fm-kpi-l">Setores no mapa</p><p class="fm-kpi-v">{{ k.mapped }} de {{ k.total }}</p><p class="fm-kpi-s">{% if k.total - k.mapped %}{{ k.total - k.mapped }} sem perímetro{% else %}Todos com perímetro{% endif %}</p></div></div>
+        <div class="fm-kpi"><span class="fm-kpi-ic">{{ ic('bag', 20) }}</span><div class="min-w-0"><p class="fm-kpi-l">Estimativa da safra</p><p class="fm-kpi-v">{% if k.estimated %}{{ k.estimated|decimal_br(0) }} sc{% else %}—{% endif %}</p><p class="fm-kpi-s">{% if k.avg_yield %}{{ k.avg_yield|decimal_br(1) }} sc/ha em média{% else %}Informe a estimativa nos setores{% endif %}</p></div></div>
+    </div>
+
+    <div class="fm-main{% if edit_plot %} is-editing{% endif %}">
+        <section class="fm-map" data-fm-map-wrap aria-label="Mapa">
+            <div id="farmMap" class="fm-canvas"></div>
+            <div class="fm-tl">
+                <div class="fm-seg" role="group" aria-label="Tipo de mapa">
+                    <button type="button" aria-pressed="true" data-fm-base="sat">Satélite</button>
+                    <button type="button" aria-pressed="false" data-fm-base="map">Mapa</button>
                 </div>
-            </div>
-            <div class="stock-header-actions stock-header-actions-top">
-                {% if edit_plot %}
-                <a href="/setores?edit_id={{ edit_plot.id }}" class="stock-action-button">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-                        <path d="M9 18l6-6-6-6"/>
-                    </svg>
-                    <span class="stock-action-button-label">Abrir setor</span>
-                </a>
+                {% if not edit_plot %}
+                <div class="fm-seg fm-seg-color" role="group" aria-label="Colorir setores por">
+                    <button type="button" aria-pressed="true" data-fm-color="setor">Cor por setor</button>
+                    <button type="button" aria-pressed="false" data-fm-color="var">Por variedade</button>
+                </div>
                 {% endif %}
             </div>
-        </div>
-    </section>
-
-    <div class="grid gap-6 xl:grid-cols-[0.92fr_1.08fr]">
-        <section class="stock-panel rounded-[2rem] bg-white p-6 shadow-panel" data-stock-fade-panel>
-            <div class="flex flex-wrap items-start justify-between gap-4">
-                <div class="min-w-0">
-                    <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Setores georreferenciados</p>
-                    <h3 class="mt-2 text-2xl font-semibold">Navegação territorial</h3>
-                    <p class="mt-2 text-sm text-slate-500">Escolha um setor para abrir a geometria no mapa e, quando necessário, editar o perímetro diretamente na tela.</p>
+            <div class="fm-tr">
+                <div class="fm-mc fm-zoom">
+                    <button type="button" aria-label="Aproximar" data-fm-zoom="1">{{ ic('plus', 18, 2) }}</button>
+                    <button type="button" aria-label="Afastar" data-fm-zoom="-1">{{ ic('minus', 18, 2) }}</button>
                 </div>
-                <div class="stock-search-field">
-                    <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
-                        <circle cx="8.5" cy="8.5" r="5.75"></circle>
-                        <path d="M13 13l4 4"></path>
-                    </svg>
-                    <input type="search" placeholder="Buscar setor ou fazenda" data-map-search>
+                <div class="fm-mc">
+                    <button type="button" aria-label="Minha localização" title="Minha localização" data-fm-locate>{{ ic('locate', 18) }}</button>
+                    <button type="button" aria-label="Enquadrar a fazenda" title="Enquadrar a fazenda" data-fm-fit>{{ ic('fit', 18) }}</button>
+                    <button type="button" aria-label="Tela cheia" title="Tela cheia" class="fm-only-wide" data-fm-full>{{ ic('full', 18) }}</button>
                 </div>
             </div>
+            <div class="fm-legend" data-fm-legend hidden></div>
+            {% if edit_plot %}
+            <div class="fm-edit-bar" role="toolbar" aria-label="Edição do perímetro">
+                <button type="button" data-fm-undo disabled>{{ ic('undo', 16) }}Desfazer</button>
+                <span aria-hidden="true"></span>
+                <button type="button" class="is-danger" data-remove-point disabled>{{ ic('trash', 16) }}Remover ponto</button>
+            </div>
+            {% endif %}
+            {% if not google_maps_web_key %}<p class="fm-note">Sem <code>GOOGLE_MAPS_API_KEY</code>: satélite Esri e mapa OpenStreetMap.</p>{% endif %}
+        </section>
 
-            <div class="mt-6 space-y-3">
-                {% for plot in plots %}
-                <a href="/mapa?edit_plot_id={{ plot.id }}" class="flex items-center justify-between rounded-2xl border px-4 py-4 transition {% if edit_plot and edit_plot.id == plot.id %}border-brand-300 bg-brand-50{% else %}border-slate-200 bg-slate-50 hover:border-brand-200 hover:bg-brand-50/40{% endif %}" data-map-plot-card data-map-plot-search-text="{{ plot.name }} {{ plot.farm.name if plot.farm else '' }} {{ plot.area_hectares }}">
-                    <div class="min-w-0">
-                        <p class="font-medium text-slate-900">{{ plot.name }}</p>
-                        <p class="text-sm text-slate-500">{{ plot.farm.name if plot.farm else "Sem fazenda" }} • {{ plot.area_hectares }} ha</p>
+        <aside class="fm-side" data-fm-side>
+            <span class="fm-handle" aria-hidden="true"></span>
+            {% if edit_plot %}
+            <div class="fm-side-head">
+                <p class="fm-kicker">{% if edit_plot_geometry %}Editando perímetro{% else %}Desenhando perímetro{% endif %}</p>
+                <h2 class="fm-edit-title">{{ edit_plot.name }}</h2>
+                <p class="fm-muted">{{ edit_plot.variety.name if edit_plot.variety else 'Sem variedade' }} · {{ edit_plot.farm.name if edit_plot.farm else 'Sem fazenda' }}</p>
+            </div>
+            <div class="fm-side-body fm-edit-body">
+                <div class="fm-area-box">
+                    <p class="fm-kpi-l">Área recalculada</p>
+                    <p class="fm-area"><span data-area-hectares>{{ edit_plot.area_hectares|decimal_br(2) }} ha</span><span class="fm-delta" data-fm-delta></span></p>
+                    <p class="fm-muted">Cadastro atual: {{ edit_plot.area_hectares|decimal_br(2) }} ha</p>
+                </div>
+                <div class="fm-stats fm-stats-2">
+                    <div><dt>Vértices</dt><dd data-point-count>0</dd></div>
+                    <div><dt>Ponto selecionado</dt><dd data-selected-point>Nenhum</dd></div>
+                </div>
+                <div>
+                    <p class="fm-kicker fm-kicker-muted">Como editar</p>
+                    <ul class="fm-tips">
+                        {% if edit_plot_geometry %}
+                        <li><i class="fm-dot fm-dot-v"></i>Arraste um ponto para mover o limite.</li>
+                        <li><i class="fm-dot fm-dot-m"></i>Clique num ponto pequeno, entre dois vértices, para criar um novo.</li>
+                        <li><i class="fm-dot fm-dot-s"></i>Selecione um ponto e use “Remover ponto”.</li>
+                        {% else %}
+                        <li><i class="fm-dot fm-dot-v"></i>Clique no mapa para marcar os cantos do setor, em ordem.</li>
+                        <li><i class="fm-dot fm-dot-m"></i>Com 3 pontos ou mais, use os pontos pequenos para refinar o contorno.</li>
+                        <li><i class="fm-dot fm-dot-s"></i>Arraste ou remova pontos para ajustar.</li>
+                        {% endif %}
+                    </ul>
+                </div>
+            </div>
+            <form method="post" action="/mapa/setores/{{ edit_plot.id }}/salvar" class="fm-side-foot" id="map-editor-form" data-fm-edit-form data-fm-plot-area="{{ edit_plot.area_hectares }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <input type="hidden" name="boundary_geojson" data-boundary-input>
+                <a href="/mapa" class="sf-btn sf-btn-secondary">Cancelar</a>
+                <button type="submit" class="sf-btn sf-btn-primary" data-fm-save>{{ ic('check', 16, 2.2) }}Salvar perímetro</button>
+            </form>
+            {% else %}
+            <div class="fm-side-head">
+                <div class="fm-side-title">
+                    <h2>Setores</h2>
+                    <span class="fm-muted">{{ k.mapped }} no mapa{% if k.total - k.mapped %} · {{ k.total - k.mapped }} sem perímetro{% endif %}</span>
+                    <button type="button" class="fm-close" aria-label="Fechar setor" data-fm-close>{{ ic('x', 20) }}</button>
+                </div>
+                <label class="fm-search">{{ ic('search', 15) }}<input type="search" placeholder="Buscar setor ou variedade" aria-label="Buscar setor ou variedade" data-map-search></label>
+            </div>
+            <div class="fm-side-body" data-fm-list>
+                {% for plot in map_plots if plot.geometry %}
+                <div class="fm-item" data-fm-item="{{ plot.id }}" data-map-plot-search-text="{{ plot.name }} {{ plot.variety }} {{ plot.farm }}">
+                    <button type="button" class="fm-row" aria-expanded="false" data-fm-pick="{{ plot.id }}">
+                        <span class="fm-sw" data-fm-sw="{{ plot.id }}"></span>
+                        <span class="fm-row-main"><span class="fm-row-name">{{ plot.name }}</span><span class="fm-row-meta">{{ plot.variety }} · {{ plot.area|decimal_br(1) }} ha</span></span>
+                        <span class="fm-row-val">{% if plot.estimated %}{{ plot.estimated|decimal_br(0) }} sc{% endif %}</span>
+                    </button>
+                    <div class="fm-detail" hidden>
+                        <dl class="fm-stats">
+                            <div><dt>Área</dt><dd>{{ plot.area|decimal_br(1) }} ha</dd></div>
+                            <div><dt>Estimativa</dt><dd>{% if plot.estimated %}{{ plot.estimated|decimal_br(0) }} sc{% else %}—{% endif %}</dd></div>
+                            <div><dt>Produtiv.</dt><dd>{% if plot.yield %}{{ plot.yield|decimal_br(1) }} sc/ha{% else %}—{% endif %}</dd></div>
+                        </dl>
+                        <div class="fm-detail-actions">
+                            <a href="/mapa?edit_plot_id={{ plot.id }}" class="sf-btn sf-btn-secondary db-btn-sm">{{ ic('edit', 15) }}Editar perímetro</a>
+                            <a href="/setores?edit_id={{ plot.id }}" class="sf-btn sf-btn-primary db-btn-sm">{{ ic('open', 15) }}Abrir setor</a>
+                        </div>
                     </div>
-                    <span class="text-sm font-semibold text-brand-700 whitespace-nowrap">{% if edit_plot and edit_plot.id == plot.id %}Editando{% else %}Abrir no mapa{% endif %}</span>
-                </a>
-                {% else %}
-                <p class="text-sm text-slate-500">Sem setores com geometria cadastrada.</p>
+                </div>
+                {% endfor %}
+                <p class="fm-empty" data-map-search-empty hidden>Nenhum setor corresponde à busca.</p>
+                {% if not map_plots %}
+                <div class="fm-empty-state">
+                    <p>Nenhum setor cadastrado nesta fazenda e safra.</p>
+                    <a href="/setores" class="sf-btn sf-btn-primary db-btn-sm">{{ ic('plus', 15, 2.2) }}Cadastrar setor</a>
+                </div>
+                {% endif %}
+                {% for plot in map_unmapped %}
+                <div class="fm-unmapped" data-fm-item-unmapped data-map-plot-search-text="{{ plot.name }} {{ plot.variety }} {{ plot.farm }}">
+                    <span class="fm-sw fm-sw-empty"></span>
+                    <span class="fm-row-main"><span class="fm-row-name">{{ plot.name }}</span><span class="fm-row-meta">Sem perímetro · {{ plot.area|decimal_br(1) }} ha no cadastro</span></span>
+                    <a href="/mapa?edit_plot_id={{ plot.id }}">Desenhar</a>
+                </div>
                 {% endfor %}
             </div>
-            <p class="stock-search-empty mt-4 hidden text-sm text-slate-500" data-map-search-empty>Nenhum setor corresponde à busca digitada.</p>
-
-            {% if edit_plot %}
-            <div class="mt-6 rounded-[1.5rem] border border-brand-100 bg-brand-50/40 p-5">
-                <div class="flex flex-wrap items-start justify-between gap-3">
-                    <div>
-                        <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Edição de polígono</p>
-                        <h4 class="mt-2 text-xl font-semibold">{{ edit_plot.name }}</h4>
-                        <p class="mt-2 text-sm text-slate-600">Arraste os pontos para editar, clique no mapa para adicionar novos vértices e use o botão abaixo para remover o ponto selecionado.</p>
-                    </div>
-                </div>
-                <div class="mt-4 grid gap-3 md:grid-cols-3">
-                    <div class="rounded-2xl bg-white p-4">
-                        <p class="text-xs uppercase tracking-[0.25em] text-slate-400">Área recalculada</p>
-                        <p class="mt-2 text-2xl font-semibold text-slate-900"><span data-area-hectares>{{ edit_plot.area_hectares }}</span> ha</p>
-                    </div>
-                    <div class="rounded-2xl bg-white p-4">
-                        <p class="text-xs uppercase tracking-[0.25em] text-slate-400">Vértices</p>
-                        <p class="mt-2 text-2xl font-semibold text-slate-900" data-point-count>0</p>
-                    </div>
-                    <div class="rounded-2xl bg-white p-4">
-                        <p class="text-xs uppercase tracking-[0.25em] text-slate-400">Ponto selecionado</p>
-                        <p class="mt-2 text-2xl font-semibold text-slate-900" data-selected-point>Nenhum</p>
-                    </div>
-                </div>
-                <form method="post" action="/mapa/setores/{{ edit_plot.id }}/salvar" class="mt-4 flex flex-wrap gap-3" id="map-editor-form">
-                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                    <input type="hidden" name="boundary_geojson" data-boundary-input>
-                    <button class="rounded-2xl bg-brand-500 px-4 py-3 font-semibold text-white hover:bg-brand-700">Salvar edição</button>
-                    <a href="/mapa" class="rounded-2xl bg-slate-100 px-4 py-3 font-semibold text-slate-700 hover:bg-slate-200">Cancelar edição</a>
-                    <button type="button" class="rounded-2xl bg-rose-600 px-4 py-3 font-semibold text-white hover:bg-rose-700" data-remove-point>Remover ponto</button>
-                </form>
-            </div>
             {% endif %}
-        </section>
-
-        <section class="stock-panel rounded-[2rem] bg-white p-6 shadow-panel" data-stock-fade-panel>
-            <div id="farmMap" class="h-[720px] overflow-hidden rounded-[1.5rem]"></div>
-            {% if google_maps_web_key %}
-            <p class="mt-3 text-xs text-emerald-700">Mapa em modo satélite (Google Maps).</p>
-            {% else %}
-            <p class="mt-3 text-xs text-slate-500">Configure <code class="rounded bg-slate-200 px-1 py-0.5 text-[11px]">GOOGLE_MAPS_API_KEY</code> no servidor para usar imagens de satélite do Google; sem chave, o mapa usa OpenStreetMap.</p>
-            {% endif %}
-        </section>
+        </aside>
     </div>
 </div>
 
 <script>
-    (() => {
-        const searchInput = document.querySelector('[data-map-search]');
-        const cards = Array.from(document.querySelectorAll('[data-map-plot-card]'));
-        const emptyState = document.querySelector('[data-map-search-empty]');
-        const stickyHeader = document.querySelector('.stock-page-header');
-        const headerIntro = stickyHeader?.querySelector('[data-stock-header-intro]');
-        const fadingPanels = Array.from(document.querySelectorAll('[data-stock-fade-panel]'));
-        const normalizeText = (value) => (value || '').toString().normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
-        const applyLocalSearch = () => {
-            const query = normalizeText(searchInput?.value || '');
-            let visible = 0;
-            cards.forEach((card) => {
-                const haystack = normalizeText(card.dataset.mapPlotSearchText || card.textContent);
-                const matches = !query || haystack.includes(query);
-                card.classList.toggle('hidden', !matches);
-                if (matches) visible += 1;
-            });
-            emptyState?.classList.toggle('hidden', visible !== 0);
-        };
-        searchInput?.addEventListener('input', applyLocalSearch);
-        applyLocalSearch();
+(() => {
+    const root = document.querySelector('[data-fm]');
+    if (!root) return;
+    const mapData = {{ map_geojson|safe }};
+    const PLOTS = {{ map_plots_json|safe }};
+    const editPlotGeometry = {{ edit_plot_geometry|safe if edit_plot_geometry else 'null' }};
+    const EDIT_ID = {{ edit_plot.id if edit_plot else 'null' }};
+    const GOOGLE_MAPS_API_KEY = {{ google_maps_web_key | tojson }};
+    const $ = (s, r = root) => r.querySelector(s);
+    const $$ = (s, r = root) => Array.from(r.querySelectorAll(s));
+    const nf = (v, d = 2) => Number(v).toLocaleString('pt-BR', { minimumFractionDigits: d, maximumFractionDigits: d });
+    const side = $('[data-fm-side]');
+    const store = { get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
+                    set(k, v) { try { localStorage.setItem(k, v); } catch (e) { /* sem armazenamento */ } } };
 
-        const mobileCompactMq = window.matchMedia('(max-width: 899px)');
-        const parseStickyTopPx = (el) => {
-            const raw = getComputedStyle(el).top;
-            if (!raw || raw === 'auto') return 0;
-            const pxMatch = /^([\d.]+)px$/.exec(raw);
-            if (pxMatch) return parseFloat(pxMatch[1]);
-            return 0;
-        };
-        const syncHeaderFade = () => {
-            if (!stickyHeader || !fadingPanels.length) return;
-            const compact = mobileCompactMq.matches;
-            const stickyTop = parseStickyTopPx(stickyHeader);
-            const introRect = headerIntro?.getBoundingClientRect();
-            const firstPanelRect = fadingPanels[0]?.getBoundingClientRect();
-            const introHeight = introRect?.height || 0;
-            const compactOverlap = compact && firstPanelRect
-                ? Math.max(0, (stickyTop + introHeight) - firstPanelRect.top)
-                : 0;
-            const fadeDistance = compact ? Math.max(introHeight * 0.95, 1) : 1;
-            const headerProgress = compact ? Math.min(compactOverlap / fadeDistance, 1) : 0;
-            stickyHeader.style.setProperty('--stock-header-progress', headerProgress.toFixed(3));
+    // ---------- Cores ----------
+    const PAL = [['#2563eb', '#93c5fd'], ['#d97706', '#fcd34d'], ['#7c3aed', '#c4b5fd'], ['#0891b2', '#67e8f9'], ['#be123c', '#fda4af'], ['#4d7c0f', '#bef264'],
+                 ['#c2410c', '#fdba74'], ['#0f766e', '#5eead4'], ['#a21caf', '#f0abfc'], ['#4338ca', '#a5b4fc'], ['#15803d', '#86efac'], ['#b45309', '#fde68a']];
+    const varieties = [...new Set(PLOTS.map((p) => p.variety))];
+    let colorMode = store.get('sf-map-color') === 'var' ? 'var' : 'setor';
+    let baseMode = store.get('sf-map-base') === 'map' ? 'map' : 'sat';
+    const colorOf = (p) => colorMode === 'var' ? PAL[varieties.indexOf(p.variety) % PAL.length] : PAL[PLOTS.indexOf(p) % PAL.length];
 
-            const stickyRect = stickyHeader.getBoundingClientRect();
-            const stickyBottom = stickyRect.bottom;
-            fadingPanels.forEach((panel) => {
-                const panelRect = panel.getBoundingClientRect();
-                const panelTop = panelRect.top;
-                const panelHeight = panelRect.height;
-                panel.style.setProperty('--stock-header-progress', headerProgress.toFixed(3));
-                panel.classList.toggle('stock-panel-under-header', compact && headerProgress > 0.02);
-                if (panelTop >= stickyBottom || panelHeight <= 1) {
-                    panel.style.setProperty('--stock-fade-cutoff', '0px');
-                    panel.style.setProperty('--stock-fade-feather-end', '0px');
-                    return;
-                }
-                const overlap = Math.min(Math.max(stickyBottom - panelTop, 0), panelHeight);
-                const featherBand = Math.min(80, Math.max(22, overlap * 0.45 + 16));
-                panel.style.setProperty('--stock-fade-cutoff', `${overlap.toFixed(2)}px`);
-                panel.style.setProperty('--stock-fade-feather-end', `${(overlap + featherBand).toFixed(2)}px`);
-            });
-        };
-        const requestHeaderSync = () => window.requestAnimationFrame(syncHeaderFade);
-        window.addEventListener('scroll', requestHeaderSync, { passive: true });
-        window.addEventListener('resize', requestHeaderSync);
-        if (mobileCompactMq.addEventListener) mobileCompactMq.addEventListener('change', requestHeaderSync);
-        else if (mobileCompactMq.addListener) mobileCompactMq.addListener(requestHeaderSync);
-        requestHeaderSync();
+    // ---------- Geometria ----------
+    const ringToPoints = (ring) => (ring || []).slice(0, -1).map((c) => ({ lat: c[1], lng: c[0] }));
+    const pathsOf = (g) => {
+        if (!g) return [];
+        if (g.type === 'Polygon') return [ringToPoints(g.coordinates && g.coordinates[0])];
+        if (g.type === 'MultiPolygon') return (g.coordinates || []).map((poly) => ringToPoints(poly && poly[0])).filter((p) => p.length >= 3);
+        return [];
+    };
+    const calculateArea = (coords) => {
+        if (coords.length < 3) return 0;
+        const avgLat = coords.reduce((s, c) => s + c.lat, 0) / coords.length;
+        const mLat = 111320, mLng = 111320 * Math.cos(avgLat * Math.PI / 180);
+        const pr = coords.map((c) => ({ x: c.lng * mLng, y: c.lat * mLat }));
+        let a = 0;
+        pr.forEach((p, i) => { const n = pr[(i + 1) % pr.length]; a += p.x * n.y - n.x * p.y; });
+        return Math.abs(a) / 2 / 10000;
+    };
+    const buildGeometry = (pts) => pts.length < 3 ? null : { type: 'Polygon', coordinates: [[...pts.map((p) => [p.lng, p.lat]), [pts[0].lng, pts[0].lat]]] };
+    const centerOf = (pts) => ({ lat: pts.reduce((s, p) => s + p.lat, 0) / pts.length, lng: pts.reduce((s, p) => s + p.lng, 0) / pts.length });
 
-        const areaNode = document.querySelector('[data-area-hectares]');
-        const pointCountNode = document.querySelector('[data-point-count]');
-        const selectedPointNode = document.querySelector('[data-selected-point]');
-        const boundaryInput = document.querySelector('[data-boundary-input]');
-        const removeButton = document.querySelector('[data-remove-point]');
-        const mapData = {{ map_geojson|safe }};
-        const editPlot = {{ edit_plot_geometry|safe if edit_plot_geometry else 'null' }};
-        const GOOGLE_MAPS_API_KEY = {{ google_maps_web_key | tojson }};
-
-        const extractPoints = (geometry) => {
-            if (!geometry || geometry.type !== 'Polygon' || !geometry.coordinates?.length) return [];
-            const ring = geometry.coordinates[0] || [];
-            return ring
-                .slice(0, -1)
-                .map((coordinate) => ({ lat: coordinate[1], lng: coordinate[0] }));
-        };
-        const extractFeaturePaths = (geometry) => {
-            if (!geometry) return [];
-            if (geometry.type === 'Polygon') return [extractPoints(geometry)];
-            if (geometry.type === 'MultiPolygon') {
-                return (geometry.coordinates || [])
-                    .map((polygon) => {
-                        const ring = polygon?.[0] || [];
-                        return ring.slice(0, -1).map((coordinate) => ({ lat: coordinate[1], lng: coordinate[0] }));
-                    })
-                    .filter((path) => path.length >= 3);
-            }
-            return [];
-        };
-
-        const calculateArea = (coords) => {
-            if (coords.length < 3) return 0;
-            const avgLat = coords.reduce((sum, item) => sum + item.lat, 0) / coords.length;
-            const metersPerLat = 111320;
-            const metersPerLng = 111320 * Math.cos(avgLat * Math.PI / 180);
-            const projected = coords.map((item) => ({ x: item.lng * metersPerLng, y: item.lat * metersPerLat }));
-            let area = 0;
-            projected.forEach((point, index) => {
-                const next = projected[(index + 1) % projected.length];
-                area += (point.x * next.y) - (next.x * point.y);
-            });
-            return Math.abs(area) / 2 / 10000;
-        };
-
-        const buildGeometry = (points) => {
-            if (!points.length) return null;
-            return {
-                type: 'Polygon',
-                coordinates: [[...points.map((point) => [point.lng, point.lat]), [points[0].lng, points[0].lat]]]
-            };
-        };
-        const FARM_MAP_STYLE = {
-            stroke: '#2f6b38',
-            fill: '#b7e4c7',
-            opacity: 0.34,
-        };
-        const PLOT_MAP_PALETTE = [
-            { stroke: '#2563eb', fill: '#93c5fd' },
-            { stroke: '#d97706', fill: '#fcd34d' },
-            { stroke: '#7c3aed', fill: '#c4b5fd' },
-            { stroke: '#0891b2', fill: '#67e8f9' },
-            { stroke: '#be123c', fill: '#fda4af' },
-            { stroke: '#4d7c0f', fill: '#bef264' },
-            { stroke: '#c2410c', fill: '#fdba74' },
-            { stroke: '#0f766e', fill: '#5eead4' },
-            { stroke: '#a21caf', fill: '#f0abfc' },
-            { stroke: '#4338ca', fill: '#a5b4fc' },
-            { stroke: '#15803d', fill: '#86efac' },
-            { stroke: '#b45309', fill: '#fde68a' },
-        ];
-        const plotColorByKey = new Map();
-        const plotStyleForFeature = (feature) => {
-            const props = feature.properties || {};
-            if (props.feature_type === 'farm') return FARM_MAP_STYLE;
-            const key = `${props.farm || ''}::${props.name || ''}`;
-            if (!plotColorByKey.has(key)) {
-                plotColorByKey.set(key, PLOT_MAP_PALETTE[plotColorByKey.size % PLOT_MAP_PALETTE.length]);
-            }
-            return plotColorByKey.get(key);
-        };
-
-        const featurePopupHtml = (feature) => {
-            const props = feature.properties || {};
-            if (props.feature_type === 'farm') {
-                return `<div style="min-width: 180px"><strong>${props.name}</strong><br>${props.location || ''}<br>Área total: ${props.area} ha</div>`;
-            }
-            return `<div style="min-width: 180px"><strong>${props.name}</strong><br>${props.farm || 'Sem fazenda'}<br>${props.variety || 'Sem variedade'}<br>Área: ${props.area} ha<br>Estimativa: ${props.estimated} sacas</div>`;
-        };
-
-        const loadGoogleMapsScript = (apiKey) => {
-            if (window.google?.maps?.Map) return Promise.resolve();
-            if (window.__sisfarmGoogleMapsLoadPromise) return window.__sisfarmGoogleMapsLoadPromise;
-            window.__sisfarmGoogleMapsLoadPromise = new Promise((resolve, reject) => {
-                const script = document.createElement('script');
-                script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(apiKey)}&libraries=geometry`;
-                script.async = true;
-                script.defer = true;
-                script.onload = resolve;
-                script.onerror = () => reject(new Error('Falha ao carregar Google Maps'));
-                document.head.appendChild(script);
-            });
-            return window.__sisfarmGoogleMapsLoadPromise;
-        };
-
-        const syncStats = (points, selectedIndex) => {
-            if (points.length < 3) {
-                if (boundaryInput) boundaryInput.value = '';
-                if (areaNode) areaNode.textContent = '0.00';
-                if (pointCountNode) pointCountNode.textContent = String(points.length);
-                if (selectedPointNode) selectedPointNode.textContent = selectedIndex === null ? 'Nenhum' : String(selectedIndex + 1);
-                return;
-            }
-            const geometry = buildGeometry(points);
-            if (boundaryInput) boundaryInput.value = JSON.stringify(geometry);
-            if (areaNode) areaNode.textContent = calculateArea(points).toFixed(4);
-            if (pointCountNode) pointCountNode.textContent = String(points.length);
-            if (selectedPointNode) selectedPointNode.textContent = selectedIndex === null ? 'Nenhum' : String(selectedIndex + 1);
-        };
-
-        const initGoogleMap = async () => {
-            if (!GOOGLE_MAPS_API_KEY) throw new Error('Google Maps API key ausente');
-            await loadGoogleMapsScript(GOOGLE_MAPS_API_KEY);
-            const map = new google.maps.Map(document.getElementById('farmMap'), {
-                center: { lat: -20.7442, lng: -42.8721 },
-                zoom: 14,
-                mapTypeId: 'satellite',
-                mapTypeControl: true,
-                streetViewControl: false,
-                rotateControl: false,
-                fullscreenControl: true,
-            });
-            const bounds = new google.maps.LatLngBounds();
-            const infoWindow = new google.maps.InfoWindow();
-
-            (mapData.features || []).forEach((feature) => {
-                const props = feature.properties || {};
-                const isFarm = props.feature_type === 'farm';
-                const featureStyle = plotStyleForFeature(feature);
-                extractFeaturePaths(feature.geometry).forEach((path) => {
-                    path.forEach((point) => bounds.extend(point));
-                    const polygon = new google.maps.Polygon({
-                        paths: path,
-                        strokeColor: featureStyle.stroke,
-                        strokeOpacity: 1,
-                        strokeWeight: isFarm ? 3 : 2,
-                        fillColor: featureStyle.fill,
-                        fillOpacity: isFarm ? FARM_MAP_STYLE.opacity : 0.28,
-                        clickable: true,
-                        map,
-                    });
-                    polygon.addListener('click', (event) => {
-                        infoWindow.setContent(featurePopupHtml(feature));
-                        infoWindow.setPosition(event.latLng);
-                        infoWindow.open(map);
-                    });
-                });
-            });
-
-            let selectedIndex = null;
-            let points = extractPoints(editPlot);
-            let editPolygon = null;
-            const markers = [];
-            let skipNextMapClick = false;
-
-            const clearMarkers = () => {
-                markers.forEach((marker) => marker.setMap(null));
-                markers.length = 0;
-            };
-            const renderEditor = () => {
-                if (editPolygon) editPolygon.setMap(null);
-                clearMarkers();
-                if (points.length >= 2) {
-                    editPolygon = new google.maps.Polygon({
-                        paths: points,
-                        strokeColor: '#e11d48',
-                        strokeWeight: 3,
-                        fillColor: '#fb7185',
-                        fillOpacity: 0.18,
-                        zIndex: 100,
-                        map,
-                    });
-                }
-                points.forEach((point, index) => {
-                    bounds.extend(point);
-                    const marker = new google.maps.Marker({
-                        position: point,
-                        map,
-                        draggable: true,
-                        icon: {
-                            path: google.maps.SymbolPath.CIRCLE,
-                            scale: 8,
-                            fillColor: index === selectedIndex ? '#e11d48' : '#446a36',
-                            fillOpacity: 1,
-                            strokeColor: '#ffffff',
-                            strokeWeight: 3,
-                        },
-                    });
-                    marker.addListener('click', () => {
-                        skipNextMapClick = true;
-                        window.setTimeout(() => { skipNextMapClick = false; }, 80);
-                        selectedIndex = index;
-                        renderEditor();
-                    });
-                    marker.addListener('drag', () => {
-                        const position = marker.getPosition();
-                        points[index] = { lat: position.lat(), lng: position.lng() };
-                        if (editPolygon) editPolygon.setPath(points);
-                        syncStats(points, selectedIndex);
-                    });
-                    marker.addListener('dragend', renderEditor);
-                    markers.push(marker);
-                });
-                syncStats(points, selectedIndex);
-            };
-
-            if (editPlot) {
-                renderEditor();
-                map.addListener('click', (event) => {
-                    if (skipNextMapClick) return;
-                    points.push({ lat: event.latLng.lat(), lng: event.latLng.lng() });
-                    selectedIndex = points.length - 1;
-                    renderEditor();
-                });
-                removeButton?.addEventListener('click', () => {
-                    if (selectedIndex === null || points.length <= 3) return;
-                    points.splice(selectedIndex, 1);
-                    selectedIndex = null;
-                    renderEditor();
-                });
-            }
-            if (!bounds.isEmpty()) map.fitBounds(bounds, 48);
-        };
-
-        const initLeafletMap = () => {
-            const farmMap = L.map('farmMap').setView([-20.7442, -42.8721], 14);
-            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '&copy; OpenStreetMap' }).addTo(farmMap);
-
-            const baseLayer = L.geoJSON(mapData, {
-                style: (feature) => {
-                    const props = feature.properties || {};
-                    const isFarm = props.feature_type === 'farm';
-                    const featureStyle = plotStyleForFeature(feature);
-                    return {
-                        color: featureStyle.stroke,
-                        weight: isFarm ? 3 : 2,
-                        fillColor: featureStyle.fill,
-                        fillOpacity: isFarm ? FARM_MAP_STYLE.opacity : 0.28,
-                    };
-                },
-                onEachFeature: (feature, layer) => {
-                    layer.bindPopup(featurePopupHtml(feature));
-                }
-            }).addTo(farmMap);
-            if (baseLayer.getBounds().isValid()) {
-                farmMap.fitBounds(baseLayer.getBounds(), { padding: [30, 30] });
-            }
-
-            if (!editPlot) return;
-
-            let selectedIndex = null;
-            let editLayer = null;
-            const markerLayer = L.layerGroup().addTo(farmMap);
-            let points = [];
-
-            const markerIcon = (active) => L.divIcon({
-                className: '',
-                html: `<div style="width: 16px; height: 16px; border-radius: 9999px; background: ${active ? '#e11d48' : '#446a36'}; border: 3px solid white; box-shadow: 0 4px 12px rgba(15,23,42,.2);"></div>`,
-                iconSize: [16, 16],
-                iconAnchor: [8, 8]
-            });
-
-            const renderEditor = () => {
-                if (editLayer) farmMap.removeLayer(editLayer);
-                markerLayer.clearLayers();
-                if (points.length >= 2) {
-                    editLayer = L.polygon(points, { color: '#e11d48', weight: 3, fillColor: '#fb7185', fillOpacity: 0.18 }).addTo(farmMap);
-                }
-                points.forEach((point, index) => {
-                    const marker = L.marker(point, { draggable: true, icon: markerIcon(index === selectedIndex) }).addTo(markerLayer);
-                    marker.on('click', () => {
-                        selectedIndex = index;
-                        renderEditor();
-                    });
-                    marker.on('drag', (event) => {
-                        points[index] = event.target.getLatLng();
-                        syncStats(points, selectedIndex);
-                        if (editLayer) editLayer.setLatLngs(points);
-                    });
-                    marker.on('dragend', () => renderEditor());
-                });
-                syncStats(points, selectedIndex);
-            };
-
-            points = extractPoints(editPlot);
-            renderEditor();
-
-            if (points.length) {
-                const bounds = L.latLngBounds(points);
-                if (bounds.isValid()) farmMap.fitBounds(bounds.pad(0.3));
-            }
-
-            farmMap.on('click', (event) => {
-                points.push(event.latlng);
-                selectedIndex = points.length - 1;
-                renderEditor();
-            });
-
-            removeButton?.addEventListener('click', () => {
-                if (selectedIndex === null || points.length <= 3) return;
-                points.splice(selectedIndex, 1);
-                selectedIndex = null;
-                renderEditor();
-            });
-        };
-
-        initGoogleMap().catch((error) => {
-            console.warn('[mapa] Google Maps indisponível, usando OpenStreetMap.', error);
-            initLeafletMap();
+    // ---------- Motor do mapa (Google ou Leaflet) ----------
+    const isPhone = () => window.matchMedia('(max-width: 639px)').matches;
+    const padBox = (pad) => {
+        const p = isPhone() ? 20 : (typeof pad === 'number' ? pad : 48);
+        const sheet = isPhone() && side && side.classList.contains('has-sel') ? side.offsetHeight : 0;
+        return { top: p, right: p, left: p, bottom: p + sheet };
+    };
+    const loadGoogle = (key) => {
+        if (window.google && window.google.maps && window.google.maps.Map) return Promise.resolve();
+        if (window.__sisfarmGoogleMapsLoadPromise) return window.__sisfarmGoogleMapsLoadPromise;
+        window.__sisfarmGoogleMapsLoadPromise = new Promise((resolve, reject) => {
+            const s = document.createElement('script');
+            s.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(key)}&libraries=geometry`;
+            s.async = true; s.defer = true; s.onload = resolve;
+            s.onerror = () => reject(new Error('Falha ao carregar Google Maps'));
+            document.head.appendChild(s);
         });
-    })();
+        return window.__sisfarmGoogleMapsLoadPromise;
+    };
+
+    const googleEngine = async (el) => {
+        if (!GOOGLE_MAPS_API_KEY) throw new Error('Google Maps API key ausente');
+        await loadGoogle(GOOGLE_MAPS_API_KEY);
+        const g = google.maps;
+        const map = new g.Map(el, { center: { lat: -20.7442, lng: -42.8721 }, zoom: 14, mapTypeId: baseMode === 'map' ? 'roadmap' : 'hybrid',
+            disableDefaultUI: true, clickableIcons: false, gestureHandling: 'greedy' });
+        class Label extends g.OverlayView {
+            constructor(pos, html) { super(); this.pos = pos; this.div = document.createElement('div'); this.div.className = 'fm-label'; this.div.innerHTML = html; this.setMap(map); }
+            onAdd() { this.getPanes().overlayLayer.appendChild(this.div); }
+            draw() { const p = this.getProjection().fromLatLngToDivPixel(new g.LatLng(this.pos)); if (p) { this.div.style.left = p.x + 'px'; this.div.style.top = p.y + 'px'; } }
+            onRemove() { this.div.remove(); }
+        }
+        const gStyle = (s) => ({ strokeColor: s.stroke, strokeOpacity: s.strokeOpacity ?? 1, strokeWeight: s.weight, fillColor: s.fill, fillOpacity: s.fillOpacity,
+            clickable: !!s.clickable, zIndex: s.z || 1 });
+        return {
+            polygon(paths, style, onClick) {
+                const poly = new g.Polygon({ paths, map, ...gStyle(style) });
+                if (style.dashed) poly.setOptions({ strokeOpacity: 0, icons: [{ icon: { path: 'M 0,-1 0,1', strokeOpacity: .85, strokeColor: '#fff', scale: 2 }, offset: '0', repeat: '10px' }] });
+                if (onClick) poly.addListener('click', onClick);
+                return { setStyle: (s) => poly.setOptions(gStyle(s)), setPath: (p) => poly.setPath(p), remove: () => poly.setMap(null) };
+            },
+            label(pos, html) { const l = new Label(pos, html); return { el: l.div, remove: () => l.setMap(null) }; },
+            marker(pos, o, h) {
+                const m = new g.Marker({ position: pos, map, draggable: !!o.draggable, zIndex: o.z || 200, cursor: 'pointer',
+                    icon: { path: g.SymbolPath.CIRCLE, scale: o.r, fillColor: o.fill, fillOpacity: o.fillOpacity ?? 1, strokeColor: o.stroke, strokeWeight: o.strokeWidth } });
+                if (h.click) m.addListener('click', h.click);
+                if (h.drag) m.addListener('drag', () => { const p = m.getPosition(); h.drag({ lat: p.lat(), lng: p.lng() }); });
+                if (h.dragend) m.addListener('dragend', h.dragend);
+                return { remove: () => m.setMap(null) };
+            },
+            onClick(fn) { map.addListener('click', (e) => fn({ lat: e.latLng.lat(), lng: e.latLng.lng() })); },
+            fit(points, pad = 48) { if (!points.length) return; const b = new g.LatLngBounds(); points.forEach((p) => b.extend(p)); map.fitBounds(b, padBox(pad)); },
+            zoom(d) { map.setZoom(map.getZoom() + d); },
+            setBase(m) { map.setMapTypeId(m === 'map' ? 'roadmap' : 'hybrid'); },
+            pan(p) { map.panTo(p); }
+        };
+    };
+
+    const leafletEngine = (el) => {
+        const map = L.map(el, { zoomControl: false, attributionControl: true, zoomSnap: 0.25 }).setView([-20.7442, -42.8721], 14);
+        const bases = {
+            sat: L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxZoom: 19, attribution: 'Imagens &copy; Esri' }),
+            map: L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '&copy; OpenStreetMap' })
+        };
+        let current = bases[baseMode].addTo(map);
+        if (window.ResizeObserver) new ResizeObserver(() => map.invalidateSize()).observe(el);
+        const lStyle = (s) => ({ color: s.stroke, opacity: s.strokeOpacity ?? 1, weight: s.weight, fillColor: s.fill, fillOpacity: s.fillOpacity,
+            dashArray: s.dashed ? '6 5' : null, interactive: !!s.clickable });
+        return {
+            polygon(paths, style, onClick) {
+                const st = style.dashed ? { ...style, stroke: '#fff', strokeOpacity: .85 } : style;
+                const poly = L.polygon(paths.map((p) => p.map((c) => [c.lat, c.lng])), lStyle(st)).addTo(map);
+                if (onClick) poly.on('click', (e) => { L.DomEvent.stopPropagation(e); onClick(); });
+                return { setStyle: (s) => poly.setStyle(lStyle(s)), setPath: (p) => poly.setLatLngs(p.map((c) => [c.lat, c.lng])), remove: () => map.removeLayer(poly) };
+            },
+            label(pos, html) {
+                const m = L.marker([pos.lat, pos.lng], { interactive: false, keyboard: false, icon: L.divIcon({ className: '', html: `<div class="fm-label">${html}</div>`, iconSize: [0, 0] }) }).addTo(map);
+                return { get el() { return m.getElement() && m.getElement().firstChild; }, remove: () => map.removeLayer(m) };
+            },
+            marker(pos, o, h) {
+                const d = o.r * 2 + o.strokeWidth;
+                const m = L.marker([pos.lat, pos.lng], { draggable: !!o.draggable, zIndexOffset: (o.z || 200) * 10,
+                    icon: L.divIcon({ className: '', iconSize: [d, d], iconAnchor: [d / 2, d / 2],
+                        html: `<div style="width:${d}px;height:${d}px;box-sizing:border-box;border-radius:50%;background:${o.fill};opacity:${o.fillOpacity ?? 1};border:${o.strokeWidth}px solid ${o.stroke};box-shadow:0 2px 6px rgba(15,21,19,.35);cursor:pointer"></div>` }) }).addTo(map);
+                if (h.click) m.on('click', (e) => { L.DomEvent.stopPropagation(e); h.click(); });
+                if (h.drag) m.on('drag', (e) => { const p = e.target.getLatLng(); h.drag({ lat: p.lat, lng: p.lng }); });
+                if (h.dragend) m.on('dragend', h.dragend);
+                return { remove: () => map.removeLayer(m) };
+            },
+            onClick(fn) { map.on('click', (e) => fn({ lat: e.latlng.lat, lng: e.latlng.lng })); },
+            fit(points, pad = 48, animate = true) { if (!points.length) return; const p = padBox(pad); map.fitBounds(L.latLngBounds(points.map((c) => [c.lat, c.lng])), { paddingTopLeft: [p.left, p.top], paddingBottomRight: [p.right, p.bottom], animate }); },
+            zoom(d) { map.setZoom(map.getZoom() + d); },
+            setBase(m) { map.removeLayer(current); current = bases[m].addTo(map); },
+            pan(p) { map.panTo([p.lat, p.lng]); }
+        };
+    };
+
+    // ---------- Página ----------
+    const legend = $('[data-fm-legend]');
+    let selected = null;
+    const shapes = new Map();
+
+    const plotStyle = (p) => {
+        const [stroke, fill] = colorOf(p);
+        if (EDIT_ID !== null) {
+            return p.id === EDIT_ID ? { stroke: '#fff', fill, fillOpacity: 0, weight: 2, dashed: true, z: 5 }
+                                    : { stroke, fill, fillOpacity: .1, strokeOpacity: .45, weight: 1.5, z: 1 };
+        }
+        const on = p.id === selected;
+        return { stroke: on ? '#fff' : stroke, fill, fillOpacity: on ? .55 : (baseMode === 'sat' ? .3 : .4), weight: on ? 3.5 : 2.2, clickable: true, z: on ? 10 : 2 };
+    };
+    const paintSwatches = () => {
+        PLOTS.forEach((p) => {
+            const [stroke, fill] = colorOf(p);
+            const sw = $(`[data-fm-sw="${p.id}"]`);
+            if (sw) sw.style.cssText = `background:${fill};border-color:${stroke}`;
+        });
+        if (!legend) return;
+        const show = colorMode === 'var' && EDIT_ID === null && varieties.length > 0;
+        legend.hidden = !show;
+        if (show) {
+            legend.innerHTML = '<p>Variedade</p>' + varieties.map((v) => {
+                const [stroke, fill] = PAL[varieties.indexOf(v) % PAL.length];
+                const ha = PLOTS.filter((p) => p.variety === v).reduce((s, p) => s + p.area, 0);
+                const span = document.createElement('span'); span.textContent = v;
+                return `<div><i style="background:${fill};border-color:${stroke}"></i>${span.innerHTML}<b>${nf(ha, 1)} ha</b></div>`;
+            }).join('');
+        }
+    };
+    const restyle = () => { PLOTS.forEach((p) => { const s = shapes.get(p.id); if (s) s.polys.forEach((poly) => poly.setStyle(plotStyle(p))); if (s && s.label && s.label.el) s.label.el.classList.toggle('is-on', p.id === selected); }); paintSwatches(); };
+
+    const select = (id, { fromList = false, engine = null } = {}) => {
+        selected = selected === id ? null : id;
+        $$('[data-fm-item]').forEach((item) => {
+            const on = Number(item.dataset.fmItem) === selected;
+            item.classList.toggle('is-on', on);
+            $('[data-fm-pick]', item).setAttribute('aria-expanded', on ? 'true' : 'false');
+            $('.fm-detail', item).hidden = !on;
+            if (on && !fromList && !window.matchMedia('(max-width: 639px)').matches) item.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+        });
+        if (side) side.classList.toggle('has-sel', selected !== null);
+        restyle();
+        if (fromList && selected !== null && engine) { const s = shapes.get(selected); if (s) engine.fit(s.points, 80); }
+    };
+
+    // Busca
+    const search = $('[data-map-search]');
+    const empty = $('[data-map-search-empty]');
+    const norm = (t) => (t || '').toString().normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
+    if (search) search.addEventListener('input', () => {
+        const q = norm(search.value);
+        let n = 0;
+        $$('[data-map-plot-search-text]').forEach((el) => { const hit = !q || norm(el.dataset.mapPlotSearchText).includes(q); el.hidden = !hit; if (hit) n += 1; });
+        if (empty) empty.hidden = n > 0 || !q;
+    });
+
+    const setPressed = (attr, val) => $$(`[${attr}]`).forEach((b) => b.setAttribute('aria-pressed', b.getAttribute(attr) === val ? 'true' : 'false'));
+    setPressed('data-fm-base', baseMode);
+    setPressed('data-fm-color', colorMode);
+    paintSwatches();
+
+    const start = (engine) => {
+        const all = [];
+        (mapData.features || []).forEach((f) => pathsOf(f.geometry).forEach((path) => {
+            all.push(...path);
+            engine.polygon([path], { stroke: '#f4f1e4', strokeOpacity: .9, fill: '#b7e4c7', fillOpacity: .06, weight: 2.5, z: 0 });
+        }));
+        PLOTS.forEach((p) => {
+            const paths = pathsOf(p.geometry);
+            if (!paths.length) return;
+            const points = paths.flat();
+            all.push(...points);
+            const polys = paths.map((path) => engine.polygon([path], plotStyle(p), EDIT_ID === null ? () => select(p.id) : null));
+            const big = paths.reduce((a, b) => (b.length > a.length ? b : a));
+            const label = EDIT_ID === null ? engine.label(centerOf(big), `<b></b><span>${nf(p.area, 1)} ha</span>`) : null;
+            if (label && label.el) label.el.querySelector('b').textContent = p.name;
+            shapes.set(p.id, { polys, points, label });
+        });
+        const fitAll = (animate = true) => engine.fit(all.length ? all : [], 48, animate);
+
+        $$('[data-fm-pick]').forEach((b) => b.addEventListener('click', () => select(Number(b.dataset.fmPick), { fromList: true, engine })));
+        const close = $('[data-fm-close]');
+        if (close) close.addEventListener('click', () => { if (selected !== null) select(selected); });
+        $$('[data-fm-base]').forEach((b) => b.addEventListener('click', () => {
+            baseMode = b.dataset.fmBase; store.set('sf-map-base', baseMode); setPressed('data-fm-base', baseMode); engine.setBase(baseMode); restyle();
+        }));
+        $$('[data-fm-color]').forEach((b) => b.addEventListener('click', () => {
+            colorMode = b.dataset.fmColor; store.set('sf-map-color', colorMode); setPressed('data-fm-color', colorMode); restyle();
+        }));
+        $$('[data-fm-zoom]').forEach((b) => b.addEventListener('click', () => engine.zoom(Number(b.dataset.fmZoom))));
+        const fitBtn = $('[data-fm-fit]');
+        if (fitBtn) fitBtn.addEventListener('click', () => (EDIT_ID !== null && editor ? editor.fit() : fitAll()));
+        const loc = $('[data-fm-locate]');
+        if (loc) {
+            if (!navigator.geolocation) loc.hidden = true;
+            let me = null;
+            loc.addEventListener('click', () => navigator.geolocation.getCurrentPosition((pos) => {
+                const p = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+                if (me) me.remove();
+                me = engine.marker(p, { r: 7, fill: '#2563eb', stroke: '#fff', strokeWidth: 3, z: 300 }, {});
+                engine.pan(p);
+            }, () => window.alert('Não foi possível obter sua localização.'), { enableHighAccuracy: true, timeout: 10000 }));
+        }
+        const full = $('[data-fm-full]');
+        const wrap = $('[data-fm-map-wrap]');
+        if (full && wrap && wrap.requestFullscreen) full.addEventListener('click', () => (document.fullscreenElement ? document.exitFullscreen() : wrap.requestFullscreen()));
+        else if (full) full.hidden = true;
+
+        const editor = EDIT_ID !== null ? startEditor(engine) : null;
+        if (editor) editor.fit(false); else fitAll(false);
+    };
+
+    // ---------- Edição do perímetro ----------
+    const startEditor = (engine) => {
+        const form = $('[data-fm-edit-form]');
+        const boundaryInput = $('[data-boundary-input]');
+        const areaNode = $('[data-area-hectares]');
+        const deltaNode = $('[data-fm-delta]');
+        const countNode = $('[data-point-count]');
+        const selNode = $('[data-selected-point]');
+        const removeBtn = $('[data-remove-point]');
+        const undoBtn = $('[data-fm-undo]');
+        const saveBtn = $('[data-fm-save]');
+        const baseArea = Number(form ? form.dataset.fmPlotArea : 0) || 0;
+        let points = pathsOf(editPlotGeometry)[0] || [];
+        const original = points.slice();
+        let vsel = null;
+        const hist = [];
+        let poly = null;
+        let handles = [];
+
+        const sync = () => {
+            const area = calculateArea(points);
+            const geometry = buildGeometry(points);
+            if (boundaryInput) boundaryInput.value = geometry ? JSON.stringify(geometry) : '';
+            if (areaNode) areaNode.textContent = nf(area) + ' ha';
+            if (deltaNode) {
+                const d = area - baseArea;
+                deltaNode.textContent = points.length < 3 ? '' : (d >= 0 ? '+' : '−') + nf(Math.abs(d)) + ' ha';
+                deltaNode.className = 'fm-delta' + (Math.abs(d) < 0.005 ? '' : d > 0 ? ' is-up' : ' is-down');
+            }
+            if (countNode) countNode.textContent = String(points.length);
+            if (selNode) selNode.textContent = vsel === null ? 'Nenhum' : 'Ponto ' + (vsel + 1);
+            if (removeBtn) removeBtn.disabled = vsel === null || points.length <= 3;
+            if (undoBtn) undoBtn.disabled = hist.length === 0;
+            if (saveBtn) saveBtn.disabled = points.length < 3;
+        };
+        const commit = (next, nextSel) => { hist.push(points.map((p) => ({ ...p }))); points = next; vsel = nextSel; render(); };
+        const render = () => {
+            handles.forEach((h) => h.remove());
+            handles = [];
+            if (!poly && points.length >= 2) poly = engine.polygon([points], { stroke: '#fbbf24', fill: '#fbbf24', fillOpacity: .2, weight: 3, z: 50 });
+            if (poly) { if (points.length >= 2) poly.setPath(points); else { poly.remove(); poly = null; } }
+            if (points.length >= 3) points.forEach((p, i) => {
+                const n = points[(i + 1) % points.length];
+                const mid = { lat: (p.lat + n.lat) / 2, lng: (p.lng + n.lng) / 2 };
+                handles.push(engine.marker(mid, { r: 5, fill: '#fff', fillOpacity: .8, stroke: '#16201a', strokeWidth: 1, z: 150 }, {
+                    click: () => { const next = points.slice(); next.splice(i + 1, 0, mid); commit(next, i + 1); } }));
+            });
+            points.forEach((p, i) => {
+                const on = i === vsel;
+                let before = null;
+                handles.push(engine.marker(p, { r: on ? 8 : 7, fill: on ? '#e11d48' : '#fff', stroke: on ? '#fff' : '#fbbf24', strokeWidth: 3, draggable: true, z: on ? 260 : 250 }, {
+                    click: () => { vsel = i; render(); },
+                    drag: (pos) => { if (!before) before = points.map((q) => ({ ...q })); points[i] = pos; if (poly) poly.setPath(points); sync(); },
+                    dragend: () => { if (before) hist.push(before); before = null; vsel = i; render(); }
+                }));
+            });
+            sync();
+        };
+        engine.onClick((pos) => { if (points.length < 3) commit(points.concat([pos]), points.length); });
+        if (removeBtn) removeBtn.addEventListener('click', () => { if (vsel === null || points.length <= 3) return; const next = points.slice(); next.splice(vsel, 1); commit(next, null); });
+        if (undoBtn) undoBtn.addEventListener('click', () => { if (!hist.length) return; points = hist.pop(); vsel = null; render(); });
+        document.addEventListener('keydown', (e) => {
+            if ((e.key === 'Delete' || e.key === 'Backspace') && vsel !== null && !/input|textarea/i.test(e.target.tagName)) { e.preventDefault(); if (removeBtn) removeBtn.click(); }
+            if ((e.metaKey || e.ctrlKey) && e.key === 'z' && undoBtn) { e.preventDefault(); undoBtn.click(); }
+        });
+        render();
+        return { fit: (animate = true) => { const pts = points.length ? points : original; if (pts.length) engine.fit(pts, 80, animate); else { const all = []; shapes.forEach((s) => all.push(...s.points)); engine.fit(all, 48, animate); } } };
+    };
+
+    const el = document.getElementById('farmMap');
+    googleEngine(el).then(start).catch((error) => {
+        console.warn('[mapa] Google Maps indisponível, usando OpenStreetMap.', error);
+        start(leafletEngine(el));
+    });
+})();
 </script>
 {% endblock %}

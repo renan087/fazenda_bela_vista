@@ -20518,6 +20518,57 @@ def soil_analysis_pdf_download(
     return Response(content=analysis.pdf_data, media_type=analysis.pdf_content_type or "application/pdf", headers=headers)
 
 
+def _map_page_data(geojson: str, plots: list, scope: dict) -> dict:
+    """Setores, fazendas e indicadores da pagina Mapa da Fazenda."""
+    try:
+        features = json.loads(geojson or "{}").get("features") or []
+    except (TypeError, ValueError):
+        features = []
+    farm_features = [item for item in features if (item.get("properties") or {}).get("feature_type") == "farm"]
+    map_plots = []
+    for plot in plots:
+        geometry = None
+        if (plot.boundary_geojson or "").strip():
+            try:
+                geometry = json.loads(plot.boundary_geojson)
+            except (TypeError, ValueError):
+                geometry = None
+        area = float(plot.area_hectares or 0)
+        estimated = float(plot.estimated_yield_sacks or 0)
+        map_plots.append({
+            "id": plot.id,
+            "name": plot.name,
+            "farm": plot.farm.name if plot.farm else "Sem fazenda",
+            "variety": plot.variety.name if plot.variety else "Sem variedade",
+            "area": area,
+            "estimated": estimated,
+            "yield": (estimated / area) if area and estimated else None,
+            "geometry": geometry,
+        })
+    mapped = [item for item in map_plots if item["geometry"]]
+    farm_area = sum(float((item.get("properties") or {}).get("area") or 0) for item in farm_features)
+    plots_area = sum(item["area"] for item in map_plots)
+    estimated_total = sum(item["estimated"] for item in map_plots)
+    active_farm = scope.get("active_farm")
+    return {
+        "map_geojson": json.dumps({"type": "FeatureCollection", "features": farm_features}),
+        "map_plots": map_plots,
+        "map_plots_json": json.dumps(mapped),
+        "map_unmapped": [item for item in map_plots if not item["geometry"]],
+        "map_kpis": {
+            "farm_area": farm_area,
+            "plots_area": plots_area,
+            "plots_share": (plots_area / farm_area * 100) if farm_area else None,
+            "mapped": len(mapped),
+            "total": len(map_plots),
+            "estimated": estimated_total,
+            "avg_yield": (estimated_total / plots_area) if plots_area and estimated_total else None,
+        },
+        "map_farm_label": " · ".join(filter(None, [getattr(active_farm, "name", None), getattr(active_farm, "location", None)])),
+        "map_kml_href": f"/fazendas/{active_farm.id}/geomapa.kml" if getattr(active_farm, "id", None) else None,
+    }
+
+
 @router.get("/mapa")
 def map_page(
     request: Request,
@@ -20546,8 +20597,7 @@ def map_page(
             csrf_token,
             "map",
             _repo=repo,
-            map_geojson=geojson,
-            plots=repo.list_plots(farm_ids=farm_ids, variety_ids=variety_ids),
+            **_map_page_data(geojson, repo.list_plots(farm_ids=farm_ids, variety_ids=variety_ids), scope),
             edit_plot=edit_plot,
             edit_plot_geometry=edit_plot.boundary_geojson if edit_plot and edit_plot.boundary_geojson else None,
             google_maps_web_key=google_maps_web_key,
