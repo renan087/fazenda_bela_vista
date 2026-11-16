@@ -25,93 +25,201 @@ _PATTERN = re.compile(
 _PACK_PRODUCT_FIRST = re.compile(rf"{_START}{_PACKS}(?P<product>.+?) de {_AMOUNT}{_END}")
 
 
-RESPONSE_SCHEMA = {
-    "name": "assistente_consumo",
-    "strict": True,
-    "schema": {
-        "type": "object",
-        "additionalProperties": False,
-        "required": ["resposta", "campos"],
-        "properties": {
-            "resposta": {"type": "string", "description": "Mensagem para o usuário."},
-            "campos": {
-                "anyOf": [
-                    {"type": "null"},
-                    {
-                        "type": "object",
-                        "additionalProperties": False,
-                        "required": ["product", "plot", "quantity", "unit", "movement_date"],
-                        "properties": {
-                            "product": {"type": "string", "description": "Nome exato do item no cadastro."},
-                            "plot": {"type": ["string", "null"], "description": "Nome exato do setor; null só para combustível de uso geral."},
-                            "quantity": {"type": "number"},
-                            "unit": {"type": "string"},
-                            "movement_date": {"type": "string", "description": "AAAA-MM-DD"},
-                        },
-                    },
-                ]
-            },
-        },
-    },
-}
+AGENT_MAX_STEPS = 6
+DRAFT_READY_REPLY = "Preparei o lançamento abaixo. Confira os dados e confirme para registrar."
+_WEEKDAYS = ("segunda-feira", "terça-feira", "quarta-feira", "quinta-feira", "sexta-feira", "sábado", "domingo")
+
+AGENT_TOOLS = [
+    {"type": "function", "function": {
+        "name": "buscar_itens",
+        "description": "Procura insumos agrícolas e combustíveis com estoque nesta fazenda pelo nome ou parte dele. "
+                       "Use sempre antes de preparar um consumo para obter o item_id, a unidade e o saldo.",
+        "parameters": {"type": "object", "additionalProperties": False, "required": ["termo"],
+                       "properties": {"termo": {"type": "string", "description": "Nome ou parte do nome, ex.: gasolina, ureia."}}},
+    }},
+    {"type": "function", "function": {
+        "name": "listar_setores",
+        "description": "Lista os setores (talhões) disponíveis na safra ativa, com a área em hectares.",
+        "parameters": {"type": "object", "additionalProperties": False, "properties": {}},
+    }},
+    {"type": "function", "function": {
+        "name": "consultar_saldo",
+        "description": "Consulta o saldo em estoque de um item nesta fazenda.",
+        "parameters": {"type": "object", "additionalProperties": False, "required": ["item_id"],
+                       "properties": {"item_id": {"type": "integer"}}},
+    }},
+    {"type": "function", "function": {
+        "name": "preparar_consumo",
+        "description": "Prepara um rascunho de consumo (saída de estoque) para o usuário conferir e confirmar. "
+                       "Não registra nada sozinho. Só chame quando item, quantidade total, unidade e data estiverem claros "
+                       "(e o setor, se for insumo agrícola).",
+        "parameters": {"type": "object", "additionalProperties": False,
+                       "required": ["item_id", "quantidade", "unidade", "data", "setor"],
+                       "properties": {
+                           "item_id": {"type": "integer"},
+                           "quantidade": {"type": "number", "description": "Quantidade total consumida."},
+                           "unidade": {"type": "string", "description": "Unidade do cadastro do item."},
+                           "data": {"type": "string", "description": "Data do consumo, AAAA-MM-DD."},
+                           "setor": {"type": ["string", "null"], "description": "Nome do setor; null só para combustível de uso geral."},
+                       }},
+    }},
+]
 
 
-def converse_consumption(history, products, plots, today):
-    """Interpret a conversation; the caller must independently validate every field."""
+class FarmAssistant:
+    """Agente com ferramentas: a IA consulta o SiSFarm e so prepara rascunhos; o servidor valida tudo."""
+
+    def __init__(self, *, farm_name, season, items, balances, plots, today, prepare_draft):
+        self.farm_name = farm_name
+        self.season = season
+        self.items = {item.id: item for item in items if item.is_active and item.item_type in STOCK_ITEM_TYPES}
+        self.balances = balances
+        self.plots = list(plots)
+        self.today = today
+        self.prepare_draft = prepare_draft
+        self.draft_id = None
+
+    # ---------------------------------------------------------------- ferramentas
+    def _item_view(self, item):
+        return {"item_id": item.id, "nome": item.name, "unidade": item.default_unit,
+                "tipo": "combustível" if item.item_type == "combustivel" else "insumo agrícola",
+                "saldo_na_fazenda": round(float(self.balances.get(item.id, 0)), 2)}
+
+    def buscar_itens(self, termo=""):
+        tokens = normalized(str(termo)).split()
+        scored = []
+        for item in self.items.values():
+            name = normalized(item.name)
+            hits = sum(1 for token in tokens if token in name)
+            if not tokens or hits:
+                scored.append((-(hits == len(tokens)), -hits, item.name, item))
+        found = [self._item_view(entry[-1]) for entry in sorted(scored)[:8]]
+        if not found:
+            return {"itens": [], "aviso": "Nenhum item com estoque nesta fazenda corresponde. O usuário precisa lançar a compra antes."}
+        return {"itens": found}
+
+    def listar_setores(self):
+        return {"setores": [{"nome": plot.name, "area_ha": float(plot.area_hectares) if getattr(plot, "area_hectares", None) is not None else None}
+                            for plot in self.plots]}
+
+    def consultar_saldo(self, item_id):
+        item = self.items.get(int(item_id))
+        return self._item_view(item) if item else {"erro": "Item não encontrado nesta fazenda."}
+
+    def _find_plot(self, name):
+        wanted = normalized(str(name))
+        exact = [plot for plot in self.plots if normalized(plot.name) == wanted]
+        if len(exact) == 1:
+            return exact[0]
+        partial = [plot for plot in self.plots if wanted and wanted in normalized(plot.name)]
+        if len(partial) == 1:
+            return partial[0]
+        options = ", ".join(plot.name for plot in (partial or self.plots)[:10])
+        raise ValueError(f"Setor '{name}' não encontrado ou ambíguo. Opções: {options or 'nenhum setor na safra'}.")
+
+    def preparar_consumo(self, item_id, quantidade, unidade, data, setor=None):
+        item = self.items.get(int(item_id))
+        if not item:
+            raise ValueError("Item não encontrado nesta fazenda. Use buscar_itens.")
+        unit = stock_unit(item, unidade)
+        quantity = Decimal(str(quantidade))
+        if not quantity.is_finite() or not 0 < quantity < Decimal("10000000000"):
+            raise ValueError("Quantidade inválida: informe a quantidade total consumida.")
+        quantity = quantity.quantize(Decimal("0.01"))
+        try:
+            movement_date = date.fromisoformat(str(data))
+        except ValueError:
+            raise ValueError("Data inválida: use AAAA-MM-DD.") from None
+        if movement_date > self.today:
+            raise ValueError("A data do consumo não pode ser futura.")
+        if self.season and not self.season.start_date <= movement_date <= self.season.end_date:
+            raise ValueError(f"A data precisa estar dentro da safra ({self.season.start_date:%d/%m/%Y} a {self.season.end_date:%d/%m/%Y}).")
+        plot = self._find_plot(setor) if setor else None
+        if plot is None and item.item_type != "combustivel":
+            raise ValueError("Insumo agrícola precisa de setor. Pergunte ao usuário em qual setor foi usado.")
+        balance = Decimal(str(self.balances.get(item.id, 0)))
+        if quantity > balance:
+            raise ValueError(f"Saldo insuficiente: há {balance} {unit} de {item.name} nesta fazenda.")
+        self.draft_id = self.prepare_draft(item=item, plot=plot, quantity=quantity, unit=unit, movement_date=movement_date)
+        return {"ok": True, "rascunho": self.draft_id}
+
+    def call_tool(self, name, raw_args):
+        try:
+            args = json.loads(raw_args or "{}")
+            if not isinstance(args, dict):
+                raise ValueError("Argumentos inválidos.")
+            handler = {"buscar_itens": self.buscar_itens, "listar_setores": self.listar_setores,
+                       "consultar_saldo": self.consultar_saldo, "preparar_consumo": self.preparar_consumo}.get(name)
+            if handler is None:
+                raise ValueError(f"Ferramenta desconhecida: {name}")
+            return handler(**args)
+        except (ValueError, TypeError, ArithmeticError) as exc:
+            return {"erro": str(exc) or "Dados inválidos."}
+
+    # ---------------------------------------------------------------- conversa
+    def instructions(self):
+        season = self.season
+        period = f"{season.start_date:%d/%m/%Y} a {season.end_date:%d/%m/%Y}" if season else "não definida"
+        return (
+            "Você é o Assistente SiSFarm, que ajuda o produtor rural a lançar no sistema, por conversa, o CONSUMO "
+            "(saída de estoque) de insumos agrícolas e combustíveis. Fale em português do Brasil, de forma natural, breve e "
+            "cordial, como no WhatsApp.\n"
+            f"Hoje é {_WEEKDAYS[self.today.weekday()]}, {self.today:%d/%m/%Y}. Fazenda: {self.farm_name}. "
+            f"Safra ativa: {season.name if season else '-'} ({period}).\n"
+            "Como trabalhar:\n"
+            "- Use buscar_itens para achar o item citado (nunca invente item_id). Se houver mais de um parecido, pergunte qual.\n"
+            "- Se o item não tiver estoque nesta fazenda, explique e sugira lançar a compra antes.\n"
+            "- Insumo agrícola precisa de setor (use listar_setores se precisar). Combustível pode ser de uso geral: "
+            "pergunte o setor uma vez e aceite 'geral' ou 'nenhum' (setor null).\n"
+            "- Se a data não foi dita, pergunte se foi hoje. 'hoje', 'ontem' e '15/11' são válidas; sem ano, use o ano atual.\n"
+            "- Use a unidade do cadastro; converta só o óbvio (litros->L, quilos->kg, 500 g->0,5 kg). Quantidade por área "
+            "(kg/ha) não é total: peça o total. Multiplique embalagens só se número e tamanho forem informados.\n"
+            "- Pergunte o que faltar, no máximo um ou dois dados por vez. Não invente valores.\n"
+            "- Quando tiver tudo, chame preparar_consumo. Se ela devolver erro, explique ao usuário e peça o ajuste.\n"
+            "- Nunca diga que registrou: o usuário confirma na tela.\n"
+            "- Nesta versão você só prepara consumo. Para compra, despesa, chuva ou outro lançamento, explique com gentileza "
+            "que ainda não faz isso, sem transformar em consumo. Não responda assuntos fora do SiSFarm."
+        )
+
+    def run(self, history, *, client, model):
+        messages = [{"role": "system", "content": self.instructions()}] + list(history)
+        for _ in range(AGENT_MAX_STEPS):
+            response = client.chat.completions.create(
+                model=model, messages=messages, tools=AGENT_TOOLS, tool_choice="auto", parallel_tool_calls=False,
+            )
+            message = response.choices[0].message
+            calls = getattr(message, "tool_calls", None) or []
+            if not calls:
+                text = (message.content or "").strip()
+                return {"resposta": text or "Pode me contar um pouco mais?", "draft_id": self.draft_id}
+            messages.append({"role": "assistant", "content": message.content or None, "tool_calls": [
+                {"id": call.id, "type": "function", "function": {"name": call.function.name, "arguments": call.function.arguments}}
+                for call in calls
+            ]})
+            for call in calls:
+                result = self.call_tool(call.function.name, call.function.arguments)
+                messages.append({"role": "tool", "tool_call_id": call.id, "content": json.dumps(result, ensure_ascii=False, default=str)})
+            if self.draft_id:
+                return {"resposta": DRAFT_READY_REPLY, "draft_id": self.draft_id}
+        return {"resposta": "Não consegui concluir. Pode me dizer de novo o item, a quantidade, o setor e a data?", "draft_id": self.draft_id}
+
+
+def run_farm_assistant(history, assistant: "FarmAssistant"):
+    """Executa o agente; erros da OpenAI viram ValueError com mensagem clara."""
     api_key = os.getenv("OPENAI_API_KEY") or get_settings().openai_api_key
     if not api_key:
         raise ValueError("O assistente de IA ainda não está configurado. Contate o administrador.")
     from openai import OpenAI
-    context = {
-        "hoje": today.isoformat(),
-        "itens_em_estoque": [
-            {"nome": p.name, "unidade": p.default_unit, "tipo": "combustível" if getattr(p, "item_type", None) == "combustivel" else "insumo agrícola"}
-            for p in products if p.is_active
-        ],
-        "setores": [p.name for p in plots],
-    }
-    instructions = (
-        "Você é o Assistente SiSFarm, que ajuda o produtor rural a lançar no sistema, por conversa, o CONSUMO "
-        "(saída de estoque) de insumos agrícolas e combustíveis. Fale em português do Brasil, de forma natural, breve e cordial, "
-        "como num WhatsApp. Nesta versão você só prepara consumo: se o usuário falar de compra, despesa ou outro lançamento, "
-        "explique com gentileza que por enquanto registra apenas consumo, sem converter em consumo.\n"
-        "Dados necessários: item (de itens_em_estoque), quantidade total, unidade, data e setor. "
-        "O setor é obrigatório para insumo agrícola e opcional para combustível (sem setor = uso geral da fazenda; "
-        "pergunte o setor do combustível apenas uma vez e aceite 'geral', 'nenhum' ou 'não sei').\n"
-        "Se faltar algum dado, pergunte de forma objetiva, um ou dois itens por vez, sem inventar. Se a data não for dita, "
-        "pergunte se foi hoje. 'hoje', 'ontem' e datas como 15/11 são válidas (sem ano = ano de hoje). Datas futuras não valem.\n"
-        "Associe o que o usuário disser ao cadastro (ex.: 'gasolina' -> item com gasolina no nome; 'litros' -> L; 'quilos' -> kg) "
-        "somente quando a correspondência for clara; se houver mais de uma opção, pergunte qual. Se o item não estiver em "
-        "itens_em_estoque, diga que ele não tem estoque nesta fazenda e sugira cadastrar a compra antes.\n"
-        "A unidade deve ser a do cadastro do item; converta apenas casos óbvios (litros->L, quilos->kg, 500 g->0,5 kg). "
-        "Quantidade por área (kg/ha) não é total: peça o total. Multiplique embalagens só quando número e tamanho forem informados.\n"
-        "Nunca diga que registrou: quando tiver tudo, preencha 'campos' e diga que preparou o lançamento para o usuário conferir "
-        "e confirmar. Enquanto faltar algo, 'campos' deve ser null.\n"
-        "Responda sempre no formato JSON pedido. Cadastros desta fazenda e safra: "
-        + json.dumps(context, ensure_ascii=False)
-    )
+
     model = (os.getenv("OPENAI_ASSISTANT_MODEL") or get_settings().openai_assistant_model or "gpt-4o-mini").strip()
+    client = OpenAI(api_key=api_key, timeout=get_settings().openai_timeout_seconds, max_retries=1)
     try:
-        response = OpenAI(api_key=api_key, timeout=get_settings().openai_timeout_seconds, max_retries=1).chat.completions.create(
-            model=model,
-            response_format={"type": "json_schema", "json_schema": RESPONSE_SCHEMA},
-            messages=[{"role": "system", "content": instructions}] + history,
-        )
+        return assistant.run(history, client=client, model=model)
     except Exception as exc:
-        logging.getLogger(__name__).exception("Falha ao consultar IA do assistente de estoque (modelo %s)", model)
+        if assistant.draft_id:  # rascunho ja criado: segue para a conferencia mesmo se algo falhar depois
+            return {"resposta": DRAFT_READY_REPLY, "draft_id": assistant.draft_id}
+        logging.getLogger(__name__).exception("Falha no agente do assistente (modelo %s)", model)
         raise ValueError(explain_openai_error(exc, model)) from None
-    try:
-        message = response.choices[0].message
-        if getattr(message, "refusal", None):
-            return {"resposta": "Não posso ajudar com isso. Posso registrar o consumo de um insumo ou combustível.", "campos": None}
-        result = json.loads(message.content or "")
-        if not isinstance(result, dict) or not isinstance(result.get("resposta"), str):
-            raise ValueError("Resposta inválida")
-    except (ValueError, TypeError, IndexError, AttributeError):
-        logging.getLogger(__name__).warning("IA do assistente devolveu formato inesperado: %.300r",
-                                            getattr(getattr(response.choices[0], "message", None), "content", None) if getattr(response, "choices", None) else None)
-        raise ValueError("Não entendi bem. Pode reescrever a mensagem com o insumo, a quantidade, o setor e a data?") from None
-    return result
 
 
 def explain_openai_error(exc: Exception, model: str) -> str:

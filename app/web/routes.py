@@ -36,7 +36,7 @@ from app.core.config import get_settings
 from app.models.stock_assistant_draft import StockAssistantConversation, StockAssistantDraft
 from app.models.audit_log import AuditLog
 from app.models.input_catalog import InputCatalog
-from app.services.stock_assistant import STOCK_ITEM_TYPES, claim_draft, confirm_consumption, converse_consumption, match_exact, normalized, stock_unit
+from app.services.stock_assistant import STOCK_ITEM_TYPES, FarmAssistant, claim_draft, confirm_consumption, run_farm_assistant, stock_unit
 from app.core.admin_access import has_admin_access, is_super_admin_email
 from app.core.permissions_catalog import (
     WRITE_FINANCE,
@@ -20666,53 +20666,42 @@ def prepare_stock_assistant_action(
         _save_assistant_history(db, user, scope, history + [item])
         return _redirect(target)
 
-    products = [
-        item for item in repo.list_input_catalog()
-        if item.is_active and item.item_type in STOCK_ITEM_TYPES
-        and any(entry.farm_id == farm.id for entry in item.purchase_entries)
-    ]
+    products, balances = [], {}
+    for item in repo.list_input_catalog():
+        if not item.is_active or item.item_type not in STOCK_ITEM_TYPES:
+            continue
+        farm_lots = [entry for entry in item.purchase_entries if entry.farm_id == farm.id]
+        if farm_lots:
+            products.append(item)
+            balances[item.id] = round(sum(float(entry.available_quantity or 0) for entry in farm_lots), 2)
     plots = _season_launch_plots(repo.list_plots(farm_ids=[farm.id]), scope)
     plots = [item for item in plots if _plot_matches_scope(item, scope)]
-    # A IA recebe so mensagens validas (sem os avisos de erro) e as mais recentes.
-    ai_history = [{"role": item["role"], "content": item["content"]} for item in history if not item.get("error")][-8:]
-    try:
-        result = converse_consumption(ai_history, products, plots, today_in_app_timezone())
-    except ValueError as exc:
-        return reply_only(str(exc), error=True)
-    reply = result["resposta"].strip()[:500] or "Pode me contar um pouco mais?"
-    fields = result.get("campos")
-    if not isinstance(fields, dict):
-        return reply_only(reply)
-    try:
-        movement_date = date.fromisoformat(str(fields["movement_date"]))
-        quantity = Decimal(str(fields["quantity"]))
-        if not quantity.is_finite() or not 0 < quantity < Decimal("10000000000"):
-            raise ValueError("Informe uma quantidade total positiva válida.")
-        _validate_assistant_movement_date(movement_date, season)
-        product = match_exact(normalized(str(fields["product"])), products, "Item")
-        plot = None
-        if fields.get("plot"):
-            plot = match_exact(normalized(str(fields["plot"])), plots, "Setor")
-        elif product.item_type != "combustivel":
-            raise ValueError("Em qual setor esse insumo foi usado?")
-        unit = stock_unit(product, fields["unit"])
-    except (ValueError, KeyError, TypeError, InvalidOperation) as exc:
-        text = str(exc) if isinstance(exc, ValueError) and str(exc) else "Não consegui identificar todos os dados. Pode confirmar o item, a quantidade, o setor e a data?"
-        return reply_only(text)
-    draft_id = uuid4().hex
-    try:
+
+    def prepare_draft(*, item, plot, quantity, unit, movement_date):
+        draft_id = uuid4().hex
         db.add(StockAssistantDraft(
             id=draft_id, user_id=user.id, organization_id=user.organization_id,
-            farm_id=farm.id, season_id=season.id, plot_id=plot.id if plot else None, input_id=product.id,
+            farm_id=farm.id, season_id=season.id, plot_id=plot.id if plot else None, input_id=item.id,
             movement_date=movement_date, quantity=quantity, unit=unit,
             expires_at=datetime.now(timezone.utc) + timedelta(minutes=30),
         ))
         db.commit()
-    except Exception:
+        return draft_id
+
+    assistant = FarmAssistant(farm_name=farm.name, season=season, items=products, balances=balances,
+                              plots=plots, today=today_in_app_timezone(), prepare_draft=prepare_draft)
+    # A IA recebe so mensagens validas (sem os avisos de erro) e as mais recentes.
+    ai_history = [{"role": item["role"], "content": item["content"]} for item in history if not item.get("error")][-10:]
+    try:
+        result = run_farm_assistant(ai_history, assistant)
+    except ValueError as exc:
         db.rollback()
-        logger.exception("Falha ao salvar rascunho do assistente")
-        return reply_only("Não consegui preparar o lançamento agora. Tente de novo em instantes.", error=True)
-    _save_assistant_history(db, user, scope, history + [{"role": "assistant", "content": reply or "Preparei o lançamento para você conferir antes de confirmar."}])
+        return reply_only(str(exc), error=True)
+    reply = (result.get("resposta") or "").strip()[:600] or "Pode me contar um pouco mais?"
+    draft_id = result.get("draft_id")
+    if not draft_id:
+        return reply_only(reply)
+    _save_assistant_history(db, user, scope, history + [{"role": "assistant", "content": reply}])
     return _redirect(f"{target}?draft_id={draft_id}")
 
 

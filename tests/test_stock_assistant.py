@@ -12,7 +12,7 @@ from app.db.base import Base
 from app.models import InputCatalog, PurchasedInput, StockOutput
 from app.models.stock_assistant_draft import StockAssistantDraft
 from app.repositories.farm import FarmRepository
-from app.services.stock_assistant import claim_draft, confirm_consumption, converse_consumption, parse_consumption
+from app.services.stock_assistant import FarmAssistant, claim_draft, confirm_consumption, parse_consumption
 
 
 @pytest.mark.parametrize("message", [
@@ -115,27 +115,64 @@ def test_prepare_form_includes_csrf_token():
     assert 'name="csrf_token" value="test-token"' in form
 
 
-def test_conversation_uses_history_and_catalog(monkeypatch):
-    import openai
-    calls = {}
+def _tool_call(name, args, call_id="c1"):
+    import json as _json
+    return SimpleNamespace(id=call_id, function=SimpleNamespace(name=name, arguments=_json.dumps(args)))
 
+
+def _fake_client(steps, calls):
     def create(**kwargs):
-        calls.update(kwargs)
-        return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(
-            content='{"resposta":"Em qual setor?","campos":null}'
-        ))])
+        calls.append(kwargs)
+        step = steps.pop(0)
+        message = SimpleNamespace(content=step if isinstance(step, str) else None,
+                                  tool_calls=None if isinstance(step, str) else step)
+        return SimpleNamespace(choices=[SimpleNamespace(message=message)])
+    return SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=create)))
 
-    monkeypatch.setenv("OPENAI_API_KEY", "test")
-    monkeypatch.setattr(openai, "OpenAI", lambda **kwargs: SimpleNamespace(
-        chat=SimpleNamespace(completions=SimpleNamespace(create=create))
-    ))
-    history = [{"role": "user", "content": "Usei 20 kg de Vita Nit S"}]
-    result = converse_consumption(history, [SimpleNamespace(name="Vita Nit S", default_unit="kg", is_active=True)],
-                                  [SimpleNamespace(name="Setor 1")], date(2026, 11, 15))
-    assert result["campos"] is None
-    assert result["resposta"] == "Em qual setor?"
-    assert calls["messages"][-1] == history[0]
-    assert "Setor 1" in calls["messages"][0]["content"]
+
+def _assistant(prepared):
+    season = SimpleNamespace(name="Café 2026", start_date=date(2026, 1, 1), end_date=date(2026, 12, 31))
+    items = [SimpleNamespace(id=1, name="Gasolina comum", default_unit="L", item_type="combustivel", is_active=True),
+             SimpleNamespace(id=2, name="Ureia", default_unit="kg", item_type="insumo_agricola", is_active=True)]
+    plots = [SimpleNamespace(id=7, name="Setor 1", area_hectares=5), SimpleNamespace(id=8, name="Setor 10", area_hectares=3)]
+    return FarmAssistant(farm_name="Bela Vista", season=season, items=items, balances={1: 50, 2: 10}, plots=plots,
+                         today=date(2026, 11, 15),
+                         prepare_draft=lambda **kw: prepared.append(kw) or "d" * 32)
+
+
+def test_agent_searches_item_then_prepares_draft():
+    prepared, calls = [], []
+    steps = [
+        [_tool_call("buscar_itens", {"termo": "gasolina"})],
+        [_tool_call("preparar_consumo", {"item_id": 1, "quantidade": 5, "unidade": "litros", "data": "2026-11-15", "setor": None}, "c2")],
+    ]
+    result = _assistant(prepared).run([{"role": "user", "content": "usei 5 litros de gasolina hoje"}],
+                                      client=_fake_client(steps, calls), model="m")
+    assert result["draft_id"] == "d" * 32 and prepared[0]["unit"] == "L" and prepared[0]["plot"] is None
+    tool_replies = [m["content"] for m in calls[1]["messages"] if m.get("role") == "tool"]
+    assert "Gasolina comum" in tool_replies[0] and '"saldo_na_fazenda": 50' in tool_replies[0]
+    assert "15/11/2026" in calls[0]["messages"][0]["content"] and calls[0]["tools"]
+
+
+def test_agent_tool_errors_go_back_to_the_model():
+    prepared, calls = [], []
+    steps = [
+        [_tool_call("preparar_consumo", {"item_id": 2, "quantidade": 40, "unidade": "kg", "data": "2026-11-15", "setor": None})],
+        "Em qual setor você usou a ureia?",
+    ]
+    result = _assistant(prepared).run([{"role": "user", "content": "usei 40 kg de ureia"}], client=_fake_client(steps, calls), model="m")
+    assert result == {"resposta": "Em qual setor você usou a ureia?", "draft_id": None} and not prepared
+    assert any("erro" in m["content"] for m in calls[1]["messages"] if m.get("role") == "tool")
+
+
+def test_agent_validations():
+    assistant = _assistant([])
+    assert assistant.call_tool("preparar_consumo", '{"item_id": 2, "quantidade": 40, "unidade": "kg", "data": "2026-11-15", "setor": "Setor 1"}')["erro"].startswith("Saldo insuficiente")
+    assert "futura" in assistant.call_tool("preparar_consumo", '{"item_id": 1, "quantidade": 1, "unidade": "L", "data": "2026-11-16", "setor": null}')["erro"]
+    assert "ambíguo" in assistant.call_tool("preparar_consumo", '{"item_id": 2, "quantidade": 1, "unidade": "kg", "data": "2026-11-15", "setor": "Setor"}')["erro"]
+    assert "unidade cadastrada" in assistant.call_tool("preparar_consumo", '{"item_id": 2, "quantidade": 1, "unidade": "L", "data": "2026-11-15", "setor": "Setor 1"}')["erro"]
+    assert assistant.call_tool("buscar_itens", '{"termo": "abacaxi"}')["itens"] == []
+    assert assistant.call_tool("nada", "{}")["erro"]
 
 
 def _openai_error(cls, status, code):
@@ -178,19 +215,23 @@ def _route_env(monkeypatch, replies):
     scope = {"active_farm": farm, "active_season": season, "active_farm_id": farm.id, "active_season_id": season.id}
     sent = []
 
-    def fake_converse(history, products, plots, today):
-        sent.append((history, [p.name for p in products]))
+    def fake_run(history, assistant):
+        sent.append((history, [item.name for item in assistant.items.values()]))
         reply = replies.pop(0)
         if isinstance(reply, Exception):
             raise reply
-        return reply
+        if isinstance(reply, dict):
+            reply = {**reply, "item_id": reply["item_id"] or next(iter(assistant.items))}
+            assistant.call_tool("preparar_consumo", __import__("json").dumps(reply))
+            return {"resposta": "Preparei o lançamento.", "draft_id": assistant.draft_id}
+        return {"resposta": reply, "draft_id": None}
 
     monkeypatch.setattr(routes, "validate_csrf", lambda *a: None)
     monkeypatch.setattr(routes, "_can_use_stock_assistant", lambda *a: True)
     monkeypatch.setattr(routes, "_global_scope_context", lambda *a, **k: scope)
     monkeypatch.setattr(routes, "_season_launch_plots", lambda plots, scope: plots)
     monkeypatch.setattr(routes, "_plot_matches_scope", lambda plot, scope: True)
-    monkeypatch.setattr(routes, "converse_consumption", fake_converse)
+    monkeypatch.setattr(routes, "run_farm_assistant", fake_run)
     monkeypatch.setattr(routes, "today_in_app_timezone", lambda: date(2026, 11, 15))
     request = SimpleNamespace(session={})
     send = lambda text: routes.prepare_stock_assistant_action(request, message=text, csrf_token="x", db=db, user=user)
@@ -200,9 +241,8 @@ def _route_env(monkeypatch, replies):
 def test_route_keeps_conversation_on_error_and_drafts_fuel_without_plot(monkeypatch):
     replies = [
         ValueError("A conta da OpenAI usada pelo SiSFarm está sem créditos."),
-        {"resposta": "Foi hoje?", "campos": None},
-        {"resposta": "Preparei o lançamento.", "campos": {"product": "Gasolina", "plot": None, "quantity": 5,
-                                                          "unit": "litros", "movement_date": "2026-11-15"}},
+        "Foi hoje?",
+        {"item_id": 0, "quantidade": 5, "unidade": "litros", "data": "2026-11-15", "setor": None},
     ]
     routes, db, user, scope, send, sent = _route_env(monkeypatch, replies)
     send("Utilizei 5 litros de gasolina")
