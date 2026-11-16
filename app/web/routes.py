@@ -1061,7 +1061,44 @@ def _base_context(request: Request, user: User, csrf_token: str, page: str, **kw
     context["now_utc"] = datetime.now(timezone.utc)
     context["is_super_admin"] = bool(user and is_super_admin_email(user.email))
     context.update(kwargs)
+    if repo and "pezinho" not in kwargs:
+        context["pezinho"] = _pezinho_context(request, db_session, user, context)
     return context
+
+
+def _pezinho_context(request: Request, db, user, context: dict) -> dict | None:
+    """Dados do Pezinho (mascote da IA) no canto da tela; None quando ele nao aparece."""
+    if not user or context.get("modal_mode") or request.url.path.startswith("/mobile/assistente"):
+        return None
+    entitlements = context.get("plan_entitlements") or UNRESTRICTED
+    if not ({PAGE_MOBILE, WRITE_MOBILE, PAGE_INPUTS, WRITE_INPUTS} <= set(context.get("permission_codes") or ())
+            and not entitlements.read_only
+            and all(entitlements.module_allowed(page) for page in (PAGE_MOBILE, PAGE_INPUTS))):
+        return None
+    farm, season = context.get("active_farm"), context.get("active_season")
+    pending = None
+    if farm and season:
+        try:
+            scope = {"active_farm_id": context.get("active_farm_id"), "active_season_id": context.get("active_season_id")}
+            for thread in _assistant_threads(db, user, scope, limit=6):
+                draft = next((m["draft"] for m in reversed(_thread_messages(thread))
+                              if isinstance(m.get("draft"), dict) and m["draft"].get("state") == "pending"), None)
+                if draft and _assistant_draft_state(db, draft) == "pending":
+                    label = " · ".join(filter(None, [draft.get("item"), " ".join(filter(None, [draft.get("quantity"), draft.get("unit")]))]))
+                    pending = {"id": draft.get("id"), "label": label or "Lançamento", "href": _assistant_url(thread.id)}
+                    break
+        except Exception:
+            logger.exception("Falha ao procurar rascunhos pendentes do assistente")
+    hour = app_now().hour
+    name = ((getattr(user, "display_name", None) or getattr(user, "name", None) or "").strip().split(" ") or [""])[0]
+    return {
+        "ready": bool(farm and season),
+        "available": bool((get_settings().openai_api_key or "").strip()),
+        "pending": pending,
+        "name": name,
+        "greeting": "Bom dia" if hour < 12 else "Boa tarde" if hour < 18 else "Boa noite",
+        "context_label": f"{farm.name} · {season.name}" if farm and season else "",
+    }
 
 
 def _entitlements_for(db_session, user) -> Entitlements:
@@ -20779,7 +20816,7 @@ def _assistant_view_messages(db, messages):
 
 @router.get("/mobile/assistente")
 def stock_assistant_page(
-    request: Request, c: str | None = Query(None, max_length=32),
+    request: Request, c: str | None = Query(None, max_length=32), q: str | None = Query(None, max_length=600),
     db: Session = Depends(get_db), user: User = Depends(get_current_user_web),
     csrf_token: str = Depends(get_csrf_token),
 ):
@@ -20802,6 +20839,7 @@ def stock_assistant_page(
         thread_groups=_assistant_thread_list(db, threads, thread.id if thread else None),
         recent_threads=[item for group in _assistant_thread_list(db, threads[:4], None) for item in group["items"]],
         greeting="Bom dia" if app_now().hour < 12 else "Boa tarde" if app_now().hour < 18 else "Boa noite",
+        prefill=(q or "").strip(),
     ))
 
 

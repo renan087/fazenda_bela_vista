@@ -1,0 +1,66 @@
+{# Pezinho: mascote da IA no canto da tela. Abre um atalho para o Assistente. #}
+{% set pz = pezinho %}
+{% set pz_img = url_for('static', path='img/pezinho/') %}
+<div class="pzw" data-pzw hidden
+     data-img-base="{{ pz_img }}" data-available="{{ 'true' if pz.available else 'false' }}"
+     data-pending="{{ pz.pending.id if pz.pending else '' }}" data-name="{{ pz.name }}">
+    <div class="pzw-bubble" role="status" data-pzw-bubble hidden>
+        <p data-pzw-bubble-text></p>
+        <button type="button" class="pzw-x" aria-label="Dispensar" data-pzw-dismiss>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>
+        </button>
+    </div>
+
+    <div class="pzw-scrim" data-pzw-scrim hidden></div>
+    <section class="pzw-panel" role="dialog" aria-modal="false" aria-labelledby="pzw-title" data-pzw-panel hidden>
+        <header class="pzw-head">
+            <img class="pzw-head-img" src="{{ pz_img }}cabeca-pronto.svg" alt="" data-pzw-head>
+            <div class="pzw-head-text">
+                <h2 id="pzw-title">Pezinho</h2>
+                <p>{% if pz.context_label %}<i></i>{{ pz.context_label }}{% else %}Assistente SiSFarm{% endif %}</p>
+            </div>
+            <button type="button" class="pzw-x pzw-close" aria-label="Fechar" data-pzw-close>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>
+            </button>
+        </header>
+        <div class="pzw-body">
+            {% if not pz.available %}
+            <p class="pzw-say">{{ pz.greeting }}{% if pz.name %}, {{ pz.name }}{% endif %}! Estou descansando agora: a inteligência artificial está fora do ar. Tente de novo daqui a pouco.</p>
+            {% elif not pz.ready %}
+            <p class="pzw-say">{{ pz.greeting }}{% if pz.name %}, {{ pz.name }}{% endif %}! Escolha a fazenda e a safra no topo da tela para eu poder ajudar.</p>
+            {% else %}
+            <p class="pzw-say">{{ pz.greeting }}{% if pz.name %}, {{ pz.name }}{% endif %}! Me conta o que foi usado na lavoura que eu deixo o lançamento prontinho pra você conferir.</p>
+            {% if pz.pending %}
+            <a class="pzw-pending" href="{{ pz.pending.href }}">
+                <i></i><span><b>{{ pz.pending.label }}</b> aguardando sua confirmação</span><span class="pzw-pending-go">Ver</span>
+            </a>
+            {% endif %}
+            <div class="pzw-sugs">
+                {% for title, example in [('Abastecimento', 'Abasteci o trator com 80 L de diesel'), ('Consumo de insumo', 'Usei 6 sacos de 20-05-20 no setor 2'), ('Consultar saldo', 'Quanto tenho de glifosato?')] %}
+                <a class="pzw-sug" href="/mobile/assistente?q={{ example|urlencode }}"><i></i><span><b>{{ title }}</b><span>“{{ example }}”</span></span></a>
+                {% endfor %}
+            </div>
+            {% endif %}
+        </div>
+        {% if pz.available and pz.ready %}
+        <form class="pzw-form" method="post" action="/mobile/assistente" data-pzw-form>
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <label class="sr-only" for="pzw-message">Mensagem para o Pezinho</label>
+            <textarea id="pzw-message" name="message" rows="1" maxlength="600" required placeholder="Escreva para o Pezinho…" data-pzw-input></textarea>
+            <button type="submit" aria-label="Enviar" data-pzw-send>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h13M13 6l6 6-6 6"/></svg>
+            </button>
+        </form>
+        {% endif %}
+        <footer class="pzw-foot">
+            <a href="/mobile/assistente">Abrir conversa completa</a>
+            <button type="button" data-pzw-hide>Esconder por hoje</button>
+        </footer>
+    </section>
+
+    <button type="button" class="pzw-fab" aria-label="Abrir o Pezinho, assistente SiSFarm" aria-expanded="false" data-pzw-fab>
+        <img src="{{ pz_img }}pronto.svg" alt="" width="760" height="1450" data-pzw-img>
+        <span class="pzw-dot" data-pzw-dot {% if not pz.pending %}hidden{% endif %}></span>
+    </button>
+</div>
+<script src="{{ url_for('static', path='js/pezinho.js') }}?v=1" defer></script>

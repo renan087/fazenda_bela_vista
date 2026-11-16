@@ -68,7 +68,7 @@
         <header class="as-head">
             <a href="/mobile" class="as-ico as-only-mobile" aria-label="Voltar ao Campo Mobile">{{ ic('back', 22, 2) }}</a>
             <button type="button" class="as-ico as-threads-expand" data-as-threads-toggle aria-controls="as-threads" aria-expanded="false" aria-label="Abrir histórico" title="Abrir histórico">{{ ic('panel') }}</button>
-            <span class="as-av as-av-ai as-only-mobile">{{ ic('spark', 17, 1.9) }}</span>
+            <span class="as-av as-av-ai as-only-mobile"><img src="{{ url_for('static', path='img/pezinho/cabeca-pronto.svg') }}" alt=""></span>
             <div class="as-head-text">
                 <div class="as-head-title">
                     <span class="as-only-mobile">Assistente SiSFarm</span>
@@ -102,7 +102,7 @@
                 <div class="as-warn">Selecione a fazenda e a safra no topo para começar.</div>
             {% elif not thread %}
                 <div class="as-welcome">
-                    <span class="as-av as-av-ai as-av-lg">{{ ic('spark', 24) }}</span>
+                    <span class="as-av as-av-ai as-av-lg"><img src="{{ url_for('static', path='img/pezinho/cabeca-pronto.svg') }}" alt=""></span>
                     <h1>{{ greeting }}</h1>
                     <p>Me conte o que foi usado ou comprado na fazenda, ou pergunte o que quiser saber. Eu deixo o lançamento prontinho e você só confirma.</p>
                     <div class="as-sugs">
@@ -133,7 +133,7 @@
                 </div>
                 {% else %}
                 <div class="as-msg-ai">
-                    <span class="as-av as-av-ai{% if m.error %} as-av-err{% endif %}">{{ ic('spark', 17, 1.9) }}</span>
+                    <span class="as-av as-av-ai{% if m.error %} as-av-err{% endif %}"><img src="{{ url_for('static', path='img/pezinho/cabeca-' ~ ('dormindo' if m.error else 'pronto') ~ '.svg') }}" alt=""></span>
                     <div class="as-msg-body">
                         <div class="as-who">Assistente SiSFarm <span class="as-message-channel">{{ ic('wa' if thread_channel == 'whatsapp' else 'spark', 13) }}{{ 'WhatsApp' if thread_channel == 'whatsapp' else 'SiSFarm' }}</span><span>{{ m.time }}</span></div>
                         {% if m.tools %}<div class="as-tools">{% for t in m.tools %}<span class="as-tool"><i></i>{{ t }}</span>{% endfor %}</div>{% endif %}
@@ -236,7 +236,7 @@
                     <span class="as-hint" data-as-audio-status aria-live="polite"></span>
                     <div class="as-recording" data-as-recording hidden><span class="as-recording-dot"></span><span data-as-duration>0:00</span><span class="as-wave" data-as-wave aria-hidden="true"></span><button type="button" data-as-stop>Parar</button></div>
                     <textarea id="assistant-message" name="message" maxlength="600" rows="1"
-                              placeholder="Pergunte ou descreva o que aconteceu na fazenda…" data-as-input></textarea>
+                              placeholder="Pergunte ou descreva o que aconteceu na fazenda…" data-as-input>{{ prefill or '' }}</textarea>
                     <div class="as-box-bar">
                         <label class="as-ico" title="Anexar foto ou PDF (até 5 MB)">
                             {{ ic('clip') }}<span class="sr-only">Anexar foto ou PDF</span>
@@ -290,5 +290,5 @@
         <p class="as-privacy">{{ ic('shield', 15) }}<span>As mensagens e fotos são enviadas ao modelo de IA para interpretação. Nenhum dado é alterado sem confirmação.</span></p>
     </aside>
 </div>
-<script src="{{ url_for('static', path='js/assistant.js') }}?v=4" defer></script>
+<script src="{{ url_for('static', path='js/assistant.js') }}?v=5" defer></script>
 {% endblock %}

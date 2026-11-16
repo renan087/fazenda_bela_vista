@@ -358,7 +358,8 @@
         ai.className = 'as-msg-ai';
         ai.innerHTML = '<span class="as-av as-av-ai"></span><div class="as-msg-body"><div class="as-who">Assistente SiSFarm</div>'
             + '<div class="as-typing" role="status" aria-live="polite"><i></i><i></i><i></i><span data-as-thinking>Pensando...</span></div></div>';
-        ai.firstChild.innerHTML = shell.querySelector('.as-av-ai svg') ? shell.querySelector('.as-av-ai svg').outerHTML : '';
+        const avatar = shell.querySelector('.as-av-ai img');
+        if (avatar) ai.firstChild.innerHTML = `<img src="${avatar.src.replace(/cabeca-\w+\.svg/, 'cabeca-pensando.svg')}" alt="">`;
         chat.append(mine, ai);
         startThinking(ai.querySelector('[data-as-thinking]'));
         scroller.scrollTop = scroller.scrollHeight;
