@@ -1,11 +1,15 @@
-"""Text-only pilot: prepare consumption drafts without calling an external model."""
+"""Conversational consumption assistant and stock confirmation safeguards."""
 
+import json
+import logging
+import os
 import re
 import unicodedata
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 
 from app.models.stock_assistant_draft import StockAssistantDraft
+from app.core.config import get_settings
 from app.services.forms import create_manual_stock_output
 
 _UNITS = {"kg": "kg", "g": "g", "l": "L", "ml": "mL", "un": "un"}
@@ -19,6 +23,48 @@ _PATTERN = re.compile(
     rf"{_START}(?:{_PACKS})?{_AMOUNT} de (?P<product>.+?){_END}"
 )
 _PACK_PRODUCT_FIRST = re.compile(rf"{_START}{_PACKS}(?P<product>.+?) de {_AMOUNT}{_END}")
+
+
+def converse_consumption(history, products, plots, today):
+    """Interpret a conversation; the caller must independently validate every field."""
+    api_key = os.getenv("OPENAI_API_KEY") or get_settings().openai_api_key
+    if not api_key:
+        raise ValueError("O assistente de IA ainda não está configurado. Contate o administrador.")
+    from openai import OpenAI
+    context = {
+        "hoje": today.isoformat(),
+        "insumos": [{"nome": p.name, "unidade": p.default_unit} for p in products if p.is_active],
+        "setores": [p.name for p in plots],
+    }
+    instructions = (
+        "Você é o Assistente SiSFarm. Converse de forma natural, breve e cordial em português brasileiro. "
+        "Nesta versão você apenas prepara saída por consumo de insumo agrícola; não registra compras, "
+        "despesas ou outros tipos de movimentação. Explique essa limitação se necessário, sem converter compra em consumo. "
+        "Use o histórico para identificar consumo, insumo, quantidade total, unidade, setor e data. "
+        "Pergunte o que faltar ou estiver ambíguo, sem inventar valores; hoje e ontem são datas explícitas. "
+        "Resolva nomes apenas quando houver correspondência inequívoca nos cadastros fornecidos; "
+        "use o nome exato do cadastro. Quantidades por área não são quantidade total. "
+        "Multiplique embalagens somente quando quantidade e tamanho forem informados. "
+        "Não diga que registrou algo: o usuário precisa revisar e confirmar. "
+        "Retorne somente JSON com resposta (texto para o usuário) e campos (objeto ou null). "
+        "Só preencha campos quando todos os dados estiverem claros e a intenção for consumo: "
+        "product, plot, quantity (número total), unit, movement_date (AAAA-MM-DD). "
+        "Se faltar ou houver dúvida, campos deve ser null. Contexto cadastrado: "
+        + json.dumps(context, ensure_ascii=False)
+    )
+    try:
+        response = OpenAI(api_key=api_key, timeout=25, max_retries=0).chat.completions.create(
+            model=os.getenv("OPENAI_ASSISTANT_MODEL", "gpt-4o-mini"),
+            response_format={"type": "json_object"},
+            messages=[{"role": "system", "content": instructions}] + history,
+        )
+        result = json.loads(response.choices[0].message.content)
+        if not isinstance(result, dict) or not isinstance(result.get("resposta"), str):
+            raise ValueError("Resposta inválida")
+        return result
+    except Exception:
+        logging.getLogger(__name__).exception("Falha ao consultar IA do assistente de estoque")
+        raise ValueError("Não consegui consultar a IA agora. Tente novamente em instantes.") from None
 
 
 def normalized(value: str) -> str:

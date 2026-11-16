@@ -3,14 +3,20 @@
 <section class="mx-auto max-w-3xl space-y-5 rounded-[2rem] bg-white p-5 shadow-panel sm:p-7">
     <a href="/mobile" class="text-sm font-semibold text-emerald-800">&larr; Campo Mobile</a>
     <header>
-        <p class="text-xs font-semibold uppercase tracking-widest text-emerald-800">Piloto de texto</p>
+        <p class="text-xs font-semibold uppercase tracking-widest text-emerald-800">Assistente de campo</p>
         <h2 class="mt-2 text-2xl font-semibold text-slate-900">Assistente SiSFarm</h2>
-        <p class="mt-1 text-sm text-slate-600">Registre o consumo de um insumo já cadastrado. Nada sai do estoque sem sua confirmação.</p>
+        <p class="mt-1 text-sm text-slate-600">Converse sobre o consumo de insumos. Vou ajudar com os detalhes e pedir sua confirmação antes de registrar.</p>
     </header>
     {% if not assistant_scope.active_farm or not assistant_scope.active_season %}
     <p class="rounded-xl bg-amber-50 p-4 text-sm text-amber-900">Selecione a fazenda e a safra no topo para começar.</p>
     {% else %}
     <p class="rounded-xl bg-slate-50 p-3 text-sm text-slate-700"><strong>Fazenda:</strong> {{ assistant_scope.active_farm.name }} · <strong>Safra:</strong> {{ assistant_scope.active_season.name }}</p>
+    <div class="space-y-3" aria-live="polite">
+        <div class="max-w-[90%] rounded-2xl rounded-tl-sm bg-slate-100 p-4 text-sm text-slate-700">Olá! Conte o que você usou na fazenda. Se precisar de algum detalhe, eu pergunto. Por enquanto, posso ajudar com consumo de insumos agrícolas já cadastrados.</div>
+        {% for item in chat_history|default([]) %}
+        <div class="{{ 'ml-auto rounded-tr-sm bg-emerald-700 text-white' if item.role == 'user' else 'rounded-tl-sm bg-slate-100 text-slate-700' }} max-w-[90%] whitespace-pre-wrap rounded-2xl p-4 text-sm">{{ item.content }}</div>
+        {% endfor %}
+    </div>
     {% if draft_pending and product and plot %}
     <article class="space-y-3 rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
         <h3 class="font-semibold text-emerald-950">Confira a saída de estoque</h3>
@@ -36,10 +42,10 @@
     {% if draft %}<p class="text-sm text-slate-600">Este rascunho não está mais disponível para confirmação.</p>{% endif %}
     <form method="post" action="/mobile/assistente" class="space-y-3 rounded-2xl border border-slate-200 p-4">
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-        <label for="assistant-message" class="block font-semibold text-slate-900">O que você usou?</label>
-        <p id="assistant-example" class="text-sm text-slate-600">Exemplo: Hoje usei dois sacos de 20 kg de Vita Nit S no Setor 3.</p>
-        <textarea id="assistant-message" name="message" maxlength="350" rows="3" required aria-describedby="assistant-example" class="w-full rounded-xl border-slate-200 bg-slate-50"></textarea>
-        <button class="sf-btn sf-btn-primary">Preparar rascunho</button>
+        <label for="assistant-message" class="block font-semibold text-slate-900">Sua mensagem</label>
+        <textarea id="assistant-message" name="message" maxlength="350" rows="3" required placeholder="Conte o que aconteceu..." class="w-full rounded-xl border-slate-200 bg-slate-50"></textarea>
+        <button class="sf-btn sf-btn-primary">Enviar mensagem</button>
+        <p class="text-xs text-slate-500">A conversa é enviada à IA para interpretação. Nenhum consumo é registrado sem confirmação.</p>
     </form>
     {% endif %}
     {% endif %}

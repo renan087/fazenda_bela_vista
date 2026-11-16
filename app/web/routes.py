@@ -36,7 +36,7 @@ from app.core.config import get_settings
 from app.models.stock_assistant_draft import StockAssistantDraft
 from app.models.audit_log import AuditLog
 from app.models.input_catalog import InputCatalog
-from app.services.stock_assistant import claim_draft, confirm_consumption, match_exact, parse_consumption, stock_unit
+from app.services.stock_assistant import claim_draft, confirm_consumption, converse_consumption, match_exact, normalized, stock_unit
 from app.core.admin_access import has_admin_access, is_super_admin_email
 from app.core.permissions_catalog import (
     WRITE_FINANCE,
@@ -20583,6 +20583,17 @@ def _assistant_draft(db, user, draft_id):
     ).first()
 
 
+def _assistant_history(request, user, scope):
+    key = f'{user.id}:{user.organization_id}:{scope["active_farm_id"]}:{scope["active_season_id"]}'
+    conversation = request.session.get("stock_assistant_chat", {})
+    return conversation.get("messages", []) if conversation.get("scope") == key else []
+
+
+def _save_assistant_history(request, user, scope, history):
+    key = f'{user.id}:{user.organization_id}:{scope["active_farm_id"]}:{scope["active_season_id"]}'
+    request.session["stock_assistant_chat"] = {"scope": key, "messages": history[-6:]}
+
+
 @router.get("/mobile/assistente")
 def stock_assistant_page(
     request: Request, draft_id: str | None = Query(None, max_length=32),
@@ -20602,6 +20613,7 @@ def stock_assistant_page(
     return templates.TemplateResponse("stock_assistant.html", _base_context(
         request, user, csrf_token, "mobile", title="Assistente SiSFarm", _repo=repo,
         assistant_scope=scope, draft=draft, draft_pending=draft_pending,
+        chat_history=_assistant_history(request, user, scope),
         product=repo.get_input_catalog(draft.input_id) if draft_pending else None,
         plot=repo.get_plot(draft.plot_id) if draft_pending else None,
     ))
@@ -20622,20 +20634,42 @@ def prepare_stock_assistant_action(
     try:
         if not farm or not season or season.farm_id != farm.id:
             raise ValueError("Selecione a fazenda e a safra no topo.")
-        fields = parse_consumption(message, today_in_app_timezone())
-        _validate_assistant_movement_date(fields["movement_date"], season)
-        product = match_exact(fields["product"], repo.list_input_catalog("insumo_agricola"), "Insumo")
+        message = message.strip()
+        if not message:
+            raise ValueError("Escreva uma mensagem para o assistente.")
+        history = _assistant_history(request, user, scope)
+        history = (history + [{"role": "user", "content": message}])[-5:]
+        products = repo.list_input_catalog("insumo_agricola")
         plots = _season_launch_plots(repo.list_plots(farm_ids=[farm.id]), scope)
-        plot = match_exact(fields["plot"], [item for item in plots if _plot_matches_scope(item, scope)], "Setor")
-        unit = stock_unit(product, fields["unit"])
+        plots = [item for item in plots if _plot_matches_scope(item, scope)]
+        result = converse_consumption(history, products, plots, today_in_app_timezone())
+        reply = result["resposta"].strip()[:350] or "Pode me contar um pouco mais?"
+        fields = result.get("campos")
+        if not isinstance(fields, dict):
+            _save_assistant_history(request, user, scope, history + [{"role": "assistant", "content": reply}])
+            return _redirect(target)
+        try:
+            movement_date = date.fromisoformat(fields["movement_date"])
+            quantity = Decimal(str(fields["quantity"]))
+            if not quantity.is_finite() or not 0 < quantity < Decimal("10000000000"):
+                raise ValueError("Informe uma quantidade total positiva válida.")
+            _validate_assistant_movement_date(movement_date, season)
+            product = match_exact(normalized(fields["product"]), products, "Insumo")
+            plot = match_exact(normalized(fields["plot"]), plots, "Setor")
+            unit = stock_unit(product, fields["unit"])
+        except (ValueError, KeyError, TypeError, InvalidOperation) as exc:
+            reply = str(exc) if isinstance(exc, ValueError) and str(exc) else "Não consegui identificar todos os dados. Pode esclarecer o insumo, a quantidade, o setor e a data?"
+            _save_assistant_history(request, user, scope, history + [{"role": "assistant", "content": reply[:350]}])
+            return _redirect(target)
         draft_id = uuid4().hex
         db.add(StockAssistantDraft(
             id=draft_id, user_id=user.id, organization_id=user.organization_id,
             farm_id=farm.id, season_id=season.id, plot_id=plot.id, input_id=product.id,
-            movement_date=fields["movement_date"], quantity=fields["quantity"], unit=unit,
+            movement_date=movement_date, quantity=quantity, unit=unit,
             expires_at=datetime.now(timezone.utc) + timedelta(minutes=30),
         ))
         db.commit()
+        _save_assistant_history(request, user, scope, history + [{"role": "assistant", "content": "Preparei uma saída para você conferir antes de confirmar."}])
     except ValueError as exc:
         db.rollback()
         _flash(request, "error", str(exc))
@@ -20669,6 +20703,7 @@ def resolve_stock_assistant_action(
             if not claim_draft(db, draft, "discarded"):
                 raise ValueError("Este rascunho já foi processado ou expirou.")
             db.commit()
+            request.session.pop("stock_assistant_chat", None)
             _flash(request, "success", "Rascunho descartado. Nenhum consumo foi registrado.")
             return _redirect(target)
         season = scope["active_season"]
@@ -20685,6 +20720,7 @@ def resolve_stock_assistant_action(
                         event_type="stock.assistant.confirmed", outcome="success",
                         metadata_json=json.dumps({"stock_output_id": output.id, "draft_id": draft.id, "channel": "campo_mobile"})))
         db.commit()
+        request.session.pop("stock_assistant_chat", None)
         _flash(request, "success", "Consumo registrado no estoque.")
     except ValueError as exc:
         db.rollback()

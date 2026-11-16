@@ -1,6 +1,7 @@
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from jinja2 import ChoiceLoader, DictLoader, Environment, FileSystemLoader
@@ -11,7 +12,7 @@ from app.db.base import Base
 from app.models import InputCatalog, PurchasedInput, StockOutput
 from app.models.stock_assistant_draft import StockAssistantDraft
 from app.repositories.farm import FarmRepository
-from app.services.stock_assistant import claim_draft, confirm_consumption, parse_consumption
+from app.services.stock_assistant import claim_draft, confirm_consumption, converse_consumption, parse_consumption
 
 
 @pytest.mark.parametrize("message", [
@@ -112,3 +113,26 @@ def test_prepare_form_includes_csrf_token():
     )
     form = html.split('action="/mobile/assistente"', 1)[1].split("</form>", 1)[0]
     assert 'name="csrf_token" value="test-token"' in form
+
+
+def test_conversation_uses_history_and_catalog(monkeypatch):
+    import openai
+    calls = {}
+
+    def create(**kwargs):
+        calls.update(kwargs)
+        return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(
+            content='{"resposta":"Em qual setor?","campos":null}'
+        ))])
+
+    monkeypatch.setenv("OPENAI_API_KEY", "test")
+    monkeypatch.setattr(openai, "OpenAI", lambda **kwargs: SimpleNamespace(
+        chat=SimpleNamespace(completions=SimpleNamespace(create=create))
+    ))
+    history = [{"role": "user", "content": "Usei 20 kg de Vita Nit S"}]
+    result = converse_consumption(history, [SimpleNamespace(name="Vita Nit S", default_unit="kg", is_active=True)],
+                                  [SimpleNamespace(name="Setor 1")], date(2026, 11, 15))
+    assert result["campos"] is None
+    assert result["resposta"] == "Em qual setor?"
+    assert calls["messages"][-1] == history[0]
+    assert "Setor 1" in calls["messages"][0]["content"]
