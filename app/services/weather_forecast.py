@@ -20,7 +20,8 @@ API_URL = "https://api.open-meteo.com/v1/forecast"
 FORECAST_DAYS = 7
 CACHE_TTL_SECONDS = 3 * 60 * 60
 ERROR_RETRY_SECONDS = 10 * 60
-DAILY_VARIABLES = ("temperature_2m_max", "temperature_2m_min", "precipitation_sum", "precipitation_probability_max")
+DAILY_VARIABLES = ("temperature_2m_max", "temperature_2m_min", "precipitation_sum", "precipitation_probability_max",
+                   "weather_code")
 # Ordem = prioridade: o primeiro e a previsao principal; os demais cobrem dados ausentes.
 MODELS = (
     ("ecmwf_ifs025", "ECMWF"),
@@ -88,6 +89,36 @@ def farm_coordinates(farm) -> tuple[float, float, str] | None:
     return None
 
 
+# ---------------------------------------------------------------- condicao do dia
+def weather_condition(code: int | None, precip: float | None = None, prob: int | None = None) -> tuple[str, str]:
+    """(emoji, descricao) pelo codigo WMO do Open-Meteo; sem codigo, estima pela chuva prevista."""
+    if code is None:
+        if precip is not None and precip >= 10:
+            return "🌧️", "chuva"
+        if (precip or 0) >= 1 or (prob or 0) >= 50:
+            return "🌦️", "possibilidade de chuva"
+        return "🌤️", "sem chuva prevista"
+    if code <= 1:
+        return "☀️", "ensolarado"
+    if code == 2:
+        return "⛅", "parcialmente nublado"
+    if code == 3:
+        return "☁️", "nublado"
+    if code in (45, 48):
+        return "🌫️", "neblina"
+    if 51 <= code <= 57:
+        return "🌦️", "garoa"
+    if code in (80, 81):
+        return "🌦️", "pancadas de chuva"
+    if 61 <= code <= 67 or code == 82:
+        return "🌧️", "chuva"
+    if 71 <= code <= 77 or code in (85, 86):
+        return "❄️", "neve"
+    if code >= 95:
+        return "⛈️", "tempestade"
+    return "🌤️", "tempo variável"
+
+
 # ---------------------------------------------------------------- API
 def _number(value) -> float | None:
     return float(value) if isinstance(value, (int, float)) else None
@@ -118,13 +149,14 @@ def parse_forecast(payload: dict) -> dict:
             day["weekday"], day["label"] = "", iso
         sources = {}
         for key, variable in (("tmax", "temperature_2m_max"), ("tmin", "temperature_2m_min"),
-                              ("precip", "precipitation_sum"), ("prob", "precipitation_probability_max")):
+                              ("precip", "precipitation_sum"), ("prob", "precipitation_probability_max"),
+                              ("code", "weather_code")):
             day[key] = None
             for model, _ in MODELS:
                 value = data[model][variable][index]
                 if value is not None:
-                    day[key] = round(value, 1) if key != "prob" else round(value)
-                    if model != PRIMARY_MODEL:
+                    day[key] = round(value, 1) if key not in ("prob", "code") else round(value)
+                    if model != PRIMARY_MODEL and key != "code":
                         sources[key] = labels[model]
                     break
         day["fallback"] = sources

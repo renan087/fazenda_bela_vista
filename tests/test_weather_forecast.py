@@ -72,3 +72,15 @@ def test_farm_coordinates_from_boundary_or_plots():
     plot = SimpleNamespace(centroid_lat=-20.0, centroid_lng=-45.0, boundary_geojson=None)
     assert wf.farm_coordinates(SimpleNamespace(boundary_geojson=None, plots=[plot]))[:2] == (-20.0, -45.0)
     assert wf.farm_coordinates(SimpleNamespace(boundary_geojson='lixo', plots=[])) is None
+
+
+def test_weather_condition_icons():
+    from app.services.weather_forecast import weather_condition
+    assert weather_condition(0)[0] == "☀️"
+    assert weather_condition(2)[0] == "⛅"
+    assert weather_condition(3)[0] == "☁️"
+    assert weather_condition(80)[0] == "🌦️"
+    assert weather_condition(63)[0] == "🌧️"
+    assert weather_condition(95)[0] == "⛈️"
+    assert weather_condition(None, 15, 90)[0] == "🌧️"
+    assert weather_condition(None, 0, 10)[0] == "🌤️"

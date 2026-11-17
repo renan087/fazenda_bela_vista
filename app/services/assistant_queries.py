@@ -113,7 +113,7 @@ class AssistantQueries:
         }
 
     def consultar_previsao_tempo(self):
-        from app.services.weather_forecast import farm_coordinates, get_farm_forecast
+        from app.services.weather_forecast import farm_coordinates, get_farm_forecast, weather_condition
 
         coords = farm_coordinates(self.farm)
         if not coords:
@@ -125,8 +125,10 @@ class AssistantQueries:
             "fonte": "Open-Meteo (modelo ECMWF)",
             "desatualizada": data["status"] == "stale",
             "chuva_total_7_dias_mm": data.get("total_precip"),
-            "dias": [{"data": day["label"], "dia": day["weekday"], "max_c": day["tmax"], "min_c": day["tmin"],
-                      "chuva_mm": day["precip"], "chance_chuva_pct": day["prob"]} for day in data.get("days", [])],
+            "dias": [{"data": day["label"], "dia": day["weekday"], "icone": icon, "condicao": condition,
+                      "max_c": day["tmax"], "min_c": day["tmin"], "chuva_mm": day["precip"], "chance_chuva_pct": day["prob"]}
+                     for day in data.get("days", [])
+                     for icon, condition in [weather_condition(day.get("code"), day.get("precip"), day.get("prob"))]],
             "comparacao_modelos_mm_7_dias": {m["label"]: m["total"] for m in data.get("models", [])},
         }
 
