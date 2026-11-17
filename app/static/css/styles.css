@@ -6805,3 +6805,52 @@ dialog.db-cost { width: min(70rem, calc(100vw - 2rem)); }
 }
 #erp-header-notifications-flyout, #erp-header-session-flyout { border-radius: 16px !important; border-color: #e3e8e2 !important; box-shadow: 0 24px 60px rgba(15, 21, 19, .18), 0 2px 6px rgba(15, 21, 19, .06) !important; }
 @media (max-width: 767px) { .hd-ctx-mobile { display: flex; } }
+
+/* ---------- Notificações ---------- */
+.nf { display: flex; flex-direction: column; max-height: min(640px, calc(100vh - 6rem)); }
+.nf.hidden { display: none; }
+.nf-head { display: flex; align-items: center; gap: 10px; padding: 16px 16px 10px; }
+.nf-head h3 { margin: 0; font-size: 16px; font-weight: 700; color: #16201a; }
+.nf-link { margin-left: auto; border: 0; background: none; padding: 4px 0; font-size: 12.5px; font-weight: 600; color: #446a36; cursor: pointer; }
+.nf-link:hover { text-decoration: underline; }
+.nf-tabs { display: flex; gap: 4px; padding: 0 12px 10px; border-bottom: 1px solid #eef1ed; }
+.nf-tabs button { display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 12px; border: 0; border-radius: 9px; background: transparent; font-size: 12.5px; font-weight: 600; color: #5b6660; cursor: pointer; }
+.nf-tabs button[aria-selected="true"] { background: #eef1ed; color: #16201a; }
+.nf-tabs em { min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: #2f6fd6; color: #fff; font-style: normal; font-size: 10.5px; display: inline-flex; align-items: center; justify-content: center; }
+.nf-tabs em.is-red { background: #d92d20; }
+.nf-tabs em[hidden] { display: none; }
+.nf-list { flex: 1; min-height: 0; overflow-y: auto; }
+.nf-item { position: relative; display: flex; gap: 12px; padding: 14px 16px 14px 20px; border-bottom: 1px solid #f0f3ef; }
+.nf-item[hidden] { display: none; }
+.nf-item:hover { background: #fafbf9; }
+.nf-unread { position: absolute; left: 8px; top: 26px; width: 7px; height: 7px; border-radius: 50%; background: #2f6fd6; }
+.nf-item.is-read .nf-unread { display: none; }
+.nf-item.is-read .nf-top b { font-weight: 600; color: #3c4741; }
+.nf-ico { flex: none; width: 36px; height: 36px; border-radius: 11px; display: inline-flex; align-items: center; justify-content: center; }
+.nf-ico svg { width: 18px; height: 18px; }
+.nf-red { background: #fdecea; color: #b42318; }
+.nf-amber { background: #fff3dc; color: #b66b00; }
+.nf-blue { background: #e8f1fb; color: #1f5fa8; }
+.nf-green { background: #eef3eb; color: #446a36; }
+.nf-body { flex: 1; min-width: 0; }
+.nf-top { display: flex; align-items: flex-start; gap: 8px; }
+.nf-top b { flex: 1; font-size: 13.5px; font-weight: 700; color: #16201a; }
+.nf-tag { flex: none; height: 20px; padding: 0 7px; border-radius: 999px; background: #fdecea; color: #b42318; font-size: 10.5px; font-weight: 700; display: inline-flex; align-items: center; }
+.nf-body p { margin: 3px 0 0; font-size: 12.5px; line-height: 1.45; color: #5b6660; }
+.nf-body small { display: block; margin-top: 3px; font-size: 11.5px; color: #8a948e; }
+.nf-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.nf-btn { display: inline-flex; align-items: center; height: 30px; padding: 0 11px; border: 1px solid #d6ddd5; border-radius: 8px; background: #fff; font-size: 12px; font-weight: 600; color: #2a332e; text-decoration: none; cursor: pointer; }
+.nf-btn:hover { background: #f3f5f2; }
+.nf-btn.is-primary { border-color: #446a36; background: #446a36; color: #fff; }
+.nf-btn.is-primary:hover { background: #3a5c2e; }
+.nf-btn.nf-ghost { border-color: transparent; background: transparent; color: #7a857e; }
+.nf-btn.nf-ghost:hover { color: #16201a; background: #f3f5f2; }
+.nf-item.is-read .nf-ghost { display: none; }
+.nf-empty { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 36px 24px; text-align: center; }
+.nf-empty[hidden] { display: none; }
+.nf-empty span { font-size: 26px; }
+.nf-empty b { font-size: 14px; color: #16201a; }
+.nf-empty p { margin: 0; font-size: 12.5px; color: #7a857e; max-width: 260px; }
+.nf-foot { padding: 10px 16px; border-top: 1px solid #eef1ed; background: #fafbf9; font-size: 11.5px; color: #8a948e; text-align: center; }
+.hd-count[hidden] { display: none; }
+.fm-map { isolation: isolate; }

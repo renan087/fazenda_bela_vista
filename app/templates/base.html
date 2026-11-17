@@ -810,77 +810,113 @@
             </div>
         </div>
     </div>
-    <div id="erp-header-notifications-flyout" class="fixed z-[65] hidden w-[24rem] max-w-[calc(100vw-1rem)] overflow-hidden rounded-[1.5rem] border border-slate-200 bg-white shadow-2xl" role="dialog" aria-modal="false" aria-labelledby="erp-header-notifications-title" aria-hidden="true">
-        <div class="border-b border-slate-200 bg-white px-4 py-4">
-            <div class="flex items-center justify-between gap-3">
-                <div>
-                    <p class="text-xs uppercase tracking-[0.28em] text-slate-400">Central de alertas</p>
-                    <h3 id="erp-header-notifications-title" class="mt-1 text-lg font-semibold text-slate-900">Notificações</h3>
+    <div id="erp-header-notifications-flyout" class="nf fixed z-[65] hidden w-[26rem] max-w-[calc(100vw-1rem)] overflow-hidden rounded-[1.5rem] border border-slate-200 bg-white shadow-2xl" role="dialog" aria-modal="false" aria-labelledby="erp-header-notifications-title" aria-hidden="true">
+        <div class="nf-head">
+            <h3 id="erp-header-notifications-title">Notificações</h3>
+            <button type="button" class="nf-link" data-nf-read-all>Marcar todas como lidas</button>
+        </div>
+        <div class="nf-tabs" role="tablist" aria-label="Filtrar notificações">
+            <button type="button" role="tab" aria-selected="true" data-nf-tab="todas">Todas</button>
+            <button type="button" role="tab" aria-selected="false" data-nf-tab="naolidas">Não lidas<em data-nf-unread-count hidden></em></button>
+            <button type="button" role="tab" aria-selected="false" data-nf-tab="importantes">Importantes{% if global_notifications.important_count %}<em class="is-red">{{ global_notifications.important_count }}</em>{% endif %}</button>
+        </div>
+        <div class="nf-list" data-nf-list>
+            {% macro nf_item(item, important) -%}
+            {% set k = item.kind %}
+            {% set tone = 'red' if item.severity == 'danger' else ('amber' if item.severity == 'warning' else ('blue' if k in ['rainfall', 'schedule'] else 'green')) %}
+            <article class="nf-item" data-nf-item data-nf-key="{{ k }}|{{ item.href }}|{{ item.title }}" data-important="{{ '1' if important else '0' }}">
+                <span class="nf-unread" aria-hidden="true"></span>
+                <span class="nf-ico nf-{{ tone }}" aria-hidden="true">
+                    {%- if k == 'stock' %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8 12 3 3 8v8l9 5 9-5z"/><path d="M3 8l9 5 9-5M12 13v8"/></svg>
+                    {%- elif k in ['payable', 'receivable'] %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2.5"/></svg>
+                    {%- elif k == 'rainfall' %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M12 3s6 6.5 6 11a6 6 0 0 1-12 0c0-4.5 6-11 6-11z"/></svg>
+                    {%- elif k == 'schedule' %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M8 3v4M16 3v4M3 10h18"/></svg>
+                    {%- elif k == 'maintenance' %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 0 0 5.4-5.4l-2.6 2.6-2.4-.6-.6-2.4z"/></svg>
+                    {%- else %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M6 8a6 6 0 1 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/></svg>{% endif -%}
+                </span>
+                <div class="nf-body">
+                    <div class="nf-top"><b>{{ item.title }}</b>{% if important %}<span class="nf-tag">Importante</span>{% endif %}</div>
+                    <p>{{ item.message }}</p>
+                    {% if item.meta %}<small>{{ item.meta }}</small>{% endif %}
+                    <div class="nf-actions">
+                        {% if k == 'stock' %}<a class="nf-btn is-primary" href="{{ module_href('/insumos/comprados') }}" data-nf-act>Lançar compra</a><a class="nf-btn" href="{{ item.href }}" data-nf-act>Ver estoque</a>
+                        {% elif k == 'payable' %}<a class="nf-btn is-primary" href="{{ item.href }}" data-nf-act>Ver conta</a>
+                        {% elif k == 'receivable' %}<a class="nf-btn is-primary" href="{{ item.href }}" data-nf-act>Ver recebimento</a>
+                        {% elif k == 'rainfall' %}<a class="nf-btn is-primary" href="{{ item.href }}" data-nf-act>Registrar chuva</a>
+                        {% elif k == 'schedule' %}<a class="nf-btn is-primary" href="{{ item.href }}" data-nf-act>Ver agendamento</a>
+                        {% elif k == 'maintenance' %}<a class="nf-btn is-primary" href="{{ item.href }}" data-nf-act>Ver manutenção</a>
+                        {% else %}<a class="nf-btn is-primary" href="{{ item.href }}" data-nf-act>Abrir</a>{% endif %}
+                        <button type="button" class="nf-btn nf-ghost" data-nf-read>Marcar como lida</button>
+                    </div>
                 </div>
-                <span class="inline-flex rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">{{ global_notifications.total }} alerta(s)</span>
+            </article>
+            {%- endmacro %}
+            {% for item in global_notifications.important %}{{ nf_item(item, True) }}{% endfor %}
+            {% for item in global_notifications.operational %}{{ nf_item(item, False) }}{% endfor %}
+            <div class="nf-empty" data-nf-empty {% if global_notifications.important or global_notifications.operational %}hidden{% endif %}>
+                <span aria-hidden="true">🌱</span><b data-nf-empty-title>Tudo em dia por aqui</b><p data-nf-empty-text>Quando houver estoque baixo, contas, chuva ou agendamentos, os avisos aparecem aqui.</p>
             </div>
         </div>
-        <div class="max-h-[70vh] overflow-y-auto bg-white">
-            <section class="border-b border-slate-100 px-4 py-4">
-                <div class="mb-3 flex items-center justify-between gap-3">
-                    <h4 class="text-xs font-semibold uppercase tracking-[0.22em] text-slate-400">Importantes</h4>
-                    <span class="text-xs font-medium text-rose-500">{{ global_notifications.important_count }}</span>
-                </div>
-                <div class="space-y-2">
-                    {% for item in global_notifications.important %}
-                    <a href="{{ item.href }}" class="flex gap-3 rounded-2xl border border-slate-200 bg-white px-3 py-3 transition hover:border-brand-200 hover:bg-brand-50/40">
-                        <span class="mt-0.5 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl {% if item.severity == 'danger' %}bg-rose-50 text-rose-600{% elif item.severity == 'warning' %}bg-amber-50 text-amber-600{% else %}bg-sky-50 text-sky-600{% endif %}">
-                            {% if item.kind == 'stock' %}
-                            <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M16.5 9.4 7.5 4.2"/><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="M3.3 7 12 12l8.7-5"/><path d="M12 22V12"/></svg>
-                            {% elif item.kind == 'payable' %}
-                            <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M12 2.5v19"/><path d="M16.5 7.25c0-1.8-1.98-3.25-4.42-3.25S7.67 5.45 7.67 7.25c0 4.68 8.83 2.57 8.83 7.5 0 1.8-1.98 3.25-4.42 3.25s-4.41-1.45-4.41-3.25"/></svg>
-                            {% else %}
-                            <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4 12h16"/><path d="M12 4v16"/></svg>
-                            {% endif %}
-                        </span>
-                        <span class="min-w-0">
-                            <span class="block text-sm font-semibold text-slate-900">{{ item.title }}</span>
-                            <span class="mt-1 block text-sm leading-5 text-slate-600">{{ item.message }}</span>
-                            {% if item.meta %}
-                            <span class="mt-1 block text-xs font-medium text-slate-400">{{ item.meta }}</span>
-                            {% endif %}
-                        </span>
-                    </a>
-                    {% else %}
-                    <div class="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-5 text-sm text-slate-500">Nenhum alerta importante no momento.</div>
-                    {% endfor %}
-                </div>
-            </section>
-            <section class="px-4 py-4">
-                <div class="mb-3 flex items-center justify-between gap-3">
-                    <h4 class="text-xs font-semibold uppercase tracking-[0.22em] text-slate-400">Operacionais</h4>
-                    <span class="text-xs font-medium text-slate-400">{{ global_notifications.operational|length }}</span>
-                </div>
-                <div class="space-y-2">
-                    {% for item in global_notifications.operational %}
-                    <a href="{{ item.href }}" class="flex gap-3 rounded-2xl border border-slate-200 bg-white px-3 py-3 transition hover:border-brand-200 hover:bg-brand-50/40">
-                        <span class="mt-0.5 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl {% if item.severity == 'warning' %}bg-amber-50 text-amber-600{% else %}bg-sky-50 text-sky-600{% endif %}">
-                            {% if item.kind == 'schedule' %}
-                            <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M8 2v4"/><path d="M16 2v4"/><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18"/></svg>
-                            {% else %}
-                            <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M16.5 9.4 7.5 4.2"/><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/></svg>
-                            {% endif %}
-                        </span>
-                        <span class="min-w-0">
-                            <span class="block text-sm font-semibold text-slate-900">{{ item.title }}</span>
-                            <span class="mt-1 block text-sm leading-5 text-slate-600">{{ item.message }}</span>
-                            {% if item.meta %}
-                            <span class="mt-1 block text-xs font-medium text-slate-400">{{ item.meta }}</span>
-                            {% endif %}
-                        </span>
-                    </a>
-                    {% else %}
-                    <div class="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-5 text-sm text-slate-500">Sem lembretes operacionais pendentes.</div>
-                    {% endfor %}
-                </div>
-            </section>
-        </div>
+        <div class="nf-foot"><span>Os avisos somem sozinhos quando o assunto é resolvido.</span></div>
     </div>
+    <script>
+    // Notificações: abas (Todas, Não lidas, Importantes), lidas guardadas no navegador e contador do sino
+    (() => {
+        const box = document.getElementById('erp-header-notifications-flyout');
+        if (!box) return;
+        const items = Array.from(box.querySelectorAll('[data-nf-item]'));
+        const KEY = 'sf-notif-read';
+        const load = () => { try { return new Set(JSON.parse(localStorage.getItem(KEY) || '[]')); } catch (e) { return new Set(); } };
+        const save = (set) => { try { localStorage.setItem(KEY, JSON.stringify(Array.from(set).slice(-400))); } catch (e) { /* sem armazenamento */ } };
+        let read = load();
+        // Esquece chaves de avisos que já não existem (o assunto foi resolvido)
+        const live = new Set(items.map((i) => i.dataset.nfKey));
+        read = new Set(Array.from(read).filter((k) => live.has(k)));
+        save(read);
+        let tab = 'todas';
+        const badge = document.querySelector('.hd-count');
+        const unreadEl = box.querySelector('[data-nf-unread-count]');
+        const empty = box.querySelector('[data-nf-empty]');
+        const EMPTY = {
+            todas: ['Tudo em dia por aqui', 'Quando houver estoque baixo, contas, chuva ou agendamentos, os avisos aparecem aqui.'],
+            naolidas: ['Nenhuma notificação nova', 'Você já viu todos os avisos.'],
+            importantes: ['Nada urgente', 'Não há avisos importantes no momento.'],
+        };
+        const render = () => {
+            let unread = 0;
+            let shown = 0;
+            items.forEach((item) => {
+                const isRead = read.has(item.dataset.nfKey);
+                item.classList.toggle('is-read', isRead);
+                if (!isRead) unread += 1;
+                const visible = tab === 'todas' || (tab === 'naolidas' && !isRead) || (tab === 'importantes' && item.dataset.important === '1');
+                item.hidden = !visible;
+                if (visible) shown += 1;
+            });
+            if (unreadEl) { unreadEl.textContent = unread; unreadEl.hidden = unread === 0; }
+            if (badge) { badge.textContent = unread > 99 ? '99+' : unread; badge.hidden = unread === 0; }
+            if (empty) {
+                empty.hidden = shown > 0;
+                empty.querySelector('[data-nf-empty-title]').textContent = EMPTY[tab][0];
+                empty.querySelector('[data-nf-empty-text]').textContent = EMPTY[tab][1];
+            }
+        };
+        box.querySelectorAll('[data-nf-tab]').forEach((b) => b.addEventListener('click', () => {
+            tab = b.dataset.nfTab;
+            box.querySelectorAll('[data-nf-tab]').forEach((x) => x.setAttribute('aria-selected', x === b ? 'true' : 'false'));
+            render();
+        }));
+        box.addEventListener('click', (e) => {
+            const item = e.target.closest('[data-nf-item]');
+            if (!item) return;
+            if (e.target.closest('[data-nf-read]')) { e.preventDefault(); read.add(item.dataset.nfKey); save(read); render(); }
+            else if (e.target.closest('[data-nf-act]')) { read.add(item.dataset.nfKey); save(read); }
+        });
+        const all = box.querySelector('[data-nf-read-all]');
+        if (all) all.addEventListener('click', () => { items.forEach((i) => read.add(i.dataset.nfKey)); save(read); render(); });
+        render();
+    })();
+    </script>
     {% if context_selection_blocking %}
     <div class="fixed inset-0 z-[70] bg-slate-950/40 backdrop-blur-[2px]"></div>
     <div class="fixed inset-0 z-[80] flex items-center justify-center px-4 py-8">
