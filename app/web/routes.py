@@ -20883,12 +20883,15 @@ def stock_assistant_page(
     registered = [m["draft"] for m in messages if m.get("draft") and m["draft"]["state"] == "confirmed"]
     pending = next((m["draft"] for m in reversed(messages) if m.get("draft") and m["draft"]["state"] == "pending"), None)
     threads = _assistant_threads(db, user, scope) if ready else []
+    groups = _assistant_thread_list(db, threads, thread.id if thread else None)
     return templates.TemplateResponse("stock_assistant.html", _base_context(
         request, user, csrf_token, "mobile", title="Assistente SiSFarm", _repo=repo,
         assistant_scope=scope, thread=thread, messages=messages, registered=registered, pending_draft=pending,
         thread_channel=_assistant_thread_channel(thread),
-        thread_groups=_assistant_thread_list(db, threads, thread.id if thread else None),
-        recent_threads=[item for group in _assistant_thread_list(db, threads[:4], None) for item in group["items"]],
+        thread_groups=groups,
+        recent_threads=[item for group in groups for item in group["items"]][:4],
+        pending_threads=[item for group in groups for item in group["items"] if item.get("pending")],
+        first_name=((getattr(user, "display_name", None) or getattr(user, "name", None) or "").strip().split(" ") or [""])[0],
         greeting="Bom dia" if app_now().hour < 12 else "Boa tarde" if app_now().hour < 18 else "Boa noite",
         prefill=(q or "").strip(),
     ))

@@ -45,15 +45,17 @@
     if (scrim) scrim.addEventListener('click', () => openThreads(false));
     document.addEventListener('keydown', (e) => { if (e.key === 'Escape') openThreads(false); });
 
-    // Busca de conversas
+    // Busca e filtros de conversas (Todas, Pendentes, WhatsApp)
     const search = $('[data-as-search]');
-    if (search) search.addEventListener('input', () => {
-        const q = search.value.trim().toLowerCase();
+    let filter = 'todas';
+    const applyList = () => {
+        const q = search ? search.value.trim().toLowerCase() : '';
         let any = false;
         $$('[data-as-grp]').forEach((grp) => {
             let shown = 0;
             for (let el = grp.nextElementSibling; el && el.hasAttribute('data-as-cv'); el = el.nextElementSibling) {
-                const hit = !q || el.textContent.toLowerCase().includes(q);
+                const okFilter = filter === 'todas' || (filter === 'pendentes' && el.dataset.pending === 'true') || (filter === 'whatsapp' && el.dataset.channel === 'whatsapp');
+                const hit = okFilter && (!q || el.textContent.toLowerCase().includes(q));
                 el.hidden = !hit;
                 if (hit) shown += 1;
             }
@@ -61,20 +63,45 @@
             any = any || shown > 0;
         });
         const none = $('[data-as-noresult]');
-        if (none) none.hidden = any || !q;
+        if (none) {
+            none.hidden = any || (!q && filter === 'todas');
+            none.textContent = filter === 'pendentes' && !q ? 'Nenhum lançamento aguardando você.'
+                : filter === 'whatsapp' && !q ? 'Nenhuma conversa pelo WhatsApp ainda.' : 'Nenhuma conversa encontrada.';
+        }
+    };
+    const setFilter = (value) => {
+        filter = value;
+        $$('[data-as-filter]').forEach((b) => b.setAttribute('aria-pressed', b.dataset.asFilter === value ? 'true' : 'false'));
+        applyList();
+    };
+    if (search) search.addEventListener('input', applyList);
+    $$('[data-as-filter]').forEach((b) => b.addEventListener('click', () => setFilter(b.dataset.asFilter)));
+    // Cmd+K / Ctrl+K: buscar conversas
+    document.addEventListener('keydown', (e) => {
+        if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k' && search) {
+            e.preventDefault();
+            if (window.matchMedia('(max-width: 1023px)').matches) openThreads(true);
+            search.focus(); search.select();
+        }
     });
+    // Sino (celular e tablet): abre a lista já filtrada nas pendências
+    $$('[data-as-show-pending]').forEach((b) => b.addEventListener('click', () => { setFilter('pendentes'); openThreads(true); }));
 
     // Painel de contexto (desktop largo)
+    // Abaixo de 1600 px ele começa fechado (a conversa precisa de espaço); a escolha da pessoa vale depois.
     const ctxBtn = $('[data-as-ctx-toggle]');
-    const applyCtx = (hidden) => {
-        shell.classList.toggle('is-ctx-hidden', hidden);
-        if (ctxBtn) ctxBtn.setAttribute('aria-pressed', hidden ? 'false' : 'true');
+    const ctxEl = $('[data-as-ctx]');
+    const ctxVisible = () => Boolean(ctxEl) && getComputedStyle(ctxEl).display !== 'none';
+    const applyCtx = (pref) => {
+        shell.classList.toggle('is-ctx-hidden', pref === 'hidden');
+        shell.classList.toggle('is-ctx-shown', pref === 'shown');
+        if (ctxBtn) ctxBtn.setAttribute('aria-pressed', ctxVisible() ? 'true' : 'false');
     };
-    applyCtx(store.get('sf-assistant-ctx') === 'hidden');
+    applyCtx(store.get('sf-assistant-ctx'));
     if (ctxBtn) ctxBtn.addEventListener('click', () => {
-        const hidden = !shell.classList.contains('is-ctx-hidden');
-        applyCtx(hidden);
-        store.set('sf-assistant-ctx', hidden ? 'hidden' : 'shown');
+        const pref = ctxVisible() ? 'hidden' : 'shown';
+        applyCtx(pref);
+        store.set('sf-assistant-ctx', pref);
     });
 
     // Confirmações e botões ocupados
@@ -375,5 +402,52 @@
         const submitted = document.createElement('input'); submitted.type = 'hidden'; submitted.name = 'message'; submitted.value = text;
         form.append(submitted); box.removeAttribute('name'); box.value = ''; grow();
         box.readOnly = true;
+    });
+
+    // Atalhos que abrem o seletor de arquivo e a câmera
+    $$('[data-as-pick-file]').forEach((b) => b.addEventListener('click', () => { if (photo && !photo.disabled) photo.click(); }));
+    const camera = $('[data-as-camera]', form);
+    if (camera && photo) camera.addEventListener('click', () => {
+        const accept = photo.getAttribute('accept');
+        photo.setAttribute('accept', 'image/*');
+        photo.setAttribute('capture', 'environment');
+        photo.click();
+        setTimeout(() => { photo.setAttribute('accept', accept); photo.removeAttribute('capture'); }, 800);
+    });
+
+    // Cartão de conferência: editar os campos ali mesmo e mandar a correção ao Pezinho
+    $$('[data-as-draft]').forEach((card) => {
+        const start = $('[data-as-edit-start]', card);
+        if (!start) return;
+        const view = $('[data-as-draft-view]', card);
+        const edit = $('[data-as-draft-edit]', card);
+        const inputs = $$('[data-as-edit]', card);
+        const toggle = (on) => {
+            card.classList.toggle('is-editing', on);
+            view.hidden = on;
+            edit.hidden = !on;
+            inputs.forEach((input) => {
+                input.hidden = !on;
+                const shown = input.parentElement.querySelector('[data-as-view]');
+                if (shown) shown.hidden = on;
+                if (!on) input.value = input.dataset.original;
+            });
+            const first = inputs[1] || inputs[0];
+            if (on && first) first.focus();
+        };
+        start.addEventListener('click', () => toggle(true));
+        $('[data-as-edit-cancel]', card).addEventListener('click', () => toggle(false));
+        inputs.forEach((input) => input.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') { e.preventDefault(); $('[data-as-edit-send]', card).click(); }
+            if (e.key === 'Escape') toggle(false);
+        }));
+        $('[data-as-edit-send]', card).addEventListener('click', () => {
+            const changes = inputs.filter((i) => i.value.trim() && i.value.trim() !== i.dataset.original.trim())
+                .map((i) => i.dataset.label + ': ' + i.value.trim());
+            if (!changes.length) { toggle(false); return; }
+            box.value = 'Corrija o rascunho: ' + changes.join('; ') + '.';
+            grow();
+            form.requestSubmit();
+        });
     });
 })();
