@@ -27,6 +27,10 @@ class Repo:
                 N(launch_date=date(2026, 11, 6), amount=300, operation_type="despesa", category="Diesel"),
                 N(launch_date=date(2025, 1, 6), amount=999, operation_type="despesa", category="Velho")]
 
+    def list_purchased_inputs(self):
+        return [N(id=10, farm_id=1, purchase_date=date(2026, 11, 14), input_catalog=ureia, name="Ureia", quantity_purchased=3),
+                N(id=11, farm_id=2, purchase_date=date(2026, 11, 14), input_catalog=ureia, name="Ureia", quantity_purchased=9)]
+
 
 def _queries(allowed=lambda page: True):
     return AssistantQueries(repo=Repo(), farm=FARM, season=SEASON, plots=PLOTS, today=TODAY, allowed=allowed)
@@ -49,6 +53,39 @@ def test_finance_summary():
     data = _queries().consultar_financeiro()
     assert (data["receitas"], data["despesas"], data["saldo"]) == (1000, 300, 700)
     assert data["maiores_despesas_por_categoria"] == {"Diesel": 300}
+
+
+def test_purchase_query_limits_records_to_active_farm():
+    result = _queries().consultar_compras(item="ure")
+    assert result["quantidade"] == 1
+    assert result["compras"][0]["registro_id"] == 10
+
+
+def test_purchase_query_requires_input_permission():
+    names = {schema["function"]["name"] for schema, _ in _queries(lambda page: page == PAGE_RAINFALL).tools()}
+    assert "consultar_compras" not in names
+
+
+def test_agent_retains_structured_purchase_references():
+    import json
+    from app.services.stock_assistant import FarmAssistant
+    assistant = FarmAssistant(farm_name="Bela Vista", season=SEASON, items=[], balances={}, plots=PLOTS, today=TODAY,
+                              prepare_draft=lambda **kw: None, extra_tools=_queries().tools())
+    assistant.call_tool("consultar_compras", json.dumps({"inicio": None, "fim": None, "item": "ureia"}))
+    assert assistant.record_references == [{"kind": "compra", "id": 10, "label": "Ureia", "date": "14/11/2026"}]
+
+
+def test_assistant_pagination_targets_only_records_in_scoped_collection():
+    from starlette.requests import Request
+    from app.web.routes import _paginate_collection
+    request = Request({"type": "http", "method": "GET", "path": "/producao", "headers": [],
+                       "query_string": b"assistant_kind=colheita&assistant_view=3", "server": ("localhost", 80),
+                       "scheme": "http", "root_path": ""})
+    scoped = [N(id=1), N(id=2), N(id=3)]
+    result = _paginate_collection(request, scoped, "harvests_page", per_page=1)
+    assert result["page"] == 3 and result["items"][0].id == 3
+    assert _paginate_collection(request, scoped[:2], "harvests_page", per_page=1)["page"] == 1
+    assert _paginate_collection(request, scoped, "other_page", per_page=1)["page"] == 1
 
 
 def test_tools_respect_permissions():

@@ -156,6 +156,36 @@
             }
         });
 
+        const assistantParams = new URLSearchParams(window.location.search);
+        const assistantKinds = {
+            '/insumos/comprados': ['compra', 'purchased-input-view-'],
+            '/insumos/estoque': ['consumo', 'stock-output-table-view-'],
+            '/fertilizacao': ['aplicacao', 'fertilization-view-'],
+            '/producao': ['colheita', 'harvest-view-'],
+        };
+        const target = assistantKinds[window.location.pathname];
+        const assistantId = assistantParams.get('assistant_view');
+        if (target && assistantParams.get('assistant_kind') === target[0] && /^[1-9]\d*$/.test(assistantId || '')) {
+            window.addEventListener('DOMContentLoaded', () => {
+                const source = target[1] + assistantId;
+                const trigger = Array.from(document.querySelectorAll('[data-history-view-trigger]'))
+                    .find((element) => element.dataset.historyViewSource === source);
+                if (trigger) trigger.click();
+                else {
+                    const notice = document.createElement('div');
+                    notice.className = 'mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900';
+                    notice.setAttribute('role', 'alert');
+                    notice.textContent = 'Lançamento não encontrado no contexto atual. Verifique a fazenda, a safra e suas permissões.';
+                    const container = document.querySelector('.stock-page-shell');
+                    if (container) container.prepend(notice);
+                }
+                assistantParams.delete('assistant_kind');
+                assistantParams.delete('assistant_view');
+                const query = assistantParams.toString();
+                history.replaceState(history.state, '', window.location.pathname + (query ? '?' + query : '') + window.location.hash);
+            });
+        }
+
         const initialEditPanel = document.querySelector('[data-history-edit-panel][data-history-edit-open="1"]');
         if (editModal && editBody && initialEditPanel) {
             activeEditPanel = initialEditPanel;

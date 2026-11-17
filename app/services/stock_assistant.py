@@ -168,6 +168,7 @@ class FarmAssistant:
         self.invoice = None
         self.reading_attachment = False
         self.trace = []  # o que o agente consultou, mostrado ao usuario abaixo da resposta
+        self.record_references = []
         self.extra_tools = list(extra_tools)  # [(schema, handler)] de consultas somente leitura
         self.prepare_purchase = prepare_purchase
         self.purchase_rules = purchase_rules or {}  # {tipo: {categoria: [unidades]}}
@@ -438,6 +439,21 @@ class FarmAssistant:
             elif result.get("ok"):
                 self.partial = None
         label = _trace_label(name, result)
+        record_queries = {
+            "consultar_compras": ("compra", "compras", "item"),
+            "consultar_consumos": ("consumo", "ultimas_saidas", "item"),
+            "consultar_aplicacoes": ("aplicacao", "aplicacoes", "setor"),
+            "consultar_colheitas": ("colheita", "ultimas_colheitas", "setor"),
+        }
+        if name in record_queries and isinstance(result, dict):
+            kind, key, label_key = record_queries[name]
+            for row in result.get(key, []):
+                record_id = row.get("registro_id")
+                if isinstance(record_id, int) and not isinstance(record_id, bool) and record_id > 0:
+                    reference = {"kind": kind, "id": record_id, "label": str(row.get(label_key) or "")[:120],
+                                 "date": str(row.get("data") or "")[:10]}
+                    if reference not in self.record_references:
+                        self.record_references.append(reference)
         if label and label not in self.trace:
             self.trace.append(label)
         return result
@@ -640,6 +656,7 @@ _QUERY_LABELS = {
     "consultar_aplicacoes": "Consultou as aplicações",
     "consultar_colheitas": "Consultou as colheitas",
     "consultar_consumos": "Consultou os consumos",
+    "consultar_compras": "Consultou as compras",
     "consultar_saldos_estoque": "Consultou o estoque",
     "consultar_financeiro": "Consultou o financeiro",
     "consultar_cotacao_cafe": "Consultou a cotação do café",

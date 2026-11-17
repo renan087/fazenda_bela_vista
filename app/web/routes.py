@@ -1703,8 +1703,22 @@ def _paginate_collection(
     total_items = len(items)
     total_pages = max(1, (total_items + per_page - 1) // per_page)
     page = min(_positive_int(request.query_params.get(page_param), 1), total_pages)
+    assistant_targets = {
+        ("/insumos/comprados", "entries_page"): "compra",
+        ("/insumos/estoque", "outputs_page"): "consumo",
+        ("/fertilizacao", "fertilizations_page"): "aplicacao",
+        ("/producao", "harvests_page"): "colheita",
+    }
+    expected = assistant_targets.get((request.url.path, page_param))
+    if expected and request.query_params.get("assistant_kind") == expected:
+        target_id = _int_or_none(request.query_params.get("assistant_view"))
+        if target_id and target_id > 0:
+            index = next((index for index, item in enumerate(items) if getattr(item, "id", None) == target_id), None)
+            if index is not None:
+                page = index // per_page + 1
     start = (page - 1) * per_page
     end = start + per_page
+    clear_assistant = {"assistant_kind": None, "assistant_view": None} if expected else {}
     return {
         "items": items[start:end],
         "page": page,
@@ -1712,10 +1726,10 @@ def _paginate_collection(
         "total_pages": total_pages,
         "has_prev": page > 1,
         "has_next": page < total_pages,
-        "first_url": _url_with_query(request, **{page_param: None}),
-        "prev_url": _url_with_query(request, **{page_param: page - 1 if page > 2 else None}),
-        "next_url": _url_with_query(request, **{page_param: page + 1}),
-        "last_url": _url_with_query(request, **{page_param: total_pages if total_pages > 1 else None}),
+        "first_url": _url_with_query(request, **{page_param: None, **clear_assistant}),
+        "prev_url": _url_with_query(request, **{page_param: page - 1 if page > 2 else None, **clear_assistant}),
+        "next_url": _url_with_query(request, **{page_param: page + 1, **clear_assistant}),
+        "last_url": _url_with_query(request, **{page_param: total_pages if total_pages > 1 else None, **clear_assistant}),
     }
 
 
@@ -21126,6 +21140,8 @@ def _assistant_turn(db, user, repo, scope, thread, message, *, image=None, attac
             item["error"] = True
         if tools:
             item["tools"] = tools[:6]
+        if not error and getattr(agent, "record_references", None):
+            item["record_references"] = agent.record_references[:15]
         if not error and getattr(agent, "invoice", None):
             item["invoice"] = agent.invoice
         if not error and getattr(agent, "seen", None):

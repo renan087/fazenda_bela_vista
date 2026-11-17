@@ -142,6 +142,7 @@ class AssistantQueries:
             if not start <= record.application_date <= end or (plot and record.plot_id != plot.id):
                 continue
             rows.append({
+                "registro_id": getattr(record, "id", None),
                 "data": record.application_date.strftime("%d/%m/%Y"),
                 "setor": record.plot.name if record.plot else None,
                 "metodo": record.application_method,
@@ -166,7 +167,7 @@ class AssistantQueries:
                 continue
             name = record.plot.name if record.plot else "Sem setor"
             per_plot[name] += float(record.sacks_produced or 0)
-            rows.append({"data": record.harvest_date.strftime("%d/%m/%Y") if record.harvest_date else None,
+            rows.append({"registro_id": getattr(record, "id", None), "data": record.harvest_date.strftime("%d/%m/%Y") if record.harvest_date else None,
                          "setor": name, "sacas": _num(record.sacks_produced), "tipo": record.harvest_type})
         return {"safra": self.season.name if self.season else None, "total_sacas": _num(sum(per_plot.values())),
                 "sacas_por_setor": {name: _num(value) for name, value in per_plot.items()},
@@ -187,13 +188,28 @@ class AssistantQueries:
             if plot and output.plot_id != plot.id:
                 continue
             totals[(name, output.unit)] += float(output.quantity or 0)
-            rows.append({"data": output.movement_date.strftime("%d/%m/%Y"), "item": name,
+            rows.append({"registro_id": getattr(output, "id", None), "data": output.movement_date.strftime("%d/%m/%Y"), "item": name,
                          "quantidade": _num(output.quantity), "unidade": output.unit,
                          "setor": output.plot.name if getattr(output, "plot", None) else "Geral", "custo": _num(output.total_cost)})
         rows.sort(key=lambda row: row["data"][6:] + row["data"][3:5] + row["data"][:2], reverse=True)
         return {"periodo": f"{start:%d/%m/%Y} a {end:%d/%m/%Y}",
                 "totais": [{"item": name, "quantidade": _num(qty), "unidade": unit} for (name, unit), qty in totals.items()],
                 "custo_total": _num(sum(row["custo"] for row in rows)), "ultimas_saidas": rows[:MAX_ROWS]}
+
+    def consultar_compras(self, inicio=None, fim=None, item=None):
+        start, end = self._period(inicio, fim, default_days=30)
+        wanted = _norm(item) if item else ""
+        rows = []
+        for purchase in self.repo.list_purchased_inputs():
+            if purchase.farm_id != self.farm.id or not purchase.purchase_date or not start <= purchase.purchase_date <= end:
+                continue
+            name = purchase.input_catalog.name if purchase.input_catalog else purchase.name
+            if wanted and wanted not in _norm(name):
+                continue
+            rows.append({"registro_id": purchase.id, "data": purchase.purchase_date.strftime("%d/%m/%Y"),
+                         "item": name, "quantidade": _num(purchase.quantity_purchased)})
+        rows.sort(key=lambda row: row["data"][6:] + row["data"][3:5] + row["data"][:2], reverse=True)
+        return {"periodo": f"{start:%d/%m/%Y} a {end:%d/%m/%Y}", "quantidade": len(rows), "compras": rows[:MAX_ROWS]}
 
     def consultar_saldos_estoque(self, item=None):
         wanted = _norm(item) if item else ""
@@ -252,6 +268,7 @@ class AssistantQueries:
             (PAGE_OPERATIONS, _tool("consultar_aplicacoes", "Aplicações/adubações feitas na safra ativa, por período e setor.", {**PERIOD_PROPS, **setor}), self.consultar_aplicacoes),
             (PAGE_PRODUCTION, _tool("consultar_colheitas", "Colheitas da safra ativa: total de sacas e sacas por setor.", setor), self.consultar_colheitas),
             (PAGE_INPUTS, _tool("consultar_consumos", "Saídas de estoque (consumos) da fazenda por período, item e setor (padrão: últimos 30 dias).", {**PERIOD_PROPS, **item, **setor}), self.consultar_consumos),
+            (PAGE_INPUTS, _tool("consultar_compras", "Compras de insumos e combustíveis da fazenda por período e item (padrão: últimos 30 dias).", {**PERIOD_PROPS, **item}), self.consultar_compras),
             (PAGE_INPUTS, _tool("consultar_saldos_estoque", "Saldo atual em estoque dos insumos e combustíveis desta fazenda.", item), self.consultar_saldos_estoque),
             (PAGE_FINANCE, _tool("consultar_financeiro", "Receitas, despesas e saldo da fazenda num período (padrão: últimos 30 dias), com as maiores categorias de despesa.", PERIOD_PROPS), self.consultar_financeiro),
             (PAGE_DASHBOARD, _tool("consultar_cotacao_cafe", "Cotação mais recente do café arábica e robusta (CEPEA), por saca de 60 kg."), self.consultar_cotacao_cafe),
