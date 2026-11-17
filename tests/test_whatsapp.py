@@ -111,6 +111,72 @@ def _receive(db, client, payload):
     return [whatsapp_bot.process_inbound(db, row_id, client) for row_id in ids]
 
 
+def test_record_choices_issue_only_selected_link_without_storing_token(monkeypatch):
+    from datetime import datetime, timezone
+    from uuid import uuid4
+    _settings(monkeypatch)
+    routes, db, user, scope, *_ = _route_env(monkeypatch, [])
+    client = FakeClient()
+    code = whatsapp_bot.start_link(db, user, scope["active_farm"], scope["active_season"])
+    _receive(db, client, _payload("5535999", "link-choice", f"SISFARM {code}"))
+    issued = []
+
+    def fake_turn(db, user, repo, scope, thread, message, **kwargs):
+        now = datetime.now(timezone.utc)
+        thread = routes.AssistantThread(id=uuid4().hex, user_id=user.id, organization_id=user.organization_id,
+                                        farm_id=scope["active_farm_id"], season_id=scope["active_season_id"],
+                                        channel="whatsapp", title="WhatsApp · Consulta", created_at=now, updated_at=now)
+        item = {"role": "assistant", "content": "Encontrei os registros.", "record_references": [
+            {"kind": "compra", "id": 11, "label": "Diesel", "date": "15/11/2026"},
+            {"kind": "compra", "id": 12, "label": "Gasolina", "date": "14/11/2026"},
+        ]}
+        routes._save_thread(db, thread, [item])
+        return thread, item
+
+    monkeypatch.setattr(routes, "_assistant_turn", fake_turn)
+    monkeypatch.setattr(whatsapp_bot, "_record_link", lambda db, link, ref: issued.append(ref["id"]) or "https://app.sisfarm.com.br/acesso-whatsapp/registro#secret")
+    _receive(db, client, _payload("5535999", "query-choice", "mostre compras"))
+    assert "1. Compra · Diesel" in client.sent[-1][2] and "2. Compra · Gasolina" in client.sent[-1][2]
+    assert issued == []
+    _receive(db, client, _payload("5535999", "choose-record", "2"))
+    assert issued == [12] and "#secret" in client.sent[-1][2]
+    thread = db.get(routes.AssistantThread, db.query(WhatsAppLink).one().thread_id)
+    assert "#secret" not in thread.messages_json
+
+
+def test_record_link_revalidates_permissions_and_whatsapp_link(monkeypatch):
+    from datetime import timedelta
+    from app.core.permissions_catalog import PAGE_INPUTS
+    from app.models.purchased_input import PurchasedInput
+    from app.services import whatsapp_record_access
+    _settings(monkeypatch)
+    routes, db, user, scope, *_ = _route_env(monkeypatch, [])
+    client = FakeClient()
+    code = whatsapp_bot.start_link(db, user, scope["active_farm"], scope["active_season"])
+    _receive(db, client, _payload("5535999", "link-access", f"SISFARM {code}"))
+    link = db.query(WhatsAppLink).one()
+    record = db.query(PurchasedInput).first()
+    access = SimpleNamespace(kind="compra", record_id=record.id, link_id=link.id, user_id=user.id,
+                             organization_id=user.organization_id, farm_id=link.farm_id, season_id=link.season_id,
+                             binding_hash=whatsapp_record_access.link_binding(link))
+    monkeypatch.setattr(routes, "permission_codes_for_user", lambda db, user: {PAGE_INPUTS})
+    monkeypatch.setattr(routes, "_entitlements_for", lambda db, user: SimpleNamespace(module_allowed=lambda page: True))
+    assert whatsapp_record_access.authorized_record(db, access).id == record.id
+    url = whatsapp_bot._record_link(db, link, {"kind": "compra", "id": record.id})
+    assert url.startswith("https://") and "/acesso-whatsapp/registro#" in url
+    issued = whatsapp_record_access.find_token(db, url.rsplit("#", 1)[1])
+    assert issued is not None and whatsapp_record_access.authorized_record(db, issued).id == record.id
+    monkeypatch.setattr(routes, "permission_codes_for_user", lambda db, user: set())
+    assert whatsapp_record_access.authorized_record(db, access) is None
+    monkeypatch.setattr(routes, "permission_codes_for_user", lambda db, user: {PAGE_INPUTS})
+    original_verified = link.verified_at
+    link.verified_at = original_verified + timedelta(seconds=1)
+    assert whatsapp_record_access.authorized_record(db, access) is None
+    link.verified_at = original_verified
+    link.wa_id = None
+    assert whatsapp_record_access.authorized_record(db, access) is None
+
+
 def test_link_chat_confirm_and_isolation(monkeypatch):
     _settings(monkeypatch)
     draft_reply = {"item_id": 0, "quantidade": 5, "unidade": "L", "data": "2026-11-15", "setor": None}

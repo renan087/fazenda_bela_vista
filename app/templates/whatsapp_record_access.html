@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="referrer" content="no-referrer">
+    <title>Consulta de registro · SiSFarm</title>
+    <style>
+        body { margin: 0; background: #f0f4f2; color: #17231c; font-family: sans-serif; }
+        main { max-width: 520px; margin: 8vh auto; padding: 24px; }
+        section { padding: 26px; border: 1px solid #dce6da; border-radius: 18px; background: white; }
+        h1 { font-size: 22px; margin: 8px 0; }
+        p { color: #53645a; line-height: 1.5; }
+        small { color: #507246; font-weight: bold; letter-spacing: .08em; }
+        button { border: 0; border-radius: 10px; padding: 13px 18px; color: white; background: #426b36; font-weight: bold; cursor: pointer; }
+        button:disabled { opacity: .5; cursor: default; }
+        dl { display: grid; gap: 12px; }
+        dt { color: #718277; font-size: 12px; } dd { margin: 4px 0 0; font-weight: 600; overflow-wrap: anywhere; }
+    </style>
+</head>
+<body>
+<main><section>
+    <small>SISFARM · PEZINHO</small>
+    {% if state == 'confirm' %}
+    <h1>Consultar lançamento</h1>
+    <p>Este link permite visualizar um único lançamento. Confirme para continuar; o link poderá ser usado uma vez.</p>
+    <form method="post" action="/acesso-whatsapp/registro">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <input type="hidden" name="token" id="access-token">
+        <button type="submit" id="open-record" disabled>Ver lançamento</button>
+    </form>
+    <p id="access-error" role="status" hidden>Link inválido. Solicite outro ao Pezinho pelo WhatsApp.</p>
+    <noscript>Ative o JavaScript para abrir o link com segurança.</noscript>
+    <script>
+        (() => {
+            const token = location.hash.slice(1);
+            history.replaceState(null, '', location.pathname);
+            if (/^[A-Za-z0-9_-]{43}$/.test(token)) {
+                document.getElementById('access-token').value = token;
+                document.getElementById('open-record').disabled = false;
+            } else {
+                document.getElementById('access-error').hidden = false;
+            }
+        })();
+    </script>
+    {% elif state == 'record' %}
+    <h1>{{ title }}</h1><p>Visualização do lançamento · acesso somente de leitura</p>
+    <dl>{% for label, value in fields %}<div><dt>{{ label }}</dt><dd>{% if value is none %}Não informado{% elif value.strftime is defined %}{{ value.strftime('%d/%m/%Y') }}{% else %}{{ value }}{% endif %}</dd></div>{% endfor %}</dl>
+    {% else %}
+    <h1>Link indisponível</h1><p>O link pode ter expirado, já ter sido usado ou o acesso não estar mais disponível. Solicite outro ao Pezinho pelo WhatsApp.</p>
+    {% endif %}
+</section></main>
+</body>
+</html>

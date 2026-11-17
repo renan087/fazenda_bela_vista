@@ -63,11 +63,12 @@ from app.models.stock_inventory_item import StockInventoryItem
 from app.models.stock_inventory_session import StockInventorySession
 from app.models.trusted_browser_token import TrustedBrowserToken
 from app.models.user import User
-from app.models.whatsapp import WhatsAppInboundMessage, WhatsAppLink
+from app.models.whatsapp import WhatsAppInboundMessage, WhatsAppLink, WhatsAppRecordAccess
 
 __all__ = [
     "WhatsAppInboundMessage",
     "WhatsAppLink",
+    "WhatsAppRecordAccess",
     "AssistantThread",
     "AutomatedTestRun",
     "AutomatedTestSuiteResult",

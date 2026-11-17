@@ -65,6 +65,7 @@ WEB_PATH_PUBLIC_PREFIXES: frozenset[str] = frozenset(
         "/login",
         "/logout",
         "/cadastro",
+        "/acesso-whatsapp/",
         "/termos",
         "/privacidade",
         "/auth/",
