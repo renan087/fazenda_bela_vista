@@ -6219,6 +6219,7 @@ dialog.db-cost { width: min(70rem, calc(100vw - 2rem)); }
     .as-only-desktop { display: inline-flex; }
     .as-shell.is-threads-collapsed .as-threads { display: none; }
     .as-shell.is-threads-collapsed .as-threads-expand { display: inline-flex; }
+    .as-shell.is-threads-collapsed .as-col, .as-shell.is-ctx-hidden .as-col { max-width: 840px; }
 }
 @media (max-width: 639px) {
     .as-shell { margin: 0 -1rem -1.5rem; border-radius: 0; border-left: 0; border-right: 0; }
