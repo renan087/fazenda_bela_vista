@@ -74,7 +74,7 @@
                 <span class="as-cv-ico{% if item.channel == 'whatsapp' %} is-wa{% endif %}">{{ ic('wa' if item.channel == 'whatsapp' else 'spark', 15) }}</span>
                 <span class="as-cv-text">
                     <b>{{ item.title }}</b>
-                    <span>{% if item.pending %}<i class="as-tag as-tag-wait">Aguardando você</i>{% elif item.channel == 'whatsapp' %}<i class="as-tag as-tag-wa">WhatsApp</i>{% endif %}{{ item.subtitle }}</span>
+                    <span>{% if item.pending %}<i class="as-tag as-tag-wait">Aguardando você</i>{% elif item.channel == 'whatsapp' %}<i class="as-tag as-tag-wa">WhatsApp</i>{% endif %}<span class="as-cv-sub">{{ item.subtitle }}</span></span>
                 </span>
             </a>
             {% endfor %}
