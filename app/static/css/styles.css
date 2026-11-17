@@ -6054,6 +6054,20 @@ dialog.db-cost { width: min(70rem, calc(100vw - 2rem)); }
 .as-record-links > span { flex-basis: 100%; color: var(--as-mute); font-size: 12px; }
 .as-record-links a { display: inline-flex; align-items: center; border: 1px solid #d6e3d1; border-radius: 9px; padding: 7px 10px; color: #3c6633; background: #f5f9f3; font-size: 12px; font-weight: 600; text-decoration: none; }
 .as-record-links a:hover { background: #eaf3e7; }
+.as-record-links a[hidden], .as-record-pagination[hidden], .as-record-pagination button[hidden] { display: none; }
+.as-record-group { margin-top: 12px; max-width: 520px; border: 1px solid #dce7d8; border-radius: 12px; background: #f8fbf7; }
+.as-record-group summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 11px 13px; color: #315b2c; cursor: pointer; list-style: none; }
+.as-record-group summary::-webkit-details-marker { display: none; }
+.as-record-group summary strong, .as-record-group summary small { display: block; }
+.as-record-group summary strong { font-size: 13px; }
+.as-record-group summary small { margin-top: 2px; color: #70816c; font-size: 11px; }
+.as-record-group[open] summary > svg { transform: rotate(180deg); }
+.as-record-group .as-record-list { display: flex; flex-direction: column; gap: 0; margin: 0; border-top: 1px solid #e3ece0; }
+.as-record-group .as-record-list a { justify-content: space-between; gap: 12px; border: 0; border-bottom: 1px solid #e9efe7; border-radius: 0; padding: 10px 13px; background: transparent; color: #283a2c; }
+.as-record-group .as-record-list a:hover { background: #edf5eb; }
+.as-record-link-action { flex: none; color: #416d37; font-size: 11px; }
+.as-record-pagination { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 10px 13px; color: #71816d; font-size: 11px; }
+.as-record-pagination button { color: #416d37; font-weight: 600; }
 .as-record-modal { width: min(92vw, 760px); max-width: none; max-height: min(88dvh, 800px); padding: 0; border: 1px solid #e3e8e2; border-radius: 20px; background: #fff; color: #16201a; box-shadow: 0 24px 70px rgba(16, 24, 20, .2); }
 .as-record-modal::backdrop { background: rgba(15, 23, 20, .5); }
 .as-record-modal-inner { display: flex; flex-direction: column; max-height: min(88dvh, 800px); }

@@ -21141,7 +21141,11 @@ def _assistant_turn(db, user, repo, scope, thread, message, *, image=None, attac
         if tools:
             item["tools"] = tools[:6]
         if not error and getattr(agent, "record_references", None):
-            item["record_references"] = agent.record_references[:15]
+            item["record_references"] = sorted(
+                agent.record_references,
+                key=lambda ref: (ref.get("date", "")[6:10], ref.get("date", "")[3:5], ref.get("date", "")[:2]),
+                reverse=True,
+            )[:15]
         if not error and getattr(agent, "invoice", None):
             item["invoice"] = agent.invoice
         if not error and getattr(agent, "seen", None):

@@ -175,16 +175,24 @@
                         {% if m.tools %}<details class="as-steps"><summary><i>{{ ic('check', 11, 3) }}</i>{{ m.tools|length }} {{ 'etapa concluída' if m.tools|length == 1 else 'etapas concluídas' }}{{ ic('chevd', 14) }}</summary><ul>{% for t in m.tools %}<li>{{ t }}</li>{% endfor %}</ul></details>{% endif %}
                         <div class="as-txt{% if m.error %} as-txt-err{% endif %}" data-as-text>{{ m.content|chat_html }}</div>
                         {% if m.record_references and thread_channel != 'whatsapp' %}
-                        <div class="as-record-links" aria-label="Registros consultados">
-                            <span>Registros consultados</span>
+                        {% set multiple_records = m.record_references|length > 1 %}
+                        {% if multiple_records %}
+                        <details class="as-record-group" data-as-record-group>
+                            <summary><span><strong>Registros consultados</strong><small>{% if m.record_references|length >= 15 %}15 registros exibidos · pode haver mais{% else %}{{ m.record_references|length }} registros exibidos{% endif %}</small></span>{{ ic('chevd', 16) }}</summary>
+                        {% endif %}
+                        <div class="as-record-links{% if multiple_records %} as-record-list{% endif %}" aria-label="Registros consultados">
                             {% for ref in m.record_references %}
                             {% set paths = {'compra': '/insumos/comprados', 'consumo': '/insumos/estoque', 'aplicacao': '/fertilizacao', 'colheita': '/producao'} %}
                             {% set names = {'compra': 'Compra', 'consumo': 'Consumo', 'aplicacao': 'Aplicação', 'colheita': 'Colheita'} %}
                             {% if ref.kind in paths and ref.id %}
-                            <a data-as-record-link href="{{ paths[ref.kind] }}?assistant_kind={{ ref.kind }}&amp;assistant_view={{ ref.id }}{% if ref.kind == 'compra' %}&amp;item_type=all{% elif ref.kind == 'consumo' %}&amp;stock_tab=outputs{% endif %}">{{ names[ref.kind] }}{% if ref.label %} · {{ ref.label }}{% endif %}{% if ref.date %} · {{ ref.date }}{% endif %} →</a>
+                            <a data-as-record-link href="{{ paths[ref.kind] }}?assistant_kind={{ ref.kind }}&amp;assistant_view={{ ref.id }}{% if ref.kind == 'compra' %}&amp;item_type=all{% elif ref.kind == 'consumo' %}&amp;stock_tab=outputs{% endif %}"><span>{{ names[ref.kind] }}{% if ref.label %} · {{ ref.label }}{% endif %}{% if ref.date %} · {{ ref.date }}{% endif %}</span><span class="as-record-link-action">Ver detalhes →</span></a>
                             {% endif %}
                             {% endfor %}
                         </div>
+                        {% if multiple_records %}
+                            <div class="as-record-pagination" data-as-record-pagination hidden><button type="button" data-as-record-prev>Ver anteriores</button><span data-as-record-page aria-live="polite"></span><button type="button" data-as-record-next>Ver mais</button></div>
+                        </details>
+                        {% endif %}
                         {% endif %}
                         {% if m.draft %}{% set d = m.draft %}{% set buy = d.kind == 'compra' %}{% set live = d.state == 'pending' and thread_channel != 'whatsapp' %}
                         <div class="as-draft as-draft-{{ d.state }}" data-as-draft>
@@ -348,5 +356,5 @@
         <div class="as-record-modal-body" data-as-record-body aria-live="polite"></div>
     </div>
 </dialog>
-<script src="{{ url_for('static', path='js/assistant.js') }}?v=11" defer></script>
+<script src="{{ url_for('static', path='js/assistant.js') }}?v=12" defer></script>
 {% endblock %}

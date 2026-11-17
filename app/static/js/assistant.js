@@ -28,6 +28,26 @@
         window.visualViewport.addEventListener('scroll', fit);
     }
 
+    $$('[data-as-record-group]').forEach((group) => {
+        const records = $$('[data-as-record-link]', group);
+        const pagination = $('[data-as-record-pagination]', group);
+        if (records.length <= 5 || !pagination) return;
+        const previous = $('[data-as-record-prev]', group);
+        const next = $('[data-as-record-next]', group);
+        const pageLabel = $('[data-as-record-page]', group);
+        let start = 0;
+        const render = () => {
+            records.forEach((record, index) => { record.hidden = index < start || index >= start + 5; });
+            previous.hidden = start === 0;
+            next.hidden = start + 5 >= records.length;
+            pageLabel.textContent = `${start + 1}–${Math.min(start + 5, records.length)} de ${records.length}`;
+        };
+        previous.addEventListener('click', () => { start = Math.max(0, start - 5); render(); });
+        next.addEventListener('click', () => { start += 5; render(); });
+        pagination.hidden = false;
+        render();
+    });
+
     // Busca o mesmo detalhe já autorizado e renderizado pelo módulo, sem sair do chat.
     const recordModal = document.querySelector('[data-as-record-modal]');
     if (recordModal && typeof recordModal.showModal === 'function') {
