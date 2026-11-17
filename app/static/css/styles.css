@@ -6689,6 +6689,7 @@ dialog.db-cost { width: min(70rem, calc(100vw - 2rem)); }
 
 @media (max-width: 639px) {
     html.as-page-active, html.as-page-active body { overflow: hidden; overscroll-behavior: none; }
+    html.as-page-active .as-active-mobile-context { display: none; }
     .as-shell { min-height: 0; }
     .as-chat { min-height: 0; }
     .as-shell .as-col { padding-left: 10px; padding-right: 10px; }
@@ -6700,4 +6701,5 @@ dialog.db-cost { width: min(70rem, calc(100vw - 2rem)); }
     .as-welcome-copy h1 { margin: 0 0 4px; font-size: 19px; line-height: 1.2; }
     .as-welcome-copy p { font-size: 12px; line-height: 1.4; }
     .as-composer { flex: 0 0 auto; padding-bottom: max(10px, env(safe-area-inset-bottom)); }
+    .as-shell input, .as-shell textarea, .as-shell select { font-size: 16px; }
 }

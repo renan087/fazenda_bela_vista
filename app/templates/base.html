@@ -454,7 +454,7 @@
                     </div>
                 </div>
             </div>
-            <div class="mx-auto w-full min-w-0 max-w-7xl px-4 pt-4 sm:px-6 md:hidden">
+            <div class="mx-auto w-full min-w-0 max-w-7xl px-4 pt-4 sm:px-6 md:hidden{% if active_farm and active_season %} as-active-mobile-context{% endif %}">
                     <button type="button" class="ctx-trigger flex w-full" data-context-picker-open aria-haspopup="dialog" aria-controls="context-picker" aria-expanded="false">
                         <span class="ctx-dot {% if not (active_farm and active_season) %}is-empty{% endif %}" aria-hidden="true"></span>
                         <span class="ctx-trigger-text">
