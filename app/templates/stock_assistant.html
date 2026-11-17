@@ -138,7 +138,7 @@
                     <div class="as-msg-body">
                         <div class="as-who">Assistente SiSFarm <span class="as-message-channel">{{ ic('wa' if thread_channel == 'whatsapp' else 'spark', 13) }}{{ 'WhatsApp' if thread_channel == 'whatsapp' else 'SiSFarm' }}</span><span>{{ m.time }}</span></div>
                         {% if m.tools %}<div class="as-tools">{% for t in m.tools %}<span class="as-tool"><i></i>{{ t }}</span>{% endfor %}</div>{% endif %}
-                        <p class="as-txt{% if m.error %} as-txt-err{% endif %}" data-as-text>{{ m.content }}</p>
+                        <div class="as-txt{% if m.error %} as-txt-err{% endif %}" data-as-text>{{ m.content|chat_html }}</div>
                         {% if m.draft %}{% set d = m.draft %}
                         <div class="as-draft as-draft-{{ d.state }}">
                             <div class="as-draft-head">

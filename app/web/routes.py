@@ -42,6 +42,7 @@ from app.models.assistant_attachment import AssistantAttachment
 from app.models.whatsapp import WhatsAppLink
 from app.services import whatsapp_bot
 from app.services.whatsapp import is_configured as whatsapp_is_configured, mask_phone
+from app.services.chat_format import to_html as chat_to_html
 from app.models.stock_assistant_draft import StockAssistantDraft
 from app.models.audit_log import AuditLog
 from app.models.input_catalog import InputCatalog
@@ -312,6 +313,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 templates = Jinja2Templates(directory="app/templates")
 templates.env.filters["datetime_sp"] = format_app_datetime
+templates.env.filters["chat_html"] = chat_to_html
 templates.env.filters["decimal_br"] = lambda value, places=2: _format_decimal_br(value, places)
 templates.env.filters["money_br"] = lambda value: _format_currency(value)
 templates.env.globals["subscription_cycles"] = SUBSCRIPTION_CYCLES
@@ -21530,6 +21532,8 @@ def _pezinho_thread_payload(db, thread):
     for item in messages:
         entry = {key: item[key] for key in ("role", "content", "time", "error", "draft", "attachment_id",
                                              "attachment_name", "audio_id") if key in item}
+        if entry.get("role") == "assistant":
+            entry["html"] = str(chat_to_html(entry.get("content")))
         result.append(entry)
     return {"thread_id": thread.id, "messages": result}
 

@@ -1,4 +1,5 @@
 from datetime import date, datetime, timedelta, timezone
+from app.services.chat_format import to_html as chat_to_html
 import json
 from decimal import Decimal
 from pathlib import Path
@@ -110,6 +111,7 @@ def test_prepare_form_includes_csrf_token():
     ]), autoescape=True)
     env.filters["decimal_br"] = str
     env.globals["url_for"] = lambda *a, **k: "/static/x"
+    env.filters["chat_html"] = chat_to_html
     html = env.get_template("stock_assistant.html").render(
         assistant_scope={"active_farm": {"name": "Fazenda"}, "active_season": {"name": "Safra"}},
         csrf_token="test-token",
@@ -124,6 +126,7 @@ def test_whatsapp_conversation_template_is_read_only():
         DictLoader({"base.html": "{% block content %}{% endblock %}"}), FileSystemLoader(templates_dir),
     ]), autoescape=True)
     env.globals["url_for"] = lambda *a, **k: "/static/x"
+    env.filters["chat_html"] = chat_to_html
     html = env.get_template("stock_assistant.html").render(
         assistant_scope={"active_farm": {"name": "Fazenda"}, "active_season": {"name": "Safra"}},
         thread=SimpleNamespace(id="t", title="WhatsApp · teste"), thread_channel="whatsapp", csrf_token="x",

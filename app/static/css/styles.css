@@ -6116,6 +6116,12 @@ dialog.db-cost { width: min(70rem, calc(100vw - 2rem)); }
 .as-tool i { width: 6px; height: 6px; border-radius: 50%; background: #2F8A3A; }
 .as-txt { margin: 6px 0 0; font-size: 14.5px; line-height: 1.6; color: #2A332E; white-space: pre-wrap; overflow-wrap: anywhere; }
 .as-txt-err { color: #B42318; }
+.as-txt strong, .pzw-message-text strong { font-weight: 650; color: #16201A; }
+.as-txt ul, .as-txt ol, .pzw-message-text ul, .pzw-message-text ol { margin: 4px 0 6px; padding-left: 1.25em; white-space: normal; }
+.as-txt ul, .pzw-message-text ul { list-style: disc; }
+.as-txt ol, .pzw-message-text ol { list-style: decimal; }
+.as-txt li, .pzw-message-text li { margin: 2px 0; padding-left: 2px; }
+.as-txt li::marker, .pzw-message-text li::marker { color: #446A36; }
 .as-acts { display: flex; gap: 2px; margin: 6px 0 0 -7px; opacity: .75; }
 .as-acts:hover { opacity: 1; }
 .as-acts [data-as-fb][aria-pressed="true"] { color: var(--as-g); background: #EEF3EB; }

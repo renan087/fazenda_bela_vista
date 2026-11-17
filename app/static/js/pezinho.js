@@ -223,7 +223,9 @@
             welcome.hidden = true; messages.replaceChildren();
             for (const entry of data.messages || []) {
                 const row = make('div', `pzw-message ${entry.role === 'user' ? 'is-user' : 'is-assistant'}`);
-                const text = make('p', 'pzw-message-text', entry.content || '');
+                // html vem do servidor já escapado (só negrito e listas).
+                const text = make('div', 'pzw-message-text', entry.html == null ? (entry.content || '') : null);
+                if (entry.html != null) text.innerHTML = entry.html;
                 row.append(text);
                 if (entry.attachment_id && entry.attachment_name) {
                     const link = make('a', 'pzw-file', `Abrir ${entry.attachment_name}`);

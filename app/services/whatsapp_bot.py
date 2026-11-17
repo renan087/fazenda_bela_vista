@@ -19,6 +19,7 @@ from sqlalchemy.exc import IntegrityError
 from app.models import Farm, User
 from app.models.crop_season import CropSeason
 from app.models.whatsapp import WhatsAppInboundMessage, WhatsAppLink
+from app.services.chat_format import to_whatsapp
 from app.services.stock_assistant import normalized
 from app.services.whatsapp import (SERVICE_WINDOW_SECONDS, InboundMessage, WhatsAppClient, WhatsAppError, mask_phone,
                                    wa_id_variants)
@@ -219,11 +220,11 @@ def send_assistant_reply(client: WhatsAppClient, wa_id: str, item: dict, *, repl
     context = {"reply_to": reply_to} if reply_to else {}
     draft = item.get("draft")
     if draft and draft.get("id"):
-        body = f"{item.get('content') or 'Confere o lançamento?'}\n\n{_draft_summary(draft)}"
+        body = f"{to_whatsapp(item.get('content')) or 'Confere o lançamento?'}\n\n{_draft_summary(draft)}"
         client.send_buttons(wa_id, body, [(f"sf:confirmar:{draft['id']}", "Confirmar"),
                                           (f"sf:descartar:{draft['id']}", "Descartar")], **context)
         return
-    client.send_text(wa_id, item.get("content") or "Pode me contar um pouco mais?", **context)
+    client.send_text(wa_id, to_whatsapp(item.get("content")) or "Pode me contar um pouco mais?", **context)
 
 
 def _link_code_candidate(text: str) -> tuple[str | None, bool]:
