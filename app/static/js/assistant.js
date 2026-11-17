@@ -6,14 +6,24 @@
     const store = { get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
                     set(k, v) { try { localStorage.setItem(k, v); } catch (e) { /* sem armazenamento */ } } };
 
-    // Altura: a página inteira (cabeçalho, conversa e rodapé) cabe na tela, sem a conversa
-    // rolar por baixo do cabeçalho fixo; o campo de mensagem e o rodapé ficam sempre visíveis.
+    // No celular, medir o espaço visível evita que o chat dependa da altura da página.
     const fit = () => {
+        if (window.matchMedia('(max-width: 639px)').matches) {
+            const viewport = window.visualViewport;
+            const bottom = viewport ? viewport.offsetTop + viewport.height : window.innerHeight;
+            shell.style.setProperty('--as-h', Math.max(0, bottom - shell.getBoundingClientRect().top) + 'px');
+            return;
+        }
         const overflow = document.documentElement.scrollHeight - window.innerHeight;
         shell.style.setProperty('--as-h', Math.max(448, shell.offsetHeight - overflow) + 'px');
     };
+    document.documentElement.classList.add('as-page-active');
     fit();
     window.addEventListener('resize', fit);
+    if (window.visualViewport) {
+        window.visualViewport.addEventListener('resize', fit);
+        window.visualViewport.addEventListener('scroll', fit);
+    }
 
     const scroller = $('[data-as-scroll]');
     const hasThread = !shell.querySelector('.as-welcome');

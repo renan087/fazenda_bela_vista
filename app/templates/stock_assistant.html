@@ -127,9 +127,13 @@
                 <div class="as-warn">Selecione a fazenda e a safra no topo para começar.</div>
             {% elif not thread %}
                 <div class="as-welcome">
-                    <img class="as-welcome-pz" src="{{ url_for('static', path='img/pezinho/acenando.svg') }}" alt="" width="760" height="1450">
-                    <h1>{{ greeting }}{% if first_name %}, {{ first_name }}{% endif %}. Como posso ajudar?</h1>
-                    <p>Conte o que aconteceu na lavoura, mande a foto de uma nota ou pergunte sobre a fazenda. Eu preparo tudo e você confirma.</p>
+                    <div class="as-welcome-intro">
+                        <img class="as-welcome-pz" src="{{ url_for('static', path='img/pezinho/acenando.svg') }}" alt="" width="760" height="1450">
+                        <div class="as-welcome-copy">
+                            <h1>{{ greeting }}{% if first_name %}, {{ first_name }}{% endif %}. Como posso ajudar?</h1>
+                            <p>Conte o que aconteceu na lavoura, mande a foto de uma nota ou pergunte sobre a fazenda. Eu preparo tudo e você confirma.</p>
+                        </div>
+                    </div>
                     <div class="as-caps">
                         <button type="button" class="as-cap" data-as-fill="Usei " data-as-fill-hint="Ex.: usei 6 sacos de 20-05-20 no setor 2 hoje"><span class="as-cap-ico">{{ ic('fuel', 19) }}</span><b>Registrar consumo</b><span>“Abasteci o trator com 80 L de diesel”</span></button>
                         <button type="button" class="as-cap" data-as-pick-file><span class="as-cap-ico">{{ ic('receipt', 19) }}</span><b>Lançar compra ou nota</b><span>Envie a foto ou o PDF da nota fiscal</span></button>

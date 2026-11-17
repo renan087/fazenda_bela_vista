@@ -6556,6 +6556,8 @@ dialog.db-cost { width: min(70rem, calc(100vw - 2rem)); }
 
 /* Início: Pezinho, cartões do que dá para fazer e pendências */
 .as-welcome { display: flex; flex-direction: column; align-items: center; text-align: center; padding-top: 2vh; }
+.as-welcome-intro { display: flex; flex-direction: column; align-items: center; }
+.as-welcome-copy p { margin: 0 auto; max-width: 32rem; font-size: 14px; line-height: 1.55; color: var(--as-mute); }
 .as-welcome-pz { width: auto; height: 150px; }
 .as-welcome h1 { margin: 12px 0 6px; font-size: 26px; font-weight: 800; letter-spacing: -.02em; }
 .as-welcome > p { margin: 0 auto; max-width: 32rem; }
@@ -6678,9 +6680,24 @@ dialog.db-cost { width: min(70rem, calc(100vw - 2rem)); }
 .as-pending-strip { margin-top: 12px; padding: 10px 14px; }
 @media (max-height: 820px) and (min-width: 640px) {
     .as-welcome-pz { height: 84px; }
-    .as-welcome > p { display: none; }
+    .as-welcome-copy p { display: none; }
     .as-cap > span:last-child { display: none; }
     .as-cap { flex-direction: row; align-items: center; gap: 10px; }
     .as-cap-ico { margin-bottom: 0; flex: none; }
 }
 .as-chat:has(.as-welcome) .as-scroll { padding-top: 8px; padding-bottom: 0; }
+
+@media (max-width: 639px) {
+    html.as-page-active, html.as-page-active body { overflow: hidden; overscroll-behavior: none; }
+    .as-shell { min-height: 0; }
+    .as-chat { min-height: 0; }
+    .as-shell .as-col { padding-left: 10px; padding-right: 10px; }
+    .as-scroll { overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
+    .as-chat:has(.as-welcome) .as-composer { margin-bottom: 0; }
+    .as-welcome-intro { flex-direction: row; align-items: center; gap: 12px; }
+    .as-welcome-pz { flex: none; height: 84px; align-self: center; }
+    .as-welcome-copy { min-width: 0; }
+    .as-welcome-copy h1 { margin: 0 0 4px; font-size: 19px; line-height: 1.2; }
+    .as-welcome-copy p { font-size: 12px; line-height: 1.4; }
+    .as-composer { flex: 0 0 auto; padding-bottom: max(10px, env(safe-area-inset-bottom)); }
+}
