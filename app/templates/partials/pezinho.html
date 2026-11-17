@@ -71,13 +71,15 @@
         {% endif %}
         <footer class="pzw-foot">
             <a href="/mobile/assistente" data-pzw-full>Nova conversa no assistente</a>
-            <button type="button" data-pzw-hide>Esconder por hoje</button>
+            <button type="button" data-pzw-hide>Esconder</button>
         </footer>
     </section>
+
+    <button type="button" class="pzw-peek" aria-label="Mostrar o Pezinho" title="Mostrar o Pezinho" data-pzw-peek hidden>{{ pezinho_peek_svg() }}</button>
 
     <button type="button" class="pzw-fab" aria-label="Abrir o Pezinho, assistente SiSFarm" aria-expanded="false" data-pzw-fab>
         <img src="{{ pz_img }}pronto.svg" alt="" width="760" height="1450" data-pzw-img>
         <span class="pzw-dot" data-pzw-dot {% if not pz.pending %}hidden{% endif %}></span>
     </button>
 </div>
-<script src="{{ url_for('static', path='js/pezinho.js') }}?v=3" defer></script>
+<script src="{{ url_for('static', path='js/pezinho.js') }}?v=4" defer></script>

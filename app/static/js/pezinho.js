@@ -10,7 +10,9 @@
         sset(k, v) { try { sessionStorage.setItem(k, v); } catch (e) { /* sem armazenamento */ } },
     };
     const today = new Date().toISOString().slice(0, 10);
-    if (store.get('sf-pz-hidden') === today) { root.remove(); return; }
+    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    try { localStorage.removeItem('sf-pz-hidden'); } catch (e) { /* versão antiga: "esconder por hoje" */ }
+    const peeking = store.get('sf-pz-peek') === '1';
     root.hidden = false;
 
     const base = root.dataset.imgBase;
@@ -47,7 +49,9 @@
     const hello = new Date().getHours() < 12 ? 'Bom dia' : new Date().getHours() < 18 ? 'Boa tarde' : 'Boa noite';
     const who = name ? `${hello}, ${name.replace(/[<>&"]/g, '')}!` : `${hello}!`;
 
-    if (!available) {
+    if (peeking) {
+        set(available ? 'pronto' : 'dormindo');
+    } else if (!available) {
         set('dormindo');
     } else if (pending && store.sget('sf-pz-knocked') !== pending) {
         store.sset('sf-pz-knocked', pending);
@@ -86,7 +90,36 @@
     document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && isOpen()) { open(false); fab.focus(); } });
     document.addEventListener('click', (e) => { if (isOpen() && !root.contains(e.target)) open(false); });
 
-    $('[data-pzw-hide]').addEventListener('click', () => { store.set('sf-pz-hidden', today); root.remove(); });
+    // Esconder: ele desliza para fora e fica espiando na borda; um clique traz de volta.
+    const peek = $('[data-pzw-peek]');
+    const after = (ms, fn) => setTimeout(fn, reduced ? 0 : ms);
+    const showPeek = (animate) => {
+        fab.hidden = true; fab.classList.remove('is-leaving', 'is-returning');
+        peek.hidden = false; peek.classList.remove('is-leaving');
+        peek.classList.toggle('is-entering', animate);
+        root.classList.add('is-peeking');
+    };
+    const hide = () => {
+        open(false); hideBubble();
+        store.set('sf-pz-peek', '1');
+        fab.classList.add('is-leaving');
+        after(450, () => showPeek(true));
+    };
+    const comeBack = () => {
+        store.set('sf-pz-peek', '');
+        peek.classList.remove('is-entering'); peek.classList.add('is-leaving');
+        after(280, () => {
+            peek.hidden = true; peek.classList.remove('is-leaving');
+            root.classList.remove('is-peeking');
+            fab.hidden = false; fab.classList.add('is-returning');
+            if (available) set('acenando', 2600);
+            after(650, () => fab.classList.remove('is-returning'));
+            fab.focus({ preventScroll: true });
+        });
+    };
+    $('[data-pzw-hide]').addEventListener('click', hide);
+    peek.addEventListener('click', comeBack);
+    if (peeking) showPeek(false);
 
     // A conversa usa o mesmo motor e os mesmos rascunhos da página do assistente.
     const form = $('[data-pzw-form]');

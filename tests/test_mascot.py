@@ -42,3 +42,11 @@ def test_pezinho_hidden_on_assistant_page_and_modals():
     user = NS(display_name="Renan", name="Renan")
     assert _pezinho_context(NS(url=NS(path="/mobile/assistente")), None, user, _ctx()) is None
     assert _pezinho_context(NS(url=NS(path="/dashboard")), None, user, _ctx(modal_mode=True)) is None
+
+
+def test_peek_svg_is_valid_and_keeps_hand_apart_from_moving_head():
+    svg = mascot.peek_svg(92)
+    doc = minidom.parseString(svg)
+    classes = {node.getAttribute("class") for node in doc.getElementsByTagName("g")}
+    assert {"pk-move", "pk-hand", "pk-eyes", "pk-pupil"} <= classes
+    assert 'width="92"' in svg and 'aria-hidden="true"' in svg

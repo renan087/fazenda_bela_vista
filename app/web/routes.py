@@ -319,6 +319,14 @@ templates.env.globals["format_app_datetime"] = format_app_datetime
 templates.env.globals["asaas_env"] = current_asaas_environment
 templates.env.globals["google_tag_id"] = lambda: (getattr(get_settings(), "google_tag_id", None) or "").strip()
 templates.env.globals["plan_icon"] = lambda code, css_class="h-5 w-5": Markup(plan_icon_svg(code, css_class))
+
+
+def _pezinho_peek_markup():
+    from app.services.mascot import peek_svg
+    return Markup(peek_svg(92))
+
+
+templates.env.globals["pezinho_peek_svg"] = _pezinho_peek_markup
 templates.env.globals["plan_icon_choices"] = PLAN_ICONS
 
 

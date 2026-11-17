@@ -174,6 +174,61 @@ def draw(state="acenando", uid="p", head=False):
     return f'<ellipse cx="497" cy="1468" rx="190" ry="14" fill="#16201A" opacity=".1"/>{pot_back}{plant}{deco}'
 
 
+# ---------- Pezinho escondido: espiando pela borda direita da tela ----------
+_PK_W = 6  # contorno na escala do desenho espiando
+
+def _pk_leaf(B, T, w):
+    bx, by = B; tx, ty = T
+    L = math.hypot(tx - bx, ty - by)
+    ang = math.degrees(math.atan2(tx - bx, -(ty - by)))
+    body = (f'M0 0C{w * .62:.1f} {-L * .04:.1f} {w * .66:.1f} {-L * .62:.1f} 0 {-L:.1f}'
+            f'C{-w * .66:.1f} {-L * .62:.1f} {-w * .62:.1f} {-L * .04:.1f} 0 0Z')
+    veins = f'<path d="M0 {-L * .1:.1f}V{-L * .86:.1f}" stroke="#8DCB5E" stroke-width="4.5" stroke-linecap="round"/>'
+    for t in (.3, .5, .68):
+        for s in (-1, 1):
+            veins += f'<path d="M0 {-L * t:.1f}L{s * w * .3 * (1.1 - t * .75):.1f} {-L * (t + .12):.1f}" stroke="#8DCB5E" stroke-width="4" stroke-linecap="round"/>'
+    return (f'<g transform="translate({bx} {by}) rotate({ang:.1f})"><path d="{body}" fill="#2E7D32" stroke="{INK}" stroke-width="{_PK_W}" stroke-linejoin="round"/>{veins}</g>')
+
+def _pk_stem(d, w=7):
+    return (f'<path d="{d}" fill="none" stroke="{INK}" stroke-width="{w + 2 * _PK_W - 2}" stroke-linecap="round"/>'
+            f'<path d="{d}" fill="none" stroke="#8E5A2C" stroke-width="{w}" stroke-linecap="round"/>')
+
+def _pk_cherry(x, y, r):
+    return (f'<circle cx="{x}" cy="{y}" r="{r}" fill="#E0312F" stroke="{INK}" stroke-width="{_PK_W}"/>'
+            f'<ellipse cx="{x - r * .32:.1f}" cy="{y - r * .36:.1f}" rx="{r * .3:.1f}" ry="{r * .2:.1f}" fill="#fff"/>')
+
+def peek_svg(width: int = 92) -> str:
+    """Desenho espiando; a borda da tela é a lateral direita do viewBox (x = 300)."""
+    eyes = "".join(
+        f'<ellipse cx="{cx}" cy="{cy}" rx="{rx}" ry="{ry}" fill="#fff" stroke="{INK}" stroke-width="{_PK_W}"/>'
+        f'<g class="pk-pupil"><ellipse cx="{cx + 8}" cy="{cy - 2}" rx="15" ry="19" fill="{INK}"/><circle cx="{cx + 13}" cy="{cy - 10}" r="5" fill="#fff"/></g>'
+        for cx, cy, rx, ry in ((168, 318, 31, 40), (236, 310, 29, 38)))
+    # mão segurando a beirada da tela: dedos dobrados por cima da borda, vindos de trás
+    fingers = ""
+    for k, (y, x0) in enumerate(((440, 279), (459, 275), (478, 276), (497, 281))):
+        fingers += f'<rect x="{x0}" y="{y}" width="{318 - x0}" height="19" rx="9.5" fill="#fff" stroke="{INK}" stroke-width="{_PK_W - 1}"/>'
+    hand = fingers
+    body = f'''
+<g class="pk-move"><g transform="translate(46 0)">
+  <g class="pk-plant">
+    {_pk_stem("M282 196C290 214 296 236 304 262", 7)}
+    {_pk_stem("M282 222C262 220 238 214 214 206", 6)}
+    {_pk_leaf((218, 208), (82, 168), 78)}
+    {_pk_leaf((280, 198), (300, 56), 86)}
+    {_pk_cherry(270, 214, 16)}{_pk_cherry(286, 238, 15)}
+  </g>
+  <g class="pk-face">
+    <g class="pk-brows"><path d="M140 262Q160 240 190 252M212 244Q236 226 262 242" fill="none" stroke="{INK}" stroke-width="6.5" stroke-linecap="round"/></g>
+    <g class="pk-eyes">{eyes}</g>
+    <g class="pk-mouth"><path d="M196 366Q224 360 252 364Q246 398 224 398Q202 396 196 366Z" fill="#1E0E0E" stroke="{INK}" stroke-width="4.5" stroke-linejoin="round"/><path d="M210 388Q224 378 240 386Q232 396 224 396Q215 396 210 388Z" fill="#F28AA0"/></g>
+  </g>
+</g></g>
+<g class="pk-hand">{hand}</g>'''
+    h = round(width * 530 / 300)
+    return (f'<svg class="pk-svg" width="{width}" height="{h}" viewBox="0 0 300 530" aria-hidden="true" focusable="false">'
+            f'<g class="pk-all">{body}</g></svg>')
+
+
 CSS = """
 .pz-root{transform-box:view-box;transform-origin:500px 1460px}
 .pz-plant,.pz-wave,.pz-cheer-l,.pz-cheer-r,.pz-gesture{transform-box:view-box}
