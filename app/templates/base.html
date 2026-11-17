@@ -31,7 +31,7 @@
         }
     </script>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-    <link rel="stylesheet" href="{{ url_for('static', path='css/styles.css') }}?v=20261117g">
+    <link rel="stylesheet" href="{{ url_for('static', path='css/styles.css') }}?v=20261117h">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="{{ url_for('static', path='js/currency-mask.js') }}?v=20260425a" defer></script>
@@ -437,7 +437,7 @@
                         <div class="relative shrink-0">
                             <button type="button" class="hd-btn hd-bell" data-header-notifications-toggle aria-expanded="false" aria-haspopup="dialog" aria-controls="erp-header-notifications-flyout" aria-label="Abrir notificações" title="Notificações">
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 1 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.9 1.9 0 0 0 3.4 0"/></svg>
-                                {% if global_notifications.total > 0 %}<span class="hd-count">{{ global_notifications.total if global_notifications.total < 100 else '99+' }}</span>{% endif %}
+                                <span class="hd-count"{% if not global_notifications.unread_total|default(0) %} hidden{% endif %}>{{ global_notifications.unread_total if global_notifications.unread_total|default(0) < 100 else '99+' }}</span>
                             </button>
                         </div>
                         <div class="erp-header-user-group relative shrink-0">
@@ -810,7 +810,7 @@
             </div>
         </div>
     </div>
-    <div id="erp-header-notifications-flyout" class="nf fixed z-[65] hidden w-[26rem] max-w-[calc(100vw-1rem)] overflow-hidden rounded-[1.5rem] border border-slate-200 bg-white shadow-2xl" role="dialog" aria-modal="false" aria-labelledby="erp-header-notifications-title" aria-hidden="true">
+    <div id="erp-header-notifications-flyout" class="nf fixed z-[65] hidden w-[26rem] max-w-[calc(100vw-1rem)] overflow-hidden rounded-[1.5rem] border border-slate-200 bg-white shadow-2xl" role="dialog" aria-modal="false" aria-labelledby="erp-header-notifications-title" aria-hidden="true" data-nf-scope="{{ notification_scope|default('') }}" data-nf-csrf="{{ csrf_token }}">
         <div class="nf-head">
             <h3 id="erp-header-notifications-title">Notificações</h3>
             <button type="button" class="nf-link" data-nf-read-all>Marcar todas como lidas</button>
@@ -824,7 +824,7 @@
             {% macro nf_item(item, important) -%}
             {% set k = item.kind %}
             {% set tone = 'red' if item.severity == 'danger' else ('amber' if item.severity == 'warning' else ('blue' if k in ['rainfall', 'schedule'] else 'green')) %}
-            <article class="nf-item" data-nf-item data-nf-key="{{ k }}|{{ item.href }}|{{ item.title }}" data-important="{{ '1' if important else '0' }}">
+            <article class="nf-item" data-nf-item data-nf-key="{{ item.key }}" data-nf-read-state="{{ '1' if item.is_read else '0' }}" data-important="{{ '1' if important else '0' }}">
                 <span class="nf-unread" aria-hidden="true"></span>
                 <span class="nf-ico nf-{{ tone }}" aria-hidden="true">
                     {%- if k == 'stock' %}<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8 12 3 3 8v8l9 5 9-5z"/><path d="M3 8l9 5 9-5M12 13v8"/></svg>
@@ -858,21 +858,40 @@
             </div>
         </div>
         <div class="nf-foot"><span>Os avisos somem sozinhos quando o assunto é resolvido.</span></div>
+        <p class="nf-save-error" data-nf-save-error role="alert" hidden>Não foi possível salvar a leitura. Tente novamente.</p>
     </div>
     <script>
-    // Notificações: abas (Todas, Não lidas, Importantes), lidas guardadas no navegador e contador do sino
+    // A leitura pertence ao usuário e é sincronizada pelo servidor.
     (() => {
         const box = document.getElementById('erp-header-notifications-flyout');
         if (!box) return;
         const items = Array.from(box.querySelectorAll('[data-nf-item]'));
-        const KEY = 'sf-notif-read';
-        const load = () => { try { return new Set(JSON.parse(localStorage.getItem(KEY) || '[]')); } catch (e) { return new Set(); } };
-        const save = (set) => { try { localStorage.setItem(KEY, JSON.stringify(Array.from(set).slice(-400))); } catch (e) { /* sem armazenamento */ } };
-        let read = load();
-        // Esquece chaves de avisos que já não existem (o assunto foi resolvido)
-        const live = new Set(items.map((i) => i.dataset.nfKey));
-        read = new Set(Array.from(read).filter((k) => live.has(k)));
-        save(read);
+        const read = new Set(items.filter((item) => item.dataset.nfReadState === '1').map((item) => item.dataset.nfKey));
+        const error = box.querySelector('[data-nf-save-error]');
+        const save = async (keys) => {
+            if (error) error.hidden = true;
+            try {
+                for (let start = 0; start < keys.length; start += 500) {
+                    const body = new URLSearchParams({csrf_token: box.dataset.nfCsrf, scope: box.dataset.nfScope,
+                                                      keys: JSON.stringify(keys.slice(start, start + 500))});
+                    const controller = new AbortController();
+                    const timeout = setTimeout(() => controller.abort(), 4000);
+                    let response;
+                    try {
+                        response = await fetch('/notificacoes/lidas', {method: 'POST', body, credentials: 'same-origin', signal: controller.signal});
+                    } finally { clearTimeout(timeout); }
+                    if (!response.ok) throw new Error('save');
+                    const data = await response.json();
+                    data.read.forEach((key) => read.add(key));
+                }
+                render();
+                return true;
+            } catch (e) {
+                if (error) error.hidden = false;
+                render();
+                return false;
+            }
+        };
         let tab = 'todas';
         const badge = document.querySelector('.hd-count');
         const unreadEl = box.querySelector('[data-nf-unread-count]');
@@ -906,14 +925,20 @@
             box.querySelectorAll('[data-nf-tab]').forEach((x) => x.setAttribute('aria-selected', x === b ? 'true' : 'false'));
             render();
         }));
-        box.addEventListener('click', (e) => {
+        box.addEventListener('click', async (e) => {
             const item = e.target.closest('[data-nf-item]');
             if (!item) return;
-            if (e.target.closest('[data-nf-read]')) { e.preventDefault(); read.add(item.dataset.nfKey); save(read); render(); }
-            else if (e.target.closest('[data-nf-act]')) { read.add(item.dataset.nfKey); save(read); }
+            if (e.target.closest('[data-nf-read]')) { e.preventDefault(); await save([item.dataset.nfKey]); }
+            else if (e.target.closest('[data-nf-act]')) {
+                const link = e.target.closest('[data-nf-act]');
+                if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+                e.preventDefault();
+                await save([item.dataset.nfKey]);
+                window.location.assign(link.href);
+            }
         });
         const all = box.querySelector('[data-nf-read-all]');
-        if (all) all.addEventListener('click', () => { items.forEach((i) => read.add(i.dataset.nfKey)); save(read); render(); });
+        if (all) all.addEventListener('click', () => save(items.filter((i) => !read.has(i.dataset.nfKey)).map((i) => i.dataset.nfKey)));
         render();
     })();
     </script>

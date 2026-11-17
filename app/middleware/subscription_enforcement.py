@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 
 SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
 # Alteracoes que continuam permitidas no modo somente leitura (conta, sessao e pagamento).
-READ_ONLY_WRITE_ALLOWED = ALWAYS_ALLOWED_PREFIXES + ("/meu-perfil", "/contexto", "/logout", "/login", "/auth")
+READ_ONLY_WRITE_ALLOWED = ALWAYS_ALLOWED_PREFIXES + ("/meu-perfil", "/contexto", "/logout", "/login", "/auth", "/notificacoes/lidas")
 
 
 def _starts_with_any(path: str, prefixes) -> bool:

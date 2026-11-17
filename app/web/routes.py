@@ -46,6 +46,7 @@ from app.services.chat_format import to_html as chat_to_html
 from app.models.stock_assistant_draft import StockAssistantDraft
 from app.models.audit_log import AuditLog
 from app.models.input_catalog import InputCatalog
+from app.models.notification_read import NotificationRead
 from app.services.assistant_queries import AssistantQueries
 from app.services.stock_assistant import STOCK_ITEM_TYPES, FarmAssistant, claim_draft, confirm_consumption, normalized, partial_note, run_farm_assistant, stock_unit
 from app.core.admin_access import has_admin_access, is_super_admin_email
@@ -1052,6 +1053,34 @@ def _base_context(request: Request, user: User, csrf_token: str, page: str, **kw
             scope_context,
             permission_codes,
         )
+        farm_id = scope_context.get("active_farm_id")
+        if farm_id:
+            notification_scope = f"farm:{farm_id}:season:{scope_context.get('active_season_id') or 0}"
+            farm_scope = f"farm:{farm_id}"
+            notifications = context["global_notifications"]
+            scopes = {farm_scope, notification_scope}
+            read_keys = {(row.scope, row.notification_key) for row in db_session.query(NotificationRead.scope, NotificationRead.notification_key).filter(
+                NotificationRead.user_id == user.id, NotificationRead.scope.in_(scopes)).all()}
+            live_keys = {(item["scope"], item["key"]) for item in notifications["important"] + notifications["operational"]}
+            stale_keys = read_keys - live_keys
+            if stale_keys:
+                # Do not commit the caller's session while rendering a page.
+                try:
+                    with Session(bind=db_session.get_bind()) as cleanup:
+                        for stale_scope in scopes:
+                            keys = [key for key_scope, key in stale_keys if key_scope == stale_scope]
+                            if keys:
+                                cleanup.query(NotificationRead).filter(
+                                    NotificationRead.user_id == user.id, NotificationRead.scope == stale_scope,
+                                    NotificationRead.notification_key.in_(keys),
+                                ).delete(synchronize_session=False)
+                        cleanup.commit()
+                except Exception:
+                    logging.getLogger(__name__).exception("Falha ao limpar leituras de notificações resolvidas")
+            for item in notifications["important"] + notifications["operational"]:
+                item["is_read"] = (item["scope"], item["key"]) in read_keys
+            notifications["unread_total"] = sum(not item["is_read"] for item in notifications["important"] + notifications["operational"])
+            context["notification_scope"] = notification_scope
         context["context_lock_exempt"] = page in {
             "onboarding",
             "maintenance",
@@ -1199,6 +1228,7 @@ def _build_global_notifications(
         href: str,
         kind: str,
         severity: str,
+        identity: str,
         meta: str = "",
     ) -> None:
         bucket.append(
@@ -1209,6 +1239,9 @@ def _build_global_notifications(
                 "kind": kind,
                 "severity": severity,
                 "meta": meta,
+                "key": hashlib.sha256(f"{kind}|{identity}|{title}".encode("utf-8")).hexdigest(),
+                "scope": (f"farm:{active_farm.id}:season:{active_season.id if active_season else 0}"
+                          if kind == "schedule" else f"farm:{active_farm.id}"),
             }
         )
 
@@ -1244,6 +1277,7 @@ def _build_global_notifications(
                     message=f"{catalog_item.name} está com {available:g} {catalog_item.default_unit} disponível, abaixo do nível crítico.",
                     href="/insumos/estoque",
                     kind="stock",
+                    identity=f"input:{catalog_item.id}",
                     severity="danger",
                     meta="Estoque de Insumos",
                 )
@@ -1254,6 +1288,7 @@ def _build_global_notifications(
                     message=f"{catalog_item.name} está com {available:g} {catalog_item.default_unit} e já atingiu o alerta configurado.",
                     href="/insumos/estoque",
                     kind="stock",
+                    identity=f"input:{catalog_item.id}",
                     severity="warning",
                     meta="Estoque de Insumos",
                 )
@@ -1269,6 +1304,7 @@ def _build_global_notifications(
                     message=f"{entry.input_catalog.name if entry.input_catalog else entry.name} • lote {entry.batch_number or entry.id} venceu em {entry.expiration_date.strftime('%d/%m/%Y')}.",
                     href="/insumos/estoque",
                     kind="stock",
+                    identity=f"lot:{entry.id}",
                     severity="danger",
                     meta="Estoque de Insumos",
                 )
@@ -1279,6 +1315,7 @@ def _build_global_notifications(
                     message=f"{entry.input_catalog.name if entry.input_catalog else entry.name} • lote {entry.batch_number or entry.id} vence em {entry.expiration_date.strftime('%d/%m/%Y')}.",
                     href="/insumos/estoque",
                     kind="stock",
+                    identity=f"lot:{entry.id}",
                     severity="warning",
                     meta="Estoque de Insumos",
                 )
@@ -1311,6 +1348,7 @@ def _build_global_notifications(
                         message=f"{transaction.product_service or transaction.category or 'Parcela'} ({label}) venceu em {due_date.strftime('%d/%m/%Y')} no {value_noun} de {value_label}.",
                         href=overdue_href,
                         kind="receivable" if is_receivable else "payable",
+                        identity=f"installment:{installment.id}",
                         severity="danger",
                         meta=transaction.finance_account.account_name if transaction.finance_account else meta_fallback,
                     )
@@ -1321,6 +1359,7 @@ def _build_global_notifications(
                         message=f"{transaction.product_service or transaction.category or 'Parcela'} ({label}) vence hoje no {value_noun} de {value_label}.",
                         href=today_href,
                         kind="receivable" if is_receivable else "payable",
+                        identity=f"installment:{installment.id}",
                         severity="warning",
                         meta=transaction.finance_account.account_name if transaction.finance_account else meta_fallback,
                     )
@@ -1341,6 +1380,7 @@ def _build_global_notifications(
                     ),
                     href="/pluviometria",
                     kind="rainfall",
+                    identity=f"rainfall:{latest.id}",
                     severity="warning",
                     meta="Pluviometria",
                 )
@@ -1361,6 +1401,7 @@ def _build_global_notifications(
                         message=f"{schedule.plot.name if schedule.plot else 'Setor removido'} ficou pendente desde {schedule.scheduled_date.strftime('%d/%m/%Y')}.",
                         href=f"/fertilizacao/agendamentos?edit_id={schedule.id}",
                         kind="schedule",
+                        identity=f"schedule:{schedule.id}",
                         severity="danger",
                         meta="Fertilização",
                     )
@@ -1371,6 +1412,7 @@ def _build_global_notifications(
                         message=f"{schedule.plot.name if schedule.plot else 'Setor removido'} está programado para {schedule.scheduled_date.strftime('%d/%m/%Y')}.",
                         href=f"/fertilizacao/agendamentos?edit_id={schedule.id}",
                         kind="schedule",
+                        identity=f"schedule:{schedule.id}",
                         severity="info",
                         meta="Fertilização",
                     )
@@ -1387,6 +1429,7 @@ def _build_global_notifications(
                     message=f"{asset_name}: {plan.description} está pendente desde {plan.next_due_date.strftime('%d/%m/%Y')}.",
                     href="/insumos/patrimonio/manutencoes",
                     kind="maintenance",
+                    identity=f"maintenance-plan:{plan.id}:{plan.next_due_date}",
                     severity="danger",
                     meta="Patrimônio",
                 )
@@ -1397,6 +1440,7 @@ def _build_global_notifications(
                     message=f"{asset_name}: {plan.description} está prevista para {plan.next_due_date.strftime('%d/%m/%Y')}.",
                     href="/insumos/patrimonio/manutencoes",
                     kind="maintenance",
+                    identity=f"maintenance-plan:{plan.id}:{plan.next_due_date}",
                     severity="warning",
                     meta="Patrimônio",
                 )
@@ -1412,6 +1456,7 @@ def _build_global_notifications(
                     message=f"{asset_name}: {maintenance.description} está pendente desde {maintenance.maintenance_date.strftime('%d/%m/%Y')}.",
                     href=f"/insumos/patrimonio/manutencoes?edit_id={maintenance.id}",
                     kind="maintenance",
+                    identity=f"maintenance:{maintenance.id}",
                     severity="danger",
                     meta="Patrimônio",
                 )
@@ -1422,6 +1467,7 @@ def _build_global_notifications(
                     message=f"{asset_name}: {maintenance.description} está prevista para {maintenance.maintenance_date.strftime('%d/%m/%Y')}.",
                     href=f"/insumos/patrimonio/manutencoes?edit_id={maintenance.id}",
                     kind="maintenance",
+                    identity=f"maintenance:{maintenance.id}",
                     severity="warning",
                     meta="Patrimônio",
                 )
@@ -1434,6 +1480,42 @@ def _build_global_notifications(
         "total": len(important) + len(operational),
         "important_count": len(important),
     }
+
+
+@router.post("/notificacoes/lidas")
+def mark_notifications_read(request: Request, csrf_token: str = Form(...), scope: str = Form(..., max_length=80),
+                            keys: str = Form(..., max_length=40000), db: Session = Depends(get_db),
+                            user: User = Depends(get_current_user_web)):
+    validate_csrf(request, csrf_token)
+    try:
+        requested = json.loads(keys)
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=400, detail="Notificações inválidas.") from None
+    if not isinstance(requested, list) or len(requested) > 500 or any(
+        not isinstance(key, str) or not re.fullmatch(r"[0-9a-f]{64}", key) for key in requested
+    ):
+        raise HTTPException(status_code=400, detail="Notificações inválidas.")
+    repo = _repository(db)
+    active = _global_scope_context(request, repo, user)
+    farm_id = active.get("active_farm_id")
+    expected_scope = f"farm:{farm_id}:season:{active.get('active_season_id') or 0}"
+    if not farm_id or scope != expected_scope:
+        raise HTTPException(status_code=409, detail="O contexto mudou. Atualize a página.")
+    notifications = _build_global_notifications(request, repo, active, permission_codes_for_user(db, user))
+    available = {item["key"]: item["scope"] for item in notifications["important"] + notifications["operational"]}
+    valid = set(requested) & set(available)
+    if valid:
+        if db.get_bind().dialect.name == "sqlite":
+            from sqlalchemy.dialects.sqlite import insert
+        else:
+            from sqlalchemy.dialects.postgresql import insert
+        statement = insert(NotificationRead).values([
+            {"user_id": user.id, "scope": available[key], "notification_key": key, "read_at": datetime.now(timezone.utc)}
+            for key in valid
+        ]).on_conflict_do_nothing(index_elements=["user_id", "scope", "notification_key"])
+        db.execute(statement)
+        db.commit()
+    return JSONResponse({"read": sorted(valid)}, headers={"Cache-Control": "no-store"})
 
 
 def _render_profile_page(

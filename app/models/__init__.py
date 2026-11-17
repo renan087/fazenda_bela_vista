@@ -64,8 +64,10 @@ from app.models.stock_inventory_session import StockInventorySession
 from app.models.trusted_browser_token import TrustedBrowserToken
 from app.models.user import User
 from app.models.whatsapp import WhatsAppInboundMessage, WhatsAppLink, WhatsAppRecordAccess
+from app.models.notification_read import NotificationRead
 
 __all__ = [
+    "NotificationRead",
     "WhatsAppInboundMessage",
     "WhatsAppLink",
     "WhatsAppRecordAccess",

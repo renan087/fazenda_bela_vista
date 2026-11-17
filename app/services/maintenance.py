@@ -19,7 +19,7 @@ MAX_HOURS = 24
 ALWAYS_OPEN_PREFIXES = ("/static/", "/health", "/favicon", "/api/webhooks/", "/login", "/auth/", "/logout")
 ALWAYS_OPEN_EXACT = {"/", "/robots.txt", "/sitemap.xml", "/termos", "/privacidade"}
 # Em somente leitura, POSTs que nao gravam dados de negocio continuam liberados.
-READ_ONLY_WRITE_ALLOWED = ("/login", "/auth/", "/logout", "/contexto", "/api/webhooks/")
+READ_ONLY_WRITE_ALLOWED = ("/login", "/auth/", "/logout", "/contexto", "/api/webhooks/", "/notificacoes/lidas")
 
 
 class MaintenanceError(ValueError):
