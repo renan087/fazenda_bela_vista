@@ -6,18 +6,21 @@
     const store = { get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
                     set(k, v) { try { localStorage.setItem(k, v); } catch (e) { /* sem armazenamento */ } } };
 
-    // No celular, medir o espaço visível evita que o chat dependa da altura da página.
+    const ready = shell.dataset.asReady === 'true';
+    document.documentElement.classList.add('as-page-active');
+    if (ready) document.documentElement.classList.add('as-page-ready');
+
+    // A viewport visual acompanha o teclado e os deslocamentos do Safari no iOS.
     const fit = () => {
-        if (window.matchMedia('(max-width: 639px)').matches) {
+        if (ready && window.matchMedia('(max-width: 639px)').matches) {
             const viewport = window.visualViewport;
-            const bottom = viewport ? viewport.offsetTop + viewport.height : window.innerHeight;
-            shell.style.setProperty('--as-h', Math.max(0, bottom - shell.getBoundingClientRect().top) + 'px');
+            shell.style.setProperty('--as-top', (viewport ? viewport.offsetTop : 0) + 'px');
+            shell.style.setProperty('--as-h', (viewport ? viewport.height : window.innerHeight) + 'px');
             return;
         }
         const overflow = document.documentElement.scrollHeight - window.innerHeight;
         shell.style.setProperty('--as-h', Math.max(448, shell.offsetHeight - overflow) + 'px');
     };
-    document.documentElement.classList.add('as-page-active');
     fit();
     window.addEventListener('resize', fit);
     if (window.visualViewport) {

@@ -46,7 +46,7 @@
 {% block content %}
 {% set ready = assistant_scope.active_farm and assistant_scope.active_season %}
 {% set thread_id = thread.id if thread else '' %}
-<div class="as-shell" data-as-shell>
+<div class="as-shell" data-as-shell data-as-ready="{{ 'true' if ready else 'false' }}">
 
     {# ---------- Lista de conversas (coluna no desktop, gaveta no celular) ---------- #}
     <aside class="as-threads" id="as-threads" data-as-threads aria-label="Conversas">
@@ -327,5 +327,5 @@
         <p class="as-privacy">{{ ic('shield', 15) }}<span>A IA pode errar. Confira os dados antes de confirmar: nada vai para o estoque ou o financeiro sem você. Mensagens, fotos e áudios são enviados ao modelo de IA.</span></p>
     </aside>
 </div>
-<script src="{{ url_for('static', path='js/assistant.js') }}?v=8" defer></script>
+<script src="{{ url_for('static', path='js/assistant.js') }}?v=9" defer></script>
 {% endblock %}

@@ -6688,9 +6688,10 @@ dialog.db-cost { width: min(70rem, calc(100vw - 2rem)); }
 .as-chat:has(.as-welcome) .as-scroll { padding-top: 8px; padding-bottom: 0; }
 
 @media (max-width: 639px) {
-    html.as-page-active, html.as-page-active body { overflow: hidden; overscroll-behavior: none; }
+    html.as-page-ready, html.as-page-ready body { overflow: hidden; overscroll-behavior: none; }
     html.as-page-active .as-active-mobile-context { display: none; }
     .as-shell { min-height: 0; }
+    html.as-page-ready .as-shell { position: fixed; z-index: 30; top: var(--as-top, 0px); left: 0; width: 100%; height: var(--as-h, 100dvh); margin: 0; }
     .as-chat { min-height: 0; }
     .as-shell .as-col { padding-left: 10px; padding-right: 10px; }
     .as-scroll { overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
