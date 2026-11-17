@@ -111,10 +111,67 @@
         const scroll = () => { body.scrollTop = body.scrollHeight; };
         const setBusy = (on) => {
             busy = on; send.disabled = on; input.readOnly = on;
+            if (fileInput) fileInput.disabled = on;
             if (on) { set('pensando'); if (head) head.src = `${base}cabeca-pensando.svg`; }
             else { set(available ? 'pronto' : 'dormindo'); if (head) head.src = `${base}cabeca-pronto.svg`; }
         };
         const showError = (text) => { messages.append(make('p', 'pzw-error', text)); scroll(); };
+
+        // Frases do Pezinho enquanto a resposta não chega
+        const THINKING = [
+            'Esticando as raízes até o estoque...', 'Fazendo fotossíntese nas ideias...', 'Regando o raciocínio...',
+            'Contando as cerejas, uma por uma...', 'Balançando as folhas pra pensar melhor...', 'Perguntando pra minhoca do vaso...',
+            'Tirando o barro das luvas...', 'Puxando água lá do fundo do vaso...', 'Conferindo se a cereja já tá madura...',
+            'Coçando a cabeça com a folha...', 'Esperando o sol bater nas folhas...', 'Afofando a terra do vasinho...',
+            'Pedindo ajuda pro pé de café vizinho...', 'Espantando a broca daqui de perto...', 'Torcendo pra geada passar longe...',
+            'Desembolando os galhos...', 'Trocando a luva da esquerda pela da direita...', 'Brotando uma resposta...',
+            'Lustrando as cerejas pra caprichar...', 'Mexendo na terra atrás de uma pista...', 'Medindo a chuva na folha...',
+            'Fazendo a conta na ponta da folha...', 'Ajeitando o vaso pra não tombar...', 'Tomando um golinho de água...',
+        ];
+        let thinkingTimer = null;
+        const startThinking = (label) => {
+            const pool = THINKING.slice().sort(() => Math.random() - 0.5);
+            let index = 0;
+            label.textContent = pool[index++];
+            clearInterval(thinkingTimer);
+            thinkingTimer = setInterval(() => {
+                if (!label.isConnected) { clearInterval(thinkingTimer); return; }
+                label.classList.add('is-swapping');
+                setTimeout(() => { label.textContent = pool[index++ % pool.length]; label.classList.remove('is-swapping'); }, 200);
+            }, 2400);
+        };
+        const thinkingRow = () => {
+            const row = make('div', 'pzw-thinking');
+            row.append(make('i'), make('i'), make('i'));
+            const label = make('span');
+            row.append(label);
+            startThinking(label);
+            return row;
+        };
+
+        // Anexo (foto ou PDF de até 5 MB), pelo clipe ou arrastando para o painel
+        const fileInput = $('[data-pzw-file]');
+        const chip = $('[data-pzw-attach]');
+        let file = null;
+        const TYPES = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'];
+        const setFile = (picked) => {
+            if (picked && !TYPES.includes(picked.type)) { showError('Envie um PDF ou uma imagem JPG, PNG ou WEBP.'); picked = null; }
+            if (picked && picked.size > 5 * 1024 * 1024) { showError('O arquivo precisa ter até 5 MB.'); picked = null; }
+            file = picked || null;
+            if (!file && fileInput) fileInput.value = '';
+            chip.hidden = !file;
+            $('[data-pzw-attach-name]').textContent = file ? file.name : '';
+            if (file) input.focus({ preventScroll: true });
+        };
+        if (fileInput) fileInput.addEventListener('change', () => setFile(fileInput.files && fileInput.files[0]));
+        $('[data-pzw-attach-clear]').addEventListener('click', () => setFile(null));
+        panel.addEventListener('dragover', (e) => { if (e.dataTransfer && [...e.dataTransfer.types].includes('Files')) { e.preventDefault(); panel.classList.add('is-drop'); } });
+        panel.addEventListener('dragleave', (e) => { if (!panel.contains(e.relatedTarget)) panel.classList.remove('is-drop'); });
+        panel.addEventListener('drop', (e) => {
+            panel.classList.remove('is-drop');
+            const dropped = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+            if (dropped) { e.preventDefault(); setFile(dropped); }
+        });
         const request = async (url, options) => {
             const response = await fetch(url, { credentials: 'same-origin', ...options });
             let data;
@@ -213,20 +270,26 @@
         const grow = () => { input.style.height = ''; input.style.height = Math.min(input.scrollHeight, 120) + 'px'; };
         input.addEventListener('input', grow);
         input.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); if (input.value.trim()) form.requestSubmit(); }
+            if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); if (input.value.trim() || file) form.requestSubmit(); }
         });
         form.addEventListener('submit', async (e) => {
             e.preventDefault();
             const text = input.value.trim();
-            if (!text || busy) return;
+            if ((!text && !file) || busy) return;
+            const sending = file;
             const data = new FormData(); data.append('csrf_token', csrf); data.append('message', text);
             if (threadId) data.append('thread_id', threadId);
-            welcome.hidden = true; messages.append(make('p', 'pzw-message is-user', text));
-            const thinking = make('p', 'pzw-thinking', 'Pezinho está pensando...'); messages.append(thinking); scroll();
-            input.value = ''; grow(); setBusy(true);
+            if (sending) data.append('photo', sending, sending.name);
+            welcome.hidden = true;
+            const mine = make('div', 'pzw-message is-user');
+            if (text) mine.append(make('p', 'pzw-message-text', text));
+            if (sending) mine.append(make('span', 'pzw-file', sending.name));
+            messages.append(mine);
+            const thinking = thinkingRow(); messages.append(thinking); scroll();
+            input.value = ''; grow(); setFile(null); setBusy(true);
             try { render(await request('/mobile/assistente/pezinho', {method: 'POST', body: data})); restored = true; }
-            catch (error) { thinking.remove(); input.value = text; grow(); showError(error.message); }
-            finally { setBusy(false); }
+            catch (error) { mine.remove(); thinking.remove(); input.value = text; grow(); setFile(sending); showError(error.message); }
+            finally { clearInterval(thinkingTimer); setBusy(false); }
         });
     }
 

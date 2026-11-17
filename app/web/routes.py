@@ -21553,16 +21553,32 @@ def pezinho_get_chat(request: Request, thread_id: str = Query(..., max_length=32
 
 
 @router.post("/mobile/assistente/pezinho")
-def pezinho_send_message(request: Request, message: str = Form(..., max_length=600),
+def pezinho_send_message(request: Request, message: str = Form("", max_length=600),
                           csrf_token: str = Form(...), thread_id: str | None = Form(None, max_length=32),
+                          photo: UploadFile | None = File(None),
                           db: Session = Depends(get_db), user: User = Depends(get_current_user_web)):
     validate_csrf(request, csrf_token)
     repo, scope = _pezinho_scope(db, user, request)
-    message = message.strip()
-    if not message:
+    message = message.strip() if isinstance(message, str) else ""
+    has_file = bool(getattr(photo, "filename", None))
+    if not message and not has_file:
         raise HTTPException(status_code=400, detail="Escreva uma mensagem.")
+    image = attachment = attachment_type = None
+    if has_file:
+        mime = (photo.content_type or "").split(";")[0].lower()
+        if mime not in ASSISTANT_PHOTO_TYPES:
+            raise HTTPException(status_code=400, detail="Envie um PDF ou uma imagem JPG, PNG ou WEBP.")
+        data = photo.file.read(ASSISTANT_PHOTO_MAX_BYTES + 1)
+        try:
+            attachment = _new_assistant_attachment(user, scope["active_farm"], scope["active_season"], data, mime, photo.filename)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        image = f"data:{mime};base64,{base64.b64encode(data).decode()}"
+        attachment_type = "pdf" if mime == "application/pdf" else "image"
+        message = message or ("Veja o documento que enviei." if attachment_type == "pdf" else "Veja a foto que enviei.")
     thread = _pezinho_thread(db, user, scope, thread_id) if thread_id else None
-    thread, _ = _assistant_turn(db, user, repo, scope, thread, message)
+    thread, _ = _assistant_turn(db, user, repo, scope, thread, message, image=image,
+                                 attachment_type=attachment_type, attachment=attachment)
     return JSONResponse(_pezinho_thread_payload(db, thread), headers={"Cache-Control": "no-store"})
 
 

@@ -882,3 +882,28 @@ def test_route_carries_partial_launch_to_next_turn(monkeypatch):
     notes = [m["content"] for m in sent[1][0] if m["role"] == "system"]
     assert any("Lançamento de compra em andamento" in note and "tamanho_embalagem=100" in note for note in notes)
     assert sent[1][0][-1] == {"role": "user", "content": "paguei 600"}
+
+
+def test_pezinho_accepts_attachment_without_text(monkeypatch):
+    import io
+    from fastapi import HTTPException, UploadFile
+    from starlette.datastructures import Headers
+    routes, db, user, scope, send, sent, history = _route_env(monkeypatch, ["Li a nota."])
+    seen = []
+    original = routes.run_farm_assistant
+    def run_with_file(ai_history, assistant, image=None):
+        seen.append(image)
+        return original(ai_history, assistant)
+    monkeypatch.setattr(routes, "run_farm_assistant", run_with_file)
+    req = SimpleNamespace(session={})
+    pdf = UploadFile(io.BytesIO(b"%PDF-1.4 nota"), filename="nota.pdf", headers=Headers({"content-type": "application/pdf"}))
+    payload = json.loads(routes.pezinho_send_message(req, message="", csrf_token="x", thread_id=None, photo=pdf,
+                                                    db=db, user=user).body)
+    first = payload["messages"][0]
+    assert first["attachment_name"] == "nota.pdf" and first["content"] == "Veja o documento que enviei."
+    assert payload["messages"][-1]["content"] == "Li a nota."
+    assert seen and seen[0].startswith("data:application/pdf;base64,")
+    fake = UploadFile(io.BytesIO(b"nao e pdf"), filename="x.pdf", headers=Headers({"content-type": "application/pdf"}))
+    with pytest.raises(HTTPException) as exc:
+        routes.pezinho_send_message(req, message="Leia", csrf_token="x", thread_id=None, photo=fake, db=db, user=user)
+    assert exc.value.status_code == 400

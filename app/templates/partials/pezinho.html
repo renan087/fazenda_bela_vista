@@ -49,10 +49,24 @@
         <form class="pzw-form" method="post" action="/mobile/assistente" data-pzw-form>
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
             <label class="sr-only" for="pzw-message">Mensagem para o Pezinho</label>
-            <textarea id="pzw-message" name="message" rows="1" maxlength="600" required placeholder="Escreva para o Pezinho…" data-pzw-input></textarea>
+            <div class="pzw-attach" data-pzw-attach hidden>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/></svg>
+                <span data-pzw-attach-name></span>
+                <button type="button" aria-label="Remover anexo" data-pzw-attach-clear>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>
+                </button>
+            </div>
+            <div class="pzw-compose">
+                <label class="pzw-clip" title="Anexar foto ou PDF">
+                    <input type="file" name="photo" accept="image/jpeg,image/png,image/webp,application/pdf" class="sr-only" data-pzw-file>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 11.5 12.6 20a5.5 5.5 0 0 1-7.8-7.8l8.5-8.5a3.7 3.7 0 0 1 5.2 5.2l-8.5 8.5a1.8 1.8 0 0 1-2.6-2.6L15 7"/></svg>
+                    <span class="sr-only">Anexar foto ou PDF</span>
+                </label>
+            <textarea id="pzw-message" name="message" rows="1" maxlength="600" placeholder="Escreva para o Pezinho…" data-pzw-input></textarea>
             <button type="submit" aria-label="Enviar" data-pzw-send>
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h13M13 6l6 6-6 6"/></svg>
             </button>
+            </div>
         </form>
         {% endif %}
         <footer class="pzw-foot">
@@ -66,4 +80,4 @@
         <span class="pzw-dot" data-pzw-dot {% if not pz.pending %}hidden{% endif %}></span>
     </button>
 </div>
-<script src="{{ url_for('static', path='js/pezinho.js') }}?v=2" defer></script>
+<script src="{{ url_for('static', path='js/pezinho.js') }}?v=3" defer></script>

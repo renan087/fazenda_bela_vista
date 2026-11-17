@@ -6429,6 +6429,13 @@ dialog.db-cost { width: min(70rem, calc(100vw - 2rem)); }
 .pzw-message audio { width: 100%; max-width: 260px; margin-top: .5rem; }
 .pzw-file { display: block; color: #315e2b; margin-top: .5rem; text-decoration: underline; }
 .pzw-thinking, .pzw-error { align-self: flex-start; margin: 0; padding: .55rem .7rem; border-radius: .7rem; background: #f3f6f1; color: #647365; font-size: .8rem; }
+.pzw-thinking { display: inline-flex; align-items: center; gap: .3rem; }
+.pzw-thinking i { flex: none; width: .375rem; height: .375rem; border-radius: 50%; background: #7fa65a; animation: pzw-dot 1s ease-in-out infinite; }
+.pzw-thinking i:nth-child(2) { animation-delay: .15s; }
+.pzw-thinking i:nth-child(3) { animation-delay: .3s; }
+.pzw-thinking span { margin-left: .25rem; transition: opacity .2s; }
+.pzw-thinking span.is-swapping { opacity: 0; }
+@keyframes pzw-dot { 0%, 100% { opacity: .3; transform: translateY(0); } 50% { opacity: 1; transform: translateY(-2px); } }
 .pzw-error { background: #fff2ee; color: #a33726; }
 .pzw-draft { margin-top: .6rem; padding: .7rem; border: 1px solid #c8ddbe; border-radius: .7rem; background: #fff; }
 .pzw-draft-line { margin-top: .15rem; }
@@ -6436,9 +6443,24 @@ dialog.db-cost { width: min(70rem, calc(100vw - 2rem)); }
 .pzw-actions { display: flex; flex-wrap: wrap; gap: .35rem; margin-top: .6rem; }
 .pzw-actions button { border: 1px solid #d3dfd0; border-radius: .55rem; padding: .45rem .6rem; color: #315c29; background: #fff; font-size: .75rem; font-weight: 600; }
 .pzw-actions button.is-primary { color: #fff; background: #446a36; border-color: #446a36; }
-.pzw-form { display: flex; align-items: flex-end; gap: .5rem; margin: 0 1rem; padding: .375rem .375rem .375rem .875rem; border: 1px solid #d6ddd5; border-radius: .875rem; }
+.pzw-form { margin: 0 1rem; padding: .375rem; border: 1px solid #d6ddd5; border-radius: .875rem; background: #fff; }
+.pzw-compose { display: flex; align-items: flex-end; gap: .25rem; }
+.pzw-form textarea:focus, .pzw-form textarea:focus-visible { outline: none !important; box-shadow: none !important; border: 0 !important; --tw-ring-shadow: 0 0 #0000 !important; --tw-ring-offset-shadow: 0 0 #0000 !important; }
+.pzw-clip { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 2.25rem; height: 2.25rem; border-radius: .625rem; color: #5b6660; cursor: pointer; }
+.pzw-clip:hover { background: #f3f5f2; color: #16201a; }
+.pzw-clip:focus-within { outline: 2px solid #9bcb6b; outline-offset: 1px; }
+.pzw-clip svg { width: 1.125rem; height: 1.125rem; }
+.pzw-attach { display: flex; align-items: center; gap: .5rem; margin: .125rem .125rem .375rem; padding: .375rem .375rem .375rem .625rem; border-radius: .625rem; background: #eef3eb; color: #294127; font-size: .78125rem; }
+.pzw-attach[hidden] { display: none; }
+.pzw-attach > svg { flex: none; width: 1rem; height: 1rem; }
+.pzw-attach span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.pzw-form .pzw-attach button { width: 1.75rem; height: 1.75rem; background: transparent; color: #5b6660; }
+.pzw-form .pzw-attach button:hover { background: #dce6d7; color: #16201a; }
+.pzw-form .pzw-attach button svg { width: .875rem; height: .875rem; }
+.pzw-panel.is-drop { outline: 3px dashed #7fa65a; outline-offset: -6px; }
+.pzw-message .pzw-file { display: inline-flex; margin-top: .25rem; font-size: .75rem; font-weight: 600; }
 .pzw-form:focus-within { border-color: #7fa65a; box-shadow: 0 0 0 3px rgba(127, 166, 90, .18); }
-.pzw-form textarea { flex: 1; min-width: 0; min-height: 2.25rem; max-height: 7.5rem; padding: .5rem 0; border: 0; background: transparent; font: inherit; font-size: .875rem; line-height: 1.4; color: #16201a; resize: none; outline: none; box-shadow: none; }
+.pzw-form textarea { flex: 1; min-width: 0; min-height: 2.25rem; max-height: 7.5rem; padding: .5rem .25rem; border: 0; background: transparent; font: inherit; font-size: .875rem; line-height: 1.4; color: #16201a; resize: none; outline: none; box-shadow: none; }
 .pzw-form button { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 2.25rem; height: 2.25rem; border: 0; border-radius: .625rem; background: #446a36; color: #fff; cursor: pointer; }
 .pzw-form button:disabled { opacity: .6; cursor: default; }
 .pzw-form button svg { width: 1.125rem; height: 1.125rem; }
