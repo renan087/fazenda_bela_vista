@@ -28,6 +28,64 @@
         window.visualViewport.addEventListener('scroll', fit);
     }
 
+    // Busca o mesmo detalhe já autorizado e renderizado pelo módulo, sem sair do chat.
+    const recordModal = document.querySelector('[data-as-record-modal]');
+    if (recordModal && typeof recordModal.showModal === 'function') {
+        const recordBody = recordModal.querySelector('[data-as-record-body]');
+        const recordTitle = recordModal.querySelector('[data-as-record-title]');
+        const recordKicker = recordModal.querySelector('[data-as-record-kicker]');
+        const recordSubtitle = recordModal.querySelector('[data-as-record-subtitle]');
+        const recordKinds = {
+            '/insumos/comprados': ['compra', 'purchased-input-view-'],
+            '/insumos/estoque': ['consumo', 'stock-output-table-view-'],
+            '/fertilizacao': ['aplicacao', 'fertilization-view-'],
+            '/producao': ['colheita', 'harvest-view-'],
+        };
+        let activeRequest = null;
+        recordModal.querySelector('[data-as-record-close]').addEventListener('click', () => recordModal.close());
+        recordModal.addEventListener('close', () => { if (activeRequest) activeRequest.abort(); });
+        shell.addEventListener('click', async (event) => {
+            const link = event.target.closest('[data-as-record-link]');
+            if (!link || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+            const url = new URL(link.href, window.location.origin);
+            const kind = recordKinds[url.pathname];
+            const id = url.searchParams.get('assistant_view');
+            if (url.origin !== window.location.origin || !kind || url.searchParams.get('assistant_kind') !== kind[0] || !/^[1-9]\d*$/.test(id || '')) return;
+            event.preventDefault();
+            if (activeRequest) activeRequest.abort();
+            const controller = new AbortController();
+            activeRequest = controller;
+            recordKicker.textContent = 'Detalhes do lançamento';
+            recordTitle.textContent = 'Registro';
+            recordSubtitle.textContent = '';
+            recordBody.textContent = 'Carregando detalhes...';
+            if (!recordModal.open) recordModal.showModal();
+            url.searchParams.set('modal', '1');
+            try {
+                const response = await fetch(url, { credentials: 'same-origin', signal: controller.signal });
+                if (!response.ok || new URL(response.url).pathname !== url.pathname) throw new Error('unavailable');
+                const html = await response.text();
+                if (activeRequest !== controller || !recordModal.open) return;
+                const page = new DOMParser().parseFromString(html, 'text/html');
+                const sourceId = kind[1] + id;
+                const source = page.getElementById(sourceId);
+                const trigger = Array.from(page.querySelectorAll('[data-history-view-trigger]'))
+                    .find((element) => element.dataset.historyViewSource === sourceId);
+                if (!source || !trigger || source.tagName !== 'TEMPLATE') throw new Error('unavailable');
+                recordKicker.textContent = trigger.dataset.historyViewKicker || 'Detalhes do lançamento';
+                recordTitle.textContent = trigger.dataset.historyViewTitle || 'Registro';
+                recordSubtitle.textContent = trigger.dataset.historyViewSubtitle || '';
+                recordBody.replaceChildren(document.importNode(source.content, true));
+            } catch (error) {
+                if (error.name !== 'AbortError' && activeRequest === controller) {
+                    recordBody.textContent = 'Não foi possível abrir o lançamento. Verifique a fazenda, a safra e suas permissões e tente novamente.';
+                }
+            } finally {
+                if (activeRequest === controller) activeRequest = null;
+            }
+        });
+    }
+
     const scroller = $('[data-as-scroll]');
     const hasThread = !shell.querySelector('.as-welcome');
     const toBottom = () => { if (scroller && hasThread) scroller.scrollTop = scroller.scrollHeight; };

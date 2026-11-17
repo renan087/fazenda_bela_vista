@@ -6054,6 +6054,14 @@ dialog.db-cost { width: min(70rem, calc(100vw - 2rem)); }
 .as-record-links > span { flex-basis: 100%; color: var(--as-mute); font-size: 12px; }
 .as-record-links a { display: inline-flex; align-items: center; border: 1px solid #d6e3d1; border-radius: 9px; padding: 7px 10px; color: #3c6633; background: #f5f9f3; font-size: 12px; font-weight: 600; text-decoration: none; }
 .as-record-links a:hover { background: #eaf3e7; }
+.as-record-modal { width: min(92vw, 760px); max-width: none; max-height: min(88dvh, 800px); padding: 0; border: 1px solid #e3e8e2; border-radius: 20px; background: #fff; color: #16201a; box-shadow: 0 24px 70px rgba(16, 24, 20, .2); }
+.as-record-modal::backdrop { background: rgba(15, 23, 20, .5); }
+.as-record-modal-inner { display: flex; flex-direction: column; max-height: min(88dvh, 800px); }
+.as-record-modal-head { display: flex; justify-content: space-between; gap: 16px; padding: 22px 24px; border-bottom: 1px solid #e3e8e2; }
+.as-record-modal-head span { color: #7a857e; font-size: 11px; text-transform: uppercase; letter-spacing: .08em; }
+.as-record-modal-head h2 { margin: 4px 0; font-size: 20px; font-weight: 700; }
+.as-record-modal-head p { margin: 0; color: #718077; font-size: 13px; }
+.as-record-modal-body { overflow-y: auto; overscroll-behavior: contain; padding: 20px 24px 24px; }
 .as-readonly { padding: 14px 24px; border-top: 1px solid var(--as-line); color: #46643c; background: #f3f7f1; font-size: 13px; text-align: center; }
 .as-threads-expand { display: none; }
 .as-empty-list { padding: 18px 10px; font-size: 13px; color: var(--as-faint); }
