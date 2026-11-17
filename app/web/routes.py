@@ -21202,6 +21202,68 @@ def prepare_stock_assistant_action(
     return _redirect(_assistant_url(thread.id))
 
 
+def _assistant_record_followup(db, user, farm, season, history, message):
+    """Retoma referencias do proprio historico, sem inventar identificadores."""
+    from app.services.whatsapp_record_access import RECORD_MODELS, RECORD_PERMISSIONS, _record_in_scope
+
+    text = " ".join(re.sub(r"[.,!?;:]+", " ", normalized(message)).split())
+    if re.search(r"\b(alterar|altere|editar|edite|corrigir|corrija|excluir|exclua|apagar)\b", text):
+        return None
+    mentions_link = bool(re.search(r"\b(link|atalho)\b", text))
+    action = bool(re.search(r"\b(gere|gerar|gera|regerar|renove|renovar|crie|criar|envie|enviar|envia|mande|manda|reenvie|reenvia|reenviar|novamente|novo|expirou|expirado|venceu|vencido|abrir|ver)\b", text))
+    short_repeat = bool(re.fullmatch(r"(?:por favor )?(?:me )?(?:envie|envia|mande|manda|mostre|mostra) (?:de novo|novamente)(?: por favor)?", text))
+    short_reference = bool(re.fullmatch(r"(?:esse|este|aquele|o anterior)(?: lancamento| registro)?", text))
+    if not ((mentions_link and action) or short_repeat or short_reference):
+        return None
+    entries = [entry for entry in history[-20:] if entry.get("role") == "assistant" and not entry.get("error")]
+    if not entries:
+        return None
+    # Pedidos sem a palavra link precisam apontar para a resposta imediatamente anterior.
+    candidates = entries if mentions_link else entries[-1:]
+    references = None
+    for entry in reversed(candidates):
+        if entry.get("record_access_id"):
+            access = db.query(WhatsAppRecordAccess).filter_by(
+                id=entry["record_access_id"], user_id=user.id, organization_id=user.organization_id,
+                farm_id=farm.id, season_id=season.id).first()
+            if access:
+                original = next((ref for ref in entry.get("record_references", [])
+                                 if isinstance(ref, dict) and ref.get("kind") == access.kind and ref.get("id") == access.record_id), None)
+                references = [original or {"kind": access.kind, "id": access.record_id, "label": "", "date": ""}]
+                break
+        if entry.get("record_references"):
+            references = entry["record_references"]
+            break
+    if references is None:
+        return None
+    subject = re.search(
+        r"\b(?:de|do|da|para)\s+(?!(?:o|a|os|as|novo|novamente|link|atalho|lancamento|registro|anterior|ultimo|ultima|mesmo|mesma|este|esse|esta|essa|que|mim)\b)([a-z0-9-]+)",
+        text,
+    )
+    if subject:
+        matching = [ref for ref in references if isinstance(ref, dict) and subject.group(1) in normalized(str(ref.get("label") or ""))]
+        if not matching:
+            return None
+        references = matching
+    permissions = permission_codes_for_user(db, user)
+    entitlements = _entitlements_for(db, user)
+    valid = []
+    for ref in references[:15]:
+        if not isinstance(ref, dict):
+            continue
+        kind, record_id = ref.get("kind"), ref.get("id")
+        model, page = RECORD_MODELS.get(kind), RECORD_PERMISSIONS.get(kind)
+        if not model or isinstance(record_id, bool) or not isinstance(record_id, int) or record_id < 1:
+            continue
+        if page not in permissions or not entitlements.module_allowed(page):
+            continue
+        record = db.get(model, record_id)
+        if record and _record_in_scope(record, kind, farm, season):
+            valid.append({"kind": kind, "id": record_id, "label": str(ref.get("label") or "")[:120],
+                          "date": str(ref.get("date") or "")[:10]})
+    return valid
+
+
 def _assistant_turn(db, user, repo, scope, thread, message, *, image=None, attachment_type=None, title_prefix="", audio=None, attachment=None):
     """Um turno do assistente (web e WhatsApp): roda o agente, salva a conversa e devolve (thread, resposta)."""
     farm, season = scope["active_farm"], scope["active_season"]
@@ -21239,7 +21301,7 @@ def _assistant_turn(db, user, repo, scope, thread, message, *, image=None, attac
 
     assistant_ref = {}
 
-    def reply(text, *, error=False, tools=None, draft=None):
+    def reply(text, *, error=False, tools=None, draft=None, references=None):
         agent = assistant_ref.get("agent")
         item = {"role": "assistant", "content": text[:4000 if getattr(agent, "invoice", None) else 600], "at": _assistant_now_iso()}
         if not error and not draft and len(credit_cards) > 1:
@@ -21260,6 +21322,8 @@ def _assistant_turn(db, user, repo, scope, thread, message, *, image=None, attac
                 key=lambda ref: (ref.get("date", "")[6:10], ref.get("date", "")[3:5], ref.get("date", "")[:2]),
                 reverse=True,
             )[:15]
+        elif not error and references:
+            item["record_references"] = references[:15]
         if not error and getattr(agent, "invoice", None):
             item["invoice"] = agent.invoice
         if not error and getattr(agent, "seen", None):
@@ -21541,6 +21605,14 @@ def _assistant_turn(db, user, repo, scope, thread, message, *, image=None, attac
         repo=repo, farm=farm, season=season, plots=plots, today=today_in_app_timezone(),
         allowed=lambda page: page in permission_codes and entitlements.module_allowed(page),
     )
+    if not image and not attachment:
+        prior = _assistant_record_followup(db, user, farm, season, history[:-1], message)
+        if prior is not None:
+            if not prior:
+                return reply("Não consegui acessar os registros anteriores. Confira a fazenda, a safra e suas permissões, ou faça uma nova consulta.")
+            if len(prior) == 1:
+                return reply("Encontrei o lançamento anterior. Você pode consultá-lo novamente.", references=prior)
+            return reply("Encontrei mais de um lançamento anterior. Escolha qual deseja consultar.", references=prior)
     pending_memory = None
     if pending_draft:
         if pending_draft.kind == "compra":

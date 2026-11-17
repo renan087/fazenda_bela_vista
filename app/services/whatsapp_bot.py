@@ -409,7 +409,8 @@ def _handle(db, row, client) -> str | None:
         routes._save_thread(db, thread, history + [
             {"role": "user", "content": text, "at": routes._assistant_now_iso()},
             {"role": "assistant", "content": "Link de consulta enviado." if issued else response,
-             **({"record_access_id": issued[1]} if issued else {}), "at": routes._assistant_now_iso()},
+             **({"record_access_id": issued[1], "record_references": [pending_choices[index]]} if issued else {}),
+             "at": routes._assistant_now_iso()},
         ])
         client.send_text(row.wa_id, response)
         return None
