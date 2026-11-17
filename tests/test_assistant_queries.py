@@ -91,7 +91,7 @@ def test_assistant_pagination_targets_only_records_in_scoped_collection():
 def test_tools_respect_permissions():
     names = lambda q: {schema["function"]["name"] for schema, _ in q.tools()}
     only_rain = names(_queries(lambda page: page == PAGE_RAINFALL))
-    assert only_rain == {"resumo_safra", "consultar_chuva", "consultar_previsao_tempo"}
+    assert only_rain == {"consultar_chuva", "consultar_previsao_tempo"}
     assert "consultar_financeiro" in names(_queries(lambda page: page in {PAGE_FINANCE, PAGE_INPUTS}))
 
 

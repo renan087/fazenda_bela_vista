@@ -21604,6 +21604,7 @@ def _assistant_turn(db, user, repo, scope, thread, message, *, image=None, attac
     queries = AssistantQueries(
         repo=repo, farm=farm, season=season, plots=plots, today=today_in_app_timezone(),
         allowed=lambda page: page in permission_codes and entitlements.module_allowed(page),
+        allow_system_backup=_user_in_default_organization(user), allow_org_admin=is_super_admin_email(user.email),
     )
     if not image and not attachment:
         prior = _assistant_record_followup(db, user, farm, season, history[:-1], message)
