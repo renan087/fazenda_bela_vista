@@ -38,7 +38,10 @@
     const openThreads = (open) => {
         shell.classList.toggle('is-threads-open', open);
         if (scrim) scrim.hidden = !open;
-        if (open) { const s = $('[data-as-search]'); if (s) s.focus({ preventScroll: true }); }
+        if (open && window.matchMedia('(min-width: 768px) and (pointer: fine)').matches) {
+            const s = $('[data-as-search]');
+            if (s) s.focus({ preventScroll: true });
+        }
     };
     $$('[data-as-threads-open]').forEach((b) => b.addEventListener('click', () => openThreads(true)));
     $$('[data-as-threads-close]').forEach((b) => b.addEventListener('click', () => openThreads(false)));

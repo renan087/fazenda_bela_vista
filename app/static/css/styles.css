@@ -6538,7 +6538,7 @@ dialog.db-cost { width: min(70rem, calc(100vw - 2rem)); }
 .as-filter button[aria-pressed="true"] { background: #fff; color: #16201a; box-shadow: 0 1px 3px rgba(22, 32, 26, .12); }
 .as-filter em { min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: #d18a00; color: #fff; font-style: normal; font-size: 11px; display: inline-flex; align-items: center; justify-content: center; }
 .as-cv { display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px; }
-.as-cv-ico { flex: none; width: 28px; height: 28px; border-radius: 9px; background: #f3f5f2; color: #5b6660; display: inline-flex; align-items: center; justify-content: center; }
+.as-cv .as-cv-ico { flex: none; width: 28px; height: 28px; margin-top: 0; border-radius: 9px; background: #f3f5f2; color: #5b6660; display: inline-flex; align-items: center; justify-content: center; }
 .as-cv-ico.is-wa { background: #e7f7ee; color: #147a43; }
 .as-cv.is-active .as-cv-ico { background: #fff; }
 .as-cv-text { flex: 1; min-width: 0; }
