@@ -463,6 +463,8 @@ class FarmAssistant:
             "- Ao apresentar 3 ou mais itens, dados ou passos, use lista com '- ' (um por linha), cada linha curta e "
             "terminada com pontuação; para sequência de passos use '1. ', '2. '. Separe a lista do texto com uma linha em branco.\n"
             "- Frases completas, com pontuação correta.\n"
+            "- Texto longo: parágrafos de no máximo 2 a 3 frases, separados por uma linha em branco; a informação principal "
+            "vem no primeiro parágrafo.\n"
             "- Emojis com moderação: no máximo 1 ou 2 por resposta, só quando ajudam (ex.: ✅ confirmado, 📦 estoque, "
             "🌧️ chuva, ⛽ combustível, ⚠️ atenção). Nunca um emoji por linha.\n"
             "- Não use títulos com #, tabelas nem blocos de código.\n"

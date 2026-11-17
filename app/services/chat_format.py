@@ -15,6 +15,23 @@ _NUMBERED = re.compile(r"^\s*\d{1,2}[.)]\s+(.*)$")
 _HEADING = re.compile(r"^\s*#{1,6}\s+(.*)$")
 
 
+_SENTENCE_END = re.compile(r"(?<=[.!?])\s+(?=[\"'(*]*[A-ZÁÂÃÉÊÍÓÔÕÚÇ0-9])")
+LONG_BLOCK = 240
+SENTENCES_PER_PARAGRAPH = 2
+
+
+def paragraphs(text: str | None) -> str:
+    """Bloco longo sem nenhuma quebra vira paragrafos de 2 frases (valores como 1.250,00 nao quebram)."""
+    text = (text or "").strip()
+    if "\n" in text or len(text) < LONG_BLOCK:
+        return text
+    sentences = _SENTENCE_END.split(text)
+    if len(sentences) < 3:
+        return text
+    return "\n\n".join(" ".join(sentences[i:i + SENTENCES_PER_PARAGRAPH])
+                       for i in range(0, len(sentences), SENTENCES_PER_PARAGRAPH))
+
+
 def _inline(text: str) -> str:
     return _BOLD.sub(lambda m: f"<strong>{m.group(1)}</strong>", str(escape(text)))
 
@@ -36,7 +53,7 @@ def to_html(text: str | None) -> Markup:
             out.append(_inline("\n".join(plain)))
             plain.clear()
 
-    for line in (text or "").strip().splitlines():
+    for line in paragraphs(text).splitlines():
         bullet, numbered = _BULLET.match(line), _NUMBERED.match(line)
         match, tag = (bullet, "ul") if bullet else (numbered, "ol") if numbered else (None, None)
         if match:
@@ -57,7 +74,7 @@ def to_html(text: str | None) -> Markup:
 def to_whatsapp(text: str | None) -> str:
     """WhatsApp usa *negrito* com um asterisco e nao tem titulos; listas viram '• '."""
     lines = []
-    for line in (text or "").splitlines():
+    for line in paragraphs(text).splitlines():
         heading = _HEADING.match(line)
         if heading:
             line = f"**{heading.group(1)}**"

@@ -17,3 +17,15 @@ def test_html_heading_becomes_bold_and_plain_text_kept():
 def test_whatsapp_uses_single_asterisk_and_bullets():
     assert to_whatsapp("Lancei **100 L** de **Diesel S10**.\n- item um\n## Total") == \
         "Lancei *100 L* de *Diesel S10*.\n• item um\n*Total*"
+
+
+def test_long_block_is_split_into_paragraphs_without_breaking_numbers():
+    from app.services.chat_format import paragraphs
+    text = ("O saldo do Diesel S10 é de 1.250,00 L na fazenda. A última compra foi em 10/11/2026 por R$ 6,15 o litro. "
+            "Desde então houve três saídas para os tratores da colheita. O consumo médio ficou em 85 L por dia. "
+            "Se continuar assim, o estoque dura cerca de duas semanas.")
+    result = paragraphs(text)
+    assert result.count("\n\n") == 2
+    assert "1.250,00 L" in result and "R$ 6,15" in result
+    assert paragraphs("Curto. Texto. Aqui.") == "Curto. Texto. Aqui."
+    assert paragraphs("Já tem\nquebra. " + "x" * 300) == "Já tem\nquebra. " + "x" * 300
