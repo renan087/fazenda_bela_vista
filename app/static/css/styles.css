@@ -6054,6 +6054,8 @@ dialog.db-cost { width: min(70rem, calc(100vw - 2rem)); }
 .as-record-links > span { flex-basis: 100%; color: var(--as-mute); font-size: 12px; }
 .as-record-links a { display: inline-flex; align-items: center; border: 1px solid #d6e3d1; border-radius: 9px; padding: 7px 10px; color: #3c6633; background: #f5f9f3; font-size: 12px; font-weight: 600; text-decoration: none; }
 .as-record-links a:hover { background: #eaf3e7; }
+.as-shared-link { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; margin-top: 10px; color: #61745e; font-size: 12px; }
+.as-shared-link button { color: #a23b2b; font-weight: 600; text-decoration: underline; }
 .as-record-links a[hidden], .as-record-pagination[hidden], .as-record-pagination button[hidden] { display: none; }
 .as-record-group { margin-top: 12px; max-width: 520px; border: 1px solid #dce7d8; border-radius: 12px; background: #f8fbf7; }
 .as-record-group summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 11px 13px; color: #315b2c; cursor: pointer; list-style: none; }

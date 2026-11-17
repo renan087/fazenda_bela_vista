@@ -23,7 +23,7 @@
     <small>SISFARM · PEZINHO</small>
     {% if state == 'confirm' %}
     <h1>Consultar lançamento</h1>
-    <p>Este link permite visualizar um único lançamento. Confirme para continuar; o link poderá ser usado uma vez.</p>
+    <p>Este link permite visualizar um único lançamento. Ele pode ser compartilhado e fica disponível por até 48 horas, salvo revogação.</p>
     <form method="post" action="/acesso-whatsapp/registro">
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
         <input type="hidden" name="token" id="access-token">
@@ -47,7 +47,7 @@
     <h1>{{ title }}</h1><p>Visualização do lançamento · acesso somente de leitura</p>
     <dl>{% for label, value in fields %}<div><dt>{{ label }}</dt><dd>{% if value is none %}Não informado{% elif value.strftime is defined %}{{ value.strftime('%d/%m/%Y') }}{% else %}{{ value }}{% endif %}</dd></div>{% endfor %}</dl>
     {% else %}
-    <h1>Link indisponível</h1><p>O link pode ter expirado, já ter sido usado ou o acesso não estar mais disponível. Solicite outro ao Pezinho pelo WhatsApp.</p>
+    <h1>Link indisponível</h1><p>O link pode ter expirado, sido revogado ou o acesso não estar mais disponível. Solicite outro ao Pezinho pelo WhatsApp.</p>
     {% endif %}
 </section></main>
 </body>

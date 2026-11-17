@@ -174,6 +174,16 @@
                         <div class="as-who">Pezinho<span>{{ m.time }}</span></div>
                         {% if m.tools %}<details class="as-steps"><summary><i>{{ ic('check', 11, 3) }}</i>{{ m.tools|length }} {{ 'etapa concluída' if m.tools|length == 1 else 'etapas concluídas' }}{{ ic('chevd', 14) }}</summary><ul>{% for t in m.tools %}<li>{{ t }}</li>{% endfor %}</ul></details>{% endif %}
                         <div class="as-txt{% if m.error %} as-txt-err{% endif %}" data-as-text>{{ m.content|chat_html }}</div>
+                        {% if m.record_access_id and thread_channel == 'whatsapp' %}
+                        <div class="as-shared-link">
+                            <span>{% if m.record_access_state == 'ativo' %}Link compartilhável ativo · expira em {{ m.record_access_expires }}{% elif m.record_access_state == 'expirado' %}Link compartilhável expirado{% else %}Link compartilhável indisponível{% endif %}</span>
+                            {% if m.record_access_state == 'ativo' %}
+                            <form method="post" action="/mobile/assistente/conversa/{{ thread_id }}/link/{{ m.record_access_id }}/revogar" data-as-confirm="Revogar este link? Quem o recebeu perderá o acesso ao lançamento.">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button type="submit">Revogar link</button>
+                            </form>
+                            {% endif %}
+                        </div>
+                        {% endif %}
                         {% if m.record_references and thread_channel != 'whatsapp' %}
                         {% set multiple_records = m.record_references|length > 1 %}
                         {% if multiple_records %}

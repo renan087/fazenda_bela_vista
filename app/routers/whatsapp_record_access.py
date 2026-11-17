@@ -1,4 +1,4 @@
-"""Visualizacao restrita de um registro por link de uso unico do WhatsApp."""
+"""Visualizacao restrita de um registro por link temporario do WhatsApp."""
 import secrets
 
 from fastapi import APIRouter, Depends, Form, Request
@@ -6,7 +6,7 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
-from app.services.whatsapp_record_access import (attempts_blocked, authorized_record, consume_token, find_token,
+from app.services.whatsapp_record_access import (attempts_blocked, authorized_record, find_token,
                                                   register_failed_attempt)
 
 router = APIRouter()
@@ -56,12 +56,12 @@ def open_record(request: Request, token: str = Form("", max_length=64), csrf_tok
     ip = request.client.host if request.client else "unknown"
     if attempts_blocked(ip):
         return _response(request, state="unavailable", status_code=429)
-    access = find_token(db, token)
+    access = find_token(db, token, lock=True)
     if not access:
         register_failed_attempt(ip)
         return _response(request, state="unavailable", status_code=410)
     record = authorized_record(db, access)
-    if not record or not consume_token(db, token):
+    if not record:
         db.rollback()
         register_failed_attempt(ip)
         return _response(request, state="unavailable", status_code=410)

@@ -232,7 +232,7 @@ def send_assistant_reply(client: WhatsAppClient, wa_id: str, item: dict, *, repl
 def _record_link(db, link, reference):
     """Emite somente apos revalidar vinculo, autorizacao e escopo do registro."""
     from app.core.config import get_settings
-    from app.services.whatsapp_record_access import RECORD_KINDS, authorized_record, create_token, link_binding
+    from app.services.whatsapp_record_access import RECORD_KINDS, authorized_record, create_token, find_token, link_binding
 
     kind, record_id = reference.get("kind"), reference.get("id")
     if kind not in RECORD_KINDS or isinstance(record_id, bool) or not isinstance(record_id, int) or record_id < 1:
@@ -245,8 +245,10 @@ def _record_link(db, link, reference):
     if configured.scheme != "https" or not configured.netloc or configured.username or configured.password or configured.query or configured.fragment:
         return None
     token = create_token(db, link=link, kind=kind, record_id=record_id)
+    db.flush()
+    access_id = find_token(db, token).id
     db.commit()
-    return f"{configured.scheme}://{configured.netloc}/acesso-whatsapp/registro#{token}"
+    return f"{configured.scheme}://{configured.netloc}/acesso-whatsapp/registro#{token}", access_id
 
 
 def _record_choice_text(references):
@@ -400,13 +402,14 @@ def _handle(db, row, client) -> str | None:
         if index < 0 or index >= len(pending_choices):
             client.send_text(row.wa_id, "Esse número não está na lista. " + _record_choice_text(pending_choices))
             return None
-        url = _record_link(db, link, pending_choices[index])
-        response = ("Aqui está o link para consultar o lançamento. Ele vale por 15 minutos e pode ser usado uma vez:\n" + url
-                    if url else "Não foi possível acessar esse lançamento. Verifique suas permissões ou faça uma nova consulta.")
+        issued = _record_link(db, link, pending_choices[index])
+        response = ("Aqui está o link para consultar o lançamento. Ele pode ser compartilhado e vale por até 48 horas:\n" + issued[0]
+                    if issued else "Não foi possível acessar esse lançamento. Verifique suas permissões ou faça uma nova consulta.")
         # O token nao e salvo no historico persistente da conversa.
         routes._save_thread(db, thread, history + [
             {"role": "user", "content": text, "at": routes._assistant_now_iso()},
-            {"role": "assistant", "content": "Link de consulta enviado." if url else response, "at": routes._assistant_now_iso()},
+            {"role": "assistant", "content": "Link de consulta enviado." if issued else response,
+             **({"record_access_id": issued[1]} if issued else {}), "at": routes._assistant_now_iso()},
         ])
         client.send_text(row.wa_id, response)
         return None
@@ -458,9 +461,13 @@ def _handle(db, row, client) -> str | None:
     references = item.get("record_references") or []
     if references and not item.get("draft") and not item.get("error"):
         if len(references) == 1:
-            url = _record_link(db, link, references[0])
-            if url:
-                response_item["content"] = (item.get("content") or "") + "\n\nConsultar lançamento (link válido por 15 minutos e de uso único):\n" + url
+            issued = _record_link(db, link, references[0])
+            if issued:
+                history = routes._thread_messages(thread)
+                if history:
+                    history[-1]["record_access_id"] = issued[1]
+                    routes._save_thread(db, thread, history)
+                response_item["content"] = (item.get("content") or "") + "\n\nConsultar lançamento (link compartilhável, válido por até 48 horas):\n" + issued[0]
         else:
             history = routes._thread_messages(thread)
             if history:

@@ -43,7 +43,7 @@ class WhatsAppInboundMessage(Base):
 
 
 class WhatsAppRecordAccess(Base):
-    """Referencia temporaria, de uso unico, para consulta de um unico registro."""
+    """Referencia temporaria e revogavel para consulta de um unico registro."""
 
     __tablename__ = "whatsapp_record_access"
 

@@ -134,7 +134,7 @@ def test_record_choices_issue_only_selected_link_without_storing_token(monkeypat
         return thread, item
 
     monkeypatch.setattr(routes, "_assistant_turn", fake_turn)
-    monkeypatch.setattr(whatsapp_bot, "_record_link", lambda db, link, ref: issued.append(ref["id"]) or "https://app.sisfarm.com.br/acesso-whatsapp/registro#secret")
+    monkeypatch.setattr(whatsapp_bot, "_record_link", lambda db, link, ref: (issued.append(ref["id"]) or "https://app.sisfarm.com.br/acesso-whatsapp/registro#secret", 123))
     _receive(db, client, _payload("5535999", "query-choice", "mostre compras"))
     assert "1. Compra · Diesel" in client.sent[-1][2] and "2. Compra · Gasolina" in client.sent[-1][2]
     assert issued == []
@@ -162,10 +162,10 @@ def test_record_link_revalidates_permissions_and_whatsapp_link(monkeypatch):
     monkeypatch.setattr(routes, "permission_codes_for_user", lambda db, user: {PAGE_INPUTS})
     monkeypatch.setattr(routes, "_entitlements_for", lambda db, user: SimpleNamespace(module_allowed=lambda page: True))
     assert whatsapp_record_access.authorized_record(db, access).id == record.id
-    url = whatsapp_bot._record_link(db, link, {"kind": "compra", "id": record.id})
+    url, access_id = whatsapp_bot._record_link(db, link, {"kind": "compra", "id": record.id})
     assert url.startswith("https://") and "/acesso-whatsapp/registro#" in url
     issued = whatsapp_record_access.find_token(db, url.rsplit("#", 1)[1])
-    assert issued is not None and whatsapp_record_access.authorized_record(db, issued).id == record.id
+    assert issued is not None and issued.id == access_id and whatsapp_record_access.authorized_record(db, issued).id == record.id
     monkeypatch.setattr(routes, "permission_codes_for_user", lambda db, user: set())
     assert whatsapp_record_access.authorized_record(db, access) is None
     monkeypatch.setattr(routes, "permission_codes_for_user", lambda db, user: {PAGE_INPUTS})
@@ -175,6 +175,32 @@ def test_record_link_revalidates_permissions_and_whatsapp_link(monkeypatch):
     link.verified_at = original_verified
     link.wa_id = None
     assert whatsapp_record_access.authorized_record(db, access) is None
+
+
+def test_revoke_link_requires_owning_conversation(monkeypatch):
+    from datetime import datetime, timezone
+    from uuid import uuid4
+    from app.models.whatsapp import WhatsAppRecordAccess
+    from app.services.whatsapp_record_access import create_token, find_token
+    _settings(monkeypatch)
+    routes, db, user, scope, *_ = _route_env(monkeypatch, [])
+    client = FakeClient()
+    code = whatsapp_bot.start_link(db, user, scope["active_farm"], scope["active_season"])
+    _receive(db, client, _payload("5535999", "link-revoke", f"SISFARM {code}"))
+    link = db.query(WhatsAppLink).one()
+    token = create_token(db, link=link, kind="compra", record_id=1)
+    db.flush()
+    access = db.query(WhatsAppRecordAccess).one()
+    now = datetime.now(timezone.utc)
+    thread = routes.AssistantThread(id=uuid4().hex, user_id=user.id, organization_id=user.organization_id,
+                                    farm_id=link.farm_id, season_id=link.season_id, channel="whatsapp",
+                                    title="WhatsApp · Consulta", created_at=now, updated_at=now)
+    routes._save_thread(db, thread, [{"role": "assistant", "content": "Link enviado", "record_access_id": access.id}])
+    with pytest.raises(HTTPException) as error:
+        routes.revoke_assistant_record_link(SimpleNamespace(session={}), uuid4().hex, access.id, "csrf", db, user)
+    assert error.value.status_code == 404 and find_token(db, token) is not None
+    response = routes.revoke_assistant_record_link(SimpleNamespace(session={}), thread.id, access.id, "csrf", db, user)
+    assert response.status_code == 303 and find_token(db, token) is None
 
 
 def test_link_chat_confirm_and_isolation(monkeypatch):

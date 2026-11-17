@@ -39,7 +39,7 @@ from app.core.config import get_settings
 from app.models.assistant_thread import AssistantThread
 from app.models.assistant_audio import AssistantAudio
 from app.models.assistant_attachment import AssistantAttachment
-from app.models.whatsapp import WhatsAppLink
+from app.models.whatsapp import WhatsAppLink, WhatsAppRecordAccess
 from app.services import whatsapp_bot
 from app.services.whatsapp import is_configured as whatsapp_is_configured, mask_phone
 from app.services.chat_format import to_html as chat_to_html
@@ -20792,9 +20792,14 @@ def _assistant_thread_channel(thread):
 
 
 def _save_thread(db, thread, messages):
-    # Preserve attachment messages even when the normal conversation window is trimmed.
+    # Keep attachments and still-active share links accessible beyond the normal window.
     cutoff = max(0, len(messages) - ASSISTANT_MAX_MESSAGES)
-    kept = [entry for index, entry in enumerate(messages) if index >= cutoff or entry.get("attachment_id")]
+    old_link_ids = [entry["record_access_id"] for entry in messages[:cutoff] if isinstance(entry.get("record_access_id"), int)]
+    active_links = {row[0] for row in db.query(WhatsAppRecordAccess.id).filter(
+        WhatsAppRecordAccess.id.in_(old_link_ids), WhatsAppRecordAccess.consumed_at.is_(None),
+        WhatsAppRecordAccess.expires_at > datetime.now(timezone.utc)).all()} if old_link_ids else set()
+    kept = [entry for index, entry in enumerate(messages) if index >= cutoff or entry.get("attachment_id")
+            or entry.get("record_access_id") in active_links]
     thread.messages_json = json.dumps(kept, ensure_ascii=False, default=str)
     thread.updated_at = datetime.now(timezone.utc)
     db.add(thread)
@@ -20861,9 +20866,20 @@ def _assistant_view_messages(db, messages):
     attachment_ids = [item.get("attachment_id") for item in messages if item.get("attachment_id")]
     attachments = {row.id: row.filename for row in db.query(AssistantAttachment.id, AssistantAttachment.filename)
                    .filter(AssistantAttachment.id.in_(attachment_ids)).all()} if attachment_ids else {}
+    record_ids = [item.get("record_access_id") for item in messages if isinstance(item.get("record_access_id"), int)]
+    record_links = {row.id: row for row in db.query(WhatsAppRecordAccess).filter(
+        WhatsAppRecordAccess.id.in_(record_ids)).all()} if record_ids else {}
     for index, item in enumerate(messages):
         local = _assistant_local(item.get("at"))
         entry = {**item, "index": index, "time": local.strftime("%H:%M") if local else ""}
+        if item.get("record_access_id"):
+            access = record_links.get(item["record_access_id"])
+            expires = access.expires_at if access else None
+            if expires and expires.tzinfo is None:
+                expires = expires.replace(tzinfo=timezone.utc)
+            entry["record_access_state"] = ("revogado" if not access or access.consumed_at else
+                                            "expirado" if expires <= datetime.now(timezone.utc) else "ativo")
+            entry["record_access_expires"] = expires.astimezone(get_app_timezone()).strftime("%d/%m/%Y %H:%M") if expires else ""
         if item.get("audio_id") and item["audio_id"] not in available:
             entry["audio_id"] = None
             entry["audio_removed"] = True
@@ -20877,6 +20893,22 @@ def _assistant_view_messages(db, messages):
             entry["draft"] = {**item["draft"], "state": _assistant_draft_state(db, item["draft"])}
         view.append(entry)
     return view
+
+
+@router.post("/mobile/assistente/conversa/{thread_id}/link/{access_id}/revogar")
+def revoke_assistant_record_link(request: Request, thread_id: str, access_id: int,
+                                 csrf_token: str = Form(...), db: Session = Depends(get_db),
+                                 user: User = Depends(get_current_user_web)):
+    from app.services.whatsapp_record_access import revoke_access
+
+    validate_csrf(request, csrf_token)
+    scope = _global_scope_context(request, _repository(db), user)
+    thread = _assistant_thread(db, user, scope, thread_id)
+    if not thread or not any(entry.get("record_access_id") == access_id for entry in _thread_messages(thread)):
+        raise HTTPException(status_code=404)
+    revoke_access(db, access_id, user.id, user.organization_id)
+    db.commit()
+    return _redirect(_assistant_url(thread_id))
 
 
 @router.get("/mobile/assistente")

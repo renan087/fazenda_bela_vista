@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
 from app.models.whatsapp import WhatsAppRecordAccess
-from app.services.whatsapp_record_access import _record_in_scope, consume_token, create_token
+from app.services.whatsapp_record_access import _record_in_scope, create_token, find_token, revoke_access
 
 
 @pytest.fixture
@@ -25,23 +25,27 @@ def link():
                            wa_id="5511999999999", verified_at=datetime(2026, 1, 1, tzinfo=timezone.utc))
 
 
-def test_token_is_hashed_and_consumed_once(db, link):
+def test_token_is_hashed_reusable_and_revocable(db, link):
     now = datetime(2026, 11, 17, tzinfo=timezone.utc)
     token = create_token(db, link=link, kind="compra", record_id=10, now=now)
     db.flush()
     row = db.query(WhatsAppRecordAccess).one()
     assert token not in row.token_hash
-    result = consume_token(db, token, now=now)
+    result = find_token(db, token, now=now)
     assert result.id == row.id and result.record_id == 10
-    assert consume_token(db, token, now=now) is None
+    assert find_token(db, token, now=now) is not None
+    assert not revoke_access(db, row.id, 999, link.organization_id, now=now)
+    assert revoke_access(db, row.id, link.user_id, link.organization_id, now=now)
+    assert find_token(db, token, now=now) is None
 
 
 def test_token_expires_and_invalid_tokens_are_rejected(db, link):
     now = datetime(2026, 11, 17, tzinfo=timezone.utc)
     token = create_token(db, link=link, kind="consumo", record_id=1, now=now)
     db.flush()
-    assert consume_token(db, token, now=now + timedelta(minutes=15)) is None
-    assert consume_token(db, "inválido", now=now) is None
+    assert find_token(db, token, now=now + timedelta(hours=47, minutes=59)) is not None
+    assert find_token(db, token, now=now + timedelta(hours=48)) is None
+    assert find_token(db, "inválido", now=now) is None
     with pytest.raises(ValueError):
         create_token(db, link=link, kind="desconhecido", record_id=1, now=now)
 
@@ -74,7 +78,7 @@ def test_consumption_scope_allows_general_use_but_rejects_other_context():
     assert not _record_in_scope(record, "consumo", farm, season)
 
 
-def test_confirmation_does_not_consume_token_and_post_is_single_use(db, link, monkeypatch):
+def test_confirmation_does_not_consume_token_and_post_is_reusable(db, link, monkeypatch):
     import re
     from starlette.requests import Request
     from app.routers import whatsapp_record_access as controller
@@ -95,6 +99,10 @@ def test_confirmation_does_not_consume_token_and_post_is_single_use(db, link, mo
     opened = controller.open_record(request, token, csrf, db)
     assert opened.status_code == 200 and "Ureia" in opened.body.decode()
     assert opened.headers["cache-control"] == "no-store"
+    confirmation = controller.record_confirmation(request)
+    csrf = re.search(r'name="csrf_token" value="([^"]+)"', confirmation.body.decode()).group(1)
+    assert controller.open_record(request, token, csrf, db).status_code == 200
+    assert revoke_access(db, db.query(WhatsAppRecordAccess).one().id, link.user_id, link.organization_id)
     confirmation = controller.record_confirmation(request)
     csrf = re.search(r'name="csrf_token" value="([^"]+)"', confirmation.body.decode()).group(1)
     assert controller.open_record(request, token, csrf, db).status_code == 410

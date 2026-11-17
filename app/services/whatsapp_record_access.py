@@ -18,7 +18,7 @@ from app.models.user import User
 from app.models.whatsapp import WhatsAppLink
 from app.models.whatsapp import WhatsAppRecordAccess
 
-TOKEN_LIFETIME = timedelta(minutes=15)
+TOKEN_LIFETIME = timedelta(hours=48)
 RECORD_KINDS = frozenset({"compra", "consumo", "aplicacao", "colheita"})
 RECORD_MODELS = {"compra": PurchasedInput, "consumo": StockOutput,
                  "aplicacao": FertilizationRecord, "colheita": HarvestRecord}
@@ -64,14 +64,15 @@ def _valid_format(token) -> bool:
     return isinstance(token, str) and len(token) == 43 and all(c.isascii() and (c.isalnum() or c in "-_") for c in token)
 
 
-def find_token(db, token: str, *, now=None):
+def find_token(db, token: str, *, now=None, lock=False):
     if not _valid_format(token):
         return None
     now = now or datetime.now(timezone.utc)
-    return db.query(WhatsAppRecordAccess).filter(
+    query = db.query(WhatsAppRecordAccess).filter(
         WhatsAppRecordAccess.token_hash == _digest(token), WhatsAppRecordAccess.consumed_at.is_(None),
         WhatsAppRecordAccess.expires_at > now,
-    ).first()
+    )
+    return (query.with_for_update() if lock else query).first()
 
 
 def _record_in_scope(record, kind, farm, season):
@@ -139,16 +140,12 @@ def create_token(db, *, link, kind: str, record_id: int, now=None) -> str:
     return token
 
 
-def consume_token(db, token: str, *, now=None):
-    """Consome atomicamente um token valido; nao substitui a autorizacao de acesso."""
-    if not _valid_format(token):
-        return None
+def revoke_access(db, access_id, user_id, organization_id, *, now=None):
+    """Revoga o acesso usando a coluna existente; tokens antigos usados permanecem invalidados."""
     now = now or datetime.now(timezone.utc)
     statement = (update(WhatsAppRecordAccess)
-                 .where(WhatsAppRecordAccess.token_hash == _digest(token),
-                        WhatsAppRecordAccess.consumed_at.is_(None), WhatsAppRecordAccess.expires_at > now)
-                 .values(consumed_at=now)
-                 .execution_options(synchronize_session=False)
-                 .returning(WhatsAppRecordAccess.id))
-    access_id = db.execute(statement).scalar_one_or_none()
-    return db.get(WhatsAppRecordAccess, access_id, populate_existing=True) if access_id is not None else None
+                 .where(WhatsAppRecordAccess.id == access_id, WhatsAppRecordAccess.user_id == user_id,
+                        WhatsAppRecordAccess.organization_id == organization_id,
+                        WhatsAppRecordAccess.consumed_at.is_(None))
+                 .values(consumed_at=now).execution_options(synchronize_session=False))
+    return db.execute(statement).rowcount == 1
