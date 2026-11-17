@@ -31,7 +31,7 @@
         }
     </script>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-    <link rel="stylesheet" href="{{ url_for('static', path='css/styles.css') }}?v=20261117j">
+    <link rel="stylesheet" href="{{ url_for('static', path='css/styles.css') }}?v=20261117e">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="{{ url_for('static', path='js/currency-mask.js') }}?v=20260425a" defer></script>
@@ -396,77 +396,150 @@
             </div>
         </aside>
         <main class="erp-main-shell flex min-h-screen min-w-0 flex-1 flex-col lg:ml-72">
-            <div class="sticky top-0 z-20 border-b border-slate-200 bg-white/95 shadow-sm backdrop-blur">
-                <div class="mx-auto flex max-w-7xl items-center justify-between px-4 py-5 sm:px-6">
-                    <div class="flex min-w-0 flex-1 items-center gap-4">
-                        <button type="button" class="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-900 text-white lg:hidden" data-mobile-menu-button aria-label="Abrir menu">
-                            <span class="space-y-1.5">
-                                <span class="block h-0.5 w-5 bg-white"></span>
-                                <span class="block h-0.5 w-5 bg-white"></span>
-                                <span class="block h-0.5 w-5 bg-white"></span>
-                            </span>
+            {% set farm_initials = ((active_farm.name if active_farm else 'SF').replace('Fazenda ', '').replace('Sítio ', '').split(' ')[:2]|map('first')|join('')|upper) %}
+            <header class="hd" data-hd>
+                <div class="hd-row">
+                    <button type="button" class="hd-btn hd-menu lg:hidden" data-mobile-menu-button aria-label="Abrir menu">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+                    </button>
+                    <div class="hd-title">
+                        <small>SiSFarm</small>
+                        <h2>{{ title or "Painel da Fazenda" }}</h2>
+                    </div>
+                    <button type="button" class="hd-search" data-hd-search-open aria-haspopup="dialog" aria-label="Buscar ou perguntar ao Pezinho">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+                        <span>Buscar ou perguntar ao Pezinho…</span><kbd>⌘K</kbd>
+                    </button>
+                    <div class="hd-right">
+                        <a class="hd-weather" href="/pluviometria" data-hd-weather hidden title="Previsão para a fazenda"></a>
+                        <button type="button" class="hd-ctx hidden md:flex" data-context-picker-open aria-haspopup="dialog" aria-controls="context-picker" aria-expanded="false">
+                            <span class="hd-farm{% if not (active_farm and active_season) %} is-empty{% endif %}" aria-hidden="true">{{ farm_initials }}</span>
+                            <span class="hd-ctx-text"><b>{% if active_farm %}{{ active_farm.name }}{% else %}Selecionar fazenda{% endif %}</b><span>{% if active_season %}Safra {{ active_season.name }}{% elif active_farm %}Selecione a safra{% else %}e safra{% endif %}</span></span>
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
                         </button>
-                        <div class="min-w-0">
-                        <p class="text-xs uppercase tracking-[0.3em] text-slate-400">SiSFarm</p>
-                        <h2 class="text-2xl font-semibold leading-tight">{{ title or "Painel da Fazenda" }}</h2>
+                        <details class="hd-new hidden md:block" data-sf-dropdown>
+                            <summary class="hd-new-btn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>Novo</summary>
+                            <div class="hd-pop hd-new-pop">
+                                <p class="hd-pop-label">Registrar</p>
+                                <a href="/mobile/assistente?q=Usei%20" class="hd-mi">Consumo de insumo</a>
+                                <a href="{{ module_href('/insumos/comprados') }}" class="hd-mi">Compra</a>
+                                <a href="{{ module_href('/fertilizacao') }}" class="hd-mi">Aplicação</a>
+                                <a href="/pluviometria" class="hd-mi">Chuva</a>
+                                <a href="{{ module_href('/gestao-financeira/contas') }}" class="hd-mi">Conta a pagar</a>
+                                <hr>
+                                <a href="/mobile/assistente" class="hd-mi"><img src="{{ url_for('static', path='img/pezinho/cabeca-pronto.svg') }}" alt="" width="22" height="22">Pedir ao Pezinho</a>
+                            </div>
+                        </details>
+                        <span class="hd-sep hidden md:block" aria-hidden="true"></span>
+                        <a href="/mobile/assistente" class="hd-btn hd-pz hidden lg:inline-flex" aria-label="Abrir assistente Pezinho" title="Assistente Pezinho">
+                            <img src="{{ url_for('static', path='img/pezinho/icone-cabecalho.png') }}" alt="" width="34" height="34">
+                        </a>
+                        <div class="relative shrink-0">
+                            <button type="button" class="hd-btn hd-bell" data-header-notifications-toggle aria-expanded="false" aria-haspopup="dialog" aria-controls="erp-header-notifications-flyout" aria-label="Abrir notificações" title="Notificações">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 8a6 6 0 1 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.9 1.9 0 0 0 3.4 0"/></svg>
+                                {% if global_notifications.total > 0 %}<span class="hd-count">{{ global_notifications.total if global_notifications.total < 100 else '99+' }}</span>{% endif %}
+                            </button>
+                        </div>
+                        <div class="erp-header-user-group relative shrink-0">
+                            <button type="button" class="erp-header-user-chip hd-me" data-header-session-toggle aria-expanded="false" aria-haspopup="true" aria-controls="erp-header-session-flyout" title="{{ session_display_name }}" aria-label="Menu da sessao — {{ session_display_name }}">
+                                {% if user.avatar_data %}<img src="/meu-perfil/avatar" alt="" class="hd-avatar" width="38" height="38" decoding="async">{% else %}<span class="hd-avatar" aria-hidden="true">{{ header_avatar_initial }}</span>{% endif %}
+                                <svg class="hidden lg:block" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+                            </button>
                         </div>
                     </div>
-                    <div class="flex min-w-0 shrink-0 items-center gap-3 md:gap-4">
-                    <button type="button" class="ctx-trigger hidden md:flex" data-context-picker-open aria-haspopup="dialog" aria-controls="context-picker" aria-expanded="false">
-                        <span class="ctx-dot {% if not (active_farm and active_season) %}is-empty{% endif %}" aria-hidden="true"></span>
-                        <span class="ctx-trigger-text">
-                            <span class="ctx-trigger-label">Contexto ativo</span>
-                            <span class="ctx-trigger-value">{% if active_farm %}{{ active_farm.name }}{% if active_season %} · {{ active_season.name }}{% else %} · selecione a safra{% endif %}{% else %}Selecionar fazenda e safra{% endif %}</span>
-                        </span>
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
-                    </button>
-                    <a href="/mobile/assistente" class="hidden h-[60px] w-[60px] shrink-0 items-center justify-center rounded-2xl transition hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/35 lg:inline-flex" aria-label="Abrir assistente Pezinho" title="Assistente Pezinho">
-                        <img src="{{ url_for('static', path='img/pezinho/icone-cabecalho.png') }}" alt="" class="h-[60px] w-[60px] object-contain" width="60" height="60">
-                    </a>
-                    <div class="relative shrink-0">
-                        <button
-                            type="button"
-                            class="relative inline-flex h-12 w-12 items-center justify-center rounded-2xl border-0 bg-transparent text-slate-600 transition hover:text-brand-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/35 focus-visible:ring-offset-2 focus-visible:ring-offset-white"
-                            data-header-notifications-toggle
-                            aria-expanded="false"
-                            aria-haspopup="dialog"
-                            aria-controls="erp-header-notifications-flyout"
-                            aria-label="Abrir notificações"
-                            title="Notificações"
-                        >
-                            <svg class="h-10 w-10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                                <path d="M15 17h5l-1.4-1.4A2 2 0 0 1 18 14.2V11a6 6 0 0 0-4-5.66V4a2 2 0 1 0-4 0v1.34A6 6 0 0 0 6 11v3.2a2 2 0 0 1-.6 1.4L4 17h5"/>
-                                <path d="M9.5 17a2.5 2.5 0 0 0 5 0"/>
-                            </svg>
-                            {% if global_notifications.total > 0 %}
-                            <span class="absolute -right-1.5 -top-1.5 inline-flex min-h-[1.35rem] min-w-[1.35rem] items-center justify-center rounded-full bg-rose-500 px-1 text-[0.68rem] font-semibold leading-none text-white shadow-sm">
-                                {{ global_notifications.total if global_notifications.total < 100 else '99+' }}
-                            </span>
-                            {% endif %}
-                        </button>
-                    </div>
-                    <div class="erp-header-user-group relative hidden shrink-0 lg:block">
-                        <button type="button" class="erp-header-user-chip inline-flex items-center justify-center rounded-full border-0 bg-transparent p-0 outline-none transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/40 focus-visible:ring-offset-2 focus-visible:ring-offset-white {% if page == 'profile' %}ring-2 ring-brand-500/30 ring-offset-2 ring-offset-white{% endif %}" data-header-session-toggle aria-expanded="false" aria-haspopup="true" aria-controls="erp-header-session-flyout" title="{{ session_display_name }}" aria-label="Menu da sessao — {{ session_display_name }}">
-                            {% if user.avatar_data %}
-                            <img src="/meu-perfil/avatar" alt="" class="h-[60px] w-[60px] shrink-0 rounded-full object-cover" width="60" height="60" decoding="async">
-                            {% else %}
-                            <span class="flex h-[60px] w-[60px] shrink-0 items-center justify-center rounded-full bg-brand-100 text-xl font-semibold text-brand-700" aria-hidden="true">{{ header_avatar_initial }}</span>
-                            {% endif %}
-                        </button>
-                    </div>
-                    </div>
                 </div>
-            </div>
-            <div class="mx-auto w-full min-w-0 max-w-7xl px-4 pt-4 sm:px-6 md:hidden{% if active_farm and active_season %} as-active-mobile-context{% endif %}">
-                    <button type="button" class="ctx-trigger flex w-full" data-context-picker-open aria-haspopup="dialog" aria-controls="context-picker" aria-expanded="false">
-                        <span class="ctx-dot {% if not (active_farm and active_season) %}is-empty{% endif %}" aria-hidden="true"></span>
-                        <span class="ctx-trigger-text">
-                            <span class="ctx-trigger-label">Contexto ativo</span>
-                            <span class="ctx-trigger-value">{% if active_farm %}{{ active_farm.name }}{% if active_season %} · {{ active_season.name }}{% else %} · selecione a safra{% endif %}{% else %}Selecionar fazenda e safra{% endif %}</span>
-                        </span>
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
-                    </button>
-            </div>
+                <button type="button" class="hd-ctx hd-ctx-mobile md:hidden{% if active_farm and active_season %} as-active-mobile-context{% endif %}" data-context-picker-open aria-haspopup="dialog" aria-controls="context-picker" aria-expanded="false">
+                    <span class="hd-farm{% if not (active_farm and active_season) %} is-empty{% endif %}" aria-hidden="true">{{ farm_initials }}</span>
+                    <span class="hd-ctx-text"><b>{% if active_farm %}{{ active_farm.name }}{% else %}Selecionar fazenda{% endif %}</b><span>{% if active_season %}Safra {{ active_season.name }}{% elif active_farm %}Selecione a safra{% else %}e safra{% endif %}</span></span>
+                    <span class="hd-weather-mini" data-hd-weather-mini></span>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+                </button>
+            </header>
+
+            {# Busca rápida (⌘K): páginas do menu, ações e perguntas ao Pezinho #}
+            <dialog class="hd-cmd" data-hd-cmd aria-label="Buscar no SiSFarm">
+                <div class="hd-cmd-box">
+                    <label class="hd-cmd-in">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+                        <input type="search" placeholder="Buscar páginas e ações ou perguntar ao Pezinho…" autocomplete="off" data-hd-cmd-input aria-label="Buscar">
+                        <kbd>Esc</kbd>
+                    </label>
+                    <div class="hd-cmd-list" data-hd-cmd-list role="listbox"></div>
+                    <div class="hd-cmd-foot"><span><kbd>↑</kbd> <kbd>↓</kbd> navegar</span><span><kbd>Enter</kbd> abrir</span><span><kbd>Esc</kbd> fechar</span></div>
+                </div>
+            </dialog>
+            <script>
+            (() => {
+                const dlg = document.querySelector('[data-hd-cmd]');
+                const input = dlg && dlg.querySelector('[data-hd-cmd-input]');
+                const list = dlg && dlg.querySelector('[data-hd-cmd-list]');
+                if (!dlg || !input) return;
+                const norm = (t) => (t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+                const pages = () => {
+                    const seen = new Set();
+                    return Array.from(document.querySelectorAll('aside a[href]')).map((a) => ({ label: a.textContent.replace(/\s+/g, ' ').trim(), href: a.getAttribute('href') }))
+                        .filter((p) => p.label && p.href && p.href.startsWith('/') && !seen.has(p.href) && seen.add(p.href));
+                };
+                const ACTIONS = [
+                    ['Registrar consumo de insumo', '/mobile/assistente?q=Usei%20'], ['Lançar compra', '/insumos/comprados'],
+                    ['Registrar aplicação', '/fertilizacao'], ['Registrar chuva', '/pluviometria'], ['Nova conta a pagar', '/gestao-financeira/contas'],
+                ];
+                let items = [];
+                let active = 0;
+                const row = (group, label, href, ask) => ({ group, label, href, ask });
+                const render = () => {
+                    const q = norm(input.value);
+                    const ask = input.value.trim();
+                    items = [];
+                    if (ask) items.push(row('Perguntar ao Pezinho', ask, '/mobile/assistente?q=' + encodeURIComponent(ask), true));
+                    ACTIONS.filter(([l]) => !q || norm(l).includes(q)).slice(0, q ? 5 : 3).forEach(([l, h]) => items.push(row('Ações rápidas', l, h)));
+                    pages().filter((p) => !q || norm(p.label).includes(q)).slice(0, 8).forEach((p) => items.push(row('Ir para', p.label, p.href)));
+                    active = Math.min(active, Math.max(items.length - 1, 0));
+                    list.replaceChildren();
+                    let last = '';
+                    items.forEach((it, i) => {
+                        if (it.group !== last) { const g = document.createElement('p'); g.className = 'hd-pop-label'; g.textContent = it.group; list.append(g); last = it.group; }
+                        const a = document.createElement('a');
+                        a.className = 'hd-mi' + (i === active ? ' is-active' : '');
+                        a.href = it.href; a.setAttribute('role', 'option');
+                        a.textContent = it.ask ? `“${it.label}”` : it.label;
+                        a.addEventListener('mousemove', () => { if (active !== i) { active = i; render(); } });
+                        list.append(a);
+                    });
+                    if (!items.length) { const p = document.createElement('p'); p.className = 'hd-cmd-empty'; p.textContent = 'Digite para buscar páginas ou perguntar ao Pezinho.'; list.append(p); }
+                };
+                const open = () => { input.value = ''; active = 0; render(); dlg.showModal(); input.focus(); };
+                document.querySelectorAll('[data-hd-search-open]').forEach((b) => b.addEventListener('click', open));
+                document.addEventListener('keydown', (e) => {
+                    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k' && !document.querySelector('[data-as-search]')) { e.preventDefault(); dlg.open ? dlg.close() : open(); }
+                });
+                input.addEventListener('input', () => { active = 0; render(); });
+                input.addEventListener('keydown', (e) => {
+                    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); active = (active + (e.key === 'ArrowDown' ? 1 : -1) + items.length) % Math.max(items.length, 1); render(); }
+                    if (e.key === 'Enter' && items[active]) { e.preventDefault(); window.location.href = items[active].href; }
+                });
+                dlg.addEventListener('click', (e) => { if (e.target === dlg) dlg.close(); });
+            })();
+            {% if 'page.rainfall' in (permission_codes or []) and active_farm %}
+            // Clima da fazenda no cabeçalho (mesma previsão do Dashboard, com cache de 3 h no servidor)
+            (() => {
+                const chip = document.querySelector('[data-hd-weather]');
+                const mini = document.querySelector('[data-hd-weather-mini]');
+                if (!chip) return;
+                const icon = (code, prob) => (code >= 95 ? '⛈️' : code >= 51 || prob >= 60 ? '🌧️' : code >= 3 ? '☁️' : code >= 1 ? '⛅' : '☀️');
+                fetch('/api/dashboard/clima', { credentials: 'same-origin' }).then((r) => r.ok ? r.json() : null).then((data) => {
+                    const day = data && (data.status === 'ok' || data.status === 'stale') && data.days && data.days[0];
+                    if (!day || day.tmax == null) return;
+                    const temp = Math.round(day.tmax) + '°';
+                    const rain = day.prob != null ? `Chuva ${day.prob}%` : (day.precip ? `${day.precip} mm` : '');
+                    chip.innerHTML = `<span aria-hidden="true">${icon(day.code || 0, day.prob || 0)}</span><b>${temp}</b>${rain ? `<span>${rain}</span>` : ''}`;
+                    chip.title = `Hoje: máx. ${temp}${day.tmin != null ? ', mín. ' + Math.round(day.tmin) + '°' : ''}${rain ? ' · ' + rain : ''}`;
+                    chip.hidden = false;
+                    if (mini) mini.textContent = `${icon(day.code || 0, day.prob || 0)} ${temp}`;
+                }).catch(() => {});
+            })();
+            {% endif %}
+            </script>
             <script>
             // Menus de acao das paginas (details[data-sf-dropdown]): fecham ao clicar fora, ao escolher um item ou com Esc.
             (() => {
