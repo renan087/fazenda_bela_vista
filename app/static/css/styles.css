@@ -6864,3 +6864,30 @@ dialog.db-cost { width: min(70rem, calc(100vw - 2rem)); }
 .nf-foot { padding: 10px 16px; border-top: 1px solid #eef1ed; background: #fafbf9; font-size: 11.5px; color: #8a948e; text-align: center; }
 .hd-count[hidden] { display: none; }
 .fm-map { isolation: isolate; }
+
+/* ---------- Menu do perfil ---------- */
+.erp-header-session-flyout.erp-sidebar-submenu-flyout { min-width: 19rem; max-width: min(20rem, calc(100% - 1.5rem)); max-height: none; padding: 6px; border: 1px solid #e3e8e2; border-radius: 16px; background: #fff; box-shadow: 0 24px 60px rgba(15, 21, 19, .18), 0 2px 6px rgba(15, 21, 19, .06); color: #16201a; }
+.pf-head { display: flex; align-items: center; gap: 12px; padding: 12px 10px 10px; }
+.pf-avatar { flex: none; width: 44px; height: 44px; border-radius: 50%; overflow: hidden; background: #d9ecd4; color: #294127; font-size: 17px; font-weight: 700; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 0 2px #fff, 0 0 0 3px #cfe3c7; }
+.pf-avatar img { width: 100%; height: 100%; object-fit: cover; }
+.pf-meta { min-width: 0; }
+.pf-name { margin: 0; font-size: 14px; font-weight: 700; color: #16201a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pf-email { margin: 1px 0 0; font-size: 12px; color: #7a857e; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pf-plan { display: flex; align-items: center; gap: 10px; margin: 6px 4px 6px; padding: 10px 12px; border-radius: 12px; background: #f6f8f5; color: #16201a; text-decoration: none; }
+a.pf-plan:hover { background: #eef3eb; }
+.pf-plan .pf-ico { color: #446a36; }
+.pf-plan-text { flex: 1; min-width: 0; font-size: 12.5px; }
+.pf-plan-text b { display: block; font-size: 13px; }
+.pf-plan-text span { color: #7a857e; }
+.pf-plan-go { font-size: 12.5px; font-weight: 600; color: #446a36; }
+.pf-list { display: flex; flex-direction: column; padding: 2px 0; border-top: 1px solid #eef1ed; }
+.pf-item { display: flex; align-items: center; gap: 12px; min-height: 40px; padding: 0 10px; border-radius: 10px; font-size: 13.5px; color: #2a332e; text-decoration: none; }
+a.pf-item:hover, .pf-item.is-current { background: #f3f5f2; color: #16201a; }
+.pf-ico { width: 18px; height: 18px; flex: none; color: #5b6660; }
+.pf-chev { width: 14px; height: 14px; margin-left: auto; color: #aeb8b2; }
+.pf-item.is-soon { color: #9aa49e; cursor: default; }
+.pf-item.is-soon .pf-ico { color: #c2c9c4; }
+.pf-item em { margin-left: auto; height: 20px; padding: 0 8px; border-radius: 999px; background: #f3f5f2; color: #8a948e; font-style: normal; font-size: 10.5px; font-weight: 600; display: inline-flex; align-items: center; }
+.pf-logout { margin-top: 2px; border-top: 1px solid #eef1ed; border-radius: 0 0 10px 10px; color: #b42318; }
+.pf-logout .pf-ico { color: #b42318; }
+a.pf-logout:hover { background: #fdecea; color: #b42318; }
