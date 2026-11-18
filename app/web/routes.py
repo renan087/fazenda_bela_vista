@@ -1484,9 +1484,10 @@ def _build_global_notifications(
             AssistantReminder.status == "active", AssistantReminder.due_at <= datetime.now(timezone.utc),
         ).order_by(AssistantReminder.due_at.desc()).limit(100).all()
         for reminder in reminders:
+            due = reminder.due_at if reminder.due_at.tzinfo else reminder.due_at.replace(tzinfo=timezone.utc)
             add_notification(operational, title="Lembrete do Pezinho", message=reminder.description,
                              href="/mobile/assistente", kind="reminder", severity="info",
-                             identity=f"assistant-reminder:{reminder.id}", meta="Lembrete pessoal")
+                             identity=f"assistant-reminder:{reminder.id}:{int(due.timestamp())}", meta="Lembrete pessoal")
 
     important.sort(key=lambda item: (item["severity"] != "danger", item["title"]))
     operational.sort(key=lambda item: item["title"])
@@ -21453,6 +21454,7 @@ def _assistant_turn(db, user, repo, scope, thread, message, *, image=None, attac
         if shared_report_id:
             item["shared_report_id"] = shared_report_id
         if reminder_proposal:
+            reminder_proposal.setdefault("confirmation_id", uuid4().hex)
             item["reminder_proposal"] = reminder_proposal
         if not error and getattr(agent, "record_references", None):
             item["record_references"] = sorted(
@@ -21749,14 +21751,15 @@ def _assistant_turn(db, user, repo, scope, thread, message, *, image=None, attac
     previous = next((entry for entry in reversed(history[:-1]) if entry.get("role") == "assistant"), None)
     proposal = (previous or {}).get("reminder_proposal")
     confirmation = normalized(message).strip(" .!?")
-    if proposal and confirmation in {"sim", "confirmo", "confirmar", "pode confirmar", "pode", "nao", "cancelar", "cancela"}:
-        if confirmation in {"nao", "cancelar", "cancela"}:
+    if proposal and confirmation in {"sim", "confirmo", "confirmar", "confirma", "pode confirmar", "pode", "nao", "cancelar", "cancela", "descartar", "descarta"}:
+        if confirmation in {"nao", "cancelar", "cancela", "descartar", "descarta"}:
             return reply("Tudo bem, não fiz essa alteração no lembrete.")
         try:
             reminders.confirm(proposal)
             messages = {"create": "Lembrete criado. O aviso aparecerá na central de notificações do SiSFarm no horário combinado.",
                         "pausar": "Lembrete pausado; ele não aparecerá na central enquanto estiver pausado.",
                         "retomar": "Lembrete retomado. O aviso aparecerá na central no horário combinado.",
+                        "editar": "Lembrete atualizado. Confira a data e o horário na lista de lembretes.",
                         "excluir": "Lembrete excluído; ele não aparecerá mais na central."}
             return reply(messages[proposal["action"]])
         except ValueError as exc:
@@ -21884,6 +21887,9 @@ def _assistant_turn(db, user, repo, scope, thread, message, *, image=None, attac
         if proposal["action"] == "create":
             when = reminders.local_time(datetime.fromisoformat(proposal["due_at"])).strftime("%d/%m/%Y às %H:%M")
             question = f"Quer criar este lembrete para {when}: {proposal['description']}?"
+        elif proposal["action"] == "editar":
+            when = reminders.local_time(datetime.fromisoformat(proposal["due_at"])).strftime("%d/%m/%Y às %H:%M")
+            question = f"Quer alterar o lembrete para {when}: {proposal['description']}?"
         else:
             row = reminders.rows().filter_by(id=proposal["id"]).first()
             question = f"Quer {proposal['action']} o lembrete ‘{row.description}’?"
@@ -22019,7 +22025,8 @@ def pezinho_reminder_alerts(request: Request, context: str = Query(..., max_leng
         due = row.due_at if row.due_at.tzinfo else row.due_at.replace(tzinfo=timezone.utc)
         items.append({"id": row.id, "description": row.description,
                       "state": "vencido" if due <= now else "proximo",
-                      "time": due.astimezone(get_app_timezone()).strftime("%d/%m às %H:%M")})
+                      "time": due.astimezone(get_app_timezone()).strftime("%d/%m às %H:%M"),
+                      "due_version": int(due.timestamp())})
     return JSONResponse({"reminders": items}, headers={"Cache-Control": "no-store"})
 
 

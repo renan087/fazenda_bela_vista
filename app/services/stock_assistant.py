@@ -170,6 +170,7 @@ class FarmAssistant:
         self.trace = []  # o que o agente consultou, mostrado ao usuario abaixo da resposta
         self.record_references = []
         self.shareable_queries = []
+        self.reminder_proposal_ready = False
         self.extra_tools = list(extra_tools)  # [(schema, handler)] de consultas somente leitura
         self.prepare_purchase = prepare_purchase
         self.purchase_rules = purchase_rules or {}  # {tipo: {categoria: [unidades]}}
@@ -430,6 +431,8 @@ class FarmAssistant:
         except Exception:  # consulta com falha nao derruba a conversa
             logging.getLogger(__name__).exception("Falha na ferramenta %s do assistente", name)
             result = {"erro": "Não foi possível consultar essa informação agora."}
+        if name in {"preparar_lembrete", "preparar_alteracao_lembrete", "preparar_edicao_lembrete"} and result.get("aguardando_confirmacao"):
+            self.reminder_proposal_ready = True
         if name in ("preparar_consumo", "preparar_compra"):
             if result.get("erro") and isinstance(args, dict):
                 known = {key: value for key, value in args.items() if value not in (None, "", False)}
@@ -623,6 +626,8 @@ class FarmAssistant:
             for call in calls:
                 result = self.call_tool(call.function.name, call.function.arguments)
                 messages.append({"role": "tool", "tool_call_id": call.id, "content": json.dumps(result, ensure_ascii=False, default=str)})
+            if self.reminder_proposal_ready:
+                return {"resposta": "Aguardando confirmação do lembrete.", "draft_id": None}
             if self.invoice:
                 lines = ["Identifiquei estes itens na nota. Confira os dados:"]
                 for index, item in enumerate(self.invoice["itens"], 1):

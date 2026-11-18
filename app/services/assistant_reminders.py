@@ -52,6 +52,30 @@ class ReminderTools:
         return {"aguardando_confirmacao": True, "acao": acao, "descricao": row.description,
                 "data_hora": self.local_time(row.due_at).strftime("%d/%m/%Y %H:%M")}
 
+    def propose_edit(self, lembrete_id, descricao, data_hora):
+        if isinstance(lembrete_id, bool) or not isinstance(lembrete_id, int):
+            raise ValueError("Escolha o lembrete que deseja alterar.")
+        row = self.rows().filter_by(id=lembrete_id).first()
+        if not row or row.status not in {"active", "paused"}:
+            raise ValueError("Lembrete não encontrado neste contexto.")
+        if descricao is None and data_hora is None:
+            raise ValueError("Pergunte o que o usuário deseja alterar.")
+        if descricao is not None and (not isinstance(descricao, str) or not 0 < len(descricao.strip()) <= 240):
+            raise ValueError("Informe a descrição com até 240 caracteres.")
+        due = self.local_time(row.due_at)
+        if data_hora is not None:
+            try:
+                due = datetime.strptime(data_hora, "%Y-%m-%dT%H:%M").replace(tzinfo=get_app_timezone())
+            except (TypeError, ValueError):
+                raise ValueError("Informe uma data e um horário válidos.") from None
+            if due <= datetime.now(timezone.utc):
+                raise ValueError("O novo horário precisa estar no futuro.")
+        self.proposal = {"action": "editar", "id": row.id, "description": descricao.strip() if descricao is not None else row.description,
+                         "due_at": due.astimezone(timezone.utc).isoformat(), "changes_due": data_hora is not None,
+                         "expected_description": row.description,
+                         "expected_due": self.local_time(row.due_at).astimezone(timezone.utc).isoformat()}
+        return {"aguardando_confirmacao": True, "descricao": self.proposal["description"], "data_hora": due.strftime("%d/%m/%Y %H:%M")}
+
     def tools(self):
         return [
             (_tool("listar_lembretes", "Lista os lembretes pessoais desta fazenda e safra."), self.list_reminders),
@@ -59,6 +83,9 @@ class ReminderTools:
                 "descricao": {"type": "string"}, "data_hora": {"type": "string", "description": "Data e hora locais, AAAA-MM-DDTHH:MM."}}), self.propose_create),
             (_tool("preparar_alteracao_lembrete", "Prepara pausa, retomada ou exclusão de lembrete escolhido pelo usuário.", {
                 "lembrete_id": {"type": "integer"}, "acao": {"type": "string", "enum": ["pausar", "retomar", "excluir"]}}), self.propose_change),
+            (_tool("preparar_edicao_lembrete", "Prepara alteração de descrição ou data e hora do lembrete escolhido; null mantém o valor atual.", {
+                "lembrete_id": {"type": "integer"}, "descricao": {"type": ["string", "null"]},
+                "data_hora": {"type": ["string", "null"], "description": "Nova data e hora locais em AAAA-MM-DDTHH:MM, ou null."}}), self.propose_edit),
         ]
 
     def confirm(self, proposal):
@@ -77,10 +104,25 @@ class ReminderTools:
             self.db.add(AssistantReminder(proposal_id=proposal_id, user_id=self.user.id, organization_id=self.user.organization_id, farm_id=self.farm.id,
                                           season_id=self.season.id, description=description, due_at=due,
                                           status="active", created_at=datetime.now(timezone.utc)))
-        elif action in {"pausar", "retomar", "excluir"}:
+        elif action in {"pausar", "retomar", "excluir", "editar"}:
             row = self.rows().filter_by(id=proposal.get("id")).first()
             if not row or row.status not in {"active", "paused"}:
                 raise ValueError("O lembrete não está mais disponível.")
+            if action == "editar":
+                if (row.description != proposal.get("expected_description") or
+                        self.local_time(row.due_at).astimezone(timezone.utc).isoformat() != proposal.get("expected_due")):
+                    raise ValueError("O lembrete foi alterado. Consulte os dados e solicite a edição novamente.")
+                try:
+                    due = datetime.fromisoformat(proposal["due_at"])
+                    description = proposal["description"]
+                except (KeyError, TypeError, ValueError):
+                    raise ValueError("Edição inválida. Solicite novamente.") from None
+                if due.tzinfo is None or not isinstance(description, str) or not 0 < len(description.strip()) <= 240:
+                    raise ValueError("Edição inválida. Solicite novamente.")
+                if proposal.get("changes_due") and due <= datetime.now(timezone.utc):
+                    raise ValueError("O novo horário já passou; solicite outra data.")
+                row.description, row.due_at = description.strip(), due
+                return
             if action == "retomar" and self.local_time(row.due_at) <= datetime.now(timezone.utc):
                 raise ValueError("O horário já passou; crie outro lembrete.")
             row.status = {"pausar": "paused", "retomar": "active", "excluir": "deleted"}[action]

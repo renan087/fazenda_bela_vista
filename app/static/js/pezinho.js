@@ -140,9 +140,9 @@
             const data = await response.json();
             if (document.hidden || store.get('sf-pz-peek') === '1' || isOpen() || !bubble.hidden) return;
             const reminders = Array.isArray(data.reminders) ? data.reminders : [];
-            const item = reminders.find((entry) => !store.sget(`sf-pz-reminder:${root.dataset.scope}:${entry.id}:${entry.state}`));
+            const item = reminders.find((entry) => !store.sget(`sf-pz-reminder:${root.dataset.scope}:${entry.id}:${entry.due_version}:${entry.state}`));
             if (!item) return;
-            store.sset(`sf-pz-reminder:${root.dataset.scope}:${item.id}:${item.state}`, '1');
+            store.sset(`sf-pz-reminder:${root.dataset.scope}:${item.id}:${item.due_version}:${item.state}`, '1');
             const text = $('[data-pzw-bubble-text]');
             text.replaceChildren();
             const title = document.createElement('b');

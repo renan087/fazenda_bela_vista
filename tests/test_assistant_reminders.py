@@ -137,3 +137,63 @@ def test_pezinho_alerts_only_current_users_due_or_nearby_active_reminders(monkey
     other = SimpleNamespace(id=user.id + 1, organization_id=user.organization_id)
     other_context = f"{other.id}:{other.organization_id}:{scope['active_farm_id']}:{scope['active_season_id']}"
     assert json.loads(routes.pezinho_reminder_alerts(SimpleNamespace(), other_context, db, other).body)["reminders"] == []
+
+
+def test_agent_stops_immediately_after_preparing_reminder(monkeypatch):
+    from tests.test_stock_assistant import _assistant, _fake_client, _tool_call
+    routes, db, user, scope, *_ = _route_env(monkeypatch, [])
+    tools = ReminderTools(db, user, scope["active_farm"], scope["active_season"])
+    assistant = _assistant([])
+    assistant.handlers.update({schema["function"]["name"]: handler for schema, handler in tools.tools()})
+    future = tools.local_time(datetime.now(timezone.utc) + timedelta(days=1)).strftime("%Y-%m-%dT%H:%M")
+    calls = []
+    client = _fake_client([[_tool_call("preparar_lembrete", {"descricao": "Verificar diesel", "data_hora": future})]], calls)
+    result = assistant.run([{"role": "user", "content": "Crie um lembrete"}], client=client, model="test")
+    assert len(calls) == 1 and result["resposta"] == "Aguardando confirmação do lembrete."
+    assert tools.proposal and db.query(AssistantReminder).count() == 0
+
+
+def test_edit_reminder_requires_confirmation_and_rejects_stale_changes(monkeypatch):
+    routes, db, user, scope, *_ = _route_env(monkeypatch, [])
+    tools = ReminderTools(db, user, scope["active_farm"], scope["active_season"])
+    future = tools.local_time(datetime.now(timezone.utc) + timedelta(days=1)).strftime("%Y-%m-%dT%H:%M")
+    tools.propose_create("Original", future); tools.confirm(tools.proposal); db.commit()
+    row = db.query(AssistantReminder).one()
+    def edit(history, assistant):
+        result = assistant.call_tool("preparar_edicao_lembrete", json.dumps({"lembrete_id": row.id, "descricao": "Atualizado", "data_hora": None}))
+        assert result["aguardando_confirmacao"]
+        return {"resposta": "", "draft_id": None}
+    monkeypatch.setattr(routes, "run_farm_assistant", edit)
+    thread, message = routes._assistant_turn(db, user, routes._repository(db), scope, None, "Altere a descrição")
+    assert "Atualizado" in message["content"] and row.description == "Original"
+    routes._assistant_turn(db, user, routes._repository(db), scope, thread, "sim")
+    assert row.description == "Atualizado"
+    tools.propose_edit(row.id, "Mudança antiga", None)
+    stale = tools.proposal
+    row.description = "Outra alteração"; db.commit()
+    with pytest.raises(ValueError, match="foi alterado"):
+        tools.confirm(stale)
+
+
+def test_whatsapp_reminder_confirmation_buttons_reject_replay(monkeypatch):
+    from app.models.whatsapp import WhatsAppLink
+    from app.services import whatsapp_bot
+    from tests.test_whatsapp import FakeClient, _payload, _receive, _settings
+    _settings(monkeypatch)
+    routes, db, user, scope, *_ = _route_env(monkeypatch, [])
+    tools = ReminderTools(db, user, scope["active_farm"], scope["active_season"])
+    future = tools.local_time(datetime.now(timezone.utc) + timedelta(days=1)).strftime("%Y-%m-%dT%H:%M")
+    def create(history, assistant):
+        assistant.call_tool("preparar_lembrete", json.dumps({"descricao": "Conferir diesel", "data_hora": future}))
+        return {"resposta": "", "draft_id": None}
+    monkeypatch.setattr(routes, "run_farm_assistant", create)
+    client = FakeClient()
+    code = whatsapp_bot.start_link(db, user, scope["active_farm"], scope["active_season"])
+    _receive(db, client, _payload("5535999", "link-rem", f"SISFARM {code}"))
+    _receive(db, client, _payload("5535999", "make-rem", "Crie um lembrete"))
+    assert client.sent[-1][0] == "buttons" and db.query(AssistantReminder).count() == 0
+    button = client.sent[-1][3][0][0]
+    _receive(db, client, _payload("5535999", "confirm-rem", button=button))
+    assert db.query(AssistantReminder).count() == 1 and "criado" in client.sent[-1][2]
+    _receive(db, client, _payload("5535999", "repeat-rem", button=button))
+    assert db.query(AssistantReminder).count() == 1 and "não está mais disponível" in client.sent[-1][2]
