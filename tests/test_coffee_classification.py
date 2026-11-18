@@ -242,3 +242,6 @@ def test_edit_form_renders_existing_values_and_archived_notes():
     assert 'name="moisture" value="0"' in html and 'name="sensory_score" value="0"' in html
     assert 'name="sensory_aroma" data-sensory-input="aroma" value="8"' in html
     assert "laudo.pdf" in html and "Aroma antigo" in html
+    assert 'data-cc-details="12"' in html and 'data-cc-detail-template="12"' in html
+    assert 'data-method="SCA"' in html and 'data-type="Tipo 4"' in html
+    assert "/producao/classificacao/12/relatorio.pdf" in html and "/producao/classificacao?edit_id=12" in html
