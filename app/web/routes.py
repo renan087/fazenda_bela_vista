@@ -21738,8 +21738,33 @@ def _assistant_turn(db, user, repo, scope, thread, message, *, image=None, attac
                               purchase_rules=purchase_rules, payment_options=payment_options,
                               pending_draft=pending_memory, require_patch=bool(pending_memory and explicit_adjustment))
     assistant_ref["agent"] = assistant
-    # A IA recebe so mensagens validas (sem os avisos de erro) e as mais recentes.
-    ai_history = [{"role": item["role"], "content": item["content"]} for item in history if not item.get("error")][-20:]
+    # O token não integra o histórico, mas a IA precisa saber que o sistema criou o link.
+    recent = [item for item in history if not item.get("error")][-20:]
+    report_ids = [item["shared_report_id"] for item in recent if isinstance(item.get("shared_report_id"), int)]
+    record_ids = [item["record_access_id"] for item in recent if isinstance(item.get("record_access_id"), int)]
+    reports = {row.id: row for row in db.query(SharedReport).filter(
+        SharedReport.id.in_(report_ids), SharedReport.user_id == user.id,
+        SharedReport.organization_id == user.organization_id, SharedReport.farm_id == farm.id,
+        SharedReport.season_id == season.id).all()} if report_ids else {}
+    links = {row.id: row for row in db.query(WhatsAppRecordAccess).filter(
+        WhatsAppRecordAccess.id.in_(record_ids), WhatsAppRecordAccess.user_id == user.id,
+        WhatsAppRecordAccess.organization_id == user.organization_id, WhatsAppRecordAccess.farm_id == farm.id,
+        WhatsAppRecordAccess.season_id == season.id).all()} if record_ids else {}
+    ai_history = []
+    for item in recent:
+        content = item["content"]
+        report = reports.get(item.get("shared_report_id"))
+        link = links.get(item.get("record_access_id"))
+        if item.get("role") == "assistant" and (report or link):
+            entry = report or link
+            expires = entry.expires_at
+            if expires.tzinfo is None:
+                expires = expires.replace(tzinfo=timezone.utc)
+            revoked = entry.revoked_at if report else entry.consumed_at
+            state = "revogado" if revoked else "expirado" if expires <= datetime.now(timezone.utc) else "não revogado e dentro do prazo"
+            content += ("\n[Registro confirmado pelo sistema: link " + state + ", criado nesta resposta. "
+                        "O endereço é entregue separadamente e não é fornecido à IA; a entrega não é confirmada aqui.]")
+        ai_history.append({"role": item["role"], "content": content})
     remembered = {}
     for entry in history[-12:]:
         for known in entry.get("items") or []:

@@ -54,6 +54,37 @@ def routes_followup(message):
     return _assistant_share_followup(message)
 
 
+def test_followup_knows_link_was_created_without_exposing_token(monkeypatch):
+    from app.models.shared_report import SharedReport
+    from datetime import datetime, timezone
+
+    routes, db, user, scope, *_ = _route_env(monkeypatch, [])
+    monkeypatch.setattr(routes, "permission_codes_for_user", lambda db, user: {PAGE_INPUTS})
+    monkeypatch.setattr(routes, "_entitlements_for", lambda db, user: SimpleNamespace(module_allowed=lambda page: True))
+
+    def query(history, assistant):
+        assistant.call_tool("consultar_compras", json.dumps({"inicio": None, "fim": None, "item": "gasolina"}))
+        return {"resposta": "Consulta feita.", "draft_id": None}
+
+    monkeypatch.setattr(routes, "run_farm_assistant", query)
+    thread, first = routes._assistant_turn(db, user, routes._repository(db), scope, None, "Consulte compras e gere um link")
+    url = first["_shared_url"]
+    captured = []
+    def respond(history, assistant):
+        captured.append(history)
+        return {"resposta": "O link foi criado.", "draft_id": None}
+
+    monkeypatch.setattr(routes, "run_farm_assistant", respond)
+    routes._assistant_turn(db, user, routes._repository(db), scope, thread, "Você conseguiu criar?")
+    context = str(captured[-1])
+    assert "Registro confirmado pelo sistema: link não revogado e dentro do prazo" in context
+    assert url not in context and url.split("#")[-1] not in context
+    db.query(SharedReport).one().revoked_at = datetime.now(timezone.utc)
+    db.commit()
+    routes._assistant_turn(db, user, routes._repository(db), scope, thread, "E agora?")
+    assert "Registro confirmado pelo sistema: link revogado" in str(captured[-1])
+
+
 @pytest.mark.parametrize("request_text", ["Consulte minhas compras de gasolina e gere um link para compartilhar",
                                           "Consulte minhas compras de gasolina e gere um link"])
 def test_real_query_creates_safe_shareable_page_and_revalidates_permission(monkeypatch, request_text):
