@@ -298,6 +298,7 @@ from app.services.forms import (
     _normalize_input_name,
 )
 from app.services.openai_service import gerar_recomendacao_adubacao
+from app.services.stock_assistant import assistant_available
 from app.services.password_change import (
     get_active_password_change_verification,
     issue_password_change_verification,
@@ -1143,7 +1144,7 @@ def _pezinho_context(request: Request, db, user, context: dict) -> dict | None:
         suggestions.append(("Mercado", "Qual é a cotação mais recente do café?"))
     return {
         "ready": bool(farm and season),
-        "available": bool((get_settings().openai_api_key or "").strip()),
+        "available": assistant_available(),
         "pending": pending,
         "name": name,
         "greeting": "Bom dia" if hour < 12 else "Boa tarde" if hour < 18 else "Boa noite",

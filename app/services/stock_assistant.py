@@ -710,8 +710,21 @@ def is_reasoning_model(model: str) -> bool:
     return (model or "").startswith(("gpt-5", "o1", "o3", "o4"))
 
 
+def assistant_provider() -> str:
+    """Provedor da IA do Pezinho: ASSISTANT_PROVIDER=anthropic ou openai (padrão)."""
+    return (os.getenv("ASSISTANT_PROVIDER") or "openai").strip().lower()
+
+
+def assistant_available() -> bool:
+    if assistant_provider() == "anthropic":
+        return bool((os.getenv("ANTHROPIC_API_KEY") or "").strip())
+    return bool((os.getenv("OPENAI_API_KEY") or get_settings().openai_api_key or "").strip())
+
+
 def run_farm_assistant(history, assistant: "FarmAssistant", image=None):
-    """Executa o agente; erros da OpenAI viram ValueError com mensagem clara."""
+    """Executa o agente; erros da IA viram ValueError com mensagem clara."""
+    if assistant_provider() == "anthropic":
+        return _run_with_anthropic(history, assistant, image)
     api_key = os.getenv("OPENAI_API_KEY") or get_settings().openai_api_key
     if not api_key:
         raise ValueError("O assistente de IA ainda não está configurado. Contate o administrador.")
@@ -729,6 +742,26 @@ def run_farm_assistant(history, assistant: "FarmAssistant", image=None):
             return {"resposta": DRAFT_READY_REPLY, "draft_id": assistant.draft_id}
         logging.getLogger(__name__).exception("Falha no agente do assistente (modelo %s)", model)
         raise ValueError(explain_openai_error(exc, model)) from None
+
+
+def _run_with_anthropic(history, assistant: "FarmAssistant", image=None):
+    from app.services.anthropic_adapter import DEFAULT_MODEL, AnthropicChatClient, explain_anthropic_error
+
+    api_key = (os.getenv("ANTHROPIC_API_KEY") or "").strip()
+    if not api_key:
+        raise ValueError("O assistente de IA ainda não está configurado. Contate o administrador.")
+    import anthropic
+
+    model = (os.getenv("ANTHROPIC_ASSISTANT_MODEL") or DEFAULT_MODEL).strip()
+    timeout = float(os.getenv("ANTHROPIC_TIMEOUT_SECONDS") or 90)
+    client = AnthropicChatClient(anthropic.Anthropic(api_key=api_key, timeout=timeout, max_retries=1))
+    try:
+        return assistant.run(history, client=client, model=model, image=image)
+    except Exception as exc:
+        if assistant.draft_id:
+            return {"resposta": DRAFT_READY_REPLY, "draft_id": assistant.draft_id}
+        logging.getLogger(__name__).exception("Falha no agente do assistente (modelo %s)", model)
+        raise ValueError(explain_anthropic_error(exc, model)) from None
 
 
 def explain_openai_error(exc: Exception, model: str) -> str:
