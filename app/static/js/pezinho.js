@@ -142,11 +142,21 @@
             return element;
         };
         const scroll = () => { body.scrollTop = body.scrollHeight; };
-        const setBusy = (on) => {
+        // mood: pose de reação ao fim do pedido (falando, alerta, comemorando, zangado); depois volta a "pronto".
+        const setBusy = (on, mood) => {
             busy = on; send.disabled = on; input.readOnly = on;
             if (fileInput) fileInput.disabled = on;
-            if (on) { set('pensando'); if (head) head.src = `${base}cabeca-pensando.svg`; }
-            else { set(available ? 'pronto' : 'dormindo'); if (head) head.src = `${base}cabeca-pronto.svg`; }
+            if (on) { set('pensando'); if (head) head.src = `${base}cabeca-pensando.svg`; return; }
+            if (head) head.src = `${base}cabeca-pronto.svg`;
+            if (!available) set('dormindo');
+            else if (mood) set(mood, mood === 'alerta' ? 4500 : 3000);
+            else set('pronto');
+        };
+        const moodOf = (data) => {
+            const last = (data && data.messages || []).slice(-1)[0] || {};
+            if (last.error) return 'zangado';
+            if (last.draft && last.draft.state === 'pending') return 'alerta';
+            return 'falando';
         };
         const showError = (text) => { messages.append(make('p', 'pzw-error', text)); scroll(); };
 
@@ -305,9 +315,13 @@
             if (button.dataset.action === 'confirmar' && !window.confirm('Confirmar este lançamento?')) return;
             const data = new FormData(); data.append('csrf_token', csrf); data.append('thread_id', threadId);
             setBusy(true);
-            try { render(await request(`/mobile/assistente/pezinho/${encodeURIComponent(button.dataset.draftId)}/${button.dataset.action}`, {method: 'POST', body: data})); }
-            catch (error) { showError(error.message); }
-            finally { setBusy(false); }
+            let mood = null;
+            try {
+                render(await request(`/mobile/assistente/pezinho/${encodeURIComponent(button.dataset.draftId)}/${button.dataset.action}`, {method: 'POST', body: data}));
+                if (button.dataset.action === 'confirmar') mood = 'comemorando';
+            }
+            catch (error) { showError(error.message); mood = 'zangado'; }
+            finally { setBusy(false, mood); }
         });
         const grow = () => { input.style.height = ''; input.style.height = Math.min(input.scrollHeight, 120) + 'px'; };
         input.addEventListener('input', grow);
@@ -329,9 +343,10 @@
             messages.append(mine);
             const thinking = thinkingRow(); messages.append(thinking); scroll();
             input.value = ''; grow(); setFile(null); setBusy(true);
-            try { render(await request('/mobile/assistente/pezinho', {method: 'POST', body: data})); restored = true; }
-            catch (error) { mine.remove(); thinking.remove(); input.value = text; grow(); setFile(sending); showError(error.message); }
-            finally { clearInterval(thinkingTimer); setBusy(false); }
+            let mood = null;
+            try { const reply = await request('/mobile/assistente/pezinho', {method: 'POST', body: data}); render(reply); restored = true; mood = moodOf(reply); }
+            catch (error) { mine.remove(); thinking.remove(); input.value = text; grow(); setFile(sending); showError(error.message); mood = 'zangado'; }
+            finally { clearInterval(thinkingTimer); setBusy(false, mood); }
         });
     }
 
