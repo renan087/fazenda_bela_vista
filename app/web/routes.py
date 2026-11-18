@@ -21383,6 +21383,18 @@ def _assistant_share_followup(message):
     return bool(words and set(words) <= allowed and set(words) & {"esse", "essa", "este", "esta", "isso", "disso", "esses", "essas", "aquele", "aquela", "anterior", "ultima", "ultimo", "resultado", "consulta", "dessa", "desse", "desta", "deste", "novamente", "novo", "link"})
 
 
+def _assistant_unverified_reminder_claim(text, history):
+    response = normalized(text)
+    if not any(re.search(r"\b(lembrete\w*|lembrar|lembre)\b", normalized(entry.get("content") or ""))
+               for entry in history[-12:] if entry.get("role") == "user"):
+        return False
+    if re.search(r"\bnao\s+(?:foi|esta|consegui|posso|e possivel)\b", response):
+        return False
+    return bool(re.search(r"\b(criado|criada|registrado|registrada|agendado|agendada|alterado|alterada|excluido|excluida|pausado|pausada|retomado|retomada|criei|registrei|agendei|alterei|exclui|pausei|retomei)\b", response)
+                or re.search(r"\b(?:quer|deseja|posso|confirma)\b.{0,100}\b(?:criar|crie|alterar|editar|excluir|pausar|retomar|lembrete)\b", response)
+                or re.search(r"\b(?:responda|digite)\s+sim\b", response))
+
+
 def _assistant_turn(db, user, repo, scope, thread, message, *, image=None, attachment_type=None, title_prefix="", audio=None, attachment=None):
     """Um turno do assistente (web e WhatsApp): roda o agente, salva a conversa e devolve (thread, resposta)."""
     farm, season = scope["active_farm"], scope["active_season"]
@@ -21882,6 +21894,22 @@ def _assistant_turn(db, user, repo, scope, thread, message, *, image=None, attac
         db.rollback()
         return reply(str(exc), error=True)
     text = (result.get("resposta") or "").strip() or "Pode me contar um pouco mais?"
+    if not reminders.proposal and _assistant_unverified_reminder_claim(text, history):
+        retry_history = list(ai_history)
+        retry_history.insert(len(retry_history) - 1, {"role": "system", "content": (
+            "A resposta anterior sobre o lembrete não foi confirmada pelo sistema e não deve ser apresentada como concluída. "
+            "Para criar, editar, pausar, retomar ou excluir um lembrete, chame a ferramenta correspondente com dados "
+            "confirmados na conversa. Se faltar data, horário ou identificação, pergunte; não invente uma confirmação. "
+            "Caso o usuário tenha dito sim a uma pergunta sem botões, prepare a proposta e peça confirmação novamente."
+        )})
+        try:
+            result = run_farm_assistant(retry_history, assistant, **({"image": image} if image else {}))
+            text = (result.get("resposta") or "").strip() or "Pode me contar um pouco mais?"
+        except ValueError:
+            db.rollback()
+            return reply("Ainda não consegui preparar esse lembrete. Nenhuma alteração foi salva; tente novamente.", error=True)
+        if not reminders.proposal and _assistant_unverified_reminder_claim(text, history):
+            return reply("Ainda não consegui preparar esse lembrete. Nenhuma alteração foi salva; tente novamente.", error=True)
     if reminders.proposal:
         proposal = reminders.proposal
         if proposal["action"] == "create":

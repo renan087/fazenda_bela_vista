@@ -202,3 +202,74 @@ def test_whatsapp_reminder_confirmation_buttons_reject_replay(monkeypatch):
     cancel = client.sent[-1][3][1][0]
     _receive(db, client, _payload("5535999", "cancel-rem", button=cancel))
     assert db.query(AssistantReminder).count() == 1 and "não fiz" in client.sent[-1][2]
+
+
+def test_whatsapp_retries_when_model_invents_confirmation(monkeypatch):
+    from app.services import whatsapp_bot
+    from tests.test_whatsapp import FakeClient, _payload, _receive, _settings
+    _settings(monkeypatch)
+    routes, db, user, scope, *_ = _route_env(monkeypatch, [])
+    tools = ReminderTools(db, user, scope["active_farm"], scope["active_season"])
+    future = tools.local_time(datetime.now(timezone.utc) + timedelta(days=1)).strftime("%Y-%m-%dT%H:%M")
+    calls = []
+    def model(history, assistant):
+        calls.append(history)
+        if len(calls) == 1:
+            return {"resposta": "Quer criar este lembrete? Responda sim para confirmar.", "draft_id": None}
+        assistant.call_tool("preparar_lembrete", json.dumps({"descricao": "Plantio de café", "data_hora": future}))
+        return {"resposta": "", "draft_id": None}
+    monkeypatch.setattr(routes, "run_farm_assistant", model)
+    client = FakeClient()
+    code = whatsapp_bot.start_link(db, user, scope["active_farm"], scope["active_season"])
+    _receive(db, client, _payload("5535999", "fake-link", f"SISFARM {code}"))
+    _receive(db, client, _payload("5535999", "fake-question", "Crie um lembrete para plantio de café"))
+    assert len(calls) == 2 and client.sent[-1][0] == "buttons"
+    assert db.query(AssistantReminder).count() == 0
+    _receive(db, client, _payload("5535999", "real-confirm", button=client.sent[-1][3][0][0]))
+    reminder = db.query(AssistantReminder).one()
+    reminder.due_at = datetime.now(timezone.utc) - timedelta(minutes=1)
+    db.commit()
+    notifications = routes._build_global_notifications(SimpleNamespace(), routes._repository(db), scope, frozenset(), user)
+    assert any(item["message"] == "Plantio de café" for item in notifications["operational"])
+
+
+def test_no_false_reminder_success_when_model_repeats_hallucination(monkeypatch):
+    routes, db, user, scope, *_ = _route_env(monkeypatch, [])
+    calls = []
+    def model(history, assistant):
+        calls.append(1)
+        return {"resposta": "Lembrete criado com sucesso!", "draft_id": None}
+    monkeypatch.setattr(routes, "run_farm_assistant", model)
+    _, item = routes._assistant_turn(db, user, routes._repository(db), scope, None, "Crie um lembrete para amanhã")
+    assert len(calls) == 2 and item["error"] and "Nenhuma alteração foi salva" in item["content"]
+    assert db.query(AssistantReminder).count() == 0
+
+
+def test_old_fake_confirmation_is_replaced_by_real_proposal(monkeypatch):
+    routes, db, user, scope, *_ = _route_env(monkeypatch, [])
+    tools = ReminderTools(db, user, scope["active_farm"], scope["active_season"])
+    future = tools.local_time(datetime.now(timezone.utc) + timedelta(days=1)).strftime("%Y-%m-%dT%H:%M")
+    now = datetime.now(timezone.utc)
+    thread = routes.AssistantThread(id="a" * 32, user_id=user.id, organization_id=user.organization_id,
+                                    farm_id=scope["active_farm_id"], season_id=scope["active_season_id"],
+                                    channel="whatsapp", title="WhatsApp", created_at=now, updated_at=now)
+    routes._save_thread(db, thread, [{"role": "user", "content": "Crie um lembrete de plantio"},
+                                    {"role": "assistant", "content": "Quer criar o lembrete? Responda sim."}])
+    calls = []
+    def model(history, assistant):
+        calls.append(1)
+        if len(calls) == 1:
+            return {"resposta": "Lembrete criado!", "draft_id": None}
+        assistant.call_tool("preparar_lembrete", json.dumps({"descricao": "Plantio", "data_hora": future}))
+        return {"resposta": "", "draft_id": None}
+    monkeypatch.setattr(routes, "run_farm_assistant", model)
+    _, reply = routes._assistant_turn(db, user, routes._repository(db), scope, thread, "sim")
+    assert len(calls) == 2 and reply.get("reminder_proposal") and "botões" in reply["content"]
+    assert db.query(AssistantReminder).count() == 0
+
+
+def test_missing_reminder_time_is_still_asked_normally():
+    from app.web.routes import _assistant_unverified_reminder_claim
+    history = [{"role": "user", "content": "Crie um lembrete"}]
+    assert not _assistant_unverified_reminder_claim("Qual data e horário você prefere?", history)
+    assert not _assistant_unverified_reminder_claim("Não foi possível criar o lembrete.", history)
