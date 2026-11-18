@@ -29,6 +29,7 @@
     const STATES = ['acenando', 'pronto', 'falando', 'pensando', 'alerta', 'comemorando', 'dormindo', 'zangado'];
     let current = '';
     let timer = null;
+    let bubbleKind = '';
 
     const set = (state, ms, next) => {
         if (!STATES.includes(state)) return;
@@ -45,7 +46,7 @@
         $('[data-pzw-bubble-text]').innerHTML = text;
         bubble.hidden = false;
     };
-    const hideBubble = () => { bubble.hidden = true; };
+    const hideBubble = () => { bubble.hidden = true; bubbleKind = ''; };
     const hello = new Date().getHours() < 12 ? 'Bom dia' : new Date().getHours() < 18 ? 'Boa tarde' : 'Boa noite';
     const who = name ? `${hello}, ${name.replace(/[<>&"]/g, '')}!` : `${hello}!`;
 
@@ -65,7 +66,13 @@
     } else {
         set('pronto');
     }
-    bubble.addEventListener('click', (e) => { if (!e.target.closest('[data-pzw-dismiss]')) open(true); });
+    bubble.addEventListener('click', (e) => {
+        if (e.target.closest('[data-pzw-dismiss]')) return;
+        if (bubbleKind === 'reminder') {
+            hideBubble();
+            document.querySelector('[data-reminders-open]')?.click();
+        } else open(true);
+    });
     $('[data-pzw-dismiss]').addEventListener('click', (e) => { e.stopPropagation(); hideBubble(); });
 
     // Painel
@@ -120,6 +127,35 @@
     $('[data-pzw-hide]').addEventListener('click', hide);
     peek.addEventListener('click', comeBack);
     if (peeking) showPeek(false);
+
+    // Lembretes são conferidos apenas com a página visível e respeitam o Pezinho recolhido.
+    let checkingReminders = false;
+    const checkReminders = async () => {
+        if (checkingReminders || document.hidden || store.get('sf-pz-peek') === '1' || isOpen() || !bubble.hidden || !root.dataset.scope) return;
+        checkingReminders = true;
+        try {
+            const url = `/mobile/assistente/pezinho/lembretes?context=${encodeURIComponent(root.dataset.scope)}`;
+            const response = await fetch(url, {credentials: 'same-origin', cache: 'no-store'});
+            if (!response.ok) return;
+            const data = await response.json();
+            if (document.hidden || store.get('sf-pz-peek') === '1' || isOpen() || !bubble.hidden) return;
+            const reminders = Array.isArray(data.reminders) ? data.reminders : [];
+            const item = reminders.find((entry) => !store.sget(`sf-pz-reminder:${root.dataset.scope}:${entry.id}:${entry.state}`));
+            if (!item) return;
+            store.sset(`sf-pz-reminder:${root.dataset.scope}:${item.id}:${item.state}`, '1');
+            const text = $('[data-pzw-bubble-text]');
+            text.replaceChildren();
+            const title = document.createElement('b');
+            title.textContent = item.state === 'vencido' ? 'Lembrete vencido' : 'Lembrete próximo';
+            text.append(title, document.createTextNode(`: ${item.description} · ${item.time}. Toque para gerenciar.`));
+            bubbleKind = 'reminder'; bubble.hidden = false;
+            set(reduced ? 'pronto' : 'alerta', 6000);
+        } catch (e) { /* A central de notificações continua disponível. */ }
+        finally { checkingReminders = false; }
+    };
+    setTimeout(checkReminders, 15000);
+    setInterval(checkReminders, 60000);
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) checkReminders(); });
 
     // A conversa usa o mesmo motor e os mesmos rascunhos da página do assistente.
     const form = $('[data-pzw-form]');

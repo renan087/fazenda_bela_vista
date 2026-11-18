@@ -21999,6 +21999,30 @@ def _pezinho_thread(db, user, scope, thread_id):
     return thread
 
 
+@router.get("/mobile/assistente/pezinho/lembretes")
+def pezinho_reminder_alerts(request: Request, context: str = Query(..., max_length=80),
+                            db: Session = Depends(get_db), user: User = Depends(get_current_user_web)):
+    from app.models.assistant_reminder import AssistantReminder
+
+    _, scope = _pezinho_scope(db, user, request)
+    farm, season = scope["active_farm"], scope["active_season"]
+    if context != f"{user.id}:{user.organization_id}:{farm.id}:{season.id}":
+        raise HTTPException(status_code=409, detail="O contexto mudou. Atualize a página.")
+    now = datetime.now(timezone.utc)
+    rows = db.query(AssistantReminder).filter(
+        AssistantReminder.user_id == user.id, AssistantReminder.organization_id == user.organization_id,
+        AssistantReminder.farm_id == farm.id, AssistantReminder.season_id == season.id,
+        AssistantReminder.status == "active", AssistantReminder.due_at <= now + timedelta(hours=1),
+    ).order_by(AssistantReminder.due_at.desc()).limit(100).all()
+    items = []
+    for row in rows:
+        due = row.due_at if row.due_at.tzinfo else row.due_at.replace(tzinfo=timezone.utc)
+        items.append({"id": row.id, "description": row.description,
+                      "state": "vencido" if due <= now else "proximo",
+                      "time": due.astimezone(get_app_timezone()).strftime("%d/%m às %H:%M")})
+    return JSONResponse({"reminders": items}, headers={"Cache-Control": "no-store"})
+
+
 @router.get("/mobile/assistente/pezinho")
 def pezinho_get_chat(request: Request, thread_id: str = Query(..., max_length=32),
                      db: Session = Depends(get_db), user: User = Depends(get_current_user_web)):

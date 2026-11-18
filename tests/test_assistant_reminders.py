@@ -113,3 +113,27 @@ def test_manual_reminder_rejects_past_date_and_foreign_reminder(monkeypatch):
     with pytest.raises(HTTPException):
         routes.manage_personal_reminders(request, "csrf", context, "excluir", "", "", db.query(AssistantReminder).one().id, db, other)
     assert db.query(AssistantReminder).one().status == "active"
+
+
+def test_pezinho_alerts_only_current_users_due_or_nearby_active_reminders(monkeypatch):
+    from uuid import uuid4
+    routes, db, user, scope, *_ = _route_env(monkeypatch, [])
+    monkeypatch.setattr(routes, "_pezinho_scope", lambda db, user, request: (routes._repository(db), scope))
+    now = datetime.now(timezone.utc)
+    for description, delta, status in [("Vencido", -10, "active"), ("Próximo", 30, "active"),
+                                       ("Depois", 120, "active"), ("Pausado", -1, "paused")]:
+        db.add(AssistantReminder(proposal_id=uuid4().hex, user_id=user.id, organization_id=user.organization_id,
+                                 farm_id=scope["active_farm_id"], season_id=scope["active_season_id"],
+                                 description=description, due_at=now + timedelta(minutes=delta), status=status, created_at=now))
+    db.commit()
+    context = f"{user.id}:{user.organization_id}:{scope['active_farm_id']}:{scope['active_season_id']}"
+    response = routes.pezinho_reminder_alerts(SimpleNamespace(), context, db, user)
+    items = json.loads(response.body)["reminders"]
+    assert {item["description"]: item["state"] for item in items} == {"Vencido": "vencido", "Próximo": "proximo"}
+    assert response.headers["cache-control"] == "no-store"
+    with pytest.raises(HTTPException) as error:
+        routes.pezinho_reminder_alerts(SimpleNamespace(), "outro-contexto", db, user)
+    assert error.value.status_code == 409
+    other = SimpleNamespace(id=user.id + 1, organization_id=user.organization_id)
+    other_context = f"{other.id}:{other.organization_id}:{scope['active_farm_id']}:{scope['active_season_id']}"
+    assert json.loads(routes.pezinho_reminder_alerts(SimpleNamespace(), other_context, db, other).body)["reminders"] == []
