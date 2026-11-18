@@ -21317,16 +21317,17 @@ def _assistant_wants_shared_report(message):
     if re.search(r"\b(?:nao|sem)\b.{0,60}\b(?:compartilh\w*|public\w*|link|pagina|relatorio)\b", text):
         return False
     return bool(re.search(r"\b(compartilhar|compartilhe|compartilha|compartilhavel)\b", text) or
-                (re.search(r"\b(pagina|html)\b", text) and re.search(r"\b(crie|criar|gere|gerar|monte|montar|prepare|preparar)\b", text)))
+                (re.search(r"\b(pagina|html|link|relatorio)\b", text) and
+                 re.search(r"\b(crie|criar|cria|gere|gerar|gera|monte|montar|prepare|preparar|envie|enviar|envia|mande|manda|reenvie|reenviar)\b", text)))
 
 
 def _assistant_share_followup(message):
     words = re.findall(r"[a-z0-9]+", normalized(message))
     allowed = {"por", "favor", "voce", "pode", "poderia", "eu", "me", "quero", "gostaria", "de", "do", "da", "o", "a", "os", "as",
                "um", "uma", "gerar", "gere", "criar", "crie", "montar", "monte", "prepare", "preparar", "link", "pagina", "html",
-               "relatorio", "compartilhar", "compartilhe", "compartilha", "compartilhavel", "para", "dessa", "deste", "desta", "desse",
+               "relatorio", "compartilhar", "compartilhe", "compartilha", "compartilhavel", "para", "dessa", "deste", "desta", "desse", "gera", "cria", "envie", "envia", "enviar", "mande", "manda", "reenvie", "reenviar", "novamente", "de", "novo", "pois", "porque", "expirou", "expirado", "venceu", "vencido",
                "esse", "essa", "este", "esta", "isso", "disso", "esses", "essas", "aquele", "aquela", "anterior", "ultima", "ultimo", "resultado", "consulta", "dados", "novamente", "novo"}
-    return bool(words and set(words) <= allowed and set(words) & {"esse", "essa", "este", "esta", "isso", "disso", "esses", "essas", "aquele", "aquela", "anterior", "ultima", "ultimo", "resultado", "consulta", "dessa", "desse", "desta", "deste"})
+    return bool(words and set(words) <= allowed and set(words) & {"esse", "essa", "este", "esta", "isso", "disso", "esses", "essas", "aquele", "aquela", "anterior", "ultima", "ultimo", "resultado", "consulta", "dessa", "desse", "desta", "deste", "novamente", "novo", "link"})
 
 
 def _assistant_turn(db, user, repo, scope, thread, message, *, image=None, attachment_type=None, title_prefix="", audio=None, attachment=None):
@@ -21372,11 +21373,24 @@ def _assistant_turn(db, user, repo, scope, thread, message, *, image=None, attac
         if not error and not draft and len(credit_cards) > 1:
             normalized_reply = normalized(text)
             named = sum(normalized(card.card_name) in normalized_reply for card in credit_cards)
-            if named >= 2 and ("cart" in normalized_reply or "?" in text):
-                item["content"] = "Em qual cartão foi a compra? Responda com o número ou o nome:\n" + "\n".join(
-                    f"{index}. {card.card_name}" for index, card in enumerate(credit_cards, 1)
-                )
-                item["card_options"] = [{"id": card.id, "name": card.card_name} for card in credit_cards]
+            purchase_context = pending_purchase or any(
+                entry.get("role") == "user" and re.search(r"\b(compra|comprei|comprar|compramos|adquiri|nota fiscal)\b", normalized(entry.get("content") or ""))
+                for entry in history[-8:]
+            )
+            internal_card_prompt = "nao escolha sozinho" in normalized_reply and "pergunte ao usuario" in normalized_reply
+            asks_card = ("?" in text and re.search(r"\bqual\b", normalized_reply) and re.search(r"\b(cartao|cartoes|deles|desses)\b", normalized_reply)) or internal_card_prompt
+            if named >= 2 and purchase_context and asks_card:
+                if internal_card_prompt:
+                    text = "Em qual cartão foi essa compra? Você pode responder com o número ou o nome."
+                    item["content"] = text
+                numbered = re.findall(r"(?m)^\s*\d+[.)]\s*(.+)$", text)
+                ordered = [next((card for card in credit_cards if normalized(card.card_name) in normalized(line)), None) for line in numbered]
+                if len(ordered) != len(credit_cards) or any(card is None for card in ordered) or len({card.id for card in ordered}) != len(credit_cards):
+                    ordered = credit_cards
+                    item["content"] = (text.rstrip() + "\n\n" + "\n".join(
+                        f"{index}. {card.card_name}" for index, card in enumerate(credit_cards, 1)
+                    ))[:3500]
+                item["card_options"] = [{"id": card.id, "name": card.card_name} for card in ordered]
         if error:
             item["error"] = True
         if tools:
@@ -21676,7 +21690,10 @@ def _assistant_turn(db, user, repo, scope, thread, message, *, image=None, attac
         allowed=lambda page: page in permission_codes and entitlements.module_allowed(page),
         allow_system_backup=_user_in_default_organization(user), allow_org_admin=is_super_admin_email(user.email),
     )
-    if not image and not attachment and not _assistant_wants_shared_report(message):
+    wants_report = _assistant_wants_shared_report(message)
+    previous_assistant = next((entry for entry in reversed(history[:-1]) if entry.get("role") == "assistant" and not entry.get("error")), None)
+    generic_link = wants_report and _assistant_share_followup(message) and not re.search(r"\b(compartilh\w*|pagina|html|relatorio)\b", normalized(message))
+    if not image and not attachment and (not wants_report or (generic_link and not (previous_assistant or {}).get("shared_report_id"))):
         prior = _assistant_record_followup(db, user, farm, season, history[:-1], message)
         if prior is not None:
             if not prior:
@@ -21755,13 +21772,18 @@ def _assistant_turn(db, user, repo, scope, thread, message, *, image=None, attac
             + json.dumps(pending_memory["args"], ensure_ascii=False)
             + ". Use ajustar_rascunho somente com campos explicitamente alterados e mantenha o restante."
         )})
+    if wants_report:
+        ai_history.insert(len(ai_history) - 1, {"role": "system", "content": (
+            "O usuário solicitou um link compartilhável. Consulte os dados solicitados usando a ferramenta de consulta apropriada; "
+            "o sistema gera o link depois da consulta. Não invente links nem afirme que é impossível enviá-los."
+        )})
     try:
         result = run_farm_assistant(ai_history, assistant, **({"image": image} if image else {}))
     except ValueError as exc:
         db.rollback()
         return reply(str(exc), error=True)
     text = (result.get("resposta") or "").strip() or "Pode me contar um pouco mais?"
-    if _assistant_wants_shared_report(message) and not result.get("draft_id"):
+    if wants_report and not result.get("draft_id"):
         from app.services.shared_report import create_shared_report
 
         candidates = assistant.shareable_queries

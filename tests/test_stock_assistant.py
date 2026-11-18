@@ -304,6 +304,28 @@ def test_assistant_template_accepts_pdf():
     assert 'accept="image/jpeg,image/png,image/webp,application/pdf"' in template
 
 
+def test_assistant_knows_its_name():
+    assert "Seu nome é Pezinho" in _assistant([]).instructions()
+
+
+def test_card_question_does_not_replace_unrelated_answer(monkeypatch):
+    from app.models import FinanceAccount, FinanceCreditCard
+    answer = "Seus cartões são Nubank e Ourocard. Qual deles você quer consultar?"
+    routes, db, user, scope, send, sent, history = _route_env(monkeypatch, [answer])
+    account = FinanceAccount(farm_id=scope["active_farm"].id, account_name="Conta", initial_balance=0,
+                             initial_balance_date=date(2026, 1, 1), bank_code="756", bank_name="Banco",
+                             created_at=datetime.now(timezone.utc))
+    db.add(account); db.flush()
+    for name in ("Nubank", "Ourocard"):
+        db.add(FinanceCreditCard(farm_id=scope["active_farm"].id, payment_account_id=account.id, card_name=name,
+                                 issuer=name, brand="Visa", closing_day=5, due_day=12, is_active=True,
+                                 created_at=datetime.now(timezone.utc)))
+    db.commit()
+    send("Quais cartões tenho cadastrados?")
+    assert history()[-1]["content"] == answer
+    assert "card_options" not in history()[-1]
+
+
 def test_drag_and_drop_is_available_only_for_editable_chat():
     templates_dir = Path(__file__).resolve().parents[1] / "app" / "templates"
     env = Environment(loader=ChoiceLoader([

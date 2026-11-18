@@ -41,9 +41,12 @@ def test_report_intent_rejects_negative_requests():
     assert _assistant_wants_shared_report("Consulte minhas compras e gere um link para compartilhar")
     assert not _assistant_wants_shared_report("Não quero que compartilhe esses dados")
     assert _assistant_wants_shared_report("Crie uma página HTML com a consulta")
+    assert _assistant_wants_shared_report("Consulte minhas compras de gasolina e gere um link")
+    assert _assistant_wants_shared_report("Me envie o link novamente")
     assert not _assistant_wants_shared_report("Não gere um link para compartilhar")
     assert routes_followup("Compartilhe essa consulta")
     assert not routes_followup("Compartilhe a última consulta de gasolina")
+    assert routes_followup("Gere o link novamente")
 
 
 def routes_followup(message):
@@ -51,7 +54,9 @@ def routes_followup(message):
     return _assistant_share_followup(message)
 
 
-def test_real_query_creates_safe_shareable_page_and_revalidates_permission(monkeypatch):
+@pytest.mark.parametrize("request_text", ["Consulte minhas compras de gasolina e gere um link para compartilhar",
+                                          "Consulte minhas compras de gasolina e gere um link"])
+def test_real_query_creates_safe_shareable_page_and_revalidates_permission(monkeypatch, request_text):
     from datetime import date, timedelta
     from starlette.requests import Request
     from app.models.purchased_input import PurchasedInput
@@ -72,8 +77,7 @@ def test_real_query_creates_safe_shareable_page_and_revalidates_permission(monke
         return {"resposta": "Consultei os dados.", "draft_id": None}
 
     monkeypatch.setattr(routes, "run_farm_assistant", query)
-    thread, reply = routes._assistant_turn(db, user, routes._repository(db), scope, None,
-                                           "Consulte minhas compras de gasolina e gere um link para compartilhar")
+    thread, reply = routes._assistant_turn(db, user, routes._repository(db), scope, None, request_text)
     token = reply["_shared_url"].split("#")[-1]
     assert len(token) == 43 and token not in thread.messages_json
     report = db.query(SharedReport).one()
