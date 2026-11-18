@@ -68,6 +68,7 @@ from app.models.notification_read import NotificationRead
 from app.models.shared_report import SharedReport
 from app.models.assistant_reminder import AssistantReminder
 from app.models.assistant_action_draft import AssistantActionDraft
+from app.models.coffee_classification import CoffeeClassification
 
 __all__ = [
     "NotificationRead",

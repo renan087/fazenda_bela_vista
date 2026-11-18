@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="stock-page-shell sf-page">
+    <section class="stock-page-header"><div class="flex flex-wrap items-start justify-between gap-4"><div class="stock-page-header-intro"><h2 class="stock-page-card-title">Classificação do café</h2><p class="stock-page-card-subtitle">Histórico de análises físicas e sensoriais por lote da safra.</p></div></div></section>
+    <section class="stock-panel rounded-[2rem] bg-white p-6 shadow-panel">
+        <div class="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-900">Os resultados são informados pelo usuário. Anexar um laudo não significa que o SiSFarm verificou sua autenticidade ou realizou a classificação.</div>
+        {% if can_write_page %}
+        <h3 class="mt-6 text-xl font-semibold">Registrar análise</h3>
+        <p class="mt-1 text-sm text-slate-500">Informe apenas os dados disponíveis. A análise não altera o saldo nem a venda do lote.</p>
+        <form method="post" action="/producao/classificacao" enctype="multipart/form-data" class="mt-5 grid gap-4 sm:grid-cols-2">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <label class="grid gap-2 text-sm font-medium">Lote <span><select name="harvest_id" required class="w-full rounded-xl border-slate-200 bg-slate-50"><option value="">Selecione o lote</option>{% for harvest in classification_harvests %}<option value="{{ harvest.id }}" {% if selected_harvest_id == harvest.id %}selected{% endif %}>{{ harvest.lot_code or ('Lote ' ~ harvest.id) }} · {{ harvest.plot.name }} · {{ harvest.harvest_date.strftime('%d/%m/%Y') }}</option>{% endfor %}</select></span></label>
+            <label class="grid gap-2 text-sm font-medium">Data da análise<input type="date" name="analysis_date" max="{{ today.isoformat() }}" required class="w-full rounded-xl border-slate-200 bg-slate-50"></label>
+            <label class="grid gap-2 text-sm font-medium">Origem dos dados<select name="source" required class="w-full rounded-xl border-slate-200 bg-slate-50"><option value="informado">Informado pelo usuário</option><option value="laudo">Informado com laudo anexado</option></select></label>
+            <label class="grid gap-2 text-sm font-medium">Laudo em PDF <span class="text-xs font-normal text-slate-500">Obrigatório se a origem for laudo. Até 10 MB.</span><input type="file" name="report" accept="application/pdf,.pdf" class="w-full rounded-xl border border-slate-200 bg-slate-50 p-2 text-sm"></label>
+            <label class="grid gap-2 text-sm font-medium">Responsável ou laboratório<input name="evaluator" maxlength="180" class="w-full rounded-xl border-slate-200 bg-slate-50"></label>
+            <label class="grid gap-2 text-sm font-medium">Método ou protocolo<input name="method" maxlength="180" placeholder="Ex.: informado no laudo" class="w-full rounded-xl border-slate-200 bg-slate-50"></label>
+            <label class="grid gap-2 text-sm font-medium">Tipo informado<input name="coffee_type" maxlength="80" class="w-full rounded-xl border-slate-200 bg-slate-50"></label>
+            <label class="grid gap-2 text-sm font-medium">Peneira<input name="sieve" maxlength="80" class="w-full rounded-xl border-slate-200 bg-slate-50"></label>
+            <label class="grid gap-2 text-sm font-medium">Umidade da análise (%)<input type="number" name="moisture" min="0" max="100" step="0.01" class="w-full rounded-xl border-slate-200 bg-slate-50"></label>
+            <label class="grid gap-2 text-sm font-medium">Defeitos informados<input name="defects" maxlength="180" placeholder="Resultado conforme a análise" class="w-full rounded-xl border-slate-200 bg-slate-50"></label>
+            <label class="grid gap-2 text-sm font-medium">Bebida<input name="beverage" maxlength="120" class="w-full rounded-xl border-slate-200 bg-slate-50"></label>
+            <label class="grid gap-2 text-sm font-medium">Nota sensorial informada<input type="number" name="sensory_score" min="0" max="100" step="0.01" class="w-full rounded-xl border-slate-200 bg-slate-50"></label>
+            <label class="grid gap-2 text-sm font-medium sm:col-span-2">Descrição sensorial<textarea name="sensory_notes" maxlength="2000" rows="2" class="w-full rounded-xl border-slate-200 bg-slate-50" placeholder="Aroma, sabor, corpo e outros atributos informados"></textarea></label>
+            <label class="grid gap-2 text-sm font-medium sm:col-span-2">Observações<textarea name="notes" maxlength="2000" rows="2" class="w-full rounded-xl border-slate-200 bg-slate-50"></textarea></label>
+            <div class="sm:col-span-2"><button type="submit" {% if not classification_harvests %}disabled{% endif %} class="rounded-xl bg-brand-500 px-5 py-3 text-sm font-semibold text-white disabled:opacity-50">Salvar análise</button></div>
+        </form>
+        {% endif %}
+        {% if not classification_harvests %}<p class="mt-4 text-sm text-slate-500">Selecione uma fazenda e safra com colheitas cadastradas para registrar uma análise.</p>{% endif %}
+    </section>
+    <section class="stock-panel rounded-[2rem] bg-white p-6 shadow-panel">
+        <div class="flex flex-wrap items-center justify-between gap-3"><div><h3 class="text-xl font-semibold">Histórico de análises</h3><p class="mt-1 text-sm text-slate-500">Resultados informados, ordenados pela data da análise.</p></div>{% if selected_harvest_id %}<a href="/producao/classificacao" class="text-sm font-semibold text-emerald-700">Ver todos os lotes</a>{% endif %}</div>
+        <div class="mt-5 grid gap-3">
+        {% for item in classifications %}
+            <article class="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                <div class="flex flex-wrap items-start justify-between gap-3"><div><h4 class="font-semibold">{{ item.harvest.lot_code or ('Lote ' ~ item.harvest.id) }} · {{ item.harvest.plot.name }}</h4><p class="mt-1 text-sm text-slate-500">{{ item.analysis_date.strftime('%d/%m/%Y') }} · {{ 'Informado com laudo anexado' if item.source == 'laudo' else 'Informado pelo usuário' }}</p></div><div class="flex items-center gap-4">{% if item.report_filename %}<a href="/producao/classificacao/{{ item.id }}/laudo" class="text-sm font-semibold text-emerald-700">Baixar laudo PDF</a>{% endif %}{% if can_write_page and 'data.delete' in (permission_codes or []) %}<form method="post" action="/producao/classificacao/{{ item.id }}/excluir" onsubmit="return confirm('Excluir definitivamente esta análise e seu laudo?');"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button type="submit" class="text-sm font-semibold text-rose-700">Excluir</button></form>{% endif %}</div></div>
+                <div class="mt-3 grid gap-2 text-sm sm:grid-cols-2"><p><b>Responsável:</b> {{ item.evaluator or 'Não informado' }}</p><p><b>Método:</b> {{ item.method or 'Não informado' }}</p><p><b>Tipo:</b> {{ item.coffee_type or 'Não informado' }}</p><p><b>Peneira:</b> {{ item.sieve or 'Não informada' }}</p><p><b>Umidade:</b> {% if item.moisture is not none %}{{ item.moisture|decimal_br }}%{% else %}Não informada{% endif %}</p><p><b>Defeitos:</b> {{ item.defects or 'Não informados' }}</p><p><b>Bebida:</b> {{ item.beverage or 'Não informada' }}</p><p><b>Nota:</b> {% if item.sensory_score is not none %}{{ item.sensory_score|decimal_br }}{% else %}Não informada{% endif %}</p>{% if item.sensory_notes %}<p class="sm:col-span-2"><b>Descrição sensorial:</b> {{ item.sensory_notes }}</p>{% endif %}{% if item.notes %}<p class="sm:col-span-2"><b>Observações:</b> {{ item.notes }}</p>{% endif %}</div>
+            </article>
+        {% else %}<p class="rounded-xl border border-dashed border-slate-200 p-5 text-sm text-slate-500">Nenhuma análise registrada para este contexto.</p>{% endfor %}
+        </div>
+    </section>
+</div>
+{% endblock %}

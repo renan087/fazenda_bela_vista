@@ -32,7 +32,8 @@ from reportlab.lib.pagesizes import A4, landscape
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.platypus import Image, KeepInFrame, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 from sqlalchemy import func
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session, joinedload, defer
+from app.models.coffee_classification import CoffeeClassification
 from starlette.datastructures import UploadFile as StarletteUploadFile
 
 from app.core.config import get_settings
@@ -19730,6 +19731,18 @@ def update_harvest_action(
     if plot.id != harvest.plot_id and not _plot_allowed_for_season_launch(plot, scope):
         _flash(request, "error", "O setor selecionado não está vinculado à safra ativa.")
         return _redirect_for_request(request, f"/producao?edit_id={record_id}")
+    earliest_analysis = (db.query(func.min(CoffeeClassification.analysis_date))
+                         .filter(CoffeeClassification.harvest_id == harvest.id).scalar())
+    if earliest_analysis:
+        if plot.id != harvest.plot_id or (lot_code or "").strip() != (harvest.lot_code or "").strip():
+            _flash(request, "error", "Não é possível alterar o lote ou o setor enquanto houver análises de classificação vinculadas.")
+            return _redirect_for_request(request, f"/producao?edit_id={record_id}")
+        try:
+            if date.fromisoformat(harvest_date) > earliest_analysis:
+                _flash(request, "error", "A data da colheita não pode ser posterior às análises já registradas.")
+                return _redirect_for_request(request, f"/producao?edit_id={record_id}")
+        except ValueError:
+            pass
     try:
         _validate_harvest_date_for_season(harvest_date, scope.get("active_season"))
         maturation_value = _validate_harvest_percentage(maturation_percentage, "Percentual de maturação")
@@ -19794,9 +19807,109 @@ def delete_harvest_action(
             "Nao e possivel excluir: existem registros de comercializacao vinculados a este lote.",
         )
         return _redirect("/producao")
+    if db.query(CoffeeClassification.id).filter_by(harvest_id=harvest.id).first():
+        _flash(request, "error", "Não é possível excluir uma colheita com análises de classificação vinculadas.")
+        return _redirect("/producao")
     repo.delete(harvest)
     _flash(request, "success", "Colheita excluida com sucesso.")
     return _redirect("/producao")
+
+
+def _classification_harvests(repo, scope):
+    farm, season = scope.get("active_farm"), scope.get("active_season")
+    if not farm or not season:
+        return []
+    harvests = (repo.db.query(HarvestRecord).join(Plot, HarvestRecord.plot_id == Plot.id)
+                .options(joinedload(HarvestRecord.plot)).filter(Plot.farm_id == farm.id)
+                .order_by(HarvestRecord.harvest_date.desc(), HarvestRecord.id.desc()).all())
+    return [harvest for harvest in harvests if harvest_matches_season(harvest, season)]
+
+
+@router.get("/producao/classificacao")
+def coffee_classification_page(request: Request, db: Session = Depends(get_db), user: User = Depends(get_current_user_web),
+                               csrf_token: str = Depends(get_csrf_token)):
+    repo = _repository(db)
+    scope = _global_scope_context(request, repo, user)
+    harvests = _classification_harvests(repo, scope)
+    selected_harvest_id = _optional_query_int(request.query_params.get("harvest_id"))
+    ids = [item.id for item in harvests]
+    history_ids = [selected_harvest_id] if selected_harvest_id in ids else ids
+    analyses = (db.query(CoffeeClassification).options(defer(CoffeeClassification.report_data), joinedload(CoffeeClassification.harvest))
+                .filter(CoffeeClassification.harvest_id.in_(history_ids))
+                .order_by(CoffeeClassification.analysis_date.desc(), CoffeeClassification.id.desc()).all()) if history_ids else []
+    return templates.TemplateResponse("coffee_classification.html", _base_context(
+        request, user, csrf_token, "coffee_classification", _repo=repo, title="Classificação do café",
+        classification_harvests=harvests, classifications=analyses, today=today_in_app_timezone(),
+        selected_harvest_id=selected_harvest_id if selected_harvest_id in ids else None))
+
+
+@router.post("/producao/classificacao")
+async def create_coffee_classification(request: Request, db: Session = Depends(get_db), user: User = Depends(get_current_user_web)):
+    from app.services.coffee_classification import validate_classification
+    form = await request.form()
+    validate_csrf(request, str(form.get("csrf_token") or ""))
+    repo = _repository(db)
+    scope = _global_scope_context(request, repo, user)
+    harvest_id = _int_or_none(form.get("harvest_id"))
+    harvest = next((item for item in _classification_harvests(repo, scope) if item.id == harvest_id), None)
+    if not harvest:
+        _flash(request, "error", "Selecione um lote da fazenda e safra ativas.")
+        return _redirect("/producao/classificacao")
+    try:
+        report = form.get("report")
+        filename = _clean_attachment_filename(report.filename) if isinstance(report, (UploadFile, StarletteUploadFile)) and report.filename else None
+        payload = await report.read(_MAX_ATTACHMENT_SIZE_BYTES + 1) if filename else None
+        if filename and (Path(filename).suffix.lower() != ".pdf" or not payload or not payload.startswith(b"%PDF-")):
+            raise ValueError("O laudo deve ser um arquivo PDF válido.")
+        if payload and len(payload) > _MAX_ATTACHMENT_SIZE_BYTES:
+            raise ValueError("O laudo deve ter no máximo 10 MB.")
+        values = validate_classification(form, harvest_date=harvest.harvest_date, today=today_in_app_timezone(), has_report=bool(payload))
+        analysis = CoffeeClassification(harvest_id=harvest.id, report_filename=filename, report_data=payload, **values)
+        db.add(analysis)
+        db.flush()
+        db.add(AuditLog(actor_user_id=user.id, actor_email=user.email, organization_id=user.organization_id,
+                        event_type="coffee.classification.created", outcome="success",
+                        metadata_json=json.dumps({"classification_id": analysis.id, "harvest_id": harvest.id})))
+        db.commit()
+    except ValueError as exc:
+        db.rollback()
+        _flash(request, "error", str(exc))
+        return _redirect_with_query("/producao/classificacao", harvest_id=harvest.id)
+    _flash(request, "success", "Análise registrada no histórico do lote.")
+    return _redirect_with_query("/producao/classificacao", harvest_id=harvest.id)
+
+
+@router.get("/producao/classificacao/{analysis_id}/laudo")
+def coffee_classification_report(analysis_id: int, request: Request, db: Session = Depends(get_db), user: User = Depends(get_current_user_web)):
+    repo = _repository(db)
+    scope = _global_scope_context(request, repo, user)
+    analysis = db.query(CoffeeClassification).options(defer(CoffeeClassification.report_data)).filter_by(id=analysis_id).first()
+    if not analysis or not analysis.report_filename or analysis.harvest_id not in {h.id for h in _classification_harvests(repo, scope)}:
+        raise HTTPException(status_code=404)
+    if not analysis.report_data:
+        raise HTTPException(status_code=404)
+    filename = _content_disposition_inline_filename(analysis.report_filename).replace("inline;", "attachment;", 1)
+    return Response(content=_attachment_payload_bytes(analysis.report_data), media_type="application/pdf",
+                    headers={"Content-Disposition": filename, "X-Content-Type-Options": "nosniff", "Cache-Control": "private, no-store"})
+
+
+@router.post("/producao/classificacao/{analysis_id}/excluir")
+def delete_coffee_classification(analysis_id: int, request: Request, csrf_token: str = Form(...),
+                                 db: Session = Depends(get_db), user: User = Depends(get_current_user_web)):
+    validate_csrf(request, csrf_token)
+    repo = _repository(db)
+    scope = _global_scope_context(request, repo, user)
+    analysis = db.query(CoffeeClassification).options(defer(CoffeeClassification.report_data)).filter_by(id=analysis_id).first()
+    if not analysis or analysis.harvest_id not in {h.id for h in _classification_harvests(repo, scope)}:
+        raise HTTPException(status_code=404)
+    harvest_id = analysis.harvest_id
+    db.add(AuditLog(actor_user_id=user.id, actor_email=user.email, organization_id=user.organization_id,
+                    event_type="coffee.classification.deleted", outcome="success",
+                    metadata_json=json.dumps({"classification_id": analysis.id, "harvest_id": harvest_id})))
+    db.delete(analysis)
+    db.commit()
+    _flash(request, "success", "Análise e laudo anexado excluídos.")
+    return _redirect_with_query("/producao/classificacao", harvest_id=harvest_id)
 
 
 @router.get("/producao/comercializacao")
@@ -19844,6 +19957,14 @@ def commercialization_page(
         for item in repo.list_coffee_commercializations(farm_id=active_farm_id)
         if _commercialization_record_matches_scope(item, scope)
     ] if active_farm_id else []
+    harvest_ids = [item.id for item in harvests]
+    latest_classifications = {}
+    if harvest_ids:
+        analyses = (db.query(CoffeeClassification).options(defer(CoffeeClassification.report_data))
+                    .filter(CoffeeClassification.harvest_id.in_(harvest_ids))
+                    .order_by(CoffeeClassification.analysis_date.desc(), CoffeeClassification.id.desc()).all())
+        for analysis in analyses:
+            latest_classifications.setdefault(analysis.harvest_id, analysis)
 
     edit_commercialization = repo.get_coffee_commercialization(edit_id) if edit_id else None
     if edit_commercialization and not _commercialization_record_matches_scope(edit_commercialization, scope):
@@ -19864,7 +19985,8 @@ def commercialization_page(
         allocated = sum(float(item.equivalent_sacks or 0) for item in all_commercializations if item.harvest_id == harvest.id)
         inventory_lots.append({"harvest": harvest, "lot_label": _commercialization_lot_label(harvest),
                                "produced": produced, "allocated": allocated, "available": actual_available,
-                               "overallocated": allocated > produced + 0.00005})
+                               "overallocated": allocated > produced + 0.00005,
+                               "classification": latest_classifications.get(harvest.id)})
         available_sacks = _commercialization_available_sacks(
             harvest,
             all_commercializations,
