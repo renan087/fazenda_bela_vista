@@ -19846,17 +19846,20 @@ def coffee_classification_page(request: Request, db: Session = Depends(get_db), 
                       .options(defer(CoffeeClassification.report_data), joinedload(CoffeeClassification.harvest).joinedload(HarvestRecord.season))
                       .filter(Plot.farm_id == farm.id, CropSeason.farm_id == farm.id)
                       .order_by(CoffeeClassification.analysis_date.desc(), CoffeeClassification.id.desc()).limit(51).all())
-    from app.services.coffee_classification import SENSORY_ATTRIBUTES
+    from app.services.coffee_classification import sensory_attributes_for_org
+    definitions = sensory_attributes_for_org(db, user.organization_id)
+    active_definitions = [(key, label) for key, label, active in definitions if active]
     return templates.TemplateResponse("coffee_classification.html", _base_context(
         request, user, csrf_token, "coffee_classification", _repo=repo, title="Classificação do café",
         classification_harvests=harvests, classifications=analyses, today=today_in_app_timezone(),
-        selected_harvest_id=selected_harvest_id if selected_harvest_id in ids else None, sensory_attributes=SENSORY_ATTRIBUTES,
+        selected_harvest_id=selected_harvest_id if selected_harvest_id in ids else None, sensory_attributes=active_definitions,
+        sensory_definitions=definitions,
         classification_comparison=comparison[:50], classification_comparison_truncated=len(comparison) > 50))
 
 
 @router.post("/producao/classificacao")
 async def create_coffee_classification(request: Request, db: Session = Depends(get_db), user: User = Depends(get_current_user_web)):
-    from app.services.coffee_classification import validate_classification, validate_sensory
+    from app.services.coffee_classification import validate_classification, validate_sensory, sensory_attributes_for_org
     form = await request.form()
     validate_csrf(request, str(form.get("csrf_token") or ""))
     repo = _repository(db)
@@ -19874,11 +19877,14 @@ async def create_coffee_classification(request: Request, db: Session = Depends(g
             raise ValueError("O laudo deve ser um arquivo PDF válido.")
         if payload and len(payload) > _MAX_ATTACHMENT_SIZE_BYTES:
             raise ValueError("O laudo deve ter no máximo 10 MB.")
-        scale, sensory = validate_sensory(form)
+        definitions = [(key, label) for key, label, active in sensory_attributes_for_org(db, user.organization_id) if active]
+        scale, sensory = validate_sensory(form, definitions)
         values = validate_classification(form, harvest_date=harvest.harvest_date, today=today_in_app_timezone(), has_report=bool(payload), has_sensory=bool(sensory))
         analysis = CoffeeClassification(harvest_id=harvest.id, report_filename=filename, report_data=payload, **values)
         if sensory:
-            analysis.sensory_profile = CoffeeSensoryProfile(scale_max=scale, attributes_json=json.dumps(sensory, ensure_ascii=False))
+            labels = dict(definitions)
+            analysis.sensory_profile = CoffeeSensoryProfile(scale_max=scale, attributes_json=json.dumps(
+                {key: {"label": labels[key], "value": value} for key, value in sensory.items()}, ensure_ascii=False))
         db.add(analysis)
         db.flush()
         db.add(AuditLog(actor_user_id=user.id, actor_email=user.email, organization_id=user.organization_id,
@@ -19888,9 +19894,53 @@ async def create_coffee_classification(request: Request, db: Session = Depends(g
     except ValueError as exc:
         db.rollback()
         _flash(request, "error", str(exc))
-        return _redirect_with_query("/producao/classificacao", harvest_id=harvest.id)
+        return _redirect_with_query("/producao/classificacao", harvest_id=harvest.id, novo=1)
     _flash(request, "success", "Análise registrada no histórico do lote.")
     return _redirect_with_query("/producao/classificacao", harvest_id=harvest.id)
+
+
+@router.post("/producao/classificacao/atributos")
+def manage_coffee_sensory_attribute(request: Request, csrf_token: str = Form(...), action: str = Form(...),
+                                    key: str = Form(""), label: str = Form(""), db: Session = Depends(get_db),
+                                    user: User = Depends(get_current_user_web)):
+    from app.models.coffee_sensory_attribute import CoffeeSensoryAttribute
+    from app.services.coffee_classification import sensory_attributes_for_org
+    validate_csrf(request, csrf_token)
+    definitions = sensory_attributes_for_org(db, user.organization_id)
+    if action == "add":
+        label = " ".join(label.split())
+        if not label or len(label) > 80:
+            _flash(request, "error", "Informe um nome de atributo com até 80 caracteres.")
+        elif len(definitions) >= 30:
+            _flash(request, "error", "O limite é de 30 atributos por organização.")
+        elif any(normalized(name) == normalized(label) for _, name, _ in definitions):
+            _flash(request, "error", "Já existe um atributo com esse nome.")
+        else:
+            db.add(CoffeeSensoryAttribute(organization_id=user.organization_id, key="a" + uuid4().hex,
+                                          label=label, active=True, deleted=False))
+            db.add(AuditLog(actor_user_id=user.id, actor_email=user.email, organization_id=user.organization_id,
+                            event_type="coffee.attribute.created", outcome="success", metadata_json=json.dumps({"label": label})))
+            db.commit()
+            _flash(request, "success", "Atributo sensorial cadastrado.")
+    elif action in {"activate", "deactivate", "delete"}:
+        if action == "delete" and not user_has_permission(db, user, "data.delete"):
+            raise HTTPException(status_code=403, detail="Sem permissão para excluir atributos.")
+        selected = next((item for item in definitions if item[0] == key), None)
+        if not selected:
+            raise HTTPException(status_code=404)
+        row = db.query(CoffeeSensoryAttribute).filter_by(organization_id=user.organization_id, key=key).first()
+        if not row:
+            row = CoffeeSensoryAttribute(organization_id=user.organization_id, key=key, label=selected[1], active=True, deleted=False)
+            db.add(row)
+        row.active = action == "activate"
+        row.deleted = action == "delete"
+        db.add(AuditLog(actor_user_id=user.id, actor_email=user.email, organization_id=user.organization_id,
+                        event_type="coffee.attribute.changed", outcome="success", metadata_json=json.dumps({"key": key, "action": action})))
+        db.commit()
+        _flash(request, "success", "Atributo atualizado. As análises anteriores foram preservadas.")
+    else:
+        raise HTTPException(status_code=400, detail="Ação inválida.")
+    return _redirect_with_query("/producao/classificacao", atributos=1)
 
 
 @router.get("/producao/classificacao/{analysis_id}/relatorio.pdf")

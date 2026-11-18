@@ -8,7 +8,19 @@ SENSORY_ATTRIBUTES = (("aroma", "Aroma"), ("sabor", "Sabor"), ("acidez", "Acidez
                       ("limpeza", "Limpeza"), ("geral", "Impressão geral"))
 
 
-def validate_sensory(form):
+def sensory_attributes_for_org(db, organization_id):
+    from app.models.coffee_sensory_attribute import CoffeeSensoryAttribute
+    rows = db.query(CoffeeSensoryAttribute).filter_by(organization_id=organization_id).all()
+    overrides = {row.key: row for row in rows}
+    defaults = [(key, overrides[key].label if key in overrides else label,
+                 overrides[key].active if key in overrides else True)
+                for key, label in SENSORY_ATTRIBUTES if key not in overrides or not overrides[key].deleted]
+    default_keys = {key for key, _ in SENSORY_ATTRIBUTES}
+    custom = [(row.key, row.label, row.active) for row in rows if row.key not in default_keys and not row.deleted]
+    return defaults + sorted(custom, key=lambda row: row[1].casefold())
+
+
+def validate_sensory(form, definitions=None):
     try:
         scale = int(str(form.get("sensory_scale") or "10"))
     except ValueError:
@@ -16,7 +28,7 @@ def validate_sensory(form):
     if scale not in (5, 9, 10):
         raise ValueError("Selecione uma escala sensorial válida.")
     result = {}
-    for key, label in SENSORY_ATTRIBUTES:
+    for key, label in (definitions if definitions is not None else SENSORY_ATTRIBUTES):
         raw = str(form.get("sensory_" + key) or "").strip().replace(",", ".")
         if not raw:
             continue

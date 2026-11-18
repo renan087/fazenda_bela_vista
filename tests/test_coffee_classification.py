@@ -13,7 +13,8 @@ from app.core.permissions_catalog import DATA_DELETE, PAGE_PRODUCTION, WRITE_PRO
 from app.models.coffee_classification import CoffeeClassification
 from app.models.harvest import HarvestRecord
 from app.models.plot import Plot
-from app.services.coffee_classification import validate_classification, validate_sensory
+from app.services.coffee_classification import validate_classification, validate_sensory, sensory_attributes_for_org
+from app.models.coffee_sensory_profile import CoffeeSensoryProfile
 from tests.test_stock_assistant import _route_env
 
 
@@ -47,6 +48,46 @@ def test_sensory_attributes_are_optional_bounded_and_finite():
                    {"sensory_scale": "100", "sensory_aroma": "2"}):
         with pytest.raises(ValueError):
             validate_sensory(fields)
+
+
+def test_attributes_are_scoped_and_previous_analysis_keeps_names(monkeypatch):
+    routes, db, user, scope, *_ = _route_env(monkeypatch, [])
+    monkeypatch.setattr(routes, "user_has_permission", lambda *args: True)
+    request = SimpleNamespace(session={})
+    assert any(key == "aroma" and active for key, _, active in sensory_attributes_for_org(db, user.organization_id))
+    routes.manage_coffee_sensory_attribute(request, "x", "add", "", "Fragrância", db, user)
+    definition = next(row for row in sensory_attributes_for_org(db, user.organization_id) if row[1] == "Fragrância")
+    key = definition[0]
+    profile = CoffeeSensoryProfile(scale_max=10, attributes_json=__import__("json").dumps({key: {"label": "Fragrância", "value": 8}}))
+    routes.manage_coffee_sensory_attribute(request, "x", "deactivate", key, "", db, user)
+    assert next(row for row in sensory_attributes_for_org(db, user.organization_id) if row[0] == key)[2] is False
+    assert profile.attribute_pairs == [("Fragrância", 8)]
+    routes.manage_coffee_sensory_attribute(request, "x", "delete", key, "", db, user)
+    assert all(row[0] != key for row in sensory_attributes_for_org(db, user.organization_id))
+    assert profile.attribute_pairs == [("Fragrância", 8)]
+    assert all(row[0] != key for row in sensory_attributes_for_org(db, user.organization_id + 1))
+
+
+def test_legacy_profile_and_inactive_attributes_are_not_reinterpreted():
+    profile = CoffeeSensoryProfile(scale_max=10, attributes_json='{"aroma": 8, "sabor": 7}')
+    assert profile.attribute_pairs == [("Aroma", 8), ("Sabor", 7)]
+    _, result = validate_sensory({"sensory_aroma": "8", "sensory_custom": "9"}, [("aroma", "Aroma")])
+    assert result == {"aroma": 8.0}
+
+
+def test_attribute_delete_requires_permission_and_custom_key_is_private(monkeypatch):
+    routes, db, user, scope, *_ = _route_env(monkeypatch, [])
+    request = SimpleNamespace(session={})
+    routes.manage_coffee_sensory_attribute(request, "x", "add", "", "Notas cítricas", db, user)
+    key = next(row[0] for row in sensory_attributes_for_org(db, user.organization_id) if row[1] == "Notas cítricas")
+    monkeypatch.setattr(routes, "user_has_permission", lambda *args: False)
+    with pytest.raises(HTTPException) as denied:
+        routes.manage_coffee_sensory_attribute(request, "x", "delete", key, "", db, user)
+    assert denied.value.status_code == 403
+    other = SimpleNamespace(id=user.id + 1, organization_id=user.organization_id + 1, email="other@example.com")
+    with pytest.raises(HTTPException) as missing:
+        routes.manage_coffee_sensory_attribute(request, "x", "deactivate", key, "", db, other)
+    assert missing.value.status_code == 404
 
 
 def test_classification_is_linked_to_active_farm_and_report_is_private(monkeypatch):
@@ -98,3 +139,27 @@ def test_saved_sensory_profile_and_pdf(monkeypatch):
     monkeypatch.setattr(routes, "_global_scope_context", lambda *args: dict(scope, active_farm=None))
     with pytest.raises(HTTPException):
         routes.coffee_classification_pdf(row.id, Request(), db, user)
+
+
+def test_custom_attribute_is_saved_with_its_label_and_printed_after_removal(monkeypatch):
+    import json
+    routes, db, user, scope, *_ = _route_env(monkeypatch, [])
+    monkeypatch.setattr(routes, "user_has_permission", lambda *args: True)
+    request = SimpleNamespace(session={})
+    routes.manage_coffee_sensory_attribute(request, "x", "add", "", "Fragrância", db, user)
+    key = next(row[0] for row in sensory_attributes_for_org(db, user.organization_id) if row[1] == "Fragrância")
+    plot = Plot(name="Setor 1", farm_id=scope["active_farm_id"], area_hectares=1, plant_count=1)
+    db.add(plot); db.flush()
+    harvest = HarvestRecord(plot_id=plot.id, season_id=scope["active_season_id"], harvest_date=date(2026, 11, 1), sacks_produced=1)
+    db.add(harvest); db.commit()
+    form = FormData({"csrf_token": "x", "harvest_id": str(harvest.id), "analysis_date": "2026-11-10", "source": "informado", "sensory_" + key: "8.5"})
+    class Request:
+        session = {}
+        async def form(self):
+            return form
+    asyncio.run(routes.create_coffee_classification(Request(), db, user))
+    item = db.query(CoffeeClassification).one()
+    assert json.loads(item.sensory_profile.attributes_json)[key] == {"label": "Fragrância", "value": 8.5}
+    routes.manage_coffee_sensory_attribute(request, "x", "delete", key, "", db, user)
+    assert item.sensory_profile.attribute_pairs == [("Fragrância", 8.5)]
+    assert routes.coffee_classification_pdf(item.id, Request(), db, user).body.startswith(b"%PDF-")

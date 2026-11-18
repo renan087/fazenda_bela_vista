@@ -18,6 +18,19 @@ class CoffeeSensoryProfile(Base):
     def attributes(self):
         try:
             data = json.loads(self.attributes_json)
-            return data if isinstance(data, dict) else {}
+            return {key: (value.get("value") if isinstance(value, dict) else value) for key, value in data.items()} if isinstance(data, dict) else {}
         except (TypeError, ValueError):
             return {}
+
+    @property
+    def attribute_pairs(self):
+        from app.services.coffee_classification import SENSORY_ATTRIBUTES
+        try:
+            data = json.loads(self.attributes_json)
+        except (TypeError, ValueError):
+            return []
+        if not isinstance(data, dict):
+            return []
+        defaults = dict(SENSORY_ATTRIBUTES)
+        return [(str(value.get("label") or defaults.get(key, key)), value.get("value")) if isinstance(value, dict)
+                else (defaults.get(key, key), value) for key, value in data.items()]

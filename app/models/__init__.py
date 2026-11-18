@@ -70,6 +70,7 @@ from app.models.assistant_reminder import AssistantReminder
 from app.models.assistant_action_draft import AssistantActionDraft
 from app.models.coffee_classification import CoffeeClassification
 from app.models.coffee_sensory_profile import CoffeeSensoryProfile
+from app.models.coffee_sensory_attribute import CoffeeSensoryAttribute
 
 __all__ = [
     "NotificationRead",

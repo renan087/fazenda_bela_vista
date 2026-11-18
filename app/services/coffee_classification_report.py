@@ -9,8 +9,6 @@ from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
-from app.services.coffee_classification import SENSORY_ATTRIBUTES
-
 
 def build_classification_pdf(analysis, farm, season):
     out = BytesIO()
@@ -33,11 +31,11 @@ def build_classification_pdf(analysis, farm, season):
     story = [Paragraph("SiSFarm · Classificação do café", styles["Title"]), Spacer(1, 10), table, Spacer(1, 12)]
     profile = analysis.sensory_profile
     if profile and profile.attributes:
-        pairs = [(label, profile.attributes[key]) for key, label in SENSORY_ATTRIBUTES if key in profile.attributes]
+        pairs = profile.attribute_pairs
         story += [Paragraph("Atributos sensoriais informados", styles["Heading2"]),
                   p(f"Escala declarada: 0 a {profile.scale_max}. Valores não informados não aparecem no gráfico.")]
-        if pairs:
-            graph = Drawing(440, 260); cx, cy, radius, n = 220, 130, 88, len(SENSORY_ATTRIBUTES)
+        if len(pairs) >= 3:
+            graph = Drawing(440, 260); cx, cy, radius, n = 220, 130, 88, len(pairs)
             for ratio in (.25, .5, .75, 1):
                 points = []
                 for i in range(n):
@@ -45,18 +43,16 @@ def build_classification_pdf(analysis, farm, season):
                     points.extend([cx + radius * ratio * math.cos(angle), cy + radius * ratio * math.sin(angle)])
                 graph.add(Polygon(points, fillColor=None, strokeColor=colors.HexColor("#dce8d8"), strokeWidth=.6))
             values = []
-            for i, (key, label) in enumerate(SENSORY_ATTRIBUTES):
+            for i, (label, value) in enumerate(pairs):
                 angle = math.pi / 2 - 2 * math.pi * i / n
                 x, y = cx + radius * math.cos(angle), cy + radius * math.sin(angle)
                 graph.add(Line(cx, cy, x, y, strokeColor=colors.HexColor("#dce8d8"), strokeWidth=.5))
                 graph.add(String(cx + (radius + 16) * math.cos(angle), cy + (radius + 16) * math.sin(angle),
                                  label, fontSize=7, textAnchor="middle", fillColor=colors.HexColor("#294127")))
-                if key in profile.attributes:
-                    value = profile.attributes[key]
-                    px = cx + radius * float(value) / profile.scale_max * math.cos(angle)
-                    py = cy + radius * float(value) / profile.scale_max * math.sin(angle)
-                    values.extend([px, py])
-                    graph.add(Circle(px, py, 2, fillColor=colors.HexColor("#446a36"), strokeColor=None))
+                px = cx + radius * float(value) / profile.scale_max * math.cos(angle)
+                py = cy + radius * float(value) / profile.scale_max * math.sin(angle)
+                values.extend([px, py])
+                graph.add(Circle(px, py, 2, fillColor=colors.HexColor("#446a36"), strokeColor=None))
             if len(values) == n * 2:
                 graph.add(Polygon(values, fillColor=colors.HexColor("#d7ead0"), strokeColor=colors.HexColor("#446a36")))
             story.append(graph)
