@@ -21,6 +21,12 @@
             <label class="grid gap-2 text-sm font-medium">Defeitos informados<input name="defects" maxlength="180" placeholder="Resultado conforme a análise" class="w-full rounded-xl border-slate-200 bg-slate-50"></label>
             <label class="grid gap-2 text-sm font-medium">Bebida<input name="beverage" maxlength="120" class="w-full rounded-xl border-slate-200 bg-slate-50"></label>
             <label class="grid gap-2 text-sm font-medium">Nota sensorial informada<input type="number" name="sensory_score" min="0" max="100" step="0.01" class="w-full rounded-xl border-slate-200 bg-slate-50"></label>
+            <fieldset class="rounded-2xl border border-emerald-100 bg-emerald-50/30 p-4 sm:col-span-2">
+                <legend class="px-2 text-sm font-semibold text-emerald-900">Atributos sensoriais</legend>
+                <p class="mb-4 text-sm text-slate-600">Informe o método acima e as notas medidas. A escala é declarada pelo avaliador; o gráfico não certifica o protocolo nem calcula uma nota final.</p>
+                <label class="grid max-w-xs gap-2 text-sm font-medium">Escala das notas<select name="sensory_scale" data-sensory-scale class="rounded-xl border-slate-200 bg-white"><option value="10">0 a 10</option><option value="9">0 a 9</option><option value="5">0 a 5</option></select></label>
+                <div class="mt-4 grid gap-5 md:grid-cols-2"><div class="grid grid-cols-2 gap-3">{% for key, label in sensory_attributes %}<label class="grid gap-1 text-sm">{{ label }}<input type="number" name="sensory_{{ key }}" data-sensory-input="{{ key }}" min="0" max="10" step="0.01" inputmode="decimal" class="w-full rounded-xl border-slate-200 bg-white"></label>{% endfor %}</div><div class="relative mx-auto h-72 w-full max-w-sm"><canvas data-sensory-radar aria-label="Gráfico radar das notas informadas" role="img"></canvas></div></div>
+            </fieldset>
             <label class="grid gap-2 text-sm font-medium sm:col-span-2">Descrição sensorial<textarea name="sensory_notes" maxlength="2000" rows="2" class="w-full rounded-xl border-slate-200 bg-slate-50" placeholder="Aroma, sabor, corpo e outros atributos informados"></textarea></label>
             <label class="grid gap-2 text-sm font-medium sm:col-span-2">Observações<textarea name="notes" maxlength="2000" rows="2" class="w-full rounded-xl border-slate-200 bg-slate-50"></textarea></label>
             <div class="sm:col-span-2"><button type="submit" {% if not classification_harvests %}disabled{% endif %} class="rounded-xl bg-brand-500 px-5 py-3 text-sm font-semibold text-white disabled:opacity-50">Salvar análise</button></div>
@@ -35,9 +41,34 @@
             <article class="rounded-2xl border border-slate-200 bg-slate-50 p-4">
                 <div class="flex flex-wrap items-start justify-between gap-3"><div><h4 class="font-semibold">{{ item.harvest.lot_code or ('Lote ' ~ item.harvest.id) }} · {{ item.harvest.plot.name }}</h4><p class="mt-1 text-sm text-slate-500">{{ item.analysis_date.strftime('%d/%m/%Y') }} · {{ 'Informado com laudo anexado' if item.source == 'laudo' else 'Informado pelo usuário' }}</p></div><div class="flex items-center gap-4">{% if item.report_filename %}<a href="/producao/classificacao/{{ item.id }}/laudo" class="text-sm font-semibold text-emerald-700">Baixar laudo PDF</a>{% endif %}{% if can_write_page and 'data.delete' in (permission_codes or []) %}<form method="post" action="/producao/classificacao/{{ item.id }}/excluir" onsubmit="return confirm('Excluir definitivamente esta análise e seu laudo?');"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button type="submit" class="text-sm font-semibold text-rose-700">Excluir</button></form>{% endif %}</div></div>
                 <div class="mt-3 grid gap-2 text-sm sm:grid-cols-2"><p><b>Responsável:</b> {{ item.evaluator or 'Não informado' }}</p><p><b>Método:</b> {{ item.method or 'Não informado' }}</p><p><b>Tipo:</b> {{ item.coffee_type or 'Não informado' }}</p><p><b>Peneira:</b> {{ item.sieve or 'Não informada' }}</p><p><b>Umidade:</b> {% if item.moisture is not none %}{{ item.moisture|decimal_br }}%{% else %}Não informada{% endif %}</p><p><b>Defeitos:</b> {{ item.defects or 'Não informados' }}</p><p><b>Bebida:</b> {{ item.beverage or 'Não informada' }}</p><p><b>Nota:</b> {% if item.sensory_score is not none %}{{ item.sensory_score|decimal_br }}{% else %}Não informada{% endif %}</p>{% if item.sensory_notes %}<p class="sm:col-span-2"><b>Descrição sensorial:</b> {{ item.sensory_notes }}</p>{% endif %}{% if item.notes %}<p class="sm:col-span-2"><b>Observações:</b> {{ item.notes }}</p>{% endif %}</div>
+                {% if item.sensory_profile %}<div class="mt-4 grid gap-3 md:grid-cols-2"><div class="relative h-64"><canvas data-sensory-saved="{{ item.sensory_profile.attributes|tojson|forceescape }}" data-scale="{{ item.sensory_profile.scale_max }}" aria-label="Gráfico radar da análise" role="img"></canvas></div><div class="text-sm"><b>Notas informadas (escala 0 a {{ item.sensory_profile.scale_max }})</b>{% for key, label in sensory_attributes %}{% if key in item.sensory_profile.attributes %}<p class="mt-1">{{ label }}: {{ item.sensory_profile.attributes[key]|decimal_br }}</p>{% endif %}{% endfor %}</div></div>{% endif %}
+                <a href="/producao/classificacao/{{ item.id }}/relatorio.pdf" class="mt-4 inline-block text-sm font-semibold text-emerald-700">Baixar relatório PDF</a>
             </article>
         {% else %}<p class="rounded-xl border border-dashed border-slate-200 p-5 text-sm text-slate-500">Nenhuma análise registrada para este contexto.</p>{% endfor %}
         </div>
     </section>
+    <section class="stock-panel rounded-[2rem] bg-white p-6 shadow-panel">
+        <details><summary class="cursor-pointer text-lg font-semibold">Comparar lotes e safras da fazenda</summary>
+            <p class="mt-2 text-sm text-slate-500">Compare resultados apenas quando os métodos e escalas forem compatíveis. Exibe até 50 análises de colheitas vinculadas a uma safra.</p>
+            <div class="mt-4 overflow-x-auto"><table class="min-w-full text-left text-sm"><thead class="bg-slate-50"><tr><th class="p-3">Safra</th><th class="p-3">Lote</th><th class="p-3">Data</th><th class="p-3">Método</th><th class="p-3">Tipo</th><th class="p-3">Nota informada</th></tr></thead><tbody>{% for item in classification_comparison %}<tr class="border-t border-slate-100"><td class="p-3">{{ item.harvest.season.name }}</td><td class="p-3">{{ item.harvest.lot_code or ('Lote ' ~ item.harvest.id) }}</td><td class="p-3 whitespace-nowrap">{{ item.analysis_date.strftime('%d/%m/%Y') }}</td><td class="p-3">{{ item.method or 'Não informado' }}</td><td class="p-3">{{ item.coffee_type or 'Não informado' }}</td><td class="p-3">{% if item.sensory_score is not none %}{{ item.sensory_score|decimal_br }}{% else %}Não informada{% endif %}</td></tr>{% else %}<tr><td class="p-3 text-slate-500" colspan="6">Nenhuma análise vinculada a uma safra.</td></tr>{% endfor %}</tbody></table></div>
+            {% if classification_comparison_truncated %}<p class="mt-2 text-xs text-slate-500">Há outras análises além das 50 exibidas.</p>{% endif %}
+        </details>
+    </section>
 </div>
+<script>
+(() => {
+    if (typeof Chart === 'undefined') return;
+    const attributes = {{ sensory_attributes|tojson }};
+    const chart = (canvas, values, scale) => new Chart(canvas, {type: 'radar', data: {labels: attributes.map(a => a[1]), datasets: [{label: 'Notas informadas', data: values, borderColor: '#446a36', backgroundColor: 'rgba(86, 139, 67, .2)', pointBackgroundColor: '#446a36', spanGaps: false}]}, options: {responsive: true, maintainAspectRatio: false, scales: {r: {min: 0, max: scale, ticks: {maxTicksLimit: 6}}}, plugins: {legend: {display: false}}}});
+    const inputs = Array.from(document.querySelectorAll('[data-sensory-input]'));
+    const scale = document.querySelector('[data-sensory-scale]');
+    const canvas = document.querySelector('[data-sensory-radar]');
+    if (canvas && scale) {
+        const graph = chart(canvas, inputs.map(() => null), Number(scale.value));
+        const update = () => { inputs.forEach(input => { input.max = scale.value; }); graph.data.datasets[0].data = inputs.map(input => input.value === '' ? null : Number(input.value)); graph.options.scales.r.max = Number(scale.value); graph.update(); };
+        inputs.forEach(input => input.addEventListener('input', update)); scale.addEventListener('change', update);
+    }
+    document.querySelectorAll('[data-sensory-saved]').forEach(canvas => { const values = JSON.parse(canvas.dataset.sensorySaved); chart(canvas, attributes.map(a => values[a[0]] ?? null), Number(canvas.dataset.scale)); });
+})();
+</script>
 {% endblock %}

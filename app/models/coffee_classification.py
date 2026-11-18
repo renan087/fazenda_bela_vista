@@ -27,3 +27,4 @@ class CoffeeClassification(Base):
     report_data: Mapped[bytes | None] = mapped_column(LargeBinary)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     harvest = relationship("HarvestRecord")
+    sensory_profile = relationship("CoffeeSensoryProfile", back_populates="classification", uselist=False, cascade="all, delete-orphan")

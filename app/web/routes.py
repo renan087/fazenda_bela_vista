@@ -34,6 +34,7 @@ from reportlab.platypus import Image, KeepInFrame, Paragraph, SimpleDocTemplate,
 from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload, defer
 from app.models.coffee_classification import CoffeeClassification
+from app.models.coffee_sensory_profile import CoffeeSensoryProfile
 from starlette.datastructures import UploadFile as StarletteUploadFile
 
 from app.core.config import get_settings
@@ -19837,15 +19838,25 @@ def coffee_classification_page(request: Request, db: Session = Depends(get_db), 
     analyses = (db.query(CoffeeClassification).options(defer(CoffeeClassification.report_data), joinedload(CoffeeClassification.harvest))
                 .filter(CoffeeClassification.harvest_id.in_(history_ids))
                 .order_by(CoffeeClassification.analysis_date.desc(), CoffeeClassification.id.desc()).all()) if history_ids else []
+    farm = scope.get("active_farm")
+    comparison = []
+    if farm:
+        comparison = (db.query(CoffeeClassification).join(HarvestRecord, CoffeeClassification.harvest_id == HarvestRecord.id)
+                      .join(Plot, HarvestRecord.plot_id == Plot.id).join(CropSeason, HarvestRecord.season_id == CropSeason.id)
+                      .options(defer(CoffeeClassification.report_data), joinedload(CoffeeClassification.harvest).joinedload(HarvestRecord.season))
+                      .filter(Plot.farm_id == farm.id, CropSeason.farm_id == farm.id)
+                      .order_by(CoffeeClassification.analysis_date.desc(), CoffeeClassification.id.desc()).limit(51).all())
+    from app.services.coffee_classification import SENSORY_ATTRIBUTES
     return templates.TemplateResponse("coffee_classification.html", _base_context(
         request, user, csrf_token, "coffee_classification", _repo=repo, title="Classificação do café",
         classification_harvests=harvests, classifications=analyses, today=today_in_app_timezone(),
-        selected_harvest_id=selected_harvest_id if selected_harvest_id in ids else None))
+        selected_harvest_id=selected_harvest_id if selected_harvest_id in ids else None, sensory_attributes=SENSORY_ATTRIBUTES,
+        classification_comparison=comparison[:50], classification_comparison_truncated=len(comparison) > 50))
 
 
 @router.post("/producao/classificacao")
 async def create_coffee_classification(request: Request, db: Session = Depends(get_db), user: User = Depends(get_current_user_web)):
-    from app.services.coffee_classification import validate_classification
+    from app.services.coffee_classification import validate_classification, validate_sensory
     form = await request.form()
     validate_csrf(request, str(form.get("csrf_token") or ""))
     repo = _repository(db)
@@ -19863,8 +19874,11 @@ async def create_coffee_classification(request: Request, db: Session = Depends(g
             raise ValueError("O laudo deve ser um arquivo PDF válido.")
         if payload and len(payload) > _MAX_ATTACHMENT_SIZE_BYTES:
             raise ValueError("O laudo deve ter no máximo 10 MB.")
-        values = validate_classification(form, harvest_date=harvest.harvest_date, today=today_in_app_timezone(), has_report=bool(payload))
+        scale, sensory = validate_sensory(form)
+        values = validate_classification(form, harvest_date=harvest.harvest_date, today=today_in_app_timezone(), has_report=bool(payload), has_sensory=bool(sensory))
         analysis = CoffeeClassification(harvest_id=harvest.id, report_filename=filename, report_data=payload, **values)
+        if sensory:
+            analysis.sensory_profile = CoffeeSensoryProfile(scale_max=scale, attributes_json=json.dumps(sensory, ensure_ascii=False))
         db.add(analysis)
         db.flush()
         db.add(AuditLog(actor_user_id=user.id, actor_email=user.email, organization_id=user.organization_id,
@@ -19877,6 +19891,19 @@ async def create_coffee_classification(request: Request, db: Session = Depends(g
         return _redirect_with_query("/producao/classificacao", harvest_id=harvest.id)
     _flash(request, "success", "Análise registrada no histórico do lote.")
     return _redirect_with_query("/producao/classificacao", harvest_id=harvest.id)
+
+
+@router.get("/producao/classificacao/{analysis_id}/relatorio.pdf")
+def coffee_classification_pdf(analysis_id: int, request: Request, db: Session = Depends(get_db), user: User = Depends(get_current_user_web)):
+    from app.services.coffee_classification_report import build_classification_pdf
+    repo = _repository(db)
+    scope = _global_scope_context(request, repo, user)
+    analysis = db.query(CoffeeClassification).options(defer(CoffeeClassification.report_data)).filter_by(id=analysis_id).first()
+    if not analysis or analysis.harvest_id not in {h.id for h in _classification_harvests(repo, scope)}:
+        raise HTTPException(status_code=404)
+    return Response(content=build_classification_pdf(analysis, scope["active_farm"], scope["active_season"]),
+                    media_type="application/pdf", headers={"Content-Disposition": 'attachment; filename="classificacao-cafe.pdf"',
+                                                          "Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff"})
 
 
 @router.get("/producao/classificacao/{analysis_id}/laudo")
