@@ -6754,6 +6754,10 @@ dialog.db-cost { width: min(70rem, calc(100vw - 2rem)); }
 
 /* ---------- Cabeçalho geral ---------- */
 .hd { position: sticky; top: 0; z-index: 20; background: rgba(255, 255, 255, .92); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); border-bottom: 1px solid #e3e8e2; }
+body:has(.pest-page) .hd { background: #fff; }
+@media (min-width: 900px) {
+    body .pest-page .stock-page-header { top: 69px; background: #f1f5f9; }
+}
 .hd:has(.hd-new[open]) { z-index: 1000; }
 .hd-row { display: flex; align-items: center; gap: 12px; height: 68px; padding: 0 24px; }
 .hd-title { min-width: 0; flex: 0 0 auto; max-width: 280px; }
