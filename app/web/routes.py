@@ -21368,7 +21368,7 @@ def _assistant_turn(db, user, repo, scope, thread, message, *, image=None, attac
 
     def reply(text, *, error=False, tools=None, draft=None, references=None, shared_report_id=None):
         agent = assistant_ref.get("agent")
-        item = {"role": "assistant", "content": text[:4000 if getattr(agent, "invoice", None) else 600], "at": _assistant_now_iso()}
+        item = {"role": "assistant", "content": text[:3500], "at": _assistant_now_iso()}
         if not error and not draft and len(credit_cards) > 1:
             normalized_reply = normalized(text)
             named = sum(normalized(card.card_name) in normalized_reply for card in credit_cards)
