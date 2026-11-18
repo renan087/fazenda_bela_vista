@@ -887,10 +887,23 @@ body {
     }
 }
 
-/* Flyout de perfil: CSS completo só acima (≥lg). Sem isso o nó entra no fluxo e aparece no fim da página no mobile. */
+/* No mobile o menu também fica fora do fluxo e só recebe interação quando aberto. */
 @media (max-width: 1023px) {
     #erp-header-session-flyout {
-        display: none !important;
+        position: fixed;
+        z-index: 95;
+        width: min(20rem, calc(100vw - 1rem));
+        min-width: 0;
+        max-height: calc(100dvh - 1rem);
+        overflow-y: auto;
+        opacity: 0;
+        visibility: hidden;
+        pointer-events: none;
+    }
+    #erp-header-session-flyout.is-open {
+        opacity: 1;
+        visibility: visible;
+        pointer-events: auto;
     }
 }
 
