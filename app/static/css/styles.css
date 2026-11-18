@@ -5509,6 +5509,8 @@ td .sf-menu > .sf-menu-panel { top: 50%; right: calc(100% + .375rem); transform:
 .fa-invoice-value { margin: .125rem 0 0; font-size: 1.125rem; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--sf-ink, #16201a); }
 .fa-invoice .sf-btn { min-height: 2.5rem; flex: none; }
 .sf-btn.hidden { display: none; }
+/* .sf-btn.hidden vence o sm:inline-flex do Tailwind; devolve o botao do topo a partir de 640px. */
+@media (min-width: 640px) { .sf-btn.hidden.sm\:inline-flex { display: inline-flex; } }
 .fa-btn-danger { background: #fff; border: 1px solid #f3c7c2; color: #b42318; }
 .fa-btn-danger:hover { background: #fef3f2; }
 
