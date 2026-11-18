@@ -1054,6 +1054,7 @@ def _base_context(request: Request, user: User, csrf_token: str, page: str, **kw
             repo,
             scope_context,
             permission_codes,
+            user,
         )
         farm_id = scope_context.get("active_farm_id")
         if farm_id:
@@ -1203,6 +1204,7 @@ def _build_global_notifications(
     repo: FarmRepository,
     scope_context: dict,
     permission_codes: frozenset[str],
+    user=None,
 ) -> dict:
     active_farm = scope_context.get("active_farm")
     active_season = scope_context.get("active_season")
@@ -1474,6 +1476,18 @@ def _build_global_notifications(
                     meta="Patrimônio",
                 )
 
+    if user and active_season:
+        from app.models.assistant_reminder import AssistantReminder
+        reminders = repo.db.query(AssistantReminder).filter(
+            AssistantReminder.user_id == user.id, AssistantReminder.organization_id == user.organization_id,
+            AssistantReminder.farm_id == active_farm.id, AssistantReminder.season_id == active_season.id,
+            AssistantReminder.status == "active", AssistantReminder.due_at <= datetime.now(timezone.utc),
+        ).order_by(AssistantReminder.due_at.desc()).limit(100).all()
+        for reminder in reminders:
+            add_notification(operational, title="Lembrete do Pezinho", message=reminder.description,
+                             href="/mobile/assistente", kind="reminder", severity="info",
+                             identity=f"assistant-reminder:{reminder.id}", meta="Lembrete pessoal")
+
     important.sort(key=lambda item: (item["severity"] != "danger", item["title"]))
     operational.sort(key=lambda item: item["title"])
     return {
@@ -1503,7 +1517,7 @@ def mark_notifications_read(request: Request, csrf_token: str = Form(...), scope
     expected_scope = f"farm:{farm_id}:season:{active.get('active_season_id') or 0}"
     if not farm_id or scope != expected_scope:
         raise HTTPException(status_code=409, detail="O contexto mudou. Atualize a página.")
-    notifications = _build_global_notifications(request, repo, active, permission_codes_for_user(db, user))
+    notifications = _build_global_notifications(request, repo, active, permission_codes_for_user(db, user), user)
     available = {item["key"]: item["scope"] for item in notifications["important"] + notifications["operational"]}
     valid = set(requested) & set(available)
     if valid:
@@ -21367,7 +21381,7 @@ def _assistant_turn(db, user, repo, scope, thread, message, *, image=None, attac
 
     assistant_ref = {}
 
-    def reply(text, *, error=False, tools=None, draft=None, references=None, shared_report_id=None):
+    def reply(text, *, error=False, tools=None, draft=None, references=None, shared_report_id=None, reminder_proposal=None):
         agent = assistant_ref.get("agent")
         item = {"role": "assistant", "content": text[:3500], "at": _assistant_now_iso()}
         if not error and not draft and len(credit_cards) > 1:
@@ -21400,6 +21414,8 @@ def _assistant_turn(db, user, repo, scope, thread, message, *, image=None, attac
             item["share_query"] = {"tool": query["tool"], "args": query["args"]}
         if shared_report_id:
             item["shared_report_id"] = shared_report_id
+        if reminder_proposal:
+            item["reminder_proposal"] = reminder_proposal
         if not error and getattr(agent, "record_references", None):
             item["record_references"] = sorted(
                 agent.record_references,
@@ -21690,6 +21706,23 @@ def _assistant_turn(db, user, repo, scope, thread, message, *, image=None, attac
         allowed=lambda page: page in permission_codes and entitlements.module_allowed(page),
         allow_system_backup=_user_in_default_organization(user), allow_org_admin=is_super_admin_email(user.email),
     )
+    from app.services.assistant_reminders import ReminderTools
+    reminders = ReminderTools(db, user, farm, season)
+    previous = next((entry for entry in reversed(history[:-1]) if entry.get("role") == "assistant"), None)
+    proposal = (previous or {}).get("reminder_proposal")
+    confirmation = normalized(message).strip(" .!?")
+    if proposal and confirmation in {"sim", "confirmo", "confirmar", "pode confirmar", "pode", "nao", "cancelar", "cancela"}:
+        if confirmation in {"nao", "cancelar", "cancela"}:
+            return reply("Tudo bem, não fiz essa alteração no lembrete.")
+        try:
+            reminders.confirm(proposal)
+            messages = {"create": "Lembrete criado. O aviso aparecerá na central de notificações do SiSFarm no horário combinado.",
+                        "pausar": "Lembrete pausado; ele não aparecerá na central enquanto estiver pausado.",
+                        "retomar": "Lembrete retomado. O aviso aparecerá na central no horário combinado.",
+                        "excluir": "Lembrete excluído; ele não aparecerá mais na central."}
+            return reply(messages[proposal["action"]])
+        except ValueError as exc:
+            return reply(str(exc), error=True)
     wants_report = _assistant_wants_shared_report(message)
     previous_assistant = next((entry for entry in reversed(history[:-1]) if entry.get("role") == "assistant" and not entry.get("error")), None)
     generic_link = wants_report and _assistant_share_followup(message) and not re.search(r"\b(compartilh\w*|pagina|html|relatorio)\b", normalized(message))
@@ -21734,7 +21767,7 @@ def _assistant_turn(db, user, repo, scope, thread, message, *, image=None, attac
     ))
     assistant = FarmAssistant(farm_name=farm.name, season=season, items=products, balances=balances,
                               plots=plots, today=today_in_app_timezone(), prepare_draft=prepare_draft,
-                              extra_tools=queries.tools(), prepare_purchase=prepare_purchase,
+                              extra_tools=queries.tools() + reminders.tools(), prepare_purchase=prepare_purchase,
                               purchase_rules=purchase_rules, payment_options=payment_options,
                               pending_draft=pending_memory, require_patch=bool(pending_memory and explicit_adjustment))
     assistant_ref["agent"] = assistant
@@ -21808,6 +21841,16 @@ def _assistant_turn(db, user, repo, scope, thread, message, *, image=None, attac
         db.rollback()
         return reply(str(exc), error=True)
     text = (result.get("resposta") or "").strip() or "Pode me contar um pouco mais?"
+    if reminders.proposal:
+        proposal = reminders.proposal
+        if proposal["action"] == "create":
+            when = reminders.local_time(datetime.fromisoformat(proposal["due_at"])).strftime("%d/%m/%Y às %H:%M")
+            question = f"Quer criar este lembrete para {when}: {proposal['description']}?"
+        else:
+            row = reminders.rows().filter_by(id=proposal["id"]).first()
+            question = f"Quer {proposal['action']} o lembrete ‘{row.description}’?"
+        return reply(question + " Responda sim para confirmar ou não para cancelar. O aviso será na central do SiSFarm.",
+                     reminder_proposal=proposal)
     if wants_report and not result.get("draft_id"):
         from app.services.shared_report import create_shared_report
 

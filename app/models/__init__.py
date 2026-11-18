@@ -66,6 +66,7 @@ from app.models.user import User
 from app.models.whatsapp import WhatsAppInboundMessage, WhatsAppLink, WhatsAppRecordAccess
 from app.models.notification_read import NotificationRead
 from app.models.shared_report import SharedReport
+from app.models.assistant_reminder import AssistantReminder
 
 __all__ = [
     "NotificationRead",
