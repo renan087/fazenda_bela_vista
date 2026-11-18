@@ -31,7 +31,7 @@
         }
     </script>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-    <link rel="stylesheet" href="{{ url_for('static', path='css/styles.css') }}?v=20261118c">
+    <link rel="stylesheet" href="{{ url_for('static', path='css/styles.css') }}?v=20261118d">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="{{ url_for('static', path='js/currency-mask.js') }}?v=20260425a" defer></script>
@@ -807,6 +807,11 @@
             <h3 id="erp-header-notifications-title">Notificações</h3>
             <button type="button" class="nf-link" data-nf-read-all>Marcar todas como lidas</button>
         </div>
+        <button type="button" class="nf-reminders-open" data-reminders-open aria-haspopup="dialog" aria-controls="reminders-dialog">
+            <span class="nf-reminders-icon" aria-hidden="true">+</span>
+            <span><b>Lembretes pessoais</b><small>Criar e gerenciar lembretes</small></span>
+            <span class="nf-reminders-chevron" aria-hidden="true">›</span>
+        </button>
         <div class="nf-tabs" role="tablist" aria-label="Filtrar notificações">
             <button type="button" role="tab" aria-selected="true" data-nf-tab="todas">Todas</button>
             <button type="button" role="tab" aria-selected="false" data-nf-tab="naolidas">Não lidas<em data-nf-unread-count hidden></em></button>
@@ -837,6 +842,7 @@
                         {% elif k == 'rainfall' %}<a class="nf-btn is-primary" href="{{ item.href }}" data-nf-act>Registrar chuva</a>
                         {% elif k == 'schedule' %}<a class="nf-btn is-primary" href="{{ item.href }}" data-nf-act>Ver agendamento</a>
                         {% elif k == 'maintenance' %}<a class="nf-btn is-primary" href="{{ item.href }}" data-nf-act>Ver manutenção</a>
+                        {% elif k == 'reminder' %}<button type="button" class="nf-btn is-primary" data-reminders-open>Gerenciar lembretes</button>
                         {% else %}<a class="nf-btn is-primary" href="{{ item.href }}" data-nf-act>Abrir</a>{% endif %}
                         <button type="button" class="nf-btn nf-ghost" data-nf-read>Marcar como lida</button>
                     </div>
@@ -852,6 +858,80 @@
         <div class="nf-foot"><span>Os avisos somem sozinhos quando o assunto é resolvido.</span></div>
         <p class="nf-save-error" data-nf-save-error role="alert" hidden>Não foi possível salvar a leitura. Tente novamente.</p>
     </div>
+    <dialog id="reminders-dialog" class="rem-dialog" aria-labelledby="reminders-title" data-reminders-dialog data-context="{{ notification_scope|default('') }}" data-csrf="{{ csrf_token }}">
+        <div class="rem-dialog-head">
+            <div><p class="rem-kicker">Sua rotina</p><h2 id="reminders-title">Lembretes pessoais</h2><p>Organize seus lembretes nesta fazenda e safra.</p></div>
+            <button type="button" class="rem-close" data-reminders-close aria-label="Fechar lembretes">&times;</button>
+        </div>
+        <div class="rem-dialog-body">
+            <form class="rem-form" data-reminders-form>
+                <h3>Novo lembrete</h3>
+                <label>O que você quer lembrar?<input name="description" type="text" maxlength="240" required placeholder="Ex.: Conferir estoque de diesel"></label>
+                <div class="rem-form-row"><label>Data e horário<input name="due_at" type="datetime-local" required></label><button type="submit" class="rem-primary">Criar lembrete</button></div>
+                <p>O aviso aparece na central de notificações ao acessar ou atualizar o SiSFarm após o horário escolhido.</p>
+            </form>
+            <div class="rem-list-head"><h3>Seus lembretes</h3><span data-reminders-count></span></div>
+            <p class="rem-feedback" data-reminders-feedback role="status" aria-live="polite" hidden></p>
+            <div class="rem-list" data-reminders-list aria-live="polite"></div>
+        </div>
+    </dialog>
+    <script>
+    (() => {
+        const dialog = document.querySelector('[data-reminders-dialog]');
+        const openers = document.querySelectorAll('[data-reminders-open]');
+        if (!dialog || !openers.length) return;
+        const form = dialog.querySelector('[data-reminders-form]');
+        const list = dialog.querySelector('[data-reminders-list]');
+        const feedback = dialog.querySelector('[data-reminders-feedback]');
+        const count = dialog.querySelector('[data-reminders-count]');
+        const announce = (message, isError = false) => { feedback.textContent = message; feedback.hidden = !message; feedback.classList.toggle('is-error', isError); };
+        const update = async (values) => {
+            const body = new URLSearchParams({csrf_token: dialog.dataset.csrf, context: dialog.dataset.context, ...values});
+            const response = await fetch('/notificacoes/lembretes', {method: 'POST', body, credentials: 'same-origin'});
+            const result = await response.json().catch(() => ({}));
+            if (!response.ok) throw new Error(typeof result.detail === 'string' ? result.detail : 'Não foi possível salvar o lembrete.');
+            dialog.dataset.changed = 'true';
+        };
+        const load = async () => {
+            list.replaceChildren(); count.textContent = '';
+            const response = await fetch('/notificacoes/lembretes', {credentials: 'same-origin', cache: 'no-store'});
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok) throw new Error(typeof data.detail === 'string' ? data.detail : 'Não foi possível carregar os lembretes.');
+            count.textContent = `${data.lembretes.length}${data.mais_resultados ? '+' : ''} lembrete(s)`;
+            if (!data.lembretes.length) { const empty = document.createElement('p'); empty.className = 'rem-empty'; empty.textContent = 'Nenhum lembrete cadastrado neste contexto.'; list.append(empty); return; }
+            data.lembretes.forEach((reminder) => {
+                const card = document.createElement('article'); card.className = 'rem-card';
+                const main = document.createElement('div'); main.className = 'rem-card-main';
+                const title = document.createElement('b'); title.textContent = reminder.descricao;
+                const date = document.createElement('span'); date.textContent = reminder.data_hora;
+                const state = document.createElement('span'); state.className = `rem-state${reminder.situacao === 'pausado' ? ' is-paused' : ''}`; state.textContent = reminder.situacao === 'pausado' ? 'Pausado' : 'Ativo';
+                main.append(title, date, state);
+                const actions = document.createElement('div'); actions.className = 'rem-actions';
+                const toggle = document.createElement('button'); toggle.type = 'button'; toggle.textContent = reminder.situacao === 'pausado' ? 'Retomar' : 'Pausar';
+                const remove = document.createElement('button'); remove.type = 'button'; remove.className = 'rem-remove'; remove.textContent = 'Excluir';
+                const run = async (action, button) => {
+                    if (action === 'excluir' && !window.confirm('Excluir este lembrete?')) return;
+                    button.disabled = true; announce('');
+                    try { await update({action, reminder_id: String(reminder.id)}); await load(); announce(action === 'excluir' ? 'Lembrete excluído.' : 'Lembrete atualizado.'); }
+                    catch (error) { announce(error.message || 'Não foi possível atualizar.', true); }
+                    finally { button.disabled = false; }
+                };
+                toggle.addEventListener('click', () => run(reminder.situacao === 'pausado' ? 'retomar' : 'pausar', toggle));
+                remove.addEventListener('click', () => run('excluir', remove));
+                actions.append(toggle, remove); card.append(main, actions); list.append(card);
+            });
+        };
+        openers.forEach((opener) => opener.addEventListener('click', async () => { dialog.showModal(); announce(''); try { await load(); } catch (error) { announce(error.message, true); } }));
+        dialog.querySelector('[data-reminders-close]').addEventListener('click', () => dialog.close());
+        form.addEventListener('submit', async (event) => {
+            event.preventDefault(); const button = form.querySelector('[type="submit"]'); button.disabled = true; announce('');
+            try { await update({action: 'create', description: form.elements.description.value, due_at: form.elements.due_at.value}); form.reset(); await load(); announce('Lembrete criado com sucesso.'); }
+            catch (error) { announce(error.message || 'Não foi possível criar o lembrete.', true); }
+            finally { button.disabled = false; }
+        });
+        dialog.addEventListener('close', () => { if (dialog.dataset.changed === 'true') window.location.reload(); });
+    })();
+    </script>
     <script>
     // A leitura pertence ao usuário e é sincronizada pelo servidor.
     (() => {

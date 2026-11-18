@@ -1498,6 +1498,44 @@ def _build_global_notifications(
     }
 
 
+def _reminder_tools_for_request(request, db, user):
+    from app.services.assistant_reminders import ReminderTools
+    scope = _global_scope_context(request, _repository(db), user)
+    farm, season = scope.get("active_farm"), scope.get("active_season")
+    if not farm or not season:
+        raise HTTPException(status_code=409, detail="Selecione uma fazenda e uma safra para gerenciar lembretes.")
+    return ReminderTools(db, user, farm, season)
+
+
+@router.get("/notificacoes/lembretes")
+def list_personal_reminders(request: Request, db: Session = Depends(get_db), user: User = Depends(get_current_user_web)):
+    return _reminder_tools_for_request(request, db, user).list_reminders()
+
+
+@router.post("/notificacoes/lembretes")
+def manage_personal_reminders(request: Request, csrf_token: str = Form(...), context: str = Form(...),
+                              action: str = Form(...), description: str = Form(""), due_at: str = Form(""),
+                              reminder_id: int | None = Form(None), db: Session = Depends(get_db),
+                              user: User = Depends(get_current_user_web)):
+    validate_csrf(request, csrf_token)
+    tools = _reminder_tools_for_request(request, db, user)
+    if context != f"farm:{tools.farm.id}:season:{tools.season.id}":
+        raise HTTPException(status_code=409, detail="O contexto mudou. Atualize a página antes de continuar.")
+    try:
+        if action == "create":
+            tools.propose_create(description, due_at)
+        elif action in {"pausar", "retomar", "excluir"}:
+            tools.propose_change(reminder_id, action)
+        else:
+            raise ValueError("Ação inválida.")
+        tools.confirm(tools.proposal)
+        db.commit()
+    except ValueError as exc:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(exc)) from None
+    return {"ok": True}
+
+
 @router.post("/notificacoes/lidas")
 def mark_notifications_read(request: Request, csrf_token: str = Form(...), scope: str = Form(..., max_length=80),
                             keys: str = Form(..., max_length=40000), db: Session = Depends(get_db),

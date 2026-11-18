@@ -2,6 +2,8 @@ import json
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 
+import pytest
+from fastapi import HTTPException
 from app.models.assistant_reminder import AssistantReminder
 from app.services.assistant_reminders import ReminderTools
 from tests.test_stock_assistant import _route_env
@@ -74,3 +76,40 @@ def test_cancellation_and_pause_require_confirmation(monkeypatch):
     assert reminder.status == "active"
     routes._assistant_turn(db, user, routes._repository(db), scope, thread, "sim")
     assert reminder.status == "paused"
+
+
+def test_manual_management_uses_same_store_and_enforces_context(monkeypatch):
+    routes, db, user, scope, *_ = _route_env(monkeypatch, [])
+    request = SimpleNamespace(session={})
+    tools = ReminderTools(db, user, scope["active_farm"], scope["active_season"])
+    local = tools.local_time(datetime.now(timezone.utc) + timedelta(days=1)).strftime("%Y-%m-%dT%H:%M")
+    context = f"farm:{scope['active_farm_id']}:season:{scope['active_season_id']}"
+    assert routes.manage_personal_reminders(request, "csrf", context, "create", "Verificar diesel", local, None, db, user)["ok"]
+    reminder = db.query(AssistantReminder).one()
+    assert tools.list_reminders()["lembretes"][0]["descricao"] == "Verificar diesel"
+    with pytest.raises(HTTPException) as error:
+        routes.manage_personal_reminders(request, "csrf", "farm:999:season:1", "pausar", "", "", reminder.id, db, user)
+    assert error.value.status_code == 409 and reminder.status == "active"
+    routes.manage_personal_reminders(request, "csrf", context, "pausar", "", "", reminder.id, db, user)
+    assert reminder.status == "paused"
+    routes.manage_personal_reminders(request, "csrf", context, "retomar", "", "", reminder.id, db, user)
+    assert reminder.status == "active"
+    routes.manage_personal_reminders(request, "csrf", context, "excluir", "", "", reminder.id, db, user)
+    assert tools.list_reminders()["lembretes"] == []
+
+
+def test_manual_reminder_rejects_past_date_and_foreign_reminder(monkeypatch):
+    routes, db, user, scope, *_ = _route_env(monkeypatch, [])
+    request = SimpleNamespace(session={})
+    tools = ReminderTools(db, user, scope["active_farm"], scope["active_season"])
+    context = f"farm:{scope['active_farm_id']}:season:{scope['active_season_id']}"
+    with pytest.raises(HTTPException):
+        routes.manage_personal_reminders(request, "csrf", context, "create", "Teste", "2000-01-01T12:00", None, db, user)
+    future = tools.local_time(datetime.now(timezone.utc) + timedelta(days=1)).strftime("%Y-%m-%dT%H:%M")
+    tools.propose_create("Pessoal", future)
+    tools.confirm(tools.proposal)
+    db.commit()
+    other = SimpleNamespace(id=user.id + 1, organization_id=user.organization_id)
+    with pytest.raises(HTTPException):
+        routes.manage_personal_reminders(request, "csrf", context, "excluir", "", "", db.query(AssistantReminder).one().id, db, other)
+    assert db.query(AssistantReminder).one().status == "active"
