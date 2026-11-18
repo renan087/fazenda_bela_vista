@@ -1,6 +1,7 @@
 import asyncio
 from datetime import date
 from io import BytesIO
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -14,6 +15,15 @@ from app.models.harvest import HarvestRecord
 from app.models.plot import Plot
 from app.services.coffee_classification import validate_classification, validate_sensory
 from tests.test_stock_assistant import _route_env
+
+
+def test_classification_header_covers_scrolling_content():
+    root = Path(__file__).resolve().parents[1]
+    template = (root / "app/templates/coffee_classification.html").read_text()
+    css = (root / "app/static/css/styles.css").read_text()
+    assert "coffee-classification-page" in template
+    assert "body:has(.coffee-classification-page) .hd { background: #fff; }" in css
+    assert "body .coffee-classification-page .stock-page-header { top: 69px; background: #f1f5f9; }" in css
 
 
 def test_classification_validation_and_provenance():
