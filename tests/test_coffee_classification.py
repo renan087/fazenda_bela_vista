@@ -245,3 +245,7 @@ def test_edit_form_renders_existing_values_and_archived_notes():
     assert 'data-cc-details="12"' in html and 'data-cc-detail-template="12"' in html
     assert 'data-method="SCA"' in html and 'data-type="Tipo 4"' in html
     assert "/producao/classificacao/12/relatorio.pdf" in html and "/producao/classificacao?edit_id=12" in html
+    assert 'class="cc-analysis-metrics"' in html and 'class="cc-analysis-grid"' in html
+    assert 'data-sensory-saved=' in html and "Notas da análise" in html
+    assert "Perfil da amostra" in html and "Frutado" in html and "Observação" in html
+    assert "/producao/classificacao/12/laudo" in html and "/producao/classificacao/12/excluir" in html

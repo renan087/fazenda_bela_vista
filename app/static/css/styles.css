@@ -6821,6 +6821,39 @@ body .coffee-classification-page .cc-header { padding: 0 0 20px; border-radius: 
 .coffee-classification-dialog { width: min(820px, calc(100vw - 24px)); max-height: calc(100dvh - 24px); padding: 0; overflow-y: auto; border: 1px solid #e3e8e2; border-radius: 22px; color: #16201a; background: #fff; box-shadow: 0 24px 70px rgba(15, 21, 19, .2); }
 .coffee-classification-dialog::backdrop { background: rgba(20, 32, 25, .48); backdrop-filter: blur(3px); }
 .coffee-classification-dialog-inner { padding: 24px; }
+[data-cc-detail-dialog] { width: min(1100px, calc(100vw - 24px)); }
+.cc-analysis-heading { margin-bottom: 16px; }
+.cc-analysis-heading h4 { margin: 0; font-size: 16px; font-weight: 700; }
+.cc-analysis-heading p { margin: 4px 0 0; color: #64748b; font-size: 12px; }
+.cc-analysis-metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 14px; }
+.cc-analysis-metric { display: flex; align-items: center; gap: 12px; min-width: 0; padding: 12px; border: 1px solid #dce8fb; border-radius: 10px; background: #eff5fd; }
+.cc-analysis-metric-icon { display: grid; flex: 0 0 38px; height: 38px; place-items: center; border-radius: 12px; color: #0759d1; background: #e0ebfc; font-size: 23px; }
+.cc-analysis-metric span:not(.cc-analysis-metric-icon) { display: block; font-size: 11px; font-weight: 600; }
+.cc-analysis-metric strong { display: block; color: #0759c7; font-size: 20px; line-height: 1.2; overflow-wrap: anywhere; }
+.cc-analysis-grid { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(180px, .6fr) minmax(0, 1fr); gap: 10px; align-items: stretch; }
+.cc-analysis-panel { min-width: 0; padding: 14px; border: 1px solid #e3e8ef; border-radius: 10px; background: #fff; }
+.cc-analysis-panel h5 { margin: 0; font-size: 13px; font-weight: 700; }
+.cc-analysis-chart { display: flex; align-items: center; justify-content: center; }
+.cc-analysis-chart-inner { position: relative; width: 100%; height: 280px; }
+.cc-analysis-scale { margin: 5px 0; color: #64748b; font-size: 11px; }
+.cc-analysis-scores { max-height: 280px; overflow-y: auto; }
+.cc-analysis-scores > div { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 8px 0; border-bottom: 1px solid #eef1f4; font-size: 12px; font-weight: 600; }
+.cc-analysis-scores strong { flex-shrink: 0; padding: 4px 8px; border-radius: 6px; color: #0759c7; background: #e8f0ff; }
+.cc-analysis-empty { margin: 12px 0; color: #64748b; font-size: 13px; }
+.cc-analysis-fields { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 7px; margin-top: 10px; }
+.cc-analysis-fields > div { min-width: 0; padding: 8px; border-radius: 6px; background: #f4f6f7; }
+.cc-analysis-fields .cc-analysis-field-wide { grid-column: span 2; }
+.cc-analysis-fields span, .cc-analysis-fields strong { display: block; font-size: 11px; overflow-wrap: anywhere; }
+.cc-analysis-fields strong { margin-top: 3px; font-weight: 600; }
+.cc-analysis-description { margin-top: 12px; padding-top: 12px; border-top: 1px solid #e8ebee; }
+.cc-analysis-description h5 { margin: 0 0 6px; }
+.cc-analysis-description p { margin: 0 0 10px; padding: 10px; border-radius: 7px; background: #f4f6f7; font-size: 12px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.cc-analysis-actions { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 12px; }
+.cc-analysis-actions a, .cc-analysis-actions button { display: inline-flex; align-items: center; justify-content: center; min-height: 34px; padding: 7px 10px; border: 1px solid #d7e8d5; border-radius: 7px; color: #286632; background: #edf7ed; font-size: 11px; font-weight: 700; text-decoration: none; }
+.cc-analysis-actions .cc-analysis-edit { border-color: #dce3e9; color: #263442; background: #fff; }
+.cc-analysis-actions button { border-color: #f3d6d8; color: #b42336; background: #fff; }
+@media (max-width: 900px) { .cc-analysis-grid { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } .cc-analysis-profile { grid-column: 1 / -1; } }
+@media (max-width: 640px) { .cc-analysis-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); } .cc-analysis-grid { grid-template-columns: 1fr; } .cc-analysis-profile { grid-column: auto; } .cc-analysis-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 640px) { .coffee-classification-dialog-inner { padding: 18px; } }
 @media (min-width: 900px) {
     body .pest-page .stock-page-header { top: 69px; background: #f1f5f9; }
