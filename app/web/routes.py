@@ -19852,20 +19852,27 @@ def commercialization_page(
         harvests.append(edit_commercialization.harvest)
 
     harvest_options = []
+    inventory_lots = []
     total_available_sacks = 0.0
     available_lot_count = 0
     for harvest in harvests:
         is_current_edit = bool(edit_commercialization and edit_commercialization.harvest_id == harvest.id)
         if not is_current_edit and not _plot_allowed_for_season_launch(harvest.plot, scope):
             continue
+        actual_available = _commercialization_available_sacks(harvest, all_commercializations)
+        produced = float(harvest.sacks_produced or 0)
+        allocated = sum(float(item.equivalent_sacks or 0) for item in all_commercializations if item.harvest_id == harvest.id)
+        inventory_lots.append({"harvest": harvest, "lot_label": _commercialization_lot_label(harvest),
+                               "produced": produced, "allocated": allocated, "available": actual_available,
+                               "overallocated": allocated > produced + 0.00005})
         available_sacks = _commercialization_available_sacks(
             harvest,
             all_commercializations,
             exclude_id=edit_commercialization.id if edit_commercialization and edit_commercialization.harvest_id == harvest.id else None,
         )
-        total_available_sacks += max(available_sacks, 0)
+        total_available_sacks += max(actual_available, 0)
         include = available_sacks > 0 or (edit_commercialization and edit_commercialization.harvest_id == harvest.id)
-        if available_sacks > 0:
+        if actual_available > 0:
             available_lot_count += 1
         if include:
             harvest_options.append(
@@ -19923,6 +19930,7 @@ def commercialization_page(
             "commercialization",
             _repo=repo,
             harvest_options=harvest_options,
+            commercialization_inventory_lots=inventory_lots,
             commercializations=commercialization_pagination["items"],
             commercialization_pagination=commercialization_pagination,
             commercialization_status_options=COMMERCIALIZATION_STATUS_OPTIONS,
