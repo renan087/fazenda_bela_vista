@@ -220,6 +220,13 @@ def _draft_summary(draft: dict) -> str:
 
 def send_assistant_reply(client: WhatsAppClient, wa_id: str, item: dict, *, reply_to: str | None = None) -> None:
     context = {"reply_to": reply_to} if reply_to else {}
+    module_proposal = item.get("module_proposal") or {}
+    if re.fullmatch(r"[0-9a-f]{32}", str(module_proposal.get("id") or "")):
+        proposal_id = module_proposal["id"]
+        client.send_buttons(wa_id, to_whatsapp(item.get("content")) or "Confirma o lançamento?",
+                            [(f"mod:confirmar:{proposal_id}", "Confirmar"),
+                             (f"mod:cancelar:{proposal_id}", "Cancelar")], **context)
+        return
     proposal = item.get("reminder_proposal") or {}
     if re.fullmatch(r"[0-9a-f]{32}", str(proposal.get("confirmation_id") or "")):
         confirmation_id = proposal["confirmation_id"]
@@ -373,6 +380,14 @@ def _handle(db, row, client) -> str | None:
     key = normalized(text)
 
     button_reply = (message.get("interactive") or {}).get("button_reply") or {}
+    module_button = re.fullmatch(r"mod:(confirmar|cancelar):([0-9a-f]{32})", str(button_reply.get("id") or ""))
+    if module_button:
+        entries = routes._thread_messages(thread) if thread else []
+        proposal = (entries[-1].get("module_proposal") or {}) if entries and entries[-1].get("role") == "assistant" else {}
+        if proposal.get("id") != module_button.group(2):
+            client.send_text(row.wa_id, "Essa confirmação não está mais disponível. Solicite o lançamento novamente.")
+            return None
+        text = key = module_button.group(1)
     reminder_button = re.fullmatch(r"rem:(confirmar|cancelar):([0-9a-f]{32})", str(button_reply.get("id") or ""))
     if reminder_button:
         entries = routes._thread_messages(thread) if thread else []
@@ -390,7 +405,7 @@ def _handle(db, row, client) -> str | None:
 
     action = _button_action(message)
     recent = routes._thread_messages(thread) if thread is not None else []
-    reminder_pending = bool(recent and recent[-1].get("role") == "assistant" and recent[-1].get("reminder_proposal"))
+    reminder_pending = bool(recent and recent[-1].get("role") == "assistant" and (recent[-1].get("reminder_proposal") or recent[-1].get("module_proposal")))
     if action is None and not reminder_pending and thread is not None and (key in CONFIRM_WORDS or key in DISCARD_WORDS):
         pending = next((m["draft"] for m in reversed(routes._thread_messages(thread))
                         if m.get("draft") and routes._assistant_draft_state(db, m["draft"]) == "pending"), None)

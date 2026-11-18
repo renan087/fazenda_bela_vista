@@ -67,6 +67,7 @@ from app.models.whatsapp import WhatsAppInboundMessage, WhatsAppLink, WhatsAppRe
 from app.models.notification_read import NotificationRead
 from app.models.shared_report import SharedReport
 from app.models.assistant_reminder import AssistantReminder
+from app.models.assistant_action_draft import AssistantActionDraft
 
 __all__ = [
     "NotificationRead",

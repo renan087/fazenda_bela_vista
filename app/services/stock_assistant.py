@@ -171,6 +171,7 @@ class FarmAssistant:
         self.record_references = []
         self.shareable_queries = []
         self.reminder_proposal_ready = False
+        self.module_proposal_ready = False
         self.extra_tools = list(extra_tools)  # [(schema, handler)] de consultas somente leitura
         self.prepare_purchase = prepare_purchase
         self.purchase_rules = purchase_rules or {}  # {tipo: {categoria: [unidades]}}
@@ -433,6 +434,8 @@ class FarmAssistant:
             result = {"erro": "Não foi possível consultar essa informação agora."}
         if name in {"preparar_lembrete", "preparar_alteracao_lembrete", "preparar_edicao_lembrete"} and result.get("aguardando_confirmacao"):
             self.reminder_proposal_ready = True
+        if name == "preparar_chuva" and result.get("aguardando_confirmacao"):
+            self.module_proposal_ready = True
         if name in ("preparar_consumo", "preparar_compra"):
             if result.get("erro") and isinstance(args, dict):
                 known = {key: value for key, value in args.items() if value not in (None, "", False)}
@@ -580,7 +583,8 @@ class FarmAssistant:
                "conta para o parcelado; depois é só ajustar na tela de compras').\n"
                "" if purchases_on else
                "- Compras ainda não podem ser lançadas por aqui; explique com gentileza.\n")
-            + "- Para outros lançamentos (despesa, chuva, aplicação, colheita), explique com gentileza que ainda não faz isso por "
+            + "- Para registrar chuva, use preparar_chuva se estiver disponível, com data e milímetros informados. Nunca afirme que registrou antes da confirmação. "
+            "Para outros lançamentos (despesa, aplicação, colheita), explique com gentileza que ainda não faz isso por "
             "aqui, sem transformar em consumo ou compra. Não responda assuntos fora da fazenda e do SiSFarm."
         )
 
@@ -626,7 +630,7 @@ class FarmAssistant:
             for call in calls:
                 result = self.call_tool(call.function.name, call.function.arguments)
                 messages.append({"role": "tool", "tool_call_id": call.id, "content": json.dumps(result, ensure_ascii=False, default=str)})
-            if self.reminder_proposal_ready:
+            if self.reminder_proposal_ready or self.module_proposal_ready:
                 return {"resposta": "Aguardando confirmação do lembrete.", "draft_id": None}
             if self.invoice:
                 lines = ["Identifiquei estes itens na nota. Confira os dados:"]

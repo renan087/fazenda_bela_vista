@@ -21432,7 +21432,7 @@ def _assistant_turn(db, user, repo, scope, thread, message, *, image=None, attac
 
     assistant_ref = {}
 
-    def reply(text, *, error=False, tools=None, draft=None, references=None, shared_report_id=None, reminder_proposal=None):
+    def reply(text, *, error=False, tools=None, draft=None, references=None, shared_report_id=None, reminder_proposal=None, module_proposal=None):
         agent = assistant_ref.get("agent")
         item = {"role": "assistant", "content": text[:3500], "at": _assistant_now_iso()}
         if not error and not draft and len(credit_cards) > 1:
@@ -21468,6 +21468,8 @@ def _assistant_turn(db, user, repo, scope, thread, message, *, image=None, attac
         if reminder_proposal:
             reminder_proposal.setdefault("confirmation_id", uuid4().hex)
             item["reminder_proposal"] = reminder_proposal
+        if module_proposal:
+            item["module_proposal"] = module_proposal
         if not error and getattr(agent, "record_references", None):
             item["record_references"] = sorted(
                 agent.record_references,
@@ -21759,8 +21761,38 @@ def _assistant_turn(db, user, repo, scope, thread, message, *, image=None, attac
         allow_system_backup=_user_in_default_organization(user), allow_org_admin=is_super_admin_email(user.email),
     )
     from app.services.assistant_reminders import ReminderTools
+    from app.services.assistant_action_drafts import claim_action, prepare_action, validate_rainfall
+    from app.models.assistant_action_draft import AssistantActionDraft
+    from app.services.assistant_queries import _tool
     reminders = ReminderTools(db, user, farm, season)
     previous = next((entry for entry in reversed(history[:-1]) if entry.get("role") == "assistant"), None)
+    module_proposal = (previous or {}).get("module_proposal")
+    module_confirmation = normalized(message).strip(" .!?")
+    if module_proposal and module_confirmation in {"sim", "confirmo", "confirmar", "confirma", "nao", "cancelar", "cancela"}:
+        if module_confirmation in {"nao", "cancelar", "cancela"}:
+            status = "discarded"
+        else:
+            status = "confirmed"
+            if (PAGE_RAINFALL not in permission_codes or write_permission_for_page(PAGE_RAINFALL) not in permission_codes
+                    or entitlements.read_only or not entitlements.module_allowed(PAGE_RAINFALL)):
+                return reply("Você não tem permissão para registrar chuva.", error=True)
+        row = db.query(AssistantActionDraft).filter_by(id=module_proposal.get("id"), user_id=user.id,
+            organization_id=user.organization_id, farm_id=farm.id, season_id=season.id, thread_id=thread.id).first()
+        if not row or row.kind != "rainfall":
+            return reply("Este lançamento não está disponível nesta conversa.", error=True)
+        try:
+            day, amount = validate_rainfall(json.loads(row.payload_json), season, today_in_app_timezone())
+            if not claim_action(db, draft_id=row.id, user=user, farm=farm, season=season, thread_id=thread.id, status=status):
+                return reply("Este lançamento já foi processado ou expirou.", error=True)
+            if status == "confirmed":
+                db.add(RainfallRecord(farm_id=farm.id, rainfall_date=day, millimeters=amount, source="Assistente SiSFarm"))
+                db.add(AuditLog(actor_user_id=user.id, actor_email=user.email, organization_id=user.organization_id,
+                                event_type="assistant.rainfall.confirmed", outcome="success",
+                                metadata_json=json.dumps({"draft_id": row.id, "channel": _assistant_thread_channel(thread)})))
+            return reply("Chuva registrada com sucesso." if status == "confirmed" else "Tudo bem, descartei o lançamento de chuva.")
+        except (ValueError, TypeError, json.JSONDecodeError) as exc:
+            db.rollback()
+            return reply(str(exc) or "Não foi possível validar o lançamento.", error=True)
     proposal = (previous or {}).get("reminder_proposal")
     confirmation = normalized(message).strip(" .!?")
     if proposal and confirmation in {"sim", "confirmo", "confirmar", "confirma", "pode confirmar", "pode", "nao", "cancelar", "cancela", "descartar", "descarta"}:
@@ -21818,9 +21850,23 @@ def _assistant_turn(db, user, repo, scope, thread, message, *, image=None, attac
         r"\b(ajust\w*|corrig\w*|corrija|alter\w*|troqu\w*|mud\w*|na verdade|ao inves|em vez)\b",
         normalized(message),
     ))
+    module_drafts = []
+    module_tools = []
+    if (PAGE_RAINFALL in permission_codes and write_permission_for_page(PAGE_RAINFALL) in permission_codes
+            and not entitlements.read_only and entitlements.module_allowed(PAGE_RAINFALL)):
+        def prepare_rainfall(data, milimetros):
+            payload = {"date": data, "millimeters": milimetros}
+            day, amount = validate_rainfall(payload, season, today_in_app_timezone())
+            draft = prepare_action(db, user=user, farm=farm, season=season, thread_id=thread.id,
+                                   kind="rainfall", payload={"date": day.isoformat(), "millimeters": str(amount)})
+            module_drafts.append((draft, day, amount))
+            return {"aguardando_confirmacao": True, "data": day.strftime("%d/%m/%Y"), "milimetros": str(amount)}
+        module_tools.append((_tool("preparar_chuva", "Prepara registro de chuva para confirmação; nunca registra sem confirmação.",
+                                  {"data": {"type": "string", "description": "Data AAAA-MM-DD"},
+                                   "milimetros": {"type": "number"}}), prepare_rainfall))
     assistant = FarmAssistant(farm_name=farm.name, season=season, items=products, balances=balances,
                               plots=plots, today=today_in_app_timezone(), prepare_draft=prepare_draft,
-                              extra_tools=queries.tools() + reminders.tools(), prepare_purchase=prepare_purchase,
+                              extra_tools=queries.tools() + reminders.tools() + module_tools, prepare_purchase=prepare_purchase,
                               purchase_rules=purchase_rules, payment_options=payment_options,
                               pending_draft=pending_memory, require_patch=bool(pending_memory and explicit_adjustment))
     assistant_ref["agent"] = assistant
@@ -21894,6 +21940,14 @@ def _assistant_turn(db, user, repo, scope, thread, message, *, image=None, attac
         db.rollback()
         return reply(str(exc), error=True)
     text = (result.get("resposta") or "").strip() or "Pode me contar um pouco mais?"
+    if module_drafts:
+        draft, day, amount = module_drafts[-1]
+        instruction = "Use os botões abaixo para confirmar ou cancelar." if _assistant_thread_channel(thread) == "whatsapp" else "Responda sim para confirmar ou não para cancelar."
+        return reply(f"Confirma o registro de {_format_decimal_br(amount, 2)} mm de chuva em {day:%d/%m/%Y}, na fazenda {farm.name}? {instruction}",
+                     module_proposal={"id": draft.id})
+    if (any(re.search(r"\b(chuva|pluviometria)\b", normalized(entry.get("content") or "")) for entry in history[-8:] if entry.get("role") == "user")
+            and re.search(r"\b(?:chuva|pluviometria)\b.{0,50}\b(?:registrada|lancada|salva)\b|\b(?:registrei|lancei|salvei)\b.{0,50}\b(?:chuva|pluviometria)\b", normalized(text))):
+        return reply("Ainda não preparei esse registro de chuva, e nada foi salvo. Informe a data e a quantidade em milímetros para eu preparar a confirmação.", error=True)
     if not reminders.proposal and _assistant_unverified_reminder_claim(text, history):
         retry_history = list(ai_history)
         retry_history.insert(len(retry_history) - 1, {"role": "system", "content": (
