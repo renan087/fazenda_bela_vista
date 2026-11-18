@@ -221,12 +221,19 @@
             full.href = `/mobile/assistente?c=${encodeURIComponent(threadId)}`;
             full.textContent = 'Abrir conversa completa';
             welcome.hidden = true; messages.replaceChildren();
-            for (const entry of data.messages || []) {
+            const entries = data.messages || [];
+            for (const [index, entry] of entries.entries()) {
                 const row = make('div', `pzw-message ${entry.role === 'user' ? 'is-user' : 'is-assistant'}`);
                 // html vem do servidor já escapado (só negrito e listas).
                 const text = make('div', 'pzw-message-text', entry.html == null ? (entry.content || '') : null);
                 if (entry.html != null) text.innerHTML = entry.html;
                 row.append(text);
+                if (data.shared_url && index === entries.length - 1 && entry.role === 'assistant') {
+                    const label = make('div', 'pzw-draft-hint', 'Link para compartilhar:');
+                    const link = make('a', 'pzw-file', data.shared_url);
+                    link.href = data.shared_url; link.target = '_blank'; link.rel = 'noopener noreferrer';
+                    row.append(label, link);
+                }
                 if (entry.attachment_id && entry.attachment_name) {
                     const link = make('a', 'pzw-file', `Abrir ${entry.attachment_name}`);
                     link.href = `/mobile/assistente/arquivo/${encodeURIComponent(entry.attachment_id)}`;

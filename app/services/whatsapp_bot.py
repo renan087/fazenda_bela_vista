@@ -460,7 +460,9 @@ def _handle(db, row, client) -> str | None:
     db.commit()
     response_item = dict(item)
     references = item.get("record_references") or []
-    if references and not item.get("draft") and not item.get("error"):
+    if item.get("_shared_url"):
+        response_item["content"] = (item.get("content") or "") + "\n\n" + item["_shared_url"]
+    elif references and not item.get("draft") and not item.get("error"):
         if len(references) == 1:
             issued = _record_link(db, link, references[0])
             if issued:

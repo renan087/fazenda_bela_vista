@@ -47,6 +47,7 @@ from app.models.stock_assistant_draft import StockAssistantDraft
 from app.models.audit_log import AuditLog
 from app.models.input_catalog import InputCatalog
 from app.models.notification_read import NotificationRead
+from app.models.shared_report import SharedReport
 from app.services.assistant_queries import AssistantQueries
 from app.services.stock_assistant import STOCK_ITEM_TYPES, FarmAssistant, claim_draft, confirm_consumption, normalized, partial_note, run_farm_assistant, stock_unit
 from app.core.admin_access import has_admin_access, is_super_admin_email
@@ -20880,8 +20881,12 @@ def _save_thread(db, thread, messages):
     active_links = {row[0] for row in db.query(WhatsAppRecordAccess.id).filter(
         WhatsAppRecordAccess.id.in_(old_link_ids), WhatsAppRecordAccess.consumed_at.is_(None),
         WhatsAppRecordAccess.expires_at > datetime.now(timezone.utc)).all()} if old_link_ids else set()
+    old_reports = [entry["shared_report_id"] for entry in messages[:cutoff] if isinstance(entry.get("shared_report_id"), int)]
+    active_reports = {row[0] for row in db.query(SharedReport.id).filter(
+        SharedReport.id.in_(old_reports), SharedReport.revoked_at.is_(None),
+        SharedReport.expires_at > datetime.now(timezone.utc)).all()} if old_reports else set()
     kept = [entry for index, entry in enumerate(messages) if index >= cutoff or entry.get("attachment_id")
-            or entry.get("record_access_id") in active_links]
+            or entry.get("record_access_id") in active_links or entry.get("shared_report_id") in active_reports]
     thread.messages_json = json.dumps(kept, ensure_ascii=False, default=str)
     thread.updated_at = datetime.now(timezone.utc)
     db.add(thread)
@@ -20951,9 +20956,19 @@ def _assistant_view_messages(db, messages):
     record_ids = [item.get("record_access_id") for item in messages if isinstance(item.get("record_access_id"), int)]
     record_links = {row.id: row for row in db.query(WhatsAppRecordAccess).filter(
         WhatsAppRecordAccess.id.in_(record_ids)).all()} if record_ids else {}
+    report_ids = [item.get("shared_report_id") for item in messages if isinstance(item.get("shared_report_id"), int)]
+    reports = {row.id: row for row in db.query(SharedReport).filter(SharedReport.id.in_(report_ids)).all()} if report_ids else {}
     for index, item in enumerate(messages):
         local = _assistant_local(item.get("at"))
         entry = {**item, "index": index, "time": local.strftime("%H:%M") if local else ""}
+        if item.get("shared_report_id"):
+            report = reports.get(item["shared_report_id"])
+            expires = report.expires_at if report else None
+            if expires and expires.tzinfo is None:
+                expires = expires.replace(tzinfo=timezone.utc)
+            entry["shared_report_state"] = ("revogado" if not report or report.revoked_at else
+                                            "expirado" if expires <= datetime.now(timezone.utc) else "ativo")
+            entry["shared_report_expires"] = expires.astimezone(get_app_timezone()).strftime("%d/%m/%Y %H:%M") if expires else ""
         if item.get("record_access_id"):
             access = record_links.get(item["record_access_id"])
             expires = access.expires_at if access else None
@@ -20993,6 +21008,24 @@ def revoke_assistant_record_link(request: Request, thread_id: str, access_id: in
     return _redirect(_assistant_url(thread_id))
 
 
+@router.post("/mobile/assistente/conversa/{thread_id}/relatorio/{report_id}/revogar")
+def revoke_assistant_shared_report(request: Request, thread_id: str, report_id: int,
+                                   csrf_token: str = Form(...), db: Session = Depends(get_db),
+                                   user: User = Depends(get_current_user_web)):
+    validate_csrf(request, csrf_token)
+    scope = _global_scope_context(request, _repository(db), user)
+    thread = _assistant_thread(db, user, scope, thread_id)
+    if not thread or not any(entry.get("shared_report_id") == report_id for entry in _thread_messages(thread)):
+        raise HTTPException(status_code=404)
+    report = db.query(SharedReport).filter_by(id=report_id, user_id=user.id, organization_id=user.organization_id,
+                                              farm_id=scope["active_farm_id"], season_id=scope["active_season_id"]).first()
+    if not report:
+        raise HTTPException(status_code=404)
+    report.revoked_at = report.revoked_at or datetime.now(timezone.utc)
+    db.commit()
+    return _redirect(_assistant_url(thread_id))
+
+
 @router.get("/mobile/assistente")
 def stock_assistant_page(
     request: Request, c: str | None = Query(None, max_length=32), q: str | None = Query(None, max_length=600),
@@ -21007,14 +21040,21 @@ def stock_assistant_page(
     thread = _assistant_thread(db, user, scope, c) if ready and c else None
     if c and ready and thread is None:
         return _redirect(_assistant_url())
+    once = request.session.get("assistant_shared_once") or {}
+    shared_once_url = None
+    if thread and once.get("thread_id") == thread.id:
+        from app.services.shared_report import unseal_shared_url
+        shared_once_url = unseal_shared_url(once.get("sealed_url"))
+        request.session.pop("assistant_shared_once", None)
     messages = _assistant_view_messages(db, _thread_messages(thread))
     registered = [m["draft"] for m in messages if m.get("draft") and m["draft"]["state"] == "confirmed"]
     pending = next((m["draft"] for m in reversed(messages) if m.get("draft") and m["draft"]["state"] == "pending"), None)
     threads = _assistant_threads(db, user, scope) if ready else []
     groups = _assistant_thread_list(db, threads, thread.id if thread else None)
-    return templates.TemplateResponse("stock_assistant.html", _base_context(
+    response = templates.TemplateResponse("stock_assistant.html", _base_context(
         request, user, csrf_token, "mobile", title="Assistente SiSFarm", _repo=repo,
         assistant_scope=scope, thread=thread, messages=messages, registered=registered, pending_draft=pending,
+        shared_once_url=shared_once_url,
         thread_channel=_assistant_thread_channel(thread),
         thread_groups=groups,
         recent_threads=[item for group in groups for item in group["items"]][:4],
@@ -21023,6 +21063,10 @@ def stock_assistant_page(
         greeting="Bom dia" if app_now().hour < 12 else "Boa tarde" if app_now().hour < 18 else "Boa noite",
         prefill=(q or "").strip(),
     ))
+    if shared_once_url:
+        response.headers["Cache-Control"] = "no-store"
+        response.headers["Referrer-Policy"] = "no-referrer"
+    return response
 
 
 @router.post("/mobile/assistente/transcrever")
@@ -21197,8 +21241,11 @@ def prepare_stock_assistant_action(
     if audio_id and (not audio or audio.thread_id or expires <= datetime.now(timezone.utc)):
         _flash(request, "error", "Áudio indisponível. Grave novamente.")
         return _redirect(target)
-    thread, _ = _assistant_turn(db, user, repo, scope, thread, message, image=image, attachment_type=attachment_type,
+    thread, reply_item = _assistant_turn(db, user, repo, scope, thread, message, image=image, attachment_type=attachment_type,
                                  audio=audio, attachment=attachment)
+    if reply_item.get("_shared_url"):
+        from app.services.shared_report import seal_shared_url
+        request.session["assistant_shared_once"] = {"thread_id": thread.id, "sealed_url": seal_shared_url(reply_item["_shared_url"])}
     return _redirect(_assistant_url(thread.id))
 
 
@@ -21264,6 +21311,23 @@ def _assistant_record_followup(db, user, farm, season, history, message):
     return valid
 
 
+def _assistant_wants_shared_report(message):
+    text = normalized(message)
+    if re.search(r"\b(?:nao|sem)\b.{0,60}\b(?:compartilh\w*|public\w*|link|pagina|relatorio)\b", text):
+        return False
+    return bool(re.search(r"\b(compartilhar|compartilhe|compartilha|compartilhavel)\b", text) or
+                (re.search(r"\b(pagina|html)\b", text) and re.search(r"\b(crie|criar|gere|gerar|monte|montar|prepare|preparar)\b", text)))
+
+
+def _assistant_share_followup(message):
+    words = re.findall(r"[a-z0-9]+", normalized(message))
+    allowed = {"por", "favor", "voce", "pode", "poderia", "eu", "me", "quero", "gostaria", "de", "do", "da", "o", "a", "os", "as",
+               "um", "uma", "gerar", "gere", "criar", "crie", "montar", "monte", "prepare", "preparar", "link", "pagina", "html",
+               "relatorio", "compartilhar", "compartilhe", "compartilha", "compartilhavel", "para", "dessa", "deste", "desta", "desse",
+               "esse", "essa", "este", "esta", "isso", "disso", "esses", "essas", "aquele", "aquela", "anterior", "ultima", "ultimo", "resultado", "consulta", "dados", "novamente", "novo"}
+    return bool(words and set(words) <= allowed and set(words) & {"esse", "essa", "este", "esta", "isso", "disso", "esses", "essas", "aquele", "aquela", "anterior", "ultima", "ultimo", "resultado", "consulta", "dessa", "desse", "desta", "deste"})
+
+
 def _assistant_turn(db, user, repo, scope, thread, message, *, image=None, attachment_type=None, title_prefix="", audio=None, attachment=None):
     """Um turno do assistente (web e WhatsApp): roda o agente, salva a conversa e devolve (thread, resposta)."""
     farm, season = scope["active_farm"], scope["active_season"]
@@ -21301,7 +21365,7 @@ def _assistant_turn(db, user, repo, scope, thread, message, *, image=None, attac
 
     assistant_ref = {}
 
-    def reply(text, *, error=False, tools=None, draft=None, references=None):
+    def reply(text, *, error=False, tools=None, draft=None, references=None, shared_report_id=None):
         agent = assistant_ref.get("agent")
         item = {"role": "assistant", "content": text[:4000 if getattr(agent, "invoice", None) else 600], "at": _assistant_now_iso()}
         if not error and not draft and len(credit_cards) > 1:
@@ -21316,6 +21380,11 @@ def _assistant_turn(db, user, repo, scope, thread, message, *, image=None, attac
             item["error"] = True
         if tools:
             item["tools"] = tools[:6]
+        if not error and getattr(agent, "shareable_queries", None):
+            query = agent.shareable_queries[-1]
+            item["share_query"] = {"tool": query["tool"], "args": query["args"]}
+        if shared_report_id:
+            item["shared_report_id"] = shared_report_id
         if not error and getattr(agent, "record_references", None):
             item["record_references"] = sorted(
                 agent.record_references,
@@ -21606,7 +21675,7 @@ def _assistant_turn(db, user, repo, scope, thread, message, *, image=None, attac
         allowed=lambda page: page in permission_codes and entitlements.module_allowed(page),
         allow_system_backup=_user_in_default_organization(user), allow_org_admin=is_super_admin_email(user.email),
     )
-    if not image and not attachment:
+    if not image and not attachment and not _assistant_wants_shared_report(message):
         prior = _assistant_record_followup(db, user, farm, season, history[:-1], message)
         if prior is not None:
             if not prior:
@@ -21691,6 +21760,41 @@ def _assistant_turn(db, user, repo, scope, thread, message, *, image=None, attac
         db.rollback()
         return reply(str(exc), error=True)
     text = (result.get("resposta") or "").strip() or "Pode me contar um pouco mais?"
+    if _assistant_wants_shared_report(message) and not result.get("draft_id"):
+        from app.services.shared_report import create_shared_report
+
+        candidates = assistant.shareable_queries
+        if _assistant_share_followup(message):
+            previous_message = next((entry for entry in reversed(history[:-1][-20:])
+                                     if entry.get("role") == "assistant" and not entry.get("error")), None)
+            previous = previous_message.get("share_query") if previous_message else None
+            candidates = []
+            assistant.shareable_queries = []
+            assistant.record_references = []
+            if isinstance(previous, dict) and previous.get("tool") in assistant.handlers and isinstance(previous.get("args"), dict):
+                assistant.call_tool(previous["tool"], json.dumps(previous["args"], ensure_ascii=False))
+                candidates = assistant.shareable_queries
+        if len(candidates) != 1:
+            return reply("Preciso de uma única consulta compatível para criar a página. Diga quais dados você quer compartilhar.")
+        candidate = candidates[0]
+        try:
+            parsed_url = urlparse((get_settings().app_public_url or "").strip())
+            if parsed_url.scheme != "https" or not parsed_url.netloc or parsed_url.username or parsed_url.password or parsed_url.query or parsed_url.fragment:
+                raise ValueError("O endereço público do sistema não está configurado com HTTPS.")
+            wa_link = None
+            if _assistant_thread_channel(thread) == "whatsapp":
+                wa_link = db.query(WhatsAppLink).filter_by(user_id=user.id, organization_id=user.organization_id,
+                                                          farm_id=farm.id, season_id=season.id).first()
+                if not wa_link:
+                    raise ValueError("O vínculo do WhatsApp não está disponível.")
+            token, report = create_shared_report(db, user=user, farm=farm, season=season, tool_name=candidate["tool"],
+                                                 result=candidate["result"], whatsapp_link=wa_link)
+            result_thread, item = reply("Preparei uma página com os dados consultados. O link pode ser compartilhado e fica disponível por até 48 horas.",
+                                        shared_report_id=report.id)
+            item["_shared_url"] = f"{parsed_url.scheme}://{parsed_url.netloc}/acesso-compartilhado/relatorio#{token}"
+            return result_thread, item
+        except ValueError as exc:
+            return reply(str(exc), error=True)
     return reply(text, tools=list(getattr(assistant, "trace", []) or []),
                  draft=dict(drafted) if result.get("draft_id") and drafted.get("id") == result.get("draft_id") else None)
 
@@ -21799,9 +21903,12 @@ def pezinho_send_message(request: Request, message: str = Form("", max_length=60
         attachment_type = "pdf" if mime == "application/pdf" else "image"
         message = message or ("Veja o documento que enviei." if attachment_type == "pdf" else "Veja a foto que enviei.")
     thread = _pezinho_thread(db, user, scope, thread_id) if thread_id else None
-    thread, _ = _assistant_turn(db, user, repo, scope, thread, message, image=image,
+    thread, reply_item = _assistant_turn(db, user, repo, scope, thread, message, image=image,
                                  attachment_type=attachment_type, attachment=attachment)
-    return JSONResponse(_pezinho_thread_payload(db, thread), headers={"Cache-Control": "no-store"})
+    payload = _pezinho_thread_payload(db, thread)
+    if reply_item.get("_shared_url"):
+        payload["shared_url"] = reply_item["_shared_url"]
+    return JSONResponse(payload, headers={"Cache-Control": "no-store"})
 
 
 @router.post("/mobile/assistente/pezinho/{draft_id}/{action}")

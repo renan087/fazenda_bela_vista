@@ -221,7 +221,7 @@ class AssistantQueries:
         rows.sort(key=lambda row: (row["data"] or "")[6:] + (row["data"] or "")[3:5] + (row["data"] or "")[:2], reverse=True)
         return {"safra": self.season.name if self.season else None, "total_sacas": _num(sum(per_plot.values())),
                 "sacas_por_setor": {name: _num(value) for name, value in per_plot.items()},
-                "ultimas_colheitas": rows[:MAX_ROWS]}
+                "ultimas_colheitas": rows[:MAX_ROWS], "mais_resultados": len(rows) > MAX_ROWS}
 
     def consultar_consumos(self, inicio=None, fim=None, item=None, setor=None):
         start, end = self._period(inicio, fim, default_days=30)

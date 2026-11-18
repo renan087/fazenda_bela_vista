@@ -174,6 +174,15 @@
                         <div class="as-who">Pezinho<span>{{ m.time }}</span></div>
                         {% if m.tools %}<details class="as-steps"><summary><i>{{ ic('check', 11, 3) }}</i>{{ m.tools|length }} {{ 'etapa concluída' if m.tools|length == 1 else 'etapas concluídas' }}{{ ic('chevd', 14) }}</summary><ul>{% for t in m.tools %}<li>{{ t }}</li>{% endfor %}</ul></details>{% endif %}
                         <div class="as-txt{% if m.error %} as-txt-err{% endif %}" data-as-text>{{ m.content|chat_html }}</div>
+                        {% if loop.last and shared_once_url %}
+                        <div class="as-shared-report-url"><label>Link para compartilhar<input type="text" readonly value="{{ shared_once_url }}" onclick="this.select()"></label><small>Copie agora; por segurança, o endereço não fica guardado na conversa.</small><a href="{{ shared_once_url }}" target="_blank" rel="noopener noreferrer">Abrir página</a></div>
+                        {% endif %}
+                        {% if m.shared_report_id %}
+                        <div class="as-shared-link">
+                            <span>{% if m.shared_report_state == 'ativo' %}Página compartilhada ativa · expira em {{ m.shared_report_expires }}{% elif m.shared_report_state == 'expirado' %}Página compartilhada expirada{% else %}Página compartilhada indisponível{% endif %}</span>
+                            {% if m.shared_report_state == 'ativo' %}<form method="post" action="/mobile/assistente/conversa/{{ thread_id }}/relatorio/{{ m.shared_report_id }}/revogar" data-as-confirm="Revogar o acesso a esta página compartilhada?"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button type="submit">Revogar página</button></form>{% endif %}
+                        </div>
+                        {% endif %}
                         {% if m.record_access_id and thread_channel == 'whatsapp' %}
                         <div class="as-shared-link">
                             <span>{% if m.record_access_state == 'ativo' %}Link compartilhável ativo · expira em {{ m.record_access_expires }}{% elif m.record_access_state == 'expirado' %}Link compartilhável expirado{% else %}Link compartilhável indisponível{% endif %}</span>

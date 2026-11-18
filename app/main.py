@@ -26,6 +26,7 @@ from app.repositories.farm import FarmRepository
 from app.routers.asaas_webhook import router as asaas_webhook_router
 from app.routers.whatsapp_webhook import router as whatsapp_webhook_router
 from app.routers.whatsapp_record_access import router as whatsapp_record_access_router
+from app.routers.assistant_shared_reports import router as assistant_shared_reports_router
 from app.routers.api import router as api_router
 from app.routers.auth import api_router as auth_api_router
 from app.routers.auth import router as auth_router
@@ -333,6 +334,7 @@ app.include_router(auth_router)
 app.include_router(asaas_webhook_router)
 app.include_router(whatsapp_webhook_router)
 app.include_router(whatsapp_record_access_router)
+app.include_router(assistant_shared_reports_router)
 app.include_router(web_router)
 app.include_router(auth_api_router)
 app.include_router(api_router)

@@ -65,9 +65,11 @@ from app.models.trusted_browser_token import TrustedBrowserToken
 from app.models.user import User
 from app.models.whatsapp import WhatsAppInboundMessage, WhatsAppLink, WhatsAppRecordAccess
 from app.models.notification_read import NotificationRead
+from app.models.shared_report import SharedReport
 
 __all__ = [
     "NotificationRead",
+    "SharedReport",
     "WhatsAppInboundMessage",
     "WhatsAppLink",
     "WhatsAppRecordAccess",
