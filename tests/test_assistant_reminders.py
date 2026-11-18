@@ -192,8 +192,13 @@ def test_whatsapp_reminder_confirmation_buttons_reject_replay(monkeypatch):
     _receive(db, client, _payload("5535999", "link-rem", f"SISFARM {code}"))
     _receive(db, client, _payload("5535999", "make-rem", "Crie um lembrete"))
     assert client.sent[-1][0] == "buttons" and db.query(AssistantReminder).count() == 0
+    assert "botões abaixo" in client.sent[-1][2] and "Responda sim" not in client.sent[-1][2]
     button = client.sent[-1][3][0][0]
     _receive(db, client, _payload("5535999", "confirm-rem", button=button))
     assert db.query(AssistantReminder).count() == 1 and "criado" in client.sent[-1][2]
     _receive(db, client, _payload("5535999", "repeat-rem", button=button))
     assert db.query(AssistantReminder).count() == 1 and "não está mais disponível" in client.sent[-1][2]
+    _receive(db, client, _payload("5535999", "make-rem-again", "Crie outro lembrete"))
+    cancel = client.sent[-1][3][1][0]
+    _receive(db, client, _payload("5535999", "cancel-rem", button=cancel))
+    assert db.query(AssistantReminder).count() == 1 and "não fiz" in client.sent[-1][2]

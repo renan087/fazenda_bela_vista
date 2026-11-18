@@ -21893,7 +21893,9 @@ def _assistant_turn(db, user, repo, scope, thread, message, *, image=None, attac
         else:
             row = reminders.rows().filter_by(id=proposal["id"]).first()
             question = f"Quer {proposal['action']} o lembrete ‘{row.description}’?"
-        return reply(question + " Responda sim para confirmar ou não para cancelar. O aviso será na central do SiSFarm.",
+        instruction = (" Use os botões abaixo para confirmar ou cancelar." if _assistant_thread_channel(thread) == "whatsapp"
+                       else " Responda sim para confirmar ou não para cancelar.")
+        return reply(question + instruction + " O aviso será na central do SiSFarm.",
                      reminder_proposal=proposal)
     if wants_report and not result.get("draft_id"):
         from app.services.shared_report import create_shared_report
