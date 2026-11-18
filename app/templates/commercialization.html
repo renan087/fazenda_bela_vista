@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% from "partials/module_history_filter_toolbar.html" import module_period_picker_inline %}
 {% block content %}
-<div class="stock-page-shell sf-page" data-modal-single-pane>
+<div class="stock-page-shell sf-page commercialization-page" data-modal-single-pane>
     <section class="stock-page-header">
         <div class="flex flex-wrap items-start justify-between gap-4">
             <div class="min-w-0 stock-page-header-intro" data-stock-header-intro>
@@ -144,7 +144,7 @@
                                         <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Equivalente</p><p class="mt-2 text-sm font-medium text-slate-800">{{ item.equivalent_sacks|decimal_br }} sc</p></div>
                                         <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Preço unitário</p><p class="mt-2 text-sm font-medium text-slate-800">R$ {{ item.unit_price|decimal_br }}</p></div>
                                         <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Valor total</p><p class="mt-2 text-sm font-medium text-emerald-700">R$ {{ item.total_value|decimal_br }}</p></div>
-                                        <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Forma de pagamento</p><p class="mt-2 text-sm font-medium text-slate-800">{{ item.payment_method or '-' }}</p></div>
+                                        <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Forma de recebimento</p><p class="mt-2 text-sm font-medium text-slate-800">{{ item.payment_method or '-' }}</p></div>
                                         <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Condição</p><p class="mt-2 text-sm font-medium text-slate-800">{{ 'À prazo' if item.payment_condition == 'a_prazo' else 'À vista' }}</p></div>
                                         <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Conta</p><p class="mt-2 text-sm font-medium text-slate-800">{{ item.finance_account.account_name if item.finance_account else '-' }}</p></div>
                                         <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Status</p><p class="mt-2 text-sm font-medium text-slate-800">{{ item.status|replace('_', ' ')|title }}</p></div>
@@ -332,7 +332,7 @@
                         </select>
                     </label>
                     <label class="flex flex-col gap-2">
-                        <span class="text-sm font-medium leading-tight">Forma de pagamento</span>
+                        <span class="text-sm font-medium leading-tight">Forma de recebimento</span>
                         <select name="payment_method" class="h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50 px-3">
                             <option value="">Selecione</option>
                             {% for option in finance_transaction_payment_methods %}

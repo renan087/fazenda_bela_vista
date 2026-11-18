@@ -25,3 +25,14 @@ def test_inventory_explains_estimate_without_implying_physical_classification():
     assert "não calcula rendimento de beneficiamento" in template
     assert "Não informada" in template
     assert "Negociado acima do registrado" in template
+
+
+def test_commercialization_header_and_receipt_label():
+    root = Path(__file__).resolve().parents[1]
+    template = (root / "app/templates/commercialization.html").read_text()
+    css = (root / "app/static/css/styles.css").read_text()
+    assert "stock-page-shell sf-page commercialization-page" in template
+    assert "body:has(.commercialization-page) .hd { background: #fff; }" in css
+    assert "body .commercialization-page .stock-page-header { top: 69px; background: #f1f5f9; }" in css
+    assert template.count("Forma de recebimento") == 2
+    assert "Forma de pagamento" not in template
