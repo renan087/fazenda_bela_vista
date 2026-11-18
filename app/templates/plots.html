@@ -155,7 +155,7 @@
                             <summary class="sf-icon-btn" aria-label="Mais ações para {{ plot.name }}" title="Mais ações"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="12" cy="5" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="12" cy="19" r="1.7"/></svg></summary>
                             <div class="sf-menu-panel">
                                 <a href="/mapa?edit_plot_id={{ plot.id }}">Editar no mapa</a>
-                                <a href="/custos-por-setor">Ver custos do setor</a>
+                                {% if 'page.finance' in (permission_codes or []) %}<a href="{{ module_href('/custos-por-setor') }}">Ver custos do setor{{ module_lock('/custos-por-setor') }}</a>{% endif %}
                                 <form method="post" action="/setores/{{ plot.id }}/excluir" onsubmit="return confirm('Excluir o setor {{ plot.name }}? Esta ação não pode ser desfeita.');">
                                     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                                     <button type="submit" class="sf-menu-danger">Excluir setor</button>

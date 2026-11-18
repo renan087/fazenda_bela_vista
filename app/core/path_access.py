@@ -40,7 +40,7 @@ WEB_PATH_PERMISSION_PREFIXES: tuple[tuple[str, str], ...] = (
     ("/fazendas", PAGE_PRODUCTIVE_UNIT),
     ("/primeiros-passos", PAGE_PRODUCTIVE_UNIT),
     ("/safras", PAGE_PRODUCTIVE_UNIT),
-    ("/custos-por-setor", PAGE_PRODUCTIVE_UNIT),
+    ("/custos-por-setor", PAGE_FINANCE),
     ("/setores", PAGE_PRODUCTIVE_UNIT),
     ("/talhoes", PAGE_PRODUCTIVE_UNIT),
     ("/variedades", PAGE_VARIETIES),
