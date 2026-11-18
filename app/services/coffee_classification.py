@@ -20,6 +20,17 @@ def sensory_attributes_for_org(db, organization_id):
     return defaults + sorted(custom, key=lambda row: row[1].casefold())
 
 
+def sensory_definitions_for_edit(definitions, profile):
+    active = [(key, label) for key, label, enabled in definitions if enabled]
+    if not profile:
+        return active
+    previous = dict(zip(profile.attributes.keys(), (label for label, _ in profile.attribute_pairs)))
+    # Keep the original label and any no-longer-active attribute for this analysis.
+    result = [(key, previous.get(key, label)) for key, label in active]
+    existing = {key for key, _ in result}
+    return result + [(key, label) for key, label in previous.items() if key not in existing]
+
+
 def validate_sensory(form, definitions=None):
     try:
         scale = int(str(form.get("sensory_scale") or "10"))

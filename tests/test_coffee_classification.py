@@ -163,3 +163,82 @@ def test_custom_attribute_is_saved_with_its_label_and_printed_after_removal(monk
     routes.manage_coffee_sensory_attribute(request, "x", "delete", key, "", db, user)
     assert item.sensory_profile.attribute_pairs == [("Fragrância", 8.5)]
     assert routes.coffee_classification_pdf(item.id, Request(), db, user).body.startswith(b"%PDF-")
+
+
+def test_edit_preserves_report_lot_and_inactive_attributes(monkeypatch):
+    routes, db, user, scope, *_ = _route_env(monkeypatch, [])
+    request = SimpleNamespace(session={})
+    plot = Plot(name="Setor 1", farm_id=scope["active_farm_id"], area_hectares=1, plant_count=1)
+    db.add(plot); db.flush()
+    harvest = HarvestRecord(plot_id=plot.id, season_id=scope["active_season_id"], harvest_date=date(2026, 11, 1), sacks_produced=1)
+    db.add(harvest); db.flush()
+    item = CoffeeClassification(harvest_id=harvest.id, analysis_date=date(2026, 11, 10), source="laudo", beverage="Mole",
+                                report_filename="laudo.pdf", report_data=b"%PDF-antigo")
+    item.sensory_profile = CoffeeSensoryProfile(scale_max=10, attributes_json='{"aroma":{"label":"Aroma antigo","value":8}}')
+    db.add(item); db.commit()
+    routes.manage_coffee_sensory_attribute(request, "x", "deactivate", "aroma", "", db, user)
+    form = FormData({"csrf_token": "x", "analysis_date": "2026-11-11", "source": "laudo", "beverage": "Dura",
+                     "sensory_scale": "10", "sensory_aroma": "9"})
+    class Request:
+        session = {}
+        async def form(self):
+            return form
+    asyncio.run(routes.edit_coffee_classification(item.id, Request(), db, user))
+    db.refresh(item)
+    assert item.harvest_id == harvest.id and item.beverage == "Dura"
+    assert item.report_data == b"%PDF-antigo" and item.sensory_profile.attribute_pairs == [("Aroma antigo", 9.0)]
+    assert routes.coffee_classification_pdf(item.id, Request(), db, user).body.startswith(b"%PDF-")
+
+    invalid = FormData({"csrf_token": "x", "analysis_date": "2026-11-11", "source": "laudo", "beverage": "Não salvar",
+                        "report": UploadFile(filename="falso.pdf", file=BytesIO(b"not a pdf"))})
+    class InvalidRequest:
+        session = {}
+        async def form(self):
+            return invalid
+    asyncio.run(routes.edit_coffee_classification(item.id, InvalidRequest(), db, user))
+    db.refresh(item)
+    assert item.beverage == "Dura" and item.report_data == b"%PDF-antigo"
+
+
+def test_edit_rejects_foreign_scope_and_missing_report(monkeypatch):
+    routes, db, user, scope, *_ = _route_env(monkeypatch, [])
+    plot = Plot(name="Setor 1", farm_id=scope["active_farm_id"], area_hectares=1, plant_count=1)
+    db.add(plot); db.flush()
+    harvest = HarvestRecord(plot_id=plot.id, season_id=scope["active_season_id"], harvest_date=date(2026, 11, 1), sacks_produced=1)
+    db.add(harvest); db.flush()
+    item = CoffeeClassification(harvest_id=harvest.id, analysis_date=date(2026, 11, 10), source="informado", beverage="Original")
+    db.add(item); db.commit()
+    form = FormData({"csrf_token": "x", "analysis_date": "2026-11-11", "source": "laudo", "beverage": "Alterado"})
+    class Request:
+        session = {}
+        async def form(self):
+            return form
+    response = asyncio.run(routes.edit_coffee_classification(item.id, Request(), db, user))
+    db.refresh(item)
+    assert "edit_id" in response.headers["location"] and item.beverage == "Original"
+    monkeypatch.setattr(routes, "_global_scope_context", lambda *args: dict(scope, active_farm=None))
+    with pytest.raises(HTTPException) as denied:
+        asyncio.run(routes.edit_coffee_classification(item.id, Request(), db, user))
+    assert denied.value.status_code == 404
+
+
+def test_edit_form_renders_existing_values_and_archived_notes():
+    from jinja2 import ChoiceLoader, DictLoader
+    from app.web import routes
+    env = routes.templates.env.overlay(loader=ChoiceLoader([DictLoader({"base.html": "{% block content %}{% endblock %}"}), routes.templates.env.loader]))
+    profile = CoffeeSensoryProfile(scale_max=9, attributes_json='{"aroma":{"label":"Aroma antigo","value":8}}')
+    plot = SimpleNamespace(name="Setor 1")
+    harvest = SimpleNamespace(id=1, lot_code="L-1", plot=plot, harvest_date=date(2026, 11, 1))
+    item = SimpleNamespace(id=12, harvest_id=1, harvest=harvest, analysis_date=date(2026, 11, 10), source="laudo",
+                           report_filename="laudo.pdf", evaluator="Laboratório", method="SCA", coffee_type="Tipo 4",
+                           sieve="16", moisture=0, defects=None, beverage="Mole", sensory_score=0,
+                           sensory_notes="Frutado", notes="Observação", sensory_profile=profile)
+    html = env.get_template("coffee_classification.html").render(
+        can_write_page=True, csrf_token="x", classification_harvests=[harvest], classifications=[item],
+        edit_classification=item, sensory_attributes=[("aroma", "Aroma antigo")], sensory_definitions=[],
+        classification_comparison=[], classification_comparison_truncated=False, today=date(2026, 11, 15),
+        selected_harvest_id=None, permission_codes={"data.delete"}, request=SimpleNamespace(query_params={}), flash=None)
+    assert 'action="/producao/classificacao/12/editar"' in html
+    assert 'name="moisture" value="0"' in html and 'name="sensory_score" value="0"' in html
+    assert 'name="sensory_aroma" data-sensory-input="aroma" value="8"' in html
+    assert "laudo.pdf" in html and "Aroma antigo" in html

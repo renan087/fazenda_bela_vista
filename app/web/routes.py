@@ -19846,14 +19846,18 @@ def coffee_classification_page(request: Request, db: Session = Depends(get_db), 
                       .options(defer(CoffeeClassification.report_data), joinedload(CoffeeClassification.harvest).joinedload(HarvestRecord.season))
                       .filter(Plot.farm_id == farm.id, CropSeason.farm_id == farm.id)
                       .order_by(CoffeeClassification.analysis_date.desc(), CoffeeClassification.id.desc()).limit(51).all())
-    from app.services.coffee_classification import sensory_attributes_for_org
+    from app.services.coffee_classification import sensory_attributes_for_org, sensory_definitions_for_edit
     definitions = sensory_attributes_for_org(db, user.organization_id)
-    active_definitions = [(key, label) for key, label, active in definitions if active]
+    edit_id = _optional_query_int(request.query_params.get("edit_id"))
+    edit_analysis = db.query(CoffeeClassification).options(defer(CoffeeClassification.report_data)).filter_by(id=edit_id).first() if edit_id else None
+    if edit_id and (not edit_analysis or edit_analysis.harvest_id not in ids):
+        raise HTTPException(status_code=404, detail="Análise não encontrada neste contexto.")
+    active_definitions = sensory_definitions_for_edit(definitions, edit_analysis.sensory_profile if edit_analysis else None)
     return templates.TemplateResponse("coffee_classification.html", _base_context(
         request, user, csrf_token, "coffee_classification", _repo=repo, title="Classificação do café",
         classification_harvests=harvests, classifications=analyses, today=today_in_app_timezone(),
         selected_harvest_id=selected_harvest_id if selected_harvest_id in ids else None, sensory_attributes=active_definitions,
-        sensory_definitions=definitions,
+        sensory_definitions=definitions, edit_classification=edit_analysis,
         classification_comparison=comparison[:50], classification_comparison_truncated=len(comparison) > 50))
 
 
@@ -19896,6 +19900,71 @@ async def create_coffee_classification(request: Request, db: Session = Depends(g
         _flash(request, "error", str(exc))
         return _redirect_with_query("/producao/classificacao", harvest_id=harvest.id, novo=1)
     _flash(request, "success", "Análise registrada no histórico do lote.")
+    return _redirect_with_query("/producao/classificacao", harvest_id=harvest.id)
+
+
+@router.post("/producao/classificacao/{analysis_id}/editar")
+async def edit_coffee_classification(analysis_id: int, request: Request, db: Session = Depends(get_db),
+                                     user: User = Depends(get_current_user_web)):
+    from app.services.coffee_classification import validate_classification, validate_sensory, sensory_attributes_for_org, sensory_definitions_for_edit
+    form = await request.form()
+    validate_csrf(request, str(form.get("csrf_token") or ""))
+    repo = _repository(db)
+    scope = _global_scope_context(request, repo, user)
+    analysis = db.query(CoffeeClassification).options(defer(CoffeeClassification.report_data)).filter_by(id=analysis_id).first()
+    harvests = {item.id: item for item in _classification_harvests(repo, scope)}
+    if not analysis or analysis.harvest_id not in harvests:
+        raise HTTPException(status_code=404, detail="Análise não encontrada neste contexto.")
+    harvest = harvests[analysis.harvest_id]
+    try:
+        report = form.get("report")
+        filename = _clean_attachment_filename(report.filename) if isinstance(report, (UploadFile, StarletteUploadFile)) and report.filename else None
+        payload = await report.read(_MAX_ATTACHMENT_SIZE_BYTES + 1) if filename else None
+        if filename and (Path(filename).suffix.lower() != ".pdf" or not payload or not payload.startswith(b"%PDF-")):
+            raise ValueError("O laudo deve ser um arquivo PDF válido.")
+        if payload and len(payload) > _MAX_ATTACHMENT_SIZE_BYTES:
+            raise ValueError("O laudo deve ter no máximo 10 MB.")
+        remove_report = form.get("remove_report") == "1"
+        if remove_report and not user_has_permission(db, user, "data.delete"):
+            raise HTTPException(status_code=403, detail="Sem permissão para remover o laudo.")
+        if remove_report and filename:
+            raise ValueError("Escolha remover o laudo atual ou enviar um novo, não ambos.")
+        has_report = bool(payload or (analysis.report_filename and not remove_report))
+        profile = analysis.sensory_profile
+        old_values = profile.attributes if profile else {}
+        definitions = sensory_definitions_for_edit(sensory_attributes_for_org(db, user.organization_id), profile)
+        # Fields absent from a stale form must not silently erase existing values.
+        sensory_form = dict(form)
+        for key, value in old_values.items():
+            if "sensory_" + key not in sensory_form and value is not None:
+                sensory_form["sensory_" + key] = str(value)
+        scale, sensory = validate_sensory(sensory_form, definitions)
+        values = validate_classification(form, harvest_date=harvest.harvest_date, today=today_in_app_timezone(),
+                                         has_report=has_report, has_sensory=bool(sensory))
+        for key, value in values.items():
+            setattr(analysis, key, value)
+        if filename:
+            analysis.report_filename, analysis.report_data = filename, payload
+        elif remove_report:
+            analysis.report_filename, analysis.report_data = None, None
+        if sensory:
+            labels = dict(definitions)
+            serialized = json.dumps({key: {"label": labels[key], "value": value} for key, value in sensory.items()}, ensure_ascii=False)
+            if profile:
+                profile.scale_max, profile.attributes_json = scale, serialized
+            else:
+                analysis.sensory_profile = CoffeeSensoryProfile(scale_max=scale, attributes_json=serialized)
+        elif profile:
+            analysis.sensory_profile = None
+        db.add(AuditLog(actor_user_id=user.id, actor_email=user.email, organization_id=user.organization_id,
+                        event_type="coffee.classification.updated", outcome="success",
+                        metadata_json=json.dumps({"classification_id": analysis.id, "harvest_id": harvest.id})))
+        db.commit()
+    except (ValueError, TypeError) as exc:
+        db.rollback()
+        _flash(request, "error", str(exc) or "Dados inválidos.")
+        return _redirect_with_query("/producao/classificacao", edit_id=analysis_id)
+    _flash(request, "success", "Análise atualizada com sucesso.")
     return _redirect_with_query("/producao/classificacao", harvest_id=harvest.id)
 
 
