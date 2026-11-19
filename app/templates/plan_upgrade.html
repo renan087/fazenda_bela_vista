@@ -74,12 +74,19 @@
             <div class="mt-6">
                 {% set cta_class = t.cta %}
                 {% if limit_issues and (not is_current or can_subscribe) %}
-                <div class="rounded-2xl bg-amber-50 px-4 py-3 text-sm text-amber-950">
-                    <p class="font-semibold">Incompatível com seus cadastros</p>
-                    <ul class="mt-1 list-disc space-y-1 pl-4">
-                        {% for issue in limit_issues %}<li>{{ issue }}</li>{% endfor %}
-                    </ul>
-                </div>
+                <details class="plan-unavailable" data-plan-unavailable>
+                    <summary class="plan-unavailable-button">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3m-4 4v3"/></svg>
+                        <span>Plano indisponível</span>
+                        <svg class="plan-unavailable-info" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5m0-8h.01"/></svg>
+                    </summary>
+                    <div class="plan-unavailable-reasons">
+                        <p>Plano incompatível com seus cadastros</p>
+                        <ul>
+                            {% for issue in limit_issues %}<li>{{ issue }}</li>{% endfor %}
+                        </ul>
+                    </div>
+                </details>
                 {% elif can_subscribe and prices %}
                 <a href="/minha-assinatura/contratar?plan_id={{ plan.id }}" class="block w-full rounded-2xl px-4 py-3 text-center text-base font-bold transition {{ cta_class }}">Escolher {{ plan.name }}</a>
                 {% elif is_current %}
@@ -112,6 +119,22 @@ document.addEventListener('click', (event) => {
     const opener = event.target.closest('[data-dialog-open]');
     if (opener) { document.getElementById(opener.dataset.dialogOpen)?.showModal(); return; }
     if (event.target.closest('[data-dialog-close]') || event.target.tagName === 'DIALOG') (event.target.closest('dialog') || event.target).close();
+});
+document.querySelectorAll('[data-plan-unavailable]').forEach((details) => {
+    details.addEventListener('pointerenter', (event) => {
+        if (event.pointerType === 'mouse') details.open = true;
+    });
+    details.addEventListener('pointerleave', (event) => {
+        if (event.pointerType === 'mouse') details.open = false;
+    });
+    details.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape') details.open = false;
+    });
+});
+document.addEventListener('click', (event) => {
+    document.querySelectorAll('[data-plan-unavailable][open]').forEach((details) => {
+        if (!details.contains(event.target)) details.open = false;
+    });
 });
 const brl = (v) => Number(v).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 document.querySelectorAll('[data-plan-change]').forEach((form) => {

@@ -190,7 +190,8 @@ def test_trial_catalog_and_checkout_enforce_current_organization_limits(monkeypa
 
         catalog = routes.plan_upgrade_page(request, None, db, user, 't')
         rendered_catalog = env.get_template('plan_upgrade.html').render(**catalog.context, csrf_token='t')
-        assert 'Incompatível com seus cadastros' in rendered_catalog
+        assert 'Plano indisponível' in rendered_catalog
+        assert 'Plano incompatível com seus cadastros' in rendered_catalog
         assert f'/minha-assinatura/contratar?plan_id={complete.id}' in rendered_catalog
         assert f'/minha-assinatura/contratar?plan_id={limited.id}' not in rendered_catalog
         assert len(catalog.context['plan_limit_issues'][limited.id]) == 3
