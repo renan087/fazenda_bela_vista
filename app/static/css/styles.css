@@ -7254,3 +7254,49 @@ a.pf-logout:hover { background: #fdecea; color: #b42318; }
 .plan-unavailable-reasons p { margin: 0 0 4px; font-weight: 750; }
 .plan-unavailable-reasons ul { margin: 0; padding: 0; list-style: none; }
 .plan-unavailable-reasons li + li { margin-top: 4px; }
+
+.my-subscription { display: grid; gap: 18px; width: 100%; max-width: 1600px; color: #111a2f; }
+.ms-card { padding: clamp(18px, 2.5vw, 32px); border: 1px solid #dbe0e7; border-radius: 19px; background: #fff; }
+.ms-header { padding-block: clamp(20px, 2.5vw, 30px); }
+.ms-organization { margin: 0 0 10px; color: #586b62; font-size: 13px; font-weight: 750; letter-spacing: .06em; text-transform: uppercase; }
+.ms-title { margin: 4px 0 0; color: #111a2f; font-size: clamp(23px, 3vw, 32px); font-weight: 750; line-height: 1.2; overflow-wrap: anywhere; }
+.ms-subtitle { margin: 0; color: #111a2f; font-size: clamp(18px, 2vw, 23px); font-weight: 750; }
+.ms-copy { margin: 6px 0 0; color: #54647e; font-size: clamp(14px, 1.55vw, 17px); line-height: 1.5; }
+.ms-trial { display: flex; align-items: center; gap: 14px; padding: 15px clamp(16px, 2vw, 24px); border: 1px solid #dcd0fa; border-radius: 19px; background: #f5f0ff; color: #3b167c; }
+.ms-trial-icon { display: grid; place-items: center; flex: 0 0 44px; height: 44px; border-radius: 13px; background: #ebe0fb; color: #5b21b6; }
+.ms-trial-icon svg { width: 24px; height: 24px; }
+.ms-trial-copy { flex: 1; min-width: 0; }
+.ms-trial h3 { margin: 0; font-size: clamp(16px, 2vw, 21px); font-weight: 750; line-height: 1.3; }
+.ms-trial p { margin: 2px 0 0; color: #6426c5; font-size: 14px; }
+.ms-badge { display: inline-flex; align-items: center; gap: 8px; width: fit-content; padding: 6px 13px; border: 1px solid; border-radius: 999px; font-size: 14px; font-weight: 700; line-height: 1.3; }
+.ms-badge svg { flex: none; width: 18px; height: 18px; }
+.ms-badge-violet { border-color: #ddcdfa; background: #ede3fc; color: #4e189d; }
+.ms-badge-amber { border-color: #f9d793; background: #fff3d9; color: #8b4209; }
+.ms-badge-green { border-color: #b9e5ce; background: #e8f7ef; color: #065b37; }
+.ms-badge-neutral { border-color: #e0e5ec; background: #f1f4f7; color: #405068; }
+.ms-plan-header { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; padding-bottom: 17px; border-bottom: 1px solid #dee4eb; }
+.ms-progress { display: flex; flex-wrap: nowrap; align-items: center; gap: 12px; max-width: 1000px; margin: 15px auto 20px; padding: 0; list-style: none; }
+.ms-progress li { display: flex; align-items: center; gap: 12px; flex: 1; color: #57667b; font-size: 14px; font-weight: 700; }
+.ms-progress li:last-child { flex: none; }
+.ms-progress li:not(:last-child)::after { content: ""; flex: 1; min-width: 12px; height: 2px; background: #d1d9e3; }
+.ms-progress li.is-complete { color: #065b37; }
+.ms-progress li.is-complete::after, .ms-progress li.is-complete .ms-step-marker { background: #14834e; color: white; }
+.ms-step { display: flex; align-items: center; gap: 8px; padding: 5px 10px; border-radius: 999px; line-height: 1.25; }
+.ms-step-marker { display: grid; place-items: center; flex: 0 0 28px; height: 28px; border-radius: 50%; background: #e1e6ed; color: #41516a; }
+.ms-step-marker svg { width: 18px; height: 18px; }
+.ms-progress li.is-current:not(.is-complete) .ms-step { background: #fff2d7; color: #8b4209; }
+.ms-progress li.is-current:not(.is-complete) .ms-step-marker { background: #ffd26d; color: #703607; }
+.ms-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 14px; margin-top: 20px; }
+.ms-link { color: #065b37; text-decoration: underline; text-underline-offset: 3px; font-size: 14px; font-weight: 600; }
+.ms-primary, .ms-secondary { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 42px; padding: 8px 15px; border-radius: 11px; font-size: 14px; font-weight: 700; }
+.ms-primary { background: #075a38; color: white; }
+.ms-primary:hover { background: #06492e; color: white; }
+.ms-secondary { border: 1px solid #dbe3ea; color: #33445b; }
+.ms-secondary:hover { background: #f4f6f8; }
+@media (max-width: 700px) {
+    .ms-trial { flex-wrap: wrap; }
+    .ms-trial-copy { flex-basis: calc(100% - 58px); }
+    .ms-progress { flex-direction: column; align-items: flex-start; gap: 5px; }
+    .ms-progress li:not(:last-child)::after { display: none; }
+    .ms-actions { justify-content: flex-start; }
+}

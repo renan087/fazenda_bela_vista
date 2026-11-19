@@ -9824,6 +9824,53 @@ def manage_subscription_plan_action(
     return _redirect("/planos" if action == "excluir" else f"/planos#plano-{target_id}")
 
 
+def _customer_subscription_display(subscription, migration, charges, today):
+    """Estado exibido ao comprador, independente da liberação de acesso temporário."""
+    paid_states = {"CONFIRMED", "RECEIVED", "RECEIVED_IN_CASH"}
+    review_states = {"REFUNDED", "REFUND_REQUESTED", "REFUND_IN_PROGRESS", "CHARGEBACK_REQUESTED",
+                     "CHARGEBACK_DISPUTE", "AWAITING_CHARGEBACK_REVERSAL", "VERIFICAR"}
+    current_charges = [charge for charge in charges if subscription and charge.subscription_id == subscription.id]
+    latest_result = next((charge for charge in current_charges if charge.status in paid_states | review_states), None)
+    paid = latest_result is not None and latest_result.status in paid_states
+    awaiting_confirmation = any(charge.status in {"AUTHORIZED", "AWAITING_RISK_ANALYSIS"} for charge in current_charges)
+    payable = [charge for charge in current_charges if charge.status in {"PENDING", "OVERDUE"} and not charge.operation_state]
+    payable.sort(key=lambda charge: charge.due_date or today)
+    overdue = [charge for charge in payable if charge.status == "OVERDUE" or (charge.due_date and charge.due_date < today)]
+    invoice_url = next((link for charge in (overdue or payable)
+                        if (link := safe_asaas_link(charge.invoice_url) or safe_asaas_link(charge.bank_slip_url))), None)
+    checkout_url = safe_asaas_link(migration.checkout_link) if migration and migration.status == "aguardando" else None
+
+    if subscription:
+        if subscription.asaas_status in {"INACTIVE", "EXPIRED", "DELETED", "NOT_FOUND"}:
+            state = "suspended" if subscription.asaas_status == "INACTIVE" else "ended"
+        elif latest_result and not paid:
+            state = "review"
+        elif awaiting_confirmation and not paid:
+            state = "confirming"
+        elif subscription.asaas_status == "ACTIVE" and overdue:
+            state = "overdue"
+        elif subscription.asaas_status == "ACTIVE" and paid:
+            state = "active"
+        elif paid or (migration and migration.status == "pago"):
+            state = "confirming"
+        elif subscription.asaas_status == "ACTIVE" or payable:
+            state = "pending"
+        else:
+            state = "review"
+    elif migration:
+        if migration.status == "pago":
+            state = "confirming"
+        elif migration.status == "aguardando":
+            state = "pending"
+        else:
+            state = "review"
+    else:
+        return None
+    payment_url = (invoice_url if subscription else checkout_url) if state in {"pending", "overdue"} else None
+    return {"state": state, "payment_url": payment_url, "paid": paid, "checkout_url": checkout_url,
+            "step": 3 if state == "active" else 1 if state in {"suspended", "ended"} else 2}
+
+
 def _customer_subscription_context(db: Session, organization: Organization) -> dict:
     """Tudo o que a organizacao ve sobre a propria assinatura. Nunca recebe id de organizacao da requisicao."""
     env = asaas_env_name()
@@ -9839,7 +9886,7 @@ def _customer_subscription_context(db: Session, organization: Organization) -> d
     paid_charges = [item for item in charges if item.status in {"CONFIRMED", "RECEIVED", "RECEIVED_IN_CASH"}][:24]
     migration = db.query(OrganizationCardMigration).filter_by(organization_id=organization.id, is_open=True, environment=asaas_env_name()).first()
     portfolio = build_subscription_portfolio(db, [organization], today)
-    plan = current.plan if current else None
+    plan = current.plan if current else (db.get(SubscriptionPlan, migration.plan_id) if migration and migration.plan_id else None)
     module_labels = dict(PLAN_MODULES)
     return {
         "organization": organization,
@@ -9847,6 +9894,7 @@ def _customer_subscription_context(db: Session, organization: Organization) -> d
         "open_charges": open_charges,
         "paid_charges": paid_charges,
         "card_migration": migration,
+        "subscription_display": _customer_subscription_display(current, migration, charges, today),
         "situation": portfolio.rows[0] if portfolio.rows else None,
         "saved_card": _saved_card_charge(db, organization.id),
         "plan": plan,

@@ -261,3 +261,58 @@ def test_landing_structured_data_has_organization_and_offers():
     assert types["Organization"]["logo"].startswith("https://")
     offers = types["SoftwareApplication"]["offers"]
     assert offers["lowPrice"] == "99.90" and offers["highPrice"] == "299.00" and offers["priceCurrency"] == "BRL"
+
+
+def test_trial_checkout_shows_payment_action_only_before_payment(monkeypatch):
+    from datetime import timedelta
+    from app.models import OrganizationAccessGrant
+
+    _page_env(monkeypatch)
+    with _db() as db:
+        org = Organization(name='Fazenda Teste', slug='teste-checkout', is_active=True)
+        db.add(org)
+        db.flush()
+        today = routes.today_in_app_timezone()
+        grant = OrganizationAccessGrant(
+            organization_id=org.id, reason='teste_gratis', justification='Período de avaliação da organização.',
+            starts_on=today - timedelta(days=1), ends_on=today + timedelta(days=10),
+        )
+        migration = OrganizationCardMigration(
+            organization_id=org.id, status='aguardando', plan_name='SiSFarm Essencial', amount=Decimal('99'),
+            cycle='MONTHLY', checkout_link='https://sandbox.asaas.com/checkoutSession/show/teste',
+        )
+        db.add_all([grant, migration])
+        db.commit()
+        user = _user(org)
+
+        _, context = routes.my_subscription_page(SimpleNamespace(), db, user, 't')
+        html = _render(context)
+        assert 'Teste grátis ativo até' in html and 'Acesso temporário liberado' in html
+        assert 'data-status="pending"' in html and 'SiSFarm Essencial' in html
+        assert 'Concluir pagamento' in html and migration.checkout_link in html
+
+        migration.status = 'pago'
+        db.commit()
+        _, context = routes.my_subscription_page(SimpleNamespace(), db, user, 't')
+        html = _render(context)
+        assert 'data-status="confirming"' in html and 'Aguardando confirmação' in html
+        assert 'Concluir pagamento' not in html and migration.checkout_link not in html
+
+
+def test_confirmed_current_payment_marks_plan_active_even_with_trial(monkeypatch):
+    from datetime import timedelta
+    from app.models import OrganizationAccessGrant
+
+    _page_env(monkeypatch)
+    with _db() as db:
+        org, _ = _org(db, 'ativa')
+        today = routes.today_in_app_timezone()
+        db.add(OrganizationAccessGrant(
+            organization_id=org.id, reason='teste_gratis', justification='Período de avaliação da organização.',
+            starts_on=today - timedelta(days=1), ends_on=today + timedelta(days=10),
+        ))
+        db.commit()
+        _, context = routes.my_subscription_page(SimpleNamespace(), db, _user(org), 't')
+        html = _render(context)
+        assert 'Teste grátis ativo até' in html and 'data-status="active"' in html
+        assert '3. Assinatura ativa' in html and 'Concluir pagamento' not in html
