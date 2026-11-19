@@ -121,7 +121,7 @@ def _request(path, method='GET', referer=None):
 
 
 def _run(monkeypatch, entitlements, path, method='GET', referer=None):
-    monkeypatch.setattr(mw, 'cached_entitlements', lambda db, org_id, today: entitlements)
+    monkeypatch.setattr(mw, 'compute_entitlements', lambda db, org_id, today: entitlements)
     monkeypatch.setattr(mw, 'SessionLocal', lambda: SimpleNamespace(__enter__=None))
 
     class FakeDB:
@@ -483,7 +483,6 @@ def test_downgrade_is_scheduled_for_end_of_paid_cycle_and_can_be_cancelled(db, m
     assert sent[-1]['description'] == pro.name and sent[-1]['value'] == 79.9
     assert (sub.plan_id, sub.pending_plan_id, sub.pending_effective_on) == (pro.id, basic.id, date(2099, 3, 10))
     assert 'agendada para 10/03/2099' in flashes[-1][1]
-    ent.invalidate_entitlements()
     assert ent.compute_entitlements(db, org.id, TODAY).module_allowed('page.finance')
     assert not ent.compute_entitlements(db, org.id, date(2099, 3, 10)).module_allowed('page.finance')
     _ask(db, user, basic)
@@ -643,8 +642,7 @@ def test_paid_plan_is_current_during_full_trial_and_limits_apply_after_trial(db,
     user = SimpleNamespace(id=3, email='gestor@fazenda.com', organization_id=org.id, organization=org)
     request = SimpleNamespace()
 
-    ent.invalidate_entitlements(org.id)
-    trial_access = ent.cached_entitlements(db, org.id, TODAY)
+    trial_access = ent.compute_entitlements(db, org.id, TODAY)
     assert trial_access.plan_id == full.id and trial_access.module_allowed('page.finance')
 
     _, ctx = routes.plan_upgrade_page(request, None, db, user, 't')
@@ -664,7 +662,7 @@ def test_paid_plan_is_current_during_full_trial_and_limits_apply_after_trial(db,
     assert duplicate.headers['location'] == '/minha-assinatura'
     assert db.query(AuditLog).count() == 0
 
-    paid_access = ent.cached_entitlements(db, org.id, TODAY + timedelta(days=1))
+    paid_access = ent.compute_entitlements(db, org.id, TODAY + timedelta(days=1))
     assert paid_access.plan_id == basic.id and paid_access.max_farms == 1
     assert not paid_access.module_allowed('page.finance') and not paid_access.read_only
     assert db.query(OrganizationSubscription).count() == 1
@@ -740,3 +738,56 @@ def test_existing_trial_overages_are_read_only_until_regularized(db, monkeypatch
     db.add(HarvestRecord(plot_id=plot.id, harvest_date=today, sacks_produced=4))
     db.commit()
     assert db.query(HarvestRecord).count() == 2 and db.query(Farm).count() == 2
+
+
+@pytest.mark.parametrize('with_ended_trial', [True, False])
+def test_cancellation_restricts_an_existing_session_even_if_reconciliation_is_unavailable(db, monkeypatch, with_ended_trial):
+    from app.models import OrganizationAccessGrant
+
+    plan = _plan(db)
+    org = _org(db, plan=plan)
+    subscription = db.query(OrganizationSubscription).one()
+    _confirm_payment(db, subscription)
+    db.add(User(organization_id=org.id, name='Cliente', email='cliente@fazenda.com',
+                hashed_password='x', is_active=True))
+    if with_ended_trial:
+        db.add(OrganizationAccessGrant(
+            organization_id=org.id, plan_id=plan.id, reason='teste_gratis',
+            starts_on=TODAY - timedelta(days=14), ends_on=TODAY - timedelta(days=1),
+            justification='Período de avaliação encerrado.',
+        ))
+    db.commit()
+
+    _self_service_env(db, monkeypatch)
+    monkeypatch.setattr(routes, '_require_super_admin', lambda *args: None)
+    monkeypatch.setattr(routes, '_auto_reconcile', lambda *args, **kwargs: None)
+    monkeypatch.setattr(routes, 'manage_sandbox_subscription',
+                        lambda **kwargs: ({'id': kwargs['subscription_id'], 'deleted': True}, None))
+    monkeypatch.setattr(mw, 'today_in_app_timezone', lambda: TODAY)
+    monkeypatch.setattr(mw, 'SessionLocal', lambda: Session(bind=db.get_bind()))
+
+    async def run_inline(fn, *args):
+        return fn(*args)
+
+    async def allowed(request):
+        return SimpleNamespace(status_code=200)
+
+    monkeypatch.setattr(mw, 'run_in_threadpool', run_inline)
+    middleware = mw.SubscriptionEnforcementMiddleware(app=None)
+    request = _request('/fazendas', 'POST')
+    assert asyncio.run(middleware.dispatch(request, allowed)).status_code == 200
+
+    routes.manage_organization_sandbox_subscription_action(
+        organization_id=org.id, request=SimpleNamespace(), csrf_token='x', action='cancelar',
+        next_due_date='', db=db, user=SimpleNamespace(),
+    )
+
+    blocked = asyncio.run(middleware.dispatch(request, allowed))
+    assert blocked.status_code == 303 and blocked.headers['location'] == '/minha-assinatura'
+    assert asyncio.run(middleware.dispatch(_request('/fazendas'), allowed)).status_code == 200
+    assert asyncio.run(middleware.dispatch(_request('/minha-assinatura/contratar', 'POST'), allowed)).status_code == 200
+    assert asyncio.run(middleware.dispatch(_request('/gestao-financeira'), allowed)).headers['location'].startswith('/planos-disponiveis')
+    access = ent.compute_entitlements(db, org.id, TODAY)
+    assert access.read_only and access.access_missing and access.trial_ended is with_ended_trial
+    assert subscription.asaas_status == 'DELETED' and not subscription.is_current
+    assert db.query(OrganizationSubscriptionPayment).count() == 1

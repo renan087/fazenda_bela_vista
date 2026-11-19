@@ -8,7 +8,7 @@ from app.db.session import get_db
 from app.models import Farm, User
 from app.repositories.farm import FarmRepository
 from app.services.dashboard import build_dashboard_context
-from app.services.entitlements import cached_entitlements
+from app.services.entitlements import compute_entitlements
 from app.services.rbac_service import user_has_permission
 from app.services.plan_usage import user_exceeds_plan
 
@@ -28,7 +28,7 @@ def enforce_plan(request: Request, db: Session = Depends(get_db), current_user: 
     module = API_MODULES.get(request.url.path.rstrip("/"))
     if module and not user_has_permission(db, current_user, module):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Sem permissão para acessar este recurso.")
-    entitlements = cached_entitlements(db, current_user.organization_id, today_in_app_timezone())
+    entitlements = compute_entitlements(db, current_user.organization_id, today_in_app_timezone())
     if not entitlements.module_allowed(module):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Este recurso não faz parte do plano da organização.")
     if request.method not in {"GET", "HEAD", "OPTIONS"}:
@@ -61,7 +61,7 @@ def dashboard_summary(
         farm_id=farm_id if farm_id is not None else min(farms, default=-1),
     )
     kpis = data["kpis"]
-    entitlements = cached_entitlements(db, current_user.organization_id, today_in_app_timezone())
+    entitlements = compute_entitlements(db, current_user.organization_id, today_in_app_timezone())
     if not entitlements.module_allowed(PAGE_FINANCE) or not user_has_permission(db, current_user, PAGE_FINANCE):
         kpis = {key: value for key, value in kpis.items()
                 if not key.startswith(("finance_", "cost_", "operational_cost_"))}

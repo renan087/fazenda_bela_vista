@@ -91,6 +91,8 @@ def apply_due_plan_changes(db: Session, today: date, now: datetime, rename_in_as
     """Efetiva downgrades cuja data chegou. ``rename_in_asaas(subscription, name) -> bool`` atualiza a descricao
     no Asaas (o valor ja foi ajustado no agendamento); se falhar, tenta de novo no proximo ciclo."""
     due = db.query(OrganizationSubscription).filter(
+        OrganizationSubscription.is_current.is_(True),
+        OrganizationSubscription.asaas_status == "ACTIVE",
         OrganizationSubscription.pending_plan_id.isnot(None),
         OrganizationSubscription.pending_effective_on <= today,
     ).all()

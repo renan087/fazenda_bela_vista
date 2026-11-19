@@ -14,7 +14,7 @@ from app.core.path_access import is_public_web_prefix, required_permission_for_w
 from app.core.timezone import today_in_app_timezone
 from app.db.session import SessionLocal
 from app.models import User
-from app.services.entitlements import ALWAYS_ALLOWED_PREFIXES, cached_entitlements
+from app.services.entitlements import ALWAYS_ALLOWED_PREFIXES, compute_entitlements
 from app.services.plan_usage import user_exceeds_plan
 
 logger = logging.getLogger(__name__)
@@ -35,7 +35,7 @@ def upgrade_url(module_code: str | None) -> str:
 def _entitlements_for_email(email):
     with SessionLocal() as db:
         user = db.query(User).filter(User.email == email, User.is_active.is_(True)).first()
-        entitlements = cached_entitlements(db, user.organization_id if user else None, today_in_app_timezone())
+        entitlements = compute_entitlements(db, user.organization_id if user else None, today_in_app_timezone())
         return entitlements, bool(user and entitlements.max_users is not None and user_exceeds_plan(db, entitlements, user.id))
 
 

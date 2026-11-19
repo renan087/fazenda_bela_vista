@@ -33,8 +33,7 @@ from app.services.asaas_subscriptions import (
     update_sandbox_subscription,
 )
 from app.services.commercial_audit import record_commercial_event
-from app.services.entitlements import invalidate_entitlements
-from app.services.plan_changes import apply_due_plan_changes
+from app.services.plan_changes import apply_due_plan_changes, clear_pending
 from app.services.organization_subscription_sync import apply_subscription_details, persist_organization_webhook
 from app.services.asaas_environment import asaas_api_key, asaas_env_name, asaas_ready
 
@@ -92,6 +91,7 @@ def _sync_subscription_and_payments(db, subscription: OrganizationSubscription, 
             subscription.asaas_status = "NOT_FOUND"
             subscription.status = "encerrada"
             subscription.is_current = False
+            clear_pending(subscription)
             record_commercial_event(db, user=None, organization_id=subscription.organization_id, resource="assinatura", resource_id=subscription.id, action="conciliar", outcome="success", details={"resultado": "nao_encontrada_no_asaas"})
             return
         raise ReconciliationError(missing_error or error)
@@ -103,6 +103,7 @@ def _sync_subscription_and_payments(db, subscription: OrganizationSubscription, 
         subscription.asaas_status = "DELETED" if remote.get("deleted") is True else subscription.asaas_status
         subscription.status = "encerrada" if subscription.is_current else subscription.status
         subscription.is_current = False
+        clear_pending(subscription)
     elif subscription.status in PENDING_SUBSCRIPTION_STATUSES:
         subscription.status = "criada"
     rows, error = list_sandbox_subscription_payments(api_key=api_key, subscription_id=subscription.asaas_subscription_id)
@@ -261,8 +262,7 @@ def _apply_scheduled_plan_changes(db, api_key: str) -> None:
         result, error = update_sandbox_subscription(api_key=api_key, subscription_id=subscription.asaas_subscription_id, customer_id=billing.asaas_customer_id, payload={"description": name})
         return bool(result) and not error
     try:
-        for organization_id in apply_due_plan_changes(db, _now().date(), _now(), rename):
-            invalidate_entitlements(organization_id)
+        apply_due_plan_changes(db, _now().date(), _now(), rename)
         db.commit()
     except Exception:
         db.rollback()
@@ -284,7 +284,6 @@ def _tick(limit: int = 20) -> None:
                 db.commit()
                 if issues and asaas_env_name() == "production":
                     logger.warning("Conciliação Asaas com pendências: organização=%s total=%s", organization_id, len(issues))
-                invalidate_entitlements(organization_id)
             except Exception:
                 db.rollback()
                 logger.exception("Falha na conciliação automática da organização %s", organization_id)

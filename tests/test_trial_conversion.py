@@ -11,7 +11,7 @@ from app.db.base import Base
 from app.models import Organization, OrganizationAccessGrant, OrganizationBilling, OrganizationCardMigration, OrganizationSubscription, User
 from app.services import billing_notices
 from app.services import subscription_plans as plans
-from app.services.entitlements import compute_entitlements, invalidate_entitlements
+from app.services.entitlements import compute_entitlements
 from app.web import routes
 
 TODAY = date(2026, 11, 14)
@@ -34,7 +34,6 @@ def _trial_org(db, ends_on):
     db.add(OrganizationAccessGrant(organization_id=org.id, plan_id=plan.id, reason='teste_gratis', justification='Teste grátis de 14 dias pelo autocadastro.',
                                    starts_on=ends_on - timedelta(days=14), ends_on=ends_on))
     db.commit()
-    invalidate_entitlements(org.id)
     return org, plan
 
 

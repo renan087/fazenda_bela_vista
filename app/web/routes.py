@@ -157,7 +157,7 @@ from app.services.plan_changes import (
     has_confirmed_subscription_payment, is_downgrade, schedule_downgrade,
 )
 from app.services.plan_usage import plan_usage, quota_write_entitlements, regularization_status
-from app.services.entitlements import ALWAYS_ALLOWED_PREFIXES, MODULE_DETAILS, MODULE_PITCH, UNRESTRICTED, Entitlements, MODULE_LABELS, cached_entitlements, farm_limit_error, invalidate_entitlements, user_limit_error
+from app.services.entitlements import ALWAYS_ALLOWED_PREFIXES, MODULE_DETAILS, MODULE_PITCH, UNRESTRICTED, Entitlements, MODULE_LABELS, compute_entitlements, farm_limit_error, user_limit_error
 from app.middleware.subscription_enforcement import upgrade_url
 from app.services.access_grants import GRANT_REASONS, MAX_GRANT_DAYS, GrantValidationError, active_grant, create_grant, default_grant_end, extend_grant, grant_status_label, is_expiring_soon, revoke_grant
 from app.services.subscription_portfolio import SITUATION_LABELS, build_subscription_portfolio, monthly_amount
@@ -1166,14 +1166,14 @@ def _pezinho_context(request: Request, db, user, context: dict) -> dict | None:
 
 
 def _entitlements_for(db_session, user) -> Entitlements:
-    """Direitos do plano do usuario logado (equipe SiSFarm e falhas: sem restricoes)."""
+    """Consulta no banco os direitos atuais do usuário logado."""
     if db_session is None or not user or is_super_admin_email(getattr(user, "email", "") or ""):
         return UNRESTRICTED
     try:
-        return cached_entitlements(db_session, getattr(user, "organization_id", None), today_in_app_timezone())
+        return compute_entitlements(db_session, getattr(user, "organization_id", None), today_in_app_timezone())
     except Exception:
         logger.exception("Falha ao calcular os direitos do plano")
-        return UNRESTRICTED
+        return Entitlements(organization_id=getattr(user, "organization_id", None), billing_state="restrito")
 
 
 @pass_context
@@ -9949,7 +9949,7 @@ def my_subscription_page(request: Request, db: Session = Depends(get_db), user: 
     can_change = WRITE_FINANCE in permission_codes_for_user(db, user)
     return templates.TemplateResponse("my_subscription.html", _base_context(
         request, user, csrf_token, "my_subscription", title="Minha assinatura", can_change_payment=can_change,
-        subscription_read_only=_entitlements_for(db, user).read_only if asaas_env_name() == "production" else False,
+        subscription_read_only=_entitlements_for(db, user).read_only,
         _repo=_repository(db), **context,
     ))
 
@@ -10111,7 +10111,6 @@ def subscribe_action(
     due = today if ent.trial_ended or not ent.trial_ends_on else max(ent.trial_ends_on, today)
     outcome = _contract_subscription(db, user, organization_id=organization.id, billing=billing, plan=plan, name=plan.name, amount=price,
                                      cycle=cycle, billing_type=billing_type, due=due, api_key=api_key, accepted_terms=True)
-    invalidate_entitlements(organization.id)
     if outcome["kind"] == "card":
         return RedirectResponse(outcome["link"], status_code=status.HTTP_303_SEE_OTHER)
     if outcome["kind"] == "incompatible":
@@ -10211,7 +10210,6 @@ def create_access_grant_action(
     record_commercial_event(db, user=user, organization_id=organization_id, resource="liberacao", resource_id=grant.id, action="criar", outcome="success",
                             details={"motivo": grant.reason, "justificativa": grant.justification, "inicio": grant.starts_on, "fim": grant.ends_on, "plano_id": grant.plan_id})
     db.commit()
-    invalidate_entitlements(organization_id)
     _flash(request, "success", f"Acesso liberado manualmente até {grant.ends_on.strftime('%d/%m/%Y')}. As cobranças no Asaas não foram alteradas.")
     return _grant_target(organization_id)
 
@@ -10238,7 +10236,6 @@ def extend_access_grant_action(
     record_commercial_event(db, user=user, organization_id=organization_id, resource="liberacao", resource_id=grant.id, action="prorrogar", outcome="success",
                             details={"fim_anterior": previous_end, "novo_fim": grant.ends_on, "justificativa": text})
     db.commit()
-    invalidate_entitlements(organization_id)
     _flash(request, "success", f"Liberação prorrogada até {grant.ends_on.strftime('%d/%m/%Y')}.")
     return _grant_target(organization_id)
 
@@ -10264,7 +10261,6 @@ def revoke_access_grant_action(
     record_commercial_event(db, user=user, organization_id=organization_id, resource="liberacao", resource_id=grant.id, action="encerrar", outcome="success",
                             details={"motivo_encerramento": grant.revoke_reason, "fim_previsto": grant.ends_on})
     db.commit()
-    invalidate_entitlements(organization_id)
     _flash(request, "success", "Liberação manual encerrada. O acesso volta a depender da assinatura.")
     return _grant_target(organization_id)
 
@@ -10444,7 +10440,6 @@ def self_service_plan_change_action(request: Request, csrf_token: str = Form(...
     record_commercial_event(db, user=user, organization_id=user.organization_id, resource="assinatura", resource_id=subscription_id, action="agendar_reducao_plano" if downgrade else "mudar_plano_cliente", outcome="success",
                             details={"de": old_plan, "valor_anterior": str(old_amount), "ciclo_anterior": old_cycle, "para": plan.name, "plano_id": plan.id, "versao": plan.version, "valor": str(price), "ciclo": cycle, "vale_a_partir_de": effective_on})
     db.commit()
-    invalidate_entitlements(user.organization_id)
     due = subscription.next_due_date.strftime("%d/%m/%Y") if subscription.next_due_date else "a próxima cobrança"
     if downgrade:
         _flash(request, "success", f"Mudança para {plan.name} agendada para {due}. Até lá, você continua com o plano {old_plan}; a fatura de {due} já virá com o novo valor.")
@@ -10476,7 +10471,6 @@ def cancel_scheduled_plan_change_action(request: Request, csrf_token: str = Form
     clear_pending(subscription)
     record_commercial_event(db, user=user, organization_id=user.organization_id, resource="assinatura", resource_id=subscription.id, action="cancelar_reducao_plano", outcome="success", details={"plano_cancelado": cancelled})
     db.commit()
-    invalidate_entitlements(user.organization_id)
     _flash(request, "success", f"Mudança para {cancelled} cancelada. Você continua no plano atual.")
     return _customer_target()
 
@@ -10815,7 +10809,6 @@ def _auto_reconcile(db: Session, organization_id: int, *, full: bool = False) ->
     try:
         issues = reconcile_organization(db, organization_id, settings.asaas_api_key.strip(), full=full)
         db.commit()
-        invalidate_entitlements(organization_id)
         return issues
     except Exception:
         db.rollback()
@@ -11279,7 +11272,9 @@ def manage_organization_sandbox_subscription_action(
         _flash(request, "info", "O Asaas não confirmou a operação na resposta. " + ("A situação foi atualizada com o Asaas; confira abaixo." if issues == [] else _AUTO_RETRY_MESSAGE))
         return _redirect(f"/assinaturas?organizacao={organization_id}")
     try:
-        subscription = db.query(OrganizationSubscription).filter_by(organization_id=organization_id, is_current=True).with_for_update().one()
+        subscription = db.query(OrganizationSubscription).filter_by(
+            organization_id=organization_id, asaas_subscription_id=remote_id, environment=asaas_env_name(),
+        ).with_for_update().one()
         billing = db.query(OrganizationBilling).filter_by(organization_id=organization_id).first()
         if action != "cancelar" and (not billing or result.get("customer") != billing.asaas_customer_id):
             raise ValueError("Cliente da assinatura divergente")
@@ -11287,7 +11282,10 @@ def manage_organization_sandbox_subscription_action(
         if action == "reativar":
             subscription.next_due_date = due
         subscription.asaas_last_event_at = app_now().replace(tzinfo=None)
-        subscription.status = "criada"
+        subscription.status = "encerrada" if action == "cancelar" else "criada"
+        if action == "cancelar":
+            subscription.is_current = False
+            clear_pending(subscription)
         record_commercial_event(db, user=user, organization_id=organization_id, resource="assinatura", resource_id=subscription.id, action=action, outcome="success", details={"situacao": subscription.asaas_status})
         db.commit()
     except Exception:
@@ -11690,7 +11688,6 @@ def delete_organization_action(
         remove_farm_preview_image(farm_id)
     for plot_id in plot_ids:
         remove_plot_preview_image(plot_id)
-    invalidate_entitlements(organization_id)
     message = "Organização, usuários e fazendas vinculadas excluídos com sucesso."
     if preserve_history:
         message += " O histórico comercial foi preservado em Assinaturas."

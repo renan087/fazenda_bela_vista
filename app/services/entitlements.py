@@ -5,15 +5,13 @@ Fonte unica para o modo somente leitura (inadimplencia), o cadeado de modulos e 
 Regras:
 - a organizacao da equipe SiSFarm (slug "sisfarm") nunca e limitada;
 - liberacao manual ativa garante acesso e define o plano;
-- em producao, sem pagamento confirmado nem liberacao: somente leitura;
+- assinatura ou teste encerrado, sem outra liberação válida: somente leitura;
 - inadimplencia: aviso do 1o dia de atraso ate o fim da tolerancia; depois, somente leitura;
 - plano personalizado (fora do catalogo): sem limites de modulos/quantidade.
 """
 
 from __future__ import annotations
 
-import threading
-import time
 from dataclasses import dataclass, field
 from datetime import date, timedelta
 from decimal import Decimal
@@ -55,6 +53,7 @@ class Entitlements:
     billing_state: str = "ok"  # ok | aviso | restrito | liberado | teste
     trial_ends_on: date | None = None
     trial_ended: bool = False
+    access_missing: bool = False
     days_overdue: int = 0
     overdue_amount: Decimal = Decimal("0.00")
     restrict_on: date | None = None
@@ -85,11 +84,22 @@ def compute_entitlements(db: Session, organization_id: int | None, today: date) 
         return Entitlements(organization_id=organization_id, exempt=True)
     env = asaas_env_name()
     access = organization_access(db, organization_id, today, environment=env)
-    plan = db.get(SubscriptionPlan, access.plan_id) if access.plan_id else None
-    modules = frozenset(plan_modules(plan)) if plan else None
     is_trial = bool(access.grant and access.grant.reason == TRIAL_GRANT_REASON)
-    if is_trial:
-        modules = None
+    plan_id = access.plan_id
+    last_subscription = None
+    last_trial = None
+    if not access.has_access:
+        last_trial = (db.query(OrganizationAccessGrant)
+                      .filter_by(organization_id=organization_id, reason=TRIAL_GRANT_REASON)
+                      .order_by(OrganizationAccessGrant.ends_on.desc()).first())
+        last_subscription = (db.query(OrganizationSubscription)
+                             .filter_by(organization_id=organization_id, environment=env)
+                             .order_by(OrganizationSubscription.is_current.desc(), OrganizationSubscription.id.desc()).first())
+        if plan_id is None and last_subscription:
+            plan_id = last_subscription.plan_id
+    access_missing = not access.has_access and bool(env == "production" or last_trial or last_subscription)
+    plan = db.get(SubscriptionPlan, plan_id) if plan_id else None
+    modules = frozenset(plan_modules(plan)) if plan and not is_trial else None
     locked = frozenset(code for code in MODULE_LABELS if modules is not None and code not in modules)
 
     subscription_query = db.query(OrganizationSubscription.id).filter_by(organization_id=organization_id, environment=env)
@@ -110,19 +120,11 @@ def compute_entitlements(db: Session, organization_id: int | None, today: date) 
         overdue_amount = sum((Decimal(row.amount or 0) for row in overdue), Decimal("0.00"))
 
     grace = grace_days()
-    trial_ends_on, trial_ended = None, False
-    if access.grant is not None and access.grant.reason == TRIAL_GRANT_REASON:
-        trial_ends_on = access.grant.ends_on
-    elif not access.has_access:
-        last_trial = (db.query(OrganizationAccessGrant)
-                      .filter_by(organization_id=organization_id, reason=TRIAL_GRANT_REASON)
-                      .order_by(OrganizationAccessGrant.ends_on.desc()).first())
-        # Teste encerrado sem assinatura ativa: modo somente leitura, sem apagar nada.
-        trial_ended = bool(last_trial and last_trial.ends_on < today)
-        trial_ends_on = last_trial.ends_on if trial_ended else None
-    if trial_ends_on and not trial_ended:
+    trial_ended = bool(last_trial and last_trial.ends_on < today)
+    trial_ends_on = access.grant.ends_on if is_trial else last_trial.ends_on if trial_ended else None
+    if is_trial:
         state = "teste"
-    elif trial_ended or (env == "production" and not access.has_access):
+    elif access_missing:
         state = "restrito"
     elif access.manual:
         state = "liberado"
@@ -149,35 +151,8 @@ def compute_entitlements(db: Session, organization_id: int | None, today: date) 
         locked_modules=locked,
         trial_ends_on=trial_ends_on,
         trial_ended=trial_ended,
+        access_missing=access_missing,
     )
-
-
-# Cache curto por organizacao: evita consultar o banco a cada requisicao.
-_CACHE_TTL_SECONDS = 60
-_cache: dict[int, tuple[float, date, Entitlements]] = {}
-_cache_lock = threading.Lock()
-
-
-def cached_entitlements(db: Session, organization_id: int | None, today: date) -> Entitlements:
-    if not organization_id:
-        return UNRESTRICTED
-    now = time.monotonic()
-    with _cache_lock:
-        hit = _cache.get(organization_id)
-        if hit and hit[0] > now and hit[1] == today:
-            return hit[2]
-    value = compute_entitlements(db, organization_id, today)
-    with _cache_lock:
-        _cache[organization_id] = (now + _CACHE_TTL_SECONDS, today, value)
-    return value
-
-
-def invalidate_entitlements(organization_id: int | None = None) -> None:
-    with _cache_lock:
-        if organization_id is None:
-            _cache.clear()
-        else:
-            _cache.pop(organization_id, None)
 
 
 # ---- Limites de cadastro ----

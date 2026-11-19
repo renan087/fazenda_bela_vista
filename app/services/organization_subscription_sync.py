@@ -3,6 +3,7 @@
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 
+from app.services.plan_changes import clear_pending
 from app.services.asaas_card_checkout import safe_asaas_link
 from app.services.asaas_environment import asaas_env_name
 from app.models import AsaasWebhookEvent, OrganizationBilling, OrganizationSubscription, OrganizationSubscriptionPayment
@@ -114,5 +115,9 @@ def persist_organization_webhook(db, body: dict) -> bool:
         status = 'DELETED' if subscription_data.get('deleted') is True or event_type == 'SUBSCRIPTION_DELETED' else str(subscription_data.get('status') or '').strip()
         if status:
             subscription.asaas_status = status[:30]
+        if status in {"DELETED", "EXPIRED"}:
+            subscription.status = "encerrada"
+            subscription.is_current = False
+            clear_pending(subscription)
         subscription.asaas_last_event_at = timestamp
     return True

@@ -6,7 +6,6 @@ from datetime import date
 from decimal import Decimal, InvalidOperation
 import hashlib
 
-from app.services.entitlements import invalidate_entitlements
 from app.core.config import get_settings
 from app.core.timezone import app_now
 from app.services.asaas_environment import asaas_env_name, asaas_ready
@@ -122,7 +121,6 @@ def _tick():
         try:
             process_paid_card_migration(db, migration, settings.asaas_api_key.strip())
             db.commit()
-            invalidate_entitlements(migration.organization_id)
         except Exception as exc:
             db.rollback()
             migration = db.query(OrganizationCardMigration).filter_by(id=migration_id, is_open=True).with_for_update().first()

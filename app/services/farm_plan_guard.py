@@ -123,6 +123,8 @@ def _enforce_farm_plan(db, flush_context, instances):
         return
     organization_id, user_id = actor
     entitlements = compute_entitlements(db, organization_id, today_in_app_timezone())
+    if entitlements.read_only:
+        raise FarmPlanRestriction("Organização em modo consulta. Confira a situação em Minha assinatura.")
     if user_exceeds_plan(db, entitlements, user_id):
         raise FarmPlanRestriction("Seu usuário está em modo consulta por exceder o limite do plano.")
 

@@ -31,15 +31,11 @@ def _block_real_http(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
-def _clear_entitlements_cache():
-    """Cada teste usa um banco novo; o cache de direitos nao pode vazar entre eles."""
+def _reset_runtime_state():
     from app.services import login_throttle, maintenance
-    from app.services.entitlements import invalidate_entitlements
 
-    invalidate_entitlements()
     login_throttle.reset()
     maintenance.invalidate()
     yield
-    invalidate_entitlements()
     login_throttle.reset()
     maintenance.invalidate()
