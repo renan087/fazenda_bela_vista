@@ -1,0 +1,64 @@
+<section class="min-w-0 rounded-2xl border border-slate-200 bg-slate-50 p-4" aria-label="Análises do lote">
+    <div class="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+        <h4 class="font-semibold text-slate-900">Classificação</h4>
+        {% if can_classify %}
+        <a class="text-sm font-semibold text-emerald-700 hover:underline" href="{{ class_url }}">{{ 'Nova análise' if analyses else 'Classificar lote' }}</a>
+        {% endif %}
+    </div>
+    {% if analyses %}
+    <ul class="mt-3 grid gap-2">
+        {% for result in analyses %}
+        {% set analysis_url = '/producao/classificacao/' ~ result.id %}
+        <li class="min-w-0 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm">
+            <div class="flex flex-wrap items-baseline justify-between gap-x-2">
+                <time class="font-semibold text-slate-900" datetime="{{ result.analysis_date.isoformat() }}">{{ result.analysis_date.strftime('%d/%m/%Y') }}</time>
+                {% if result.sensory_score is not none %}<span class="font-semibold text-slate-800">{{ result.sensory_score|decimal_br }} pontos</span>{% endif %}
+            </div>
+            {% if result.beverage or result.evaluator %}
+            <p class="mt-1 break-words text-slate-600">{{ [result.beverage, result.evaluator]|select|join(' · ') }}</p>
+            {% endif %}
+            {% if can_view_classification %}
+            <div class="mt-2 flex flex-wrap gap-x-3 gap-y-2">
+                <a class="font-semibold text-emerald-700 hover:underline" href="/producao/classificacao?harvest_id={{ item.id }}&amp;origem=producao&amp;analise={{ result.id }}">Ver análise</a>
+                {% if result.report_filename %}
+                <a class="font-semibold text-emerald-700 hover:underline" href="{{ analysis_url }}/laudo" title="{{ result.report_filename }}">Baixar laudo original</a>
+                {% endif %}
+                {% for attachment in result.attachments %}
+                <a class="max-w-full truncate font-semibold text-emerald-700 hover:underline" href="{{ analysis_url }}/laudo?attachment_id={{ attachment.id }}" title="{{ attachment.filename }}" aria-label="Baixar {{ attachment.filename }}">{{ attachment.filename[:27] ~ '...' if attachment.filename|length > 30 else attachment.filename }}</a>
+                {% endfor %}
+            </div>
+            {% endif %}
+        </li>
+        {% endfor %}
+    </ul>
+    {% else %}
+    <p class="mt-2 text-sm text-slate-600">Sem classificação</p>
+    {% endif %}
+</section>
+<section class="min-w-0 rounded-2xl border border-slate-200 bg-slate-50 p-4" aria-label="Vendas do lote">
+    <div class="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+        <h4 class="font-semibold text-slate-900">Comercialização</h4>
+        {% if can_sell %}
+        <a class="text-sm font-semibold text-emerald-700 hover:underline" href="{{ sales_url }}&amp;launch=1">Registrar venda</a>
+        {% endif %}
+    </div>
+    <p class="mt-2 text-sm text-slate-700"><strong>{{ balance|decimal_br }} sc</strong> de saldo estimado</p>
+    {% if sales %}
+    <ul class="mt-3 grid gap-2">
+        {% for sale in sales %}
+        <li class="min-w-0 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm">
+            <div class="flex flex-wrap items-baseline justify-between gap-x-2">
+                <p class="break-words font-semibold text-slate-900">{{ sale.buyer_name }}</p>
+                <time class="text-slate-600" datetime="{{ sale.sale_date.isoformat() }}">{{ sale.sale_date.strftime('%d/%m/%Y') }}</time>
+            </div>
+            <p class="mt-1 text-slate-600">{{ sale.quantity_sold|decimal_br }} {{ 'kg' if sale.sale_unit == 'kg' else 't' if sale.sale_unit == 'ton' else 'sc' }} · {{ sale.total_value|money_br }} · {{ sale_status_labels.get(sale.status, sale.status|replace('_', ' ')|title) }}</p>
+            {% if active_farm_id == item.plot.farm_id %}
+            <a class="mt-2 inline-block font-semibold text-emerald-700 hover:underline" href="{{ sales_url }}&amp;venda={{ sale.id }}">Ver negociação</a>
+            {% endif %}
+        </li>
+        {% endfor %}
+    </ul>
+    {% else %}
+    <p class="mt-2 text-sm text-slate-600">Nenhuma venda registrada</p>
+    {% endif %}
+</section>

@@ -36,10 +36,11 @@
         </div>
 
         {% set can_record = can_write_page and not plan_entitlements.read_only %}
-        {% set can_view_classification = active_farm and active_season %}
         <div class="mt-5 grid gap-3">
             {% for item in harvests %}
-            {% set analysis = lot_analyses.get(item.id) %}
+            {% set analyses = lot_analyses[item.id] %}
+            {% set analysis = analyses|first|default(none) %}
+            {% set can_view_classification = active_season and item.plot and item.plot.farm_id == active_farm_id %}
             {% set sales = lot_sales[item.id] %}
             {% set balance = lot_available_sacks[item.id] %}
             {% set can_classify = can_record and can_view_classification %}
@@ -105,25 +106,8 @@
                 </div>
                 <template id="harvest-view-{{ item.id }}">
                     <div class="grid gap-3 sm:grid-cols-2">
-                        <section class="rounded-2xl bg-brand-50 px-4 py-4">
-                            <h4 class="font-semibold text-slate-900">Classificação</h4>
-                            <p class="mt-1 text-sm text-slate-700">
-                                {% if analysis %}{{ analysis.analysis_date.strftime('%d/%m/%Y') }}{% if analysis.beverage %} · {{ analysis.beverage }}{% endif %}{% if analysis.sensory_score is not none %} · {{ analysis.sensory_score|decimal_br }} pontos{% endif %}
-                                {% else %}Sem classificação{% endif %}
-                            </p>
-                            <div class="mt-2 flex flex-wrap gap-x-4 gap-y-2">
-                                {% if analysis and can_view_classification %}<a class="text-sm font-semibold text-emerald-700 hover:underline" href="/producao/classificacao?harvest_id={{ item.id }}">Ver análises e laudos</a>{% endif %}
-                                {% if can_classify %}<a class="text-sm font-semibold text-emerald-700 hover:underline" href="{{ class_url }}">{{ 'Nova análise' if analysis else 'Classificar lote' }}</a>{% endif %}
-                            </div>
-                        </section>
-                        <section class="rounded-2xl bg-brand-50 px-4 py-4">
-                            <h4 class="font-semibold text-slate-900">Comercialização</h4>
-                            <p class="mt-1 text-sm text-slate-700">{{ balance|decimal_br }} sc de saldo estimado · {{ sales|length }} {{ 'venda registrada' if sales|length == 1 else 'vendas registradas' }}</p>
-                            <div class="mt-2 flex flex-wrap gap-x-4 gap-y-2">
-                                {% if sales %}<a class="text-sm font-semibold text-emerald-700 hover:underline" href="{{ sales_url }}">Ver vendas</a>{% endif %}
-                                {% if can_sell %}<a class="text-sm font-semibold text-emerald-700 hover:underline" href="{{ sales_url }}&amp;launch=1">Registrar venda</a>{% endif %}
-                            </div>
-                        </section>
+                        {% include "partials/production_lot_history.html" %}
+                        <h4 class="pt-2 font-semibold text-slate-900 sm:col-span-2">Dados da colheita</h4>
                         <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Lote</p><p class="mt-2 text-sm font-medium text-slate-800">{{ item.lot_code or ('Lote ' ~ item.id) }}</p></div>
                         <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Setor</p><p class="mt-2 text-sm font-medium text-slate-800">{{ item.plot.name if item.plot else "Setor removido" }}</p></div>
                         <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Variedade</p><p class="mt-2 text-sm font-medium text-slate-800">{{ item.plot.variety.name if item.plot and item.plot.variety else "Não informada" }}</p></div>

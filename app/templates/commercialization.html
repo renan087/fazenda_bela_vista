@@ -635,6 +635,8 @@ document.addEventListener('DOMContentLoaded', () => {
     if (launchModal && typeof launchModal.showModal === 'function') {
         launchModal.showModal();
     }
+    {% elif commercialization_detail_id %}
+    document.querySelector('[data-history-view-source="commercialization-view-{{ commercialization_detail_id }}"]')?.click();
     {% endif %}
 });
 </script>

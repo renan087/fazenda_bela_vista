@@ -15,6 +15,9 @@
         </div>
         <div class="mt-6 min-h-0 flex-1 overflow-y-auto pr-1 space-y-4" data-history-view-body data-modal-scroll></div>
         <div class="mt-8 flex flex-wrap justify-end gap-3">
+            {% if commercialization_detail_id %}
+            <a href="/producao?lote={{ commercialization_selected_harvest_id }}" class="rounded-2xl bg-slate-100 px-5 py-3 font-semibold text-slate-700 hover:bg-slate-200">Voltar à ficha do lote</a>
+            {% endif %}
             <a href="#" class="hidden rounded-2xl bg-slate-900 px-5 py-3 font-semibold text-white hover:bg-slate-700" data-history-view-edit>Editar</a>
         </div>
     </div>

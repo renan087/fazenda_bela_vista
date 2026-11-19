@@ -1,12 +1,16 @@
 import asyncio
 import re
+from datetime import date
+from io import BytesIO
 from types import SimpleNamespace
 from urllib.parse import urlsplit
 
 from jinja2 import ChoiceLoader, DictLoader
-from starlette.datastructures import FormData, QueryParams
+from starlette.datastructures import FormData, QueryParams, UploadFile
 
 from app.models import HarvestRecord, Plot
+from app.models.coffee_classification import CoffeeClassification
+from app.models.coffee_commercialization import CoffeeCommercializationRecord
 from app.services.entitlements import UNRESTRICTED
 from tests.test_stock_assistant import _route_env
 
@@ -69,6 +73,10 @@ def test_lot_journey_from_harvest_through_classification_and_partial_sales(monke
         input_moisture_percentage=None, volume_count=None, notes=None, db=db, user=user,
     )
     lot_id = db.query(HarvestRecord).one().id
+    other_lot = HarvestRecord(plot_id=plot.id, season_id=scope["active_season_id"],
+                              harvest_date=date(2026, 11, 1), lot_code="Outro lote", sacks_produced=5)
+    db.add(other_lot)
+    db.commit()
     lot_url = f"/producao?lote={lot_id}"
     assert response.headers["location"] == lot_url
     page = get(lot_url)
@@ -80,11 +88,20 @@ def test_lot_journey_from_harvest_through_classification_and_partial_sales(monke
     classification = get(url)
     assert f'<option value="{lot_id}" selected>' in classification
     assert 'name="origem" value="producao"' in classification
+    legacy_analysis = CoffeeClassification(
+        harvest_id=lot_id, analysis_date=date(2026, 11, 1), source="laudo", beverage="Dura",
+        report_filename="laudo-antigo.pdf", report_data=b"%PDF-1.4\nantigo",
+    )
+    db.add(legacy_analysis)
+    db.commit()
+
     async def analysis_form():
-        return FormData({
-            "csrf_token": "x", "harvest_id": str(lot_id), "origem": "producao",
-            "analysis_date": "2026-11-02", "source": "informado", "beverage": "Mole", "sensory_score": "85",
-        })
+        return FormData([
+            ("csrf_token", "x"), ("harvest_id", str(lot_id)), ("origem", "producao"),
+            ("analysis_date", "2026-11-02"), ("source", "laudo"), ("beverage", "Mole"), ("sensory_score", "85"),
+            ("report", UploadFile(filename="laudo-a.pdf", file=BytesIO(b"%PDF-1.4\na"))),
+            ("report", UploadFile(filename="laudo-b.pdf", file=BytesIO(b"%PDF-1.4\nb"))),
+        ])
 
     analysis_request = request("/producao/classificacao")
     analysis_request.form = analysis_form
@@ -92,6 +109,15 @@ def test_lot_journey_from_harvest_through_classification_and_partial_sales(monke
     assert response.headers["location"] == lot_url
     page = get(lot_url)
     assert 'Classificado' in page and 'Mole' in page
+    newest_analysis = db.query(CoffeeClassification).order_by(CoffeeClassification.id.desc()).first()
+    assert page.index('datetime="2026-11-02"') < page.index('datetime="2026-11-01"')
+    assert f'/producao/classificacao/{legacy_analysis.id}/laudo"' in page
+    for attachment in newest_analysis.attachments:
+        assert f'/producao/classificacao/{newest_analysis.id}/laudo?attachment_id={attachment.id}' in page
+    detail = get(f"/producao/classificacao?harvest_id={lot_id}&origem=producao&analise={newest_analysis.id}")
+    open_analysis = f"""document.querySelector('[data-cc-details="{newest_analysis.id}"]')?.click()"""
+    assert open_analysis in detail
+    assert open_analysis not in get(f"/producao/classificacao?harvest_id={other_lot.id}&origem=producao&analise={newest_analysis.id}")
 
     sale_url = f"/producao/comercializacao?harvest_id={lot_id}&origem=producao&launch=1"
     assert f'href="{sale_url.replace("&", "&amp;")}"' in page
@@ -101,7 +127,15 @@ def test_lot_journey_from_harvest_through_classification_and_partial_sales(monke
 
     assert sell(4).headers["location"] == lot_url
     page = get(lot_url)
-    assert 'Parcialmente vendido' in page and '6,00 sc de saldo estimado' in page
+    assert 'Parcialmente vendido' in page and '<strong>6,00 sc</strong> de saldo estimado' in page
+    assert 'Comprador' in page and '4,00 sc · R$ 400,00 · Negociado' in page
+    sale_id = db.query(CoffeeCommercializationRecord).one().id
+    assert f'&amp;venda={sale_id}' in page
+    sale_details = get(f"/producao/comercializacao?harvest_id={lot_id}&origem=producao&venda={sale_id}")
+    open_sale = f"""document.querySelector('[data-history-view-source="commercialization-view-{sale_id}"]')?.click()"""
+    assert open_sale in sale_details
+    assert f'href="{lot_url}"' in sale_details
+    assert open_sale not in get(f"/producao/comercializacao?harvest_id={other_lot.id}&origem=producao&venda={sale_id}")
 
     response = sell(7)
     retry = get(response.headers["location"])
@@ -111,5 +145,6 @@ def test_lot_journey_from_harvest_through_classification_and_partial_sales(monke
     assert sell(6).headers["location"] == lot_url
     page = get(lot_url)
     assert 'Sem saldo para venda' in page and 'Ver vendas' in page
-    assert 'Registrar venda' not in page
+    lot_card = page[page.index(f'id="harvest-view-{lot_id}"'):].split('</article>', 1)[0]
+    assert 'Registrar venda' not in lot_card
     assert 'O lote está indisponível para uma nova venda' in get(sale_url)

@@ -33,7 +33,7 @@ from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.platypus import Image, KeepInFrame, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session, joinedload, defer, selectinload
+from sqlalchemy.orm import Session, joinedload, defer, load_only, selectinload
 from app.models.coffee_classification import CoffeeClassification, CoffeeClassificationAttachment
 from app.models.coffee_sensory_profile import CoffeeSensoryProfile
 from starlette.datastructures import UploadFile as StarletteUploadFile
@@ -19805,18 +19805,31 @@ def production_page(
     harvests_pagination = _paginate_collection(request, harvests, "harvests_page", focus_param="lote")
     displayed_harvests = harvests_pagination["items"]
     lot_ids = [item.id for item in displayed_harvests]
-    lot_analyses = {}
+    lot_analyses = {lot_id: [] for lot_id in lot_ids}
     lot_sales = {lot_id: [] for lot_id in lot_ids}
     if lot_ids:
-        analyses = (db.query(CoffeeClassification.harvest_id, CoffeeClassification.analysis_date,
-                             CoffeeClassification.beverage, CoffeeClassification.sensory_score)
-                    .filter(CoffeeClassification.harvest_id.in_(lot_ids))
-                    .order_by(CoffeeClassification.analysis_date.desc(), CoffeeClassification.id.desc()))
+        analyses = (
+            db.query(CoffeeClassification)
+            .options(
+                load_only(CoffeeClassification.harvest_id, CoffeeClassification.analysis_date,
+                          CoffeeClassification.beverage, CoffeeClassification.sensory_score,
+                          CoffeeClassification.evaluator, CoffeeClassification.report_filename),
+                selectinload(CoffeeClassification.attachments).load_only(CoffeeClassificationAttachment.filename),
+            )
+            .filter(CoffeeClassification.harvest_id.in_(lot_ids))
+            .order_by(CoffeeClassification.analysis_date.desc(), CoffeeClassification.id.desc())
+        )
         for analysis in analyses:
-            lot_analyses.setdefault(analysis.harvest_id, analysis)
-        sales = (db.query(CoffeeCommercializationRecord.id, CoffeeCommercializationRecord.harvest_id,
-                          CoffeeCommercializationRecord.equivalent_sacks)
-                 .filter(CoffeeCommercializationRecord.harvest_id.in_(lot_ids)))
+            lot_analyses[analysis.harvest_id].append(analysis)
+        sales = (
+            db.query(CoffeeCommercializationRecord.id, CoffeeCommercializationRecord.harvest_id,
+                     CoffeeCommercializationRecord.equivalent_sacks, CoffeeCommercializationRecord.sale_date,
+                     CoffeeCommercializationRecord.buyer_name, CoffeeCommercializationRecord.quantity_sold,
+                     CoffeeCommercializationRecord.sale_unit, CoffeeCommercializationRecord.total_value,
+                     CoffeeCommercializationRecord.status)
+            .filter(CoffeeCommercializationRecord.harvest_id.in_(lot_ids))
+            .order_by(CoffeeCommercializationRecord.sale_date.desc(), CoffeeCommercializationRecord.id.desc())
+        )
         for sale in sales:
             lot_sales[sale.harvest_id].append(sale)
     available_sacks = {item.id: _commercialization_available_sacks(item, lot_sales[item.id]) for item in displayed_harvests}
@@ -19864,6 +19877,7 @@ def production_page(
             lot_sales=lot_sales,
             lot_available_sacks=available_sacks,
             sale_eligible_ids=sale_eligible_ids,
+            sale_status_labels=dict(COMMERCIALIZATION_STATUS_OPTIONS),
             edit_harvest=edit_harvest,
             harvest_active_season=scope.get("active_season"),
             harvest_ids_with_commercialization=repo.harvest_ids_linked_to_commercializations(),
@@ -20177,11 +20191,13 @@ def coffee_classification_page(request: Request, db: Session = Depends(get_db), 
     if edit_id and (not edit_analysis or edit_analysis.harvest_id not in ids):
         raise HTTPException(status_code=404, detail="Análise não encontrada neste contexto.")
     active_definitions = sensory_definitions_for_edit(definitions, edit_analysis.sensory_profile if edit_analysis else None)
+    detail_id = _optional_query_int(request.query_params.get("analise"))
     return templates.TemplateResponse("coffee_classification.html", _base_context(
         request, user, csrf_token, "coffee_classification", _repo=repo, title="Classificação do café",
         classification_harvests=harvests, classifications=analyses, today=today_in_app_timezone(),
         selected_harvest_id=selected_harvest_id if selected_harvest_id in ids else None, sensory_attributes=active_definitions,
         production_origin=selected_harvest_id in ids and request.query_params.get("origem") == "producao",
+        detail_analysis_id=detail_id if selected_harvest_id in ids and any(item.id == detail_id for item in analyses) else None,
         sensory_definitions=definitions, edit_classification=edit_analysis,
         coffee_beverages=COFFEE_BEVERAGES, sensory_scales=SENSORY_SCALES,
         classification_comparison=comparison[:50], classification_comparison_truncated=len(comparison) > 50))
@@ -20519,7 +20535,7 @@ def commercialization_page(
             )
         ]
     filtered = _sort_collection_desc(filtered, lambda item: item.sale_date, lambda item: item.id)
-    commercialization_pagination = _paginate_collection(request, filtered, "commercialization_page")
+    commercialization_pagination = _paginate_collection(request, filtered, "commercialization_page", focus_param="venda")
 
     filtered_total_value = round(sum(float(item.total_value or 0) for item in filtered), 2)
     filtered_total_sacks = round(sum(float(item.equivalent_sacks or 0) for item in filtered), 4)
@@ -20531,11 +20547,13 @@ def commercialization_page(
     )
     launch_from_lot = production_origin and request.query_params.get("launch") == "1"
     launch_harvest = next((option for option in harvest_options if option["harvest"].id == harvest_id), None) if launch_from_lot else None
+    detail_sale_id = _optional_query_int(request.query_params.get("venda"))
     commercialization_clear_url = _url_with_query(
         request,
         harvest_id=None,
         origem=None,
         launch=None,
+        venda=None,
         status=None,
         search=None,
         start_date=None,
@@ -20569,6 +20587,9 @@ def commercialization_page(
             commercialization_selected_harvest_id=harvest_id,
             commercialization_production_origin=production_origin,
             commercialization_launch_harvest=launch_harvest,
+            commercialization_detail_id=detail_sale_id if production_origin and any(
+                sale.id == detail_sale_id for sale in commercialization_pagination["items"]
+            ) else None,
             commercialization_selected_status=normalized_status,
             commercialization_search=search or "",
             commercialization_filter_start_date=filter_start_str,

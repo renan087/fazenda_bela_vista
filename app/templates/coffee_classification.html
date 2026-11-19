@@ -15,6 +15,9 @@
 <div class="stock-page-shell sf-page coffee-classification-page">
     <div class="cc-surface">
     <section class="stock-page-header cc-header"><div class="cc-header-row"><div class="stock-page-header-intro"><h2 class="stock-page-card-title">Classificação do café</h2><p class="stock-page-card-subtitle">Consulte e gerencie as classificações de seus lotes de café.</p></div>{% if can_write_page %}<div class="cc-header-actions"><button type="button" class="cc-btn cc-btn-light" data-attributes-open>Gerenciar atributos</button><button type="button" class="cc-btn cc-btn-primary" data-classification-open><span aria-hidden="true">+</span> Nova classificação</button></div>{% endif %}</div></section>
+    {% if production_origin %}
+    <a class="mb-3 inline-block text-sm font-semibold text-emerald-700 hover:underline" href="/producao?lote={{ selected_harvest_id }}">Voltar à ficha do lote</a>
+    {% endif %}
     <section class="cc-filters" aria-label="Filtros de classificações">
         <label><span>Safra ativa</span><select disabled aria-label="Safra ativa"><option>{{ active_season.name if active_season else 'Selecione uma safra' }}</option></select></label>
         <label class="cc-search"><span>Buscar lote</span><input type="search" data-cc-search placeholder="Código ou responsável..." aria-label="Buscar lote ou responsável"></label>
@@ -212,6 +215,14 @@
     if (params.has('edit_id')) document.querySelector('[data-classification-dialog]')?.addEventListener('close', () => { const next = new URL(window.location.href); next.searchParams.delete('edit_id'); window.location.assign(next.pathname + next.search + next.hash); });
     if (params.has('atributos')) document.querySelector('[data-attributes-dialog]')?.showModal();
     else if (params.has('novo') || params.has('edit_id')) document.querySelector('[data-classification-dialog]')?.showModal();
+    {% if detail_analysis_id %}
+    else {
+        {% if production_origin %}
+        detailDialog?.addEventListener('close', () => window.location.assign('/producao?lote={{ selected_harvest_id }}'), {once: true});
+        {% endif %}
+        document.querySelector('[data-cc-details="{{ detail_analysis_id }}"]')?.click();
+    }
+    {% endif %}
     if (params.has('atributos') || params.has('novo')) { params.delete('atributos'); params.delete('novo'); const query = params.toString(); history.replaceState(null, '', `${location.pathname}${query ? '?' + query : ''}${location.hash}`); }
     const report = document.querySelector('[data-classification-dialog] input[name="report"]');
     if (report) {
