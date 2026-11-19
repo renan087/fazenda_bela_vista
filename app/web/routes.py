@@ -305,7 +305,7 @@ from app.services.forms import (
     commercialization_quantity_to_sacks,
     _normalize_input_name,
 )
-from app.services.openai_service import gerar_recomendacao_adubacao
+from app.services.openai_service import gerar_recomendacao_adubacao, read_soil_recommendation
 from app.services.stock_assistant import assistant_available
 from app.services.password_change import (
     get_active_password_change_verification,
@@ -327,6 +327,7 @@ templates.env.filters["datetime_sp"] = format_app_datetime
 templates.env.filters["chat_html"] = chat_to_html
 templates.env.filters["decimal_br"] = lambda value, places=2: _format_decimal_br(value, places)
 templates.env.filters["money_br"] = lambda value: _format_currency(value)
+templates.env.filters["soil_recommendation"] = read_soil_recommendation
 templates.env.globals["subscription_cycles"] = SUBSCRIPTION_CYCLES
 templates.env.globals["format_app_datetime"] = format_app_datetime
 templates.env.globals["asaas_env"] = current_asaas_environment
@@ -3968,7 +3969,13 @@ def _agronomic_profile_completion(profile: AgronomicProfile | None) -> tuple[int
     return round(completed_weight * 100 / total_weight), missing
 
 
-def _apply_soil_ai_recommendation(repo: FarmRepository, analysis: SoilAnalysis) -> SoilAnalysis:
+def _soil_ai_allowed_pages(db: Session, user: User) -> set[str]:
+    entitlements = _entitlements_for(db, user)
+    pages = {PAGE_INPUTS, PAGE_OPERATIONS, PAGE_AGENDA, PAGE_IRRIGATION}
+    return {code for code in pages & permission_codes_for_user(db, user) if entitlements.module_allowed(code)}
+
+
+def _apply_soil_ai_recommendation(repo: FarmRepository, analysis: SoilAnalysis, user: User) -> SoilAnalysis:
     refreshed = repo.get_soil_analysis(analysis.id) or analysis
     profile = refreshed.farm.agronomic_profile if refreshed.farm else None
     completion, missing_fields = _agronomic_profile_completion(profile)
@@ -3983,14 +3990,13 @@ def _apply_soil_ai_recommendation(repo: FarmRepository, analysis: SoilAnalysis) 
         return repo.update(
             refreshed,
             {
-                "ai_recommendation": None,
                 "ai_status": "profile_incomplete",
-                "ai_model": None,
                 "ai_error": message,
-                "ai_generated_at": None,
             },
         )
-    ai_result = gerar_recomendacao_adubacao(refreshed)
+    ai_result = gerar_recomendacao_adubacao(repo.db, refreshed, _soil_ai_allowed_pages(repo.db, user))
+    if ai_result.get("status") != "generated" and refreshed.ai_recommendation:
+        return repo.update(refreshed, {"ai_status": ai_result["status"], "ai_error": ai_result.get("error")})
     return repo.update(
         refreshed,
         {
@@ -21154,6 +21160,9 @@ def soil_analysis_page(
         if compare_target
         else analyses[:6]
     )
+    edit_analysis = repo.get_soil_analysis(edit_id) if edit_id else None
+    if edit_analysis and (edit_analysis.plot_id not in plot_ids or edit_analysis.farm_id not in farm_ids):
+        edit_analysis = None
     return templates.TemplateResponse(
         "soil_analyses.html",
         _base_context(
@@ -21167,7 +21176,8 @@ def soil_analysis_page(
             plots=plots,
             analyses=analyses_pagination["items"],
             analyses_pagination=analyses_pagination,
-            edit_analysis=repo.get_soil_analysis(edit_id) if edit_id else None,
+            edit_analysis=edit_analysis,
+            soil_ai_allowed_pages=_soil_ai_allowed_pages(db, user),
             generated_recommendation_id=recommendation_id,
             ai_generation_available=ai_generation_available,
             profile_completion=profile_completion,
@@ -21202,7 +21212,6 @@ def create_soil_analysis_action(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user_web),
 ):
-    del user
     validate_csrf(request, csrf_token)
     repo = _repository(db)
     plot, scope, denied = _resolve_farm_plot_in_scope(request, repo, plot_id, "/analise-solo")
@@ -21232,7 +21241,7 @@ def create_soil_analysis_action(
             pdf_data=pdf_data,
         ),
     )
-    analysis = _apply_soil_ai_recommendation(repo, analysis)
+    analysis = _apply_soil_ai_recommendation(repo, analysis, user)
     if analysis.ai_status == "generated":
         _flash(request, "success", "Analise de solo salva e recomendacao da IA gerada com sucesso.")
     elif analysis.ai_status == "profile_incomplete":
@@ -21267,7 +21276,6 @@ def update_soil_analysis_action(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user_web),
 ):
-    del user
     validate_csrf(request, csrf_token)
     repo = _repository(db)
     plot, scope, denied = _resolve_farm_plot_in_scope(request, repo, plot_id, "/analise-solo")
@@ -21306,7 +21314,7 @@ def update_soil_analysis_action(
             current_analysis=analysis,
         ),
     )
-    updated = _apply_soil_ai_recommendation(repo, updated)
+    updated = _apply_soil_ai_recommendation(repo, updated, user)
     if updated.ai_status == "generated":
         _flash(request, "success", "Analise de solo atualizada e recomendacao regenerada.")
     elif updated.ai_status == "profile_incomplete":
@@ -21326,14 +21334,16 @@ def regenerate_soil_recommendation_action(
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user_web),
 ):
-    del user
     validate_csrf(request, csrf_token)
     repo = _repository(db)
+    scope, denied = _launch_scope_or_redirect(request, repo, "/analise-solo", require_season=False)
+    if denied:
+        return denied
     analysis = repo.get_soil_analysis(analysis_id)
-    if not analysis:
+    if not analysis or not analysis.plot or analysis.farm_id != scope["active_farm_id"] or analysis.plot.farm_id != analysis.farm_id:
         _flash(request, "error", "Analise de solo nao encontrada.")
         return _redirect("/analise-solo")
-    updated = _apply_soil_ai_recommendation(repo, analysis)
+    updated = _apply_soil_ai_recommendation(repo, analysis, user)
     if updated.ai_status == "generated":
         _flash(request, "success", "Recomendacao agronomica regenerada com sucesso.")
     elif updated.ai_status == "profile_incomplete":

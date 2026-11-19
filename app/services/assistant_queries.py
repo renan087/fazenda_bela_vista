@@ -24,6 +24,7 @@ from app.models.irrigation import IrrigationRecord
 from app.models.organization_subscription import OrganizationSubscription
 from app.models.pesticide import PestIncident
 from app.models.soil_analysis import SoilAnalysis
+from app.services.openai_service import soil_recommendation_summary
 
 MAX_ROWS = 15
 PERIOD_PROPS = {
@@ -338,6 +339,7 @@ class AssistantQueries:
 
     def consultar_analises_solo(self, inicio=None, fim=None, setor=None):
         start, end, rows = self._plot_history(SoilAnalysis, SoilAnalysis.analysis_date, inicio, fim, setor)
+        allowed_pages = {page for page in (PAGE_AGENDA, PAGE_INPUTS, PAGE_IRRIGATION, PAGE_OPERATIONS) if self.allowed(page)}
         def value(number):
             return _num(number) if number is not None else None
         result = self._history([{"data": r.analysis_date.isoformat(), "setor": self._plot_name(r.plot_id),
@@ -347,10 +349,10 @@ class AssistantQueries:
                                 "h_mais_al": value(r.h_al), "necessidade_calagem_t_ha": value(r.liming_need_t_ha),
                                 "saturacao_bases": value(r.base_saturation),
                                 "recomendacao_npk": r.npk_recommendation, "recomendacao_micronutrientes": r.micronutrient_recommendation,
-                                "recomendacao_ia": (r.ai_recommendation or "")[:500] or None,
-                                "recomendacao_truncada": len(r.ai_recommendation or "") > 500,
+                                "recomendacao_ia": summary[:500] or None,
+                                "recomendacao_truncada": len(summary) > 500,
                                 "data_recomendacao_ia": r.ai_generated_at.isoformat() if r.ai_generated_at else None}
-                               for r in rows], start, end)
+                               for r in rows for summary in [soil_recommendation_summary(r.ai_recommendation, allowed_pages)]], start, end)
         result["aviso"] = "Valores cadastrados; consulte o laudo para unidades e validação técnica. Não infira unidades."
         return result
 

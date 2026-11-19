@@ -1,0 +1,91 @@
+{% macro findings(title, items) %}
+{% if items %}
+<section class="min-w-0 rounded-2xl border border-slate-200 bg-white p-4">
+    <h4 class="font-semibold text-slate-900">{{ title }}</h4>
+    <ul class="mt-2 list-disc space-y-2 pl-5 text-sm leading-relaxed text-slate-700">
+        {% for text in items %}<li>{{ text }}</li>{% endfor %}
+    </ul>
+</section>
+{% endif %}
+{% endmacro %}
+
+{% set recommendation = item.ai_recommendation|soil_recommendation %}
+{% if recommendation and recommendation.modulos_utilizados|reject('in', soil_ai_allowed_pages)|list %}
+<p class="rounded-2xl bg-slate-50 p-4 text-sm text-slate-700">Seu acesso atual não inclui todos os módulos consultados para esta recomendação.</p>
+{% elif item.ai_recommendation %}
+<aside class="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
+    <strong>Revisão técnica antes da aplicação</strong>
+    <p class="mt-1">Confirme o laudo, as garantias dos insumos e as doses com o responsável técnico do setor.</p>
+</aside>
+{% if item.ai_error %}
+<p class="rounded-xl bg-slate-100 p-3 text-sm text-slate-700">{{ item.ai_error }} A recomendação anterior permanece disponível abaixo.</p>
+{% endif %}
+{% if recommendation %}
+{% set context = recommendation.contexto %}
+<p class="text-xs leading-relaxed text-slate-600">
+    Histórico de {{ context.desde.split('-')|reverse|join('/') }} a {{ context.ate.split('-')|reverse|join('/') }}
+    · {{ context.aplicacoes }} {{ 'aplicação registrada' if context.aplicacoes == 1 else 'aplicações registradas' }}
+    · {{ context.pendencias }} {{ 'agendamento' if context.pendencias == 1 else 'agendamentos' }}
+    · {{ context.recomendacoes }} {{ 'recomendação cadastrada' if context.recomendacoes == 1 else 'recomendações cadastradas' }}
+    · {{ context.lotes_estoque }} {{ 'lote em estoque' if context.lotes_estoque == 1 else 'lotes em estoque' }} consultados
+</p>
+{% if recommendation.alertas %}
+<section class="rounded-2xl border border-amber-200 bg-amber-50/70 p-4">
+    <h4 class="font-semibold text-amber-950">Alertas e dados a confirmar</h4>
+    <ul class="mt-2 list-disc space-y-2 pl-5 text-sm leading-relaxed text-amber-950">
+        {% for text in recommendation.alertas %}<li>{{ text }}</li>{% endfor %}
+    </ul>
+</section>
+{% endif %}
+{{ findings('Diagnóstico nutricional', recommendation.diagnostico) }}
+<section class="min-w-0 rounded-2xl border border-slate-200 bg-white p-4">
+    <h4 class="font-semibold text-slate-900">Correções e plano de adubação</h4>
+    {% if recommendation.plano %}
+    <div class="mt-3 overflow-x-auto" tabindex="0" role="region" aria-label="Tabela de correções e adubação">
+        <table class="w-full min-w-[42rem] text-left text-sm">
+            <thead class="bg-brand-50 text-brand-800">
+                <tr>
+                    <th scope="col" class="p-3">Ação e produto</th>
+                    <th scope="col" class="p-3">Época e fundamento</th>
+                    <th scope="col" class="p-3">Dose de produto</th>
+                    <th scope="col" class="p-3">Saldo consultado</th>
+                </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-200 text-slate-700">
+                {% for row in recommendation.plano %}
+                <tr class="align-top">
+                    <th scope="row" class="p-3 font-medium">
+                        <span class="block text-xs text-brand-800">{{ row.tipo }}</span>
+                        {{ row.objetivo }}
+                        {% if row.produto %}<span class="mt-1 block font-normal">{{ row.produto }}</span>{% endif %}
+                    </th>
+                    <td class="p-3">
+                        {% if row.epoca %}<p class="font-medium">{{ row.epoca }}</p>{% endif %}
+                        <p class="mt-1">{{ row.fundamentacao }}</p>
+                    </td>
+                    <td class="whitespace-nowrap p-3">
+                        {% if row.dose %}{{ row.dose.valor|decimal_br }} {{ row.dose.unidade }}{% else %}A definir{% endif %}
+                    </td>
+                    <td class="p-3">
+                        {% if row.estoque %}{{ row.estoque.saldo|decimal_br }} {{ row.estoque.unidade }}{% else %}—{% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <p class="mt-2 text-sm text-slate-700">Nenhuma ação de correção ou adubação indicada com os dados disponíveis.</p>
+    {% endif %}
+</section>
+{{ findings('Histórico e recomendações cadastradas', recommendation.comparacao_manejo) }}
+{{ findings('Orientações de manejo', recommendation.orientacoes) }}
+{% else %}
+<section class="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+    <h4 class="font-semibold text-slate-900">Recomendação anterior</h4>
+    <p class="mt-3 whitespace-pre-wrap break-words text-sm leading-relaxed text-slate-700">{{ item.ai_recommendation }}</p>
+</section>
+{% endif %}
+{% else %}
+<p class="rounded-2xl bg-slate-50 p-4 text-sm text-slate-700">{{ item.ai_error or 'Nenhuma recomendação agronômica gerada para esta análise.' }}</p>
+{% endif %}
