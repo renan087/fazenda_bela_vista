@@ -249,3 +249,55 @@ def test_edit_form_renders_existing_values_and_archived_notes():
     assert 'data-sensory-saved=' in html and "Notas da análise" in html
     assert "Perfil da amostra" in html and "Frutado" in html and "Observação" in html
     assert "/producao/classificacao/12/laudo" in html and "/producao/classificacao/12/excluir" in html
+
+
+def test_multiple_reports_append_and_remove_individually(monkeypatch):
+    routes, db, user, scope, *_ = _route_env(monkeypatch, [])
+    plot = Plot(name="Setor 1", farm_id=scope["active_farm_id"], area_hectares=1, plant_count=1)
+    db.add(plot)
+    db.flush()
+    harvest = HarvestRecord(plot_id=plot.id, season_id=scope["active_season_id"],
+                            harvest_date=date(2026, 11, 1), sacks_produced=1)
+    db.add(harvest)
+    db.flush()
+    analysis = CoffeeClassification(harvest_id=harvest.id, analysis_date=date(2026, 11, 10), source="laudo",
+                                    report_filename="antigo.pdf", report_data=b"%PDF-antigo")
+    db.add(analysis)
+    db.commit()
+
+    class Request:
+        session = {}
+
+        def __init__(self, fields):
+            self.fields = fields
+
+        async def form(self):
+            return FormData([("csrf_token", "x"), ("analysis_date", "2026-11-10"),
+                             ("source", "laudo"), ("sensory_scale", "7"), ("sensory_aroma", "6"),
+                             *self.fields])
+
+    upload = Request([
+        ("report", UploadFile(filename="primeiro.pdf", file=BytesIO(b"%PDF-primeiro"))),
+        ("report", UploadFile(filename="segundo.pdf", file=BytesIO(b"%PDF-segundo"))),
+    ])
+    asyncio.run(routes.edit_coffee_classification(analysis.id, upload, db, user))
+    first, second = analysis.attachments
+    assert analysis.sensory_profile.scale_max == 7
+    assert routes.coffee_classification_report(analysis.id, upload, db, user).body == b"%PDF-antigo"
+    assert routes.coffee_classification_report(analysis.id, upload, db, user, second.id).body == b"%PDF-segundo"
+
+    remove = Request([("remove_report", "1"), ("remove_attachment", str(first.id))])
+    monkeypatch.setattr(routes, "user_has_permission", lambda *args: False)
+    with pytest.raises(HTTPException) as denied:
+        asyncio.run(routes.edit_coffee_classification(analysis.id, remove, db, user))
+    assert denied.value.status_code == 403
+    db.rollback()
+    monkeypatch.setattr(routes, "user_has_permission", lambda *args: True)
+    asyncio.run(routes.edit_coffee_classification(analysis.id, remove, db, user))
+    assert analysis.report_filename is None
+    assert [attachment.id for attachment in analysis.attachments] == [second.id]
+
+    last = Request([("remove_attachment", str(second.id))])
+    response = asyncio.run(routes.edit_coffee_classification(analysis.id, last, db, user))
+    assert "edit_id" in response.headers["location"]
+    assert [attachment.id for attachment in analysis.attachments] == [second.id]

@@ -1,4 +1,16 @@
 {% extends "base.html" %}
+{% macro current_report(url, filename, field, value) %}
+<li class="cc-form-report-item">
+    <a href="{{ url }}" title="{{ filename }}">{{ filename[:27] ~ '...' if filename|length > 30 else filename }}</a>
+    {% if 'data.delete' in (permission_codes or []) %}
+    <input type="hidden" name="{{ field }}" value="{{ value }}" disabled>
+    <button type="button" class="cc-form-report-delete" data-cc-remove-report aria-label="Marcar para remoção: {{ filename }}" aria-pressed="false" title="Marcar para remoção">
+        <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3m3 0-1 13H7L6 7m4 4v5m4-5v5"/></svg>
+    </button>
+    <span class="cc-form-report-pending" hidden>Remover ao salvar</span>
+    {% endif %}
+</li>
+{% endmacro %}
 {% block content %}
 <div class="stock-page-shell sf-page coffee-classification-page">
     <div class="cc-surface">
@@ -32,29 +44,56 @@
             <h3 class="cc-form-section"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M3 3h8l10 10-8 8L3 11V3Zm5 5h.01"/></svg><span>1. Identificação da análise</span></h3>
             <label class="grid gap-2 text-sm font-medium">Lote <span><select name="harvest_id" autofocus required {% if edit_classification %}disabled{% endif %} class="w-full rounded-xl border-slate-200 bg-slate-50"><option value="">Selecione o lote</option>{% for harvest in classification_harvests %}<option value="{{ harvest.id }}" {% if (edit_classification and edit_classification.harvest_id == harvest.id) or (not edit_classification and selected_harvest_id == harvest.id) %}selected{% endif %}>{{ harvest.lot_code or ('Lote ' ~ harvest.id) }} · {{ harvest.plot.name }} · {{ harvest.harvest_date.strftime('%d/%m/%Y') }}</option>{% endfor %}</select></span>{% if edit_classification %}<small class="font-normal text-slate-500">O vínculo com o lote é preservado.</small>{% endif %}</label>
             <label class="grid gap-2 text-sm font-medium">Data da análise<input type="date" name="analysis_date" value="{{ edit_classification.analysis_date.isoformat() if edit_classification else today.isoformat() }}" max="{{ today.isoformat() }}" required class="w-full rounded-xl border-slate-200 bg-slate-50"></label>
-            <label class="grid gap-2 text-sm font-medium">Origem dos dados<select name="source" required class="w-full rounded-xl border-slate-200 bg-slate-50"><option value="informado" {% if edit_classification and edit_classification.source == 'informado' %}selected{% endif %}>Informado pelo usuário</option><option value="laudo" {% if edit_classification and edit_classification.source == 'laudo' %}selected{% endif %}>Informado com laudo anexado</option></select></label>
+            <label class="grid gap-2 text-sm font-medium">Origem dos dados<select name="source" required class="w-full rounded-xl border-slate-200 bg-slate-50"><option value="informado" {% if edit_classification and edit_classification.source == 'informado' %}selected{% endif %}>Usuário</option><option value="laudo" {% if edit_classification and edit_classification.source == 'laudo' %}selected{% endif %}>Laudo</option></select></label>
             <label class="cc-form-upload">
                 Laudo em PDF
-                <input type="file" name="report" accept="application/pdf,.pdf" aria-describedby="cc-report-help" class="sr-only">
-                <span class="cc-form-upload-button"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M9 14l5-6a2 2 0 0 1 3 3l-6 7a4 4 0 0 1-6-5l7-8"/></svg><span data-cc-report-label><b>Anexar laudo</b> · até 10 MB</span></span>
-                <span id="cc-report-help" class="sr-only">Obrigatório se a origem for laudo. Até 10 MB.</span>
+                <input type="file" name="report" multiple accept="application/pdf,.pdf" aria-describedby="cc-report-help" class="sr-only">
+                <span class="cc-form-upload-button"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M9 14l5-6a2 2 0 0 1 3 3l-6 7a4 4 0 0 1-6-5l7-8"/></svg><span><b>Anexar PDFs</b> · até 10 MB por arquivo</span></span>
+                <span id="cc-report-help" class="sr-only">Anexe pelo menos um PDF se a origem for Laudo.</span>
             </label>
             <label class="grid gap-2 text-sm font-medium">Responsável ou laboratório<input name="evaluator" value="{{ edit_classification.evaluator or '' if edit_classification else '' }}" maxlength="180" class="w-full rounded-xl border-slate-200 bg-slate-50"></label>
             <label class="grid gap-2 text-sm font-medium">Método ou protocolo<input name="method" value="{{ edit_classification.method or '' if edit_classification else '' }}" maxlength="180" class="w-full rounded-xl border-slate-200 bg-slate-50"></label>
-            {% if edit_classification and edit_classification.report_filename %}<div class="cc-form-report text-sm text-slate-600">Laudo atual: <a class="font-semibold text-emerald-700" href="/producao/classificacao/{{ edit_classification.id }}/laudo">{{ edit_classification.report_filename }}</a>. Envie outro PDF para substituí-lo. {% if 'data.delete' in (permission_codes or []) %}<label class="ml-2"><input type="checkbox" name="remove_report" value="1"> Remover laudo</label>{% endif %}</div>{% endif %}
+            <ul class="cc-form-report cc-form-selected-reports" data-cc-selected-reports hidden aria-live="polite"></ul>
+            {% if edit_classification and (edit_classification.report_filename or edit_classification.attachments) %}
+            {% set report_url = '/producao/classificacao/' ~ edit_classification.id ~ '/laudo' %}
+            <div class="cc-form-report">
+                <h4>{{ 'Laudos atuais' if ((edit_classification.attachments|default([])|length) + (1 if edit_classification.report_filename else 0)) > 1 else 'Laudo atual' }}</h4>
+                <ul class="cc-form-report-list">
+                    {% if edit_classification.report_filename %}{{ current_report(report_url, edit_classification.report_filename, 'remove_report', '1') }}{% endif %}
+                    {% for attachment in edit_classification.attachments %}
+                    {{ current_report(report_url ~ '?attachment_id=' ~ attachment.id, attachment.filename, 'remove_attachment', attachment.id) }}
+                    {% endfor %}
+                </ul>
+            </div>
+            {% endif %}
             <h3 class="cc-form-section"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="m3 8 9-5 9 5-9 5-9-5Zm0 4 9 5 9-5M3 16l9 5 9-5"/></svg><span>2. Classificação física</span></h3>
             <label class="cc-form-physical">Tipo informado<input name="coffee_type" value="{{ edit_classification.coffee_type or '' if edit_classification else '' }}" maxlength="80" class="w-full rounded-xl border-slate-200 bg-slate-50"></label>
             <label class="cc-form-physical">Peneira<input name="sieve" value="{{ edit_classification.sieve or '' if edit_classification else '' }}" maxlength="80" class="w-full rounded-xl border-slate-200 bg-slate-50"></label>
             <label class="cc-form-physical">Umidade da análise (%)<input type="number" name="moisture" value="{{ edit_classification.moisture if edit_classification and edit_classification.moisture is not none else '' }}" min="0" max="100" step="0.01" class="w-full rounded-xl border-slate-200 bg-slate-50"></label>
             <label class="cc-form-physical">Defeitos informados<input name="defects" value="{{ edit_classification.defects or '' if edit_classification else '' }}" maxlength="180" placeholder="Resultado conforme a análise" class="w-full rounded-xl border-slate-200 bg-slate-50"></label>
-            <label class="cc-form-physical">Bebida<input name="beverage" value="{{ edit_classification.beverage or '' if edit_classification else '' }}" maxlength="120" class="w-full rounded-xl border-slate-200 bg-slate-50"></label>
+            {% set current_beverage = edit_classification.beverage if edit_classification else none %}
+            <label class="cc-form-physical">Bebida
+                <select name="beverage">
+                    <option value="">Selecione a bebida</option>
+                    {% if current_beverage %}
+                    {% set choices = namespace(has_current=false) %}
+                    {% for group, beverages in coffee_beverages %}{% if current_beverage in beverages %}{% set choices.has_current = true %}{% endif %}{% endfor %}
+                    {% if not choices.has_current %}<option value="{{ current_beverage }}" selected>{{ current_beverage }}</option>{% endif %}
+                    {% endif %}
+                    {% for group, beverages in coffee_beverages %}
+                    <optgroup label="{{ group }}">
+                        {% for beverage in beverages %}<option value="{{ beverage }}" {% if beverage == current_beverage %}selected{% endif %}>{{ beverage }}</option>{% endfor %}
+                    </optgroup>
+                    {% endfor %}
+                </select>
+            </label>
             <label class="cc-form-physical">Nota sensorial informada<input type="number" name="sensory_score" value="{{ edit_classification.sensory_score if edit_classification and edit_classification.sensory_score is not none else '' }}" min="0" max="100" step="0.01" class="w-full rounded-xl border-slate-200 bg-slate-50"></label>
             <fieldset class="cc-form-sensory">
                 <legend><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 8h13v5a5 5 0 0 1-5 5H9a5 5 0 0 1-5-5V8Zm13 1h2a2 2 0 1 1 0 4h-2M3 21h18M8 5V3m4 2V2"/></svg><span>3. Avaliação sensorial</span></legend>
                 {% set editing_profile = edit_classification.sensory_profile if edit_classification else none %}
                 <div class="cc-form-sensory-layout">
                     <div class="cc-form-scores">
-                        <label class="cc-form-scale">Escala das notas<select name="sensory_scale" data-sensory-scale class="rounded-xl border-slate-200 bg-white">{% for scale in [10, 9, 5] %}<option value="{{ scale }}" {% if editing_profile and editing_profile.scale_max == scale %}selected{% endif %}>0 a {{ scale }}</option>{% endfor %}</select></label>
+                        <label class="cc-form-scale">Escala das notas<select name="sensory_scale" data-sensory-scale class="rounded-xl border-slate-200 bg-white">{% for scale in sensory_scales|default(range(5, 11)) %}<option value="{{ scale }}" {% if scale == (editing_profile.scale_max if editing_profile else 10) %}selected{% endif %}>0 a {{ scale }}</option>{% endfor %}</select></label>
                         <div class="cc-form-attributes">
                             {% for key, label in sensory_attributes %}<label><span>{{ label }}</span><input type="number" name="sensory_{{ key }}" data-sensory-input="{{ key }}" value="{{ editing_profile.attributes[key] if editing_profile and key in editing_profile.attributes else '' }}" min="0" max="{{ editing_profile.scale_max if editing_profile else 10 }}" step="0.01" inputmode="decimal" class="w-full rounded-xl border-slate-200 bg-white"></label>{% endfor %}
                         </div>
@@ -109,7 +148,7 @@
                     <section class="cc-analysis-panel cc-analysis-profile"><h5>Perfil da amostra</h5><div class="cc-analysis-fields">
                         <div><span>Responsável</span><strong>{{ item.evaluator or 'Não informado' }}</strong></div><div><span>Método</span><strong>{{ item.method or 'Não informado' }}</strong></div><div><span>Tipo</span><strong>{{ item.coffee_type or 'Não informado' }}</strong></div><div><span>Peneira</span><strong>{{ item.sieve or 'Não informada' }}</strong></div><div><span>Bebida</span><strong>{{ item.beverage or 'Não informada' }}</strong></div><div><span>Umidade</span><strong>{% if item.moisture is not none %}{{ item.moisture|decimal_br }}%{% else %}Não informada{% endif %}</strong></div><div class="cc-analysis-field-wide"><span>Defeitos</span><strong>{{ item.defects or 'Não informados' }}</strong></div>
                     </div><div class="cc-analysis-description"><h5>Descrição sensorial</h5><p>{{ item.sensory_notes or 'Não informada' }}</p>{% if item.notes %}<h5>Observações</h5><p>{{ item.notes }}</p>{% endif %}</div>
-                    <div class="cc-analysis-actions">{% if item.report_filename %}<a href="/producao/classificacao/{{ item.id }}/laudo">↓ &nbsp;Baixar laudo PDF</a>{% endif %}<a href="/producao/classificacao/{{ item.id }}/relatorio.pdf">↓ &nbsp;Baixar relatório PDF</a>{% if can_write_page %}<a class="cc-analysis-edit" href="/producao/classificacao?edit_id={{ item.id }}">✎ &nbsp;Editar</a>{% endif %}{% if can_write_page and 'data.delete' in (permission_codes or []) %}<form method="post" action="/producao/classificacao/{{ item.id }}/excluir" onsubmit="return confirm('Excluir definitivamente esta análise e seu laudo?');"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button type="submit">Excluir</button></form>{% endif %}</div>
+                    <div class="cc-analysis-actions">{% if item.report_filename %}<a href="/producao/classificacao/{{ item.id }}/laudo">↓ &nbsp;Baixar laudo PDF</a>{% endif %}{% for attachment in item.attachments %}<a href="/producao/classificacao/{{ item.id }}/laudo?attachment_id={{ attachment.id }}" title="{{ attachment.filename }}">↓ &nbsp;{{ attachment.filename[:27] ~ '...' if attachment.filename|length > 30 else attachment.filename }}</a>{% endfor %}<a href="/producao/classificacao/{{ item.id }}/relatorio.pdf">↓ &nbsp;Baixar relatório PDF</a>{% if can_write_page %}<a class="cc-analysis-edit" href="/producao/classificacao?edit_id={{ item.id }}">✎ &nbsp;Editar</a>{% endif %}{% if can_write_page and 'data.delete' in (permission_codes or []) %}<form method="post" action="/producao/classificacao/{{ item.id }}/excluir" onsubmit="return confirm('Excluir definitivamente esta análise e seu laudo?');"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button type="submit">Excluir</button></form>{% endif %}</div>
                     </section>
                 </div>
             </article>
@@ -170,13 +209,33 @@
     if (params.has('atributos') || params.has('novo')) { params.delete('atributos'); params.delete('novo'); const query = params.toString(); history.replaceState(null, '', `${location.pathname}${query ? '?' + query : ''}${location.hash}`); }
     const report = document.querySelector('[data-classification-dialog] input[name="report"]');
     if (report) {
-        const label = document.querySelector('[data-cc-report-label]');
-        const defaultLabel = label.innerHTML;
+        const list = document.querySelector('[data-cc-selected-reports]');
         report.addEventListener('change', () => {
-            if (report.files.length) label.textContent = report.files[0].name;
-            else label.innerHTML = defaultLabel;
+            const filenames = Array.from(report.files, file => {
+                const item = document.createElement('li');
+                const characters = Array.from(file.name);
+                item.title = file.name;
+                item.textContent = characters.length > 30 ? characters.slice(0, 27).join('') + '...' : file.name;
+                return item;
+            });
+            list.replaceChildren(...filenames);
+            list.hidden = filenames.length === 0;
         });
     }
+    document.querySelectorAll('[data-cc-remove-report]').forEach(button => {
+        const row = button.closest('.cc-form-report-item');
+        const input = row.querySelector('input');
+        const pending = row.querySelector('.cc-form-report-pending');
+        button.addEventListener('click', () => {
+            const marked = input.disabled;
+            const action = marked ? 'Desfazer remoção' : 'Marcar para remoção';
+            input.disabled = !marked;
+            pending.hidden = !marked;
+            button.setAttribute('aria-pressed', String(marked));
+            button.setAttribute('aria-label', action + ': ' + row.querySelector('a').title);
+            button.title = action;
+        });
+    });
     if (typeof Chart === 'undefined') return;
     const attributes = {{ sensory_attributes|tojson }};
     const chart = (canvas, labels, values, scale) => new Chart(canvas, {type: 'radar', data: {labels, datasets: [{label: 'Notas informadas', data: values, borderColor: '#446a36', backgroundColor: 'rgba(86, 139, 67, .2)', pointBackgroundColor: '#446a36', spanGaps: false}]}, options: {responsive: true, maintainAspectRatio: false, scales: {r: {min: 0, max: scale, ticks: {maxTicksLimit: 6}}}, plugins: {legend: {display: false}}}});

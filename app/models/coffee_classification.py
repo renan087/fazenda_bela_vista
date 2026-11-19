@@ -28,3 +28,17 @@ class CoffeeClassification(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     harvest = relationship("HarvestRecord")
     sensory_profile = relationship("CoffeeSensoryProfile", back_populates="classification", uselist=False, cascade="all, delete-orphan")
+
+    attachments = relationship("CoffeeClassificationAttachment", order_by="CoffeeClassificationAttachment.id",
+                               cascade="all, delete-orphan")
+
+
+class CoffeeClassificationAttachment(Base):
+    __tablename__ = "coffee_classification_attachments"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    classification_id: Mapped[int] = mapped_column(
+        ForeignKey("coffee_classifications.id", ondelete="CASCADE"), index=True
+    )
+    filename: Mapped[str] = mapped_column(String(255))
+    data: Mapped[bytes] = mapped_column(LargeBinary, deferred=True)

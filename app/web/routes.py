@@ -32,8 +32,8 @@ from reportlab.lib.pagesizes import A4, landscape
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.platypus import Image, KeepInFrame, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 from sqlalchemy import func
-from sqlalchemy.orm import Session, joinedload, defer
-from app.models.coffee_classification import CoffeeClassification
+from sqlalchemy.orm import Session, joinedload, defer, selectinload
+from app.models.coffee_classification import CoffeeClassification, CoffeeClassificationAttachment
 from app.models.coffee_sensory_profile import CoffeeSensoryProfile
 from starlette.datastructures import UploadFile as StarletteUploadFile
 
@@ -19835,7 +19835,8 @@ def coffee_classification_page(request: Request, db: Session = Depends(get_db), 
     selected_harvest_id = _optional_query_int(request.query_params.get("harvest_id"))
     ids = [item.id for item in harvests]
     history_ids = [selected_harvest_id] if selected_harvest_id in ids else ids
-    analyses = (db.query(CoffeeClassification).options(defer(CoffeeClassification.report_data), joinedload(CoffeeClassification.harvest))
+    analyses = (db.query(CoffeeClassification).options(defer(CoffeeClassification.report_data), joinedload(CoffeeClassification.harvest),
+                                                   selectinload(CoffeeClassification.attachments))
                 .filter(CoffeeClassification.harvest_id.in_(history_ids))
                 .order_by(CoffeeClassification.analysis_date.desc(), CoffeeClassification.id.desc()).all()) if history_ids else []
     farm = scope.get("active_farm")
@@ -19846,7 +19847,7 @@ def coffee_classification_page(request: Request, db: Session = Depends(get_db), 
                       .options(defer(CoffeeClassification.report_data), joinedload(CoffeeClassification.harvest).joinedload(HarvestRecord.season))
                       .filter(Plot.farm_id == farm.id, CropSeason.farm_id == farm.id)
                       .order_by(CoffeeClassification.analysis_date.desc(), CoffeeClassification.id.desc()).limit(51).all())
-    from app.services.coffee_classification import sensory_attributes_for_org, sensory_definitions_for_edit
+    from app.services.coffee_classification import COFFEE_BEVERAGES, SENSORY_SCALES, sensory_attributes_for_org, sensory_definitions_for_edit
     definitions = sensory_attributes_for_org(db, user.organization_id)
     edit_id = _optional_query_int(request.query_params.get("edit_id"))
     edit_analysis = db.query(CoffeeClassification).options(defer(CoffeeClassification.report_data)).filter_by(id=edit_id).first() if edit_id else None
@@ -19858,7 +19859,23 @@ def coffee_classification_page(request: Request, db: Session = Depends(get_db), 
         classification_harvests=harvests, classifications=analyses, today=today_in_app_timezone(),
         selected_harvest_id=selected_harvest_id if selected_harvest_id in ids else None, sensory_attributes=active_definitions,
         sensory_definitions=definitions, edit_classification=edit_analysis,
+        coffee_beverages=COFFEE_BEVERAGES, sensory_scales=SENSORY_SCALES,
         classification_comparison=comparison[:50], classification_comparison_truncated=len(comparison) > 50))
+
+
+async def _read_coffee_classification_attachments(form):
+    attachments = []
+    for report in form.getlist("report"):
+        if not isinstance(report, (UploadFile, StarletteUploadFile)) or not report.filename:
+            continue
+        filename = _clean_attachment_filename(report.filename)
+        payload = await report.read(_MAX_ATTACHMENT_SIZE_BYTES + 1)
+        if len(payload) > _MAX_ATTACHMENT_SIZE_BYTES:
+            raise ValueError("Cada laudo deve ter no máximo 10 MB.")
+        if Path(filename).suffix.lower() != ".pdf" or not payload.startswith(b"%PDF-"):
+            raise ValueError("Cada laudo deve ser um arquivo PDF válido.")
+        attachments.append(CoffeeClassificationAttachment(filename=filename, data=payload))
+    return attachments
 
 
 @router.post("/producao/classificacao")
@@ -19874,17 +19891,11 @@ async def create_coffee_classification(request: Request, db: Session = Depends(g
         _flash(request, "error", "Selecione um lote da fazenda e safra ativas.")
         return _redirect("/producao/classificacao")
     try:
-        report = form.get("report")
-        filename = _clean_attachment_filename(report.filename) if isinstance(report, (UploadFile, StarletteUploadFile)) and report.filename else None
-        payload = await report.read(_MAX_ATTACHMENT_SIZE_BYTES + 1) if filename else None
-        if filename and (Path(filename).suffix.lower() != ".pdf" or not payload or not payload.startswith(b"%PDF-")):
-            raise ValueError("O laudo deve ser um arquivo PDF válido.")
-        if payload and len(payload) > _MAX_ATTACHMENT_SIZE_BYTES:
-            raise ValueError("O laudo deve ter no máximo 10 MB.")
+        attachments = await _read_coffee_classification_attachments(form)
         definitions = [(key, label) for key, label, active in sensory_attributes_for_org(db, user.organization_id) if active]
         scale, sensory = validate_sensory(form, definitions)
-        values = validate_classification(form, harvest_date=harvest.harvest_date, today=today_in_app_timezone(), has_report=bool(payload), has_sensory=bool(sensory))
-        analysis = CoffeeClassification(harvest_id=harvest.id, report_filename=filename, report_data=payload, **values)
+        values = validate_classification(form, harvest_date=harvest.harvest_date, today=today_in_app_timezone(), has_report=bool(attachments), has_sensory=bool(sensory))
+        analysis = CoffeeClassification(harvest_id=harvest.id, attachments=attachments, **values)
         if sensory:
             labels = dict(definitions)
             analysis.sensory_profile = CoffeeSensoryProfile(scale_max=scale, attributes_json=json.dumps(
@@ -19911,25 +19922,23 @@ async def edit_coffee_classification(analysis_id: int, request: Request, db: Ses
     validate_csrf(request, str(form.get("csrf_token") or ""))
     repo = _repository(db)
     scope = _global_scope_context(request, repo, user)
-    analysis = db.query(CoffeeClassification).options(defer(CoffeeClassification.report_data)).filter_by(id=analysis_id).first()
+    analyses = db.query(CoffeeClassification).options(defer(CoffeeClassification.report_data)).filter_by(id=analysis_id)
+    analysis = analyses.first()
     harvests = {item.id: item for item in _classification_harvests(repo, scope)}
     if not analysis or analysis.harvest_id not in harvests:
         raise HTTPException(status_code=404, detail="Análise não encontrada neste contexto.")
     harvest = harvests[analysis.harvest_id]
     try:
-        report = form.get("report")
-        filename = _clean_attachment_filename(report.filename) if isinstance(report, (UploadFile, StarletteUploadFile)) and report.filename else None
-        payload = await report.read(_MAX_ATTACHMENT_SIZE_BYTES + 1) if filename else None
-        if filename and (Path(filename).suffix.lower() != ".pdf" or not payload or not payload.startswith(b"%PDF-")):
-            raise ValueError("O laudo deve ser um arquivo PDF válido.")
-        if payload and len(payload) > _MAX_ATTACHMENT_SIZE_BYTES:
-            raise ValueError("O laudo deve ter no máximo 10 MB.")
-        remove_report = form.get("remove_report") == "1"
-        if remove_report and not user_has_permission(db, user, "data.delete"):
+        remove_legacy = form.get("remove_report") == "1"
+        removed_ids = set(form.getlist("remove_attachment"))
+        if (remove_legacy or removed_ids) and not user_has_permission(db, user, "data.delete"):
             raise HTTPException(status_code=403, detail="Sem permissão para remover o laudo.")
-        if remove_report and filename:
-            raise ValueError("Escolha remover o laudo atual ou enviar um novo, não ambos.")
-        has_report = bool(payload or (analysis.report_filename and not remove_report))
+        attachments = await _read_coffee_classification_attachments(form)
+        analysis = analyses.populate_existing().with_for_update().first()
+        if analysis is None:
+            raise HTTPException(status_code=404, detail="Análise não encontrada neste contexto.")
+        kept = [item for item in analysis.attachments if str(item.id) not in removed_ids]
+        has_report = bool(attachments or kept or (analysis.report_filename and not remove_legacy))
         profile = analysis.sensory_profile
         old_values = profile.attributes if profile else {}
         definitions = sensory_definitions_for_edit(sensory_attributes_for_org(db, user.organization_id), profile)
@@ -19943,10 +19952,10 @@ async def edit_coffee_classification(analysis_id: int, request: Request, db: Ses
                                          has_report=has_report, has_sensory=bool(sensory))
         for key, value in values.items():
             setattr(analysis, key, value)
-        if filename:
-            analysis.report_filename, analysis.report_data = filename, payload
-        elif remove_report:
+        if remove_legacy:
             analysis.report_filename, analysis.report_data = None, None
+        if attachments or removed_ids:
+            analysis.attachments = kept + attachments
         if sensory:
             labels = dict(definitions)
             serialized = json.dumps({key: {"label": labels[key], "value": value} for key, value in sensory.items()}, ensure_ascii=False)
@@ -20026,17 +20035,28 @@ def coffee_classification_pdf(analysis_id: int, request: Request, db: Session = 
 
 
 @router.get("/producao/classificacao/{analysis_id}/laudo")
-def coffee_classification_report(analysis_id: int, request: Request, db: Session = Depends(get_db), user: User = Depends(get_current_user_web)):
+def coffee_classification_report(analysis_id: int, request: Request, db: Session = Depends(get_db),
+                                 user: User = Depends(get_current_user_web), attachment_id: int | None = None):
     repo = _repository(db)
     scope = _global_scope_context(request, repo, user)
     analysis = db.query(CoffeeClassification).options(defer(CoffeeClassification.report_data)).filter_by(id=analysis_id).first()
-    if not analysis or not analysis.report_filename or analysis.harvest_id not in {h.id for h in _classification_harvests(repo, scope)}:
+    if not analysis or analysis.harvest_id not in {h.id for h in _classification_harvests(repo, scope)}:
         raise HTTPException(status_code=404)
-    if not analysis.report_data:
+    if attachment_id is None and analysis.report_filename:
+        filename, payload = analysis.report_filename, analysis.report_data
+    else:
+        attachments = db.query(CoffeeClassificationAttachment).filter_by(classification_id=analysis.id)
+        if attachment_id is not None:
+            attachments = attachments.filter_by(id=attachment_id)
+        attachment = attachments.order_by(CoffeeClassificationAttachment.id).first()
+        if not attachment:
+            raise HTTPException(status_code=404)
+        filename, payload = attachment.filename, attachment.data
+    if not payload:
         raise HTTPException(status_code=404)
-    filename = _content_disposition_inline_filename(analysis.report_filename).replace("inline;", "attachment;", 1)
-    return Response(content=_attachment_payload_bytes(analysis.report_data), media_type="application/pdf",
-                    headers={"Content-Disposition": filename, "X-Content-Type-Options": "nosniff", "Cache-Control": "private, no-store"})
+    disposition = _content_disposition_inline_filename(filename).replace("inline;", "attachment;", 1)
+    return Response(content=_attachment_payload_bytes(payload), media_type="application/pdf",
+                    headers={"Content-Disposition": disposition, "X-Content-Type-Options": "nosniff", "Cache-Control": "private, no-store"})
 
 
 @router.post("/producao/classificacao/{analysis_id}/excluir")
@@ -20054,7 +20074,7 @@ def delete_coffee_classification(analysis_id: int, request: Request, csrf_token:
                     metadata_json=json.dumps({"classification_id": analysis.id, "harvest_id": harvest_id})))
     db.delete(analysis)
     db.commit()
-    _flash(request, "success", "Análise e laudo anexado excluídos.")
+    _flash(request, "success", "Análise e seus anexos excluídos.")
     return _redirect_with_query("/producao/classificacao", harvest_id=harvest_id)
 
 

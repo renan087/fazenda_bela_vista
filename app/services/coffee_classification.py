@@ -2,6 +2,11 @@
 from datetime import date
 from decimal import Decimal, InvalidOperation
 
+COFFEE_BEVERAGES = (
+    ("Arábica", ("Estritamente Mole", "Mole", "Apenas Mole", "Duro", "Riado", "Rio", "Rio Zona")),
+    ("Robusta / Conilon", ("Excelente", "Boa", "Regular", "Anormal")),
+)
+SENSORY_SCALES = tuple(range(5, 11))
 SENSORY_ATTRIBUTES = (("aroma", "Aroma"), ("sabor", "Sabor"), ("acidez", "Acidez"),
                       ("corpo", "Corpo"), ("finalizacao", "Finalização"), ("balanco", "Balanço"),
                       ("docura", "Doçura"), ("uniformidade", "Uniformidade"),
@@ -36,7 +41,7 @@ def validate_sensory(form, definitions=None):
         scale = int(str(form.get("sensory_scale") or "10"))
     except ValueError:
         raise ValueError("Escala sensorial inválida.") from None
-    if scale not in (5, 9, 10):
+    if scale not in SENSORY_SCALES:
         raise ValueError("Selecione uma escala sensorial válida.")
     result = {}
     for key, label in (definitions if definitions is not None else SENSORY_ATTRIBUTES):
