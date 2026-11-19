@@ -2,6 +2,12 @@
 {% set ent = plan_entitlements %}
 {% if ent and not ent.exempt and page not in ['my_subscription', 'plan_upgrade', 'subscribe'] %}
 {% set can_pay = menu_visibility and menu_visibility.get('finance') %}
+{% if plan_regularization and plan_regularization.exceeds %}
+<div class="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900" role="status">
+    <p><strong>{{ 'Revise os limites antes do fim do teste.' if ent.billing_state == 'teste' else 'Regularização necessária.' }}</strong> Há cadastros acima dos limites do plano contratado.</p>
+    {% if can_pay %}<a class="font-semibold underline" href="/minha-assinatura#regularizacao-plano">Ver excedentes</a>{% else %}<span>Avise o responsável pela organização.</span>{% endif %}
+</div>
+{% endif %}
 {% if ent.billing_state == 'restrito' and ent.trial_ended %}
 <div class="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-900" role="alert" data-billing-banner="teste-encerrado">
     <p><strong>Seu teste grátis terminou em {{ ent.trial_ends_on.strftime('%d/%m/%Y') }}.</strong> O sistema está em modo consulta: seus dados continuam aqui. Contrate um plano para voltar a cadastrar e editar.</p>
@@ -11,8 +17,8 @@
 {% set left = (ent.trial_ends_on - today_date).days if today_date else none %}
 {% set urgent = left is not none and left <= 3 %}
 <div class="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-2xl border px-4 py-3 text-sm {{ 'border-amber-200 bg-amber-50 text-amber-900' if urgent else 'border-emerald-200 bg-emerald-50 text-emerald-900' }}" role="status" data-billing-banner="teste">
-    <p><strong>{% if left is none %}Teste grátis até {{ ent.trial_ends_on.strftime('%d/%m/%Y') }}.{% elif left <= 0 %}Seu teste grátis termina hoje.{% elif left == 1 %}Falta 1 dia do seu teste grátis.{% else %}Faltam {{ left }} dias do seu teste grátis.{% endif %}</strong> {{ 'Contrate um plano para continuar sem interrupção.' if urgent else 'Aproveite para cadastrar sua fazenda e conhecer os módulos.' }}</p>
-    {% if can_pay %}<a href="/planos-disponiveis" class="rounded-xl px-4 py-2 text-sm font-semibold text-white {{ 'bg-amber-600 hover:bg-amber-700' if urgent else 'bg-brand-500 hover:bg-brand-700' }}">Contratar plano</a>{% endif %}
+    <p><strong>{% if left is none %}Teste grátis até {{ ent.trial_ends_on.strftime('%d/%m/%Y') }}.{% elif left <= 0 %}Seu teste grátis termina hoje.{% elif left == 1 %}Falta 1 dia do seu teste grátis.{% else %}Faltam {{ left }} dias do seu teste grátis.{% endif %}</strong> {% if plan_regularization and plan_regularization.exceeds %}Os benefícios continuam disponíveis até o fim do teste.{% elif urgent %}Confira sua assinatura antes do fim do teste.{% else %}Aproveite para cadastrar sua fazenda e conhecer os módulos.{% endif %}</p>
+    {% if can_pay %}<a href="/planos-disponiveis" class="rounded-xl px-4 py-2 text-sm font-semibold text-white {{ 'bg-amber-600 hover:bg-amber-700' if urgent else 'bg-brand-500 hover:bg-brand-700' }}">Ver planos</a>{% endif %}
 </div>
 {% elif ent.billing_state == 'restrito' %}
 <div class="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-900" role="alert" data-billing-banner="restrito">

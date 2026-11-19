@@ -23,6 +23,7 @@ from app.models.crop_season import CropSeason
 from app.models.whatsapp import WhatsAppInboundMessage, WhatsAppLink
 from app.services.chat_format import to_whatsapp
 from app.services.stock_assistant import normalized
+from app.services.farm_plan_guard import FarmPlanRestriction, bind_farm_plan_actor
 from app.services.whatsapp import (SERVICE_WINDOW_SECONDS, InboundMessage, WhatsAppClient, WhatsAppError, mask_phone,
                                    wa_id_variants)
 
@@ -373,6 +374,7 @@ def _handle(db, row, client) -> str | None:
         client.send_text(row.wa_id, denial)
         return "denied"
 
+    bind_farm_plan_actor(db, user)
     farm, season = db.get(Farm, link.farm_id), db.get(CropSeason, link.season_id)
     scope = {"active_farm": farm, "active_season": season, "active_farm_id": farm.id, "active_season_id": season.id}
     repo = routes._repository(db)
@@ -419,9 +421,9 @@ def _handle(db, row, client) -> str | None:
             return None
         try:
             routes._assistant_resolve_draft(db, user, repo, scope, draft, verb, thread, channel="whatsapp")
-        except ValueError as exc:
+        except (ValueError, FarmPlanRestriction) as exc:
             db.rollback()
-            client.send_text(row.wa_id, str(exc))
+            client.send_text(row.wa_id, exc.detail if isinstance(exc, FarmPlanRestriction) else str(exc))
             return None
         last = routes._thread_messages(thread)[-1:] if thread is not None else []
         client.send_text(row.wa_id, last[0]["content"] if last else ("Lançamento registrado." if verb == "confirmar"
@@ -485,10 +487,15 @@ def _handle(db, row, client) -> str | None:
     text = (text or ("Segue o arquivo." if image else "")).strip()[:600]
     if not text:
         return None
-    thread, item = routes._assistant_turn(db, user, repo, scope, thread, text, image=image,
-                                          attachment_type=attachment_type, title_prefix="WhatsApp · ",
-                                          **({"audio": audio_record} if audio_record else {}),
-                                          **({"attachment": attachment_record} if attachment_record else {}))
+    try:
+        thread, item = routes._assistant_turn(db, user, repo, scope, thread, text, image=image,
+                                              attachment_type=attachment_type, title_prefix="WhatsApp · ",
+                                              **({"audio": audio_record} if audio_record else {}),
+                                              **({"attachment": attachment_record} if attachment_record else {}))
+    except FarmPlanRestriction as exc:
+        db.rollback()
+        client.send_text(row.wa_id, exc.detail)
+        return None
     link = db.get(WhatsAppLink, link.id)
     link.thread_id = thread.id
     db.commit()

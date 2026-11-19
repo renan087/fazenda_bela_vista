@@ -9,6 +9,7 @@ from app.core.user_context import sync_user_context_from_preferences
 from app.core.security import decode_token
 from app.db.session import get_db
 from app.models.user import User
+from app.services.farm_plan_guard import bind_farm_plan_actor
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/token")
 
@@ -35,6 +36,7 @@ def get_current_user_api(
         )
     if user.is_two_factor_enabled or is_super_admin_email(user.email):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Use o acesso web com verificação em duas etapas.")
+    bind_farm_plan_actor(db, user)
     return user
 
 
@@ -55,6 +57,7 @@ def get_current_user_web(
         raise HTTPException(status_code=status.HTTP_303_SEE_OTHER, headers={"Location": "/login"})
     sync_user_context_from_preferences(request, db, user)
     touch_session_activity(request)
+    bind_farm_plan_actor(db, user)
     return user
 
 

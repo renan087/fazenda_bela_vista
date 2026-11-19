@@ -215,6 +215,10 @@ def test_create_farm_route_respects_limit(db, monkeypatch):
     flashes = []
     monkeypatch.setattr(routes, '_flash', lambda request, kind, message: flashes.append((kind, message)))
     monkeypatch.setattr(routes, 'today_in_app_timezone', lambda: TODAY)
+    async def no_attachments(request):
+        return []
+
+    monkeypatch.setattr(routes, '_request_attachments', no_attachments)
     monkeypatch.setattr(routes, 'create_farm', lambda *a, **k: pytest.fail('não deve cadastrar'))
     user = SimpleNamespace(id=3, email='gestor@fazenda.com', organization_id=org.id)
     response = asyncio.run(routes.create_farm_action(request=SimpleNamespace(), csrf_token='x', name='Nova', location='MG', total_area=5.0, car_registration_number=None, ccir_number=None,
@@ -664,3 +668,75 @@ def test_paid_plan_is_current_during_full_trial_and_limits_apply_after_trial(db,
     assert paid_access.plan_id == basic.id and paid_access.max_farms == 1
     assert not paid_access.module_allowed('page.finance') and not paid_access.read_only
     assert db.query(OrganizationSubscription).count() == 1
+
+
+def test_existing_trial_overages_are_read_only_until_regularized(db, monkeypatch):
+    from app.models import HarvestRecord, OrganizationAccessGrant, Plot, RainfallRecord
+    from app.services import farm_plan_guard, plan_usage
+
+    plan = _plan(db, max_farms='1', max_users='1', max_hectares='50')
+    org = _org(db, plan=plan)
+    _confirm_payment(db, db.query(OrganizationSubscription).one())
+    main = Farm(organization_id=org.id, name='Sede', location='BA', total_area=Decimal('30'))
+    extra = Farm(organization_id=org.id, name='Filial', location='BA', total_area=Decimal('40'))
+    operator = User(organization_id=org.id, name='Operador', email='operador@exemplo.test', hashed_password='x', is_active=True)
+    admin = User(organization_id=org.id, name='Admin', email='admin@exemplo.test', hashed_password='x', is_active=True, is_admin=True)
+    db.add_all([main, extra, operator, admin, OrganizationAccessGrant(
+        organization_id=org.id, plan_id=plan.id, reason='teste_gratis', justification='Avaliação do SiSFarm.',
+        starts_on=TODAY - timedelta(days=2), ends_on=TODAY,
+    )])
+    db.flush()
+    plot = Plot(farm_id=extra.id, name='Setor', area_hectares=15, plant_count=30)
+    db.add(plot)
+    db.commit()
+
+    today = TODAY
+    monkeypatch.setattr(farm_plan_guard, 'today_in_app_timezone', lambda: today)
+    farm_plan_guard.bind_farm_plan_actor(db, admin)
+    trial = ent.compute_entitlements(db, org.id, today)
+    assert trial.modules is None and trial.max_farms is None and trial.max_users is None and trial.max_hectares is None
+    warning = plan_usage.regularization_status(db, trial, today)
+    assert len(warning.farms) == 2 and warning.total_area == 70 and warning.exceeds
+    assert warning.excess_users[0].id == operator.id
+    notices = []
+    assert billing_notices.process_trial_notices(db, today, send=lambda *args: notices.append(args)) == [(org.id, 'teste_3_dias')]
+    assert 'há cadastros acima dos limites' in notices[0][2].lower()
+    assert '#regularizacao-plano' in notices[0][2]
+
+    db.add(HarvestRecord(plot_id=plot.id, harvest_date=today, sacks_produced=2))
+    db.commit()
+    today += timedelta(days=1)
+    restricted = ent.compute_entitlements(db, org.id, today)
+    assert not restricted.read_only
+    assert plan_usage.regularization_status(db, restricted, today).excess_farms[extra.id] == (
+        'Limite de fazendas', 'Limite de área',
+    )
+    assert plan_usage.user_exceeds_plan(db, restricted, operator.id)
+    assert db.query(HarvestRecord).count() == 1
+
+    db.add(HarvestRecord(plot_id=plot.id, harvest_date=today, sacks_produced=3))
+    with pytest.raises(farm_plan_guard.FarmPlanRestriction):
+        db.commit()
+    db.rollback()
+    historic = db.query(HarvestRecord).one()
+    historic.sacks_produced = 19
+    with pytest.raises(farm_plan_guard.FarmPlanRestriction):
+        db.commit()
+    db.rollback()
+
+    db.add(RainfallRecord(farm_id=main.id, rainfall_date=today, millimeters=10))
+    db.commit()
+    farm_plan_guard.bind_farm_plan_actor(db, operator)
+    db.add(RainfallRecord(farm_id=main.id, rainfall_date=today, millimeters=20))
+    with pytest.raises(farm_plan_guard.FarmPlanRestriction, match='modo consulta'):
+        db.commit()
+    db.rollback()
+
+    farm_plan_guard.bind_farm_plan_actor(db, admin)
+    main.operations_paused = True
+    operator.is_active = False
+    db.commit()
+    assert not plan_usage.regularization_status(db, restricted, today).exceeds
+    db.add(HarvestRecord(plot_id=plot.id, harvest_date=today, sacks_produced=4))
+    db.commit()
+    assert db.query(HarvestRecord).count() == 2 and db.query(Farm).count() == 2

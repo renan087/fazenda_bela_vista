@@ -221,13 +221,14 @@ def test_history_chart_is_derived_from_numbers_and_capped():
 def test_web_chat_and_mascot_receive_temporary_link_without_history_secret(monkeypatch):
     from datetime import date
     from app.models.purchased_input import PurchasedInput
+    from app.services.entitlements import UNRESTRICTED
     from app.services.shared_report import unseal_shared_url
 
     routes, db, user, scope, *_ = _route_env(monkeypatch, [])
     db.query(PurchasedInput).first().purchase_date = date(2026, 11, 15)
     db.commit()
     monkeypatch.setattr(routes, "permission_codes_for_user", lambda db, user: {PAGE_INPUTS})
-    monkeypatch.setattr(routes, "_entitlements_for", lambda db, user: SimpleNamespace(module_allowed=lambda page: True))
+    monkeypatch.setattr(routes, "_entitlements_for", lambda db, user: UNRESTRICTED)
     def query(history, assistant):
         assistant.call_tool("consultar_compras", json.dumps({"inicio": None, "fim": None, "item": "gasolina"}))
         return {"resposta": "Consultei os dados.", "draft_id": None}

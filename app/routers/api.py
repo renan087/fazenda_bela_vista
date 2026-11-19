@@ -10,6 +10,7 @@ from app.repositories.farm import FarmRepository
 from app.services.dashboard import build_dashboard_context
 from app.services.entitlements import cached_entitlements
 from app.services.rbac_service import user_has_permission
+from app.services.plan_usage import user_exceeds_plan
 
 # Modulo do plano exigido por cada recurso da API (mesmos codigos do menu web).
 API_MODULES = {
@@ -30,8 +31,11 @@ def enforce_plan(request: Request, db: Session = Depends(get_db), current_user: 
     entitlements = cached_entitlements(db, current_user.organization_id, today_in_app_timezone())
     if not entitlements.module_allowed(module):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Este recurso não faz parte do plano da organização.")
-    if entitlements.read_only and request.method not in {"GET", "HEAD", "OPTIONS"}:
-        raise HTTPException(status_code=status.HTTP_402_PAYMENT_REQUIRED, detail="Organização em modo somente leitura por pagamento em atraso.")
+    if request.method not in {"GET", "HEAD", "OPTIONS"}:
+        if entitlements.read_only:
+            raise HTTPException(status_code=status.HTTP_402_PAYMENT_REQUIRED, detail="Organização em modo somente leitura por pagamento em atraso.")
+        if entitlements.max_users is not None and user_exceeds_plan(db, entitlements, current_user.id):
+            raise HTTPException(status_code=403, detail="Seu usuário está em modo consulta por exceder o limite do plano.")
 
 
 router = APIRouter(prefix="/api/v1", tags=["farm"], dependencies=[Depends(enforce_plan)])

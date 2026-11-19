@@ -156,6 +156,7 @@ from app.services.plan_changes import (
     PAID, PAYMENT_REVIEW, clear_pending, downgrade_block_reason, effective_plan_id,
     has_confirmed_subscription_payment, is_downgrade, schedule_downgrade,
 )
+from app.services.plan_usage import plan_usage, quota_write_entitlements, regularization_status
 from app.services.entitlements import ALWAYS_ALLOWED_PREFIXES, MODULE_DETAILS, MODULE_PITCH, UNRESTRICTED, Entitlements, MODULE_LABELS, cached_entitlements, farm_limit_error, invalidate_entitlements, user_limit_error
 from app.middleware.subscription_enforcement import upgrade_url
 from app.services.access_grants import GRANT_REASONS, MAX_GRANT_DAYS, GrantValidationError, active_grant, create_grant, default_grant_end, extend_grant, grant_status_label, is_expiring_soon, revoke_grant
@@ -1107,6 +1108,8 @@ def _base_context(request: Request, user: User, csrf_token: str, page: str, **kw
         context["context_previous_available"] = bool(scope_context.get("previous_context_available"))
     context["plan_entitlements"] = _entitlements_for(db_session, user)
     context.setdefault("today_date", today_in_app_timezone())
+    if db_session is not None:
+        context["plan_regularization"] = regularization_status(db_session, context["plan_entitlements"], context["today_date"])
     context["maintenance_state"] = current_maintenance_state(lambda: contextlib.nullcontext(db_session)) if db_session is not None else None
     context["now_utc"] = datetime.now(timezone.utc)
     context["is_super_admin"] = bool(user and is_super_admin_email(user.email))
@@ -4302,7 +4305,7 @@ def onboarding_action(
     if not error and (not start or not end or end <= start):
         error = "Confira as datas da safra: o fim precisa ser depois do início."
     if not error and not existing:
-        error = farm_limit_error(db, _entitlements_for(db, user), adding_farm=True, area_delta=Decimal(str(area)))
+        error = farm_limit_error(db, quota_write_entitlements(db, user.organization_id, today_in_app_timezone()), adding_farm=True, area_delta=Decimal(str(area)))
     if error:
         return _render_onboarding(request, db, user, get_csrf_token(request), form=form, error=error)
     repo = _repository(db)
@@ -9355,10 +9358,6 @@ async def create_farm_action(
     if _farm_name_taken(db, user.organization_id, name):
         _flash(request, "error", f"Já existe uma fazenda chamada {name}. Use outro nome.")
         return _redirect("/setores") if redirect_to == "/setores" else _redirect("/fazendas")
-    limit_error = farm_limit_error(db, _entitlements_for(db, user), adding_farm=True, area_delta=Decimal(str(total_area or 0)))
-    if limit_error:
-        _flash(request, "error", limit_error)
-        return _redirect("/setores") if redirect_to == "/setores" else _redirect("/fazendas")
     try:
         car_number = normalize_car_number(car_registration_number) if (car_registration_number or "").strip() else None
     except CarPublicLookupError as exc:
@@ -9372,6 +9371,10 @@ async def create_farm_action(
     geometry, geometry_ok, _, _ = _resolve_geojson(boundary_geojson_file, boundary_geojson)
     if boundary_geojson_file and boundary_geojson_file.filename and not geometry_ok:
         _flash(request, "error", "O arquivo GeoJSON da fazenda nao e valido.")
+        return _redirect("/setores") if redirect_to == "/setores" else _redirect("/fazendas")
+    limit_error = farm_limit_error(db, quota_write_entitlements(db, user.organization_id, today_in_app_timezone()), adding_farm=True, area_delta=Decimal(str(total_area or 0)))
+    if limit_error:
+        _flash(request, "error", limit_error)
         return _redirect("/setores") if redirect_to == "/setores" else _redirect("/fazendas")
     farm = create_farm(
         _repository(db),
@@ -9437,10 +9440,6 @@ async def update_farm_action(
     if _farm_name_taken(db, farm.organization_id, name, exclude_id=farm.id):
         _flash(request, "error", f"Já existe uma fazenda chamada {name}. Use outro nome.")
         return _redirect_with_query("/fazendas", edit_id=farm_id)
-    limit_error = farm_limit_error(db, _entitlements_for(db, user), adding_farm=False, area_delta=Decimal(str(total_area or 0)) - Decimal(str(farm.total_area or 0)))
-    if limit_error:
-        _flash(request, "error", limit_error)
-        return _redirect_with_query("/fazendas", edit_id=farm_id)
     try:
         car_number = normalize_car_number(car_registration_number) if (car_registration_number or "").strip() else None
     except CarPublicLookupError as exc:
@@ -9454,6 +9453,17 @@ async def update_farm_action(
     geometry, geometry_ok, _, _ = _resolve_geojson(boundary_geojson_file, boundary_geojson, farm.boundary_geojson)
     if boundary_geojson_file and boundary_geojson_file.filename and not geometry_ok:
         _flash(request, "error", "O arquivo GeoJSON da fazenda nao e valido.")
+        return _redirect_with_query("/fazendas", edit_id=farm_id)
+    entitlements = quota_write_entitlements(db, farm.organization_id, today_in_app_timezone())
+    db.refresh(farm)
+    if farm.organization_id != user.organization_id and user.organization_id:
+        _flash(request, "error", "Fazenda não encontrada.")
+        return _redirect("/fazendas")
+    limit_error = None if farm.operations_paused else farm_limit_error(
+        db, entitlements, adding_farm=False, area_delta=Decimal(str(total_area or 0)) - Decimal(farm.total_area or 0),
+    )
+    if limit_error:
+        _flash(request, "error", limit_error)
         return _redirect_with_query("/fazendas", edit_id=farm_id)
     update_farm(
         repo,
@@ -9554,6 +9564,30 @@ def update_farm_geometry_only(
     except Exception:
         logging.getLogger(__name__).exception("Falha ao gerar imagem de satelite da fazenda %s", farm.id)
     _flash(request, "success", "Geometria da fazenda atualizada.")
+    return _redirect("/fazendas")
+
+
+@router.post("/fazendas/{farm_id}/regularizacao")
+def farm_operations_status_action(
+    farm_id: int, request: Request, csrf_token: str = Form(...), action: str = Form(...),
+    db: Session = Depends(get_db), user: User = Depends(get_current_user_web),
+):
+    validate_csrf(request, csrf_token)
+    denied = _require_permission(request, user, db, write_permission_for_page(PAGE_PRODUCTIVE_UNIT))
+    if denied:
+        return denied
+    entitlements = quota_write_entitlements(db, user.organization_id, today_in_app_timezone())
+    farm = db.query(Farm).filter_by(id=farm_id, organization_id=user.organization_id).with_for_update().first()
+    if not farm or action not in {"pause", "resume"}:
+        raise HTTPException(status_code=404, detail="Fazenda ou ação não encontrada.")
+    if action == "resume" and farm.operations_paused:
+        error = farm_limit_error(db, entitlements, adding_farm=True, area_delta=Decimal(farm.total_area or 0))
+        if error:
+            _flash(request, "error", error)
+            return _redirect("/fazendas")
+    farm.operations_paused = action == "pause"
+    db.commit()
+    _flash(request, "success", "Fazenda disponível para consulta." if farm.operations_paused else "Operações da fazenda reativadas.")
     return _redirect("/fazendas")
 
 
@@ -10323,19 +10357,14 @@ def _incompatible_plan(request: Request, issues: list[str]) -> RedirectResponse:
 
 def _plan_limit_issues(db: Session, organization_id: int, plan: SubscriptionPlan) -> list[str]:
     """O que a organizacao ja usa alem dos limites do novo plano (bloqueia a contratação ou troca de plano)."""
+    usage = plan_usage(db, organization_id, plan)
     issues = []
-    if plan.max_farms is not None:
-        farms = db.query(func.count(Farm.id)).filter(Farm.organization_id == organization_id).scalar() or 0
-        if farms > plan.max_farms:
-            issues.append(f"Você tem {farms} fazendas; o plano permite {plan.max_farms}.")
-    if plan.max_hectares is not None:
-        area = Decimal(str(db.query(func.coalesce(func.sum(Farm.total_area), 0)).filter(Farm.organization_id == organization_id).scalar() or 0))
-        if area > Decimal(plan.max_hectares):
-            issues.append(f"Suas fazendas somam {_format_decimal_br(area)} ha; o plano permite {_format_decimal_br(plan.max_hectares)} ha.")
-    if plan.max_users is not None:
-        users = db.query(func.count(User.id)).filter(User.organization_id == organization_id, User.is_active.is_(True)).scalar() or 0
-        if users > plan.max_users:
-            issues.append(f"Você tem {users} usuários ativos; o plano permite {plan.max_users}.")
+    if plan.max_farms is not None and len(usage.farms) > plan.max_farms:
+        issues.append(f"Você tem {len(usage.farms)} fazendas. O plano permite {plan.max_farms}.")
+    if plan.max_hectares is not None and usage.total_area > plan.max_hectares:
+        issues.append(f"Suas fazendas somam {_format_decimal_br(usage.total_area)} ha. O plano permite {_format_decimal_br(plan.max_hectares)} ha.")
+    if plan.max_users is not None and len(usage.users) > plan.max_users:
+        issues.append(f"Você tem {len(usage.users)} usuários ativos. O plano permite {plan.max_users}.")
     return issues
 
 
@@ -11489,6 +11518,11 @@ def link_user_organization_action(
     if target_user.id == user.id:
         _flash(request, "error", "Nao altere a organizacao do usuario atualmente logado.")
         return _redirect("/organizacoes")
+    if target_user.organization_id != organization.id and target_user.is_active:
+        entitlements = quota_write_entitlements(db, organization.id, today_in_app_timezone())
+        if error := user_limit_error(db, entitlements):
+            _flash(request, "error", error)
+            return _redirect("/organizacoes")
     data = {"organization_id": organization.id}
     active_farm = repo.get_farm(target_user.active_farm_id) if target_user.active_farm_id else None
     if active_farm and active_farm.organization_id != organization.id:
@@ -11519,6 +11553,11 @@ def link_farm_organization_action(
     if not farm or not organization:
         _flash(request, "error", "Fazenda ou organizacao nao encontrada.")
         return _redirect("/organizacoes")
+    if farm.organization_id != organization.id and not farm.operations_paused:
+        entitlements = quota_write_entitlements(db, organization.id, today_in_app_timezone())
+        if error := farm_limit_error(db, entitlements, adding_farm=True, area_delta=Decimal(farm.total_area or 0)):
+            _flash(request, "error", error)
+            return _redirect("/organizacoes")
     repo.update(farm, {"organization_id": organization.id})
     _flash(request, "success", "Fazenda vinculada a organizacao com sucesso.")
     return _redirect("/organizacoes")
@@ -11764,7 +11803,7 @@ async def create_user_action(
         _flash(request, "error", "Ja existe um usuario com este email.")
         return _redirect("/usuarios")
     if _bool_from_form(is_active):
-        limit_error = user_limit_error(db, _entitlements_for(db, user))
+        limit_error = user_limit_error(db, quota_write_entitlements(db, user.organization_id, today_in_app_timezone()))
         if limit_error:
             _flash(request, "error", limit_error)
             return _redirect("/usuarios")
@@ -11830,10 +11869,13 @@ async def update_user_action(
         if existing:
             _flash(request, "error", "Ja existe outro usuario com este email.")
             return _redirect_with_query("/usuarios", edit_id=user_id)
-        if _bool_from_form(is_active) and not target_user.is_active:
-            # Reativar conta como um novo usuario ativo para o limite do plano.
-            limit_error = user_limit_error(db, _entitlements_for(db, user))
-            if limit_error:
+        if _bool_from_form(is_active):
+            entitlements = quota_write_entitlements(db, user.organization_id, today_in_app_timezone())
+            db.refresh(target_user)
+            if target_user.organization_id != user.organization_id:
+                _flash(request, "error", "Usuário não encontrado.")
+                return _redirect("/usuarios")
+            if not target_user.is_active and (limit_error := user_limit_error(db, entitlements)):
                 _flash(request, "error", limit_error)
                 return _redirect_with_query("/usuarios", edit_id=user_id)
 
@@ -15142,6 +15184,7 @@ def toggle_equipment_maintenance_plan_action(
         _flash(request, "error", "Plano preventivo não encontrado no contexto ativo.")
         return _redirect("/insumos/patrimonio/manutencoes")
     plan.is_active = not plan.is_active
+    db.flush()
     if not plan.is_active:
         (
             repo.db.query(EquipmentMaintenance)

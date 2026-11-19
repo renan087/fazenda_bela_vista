@@ -657,6 +657,7 @@ def _sync_schema() -> None:
         )
         WHERE csp.planting_id IS NULL
         """,
+        "ALTER TABLE farms ADD COLUMN IF NOT EXISTS operations_paused BOOLEAN NOT NULL DEFAULT false",
         "ALTER TABLE farms DROP CONSTRAINT IF EXISTS farms_name_key",
         "CREATE UNIQUE INDEX IF NOT EXISTS uq_farms_organization_name ON farms (organization_id, name)",
         "ALTER TABLE organization_subscriptions ADD COLUMN IF NOT EXISTS plan_changed_at TIMESTAMP",

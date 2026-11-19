@@ -15,6 +15,7 @@ from app.core.timezone import today_in_app_timezone
 from app.db.session import SessionLocal
 from app.models import User
 from app.services.entitlements import ALWAYS_ALLOWED_PREFIXES, cached_entitlements
+from app.services.plan_usage import user_exceeds_plan
 
 logger = logging.getLogger(__name__)
 
@@ -34,7 +35,8 @@ def upgrade_url(module_code: str | None) -> str:
 def _entitlements_for_email(email):
     with SessionLocal() as db:
         user = db.query(User).filter(User.email == email, User.is_active.is_(True)).first()
-        return cached_entitlements(db, user.organization_id if user else None, today_in_app_timezone())
+        entitlements = cached_entitlements(db, user.organization_id if user else None, today_in_app_timezone())
+        return entitlements, bool(user and entitlements.max_users is not None and user_exceeds_plan(db, entitlements, user.id))
 
 
 class SubscriptionEnforcementMiddleware(BaseHTTPMiddleware):
@@ -51,7 +53,7 @@ class SubscriptionEnforcementMiddleware(BaseHTTPMiddleware):
         if not email or is_super_admin_email(email):
             return await call_next(request)
         try:
-            entitlements = await run_in_threadpool(_entitlements_for_email, email)
+            entitlements, excess_user = await run_in_threadpool(_entitlements_for_email, email)
         except Exception:
             logger.exception("Falha ao verificar o plano da organizacao")
             if request.method not in SAFE_METHODS and not _starts_with_any(path, READ_ONLY_WRITE_ALLOWED):
@@ -66,6 +68,13 @@ class SubscriptionEnforcementMiddleware(BaseHTTPMiddleware):
                 return RedirectResponse(url=upgrade_url(module), status_code=303)
             request.session["flash"] = {"kind": "error", "message": "Este módulo não faz parte do seu plano."}
             return RedirectResponse(url=upgrade_url(module), status_code=303)
+
+        if excess_user and request.method not in SAFE_METHODS and not _starts_with_any(path, READ_ONLY_WRITE_ALLOWED):
+            request.session["flash"] = {
+                "kind": "error",
+                "message": "Seu usuário está em modo consulta por exceder o limite do plano.",
+            }
+            return RedirectResponse(url="/minha-assinatura#regularizacao-plano", status_code=303)
 
         if entitlements.read_only and request.method not in SAFE_METHODS and not _starts_with_any(path, READ_ONLY_WRITE_ALLOWED):
             request.session["flash"] = {

@@ -20,6 +20,7 @@ from app.db.init_db import create_tables
 from app.db.init_db import seed_admin
 from app.db.init_db import seed_demo_data
 from app.db.session import SessionLocal
+from app.services.farm_plan_guard import FarmPlanRestriction
 from app.services.rbac_service import seed_rbac_for_all_organizations
 from app.models import User
 from app.repositories.farm import FarmRepository
@@ -300,6 +301,17 @@ def openapi_json(request: Request):
     if not _docs_access_allowed(request):
         return JSONResponse({"detail": "Acesso negado."}, status_code=403)
     return JSONResponse(_custom_openapi_schema())
+
+
+@app.exception_handler(FarmPlanRestriction)
+async def farm_plan_restriction_handler(request: Request, exc: FarmPlanRestriction):
+    session = request.scope.get("session")
+    if session is not None and "text/html" in request.headers.get("accept", "") and not request.url.path.startswith("/api/"):
+        session["flash"] = {"kind": "error", "message": exc.detail}
+        referer = request.headers.get("referer", "")
+        target = referer if referer.startswith(str(request.base_url)) else "/dashboard"
+        return RedirectResponse(target, status_code=303)
+    return JSONResponse({"detail": exc.detail}, status_code=exc.status_code)
 
 
 @app.exception_handler(Exception)

@@ -1,4 +1,4 @@
-from sqlalchemy import ForeignKey, Integer, Numeric, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -11,6 +11,7 @@ class Farm(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True, index=True)
     organization_id: Mapped[int] = mapped_column(Integer, ForeignKey("organizations.id", ondelete="SET NULL"), nullable=True, index=True)
+    operations_paused: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"), nullable=False)
     name: Mapped[str] = mapped_column(String(160), nullable=False)
     location: Mapped[str] = mapped_column(String(180), nullable=False)
     total_area: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False)

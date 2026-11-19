@@ -141,6 +141,7 @@ def trial_notice_kind(ends_on: date, today: date, already_sent: str) -> str | No
 def process_trial_notices(db, today: date, *, send=send_plain_email) -> list[tuple[int, str]]:
     from app.models import OrganizationAccessGrant, User
     from app.services.access_grants import TRIAL_GRANT_REASON
+    from app.services.plan_usage import confirmed_plan_for_usage, plan_usage
 
     delivered = []
     grants = db.query(OrganizationAccessGrant).filter(
@@ -151,13 +152,27 @@ def process_trial_notices(db, today: date, *, send=send_plain_email) -> list[tup
         kind = trial_notice_kind(grant.ends_on, today, grant.notices_sent)
         if not kind:
             continue
-        if db.query(OrganizationSubscription.id).filter_by(organization_id=grant.organization_id, is_current=True).first():
-            continue  # ja contratou: nada a avisar
         organization = db.get(Organization, grant.organization_id)
         recipients = [row[0] for row in db.query(User.email).filter_by(organization_id=grant.organization_id, is_admin=True, is_active=True)]
         if not organization or not recipients:
             continue
-        subject, body = compose_trial_notice(kind, organization=organization, ends_on=grant.ends_on)
+        paid_plan = confirmed_plan_for_usage(db, grant.organization_id, today)
+        if paid_plan:
+            usage = plan_usage(db, grant.organization_id, paid_plan)
+            if not usage.exceeds:
+                continue
+            subject = f"Confira os limites do plano contratado pela {organization.name}"
+            transition = (f"O teste termina em {grant.ends_on.strftime('%d/%m/%Y')}."
+                          if today <= grant.ends_on else "Os limites do plano contratado já estão em vigor.")
+            body = (
+                f"Olá!\n\n{transition} Há cadastros acima dos limites do plano {paid_plan.name}. "
+                "Consulte os excedentes em Minha assinatura para ajustar seus cadastros ou escolher outro plano.\n\n"
+                f"{app_public_base()}/minha-assinatura#regularizacao-plano"
+            )
+        elif db.query(OrganizationSubscription.id).filter_by(organization_id=grant.organization_id, is_current=True).first():
+            continue  # Contratação pendente: o fluxo de cobrança já informa a situação.
+        else:
+            subject, body = compose_trial_notice(kind, organization=organization, ends_on=grant.ends_on)
         try:
             for email in recipients:
                 send(email, subject, body, "aviso de teste grátis")

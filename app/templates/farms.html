@@ -37,6 +37,8 @@
                     <div class="min-w-0 flex-1">
                         <div class="flex flex-wrap items-center gap-2">
                             <button type="button" class="sf-card-title text-left hover:text-brand-700" data-farms-launch-open data-farms-edit-link="/fazendas?edit_id={{ farm.id }}&view=1">{{ farm.name }}</button>
+                            {% if farm.operations_paused %}<span class="sf-pill sf-pill-renewed">Operações pausadas</span>
+                            {% elif plan_regularization and farm.id in plan_regularization.excess_farms %}<span class="sf-pill sf-pill-renewed">{{ 'Excede o plano contratado' if plan_entitlements.billing_state == 'teste' else 'Regularização necessária' }}</span>{% endif %}
                             {% if active_farm_id == farm.id %}<span class="sf-pill sf-pill-current">Em uso</span>{% endif %}
                         </div>
                         <p class="sf-card-sub">{{ farm.location }}</p>
@@ -88,6 +90,13 @@
                             <div class="sf-menu-panel">
                                 <a href="/fazendas?edit_id={{ farm.id }}&view=1">Ver detalhes</a>
                                 <a href="/setores">Ver setores</a>
+                                {% if can_write_page and (farm.operations_paused or (plan_regularization and plan_regularization.excess_farms)) %}
+                                <form method="post" action="/fazendas/{{ farm.id }}/regularizacao">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                                    <input type="hidden" name="action" value="{{ 'resume' if farm.operations_paused else 'pause' }}">
+                                    <button type="submit" class="sf-btn sf-btn-secondary">{{ 'Reativar operações' if farm.operations_paused else 'Pausar operações' }}</button>
+                                </form>
+                                {% endif %}
                                 <form method="post" action="/fazendas/{{ farm.id }}/excluir" onsubmit="return confirm('Excluir a fazenda {{ farm.name }}? Esta ação não pode ser desfeita.');">
                                     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                                     <button type="submit" class="sf-menu-danger">Excluir fazenda</button>

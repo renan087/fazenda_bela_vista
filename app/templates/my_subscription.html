@@ -39,6 +39,8 @@
     </section>
     {% endif %}
 
+    {% include "partials/plan_regularization.html" %}
+
     {% if subscription_display %}
     {% set view = states[state] %}
     {% set plan_name = subscription.plan_name if subscription else card_migration.plan_name %}

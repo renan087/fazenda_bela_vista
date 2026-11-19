@@ -87,6 +87,9 @@ def compute_entitlements(db: Session, organization_id: int | None, today: date) 
     access = organization_access(db, organization_id, today, environment=env)
     plan = db.get(SubscriptionPlan, access.plan_id) if access.plan_id else None
     modules = frozenset(plan_modules(plan)) if plan else None
+    is_trial = bool(access.grant and access.grant.reason == TRIAL_GRANT_REASON)
+    if is_trial:
+        modules = None
     locked = frozenset(code for code in MODULE_LABELS if modules is not None and code not in modules)
 
     subscription_query = db.query(OrganizationSubscription.id).filter_by(organization_id=organization_id, environment=env)
@@ -135,9 +138,9 @@ def compute_entitlements(db: Session, organization_id: int | None, today: date) 
         plan_name=plan.name if plan else None,
         plan_icon=plan.icon if plan else None,
         modules=modules,
-        max_farms=plan.max_farms if plan else None,
-        max_users=plan.max_users if plan else None,
-        max_hectares=Decimal(plan.max_hectares) if plan and plan.max_hectares is not None else None,
+        max_farms=plan.max_farms if plan and not is_trial else None,
+        max_users=plan.max_users if plan and not is_trial else None,
+        max_hectares=Decimal(plan.max_hectares) if plan and not is_trial and plan.max_hectares is not None else None,
         billing_state=state,
         days_overdue=days_overdue,
         overdue_amount=overdue_amount,
@@ -186,11 +189,11 @@ def farm_limit_error(db: Session, entitlements: Entitlements, *, adding_farm: bo
     org_id = entitlements.organization_id
     plan = entitlements.plan_name or "atual"
     if adding_farm and entitlements.max_farms is not None:
-        count = db.query(func.count(Farm.id)).filter(Farm.organization_id == org_id).scalar() or 0
+        count = db.query(func.count(Farm.id)).filter(Farm.organization_id == org_id, Farm.operations_paused.is_(False)).scalar() or 0
         if count >= entitlements.max_farms:
             return f"Seu plano {plan} permite até {entitlements.max_farms} fazenda(s). Conheça os planos para cadastrar mais."
-    if entitlements.max_hectares is not None and area_delta > 0:
-        total = Decimal(str(db.query(func.coalesce(func.sum(Farm.total_area), 0)).filter(Farm.organization_id == org_id).scalar() or 0))
+    if entitlements.max_hectares is not None and (adding_farm or area_delta > 0):
+        total = Decimal(str(db.query(func.coalesce(func.sum(Farm.total_area), 0)).filter(Farm.organization_id == org_id, Farm.operations_paused.is_(False)).scalar() or 0))
         if total + area_delta > entitlements.max_hectares:
             limit = f"{entitlements.max_hectares:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
             return f"Seu plano {plan} permite até {limit} ha somando as fazendas. Conheça os planos para ampliar a área."
