@@ -152,7 +152,10 @@ from app.services.commercial_audit import record_commercial_event
 from app.services.organization_subscription_sync import apply_subscription_details, persist_organization_webhook
 from app.services.agronomic_profile_suggestions import build_agronomic_profile_suggestions
 from app.services.subscription_reconciliation import close_card_checkout, reconcile_organization
-from app.services.plan_changes import clear_pending, downgrade_block_reason, is_downgrade, schedule_downgrade
+from app.services.plan_changes import (
+    PAID, PAYMENT_REVIEW, clear_pending, downgrade_block_reason, effective_plan_id,
+    has_confirmed_subscription_payment, is_downgrade, schedule_downgrade,
+)
 from app.services.entitlements import ALWAYS_ALLOWED_PREFIXES, MODULE_DETAILS, MODULE_PITCH, UNRESTRICTED, Entitlements, MODULE_LABELS, cached_entitlements, farm_limit_error, invalidate_entitlements, user_limit_error
 from app.middleware.subscription_enforcement import upgrade_url
 from app.services.access_grants import GRANT_REASONS, MAX_GRANT_DAYS, GrantValidationError, active_grant, create_grant, default_grant_end, extend_grant, grant_status_label, is_expiring_soon, revoke_grant
@@ -9826,12 +9829,9 @@ def manage_subscription_plan_action(
 
 def _customer_subscription_display(subscription, migration, charges, today):
     """Estado exibido ao comprador, independente da liberação de acesso temporário."""
-    paid_states = {"CONFIRMED", "RECEIVED", "RECEIVED_IN_CASH"}
-    review_states = {"REFUNDED", "REFUND_REQUESTED", "REFUND_IN_PROGRESS", "CHARGEBACK_REQUESTED",
-                     "CHARGEBACK_DISPUTE", "AWAITING_CHARGEBACK_REVERSAL", "VERIFICAR"}
     current_charges = [charge for charge in charges if subscription and charge.subscription_id == subscription.id]
-    latest_result = next((charge for charge in current_charges if charge.status in paid_states | review_states), None)
-    paid = latest_result is not None and latest_result.status in paid_states
+    latest_result = next((charge for charge in current_charges if charge.status in PAID | PAYMENT_REVIEW), None)
+    paid = latest_result is not None and latest_result.status in PAID
     awaiting_confirmation = any(charge.status in {"AUTHORIZED", "AWAITING_RISK_ANALYSIS"} for charge in current_charges)
     payable = [charge for charge in current_charges if charge.status in {"PENDING", "OVERDUE"} and not charge.operation_state]
     payable.sort(key=lambda charge: charge.due_date or today)
@@ -10240,37 +10240,50 @@ def plan_upgrade_page(request: Request, modulo: str | None = Query(None), db: Se
     """Pagina para conhecer os planos; destino dos modulos com cadeado."""
     entitlements = _entitlements_for(db, user)
     module_code = modulo if modulo in MODULE_LABELS else None
-    catalog = active_plans(db)
-    ordered = sorted(catalog, key=lambda plan: (0 if module_code and module_code in plan_modules(plan) else 1, plan.display_order, plan.name.lower()))
-    subscription = _self_service_subscription(db, user)
     organization_id = user.organization_id
+    recorded = _current_commercial_subscription(db, organization_id)
+    recorded_plan_id = effective_plan_id(recorded, today_in_app_timezone())
+    confirmed = bool(recorded and recorded.asaas_subscription_id and has_confirmed_subscription_payment(db, recorded.id))
+    subscription = recorded if confirmed and _subscription_can_change(db, recorded) else None
+    catalog = active_plans(db)
+    if recorded_plan_id and all(plan.id != recorded_plan_id for plan in catalog):
+        recorded_plan = db.get(SubscriptionPlan, recorded_plan_id)
+        if recorded_plan:
+            catalog.append(recorded_plan)
+    ordered = sorted(catalog, key=lambda plan: (0 if module_code and module_code in plan_modules(plan) else 1, plan.display_order, plan.name.lower()))
     can_write_finance = WRITE_FINANCE in permission_codes_for_user(db, user)
     can_subscribe = bool(organization_id) and can_write_finance and not _subscribe_blocker(db, organization_id)
+    trial_plan_id = entitlements.plan_id if entitlements.trial_ends_on and not entitlements.trial_ended else None
     current_modules = set(plan_modules(subscription.plan)) if subscription and subscription.plan else set()
     return templates.TemplateResponse("plan_upgrade.html", _base_context(
         request, user, csrf_token, "plan_upgrade", current_subscription=subscription, current_modules=current_modules,
         can_change_plan=bool(subscription) and can_write_finance, can_subscribe=can_subscribe,
-        plan_in_trial=bool(entitlements.trial_ends_on and not entitlements.trial_ended and not subscription),
-        plan_limit_issues={plan.id: _plan_limit_issues(db, user.organization_id, plan) for plan in ordered} if organization_id else {},
+        trial_plan_id=trial_plan_id, recorded_plan_id=recorded_plan_id,
+        current_plan_id=recorded_plan_id if confirmed else None, awaiting_first_payment=bool(recorded and not confirmed),
+        plan_limit_issues={plan.id: _plan_limit_issues(db, organization_id, plan) for plan in ordered} if organization_id else {},
         plan_change_info=_plan_change_info(db, subscription, ordered) if subscription else {},
         premium_plan_id=_premium_plan_id(ordered),
         title="Planos disponíveis", module_code=module_code, module_label=MODULE_LABELS.get(module_code),
-        module_pitch=MODULE_PITCH.get(module_code), plans_catalog=ordered, current_plan_id=entitlements.plan_id, current_plan_name=entitlements.plan_name,
+        module_pitch=MODULE_PITCH.get(module_code), plans_catalog=ordered,
         plan_modules_of=plan_modules, plan_prices_of=plan_prices, module_labels=MODULE_LABELS, support_email=(get_settings().support_email or "").strip() or None,
         _repo=_repository(db),
     ))
 
 
-def _self_service_subscription(db: Session, user) -> OrganizationSubscription | None:
-    """Assinatura que o proprio cliente pode trocar de plano: ativa, no catalogo do ambiente, sem operacao pendente."""
-    if not getattr(user, "organization_id", None):
+def _current_commercial_subscription(db: Session, organization_id: int | None) -> OrganizationSubscription | None:
+    if not organization_id:
         return None
-    subscription = db.query(OrganizationSubscription).filter_by(organization_id=user.organization_id, is_current=True, environment=asaas_env_name()).first()
-    if not subscription or subscription.status != "criada" or subscription.asaas_status != "ACTIVE" or not subscription.asaas_subscription_id:
-        return None
-    if db.query(OrganizationCardMigration.id).filter_by(organization_id=user.organization_id, is_open=True).first():
-        return None
-    return subscription
+    return db.query(OrganizationSubscription).filter_by(
+        organization_id=organization_id, is_current=True, environment=asaas_env_name(),
+    ).first()
+
+
+def _subscription_can_change(db: Session, subscription: OrganizationSubscription) -> bool:
+    if subscription.status != "criada" or subscription.asaas_status != "ACTIVE" or not subscription.asaas_subscription_id:
+        return False
+    return not db.query(OrganizationCardMigration.id).filter_by(
+        organization_id=subscription.organization_id, is_open=True,
+    ).first()
 
 
 def _premium_plan_id(plans_list) -> int | None:
@@ -10335,14 +10348,23 @@ def self_service_plan_change_action(request: Request, csrf_token: str = Form(...
     if WRITE_FINANCE not in permission_codes_for_user(db, user) or not asaas_ready(settings):
         _flash(request, "error", "Você não pode alterar o plano agora. Peça a um responsável financeiro da organização.")
         return _redirect(target)
-    subscription = _self_service_subscription(db, user)
+    subscription = _current_commercial_subscription(db, user.organization_id)
     billing = db.query(OrganizationBilling).filter_by(organization_id=user.organization_id, asaas_environment=asaas_env_name()).first()
     try:
         plan, price = resolve_plan_selection(db, int(plan_id), cycle)
     except (ValueError, PlanValidationError):
         plan, price = None, None
-    if not subscription or not billing or not plan or plan.id == subscription.plan_id:
+    if not subscription or not billing or not plan:
         _flash(request, "error", "Não foi possível mudar de plano. Atualize a página e tente novamente.")
+        return _redirect(target)
+    if plan.id in {subscription.plan_id, effective_plan_id(subscription, today_in_app_timezone())}:
+        _flash(request, "info", "Este plano já está registrado na sua assinatura.")
+        return _redirect(target)
+    if not _subscription_can_change(db, subscription):
+        _flash(request, "error", "A assinatura não está disponível para alteração neste momento.")
+        return _redirect(target)
+    if not has_confirmed_subscription_payment(db, subscription.id):
+        _flash(request, "error", "Aguarde a confirmação do pagamento do plano contratado para escolher outro plano.")
         return _redirect(target)
     issues = _plan_limit_issues(db, user.organization_id, plan)
     if issues:
@@ -10358,7 +10380,10 @@ def self_service_plan_change_action(request: Request, csrf_token: str = Form(...
             _flash(request, "error", reason)
             return _redirect(target)
     old_plan, old_amount, old_cycle, subscription_id = subscription.plan_name, subscription.amount, subscription.cycle, subscription.id
-    reserved = db.query(OrganizationSubscription).filter_by(id=subscription_id, status="criada", asaas_status="ACTIVE").update({"status": "revisao"}, synchronize_session=False)
+    reserved = db.query(OrganizationSubscription).filter_by(
+        id=subscription_id, is_current=True, status="criada", asaas_status="ACTIVE",
+        plan_id=subscription.plan_id, amount=old_amount, cycle=old_cycle, pending_plan_id=None,
+    ).update({"status": "revisao"}, synchronize_session=False)
     db.commit()
     if not reserved:
         _flash(request, "error", "Outra operação está em andamento. Tente novamente em instantes.")
@@ -10437,6 +10462,10 @@ def plan_upgrade_request_action(request: Request, csrf_token: str = Form(...), p
         plan = None
     if not plan or plan.status != "ativo" or not user.organization_id:
         _flash(request, "error", "Plano indisponível. Atualize a página e tente novamente.")
+        return _redirect("/planos-disponiveis")
+    subscription = _current_commercial_subscription(db, user.organization_id)
+    if subscription and plan.id in {subscription.plan_id, effective_plan_id(subscription, today_in_app_timezone())}:
+        _flash(request, "info", "Este plano já está registrado na sua assinatura.")
         return _redirect("/planos-disponiveis")
     issues = _plan_limit_issues(db, user.organization_id, plan)
     if issues:

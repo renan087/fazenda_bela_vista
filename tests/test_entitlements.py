@@ -228,10 +228,19 @@ def _render(template, context):
     return env.get_template(template).render(**context, request=None, csrf_token='t')
 
 
+def _confirm_payment(db, subscription):
+    db.add(OrganizationSubscriptionPayment(
+        subscription_id=subscription.id, asaas_payment_id=f"pay_confirmed_{subscription.id}",
+        status="CONFIRMED", amount=subscription.amount, due_date=TODAY, paid_date=TODAY,
+    ))
+    db.flush()
+
+
 def test_upgrade_page_highlights_plans_with_module(db, monkeypatch):
     basic = _plan(db)
     full = _plan(db, name='Gestão Completa', modules=['page.productive_unit', 'page.rainfall', 'page.finance'], max_farms='', max_users='', max_hectares='')
     org = _org(db, plan=basic)
+    _confirm_payment(db, db.query(OrganizationSubscription).one())
     monkeypatch.setattr(routes, '_base_context', lambda *a, **k: k)
     monkeypatch.setattr(routes, '_repository', lambda _db: None)
     monkeypatch.setattr(routes.templates, 'TemplateResponse', lambda name, context: (name, context))
@@ -240,7 +249,7 @@ def test_upgrade_page_highlights_plans_with_module(db, monkeypatch):
     _, ctx = routes.plan_upgrade_page(request=SimpleNamespace(), modulo='page.finance', db=db, user=user, csrf_token='t')
     html = _render('plan_upgrade.html', ctx)
     assert ctx['plans_catalog'][0].id == full.id and ctx['current_plan_id'] == basic.id
-    assert 'Gestão financeira' in html and 'Inclui Gestão financeira' in html and 'Quero o plano Gestão Completa' in html and 'Seu plano' in html and 'Escolha o plano ideal' not in html
+    assert 'Gestão financeira' in html and 'Inclui Gestão financeira' in html and 'Quero o plano Gestão Completa' in html and 'Plano atual' in html and 'Escolha o plano ideal' not in html
 
 
 def test_upgrade_request_is_audited(db, monkeypatch):
@@ -352,6 +361,7 @@ def test_customer_changes_plan_with_catalog_price(db, monkeypatch):
     pro = _plan(db, name='Profissional', price_monthly='149,90', modules=['page.productive_unit', 'page.rainfall', 'page.finance'], max_farms='3', max_users='', max_hectares='300')
     org = _org(db, plan=basic)
     sub = db.query(OrganizationSubscription).one()
+    _confirm_payment(db, sub)
     sub.next_due_date = date(2099, 1, 10)
     db.commit()
     flashes = _self_service_env(db, monkeypatch)
@@ -375,6 +385,7 @@ def test_downgrade_blocked_when_usage_exceeds_limits(db, monkeypatch):
     big = _plan(db, name='Grande', max_farms='', max_users='', max_hectares='')
     small = _plan(db, name='Pequeno', max_farms='1', max_hectares='50')
     org = _org(db, plan=big)
+    _confirm_payment(db, db.query(OrganizationSubscription).one())
     db.add_all([Farm(name='A', location='MG', total_area=Decimal('40'), organization_id=org.id), Farm(name='B', location='MG', total_area=Decimal('30'), organization_id=org.id)])
     db.commit()
     flashes = _self_service_env(db, monkeypatch)
@@ -397,6 +408,7 @@ def test_change_dialog_shows_gains_losses_prices_and_date(db, monkeypatch):
     pro = _plan(db, name='Profissional', price_monthly='149,90', modules=['page.productive_unit', 'page.finance'], max_farms='3', max_users='', max_hectares='300')
     org = _org(db, plan=basic)
     sub = db.query(OrganizationSubscription).one()
+    _confirm_payment(db, sub)
     sub.next_due_date = date(2099, 1, 10)
     db.commit()
     _self_service_env(db, monkeypatch)
@@ -493,6 +505,7 @@ def test_upgrade_stays_immediate_and_marks_change(db, monkeypatch):
     pro = _plan(db, name='Profissional', price_monthly='149,90', modules=['page.productive_unit', 'page.rainfall', 'page.finance'], max_farms='', max_users='', max_hectares='')
     org = _org(db, plan=basic)
     sub = db.query(OrganizationSubscription).one()
+    _confirm_payment(db, sub)
     sub.next_due_date = date(2099, 1, 10)
     db.commit()
     _self_service_env(db, monkeypatch)
@@ -592,3 +605,62 @@ def test_agricultural_api_isolates_organizations(db, monkeypatch):
     summary = api.dashboard_summary(db, first_user)
     assert summary['kpis']['area_total'] == 2
     assert 'finance_balance' not in summary['kpis']
+
+
+def test_paid_plan_is_current_during_full_trial_and_limits_apply_after_trial(db, monkeypatch):
+    from app.models import AuditLog, OrganizationAccessGrant
+
+    basic = _plan(db)
+    full = _plan(db, name='Completo', price_monthly='199,90',
+                 modules=['page.productive_unit', 'page.rainfall', 'page.finance'],
+                 max_farms='', max_users='', max_hectares='')
+    org = _org(db, plan=basic)
+    subscription = db.query(OrganizationSubscription).one()
+    subscription.environment = 'production'
+    subscription.next_due_date = TODAY + timedelta(days=30)
+    db.query(OrganizationBilling).one().asaas_environment = 'production'
+    _confirm_payment(db, subscription)
+    db.add(OrganizationAccessGrant(
+        organization_id=org.id, plan_id=full.id, reason='teste_gratis',
+        starts_on=TODAY - timedelta(days=2), ends_on=TODAY, justification='Teste grátis de homologação.',
+    ))
+    db.commit()
+
+    flashes = _self_service_env(db, monkeypatch)
+    monkeypatch.setattr(routes, 'asaas_env_name', lambda: 'production')
+    monkeypatch.setattr(ent, 'asaas_env_name', lambda: 'production')
+    monkeypatch.setattr(routes, 'asaas_ready', lambda settings: True)
+    monkeypatch.setattr(routes, 'asaas_pilot_allows', lambda *args: True)
+    monkeypatch.setattr(routes, 'today_in_app_timezone', lambda: TODAY)
+    monkeypatch.setattr(routes, '_base_context', lambda *a, **k: k)
+    monkeypatch.setattr(routes, '_repository', lambda _db: None)
+    monkeypatch.setattr(routes.templates, 'TemplateResponse', lambda name, context: (name, context))
+    monkeypatch.setattr(routes, 'update_sandbox_subscription', lambda **kw: pytest.fail('Plano duplicado não pode chamar o Asaas.'))
+    user = SimpleNamespace(id=3, email='gestor@fazenda.com', organization_id=org.id, organization=org)
+    request = SimpleNamespace()
+
+    ent.invalidate_entitlements(org.id)
+    trial_access = ent.cached_entitlements(db, org.id, TODAY)
+    assert trial_access.plan_id == full.id and trial_access.module_allowed('page.finance')
+
+    _, ctx = routes.plan_upgrade_page(request, None, db, user, 't')
+    assert ctx['current_plan_id'] == basic.id and ctx['trial_plan_id'] == full.id
+    assert ctx['plan_change_info'][full.id]['downgrade'] is False
+    html = _render('plan_upgrade.html', ctx)
+    assert 'Plano atual' in html and 'Benefícios do teste grátis' in html
+    assert f'data-dialog-open="change-plan-{basic.id}"' not in html
+    assert f'data-dialog-open="change-plan-{full.id}"' in html
+
+    routes.self_service_plan_change_action(request, 't', str(basic.id), 'MONTHLY', db, user)
+    routes.plan_upgrade_request_action(request, 't', str(basic.id), '', db, user)
+    assert all('já está registrado' in message for _, message in flashes[-2:])
+    assert routes.subscribe_page(request, db, user, 't', plan_id=str(basic.id)).headers['location'] == '/minha-assinatura'
+    duplicate = routes.subscribe_action(request, 't', plan_id=str(basic.id), cycle='MONTHLY',
+                                        billing_type='PIX', accepted_terms='1', db=db, user=user)
+    assert duplicate.headers['location'] == '/minha-assinatura'
+    assert db.query(AuditLog).count() == 0
+
+    paid_access = ent.cached_entitlements(db, org.id, TODAY + timedelta(days=1))
+    assert paid_access.plan_id == basic.id and paid_access.max_farms == 1
+    assert not paid_access.module_allowed('page.finance') and not paid_access.read_only
+    assert db.query(OrganizationSubscription).count() == 1

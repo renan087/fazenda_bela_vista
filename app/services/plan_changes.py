@@ -19,6 +19,18 @@ from app.services.subscription_plans import cycle_months, plan_modules
 PAID = {"CONFIRMED", "RECEIVED", "RECEIVED_IN_CASH"}
 OPEN = {"PENDING", "OVERDUE"}
 
+PAYMENT_REVIEW = {"REFUNDED", "REFUND_REQUESTED", "REFUND_IN_PROGRESS", "CHARGEBACK_REQUESTED",
+                  "CHARGEBACK_DISPUTE", "AWAITING_CHARGEBACK_REVERSAL", "VERIFICAR"}
+
+
+def has_confirmed_subscription_payment(db: Session, subscription_id: int) -> bool:
+    status = (db.query(OrganizationSubscriptionPayment.status)
+              .filter_by(subscription_id=subscription_id)
+              .filter(OrganizationSubscriptionPayment.status.in_(PAID | PAYMENT_REVIEW))
+              .order_by(OrganizationSubscriptionPayment.due_date.desc().nullslast(),
+                        OrganizationSubscriptionPayment.id.desc()).limit(1).scalar())
+    return status in PAID
+
 
 def monthly(amount, cycle: str) -> Decimal:
     return (Decimal(amount or 0) / cycle_months(cycle)).quantize(Decimal("0.01"))

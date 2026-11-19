@@ -151,7 +151,7 @@ def compute_entitlements(db: Session, organization_id: int | None, today: date) 
 
 # Cache curto por organizacao: evita consultar o banco a cada requisicao.
 _CACHE_TTL_SECONDS = 60
-_cache: dict[int, tuple[float, Entitlements]] = {}
+_cache: dict[int, tuple[float, date, Entitlements]] = {}
 _cache_lock = threading.Lock()
 
 
@@ -161,11 +161,11 @@ def cached_entitlements(db: Session, organization_id: int | None, today: date) -
     now = time.monotonic()
     with _cache_lock:
         hit = _cache.get(organization_id)
-        if hit and hit[0] > now:
-            return hit[1]
+        if hit and hit[0] > now and hit[1] == today:
+            return hit[2]
     value = compute_entitlements(db, organization_id, today)
     with _cache_lock:
-        _cache[organization_id] = (now + _CACHE_TTL_SECONDS, value)
+        _cache[organization_id] = (now + _CACHE_TTL_SECONDS, today, value)
     return value
 
 
