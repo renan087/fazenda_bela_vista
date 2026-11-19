@@ -5,7 +5,7 @@ Fonte unica para o modo somente leitura (inadimplencia), o cadeado de modulos e 
 Regras:
 - a organizacao da equipe SiSFarm (slug "sisfarm") nunca e limitada;
 - liberacao manual ativa garante acesso e define o plano;
-- sem assinatura nem liberacao: sem limites (clientes ainda nao migrados para a cobranca);
+- em producao, sem pagamento confirmado nem liberacao: somente leitura;
 - inadimplencia: aviso do 1o dia de atraso ate o fim da tolerancia; depois, somente leitura;
 - plano personalizado (fora do catalogo): sem limites de modulos/quantidade.
 """
@@ -89,7 +89,10 @@ def compute_entitlements(db: Session, organization_id: int | None, today: date) 
     modules = frozenset(plan_modules(plan)) if plan else None
     locked = frozenset(code for code in MODULE_LABELS if modules is not None and code not in modules)
 
-    subscription_ids = [row[0] for row in db.query(OrganizationSubscription.id).filter_by(organization_id=organization_id, environment=env).all()]
+    subscription_query = db.query(OrganizationSubscription.id).filter_by(organization_id=organization_id, environment=env)
+    if env == "production":
+        subscription_query = subscription_query.filter_by(is_current=True)
+    subscription_ids = [row[0] for row in subscription_query.all()]
     days_overdue, overdue_amount, oldest = 0, Decimal("0.00"), None
     if subscription_ids:
         overdue = db.query(OrganizationSubscriptionPayment).filter(
@@ -116,7 +119,7 @@ def compute_entitlements(db: Session, organization_id: int | None, today: date) 
         trial_ends_on = last_trial.ends_on if trial_ended else None
     if trial_ends_on and not trial_ended:
         state = "teste"
-    elif trial_ended:
+    elif trial_ended or (env == "production" and not access.has_access):
         state = "restrito"
     elif access.manual:
         state = "liberado"

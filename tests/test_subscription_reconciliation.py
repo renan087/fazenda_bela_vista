@@ -218,7 +218,7 @@ def test_checkout_expired_webhook_closes_and_restores(db, monkeypatch):
     class Request:
         headers = {'asaas-access-token': 'secret'}
         async def json(self):
-            return {'event': 'CHECKOUT_EXPIRED', 'checkout': {'id': CHECKOUT, 'customer': f'cus_{org.slug}', 'status': 'EXPIRED'}}
+            return {'id': 'evt_checkout_test', 'event': 'CHECKOUT_EXPIRED', 'checkout': {'id': CHECKOUT, 'customer': f'cus_{org.slug}', 'status': 'EXPIRED'}}
 
     assert asyncio.run(asaas_webhook.asaas_webhook(Request(), db)) == {'received': True}
     assert not migration.is_open and migration.status == 'encerrado' and old.status == 'criada'

@@ -53,8 +53,9 @@ class SubscriptionEnforcementMiddleware(BaseHTTPMiddleware):
         try:
             entitlements = await run_in_threadpool(_entitlements_for_email, email)
         except Exception:
-            # Falha ao calcular direitos nunca derruba o sistema do cliente.
             logger.exception("Falha ao verificar o plano da organizacao")
+            if request.method not in SAFE_METHODS and not _starts_with_any(path, READ_ONLY_WRITE_ALLOWED):
+                return Response("Não foi possível verificar o plano. Tente novamente em instantes.", status_code=503)
             return await call_next(request)
         if entitlements.exempt:
             return await call_next(request)
@@ -69,7 +70,7 @@ class SubscriptionEnforcementMiddleware(BaseHTTPMiddleware):
         if entitlements.read_only and request.method not in SAFE_METHODS and not _starts_with_any(path, READ_ONLY_WRITE_ALLOWED):
             request.session["flash"] = {
                 "kind": "error",
-                "message": f"Sistema em modo somente leitura: há pagamento em atraso há {entitlements.days_overdue} dia(s). Regularize em Minha assinatura para voltar a cadastrar e editar.",
+                "message": "Sistema em modo somente leitura. Confira a situação do plano em Minha assinatura para voltar a cadastrar e editar.",
             }
             referer = request.headers.get("referer") or ""
             target = referer if referer.startswith(str(request.base_url)) else "/minha-assinatura"

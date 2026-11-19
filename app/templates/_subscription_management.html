@@ -170,6 +170,9 @@
                 <p class="font-semibold text-slate-900">Voltar para o cartão {{ (saved_card.card_brand ~ ' ') if saved_card.card_brand else '' }}final {{ saved_card.card_last4 or '••••' }}</p>
                 <p class="mt-1 text-sm text-slate-600">Usa o cartão que o cliente já cadastrou no Asaas (último pagamento em {{ (saved_card.paid_date or saved_card.due_date).strftime('%d/%m/%Y') if (saved_card.paid_date or saved_card.due_date) else '—' }}). A assinatura continua a mesma: a próxima cobrança{% if subscription.next_due_date %}, em {{ subscription.next_due_date.strftime('%d/%m/%Y') }},{% endif %} já será no cartão, sem nova data nem link.</p>
             </div>
+            <label class="block text-sm text-slate-700">Referência da autorização do cliente
+                <input name="authorization_reference" maxlength="120" placeholder="Número do atendimento" class="mt-1 w-full rounded-xl border-slate-300">
+            </label>
             <label class="flex items-start gap-2 rounded-xl bg-slate-50 p-3 text-sm text-slate-700"><input type="checkbox" name="customer_authorized" value="1" required class="mt-0.5 rounded border-slate-300 text-brand-500">O cliente autorizou voltar a cobrar neste cartão.</label>
             <button class="rounded-xl bg-brand-500 px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-700">Voltar para o cartão final {{ saved_card.card_last4 or '••••' }}</button>
         </form>

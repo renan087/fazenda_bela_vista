@@ -165,7 +165,7 @@ def test_checkout_webhook_requires_paid_event_and_matching_customer(monkeypatch)
     from sqlalchemy import create_engine
     from sqlalchemy.orm import Session
     from app.db.base import Base
-    from app.models import Organization, OrganizationBilling, OrganizationCardMigration, OrganizationSubscription
+    from app.models import AsaasWebhookEvent, Organization, OrganizationBilling, OrganizationCardMigration, OrganizationSubscription
     from app.routers import asaas_webhook
 
     engine = create_engine('sqlite:///:memory:')
@@ -174,7 +174,7 @@ def test_checkout_webhook_requires_paid_event_and_matching_customer(monkeypatch)
     class Request:
         headers = {'asaas-access-token': 'secret'}
         customer = 'cus_other'
-        async def json(self): return {'event': 'CHECKOUT_PAID', 'checkout': {'id': CHECKOUT, 'customer': self.customer, 'status': 'PAID'}}
+        async def json(self): return {'id': 'evt_checkout_test', 'event': 'CHECKOUT_PAID', 'checkout': {'id': CHECKOUT, 'customer': self.customer, 'status': 'PAID'}}
     with Session(engine) as db:
         org = Organization(name='Teste', slug='webhook-card', is_active=True)
         db.add(org); db.flush()
@@ -192,6 +192,8 @@ def test_checkout_webhook_requires_paid_event_and_matching_customer(monkeypatch)
         request.customer = 'cus_test'
         assert asyncio.run(asaas_webhook.asaas_webhook(request, db)) == {'received': True}
         assert migration.status == 'pago'
+        assert asyncio.run(asaas_webhook.asaas_webhook(request, db)) == {'received': True}
+        assert db.query(AsaasWebhookEvent).count() == 1
 
 
 def test_worker_recovers_paid_checkout_when_webhook_was_not_received(monkeypatch):

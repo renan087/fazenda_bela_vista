@@ -115,7 +115,7 @@ def process_organization(db, organization: Organization, today: date, *, send=se
 
 
 def compose_trial_notice(kind: str, *, organization: Organization, ends_on: date) -> tuple[str, str]:
-    link = f"{app_public_base()}/minha-assinatura/contratar"
+    link = f"{app_public_base()}/planos-disponiveis"
     if kind == "teste_3_dias":
         return (f"Seu teste grátis do SiSFarm termina em {ends_on.strftime('%d/%m/%Y')}",
                 f"Olá!\n\nO teste grátis da {organization.name} no SiSFarm termina em {ends_on.strftime('%d/%m/%Y')}.\n"

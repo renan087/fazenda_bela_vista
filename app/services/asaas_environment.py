@@ -1,8 +1,7 @@
 """Ambiente do Asaas usado pelas assinaturas das organizacoes (sandbox ou producao).
 
-Toda chamada e toda consulta ao banco do modulo de assinaturas usa este ambiente. Producao so e
-ativada quando ASAAS_ENVIRONMENT=production E ASAAS_API_BASE_URL=https://api.asaas.com (duas chaves),
-para que uma unica variavel errada nao gere cobrancas reais.
+Toda chamada e toda consulta ao banco do modulo de assinaturas usa este ambiente. A integração de produção exige URL e credenciais próprias e habilitação explícita.
+A contratação é limitada às organizações do piloto.
 """
 
 from __future__ import annotations
@@ -57,7 +56,21 @@ def asaas_configuration_error(settings=None) -> str | None:
         return f"ASAAS_API_BASE_URL não corresponde ao ambiente {environment.name} (esperado {environment.api_base})."
     if not (settings.asaas_api_key or "").strip():
         return "Configure a chave da API do Asaas (ASAAS_API_KEY)."
+    if environment.is_production:
+        if not getattr(settings, "asaas_live_enabled", False):
+            return "Cobranças reais desativadas (ASAAS_LIVE_ENABLED)."
+        webhook = (settings.asaas_webhook_token or "").strip()
+        if len(webhook) < 32 or webhook == settings.asaas_api_key.strip():
+            return "Configure um token exclusivo do webhook de produção com pelo menos 32 caracteres."
     return None
+
+
+def asaas_pilot_allows(organization_id: int, settings=None) -> bool:
+    settings = settings or get_settings()
+    if not current_asaas_environment(settings).is_production:
+        return True
+    allowed = (getattr(settings, "asaas_pilot_organization_ids", "") or "").split(",")
+    return str(organization_id) in {item.strip() for item in allowed}
 
 
 def asaas_ready(settings=None) -> bool:

@@ -31,6 +31,7 @@ class OrganizationCardMigration(Base):
     amount: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
     cycle: Mapped[str | None] = mapped_column(String(20), nullable=True)
     first_due_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    environment: Mapped[str] = mapped_column(String(20), nullable=False, default="sandbox", server_default="sandbox")
     status: Mapped[str] = mapped_column(String(40), nullable=False, default='preparando')
     last_check_error: Mapped[str | None] = mapped_column(String(255), nullable=True)
     is_open: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True, server_default=text('true'))

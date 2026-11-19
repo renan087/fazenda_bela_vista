@@ -287,6 +287,7 @@ def test_api_respects_plan_modules_and_read_only(db, monkeypatch):
     org = _org(db, plan=_plan(db), overdue_days=20)
     user = SimpleNamespace(email='gestor@fazenda.com', organization_id=org.id)
     monkeypatch.setattr(api, 'today_in_app_timezone', lambda: TODAY)
+    monkeypatch.setattr(api, 'user_has_permission', lambda *args: True)
     api.enforce_plan(_api_request('/api/v1/plots'), db, user)  # setores fazem parte do plano
     api.enforce_plan(_api_request('/api/v1/dashboard'), db, user)
     with pytest.raises(HTTPException) as locked:
@@ -295,8 +296,10 @@ def test_api_respects_plan_modules_and_read_only(db, monkeypatch):
     with pytest.raises(HTTPException) as read_only:
         api.enforce_plan(_api_request('/api/v1/plots', 'POST'), db, user)
     assert read_only.value.status_code == 402
-    monkeypatch.setattr(api, 'is_super_admin_email', lambda email: True)
-    api.enforce_plan(_api_request('/api/v1/harvests'), db, user)
+    monkeypatch.setattr(api, 'user_has_permission', lambda *args: False)
+    with pytest.raises(HTTPException) as forbidden:
+        api.enforce_plan(_api_request('/api/v1/plots'), db, user)
+    assert forbidden.value.status_code == 403
 
 
 def test_api_router_applies_guard_to_every_route():
@@ -540,3 +543,52 @@ def test_most_expensive_plan_gets_premium_theme(db, monkeypatch):
     _, ctx = routes.plan_upgrade_page(request=SimpleNamespace(), modulo=None, db=db, user=SimpleNamespace(id=1, email='g@f.com', organization_id=None), csrf_token='t')
     html = _render('plan_upgrade.html', ctx)
     assert 'Plano mais completo' in html and 'Mais escolhido' in html and 'from-amber-300 to-amber-500' in html
+
+
+def test_production_requires_current_confirmed_charge_and_preserves_read_access(db, monkeypatch):
+    monkeypatch.setattr(ent, 'asaas_env_name', lambda: 'production')
+    org = _org(db)
+    subscription = db.query(OrganizationSubscription).filter_by(organization_id=org.id).one()
+    subscription.environment = 'production'
+    db.flush()
+    assert ent.compute_entitlements(db, org.id, TODAY).read_only
+
+    charge = OrganizationSubscriptionPayment(
+        subscription_id=subscription.id, asaas_payment_id='pay_current',
+        status='CONFIRMED', amount=subscription.amount, due_date=TODAY,
+    )
+    db.add(charge)
+    db.flush()
+    assert not ent.compute_entitlements(db, org.id, TODAY).read_only
+    charge.status = 'REFUNDED'
+    db.flush()
+    assert ent.compute_entitlements(db, org.id, TODAY).read_only
+
+
+def test_agricultural_api_isolates_organizations(db, monkeypatch):
+    from fastapi import HTTPException
+    from app.models import Plot
+    from app.routers import api
+
+    first = _org(db, 'primeira', with_subscription=False)
+    second = _org(db, 'segunda', with_subscription=False)
+    first_farm = Farm(name='Sede', organization_id=first.id, location='MG', total_area=10)
+    second_farm = Farm(name='Outra', organization_id=second.id, location='BA', total_area=20)
+    db.add_all([first_farm, second_farm])
+    db.flush()
+    db.add_all([Plot(name='Primeiro setor', farm_id=first_farm.id, area_hectares=2, plant_count=10),
+                Plot(name='Segundo setor', farm_id=second_farm.id, area_hectares=4, plant_count=20)])
+    db.flush()
+
+    first_user = SimpleNamespace(organization_id=first.id)
+    second_user = SimpleNamespace(organization_id=second.id)
+    assert [plot['name'] for plot in api.list_plots(db, first_user)] == ['Primeiro setor']
+    assert [plot['name'] for plot in api.list_plots(db, second_user)] == ['Segundo setor']
+    with pytest.raises(HTTPException) as denied:
+        api.dashboard_summary(db, first_user, farm_id=second_farm.id)
+    assert denied.value.status_code == 404
+
+    monkeypatch.setattr(api, 'user_has_permission', lambda *args: False)
+    summary = api.dashboard_summary(db, first_user)
+    assert summary['kpis']['area_total'] == 2
+    assert 'finance_balance' not in summary['kpis']

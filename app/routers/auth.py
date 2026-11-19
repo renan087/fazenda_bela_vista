@@ -20,6 +20,7 @@ from app.db.session import get_db
 from app.models import User
 from app.schemas.auth import Token
 from app.services import login_throttle
+from app.services.asaas_environment import current_asaas_environment
 from app.services.audit_log_service import append_audit_event
 from app.services.email_service import send_access_code_email, send_password_reset_email
 from app.services.password_reset import get_valid_password_reset_token, issue_password_reset_token, revoke_user_password_reset_tokens
@@ -107,6 +108,7 @@ def _complete_web_login(
     user: User,
     trusted_browser_token: str | None = None,
     clear_trusted_browser_cookie: bool = False,
+    verified_second_factor: bool = False,
 ):
     try:
         user.last_login_at = utc_now()
@@ -121,6 +123,10 @@ def _complete_web_login(
         )
 
     request.session["user_email"] = user.email
+    if verified_second_factor:
+        request.session["commercial_mfa_at"] = utc_now().timestamp()
+    else:
+        request.session.pop("commercial_mfa_at", None)
     request.session.pop(PENDING_2FA_USER_ID, None)
     request.session.pop(PENDING_2FA_EMAIL, None)
     request.session.pop(PENDING_2FA_LAST_SENT_AT, None)
@@ -230,13 +236,14 @@ def _reactivate_super_admin_if_needed(db: Session, user: User | None) -> None:
 def _start_web_login_challenge(request: Request, db: Session, user: User):
     trusted_browser_cookie = request.cookies.get(_trusted_browser_cookie_name())
     clear_trusted_cookie = False
-    if trusted_browser_cookie:
+    commercial_admin = is_super_admin_email(user.email) and current_asaas_environment().is_production
+    if trusted_browser_cookie and not commercial_admin:
         if validate_trusted_browser_token(db, user, request, trusted_browser_cookie):
             revoke_active_login_codes(db, user.id)
             return _complete_web_login(request, db, user)
         clear_trusted_cookie = True
 
-    if not user.is_two_factor_enabled:
+    if not user.is_two_factor_enabled and not commercial_admin:
         revoke_active_login_codes(db, user.id)
         response = _complete_web_login(request, db, user)
         if clear_trusted_cookie:
@@ -638,7 +645,7 @@ def login_verification_web(
                 extra={"user_email": user.email},
             )
 
-    return _complete_web_login(request, db, user, trusted_browser_token=trusted_browser_token)
+    return _complete_web_login(request, db, user, trusted_browser_token=trusted_browser_token, verified_second_factor=True)
 
 
 @router.post("/login/verificacao/reenviar")
@@ -728,6 +735,8 @@ def login_api(
         )
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Credenciais invalidas")
 
+    if user.is_two_factor_enabled or is_super_admin_email(user.email):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Use o acesso web com verificação em duas etapas.")
     login_throttle.register_success(api_email)
     append_audit_event(request=request, actor_user=user, event_type="auth.api.token.success", outcome="success")
     return Token(access_token=create_access_token(user.email))

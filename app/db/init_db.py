@@ -667,6 +667,7 @@ def _sync_schema() -> None:
         "ALTER TABLE organization_subscriptions ADD COLUMN IF NOT EXISTS pending_previous_amount NUMERIC(12, 2)",
         "ALTER TABLE organization_subscriptions ADD COLUMN IF NOT EXISTS pending_previous_cycle VARCHAR(20)",
         "CREATE INDEX IF NOT EXISTS ix_organization_subscriptions_plan_id ON organization_subscriptions (plan_id)",
+        "ALTER TABLE organization_card_migrations ADD COLUMN IF NOT EXISTS environment VARCHAR(20) NOT NULL DEFAULT 'sandbox'",
         "ALTER TABLE organization_card_migrations ADD COLUMN IF NOT EXISTS first_due_date DATE",
         "ALTER TABLE organization_card_migrations ADD COLUMN IF NOT EXISTS last_check_error VARCHAR(255)",
         "ALTER TABLE organization_card_migrations ALTER COLUMN old_subscription_id DROP NOT NULL",

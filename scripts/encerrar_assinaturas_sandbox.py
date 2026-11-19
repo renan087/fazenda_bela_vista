@@ -25,8 +25,7 @@ def main() -> None:
     args = parser.parse_args()
     with SessionLocal() as db:
         subscriptions = db.query(OrganizationSubscription).filter_by(environment="sandbox", is_current=True).all()
-        sandbox_org_ids = {row.organization_id for row in db.query(OrganizationSubscription.organization_id).filter_by(environment="sandbox").all()}
-        migrations = db.query(OrganizationCardMigration).filter(OrganizationCardMigration.is_open.is_(True), OrganizationCardMigration.organization_id.in_(sandbox_org_ids or {-1})).all()
+        migrations = db.query(OrganizationCardMigration).filter_by(environment="sandbox", is_open=True).all()
         billings = db.query(OrganizationBilling).filter(OrganizationBilling.asaas_environment == "sandbox", OrganizationBilling.asaas_customer_id.isnot(None)).all()
         print(f"Assinaturas de teste atuais: {len(subscriptions)}")
         print(f"Links de cartão pendentes: {len(migrations)}")

@@ -17,7 +17,7 @@ from app.web import routes
 
 
 def _settings(**overrides):
-    values = dict(asaas_environment='sandbox', asaas_api_base_url='https://api-sandbox.asaas.com', asaas_api_key='key', asaas_webhook_token='tok', app_public_url='https://app.sisfarm.com.br')
+    values = dict(asaas_environment='sandbox', asaas_api_base_url='https://api-sandbox.asaas.com', asaas_api_key='key', asaas_webhook_token='token-de-teste-exclusivo-do-webhook', asaas_live_enabled=True, app_public_url='https://app.sisfarm.com.br')
     values.update(overrides)
     return SimpleNamespace(**values)
 
@@ -27,6 +27,8 @@ def _settings(**overrides):
     ({'asaas_api_base_url': 'https://api-sandbox.asaas.com/v3/'}, None),
     ({'asaas_environment': 'production', 'asaas_api_base_url': 'https://api.asaas.com'}, None),
     ({'asaas_environment': 'production'}, 'não corresponde'),
+    ({'asaas_environment': 'production', 'asaas_api_base_url': 'https://api.asaas.com', 'asaas_live_enabled': False}, 'ASAAS_LIVE_ENABLED'),
+    ({'asaas_environment': 'production', 'asaas_api_base_url': 'https://api.asaas.com', 'asaas_webhook_token': 'key'}, 'token exclusivo'),
     ({'asaas_api_base_url': 'https://api.asaas.com'}, 'não corresponde'),
     ({'asaas_api_base_url': 'https://evil.example.com'}, 'não corresponde'),
     ({'asaas_environment': 'prod'}, "deve ser"),

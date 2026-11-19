@@ -15,7 +15,7 @@ from datetime import date, datetime, timedelta, timezone
 
 from sqlalchemy.orm import Session
 
-from app.models import OrganizationAccessGrant, OrganizationSubscription, SubscriptionPlan
+from app.models import OrganizationAccessGrant, OrganizationSubscription, OrganizationSubscriptionPayment, SubscriptionPlan
 from app.services.plan_changes import effective_plan_id
 
 GRANT_REASONS: dict[str, str] = {
@@ -164,6 +164,17 @@ def organization_access(db: Session, organization_id: int, today: date, *, envir
     current = query.first()
     plan_id = effective_plan_id(current, today)
     if current and current.asaas_status == "ACTIVE":
+        if current.environment == "production":
+            paid = {"CONFIRMED", "RECEIVED", "RECEIVED_IN_CASH"}
+            disputed = {"REFUNDED", "REFUND_REQUESTED", "REFUND_IN_PROGRESS", "CHARGEBACK_REQUESTED",
+                        "CHARGEBACK_DISPUTE", "AWAITING_CHARGEBACK_REVERSAL", "VERIFICAR"}
+            payment = (db.query(OrganizationSubscriptionPayment)
+                       .filter_by(subscription_id=current.id)
+                       .filter(OrganizationSubscriptionPayment.status.in_(paid | disputed))
+                       .order_by(OrganizationSubscriptionPayment.due_date.desc().nullslast(),
+                                 OrganizationSubscriptionPayment.id.desc()).first())
+            if not payment or payment.status not in paid:
+                return AccessStatus(False, None, None, plan_id)
         return AccessStatus(True, "assinatura", None, plan_id)
     return AccessStatus(False, None, None, plan_id)
 

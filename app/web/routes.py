@@ -144,7 +144,7 @@ from app.services.asaas_customers import (
 from app.services.asaas_subscriptions import create_sandbox_subscription, get_sandbox_subscription, list_customer_sandbox_subscriptions, list_sandbox_subscription_payments, manage_sandbox_subscription, sandbox_subscription_is_missing, switch_sandbox_subscription_to_saved_card, update_sandbox_subscription
 from app.services.asaas_organization_payment_actions import execute_payment_action
 from app.services.self_signup import TRIAL_DAYS as SELF_SIGNUP_TRIAL_DAYS
-from app.services.asaas_environment import app_public_base, asaas_api_key, asaas_configuration_error, asaas_env_name, asaas_ready, current_asaas_environment
+from app.services.asaas_environment import asaas_pilot_allows, app_public_base, asaas_api_key, asaas_configuration_error, asaas_env_name, asaas_ready, current_asaas_environment
 from app.services.asaas_card_checkout import cancel_sandbox_checkout, create_sandbox_card_checkout_session, safe_asaas_link
 from app.services.commercial_audit import record_commercial_event
 from app.services.organization_subscription_sync import apply_subscription_details, persist_organization_webhook
@@ -3808,6 +3808,15 @@ def _require_admin(request: Request, user: User, db: Session) -> RedirectRespons
 
 def _require_super_admin(request: Request, user: User) -> RedirectResponse | None:
     if is_super_admin_email(user.email):
+        if current_asaas_environment(get_settings()).is_production:
+            path = request.url.path
+            commercial = any(path == prefix or path.startswith(prefix + "/")
+                             for prefix in ("/assinaturas", "/planos", "/organizacoes"))
+            if commercial:
+                verified_at = request.session.get("commercial_mfa_at", 0)
+                if not verified_at or (request.method != "GET" and app_now().timestamp() - verified_at > 1800):
+                    _flash(request, "error", "Entre novamente com o código de verificação para gerenciar assinaturas.")
+                    return _redirect("/dashboard")
         return None
     _flash(request, "error", "Apenas o super administrador pode acessar este modulo.")
     return _redirect("/dashboard")
@@ -9633,7 +9642,7 @@ def subscriptions_page(
                 current[organization.id] = item
             else:
                 previous[organization.id].append(item)
-        migration = db.query(OrganizationCardMigration).filter_by(organization_id=organization.id, is_open=True).first()
+        migration = db.query(OrganizationCardMigration).filter_by(organization_id=organization.id, is_open=True, environment=asaas_env_name()).first()
         if migration:
             migrations[organization.id] = migration
         ids = [item.id for item in subscriptions]
@@ -9826,7 +9835,7 @@ def _customer_subscription_context(db: Session, organization: Organization) -> d
     open_charges = [item for item in charges if item.status in {"PENDING", "OVERDUE"}]
     open_charges.sort(key=lambda item: item.due_date or today)
     paid_charges = [item for item in charges if item.status in {"CONFIRMED", "RECEIVED", "RECEIVED_IN_CASH"}][:24]
-    migration = db.query(OrganizationCardMigration).filter_by(organization_id=organization.id, is_open=True).first()
+    migration = db.query(OrganizationCardMigration).filter_by(organization_id=organization.id, is_open=True, environment=asaas_env_name()).first()
     portfolio = build_subscription_portfolio(db, [organization], today)
     plan = current.plan if current else None
     module_labels = dict(PLAN_MODULES)
@@ -9855,10 +9864,13 @@ def my_subscription_page(request: Request, db: Session = Depends(get_db), user: 
     context = _customer_subscription_context(db, organization)
     can_change = WRITE_FINANCE in permission_codes_for_user(db, user)
     return templates.TemplateResponse("my_subscription.html", _base_context(
-        request, user, csrf_token, "my_subscription", title="Minha assinatura", can_change_payment=can_change, _repo=_repository(db), **context,
+        request, user, csrf_token, "my_subscription", title="Minha assinatura", can_change_payment=can_change,
+        subscription_read_only=_entitlements_for(db, user).read_only if asaas_env_name() == "production" else False,
+        _repo=_repository(db), **context,
     ))
 
 
+SUBSCRIPTION_TERMS_VERSION = "2026-11-18"
 SUBSCRIBE_BILLING_TYPES = {"CREDIT_CARD": "Cartão de crédito", "PIX": "Pix", "BOLETO": "Boleto"}
 
 
@@ -9872,13 +9884,13 @@ def _subscribe_blocker(db: Session, organization_id: int) -> str | None:
     return None
 
 
-def _render_subscribe(request, db, user, csrf_token, *, form=None, error=None, status_code=200):
+def _render_subscribe(request, db, user, csrf_token, plan, *, form=None, error=None, status_code=200):
     organization = user.organization
     billing = db.query(OrganizationBilling).filter_by(organization_id=organization.id).first()
     ent = _entitlements_for(db, user)
-    catalog = active_plans(db)
+    prices = plan_prices(plan)
     defaults = {
-        "plan_id": str(ent.plan_id or (catalog[0].id if catalog else "")), "cycle": "MONTHLY", "billing_type": "CREDIT_CARD",
+        "cycle": "MONTHLY" if "MONTHLY" in prices else next(iter(prices)), "billing_type": "CREDIT_CARD",
         "person_type": "JURIDICA" if billing and len(billing.cpf_cnpj or "") == 14 else "FISICA",
         "name": (billing.contact_name if billing else organization.name) or "", "cpf_cnpj": (billing.cpf_cnpj if billing else "") or "",
         "email": (billing.contact_email if billing else user.email) or "", "mobile_phone": (billing.contact_phone if billing else user.phone) or "",
@@ -9889,16 +9901,17 @@ def _render_subscribe(request, db, user, csrf_token, *, form=None, error=None, s
     first_due = max(ent.trial_ends_on or today, today) if not ent.trial_ended else today
     response = templates.TemplateResponse("subscribe.html", _base_context(
         request, user, csrf_token, "subscribe", title="Contratar plano", _repo=_repository(db),
-        plans_catalog=catalog, plan_prices_of=plan_prices, plan_modules_of=plan_modules, module_labels=dict(PLAN_MODULES),
+        selected_plan=plan, selected_prices=prices,
         billing_types=SUBSCRIBE_BILLING_TYPES, form=defaults,
-        price_json={plan.id: {cycle: str(value) for cycle, value in plan_prices(plan).items()} for plan in catalog}, error=error, first_due=first_due, entitlements=ent,
+        price_json={cycle: str(value) for cycle, value in prices.items()}, error=error, first_due=first_due, entitlements=ent,
     ))
     response.status_code = status_code
     return response
 
 
 @router.get("/minha-assinatura/contratar")
-def subscribe_page(request: Request, db: Session = Depends(get_db), user: User = Depends(get_current_user_web), csrf_token: str = Depends(get_csrf_token)):
+def subscribe_page(request: Request, db: Session = Depends(get_db), user: User = Depends(get_current_user_web),
+                   csrf_token: str = Depends(get_csrf_token), plan_id: str | None = None):
     if not user.organization or WRITE_FINANCE not in permission_codes_for_user(db, user):
         _flash(request, "error", "Somente o responsável pela organização pode contratar o plano.")
         return _redirect("/minha-assinatura")
@@ -9906,14 +9919,23 @@ def subscribe_page(request: Request, db: Session = Depends(get_db), user: User =
     if blocker:
         _flash(request, "info", blocker)
         return _customer_target()
-    return _render_subscribe(request, db, user, csrf_token)
+    if not plan_id:
+        return _redirect("/planos-disponiveis")
+    plan = _subscription_catalog_plan(db, plan_id)
+    if not plan:
+        _flash(request, "error", "Escolha um plano disponível.")
+        return _redirect("/planos-disponiveis")
+    issues = _plan_limit_issues(db, user.organization_id, plan)
+    if issues:
+        return _incompatible_plan(request, issues)
+    return _render_subscribe(request, db, user, csrf_token, plan)
 
 
 @router.post("/minha-assinatura/contratar")
 def subscribe_action(
     request: Request, csrf_token: str = Form(...), plan_id: str = Form(""), cycle: str = Form(""), billing_type: str = Form(""),
     person_type: str = Form("FISICA"), name: str = Form(""), cpf_cnpj: str = Form(""), email: str = Form(""),
-    mobile_phone: str = Form(""), postal_code: str = Form(""), address_number: str = Form(""),
+    mobile_phone: str = Form(""), postal_code: str = Form(""), address_number: str = Form(""), accepted_terms: str = Form(""),
     db: Session = Depends(get_db), user: User = Depends(get_current_user_web),
 ):
     validate_csrf(request, csrf_token)
@@ -9921,15 +9943,26 @@ def subscribe_action(
     if not organization or WRITE_FINANCE not in permission_codes_for_user(db, user):
         _flash(request, "error", "Somente o responsável pela organização pode contratar o plano.")
         return _customer_target()
-    form = {"plan_id": plan_id, "cycle": cycle, "billing_type": billing_type, "person_type": person_type, "name": name, "cpf_cnpj": cpf_cnpj,
+    plan = _subscription_catalog_plan(db, plan_id)
+    if not plan:
+        _flash(request, "error", "Escolha um plano disponível.")
+        return _redirect("/planos-disponiveis")
+    issues = _plan_limit_issues(db, organization.id, plan)
+    if issues:
+        return _incompatible_plan(request, issues)
+    form = {"cycle": cycle, "billing_type": billing_type, "person_type": person_type, "name": name, "cpf_cnpj": cpf_cnpj,
             "email": email, "mobile_phone": mobile_phone, "postal_code": postal_code, "address_number": address_number}
 
     def fail(message):
-        return _render_subscribe(request, db, user, csrf_token, form=form, error=message, status_code=400)
+        return _render_subscribe(request, db, user, csrf_token, plan, form=form, error=message, status_code=400)
 
+    if accepted_terms != "1":
+        return fail("Confirme os termos e as condições da cobrança para contratar.")
     settings = get_settings()
     if not asaas_ready(settings):
         return fail("A contratação está indisponível no momento. Tente novamente mais tarde ou fale com a equipe SiSFarm.")
+    if not asaas_pilot_allows(organization.id, settings):
+        return fail("A contratação ainda não está disponível para esta organização.")
     blocker = _subscribe_blocker(db, organization.id)
     if blocker:
         _flash(request, "info", blocker)
@@ -9945,6 +9978,13 @@ def subscribe_action(
     if errors:
         return fail(" ".join(errors))
     api_key = settings.asaas_api_key.strip()
+    db.query(Organization.id).filter_by(id=organization.id).with_for_update().one()
+    blocker = _subscribe_blocker(db, organization.id)
+    if blocker:
+        return fail(blocker)
+    issues = _plan_limit_issues(db, organization.id, plan)
+    if issues:
+        return _incompatible_plan(request, issues)
     billing = db.query(OrganizationBilling).filter_by(organization_id=organization.id).with_for_update().first()
     if billing is None:
         billing = OrganizationBilling(organization_id=organization.id, contact_name=name.strip(), contact_email=email.strip())
@@ -9959,20 +9999,26 @@ def subscribe_action(
         if error:
             db.rollback()
             return fail("Não foi possível validar seus dados de cobrança agora. Tente novamente em instantes.")
-        linked = {row[0] for row in db.query(OrganizationBilling.asaas_customer_id).filter(OrganizationBilling.organization_id != organization.id, OrganizationBilling.asaas_customer_id.isnot(None))}
-        reusable = next((c for c in customers or [] if c.get("id") and c["id"] not in linked and not c.get("deleted")), None)
-        if customers and not reusable:
+        reference = f"sisfarm-org-{organization.id}"
+        candidates = [item for item in customers or [] if not item.get("deleted")]
+        reusable = candidates[0] if len(candidates) == 1 and candidates[0].get("externalReference") == reference else None
+        if candidates and not reusable:
             db.rollback()
-            return fail("Este CPF/CNPJ já está ligado a outra conta do SiSFarm. Fale com a equipe SiSFarm para contratar.")
+            return fail("O cadastro de cobrança precisa de revisão pela equipe SiSFarm. Nenhuma cobrança foi criada.")
         if reusable:
-            customer_id = str(reusable["id"])
+            customer_id = str(reusable.get("id") or "")
+            if not customer_id.startswith("cus_") or len(customer_id) > 40 or db.query(OrganizationBilling.id).filter(
+                OrganizationBilling.organization_id != organization.id, OrganizationBilling.asaas_customer_id == customer_id
+            ).first():
+                db.rollback()
+                return fail("O cadastro de cobrança precisa de revisão pela equipe SiSFarm.")
         else:
             payload = build_asaas_customer_payload(name=billing.contact_name, cpf_cnpj_digits=billing.cpf_cnpj, email=billing.contact_email, mobile_phone_digits=billing.contact_phone,
                                                    postal_code_digits=billing.postal_code, address_number=billing.address_number, external_reference=f"sisfarm-org-{organization.id}")
             created, error = create_asaas_customer(base_url=settings.asaas_api_base_url, api_key=api_key, payload=payload)
             if error or not created or not created.get("id"):
                 db.rollback()
-                return fail(f"O Asaas recusou os dados de cobrança: {error}" if error else "Não foi possível cadastrar seus dados de cobrança agora.")
+                return fail("Não foi possível confirmar o cadastro de cobrança. Confira os dados ou fale com a equipe SiSFarm.")
             customer_id = str(created["id"])
         billing.asaas_customer_id, billing.asaas_environment = customer_id[:40], asaas_env_name()
         db.commit()
@@ -9980,12 +10026,14 @@ def subscribe_action(
     today = today_in_app_timezone()
     due = today if ent.trial_ended or not ent.trial_ends_on else max(ent.trial_ends_on, today)
     outcome = _contract_subscription(db, user, organization_id=organization.id, billing=billing, plan=plan, name=plan.name, amount=price,
-                                     cycle=cycle, billing_type=billing_type, due=due, api_key=api_key)
+                                     cycle=cycle, billing_type=billing_type, due=due, api_key=api_key, accepted_terms=True)
     invalidate_entitlements(organization.id)
     if outcome["kind"] == "card":
         return RedirectResponse(outcome["link"], status_code=status.HTTP_303_SEE_OTHER)
+    if outcome["kind"] == "incompatible":
+        return _incompatible_plan(request, outcome["issues"])
     if outcome["kind"] == "error":
-        return fail(outcome["message"])
+        return fail("Não foi possível confirmar a contratação. Confira Minha assinatura ou fale com a equipe SiSFarm.")
     _flash(request, outcome["level"], f"Plano {plan.name} contratado. A primeira cobrança vence em {due.strftime('%d/%m/%Y')}." if outcome["kind"] == "created" else outcome["message"])
     return _customer_target()
 
@@ -10003,7 +10051,7 @@ def my_subscription_card_action(request: Request, csrf_token: str = Form(...), d
     if not organization or not asaas_ready(settings):
         _flash(request, "error", "Pagamento com cartão indisponível no momento. Tente novamente mais tarde.")
         return _customer_target()
-    migration = db.query(OrganizationCardMigration).filter_by(organization_id=organization.id, is_open=True).first()
+    migration = db.query(OrganizationCardMigration).filter_by(organization_id=organization.id, is_open=True, environment=asaas_env_name()).first()
     if migration and migration.status == "aguardando" and migration.checkout_link:
         return RedirectResponse(url=migration.checkout_link, status_code=status.HTTP_303_SEE_OTHER)
     if migration:
@@ -10145,11 +10193,15 @@ def plan_upgrade_page(request: Request, modulo: str | None = Query(None), db: Se
     catalog = active_plans(db)
     ordered = sorted(catalog, key=lambda plan: (0 if module_code and module_code in plan_modules(plan) else 1, plan.display_order, plan.name.lower()))
     subscription = _self_service_subscription(db, user)
+    organization_id = user.organization_id
+    can_write_finance = WRITE_FINANCE in permission_codes_for_user(db, user)
+    can_subscribe = bool(organization_id) and can_write_finance and not _subscribe_blocker(db, organization_id)
     current_modules = set(plan_modules(subscription.plan)) if subscription and subscription.plan else set()
     return templates.TemplateResponse("plan_upgrade.html", _base_context(
         request, user, csrf_token, "plan_upgrade", current_subscription=subscription, current_modules=current_modules,
-        can_change_plan=bool(subscription) and WRITE_FINANCE in permission_codes_for_user(db, user),
-        plan_limit_issues={plan.id: _plan_downgrade_issues(db, user.organization_id, plan) for plan in ordered} if subscription else {},
+        can_change_plan=bool(subscription) and can_write_finance, can_subscribe=can_subscribe,
+        plan_in_trial=bool(entitlements.trial_ends_on and not entitlements.trial_ended and not subscription),
+        plan_limit_issues={plan.id: _plan_limit_issues(db, user.organization_id, plan) for plan in ordered} if organization_id else {},
         plan_change_info=_plan_change_info(db, subscription, ordered) if subscription else {},
         premium_plan_id=_premium_plan_id(ordered),
         title="Planos disponíveis", module_code=module_code, module_label=MODULE_LABELS.get(module_code),
@@ -10195,8 +10247,19 @@ def _plan_change_info(db: Session, subscription: OrganizationSubscription, plans
     return info
 
 
-def _plan_downgrade_issues(db: Session, organization_id: int, plan: SubscriptionPlan) -> list[str]:
-    """O que a organizacao ja usa alem dos limites do novo plano (bloqueia a mudanca; nada e apagado)."""
+def _subscription_catalog_plan(db: Session, plan_id: str) -> SubscriptionPlan | None:
+    identifier = _optional_query_int(plan_id)
+    plan = db.get(SubscriptionPlan, identifier) if identifier and 0 < identifier <= 2_147_483_647 else None
+    return plan if plan and plan.status == "ativo" and plan_prices(plan) else None
+
+
+def _incompatible_plan(request: Request, issues: list[str]) -> RedirectResponse:
+    _flash(request, "error", "O plano escolhido não comporta seus cadastros. " + " ".join(issues))
+    return _redirect("/planos-disponiveis")
+
+
+def _plan_limit_issues(db: Session, organization_id: int, plan: SubscriptionPlan) -> list[str]:
+    """O que a organizacao ja usa alem dos limites do novo plano (bloqueia a contratação ou troca de plano)."""
     issues = []
     if plan.max_farms is not None:
         farms = db.query(func.count(Farm.id)).filter(Farm.organization_id == organization_id).scalar() or 0
@@ -10231,7 +10294,7 @@ def self_service_plan_change_action(request: Request, csrf_token: str = Form(...
     if not subscription or not billing or not plan or plan.id == subscription.plan_id:
         _flash(request, "error", "Não foi possível mudar de plano. Atualize a página e tente novamente.")
         return _redirect(target)
-    issues = _plan_downgrade_issues(db, user.organization_id, plan)
+    issues = _plan_limit_issues(db, user.organization_id, plan)
     if issues:
         _flash(request, "error", "O plano escolhido não comporta o uso atual: " + " ".join(issues))
         return _redirect(target)
@@ -10325,6 +10388,9 @@ def plan_upgrade_request_action(request: Request, csrf_token: str = Form(...), p
     if not plan or plan.status != "ativo" or not user.organization_id:
         _flash(request, "error", "Plano indisponível. Atualize a página e tente novamente.")
         return _redirect("/planos-disponiveis")
+    issues = _plan_limit_issues(db, user.organization_id, plan)
+    if issues:
+        return _incompatible_plan(request, issues)
     record_commercial_event(db, user=user, organization_id=user.organization_id, resource="plano", resource_id=plan.id, action="solicitar_mudanca", outcome="success",
                             details={"plano": plan.name, "modulo": modulo if modulo in MODULE_LABELS else None, "solicitante": user.email})
     db.commit()
@@ -10419,7 +10485,7 @@ def save_organization_billing_action(
 @router.post("/organizacoes/{organization_id}/asaas-sandbox")
 def organization_asaas_sandbox_action(
     organization_id: int, request: Request, csrf_token: str = Form(...),
-    action: str = Form("consultar"), customer_id: str | None = Form(None),
+    action: str = Form("consultar"), customer_id: str | None = Form(None), verification_reference: str = Form(""),
     db: Session = Depends(get_db), user: User = Depends(get_current_user_web),
 ):
     denied = _require_super_admin(request, user)
@@ -10454,7 +10520,11 @@ def organization_asaas_sandbox_action(
         return _redirect("/organizacoes")
     if action == "consultar":
         return templates.TemplateResponse("organization_asaas_review.html", _base_context(request, user, csrf_token, "organizations", _repo=_repository(db), title="Cliente Asaas", organization=organization, billing=billing, customers=customers))
+    reference = verification_reference.strip() if isinstance(verification_reference, str) else ""
     if action == "vincular":
+        if current_asaas_environment(settings).is_production and not 5 <= len(reference) <= 120:
+            _flash(request, "error", "Informe a referência da verificação de titularidade da organização.")
+            return _redirect("/organizacoes")
         selected = next((item for item in customers if item.get("id") == customer_id), None)
         if not selected:
             _flash(request, "error", "Cliente não encontrado na consulta atual. Consulte novamente.")
@@ -10477,6 +10547,10 @@ def organization_asaas_sandbox_action(
         return _redirect("/organizacoes")
     billing.asaas_customer_id = resolved_id
     billing.asaas_environment = asaas_env_name()
+    record_commercial_event(db, user=user, organization_id=organization_id, resource="cliente_asaas",
+                            resource_id=billing.id, action=action, outcome="success",
+                            details={"ambiente": billing.asaas_environment, "cliente": resolved_id,
+                                     "referencia_verificacao": reference[:120] or None})
     db.commit()
     _flash(request, "success", "Cliente do Asaas vinculado à organização. Nenhuma cobrança foi criada.")
     return _redirect("/organizacoes")
@@ -10498,7 +10572,7 @@ def create_organization_sandbox_subscription_action(
     if not asaas_ready(settings):
         _flash(request, "error", asaas_configuration_error(settings) or "Integração com o Asaas indisponível.")
         return _redirect(f"/assinaturas?organizacao={organization_id}")
-    organization = db.get(Organization, organization_id)
+    organization = db.query(Organization).filter_by(id=organization_id).with_for_update().first()
     billing = db.query(OrganizationBilling).filter_by(organization_id=organization_id).with_for_update().first()
     if not organization or not billing or not billing.asaas_customer_id or billing.asaas_environment != asaas_env_name():
         _flash(request, "error", "Vincule primeiro o cliente desta organização no Asaas (página Organizações).")
@@ -10542,16 +10616,34 @@ def create_organization_sandbox_subscription_action(
     return _redirect(f"/assinaturas?organizacao={organization_id}")
 
 
-def _contract_subscription(db, user, *, organization_id, billing, plan, name, amount, cycle, billing_type, due, api_key, callback_path="/minha-assinatura") -> dict:
+def _contract_subscription(db, user, *, organization_id, billing, plan, name, amount, cycle, billing_type, due, api_key, callback_path="/minha-assinatura", accepted_terms=False) -> dict:
     """Cria a assinatura no Asaas (Pix/boleto) ou o checkout do cartao. Usado pela equipe e pelo proprio cliente.
 
     Retorna {"kind": "error" | "created" | "pending" | "card", "level", "message", "link"}.
     """
+    if not asaas_pilot_allows(organization_id, get_settings()):
+        return {"kind": "error", "level": "error", "message": "Organização fora do piloto de cobrança."}
+    db.query(Organization.id).filter_by(id=organization_id).with_for_update().one()
+    blocker = _subscribe_blocker(db, organization_id)
+    if blocker:
+        return {"kind": "error", "level": "error", "message": blocker}
+    if plan and accepted_terms:
+        issues = _plan_limit_issues(db, organization_id, plan)
+        if issues:
+            return {"kind": "incompatible", "issues": issues}
     remote_subscriptions, error = list_customer_sandbox_subscriptions(api_key=api_key, customer_id=billing.asaas_customer_id)
     if error:
         return {"kind": "error", "level": "error", "message": error}
     if any(not item['deleted'] and item.get('status') not in {'INACTIVE', 'EXPIRED'} for item in remote_subscriptions):
         return {"kind": "error", "level": "error", "message": "O cliente possui uma assinatura ativa ou de situação não confirmada no Asaas. Confira antes de criar outra."}
+    if accepted_terms:
+        record_commercial_event(
+            db, user=user, organization_id=organization_id, resource="assinatura", resource_id=None,
+            action="aceitar_contratacao", outcome="success",
+            details={"termos_versao": SUBSCRIPTION_TERMS_VERSION, "plano_id": plan.id,
+                     "plano_versao": plan.version, "valor": str(amount), "ciclo": cycle,
+                     "forma": billing_type, "primeiro_vencimento": due.isoformat()},
+        )
     if billing_type == "CREDIT_CARD":
         link, error = _start_card_subscription_checkout(db, user, organization_id=organization_id, billing=billing, plan=plan, name=name, amount=amount, cycle=cycle, due=due, api_key=api_key, callback_path=callback_path)
         if error:
@@ -10587,7 +10679,7 @@ def _contract_subscription(db, user, *, organization_id, billing, plan, name, am
 
 def _start_card_subscription_checkout(db, user, *, organization_id, billing, plan, name, amount, cycle, due, api_key, callback_path="/minha-assinatura"):
     """Contratacao no cartao: gera o checkout hospedado; a assinatura so e criada apos o pagamento."""
-    migration = OrganizationCardMigration(organization_id=organization_id, old_subscription_id=None, plan_id=plan.id if plan else None, plan_name=name, amount=amount, cycle=cycle, first_due_date=due, status="preparando")
+    migration = OrganizationCardMigration(organization_id=organization_id, environment=asaas_env_name(), old_subscription_id=None, plan_id=plan.id if plan else None, plan_name=name, amount=amount, cycle=cycle, first_due_date=due, status="preparando")
     db.add(migration)
     db.flush()
     migration_id = migration.id
@@ -10660,7 +10752,7 @@ def _saved_card_charge(db: Session, organization_id: int) -> OrganizationSubscri
 
 @router.post("/organizacoes/{organization_id}/assinatura/cartao-salvo")
 @router.post("/organizacoes/{organization_id}/assinatura-sandbox/cartao-salvo")
-def switch_to_saved_card_action(organization_id: int, request: Request, csrf_token: str = Form(...), customer_authorized: str = Form(""), db: Session = Depends(get_db), user: User = Depends(get_current_user_web)):
+def switch_to_saved_card_action(organization_id: int, request: Request, csrf_token: str = Form(...), customer_authorized: str = Form(""), authorization_reference: str = Form(""), db: Session = Depends(get_db), user: User = Depends(get_current_user_web)):
     """Volta a cobrar no cartao ja cadastrado, na mesma assinatura: mantem ciclo e proxima cobranca."""
     denied = _require_super_admin(request, user)
     if denied:
@@ -10674,12 +10766,18 @@ def switch_to_saved_card_action(organization_id: int, request: Request, csrf_tok
     if customer_authorized != "1":
         _flash(request, "error", "Confirme que o cliente autorizou voltar a cobrar no cartão cadastrado.")
         return _redirect(target)
-    kind, message = _switch_to_saved_card(db, request, user, organization_id=organization_id, api_key=settings.asaas_api_key.strip(), by_customer=False)
+    reference = authorization_reference.strip() if isinstance(authorization_reference, str) else ""
+    if current_asaas_environment(settings).is_production and not 5 <= len(reference) <= 120:
+        _flash(request, "error", "Informe a referência do atendimento com a autorização do cliente.")
+        return _redirect(target)
+    kind, message = _switch_to_saved_card(db, request, user, organization_id=organization_id,
+                                         api_key=settings.asaas_api_key.strip(), by_customer=False,
+                                         authorization_reference=reference[:120])
     _flash(request, kind, message if kind == "success" else message + " Se preferir, gere um link para o cliente cadastrar o cartão.")
     return _redirect(target)
 
 
-def _switch_to_saved_card(db: Session, request: Request, user, *, organization_id: int, api_key: str, by_customer: bool) -> tuple[str, str]:
+def _switch_to_saved_card(db: Session, request: Request, user, *, organization_id: int, api_key: str, by_customer: bool, authorization_reference: str = "") -> tuple[str, str]:
     """Volta a assinatura atual (Pix/boleto) para o ultimo cartao salvo. Retorna (tipo da mensagem, mensagem)."""
     subscription = db.query(OrganizationSubscription).filter_by(organization_id=organization_id, environment=asaas_env_name(), is_current=True).first()
     billing = db.query(OrganizationBilling).filter_by(organization_id=organization_id, asaas_environment=asaas_env_name()).first()
@@ -10691,7 +10789,7 @@ def _switch_to_saved_card(db: Session, request: Request, user, *, organization_i
     subscription_id = subscription.id
     reserved = db.query(OrganizationSubscription).filter_by(id=subscription_id, status="criada", asaas_status="ACTIVE").update({"status": "revisao"}, synchronize_session=False)
     if reserved:
-        record_commercial_event(db, user=user, organization_id=organization_id, resource="assinatura", resource_id=subscription_id, action="voltar_cartao_salvo", outcome="iniciado", details={"cartao_final": saved.card_last4, "autorizado_pelo_cliente": True, "por_cliente": by_customer})
+        record_commercial_event(db, user=user, organization_id=organization_id, resource="assinatura", resource_id=subscription_id, action="voltar_cartao_salvo", outcome="iniciado", details={"cartao_final": saved.card_last4, "autorizado_pelo_cliente": True, "por_cliente": by_customer, "referencia_autorizacao": authorization_reference or None})
     db.commit()
     if not reserved:
         return "error", "Outra operação está em andamento. Atualize a página em instantes."
@@ -10724,9 +10822,12 @@ def close_card_checkout_action(organization_id: int, request: Request, csrf_toke
     if not asaas_ready(settings):
         _flash(request, "error", asaas_configuration_error(settings) or "Integração com o Asaas indisponível.")
         return _redirect(target)
-    migration = db.query(OrganizationCardMigration).filter_by(organization_id=organization_id, is_open=True).with_for_update().first()
+    migration = db.query(OrganizationCardMigration).filter_by(organization_id=organization_id, is_open=True, environment=asaas_env_name()).with_for_update().first()
     if not migration or migration.status not in {"preparando", "aguardando", "revisao"}:
         _flash(request, "error", "Não há checkout pendente que possa ser encerrado. Se o pagamento foi aprovado, aguarde o processamento.")
+        return _redirect(target)
+    if not migration.checkout_id and migration.environment == "production":
+        _flash(request, "error", "Checkout sem identificador. A tentativa permanece em revisão até a conferência no Asaas.")
         return _redirect(target)
     if migration.checkout_id:
         remote_status, error = cancel_sandbox_checkout(api_key=settings.asaas_api_key.strip(), checkout_id=migration.checkout_id)
@@ -10805,7 +10906,7 @@ def _open_card_migration(db: Session, user, *, organization_id: int, old: Organi
     A assinatura atual so e suspensa depois que o Asaas confirmar o pagamento (processo automatico).
     Retorna (migration, erro).
     """
-    migration = OrganizationCardMigration(organization_id=organization_id, old_subscription_id=old.id, first_due_date=due, status='preparando')
+    migration = OrganizationCardMigration(organization_id=organization_id, environment=asaas_env_name(), old_subscription_id=old.id, first_due_date=due, status='preparando')
     db.add(migration)
     old.status = 'migrando'
     db.flush()

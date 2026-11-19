@@ -1,18 +1,19 @@
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
-from app.core.admin_access import is_super_admin_email
 from app.core.deps import get_current_user_api
-from app.core.permissions_catalog import PAGE_IRRIGATION, PAGE_OPERATIONS, PAGE_PESTS, PAGE_PRODUCTION, PAGE_PRODUCTIVE_UNIT
+from app.core.permissions_catalog import PAGE_DASHBOARD, PAGE_FINANCE, PAGE_IRRIGATION, PAGE_OPERATIONS, PAGE_PESTS, PAGE_PRODUCTION, PAGE_PRODUCTIVE_UNIT
 from app.core.timezone import today_in_app_timezone
 from app.db.session import get_db
-from app.models import User
+from app.models import Farm, User
 from app.repositories.farm import FarmRepository
 from app.services.dashboard import build_dashboard_context
 from app.services.entitlements import cached_entitlements
+from app.services.rbac_service import user_has_permission
 
 # Modulo do plano exigido por cada recurso da API (mesmos codigos do menu web).
 API_MODULES = {
+    "/api/v1/dashboard": PAGE_DASHBOARD,
     "/api/v1/plots": PAGE_PRODUCTIVE_UNIT,
     "/api/v1/irrigations": PAGE_IRRIGATION,
     "/api/v1/fertilizations": PAGE_OPERATIONS,
@@ -23,10 +24,10 @@ API_MODULES = {
 
 def enforce_plan(request: Request, db: Session = Depends(get_db), current_user: User = Depends(get_current_user_api)) -> None:
     """Aplica na API os mesmos direitos das paginas: modulos do plano e modo somente leitura."""
-    if is_super_admin_email(current_user.email):
-        return
-    entitlements = cached_entitlements(db, current_user.organization_id, today_in_app_timezone())
     module = API_MODULES.get(request.url.path.rstrip("/"))
+    if module and not user_has_permission(db, current_user, module):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Sem permissão para acessar este recurso.")
+    entitlements = cached_entitlements(db, current_user.organization_id, today_in_app_timezone())
     if not entitlements.module_allowed(module):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Este recurso não faz parte do plano da organização.")
     if entitlements.read_only and request.method not in {"GET", "HEAD", "OPTIONS"}:
@@ -36,19 +37,32 @@ def enforce_plan(request: Request, db: Session = Depends(get_db), current_user: 
 router = APIRouter(prefix="/api/v1", tags=["farm"], dependencies=[Depends(enforce_plan)])
 
 
-def _repo(db: Session) -> FarmRepository:
-    return FarmRepository(db)
+def _organization_farm_ids(db: Session, user: User) -> list[int]:
+    if user.organization_id is None:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Usuário sem organização.")
+    return [farm_id for (farm_id,) in db.query(Farm.id).filter_by(organization_id=user.organization_id)]
 
 
 @router.get("/dashboard")
 def dashboard_summary(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user_api),
+    farm_id: int | None = None,
 ):
-    del current_user
-    data = build_dashboard_context(_repo(db))
+    farms = _organization_farm_ids(db, current_user)
+    if farm_id is not None and farm_id not in farms:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Fazenda não encontrada.")
+    data = build_dashboard_context(
+        FarmRepository(db), organization_id=current_user.organization_id,
+        farm_id=farm_id if farm_id is not None else min(farms, default=-1),
+    )
+    kpis = data["kpis"]
+    entitlements = cached_entitlements(db, current_user.organization_id, today_in_app_timezone())
+    if not entitlements.module_allowed(PAGE_FINANCE) or not user_has_permission(db, current_user, PAGE_FINANCE):
+        kpis = {key: value for key, value in kpis.items()
+                if not key.startswith(("finance_", "cost_", "operational_cost_"))}
     return {
-        "kpis": data["kpis"],
+        "kpis": kpis,
         "forecast": data["forecast_plots"],
     }
 
@@ -58,8 +72,7 @@ def list_plots(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user_api),
 ):
-    del current_user
-    plots = _repo(db).list_plots()
+    plots = FarmRepository(db).list_plots(farm_ids=_organization_farm_ids(db, current_user))
     return [
         {
             "id": plot.id,
@@ -82,7 +95,6 @@ def list_irrigations(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user_api),
 ):
-    del current_user
     return [
         {
             "id": item.id,
@@ -92,7 +104,7 @@ def list_irrigations(
             "duration_minutes": item.duration_minutes,
             "notes": item.notes,
         }
-        for item in _repo(db).list_irrigations()
+        for item in FarmRepository(db).list_irrigations(farm_ids=_organization_farm_ids(db, current_user))
     ]
 
 
@@ -101,7 +113,6 @@ def list_fertilizations(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user_api),
 ):
-    del current_user
     return [
         {
             "id": item.id,
@@ -111,7 +122,7 @@ def list_fertilizations(
             "dose": item.dose,
             "cost": float(item.cost),
         }
-        for item in _repo(db).list_fertilizations()
+        for item in FarmRepository(db).list_fertilizations(farm_ids=_organization_farm_ids(db, current_user))
     ]
 
 
@@ -120,7 +131,6 @@ def list_harvests(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user_api),
 ):
-    del current_user
     return [
         {
             "id": item.id,
@@ -129,7 +139,7 @@ def list_harvests(
             "sacks_produced": float(item.sacks_produced),
             "productivity_per_hectare": float(item.productivity_per_hectare or 0),
         }
-        for item in _repo(db).list_harvests()
+        for item in FarmRepository(db).list_harvests(farm_ids=_organization_farm_ids(db, current_user))
     ]
 
 
@@ -138,7 +148,6 @@ def list_pest_incidents(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user_api),
 ):
-    del current_user
     return [
         {
             "id": item.id,
@@ -149,5 +158,5 @@ def list_pest_incidents(
             "severity": item.severity,
             "treatment": item.treatment,
         }
-        for item in _repo(db).list_pest_incidents()
+        for item in FarmRepository(db).list_pest_incidents(farm_ids=_organization_farm_ids(db, current_user))
     ]

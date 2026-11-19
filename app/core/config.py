@@ -64,6 +64,8 @@ class Settings(BaseSettings):
     # Ambiente das assinaturas: "sandbox" (testes) ou "production". Producao exige tambem
     # ASAAS_API_BASE_URL=https://api.asaas.com, para nao ativar cobrancas reais por engano.
     asaas_environment: str = "sandbox"
+    asaas_live_enabled: bool = False
+    asaas_pilot_organization_ids: str = ""
     # Endereco publico do SiSFarm, usado no retorno do checkout do Asaas.
     app_public_url: str = "https://app.sisfarm.com.br"
     # Contato exibido ao cliente na pagina "Minha assinatura" (opcional).

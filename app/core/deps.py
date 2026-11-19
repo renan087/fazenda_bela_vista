@@ -2,6 +2,7 @@ from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
 
+from app.core.admin_access import is_super_admin_email
 from app.core.csrf import ensure_csrf_token
 from app.core.session import clear_expired_session, touch_session_activity
 from app.core.user_context import sync_user_context_from_preferences
@@ -32,6 +33,8 @@ def get_current_user_api(
             detail="Usuario nao encontrado ou inativo",
             headers={"WWW-Authenticate": "Bearer"},
         )
+    if user.is_two_factor_enabled or is_super_admin_email(user.email):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Use o acesso web com verificação em duas etapas.")
     return user
 
 

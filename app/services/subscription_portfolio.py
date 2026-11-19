@@ -13,6 +13,7 @@ from decimal import Decimal
 from sqlalchemy.orm import Session
 
 from app.services.subscription_plans import cycle_months
+from app.services.asaas_environment import asaas_env_name
 from app.services.access_grants import active_grants_by_organization, is_expiring_soon
 from app.models import (
     Organization,
@@ -88,15 +89,20 @@ def build_subscription_portfolio(db: Session, organizations: list[Organization],
     if not org_ids:
         return portfolio
 
+    environment = asaas_env_name()
     billing_by_org = {
         item.organization_id: item
         for item in db.query(OrganizationBilling).filter(OrganizationBilling.organization_id.in_(org_ids)).all()
+        if item.asaas_environment in {None, environment}
     }
-    subscriptions = db.query(OrganizationSubscription).filter(OrganizationSubscription.organization_id.in_(org_ids)).all()
+    subscriptions = db.query(OrganizationSubscription).filter(
+        OrganizationSubscription.organization_id.in_(org_ids), OrganizationSubscription.environment == environment
+    ).all()
     current_by_org = {item.organization_id: item for item in subscriptions if item.is_current}
     org_by_subscription = {item.id: item.organization_id for item in subscriptions}
     open_migrations = db.query(OrganizationCardMigration).filter(
         OrganizationCardMigration.organization_id.in_(org_ids),
+        OrganizationCardMigration.environment == environment,
         OrganizationCardMigration.is_open.is_(True),
     ).all()
     open_migration_review = {item.organization_id for item in open_migrations if item.status == "revisao"}

@@ -41,6 +41,8 @@ services:
         sync: false
       - key: ASAAS_ENVIRONMENT
         value: sandbox
+      - key: ASAAS_LIVE_ENABLED
+        value: "false"
 
 databases:
   - name: fazenda-bela-vista-db

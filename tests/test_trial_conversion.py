@@ -68,7 +68,7 @@ def test_trial_notices_three_days_before_and_after_end_only_once():
     send = lambda to, subject, body, ctx: sent.append((to, subject, body))
     assert billing_notices.process_trial_notices(db, TODAY, send=send) == [(org.id, 'teste_3_dias')]
     assert billing_notices.process_trial_notices(db, TODAY, send=send) == []
-    assert sent[0][0] == 'ana@x.com' and '/minha-assinatura/contratar' in sent[0][2]
+    assert sent[0][0] == 'ana@x.com' and '/planos-disponiveis' in sent[0][2]
 
 
 def _env(monkeypatch, *, card=False):
@@ -93,7 +93,7 @@ def _env(monkeypatch, *, card=False):
 
 
 def _form(plan, **extra):
-    data = dict(plan_id=str(plan.id), cycle='MONTHLY', billing_type='PIX', person_type='FISICA', name='Ana Souza', cpf_cnpj='529.982.247-25',
+    data = dict(accepted_terms="1", plan_id=str(plan.id), cycle='MONTHLY', billing_type='PIX', person_type='FISICA', name='Ana Souza', cpf_cnpj='529.982.247-25',
                 email='ana@x.com', mobile_phone='(35) 99999-8888', postal_code='37000-000', address_number='10')
     data.update(extra)
     return data
@@ -135,3 +135,71 @@ def test_invalid_billing_data_and_unavailable_cycle_are_rejected(monkeypatch):
     no_cycle = routes.subscribe_action(request=SimpleNamespace(), csrf_token='t', db=db, user=user, **_form(plan, cycle='QUARTERLY'))
     assert no_cycle.status_code == 400 and 'periodicidade' in no_cycle.context['error']
     assert not db.query(OrganizationSubscription).count()
+
+
+def test_document_match_without_organization_reference_requires_review(monkeypatch):
+    calls = _env(monkeypatch)
+    monkeypatch.setattr(routes, 'find_asaas_customers_by_document',
+                        lambda **kwargs: ([{'id': 'cus_unlinked', 'externalReference': 'outro-cadastro'}], None))
+    with _db() as db:
+        _, plan = _trial_org(db, TODAY + timedelta(days=5))
+        user = db.query(User).one()
+        response = routes.subscribe_action(request=SimpleNamespace(), csrf_token='t', db=db, user=user, **_form(plan))
+        assert response.status_code == 400
+        assert 'revisão' in response.context['error']
+        assert db.query(OrganizationBilling).count() == 0
+        assert db.query(OrganizationSubscription).count() == 0
+        assert 'customer' not in calls and 'subscription' not in calls
+
+
+def test_trial_catalog_and_checkout_enforce_current_organization_limits(monkeypatch):
+    from jinja2 import ChoiceLoader, DictLoader
+    from app.models import Farm
+
+    calls = _env(monkeypatch)
+    monkeypatch.setattr(routes, 'find_asaas_customers_by_document',
+                        lambda **kwargs: calls.setdefault('lookup', kwargs) and ([], None))
+    env = routes.templates.env.overlay(loader=ChoiceLoader([
+        DictLoader({'base.html': '{% block content %}{% endblock %}'}),
+        routes.templates.env.loader,
+    ]))
+    with _db() as db:
+        org, complete = _trial_org(db, TODAY + timedelta(days=5))
+        limited = plans.create_plan(db, plans.parse_plan_form(
+            name='Essencial', description=None, price_monthly='99,00', price_quarterly='',
+            price_semiannual='', price_yearly='', max_farms='1', max_users='1',
+            max_hectares='50', modules=[], trial_days='', display_order='', is_featured=None,
+        ))
+        plans.activate_plan(db, limited)
+        user = db.query(User).one()
+        db.add(Farm(organization_id=org.id, name='Sede', location='MG', total_area=40))
+        db.commit()
+
+        request = SimpleNamespace()
+        assert routes.subscribe_page(request, db, user, 't').headers['location'] == '/planos-disponiveis'
+        checkout = routes.subscribe_page(request, db, user, 't', plan_id=str(limited.id))
+        rendered_checkout = env.get_template('subscribe.html').render(**checkout.context)
+        assert f'name="plan_id" value="{limited.id}"' in rendered_checkout
+        assert complete.name not in rendered_checkout
+
+        db.add_all([
+            Farm(organization_id=org.id, name='Filial', location='MG', total_area=20),
+            User(organization_id=org.id, name='Bruno', email='bruno@example.com', hashed_password='h', is_active=True),
+        ])
+        db.commit()
+
+        catalog = routes.plan_upgrade_page(request, None, db, user, 't')
+        rendered_catalog = env.get_template('plan_upgrade.html').render(**catalog.context, csrf_token='t')
+        assert 'Incompatível com seus cadastros' in rendered_catalog
+        assert f'/minha-assinatura/contratar?plan_id={complete.id}' in rendered_catalog
+        assert f'/minha-assinatura/contratar?plan_id={limited.id}' not in rendered_catalog
+        assert len(catalog.context['plan_limit_issues'][limited.id]) == 3
+
+        denied = routes.subscribe_page(request, db, user, 't', plan_id=str(limited.id))
+        assert denied.headers['location'] == '/planos-disponiveis'
+        for billing_type in ('PIX', 'BOLETO', 'CREDIT_CARD'):
+            denied = routes.subscribe_action(request, 't', db=db, user=user, **_form(limited, billing_type=billing_type))
+            assert denied.headers['location'] == '/planos-disponiveis'
+        assert db.query(OrganizationBilling).count() == 0
+        assert db.query(OrganizationSubscription).count() == 0
+        assert {'lookup', 'customer', 'subscription', 'checkout'}.isdisjoint(calls)

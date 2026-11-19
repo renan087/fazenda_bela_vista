@@ -440,12 +440,14 @@ class FarmRepository:
             .first()
         )
 
-    def list_irrigations(self, limit: int | None = None) -> list[IrrigationRecord]:
+    def list_irrigations(self, limit: int | None = None, *, farm_ids: list[int] | None = None) -> list[IrrigationRecord]:
         query = (
             self.db.query(IrrigationRecord)
             .options(joinedload(IrrigationRecord.plot))
             .order_by(IrrigationRecord.irrigation_date.desc(), IrrigationRecord.id.desc())
         )
+        if farm_ids is not None:
+            query = query.filter(IrrigationRecord.plot.has(Plot.farm_id.in_(farm_ids)))
         return query.limit(limit).all() if limit else query.all()
 
     def get_irrigation(self, record_id: int) -> IrrigationRecord | None:
@@ -484,7 +486,7 @@ class FarmRepository:
             .first()
         )
 
-    def list_fertilizations(self, limit: int | None = None) -> list[FertilizationRecord]:
+    def list_fertilizations(self, limit: int | None = None, *, farm_ids: list[int] | None = None) -> list[FertilizationRecord]:
         query = (
             self.db.query(FertilizationRecord)
             .options(
@@ -497,6 +499,8 @@ class FarmRepository:
             )
             .order_by(FertilizationRecord.application_date.desc(), FertilizationRecord.id.desc())
         )
+        if farm_ids is not None:
+            query = query.filter(FertilizationRecord.plot.has(Plot.farm_id.in_(farm_ids)))
         return query.limit(limit).all() if limit else query.all()
 
     def list_purchased_inputs(
@@ -865,12 +869,14 @@ class FarmRepository:
             query = query.filter(StockInventorySession.farm_id == farm_id)
         return query.all()
 
-    def list_harvests(self, limit: int | None = None) -> list[HarvestRecord]:
+    def list_harvests(self, limit: int | None = None, *, farm_ids: list[int] | None = None) -> list[HarvestRecord]:
         query = (
             self.db.query(HarvestRecord)
             .options(joinedload(HarvestRecord.plot).joinedload(Plot.variety), joinedload(HarvestRecord.plot).joinedload(Plot.farm))
             .order_by(HarvestRecord.harvest_date.desc(), HarvestRecord.id.desc())
         )
+        if farm_ids is not None:
+            query = query.filter(HarvestRecord.plot.has(Plot.farm_id.in_(farm_ids)))
         return query.limit(limit).all() if limit else query.all()
 
     def get_harvest(self, record_id: int) -> HarvestRecord | None:
@@ -999,12 +1005,14 @@ class FarmRepository:
             .first()
         )
 
-    def list_pest_incidents(self, limit: int | None = None) -> list[PestIncident]:
+    def list_pest_incidents(self, limit: int | None = None, *, farm_ids: list[int] | None = None) -> list[PestIncident]:
         query = (
             self.db.query(PestIncident)
             .options(joinedload(PestIncident.plot))
             .order_by(PestIncident.occurrence_date.desc(), PestIncident.id.desc())
         )
+        if farm_ids is not None:
+            query = query.filter(PestIncident.plot.has(Plot.farm_id.in_(farm_ids)))
         return query.limit(limit).all() if limit else query.all()
 
     def get_pest_incident(self, record_id: int) -> PestIncident | None:

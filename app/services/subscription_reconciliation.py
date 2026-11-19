@@ -155,6 +155,8 @@ def reconcile_migration(db, migration: OrganizationCardMigration, api_key: str) 
     """Checkout de cartao que nao sera mais pago: encerra automaticamente e restaura a assinatura anterior."""
     if migration.status != "revisao":
         return
+    if not migration.checkout_id and migration.environment == "production":
+        raise ReconciliationError("Checkout sem identificador. Confirme a tentativa no Asaas antes de liberar nova contratação.")
     if migration.checkout_id:
         status, error = cancel_sandbox_checkout(api_key=api_key, checkout_id=migration.checkout_id)
         if error:
@@ -184,7 +186,7 @@ def reconcile_organization(db, organization_id: int, api_key: str, *, full: bool
     now = _now()
     issues: list[str] = []
     billing = db.query(OrganizationBilling).filter_by(organization_id=organization_id, asaas_environment=asaas_env_name()).first()
-    migration = db.query(OrganizationCardMigration).filter_by(organization_id=organization_id, is_open=True).with_for_update().first()
+    migration = db.query(OrganizationCardMigration).filter_by(organization_id=organization_id, is_open=True, environment=asaas_env_name()).with_for_update().first()
     if migration and migration.status == "revisao":
         try:
             reconcile_migration(db, migration, api_key)
@@ -244,6 +246,7 @@ def organizations_needing_reconciliation(db, now: datetime) -> list[int]:
         OrganizationSubscriptionPayment, OrganizationSubscriptionPayment.subscription_id == OrganizationSubscription.id
     ).filter(or_(OrganizationSubscriptionPayment.operation_state.isnot(None), OrganizationSubscriptionPayment.status == "VERIFICAR")).all())
     ids.update(row[0] for row in db.query(OrganizationCardMigration.organization_id).filter(
+        OrganizationCardMigration.environment == asaas_env_name(),
         OrganizationCardMigration.is_open.is_(True), OrganizationCardMigration.status == "revisao"
     ).all())
     return sorted(ids)
@@ -277,8 +280,10 @@ def _tick(limit: int = 20) -> None:
     for organization_id in organization_ids:
         with SessionLocal() as db:
             try:
-                reconcile_organization(db, organization_id, api_key)
+                issues = reconcile_organization(db, organization_id, api_key)
                 db.commit()
+                if issues and asaas_env_name() == "production":
+                    logger.warning("Conciliação Asaas com pendências: organização=%s total=%s", organization_id, len(issues))
                 invalidate_entitlements(organization_id)
             except Exception:
                 db.rollback()

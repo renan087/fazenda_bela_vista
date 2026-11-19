@@ -32,10 +32,11 @@
         {% set modules = plan_modules_of(plan) %}
         {% set includes_module = module_code and module_code in modules %}
         {% set is_current = current_plan_id == plan.id %}
-        {% set featured = includes_module or (not module_code and plan.is_featured) %}
+        {% set limit_issues = (plan_limit_issues|default({})).get(plan.id, []) %}
+        {% set featured = not limit_issues and (includes_module or (not module_code and plan.is_featured)) %}
         {% set prices = plan_prices_of(plan) %}
         {% set main_cycle = 'MONTHLY' if 'MONTHLY' in prices else ((prices.keys()|list)[0] if prices else none) %}
-        {% set variant = 'featured' if featured else ('premium' if plan.id == premium_plan_id else 'light') %}
+        {% set variant = 'featured' if featured else ('premium' if not limit_issues and plan.id == premium_plan_id else 'light') %}
         {% set t = {
             'featured': {'card': 'bg-gradient-to-b from-[#173d22] to-[#0c2416] text-white shadow-[0_0_0_2px_rgba(163,230,53,0.7),0_25px_50px_-12px_rgba(22,101,52,0.55)] lg:-mt-4', 'badge': 'bg-lime-400 text-[#0c2416]', 'tile': 'bg-gradient-to-br from-lime-400 to-emerald-600 text-white', 'muted': 'text-emerald-50/85', 'line': 'border-white/15', 'price': 'text-lime-400', 'sub': 'text-emerald-50/70', 'strip': 'divide-white/15 bg-white/10 ring-1 ring-lime-400/40', 'icon': 'text-lime-400', 'check': 'text-lime-400', 'lock': 'text-emerald-50/45', 'cta': 'bg-gradient-to-r from-lime-400 to-lime-500 text-[#0c2416] shadow-lg shadow-lime-500/30 hover:from-lime-300 hover:to-lime-400', 'current': 'bg-white/10 text-emerald-50', 'pill': 'bg-white/15 text-white', 'arrow': True},
             'premium': {'card': 'bg-gradient-to-b from-[#3d3110] via-[#211c0b] to-[#0f1f12] text-white shadow-[0_0_0_2px_rgba(251,191,36,0.75),0_25px_50px_-12px_rgba(180,130,20,0.5)] lg:-mt-4', 'badge': 'bg-gradient-to-r from-amber-300 to-amber-400 text-[#2a1f05]', 'tile': 'bg-gradient-to-br from-amber-300 to-amber-600 text-[#2a1f05]', 'muted': 'text-amber-50/85', 'line': 'border-amber-200/20', 'price': 'text-amber-300', 'sub': 'text-amber-50/70', 'strip': 'divide-amber-200/20 bg-amber-300/10 ring-1 ring-amber-300/50', 'icon': 'text-amber-300', 'check': 'text-amber-300', 'lock': 'text-amber-50/40', 'cta': 'bg-gradient-to-r from-amber-300 to-amber-500 text-[#2a1f05] shadow-lg shadow-amber-500/30 hover:from-amber-200 hover:to-amber-400', 'current': 'bg-white/10 text-amber-50', 'pill': 'bg-white/15 text-white', 'arrow': True},
@@ -47,7 +48,7 @@
                 <span class="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl {{ t.tile }}">{{ plan_icon(plan.icon, 'h-7 w-7') }}</span>
                 <div class="min-w-0">
                     <h3 class="text-xl font-bold leading-tight">{{ plan.name }}</h3>
-                    {% if is_current %}<span class="mt-1 inline-flex rounded-full px-2 py-0.5 text-[0.7rem] font-semibold {{ t.pill }}">Seu plano</span>{% endif %}
+                    {% if is_current %}<span class="mt-1 inline-flex rounded-full px-2 py-0.5 text-[0.7rem] font-semibold {{ t.pill }}">{{ "Plano em teste" if plan_in_trial else "Seu plano" }}</span>{% endif %}
                 </div>
             </div>
             {% if plan.description %}<p class="mt-3 text-sm {{ t.muted }}">{{ plan.description }}</p>{% endif %}
@@ -72,7 +73,16 @@
             </ul>
             <div class="mt-6">
                 {% set cta_class = t.cta %}
-                {% if is_current %}
+                {% if limit_issues and (not is_current or can_subscribe) %}
+                <div class="rounded-2xl bg-amber-50 px-4 py-3 text-sm text-amber-950">
+                    <p class="font-semibold">Incompatível com seus cadastros</p>
+                    <ul class="mt-1 list-disc space-y-1 pl-4">
+                        {% for issue in limit_issues %}<li>{{ issue }}</li>{% endfor %}
+                    </ul>
+                </div>
+                {% elif can_subscribe and prices %}
+                <a href="/minha-assinatura/contratar?plan_id={{ plan.id }}" class="block w-full rounded-2xl px-4 py-3 text-center text-base font-bold transition {{ cta_class }}">Escolher {{ plan.name }}</a>
+                {% elif is_current %}
                 <p class="rounded-2xl px-4 py-3 text-center text-sm font-semibold {{ t.current }}">Seu plano atual</p>
                 {% elif can_change_plan and prices %}
                 <button type="button" data-dialog-open="change-plan-{{ plan.id }}" class="flex w-full items-center justify-center gap-2 rounded-2xl px-4 py-3 text-base font-bold transition {{ cta_class }}">Escolher {{ plan.name }}{% if t.arrow %}<svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6"/></svg>{% endif %}</button>

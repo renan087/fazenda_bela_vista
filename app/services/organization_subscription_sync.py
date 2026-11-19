@@ -56,7 +56,8 @@ def persist_organization_webhook(db, body: dict) -> bool:
         return False
     billing = db.query(OrganizationBilling).filter_by(organization_id=subscription.organization_id).first()
     resource = payment or subscription_data
-    if not billing or not resource or resource.get('customer') != billing.asaas_customer_id:
+    if (not billing or not resource or resource.get('customer') != billing.asaas_customer_id
+            or (subscription.environment == "production" and billing.asaas_environment != "production")):
         raise ValueError('Cliente do evento não corresponde à organização')
     event_id = str(body.get('id') or '').strip()
     event_type = str(body.get('event') or '').strip()
