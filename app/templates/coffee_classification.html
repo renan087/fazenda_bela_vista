@@ -41,6 +41,7 @@
             {% endif %}
         <form method="post" action="{{ '/producao/classificacao/' ~ edit_classification.id ~ '/editar' if edit_classification else '/producao/classificacao' }}" enctype="multipart/form-data" class="cc-form" id="coffee-classification-form">
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            {% if production_origin and not edit_classification %}<input type="hidden" name="origem" value="producao">{% endif %}
             <h3 class="cc-form-section"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M3 3h8l10 10-8 8L3 11V3Zm5 5h.01"/></svg><span>1. Identificação da análise</span></h3>
             <label class="grid gap-2 text-sm font-medium">Lote <span><select name="harvest_id" autofocus required {% if edit_classification %}disabled{% endif %} class="w-full rounded-xl border-slate-200 bg-slate-50"><option value="">Selecione o lote</option>{% for harvest in classification_harvests %}<option value="{{ harvest.id }}" {% if (edit_classification and edit_classification.harvest_id == harvest.id) or (not edit_classification and selected_harvest_id == harvest.id) %}selected{% endif %}>{{ harvest.lot_code or ('Lote ' ~ harvest.id) }} · {{ harvest.plot.name }} · {{ harvest.harvest_date.strftime('%d/%m/%Y') }}</option>{% endfor %}</select></span></label>
             <label class="grid gap-2 text-sm font-medium">Data da análise<input type="date" name="analysis_date" value="{{ edit_classification.analysis_date.isoformat() if edit_classification else today.isoformat() }}" max="{{ today.isoformat() }}" required class="w-full rounded-xl border-slate-200 bg-slate-50"></label>
@@ -203,6 +204,11 @@
         document.querySelectorAll(close).forEach(button => button.addEventListener('click', () => dialog?.close()));
     }
     const params = new URLSearchParams(window.location.search);
+    {% if production_origin and not edit_classification %}
+    if (params.has('novo')) {
+        document.querySelector('[data-classification-dialog]')?.addEventListener('close', () => window.location.assign('/producao?lote={{ selected_harvest_id }}'));
+    }
+    {% endif %}
     if (params.has('edit_id')) document.querySelector('[data-classification-dialog]')?.addEventListener('close', () => { const next = new URL(window.location.href); next.searchParams.delete('edit_id'); window.location.assign(next.pathname + next.search + next.hash); });
     if (params.has('atributos')) document.querySelector('[data-attributes-dialog]')?.showModal();
     else if (params.has('novo') || params.has('edit_id')) document.querySelector('[data-classification-dialog]')?.showModal();

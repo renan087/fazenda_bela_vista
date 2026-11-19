@@ -273,7 +273,7 @@
                             </span>
                         </button>
                         <div id="production-menu" class="sidebar-submenu-panel {% if page not in production_pages %}hidden {% endif %}space-y-1 px-3 pb-3" data-submenu-panel>
-                            <a href="{{ module_href('/producao') }}" class="sidebar-submenu-link block rounded-xl px-3 py-2 text-sm {% if page == 'harvest' %}bg-brand-500 text-white{% else %}text-slate-300 hover:bg-slate-800 hover:text-white{% endif %}" data-submenu-link>Colheita{{ module_lock('/producao') }}</a>
+                            <a href="{{ module_href('/producao') }}" class="sidebar-submenu-link block rounded-xl px-3 py-2 text-sm {% if page == 'harvest' %}bg-brand-500 text-white{% else %}text-slate-300 hover:bg-slate-800 hover:text-white{% endif %}" data-submenu-link>Lotes e colheitas{{ module_lock('/producao') }}</a>
                             <a href="{{ module_href('/producao/classificacao') }}" class="sidebar-submenu-link block rounded-xl px-3 py-2 text-sm {% if page == 'coffee_classification' %}bg-brand-500 text-white{% else %}text-slate-300 hover:bg-slate-800 hover:text-white{% endif %}" data-submenu-link>Classificação do café{{ module_lock('/producao/classificacao') }}</a>
                             <a href="{{ module_href('/producao/comercializacao') }}" class="sidebar-submenu-link block rounded-xl px-3 py-2 text-sm {% if page == 'commercialization' %}bg-brand-500 text-white{% else %}text-slate-300 hover:bg-slate-800 hover:text-white{% endif %}" data-submenu-link>Comercialização{{ module_lock('/producao/comercializacao') }}</a>
                         </div>

@@ -1846,6 +1846,8 @@ def _paginate_collection(
     items,
     page_param: str,
     per_page: int = HISTORY_PAGE_SIZE,
+    *,
+    focus_param: str | None = None,
 ):
     total_items = len(items)
     total_pages = max(1, (total_items + per_page - 1) // per_page)
@@ -1857,15 +1859,18 @@ def _paginate_collection(
         ("/producao", "harvests_page"): "colheita",
     }
     expected = assistant_targets.get((request.url.path, page_param))
+    target_id = _optional_query_int(request.query_params.get(focus_param)) if focus_param else None
     if expected and request.query_params.get("assistant_kind") == expected:
-        target_id = _int_or_none(request.query_params.get("assistant_view"))
-        if target_id and target_id > 0:
-            index = next((index for index, item in enumerate(items) if getattr(item, "id", None) == target_id), None)
-            if index is not None:
-                page = index // per_page + 1
+        target_id = _optional_query_int(request.query_params.get("assistant_view"))
+    if target_id and target_id > 0:
+        index = next((index for index, item in enumerate(items) if getattr(item, "id", None) == target_id), None)
+        if index is not None:
+            page = index // per_page + 1
     start = (page - 1) * per_page
     end = start + per_page
-    clear_assistant = {"assistant_kind": None, "assistant_view": None} if expected else {}
+    clear_focus = {"assistant_kind": None, "assistant_view": None} if expected else {}
+    if focus_param:
+        clear_focus[focus_param] = None
     return {
         "items": items[start:end],
         "page": page,
@@ -1873,10 +1878,10 @@ def _paginate_collection(
         "total_pages": total_pages,
         "has_prev": page > 1,
         "has_next": page < total_pages,
-        "first_url": _url_with_query(request, **{page_param: None, **clear_assistant}),
-        "prev_url": _url_with_query(request, **{page_param: page - 1 if page > 2 else None, **clear_assistant}),
-        "next_url": _url_with_query(request, **{page_param: page + 1, **clear_assistant}),
-        "last_url": _url_with_query(request, **{page_param: total_pages if total_pages > 1 else None, **clear_assistant}),
+        "first_url": _url_with_query(request, **{page_param: None, **clear_focus}),
+        "prev_url": _url_with_query(request, **{page_param: page - 1 if page > 2 else None, **clear_focus}),
+        "next_url": _url_with_query(request, **{page_param: page + 1, **clear_focus}),
+        "last_url": _url_with_query(request, **{page_param: total_pages if total_pages > 1 else None, **clear_focus}),
     }
 
 
@@ -19797,7 +19802,29 @@ def production_page(
         lambda item: item.harvest_date,
         lambda item: item.id,
     )
-    harvests_pagination = _paginate_collection(request, harvests, "harvests_page")
+    harvests_pagination = _paginate_collection(request, harvests, "harvests_page", focus_param="lote")
+    displayed_harvests = harvests_pagination["items"]
+    lot_ids = [item.id for item in displayed_harvests]
+    lot_analyses = {}
+    lot_sales = {lot_id: [] for lot_id in lot_ids}
+    if lot_ids:
+        analyses = (db.query(CoffeeClassification.harvest_id, CoffeeClassification.analysis_date,
+                             CoffeeClassification.beverage, CoffeeClassification.sensory_score)
+                    .filter(CoffeeClassification.harvest_id.in_(lot_ids))
+                    .order_by(CoffeeClassification.analysis_date.desc(), CoffeeClassification.id.desc()))
+        for analysis in analyses:
+            lot_analyses.setdefault(analysis.harvest_id, analysis)
+        sales = (db.query(CoffeeCommercializationRecord.id, CoffeeCommercializationRecord.harvest_id,
+                          CoffeeCommercializationRecord.equivalent_sacks)
+                 .filter(CoffeeCommercializationRecord.harvest_id.in_(lot_ids)))
+        for sale in sales:
+            lot_sales[sale.harvest_id].append(sale)
+    available_sacks = {item.id: _commercialization_available_sacks(item, lot_sales[item.id]) for item in displayed_harvests}
+    sale_eligible_ids = {
+        item.id for item in displayed_harvests
+        if scope.get("active_farm_id") and scope.get("active_season") and available_sacks[item.id] > 0
+        and _plot_allowed_for_season_launch(item.plot, scope)
+    }
     harvest_type_options = [
         ("Manual", "Manual"),
         ("Semimecanizada", "Semimecanizada"),
@@ -19830,8 +19857,13 @@ def production_page(
             "harvest",
             _repo=repo,
             plots=launch_plots,
-            harvests=harvests_pagination["items"],
+            harvests=displayed_harvests,
             harvests_pagination=harvests_pagination,
+            focused_lot_id=_optional_query_int(request.query_params.get("lote")),
+            lot_analyses=lot_analyses,
+            lot_sales=lot_sales,
+            lot_available_sacks=available_sacks,
+            sale_eligible_ids=sale_eligible_ids,
             edit_harvest=edit_harvest,
             harvest_active_season=scope.get("active_season"),
             harvest_ids_with_commercialization=repo.harvest_ids_linked_to_commercializations(),
@@ -19925,7 +19957,7 @@ def create_harvest_action(
         _flash(request, "error", str(exc))
         return _redirect("/producao")
     area = float(plot.area_hectares) if plot else 0
-    create_harvest(
+    harvest = create_harvest(
         repo,
         {
             "plot_id": plot.id,
@@ -19947,7 +19979,7 @@ def create_harvest_action(
         area,
     )
     _flash(request, "success", "Colheita registrada com sucesso.")
-    return _redirect("/producao")
+    return _redirect_with_query("/producao", lote=harvest.id)
 
 
 @router.post("/producao/{record_id}/vincular-safra")
@@ -20149,6 +20181,7 @@ def coffee_classification_page(request: Request, db: Session = Depends(get_db), 
         request, user, csrf_token, "coffee_classification", _repo=repo, title="Classificação do café",
         classification_harvests=harvests, classifications=analyses, today=today_in_app_timezone(),
         selected_harvest_id=selected_harvest_id if selected_harvest_id in ids else None, sensory_attributes=active_definitions,
+        production_origin=selected_harvest_id in ids and request.query_params.get("origem") == "producao",
         sensory_definitions=definitions, edit_classification=edit_analysis,
         coffee_beverages=COFFEE_BEVERAGES, sensory_scales=SENSORY_SCALES,
         classification_comparison=comparison[:50], classification_comparison_truncated=len(comparison) > 50))
@@ -20181,6 +20214,7 @@ async def create_coffee_classification(request: Request, db: Session = Depends(g
     if not harvest:
         _flash(request, "error", "Selecione um lote da fazenda e safra ativas.")
         return _redirect("/producao/classificacao")
+    production_origin = form.get("origem") == "producao"
     try:
         attachments = await _read_coffee_classification_attachments(form)
         definitions = [(key, label) for key, label, active in sensory_attributes_for_org(db, user.organization_id) if active]
@@ -20200,8 +20234,11 @@ async def create_coffee_classification(request: Request, db: Session = Depends(g
     except ValueError as exc:
         db.rollback()
         _flash(request, "error", str(exc))
-        return _redirect_with_query("/producao/classificacao", harvest_id=harvest.id, novo=1)
+        return _redirect_with_query("/producao/classificacao", harvest_id=harvest.id, novo=1,
+                                    origem="producao" if production_origin else None)
     _flash(request, "success", "Análise registrada no histórico do lote.")
+    if production_origin:
+        return _redirect_with_query("/producao", lote=harvest.id)
     return _redirect_with_query("/producao/classificacao", harvest_id=harvest.id)
 
 
@@ -20489,9 +20526,16 @@ def commercialization_page(
     finance_accounts = repo.list_finance_accounts(farm_id=active_farm_id) if active_farm_id else []
     default_finance_account_id = next((account.id for account in finance_accounts if account.is_default), None)
     commercialization_filters_active = bool(harvest_id or normalized_status or search_term or _period_filter_explicit_in_query(request))
+    production_origin = not edit_id and request.query_params.get("origem") == "producao" and any(
+        item.id == harvest_id for item in harvests
+    )
+    launch_from_lot = production_origin and request.query_params.get("launch") == "1"
+    launch_harvest = next((option for option in harvest_options if option["harvest"].id == harvest_id), None) if launch_from_lot else None
     commercialization_clear_url = _url_with_query(
         request,
         harvest_id=None,
+        origem=None,
+        launch=None,
         status=None,
         search=None,
         start_date=None,
@@ -20523,6 +20567,8 @@ def commercialization_page(
             commercialization_filtered_total_kg=round(filtered_total_sacks * 60, 2),
             commercialization_filtered_total_value=filtered_total_value,
             commercialization_selected_harvest_id=harvest_id,
+            commercialization_production_origin=production_origin,
+            commercialization_launch_harvest=launch_harvest,
             commercialization_selected_status=normalized_status,
             commercialization_search=search or "",
             commercialization_filter_start_date=filter_start_str,
@@ -20559,6 +20605,7 @@ def create_commercialization_action(
     notes: str | None = Form(None),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user_web),
+    origem: str | None = Form(None),
 ):
     del user
     validate_csrf(request, csrf_token)
@@ -20570,16 +20617,16 @@ def create_commercialization_action(
     if not harvest or not _plot_matches_scope(harvest.plot, scope):
         _flash(request, "error", "Selecione um lote de colheita válido para o contexto ativo.")
         return _redirect("/producao/comercializacao")
-    season_start, season_end = _scoped_dates(scope.get("active_season"))
     if not _plot_allowed_for_season_launch(harvest.plot, scope) or not harvest_matches_season(harvest, scope.get("active_season")):
         _flash(request, "error", "Selecione um lote de um setor vinculado e colhido no período da safra ativa.")
         return _redirect("/producao/comercializacao")
+    retry = {"harvest_id": harvest.id, "launch": 1, "origem": "producao"} if origem == "producao" else {}
     finance_account_id_value = _int_or_none(finance_account_id)
     if finance_account_id_value:
         account = repo.get_finance_account(finance_account_id_value)
         if not account or account.farm_id != scope.get("active_farm_id"):
             _flash(request, "error", "Selecione uma conta bancária válida para a fazenda ativa.")
-            return _redirect("/producao/comercializacao")
+            return _redirect_with_query("/producao/comercializacao", **retry)
     available_sacks = _commercialization_available_sacks(
         harvest,
         repo.list_coffee_commercializations(farm_id=scope.get("active_farm_id")),
@@ -20610,8 +20657,10 @@ def create_commercialization_action(
         )
     except ValueError as exc:
         _flash(request, "error", str(exc))
-        return _redirect("/producao/comercializacao")
+        return _redirect_with_query("/producao/comercializacao", **retry)
     _flash(request, "success", "Comercialização registrada com sucesso.")
+    if origem == "producao":
+        return _redirect_with_query("/producao", lote=harvest.id)
     return _redirect("/producao/comercializacao")
 
 
