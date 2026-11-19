@@ -166,3 +166,30 @@ def find_asaas_customers_by_document(*, base_url: str, api_key: str, cpf_cnpj: s
     except (httpx.HTTPError, ValueError):
         return None, "Não foi possível consultar o Asaas. Tente novamente antes de criar ou vincular um cliente."
     return None, "A consulta ao Asaas excedeu o limite seguro de resultados."
+
+
+
+def confirm_asaas_customer_removed(*, api_key: str, customer_id: str) -> tuple[bool, str | None]:
+    """Consulta apenas o cliente que já estava vinculado à organização."""
+    from app.services.asaas_environment import asaas_api_base
+
+    if not re.fullmatch(r"cus_[A-Za-z0-9_]+", customer_id):
+        return False, "Identificador do cliente Asaas inválido."
+    try:
+        response = httpx.get(
+            f"{asaas_api_base()}/v3/customers/{customer_id}",
+            headers={"access_token": api_key, "User-Agent": "SiSFarm/AsaasIntegration", "Accept": "application/json"},
+            timeout=10.0,
+        )
+        if response.status_code == 404:
+            return True, None
+        if response.status_code == 200:
+            customer = response.json()
+            if isinstance(customer, dict) and customer.get("id") == customer_id:
+                if customer.get("deleted") is True:
+                    return True, None
+                if customer.get("deleted") is False:
+                    return False, "O cliente ainda está registrado no Asaas. Remova-o antes de excluir a organização."
+    except (httpx.HTTPError, ValueError):
+        pass
+    return False, "Não foi possível confirmar a remoção do cliente no Asaas."

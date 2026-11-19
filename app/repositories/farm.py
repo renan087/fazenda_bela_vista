@@ -79,7 +79,7 @@ class FarmRepository:
         return query.order_by(User.name.asc(), User.email.asc()).all()
 
     def get_organization(self, organization_id: int) -> Organization | None:
-        return self.db.query(Organization).filter(Organization.id == organization_id).first()
+        return self.db.query(Organization).filter_by(id=organization_id, archived_at=None).first()
 
     def list_organizations(self) -> list[Organization]:
         return self.db.query(Organization).order_by(Organization.name.asc()).all()

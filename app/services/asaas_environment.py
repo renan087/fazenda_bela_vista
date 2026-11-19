@@ -42,7 +42,7 @@ def asaas_env_name() -> str:
     return current_asaas_environment().name
 
 
-def asaas_configuration_error(settings=None) -> str | None:
+def asaas_configuration_error(settings=None, *, read_only: bool = False) -> str | None:
     """Motivo pelo qual o modulo nao pode chamar o Asaas, ou None se esta pronto."""
     settings = settings or get_settings()
     name = (getattr(settings, "asaas_environment", None) or "sandbox").strip().lower()
@@ -56,7 +56,7 @@ def asaas_configuration_error(settings=None) -> str | None:
         return f"ASAAS_API_BASE_URL não corresponde ao ambiente {environment.name} (esperado {environment.api_base})."
     if not (settings.asaas_api_key or "").strip():
         return "Configure a chave da API do Asaas (ASAAS_API_KEY)."
-    if environment.is_production:
+    if environment.is_production and not read_only:
         if not getattr(settings, "asaas_live_enabled", False):
             return "Cobranças reais desativadas (ASAAS_LIVE_ENABLED)."
         webhook = (settings.asaas_webhook_token or "").strip()

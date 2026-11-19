@@ -7,7 +7,7 @@
 {% set subscription_labels = {'ACTIVE': 'Ativa', 'INACTIVE': 'Suspensa', 'EXPIRED': 'Expirada', 'DELETED': 'Cancelada', 'NOT_FOUND': 'Não encontrada no Asaas'} %}
 {% set situation_styles = {'verificar': 'bg-amber-50 text-amber-800 ring-amber-200', 'inadimplente': 'bg-rose-50 text-rose-700 ring-rose-200', 'aguardando_cartao': 'bg-sky-50 text-sky-700 ring-sky-200', 'aguardando_pagamento': 'bg-amber-50 text-amber-800 ring-amber-200', 'liberada': 'bg-violet-50 text-violet-800 ring-violet-200', 'suspensa': 'bg-slate-100 text-slate-700 ring-slate-200', 'ativa': 'bg-emerald-50 text-emerald-800 ring-emerald-200'} %}
 
-{% include "partials/access_grant_panel.html" %}
+{% if not organization.archived_at %}{% include "partials/access_grant_panel.html" %}{% endif %}
 
 {% if subscription %}
 {% set charges = subscription_payments.get(subscription.id, []) %}
@@ -261,8 +261,12 @@
 {% elif card_migration %}
 {% include "partials/card_checkout_panel.html" %}
 {% else %}
+{% if organization.archived_at %}
+<p class="mt-2 text-sm text-slate-500">Organização arquivada. Consulte as assinaturas anteriores abaixo.</p>
+{% else %}
 <p class="mt-2 text-sm text-slate-500">Esta organização ainda não tem assinatura. Siga os passos para contratar.</p>
 {% include "partials/subscription_wizard.html" %}
+{% endif %}
 {% if previous_subscriptions_by_organization.get(organization.id) %}
 <details class="mt-5 rounded-2xl border border-slate-200 bg-white p-4 text-sm"><summary class="cursor-pointer font-semibold text-slate-600">Assinaturas anteriores</summary>
 {% for old in previous_subscriptions_by_organization.get(organization.id, []) %}<p class="mt-2 text-xs text-slate-600">{{ old.plan_name }} · R$ {{ old.amount|decimal_br }}/{{ cycle_unit_labels.get(old.cycle, old.cycle) }} · {{ subscription_labels.get(old.asaas_status, {'falhou': 'Não concluída', 'encerrada': 'Encerrada'}.get(old.status, old.asaas_status or old.status)) }}</p>{% endfor %}

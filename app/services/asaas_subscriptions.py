@@ -35,7 +35,7 @@ def list_customer_sandbox_subscriptions(*, api_key: str, customer_id: str) -> tu
     return None, 'A consulta excedeu o limite seguro de assinaturas.'
 
 
-def sandbox_subscription_is_missing(*, api_key: str, subscription_id: str) -> tuple[bool | None, str | None]:
+def sandbox_subscription_is_missing(*, api_key: str, subscription_id: str, removed_customer_id: str | None = None) -> tuple[bool | None, str | None]:
     if not subscription_id or not subscription_id.startswith('sub_') or not subscription_id.replace('_', '').isalnum():
         return None, 'Identificador de assinatura inválido.'
     try:
@@ -44,9 +44,14 @@ def sandbox_subscription_is_missing(*, api_key: str, subscription_id: str) -> tu
         if response.status_code == 404:
             return True, None
         if response.status_code == 200:
+            if removed_customer_id is not None:
+                data = response.json()
+                if (isinstance(data, dict) and data.get("id") == subscription_id
+                        and data.get("customer") == removed_customer_id and data.get("deleted") is True):
+                    return True, None
             return False, None
         return None, f'Não foi possível confirmar a assinatura (HTTP {response.status_code}).'
-    except httpx.HTTPError:
+    except (httpx.HTTPError, ValueError):
         return None, 'Não foi possível confirmar a assinatura no Asaas.'
 
 

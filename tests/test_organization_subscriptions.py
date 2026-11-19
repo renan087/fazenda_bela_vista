@@ -294,3 +294,64 @@ def test_sandbox_subscription_listing_validates_customer_and_requests_deleted(mo
     rows, error = service.list_customer_sandbox_subscriptions(api_key='key', customer_id='cus_test')
     assert not error and rows[0]['deleted'] is True
     assert calls[0]['includeDeleted'] == 'true'
+
+
+def test_remove_organization_after_asaas_deletion_preserves_history(monkeypatch):
+    from datetime import date
+    from decimal import Decimal
+
+    from app.models import OrganizationCardMigration, OrganizationSubscriptionPayment
+    from app.repositories.farm import FarmRepository
+
+    engine = create_engine('sqlite:///:memory:')
+    Base.metadata.create_all(engine)
+    monkeypatch.setattr(routes, '_require_super_admin', lambda *args: None)
+    monkeypatch.setattr(routes, 'validate_csrf', lambda *args: None)
+    monkeypatch.setattr(routes, 'asaas_env_name', lambda: 'sandbox')
+    monkeypatch.setattr(routes, 'get_settings', lambda: SimpleNamespace(
+        asaas_api_base_url='https://api-sandbox.asaas.com', asaas_api_key='sandbox-key',
+    ))
+    flashes = []
+    monkeypatch.setattr(routes, '_flash', lambda request, kind, message: flashes.append((kind, message)))
+    monkeypatch.setattr(routes, 'confirm_asaas_customer_removed', lambda **kwargs: (True, None))
+    monkeypatch.setattr(routes, 'sandbox_subscription_is_missing', lambda **kwargs: (False, None))
+
+    with Session(engine) as db:
+        org = Organization(name='Cliente Teste', slug='cliente-teste')
+        db.add(org)
+        db.flush()
+        db.add(OrganizationBilling(organization_id=org.id, contact_name='Pessoa', contact_email='a@example.com',
+                                   asaas_customer_id='cus_test', asaas_environment='sandbox'))
+        subscription = OrganizationSubscription(
+            organization_id=org.id, plan_name='Teste', amount=Decimal('50'), cycle='MONTHLY',
+            billing_type='PIX', first_due_date=date(2026, 11, 18), environment='sandbox',
+            asaas_subscription_id='sub_test', status='criada', asaas_status='ACTIVE',
+        )
+        db.add(subscription)
+        db.flush()
+        db.add(OrganizationSubscriptionPayment(subscription_id=subscription.id, asaas_payment_id='pay_test',
+                                               status='RECEIVED', amount=Decimal('50')))
+        db.commit()
+        args = dict(organization_id=org.id, request=SimpleNamespace(), csrf_token='test',
+                    db=db, user=SimpleNamespace(organization_id=None))
+
+        routes.delete_organization_action(**args)
+        assert org.archived_at is None and subscription.is_current
+        assert 'assinatura ainda está registrada' in flashes[-1][1]
+
+        monkeypatch.setattr(routes, 'sandbox_subscription_is_missing', lambda **kwargs: (True, None))
+        checkout = OrganizationCardMigration(organization_id=org.id, is_open=True, status='aguardando')
+        db.add(checkout)
+        db.commit()
+        routes.delete_organization_action(**args)
+        assert org.archived_at is None and 'checkout' in flashes[-1][1]
+
+        checkout.is_open = False
+        db.commit()
+        response = routes.delete_organization_action(**args)
+        assert response.headers['location'] == '/organizacoes'
+        assert org.archived_at is not None and not org.is_active
+        assert not subscription.is_current and subscription.asaas_status == 'NOT_FOUND'
+        assert db.query(OrganizationSubscriptionPayment).one().status == 'RECEIVED'
+        assert FarmRepository(db).get_organization(org.id) is None
+        assert org in FarmRepository(db).list_organizations()

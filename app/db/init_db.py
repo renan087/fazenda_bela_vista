@@ -628,6 +628,7 @@ def _sync_schema() -> None:
         "ALTER TABLE subscription_plans ADD COLUMN IF NOT EXISTS icon VARCHAR(30) NOT NULL DEFAULT 'crown'",
         "ALTER TABLE organization_access_grants ADD COLUMN IF NOT EXISTS notices_sent VARCHAR(80) NOT NULL DEFAULT ''",
         # Nome de fazenda passa a ser unico por organizacao (antes era global e quebrava o autocadastro).
+        "ALTER TABLE organizations ADD COLUMN IF NOT EXISTS archived_at TIMESTAMPTZ",
         "ALTER TABLE organizations ADD COLUMN IF NOT EXISTS onboarding_dismissed BOOLEAN NOT NULL DEFAULT false",
         "ALTER TABLE plots DROP CONSTRAINT IF EXISTS plots_name_key",
         "CREATE UNIQUE INDEX IF NOT EXISTS uq_plots_farm_name ON plots (farm_id, name)",

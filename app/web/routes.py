@@ -138,6 +138,7 @@ from app.services.asaas_customers import (
     asaas_digits,
     build_asaas_customer_payload,
     create_asaas_customer,
+    confirm_asaas_customer_removed,
     validate_asaas_customer_form,
     find_asaas_customers_by_document,
 )
@@ -9586,7 +9587,7 @@ def organizations_page(
     if denied:
         return denied
     repo = _repository(db)
-    organizations = repo.list_organizations()
+    organizations = [item for item in repo.list_organizations() if item.archived_at is None]
     users = repo.list_users()
     farms = repo.list_farms()
     organization_stats = {
@@ -10108,7 +10109,7 @@ def create_access_grant_action(
         return denied
     validate_csrf(request, csrf_token)
     organization = db.get(Organization, organization_id)
-    if not organization:
+    if not organization or organization.archived_at:
         raise HTTPException(status_code=404, detail="Organização não encontrada")
     if confirm != "1":
         _flash(request, "error", "Confirme que a liberação não altera as cobranças no Asaas.")
@@ -10433,7 +10434,7 @@ def save_organization_billing_action(
         return denied
     validate_csrf(request, csrf_token)
     organization = db.get(Organization, organization_id)
-    if not organization:
+    if not organization or organization.archived_at:
         _flash(request, "error", "Organização não encontrada.")
         return _redirect("/organizacoes")
     from email_validator import EmailNotValidError, validate_email
@@ -10499,7 +10500,7 @@ def organization_asaas_sandbox_action(
     if not (settings.asaas_api_key or "").strip():
         _flash(request, "error", "Configure a chave da API do Asaas antes de consultar.")
         return _redirect("/organizacoes")
-    organization = db.get(Organization, organization_id)
+    organization = _repository(db).get_organization(organization_id)
     billing = db.query(OrganizationBilling).filter_by(organization_id=organization_id).with_for_update().first()
     if not organization or not billing:
         _flash(request, "error", "Cadastre os dados comerciais antes de consultar o Asaas.")
@@ -10572,7 +10573,7 @@ def create_organization_sandbox_subscription_action(
     if not asaas_ready(settings):
         _flash(request, "error", asaas_configuration_error(settings) or "Integração com o Asaas indisponível.")
         return _redirect(f"/assinaturas?organizacao={organization_id}")
-    organization = db.query(Organization).filter_by(id=organization_id).with_for_update().first()
+    organization = db.query(Organization).filter_by(id=organization_id, archived_at=None).with_for_update().first()
     billing = db.query(OrganizationBilling).filter_by(organization_id=organization_id).with_for_update().first()
     if not organization or not billing or not billing.asaas_customer_id or billing.asaas_environment != asaas_env_name():
         _flash(request, "error", "Vincule primeiro o cliente desta organização no Asaas (página Organizações).")
@@ -10623,7 +10624,8 @@ def _contract_subscription(db, user, *, organization_id, billing, plan, name, am
     """
     if not asaas_pilot_allows(organization_id, get_settings()):
         return {"kind": "error", "level": "error", "message": "Organização fora do piloto de cobrança."}
-    db.query(Organization.id).filter_by(id=organization_id).with_for_update().one()
+    if not db.query(Organization.id).filter_by(id=organization_id, archived_at=None).with_for_update().first():
+        return {"kind": "error", "level": "error", "message": "Organização indisponível para contratação."}
     blocker = _subscribe_blocker(db, organization_id)
     if blocker:
         return {"kind": "error", "level": "error", "message": blocker}
@@ -11485,28 +11487,66 @@ def delete_organization_action(
     if denied:
         return denied
     validate_csrf(request, csrf_token)
-    repo = _repository(db)
-    organization = repo.get_organization(organization_id)
+    target = "/organizacoes"
+    organization = db.query(Organization).filter_by(id=organization_id, archived_at=None).with_for_update().first()
     if not organization:
-        _flash(request, "error", "Organizacao nao encontrada.")
-        return _redirect("/organizacoes")
-    if organization.slug == "sisfarm":
-        _flash(request, "error", "A organizacao padrao SiSFarm nao pode ser excluida.")
-        return _redirect("/organizacoes")
-    if user.organization_id == organization.id:
-        _flash(request, "error", "Nao e permitido excluir a organizacao do usuario logado.")
-        return _redirect("/organizacoes")
-    has_users = db.query(User.id).filter(User.organization_id == organization.id).first()
-    has_farms = db.query(Farm.id).filter(Farm.organization_id == organization.id).first()
-    if db.query(OrganizationSubscription.id).filter_by(organization_id=organization.id).first():
-        _flash(request, "error", "Esta organização possui assinatura ou tentativa comercial registrada e não pode ser excluída.")
-        return _redirect("/organizacoes")
-    if has_users or has_farms:
-        _flash(request, "error", "Exclua ou mova usuarios e fazendas antes de remover esta organizacao.")
-        return _redirect("/organizacoes")
-    repo.delete(organization)
-    _flash(request, "success", "Organizacao excluida com sucesso.")
-    return _redirect("/organizacoes")
+        _flash(request, "error", "Organização não encontrada.")
+        return _redirect(target)
+    if organization.slug == "sisfarm" or user.organization_id == organization.id:
+        _flash(request, "error", "A organização padrão SiSFarm e a do usuário logado são protegidas.")
+        return _redirect(target)
+    if (db.query(User.id).filter_by(organization_id=organization_id).first()
+            or db.query(Farm.id).filter_by(organization_id=organization_id).first()):
+        _flash(request, "error", "Exclua ou mova usuários e fazendas antes de remover esta organização.")
+        return _redirect(target)
+
+    billing = db.query(OrganizationBilling).filter_by(organization_id=organization_id).with_for_update().first()
+    migrations = db.query(OrganizationCardMigration).filter_by(organization_id=organization_id)
+    if migrations.filter_by(is_open=True).first():
+        _flash(request, "error", "Há um checkout ou uma migração em andamento. Encerre a tentativa em Assinaturas antes de excluir.")
+        return _redirect(target)
+    subscriptions = db.query(OrganizationSubscription).filter_by(organization_id=organization_id)
+    current = subscriptions.filter_by(is_current=True).with_for_update().first()
+    if current and current.asaas_status not in {"DELETED", "NOT_FOUND"}:
+        settings = get_settings()
+        error = asaas_configuration_error(settings, read_only=True)
+        if not billing or not billing.asaas_customer_id or billing.asaas_environment != current.environment or current.environment != asaas_env_name():
+            _flash(request, "error", "Confira o vínculo do cliente e da assinatura no ambiente correspondente do Asaas.")
+            return _redirect(target)
+        if error:
+            _flash(request, "error", error)
+            return _redirect(target)
+        if not current.asaas_subscription_id:
+            _flash(request, "error", "A tentativa de assinatura não tem identificador confirmado. Concilie-a em Assinaturas antes de excluir.")
+            return _redirect(target)
+        removed, error = confirm_asaas_customer_removed(api_key=asaas_api_key(settings), customer_id=billing.asaas_customer_id)
+        if removed:
+            removed, error = sandbox_subscription_is_missing(
+                api_key=asaas_api_key(settings), subscription_id=current.asaas_subscription_id,
+                removed_customer_id=billing.asaas_customer_id,
+            )
+        if not removed:
+            _flash(request, "error", error or "A assinatura ainda está registrada no Asaas. Encerre-a antes de excluir.")
+            return _redirect(target)
+        current.asaas_status = "NOT_FOUND"
+        current.sync_issue = None
+    if current:
+        current.is_current = False
+        current.status = "encerrada"
+
+    has_history = current is not None or subscriptions.first() is not None or migrations.first() is not None
+    if has_history or (billing and billing.asaas_customer_id):
+        organization.archived_at = app_now()
+        organization.is_active = False
+        record_commercial_event(db, user=user, organization_id=organization_id, resource="organizacao",
+                                resource_id=organization_id, action="arquivar", outcome="success")
+        db.commit()
+        invalidate_entitlements(organization_id)
+        _flash(request, "success", "Organização removida da lista. O histórico comercial foi preservado em Assinaturas.")
+    else:
+        _repository(db).delete(organization)
+        _flash(request, "success", "Organização excluída com sucesso.")
+    return _redirect(target)
 
 
 @router.get("/usuarios")
