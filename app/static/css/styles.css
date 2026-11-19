@@ -7054,3 +7054,23 @@ a.pf-item:hover, .pf-item.is-current { background: #f3f5f2; color: #16201a; }
 .pf-logout { margin-top: 2px; border-top: 1px solid #eef1ed; border-radius: 0 0 10px 10px; color: #b42318; }
 .pf-logout .pf-ico { color: #b42318; }
 a.pf-logout:hover { background: #fdecea; color: #b42318; }
+
+[data-classification-dialog] { width: min(1120px, calc(100vw - 24px)); }
+.cc-form-subtitle { margin: 4px 0 0; color: #475569; font-size: 14px; }
+.cc-form { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 12px 18px; margin-top: 20px; }
+.cc-form > label { grid-column: span 4; min-width: 0; }
+.cc-form > label:has([name="coffee_type"]), .cc-form > label:has([name="sieve"]), .cc-form > label:has([name="moisture"]), .cc-form > label:has([name="defects"]), .cc-form > label:has([name="beverage"]), .cc-form > label:has([name="sensory_score"]) { grid-column: span 3; }
+.cc-form > .cc-form-notes { grid-column: span 6; }
+.cc-form input:not([type="checkbox"]), .cc-form select, .cc-form textarea { min-width: 0; width: 100%; border: 1px solid #cbd5e1; border-radius: 8px; background: #f5f7fa; }
+.cc-form-section { grid-column: 1 / -1; margin: 6px 0 0; padding: 8px 12px; border-radius: 8px; background: #e9f0f2; color: #172538; font-size: 16px; font-weight: 700; }
+.cc-form-sensory { grid-column: 1 / -1; min-width: 0; border: 0; padding: 8px 0; }
+.cc-form-sensory legend { width: 100%; padding: 0 0 8px; border-bottom: 1px solid #dce3e9; font-size: 16px; font-weight: 700; }
+.cc-form-sensory > p { margin: 8px 0; font-size: 12px; }
+.cc-form-sensory-layout { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 14px; }
+.cc-form-attributes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; align-content: start; }
+.cc-form-attributes label { min-width: 0; overflow-wrap: anywhere; }
+.cc-form-sensory-layout > div:last-child { padding: 12px; border-radius: 16px; background: #f1f5f9; }
+.cc-form-actions { grid-column: 1 / -1; display: flex; justify-content: flex-end; gap: 10px; padding-top: 14px; border-top: 1px solid #e2e8f0; }
+.cc-form > div:has([name="remove_report"]) { grid-column: 1 / -1; }
+@media (max-width: 700px) { .cc-form > label, .cc-form > label:has(input), .cc-form > .cc-form-notes { grid-column: span 6; } .cc-form-sensory-layout { grid-template-columns: 1fr; } }
+@media (max-width: 460px) { .cc-form > label, .cc-form > label:has(input), .cc-form > .cc-form-notes { grid-column: 1 / -1; } .cc-form-attributes { grid-template-columns: 1fr; } .cc-form-actions { flex-wrap: wrap; } }
