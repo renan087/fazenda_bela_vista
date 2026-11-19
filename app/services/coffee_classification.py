@@ -45,9 +45,10 @@ def validate_sensory(form, definitions=None):
         raise ValueError("Selecione uma escala sensorial válida.")
     result = {}
     for key, label in (definitions if definitions is not None else SENSORY_ATTRIBUTES):
-        raw = str(form.get("sensory_" + key) or "").strip().replace(",", ".")
-        if not raw:
+        field = "sensory_" + key
+        if field not in form:
             continue
+        raw = str(form.get(field) or "0").strip().replace(",", ".") or "0"
         try:
             value = Decimal(raw)
         except InvalidOperation:

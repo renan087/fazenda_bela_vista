@@ -301,3 +301,13 @@ def test_multiple_reports_append_and_remove_individually(monkeypatch):
     response = asyncio.run(routes.edit_coffee_classification(analysis.id, last, db, user))
     assert "edit_id" in response.headers["location"]
     assert [attachment.id for attachment in analysis.attachments] == [second.id]
+
+
+
+def test_sensory_blank_is_zero_and_scale_limits_values():
+    for scale in range(5, 11):
+        selected, values = validate_sensory({"sensory_scale": str(scale), "sensory_aroma": ""})
+        assert selected == scale and values == {"aroma": 0}
+        with pytest.raises(ValueError):
+            validate_sensory({"sensory_scale": str(scale), "sensory_aroma": str(scale + 1)})
+    assert validate_sensory({"sensory_scale": "5"})[1] == {}

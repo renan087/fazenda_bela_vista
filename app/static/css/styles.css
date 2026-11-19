@@ -7088,6 +7088,7 @@ a.pf-logout:hover { background: #fdecea; color: #b42318; }
 .cc-form > .cc-form-physical { grid-column: span 3; }
 .cc-form-physical input:not([type="checkbox"], [type="file"], [type="hidden"]) { min-height: 29px; }
 .cc-form > .cc-form-notes { grid-column: span 6; }
+.cc-form-selected-reports[hidden] { display: none; }
 .cc-form-report { grid-column: 1 / -1; margin-inline: 6px; overflow-wrap: anywhere; }
 .cc-form input:not([type="checkbox"], [type="file"], [type="hidden"]),
 .cc-form select, .cc-form textarea, .cc-form-upload-button {

@@ -42,7 +42,7 @@
         <form method="post" action="{{ '/producao/classificacao/' ~ edit_classification.id ~ '/editar' if edit_classification else '/producao/classificacao' }}" enctype="multipart/form-data" class="cc-form" id="coffee-classification-form">
             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
             <h3 class="cc-form-section"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M3 3h8l10 10-8 8L3 11V3Zm5 5h.01"/></svg><span>1. Identificação da análise</span></h3>
-            <label class="grid gap-2 text-sm font-medium">Lote <span><select name="harvest_id" autofocus required {% if edit_classification %}disabled{% endif %} class="w-full rounded-xl border-slate-200 bg-slate-50"><option value="">Selecione o lote</option>{% for harvest in classification_harvests %}<option value="{{ harvest.id }}" {% if (edit_classification and edit_classification.harvest_id == harvest.id) or (not edit_classification and selected_harvest_id == harvest.id) %}selected{% endif %}>{{ harvest.lot_code or ('Lote ' ~ harvest.id) }} · {{ harvest.plot.name }} · {{ harvest.harvest_date.strftime('%d/%m/%Y') }}</option>{% endfor %}</select></span>{% if edit_classification %}<small class="font-normal text-slate-500">O vínculo com o lote é preservado.</small>{% endif %}</label>
+            <label class="grid gap-2 text-sm font-medium">Lote <span><select name="harvest_id" autofocus required {% if edit_classification %}disabled{% endif %} class="w-full rounded-xl border-slate-200 bg-slate-50"><option value="">Selecione o lote</option>{% for harvest in classification_harvests %}<option value="{{ harvest.id }}" {% if (edit_classification and edit_classification.harvest_id == harvest.id) or (not edit_classification and selected_harvest_id == harvest.id) %}selected{% endif %}>{{ harvest.lot_code or ('Lote ' ~ harvest.id) }} · {{ harvest.plot.name }} · {{ harvest.harvest_date.strftime('%d/%m/%Y') }}</option>{% endfor %}</select></span></label>
             <label class="grid gap-2 text-sm font-medium">Data da análise<input type="date" name="analysis_date" value="{{ edit_classification.analysis_date.isoformat() if edit_classification else today.isoformat() }}" max="{{ today.isoformat() }}" required class="w-full rounded-xl border-slate-200 bg-slate-50"></label>
             <label class="grid gap-2 text-sm font-medium">Origem dos dados<select name="source" required class="w-full rounded-xl border-slate-200 bg-slate-50"><option value="informado" {% if edit_classification and edit_classification.source == 'informado' %}selected{% endif %}>Usuário</option><option value="laudo" {% if edit_classification and edit_classification.source == 'laudo' %}selected{% endif %}>Laudo</option></select></label>
             <label class="cc-form-upload">
@@ -95,7 +95,7 @@
                     <div class="cc-form-scores">
                         <label class="cc-form-scale">Escala das notas<select name="sensory_scale" data-sensory-scale class="rounded-xl border-slate-200 bg-white">{% for scale in sensory_scales|default(range(5, 11)) %}<option value="{{ scale }}" {% if scale == (editing_profile.scale_max if editing_profile else 10) %}selected{% endif %}>0 a {{ scale }}</option>{% endfor %}</select></label>
                         <div class="cc-form-attributes">
-                            {% for key, label in sensory_attributes %}<label><span>{{ label }}</span><input type="number" name="sensory_{{ key }}" data-sensory-input="{{ key }}" value="{{ editing_profile.attributes[key] if editing_profile and key in editing_profile.attributes else '' }}" min="0" max="{{ editing_profile.scale_max if editing_profile else 10 }}" step="0.01" inputmode="decimal" class="w-full rounded-xl border-slate-200 bg-white"></label>{% endfor %}
+                            {% for key, label in sensory_attributes %}<label><span>{{ label }}</span><input type="number" name="sensory_{{ key }}" data-sensory-input="{{ key }}" value="{{ editing_profile.attributes[key] if editing_profile and key in editing_profile.attributes else 0 }}" min="0" max="{{ editing_profile.scale_max if editing_profile else 10 }}" step="0.01" inputmode="decimal" class="w-full rounded-xl border-slate-200 bg-white"></label>{% endfor %}
                         </div>
                     </div>
                     <figure class="cc-form-radar">
@@ -236,6 +236,35 @@
             button.title = action;
         });
     });
+    const inputs = Array.from(document.querySelectorAll('[data-sensory-input]'));
+    const scale = document.querySelector('[data-sensory-scale]');
+    const normalizeSensoryInput = input => {
+        if (input.validity.badInput) return;
+        if (input.value === '') input.value = '0';
+        input.value = String(Math.min(Number(scale.value), Math.max(0, Number(input.value))));
+    };
+    if (scale) {
+        inputs.forEach(input => {
+            input.addEventListener('input', () => {
+                if (input.value !== '' && !input.validity.badInput && Number(input.value) > Number(scale.value)) {
+                    input.value = scale.value;
+                }
+            });
+            input.addEventListener('blur', () => {
+                normalizeSensoryInput(input);
+                input.dispatchEvent(new Event('input'));
+            });
+        });
+        document.querySelector('#coffee-classification-form').addEventListener('submit', () => {
+            inputs.forEach(normalizeSensoryInput);
+        });
+        scale.addEventListener('change', () => {
+            inputs.forEach(input => {
+                input.max = scale.value;
+                normalizeSensoryInput(input);
+            });
+        });
+    }
     if (typeof Chart === 'undefined') return;
     const attributes = {{ sensory_attributes|tojson }};
     const chart = (canvas, labels, values, scale) => new Chart(canvas, {type: 'radar', data: {labels, datasets: [{label: 'Notas informadas', data: values, borderColor: '#446a36', backgroundColor: 'rgba(86, 139, 67, .2)', pointBackgroundColor: '#446a36', spanGaps: false}]}, options: {responsive: true, maintainAspectRatio: false, scales: {r: {min: 0, max: scale, ticks: {maxTicksLimit: 6}}}, plugins: {legend: {display: false}}}});
@@ -244,8 +273,6 @@
         detailCharts.forEach(graph => graph.destroy()); detailCharts = [];
         container.querySelectorAll('[data-sensory-saved]').forEach(canvas => { const pairs = JSON.parse(canvas.dataset.sensorySaved); detailCharts.push(chart(canvas, pairs.map(p => p[0]), pairs.map(p => p[1]), Number(canvas.dataset.scale))); });
     };
-    const inputs = Array.from(document.querySelectorAll('[data-sensory-input]'));
-    const scale = document.querySelector('[data-sensory-scale]');
     const canvas = document.querySelector('[data-sensory-radar]');
     if (canvas && scale) {
         const graph = chart(canvas, attributes.map(a => a[1]), inputs.map(input => input.value === '' ? null : Number(input.value)), Number(scale.value));
