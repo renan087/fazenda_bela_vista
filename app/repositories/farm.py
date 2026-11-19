@@ -1062,6 +1062,26 @@ class FarmRepository:
         self.db.refresh(instance)
         return instance
 
+    def delete_organization_operational_data(self, organization_id: int) -> tuple[list[int], list[int], int]:
+        """Remove cadastros da organização na transação do chamador."""
+        users = self.db.query(User).filter_by(organization_id=organization_id).with_for_update().all()
+        farms = self.db.query(Farm).filter_by(organization_id=organization_id).with_for_update().all()
+        farm_ids = [farm.id for farm in farms]
+        plots = self.db.query(Plot).filter(Plot.farm_id.in_(farm_ids)).with_for_update().all()
+        plot_ids = [plot.id for plot in plots]
+
+        for inventory in self.db.query(StockInventorySession).filter(StockInventorySession.farm_id.in_(farm_ids)):
+            self.db.delete(inventory)
+        # Recomendações antigas podem estar vinculadas apenas ao setor.
+        for recommendation in self.db.query(InputRecommendation).filter(
+            InputRecommendation.farm_id.is_(None), InputRecommendation.plot_id.in_(plot_ids),
+        ):
+            self.db.delete(recommendation)
+        for item in [*users, *plots, *farms]:
+            self.db.delete(item)
+        self.db.flush()
+        return farm_ids, plot_ids, len(users)
+
     def delete(self, instance) -> None:
         self.db.delete(instance)
         self.db.commit()

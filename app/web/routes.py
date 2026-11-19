@@ -32,6 +32,7 @@ from reportlab.lib.pagesizes import A4, landscape
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.platypus import Image, KeepInFrame, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 from sqlalchemy import func
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload, defer, selectinload
 from app.models.coffee_classification import CoffeeClassification, CoffeeClassificationAttachment
 from app.models.coffee_sensory_profile import CoffeeSensoryProfile
@@ -11495,11 +11496,6 @@ def delete_organization_action(
     if organization.slug == "sisfarm" or user.organization_id == organization.id:
         _flash(request, "error", "A organização padrão SiSFarm e a do usuário logado são protegidas.")
         return _redirect(target)
-    if (db.query(User.id).filter_by(organization_id=organization_id).first()
-            or db.query(Farm.id).filter_by(organization_id=organization_id).first()):
-        _flash(request, "error", "Exclua ou mova usuários e fazendas antes de remover esta organização.")
-        return _redirect(target)
-
     billing = db.query(OrganizationBilling).filter_by(organization_id=organization_id).with_for_update().first()
     migrations = db.query(OrganizationCardMigration).filter_by(organization_id=organization_id)
     if migrations.filter_by(is_open=True).first():
@@ -11507,45 +11503,82 @@ def delete_organization_action(
         return _redirect(target)
     subscriptions = db.query(OrganizationSubscription).filter_by(organization_id=organization_id)
     current = subscriptions.filter_by(is_current=True).with_for_update().first()
-    if current and current.asaas_status not in {"DELETED", "NOT_FOUND"}:
+    customer_id = billing.asaas_customer_id if billing else None
+    legacy_responsible = db.query(User.id).filter(
+        User.organization_id == organization_id,
+        User.asaas_customer_id.isnot(None),
+        User.asaas_customer_id != "",
+    )
+    if customer_id:
+        legacy_responsible = legacy_responsible.filter(User.asaas_customer_id != customer_id)
+    if legacy_responsible.first():
+        _flash(request, "error", "Existe um responsável vinculado ao Asaas. Confira o vínculo antes de excluir.")
+        return _redirect(target)
+
+    needs_subscription_check = current is not None and current.asaas_status not in {"DELETED", "NOT_FOUND", "EXPIRED"}
+    if customer_id or needs_subscription_check:
         settings = get_settings()
-        error = asaas_configuration_error(settings, read_only=True)
-        if not billing or not billing.asaas_customer_id or billing.asaas_environment != current.environment or current.environment != asaas_env_name():
-            _flash(request, "error", "Confira o vínculo do cliente e da assinatura no ambiente correspondente do Asaas.")
+        environment = asaas_env_name()
+        if ((customer_id and billing.asaas_environment != environment)
+                or (needs_subscription_check and current.environment != environment)):
+            _flash(request, "error", "Confira o cliente e a assinatura no ambiente correspondente do Asaas.")
             return _redirect(target)
+        error = asaas_configuration_error(settings, read_only=True)
         if error:
             _flash(request, "error", error)
             return _redirect(target)
-        if not current.asaas_subscription_id:
-            _flash(request, "error", "A tentativa de assinatura não tem identificador confirmado. Concilie-a em Assinaturas antes de excluir.")
-            return _redirect(target)
-        removed, error = confirm_asaas_customer_removed(api_key=asaas_api_key(settings), customer_id=billing.asaas_customer_id)
-        if removed:
+        api_key = asaas_api_key(settings)
+        if customer_id:
+            removed, error = confirm_asaas_customer_removed(api_key=api_key, customer_id=customer_id)
+            if not removed:
+                _flash(request, "error", error or "O responsável ainda está cadastrado no Asaas.")
+                return _redirect(target)
+        if needs_subscription_check:
+            if not current.asaas_subscription_id:
+                _flash(request, "error", "A tentativa de assinatura não tem identificador confirmado. Concilie-a em Assinaturas antes de excluir.")
+                return _redirect(target)
             removed, error = sandbox_subscription_is_missing(
-                api_key=asaas_api_key(settings), subscription_id=current.asaas_subscription_id,
-                removed_customer_id=billing.asaas_customer_id,
+                api_key=api_key, subscription_id=current.asaas_subscription_id, removed_customer_id=customer_id,
             )
-        if not removed:
-            _flash(request, "error", error or "A assinatura ainda está registrada no Asaas. Encerre-a antes de excluir.")
-            return _redirect(target)
-        current.asaas_status = "NOT_FOUND"
-        current.sync_issue = None
+            if not removed:
+                _flash(request, "error", error or "A assinatura ainda está registrada no Asaas. Encerre-a antes de excluir.")
+                return _redirect(target)
+            current.asaas_status = "NOT_FOUND"
+            current.sync_issue = None
     if current:
         current.is_current = False
         current.status = "encerrada"
 
-    has_history = current is not None or subscriptions.first() is not None or migrations.first() is not None
-    if has_history or (billing and billing.asaas_customer_id):
-        organization.archived_at = app_now()
-        organization.is_active = False
-        record_commercial_event(db, user=user, organization_id=organization_id, resource="organizacao",
-                                resource_id=organization_id, action="arquivar", outcome="success")
+    preserve_history = current is not None or subscriptions.first() is not None or migrations.first() is not None or bool(customer_id)
+    try:
+        farm_ids, plot_ids, user_count = _repository(db).delete_organization_operational_data(organization_id)
+        if preserve_history:
+            organization.archived_at = app_now()
+            organization.is_active = False
+        else:
+            db.delete(organization)
+        record_commercial_event(
+            db, user=user, organization_id=organization_id if preserve_history else None, resource="organizacao",
+            resource_id=organization_id, action="excluir", outcome="success",
+            details={"usuarios_excluidos": user_count, "fazendas_excluidas": len(farm_ids),
+                     "historico_preservado": preserve_history},
+        )
         db.commit()
-        invalidate_entitlements(organization_id)
-        _flash(request, "success", "Organização removida da lista. O histórico comercial foi preservado em Assinaturas.")
-    else:
-        _repository(db).delete(organization)
-        _flash(request, "success", "Organização excluída com sucesso.")
+    except IntegrityError:
+        db.rollback()
+        logger.exception("Não foi possível excluir a organização %s e os dados vinculados", organization_id)
+        _flash(request, "error", "A exclusão foi cancelada por um vínculo de dados que precisa ser revisado.")
+        return _redirect(target)
+
+    for farm_id in farm_ids:
+        remove_farm_preview_image(farm_id)
+    for plot_id in plot_ids:
+        remove_plot_preview_image(plot_id)
+    invalidate_entitlements(organization_id)
+    message = "Organização, usuários e fazendas vinculadas excluídos com sucesso."
+    if preserve_history:
+        message += " O histórico comercial foi preservado em Assinaturas."
+    _flash(request, "success", message)
     return _redirect(target)
 
 

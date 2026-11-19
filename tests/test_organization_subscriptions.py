@@ -355,3 +355,66 @@ def test_remove_organization_after_asaas_deletion_preserves_history(monkeypatch)
         assert db.query(OrganizationSubscriptionPayment).one().status == 'RECEIVED'
         assert FarmRepository(db).get_organization(org.id) is None
         assert org in FarmRepository(db).list_organizations()
+
+
+def test_super_admin_deletes_linked_users_farms_and_records_only_after_asaas_unlink(monkeypatch):
+    from datetime import date
+
+    from sqlalchemy import event
+
+    from app.models import Farm, HarvestRecord, Plot, StockInventorySession, User
+
+    engine = create_engine('sqlite:///:memory:')
+    event.listen(engine, 'connect', lambda connection, _: connection.execute('PRAGMA foreign_keys=ON'))
+    Base.metadata.create_all(engine)
+    monkeypatch.setattr(routes, '_require_super_admin', lambda *args: None)
+    monkeypatch.setattr(routes, 'validate_csrf', lambda *args: None)
+    monkeypatch.setattr(routes, 'asaas_env_name', lambda: 'sandbox')
+    monkeypatch.setattr(routes, 'get_settings', lambda: SimpleNamespace(
+        asaas_api_base_url='https://api-sandbox.asaas.com', asaas_api_key='sandbox-key',
+    ))
+    monkeypatch.setattr(routes, 'confirm_asaas_customer_removed', lambda **kwargs: (False, None))
+    flashes = []
+    previews = []
+    monkeypatch.setattr(routes, '_flash', lambda request, kind, message: flashes.append((kind, message)))
+    monkeypatch.setattr(routes, 'remove_farm_preview_image', lambda farm_id: previews.append(('farm', farm_id)))
+    monkeypatch.setattr(routes, 'remove_plot_preview_image', lambda plot_id: previews.append(('plot', plot_id)))
+
+    with Session(engine) as db:
+        org = Organization(name='Excluir', slug='excluir')
+        other = Organization(name='Preservar', slug='preservar')
+        db.add_all([org, other])
+        db.flush()
+        user = User(name='Usuário', email='excluir@example.com', hashed_password='x', organization_id=org.id)
+        admin = User(name='Administrador', email='admin@example.com', hashed_password='x', organization_id=other.id)
+        farm = Farm(name='Fazenda 1', location='BA', total_area=12, organization_id=org.id)
+        other_farm = Farm(name='Fazenda 2', location='BA', total_area=12, organization_id=other.id)
+        billing = OrganizationBilling(organization_id=org.id, contact_name='Pessoa', contact_email='excluir@example.com',
+                                      asaas_customer_id='cus_test', asaas_environment='sandbox')
+        db.add_all([user, admin, farm, other_farm, billing])
+        db.flush()
+        plot = Plot(name='Setor', farm_id=farm.id, area_hectares=10, plant_count=20)
+        db.add(plot)
+        db.flush()
+        db.add_all([
+            HarvestRecord(plot_id=plot.id, harvest_date=date(2026, 11, 18), sacks_produced=1),
+            StockInventorySession(farm_id=farm.id, inventory_date=date(2026, 11, 18)),
+        ])
+        db.commit()
+        farm_id, plot_id, organization_id = farm.id, plot.id, org.id
+        args = dict(organization_id=organization_id, request=SimpleNamespace(), csrf_token='test', db=db, user=admin)
+
+        routes.delete_organization_action(**args)
+        assert 'Asaas' in flashes[-1][1]
+        assert org.archived_at is None and db.query(Farm).count() == 2 and db.query(User).count() == 2
+        assert not previews
+
+        billing.asaas_customer_id = None
+        db.commit()
+        routes.delete_organization_action(**args)
+        assert flashes[-1][0] == 'success'
+        assert db.get(Organization, organization_id) is None
+        assert db.query(Farm).one().id == other_farm.id
+        assert db.query(User).one().id == admin.id
+        assert db.query(Plot).count() == db.query(HarvestRecord).count() == db.query(StockInventorySession).count() == 0
+        assert previews == [('farm', farm_id), ('plot', plot_id)]
