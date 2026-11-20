@@ -349,3 +349,64 @@ def test_kml_file_parsing_and_collapsed_attachments_on_edit(env):
     idx = html.index("Anexos da propriedade")
     snippet = html[max(0, idx - 400):idx]
     assert '<details class="fm-opt-card" open>' not in snippet
+    assert "data-fm-area-diff" in html
+    assert 'data-fm-area-choice="keep"' in html
+    assert 'data-fm-area-choice="map"' in html
+
+
+def test_area_divergence_5_percent_rule_and_geometry_save_preserves_choice(env):
+    from app.services.forms import calculate_geojson_area_hectares, evaluate_area_divergence
+
+    poly_area = calculate_geojson_area_hectares(SAMPLE_GEOJSON)
+    assert poly_area and poly_area > 0
+
+    # Diferença <= 5%: mantém área declarada sem divergência
+    within = evaluate_area_divergence(poly_area * 1.04, SAMPLE_GEOJSON)
+    assert within["divergent"] is False
+
+    # Exatamente 5%: ainda dentro da tolerância
+    exact = evaluate_area_divergence(poly_area / 1.05, SAMPLE_GEOJSON)
+    assert exact["divergent"] is False
+
+    # Diferença > 5% (ex.: declarou 10 ha, polígono bem maior): sinaliza divergência com os dois valores
+    divergent = evaluate_area_divergence(10.0, SAMPLE_GEOJSON)
+    assert divergent["divergent"] is True
+    assert divergent["declared_area"] == 10.0
+    assert divergent["polygon_area"] == round(poly_area, 2)
+    assert divergent["diff_pct"] > 5.0
+
+    # Salvar geometria mantendo área declarada (padrão): preserva polígono e NÃO sobrescreve total_area
+    farm = env.db.query(Farm).one()
+    farm.total_area = 10.0
+    env.db.commit()
+
+    resp_keep = env.routes.update_farm_geometry_only(
+        farm.id,
+        env.request(f"/fazendas/{farm.id}/geometria"),
+        csrf_token="x",
+        boundary_geojson=SAMPLE_GEOJSON,
+        redirect_to=f"/fazendas/{farm.id}",
+        apply_polygon_area="0",
+        db=env.db,
+        user=env.user,
+    )
+    assert resp_keep.status_code == 303
+    env.db.refresh(farm)
+    assert float(farm.total_area) == 10.0
+    assert farm.boundary_geojson is not None
+
+    # Salvar geometria escolhendo usar área do mapa: atualiza total_area e preserva polígono
+    resp_map = env.routes.update_farm_geometry_only(
+        farm.id,
+        env.request(f"/fazendas/{farm.id}/geometria"),
+        csrf_token="x",
+        boundary_geojson=SAMPLE_GEOJSON,
+        redirect_to=f"/fazendas/{farm.id}",
+        apply_polygon_area="1",
+        db=env.db,
+        user=env.user,
+    )
+    assert resp_map.status_code == 303
+    env.db.refresh(farm)
+    assert float(farm.total_area) == round(poly_area, 2)
+    assert farm.boundary_geojson is not None

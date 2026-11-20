@@ -100,6 +100,7 @@
                             data-fm-map-open
                             data-farm-id="{{ farm.id }}"
                             data-farm-name="{{ farm.name }}"
+                            data-farm-area="{{ (farm.total_area or 0)|float }}"
                             data-map-src="{{ full_src }}"
                             aria-label="Ampliar mapa de {{ farm.name }}">
                         <img src="{{ thumb_src }}" alt="" loading="lazy" decoding="async">
@@ -207,6 +208,24 @@
                     <button type="button" class="sf-btn sf-btn-secondary" data-fm-map-undo>Desfazer</button>
                     <button type="button" class="sf-btn sf-btn-secondary" data-fm-map-remove>Remover ponto</button>
                 </div>
+                <div class="fm-area-diff" data-fm-map-area-diff role="alert" hidden>
+                    <div class="fm-area-diff-head">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9 1.8 18.4A2 2 0 0 0 3.5 21h17a2 2 0 0 0 1.7-2.6L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
+                        <div>
+                            <strong data-fm-map-diff-title>Diferença acima de 5% entre a área declarada e o polígono</strong>
+                            <p data-fm-map-diff-desc>Escolha qual área deseja salvar. O polígono desenhado será preservado em qualquer opção.</p>
+                        </div>
+                    </div>
+                    <div class="fm-area-diff-vals">
+                        <div><span>Área declarada</span><strong data-fm-map-declared>—</strong></div>
+                        <div><span>Área no mapa</span><strong data-fm-map-calculated>—</strong></div>
+                        <div><span>Diferença</span><strong data-fm-map-pct>—</strong></div>
+                    </div>
+                    <div class="fm-area-diff-actions">
+                        <button type="button" class="sf-btn sf-btn-secondary" data-fm-map-area-choice="keep">Manter área declarada</button>
+                        <button type="button" class="sf-btn sf-btn-primary" data-fm-map-area-choice="map">Usar área do mapa</button>
+                    </div>
+                </div>
             </div>
         </div>
         <div class="fm-sheet-foot">
@@ -218,6 +237,7 @@
                 <form method="post" data-fm-map-form hidden style="margin:0;">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                     <input type="hidden" name="boundary_geojson" value="" data-fm-map-input>
+                    <input type="hidden" name="apply_polygon_area" value="0" data-fm-map-apply-area>
                     <button type="submit" class="sf-btn sf-btn-primary">Salvar geometria</button>
                 </form>
                 {% endif %}
@@ -312,5 +332,5 @@
 <script type="application/json" id="fm-boundary-geometries-data">{{ farm_boundary_geometries_json|safe }}</script>
 <script>window.__GOOGLE_MAPS_API_KEY = {{ google_maps_web_key | tojson }};</script>
 <script src="{{ url_for('static', path='js/farm_boundary_editor.js') }}?v=20261120fm3"></script>
-<script src="{{ url_for('static', path='js/farms.js') }}?v=20261120fm3"></script>
+<script src="{{ url_for('static', path='js/farms.js') }}?v=20261120fm6"></script>
 {% endblock %}

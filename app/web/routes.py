@@ -9952,6 +9952,7 @@ def update_farm_geometry_only(
     csrf_token: str = Form(...),
     boundary_geojson: str = Form(...),
     redirect_to: str | None = Form(None),
+    apply_polygon_area: str | None = Form(None),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user_web),
 ):
@@ -9966,10 +9967,27 @@ def update_farm_geometry_only(
     if not normalized:
         _flash(request, "error", "A geometria enviada nao e valida.")
         return _redirect(target)
+    update_payload: dict[str, object] = {"boundary_geojson": normalized}
+    if str(apply_polygon_area or "").strip() == "1":
+        poly_area = calculate_geojson_area_hectares(normalized)
+        if poly_area and poly_area > 0:
+            new_area = round(float(poly_area), 2)
+            entitlements = quota_write_entitlements(db, farm.organization_id, today_in_app_timezone())
+            limit_error = None if farm.operations_paused else farm_limit_error(
+                db, entitlements, adding_farm=False, area_delta=Decimal(str(new_area)) - Decimal(farm.total_area or 0),
+            )
+            if limit_error:
+                _flash(request, "error", limit_error)
+                return _redirect(target)
+            update_payload["total_area"] = new_area
     old_hash = farm_geojson_hash(farm.boundary_geojson)
     new_hash = farm_geojson_hash(normalized)
-    repo.update(farm, {"boundary_geojson": normalized})
-    _flash(request, "success", "Geometria da fazenda atualizada.")
+    repo.update(farm, update_payload)
+    _flash(
+        request,
+        "success",
+        "Geometria e área da fazenda atualizadas." if "total_area" in update_payload else "Geometria da fazenda atualizada.",
+    )
     response = _redirect(target)
     if new_hash != old_hash or not farm_preview_fs_path(farm.id).is_file():
         response.background = BackgroundTask(schedule_farm_preview_generation, farm.id, normalized)

@@ -2727,6 +2727,36 @@ def calculate_geojson_area_hectares(geojson_text: str | None) -> float | None:
     return round(sum(valid_areas), 4) if valid_areas else None
 
 
+AREA_DIVERGENCE_TOLERANCE_PCT = 5.0
+
+
+def evaluate_area_divergence(
+    declared_area: float | None,
+    geojson_text: str | None,
+    *,
+    tolerance_pct: float = AREA_DIVERGENCE_TOLERANCE_PCT,
+) -> dict:
+    """Compara área declarada vs. área calculada do polígono com tolerância percentual (padrão 5%)."""
+    declared = float(declared_area or 0)
+    polygon_area = calculate_geojson_area_hectares(geojson_text)
+    if declared <= 0 or polygon_area is None or polygon_area <= 0:
+        return {
+            "divergent": False,
+            "declared_area": round(declared, 2),
+            "polygon_area": round(polygon_area, 2) if polygon_area else None,
+            "diff_pct": None,
+            "tolerance_pct": tolerance_pct,
+        }
+    diff_pct = abs(polygon_area - declared) / declared * 100.0
+    return {
+        "divergent": diff_pct > tolerance_pct + 1e-9,
+        "declared_area": round(declared, 2),
+        "polygon_area": round(polygon_area, 2),
+        "diff_pct": round(diff_pct, 1),
+        "tolerance_pct": tolerance_pct,
+    }
+
+
 def calculate_irrigation_volume(plot: Plot, duration_minutes: int) -> float | None:
     if not plot or not duration_minutes:
         return None

@@ -150,14 +150,81 @@
         const verticesEl = mapModal.querySelector('[data-fm-map-vertices]');
         const areaEl = mapModal.querySelector('[data-fm-map-area]');
         const guideEl = mapModal.querySelector('[data-fm-map-guide]');
+        const applyAreaInput = mapModal.querySelector('[data-fm-map-apply-area]');
+        const mapDiffBox = mapModal.querySelector('[data-fm-map-area-diff]');
+        const mapDiffTitle = mapModal.querySelector('[data-fm-map-diff-title]');
+        const mapDiffDesc = mapModal.querySelector('[data-fm-map-diff-desc]');
+        const mapDiffDeclared = mapModal.querySelector('[data-fm-map-declared]');
+        const mapDiffCalc = mapModal.querySelector('[data-fm-map-calculated]');
+        const mapDiffPct = mapModal.querySelector('[data-fm-map-pct]');
 
         let editor = null;
         let currentFarmId = null;
+        let currentFarmArea = 0;
+        let modalPolyArea = 0;
+        let modalAreaChoiceSig = null;
+
+        const modalDiffSig = () => `${currentFarmArea.toFixed(2)}|${modalPolyArea.toFixed(2)}`;
+        const isModalAreaDivergent = () =>
+            currentFarmArea > 0 && modalPolyArea > 0 && (Math.abs(modalPolyArea - currentFarmArea) / currentFarmArea) * 100 > 5.0001;
+
+        const syncModalAreaDiff = () => {
+            if (!mapDiffBox) return;
+            if (!isModalAreaDivergent()) {
+                mapDiffBox.hidden = true;
+                mapDiffBox.classList.remove('is-resolved');
+                if (applyAreaInput) applyAreaInput.value = '0';
+                modalAreaChoiceSig = null;
+                return;
+            }
+            const pct = (Math.abs(modalPolyArea - currentFarmArea) / currentFarmArea) * 100;
+            const sig = modalDiffSig();
+            const resolved = modalAreaChoiceSig === sig;
+            mapDiffBox.hidden = false;
+            mapDiffBox.classList.toggle('is-resolved', resolved);
+            if (mapDiffDeclared) mapDiffDeclared.textContent = `${fmtBr(currentFarmArea, 2)} ha`;
+            if (mapDiffCalc) mapDiffCalc.textContent = `${fmtBr(modalPolyArea, 2)} ha`;
+            if (mapDiffPct) mapDiffPct.textContent = `${fmtBr(pct, 1)}%`;
+            if (!resolved) {
+                if (mapDiffTitle) mapDiffTitle.textContent = 'Diferença acima de 5% entre a área declarada e o polígono';
+                if (mapDiffDesc) mapDiffDesc.textContent = 'Escolha qual área deseja salvar. O polígono desenhado será preservado em qualquer opção.';
+            }
+        };
+
+        mapModal.querySelectorAll('[data-fm-map-area-choice]').forEach((btn) => {
+            btn.addEventListener('click', () => {
+                const choice = btn.dataset.fmMapAreaChoice;
+                modalAreaChoiceSig = modalDiffSig();
+                if (applyAreaInput) applyAreaInput.value = choice === 'map' ? '1' : '0';
+                if (mapDiffTitle) {
+                    mapDiffTitle.textContent = choice === 'map'
+                        ? `Área será atualizada para ${fmtBr(modalPolyArea, 2)} ha ao salvar`
+                        : `Área declarada mantida em ${fmtBr(currentFarmArea, 2)} ha`;
+                }
+                if (mapDiffDesc) mapDiffDesc.textContent = 'O polígono desenhado será preservado ao salvar.';
+                syncModalAreaDiff();
+            });
+        });
+
+        saveForm?.addEventListener('submit', (e) => {
+            if (isModalAreaDivergent() && modalAreaChoiceSig !== modalDiffSig()) {
+                e.preventDefault();
+                syncModalAreaDiff();
+                mapDiffBox?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }
+        });
 
         const destroyModalEditor = () => {
             if (editor) {
                 try { editor.destroy(); } catch (e) { /* ignore */ }
                 editor = null;
+            }
+            modalPolyArea = 0;
+            modalAreaChoiceSig = null;
+            if (applyAreaInput) applyAreaInput.value = '0';
+            if (mapDiffBox) {
+                mapDiffBox.hidden = true;
+                mapDiffBox.classList.remove('is-resolved');
             }
         };
 
@@ -182,6 +249,7 @@
                 removePointButton: removeBtn,
                 undoButton: undoBtn,
                 onStats: ({ vertices, area, selectedIndex, canUndo }) => {
+                    modalPolyArea = vertices >= 3 ? Number(area || 0) : 0;
                     if (verticesEl) verticesEl.textContent = String(vertices);
                     if (areaEl) areaEl.textContent = `${fmtBr(area, 2)} ha`;
                     if (undoBtn) undoBtn.disabled = !canUndo;
@@ -191,6 +259,7 @@
                             ? `Marque pelo menos ${3 - vertices} ponto(s) no mapa para fechar o perímetro.`
                             : 'Arraste os cantos para ajustar · Toque no (+) da borda para adicionar ponto · Selecione um canto para remover.';
                     }
+                    syncModalAreaDiff();
                 },
             });
             editor?.invalidate();
@@ -199,6 +268,7 @@
         document.querySelectorAll('[data-fm-map-open]').forEach((btn) => {
             btn.addEventListener('click', () => {
                 currentFarmId = btn.dataset.farmId;
+                currentFarmArea = parseFloat(btn.dataset.farmArea || '0') || 0;
                 const name = btn.dataset.farmName || 'Fazenda';
                 const src = btn.dataset.mapSrc || '';
                 if (titleEl) titleEl.textContent = `Mapa — ${name}`;
@@ -285,6 +355,12 @@
         const resetMapBtn = wizard.querySelector('[data-fm-wiz-reset]');
         const geoDropzone = wizard.querySelector('[data-fm-geo-dropzone]');
         const geoStatusEl = wizard.querySelector('[data-fm-geo-status]');
+        const areaDiffBox = wizard.querySelector('[data-fm-area-diff]');
+        const areaDiffTitle = wizard.querySelector('[data-fm-area-diff-title]');
+        const areaDiffDesc = wizard.querySelector('[data-fm-area-diff-desc]');
+        const areaDeclaredEl = wizard.querySelector('[data-fm-area-declared]');
+        const areaCalcEl = wizard.querySelector('[data-fm-area-calculated]');
+        const areaPctEl = wizard.querySelector('[data-fm-area-pct]');
         const wizVerticesEl = wizard.querySelector('[data-fm-wiz-vertices]');
         const wizPolyAreaEl = wizard.querySelector('[data-fm-wiz-poly-area]');
         const wizPolyBadge = wizard.querySelector('[data-fm-poly-badge]');
@@ -295,6 +371,74 @@
         let formEditor = null;
         let currentGeom = initialGeom;
         let currentVertexCount = initialGeom ? (window.extractFarmBoundaryPoints?.(initialGeom)?.length || 0) : 0;
+        let currentPolyArea = 0;
+        let areaChoiceSignature = null;
+
+        const getDeclaredArea = () => parseFloat(String(areaInput?.value || '').replace(',', '.')) || 0;
+        const areaDiffSig = () => `${getDeclaredArea().toFixed(2)}|${currentPolyArea.toFixed(2)}`;
+        const isWizardAreaDivergent = () => {
+            const declared = getDeclaredArea();
+            return declared > 0 && currentPolyArea > 0 && (Math.abs(currentPolyArea - declared) / declared) * 100 > 5.0001;
+        };
+
+        const syncWizardAreaDiff = () => {
+            if (!areaDiffBox) return;
+            const declared = getDeclaredArea();
+            if (!isWizardAreaDivergent()) {
+                areaDiffBox.hidden = true;
+                areaDiffBox.classList.remove('is-resolved');
+                areaChoiceSignature = null;
+                return;
+            }
+            const pct = (Math.abs(currentPolyArea - declared) / declared) * 100;
+            const sig = areaDiffSig();
+            const resolved = areaChoiceSignature === sig;
+            areaDiffBox.hidden = false;
+            areaDiffBox.classList.toggle('is-resolved', resolved);
+            if (areaDeclaredEl) areaDeclaredEl.textContent = `${fmtBr(declared, 2)} ha`;
+            if (areaCalcEl) areaCalcEl.textContent = `${fmtBr(currentPolyArea, 2)} ha`;
+            if (areaPctEl) areaPctEl.textContent = `${fmtBr(pct, 1)}%`;
+            if (!resolved) {
+                if (areaDiffTitle) areaDiffTitle.textContent = 'Diferença entre a área informada e o polígono desenhado';
+                if (areaDiffDesc) areaDiffDesc.textContent = 'A diferença ultrapassa a tolerância de 5%. Escolha qual área deseja manter — o polígono desenhado será preservado em qualquer opção.';
+            }
+        };
+
+        wizard.querySelectorAll('[data-fm-area-choice]').forEach((btn) => {
+            btn.addEventListener('click', () => {
+                const choice = btn.dataset.fmAreaChoice;
+                if (choice === 'map' && currentPolyArea > 0 && areaInput) {
+                    areaInput.value = currentPolyArea.toFixed(2);
+                    areaChoiceSignature = areaDiffSig();
+                    syncSummary();
+                    if (areaDiffBox) {
+                        areaDiffBox.hidden = false;
+                        areaDiffBox.classList.add('is-resolved');
+                        if (areaDiffTitle) areaDiffTitle.textContent = `Área atualizada para ${fmtBr(currentPolyArea, 2)} ha conforme o mapa`;
+                        if (areaDiffDesc) areaDiffDesc.textContent = 'O polígono desenhado foi preservado. Você pode avançar para conferir.';
+                        if (areaDeclaredEl) areaDeclaredEl.textContent = `${fmtBr(currentPolyArea, 2)} ha`;
+                        if (areaCalcEl) areaCalcEl.textContent = `${fmtBr(currentPolyArea, 2)} ha`;
+                        if (areaPctEl) areaPctEl.textContent = '0,0%';
+                    }
+                    return;
+                }
+                areaChoiceSignature = areaDiffSig();
+                if (areaDiffTitle) areaDiffTitle.textContent = `Área declarada mantida (${fmtBr(getDeclaredArea(), 2)} ha)`;
+                if (areaDiffDesc) areaDiffDesc.textContent = 'O polígono desenhado foi preservado. Você pode avançar para conferir.';
+                syncWizardAreaDiff();
+            });
+        });
+
+        const requireAreaDecisionIfNeeded = () => {
+            if (isWizardAreaDivergent() && areaChoiceSignature !== areaDiffSig()) {
+                wizStep = 2;
+                renderStep();
+                syncWizardAreaDiff();
+                areaDiffBox?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                return false;
+            }
+            return true;
+        };
 
         if (ccirInput && ccirInput.value) ccirInput.value = maskCCIR(ccirInput.value);
         if (itrInput && itrInput.value) itrInput.value = maskCIB(itrInput.value);
@@ -406,10 +550,12 @@
                 clearButton: clearMapBtn,
                 onStats: ({ vertices, area, selectedIndex, canUndo }) => {
                     currentVertexCount = vertices;
+                    currentPolyArea = vertices >= 3 ? Number(area || 0) : 0;
                     if (wizVerticesEl) wizVerticesEl.textContent = String(vertices);
                     if (wizPolyAreaEl) wizPolyAreaEl.textContent = `${fmtBr(area, 2)} ha`;
                     if (undoMapBtn) undoMapBtn.disabled = !canUndo;
                     if (removeMapBtn) removeMapBtn.disabled = selectedIndex === null || vertices <= 3;
+                    syncWizardAreaDiff();
                     syncSummary();
                 },
             });
@@ -465,6 +611,7 @@
                 renderStep();
                 return;
             }
+            if (target === 3 && !requireAreaDecisionIfNeeded()) return;
             wizStep = target;
             renderStep();
         }));
@@ -480,6 +627,7 @@
 
         nextBtn?.addEventListener('click', () => {
             if (wizStep === 1 && !validateStep1()) return;
+            if (wizStep === 2 && !requireAreaDecisionIfNeeded()) return;
             wizStep = Math.min(3, wizStep + 1);
             renderStep();
         });
@@ -676,11 +824,27 @@
         });
 
         [nameInput, locInput, areaInput, carInput, ccirInput, itrInput, matInput, cartInput, notesInput, geoFileInput].forEach((el) => {
-            el?.addEventListener('input', syncSummary);
-            el?.addEventListener('change', syncSummary);
+            el?.addEventListener('input', () => {
+                if (el === areaInput) syncWizardAreaDiff();
+                syncSummary();
+            });
+            el?.addEventListener('change', () => {
+                if (el === areaInput) syncWizardAreaDiff();
+                syncSummary();
+            });
         });
 
-        wizard.addEventListener('submit', () => {
+        wizard.addEventListener('submit', (e) => {
+            if (!validateStep1()) {
+                e.preventDefault();
+                wizStep = 1;
+                renderStep();
+                return;
+            }
+            if (!requireAreaDecisionIfNeeded()) {
+                e.preventDefault();
+                return;
+            }
             if (formEditor?.syncToHidden) formEditor.syncToHidden();
         });
 
