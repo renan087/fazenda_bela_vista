@@ -73,9 +73,20 @@ def test_create_edit_and_ai_keep_lab_metadata(monkeypatch):
     chart = json.loads(routes._soil_history_chart([row]))
     assert chart["potassium"] == pytest.approx([117.3])
 
-    # Older API clients that omit the new fields leave previously recorded metadata intact.
+    # The previous recommendation survives an edit and is identified as potentially outdated.
+    row.ai_recommendation = "Recomendação anterior"
+    row.ai_status = "generated"
+    row.ai_model = "modelo-anterior"
+    db.commit()
+
+    def fail_if_called(*args):
+        pytest.fail("A edição chamou a IA")
+
+    monkeypatch.setattr(routes, "_apply_soil_ai_recommendation", fail_if_called)
     asyncio.run(routes.update_soil_analysis_action(row.id, Request({}), **args))
     assert json.loads(row.laboratory_metadata) == metadata
+    assert row.ai_recommendation == "Recomendação anterior"
+    assert row.ai_model == "modelo-anterior" and row.ai_status == "outdated"
     row.laboratory_metadata = None
     db.commit()
     asyncio.run(routes.update_soil_analysis_action(row.id, Request({}), **args))

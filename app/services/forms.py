@@ -2573,11 +2573,7 @@ def update_soil_analysis(repository: FarmRepository, analysis: SoilAnalysis, for
             "liming_need_t_ha": form.get("liming_need_t_ha"),
             "npk_recommendation": form.get("npk_recommendation"),
             "micronutrient_recommendation": form.get("micronutrient_recommendation"),
-            "ai_recommendation": form.get("ai_recommendation"),
-            "ai_status": form.get("ai_status"),
-            "ai_model": form.get("ai_model"),
-            "ai_error": form.get("ai_error"),
-            "ai_generated_at": form.get("ai_generated_at"),
+            "ai_status": "outdated" if analysis.ai_recommendation else analysis.ai_status,
         },
     )
 

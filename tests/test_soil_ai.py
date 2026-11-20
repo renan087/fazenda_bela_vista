@@ -281,3 +281,17 @@ def test_incomplete_profile_can_generate_a_plan(soil_context, monkeypatch):
     })
     updated = routes._apply_soil_ai_recommendation(routes._repository(db), analysis, user)
     assert updated.ai_status == "generated" and updated.ai_recommendation == "Plano com os dados disponíveis"
+
+
+def test_failed_manual_generation_keeps_outdated_warning(soil_context, monkeypatch):
+    routes, db, user, analysis, _ = soil_context
+    analysis.ai_recommendation = "Recomendação anterior"
+    analysis.ai_status = "outdated"
+    db.commit()
+    monkeypatch.setattr(routes, "_soil_ai_allowed_pages", lambda *args: set())
+    monkeypatch.setattr(routes, "gerar_recomendacao_adubacao", lambda *args: {
+        "status": "error", "error": "Falha simulada",
+    })
+    updated = routes._apply_soil_ai_recommendation(routes._repository(db), analysis, user)
+    assert updated.ai_status == "outdated" and updated.ai_recommendation == "Recomendação anterior"
+    assert updated.ai_error == "Falha simulada"

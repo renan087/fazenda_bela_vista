@@ -72,6 +72,9 @@
 {% if recommendation and recommendation.modulos_utilizados|reject('in', soil_ai_allowed_pages)|list %}
 <p class="rounded-2xl bg-slate-50 p-4 text-sm text-slate-700">Seu acesso atual não inclui todos os módulos consultados para esta recomendação.</p>
 {% elif item.ai_recommendation %}
+{% if item.ai_status == 'outdated' %}
+<p class="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">Os dados da análise foram editados após esta recomendação. Use Gerar IA para atualizá-la com os dados atuais.</p>
+{% endif %}
 <aside class="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
     <strong>Revisão técnica antes da aplicação</strong>
     <p class="mt-1">Confirme o laudo, as garantias dos insumos e as doses com o responsável técnico do setor.</p>

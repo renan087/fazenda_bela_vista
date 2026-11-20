@@ -4009,7 +4009,8 @@ def _apply_soil_ai_recommendation(repo: FarmRepository, analysis: SoilAnalysis, 
     if ai_result.get("status") != "generated" and refreshed.ai_recommendation:
         return _soil_timed(
             "save_db", "recommendation", repo.update, refreshed,
-            {"ai_status": ai_result["status"], "ai_error": ai_result.get("error")},
+            {"ai_status": "outdated" if refreshed.ai_status == "outdated" else ai_result["status"],
+             "ai_error": ai_result.get("error")},
         )
     return _soil_timed(
         "save_db", "recommendation", repo.update, refreshed,
@@ -21357,7 +21358,7 @@ async def update_soil_analysis_action(
         if not any("unit_" + field in form_data for field in SOIL_FIELDS):
             metadata = parse_metadata(analysis.laboratory_metadata) or None
         pdf_filename, pdf_content_type, pdf_data = _soil_timed("pdf", "edit", _read_upload, analysis_pdf)
-        updated = _soil_timed(
+        _soil_timed(
             "save_db", "edit", update_soil_analysis, repo,
             analysis,
             _soil_payload(
@@ -21383,13 +21384,7 @@ async def update_soil_analysis_action(
                 current_analysis=analysis,
             ),
         )
-        updated = _soil_timed("recommendation", "edit", _apply_soil_ai_recommendation, repo, updated, user)
-        if updated.ai_status == "generated":
-            _flash(request, "success", "Analise de solo atualizada e recomendacao regenerada.")
-        elif updated.ai_status == "skipped":
-            _flash(request, "success", "Analise de solo atualizada. Configure a OPENAI_API_KEY para gerar recomendacoes personalizadas.")
-        else:
-            _flash(request, "error", "Analise de solo atualizada, mas a recomendacao da IA falhou nesta tentativa.")
+        _flash(request, "success", "Análise de solo atualizada com sucesso.")
         return _redirect_for_request(request, "/analise-solo", plot_id=plot.id, compare_plot_id=plot.id)
 
     try:
