@@ -20,7 +20,7 @@ from sqlalchemy.exc import IntegrityError
 
 from app.models import Farm, User
 from app.models.crop_season import CropSeason
-from app.models.whatsapp import WhatsAppInboundMessage, WhatsAppLink
+from app.models.whatsapp import WhatsAppClosingRequest, WhatsAppInboundMessage, WhatsAppLink
 from app.services.chat_format import to_whatsapp
 from app.services.stock_assistant import normalized
 from app.services.farm_plan_guard import FarmPlanRestriction, bind_farm_plan_actor
@@ -38,6 +38,7 @@ UNKNOWN_REPLY_INTERVAL = timedelta(hours=1)  # a instrucao de vinculo pode ter f
 UNKNOWN_TEXT = ("Olá! Este número ainda não está vinculado a uma conta SiSFarm. Para usar o assistente pelo WhatsApp, "
                 "entre no SiSFarm, abra Assistente > WhatsApp e gere o seu código de vínculo.")
 NEW_THREAD_WORDS = {"novo", "nova conversa", "/novo", "reiniciar"}
+CLOSE_WORDS = {"encerrar", "encerrar conversa", "encerrar atendimento", "finalizar", "finalizar conversa", "finalizar atendimento", "terminar conversa", "terminar atendimento", "/encerrar"}
 CONFIRM_WORDS = {"confirmar", "confirmo", "confirma"}
 DISCARD_WORDS = {"descartar", "descarta", "cancelar"}
 
@@ -382,6 +383,43 @@ def _handle(db, row, client) -> str | None:
     key = normalized(text)
 
     button_reply = (message.get("interactive") or {}).get("button_reply") or {}
+    closing_button = re.fullmatch(r"close:(yes|no):([0-9a-f]{32})", str(button_reply.get("id") or ""))
+    pending_close = (db.query(WhatsAppClosingRequest).filter_by(link_id=link.id, status="pending")
+                     .order_by(WhatsAppClosingRequest.created_at.desc()).first())
+    if closing_button:
+        if not pending_close or closing_button.group(2) != pending_close.id or pending_close.thread_id != link.thread_id:
+            client.send_text(row.wa_id, "Essa confirmação de encerramento não está mais disponível.")
+            return "close_stale"
+        key = "sim" if closing_button.group(1) == "yes" else "nao"
+    if pending_close:
+        if pending_close.thread_id != link.thread_id:
+            pending_close.status, pending_close.resolved_at = "superseded", _now()
+            db.commit()
+        elif key in {"nao", "pode encerrar", "nao preciso"}:
+            pending_close.status, pending_close.resolved_at = "closed", _now()
+            link.thread_id = None
+            db.commit()
+            client.send_text(row.wa_id, "Atendimento encerrado. Quando precisar, envie uma mensagem para iniciar uma nova conversa.")
+            return "closed"
+        elif key in {"sim", "continuar", "nao encerrar"}:
+            pending_close.status, pending_close.resolved_at = "continued", _now()
+            db.commit()
+            client.send_text(row.wa_id, "Claro! Em que mais posso ajudar?")
+            return "continued"
+        else:
+            # Uma nova dúvida mantém a conversa e segue o processamento normal.
+            pending_close.status, pending_close.resolved_at = "continued", _now()
+            db.commit()
+    if row.msg_type == "text" and key in CLOSE_WORDS:
+        request = WhatsAppClosingRequest(id=secrets.token_hex(16), link_id=link.id, thread_id=link.thread_id,
+                                         status="pending", created_at=_now())
+        db.add(request)
+        db.flush()
+        client.send_buttons(row.wa_id,
+            "Antes de encerrarmos, posso ajudar em mais alguma coisa? Lançamentos ainda não confirmados não serão realizados.",
+            [(f"close:yes:{request.id}", "Sim, continuar"), (f"close:no:{request.id}", "Não, encerrar")])
+        db.commit()
+        return "close_pending"
     module_button = re.fullmatch(r"mod:(confirmar|cancelar):([0-9a-f]{32})", str(button_reply.get("id") or ""))
     if module_button:
         entries = routes._thread_messages(thread) if thread else []

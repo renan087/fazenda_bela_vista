@@ -453,3 +453,60 @@ def test_link_status_endpoint_reports_new_link(monkeypatch):
     assert data["linked"] and not data["pending_code"] and data["phone_end"] == "7667"
     assert data["farm"] == "Bela Vista" and data["season"] == "Café 2026" and data["verified_at"]
     assert "557781177667" not in json.dumps(data)
+
+
+def test_explicit_closure_preserves_history_and_ignores_stale_buttons(monkeypatch):
+    from datetime import datetime, timezone
+    from uuid import uuid4
+    from app.models.whatsapp import WhatsAppClosingRequest
+
+    _settings(monkeypatch)
+    routes, db, user, scope, *_ = _route_env(monkeypatch, [])
+    client = FakeClient()
+    code = whatsapp_bot.start_link(db, user, scope["active_farm"], scope["active_season"])
+    _receive(db, client, _payload("5535999", "link-close", f"SISFARM {code}"))
+    now = datetime.now(timezone.utc)
+    thread = routes.AssistantThread(id=uuid4().hex, user_id=user.id, organization_id=user.organization_id,
+                                    farm_id=scope["active_farm_id"], season_id=scope["active_season_id"],
+                                    channel="whatsapp", title="WhatsApp", created_at=now, updated_at=now)
+    routes._save_thread(db, thread, [{"role": "assistant", "content": "Olá"}])
+    link = db.query(WhatsAppLink).one()
+    link.thread_id = thread.id
+    db.commit()
+    assert _receive(db, client, _payload("5535999", "close-1", "encerrar atendimento")) == ["close_pending"]
+    request = db.query(WhatsAppClosingRequest).one()
+    assert link.thread_id == thread.id and request.status == "pending"
+    close_button = client.sent[-1][3][1][0]
+    assert _receive(db, client, _payload("5535999", "close-2", button=close_button)) == ["closed"]
+    assert link.thread_id is None and request.status == "closed" and db.get(routes.AssistantThread, thread.id)
+    assert _receive(db, client, _payload("5535999", "close-3", button=close_button)) == ["close_stale"]
+    db.close()
+
+
+def test_closure_can_be_cancelled(monkeypatch):
+    from app.models.whatsapp import WhatsAppClosingRequest
+    _settings(monkeypatch)
+    routes, db, user, scope, *_ = _route_env(monkeypatch, [])
+    client = FakeClient()
+    code = whatsapp_bot.start_link(db, user, scope["active_farm"], scope["active_season"])
+    _receive(db, client, _payload("5535999", "link-continue", f"SISFARM {code}"))
+    _receive(db, client, _payload("5535999", "close-continue-1", "finalizar"))
+    button = client.sent[-1][3][0][0]
+    assert _receive(db, client, _payload("5535999", "close-continue-2", button=button)) == ["continued"]
+    assert db.query(WhatsAppClosingRequest).one().status == "continued"
+    db.close()
+
+
+def test_failed_closure_prompt_does_not_leave_pending_confirmation(monkeypatch):
+    from app.models.whatsapp import WhatsAppClosingRequest
+    _settings(monkeypatch)
+    routes, db, user, scope, *_ = _route_env(monkeypatch, [])
+    client = FakeClient()
+    code = whatsapp_bot.start_link(db, user, scope["active_farm"], scope["active_season"])
+    _receive(db, client, _payload("5535999", "link-close-fail", f"SISFARM {code}"))
+    def fail(*args, **kwargs):
+        raise whatsapp.WhatsAppError("indisponível")
+    monkeypatch.setattr(client, "send_buttons", fail)
+    assert _receive(db, client, _payload("5535999", "close-fail", "encerrar")) == ["failed"]
+    assert db.query(WhatsAppClosingRequest).count() == 0
+    db.close()

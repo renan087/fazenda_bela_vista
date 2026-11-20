@@ -60,3 +60,16 @@ class WhatsAppRecordAccess(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
     consumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class WhatsAppClosingRequest(Base):
+    """Confirmação de encerramento e histórico mínimo da decisão do usuário."""
+
+    __tablename__ = "whatsapp_closing_requests"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    link_id: Mapped[int] = mapped_column(ForeignKey("whatsapp_links.id", ondelete="CASCADE"), index=True)
+    thread_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    status: Mapped[str] = mapped_column(String(20), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
