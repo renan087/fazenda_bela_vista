@@ -77,7 +77,7 @@
         <span class="sf-soon" aria-disabled="true">{{ it.label }} <em>Em breve</em></span>
         {%- else %}
         <a href="{{ sf_href(it) }}" class="sf-link{% if page == it.page %} is-active{% endif %}" data-sf-id="{{ it.id }}" data-sf-icon="{{ g.icon }}" data-sf-group-label="{{ g.label }}"{% if page == it.page %} aria-current="page"{% endif %}{% if it.target %} target="{{ it.target }}" rel="noopener"{% endif %}><span>{{ it.label }}</span>{% if not it.plain %}{{ module_lock(it.raw) }}{% endif %}</a>
-        <button type="button" class="sf-pin" data-sf-pin="{{ it.id }}" aria-pressed="false" aria-label="Fixar nos favoritos: {{ it.label }}">{{ sf_icon('star', 'sf-ic sf-ic-s') }}</button>
+        <button type="button" class="sf-pin" data-sf-pin="{{ it.id }}" data-hint="Fixar nos favoritos" aria-pressed="false" aria-label="Fixar nos favoritos: {{ it.label }}">{{ sf_icon('star', 'sf-ic sf-ic-s') }}</button>
         {%- endif %}
     </div>
     {%- endfor %}
@@ -119,19 +119,14 @@
                 <img src="{{ url_for('static', path='images/logo-icon.png') }}" alt="" class="sf-brand-ic" width="46" height="42">
                 <svg class="sf-word" viewBox="0 0 112 32" role="img" aria-label="SiSFarm"><path d="M1.0919999999999999 20.54H5.824Q5.928 21.554000000000002 6.526 22.087000000000003Q7.124 22.62 8.086 22.62Q9.074 22.62 9.646 22.165Q10.218 21.71 10.218 20.904Q10.218 20.228 9.763 19.786Q9.308 19.344 8.645 19.058Q7.981999999999999 18.772 6.76 18.408Q4.992 17.862000000000002 3.8739999999999997 17.316000000000003Q2.756 16.77 1.9499999999999997 15.704Q1.144 14.638 1.144 12.922Q1.144 10.374 2.9899999999999998 8.931000000000001Q4.835999999999999 7.4879999999999995 7.8 7.4879999999999995Q10.815999999999999 7.4879999999999995 12.661999999999999 8.931000000000001Q14.508 10.374 14.638 12.948H9.828Q9.776 12.064 9.178 11.557Q8.58 11.05 7.643999999999999 11.05Q6.838 11.05 6.343999999999999 11.479000000000001Q5.85 11.908000000000001 5.85 12.714Q5.85 13.598 6.6819999999999995 14.092Q7.513999999999999 14.586 9.282 15.158000000000001Q11.049999999999999 15.756 12.155 16.302Q13.26 16.848 14.065999999999999 17.887999999999998Q14.872 18.928 14.872 20.566Q14.872 22.126 14.079 23.4Q13.286 24.674 11.777999999999999 25.427999999999997Q10.27 26.182 8.216 26.182Q6.2139999999999995 26.182 4.628 25.532Q3.042 24.882 2.093 23.608Q1.144 22.334 1.0919999999999999 20.54ZM22.386 11.492V26.0H17.939999999999998V11.492ZM25.427999999999997 20.54H30.159999999999997Q30.264 21.554000000000002 30.862 22.087000000000003Q31.459999999999997 22.62 32.422 22.62Q33.41 22.62 33.982 22.165Q34.554 21.71 34.554 20.904Q34.554 20.228 34.099000000000004 19.786Q33.644 19.344 32.980999999999995 19.058Q32.318 18.772 31.095999999999997 18.408Q29.328 17.862000000000002 28.21 17.316000000000003Q27.092 16.77 26.285999999999998 15.704Q25.479999999999997 14.638 25.479999999999997 12.922Q25.479999999999997 10.374 27.325999999999997 8.931000000000001Q29.171999999999997 7.4879999999999995 32.135999999999996 7.4879999999999995Q35.152 7.4879999999999995 36.998 8.931000000000001Q38.843999999999994 10.374 38.974 12.948H34.164Q34.111999999999995 12.064 33.513999999999996 11.557Q32.916 11.05 31.979999999999997 11.05Q31.174 11.05 30.68 11.479000000000001Q30.186 11.908000000000001 30.186 12.714Q30.186 13.598 31.018 14.092Q31.849999999999998 14.586 33.617999999999995 15.158000000000001Q35.385999999999996 15.756 36.491 16.302Q37.596 16.848 38.402 17.887999999999998Q39.208 18.928 39.208 20.566Q39.208 22.126 38.415 23.4Q37.622 24.674 36.114 25.427999999999997Q34.605999999999995 26.182 32.552 26.182Q30.549999999999997 26.182 28.964 25.532Q27.378 24.882 26.429 23.608Q25.479999999999997 22.334 25.427999999999997 20.54Z" fill="#5DB33F"/><path d="M54.419999999999995 7.748000000000001V11.31H46.983999999999995V15.158000000000001H52.547999999999995V18.616H46.983999999999995V26.0H42.538V7.748000000000001ZM62.272 11.284Q63.806 11.284 64.963 11.908000000000001Q66.11999999999999 12.532 66.744 13.546000000000001V11.492H71.19V26.0H66.744V23.946Q66.094 24.96 64.937 25.584Q63.779999999999994 26.208 62.245999999999995 26.208Q60.477999999999994 26.208 59.02199999999999 25.285Q57.565999999999995 24.362000000000002 56.721 22.659Q55.876 20.956 55.876 18.72Q55.876 16.484 56.721 14.794Q57.565999999999995 13.104000000000001 59.02199999999999 12.194Q60.477999999999994 11.284 62.272 11.284ZM63.571999999999996 15.158000000000001Q62.245999999999995 15.158000000000001 61.32299999999999 16.107Q60.4 17.056 60.4 18.72Q60.4 20.384 61.32299999999999 21.359Q62.245999999999995 22.334 63.571999999999996 22.334Q64.898 22.334 65.821 21.372Q66.744 20.41 66.744 18.746000000000002Q66.744 17.082 65.821 16.12Q64.898 15.158000000000001 63.571999999999996 15.158000000000001ZM83.41 11.336V16.042H82.18799999999999Q80.52399999999999 16.042 79.69199999999998 16.757Q78.85999999999999 17.472 78.85999999999999 19.266V26.0H74.41399999999999V11.492H78.85999999999999V13.91Q79.63999999999999 12.714 80.80999999999999 12.025Q81.97999999999999 11.336 83.41 11.336ZM109.95599999999999 17.524V26.0H105.53599999999999V18.122Q105.53599999999999 16.718 104.79499999999999 15.951Q104.05399999999999 15.184000000000001 102.75399999999999 15.184000000000001Q101.454 15.184000000000001 100.713 15.951Q99.972 16.718 99.972 18.122V26.0H95.55199999999999V18.122Q95.55199999999999 16.718 94.81099999999999 15.951Q94.07 15.184000000000001 92.77 15.184000000000001Q91.47 15.184000000000001 90.729 15.951Q89.988 16.718 89.988 18.122V26.0H85.54199999999999V11.492H89.988V13.312000000000001Q90.66399999999999 12.402000000000001 91.75599999999999 11.869Q92.84799999999998 11.336 94.226 11.336Q95.86399999999999 11.336 97.15099999999998 12.038Q98.43799999999999 12.74 99.166 14.040000000000001Q99.91999999999999 12.844000000000001 101.22 12.09Q102.52 11.336 104.05399999999999 11.336Q106.758 11.336 108.357 12.974Q109.95599999999999 14.612 109.95599999999999 17.524Z" fill="#FFFFFF"/><g transform="translate(0.16 0)"><path class="sf-leaf sf-leaf-l" d="M20 11.6C15.7 11.6 13.7 8.6 13.4 4.6 17.5 4.6 20 7.4 20 11.6Z" fill="#5DB33F"/><path class="sf-leaf sf-leaf-r" d="M20 11.6C20 6.4 22.5 2.6 26.7 1.8 26.9 7.2 24.3 11.2 20 11.6Z" fill="#7CC254"/></g></svg>
             </a>
-            <button type="button" class="sf-find" data-hd-search-open aria-label="Buscar ou ir para uma página">
-                {{ sf_icon('search') }}<span class="sf-lbl">Buscar ou ir para…</span><kbd>⌘K</kbd>
-            </button>
-            <button type="button" class="sf-new" data-sf-pop-open="sf-quick" aria-expanded="false" aria-controls="sf-quick">
-                {{ sf_icon('plus') }}<span class="sf-lbl">Registrar</span>
-            </button>
         </div>
 
         <nav class="sf-nav" aria-label="Menu principal">
-            <div class="sf-sec">Favoritos <em data-sf-fav-count></em></div>
-            <p class="sf-hint" data-sf-fav-empty>Passe o mouse numa página e toque na estrela para fixá-la aqui.</p>
-            <div class="sf-favs" data-sf-favs></div>
-            <div class="sf-divider"></div>
+            <div class="sf-favbox" data-sf-favbox hidden>
+                <div class="sf-sec">Favoritos <em data-sf-fav-count></em></div>
+                <div class="sf-favs" data-sf-favs></div>
+                <div class="sf-divider"></div>
+            </div>
 
             {%- for it in sf_top if it.show %}
             <div class="sf-item{% if page == it.page %} is-active{% endif %}">
@@ -177,10 +172,6 @@
         <a href="/dashboard" class="sf-r-brand" data-sf-tip="SiSFarm · Início" aria-label="SiSFarm — ir para o Início">
             <img src="{{ url_for('static', path='images/logo-icon.png') }}" alt="" width="48" height="44">
         </a>
-        <div class="sf-r-tools">
-            <button type="button" class="sf-r-tool" data-hd-search-open data-sf-tip="Buscar · ⌘K" aria-label="Buscar ou ir para uma página">{{ sf_icon('search') }}</button>
-            <button type="button" class="sf-r-new" data-sf-pop-open="sf-quick" data-sf-tip="Registrar" aria-expanded="false" aria-controls="sf-quick" aria-label="Registrar algo novo">{{ sf_icon('plus') }}</button>
-        </div>
         <nav class="sf-r-nav" aria-label="Menu principal (recolhido)">
             <button type="button" class="sf-r-item" data-sf-fly="favs" aria-expanded="false" aria-label="Favoritos">
                 <span class="sf-r-ic">{{ sf_icon('star') }}<span class="sf-r-badge" data-sf-fav-badge hidden></span></span><span class="sf-r-lbl" aria-hidden="true">Favoritos</span>
@@ -219,14 +210,6 @@
 </aside>
 
 {# Painéis flutuantes (posicionados pelo JS) #}
-<div class="sf-pop" id="sf-quick" role="dialog" aria-label="Registrar" hidden>
-    <p class="sf-pop-h">O que você quer registrar?</p>
-    {%- for a in sf_actions %}
-    <a href="{{ a.href }}" class="sf-pop-i"><span class="sf-pop-ic is-{{ a.tone }}">{{ sf_icon(a.icon) }}</span><span class="sf-grow">{{ a.label }}<small>{{ a.hint }}</small></span></a>
-    {%- endfor %}
-    <div class="sf-pop-sep"></div>
-    <a href="/mobile/assistente" class="sf-pop-i"><img src="{{ url_for('static', path='img/pezinho/icone-cabecalho.png') }}" alt="" width="34" height="34"><span class="sf-grow">Falar com o Pezinho<small>Diga em voz alta o que aconteceu</small></span></a>
-</div>
 <div class="sf-pop" id="sf-user-pop" role="dialog" aria-label="Conta" hidden>
     <p class="sf-pop-who"><strong>{{ sf_user_name }}</strong><span>{{ user.email }}</span></p>
     <a href="/meu-perfil" class="sf-pop-i{% if page == 'profile' %} is-current{% endif %}">{{ sf_icon('user') }}<span class="sf-grow">Meu perfil</span></a>

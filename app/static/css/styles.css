@@ -6932,7 +6932,17 @@ body .coffee-classification-page .stock-page-header.cc-header { background: #fff
     .hd-cmd { margin-top: 8px; }
 }
 #erp-header-notifications-flyout, #erp-header-session-flyout { border-radius: 16px !important; border-color: #e3e8e2 !important; box-shadow: 0 24px 60px rgba(15, 21, 19, .18), 0 2px 6px rgba(15, 21, 19, .06) !important; }
-@media (max-width: 767px) { .hd-ctx-mobile { display: flex; } }
+@media (max-width: 767px) {
+    .hd-ctx-mobile { display: flex; }
+    .hd-logo { flex: none; display: flex; align-items: center; justify-content: center; width: 42px; height: 44px; }
+    .hd-logo img { width: 40px; height: 36px; object-fit: contain; }
+    .hd-row .hd-title { display: none; }
+    .hd-row .hd-ctx-mobile { flex: 1 1 auto; width: auto; min-width: 0; margin: 0; height: 44px; padding: 0 8px 0 10px; gap: 6px; }
+    .hd-row .hd-ctx-mobile .hd-farm { display: none; }
+    .hd-row .hd-ctx-mobile .hd-ctx-text { flex-direction: column; align-items: flex-start; gap: 0; flex: 1; }
+    .hd-row .hd-ctx-mobile .hd-ctx-text b { max-width: 100%; }
+}
+@media (max-width: 420px) { .hd-row .hd-weather-mini { display: none; } }
 
 /* ---------- Notificações ---------- */
 .nf { display: flex; flex-direction: column; max-height: min(640px, calc(100vh - 6rem)); }
@@ -8332,6 +8342,13 @@ a.pf-logout:hover { background: #fdecea; color: #b42318; }
 .sf-soon em { color: #C9A55A; background: rgba(209,138,0,.14); }
 .sf-pin { width: 32px; height: 32px; flex: none; display: flex !important; align-items: center; justify-content: center; border-radius: 8px; color: #7F8B84 !important; opacity: 0; transform: scale(.7); transition: opacity .15s, transform .2s, color .2s, background .2s; }
 .sf-sub-row:hover .sf-pin, .sf-pin:focus-visible, .sf-pin.is-pinned { opacity: 1; transform: scale(1); }
+.sf-pin { position: relative; }
+.sf-pin[data-hint]:hover::after { content: attr(data-hint); position: absolute; right: calc(100% + 6px); top: 50%; transform: translateY(-50%); background: #16201A; color: #fff; font-size: 12px; font-weight: 500; white-space: nowrap; padding: 5px 8px; border-radius: 7px; box-shadow: 0 6px 16px rgba(0,0,0,.35); pointer-events: none; animation: sf-tip .15s ease-out both; }
+.sf-favbox:not([hidden]) { animation: sf-fav-in .45s cubic-bezier(.2,.8,.2,1) both; }
+.sf-toast { position: fixed; left: 50%; bottom: 28px; z-index: 80; max-width: calc(100vw - 32px); transform: translate(-50%, 16px); opacity: 0; pointer-events: none; background: #16201A; color: #fff; font: 500 14px Inter, system-ui, sans-serif; padding: 12px 16px; border-radius: 14px; box-shadow: 0 16px 40px rgba(15,21,19,.3); transition: opacity .25s, transform .4s cubic-bezier(.34,1.56,.64,1); }
+.sf-toast.is-on { opacity: 1; transform: translate(-50%, 0); }
+@media (max-width: 1023px) { .sf-toast { bottom: calc(var(--sf-bn-h, 62px) + 12px); } }
+@keyframes sf-fav-in { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
 .sf-pin:hover { color: #fff !important; background: rgba(255,255,255,.08) !important; }
 .sf-pin.is-pinned { color: #9BCB6B !important; }
 .sf-pin.is-pinned .sf-ic, .sf-m-star.is-pinned .sf-ic { fill: currentColor; animation: sf-pop .45s cubic-bezier(.2,1.4,.4,1); }

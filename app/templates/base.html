@@ -31,7 +31,7 @@
         }
     </script>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-    <link rel="stylesheet" href="{{ url_for('static', path='css/styles.css') }}?v=20261120sf2">
+    <link rel="stylesheet" href="{{ url_for('static', path='css/styles.css') }}?v=20261120sf3">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="{{ url_for('static', path='js/currency-mask.js') }}?v=20260425a" defer></script>
@@ -145,6 +145,13 @@
             {% set farm_initials = ((active_farm.name if active_farm else 'SF').replace('Fazenda ', '').replace('Sítio ', '').split(' ')[:2]|map('first')|join('')|upper) %}
             <header class="hd" data-hd>
                 <div class="hd-row">
+                    <a href="/dashboard" class="hd-logo md:hidden" aria-label="SiSFarm — ir para o Início"><img src="{{ url_for('static', path='images/logo-icon.png') }}" alt="" width="40" height="36"></a>
+                    <button type="button" class="hd-ctx hd-ctx-mobile md:hidden{% if active_farm and active_season %} as-active-mobile-context{% endif %}" data-context-picker-open aria-haspopup="dialog" aria-controls="context-picker" aria-expanded="false">
+                    <span class="hd-farm{% if not (active_farm and active_season) %} is-empty{% endif %}" aria-hidden="true">{{ farm_initials }}</span>
+                    <span class="hd-ctx-text"><b>{% if active_farm %}{{ active_farm.name }}{% else %}Selecionar fazenda{% endif %}</b><span>{% if active_season %}Safra {{ active_season.name }}{% elif active_farm %}Selecione a safra{% else %}e safra{% endif %}</span></span>
+                    <span class="hd-weather-mini" data-hd-weather-mini></span>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+                </button>
                     <div class="hd-title">
                         <small>SiSFarm</small>
                         <h2>{{ title or "Painel da Fazenda" }}</h2>
@@ -191,12 +198,6 @@
                         </div>
                     </div>
                 </div>
-                <button type="button" class="hd-ctx hd-ctx-mobile md:hidden{% if active_farm and active_season %} as-active-mobile-context{% endif %}" data-context-picker-open aria-haspopup="dialog" aria-controls="context-picker" aria-expanded="false">
-                    <span class="hd-farm{% if not (active_farm and active_season) %} is-empty{% endif %}" aria-hidden="true">{{ farm_initials }}</span>
-                    <span class="hd-ctx-text"><b>{% if active_farm %}{{ active_farm.name }}{% else %}Selecionar fazenda{% endif %}</b><span>{% if active_season %}Safra {{ active_season.name }}{% elif active_farm %}Selecione a safra{% else %}e safra{% endif %}</span></span>
-                    <span class="hd-weather-mini" data-hd-weather-mini></span>
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
-                </button>
             </header>
 
             {# Busca rápida (⌘K): páginas do menu, ações e perguntas ao Pezinho #}
@@ -1636,7 +1637,7 @@ dialog, dialog [data-modal-scroll], dialog .overflow-y-auto { overscroll-behavio
     }
 })();
 </script>
-{% if user and not modal_mode %}<script src="{{ url_for('static', path='js/sidebar.js') }}?v=20261120sf2" defer></script>{% endif %}
+{% if user and not modal_mode %}<script src="{{ url_for('static', path='js/sidebar.js') }}?v=20261120sf3" defer></script>{% endif %}
 {% if pezinho %}{% include "partials/pezinho.html" %}{% endif %}
 </body>
 </html>

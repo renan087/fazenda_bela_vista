@@ -127,8 +127,8 @@
         if (box) box.replaceChildren(...data.map(favRow));
         const count = $('[data-sf-fav-count]');
         if (count) count.textContent = data.length ? String(data.length) : '';
-        const empty = $('[data-sf-fav-empty]');
-        if (empty) empty.hidden = data.length > 0;
+        const favbox = $('[data-sf-favbox]');
+        if (favbox) favbox.hidden = !data.length;
         const badge = $('[data-sf-fav-badge]');
         if (badge) { badge.hidden = !data.length; badge.textContent = String(data.length); }
         const mbox = $('[data-sf-m-favs]');
@@ -152,10 +152,33 @@
             b.setAttribute('aria-pressed', on ? 'true' : 'false');
             const label = (b.getAttribute('aria-label') || '').replace(/^(Fixar nos favoritos|Tirar dos favoritos): /, '');
             b.setAttribute('aria-label', (on ? 'Tirar dos favoritos: ' : 'Fixar nos favoritos: ') + label);
+            if (b.dataset.hint !== undefined) b.dataset.hint = on ? 'Tirar dos favoritos' : 'Fixar nos favoritos';
         });
     };
+    let toastEl = null;
+    let toastTimer = null;
+    const toast = (msg) => {
+        if (!toastEl) {
+            toastEl = document.createElement('div');
+            toastEl.className = 'sf-toast';
+            toastEl.setAttribute('role', 'status');
+            document.body.append(toastEl);
+        }
+        toastEl.textContent = msg;
+        toastEl.classList.remove('is-on');
+        void toastEl.offsetWidth;
+        toastEl.classList.add('is-on');
+        clearTimeout(toastTimer);
+        toastTimer = setTimeout(() => toastEl.classList.remove('is-on'), 3000);
+    };
     const togglePin = (id) => {
-        favs = favs.includes(id) ? favs.filter((x) => x !== id) : favs.concat([id]);
+        const adding = !favs.includes(id);
+        favs = adding ? favs.concat([id]) : favs.filter((x) => x !== id);
+        if (adding) {
+            const src = source(id);
+            const label = src ? (src.querySelector('span') || src).textContent.trim() : 'Página';
+            toast(desktopMq.matches ? `“${label}” fixado nos Favoritos, no topo do menu.` : `“${label}” fixado nos Favoritos do menu.`);
+        }
         store.set(FAV_KEY, JSON.stringify(favs));
         renderFavs();
         if (openPanel === fly && fly.dataset.sfFor === 'favs' && openAnchor) fillFly('favs', openAnchor);
