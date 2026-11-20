@@ -31,7 +31,7 @@
         }
     </script>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
-    <link rel="stylesheet" href="{{ url_for('static', path='css/styles.css') }}?v=20261120sf3">
+    <link rel="stylesheet" href="{{ url_for('static', path='css/styles.css') }}?v=20261120ctx1">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="{{ url_for('static', path='js/currency-mask.js') }}?v=20260425a" defer></script>
@@ -218,6 +218,8 @@
                 const input = dlg && dlg.querySelector('[data-hd-cmd-input]');
                 const list = dlg && dlg.querySelector('[data-hd-cmd-list]');
                 if (!dlg || !input) return;
+                const isMac = /Mac|iPhone|iPad|iPod/.test(navigator.userAgentData?.platform || navigator.platform || navigator.userAgent);
+                if (!isMac) document.querySelectorAll('kbd').forEach((k) => { if (k.textContent.trim() === '⌘K') k.textContent = 'Ctrl K'; });
                 const norm = (t) => (t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
                 const pages = () => {
                     const seen = new Set();
@@ -344,7 +346,7 @@
                 <form method="post" action="/contexto" class="ctx-picker-form" data-context-picker-form data-season-options='{{ context_season_options|tojson|safe }}'>
                     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                     <input type="hidden" name="redirect_to" value="{{ current_url or request.url.path }}">
-                    <div class="ctx-picker-grip" aria-hidden="true"></div>
+                    <button type="button" class="ctx-picker-grip" data-context-picker-close aria-label="Fechar"></button>
                     <div class="ctx-picker-head">
                         <h2 id="context-picker-title">Trabalhar em…</h2>
                         <button type="button" class="ctx-picker-close" data-context-picker-close aria-label="Fechar">
@@ -359,6 +361,7 @@
                     <div class="ctx-picker-body">
                         <fieldset class="ctx-picker-col ctx-picker-farms">
                             <legend class="ctx-picker-group">Fazenda</legend>
+                            <button type="button" class="ctx-farm-swap" data-context-farm-swap aria-expanded="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 7h11l-3-3M17 17H6l3 3"/></svg>Trocar</button>
                             {% for farm_option in context_farms|default([]) %}
                             <label class="ctx-option" data-context-farm-option data-search="{{ farm_option.name|lower }}">
                                 <input type="radio" name="farm_id" value="{{ farm_option.id }}" class="sr-only" {% if active_farm_id == farm_option.id %}checked{% endif %}>
@@ -379,7 +382,7 @@
                         </fieldset>
                     </div>
                     <div class="ctx-picker-foot">
-                        <p>Vale para todas as páginas: lançamentos, custos e relatórios passam a usar esta fazenda e safra.</p>
+                        <p data-context-summary>Vale para todas as páginas: lançamentos, custos e relatórios passam a usar esta fazenda e safra.</p>
                         <div class="ctx-picker-actions">
                             <button type="button" class="ctx-btn ctx-btn-secondary" data-context-picker-close>Cancelar</button>
                             <button type="submit" class="ctx-btn ctx-btn-primary" data-context-picker-apply>Aplicar</button>
@@ -413,53 +416,141 @@
 
                 const selectedFarm = () => form.querySelector('input[name="farm_id"]:checked')?.value || '';
 
+                const farmsBox = form.querySelector('.ctx-picker-farms');
+                const swapBtn = form.querySelector('[data-context-farm-swap]');
+                const summary = form.querySelector('[data-context-summary]');
+                const summaryDefault = summary?.textContent || '';
+                const activeFarmId = form.querySelector('input[name="farm_id"]:checked')?.value || '';
+                const RECENT_YEARS = 3;
+                let tab = 'atuais';
+                let showOld = false;
+                const yearOf = (s) => parseInt(String(s.end || s.start || '').split('/').pop(), 10) || 0;
+                const setFarmsOpen = (on) => {
+                    farmsBox?.classList.toggle('is-open', on);
+                    form.classList.toggle('is-farms-open', on);
+                    swapBtn?.setAttribute('aria-expanded', on ? 'true' : 'false');
+                };
+                swapBtn?.addEventListener('click', () => setFarmsOpen(!farmsBox.classList.contains('is-open')));
+                if (swapBtn) swapBtn.hidden = farmOptions.length < 2;
+
+                const optionFor = (season) => {
+                    const label = document.createElement('label');
+                    label.className = 'ctx-option';
+                    const input = document.createElement('input');
+                    Object.assign(input, { type: 'radio', name: 'season_id', value: String(season.id), className: 'sr-only', checked: String(season.id) === chosenSeason });
+                    input.addEventListener('change', () => { chosenSeason = input.value; syncApply(); });
+                    const text = document.createElement('span');
+                    text.className = 'ctx-option-text';
+                    const name = document.createElement('span');
+                    name.className = 'ctx-option-name';
+                    name.textContent = season.name;
+                    const meta = document.createElement('span');
+                    meta.className = 'ctx-option-meta';
+                    meta.textContent = season.start && season.end ? `${season.start} – ${season.end}` : '';
+                    text.append(name, meta);
+                    label.append(input, text);
+                    if (String(season.id) === activeSeasonId) {
+                        const cur = document.createElement('span');
+                        cur.className = 'ctx-option-current';
+                        cur.textContent = 'Atual';
+                        label.append(cur);
+                    }
+                    label.insertAdjacentHTML('beforeend', '<svg class="ctx-option-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="m5 12 5 5 9-10"/></svg>');
+                    return label;
+                };
+                const heading = (title, extra) => {
+                    const h = document.createElement('p');
+                    h.className = 'ctx-picker-group';
+                    h.textContent = title;
+                    if (extra) { const sp = document.createElement('span'); sp.textContent = extra; h.append(sp); }
+                    return h;
+                };
+
                 const renderSeasons = () => {
                     const farmId = selectedFarm();
                     const query = plain(searchInput?.value);
-                    const list = seasons.filter((s) => String(s.farm_id) === farmId && (!query || plain(s.name).includes(query)));
-                    if (!list.some((s) => String(s.id) === chosenSeason)) chosenSeason = '';
+                    const all = seasons.filter((s) => String(s.farm_id) === farmId);
+                    const list = all.filter((s) => !query || plain(s.name + ' ' + s.start + ' ' + s.end).includes(query));
+                    if (!list.some((s) => String(s.id) === chosenSeason)) chosenSeason = all.some((s) => String(s.id) === chosenSeason) ? chosenSeason : '';
                     seasonList.querySelectorAll(':scope > :not(legend)').forEach((node) => node.remove());
+                    form.classList.toggle('has-many-seasons', all.length > 8 || farmOptions.length > 5);
                     if (!farmId) {
                         seasonList.insertAdjacentHTML('beforeend', '<p class="ctx-picker-empty">Escolha uma fazenda para ver as safras.</p>');
-                    } else if (!list.length) {
-                        seasonList.insertAdjacentHTML('beforeend', `<p class="ctx-picker-empty">${query ? 'Nenhuma safra encontrada.' : 'Nenhuma safra cadastrada nesta fazenda.'}</p><a href="/safras" class="ctx-picker-link">Cadastrar safra</a>`);
+                        syncApply();
+                        return;
                     }
-                    groups.forEach(([status, title]) => {
-                        const items = list.filter((s) => s.status === status);
-                        if (!items.length) return;
-                        const heading = document.createElement('p');
-                        heading.className = 'ctx-picker-group';
-                        heading.textContent = title;
-                        seasonList.appendChild(heading);
-                        items.forEach((season) => {
-                            const label = document.createElement('label');
-                            label.className = 'ctx-option';
-                            const input = document.createElement('input');
-                            Object.assign(input, { type: 'radio', name: 'season_id', value: String(season.id), className: 'sr-only', checked: String(season.id) === chosenSeason });
-                            input.addEventListener('change', () => { chosenSeason = input.value; syncApply(); });
-                            const text = document.createElement('span');
-                            text.className = 'ctx-option-text';
-                            const name = document.createElement('span');
-                            name.className = 'ctx-option-name';
-                            name.textContent = season.name;
-                            const meta = document.createElement('span');
-                            meta.className = 'ctx-option-meta';
-                            meta.textContent = season.start && season.end ? `${season.start} – ${season.end}` : '';
-                            text.append(name, meta);
-                            const pill = document.createElement('span');
-                            pill.className = `sf-pill sf-pill-${season.status}`;
-                            pill.textContent = statusText[season.status] || season.status;
-                            label.append(input, text, pill);
-                            label.insertAdjacentHTML('beforeend', '<svg class="ctx-option-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="m5 12 5 5 9-10"/></svg>');
-                            seasonList.appendChild(label);
+                    if (!all.length) {
+                        seasonList.insertAdjacentHTML('beforeend', '<p class="ctx-picker-empty">Nenhuma safra cadastrada nesta fazenda.</p><a href="/safras" class="ctx-picker-link">Cadastrar safra</a>');
+                        syncApply();
+                        return;
+                    }
+                    const atuais = all.filter((s) => s.status !== 'encerrada');
+                    const encerradas = all.filter((s) => s.status === 'encerrada');
+                    if (!query) {
+                        const tabs = document.createElement('div');
+                        tabs.className = 'ctx-tabs' + (tab === 'encerradas' ? ' is-2' : '');
+                        tabs.setAttribute('role', 'tablist');
+                        tabs.setAttribute('aria-label', 'Situação da safra');
+                        [['atuais', 'Em andamento', atuais.length], ['encerradas', 'Encerradas', encerradas.length]].forEach(([key, label, n]) => {
+                            const t = document.createElement('button');
+                            t.type = 'button';
+                            t.className = 'ctx-tab' + (tab === key ? ' is-on' : '');
+                            t.setAttribute('role', 'tab');
+                            t.setAttribute('aria-selected', tab === key ? 'true' : 'false');
+                            t.textContent = label + ' ';
+                            const em = document.createElement('em');
+                            em.textContent = String(n);
+                            t.append(em);
+                            t.addEventListener('click', () => { tab = key; renderSeasons(); });
+                            tabs.append(t);
                         });
-                    });
+                        seasonList.append(tabs);
+                    }
+                    if (query) {
+                        if (!list.length) seasonList.insertAdjacentHTML('beforeend', '<p class="ctx-picker-empty">Nenhuma safra encontrada. Tente outro nome ou ano.</p>');
+                        groups.forEach(([status, title]) => {
+                            const items = list.filter((s) => s.status === status);
+                            if (!items.length) return;
+                            seasonList.append(heading(title), ...items.map(optionFor));
+                        });
+                    } else if (tab === 'atuais') {
+                        if (!atuais.length) seasonList.insertAdjacentHTML('beforeend', '<p class="ctx-picker-empty">Nenhuma safra em andamento. Veja a aba Encerradas.</p>');
+                        const ativas = atuais.filter((s) => s.status === 'ativa');
+                        const planejadas = atuais.filter((s) => s.status === 'planejada');
+                        seasonList.append(...ativas.map(optionFor));
+                        if (planejadas.length) seasonList.append(heading('Planejadas'), ...planejadas.map(optionFor));
+                    } else {
+                        if (!encerradas.length) seasonList.insertAdjacentHTML('beforeend', '<p class="ctx-picker-empty">Nenhuma safra encerrada ainda.</p>');
+                        const years = [...new Set(encerradas.map(yearOf))].sort((x, y) => y - x);
+                        const chosenYear = (encerradas.find((s) => String(s.id) === chosenSeason) && yearOf(encerradas.find((s) => String(s.id) === chosenSeason))) || null;
+                        const visible = showOld ? years : years.filter((y, i) => i < RECENT_YEARS || y === chosenYear);
+                        visible.forEach((y) => {
+                            const items = encerradas.filter((s) => yearOf(s) === y);
+                            seasonList.append(heading(y ? String(y) : 'Sem data', items.length === 1 ? '1 safra' : `${items.length} safras`), ...items.map(optionFor));
+                        });
+                        const hidden = encerradas.filter((s) => !visible.includes(yearOf(s))).length;
+                        if (hidden) {
+                            const more = document.createElement('button');
+                            more.type = 'button';
+                            more.className = 'ctx-more';
+                            more.textContent = `Mostrar safras mais antigas (${hidden})`;
+                            more.addEventListener('click', () => { showOld = true; renderSeasons(); });
+                            seasonList.append(more);
+                        }
+                    }
                     syncApply();
                 };
                 const syncApply = () => {
                     const farmId = selectedFarm();
                     const hasSeasons = seasons.some((s) => String(s.farm_id) === farmId);
                     applyButton.disabled = !farmId || (hasSeasons && !chosenSeason);
+                    if (summary) {
+                        const changed = farmId !== activeFarmId || chosenSeason !== activeSeasonId;
+                        const farmName = form.querySelector('input[name="farm_id"]:checked')?.closest('label')?.querySelector('.ctx-option-name')?.textContent || '';
+                        const seasonName = seasons.find((x) => String(x.id) === chosenSeason)?.name || '';
+                        summary.textContent = changed && farmId ? `Vai trocar para ${farmName}${seasonName ? ' · ' + seasonName : ''}.` : summaryDefault;
+                        summary.classList.toggle('is-changed', changed && Boolean(farmId));
+                    }
                 };
 
                 const placeDesktop = (trigger) => {
@@ -471,6 +562,9 @@
                 const open = (trigger) => {
                     form.reset();
                     chosenSeason = activeSeasonId;
+                    tab = seasons.find((x) => String(x.id) === activeSeasonId)?.status === 'encerrada' ? 'encerradas' : 'atuais';
+                    showOld = false;
+                    setFarmsOpen(false);
                     if (searchInput) searchInput.value = '';
                     farmOptions.forEach((o) => o.classList.remove('hidden'));
                     renderSeasons();
@@ -484,7 +578,7 @@
                 triggers.forEach((trigger) => trigger.addEventListener('click', () => open(trigger)));
                 dialog.querySelectorAll('[data-context-picker-close]').forEach((b) => b.addEventListener('click', close));
                 dialog.addEventListener('click', (event) => { if (event.target === dialog) close(); });
-                form.addEventListener('change', (event) => { if (event.target.name === 'farm_id') renderSeasons(); });
+                form.addEventListener('change', (event) => { if (event.target.name === 'farm_id') { tab = 'atuais'; showOld = false; setFarmsOpen(false); renderSeasons(); } });
                 searchInput?.addEventListener('input', () => {
                     const query = plain(searchInput.value);
                     farmOptions.forEach((o) => {
@@ -496,12 +590,6 @@
                 });
                 form.addEventListener('submit', () => window.showPageLoader?.('Trocando contexto', 'Atualizando os dados da fazenda e safra.'));
                 window.addEventListener('resize', () => { if (dialog.open) placeDesktop(triggers.find((t) => t.offsetParent) || triggers[0]); });
-                document.addEventListener('keydown', (event) => {
-                    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k' && !dialog.open) {
-                        const trigger = triggers.find((t) => t.offsetParent);
-                        if (trigger) { event.preventDefault(); open(trigger); }
-                    }
-                });
             })();
             </script>
             <div class="mx-auto w-full min-w-0 max-w-7xl flex-1 px-4 py-6 sm:px-6 md:py-8">
