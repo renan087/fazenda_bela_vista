@@ -44,7 +44,7 @@ from app.core.config import get_settings
 from app.models.assistant_thread import AssistantThread
 from app.models.assistant_audio import AssistantAudio
 from app.models.assistant_attachment import AssistantAttachment
-from app.models.whatsapp import WhatsAppLink, WhatsAppRecordAccess, WhatsAppSurvey
+from app.models.whatsapp import WhatsAppLink, WhatsAppRecordAccess, WhatsAppSurvey, WhatsAppSurveyComment
 from app.services import whatsapp_bot
 from app.services.whatsapp import is_configured as whatsapp_is_configured, mask_phone
 from app.services.chat_format import to_html as chat_to_html
@@ -9749,11 +9749,14 @@ def whatsapp_surveys_page(
     pages = max(1, (total + page_size - 1) // page_size)
     pagina = min(pagina, pages)
     rows = query.order_by(WhatsAppSurvey.created_at.desc(), WhatsAppSurvey.id.desc()).offset((pagina - 1) * page_size).limit(page_size).all()
+    comments = {comment.survey_id: comment for comment in db.query(WhatsAppSurveyComment).filter(
+        WhatsAppSurveyComment.survey_id.in_([row[0].id for row in rows]),
+        WhatsAppSurveyComment.status == "answered").all()} if rows else {}
     organizations = db.query(Organization).order_by(Organization.name, Organization.id).all()
     params = {key: str(value) for key, value in {"inicio": inicio, "fim": fim, "organizacao": organizacao}.items() if value is not None}
     return templates.TemplateResponse("whatsapp_surveys.html", _base_context(
         request, user, csrf_token, "whatsapp_surveys", title="Avaliações do Pezinho",
-        rows=rows, counts=counts, total=total, pagina=pagina, pages=pages, filters=params,
+        rows=rows, comments=comments, counts=counts, total=total, pagina=pagina, pages=pages, filters=params,
         organizations=organizations, query_string=urlencode(params), _repo=_repository(db)))
 
 

@@ -41,11 +41,11 @@ def test_dashboard_template_displays_current_organization_and_status():
     environment = routes.templates.env.overlay(loader=ChoiceLoader([
         DictLoader({'base.html': '{% block content %}{% endblock %}'}), routes.templates.env.loader,
     ]))
-    survey = SimpleNamespace(created_at=datetime(2026, 11, 4, tzinfo=timezone.utc), status='answered', rating='good', resolved_at=None)
+    survey = SimpleNamespace(id='survey1', created_at=datetime(2026, 11, 4, tzinfo=timezone.utc), status='answered', rating='good', resolved_at=None)
     organization = SimpleNamespace(id=7, name='Fazenda Exemplo')
     page = environment.get_template('whatsapp_surveys.html').render(
         counts={'good': 1, 'fair': 0, 'bad': 0, 'unrated': 0, 'pending': 0, 'sending': 0, 'unavailable': 0},
         total=1, rows=[(survey, None, organization)], filters={}, organizations=[organization], pagina=1, pages=1,
-        query_string='')
+        query_string='', comments={'survey1': SimpleNamespace(text='Excelente atendimento')})
     assert 'Fazenda Exemplo' in page and '#7' in page and 'Bom' in page
-    assert 'vínculo atual' in page
+    assert 'vínculo atual' in page and 'Excelente atendimento' in page

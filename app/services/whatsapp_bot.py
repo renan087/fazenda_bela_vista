@@ -20,7 +20,7 @@ from sqlalchemy.exc import IntegrityError
 
 from app.models import Farm, User
 from app.models.crop_season import CropSeason
-from app.models.whatsapp import WhatsAppClosingRequest, WhatsAppInboundMessage, WhatsAppLink, WhatsAppSurvey
+from app.models.whatsapp import WhatsAppClosingRequest, WhatsAppInboundMessage, WhatsAppLink, WhatsAppSurvey, WhatsAppSurveyComment
 from app.services.chat_format import to_whatsapp
 from app.services.stock_assistant import normalized
 from app.services.farm_plan_guard import FarmPlanRestriction, bind_farm_plan_actor
@@ -399,9 +399,54 @@ def _handle(db, row, client) -> str | None:
             client.send_text(row.wa_id, "Essa pesquisa não está mais disponível. Se precisar de ajuda, envie uma nova mensagem.")
             return "survey_stale"
         survey.status, survey.rating, survey.resolved_at = "answered", survey_button.group(1), _now()
+        comment = WhatsAppSurveyComment(id=secrets.token_hex(16), survey_id=survey.id, link_id=link.id,
+                                        status="offered", created_at=_now())
+        db.add(comment)
         db.commit()
-        client.send_text(row.wa_id, "Obrigado pela avaliação! Sua opinião nos ajuda a melhorar.")
+        try:
+            client.send_buttons(row.wa_id, "Obrigado pela avaliação! Gostaria de deixar um comentário para nos ajudar a melhorar?",
+                                [(f"comment:yes:{comment.id}", "Escrever comentário"),
+                                 (f"comment:no:{comment.id}", "Não, obrigado")])
+        except WhatsAppError:
+            comment.status, comment.resolved_at = "unavailable", _now()
+            db.commit()
+            logger.warning("WhatsApp: não foi possível oferecer comentário")
         return "survey_answered"
+    comment_button = re.fullmatch(r"comment:(yes|no):([0-9a-f]{32})", str(button_reply.get("id") or ""))
+    from app.core.config import get_settings
+    comment_limit = timedelta(minutes=max(1, get_settings().whatsapp_survey_minutes))
+    if comment_button:
+        comment = db.get(WhatsAppSurveyComment, comment_button.group(2))
+        if (comment is None or comment.link_id != link.id or comment.status != "offered" or link.thread_id is not None
+                or _aware(comment.created_at) + comment_limit <= _aware(row.received_at)):
+            client.send_text(row.wa_id, "Esta opção de comentário não está mais disponível.")
+            return "comment_stale"
+        if comment_button.group(1) == "no":
+            comment.status, comment.resolved_at = "skipped", _now()
+            db.commit()
+            client.send_text(row.wa_id, "Obrigado pela sua avaliação!")
+            return "comment_skipped"
+        comment.status, comment.created_at = "awaiting", _now()
+        db.commit()
+        client.send_text(row.wa_id, "Pode escrever seu comentário em uma mensagem. Se preferir iniciar outro atendimento, envie 'novo atendimento'.")
+        return "comment_awaiting"
+    awaiting = (db.query(WhatsAppSurveyComment).filter_by(link_id=link.id, status="awaiting")
+                .order_by(WhatsAppSurveyComment.created_at.desc()).first())
+    if awaiting and link.thread_id is None:
+        if _aware(awaiting.created_at) + comment_limit <= _aware(row.received_at):
+            awaiting.status, awaiting.resolved_at = "expired", _now()
+            db.commit()
+        elif row.msg_type == "text" and key not in CLOSE_WORDS | NEW_THREAD_WORDS and text:
+            if len(text) > 2000:
+                client.send_text(row.wa_id, "Seu comentário pode ter até 2.000 caracteres. Envie uma versão mais curta, por favor.")
+                return "comment_too_long"
+            awaiting.status, awaiting.text, awaiting.resolved_at = "answered", text, _now()
+            db.commit()
+            client.send_text(row.wa_id, "Obrigado pelo comentário! Sua opinião nos ajuda a melhorar.")
+            return "comment_answered"
+        elif row.msg_type == "text" and key in CLOSE_WORDS | NEW_THREAD_WORDS:
+            awaiting.status, awaiting.resolved_at = "skipped", _now()
+            db.commit()
     closing_button = re.fullmatch(r"close:(yes|no):([0-9a-f]{32})", str(button_reply.get("id") or ""))
     pending_close = (db.query(WhatsAppClosingRequest).filter_by(link_id=link.id, status="pending")
                      .order_by(WhatsAppClosingRequest.created_at.desc()).first())
@@ -418,7 +463,8 @@ def _handle(db, row, client) -> str | None:
             pending_close.status, pending_close.resolved_at = "closed", _now()
             link.thread_id = None
             db.commit()
-            client.send_text(row.wa_id, "Atendimento encerrado. Quando precisar, envie uma mensagem para iniciar uma nova conversa.")
+            from app.services.whatsapp_lifecycle import send_survey_for_closing
+            send_survey_for_closing(db, client, pending_close.id, exclude_inbound_id=row.id)
             return "closed"
         elif key in {"sim", "continuar", "nao encerrar"}:
             pending_close.status, pending_close.resolved_at = "continued", _now()

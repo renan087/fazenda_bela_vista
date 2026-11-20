@@ -86,3 +86,16 @@ class WhatsAppSurvey(Base):
     rating: Mapped[str | None] = mapped_column(String(20), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class WhatsAppSurveyComment(Base):
+    """Etapa opcional de comentário, independente do resultado da avaliação."""
+    __tablename__ = "whatsapp_survey_comments"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    survey_id: Mapped[str] = mapped_column(ForeignKey("whatsapp_surveys.id", ondelete="CASCADE"), unique=True, index=True)
+    link_id: Mapped[int] = mapped_column(ForeignKey("whatsapp_links.id", ondelete="CASCADE"), index=True)
+    status: Mapped[str] = mapped_column(String(20), index=True)
+    text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

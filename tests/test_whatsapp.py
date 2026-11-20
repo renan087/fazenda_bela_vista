@@ -701,3 +701,43 @@ def test_false_new_chat_claim_is_replaced_by_confirmation(monkeypatch):
     assert _receive(db, client, _payload('5535999', 'false-new', 'quero outro atendimento')) == ['close_pending']
     assert client.sent[-1][0] == 'buttons'
     db.close()
+
+
+def test_immediate_survey_and_optional_comment(monkeypatch):
+    from app.models.whatsapp import WhatsAppSurvey, WhatsAppSurveyComment
+    _settings(monkeypatch)
+    _, db, user, scope, *_ = _route_env(monkeypatch, [])
+    client = FakeClient()
+    code = whatsapp_bot.start_link(db, user, scope['active_farm'], scope['active_season'])
+    _receive(db, client, _payload('5535999', 'link-comment', f'SISFARM {code}'))
+    _receive(db, client, _payload('5535999', 'comment-close', 'encerrar'))
+    close = client.sent[-1][3][1][0]
+    assert _receive(db, client, _payload('5535999', 'comment-confirm', button=close)) == ['closed']
+    assert client.sent[-1][0] == 'buttons' and client.sent[-1][2] == 'Como foi sua experiência?'
+    rating = client.sent[-1][3][0][0]
+    assert _receive(db, client, _payload('5535999', 'comment-rate', button=rating)) == ['survey_answered']
+    assert 'Gostaria de deixar um comentário' in client.sent[-1][2]
+    accept = client.sent[-1][3][0][0]
+    assert _receive(db, client, _payload('5535999', 'comment-accept', button=accept)) == ['comment_awaiting']
+    assert _receive(db, client, _payload('5535999', 'comment-text', 'Foi muito útil, obrigado!')) == ['comment_answered']
+    survey = db.query(WhatsAppSurvey).one()
+    comment = db.query(WhatsAppSurveyComment).one()
+    assert survey.status == 'answered' and survey.rating == 'good'
+    assert comment.text == 'Foi muito útil, obrigado!' and comment.status == 'answered'
+    assert _receive(db, client, _payload('5535999', 'comment-repeat', button=accept)) == ['comment_stale']
+    db.close()
+
+
+def test_optional_comment_can_be_skipped(monkeypatch):
+    from app.models.whatsapp import WhatsAppSurveyComment
+    _settings(monkeypatch)
+    _, db, user, scope, *_ = _route_env(monkeypatch, [])
+    client = FakeClient()
+    code = whatsapp_bot.start_link(db, user, scope['active_farm'], scope['active_season'])
+    _receive(db, client, _payload('5535999', 'link-skip-comment', f'SISFARM {code}'))
+    _receive(db, client, _payload('5535999', 'skip-close', 'encerrar'))
+    _receive(db, client, _payload('5535999', 'skip-confirm', button=client.sent[-1][3][1][0]))
+    _receive(db, client, _payload('5535999', 'skip-rate', button=client.sent[-1][3][1][0]))
+    assert _receive(db, client, _payload('5535999', 'skip-comment', button=client.sent[-1][3][1][0])) == ['comment_skipped']
+    assert db.query(WhatsAppSurveyComment).one().status == 'skipped'
+    db.close()

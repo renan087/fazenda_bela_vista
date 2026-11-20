@@ -8,7 +8,7 @@ from starlette.concurrency import run_in_threadpool
 
 from app.core.config import get_settings
 from app.db.session import SessionLocal
-from app.models.whatsapp import WhatsAppClosingRequest, WhatsAppInboundMessage, WhatsAppLink, WhatsAppSurvey
+from app.models.whatsapp import WhatsAppClosingRequest, WhatsAppInboundMessage, WhatsAppLink, WhatsAppSurvey, WhatsAppSurveyComment
 from app.services.whatsapp import SERVICE_WINDOW_SECONDS, WhatsAppClient, is_configured, wa_id_variants
 from app.services.whatsapp_bot import _aware, _now
 
@@ -20,14 +20,48 @@ def _window(link, now):
     return bool(last and (now - last).total_seconds() < SERVICE_WINDOW_SECONDS - 300)
 
 
-def _queued(db, link):
-    return db.query(WhatsAppInboundMessage.id).filter(
+def _queued(db, link, exclude_id=None):
+    query = db.query(WhatsAppInboundMessage.id).filter(
         WhatsAppInboundMessage.wa_id.in_(wa_id_variants(link.wa_id)),
-        WhatsAppInboundMessage.status.in_(["received", "processing"])).first() is not None
+        WhatsAppInboundMessage.status.in_(["received", "processing"]))
+    if exclude_id is not None:
+        query = query.filter(WhatsAppInboundMessage.id != exclude_id)
+    return query.first() is not None
 
 
 def _lock_link(db, link_id):
     return db.query(WhatsAppLink).filter_by(id=link_id).with_for_update(skip_locked=True).first()
+
+
+def send_survey_for_closing(db, client, request_id, *, now=None, exclude_inbound_id=None):
+    """Reserva uma pesquisa por encerramento e envia sem repetir resultado incerto."""
+    now = now or _now()
+    req = db.get(WhatsAppClosingRequest, request_id)
+    link = _lock_link(db, req.link_id) if req else None
+    if not link or db.query(WhatsAppSurvey.id).filter_by(closing_id=request_id).first():
+        db.rollback()
+        return
+    if _queued(db, link, exclude_inbound_id):
+        db.rollback()
+        return
+    available = bool(req.status == "closed" and link.verified_at and link.wa_id and link.thread_id is None
+                     and req.resolved_at and now - _aware(req.resolved_at) <= timedelta(minutes=5)
+                     and _window(link, now))
+    survey = WhatsAppSurvey(id=secrets.token_hex(16), closing_id=req.id, link_id=link.id,
+                            status="sending" if available else "unavailable", created_at=now,
+                            resolved_at=None if available else now)
+    db.add(survey)
+    db.commit()
+    if not available:
+        return
+    try:
+        client.send_buttons(link.wa_id, "Como foi sua experiência?",
+                            [(f"survey:good:{survey.id}", "Bom"), (f"survey:fair:{survey.id}", "Regular"), (f"survey:bad:{survey.id}", "Ruim")])
+        survey.status = "pending"
+    except Exception:
+        logger.exception("WhatsApp: falha ao enviar pesquisa")
+        survey.status, survey.resolved_at = "unavailable", now
+    db.commit()
 
 
 def process_lifecycle(db, client, now=None):
@@ -97,30 +131,7 @@ def process_lifecycle(db, client, now=None):
     ids = [x[0] for x in db.query(WhatsAppClosingRequest.id).filter_by(status="closed").outerjoin(
         WhatsAppSurvey, WhatsAppSurvey.closing_id == WhatsAppClosingRequest.id).filter(WhatsAppSurvey.id.is_(None)).limit(200).all()]
     for request_id in ids:
-        req = db.get(WhatsAppClosingRequest, request_id)
-        link = _lock_link(db, req.link_id) if req else None
-        if not link or db.query(WhatsAppSurvey.id).filter_by(closing_id=request_id).first():
-            db.rollback()
-            continue
-        # Do not interrupt a new conversation or send outside the service window.
-        available = bool(link.verified_at and link.wa_id and link.thread_id is None and req.resolved_at
-                         and now - _aware(req.resolved_at) <= timedelta(minutes=5)
-                         and not _queued(db, link) and _window(link, now))
-        survey = WhatsAppSurvey(id=secrets.token_hex(16), closing_id=req.id, link_id=link.id,
-                                status="sending" if available else "unavailable", created_at=now,
-                                resolved_at=None if available else now)
-        db.add(survey)
-        db.commit()
-        if not available:
-            continue
-        try:
-            client.send_buttons(link.wa_id, "Como foi sua experiência?",
-                                [(f"survey:good:{survey.id}", "Bom"), (f"survey:fair:{survey.id}", "Regular"), (f"survey:bad:{survey.id}", "Ruim")])
-            survey.status = "pending"
-        except Exception:
-            logger.exception("WhatsApp: falha ao enviar pesquisa")
-            survey.status, survey.resolved_at = "unavailable", now
-        db.commit()
+        send_survey_for_closing(db, client, request_id, now=now)
     expired = [x[0] for x in db.query(WhatsAppSurvey.id).filter(
         WhatsAppSurvey.status == "pending", WhatsAppSurvey.created_at <= now - survey_time).limit(200).all()]
     for survey_id in expired:
@@ -136,6 +147,19 @@ def process_lifecycle(db, client, now=None):
     # An interrupted outbound call has an unknown delivery outcome; never repeat it blindly.
     db.query(WhatsAppSurvey).filter(WhatsAppSurvey.status == "sending", WhatsAppSurvey.created_at <= now - timedelta(minutes=5)).update(
         {"status": "unavailable", "resolved_at": now}, synchronize_session=False)
+    comments = [x[0] for x in db.query(WhatsAppSurveyComment.id).filter(
+        WhatsAppSurveyComment.status.in_(["offered", "awaiting"]),
+        WhatsAppSurveyComment.created_at <= now - survey_time).limit(200).all()]
+    for comment_id in comments:
+        comment = db.get(WhatsAppSurveyComment, comment_id)
+        link = _lock_link(db, comment.link_id) if comment else None
+        if not link or _queued(db, link):
+            db.rollback()
+            continue
+        db.refresh(comment)
+        if comment.status in {"offered", "awaiting"}:
+            comment.status, comment.resolved_at = "expired", now
+        db.commit()
     db.commit()
 
 
