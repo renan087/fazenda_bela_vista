@@ -8090,3 +8090,149 @@ a.pf-logout:hover { background: #fdecea; color: #b42318; }
 .cx-table thead th { border-top:0; font-size:13px; } .cx-table tbody th { font-weight:500; color:var(--pd-muted); }
 .cx-table td { font-weight:600; } .cx-table td.is-best { color:#1F7A3A; font-weight:700; }
 .cx-foot { margin:0; padding:12px 16px; font-size:12px; color:var(--pd-muted); border-top:1px solid var(--pd-line2); }
+
+
+/* ===== Fazendas (fm-) — redesign completo ===== */
+.fm-page { display:flex; flex-direction:column; gap:20px; }
+.fm-kpis { display:grid; grid-template-columns:repeat(auto-fit, minmax(210px, 1fr)); gap:12px; }
+.fm-kpi { display:flex; flex-direction:column; gap:6px; padding:16px 18px; }
+.fm-kpi strong { font-size:24px; font-weight:700; letter-spacing:-.02em; font-variant-numeric:tabular-nums; }
+.fm-kpi strong small { font-size:14px; font-weight:600; color:var(--pd-muted); }
+.fm-kpi-sub { font-size:13px; color:var(--pd-muted); }
+.fm-kpi-sub.is-warn { color:#7A4F00; font-weight:600; }
+.fm-kpi-sub.is-ok { color:#1F7A3A; font-weight:600; }
+.fm-meter { display:flex; height:6px; border-radius:99px; overflow:hidden; background:var(--pd-line2); }
+.fm-meter i { display:block; background:var(--pd-brand); border-radius:inherit; }
+.fm-meter i.is-over { background:#B42318; }
+
+.fm-attention { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:12px; padding:14px 18px; border:1px solid #F0D9A6; background:#FFFBF2; border-radius:16px; }
+.fm-attention-main { display:flex; align-items:flex-start; gap:12px; min-width:0; flex:1 1 260px; }
+.fm-attention-icon { width:34px; height:34px; border-radius:10px; background:#FFF6E5; color:#D18A00; display:grid; place-items:center; flex:none; }
+.fm-attention-icon svg { width:18px; height:18px; }
+.fm-attention-title { margin:0; font-size:14px; font-weight:700; color:var(--pd-ink); }
+.fm-attention-sub { margin:2px 0 0; font-size:13px; color:#7A4F00; }
+
+.fm-toolbar { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:12px; padding:14px 16px; }
+.fm-list { display:flex; flex-direction:column; gap:12px; }
+.fm-card { display:flex; flex-wrap:wrap; align-items:flex-start; justify-content:space-between; gap:16px; padding:18px 20px; transition:border-color .15s, box-shadow .15s; }
+.fm-card:hover { border-color:#D6DDD5; box-shadow:0 6px 20px rgba(22,32,26,.05); }
+.fm-card.is-active { box-shadow:inset 3px 0 0 var(--pd-brand); }
+.fm-card-left { display:flex; align-items:flex-start; gap:16px; min-width:0; flex:1 1 480px; }
+.fm-thumb { position:relative; width:116px; height:78px; flex:none; border-radius:14px; overflow:hidden; border:1px solid #D6DDD5; background:#4E6748; padding:0; cursor:pointer; }
+.fm-thumb img { width:100%; height:100%; object-fit:cover; display:block; }
+.fm-thumb-tag { position:absolute; inset:auto 6px 6px 6px; padding:2px 6px; border-radius:8px; background:rgba(15,21,19,.74); color:#fff; font-size:11px; font-weight:600; text-align:center; }
+.fm-thumb:hover .fm-thumb-tag { background:var(--pd-brand); }
+.fm-thumb-empty { width:116px; height:78px; flex:none; border-radius:14px; border:1.5px dashed #F0D9A6; background:#FFFBF2; color:#7A4F00; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px; text-decoration:none; font-size:12px; font-weight:600; text-align:center; padding:6px; }
+.fm-thumb-empty:hover { border-color:#D18A00; }
+.fm-thumb-empty svg { width:18px; height:18px; color:#D18A00; }
+.fm-card-body { min-width:0; flex:1; display:flex; flex-direction:column; gap:8px; }
+.fm-card-top { display:flex; flex-wrap:wrap; align-items:center; gap:8px; }
+.fm-card-name { font-size:16px; font-weight:700; color:var(--pd-ink); text-decoration:none; }
+.fm-card-name:hover { color:var(--pd-brand); text-decoration:underline; }
+.fm-card-sub { margin:0; font-size:13px; color:var(--pd-muted); }
+.fm-metrics { display:grid; grid-template-columns:repeat(4, minmax(0, 1fr)); gap:10px; padding:10px 12px; border-radius:12px; background:var(--pd-soft); margin:0; }
+.fm-metrics dt { font-size:11px; font-weight:600; color:var(--pd-muted); margin:0 0 2px; }
+.fm-metrics dd { margin:0; font-size:14px; font-weight:700; font-variant-numeric:tabular-nums; color:var(--pd-ink); overflow-wrap:anywhere; }
+.fm-card-actions { display:flex; flex-wrap:wrap; align-items:center; gap:8px; flex:none; }
+.fm-card-actions form { margin:0; }
+
+/* Ficha da Fazenda */
+.fm-detail-layout { display:flex; flex-wrap:wrap; gap:20px; align-items:flex-start; }
+.fm-detail-main { flex:999 1 560px; min-width:0; display:flex; flex-direction:column; gap:18px; }
+.fm-detail-side { flex:1 1 320px; min-width:0; display:flex; flex-direction:column; gap:18px; }
+.fm-map-preview { position:relative; display:block; width:100%; padding:0; border:1px solid var(--pd-line); border-radius:14px; overflow:hidden; background:#4E6748; cursor:pointer; }
+.fm-map-preview img { display:block; width:100%; max-height:260px; object-fit:cover; }
+.fm-map-preview span { position:absolute; right:12px; bottom:12px; padding:6px 12px; border-radius:10px; background:rgba(15,21,19,.8); color:#fff; font-size:12px; font-weight:600; }
+.fm-map-preview:hover span { background:var(--pd-brand); }
+.fm-occ-bar { display:flex; height:18px; border-radius:8px; overflow:hidden; background:var(--pd-line2); }
+.fm-occ-bar i { display:block; background:var(--pd-brand-dark); }
+.fm-occ-stats { display:grid; grid-template-columns:repeat(3, minmax(0, 1fr)); gap:12px; margin:0; }
+.fm-occ-stats dt { font-size:12px; color:var(--pd-muted); margin:0 0 2px; }
+.fm-occ-stats dd { margin:0; font-size:16px; font-weight:700; font-variant-numeric:tabular-nums; }
+.fm-hierarchy-grid { display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:12px; }
+.fm-hcard { border:1px solid var(--pd-line); border-radius:14px; background:var(--pd-soft); padding:14px; display:flex; flex-direction:column; gap:8px; }
+.fm-hcard-top { display:flex; align-items:center; justify-content:space-between; gap:8px; }
+.fm-hcard-link { font-size:13px; font-weight:600; color:var(--pd-brand); text-decoration:none; }
+.fm-hcard-link:hover { text-decoration:underline; }
+.fm-mod-grid { display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:8px; }
+.fm-mod-link { display:flex; flex-direction:column; gap:2px; padding:12px; border:1px solid var(--pd-line); border-radius:12px; background:var(--pd-soft); text-decoration:none; color:var(--pd-ink); }
+.fm-mod-link:hover { border-color:var(--pd-brand); background:#fff; }
+.fm-mod-link strong { font-size:13px; }
+.fm-mod-link small { font-size:12px; color:var(--pd-muted); }
+.fm-row-list { display:flex; flex-direction:column; }
+.fm-row-item { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:12px; padding:14px 20px; border-top:1px solid var(--pd-line2); }
+.fm-row-item:hover { background:var(--pd-soft); }
+.fm-docs-grid { display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:18px; }
+.fm-kv { border-radius:12px; background:var(--pd-soft); padding:12px; }
+.fm-kv dt { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; color:var(--pd-muted); margin:0 0 4px; }
+.fm-kv dd { margin:0; font-size:14px; font-weight:600; color:var(--pd-ink); word-break:break-word; }
+
+/* Wizard de Fazendas (passos em linha única + Informações adicionais retráteis) */
+.fm-steps { list-style:none; margin:0; padding:0; display:flex; flex-wrap:nowrap; gap:8px; overflow-x:auto; scrollbar-width:none; max-width:100%; }
+.fm-steps::-webkit-scrollbar { display:none; }
+.fm-steps li { flex:none; }
+.fm-step-btn { display:inline-flex; align-items:center; gap:8px; padding:6px 12px 6px 6px; border-radius:999px; border:1px solid transparent; background:transparent; font-size:13px; font-weight:600; color:var(--pd-muted); white-space:nowrap; cursor:pointer; }
+.fm-step-btn:hover { background:rgba(255,255,255,.75); }
+.fm-step-btn span { width:24px; height:24px; border-radius:999px; display:grid; place-items:center; font-size:12px; background:var(--pd-line); color:var(--pd-ink); flex:none; }
+.fm-step-btn[aria-current="step"] { background:#fff; border-color:var(--pd-brand); color:var(--pd-ink); }
+.fm-step-btn[aria-current="step"] span, .fm-step-btn.is-done span { background:var(--pd-brand); color:#fff; }
+
+.fm-car-box { border:1px solid #BFD6B6; background:#EEF3EB; border-radius:16px; padding:16px; display:flex; flex-direction:column; gap:10px; }
+.fm-car-row { display:flex; flex-wrap:wrap; align-items:flex-end; gap:10px; }
+.fm-car-row label { flex:1 1 240px; min-width:0; }
+
+.fm-map-shell { border:1px solid var(--pd-line); border-radius:16px; overflow:hidden; background:#fff; }
+.fm-map-bar { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:8px; padding:10px 14px; background:var(--pd-soft); border-bottom:1px solid var(--pd-line2); font-size:13px; }
+.fm-map-canvas { width:100%; height:320px; position:relative; z-index:0; }
+.fm-map-tools { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:8px; padding:10px 14px; border-top:1px solid var(--pd-line2); background:#fff; }
+
+.fm-opt-group { display:flex; flex-direction:column; gap:10px; }
+.fm-opt-head { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:6px; }
+.fm-opt-card { border:1px solid var(--pd-line); border-radius:16px; background:#fff; overflow:hidden; }
+.fm-opt-card[open] { border-color:#BFD6B6; }
+.fm-opt-card summary { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:12px 16px; cursor:pointer; list-style:none; }
+.fm-opt-card summary::-webkit-details-marker { display:none; }
+.fm-opt-left { display:flex; align-items:center; gap:12px; min-width:0; flex:1; }
+.fm-opt-icon { width:36px; height:36px; border-radius:10px; background:var(--pd-soft); color:var(--pd-brand); display:grid; place-items:center; flex:none; }
+.fm-opt-card[open] .fm-opt-icon { background:var(--pd-brand-soft); }
+.fm-opt-icon svg { width:18px; height:18px; }
+.fm-opt-title { margin:0; font-size:14px; font-weight:700; color:var(--pd-ink); }
+.fm-opt-sub { margin:2px 0 0; font-size:12px; color:var(--pd-muted); }
+.fm-opt-right { display:flex; align-items:center; gap:8px; flex:none; }
+.fm-opt-chev { width:16px; height:16px; color:var(--pd-muted); transition:transform .15s; }
+.fm-opt-card[open] .fm-opt-chev { transform:rotate(180deg); }
+.fm-opt-body { border-top:1px solid var(--pd-line2); padding:16px; }
+
+/* Modais de Fazendas (gaveta inferior no celular) */
+.fm-dialog { border:0; padding:0; background:transparent; width:calc(100% - 32px); max-width:860px; max-height:calc(100dvh - 48px); color:var(--pd-ink, #16201A); }
+.fm-dialog.is-sm { max-width:520px; }
+.fm-dialog::backdrop { background:rgba(15,21,19,.45); }
+.fm-sheet { display:flex; flex-direction:column; max-height:calc(100dvh - 48px); background:#fff; border-radius:18px; box-shadow:0 24px 64px rgba(15,21,19,.28); overflow:hidden; }
+.fm-sheet-head { display:flex; align-items:flex-start; justify-content:space-between; gap:12px; padding:18px 22px; border-bottom:1px solid var(--pd-line2); }
+.fm-sheet-head h3 { margin:2px 0 0; font-size:18px; font-weight:700; }
+.fm-sheet-body { flex:1; min-height:0; overflow-y:auto; padding:18px 22px; display:flex; flex-direction:column; gap:14px; }
+.fm-sheet-foot { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:10px; padding:14px 22px; border-top:1px solid var(--pd-line2); background:var(--pd-soft); }
+
+@media (max-width: 1023px) {
+  .fm-docs-grid { grid-template-columns:1fr; }
+  .fm-hierarchy-grid { grid-template-columns:1fr; }
+}
+@media (max-width: 639px) {
+  .fm-kpis { grid-template-columns:repeat(2, minmax(0, 1fr)); }
+  .fm-card { padding:14px; }
+  .fm-card-left { flex-direction:column; width:100%; }
+  .fm-thumb, .fm-thumb-empty { width:100%; height:130px; }
+  .fm-metrics { grid-template-columns:repeat(2, minmax(0, 1fr)); }
+  .fm-card-actions { width:100%; }
+  .fm-card-actions .sf-btn { flex:1; justify-content:center; }
+  .fm-occ-stats { grid-template-columns:1fr; }
+  .fm-steps { width:100%; gap:4px; }
+  .fm-step-btn { padding:4px 8px 4px 4px; gap:5px; font-size:11px; }
+  .fm-step-btn span { width:20px; height:20px; font-size:10px; }
+  .fm-dialog { width:100%; max-width:none; margin:auto 0 0; max-height:92dvh; }
+  .fm-sheet { max-height:92dvh; border-radius:22px 22px 0 0; }
+  .fm-sheet-head, .fm-sheet-body, .fm-sheet-foot { padding-left:16px; padding-right:16px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .fm-opt-chev, .fm-card { transition:none; }
+}

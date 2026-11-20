@@ -9207,25 +9207,10 @@ def delete_plot_action(
     return _redirect("/setores")
 
 
-@router.get("/fazendas")
-def farms_page(
-    request: Request,
-    background_tasks: BackgroundTasks,
-    edit_id: int | None = None,
-    view: int | None = None,
-    db: Session = Depends(get_db),
-    user: User = Depends(get_current_user_web),
-    csrf_token: str = Depends(get_csrf_token),
-):
-    repo = _repository(db)
-    organization_id = user.organization_id
-    edit_farm = repo.get_farm(edit_id) if edit_id else None
-    if edit_farm and organization_id and edit_farm.organization_id != organization_id:
-        edit_farm = None
-    farm_form_view_only = bool(edit_farm and view == 1)
-    farms = repo.list_farms(organization_id=organization_id)
+def _farm_preview_bundle(farms: list[Farm], background_tasks: BackgroundTasks) -> tuple[dict[int, bool], dict[int, str], dict[str, object]]:
     farm_preview_ready: dict[int, bool] = {}
     farm_preview_fingerprint: dict[int, str] = {}
+    farm_boundary_by_id: dict[str, object] = {}
     for farm in farms:
         if not farm.boundary_geojson:
             continue
@@ -9239,21 +9224,106 @@ def farms_page(
             background_tasks.add_task(generate_farm_preview_image, farm.id, farm.boundary_geojson)
         elif not thumb_ok:
             background_tasks.add_task(ensure_farm_preview_thumb, farm.id)
-    farm_boundary_by_id: dict[str, object] = {}
-    for farm in farms:
-        if not farm.boundary_geojson:
-            continue
         try:
             farm_boundary_by_id[str(farm.id)] = json.loads(farm.boundary_geojson)
         except json.JSONDecodeError:
             pass
-    farm_boundary_geometries_json = json.dumps(farm_boundary_by_id)
-    edit_farm_geometry_json = "null"
-    if edit_farm and edit_farm.boundary_geojson:
-        try:
-            edit_farm_geometry_json = json.dumps(json.loads(edit_farm.boundary_geojson))
-        except json.JSONDecodeError:
-            edit_farm_geometry_json = "null"
+    return farm_preview_ready, farm_preview_fingerprint, farm_boundary_by_id
+
+
+def _farm_overview_metrics(farms: list[Farm]) -> tuple[dict[int, dict], dict]:
+    by_farm: dict[int, dict] = {}
+    total_area = 0.0
+    planted_total = 0.0
+    geo_count = 0
+    plots_total = 0
+    pending_farms: list[dict] = []
+
+    for farm in farms:
+        f_area = float(farm.total_area or 0)
+        total_area += f_area
+        if farm.boundary_geojson:
+            geo_count += 1
+        plots = list(farm.plots or [])
+        plots_total += len(plots)
+        planted = sum(float(getattr(p, "area_hectares", 0) or 0) for p in plots)
+        planted_total += planted
+        occ_pct = min(100, round((planted / f_area) * 100)) if f_area > 0 else 0
+        seasons = sorted(
+            list(farm.crop_seasons or []),
+            key=lambda s: (s.status != "ativa", -(s.start_date.toordinal() if s.start_date else 0), -s.id),
+        )
+        active_season_obj = next((s for s in seasons if s.status == "ativa"), seasons[0] if seasons else None)
+        needs_attention = (not farm.boundary_geojson) or bool(farm.operations_paused)
+        if needs_attention:
+            reason = "operações pausadas" if farm.operations_paused else "sem perímetro no mapa"
+            pending_farms.append({"id": farm.id, "name": farm.name, "reason": reason})
+        by_farm[farm.id] = {
+            "plots_count": len(plots),
+            "planted_area": planted,
+            "free_area": max(0.0, f_area - planted),
+            "occupation_pct": occ_pct,
+            "seasons_count": len(seasons),
+            "active_season_name": active_season_obj.name if active_season_obj else None,
+            "active_season_status": active_season_obj.status if active_season_obj else None,
+            "attachments_count": len(list(farm.attachments or [])),
+            "needs_attention": needs_attention,
+        }
+
+    totals = {
+        "count": len(farms),
+        "total_area": total_area,
+        "planted_area": planted_total,
+        "planted_pct": min(100, round((planted_total / total_area) * 100)) if total_area > 0 else 0,
+        "geo_count": geo_count,
+        "missing_geo": max(0, len(farms) - geo_count),
+        "plots_total": plots_total,
+        "pending_farms": pending_farms,
+    }
+    return by_farm, totals
+
+
+def _farm_plan_summary(db: Session, user: User, farms: list[Farm]) -> dict:
+    entitlements = _entitlements_for(db, user)
+    active_farms = [f for f in farms if not f.operations_paused]
+    used_farms = len(active_farms)
+    used_area = sum(float(f.total_area or 0) for f in active_farms)
+    max_farms = getattr(entitlements, "max_farms", None)
+    max_hectares = float(entitlements.max_hectares) if getattr(entitlements, "max_hectares", None) is not None else None
+    plan_name = getattr(entitlements, "plan_name", None) or "Plano ativo"
+    return {
+        "plan_name": plan_name,
+        "used_farms": used_farms,
+        "max_farms": max_farms,
+        "used_area": used_area,
+        "max_hectares": max_hectares,
+        "farms_pct": min(100, round((used_farms / max_farms) * 100)) if max_farms else None,
+        "area_pct": min(100, round((used_area / max_hectares) * 100)) if max_hectares else None,
+    }
+
+
+@router.get("/fazendas")
+def farms_page(
+    request: Request,
+    background_tasks: BackgroundTasks,
+    edit_id: int | None = None,
+    view: int | None = None,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+    csrf_token: str = Depends(get_csrf_token),
+):
+    repo = _repository(db)
+    organization_id = user.organization_id
+    if edit_id:
+        edit_farm = repo.get_farm(edit_id)
+        if edit_farm and (not organization_id or edit_farm.organization_id == organization_id):
+            if view == 1:
+                return _redirect(f"/fazendas/{edit_farm.id}")
+            return _redirect(f"/fazendas/{edit_farm.id}/editar")
+    farms = repo.list_farms(organization_id=organization_id)
+    farm_preview_ready, farm_preview_fingerprint, farm_boundary_by_id = _farm_preview_bundle(farms, background_tasks)
+    farm_metrics, farm_totals = _farm_overview_metrics(farms)
+    plan_summary = _farm_plan_summary(db, user, farms)
     google_maps_web_key = (get_settings().google_maps_api_key or "").strip()
     return templates.TemplateResponse(
         "farms.html",
@@ -9263,16 +9333,194 @@ def farms_page(
             csrf_token,
             "farms",
             farms=farms,
-            edit_farm=edit_farm,
-            farm_form_view_only=farm_form_view_only,
+            farm_metrics=farm_metrics,
+            farm_totals=farm_totals,
+            plan_summary=plan_summary,
             farm_preview_ready=farm_preview_ready,
             farm_preview_fingerprint=farm_preview_fingerprint,
-            farm_boundary_geometries_json=farm_boundary_geometries_json,
-            edit_farm_geometry_json=edit_farm_geometry_json,
+            farm_boundary_geometries_json=json.dumps(farm_boundary_by_id),
             google_maps_web_key=google_maps_web_key,
             _repo=repo,
         ),
     )
+
+
+@router.get("/fazendas/nova")
+def new_farm_page(
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+    csrf_token: str = Depends(get_csrf_token),
+):
+    repo = _repository(db)
+    farms = repo.list_farms(organization_id=user.organization_id)
+    plan_summary = _farm_plan_summary(db, user, farms)
+    google_maps_web_key = (get_settings().google_maps_api_key or "").strip()
+    return templates.TemplateResponse(
+        "farm_form.html",
+        _base_context(
+            request,
+            user,
+            csrf_token,
+            "farms",
+            edit_farm=None,
+            edit_farm_geometry_json="null",
+            farm_preview_ready={},
+            farm_preview_fingerprint={},
+            plan_summary=plan_summary,
+            google_maps_web_key=google_maps_web_key,
+            initial_step=1,
+            _repo=repo,
+        ),
+    )
+
+
+@router.get("/fazendas/{farm_id:int}")
+def farm_detail_page(
+    farm_id: int,
+    request: Request,
+    background_tasks: BackgroundTasks,
+    aba: str = "visao",
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+    csrf_token: str = Depends(get_csrf_token),
+):
+    repo = _repository(db)
+    farm = repo.get_farm(farm_id)
+    if not farm or (user.organization_id and farm.organization_id != user.organization_id):
+        _flash(request, "error", "Fazenda não encontrada.")
+        return _redirect("/fazendas")
+    active_tab = aba if aba in {"visao", "setores", "safras", "documentos", "chuva"} else "visao"
+    farm_preview_ready, farm_preview_fingerprint, farm_boundary_by_id = _farm_preview_bundle([farm], background_tasks)
+    farm_metrics, _ = _farm_overview_metrics([farm])
+    metrics = farm_metrics[farm.id]
+    plots = sorted(list(farm.plots or []), key=lambda p: (p.name or "").lower())
+    seasons = sorted(
+        list(farm.crop_seasons or []),
+        key=lambda s: (s.status != "ativa", -(s.start_date.toordinal() if s.start_date else 0), -s.id),
+    )
+    rain_settings = _farm_rain_settings(db, farm.id)
+    today = today_in_app_timezone()
+    month_rain_mm = sum(
+        float(r.millimeters or 0)
+        for r in (farm.rainfalls or [])
+        if r.rainfall_date and r.rainfall_date.year == today.year and r.rainfall_date.month == today.month
+    )
+    plot_geometries = []
+    for p in plots:
+        if getattr(p, "boundary_geojson", None):
+            try:
+                plot_geometries.append(json.loads(p.boundary_geojson))
+            except json.JSONDecodeError:
+                pass
+    google_maps_web_key = (get_settings().google_maps_api_key or "").strip()
+    return templates.TemplateResponse(
+        "farm_detail.html",
+        _base_context(
+            request,
+            user,
+            csrf_token,
+            "farms",
+            farm=farm,
+            metrics=metrics,
+            plots=plots,
+            seasons=seasons,
+            active_tab=active_tab,
+            rain_settings=rain_settings,
+            month_rain_mm=month_rain_mm,
+            farm_preview_ready=farm_preview_ready,
+            farm_preview_fingerprint=farm_preview_fingerprint,
+            farm_boundary_geometries_json=json.dumps(farm_boundary_by_id),
+            plot_geometries_json=json.dumps(plot_geometries),
+            google_maps_web_key=google_maps_web_key,
+            _repo=repo,
+        ),
+    )
+
+
+@router.get("/fazendas/{farm_id:int}/editar")
+def edit_farm_page(
+    farm_id: int,
+    request: Request,
+    background_tasks: BackgroundTasks,
+    passo: int = 1,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+    csrf_token: str = Depends(get_csrf_token),
+):
+    repo = _repository(db)
+    farm = repo.get_farm(farm_id)
+    if not farm or (user.organization_id and farm.organization_id != user.organization_id):
+        _flash(request, "error", "Fazenda não encontrada.")
+        return _redirect("/fazendas")
+    farms = repo.list_farms(organization_id=user.organization_id)
+    plan_summary = _farm_plan_summary(db, user, farms)
+    farm_preview_ready, farm_preview_fingerprint, _ = _farm_preview_bundle([farm], background_tasks)
+    edit_farm_geometry_json = "null"
+    if farm.boundary_geojson:
+        try:
+            edit_farm_geometry_json = json.dumps(json.loads(farm.boundary_geojson))
+        except json.JSONDecodeError:
+            edit_farm_geometry_json = "null"
+    google_maps_web_key = (get_settings().google_maps_api_key or "").strip()
+    initial_step = passo if passo in {1, 2, 3} else 1
+    return templates.TemplateResponse(
+        "farm_form.html",
+        _base_context(
+            request,
+            user,
+            csrf_token,
+            "farms",
+            edit_farm=farm,
+            edit_farm_geometry_json=edit_farm_geometry_json,
+            farm_preview_ready=farm_preview_ready,
+            farm_preview_fingerprint=farm_preview_fingerprint,
+            plan_summary=plan_summary,
+            google_maps_web_key=google_maps_web_key,
+            initial_step=initial_step,
+            _repo=repo,
+        ),
+    )
+
+
+@router.post("/fazendas/{farm_id:int}/pluviometria-config")
+def save_farm_rain_settings_action(
+    farm_id: int,
+    request: Request,
+    csrf_token: str = Form(...),
+    heavy_rain_mm: float = Form(30),
+    rainy_day_mm: float = Form(1),
+    alert_registered: str | None = Form(None),
+    alert_forecast: str | None = Form(None),
+    notify_dashboard: str | None = Form(None),
+    notify_bell: str | None = Form(None),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    validate_csrf(request, csrf_token)
+    denied = _require_permission(request, user, db, write_permission_for_page(PAGE_PRODUCTIVE_UNIT))
+    if denied:
+        return denied
+    repo = _repository(db)
+    farm = repo.get_farm(farm_id)
+    if not farm or (user.organization_id and farm.organization_id != user.organization_id):
+        _flash(request, "error", "Fazenda não encontrada.")
+        return _redirect("/fazendas")
+    heavy = max(1.0, min(500.0, float(heavy_rain_mm or 30)))
+    rainy = max(0.0, min(200.0, float(rainy_day_mm or 0)))
+    row = db.query(FarmRainSettings).filter(FarmRainSettings.farm_id == farm.id).first()
+    if not row:
+        row = FarmRainSettings(farm_id=farm.id)
+        db.add(row)
+    row.heavy_rain_mm = heavy
+    row.rainy_day_mm = rainy
+    row.alert_registered = bool(alert_registered)
+    row.alert_forecast = bool(alert_forecast)
+    row.notify_dashboard = bool(notify_dashboard)
+    row.notify_bell = bool(notify_bell)
+    db.commit()
+    _flash(request, "success", f"Alertas de pluviometria de {farm.name} atualizados.")
+    return _redirect(f"/fazendas/{farm.id}?aba=chuva")
 
 
 @router.get("/fazendas/geocodificar")
@@ -9578,10 +9826,12 @@ def update_farm_geometry_only(
     request: Request,
     csrf_token: str = Form(...),
     boundary_geojson: str = Form(...),
+    redirect_to: str | None = Form(None),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user_web),
 ):
     validate_csrf(request, csrf_token)
+    target = redirect_to if (redirect_to and redirect_to.startswith("/fazendas")) else "/fazendas"
     repo = _repository(db)
     farm = repo.get_farm(farm_id)
     if not farm or (user.organization_id and farm.organization_id != user.organization_id):
@@ -9590,25 +9840,27 @@ def update_farm_geometry_only(
     normalized = normalize_geojson(boundary_geojson)
     if not normalized:
         _flash(request, "error", "A geometria enviada nao e valida.")
-        return _redirect("/fazendas")
+        return _redirect(target)
     repo.update(farm, {"boundary_geojson": normalized})
     try:
         generate_farm_preview_image(farm.id, normalized)
     except Exception:
         logging.getLogger(__name__).exception("Falha ao gerar imagem de satelite da fazenda %s", farm.id)
     _flash(request, "success", "Geometria da fazenda atualizada.")
-    return _redirect("/fazendas")
+    return _redirect(target)
 
 
 @router.post("/fazendas/{farm_id}/regularizacao")
 def farm_operations_status_action(
     farm_id: int, request: Request, csrf_token: str = Form(...), action: str = Form(...),
+    redirect_to: str | None = Form(None),
     db: Session = Depends(get_db), user: User = Depends(get_current_user_web),
 ):
     validate_csrf(request, csrf_token)
     denied = _require_permission(request, user, db, write_permission_for_page(PAGE_PRODUCTIVE_UNIT))
     if denied:
         return denied
+    target = redirect_to if (redirect_to and redirect_to.startswith("/fazendas")) else "/fazendas"
     entitlements = quota_write_entitlements(db, user.organization_id, today_in_app_timezone())
     farm = db.query(Farm).filter_by(id=farm_id, organization_id=user.organization_id).with_for_update().first()
     if not farm or action not in {"pause", "resume"}:
@@ -9617,11 +9869,11 @@ def farm_operations_status_action(
         error = farm_limit_error(db, entitlements, adding_farm=True, area_delta=Decimal(farm.total_area or 0))
         if error:
             _flash(request, "error", error)
-            return _redirect("/fazendas")
+            return _redirect(target)
     farm.operations_paused = action == "pause"
     db.commit()
     _flash(request, "success", "Fazenda disponível para consulta." if farm.operations_paused else "Operações da fazenda reativadas.")
-    return _redirect("/fazendas")
+    return _redirect(target)
 
 
 @router.post("/fazendas/{farm_id}/excluir")

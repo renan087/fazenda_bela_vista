@@ -1,1146 +1,316 @@
 {% extends "base.html" %}
 {% block content %}
-{% set farm_stats = namespace(area=0, geo=0) %}
-{% for farm in farms %}{% set farm_stats.area = farm_stats.area + (farm.total_area or 0)|float %}{% if farm.boundary_geojson %}{% set farm_stats.geo = farm_stats.geo + 1 %}{% endif %}{% endfor %}
-<div class="stock-page-shell sf-page" data-modal-single-pane>
-    <header class="sf-page-header">
-        <div class="min-w-0">
+<div class="sf-page pd-page fm-page" data-fm-list-page>
+    <header class="pd-head">
+        <div>
             <h1 class="sf-page-title">Fazendas</h1>
-            <p class="sf-page-subtitle">Propriedades, dados territoriais e mapa de cada fazenda.</p>
+            <p class="sf-page-subtitle">Propriedades da organização, perímetros no mapa e ligação com setores e safras.</p>
         </div>
-        <button type="button" class="sf-btn sf-btn-primary" data-farms-launch-open>
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
-            Nova fazenda
-        </button>
+        <div class="pd-head-actions">
+            {% if plan_summary.max_farms or plan_summary.max_hectares %}
+            <button type="button" class="sf-btn sf-btn-secondary" data-fm-plan-open>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 20V10M18 20V4M6 20v-4"/></svg>
+                Limites do plano
+            </button>
+            {% endif %}
+            {% if can_write_page %}
+            <a class="sf-btn sf-btn-primary" href="/fazendas/nova">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+                Nova fazenda
+            </a>
+            {% endif %}
+        </div>
     </header>
 
-    <section class="sf-kpis" aria-label="Resumo das fazendas">
-        <div class="sf-kpi"><span class="sf-kpi-label">Fazendas cadastradas</span><span class="sf-kpi-value">{{ farms|length }}</span><span class="sf-kpi-hint">na organização</span></div>
-        <div class="sf-kpi"><span class="sf-kpi-label">Área total</span><span class="sf-kpi-value">{{ farm_stats.area|decimal_br }} ha</span><span class="sf-kpi-hint">soma das propriedades</span></div>
-        <div class="sf-kpi"><span class="sf-kpi-label">Georreferenciadas</span><span class="sf-kpi-value">{{ farm_stats.geo }}</span><span class="sf-kpi-hint">{% if farms|length - farm_stats.geo > 0 %}{{ farms|length - farm_stats.geo }} sem desenho no mapa{% else %}todas com mapa{% endif %}</span></div>
-        <div class="sf-kpi"><span class="sf-kpi-label">Fazenda ativa</span><span class="sf-kpi-value text-lg">{{ active_farm.name if active_farm else '—' }}</span><span class="sf-kpi-hint">contexto selecionado no topo</span></div>
+    <section class="fm-kpis" aria-label="Resumo das fazendas">
+        <article class="pd-card fm-kpi">
+            <p class="pd-eyebrow">Fazendas</p>
+            <strong>{{ farm_totals.count }}{% if plan_summary.max_farms %} <small>de {{ plan_summary.max_farms }}</small>{% endif %}</strong>
+            {% if plan_summary.farms_pct is not none %}
+            <span class="fm-meter" aria-hidden="true"><i class="{{ 'is-over' if plan_summary.used_farms > plan_summary.max_farms else '' }}" style="width: {{ plan_summary.farms_pct }}%"></i></span>
+            {% endif %}
+            <span class="fm-kpi-sub">{{ farm_totals.plots_total }} setor{{ 'es' if farm_totals.plots_total != 1 }} vinculado{{ 's' if farm_totals.plots_total != 1 }}</span>
+        </article>
+        <article class="pd-card fm-kpi">
+            <p class="pd-eyebrow">Área total</p>
+            <strong>{{ farm_totals.total_area|decimal_br(1) }} <small>ha</small></strong>
+            <span class="fm-kpi-sub">{{ farm_totals.planted_area|decimal_br(1) }} ha em setores ({{ farm_totals.planted_pct }}%)</span>
+        </article>
+        <article class="pd-card fm-kpi">
+            <p class="pd-eyebrow">Georreferenciadas</p>
+            <strong>{{ farm_totals.geo_count }} <small>de {{ farm_totals.count }}</small></strong>
+            <span class="fm-kpi-sub {{ 'is-warn' if farm_totals.missing_geo > 0 else 'is-ok' }}">
+                {% if farm_totals.missing_geo > 0 %}{{ farm_totals.missing_geo }} aguardando desenho no mapa{% else %}Todas com perímetro salvo{% endif %}
+            </span>
+        </article>
+        <article class="pd-card fm-kpi">
+            <p class="pd-eyebrow">Contexto em uso</p>
+            <strong style="font-size:18px; line-height:1.3;">{{ active_farm.name if active_farm else '—' }}</strong>
+            <span class="fm-kpi-sub">Selecione outra fazenda abaixo ou no topo</span>
+        </article>
     </section>
 
-    <section class="sf-toolbar" aria-label="Busca">
-        <label class="sf-search">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+    {% if farm_totals.pending_farms %}
+    <section class="fm-attention" aria-label="Pendências nas fazendas">
+        <div class="fm-attention-main">
+            <span class="fm-attention-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9 1.8 18.4A2 2 0 0 0 3.5 21h17a2 2 0 0 0 1.7-2.6L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
+            </span>
+            <div>
+                <p class="fm-attention-title">{{ farm_totals.pending_farms|length }} {{ 'fazenda precisa' if farm_totals.pending_farms|length == 1 else 'fazendas precisam' }} de atenção</p>
+                <p class="fm-attention-sub">
+                    {% for item in farm_totals.pending_farms[:3] %}{{ item.name }} ({{ item.reason }}){% if not loop.last %} · {% endif %}{% endfor %}{% if farm_totals.pending_farms|length > 3 %}…{% endif %}
+                </p>
+            </div>
+        </div>
+        <button type="button" class="sf-btn sf-btn-secondary" style="min-height:2.25rem;" data-fm-jump-attention>Ver pendências</button>
+    </section>
+    {% endif %}
+
+    <section class="pd-card fm-toolbar" aria-label="Filtros e busca">
+        <div class="sl-chips" role="group" aria-label="Filtrar fazendas">
+            <button type="button" class="sl-chip" data-fm-filter="todas" aria-pressed="true">Todas <span>{{ farm_totals.count }}</span></button>
+            <button type="button" class="sl-chip" data-fm-filter="mapa" aria-pressed="false">Com mapa <span>{{ farm_totals.geo_count }}</span></button>
+            <button type="button" class="sl-chip" data-fm-filter="sem_mapa" aria-pressed="false">Sem mapa <span>{{ farm_totals.missing_geo }}</span></button>
+            <button type="button" class="sl-chip" data-fm-filter="atencao" aria-pressed="false">Atenção <span>{{ farm_totals.pending_farms|length }}</span></button>
+        </div>
+        <label class="sl-search">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
             <span class="sr-only">Buscar fazendas</span>
-            <input type="search" placeholder="Buscar nome, localização, área ou observação" data-farms-search>
+            <input type="search" placeholder="Buscar fazenda, município ou CAR..." data-fm-search>
         </label>
     </section>
 
-    <section aria-label="Fazendas cadastradas">
-        <div class="sf-list" data-farms-list>
+    <section aria-label="Lista de fazendas">
+        {% if farms %}
+        <div class="fm-list" data-fm-list>
             {% for farm in farms %}
-            <article class="sf-card sf-card-pad" data-farms-row data-farms-search-text="{{ farm.name }} {{ farm.location }} {{ farm.total_area }} {{ farm.notes or '' }} {{ 'georreferenciada' if farm.boundary_geojson else 'sem geometria' }}">
-                <div class="flex flex-wrap items-start justify-between gap-4 lg:gap-3">
-                    <div class="min-w-0 flex-1">
-                        <div class="flex flex-wrap items-center gap-2">
-                            <button type="button" class="sf-card-title text-left hover:text-brand-700" data-farms-launch-open data-farms-edit-link="/fazendas?edit_id={{ farm.id }}&view=1">{{ farm.name }}</button>
-                            {% if farm.operations_paused %}<span class="sf-pill sf-pill-renewed">Operações pausadas</span>
-                            {% elif plan_regularization and farm.id in plan_regularization.excess_farms %}<span class="sf-pill sf-pill-renewed">{{ 'Excede o plano contratado' if plan_entitlements.billing_state == 'teste' else 'Regularização necessária' }}</span>{% endif %}
-                            {% if active_farm_id == farm.id %}<span class="sf-pill sf-pill-current">Em uso</span>{% endif %}
+            {% set m = farm_metrics[farm.id] %}
+            {% set is_current = (active_farm_id == farm.id) %}
+            {% set thumb_src = url_for('static', path='generated/farm_previews/' ~ farm.id ~ '_thumb.jpg') ~ '?v=' ~ farm_preview_fingerprint.get(farm.id, '') %}
+            {% set full_src = url_for('static', path='generated/farm_previews/' ~ farm.id ~ '.png') ~ '?v=' ~ farm_preview_fingerprint.get(farm.id, '') %}
+            <article class="pd-card fm-card{% if is_current %} is-active{% endif %}"
+                     data-fm-row
+                     data-fm-geo="{{ '1' if farm.boundary_geojson else '0' }}"
+                     data-fm-attention="{{ '1' if m.needs_attention else '0' }}"
+                     data-fm-search-text="{{ farm.name }} {{ farm.location }} {{ farm.car_registration_number or '' }} {{ farm.notes or '' }}">
+                <div class="fm-card-left">
+                    {% if farm.boundary_geojson and farm_preview_ready.get(farm.id) %}
+                    <button type="button" class="fm-thumb"
+                            data-fm-map-open
+                            data-farm-id="{{ farm.id }}"
+                            data-farm-name="{{ farm.name }}"
+                            data-map-src="{{ full_src }}"
+                            aria-label="Ampliar mapa de {{ farm.name }}">
+                        <img src="{{ thumb_src }}" alt="" loading="lazy" decoding="async">
+                        <span class="fm-thumb-tag">Ampliar</span>
+                    </button>
+                    {% elif farm.boundary_geojson %}
+                    <a href="/fazendas/{{ farm.id }}" class="fm-thumb-empty" style="border-color:#BFD6B6; background:#EEF3EB; color:#294127;">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 21s-6-4.35-6-10a6 6 0 1 1 12 0c0 5.65-6 10-6 10Z"/><circle cx="12" cy="11" r="2"/></svg>
+                        <span>Mapa salvo</span>
+                    </a>
+                    {% else %}
+                    <a href="{{ '/fazendas/' ~ farm.id ~ '/editar?passo=2' if can_write_page else '/fazendas/' ~ farm.id }}" class="fm-thumb-empty">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M12 21s-6-4.35-6-10a6 6 0 1 1 12 0c0 5.65-6 10-6 10Z"/><circle cx="12" cy="11" r="2"/></svg>
+                        <span>Desenhar mapa</span>
+                    </a>
+                    {% endif %}
+
+                    <div class="fm-card-body">
+                        <div class="fm-card-top">
+                            <a href="/fazendas/{{ farm.id }}" class="fm-card-name">{{ farm.name }}</a>
+                            {% if is_current %}<span class="pd-chip is-ok">Em uso</span>{% endif %}
+                            {% if farm.operations_paused %}<span class="pd-chip is-warn">Operações pausadas</span>
+                            {% elif plan_regularization and farm.id in plan_regularization.excess_farms %}<span class="pd-chip is-warn">{{ 'Excede o plano contratado' if plan_entitlements.billing_state == 'teste' else 'Regularização necessária' }}</span>{% endif %}
+                            {% if farm.car_registration_number %}<span class="pd-chip is-done">CAR ok</span>{% endif %}
                         </div>
-                        <p class="sf-card-sub">{{ farm.location }}</p>
-                        <div class="mt-3 flex flex-wrap items-center gap-x-2 gap-y-2">
-                            <span class="sf-pill">{{ (farm.total_area or 0)|decimal_br }} ha</span>
-                            <span class="sf-pill {% if farm.boundary_geojson %}sf-pill-ativa{% else %}sf-pill-renewed{% endif %}">
-                                {% if farm.boundary_geojson %}Georreferenciada{% else %}Sem geometria{% endif %}
-                            </span>
-                            {% if farm.boundary_geojson %}
-                            {% set farm_map_thumb_src = url_for('static', path='generated/farm_previews/' ~ farm.id ~ '_thumb.jpg') ~ '?v=' ~ farm_preview_fingerprint.get(farm.id, '') %}
-                            {% set farm_map_full_src = url_for('static', path='generated/farm_previews/' ~ farm.id ~ '.png') ~ '?v=' ~ farm_preview_fingerprint.get(farm.id, '') %}
-                            {% if farm_preview_ready.get(farm.id) %}
-                            <button
-                                type="button"
-                                class="group relative ml-0 aspect-video w-20 shrink-0 overflow-hidden rounded-xl border-2 border-slate-200 bg-slate-100 shadow-sm transition hover:border-brand-400 hover:shadow-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500 sm:w-24 lg:ml-1"
-                                title="Ampliar mapa da fazenda"
-                                aria-label="Abrir mapa ampliado — {{ farm.name }}"
-                                data-farms-map-open
-                                data-map-src="{{ farm_map_full_src }}"
-                                data-map-farm-name="{{ farm.name | e }}"
-                                data-map-farm-id="{{ farm.id }}"
-                            >
-                                <img
-                                    src="{{ farm_map_thumb_src }}"
-                                    alt=""
-                                    width="96"
-                                    height="54"
-                                    loading="lazy"
-                                    decoding="async"
-                                    class="pointer-events-none h-full w-full object-cover"
-                                >
-                                <span class="pointer-events-none absolute inset-0 ring-inset ring-transparent transition group-hover:bg-slate-900/10" aria-hidden="true"></span>
-                            </button>
-                            {% else %}
-                            <span class="inline-flex max-w-[14rem] items-center gap-2 rounded-xl border border-dashed border-slate-200 bg-white px-2.5 py-1.5 text-left text-xs text-slate-600 lg:ml-1">
-                                <span class="inline-flex h-2 w-2 shrink-0 animate-pulse rounded-full bg-brand-500" aria-hidden="true"></span>
-                                <span>Gerando miniatura do mapa… Atualize em instantes.</span>
-                            </span>
-                            {% endif %}
-                            {% endif %}
-                        </div>
-                    </div>
-                    <div class="flex items-center gap-1.5">
-                        <a href="/fazendas?edit_id={{ farm.id }}" class="sf-icon-btn" aria-label="Editar {{ farm.name }}" title="Editar">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 1 1 3 3L7 19l-4 1 1-4Z"/></svg>
-                        </a>
-                        <details class="sf-menu" data-sf-dropdown>
-                            <summary class="sf-icon-btn" aria-label="Mais ações para {{ farm.name }}" title="Mais ações"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="12" cy="5" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="12" cy="19" r="1.7"/></svg></summary>
-                            <div class="sf-menu-panel">
-                                <a href="/fazendas?edit_id={{ farm.id }}&view=1">Ver detalhes</a>
-                                <a href="/setores">Ver setores</a>
-                                {% if can_write_page and (farm.operations_paused or (plan_regularization and plan_regularization.excess_farms)) %}
-                                <form method="post" action="/fazendas/{{ farm.id }}/regularizacao">
-                                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                                    <input type="hidden" name="action" value="{{ 'resume' if farm.operations_paused else 'pause' }}">
-                                    <button type="submit" class="sf-btn sf-btn-secondary">{{ 'Reativar operações' if farm.operations_paused else 'Pausar operações' }}</button>
-                                </form>
-                                {% endif %}
-                                <form method="post" action="/fazendas/{{ farm.id }}/excluir" onsubmit="return confirm('Excluir a fazenda {{ farm.name }}? Esta ação não pode ser desfeita.');">
-                                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                                    <button type="submit" class="sf-menu-danger">Excluir fazenda</button>
-                                </form>
-                            </div>
-                        </details>
+                        <p class="fm-card-sub">{{ farm.location }}{% if farm.notes %} · {{ farm.notes|truncate(90) }}{% endif %}</p>
+                        <dl class="fm-metrics">
+                            <div><dt>Área total</dt><dd>{{ (farm.total_area or 0)|decimal_br(1) }} ha</dd></div>
+                            <div><dt>Em setores</dt><dd>{{ m.planted_area|decimal_br(1) }} ha ({{ m.occupation_pct }}%)</dd></div>
+                            <div><dt>Setores</dt><dd>{{ m.plots_count }} {{ 'setor' if m.plots_count == 1 else 'setores' }}</dd></div>
+                            <div><dt>Safra atual</dt><dd>{{ m.active_season_name or 'Sem safra' }}</dd></div>
+                        </dl>
                     </div>
                 </div>
-                {% if farm.notes %}
-                <p class="mt-3 text-sm text-slate-500">{{ farm.notes }}</p>
-                {% endif %}
+
+                <div class="fm-card-actions">
+                    {% if not is_current and not farm.operations_paused %}
+                    <form method="post" action="/contexto">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                        <input type="hidden" name="farm_id" value="{{ farm.id }}">
+                        <input type="hidden" name="redirect_to" value="/fazendas">
+                        <button type="submit" class="sf-btn sf-btn-secondary">Usar</button>
+                    </form>
+                    {% endif %}
+                    <a href="/fazendas/{{ farm.id }}" class="sf-btn sf-btn-primary">Abrir ficha →</a>
+                    {% if can_write_page %}
+                    <a href="/fazendas/{{ farm.id }}/editar" class="sf-icon-btn" aria-label="Editar {{ farm.name }}" title="Editar">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 1 1 3 3L7 19l-4 1 1-4Z"/></svg>
+                    </a>
+                    <button type="button" class="sf-icon-btn"
+                            aria-label="Mais ações para {{ farm.name }}"
+                            title="Pausar ou excluir"
+                            data-fm-danger-open
+                            data-farm-id="{{ farm.id }}"
+                            data-farm-name="{{ farm.name }}"
+                            data-farm-paused="{{ '1' if farm.operations_paused else '0' }}"
+                            data-farm-plots="{{ m.plots_count }}">
+                        <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="12" cy="5" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="12" cy="19" r="1.7"/></svg>
+                    </button>
+                    {% endif %}
+                </div>
             </article>
-            {% else %}
-            <div class="sf-empty"><p class="font-semibold text-slate-900">Nenhuma fazenda cadastrada</p><p>Cadastre a primeira fazenda para começar.</p></div>
             {% endfor %}
         </div>
-        <p class="sf-empty mt-3 hidden" data-farms-search-empty>Nenhuma fazenda corresponde à busca digitada.</p>
+        <div class="pd-card pd-empty" data-fm-empty-search hidden>
+            <strong>Nenhuma fazenda encontrada neste filtro.</strong>
+            <span>Limpe a busca ou troque o filtro selecionado.</span>
+            <button type="button" class="sf-btn sf-btn-secondary" data-fm-reset-filters>Ver todas as fazendas</button>
+        </div>
+        {% else %}
+        <div class="pd-card pd-empty">
+            <strong>Nenhuma fazenda cadastrada ainda.</strong>
+            <span>Cadastre a primeira propriedade para criar setores, safras e acompanhar a produção.</span>
+            {% if can_write_page %}<a class="sf-btn sf-btn-primary" href="/fazendas/nova">Cadastrar primeira fazenda</a>{% endif %}
+        </div>
+        {% endif %}
     </section>
 </div>
 
-<dialog id="farms-map-preview-modal" class="app-modal rounded-[2rem] p-0 shadow-2xl w-full max-w-5xl overflow-hidden">
-    <div class="max-h-[92vh] overflow-y-auto bg-white p-5 sm:p-7">
-        <div class="flex items-start justify-between gap-4">
-            <div class="min-w-0">
-                <h3 class="text-xl font-semibold text-slate-900 sm:text-2xl">Mapa da fazenda</h3>
-                <p class="mt-1 text-sm font-medium text-slate-600" data-farms-map-modal-name></p>
+{# Modal: Mapa Ampliado + Editor de Polígono #}
+<dialog class="fm-dialog" data-fm-map-modal aria-labelledby="fm-map-modal-title">
+    <div class="fm-sheet">
+        <div class="fm-sheet-head">
+            <div>
+                <p class="pd-eyebrow">Georreferenciamento</p>
+                <h3 id="fm-map-modal-title" data-fm-map-title>Mapa da fazenda</h3>
             </div>
-            <button type="button" class="modal-close-button shrink-0" aria-label="Fechar mapa" data-farms-map-modal-close>
-                <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                    <path d="M18 6 6 18"/>
-                    <path d="m6 6 12 12"/>
-                </svg>
+            <button type="button" class="sf-icon-btn" aria-label="Fechar mapa" data-fm-dialog-close>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>
             </button>
         </div>
-
-        <div class="mt-4 space-y-4" data-farms-map-modal-view-image>
-            <div class="overflow-hidden rounded-2xl border border-slate-200 bg-slate-100">
-                <img data-farms-map-modal-img src="" alt="" class="mx-auto max-h-[min(72vh,600px)] w-full object-contain">
-            </div>
-            <div class="flex flex-wrap gap-2">
-                <button type="button" class="rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50" data-farms-map-modal-start-edit>
-                    Editar polígono
-                </button>
-            </div>
-        </div>
-
-        <div class="mt-4 hidden flex flex-col gap-4 max-md:gap-2" data-farms-map-modal-view-editor>
-            <p class="hidden text-sm text-slate-600 md:order-1 md:block">
-                Clique no mapa para adicionar vértices, arraste os pontos para ajustar e use <span class="font-medium">Remover ponto</span> no vértice selecionado (mínimo de três pontos).
-            </p>
-
-            <div class="order-1 max-md:flex max-md:flex-row max-md:items-start max-md:gap-2 md:order-4 md:flex md:flex-wrap md:gap-2">
-                <div class="max-md:flex max-md:min-w-0 max-md:flex-1 max-md:flex-wrap max-md:gap-2 md:contents">
-                    <button type="button" class="rounded-2xl bg-slate-100 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-200" data-preview-remove-point>Remover ponto</button>
-                    <button type="button" class="rounded-2xl bg-slate-100 px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-200" data-farms-map-modal-cancel-edit>Cancelar edição</button>
-                    <form method="post" class="inline" id="farms-preview-geometry-form" data-preview-geometry-form>
-                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                        <input type="hidden" name="boundary_geojson" value="" data-preview-geometry-input>
-                        <button type="submit" class="rounded-2xl bg-brand-500 px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-700">Salvar geometria</button>
-                    </form>
+        <div class="fm-sheet-body">
+            <div data-fm-map-view>
+                <div style="border-radius:14px; overflow:hidden; border:1px solid #E3E8E2; background:#F6F8F5;">
+                    <img data-fm-map-img src="" alt="Mapa da fazenda" style="display:block; width:100%; max-height:58vh; object-fit:contain;">
                 </div>
-                <button
-                    type="button"
-                    class="relative z-10 inline-flex h-10 w-10 shrink-0 animate-pulse items-center justify-center rounded-full border border-slate-200 bg-white text-brand-600 shadow-sm ring-2 ring-brand-500/15 md:hidden"
-                    aria-label="Como editar o polígono no mapa"
-                    aria-haspopup="dialog"
-                    data-preview-map-hint-open
-                >
-                    <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                        <circle cx="12" cy="12" r="10"/>
-                        <path d="M12 16v-4"/>
-                        <path d="M12 8h.01"/>
-                    </svg>
-                </button>
             </div>
-
-            <div class="grid gap-2 text-sm text-slate-600 max-md:order-2 sm:grid-cols-2 md:order-2">
-                <p>Vértices: <span class="font-semibold text-slate-900" data-preview-editor-vertices>0</span></p>
-                <p>Área aproximada: <span class="font-semibold text-slate-900" data-preview-editor-area>0,00</span> ha</p>
+            <div data-fm-map-edit hidden style="display:flex; flex-direction:column; gap:12px;">
+                <div class="fm-map-bar" style="border:1px solid #E3E8E2; border-radius:12px;">
+                    <span data-fm-map-guide style="font-weight:600;">Arraste os cantos para ajustar o perímetro.</span>
+                    <span style="white-space:nowrap;">Vértices: <strong data-fm-map-vertices>0</strong> · Área est.: <strong data-fm-map-area>0,00 ha</strong></span>
+                </div>
+                <div id="fm-modal-boundary-map" class="fm-map-canvas" style="border:1px solid #E3E8E2; border-radius:14px;"></div>
+                <div style="display:flex; flex-wrap:wrap; gap:8px;">
+                    <button type="button" class="sf-btn sf-btn-secondary" data-fm-map-undo>Desfazer</button>
+                    <button type="button" class="sf-btn sf-btn-secondary" data-fm-map-remove>Remover ponto</button>
+                </div>
             </div>
-
-            <div id="farms-preview-boundary-map" class="relative z-0 max-md:order-3 max-md:h-[min(58vh,520px)] max-md:min-h-[240px] h-[min(52vh,440px)] min-h-[220px] overflow-hidden rounded-2xl border border-slate-200 md:order-3"></div>
         </div>
-    </div>
-
-    <div
-        class="fixed inset-0 z-[200] hidden items-center justify-center bg-slate-900/55 p-4 sm:p-6"
-        data-preview-map-hint-overlay
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="farms-preview-map-hint-title"
-    >
-        <div class="absolute inset-0 cursor-default" data-preview-map-hint-backdrop aria-hidden="true"></div>
-        <div class="relative z-10 w-full max-w-md rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl" data-preview-map-hint-panel>
-            <button type="button" class="modal-close-button absolute right-3 top-3" aria-label="Fechar dica" data-preview-map-hint-close>
-                <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                    <path d="M18 6 6 18"/>
-                    <path d="m6 6 12 12"/>
-                </svg>
-            </button>
-            <h4 id="farms-preview-map-hint-title" class="pr-10 text-lg font-semibold text-slate-900">Editar o polígono</h4>
-            <p class="mt-3 text-sm leading-relaxed text-slate-600">
-                Clique no mapa para adicionar vértices, arraste os pontos para ajustar e use Remover ponto no vértice selecionado (mínimo de três pontos).
-            </p>
-            <button type="button" class="mt-5 w-full rounded-2xl bg-brand-500 py-3 text-sm font-semibold text-white hover:bg-brand-700" data-preview-map-hint-close>
-                Entendi
-            </button>
+        <div class="fm-sheet-foot">
+            <a class="sf-btn sf-btn-secondary" data-fm-map-kml href="#">Baixar KML</a>
+            <div style="display:flex; flex-wrap:wrap; gap:8px;">
+                {% if can_write_page %}
+                <button type="button" class="sf-btn sf-btn-secondary" data-fm-map-start-edit>Editar pontos</button>
+                <button type="button" class="sf-btn sf-btn-secondary" data-fm-map-cancel-edit hidden>Cancelar alterações</button>
+                <form method="post" data-fm-map-form hidden style="margin:0;">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    <input type="hidden" name="boundary_geojson" value="" data-fm-map-input>
+                    <button type="submit" class="sf-btn sf-btn-primary">Salvar geometria</button>
+                </form>
+                {% endif %}
+                <button type="button" class="sf-btn sf-btn-secondary" data-fm-map-close-view data-fm-dialog-close>Fechar</button>
+            </div>
         </div>
     </div>
 </dialog>
 
-<dialog id="farms-launch-modal" class="app-modal rounded-[2rem] p-0 shadow-2xl w-full max-w-3xl overflow-hidden">
-    <div class="bg-white p-6 sm:p-8">
-        <div class="flex items-start justify-between gap-4">
-            <div class="min-w-0">
-                {% if farm_form_view_only %}
-                <p class="text-xs uppercase tracking-[0.35em] text-slate-400">Visualização</p>
-                <h3 class="mt-2 text-2xl font-semibold purchased-modal-heading">{{ edit_farm.name }}</h3>
-                <p class="mt-2 text-sm text-slate-500 purchased-modal-subtitle">Dados da fazenda (somente leitura). Use Editar para alterar.</p>
-                {% else %}
-                <p class="text-xs uppercase tracking-[0.35em] text-slate-400">{% if edit_farm %}Editar fazenda{% else %}Nova fazenda{% endif %}</p>
-                <h3 class="mt-2 text-2xl font-semibold purchased-modal-heading">{% if edit_farm %}Editar fazenda{% else %}Cadastrar nova fazenda{% endif %}</h3>
-                <p class="mt-2 text-sm text-slate-500 purchased-modal-subtitle">Centralize dados de localização, área total e geometria.</p>
-                {% endif %}
+{# Modal: Limites do Plano #}
+{% if plan_summary.max_farms or plan_summary.max_hectares %}
+<dialog class="fm-dialog is-sm" data-fm-plan-modal aria-labelledby="fm-plan-modal-title">
+    <div class="fm-sheet">
+        <div class="fm-sheet-head">
+            <div>
+                <p class="pd-eyebrow">Assinatura e capacidade</p>
+                <h3 id="fm-plan-modal-title">{{ plan_summary.plan_name }}</h3>
             </div>
-            <button type="button" class="modal-close-button" aria-label="Fechar" data-farms-launch-close>
-                <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                    <path d="M18 6 6 18"/>
-                    <path d="m6 6 12 12"/>
-                </svg>
+            <button type="button" class="sf-icon-btn" aria-label="Fechar" data-fm-dialog-close>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>
             </button>
         </div>
-
-        <div class="mt-6 max-h-[72vh] overflow-y-auto pr-1" data-modal-scroll>
-            {% set edit_farm_preview_only_src = (url_for('static', path='generated/farm_previews/' ~ edit_farm.id ~ '.png') ~ '?v=' ~ farm_preview_fingerprint.get(edit_farm.id, '')) if edit_farm and edit_farm.boundary_geojson and farm_preview_ready.get(edit_farm.id) else none %}
-            {% set farm_needs_map_gate = (not edit_farm) or (edit_farm and not edit_farm.boundary_geojson) %}
-            <form id="farms-form" method="post" enctype="multipart/form-data" action="{% if edit_farm %}/fazendas/{{ edit_farm.id }}/editar{% else %}/fazendas{% endif %}" class="grid gap-4" data-farms-form{% if edit_farm_preview_only_src %} data-farms-defer-inline-map="1"{% endif %}{% if farm_form_view_only %} data-farms-form-view-only="1"{% endif %}>
-                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                <input type="hidden" name="boundary_geojson" value="" data-farms-boundary-input>
-
-                <div class="sticky top-0 z-10 -mx-1 bg-white/95 px-1 py-1 backdrop-blur">
-                    <div class="flex flex-wrap justify-end gap-3 rounded-[1.5rem] px-2 py-2 sm:px-3">
-                        <button type="button" class="rounded-2xl bg-slate-100 px-4 py-3 font-semibold text-slate-700 hover:bg-slate-200" data-farms-launch-close>{% if farm_form_view_only %}Fechar{% else %}Cancelar{% endif %}</button>
-                        {% if farm_form_view_only and edit_farm %}
-                        <a href="/fazendas?edit_id={{ edit_farm.id }}" class="inline-flex items-center justify-center rounded-2xl bg-brand-500 px-4 py-3 font-semibold text-white hover:bg-brand-700">Editar</a>
-                        {% else %}
-                        <button form="farms-form" class="rounded-2xl bg-brand-500 px-4 py-3 font-semibold text-white hover:bg-brand-700">{% if edit_farm %}Salvar alterações{% else %}Salvar fazenda{% endif %}</button>
-                        {% endif %}
-                    </div>
+        <div class="fm-sheet-body">
+            {% if plan_summary.max_farms %}
+            <div>
+                <div style="display:flex; justify-content:space-between; font-size:13px; font-weight:600; margin-bottom:6px;">
+                    <span>Fazendas ativas</span>
+                    <span>{{ plan_summary.used_farms }} de {{ plan_summary.max_farms }}</span>
                 </div>
-
-                <label>
-                    <span class="mb-2 block text-sm font-medium">Nome</span>
-                    <input name="name" value="{{ edit_farm.name if edit_farm else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50{% if farm_form_view_only %} cursor-default text-slate-700{% endif %}" required{% if farm_form_view_only %} readonly tabindex="-1"{% endif %}>
-                </label>
-
-                <div class="rounded-[1.25rem] border border-emerald-100 bg-emerald-50/45 p-4">
-                    <div class="flex flex-col gap-3 sm:flex-row sm:items-end">
-                        <label class="min-w-0 flex-1">
-                            <span class="mb-2 block text-sm font-medium text-slate-800">Número do CAR <span class="font-normal text-slate-500">(opcional)</span></span>
-                            <input
-                                name="car_registration_number"
-                                value="{{ edit_farm.car_registration_number if edit_farm and edit_farm.car_registration_number else '' }}"
-                                placeholder="Ex.: BA-1234567-ABCD.1234.EFGH.5678.IJKL.9012.MNOP"
-                                autocomplete="off"
-                                class="min-h-[3.25rem] w-full rounded-2xl border-emerald-200 bg-white uppercase{% if farm_form_view_only %} cursor-default text-slate-700{% endif %}"
-                                data-farms-car-input
-                                {% if farm_form_view_only %}readonly tabindex="-1"{% endif %}
-                            >
-                        </label>
-                        {% if not farm_form_view_only %}
-                        <button type="button" class="min-h-[3.25rem] shrink-0 rounded-2xl border border-emerald-200 bg-white px-4 py-3 text-sm font-semibold text-emerald-800 transition hover:bg-emerald-100 disabled:cursor-wait disabled:opacity-60" data-farms-car-lookup>
-                            Consultar CAR
-                        </button>
-                        {% endif %}
-                    </div>
-                    {% if edit_farm and edit_farm.boundary_geojson %}
-                    <a href="/fazendas/{{ edit_farm.id }}/geomapa.kml" class="mt-3 inline-flex min-h-10 items-center justify-center rounded-xl border border-emerald-200 bg-white px-3 py-2 text-sm font-semibold text-emerald-800 transition hover:bg-emerald-100">
-                        Baixar geomapa em KML
-                    </a>
-                    {% endif %}
-                    {% if not farm_form_view_only %}
-                    <p class="mt-3 hidden text-xs font-medium leading-relaxed text-emerald-800" data-farms-car-result aria-live="polite"></p>
-                    {% endif %}
+                <span class="fm-meter"><i class="{{ 'is-over' if plan_summary.used_farms > plan_summary.max_farms else '' }}" style="width:{{ plan_summary.farms_pct }}%"></i></span>
+            </div>
+            {% endif %}
+            {% if plan_summary.max_hectares %}
+            <div>
+                <div style="display:flex; justify-content:space-between; font-size:13px; font-weight:600; margin-bottom:6px;">
+                    <span>Área somada das propriedades</span>
+                    <span>{{ plan_summary.used_area|decimal_br(1) }} de {{ plan_summary.max_hectares|decimal_br(0) }} ha</span>
                 </div>
-
-                {% set farm_has_registration_documents = edit_farm and (edit_farm.ccir_number or edit_farm.itr_registration_number or edit_farm.property_registration_number or edit_farm.registry_office) %}
-                {% if not farm_form_view_only or farm_has_registration_documents %}
-                <div class="rounded-[1.5rem] border border-brand-100 bg-brand-50/50 p-4">
-                    <div class="flex flex-wrap items-start justify-between gap-4">
-                        <div class="min-w-0">
-                            <p class="text-xs uppercase tracking-[0.3em] text-slate-400">Documentação do imóvel</p>
-                            <p class="mt-2 text-sm text-slate-500">Dados opcionais para identificação registral e fiscal da propriedade.</p>
-                        </div>
-                        <button type="button" class="stock-summary-toggle" data-farms-documents-toggle aria-expanded="false">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-                                <path d="M5 12h14"/>
-                                <path d="M12 5v14" data-farms-documents-toggle-plus></path>
-                            </svg>
-                            <span data-farms-documents-toggle-label>Expandir</span>
-                        </button>
-                    </div>
-                    <div class="stock-summary-collapse" data-farms-documents-collapse>
-                        <div class="stock-summary-collapse-inner">
-                            <div class="mt-4 grid gap-4 md:grid-cols-2">
-                                <label>
-                                    <span class="mb-2 block text-sm font-medium">CCIR <span class="font-normal text-slate-500">(opcional)</span></span>
-                                    <input name="ccir_number" value="{{ edit_farm.ccir_number if edit_farm and edit_farm.ccir_number else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-white{% if farm_form_view_only %} cursor-default text-slate-700{% endif %}"{% if farm_form_view_only %} readonly tabindex="-1"{% endif %}>
-                                </label>
-                                <label>
-                                    <span class="mb-2 block text-sm font-medium">Número do ITR <span class="font-normal text-slate-500">(opcional)</span></span>
-                                    <input name="itr_registration_number" value="{{ edit_farm.itr_registration_number if edit_farm and edit_farm.itr_registration_number else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-white{% if farm_form_view_only %} cursor-default text-slate-700{% endif %}"{% if farm_form_view_only %} readonly tabindex="-1"{% endif %}>
-                                </label>
-                                <label>
-                                    <span class="mb-2 block text-sm font-medium">Matrícula do imóvel <span class="font-normal text-slate-500">(opcional)</span></span>
-                                    <input name="property_registration_number" value="{{ edit_farm.property_registration_number if edit_farm and edit_farm.property_registration_number else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-white{% if farm_form_view_only %} cursor-default text-slate-700{% endif %}"{% if farm_form_view_only %} readonly tabindex="-1"{% endif %}>
-                                </label>
-                                <label>
-                                    <span class="mb-2 block text-sm font-medium">Cartório de registro <span class="font-normal text-slate-500">(opcional)</span></span>
-                                    <input name="registry_office" value="{{ edit_farm.registry_office if edit_farm and edit_farm.registry_office else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-white{% if farm_form_view_only %} cursor-default text-slate-700{% endif %}"{% if farm_form_view_only %} readonly tabindex="-1"{% endif %}>
-                                </label>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                {% endif %}
-
-                <div class="grid gap-4 md:grid-cols-2 md:items-start">
-                    <div class="space-y-2">
-                        <label>
-                            <span class="mb-2 block text-sm font-medium">Localização</span>
-                            <input
-                                name="location"
-                                value="{{ edit_farm.location if edit_farm else '' }}"
-                                placeholder="Ex.: Vitória da Conquista, BA"
-                                autocomplete="address-level2"
-                                class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50{% if farm_form_view_only %} cursor-default text-slate-700{% endif %}"
-                                required{% if farm_form_view_only %} readonly tabindex="-1"{% endif %}
-                            >
-                        </label>
-                        {% if farm_needs_map_gate and not farm_form_view_only %}
-                        <details class="group rounded-xl border border-slate-200 bg-slate-50/80 open:bg-white">
-                            <summary class="cursor-pointer list-none px-3 py-2.5 text-sm font-medium text-brand-700 outline-none marker:content-[''] [&::-webkit-details-marker]:hidden">
-                                <span class="underline decoration-brand-500/30 group-open:no-underline">Coordenadas no mapa (opcional)</span>
-                            </summary>
-                            <div class="grid gap-3 border-t border-slate-100 px-3 pb-3 pt-2 sm:grid-cols-2">
-                                <label>
-                                    <span class="mb-1 block text-xs font-medium text-slate-600">Latitude (°)</span>
-                                    <input
-                                        type="text"
-                                        inputmode="decimal"
-                                        data-farms-optional-lat
-                                        placeholder="-14,8605"
-                                        class="min-h-[2.75rem] w-full rounded-xl border-slate-200 bg-white px-3 text-sm"
-                                        autocomplete="off"
-                                    >
-                                </label>
-                                <label>
-                                    <span class="mb-1 block text-xs font-medium text-slate-600">Longitude (°)</span>
-                                    <input
-                                        type="text"
-                                        inputmode="decimal"
-                                        data-farms-optional-lng
-                                        placeholder="-40,8325"
-                                        class="min-h-[2.75rem] w-full rounded-xl border-slate-200 bg-white px-3 text-sm"
-                                        autocomplete="off"
-                                    >
-                                </label>
-                            </div>
-                        </details>
-                        {% endif %}
-                    </div>
-                    <label>
-                        <span class="mb-2 block text-sm font-medium">Área total (ha)</span>
-                        <input type="number" step="0.01" name="total_area" value="{{ edit_farm.total_area if edit_farm else '' }}" class="min-h-[3.25rem] w-full rounded-2xl border-slate-200 bg-slate-50{% if farm_form_view_only %} cursor-default text-slate-700{% endif %}" required{% if farm_form_view_only %} readonly tabindex="-1"{% endif %}>
-                    </label>
-                </div>
-
-                <div class="rounded-[1.25rem] border border-slate-200 bg-slate-50/80 p-4">
-                    <p class="text-xs uppercase tracking-[0.25em] text-slate-400">Perímetro no mapa</p>
-                    {% if farm_form_view_only and edit_farm %}
-                    {% if edit_farm_preview_only_src %}
-                    <div class="mt-3">
-                        <button
-                            type="button"
-                            class="group relative w-full max-w-2xl overflow-hidden rounded-2xl border-2 border-slate-200 bg-slate-100 text-left shadow-sm transition hover:border-brand-400 hover:shadow-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500"
-                            title="Ampliar mapa da fazenda"
-                            aria-label="Abrir mapa ampliado — {{ edit_farm.name | e }}"
-                            data-farms-map-open
-                            data-map-src="{{ edit_farm_preview_only_src }}"
-                            data-map-farm-name="{{ edit_farm.name | e }}"
-                            data-map-farm-id="{{ edit_farm.id }}"
-                        >
-                            <img src="{{ edit_farm_preview_only_src }}" alt="" width="640" height="360" loading="lazy" decoding="async" class="aspect-video w-full object-cover">
-                            <span class="pointer-events-none absolute inset-0 ring-inset ring-transparent transition group-hover:bg-slate-900/10" aria-hidden="true"></span>
-                            <span class="pointer-events-none absolute bottom-2 left-2 right-2 rounded-xl bg-slate-900/70 px-3 py-2 text-center text-xs font-semibold text-white backdrop-blur-sm sm:text-sm">
-                                Ver mapa ampliado
-                            </span>
-                        </button>
-                    </div>
-                    {% elif not edit_farm.boundary_geojson %}
-                    <p class="mt-2 text-sm text-slate-600">Esta fazenda ainda não possui perímetro georreferenciado.</p>
-                    {% else %}
-                    <p class="mt-2 text-sm text-slate-600">Perímetro cadastrado. Clique em <span class="font-medium text-slate-800">Editar</span> para abrir o mapa interativo.</p>
-                    {% endif %}
-                    {% else %}
-                    {% if edit_farm and not edit_farm_preview_only_src and not farm_needs_map_gate %}
-                    <p class="mt-2 text-sm text-slate-600">Desenhe o polígono clicando no mapa (não é necessário enviar arquivo antes). Arraste os pontos para ajustar. Envie um arquivo GeoJSON abaixo apenas se preferir importar de outra ferramenta.</p>
-                    {% if google_maps_web_key %}
-                    <p class="mt-2 text-xs text-emerald-700">Mapa em modo satélite (Google Maps).</p>
-                    {% else %}
-                    <p class="mt-2 text-xs text-slate-500">Configure <code class="rounded bg-slate-200 px-1 py-0.5 text-[11px]">GOOGLE_MAPS_API_KEY</code> no servidor para usar imagens de satélite do Google ao desenhar; sem chave, o mapa usa OpenStreetMap.</p>
-                    {% endif %}
-                    {% endif %}
-                    {% if edit_farm_preview_only_src %}
-                    <div class="mt-3" data-farms-preview-card>
-                        <button
-                            type="button"
-                            class="group relative w-full max-w-2xl overflow-hidden rounded-2xl border-2 border-slate-200 bg-slate-100 text-left shadow-sm transition hover:border-brand-400 hover:shadow-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500"
-                            title="Editar perímetro no mapa"
-                            aria-label="Abrir mapa para editar o perímetro — {{ edit_farm.name | e }}"
-                            data-farms-map-open
-                            data-farms-map-direct-edit="1"
-                            data-map-src="{{ edit_farm_preview_only_src }}"
-                            data-map-farm-name="{{ edit_farm.name | e }}"
-                            data-map-farm-id="{{ edit_farm.id }}"
-                        >
-                            <img src="{{ edit_farm_preview_only_src }}" alt="" width="640" height="360" loading="lazy" decoding="async" class="aspect-video w-full object-cover">
-                            <span class="pointer-events-none absolute inset-0 ring-inset ring-transparent transition group-hover:bg-slate-900/10" aria-hidden="true"></span>
-                            <span class="pointer-events-none absolute bottom-2 left-2 right-2 rounded-xl bg-slate-900/70 px-3 py-2 text-center text-xs font-semibold text-white backdrop-blur-sm sm:text-sm">
-                                Editar perímetro no mapa
-                            </span>
-                        </button>
-                    </div>
-                    <div class="mt-3 hidden space-y-2" data-farms-car-import-editor>
-                        <p class="text-sm text-slate-600">Perímetro importado do CAR. Revise ou ajuste os pontos antes de salvar.</p>
-                        <div id="farms-car-import-boundary-map" class="relative z-0 h-[280px] overflow-hidden rounded-2xl border border-slate-200 bg-white sm:h-[320px]"></div>
-                        <div class="flex flex-wrap gap-2">
-                            <button type="button" class="rounded-xl bg-slate-200 px-3 py-2 text-xs font-semibold text-slate-800 hover:bg-slate-300" data-farms-car-import-remove-point>Remover ponto selecionado</button>
-                        </div>
-                    </div>
-                    {% elif farm_needs_map_gate %}
-                    <div class="mt-3 space-y-3" data-farms-new-map-gate>
-                        <div data-farms-map-prompt class="space-y-3 rounded-2xl border border-dashed border-slate-200 bg-white p-4">
-                            <p class="text-sm text-slate-500">Preencha <span class="font-medium text-slate-700">Localização</span> (cidade, região ou endereço) e clique em carregar mapa.</p>
-                            <button type="button" class="w-full rounded-2xl bg-brand-500 py-3 text-sm font-semibold text-white hover:bg-brand-700 sm:w-auto sm:px-8" data-farms-load-map>Carregar mapa</button>
-                        </div>
-                        <div data-farms-map-editor-wrap class="hidden space-y-2">
-                            <p class="text-sm text-slate-600">Desenhe o polígono clicando no mapa. Arraste os pontos para ajustar.</p>
-                            {% if google_maps_web_key %}
-                            <p class="text-xs text-emerald-700">Mapa em modo satélite (Google Maps).</p>
-                            {% else %}
-                            <p class="text-xs text-slate-500">Sem <code class="rounded bg-slate-200 px-1 py-0.5 text-[11px]">GOOGLE_MAPS_API_KEY</code> no servidor, o mapa usa OpenStreetMap.</p>
-                            {% endif %}
-                            <div id="farms-form-boundary-map" class="relative z-0 h-[280px] overflow-hidden rounded-2xl border border-slate-200 bg-white sm:h-[320px]"></div>
-                            <div class="flex flex-wrap items-center gap-x-4 gap-y-2">
-                                <button type="button" class="rounded-xl bg-slate-200 px-3 py-2 text-xs font-semibold text-slate-800 hover:bg-slate-300" data-farms-form-remove-point>Remover ponto selecionado</button>
-                                <button type="button" class="text-xs font-semibold text-brand-700 underline decoration-brand-500/40 hover:text-brand-900" data-farms-map-change-region>Trocar região do mapa</button>
-                            </div>
-                        </div>
-                    </div>
-                    {% else %}
-                    <div class="mt-3">
-                        <div id="farms-form-boundary-map" class="relative z-0 h-[280px] overflow-hidden rounded-2xl border border-slate-200 bg-white sm:h-[320px]"></div>
-                        <div class="mt-3 flex flex-wrap gap-2">
-                            <button type="button" class="rounded-xl bg-slate-200 px-3 py-2 text-xs font-semibold text-slate-800 hover:bg-slate-300" data-farms-form-remove-point>Remover ponto selecionado</button>
-                        </div>
-                    </div>
-                    {% endif %}
-                    {% endif %}
-                </div>
-
-                {% if not farm_form_view_only %}
-                <label>
-                    <span class="mb-2 block text-sm font-medium">GeoJSON da fazenda (.json) — opcional</span>
-                    <input type="file" name="boundary_geojson_file" accept=".json,.geojson,application/json" class="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600 file:mr-3 file:cursor-pointer file:rounded-xl file:border file:border-gray-200 file:bg-gray-100 file:px-3 file:py-2 file:text-sm file:font-medium file:text-gray-700 hover:file:bg-gray-200">
-                </label>
-                {% if edit_farm and edit_farm.boundary_geojson %}
-                <p class="-mt-2 text-sm text-slate-500">Esta fazenda já possui geometria salva. O desenho no mapa ou um novo arquivo substituem a geometria atual ao salvar.</p>
-                {% endif %}
-                {% endif %}
-
-                <label>
-                    <span class="mb-2 block text-sm font-medium">Observações</span>
-                    <textarea name="notes" rows="4" class="w-full rounded-2xl border-slate-200 bg-slate-50{% if farm_form_view_only %} cursor-default text-slate-700{% endif %}"{% if farm_form_view_only %} readonly tabindex="-1"{% endif %}>{{ edit_farm.notes if edit_farm else '' }}</textarea>
-                </label>
-                {% if not farm_form_view_only %}
-                {% set attachment_label = 'Documentos da fazenda' %}
-                {% set attachment_help_text = 'Envie CCIR, ITR, matrícula, certidões, fotos ou outros documentos. Você pode adicionar vários arquivos antes de salvar.' %}
-                {% include "partials/attachment_upload_field.html" %}
-                {% endif %}
-            </form>
-            {% set attachment_owner = edit_farm %}
-            {% set attachment_view_base = '/fazendas/anexos' %}
-            {% set attachment_delete_base = '/fazendas/' ~ edit_farm.id ~ '/anexos' if edit_farm and not farm_form_view_only else '' %}
-            {% include "partials/attachment_list.html" %}
+                <span class="fm-meter"><i class="{{ 'is-over' if plan_summary.used_area > plan_summary.max_hectares else '' }}" style="width:{{ plan_summary.area_pct }}%"></i></span>
+            </div>
+            {% endif %}
+            <p class="pd-note">Se precisar cadastrar acima do limite, você pode pausar operações de uma fazenda inativa sem apagar nenhum histórico ou ajustar seu plano em Minha assinatura.</p>
+        </div>
+        <div class="fm-sheet-foot">
+            <a class="sf-btn sf-btn-secondary" href="/minha-assinatura">Ver assinatura</a>
+            <button type="button" class="sf-btn sf-btn-primary" data-fm-dialog-close>Entendi</button>
         </div>
     </div>
 </dialog>
+{% endif %}
 
-<dialog id="farms-geocode-dialog" class="app-modal w-full max-w-md rounded-[1.5rem] border-0 bg-white p-0 shadow-2xl">
-    <div class="p-6 sm:p-7">
-        <h3 class="text-lg font-semibold text-slate-900">Localização não encontrada</h3>
-        <p class="mt-3 text-sm leading-relaxed text-slate-600" data-farms-geocode-dialog-msg>
-            Não foi possível localizar essa região. Confira o campo Localização, tente outra forma de escrever (cidade, estado, bairro) ou, após carregar o mapa, navegue até o local desejado.
-        </p>
-        <button type="button" class="mt-5 w-full rounded-2xl bg-brand-500 py-3 text-sm font-semibold text-white hover:bg-brand-700" data-farms-geocode-dialog-ok>Entendi</button>
+{# Modal: Ações sensíveis (Pausar / Excluir) #}
+{% if can_write_page %}
+<dialog class="fm-dialog is-sm" data-fm-danger-modal aria-labelledby="fm-danger-title">
+    <div class="fm-sheet">
+        <div class="fm-sheet-head">
+            <div>
+                <p class="pd-eyebrow" style="color:#B42318;">Ações sensíveis</p>
+                <h3 id="fm-danger-title" data-fm-danger-title>Gerenciar fazenda</h3>
+            </div>
+            <button type="button" class="sf-icon-btn" aria-label="Fechar" data-fm-dialog-close>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>
+            </button>
+        </div>
+        <div class="fm-sheet-body">
+            <div style="border:1px solid #F0D9A6; background:#FFFBF2; border-radius:14px; padding:14px; display:flex; flex-direction:column; gap:10px;">
+                <strong data-fm-pause-heading style="font-size:14px;">Pausar operações</strong>
+                <p style="margin:0; font-size:13px; color:#7A4F00;">Mantém todo o histórico de setores, safras e financeiro intacto, mas impede novos lançamentos nesta propriedade.</p>
+                <form method="post" data-fm-pause-form style="margin:0;">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    <input type="hidden" name="action" value="pause" data-fm-pause-action>
+                    <button type="submit" class="sf-btn sf-btn-secondary" data-fm-pause-btn>Pausar operações</button>
+                </form>
+            </div>
+            <div role="alert" style="border:1px solid #F5C2BE; background:#FDECEA; border-radius:14px; padding:14px; display:flex; flex-direction:column; gap:10px;">
+                <strong style="font-size:14px; color:#B42318;">Excluir fazenda permanentemente</strong>
+                <p data-fm-delete-note style="margin:0; font-size:13px; color:#7A271A;">Esta ação não pode ser desfeita.</p>
+                <form method="post" data-fm-delete-form style="margin:0;">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    <button type="submit" class="sf-btn cl-btn-danger">Confirmar exclusão</button>
+                </form>
+            </div>
+        </div>
+        <div class="fm-sheet-foot">
+            <span></span>
+            <button type="button" class="sf-btn sf-btn-secondary" data-fm-dialog-close>Cancelar</button>
+        </div>
     </div>
 </dialog>
+{% endif %}
 
-<script type="application/json" id="farm-boundary-geometries-data">{{ farm_boundary_geometries_json|safe }}</script>
-<script>
-    const EDIT_FARM_GEOMETRY = {{ edit_farm_geometry_json|safe }};
-    window.__GOOGLE_MAPS_API_KEY = {{ google_maps_web_key | tojson }};
-</script>
-<script src="{{ url_for('static', path='js/farm_boundary_editor.js') }}?v=6"></script>
-{% include "partials/attachment_manager_script.html" %}
-<script>
-    (() => {
-        let FARM_BOUNDARY_DATA = {};
-        try {
-            const geoEl = document.getElementById('farm-boundary-geometries-data');
-            if (geoEl && geoEl.textContent.trim()) FARM_BOUNDARY_DATA = JSON.parse(geoEl.textContent);
-        } catch (e) {
-            FARM_BOUNDARY_DATA = {};
-        }
-
-        const launchModal = document.getElementById('farms-launch-modal');
-        const mapPreviewModal = document.getElementById('farms-map-preview-modal');
-        const mapPreviewImg = mapPreviewModal?.querySelector('[data-farms-map-modal-img]');
-        const mapPreviewName = mapPreviewModal?.querySelector('[data-farms-map-modal-name]');
-        const mapPreviewViewImage = mapPreviewModal?.querySelector('[data-farms-map-modal-view-image]');
-        const mapPreviewViewEditor = mapPreviewModal?.querySelector('[data-farms-map-modal-view-editor]');
-        const mapPreviewStartEdit = mapPreviewModal?.querySelector('[data-farms-map-modal-start-edit]');
-        const mapPreviewCancelEdit = mapPreviewModal?.querySelector('[data-farms-map-modal-cancel-edit]');
-        const previewGeometryForm = mapPreviewModal?.querySelector('[data-preview-geometry-form]');
-        const previewGeometryInput = mapPreviewModal?.querySelector('[data-preview-geometry-input]');
-        const previewRemovePointBtn = mapPreviewModal?.querySelector('[data-preview-remove-point]');
-        const previewVerticesEl = mapPreviewModal?.querySelector('[data-preview-editor-vertices]');
-        const previewAreaEl = mapPreviewModal?.querySelector('[data-preview-editor-area]');
-        const mapHintOverlay = mapPreviewModal?.querySelector('[data-preview-map-hint-overlay]');
-        const mapHintOpenBtn = mapPreviewModal?.querySelector('[data-preview-map-hint-open]');
-        const mapHintBackdrop = mapPreviewModal?.querySelector('[data-preview-map-hint-backdrop]');
-        const mapHintCloseButtons = mapPreviewModal
-            ? Array.from(mapPreviewModal.querySelectorAll('[data-preview-map-hint-close]'))
-            : [];
-        const mapOpenButtons = Array.from(document.querySelectorAll('[data-farms-map-open]'));
-        const mapCloseButtons = Array.from(document.querySelectorAll('[data-farms-map-modal-close]'));
-        const openButtons = Array.from(document.querySelectorAll('[data-farms-launch-open]'));
-        const closeButtons = Array.from(document.querySelectorAll('[data-farms-launch-close]'));
-        const form = document.querySelector('[data-farms-form]');
-        const deferFarmFormInlineMap = form?.dataset.farmsDeferInlineMap === '1';
-        const farmFormNewMapGate = document.querySelector('[data-farms-new-map-gate]');
-        const farmFormMapPrompt = document.querySelector('[data-farms-map-prompt]');
-        const farmFormMapEditorWrap = document.querySelector('[data-farms-map-editor-wrap]');
-        const farmFormLoadMapBtn = document.querySelector('[data-farms-load-map]');
-        const farmFormChangeRegionBtn = document.querySelector('[data-farms-map-change-region]');
-        const farmPreviewCard = document.querySelector('[data-farms-preview-card]');
-        const farmCarImportEditorWrap = document.querySelector('[data-farms-car-import-editor]');
-        const farmCarImportRemovePointBtn = document.querySelector('[data-farms-car-import-remove-point]');
-        const carInput = form?.querySelector('[data-farms-car-input]');
-        const carLookupBtn = form?.querySelector('[data-farms-car-lookup]');
-        const carResult = form?.querySelector('[data-farms-car-result]');
-        const documentsToggle = form?.querySelector('[data-farms-documents-toggle]');
-        const documentsCollapse = form?.querySelector('[data-farms-documents-collapse]');
-        const documentsToggleLabel = form?.querySelector('[data-farms-documents-toggle-label]');
-        const documentsTogglePlus = form?.querySelector('[data-farms-documents-toggle-plus]');
-        const geocodeDialog = document.getElementById('farms-geocode-dialog');
-        const geocodeDialogMsg = document.querySelector('[data-farms-geocode-dialog-msg]');
-        const geocodeDialogOk = document.querySelector('[data-farms-geocode-dialog-ok]');
-        const searchInput = document.querySelector('[data-farms-search]');
-        const rows = Array.from(document.querySelectorAll('[data-farms-row]'));
-        const emptyState = document.querySelector('[data-farms-search-empty]');
-        const stickyHeader = document.querySelector('.stock-page-header');
-        const headerIntro = stickyHeader?.querySelector('[data-stock-header-intro]');
-        const fadingPanels = Array.from(document.querySelectorAll('[data-stock-fade-panel]'));
-        const isEditing = {{ 'true' if edit_farm else 'false' }};
-        const isViewOnly = {{ 'true' if farm_form_view_only else 'false' }};
-
-        const resetForm = () => {
-            if (isEditing || !form) return;
-            form.reset();
-            form.querySelectorAll('[data-attachments-clear]').forEach((button) => button.click());
-            if (carResult) {
-                carResult.textContent = '';
-                carResult.classList.add('hidden');
-            }
-        };
-
-        const closeModal = () => {
-            if (isEditing) {
-                destroyFarmFormBoundaryEditor();
-                window.location.href = '/fazendas';
-                return;
-            }
-            resetNewFarmMapGate();
-            destroyFarmFormBoundaryEditor();
-            resetForm();
-            launchModal?.close();
-        };
-
-        let previewMapFarmId = null;
-        let previewBoundaryEditor = null;
-
-        const teardownPreviewBoundaryEditor = () => {
-            if (previewBoundaryEditor) {
-                previewBoundaryEditor.destroy();
-                previewBoundaryEditor = null;
-            }
-        };
-
-        const closeMapHintOverlay = () => {
-            if (!mapHintOverlay) return;
-            mapHintOverlay.classList.add('hidden');
-            mapHintOverlay.classList.remove('flex');
-        };
-
-        const openMapHintOverlay = () => {
-            if (!mapHintOverlay) return;
-            mapHintOverlay.classList.remove('hidden');
-            mapHintOverlay.classList.add('flex');
-            const firstClose = mapHintCloseButtons[0];
-            window.setTimeout(() => firstClose?.focus(), 0);
-        };
-
-        const resetPreviewModalLayout = () => {
-            teardownPreviewBoundaryEditor();
-            mapPreviewViewImage?.classList.remove('hidden');
-            mapPreviewViewEditor?.classList.add('hidden');
-            closeMapHintOverlay();
-        };
-
-        const closeMapModal = () => {
-            resetPreviewModalLayout();
-            previewMapFarmId = null;
-            mapPreviewModal?.close();
-            if (mapPreviewImg) {
-                mapPreviewImg.removeAttribute('src');
-                mapPreviewImg.alt = '';
-            }
-            if (previewGeometryForm) previewGeometryForm.action = '';
-        };
-
-        const startPreviewPolygonEdit = async () => {
-            if (!previewMapFarmId || typeof window.initFarmBoundaryEditor !== 'function') return;
-            teardownPreviewBoundaryEditor();
-            mapPreviewViewImage?.classList.add('hidden');
-            mapPreviewViewEditor?.classList.remove('hidden');
-            const rawGeom = FARM_BOUNDARY_DATA[String(previewMapFarmId)] || null;
-            if (previewGeometryForm) {
-                previewGeometryForm.action = `/fazendas/${previewMapFarmId}/geometria`;
-            }
-            try {
-                previewBoundaryEditor = await window.initFarmBoundaryEditor({
-                    containerId: 'farms-preview-boundary-map',
-                    hiddenInput: previewGeometryInput,
-                    initialGeometry: rawGeom,
-                    removePointButton: previewRemovePointBtn,
-                    onStats: ({ vertices, area }) => {
-                        if (previewVerticesEl) previewVerticesEl.textContent = String(vertices);
-                        if (previewAreaEl) previewAreaEl.textContent = area.toFixed(2).replace('.', ',');
-                        // Mantem o formulario de edicao sincronizado quando o
-                        // usuario ajusta o perimetro no mapa ampliado.
-                        const editingFarmMatch = (form?.getAttribute('action') || '').match(/^\/fazendas\/(\d+)\/editar$/);
-                        if (editingFarmMatch && editingFarmMatch[1] === previewMapFarmId && previewGeometryInput?.value) {
-                            const mainBoundaryInput = form?.querySelector('[data-farms-boundary-input]');
-                            if (mainBoundaryInput) mainBoundaryInput.value = previewGeometryInput.value;
-                            try {
-                                FARM_BOUNDARY_DATA[previewMapFarmId] = JSON.parse(previewGeometryInput.value);
-                            } catch {
-                                // O editor so produz GeoJSON valido; a protecao evita interromper a revisao do mapa.
-                            }
-                        }
-                    },
-                });
-            } catch (err) {
-                console.error(err);
-                return;
-            }
-            window.setTimeout(() => previewBoundaryEditor?.invalidate(), 250);
-            window.setTimeout(() => previewBoundaryEditor?.invalidate(), 600);
-        };
-
-        mapPreviewStartEdit?.addEventListener('click', () => {
-            void startPreviewPolygonEdit();
-        });
-        mapPreviewCancelEdit?.addEventListener('click', () => {
-            resetPreviewModalLayout();
-        });
-
-        previewGeometryForm?.addEventListener('submit', () => {
-            previewBoundaryEditor?.syncToHidden();
-        });
-
-        mapOpenButtons.forEach((button) => {
-            button.addEventListener('click', () => {
-                const src = button.getAttribute('data-map-src') || '';
-                const farmName = button.getAttribute('data-map-farm-name') || '';
-                const farmId = button.getAttribute('data-map-farm-id');
-                const directEdit = button.getAttribute('data-farms-map-direct-edit') === '1';
-                if (!mapPreviewModal || !mapPreviewImg) return;
-                resetPreviewModalLayout();
-                previewMapFarmId = farmId ? String(farmId) : null;
-                mapPreviewImg.src = src;
-                mapPreviewImg.alt = farmName ? `Mapa de satélite — ${farmName}` : 'Mapa de satélite da fazenda';
-                if (mapPreviewName) mapPreviewName.textContent = farmName;
-                mapPreviewModal.showModal();
-                if (directEdit) {
-                    mapPreviewViewImage?.classList.add('hidden');
-                    mapPreviewViewEditor?.classList.remove('hidden');
-                    void startPreviewPolygonEdit();
-                }
-            });
-        });
-
-        mapCloseButtons.forEach((btn) => btn.addEventListener('click', () => closeMapModal()));
-        mapHintOpenBtn?.addEventListener('click', () => openMapHintOverlay());
-        mapHintBackdrop?.addEventListener('click', () => closeMapHintOverlay());
-        mapHintCloseButtons.forEach((btn) => btn.addEventListener('click', () => closeMapHintOverlay()));
-        mapPreviewModal?.addEventListener('cancel', (event) => {
-            event.preventDefault();
-            if (mapHintOverlay && !mapHintOverlay.classList.contains('hidden')) {
-                closeMapHintOverlay();
-                return;
-            }
-            closeMapModal();
-        });
-
-        let farmFormBoundaryEditor = null;
-
-        const destroyFarmFormBoundaryEditor = () => {
-            if (farmFormBoundaryEditor) {
-                farmFormBoundaryEditor.destroy();
-                farmFormBoundaryEditor = null;
-            }
-        };
-
-        const parseOptionalLatLngInput = (input) => {
-            if (!input) return null;
-            const t = String(input.value || '')
-                .trim()
-                .replace(/\s/g, '')
-                .replace(',', '.');
-            if (t === '') return null;
-            const n = parseFloat(t);
-            return Number.isFinite(n) ? n : null;
-        };
-
-        const normalizeCarInput = (value) => {
-            const compact = String(value || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
-            if (compact.length <= 2) return compact;
-            if (compact.length <= 9) return `${compact.slice(0, 2)}-${compact.slice(2)}`;
-            return `${compact.slice(0, 2)}-${compact.slice(2, 9)}-${compact.slice(9)}`;
-        };
-
-        const setDocumentsExpanded = (expanded) => {
-            if (!documentsToggle || !documentsCollapse) return;
-            documentsCollapse.classList.toggle('is-expanded', expanded);
-            documentsToggle.setAttribute('aria-expanded', expanded ? 'true' : 'false');
-            if (documentsToggleLabel) documentsToggleLabel.textContent = expanded ? 'Recolher' : 'Expandir';
-            documentsTogglePlus?.classList.toggle('hidden', expanded);
-        };
-
-        setDocumentsExpanded(false);
-        documentsToggle?.addEventListener('click', () => {
-            setDocumentsExpanded(!documentsCollapse?.classList.contains('is-expanded'));
-        });
-
-        carInput?.addEventListener('blur', () => {
-            const normalized = normalizeCarInput(carInput.value);
-            if (normalized) carInput.value = normalized;
-        });
-
-        const resetNewFarmMapGate = () => {
-            if (!farmFormNewMapGate) return;
-            destroyFarmFormBoundaryEditor();
-            farmFormMapPrompt?.classList.remove('hidden');
-            farmFormMapEditorWrap?.classList.add('hidden');
-            if (farmFormLoadMapBtn) {
-                farmFormLoadMapBtn.disabled = false;
-                farmFormLoadMapBtn.textContent = 'Carregar mapa';
-            }
-            const hi = form?.querySelector('[data-farms-boundary-input]');
-            if (hi) hi.value = '';
-            const olat = form?.querySelector('[data-farms-optional-lat]');
-            const olng = form?.querySelector('[data-farms-optional-lng]');
-            if (olat) olat.value = '';
-            if (olng) olng.value = '';
-            if (carResult) {
-                carResult.textContent = '';
-                carResult.classList.add('hidden');
-            }
-        };
-
-        const showFarmGeocodeDialog = (message) => {
-            if (geocodeDialogMsg && message) geocodeDialogMsg.textContent = message;
-            geocodeDialog?.showModal();
-        };
-
-        const setupFarmFormBoundaryEditor = async (initialCenter, initialGeometry = null, options = {}) => {
-            destroyFarmFormBoundaryEditor();
-            if (typeof window.initFarmBoundaryEditor !== 'function' || !form) return;
-            if (deferFarmFormInlineMap && !options.forceInline) return;
-            if (farmFormNewMapGate && !initialCenter && !initialGeometry) return;
-            const containerId = options.containerId || 'farms-form-boundary-map';
-            const mapEl = document.getElementById(containerId);
-            const hiddenInput = form.querySelector('[data-farms-boundary-input]');
-            const removeBtn = options.removePointButton || form.querySelector('[data-farms-form-remove-point]');
-            if (!mapEl || !hiddenInput) return;
-            const editorOpts = {
-                containerId,
-                hiddenInput,
-                initialGeometry: initialGeometry || EDIT_FARM_GEOMETRY || null,
-                removePointButton: removeBtn,
-            };
-            if (
-                initialCenter &&
-                typeof initialCenter.lat === 'number' &&
-                typeof initialCenter.lng === 'number'
-            ) {
-                editorOpts.initialCenter = { lat: initialCenter.lat, lng: initialCenter.lng };
-                editorOpts.initialZoom =
-                    typeof initialCenter.zoom === 'number' && initialCenter.zoom > 0
-                        ? initialCenter.zoom
-                        : 13;
-            }
-            try {
-                farmFormBoundaryEditor = await window.initFarmBoundaryEditor(editorOpts);
-            } catch (err) {
-                console.error(err);
-                return;
-            }
-            window.setTimeout(() => farmFormBoundaryEditor?.invalidate(), 200);
-            window.setTimeout(() => farmFormBoundaryEditor?.invalidate(), 500);
-        };
-
-        carLookupBtn?.addEventListener('click', async () => {
-            const car = normalizeCarInput(carInput?.value);
-            if (!car) {
-                showFarmGeocodeDialog('Informe o número do CAR antes de realizar a consulta.');
-                carInput?.focus();
-                return;
-            }
-            if (carInput) carInput.value = car;
-            carLookupBtn.disabled = true;
-            carLookupBtn.textContent = 'Consultando...';
-            try {
-                const response = await fetch(`/fazendas/consultar-car?car=${encodeURIComponent(car)}`, {
-                    credentials: 'same-origin',
-                });
-                const payload = await response.json().catch(() => null);
-                if (!response.ok || !payload?.ok || !payload.data?.geometry) {
-                    showFarmGeocodeDialog(payload?.message || 'Não foi possível consultar este CAR agora.');
-                    return;
-                }
-                const data = payload.data;
-                if (carInput) carInput.value = data.car_number || car.toUpperCase();
-                const nameInput = form?.querySelector('input[name="name"]');
-                const locationInput = form?.querySelector('input[name="location"]');
-                const areaInput = form?.querySelector('input[name="total_area"]');
-                // O nome comercial e definido pelo usuario. O SICAR so sugere
-                // um nome quando o cadastro ainda nao recebeu um.
-                if (nameInput && !nameInput.value.trim() && data.name) nameInput.value = data.name;
-                // Os demais dados geograficos sao substituidos pela importacao
-                // explicita e continuam editaveis antes de salvar.
-                if (locationInput && data.location) locationInput.value = data.location;
-                if (areaInput && data.total_area !== null && data.total_area !== undefined) {
-                    areaInput.value = String(data.total_area);
-                }
-                const hiddenInput = form?.querySelector('[data-farms-boundary-input]');
-                if (hiddenInput) hiddenInput.value = JSON.stringify(data.geometry);
-                const editingFarmMatch = (form?.getAttribute('action') || '').match(/^\/fazendas\/(\d+)\/editar$/);
-                if (editingFarmMatch) FARM_BOUNDARY_DATA[editingFarmMatch[1]] = data.geometry;
-                if (carResult) {
-                    carResult.textContent = 'Confira o perímetro importado no mapa antes de salvar.';
-                    carResult.classList.remove('hidden');
-                }
-                farmFormMapPrompt?.classList.add('hidden');
-                farmFormMapEditorWrap?.classList.remove('hidden');
-                if (deferFarmFormInlineMap && editingFarmMatch) {
-                    farmPreviewCard?.classList.add('hidden');
-                    farmCarImportEditorWrap?.classList.remove('hidden');
-                    await setupFarmFormBoundaryEditor(null, data.geometry, {
-                        forceInline: true,
-                        containerId: 'farms-car-import-boundary-map',
-                        removePointButton: farmCarImportRemovePointBtn,
-                    });
-                } else {
-                    await setupFarmFormBoundaryEditor(null, data.geometry);
-                }
-            } catch {
-                showFarmGeocodeDialog('Não foi possível consultar o serviço público do CAR. Tente novamente mais tarde.');
-            } finally {
-                carLookupBtn.disabled = false;
-                carLookupBtn.textContent = 'Consultar CAR';
-            }
-        });
-
-        farmFormLoadMapBtn?.addEventListener('click', async () => {
-            const locInput = form?.querySelector('input[name="location"]');
-            const q = (locInput?.value || '').trim();
-            const latEl = form?.querySelector('[data-farms-optional-lat]');
-            const lngEl = form?.querySelector('[data-farms-optional-lng]');
-            const oLat = parseOptionalLatLngInput(latEl);
-            const oLng = parseOptionalLatLngInput(lngEl);
-            const hasLat = oLat !== null;
-            const hasLng = oLng !== null;
-
-            if (hasLat !== hasLng) {
-                showFarmGeocodeDialog(
-                    'Preencha latitude e longitude juntos, ou deixe os dois em branco para usar só o texto de localização.',
-                );
-                return;
-            }
-            if (hasLat && hasLng) {
-                if (oLat < -90 || oLat > 90 || oLng < -180 || oLng > 180) {
-                    showFarmGeocodeDialog(
-                        'Latitude deve estar entre -90 e 90 graus e longitude entre -180 e 180 graus.',
-                    );
-                    return;
-                }
-                if (q.length < 2) {
-                    showFarmGeocodeDialog(
-                        'O campo Localização continua obrigatório para o cadastro. Informe pelo menos cidade e estado.',
-                    );
-                    return;
-                }
-                farmFormLoadMapBtn.disabled = true;
-                farmFormLoadMapBtn.textContent = 'Carregando...';
-                try {
-                    farmFormMapPrompt?.classList.add('hidden');
-                    farmFormMapEditorWrap?.classList.remove('hidden');
-                    await setupFarmFormBoundaryEditor({ lat: oLat, lng: oLng, zoom: 15 });
-                } finally {
-                    farmFormLoadMapBtn.disabled = false;
-                    farmFormLoadMapBtn.textContent = 'Carregar mapa';
-                }
-                return;
-            }
-
-            if (q.length < 2) {
-                showFarmGeocodeDialog(
-                    'Informe a localização (por exemplo cidade e estado) antes de carregar o mapa.',
-                );
-                return;
-            }
-            farmFormLoadMapBtn.disabled = true;
-            farmFormLoadMapBtn.textContent = 'Carregando...';
-            try {
-                const res = await fetch(`/fazendas/geocodificar?q=${encodeURIComponent(q)}`, {
-                    credentials: 'same-origin',
-                });
-                let data = null;
-                try {
-                    data = await res.json();
-                } catch {
-                    data = { ok: false, code: 'upstream' };
-                }
-                if (!data || !data.ok) {
-                    if (data?.code === 'not_found') {
-                        showFarmGeocodeDialog(
-                            'Não foi possível localizar essa região. Confira o campo Localização, tente outra forma de escrever (cidade, estado, bairro), use coordenadas opcionais ou, após carregar o mapa, navegue até o local desejado.',
-                        );
-                    } else if (data?.code === 'empty') {
-                        showFarmGeocodeDialog(
-                            'Informe a localização (por exemplo cidade e estado) antes de carregar o mapa.',
-                        );
-                    } else {
-                        showFarmGeocodeDialog(
-                            'Não foi possível consultar o serviço de localização. Tente novamente em instantes.',
-                        );
-                    }
-                    return;
-                }
-                farmFormMapPrompt?.classList.add('hidden');
-                farmFormMapEditorWrap?.classList.remove('hidden');
-                await setupFarmFormBoundaryEditor({ lat: data.lat, lng: data.lng, zoom: 13 });
-            } catch {
-                showFarmGeocodeDialog(
-                    'Não foi possível consultar o serviço de localização. Tente novamente em instantes.',
-                );
-            } finally {
-                farmFormLoadMapBtn.disabled = false;
-                farmFormLoadMapBtn.textContent = 'Carregar mapa';
-            }
-        });
-
-        farmFormChangeRegionBtn?.addEventListener('click', () => resetNewFarmMapGate());
-
-        geocodeDialogOk?.addEventListener('click', () => geocodeDialog?.close());
-        geocodeDialog?.addEventListener('cancel', (e) => {
-            e.preventDefault();
-            geocodeDialog.close();
-        });
-
-        openButtons.forEach((button) => {
-            button.addEventListener('click', (event) => {
-                const editUrl = button.getAttribute('data-farms-edit-link');
-                if (editUrl) {
-                    event.preventDefault();
-                    window.location.href = editUrl;
-                    return;
-                }
-                resetForm();
-                resetNewFarmMapGate();
-                destroyFarmFormBoundaryEditor();
-                launchModal?.showModal();
-                window.requestAnimationFrame(() => {
-                    void setupFarmFormBoundaryEditor();
-                });
-            });
-        });
-
-        closeButtons.forEach((button) => {
-            button.addEventListener('click', () => closeModal());
-        });
-
-        launchModal?.addEventListener('cancel', (event) => {
-            event.preventDefault();
-            closeModal();
-        });
-
-        if (isEditing) {
-            launchModal?.showModal();
-            if (!isViewOnly) {
-                void setupFarmFormBoundaryEditor();
-            }
-        }
-
-        form?.addEventListener('submit', (event) => {
-            if (isViewOnly) {
-                event.preventDefault();
-                return;
-            }
-            farmFormBoundaryEditor?.syncToHidden();
-            if (!isEditing) {
-                window.setTimeout(() => {
-                    resetNewFarmMapGate();
-                    resetForm();
-                    launchModal?.close();
-                }, 0);
-            }
-        });
-
-        const normalizeText = (value) => (value || '')
-            .toString()
-            .normalize('NFD')
-            .replace(/[\u0300-\u036f]/g, '')
-            .toLowerCase()
-            .trim();
-
-        const applySearch = () => {
-            const query = normalizeText(searchInput?.value || '');
-            let visible = 0;
-            rows.forEach((row) => {
-                const haystack = normalizeText(row.dataset.farmsSearchText || row.textContent);
-                const matches = !query || haystack.includes(query);
-                row.classList.toggle('hidden', !matches);
-                if (matches) visible += 1;
-            });
-            emptyState?.classList.toggle('hidden', visible !== 0);
-        };
-
-        searchInput?.addEventListener('input', applySearch);
-        applySearch();
-
-        const mobileCompactMq = window.matchMedia('(max-width: 899px)');
-        const parseStickyTopPx = (el) => {
-            const raw = getComputedStyle(el).top;
-            if (!raw || raw === 'auto') return 0;
-            const pxMatch = /^([\d.]+)px$/.exec(raw);
-            if (pxMatch) return parseFloat(pxMatch[1]);
-            const remMatch = /^([\d.]+)rem$/.exec(raw);
-            if (remMatch) {
-                const rootPx = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
-                return parseFloat(remMatch[1]) * rootPx;
-            }
-            return 0;
-        };
-
-        let compactRaf = null;
-        const syncHeaderCompact = () => {
-            compactRaf = null;
-            if (!stickyHeader) return;
-            if (!mobileCompactMq.matches) {
-                stickyHeader.classList.remove('is-compact');
-                if (headerIntro) headerIntro.removeAttribute('aria-hidden');
-                return;
-            }
-            const topPx = parseStickyTopPx(stickyHeader);
-            const rect = stickyHeader.getBoundingClientRect();
-            const isCompact = stickyHeader.classList.contains('is-compact');
-            let nextCompact = isCompact;
-            if (rect.top <= topPx + 2) nextCompact = true;
-            else if (rect.top > topPx + 8) nextCompact = false;
-            stickyHeader.classList.toggle('is-compact', nextCompact);
-            if (headerIntro) headerIntro.setAttribute('aria-hidden', nextCompact ? 'true' : 'false');
-        };
-
-        const scheduleHeaderCompact = () => {
-            if (compactRaf !== null) return;
-            compactRaf = window.requestAnimationFrame(syncHeaderCompact);
-        };
-
-        if (stickyHeader) {
-            window.addEventListener('scroll', scheduleHeaderCompact, { passive: true });
-            window.addEventListener('resize', scheduleHeaderCompact);
-            mobileCompactMq.addEventListener('change', scheduleHeaderCompact);
-            scheduleHeaderCompact();
-        }
-
-        if (!stickyHeader || !fadingPanels.length) return;
-
-        let rafId = null;
-        const updateFadingPanels = () => {
-            rafId = null;
-            const stickyRect = stickyHeader.getBoundingClientRect();
-            const stickyBottom = stickyRect.bottom;
-            fadingPanels.forEach((panel) => {
-                const panelRect = panel.getBoundingClientRect();
-                const panelTop = panelRect.top;
-                const panelH = panelRect.height;
-                if (panelTop >= stickyBottom || panelH <= 1) {
-                    panel.style.setProperty('--stock-fade-cutoff', '0px');
-                    panel.style.setProperty('--stock-fade-feather-end', '0px');
-                    return;
-                }
-
-                const rawOverlap = Math.max(stickyBottom - panelTop, 0);
-                const overlap = Math.min(rawOverlap, panelH);
-                const featherBand = Math.min(80, Math.max(22, overlap * 0.45 + 16));
-                panel.style.setProperty('--stock-fade-cutoff', `${overlap.toFixed(2)}px`);
-                panel.style.setProperty('--stock-fade-feather-end', `${(overlap + featherBand).toFixed(2)}px`);
-            });
-        };
-
-        const scheduleFadeUpdate = () => {
-            if (rafId !== null) return;
-            rafId = window.requestAnimationFrame(updateFadingPanels);
-        };
-
-        window.addEventListener('scroll', scheduleFadeUpdate, { passive: true });
-        window.addEventListener('resize', scheduleFadeUpdate);
-        scheduleFadeUpdate();
-    })();
-</script>
+<script type="application/json" id="fm-boundary-geometries-data">{{ farm_boundary_geometries_json|safe }}</script>
+<script>window.__GOOGLE_MAPS_API_KEY = {{ google_maps_web_key | tojson }};</script>
+<script src="{{ url_for('static', path='js/farm_boundary_editor.js') }}?v=20261120fm1"></script>
+<script src="{{ url_for('static', path='js/farms.js') }}?v=20261120fm1"></script>
 {% endblock %}

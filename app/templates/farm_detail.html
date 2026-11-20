@@ -1,0 +1,388 @@
+{% extends "base.html" %}
+{% block content %}
+{% set is_current = (active_farm_id == farm.id) %}
+{% set full_src = (url_for('static', path='generated/farm_previews/' ~ farm.id ~ '.png') ~ '?v=' ~ farm_preview_fingerprint.get(farm.id, '')) if farm.boundary_geojson and farm_preview_ready.get(farm.id) else '' %}
+<div class="sf-page pd-page fm-page" data-fm-detail-page>
+    <nav class="pd-crumbs" aria-label="Caminho">
+        <a href="/fazendas">Fazendas</a><span aria-hidden="true">›</span>
+        <span>{{ farm.name }}</span>
+    </nav>
+
+    <header class="pd-head">
+        <div>
+            <div style="display:flex; flex-wrap:wrap; align-items:center; gap:8px;">
+                <h1 class="sf-page-title">{{ farm.name }}</h1>
+                {% if is_current %}<span class="pd-chip is-ok">Em uso no topo</span>{% endif %}
+                <span class="pd-chip {{ 'is-done' if farm.boundary_geojson else 'is-warn' }}">{{ 'Georreferenciada' if farm.boundary_geojson else 'Sem perímetro' }}</span>
+                {% if farm.operations_paused %}<span class="pd-chip is-warn">Operações pausadas</span>{% endif %}
+            </div>
+            <p class="sf-page-subtitle">{{ farm.location }} · {{ (farm.total_area or 0)|decimal_br(1) }} ha totais · {{ metrics.plots_count }} setor{{ 'es' if metrics.plots_count != 1 }} · {{ metrics.seasons_count }} safra{{ 's' if metrics.seasons_count != 1 }}</p>
+        </div>
+        <div class="pd-head-actions">
+            {% if not is_current and not farm.operations_paused %}
+            <form method="post" action="/contexto" style="margin:0;">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <input type="hidden" name="farm_id" value="{{ farm.id }}">
+                <input type="hidden" name="redirect_to" value="/fazendas/{{ farm.id }}">
+                <button type="submit" class="sf-btn sf-btn-secondary">Usar no contexto ativo</button>
+            </form>
+            {% endif %}
+            {% if can_write_page %}
+            <a class="sf-btn sf-btn-primary" href="/fazendas/{{ farm.id }}/editar">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 1 1 3 3L7 19l-4 1 1-4Z"/></svg>
+                Editar fazenda
+            </a>
+            <button type="button" class="sf-icon-btn"
+                    aria-label="Pausar ou excluir {{ farm.name }}"
+                    title="Pausar ou excluir"
+                    data-fm-danger-open
+                    data-farm-id="{{ farm.id }}"
+                    data-farm-name="{{ farm.name }}"
+                    data-farm-paused="{{ '1' if farm.operations_paused else '0' }}"
+                    data-farm-plots="{{ metrics.plots_count }}">
+                <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="12" cy="5" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="12" cy="19" r="1.7"/></svg>
+            </button>
+            {% endif %}
+        </div>
+    </header>
+
+    <nav class="pd-tabs" aria-label="Seções da fazenda">
+        <a href="/fazendas/{{ farm.id }}?aba=visao" {% if active_tab == 'visao' %}aria-current="page"{% endif %}>Visão geral</a>
+        <a href="/fazendas/{{ farm.id }}?aba=setores" {% if active_tab == 'setores' %}aria-current="page"{% endif %}>Setores ({{ metrics.plots_count }})</a>
+        <a href="/fazendas/{{ farm.id }}?aba=safras" {% if active_tab == 'safras' %}aria-current="page"{% endif %}>Safras ({{ metrics.seasons_count }})</a>
+        <a href="/fazendas/{{ farm.id }}?aba=documentos" {% if active_tab == 'documentos' %}aria-current="page"{% endif %}>Documentos &amp; CAR</a>
+        <a href="/fazendas/{{ farm.id }}?aba=chuva" {% if active_tab == 'chuva' %}aria-current="page"{% endif %}>Pluviometria &amp; Alertas</a>
+    </nav>
+
+    {% if active_tab == 'visao' %}
+    <div class="fm-detail-layout">
+        <div class="fm-detail-main">
+            <article class="pd-card" style="display:flex; flex-direction:column; gap:16px;">
+                <div style="display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:10px;">
+                    <div>
+                        <h2>Território e aproveitamento da área</h2>
+                        <p class="fm-card-sub">Relação entre área total da propriedade e área alocada em setores.</p>
+                    </div>
+                    <div style="display:flex; flex-wrap:wrap; gap:8px;">
+                        {% if farm.boundary_geojson %}
+                        <a class="sf-btn sf-btn-secondary" href="/fazendas/{{ farm.id }}/geomapa.kml">Baixar KML</a>
+                        {% if full_src %}
+                        <button type="button" class="sf-btn sf-btn-secondary" data-fm-map-open data-farm-id="{{ farm.id }}" data-farm-name="{{ farm.name }}" data-map-src="{{ full_src }}">Ampliar / Editar mapa</button>
+                        {% endif %}
+                        {% elif can_write_page %}
+                        <a class="sf-btn sf-btn-primary" href="/fazendas/{{ farm.id }}/editar?passo=2">Desenhar perímetro</a>
+                        {% endif %}
+                    </div>
+                </div>
+
+                {% if full_src %}
+                <button type="button" class="fm-map-preview" data-fm-map-open data-farm-id="{{ farm.id }}" data-farm-name="{{ farm.name }}" data-map-src="{{ full_src }}" aria-label="Abrir mapa ampliado de {{ farm.name }}">
+                    <img src="{{ full_src }}" alt="Mapa de {{ farm.name }}" loading="lazy" decoding="async">
+                    <span>Abrir mapa e editar pontos →</span>
+                </button>
+                {% elif farm.boundary_geojson %}
+                <p class="pd-note">Perímetro georreferenciado salvo. A miniatura está sendo gerada — você pode editar o polígono em <a href="/fazendas/{{ farm.id }}/editar?passo=2" style="color:var(--pd-brand); font-weight:600;">Editar perímetro</a>.</p>
+                {% else %}
+                <div class="pd-empty" style="border:1.5px dashed #F0D9A6; background:#FFFBF2; border-radius:14px;">
+                    <strong>Perímetro ainda não georreferenciado</strong>
+                    <span>Desenhe o contorno ou consulte o CAR para liberar visualização no Mapa da Fazenda e exportação em KML.</span>
+                    {% if can_write_page %}<a class="sf-btn sf-btn-primary" href="/fazendas/{{ farm.id }}/editar?passo=2">Configurar perímetro agora</a>{% endif %}
+                </div>
+                {% endif %}
+
+                <div style="display:flex; flex-direction:column; gap:10px;">
+                    <div class="fm-occ-bar" role="img" aria-label="{{ metrics.occupation_pct }}% da área alocada em setores">
+                        <i style="width: {{ metrics.occupation_pct }}%"></i>
+                    </div>
+                    <dl class="fm-occ-stats">
+                        <div><dt>Total da fazenda</dt><dd>{{ (farm.total_area or 0)|decimal_br(1) }} ha</dd></div>
+                        <div><dt>Alocada em setores</dt><dd>{{ metrics.planted_area|decimal_br(1) }} ha ({{ metrics.occupation_pct }}%)</dd></div>
+                        <div><dt>Reserva / disponível</dt><dd>{{ metrics.free_area|decimal_br(1) }} ha</dd></div>
+                    </dl>
+                </div>
+            </article>
+
+            <article class="pd-card" style="display:flex; flex-direction:column; gap:14px;">
+                <h2>Estrutura produtiva (Fazenda → Setores → Safras)</h2>
+                <div class="fm-hierarchy-grid">
+                    <div class="fm-hcard">
+                        <div class="fm-hcard-top">
+                            <span class="pd-eyebrow">1. Setores / Talhões</span>
+                            <span class="pd-chip is-muted">{{ metrics.plots_count }}</span>
+                        </div>
+                        <strong style="font-size:14px;">
+                            {% if plots %}{% for p in plots[:3] %}{{ p.name }}{% if not loop.last %}, {% endif %}{% endfor %}{% if plots|length > 3 %}…{% endif %}{% else %}Nenhum setor cadastrado{% endif %}
+                        </strong>
+                        <a class="fm-hcard-link" href="/fazendas/{{ farm.id }}?aba=setores">Gerenciar setores →</a>
+                    </div>
+                    <div class="fm-hcard">
+                        <div class="fm-hcard-top">
+                            <span class="pd-eyebrow">2. Safra em andamento</span>
+                            <span class="pd-chip {{ 'is-done' if metrics.active_season_status == 'ativa' else 'is-muted' }}">{{ metrics.active_season_status or '—' }}</span>
+                        </div>
+                        <strong style="font-size:14px;">{{ metrics.active_season_name or 'Nenhuma safra criada ainda' }}</strong>
+                        <a class="fm-hcard-link" href="/fazendas/{{ farm.id }}?aba=safras">Ver todas as safras →</a>
+                    </div>
+                </div>
+            </article>
+        </div>
+
+        <aside class="fm-detail-side">
+            <article class="pd-card" style="display:flex; flex-direction:column; gap:12px;">
+                <p class="pd-eyebrow">Módulos ligados a esta fazenda</p>
+                <div class="fm-mod-grid">
+                    <a class="fm-mod-link" href="/producao"><strong>Produção</strong><small>Colheitas e vendas</small></a>
+                    <a class="fm-mod-link" href="/pluviometria"><strong>Pluviometria</strong><small style="color:#1F5FA8;">{{ month_rain_mm|decimal_br(0) }} mm no mês</small></a>
+                    <a class="fm-mod-link" href="/mapa"><strong>Mapa da fazenda</strong><small>Visão completa</small></a>
+                    <a class="fm-mod-link" href="/gestao-financeira"><strong>Financeiro</strong><small>Contas e custos</small></a>
+                </div>
+            </article>
+
+            <article class="pd-card" style="display:flex; flex-direction:column; gap:10px;">
+                <div style="display:flex; justify-content:space-between; align-items:center;">
+                    <h2>Resumo cadastral</h2>
+                    <a class="fm-hcard-link" href="/fazendas/{{ farm.id }}?aba=documentos">Ver tudo</a>
+                </div>
+                <dl class="cd-rows">
+                    <div><dt>CAR</dt><dd>{{ farm.car_registration_number or 'Não informado' }}</dd></div>
+                    <div><dt>CCIR</dt><dd>{{ farm.ccir_number or '—' }}</dd></div>
+                    <div><dt>ITR / NIRF / CIB</dt><dd>{{ farm.itr_registration_number or '—' }}</dd></div>
+                    <div><dt>Anexos</dt><dd>{{ metrics.attachments_count }} arquivo{{ 's' if metrics.attachments_count != 1 }}</dd></div>
+                </dl>
+                {% if farm.notes %}<p class="pd-note">{{ farm.notes }}</p>{% endif %}
+            </article>
+        </aside>
+    </div>
+
+    {% elif active_tab == 'setores' %}
+    <article class="pd-card" style="padding:0; overflow:hidden;">
+        <div style="display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:12px; padding:18px 20px;">
+            <div>
+                <h2>Setores / Talhões de {{ farm.name }}</h2>
+                <p class="fm-card-sub">{{ metrics.planted_area|decimal_br(1) }} ha ocupados de {{ (farm.total_area or 0)|decimal_br(1) }} ha totais da fazenda.</p>
+            </div>
+            <a class="sf-btn sf-btn-primary" href="/setores">Gerenciar em Setores</a>
+        </div>
+        {% if plots %}
+        <div class="fm-row-list">
+            {% for p in plots %}
+            <div class="fm-row-item">
+                <div>
+                    <strong style="font-size:15px;">{{ p.name }}</strong>
+                    <p class="fm-card-sub">{{ p.variety.name if p.variety else 'Variedade não informada' }}{% if p.plant_count %} · {{ p.plant_count }} pés{% endif %}</p>
+                </div>
+                <div style="display:flex; align-items:center; gap:8px;">
+                    <span class="pd-chip is-ok">{{ (p.area_hectares or 0)|decimal_br(1) }} ha</span>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="pd-empty">
+            <strong>Nenhum setor vinculado a {{ farm.name }}.</strong>
+            <span>Cadastre os talhões da propriedade para acompanhar irrigação, adubação e colheitas.</span>
+            <a class="sf-btn sf-btn-primary" href="/setores">Cadastrar primeiro setor</a>
+        </div>
+        {% endif %}
+    </article>
+
+    {% elif active_tab == 'safras' %}
+    <article class="pd-card" style="padding:0; overflow:hidden;">
+        <div style="display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:12px; padding:18px 20px;">
+            <div>
+                <h2>Safras de {{ farm.name }}</h2>
+                <p class="fm-card-sub">Histórico e safra ativa desta propriedade.</p>
+            </div>
+            <a class="sf-btn sf-btn-primary" href="/safras">Gerenciar em Safras</a>
+        </div>
+        {% if seasons %}
+        <div class="fm-row-list">
+            {% for s in seasons %}
+            <div class="fm-row-item">
+                <div>
+                    <div style="display:flex; align-items:center; gap:8px;">
+                        <strong style="font-size:15px;">{{ s.name }}</strong>
+                        <span class="pd-chip {{ 'is-done' if s.status == 'ativa' else ('is-info' if s.status == 'planejada' else 'is-muted') }}">{{ s.status|capitalize }}</span>
+                    </div>
+                    <p class="fm-card-sub">
+                        {% if s.start_date %}{{ s.start_date.strftime('%d/%m/%Y') }}{% endif %}{% if s.end_date %} → {{ s.end_date.strftime('%d/%m/%Y') }}{% endif %}
+                    </p>
+                </div>
+                {% if s.variety_name %}<span class="pd-chip is-muted">{{ s.variety_name }}</span>{% endif %}
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="pd-empty">
+            <strong>Nenhuma safra cadastrada para esta fazenda.</strong>
+            <span>Crie uma safra para iniciar os lançamentos de campo e produção.</span>
+            <a class="sf-btn sf-btn-primary" href="/safras">Criar primeira safra</a>
+        </div>
+        {% endif %}
+    </article>
+
+    {% elif active_tab == 'documentos' %}
+    <div class="fm-docs-grid">
+        <article class="pd-card" style="display:flex; flex-direction:column; gap:14px;">
+            <div style="display:flex; align-items:center; justify-content:space-between; gap:8px;">
+                <h2>Dados cadastrais e registrais</h2>
+                {% if can_write_page %}<a class="fm-hcard-link" href="/fazendas/{{ farm.id }}/editar?passo=3">Editar dados</a>{% endif %}
+            </div>
+            <dl style="margin:0; display:flex; flex-direction:column; gap:10px;">
+                <div class="fm-kv">
+                    <dt>Número do CAR</dt>
+                    <dd style="display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:8px;">
+                        <span>{{ farm.car_registration_number or 'Não informado' }}</span>
+                        {% if farm.car_registration_number %}<button type="button" class="sf-btn sf-btn-secondary" style="min-height:2rem; font-size:12px;" data-fm-copy="{{ farm.car_registration_number }}">Copiar</button>{% endif %}
+                    </dd>
+                </div>
+                <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:10px;">
+                    <div class="fm-kv"><dt>CCIR</dt><dd>{{ farm.ccir_number or '—' }}</dd></div>
+                    <div class="fm-kv"><dt>ITR / NIRF / CIB</dt><dd>{{ farm.itr_registration_number or '—' }}</dd></div>
+                </div>
+                <div class="fm-kv"><dt>Matrícula e Cartório</dt><dd>{{ farm.property_registration_number or '—' }}{% if farm.registry_office %} · {{ farm.registry_office }}{% endif %}</dd></div>
+            </dl>
+        </article>
+
+        <article class="pd-card" style="display:flex; flex-direction:column; gap:14px;">
+            <div style="display:flex; align-items:center; justify-content:space-between; gap:8px;">
+                <h2>Anexos da propriedade ({{ metrics.attachments_count }})</h2>
+                {% if can_write_page %}<a class="fm-hcard-link" href="/fazendas/{{ farm.id }}/editar?passo=3">+ Enviar arquivo</a>{% endif %}
+            </div>
+            {% set attachment_owner = farm %}
+            {% set attachment_view_base = '/fazendas/anexos' %}
+            {% set attachment_delete_base = '/fazendas/' ~ farm.id ~ '/anexos' if can_write_page else '' %}
+            {% include "partials/attachment_list.html" %}
+            {% if not farm.attachments %}
+            <p class="pd-note">Nenhum documento anexado ainda. Guarde aqui recibo do CAR, CCIR, matrícula ou fotos da fazenda.</p>
+            {% endif %}
+        </article>
+    </div>
+
+    {% elif active_tab == 'chuva' %}
+    <article class="pd-card" style="max-width:680px;">
+        <h2>Configurações de pluviometria e alertas</h2>
+        <p class="fm-card-sub" style="margin-bottom:16px;">Defina os limites de chuva forte e alertas para {{ farm.name }}.</p>
+        <form method="post" action="/fazendas/{{ farm.id }}/pluviometria-config" style="display:flex; flex-direction:column; gap:16px;">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <div class="vw-grid">
+                <label class="vw-f">
+                    <span>Chuva forte a partir de (mm)</span>
+                    <input type="number" step="0.5" min="1" max="500" name="heavy_rain_mm" value="{{ rain_settings.heavy_rain_mm }}" {% if not can_write_page %}disabled{% endif %}>
+                </label>
+                <label class="vw-f">
+                    <span>Dia chuvoso acima de (mm)</span>
+                    <input type="number" step="0.5" min="0" max="200" name="rainy_day_mm" value="{{ rain_settings.rainy_day_mm }}" {% if not can_write_page %}disabled{% endif %}>
+                </label>
+            </div>
+            <div style="display:flex; flex-direction:column; gap:10px; border-top:1px solid #EEF1ED; padding-top:14px;">
+                <label class="bp-check"><input type="checkbox" name="alert_registered" value="1" {% if rain_settings.alert_registered %}checked{% endif %} {% if not can_write_page %}disabled{% endif %}><span>Alertar quando registrar chuva forte</span></label>
+                <label class="bp-check"><input type="checkbox" name="alert_forecast" value="1" {% if rain_settings.alert_forecast %}checked{% endif %} {% if not can_write_page %}disabled{% endif %}><span>Alertar previsão de chuva forte</span></label>
+                <label class="bp-check"><input type="checkbox" name="notify_dashboard" value="1" {% if rain_settings.notify_dashboard %}checked{% endif %} {% if not can_write_page %}disabled{% endif %}><span>Exibir aviso no Dashboard</span></label>
+                <label class="bp-check"><input type="checkbox" name="notify_bell" value="1" {% if rain_settings.notify_bell %}checked{% endif %} {% if not can_write_page %}disabled{% endif %}><span>Notificar no sininho do topo</span></label>
+            </div>
+            {% if can_write_page %}
+            <div style="display:flex; justify-content:flex-end;">
+                <button type="submit" class="sf-btn sf-btn-primary">Salvar preferências de chuva</button>
+            </div>
+            {% endif %}
+        </form>
+    </article>
+    {% endif %}
+</div>
+
+{# Modal de Mapa Ampliado + Editor de Polígono #}
+<dialog class="fm-dialog" data-fm-map-modal aria-labelledby="fm-map-modal-title">
+    <div class="fm-sheet">
+        <div class="fm-sheet-head">
+            <div>
+                <p class="pd-eyebrow">Georreferenciamento</p>
+                <h3 id="fm-map-modal-title" data-fm-map-title>Mapa — {{ farm.name }}</h3>
+            </div>
+            <button type="button" class="sf-icon-btn" aria-label="Fechar mapa" data-fm-dialog-close>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>
+            </button>
+        </div>
+        <div class="fm-sheet-body">
+            <div data-fm-map-view>
+                <div style="border-radius:14px; overflow:hidden; border:1px solid #E3E8E2; background:#F6F8F5;">
+                    <img data-fm-map-img src="{{ full_src }}" alt="Mapa de {{ farm.name }}" style="display:block; width:100%; max-height:58vh; object-fit:contain;">
+                </div>
+            </div>
+            <div data-fm-map-edit hidden style="display:flex; flex-direction:column; gap:12px;">
+                <div class="fm-map-bar" style="border:1px solid #E3E8E2; border-radius:12px;">
+                    <span data-fm-map-guide style="font-weight:600;">Arraste os cantos para ajustar o perímetro.</span>
+                    <span style="white-space:nowrap;">Vértices: <strong data-fm-map-vertices>0</strong> · Área est.: <strong data-fm-map-area>0,00 ha</strong></span>
+                </div>
+                <div id="fm-modal-boundary-map" class="fm-map-canvas" style="border:1px solid #E3E8E2; border-radius:14px;"></div>
+                <div style="display:flex; flex-wrap:wrap; gap:8px;">
+                    <button type="button" class="sf-btn sf-btn-secondary" data-fm-map-undo>Desfazer</button>
+                    <button type="button" class="sf-btn sf-btn-secondary" data-fm-map-remove>Remover ponto</button>
+                </div>
+            </div>
+        </div>
+        <div class="fm-sheet-foot">
+            <a class="sf-btn sf-btn-secondary" data-fm-map-kml href="/fazendas/{{ farm.id }}/geomapa.kml">Baixar KML</a>
+            <div style="display:flex; flex-wrap:wrap; gap:8px;">
+                {% if can_write_page %}
+                <button type="button" class="sf-btn sf-btn-secondary" data-fm-map-start-edit>Editar pontos</button>
+                <button type="button" class="sf-btn sf-btn-secondary" data-fm-map-cancel-edit hidden>Cancelar alterações</button>
+                <form method="post" action="/fazendas/{{ farm.id }}/geometria" data-fm-map-form hidden style="margin:0;">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    <input type="hidden" name="redirect_to" value="/fazendas/{{ farm.id }}">
+                    <input type="hidden" name="boundary_geojson" value="" data-fm-map-input>
+                    <button type="submit" class="sf-btn sf-btn-primary">Salvar geometria</button>
+                </form>
+                {% endif %}
+                <button type="button" class="sf-btn sf-btn-secondary" data-fm-map-close-view data-fm-dialog-close>Fechar</button>
+            </div>
+        </div>
+    </div>
+</dialog>
+
+{% if can_write_page %}
+<dialog class="fm-dialog is-sm" data-fm-danger-modal aria-labelledby="fm-danger-title">
+    <div class="fm-sheet">
+        <div class="fm-sheet-head">
+            <div>
+                <p class="pd-eyebrow" style="color:#B42318;">Ações sensíveis</p>
+                <h3 id="fm-danger-title" data-fm-danger-title>{{ farm.name }}</h3>
+            </div>
+            <button type="button" class="sf-icon-btn" aria-label="Fechar" data-fm-dialog-close>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>
+            </button>
+        </div>
+        <div class="fm-sheet-body">
+            <div style="border:1px solid #F0D9A6; background:#FFFBF2; border-radius:14px; padding:14px; display:flex; flex-direction:column; gap:10px;">
+                <strong data-fm-pause-heading style="font-size:14px;">{{ 'Reativar operações' if farm.operations_paused else 'Pausar operações' }}</strong>
+                <p style="margin:0; font-size:13px; color:#7A4F00;">Mantém todo o histórico intacto, mas impede novos lançamentos nesta propriedade.</p>
+                <form method="post" action="/fazendas/{{ farm.id }}/regularizacao" data-fm-pause-form style="margin:0;">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    <input type="hidden" name="redirect_to" value="/fazendas/{{ farm.id }}">
+                    <input type="hidden" name="action" value="{{ 'resume' if farm.operations_paused else 'pause' }}" data-fm-pause-action>
+                    <button type="submit" class="sf-btn sf-btn-secondary" data-fm-pause-btn>{{ 'Reativar operações agora' if farm.operations_paused else 'Pausar operações' }}</button>
+                </form>
+            </div>
+            <div role="alert" style="border:1px solid #F5C2BE; background:#FDECEA; border-radius:14px; padding:14px; display:flex; flex-direction:column; gap:10px;">
+                <strong style="font-size:14px; color:#B42318;">Excluir fazenda permanentemente</strong>
+                <p data-fm-delete-note style="margin:0; font-size:13px; color:#7A271A;">Esta ação não pode ser desfeita.</p>
+                <form method="post" action="/fazendas/{{ farm.id }}/excluir" data-fm-delete-form style="margin:0;">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    <button type="submit" class="sf-btn cl-btn-danger">Confirmar exclusão</button>
+                </form>
+            </div>
+        </div>
+        <div class="fm-sheet-foot">
+            <span></span>
+            <button type="button" class="sf-btn sf-btn-secondary" data-fm-dialog-close>Cancelar</button>
+        </div>
+    </div>
+</dialog>
+{% endif %}
+
+<script type="application/json" id="fm-boundary-geometries-data">{{ farm_boundary_geometries_json|safe }}</script>
+<script type="application/json" id="fm-plot-geometries-data">{{ plot_geometries_json|safe }}</script>
+<script>window.__GOOGLE_MAPS_API_KEY = {{ google_maps_web_key | tojson }};</script>
+<script src="{{ url_for('static', path='js/farm_boundary_editor.js') }}?v=20261120fm1"></script>
+<script src="{{ url_for('static', path='js/farms.js') }}?v=20261120fm1"></script>
+{% endblock %}

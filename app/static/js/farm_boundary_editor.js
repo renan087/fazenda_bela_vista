@@ -141,6 +141,8 @@
             referenceBoundaryGeometry,
             contextPlotGeometries,
             removePointButton,
+            undoButton,
+            clearButton,
             onStats,
             initialCenter,
             initialZoom,
@@ -185,15 +187,33 @@
             underlayGroup.addTo(map);
         }
 
-        let points = extractPoints(initialGeometry);
+        const clonePts = (arr) => arr.map((p) => ({ lat: p.lat, lng: p.lng }));
+        const initialSnapshot = clonePts(extractPoints(initialGeometry));
+        let points = clonePts(initialSnapshot);
+        let history = [];
         let selectedIndex = null;
         let editLayer = null;
+        let dragStarted = false;
         const markerLayer = L.layerGroup().addTo(map);
+        const midpointLayer = L.layerGroup().addTo(map);
 
-        const markerIcon = (active) =>
+        const pushHistory = () => {
+            history.push(clonePts(points));
+            if (history.length > 30) history.shift();
+        };
+
+        const markerIcon = (active, index) =>
             L.divIcon({
                 className: '',
-                html: `<div style="width:16px;height:16px;border-radius:9999px;background:${active ? '#e11d48' : '#446a36'};border:3px solid #fff;box-shadow:0 4px 12px rgba(15,23,42,.2)"></div>`,
+                html: `<div style="width:20px;height:20px;border-radius:9999px;background:${active ? '#9bcb6b' : '#446a36'};border:3px solid #fff;box-shadow:0 4px 12px rgba(15,23,42,.28);display:grid;place-items:center;color:${active ? '#16201a' : '#fff'};font-size:10px;font-weight:700;">${index + 1}</div>`,
+                iconSize: [20, 20],
+                iconAnchor: [10, 10],
+            });
+
+        const midpointIcon = () =>
+            L.divIcon({
+                className: '',
+                html: '<div style="width:16px;height:16px;border-radius:9999px;background:rgba(255,255,255,.92);border:1.5px solid #446a36;color:#294127;display:grid;place-items:center;font-size:12px;font-weight:700;line-height:1;box-shadow:0 2px 6px rgba(15,23,42,.2);">+</div>',
                 iconSize: [16, 16],
                 iconAnchor: [8, 8],
             });
@@ -201,7 +221,7 @@
         const emitStats = () => {
             if (typeof onStats === 'function') {
                 const area = calculateArea(points);
-                onStats({ vertices: points.length, area, selectedIndex });
+                onStats({ vertices: points.length, area, selectedIndex, canUndo: history.length > 0 });
             }
         };
 
@@ -218,16 +238,37 @@
                 editLayer = null;
             }
             markerLayer.clearLayers();
-            if (points.length >= 2) {
+            midpointLayer.clearLayers();
+            if (points.length >= 3) {
                 editLayer = L.polygon(points, {
-                    color: '#e11d48',
+                    color: '#ffffff',
                     weight: 3,
-                    fillColor: '#fb7185',
-                    fillOpacity: 0.18,
+                    fillColor: '#9bcb6b',
+                    fillOpacity: 0.3,
+                }).addTo(map);
+            } else if (points.length === 2) {
+                editLayer = L.polyline(points, {
+                    color: '#ffffff',
+                    weight: 3,
+                    dashArray: '6, 4',
                 }).addTo(map);
             }
+            if (points.length >= 3) {
+                points.forEach((pt, idx) => {
+                    const next = points[(idx + 1) % points.length];
+                    const mid = { lat: (pt.lat + next.lat) / 2, lng: (pt.lng + next.lng) / 2 };
+                    const midMarker = L.marker(mid, { icon: midpointIcon(), interactive: true }).addTo(midpointLayer);
+                    midMarker.on('click', (e) => {
+                        if (e.originalEvent) L.DomEvent.stopPropagation(e.originalEvent);
+                        pushHistory();
+                        points.splice(idx + 1, 0, mid);
+                        selectedIndex = idx + 1;
+                        renderEditor();
+                    });
+                });
+            }
             points.forEach((point, index) => {
-                const marker = L.marker(point, { draggable: true, icon: markerIcon(index === selectedIndex) }).addTo(
+                const marker = L.marker(point, { draggable: true, icon: markerIcon(index === selectedIndex, index) }).addTo(
                     markerLayer,
                 );
                 marker.on('click', (e) => {
@@ -235,18 +276,30 @@
                     selectedIndex = index;
                     renderEditor();
                 });
+                marker.on('dragstart', () => {
+                    if (!dragStarted) {
+                        pushHistory();
+                        dragStarted = true;
+                    }
+                    selectedIndex = index;
+                });
                 marker.on('drag', (event) => {
-                    points[index] = event.target.getLatLng();
+                    const ll = event.target.getLatLng();
+                    points[index] = { lat: ll.lat, lng: ll.lng };
                     syncToHidden();
                     if (editLayer) editLayer.setLatLngs(points);
                 });
-                marker.on('dragend', () => renderEditor());
+                marker.on('dragend', () => {
+                    dragStarted = false;
+                    renderEditor();
+                });
             });
             syncToHidden();
         };
 
         map.on('click', (event) => {
-            points.push(event.latlng);
+            pushHistory();
+            points.push({ lat: event.latlng.lat, lng: event.latlng.lng });
             selectedIndex = points.length - 1;
             renderEditor();
         });
@@ -255,12 +308,36 @@
         if (removePointButton) {
             removeHandler = () => {
                 if (selectedIndex === null || points.length <= 3) return;
+                pushHistory();
                 points.splice(selectedIndex, 1);
                 selectedIndex = null;
                 renderEditor();
             };
             removePointButton.addEventListener('click', removeHandler);
         }
+
+        const undo = () => {
+            if (!history.length) return;
+            points = history.pop();
+            selectedIndex = null;
+            renderEditor();
+        };
+        const clearPoints = () => {
+            if (!points.length) return;
+            pushHistory();
+            points = [];
+            selectedIndex = null;
+            renderEditor();
+        };
+        const resetToInitial = () => {
+            points = clonePts(initialSnapshot);
+            history = [];
+            selectedIndex = null;
+            renderEditor();
+        };
+
+        if (undoButton) undoButton.addEventListener('click', undo);
+        if (clearButton) clearButton.addEventListener('click', clearPoints);
 
         renderEditor();
         const fitInitialBounds = () => {
@@ -280,6 +357,9 @@
         return {
             map,
             syncToHidden,
+            undo,
+            clearPoints,
+            resetToInitial,
             invalidate() {
                 window.requestAnimationFrame(() => {
                     map.invalidateSize();
@@ -289,6 +369,8 @@
                 if (removePointButton && removeHandler) {
                     removePointButton.removeEventListener('click', removeHandler);
                 }
+                if (undoButton) undoButton.removeEventListener('click', undo);
+                if (clearButton) clearButton.removeEventListener('click', clearPoints);
                 underlayGroup = null;
                 try {
                     map.off();
@@ -309,6 +391,8 @@
             referenceBoundaryGeometry,
             contextPlotGeometries,
             removePointButton,
+            undoButton,
+            clearButton,
             onStats,
             initialCenter,
             initialZoom,
@@ -384,17 +468,25 @@
             });
         }
 
-        let points = extractPoints(initialGeometry).map((p) => ({ lat: p.lat, lng: p.lng }));
+        const clonePts = (arr) => arr.map((p) => ({ lat: p.lat, lng: p.lng }));
+        const initialSnapshot = clonePts(extractPoints(initialGeometry));
+        let points = clonePts(initialSnapshot);
+        let history = [];
         let selectedIndex = null;
         let polygon = null;
         const markers = [];
         const listenerHandles = [];
         let skipNextMapClick = false;
 
+        const pushHistory = () => {
+            history.push(clonePts(points));
+            if (history.length > 30) history.shift();
+        };
+
         const emitStats = () => {
             if (typeof onStats === 'function') {
                 const area = calculateArea(points);
-                onStats({ vertices: points.length, area, selectedIndex });
+                onStats({ vertices: points.length, area, selectedIndex, canUndo: history.length > 0 });
             }
         };
 
@@ -413,10 +505,10 @@
             if (points.length >= 2) {
                 polygon = new google.maps.Polygon({
                     paths: points,
-                    strokeColor: '#e11d48',
+                    strokeColor: '#ffffff',
                     strokeWeight: 3,
-                    fillColor: '#fb7185',
-                    fillOpacity: 0.18,
+                    fillColor: '#9bcb6b',
+                    fillOpacity: 0.3,
                     zIndex: 100,
                     map,
                 });
@@ -476,6 +568,7 @@
         listenerHandles.push(
             google.maps.event.addListener(map, 'click', (e) => {
                 if (skipNextMapClick) return;
+                pushHistory();
                 points.push({ lat: e.latLng.lat(), lng: e.latLng.lng() });
                 selectedIndex = points.length - 1;
                 renderAll();
@@ -486,12 +579,35 @@
         if (removePointButton) {
             removeHandler = () => {
                 if (selectedIndex === null || points.length <= 3) return;
+                pushHistory();
                 points.splice(selectedIndex, 1);
                 selectedIndex = null;
                 renderAll();
             };
             removePointButton.addEventListener('click', removeHandler);
         }
+
+        const undo = () => {
+            if (!history.length) return;
+            points = history.pop();
+            selectedIndex = null;
+            renderAll();
+        };
+        const clearPoints = () => {
+            if (!points.length) return;
+            pushHistory();
+            points = [];
+            selectedIndex = null;
+            renderAll();
+        };
+        const resetToInitial = () => {
+            points = clonePts(initialSnapshot);
+            history = [];
+            selectedIndex = null;
+            renderAll();
+        };
+        if (undoButton) undoButton.addEventListener('click', undo);
+        if (clearButton) clearButton.addEventListener('click', clearPoints);
 
         renderAll();
         const fitInitialGoogleBounds = () => {
@@ -513,6 +629,9 @@
         return {
             map,
             syncToHidden,
+            undo,
+            clearPoints,
+            resetToInitial,
             invalidate() {
                 window.requestAnimationFrame(() => {
                     if (window.google && window.google.maps) {
@@ -537,6 +656,8 @@
                 if (removePointButton && removeHandler) {
                     removePointButton.removeEventListener('click', removeHandler);
                 }
+                if (undoButton) undoButton.removeEventListener('click', undo);
+                if (clearButton) clearButton.removeEventListener('click', clearPoints);
                 el.innerHTML = '';
             },
         };
