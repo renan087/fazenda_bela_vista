@@ -1,483 +1,119 @@
 {% extends "base.html" %}
+{% from "partials/production_nav.html" import production_tabs, quality_chip %}
 {% block content %}
-<div class="stock-page-shell sf-page" data-modal-single-pane>
-    <section class="stock-page-header">
-        <div class="flex flex-wrap items-start justify-between gap-4">
-            <div class="min-w-0 stock-page-header-intro" data-stock-header-intro>
-                <div class="stock-page-header-intro-inner">
-                    <h2 class="stock-page-card-title">Produção</h2>
-                    <p class="stock-page-card-subtitle">Acompanhe cada lote da colheita à venda.</p>
-                </div>
-            </div>
-            <div class="stock-header-actions stock-header-actions-top stock-actions-row-mobile-adaptive max-[899px]:w-full">
-                <button type="button" class="stock-action-button stock-action-button-primary" data-production-launch-open>
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-                        <path d="M12 5v14"/>
-                        <path d="M5 12h14"/>
-                    </svg>
-                    <span class="stock-action-button-label"><span class="sm:hidden">Nova</span><span class="hidden sm:inline">Registrar colheita</span></span>
-                </button>
-            </div>
+{% set k = pd_kpi %}
+{% set icons = {
+    'truck': '<path d="M3 7h11v9H3zM14 10h4l3 3v3h-7"/><circle cx="7" cy="18" r="1.6"/><circle cx="17" cy="18" r="1.6"/>',
+    'money': '<rect x="3" y="6" width="18" height="12" rx="2"/><circle cx="12" cy="12" r="2.5"/>',
+    'check': '<path d="M9 11l3 3 8-8"/><path d="M20 12v7a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h9"/>',
+    'scale': '<path d="M12 3v18M5 7h14M7 7l-3 7a3 3 0 0 0 6 0zM17 7l-3 7a3 3 0 0 0 6 0z"/>',
+} %}
+<div class="sf-page pd-page pv-page" data-production-overview>
+    <header class="pd-head">
+        <div>
+            <h1 class="sf-page-title">Produção</h1>
+            <p class="sf-page-subtitle">Do pé de café até o dinheiro na conta — acompanhe cada lote{% if active_season %} da {{ active_season.name }}{% endif %}.</p>
         </div>
+        <div class="pd-head-actions">
+            <a class="sf-btn sf-btn-secondary" href="/producao/classificacao">Classificar lote</a>
+            <a class="sf-btn sf-btn-secondary" href="/producao/vendas/nova">Nova venda</a>
+            <a class="sf-btn sf-btn-primary" href="/producao/colheitas/nova">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+                Registrar colheita
+            </a>
+        </div>
+    </header>
+    {{ production_tabs('overview') }}
+
+    <section class="pv-journey" aria-label="Jornada da safra">
+        <article class="pd-card pv-stage">
+            <div class="pv-stage-head"><span class="pv-num">1</span><h2>Colheita</h2>{% if k.last_harvest %}<span class="pv-aside">última em {{ k.last_harvest.strftime('%d/%m') }}</span>{% endif %}</div>
+            <div><p class="pv-big">{{ k.produced|decimal_br(0) }} <small>sacas</small></p>
+                <p class="pv-sub">{{ k.lots }} lote{{ 's' if k.lots != 1 }}{% if k.area %} · {{ k.area|decimal_br(1) }} ha · {{ k.per_ha|decimal_br(1) }} sc/ha{% endif %}</p></div>
+            {% if k.estimated_codes %}<p class="pv-hint is-info">{{ k.estimated_codes|join(', ') }} com volume estimado (falta beneficiar)</p>{% endif %}
+            <a class="pv-link" href="/producao/colheitas/nova">Registrar colheita →</a>
+        </article>
+        <article class="pd-card pv-stage">
+            <div class="pv-stage-head"><span class="pv-num">2</span><h2>Classificação</h2><span class="pd-chip is-muted">opcional</span></div>
+            <div><p class="pv-big">{{ k.classified }} <small>de {{ k.lots }} lote{{ 's' if k.lots != 1 }}</small></p>
+                <p class="pv-sub">{{ k.classified_sacks|decimal_br(0) }} sacas com qualidade conhecida</p></div>
+            {% if k.unclassified_codes %}<p class="pv-hint is-warn">{{ k.unclassified_codes[:3]|join(', ') }}{{ '…' if k.unclassified_codes|length > 3 }} sem classificação · {{ k.unclassified_sacks|decimal_br(0) }} sc</p>{% endif %}
+            <a class="pv-link" href="/producao/classificacao">Classificar lote →</a>
+        </article>
+        <article class="pd-card pv-stage">
+            <div class="pv-stage-head"><span class="pv-num">3</span><h2>Comercialização</h2><span class="pv-aside">{{ k.sales }} venda{{ 's' if k.sales != 1 }}</span></div>
+            <div><p class="pv-big">R$ {{ k.gross|decimal_br(0) }}</p>
+                <p class="pv-sub">{{ k.sold|decimal_br(0) }} sc vendidas{% if k.avg_price %} · média R$ {{ k.avg_price|decimal_br(0) }}/sc{% endif %}</p></div>
+            <div class="pv-money"><span class="pd-chip is-done">R$ {{ k.received|decimal_br(0) }} recebido</span><span class="pd-chip is-info">R$ {{ k.to_receive|decimal_br(0) }} a receber</span></div>
+            <a class="pv-link" href="/producao/vendas/nova">Nova venda →</a>
+        </article>
     </section>
 
-    <section class="stock-panel rounded-[2rem] bg-white p-6 shadow-panel" data-stock-fade-panel>
-        <div class="flex flex-wrap items-start justify-between gap-4">
-            <div class="min-w-0">
-                <h3 class="text-2xl font-semibold">Lotes de café</h3>
+    <section class="pv-row">
+        <article class="pd-card pv-where">
+            <div class="pv-where-head"><h2>Para onde foi o café da safra</h2><span>em sacas de 60 kg beneficiadas</span></div>
+            {% set total = k.produced or 1 %}
+            <div class="pv-bar" role="img" aria-label="{{ k.produced|decimal_br(0) }} sacas: {{ k.delivered|decimal_br(0) }} entregues, {{ k.negotiated|decimal_br(0) }} negociadas a entregar, {{ k.available|decimal_br(0) }} disponíveis">
+                <i class="is-delivered" style="width: {{ (k.delivered / total * 100)|round(1) }}%"></i><i class="is-negotiated" style="width: {{ (k.negotiated / total * 100)|round(1) }}%"></i>
             </div>
-            <div class="stock-search-field">
-                <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">
-                    <circle cx="8.5" cy="8.5" r="5.75"></circle>
-                    <path d="M13 13l4 4"></path>
-                </svg>
-                <input type="search" placeholder="Buscar lote ou setor" aria-label="Buscar lote ou setor" data-production-search>
+            <div class="pv-legend">
+                <div><i class="is-delivered"></i><p><strong>{{ k.delivered|decimal_br(0) }} sc</strong><span>Vendido e entregue</span></p></div>
+                <div><i class="is-negotiated"></i><p><strong>{{ k.negotiated|decimal_br(0) }} sc</strong><span>Negociado, falta entregar</span></p></div>
+                <div><i class="is-free"></i><p><strong>{{ k.available|decimal_br(0) }} sc</strong><span>Disponível para vender</span></p></div>
             </div>
-        </div>
-
-        {% set can_record = can_write_page and not plan_entitlements.read_only %}
-        <div class="mt-5 grid gap-3">
-            {% for item in harvests %}
-            {% set analyses = lot_analyses[item.id] %}
-            {% set analysis = analyses|first|default(none) %}
-            {% set can_view_classification = active_season and item.plot and item.plot.farm_id == active_farm_id %}
-            {% set sales = lot_sales[item.id] %}
-            {% set balance = lot_available_sacks[item.id] %}
-            {% set can_classify = can_record and can_view_classification %}
-            {% set can_sell = can_record and item.id in sale_eligible_ids %}
-            {% set class_url = '/producao/classificacao?harvest_id=' ~ item.id ~ '&novo=1&origem=producao' %}
-            {% set sales_url = '/producao/comercializacao?harvest_id=' ~ item.id ~ '&origem=producao' %}
-            <article class="rounded-2xl border border-slate-200 bg-white p-4" data-production-row data-production-search-text="{{ item.plot.name if item.plot else '' }} {{ item.lot_code or ('Lote ' ~ item.id) }} {{ item.plot.variety.name if item.plot and item.plot.variety else '' }} {{ item.harvest_date }} {{ item.sacks_produced }} {{ item.harvest_type or '' }} {{ item.coffee_stage or '' }} {{ item.initial_destination or '' }} {{ item.responsible_name or '' }} {{ item.notes or '' }}">
-                <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)_minmax(0,1fr)_auto] xl:items-center">
-                    <div class="min-w-0">
-                        <button type="button" class="text-left text-lg font-semibold text-emerald-800 hover:underline" data-history-view-trigger data-history-view-kicker="Ficha do lote" data-history-view-title="{{ item.lot_code or ('Lote ' ~ item.id) }}" data-history-view-subtitle="{{ item.plot.name if item.plot else 'Setor removido' }} · {{ item.harvest_date.strftime('%d/%m/%Y') if item.harvest_date else 'Sem data' }}" data-history-view-source="harvest-view-{{ item.id }}"{% if item.id == focused_lot_id %} data-production-focused-lot{% endif %}{% if can_record %} data-history-view-edit-url="/producao?edit_id={{ item.id }}"{% endif %}>{{ item.lot_code or ('Lote ' ~ item.id) }}</button>
-                        <p class="mt-1 text-sm text-slate-600">{{ item.plot.name if item.plot else 'Setor removido' }} · {{ item.harvest_date.strftime('%d/%m/%Y') if item.harvest_date else 'Sem data' }}</p>
-                    </div>
-                    <div>
-                        <span class="inline-flex rounded-full px-2.5 py-1 text-xs font-semibold {{ 'bg-emerald-50 text-emerald-800' if analysis else 'bg-amber-50 text-amber-900' }}">{{ 'Classificado' if analysis else 'Sem classificação' }}</span>
-                        {% if analysis and (analysis.beverage or analysis.sensory_score is not none) %}
-                        <p class="mt-1 text-sm text-slate-600">{% if analysis.beverage %}{{ analysis.beverage }}{% endif %}{% if analysis.beverage and analysis.sensory_score is not none %} · {% endif %}{% if analysis.sensory_score is not none %}{{ analysis.sensory_score|decimal_br }} pontos{% endif %}</p>
-                        {% endif %}
-                    </div>
-                    <div>
-                        <p class="text-sm font-semibold tabular-nums text-slate-900">{{ balance|decimal_br }} sc <span class="font-normal text-slate-600">de saldo estimado</span></p>
-                        <p class="mt-1 text-xs text-slate-600">{{ item.sacks_produced|decimal_br }} sc colhidas{% if sales %} · {{ 'Parcialmente vendido' if balance > 0 else 'Sem saldo para venda' }}{% endif %}</p>
-                    </div>
-                    <div class="flex flex-wrap items-center gap-2 sm:justify-end">
-                        {% if not analysis and can_classify %}
-                        <a class="inline-flex min-h-10 items-center rounded-xl bg-brand-500 px-3 text-sm font-semibold text-white hover:bg-brand-700" href="{{ class_url }}">Classificar lote</a>
-                        {% elif can_sell %}
-                        <a class="inline-flex min-h-10 items-center rounded-xl bg-brand-500 px-3 text-sm font-semibold text-white hover:bg-brand-700" href="{{ sales_url }}&amp;launch=1">Registrar venda</a>
-                        {% elif sales %}
-                        <a class="inline-flex min-h-10 items-center rounded-xl border border-slate-200 px-3 text-sm font-semibold text-emerald-800 hover:bg-slate-50" href="{{ sales_url }}">Ver vendas</a>
-                        {% endif %}
-                        {% if can_record %}
-                            {% if not item.season_id and harvest_active_season %}
-                            <form method="post" action="/producao/{{ item.id }}/vincular-safra" onsubmit="return confirm('Vincular esta colheita à safra ativa? Confirme que esta é a safra correta.');"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><button type="submit" class="inline-flex min-h-9 items-center justify-center rounded-xl border border-amber-200 bg-amber-50 px-3 text-xs font-semibold text-amber-800 hover:bg-amber-100" title="Vincular colheita antiga à safra ativa">Vincular safra</button></form>
-                            {% endif %}
-                            <a href="/producao?edit_id={{ item.id }}" class="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-100" title="{% if item.id not in harvest_ids_with_commercialization %}Editar{% else %}Visualizar (comercialização vinculada){% endif %}">
-                                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                    <path d="M12 20h9"/>
-                                    <path d="M16.5 3.5a2.1 2.1 0 1 1 3 3L7 19l-4 1 1-4Z"/>
-                                </svg>
-                            </a>
-                            {% if item.id not in harvest_ids_with_commercialization %}
-                            <details class="sf-menu" data-sf-dropdown>
-                                <summary class="sf-icon-btn" aria-label="Mais ações" title="Mais ações"><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="12" cy="5" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="12" cy="19" r="1.7"/></svg></summary>
-                                <div class="sf-menu-panel">
-                                    <form method="post" action="/producao/{{ item.id }}/excluir" onsubmit="return confirm('Excluir este registro de produção?');">
-                                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                                <button type="submit" class="sf-menu-danger">Excluir</button></form>
-                                </div>
-                            </details>
-                            {% else %}
-                            <span class="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 text-slate-300" title="Não é possível excluir: há comercialização vinculada a este lote." aria-label="Exclusão bloqueada: comercialização vinculada">
-                                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                    <path d="M3 6h18"/>
-                                    <path d="M8 6V4h8v2"/>
-                                    <path d="M19 6l-1 14H6L5 6"/>
-                                    <path d="M10 11v6"/>
-                                    <path d="M14 11v6"/>
-                                </svg>
-                            </span>
-                            {% endif %}
-                        {% endif %}
-                    </div>
-                </div>
-                <template id="harvest-view-{{ item.id }}">
-                    <div class="grid gap-3 sm:grid-cols-2">
-                        {% include "partials/production_lot_history.html" %}
-                        <h4 class="pt-2 font-semibold text-slate-900 sm:col-span-2">Dados da colheita</h4>
-                        <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Lote</p><p class="mt-2 text-sm font-medium text-slate-800">{{ item.lot_code or ('Lote ' ~ item.id) }}</p></div>
-                        <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Setor</p><p class="mt-2 text-sm font-medium text-slate-800">{{ item.plot.name if item.plot else "Setor removido" }}</p></div>
-                        <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Variedade</p><p class="mt-2 text-sm font-medium text-slate-800">{{ item.plot.variety.name if item.plot and item.plot.variety else "Não informada" }}</p></div>
-                        <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Data</p><p class="mt-2 text-sm font-medium text-slate-800">{{ item.harvest_date.strftime('%d-%m-%Y') if item.harvest_date else "-" }}</p></div>
-                        <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Quantidade colhida</p><p class="mt-2 text-sm font-medium text-slate-800">{{ item.sacks_produced }} sacas</p></div>
-                        <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Tipo de colheita</p><p class="mt-2 text-sm font-medium text-slate-800">{{ item.harvest_type or "-" }}</p></div>
-                        <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Estágio do café</p><p class="mt-2 text-sm font-medium text-slate-800">{{ item.coffee_stage or "-" }}</p></div>
-                        <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Destino inicial</p><p class="mt-2 text-sm font-medium text-slate-800">{{ item.initial_destination or "-" }}</p></div>
-                        <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Responsável</p><p class="mt-2 text-sm font-medium text-slate-800">{{ item.responsible_name or "Não informado" }}</p></div>
-                        <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Turno</p><p class="mt-2 text-sm font-medium text-slate-800">{{ item.work_shift or "Não informado" }}</p></div>
-                        <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Produtividade</p><p class="mt-2 text-sm font-medium text-slate-800">{{ item.productivity_per_hectare or 0 }} sc/ha</p></div>
-                        <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Maturação</p><p class="mt-2 text-sm font-medium text-slate-800">{{ item.maturation_percentage ~ '%' if item.maturation_percentage is not none else "Não informada" }}</p></div>
-                        <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Impureza</p><p class="mt-2 text-sm font-medium text-slate-800">{{ item.impurity_percentage ~ '%' if item.impurity_percentage is not none else "Não informada" }}</p></div>
-                        <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Umidade na entrada</p><p class="mt-2 text-sm font-medium text-slate-800">{{ item.input_moisture_percentage ~ '%' if item.input_moisture_percentage is not none else "Não informada" }}</p></div>
-                        <div class="rounded-2xl bg-slate-50 px-4 py-3"><p class="text-xs uppercase tracking-[0.2em] text-slate-400">Volumes</p><p class="mt-2 text-sm font-medium text-slate-800">{{ item.volume_count if item.volume_count is not none else "Não informado" }}</p></div>
-                    </div>
-                    <div class="rounded-2xl bg-slate-50 px-4 py-4">
-                        <p class="text-xs uppercase tracking-[0.2em] text-slate-400">Observações</p>
-                        <p class="mt-2 text-sm text-slate-600">{{ item.notes or "Sem observações." }}</p>
-                    </div>
-                </template>
-            </article>
+        </article>
+        <aside class="pd-card pv-attention">
+            <h2>Precisa de atenção</h2>
+            {% for item in pd_attention %}
+            <a class="pv-att is-{{ item.tone }}" href="{{ item.href }}">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">{{ icons[item.icon]|safe }}</svg>
+                <span><strong>{{ item.title }}</strong><small>{{ item.detail }}</small></span>
+            </a>
             {% else %}
-            <p class="rounded-2xl border border-slate-200 px-4 py-6 text-center text-slate-600">Nenhuma colheita registrada neste contexto.</p>
+            <p class="pv-calm">Tudo em dia por aqui. Nenhuma entrega, recebimento ou classificação pendente.</p>
             {% endfor %}
-        </div>
-        <p class="stock-search-empty mt-4 hidden text-sm text-slate-500" data-production-search-empty>Nenhum registro corresponde à busca digitada.</p>
-        {% with pagination=harvests_pagination %}{% include "partials/history_pagination.html" %}{% endwith %}
+        </aside>
     </section>
-</div>
 
-<dialog id="production-launch-modal" class="app-modal rounded-[2rem] p-0 shadow-2xl w-full max-w-4xl overflow-hidden">
-    <div class="bg-white p-6 sm:p-8">
-        {% set harvest_edit_locked = edit_harvest and edit_harvest.id in harvest_ids_with_commercialization %}
-        <div class="flex items-start justify-between gap-4">
-            <div class="min-w-0">
-                <p class="text-xs uppercase tracking-[0.35em] text-slate-400">{% if harvest_edit_locked %}Visualizar colheita{% elif edit_harvest %}Editar colheita{% else %}Registrar colheita{% endif %}</p>
-                <h3 class="mt-2 text-2xl font-semibold purchased-modal-heading">{% if harvest_edit_locked %}Visualizar colheita{% elif edit_harvest %}Editar colheita{% else %}Novo lançamento de colheita{% endif %}</h3>
-                <p class="mt-2 text-sm text-slate-500 purchased-modal-subtitle">{% if harvest_edit_locked %}Este lote possui comercialização registrada. Nenhum dado pode ser alterado.{% else %}Registre produção por setor com foco em produtividade e histórico operacional.{% endif %}</p>
-            </div>
-            <button type="button" class="modal-close-button" aria-label="Fechar" data-production-launch-close>
-                <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                    <path d="M18 6 6 18"/>
-                    <path d="m6 6 12 12"/>
-                </svg>
-            </button>
-        </div>
-        <div class="mt-6 max-h-[72vh] overflow-y-auto pr-1" data-modal-scroll>
-            <form method="post" action="{% if edit_harvest %}/producao/{{ edit_harvest.id }}/editar{% else %}/producao{% endif %}" class="grid gap-4" id="production-form">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-
-                <div class="sticky top-0 z-10 -mx-1 bg-white/95 px-1 py-1 backdrop-blur">
-                    <div class="flex flex-col gap-3 rounded-[1.5rem] px-2 py-2 sm:flex-row sm:items-center sm:justify-end sm:px-3">
-                        {% if harvest_edit_locked %}
-                        <p class="text-sm text-amber-900 sm:mr-auto">Comercialização vinculada a este lote — edição bloqueada.</p>
-                        <button type="button" class="rounded-2xl bg-slate-100 px-4 py-3 font-semibold text-slate-700 hover:bg-slate-200" data-production-launch-close>Fechar</button>
-                        {% else %}
-                        <button type="button" class="rounded-2xl bg-slate-100 px-4 py-3 font-semibold text-slate-700 hover:bg-slate-200" data-production-launch-close>Cancelar</button>
-                        <button class="rounded-2xl bg-brand-500 px-4 py-3 font-semibold text-white hover:bg-brand-700">{% if edit_harvest %}Salvar alterações{% else %}Salvar colheita{% endif %}</button>
-                        {% endif %}
-                    </div>
+    <section class="pd-card pv-lots" aria-labelledby="pv-lots-title">
+        <div class="pv-lots-head">
+            <h2 id="pv-lots-title">Lotes da safra</h2>
+            <form method="get" class="pv-filters" role="search">
+                <div class="sl-chips" role="group" aria-label="Filtrar lotes">
+                    {% for key, label in [('todos', 'Todos'), ('saldo', 'Com saldo'), ('semclass', 'Sem classificação'), ('vendidos', 'Todo vendido')] %}
+                    <button type="submit" name="filtro" value="{{ key }}" class="sl-chip" aria-pressed="{{ 'true' if pd_filter == key else 'false' }}">{{ label }} <span>{{ pd_filter_counts[key] }}</span></button>
+                    {% endfor %}
                 </div>
-
-                <div class="rounded-[1.5rem] border border-brand-100 bg-brand-50/50 p-4">
-                    <div class="flex flex-wrap items-start justify-between gap-4">
-                        <div class="min-w-0">
-                            <p class="text-xs uppercase tracking-[0.3em] text-slate-400">Contexto do lançamento</p>
-                            <p class="mt-2 text-sm text-slate-500">Use este bloco para confirmar a fazenda e a safra ativas antes de salvar.</p>
-                        </div>
-                        <button type="button" class="stock-summary-toggle" data-production-context-toggle aria-expanded="false">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-                                <path d="M5 12h14"/>
-                                <path d="M12 5v14" data-production-context-toggle-plus></path>
-                            </svg>
-                            <span data-production-context-toggle-label>Expandir</span>
-                        </button>
-                    </div>
-                    <div class="stock-summary-collapse" data-production-context-collapse>
-                        <div class="stock-summary-collapse-inner">
-                            <div class="mt-4">
-                                {% include "partials/launch_context.html" %}
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="grid gap-4 md:grid-cols-3">
-                    <label class="flex flex-col gap-2">
-                        <span class="text-sm font-medium leading-tight">Lote</span>
-                        <input type="text" name="lot_code" value="{{ edit_harvest.lot_code if edit_harvest else new_harvest_lot_code }}" class="h-[3.25rem] w-full rounded-2xl border-slate-200 px-3 {% if harvest_edit_locked %}cursor-not-allowed bg-slate-100 text-slate-700{% else %}bg-slate-50{% endif %}" data-production-lot-code-input {% if harvest_edit_locked %}readonly aria-readonly="true"{% endif %}>
-                    </label>
-                    <label class="flex flex-col gap-2">
-                        <span class="text-sm font-medium leading-tight">Setor <span class="text-rose-500">*</span></span>
-                        {% if harvest_edit_locked %}<input type="hidden" name="plot_id" value="{{ edit_harvest.plot_id }}">{% endif %}
-                        <select class="h-[3.25rem] w-full rounded-2xl border-slate-200 px-3 {% if harvest_edit_locked %}cursor-not-allowed bg-slate-100 text-slate-700{% else %}bg-slate-50{% endif %}" {% if not harvest_edit_locked %}name="plot_id" required{% else %}disabled aria-disabled="true"{% endif %} data-production-plot-select>
-                            {% for plot in plots %}
-                            <option value="{{ plot.id }}" data-variety-name="{{ plot.variety.name if plot.variety else '' }}" {% if edit_harvest and edit_harvest.plot_id == plot.id %}selected{% endif %}>{{ plot.name }}</option>
-                            {% endfor %}
-                        </select>
-                    </label>
-                    <div class="flex flex-col gap-2">
-                        <span class="text-sm font-medium leading-tight text-transparent select-none" aria-hidden="true">Variedade</span>
-                        <div class="flex h-[3.25rem] flex-col justify-center gap-0.5 overflow-hidden rounded-2xl border border-slate-200 bg-slate-50 px-4">
-                            <p class="text-[0.65rem] uppercase tracking-[0.2em] text-slate-400">Variedade vinculada</p>
-                            <p class="truncate text-sm font-semibold leading-tight text-slate-900" data-production-variety-display>{{ edit_harvest.plot.variety.name if edit_harvest and edit_harvest.plot and edit_harvest.plot.variety else ((plots[0].variety.name) if plots and plots[0].variety else "Não informada") }}</p>
-                        </div>
-                    </div>
-                    <div class="flex flex-col gap-2">
-                        <span class="text-sm font-medium leading-tight text-transparent select-none" aria-hidden="true">Safra</span>
-                        <div class="flex h-[3.25rem] flex-col justify-center gap-0.5 overflow-hidden rounded-2xl border border-slate-200 bg-slate-50 px-4">
-                            <p class="text-[0.65rem] uppercase tracking-[0.2em] text-slate-400">Safra ativa</p>
-                            <p class="truncate text-sm font-semibold leading-tight text-slate-900">{{ active_season.name if active_season else "Não selecionada" }}</p>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="grid gap-4 md:grid-cols-3 md:items-end">
-                    <label class="flex flex-col gap-2">
-                        <span class="text-sm font-medium leading-tight">Data da colheita <span class="text-rose-500">*</span></span>
-                        <input type="date" name="harvest_date" value="{{ edit_harvest.harvest_date.isoformat() if edit_harvest else '' }}" {% if harvest_active_season %}min="{{ harvest_active_season.start_date.isoformat() }}" max="{{ harvest_active_season.end_date.isoformat() }}"{% endif %} class="h-[3.25rem] w-full rounded-2xl border-slate-200 px-3 {% if harvest_edit_locked %}cursor-not-allowed bg-slate-100 text-slate-700{% else %}bg-slate-50{% endif %}" required {% if harvest_edit_locked %}readonly aria-readonly="true"{% endif %}>
-                        {% if harvest_active_season and not harvest_edit_locked %}<span class="mt-1 block text-xs text-slate-500">Período da safra: {{ harvest_active_season.start_date.strftime('%d/%m/%Y') }} a {{ harvest_active_season.end_date.strftime('%d/%m/%Y') }}.</span>{% endif %}
-                    </label>
-                    <label class="flex flex-col gap-2">
-                        <span class="text-sm font-medium leading-tight">Quantidade colhida (sacas) <span class="text-rose-500">*</span></span>
-                        <input type="number" step="0.01" name="sacks_produced" value="{{ edit_harvest.sacks_produced if edit_harvest else '' }}" class="h-[3.25rem] w-full rounded-2xl border-slate-200 px-3 {% if harvest_edit_locked %}cursor-not-allowed bg-slate-100 text-slate-700{% else %}bg-slate-50{% endif %}" required {% if harvest_edit_locked %}readonly aria-readonly="true"{% endif %}>
-                    </label>
-                    <label class="flex flex-col gap-2">
-                        <span class="text-sm font-medium leading-tight">Tipo de colheita <span class="text-rose-500">*</span></span>
-                        {% if harvest_edit_locked %}<input type="hidden" name="harvest_type" value="{{ edit_harvest.harvest_type or '' }}">{% endif %}
-                        <select class="h-[3.25rem] w-full rounded-2xl border-slate-200 px-3 {% if harvest_edit_locked %}cursor-not-allowed bg-slate-100 text-slate-700{% else %}bg-slate-50{% endif %}" {% if not harvest_edit_locked %}name="harvest_type" required{% else %}disabled aria-disabled="true"{% endif %}>
-                            <option value="">Selecione</option>
-                            {% for value, label in harvest_type_options %}
-                            <option value="{{ value }}" {% if edit_harvest and edit_harvest.harvest_type == value %}selected{% endif %}>{{ label }}</option>
-                            {% endfor %}
-                        </select>
-                    </label>
-                </div>
-                <div class="grid gap-4 md:grid-cols-3 md:items-end">
-                    <label class="flex flex-col gap-2">
-                        <span class="text-sm font-medium leading-tight">Estágio / condição do café <span class="text-rose-500">*</span></span>
-                        {% if harvest_edit_locked %}<input type="hidden" name="coffee_stage" value="{{ edit_harvest.coffee_stage or '' }}">{% endif %}
-                        <select class="h-[3.25rem] w-full rounded-2xl border-slate-200 px-3 {% if harvest_edit_locked %}cursor-not-allowed bg-slate-100 text-slate-700{% else %}bg-slate-50{% endif %}" {% if not harvest_edit_locked %}name="coffee_stage" required{% else %}disabled aria-disabled="true"{% endif %}>
-                            <option value="">Selecione</option>
-                            {% for value, label in coffee_stage_options %}
-                            <option value="{{ value }}" {% if edit_harvest and edit_harvest.coffee_stage == value %}selected{% endif %}>{{ label }}</option>
-                            {% endfor %}
-                        </select>
-                    </label>
-                    <label class="flex flex-col gap-2">
-                        <span class="text-sm font-medium leading-tight">Destino inicial <span class="text-rose-500">*</span></span>
-                        {% if harvest_edit_locked %}<input type="hidden" name="initial_destination" value="{{ edit_harvest.initial_destination or '' }}">{% endif %}
-                        <select class="h-[3.25rem] w-full rounded-2xl border-slate-200 px-3 {% if harvest_edit_locked %}cursor-not-allowed bg-slate-100 text-slate-700{% else %}bg-slate-50{% endif %}" {% if not harvest_edit_locked %}name="initial_destination" required{% else %}disabled aria-disabled="true"{% endif %}>
-                            <option value="">Selecione</option>
-                            {% for value, label in destination_options %}
-                            <option value="{{ value }}" {% if edit_harvest and edit_harvest.initial_destination == value %}selected{% endif %}>{{ label }}</option>
-                            {% endfor %}
-                        </select>
-                    </label>
-                    <label class="flex flex-col gap-2">
-                        <span class="text-sm font-medium leading-tight">Responsável</span>
-                        <input type="text" name="responsible_name" value="{{ edit_harvest.responsible_name if edit_harvest else '' }}" class="h-[3.25rem] w-full rounded-2xl border-slate-200 px-3 {% if harvest_edit_locked %}cursor-not-allowed bg-slate-100 text-slate-700{% else %}bg-slate-50{% endif %}" placeholder="Equipe ou responsável" {% if harvest_edit_locked %}readonly aria-readonly="true"{% endif %}>
-                    </label>
-                </div>
-                <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-5 md:items-end">
-                    <label class="flex flex-col gap-2">
-                        <span class="text-sm font-medium leading-tight">Turno</span>
-                        {% if harvest_edit_locked %}<input type="hidden" name="work_shift" value="{{ edit_harvest.work_shift or '' }}">{% endif %}
-                        <select class="h-[3.25rem] w-full rounded-2xl border-slate-200 px-3 {% if harvest_edit_locked %}cursor-not-allowed bg-slate-100 text-slate-700{% else %}bg-slate-50{% endif %}" {% if not harvest_edit_locked %}name="work_shift"{% else %}disabled aria-disabled="true"{% endif %}>
-                            <option value="">Selecione</option>
-                            {% for value, label in shift_options %}
-                            <option value="{{ value }}" {% if edit_harvest and edit_harvest.work_shift == value %}selected{% endif %}>{{ label }}</option>
-                            {% endfor %}
-                        </select>
-                    </label>
-                    <label class="flex flex-col gap-2">
-                        <span class="text-sm font-medium leading-tight">Maturação (%)</span>
-                        <input type="number" step="0.01" min="0" max="100" name="maturation_percentage" value="{{ edit_harvest.maturation_percentage if edit_harvest and edit_harvest.maturation_percentage is not none else '' }}" class="h-[3.25rem] w-full rounded-2xl border-slate-200 px-3 {% if harvest_edit_locked %}cursor-not-allowed bg-slate-100 text-slate-700{% else %}bg-slate-50{% endif %}" placeholder="0 a 100" {% if harvest_edit_locked %}readonly aria-readonly="true"{% endif %}>
-                    </label>
-                    <label class="flex flex-col gap-2">
-                        <span class="text-sm font-medium leading-tight">Impureza (%)</span>
-                        <input type="number" step="0.01" min="0" max="100" name="impurity_percentage" value="{{ edit_harvest.impurity_percentage if edit_harvest and edit_harvest.impurity_percentage is not none else '' }}" class="h-[3.25rem] w-full rounded-2xl border-slate-200 px-3 {% if harvest_edit_locked %}cursor-not-allowed bg-slate-100 text-slate-700{% else %}bg-slate-50{% endif %}" placeholder="0 a 100" {% if harvest_edit_locked %}readonly aria-readonly="true"{% endif %}>
-                    </label>
-                    <label class="flex flex-col gap-2">
-                        <span class="text-sm font-medium leading-tight">Umidade na entrada (%)</span>
-                        <input type="number" step="0.01" min="0" max="100" name="input_moisture_percentage" value="{{ edit_harvest.input_moisture_percentage if edit_harvest and edit_harvest.input_moisture_percentage is not none else '' }}" class="h-[3.25rem] w-full rounded-2xl border-slate-200 px-3 {% if harvest_edit_locked %}cursor-not-allowed bg-slate-100 text-slate-700{% else %}bg-slate-50{% endif %}" placeholder="0 a 100" {% if harvest_edit_locked %}readonly aria-readonly="true"{% endif %}>
-                    </label>
-                    <label class="flex flex-col gap-2">
-                        <span class="text-sm font-medium leading-tight">Número de volumes</span>
-                        <input type="number" min="0" step="1" name="volume_count" value="{{ edit_harvest.volume_count if edit_harvest and edit_harvest.volume_count is not none else '' }}" class="h-[3.25rem] w-full rounded-2xl border-slate-200 px-3 {% if harvest_edit_locked %}cursor-not-allowed bg-slate-100 text-slate-700{% else %}bg-slate-50{% endif %}" placeholder="Ex.: bags, caixas ou lotes" {% if harvest_edit_locked %}readonly aria-readonly="true"{% endif %}>
-                    </label>
-                </div>
-                <label class="flex flex-col gap-2">
-                    <span class="text-sm font-medium leading-tight">Observações</span>
-                    <textarea name="notes" rows="4" class="min-h-[6.5rem] w-full rounded-2xl border-slate-200 px-3 py-3 {% if harvest_edit_locked %}cursor-not-allowed bg-slate-100 text-slate-700{% else %}bg-slate-50{% endif %}" {% if harvest_edit_locked %}readonly aria-readonly="true"{% endif %}>{{ edit_harvest.notes if edit_harvest else '' }}</textarea>
+                <label class="sl-search">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+                    <span class="sr-only">Buscar lote</span>
+                    <input type="search" name="busca" value="{{ pd_search }}" placeholder="Lote, talhão ou variedade">
                 </label>
             </form>
         </div>
-    </div>
-</dialog>
-
-{% include "partials/history_view_modal.html" %}
-<script>
-(() => {
-    const launchModal = document.getElementById('production-launch-modal');
-    const openButtons = Array.from(document.querySelectorAll('[data-production-launch-open]'));
-    const closeButtons = Array.from(document.querySelectorAll('[data-production-launch-close]'));
-    const searchInput = document.querySelector('[data-production-search]');
-    const rows = Array.from(document.querySelectorAll('[data-production-row]'));
-    const emptyState = document.querySelector('[data-production-search-empty]');
-    const stickyHeader = document.querySelector('.stock-page-header');
-    const headerIntro = stickyHeader?.querySelector('[data-stock-header-intro]');
-    const fadingPanels = Array.from(document.querySelectorAll('[data-stock-fade-panel]'));
-    const isEditing = {{ 'true' if edit_harvest else 'false' }};
-
-    const closeModal = () => {
-        if (isEditing) {
-            window.location.href = '/producao';
-            return;
-        }
-        launchModal?.close();
-    };
-
-    openButtons.forEach((button) => {
-        button.addEventListener('click', (event) => {
-            const editUrl = button.getAttribute('data-production-edit-link');
-            if (editUrl) {
-                event.preventDefault();
-                window.location.href = editUrl;
-                return;
-            }
-            launchModal?.showModal();
-        });
-    });
-    closeButtons.forEach((button) => button.addEventListener('click', closeModal));
-    launchModal?.addEventListener('cancel', (event) => {
-        event.preventDefault();
-        closeModal();
-    });
-    if (isEditing) launchModal?.showModal();
-    else document.querySelector('[data-production-focused-lot]')?.click();
-
-    const contextToggle = document.querySelector('[data-production-context-toggle]');
-    const contextCollapse = document.querySelector('[data-production-context-collapse]');
-    const contextToggleLabel = document.querySelector('[data-production-context-toggle-label]');
-    const contextTogglePlus = document.querySelector('[data-production-context-toggle-plus]');
-    const plotSelect = document.querySelector('[data-production-plot-select]');
-    const varietyDisplay = document.querySelector('[data-production-variety-display]');
-    const lotCodeInput = document.querySelector('[data-production-lot-code-input]');
-    const harvestDateInput = document.querySelector('input[name="harvest_date"]');
-    const initialLotCode = lotCodeInput?.value || '';
-    let lotCodeManuallyChanged = false;
-    const syncContextToggle = (expanded) => {
-        if (!contextCollapse || !contextToggle) return;
-        contextCollapse.classList.toggle('is-expanded', expanded);
-        contextToggle.setAttribute('aria-expanded', expanded ? 'true' : 'false');
-        if (contextToggleLabel) contextToggleLabel.textContent = expanded ? 'Recolher' : 'Expandir';
-        if (contextTogglePlus) contextTogglePlus.classList.toggle('hidden', expanded);
-    };
-    syncContextToggle(false);
-    contextToggle?.addEventListener('click', () => {
-        const expanded = !contextCollapse?.classList.contains('is-expanded');
-        syncContextToggle(!!expanded);
-    });
-
-    const syncVarietyDisplay = () => {
-        if (!plotSelect || !varietyDisplay) return;
-        const option = plotSelect.options[plotSelect.selectedIndex];
-        const varietyName = option?.dataset.varietyName || '';
-        varietyDisplay.textContent = varietyName || 'Não informada';
-    };
-    plotSelect?.addEventListener('change', syncVarietyDisplay);
-    syncVarietyDisplay();
-
-    lotCodeInput?.addEventListener('input', () => {
-        lotCodeManuallyChanged = (lotCodeInput?.value || '') !== initialLotCode;
-    });
-    if (!isEditing) {
-        harvestDateInput?.addEventListener('change', () => {
-            if (!lotCodeInput || lotCodeManuallyChanged) return;
-            const year = (harvestDateInput.value || '').slice(0, 4);
-            if (!year) return;
-            lotCodeInput.value = `${year}-L001`;
-        });
-    }
-
-    const normalizeText = (value) => (value || '').toString().normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
-    const applyLocalSearch = () => {
-        const query = normalizeText(searchInput?.value || '');
-        let visible = 0;
-        rows.forEach((row) => {
-            const haystack = normalizeText(row.dataset.productionSearchText || row.textContent);
-            const matches = !query || haystack.includes(query);
-            row.classList.toggle('hidden', !matches);
-            if (matches) visible += 1;
-        });
-        emptyState?.classList.toggle('hidden', !query || visible !== 0);
-    };
-    searchInput?.addEventListener('input', applyLocalSearch);
-    applyLocalSearch();
-
-    const mobileCompactMq = window.matchMedia('(max-width: 899px)');
-    const parseStickyTopPx = (el) => {
-        const raw = getComputedStyle(el).top;
-        if (!raw || raw === 'auto') return 0;
-        const pxMatch = /^([\d.]+)px$/.exec(raw);
-        if (pxMatch) return parseFloat(pxMatch[1]);
-        const remMatch = /^([\d.]+)rem$/.exec(raw);
-        if (remMatch) {
-            const rootPx = parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
-            return parseFloat(remMatch[1]) * rootPx;
-        }
-        return 0;
-    };
-    let compactRaf = null;
-    const syncHeaderCompact = () => {
-        compactRaf = null;
-        if (!stickyHeader) return;
-        if (!mobileCompactMq.matches) {
-            stickyHeader.classList.remove('is-compact');
-            if (headerIntro) headerIntro.removeAttribute('aria-hidden');
-            return;
-        }
-        const topPx = parseStickyTopPx(stickyHeader);
-        const rect = stickyHeader.getBoundingClientRect();
-        const isCompact = stickyHeader.classList.contains('is-compact');
-        let nextCompact = isCompact;
-        if (rect.top <= topPx + 2) nextCompact = true;
-        else if (rect.top > topPx + 8) nextCompact = false;
-        stickyHeader.classList.toggle('is-compact', nextCompact);
-        if (headerIntro) headerIntro.setAttribute('aria-hidden', nextCompact ? 'true' : 'false');
-    };
-    const scheduleHeaderCompact = () => {
-        if (compactRaf !== null) return;
-        compactRaf = window.requestAnimationFrame(syncHeaderCompact);
-    };
-    if (stickyHeader) {
-        window.addEventListener('scroll', scheduleHeaderCompact, { passive: true });
-        window.addEventListener('resize', scheduleHeaderCompact);
-        mobileCompactMq.addEventListener('change', scheduleHeaderCompact);
-        scheduleHeaderCompact();
-    }
-    if (!stickyHeader || !fadingPanels.length) return;
-    let rafId = null;
-    const updateFadingPanels = () => {
-        rafId = null;
-        const stickyRect = stickyHeader.getBoundingClientRect();
-        const stickyBottom = stickyRect.bottom;
-        fadingPanels.forEach((panel) => {
-            const panelRect = panel.getBoundingClientRect();
-            const panelTop = panelRect.top;
-            const panelH = panelRect.height;
-            if (panelTop >= stickyBottom || panelH <= 1) {
-                panel.style.setProperty('--stock-fade-cutoff', '0px');
-                panel.style.setProperty('--stock-fade-feather-end', '0px');
-                return;
-            }
-            const rawOverlap = Math.max(stickyBottom - panelTop, 0);
-            const overlap = Math.min(rawOverlap, panelH);
-            const featherBand = Math.min(80, Math.max(22, overlap * 0.45 + 16));
-            panel.style.setProperty('--stock-fade-cutoff', `${overlap.toFixed(2)}px`);
-            panel.style.setProperty('--stock-fade-feather-end', `${(overlap + featherBand).toFixed(2)}px`);
-        });
-    };
-    const scheduleFadeUpdate = () => {
-        if (rafId !== null) return;
-        rafId = window.requestAnimationFrame(updateFadingPanels);
-    };
-    window.addEventListener('scroll', scheduleFadeUpdate, { passive: true });
-    window.addEventListener('resize', scheduleFadeUpdate);
-    scheduleFadeUpdate();
-})();
-</script>
+        {% if pd_lots %}
+        <div class="pv-table-head" aria-hidden="true"><span>Lote</span><span>Onde está</span><span>Qualidade</span><span>Saldo do lote</span><span></span></div>
+        {% for lot in pd_lots %}
+        <a class="pv-lot" href="/producao/lotes/{{ lot.id }}">
+            <span class="pv-lot-id"><strong>{{ lot.code }}</strong><small>{{ lot.plot }}{% if lot.variety %} · {{ lot.variety }}{% endif %} · {{ lot.harvest.harvest_date.strftime('%d/%m') }}</small></span>
+            <span class="pv-lot-stage"><i class="is-{{ lot.stage_code }}" aria-hidden="true"></i>{{ lot.stage_label }}</span>
+            <span>{{ quality_chip(lot.quality, lot.quality_tone) }}</span>
+            <span class="pv-lot-balance">
+                <span class="pv-lot-nums"><strong>{% if lot.available > 0 %}{{ lot.available|decimal_br }} sc disponíveis{% else %}Sem saldo{% endif %}</strong><small>de {{ '≈ ' if lot.estimated }}{{ lot.produced|decimal_br }} sc</small></span>
+                <span class="sl-bar">{% if lot.produced %}<i class="is-delivered" style="width: {{ (lot.delivered / lot.produced * 100)|round(1) }}%"></i><i class="is-negotiated" style="width: {{ (lot.negotiated / lot.produced * 100)|round(1) }}%"></i>{% endif %}</span>
+            </span>
+            <span class="pv-open">Abrir →</span>
+        </a>
+        {% endfor %}
+        {% elif pd_lot_total %}
+        <div class="pd-empty"><strong>Nenhum lote neste filtro.</strong><a href="/producao">Ver todos os lotes</a></div>
+        {% else %}
+        <div class="pd-empty">
+            <strong>Nenhuma colheita registrada nesta safra.</strong>
+            <span>Cada colheita vira um lote. Daqui você acompanha secagem, qualidade, vendas e saldo.</span>
+            <a class="sf-btn sf-btn-primary" href="/producao/colheitas/nova">Registrar a primeira colheita</a>
+        </div>
+        {% endif %}
+    </section>
+</div>
 {% endblock %}

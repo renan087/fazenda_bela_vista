@@ -2079,6 +2079,11 @@ def create_harvest(repository: FarmRepository, form: dict, area_hectares: float)
             input_moisture_percentage=form.get("input_moisture_percentage"),
             volume_count=form.get("volume_count"),
             notes=form.get("notes"),
+            measure_unit=form.get("measure_unit"),
+            measured_quantity=form.get("measured_quantity"),
+            yield_factor=form.get("yield_factor"),
+            sacks_estimated=bool(form.get("sacks_estimated")),
+            lot_stage=form.get("lot_stage") or "beneficiado",
         )
     )
 
@@ -2172,6 +2177,8 @@ def update_harvest(
             "input_moisture_percentage": form.get("input_moisture_percentage"),
             "volume_count": form.get("volume_count"),
             "notes": form.get("notes"),
+            **{key: form[key] for key in ("measure_unit", "measured_quantity", "yield_factor", "sacks_estimated", "lot_stage")
+               if key in form},
         },
     )
 

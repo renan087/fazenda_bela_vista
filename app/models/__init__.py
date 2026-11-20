@@ -30,7 +30,7 @@ from app.models.fertilization_schedule import FertilizationSchedule
 from app.models.fertilization_schedule_item import FertilizationScheduleItem
 from app.models.fertilization_stock_allocation import FertilizationStockAllocation
 from app.models.fertilization import FertilizationRecord
-from app.models.harvest import HarvestRecord
+from app.models.harvest import HarvestRecord, HarvestLotEvent
 from app.models.input_catalog import InputCatalog
 from app.models.input_recommendation import InputRecommendation
 from app.models.input_recommendation_item import InputRecommendationItem
@@ -119,6 +119,7 @@ __all__ = [
     "FertilizationScheduleItem",
     "FertilizationStockAllocation",
     "FertilizationRecord",
+    "HarvestLotEvent",
     "HarvestRecord",
     "InputCatalog",
     "InputRecommendation",

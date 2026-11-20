@@ -1,0 +1,176 @@
+{% extends "base.html" %}
+{% from "partials/production_nav.html" import quality_chip %}
+{% block content %}
+{% set q_text, q_tone = lot_quality %}
+<div class="sf-page pd-page lt-page" data-production-focused-lot>
+    <nav class="pd-crumbs" aria-label="Caminho">
+        <a href="/producao">Produção</a><span aria-hidden="true">›</span><a href="/producao#pv-lots-title">Lotes</a><span aria-hidden="true">›</span><span>{{ lot_code }}</span>
+    </nav>
+    <header class="pd-head">
+        <div class="lt-title">
+            <h1 class="sf-page-title">Lote {{ lot_code }}</h1>
+            <div class="lt-tags">
+                <span class="lt-tag">{{ lot.plot.name if lot.plot else 'Setor removido' }}{% if lot.plot and lot.plot.variety %} · {{ lot.plot.variety.name }}{% endif %}</span>
+                <span class="lt-tag">Colhido em {{ lot.harvest_date.strftime('%d/%m/%Y') }}</span>
+                {{ quality_chip(q_text, q_tone) }}
+            </div>
+        </div>
+        <div class="pd-head-actions">
+            <a class="sf-btn sf-btn-secondary" href="/producao/colheitas/{{ lot.id }}/editar">{{ 'Ver colheita' if lot_has_sales else 'Editar colheita' }}</a>
+            <a class="sf-btn sf-btn-secondary" href="/producao/classificacao?harvest_id={{ lot.id }}&amp;novo=1&amp;origem=producao">Nova análise</a>
+            {% if lot_can_sell %}
+            <a class="sf-btn sf-btn-primary" href="/producao/vendas/nova?lote={{ lot.id }}">Vender deste lote</a>
+            {% endif %}
+        </div>
+    </header>
+
+    {% if lot_legacy %}
+    <div class="pd-alert is-warn">
+        <span>Esta colheita foi registrada antes das safras e não está ligada à safra ativa.</span>
+        <form method="post" action="/producao/{{ lot.id }}/vincular-safra" onsubmit="return confirm('Vincular esta colheita à safra ativa?');">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <button class="sf-btn sf-btn-secondary" type="submit">Vincular à safra ativa</button>
+        </form>
+    </div>
+    {% endif %}
+
+    <div class="lt-layout">
+        <div class="lt-main">
+            <section class="pd-card lt-balance">
+                <div class="lt-balance-head">
+                    <div>
+                        <h2>Saldo do lote</h2>
+                        <p class="lt-big">{% if lot_available > 0 %}{{ lot_available|decimal_br }} sc <small>disponíveis de {{ '≈ ' if lot.sacks_estimated }}{{ lot_produced|decimal_br }}</small>{% else %}Sem saldo para venda <small>{{ lot_produced|decimal_br }} sc vendidas</small>{% endif %}</p>
+                    </div>
+                    <span class="lt-muted">sacas de 60 kg beneficiadas</span>
+                </div>
+                {% set total = lot_produced or 1 %}
+                <div class="lt-bar" role="img" aria-label="{{ lot_produced|decimal_br }} sc: {{ lot_delivered|decimal_br }} entregues, {{ lot_negotiated|decimal_br }} negociadas, {{ lot_available|decimal_br }} livres">
+                    {% for sale in lot_sales if sale.mine > 0 %}
+                    <i class="{{ 'is-negotiated' if sale.status == 'negociado' else 'is-delivered' }}" style="width: {{ (sale.mine / total * 100)|round(1) }}%"><span>{{ sale.code }} · {{ sale.mine|decimal_br(0) }} sc</span></i>
+                    {% endfor %}
+                    {% if lot_available > 0 %}<i class="is-free"><span>{{ lot_available|decimal_br(0) }} sc livres</span></i>{% endif %}
+                </div>
+                {% if lot.sacks_estimated %}
+                <p class="pd-alert is-info">O volume é uma estimativa ({{ lot.measured_quantity|decimal_br(0) }} {{ 'L' if lot.measure_unit == 'litros' else 'sacos' }} ÷ {{ lot.yield_factor|decimal_br(0) }}). Ao beneficiar, informe as sacas reais.</p>
+                {% endif %}
+                <div class="lt-facts">
+                    {% if lot.measured_quantity and lot.measure_unit in ['litros', 'sacos_roca'] %}
+                    <div><small>Volume colhido</small><strong>{{ lot.measured_quantity|decimal_br(0) }} {{ 'L' if lot.measure_unit == 'litros' else 'sacos' }}</strong></div>
+                    <div><small>Rendimento</small><strong>{{ lot.yield_factor|decimal_br(0) }} {{ 'L' if lot.measure_unit == 'litros' else 'sacos' }} por saca</strong></div>
+                    {% endif %}
+                    {% if lot_per_ha %}<div><small>Produtividade</small><strong>{{ lot_per_ha|decimal_br(1) }} sc/ha</strong></div>{% endif %}
+                    {% if lot_value_estimate %}<div><small>Valor estimado do saldo</small><strong>R$ {{ lot_value_estimate|decimal_br(0) }}</strong></div>{% endif %}
+                </div>
+            </section>
+
+            <section class="pd-card lt-path" aria-labelledby="lt-path-title">
+                <div class="lt-path-head"><h2 id="lt-path-title">Caminho do lote</h2><span class="lt-muted">Tudo o que aconteceu, do talhão ao comprador</span></div>
+                <ol class="lt-timeline">
+                    {% for item in lot_timeline %}
+                    <li class="{{ 'is-pending' if item.pending }}">
+                        <time datetime="{{ item.date.isoformat() }}">{{ item.date.strftime('%d/%m') }}</time>
+                        <div>
+                            <strong>{{ item.title }}</strong>
+                            {% if item.detail %}<p>{{ item.detail }}</p>{% endif %}
+                            {% if item.sale_code %}<a href="/producao/comercializacao?venda={{ item.sale_code }}">Ver venda</a>{% endif %}
+                        </div>
+                    </li>
+                    {% endfor %}
+                </ol>
+            </section>
+        </div>
+
+        <aside class="lt-side">
+            <section class="pd-card lt-stage">
+                <h2>Onde o lote está agora</h2>
+                <p class="lt-now"><i class="is-{{ lot_stage_code }}" aria-hidden="true"></i>{{ lot_stage_label }}{% if lot.warehouse_receipt %} · recibo {{ lot.warehouse_receipt }}{% endif %}</p>
+                <form method="post" action="/producao/lotes/{{ lot.id }}/etapa" class="lt-stage-form" data-stage-form>
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    <fieldset>
+                        <legend class="sr-only">Atualizar etapa</legend>
+                        <div class="vw-seg lt-seg">
+                            {% for value, label in lot_stages %}
+                            <label><input type="radio" name="stage" value="{{ value }}" {% if (lot.lot_stage or ('secagem' if lot.sacks_estimated else 'beneficiado')) == value %}checked{% endif %} {% if value == 'beneficiado' and lot.sacks_estimated %}disabled{% endif %}><span>{{ label }}</span></label>
+                            {% endfor %}
+                        </div>
+                    </fieldset>
+                    <div class="lt-armazem" data-stage-armazem {% if lot.lot_stage != 'armazem' %}hidden{% endif %}>
+                        <label class="vw-f">Armazém<input name="storage_location" maxlength="120" value="{{ lot.storage_location or '' }}" placeholder="Ex.: armazém da cooperativa"></label>
+                        <label class="vw-f">Nº do recibo de depósito <small>opcional</small><input name="warehouse_receipt" maxlength="60" value="{{ lot.warehouse_receipt or '' }}"></label>
+                    </div>
+                    <label class="vw-f">Desde<input type="date" name="event_date" value="{{ lot_today.isoformat() }}"></label>
+                    <button class="sf-btn sf-btn-secondary" type="submit">Atualizar etapa</button>
+                </form>
+                {% if lot.sacks_estimated %}
+                <details class="lt-process" {% if lot.lot_stage == 'tulha' %}open{% endif %}>
+                    <summary>Informar benefício (sacas reais)</summary>
+                    <form method="post" action="/producao/lotes/{{ lot.id }}/beneficio" class="lt-process-form">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                        <label class="vw-f">Sacas de 60 kg que o lote rendeu<span class="vw-affix is-end"><input name="real_sacks" inputmode="decimal" required placeholder="Estimado ≈ {{ lot_produced|decimal_br(0) }}"><span>sc</span></span></label>
+                        <label class="vw-f">Data do benefício<input type="date" name="processed_on" value="{{ lot_today.isoformat() }}"></label>
+                        <button class="sf-btn sf-btn-primary" type="submit">Salvar benefício</button>
+                    </form>
+                </details>
+                {% endif %}
+            </section>
+
+            <section class="pd-card lt-quality">
+                <div class="lt-card-head"><h2>Qualidade</h2><a href="/producao/classificacao?harvest_id={{ lot.id }}&amp;novo=1&amp;origem=producao">Nova análise</a></div>
+                {% if lot_latest %}
+                {% set a = lot_latest %}
+                <div class="lt-score">
+                    <span class="{{ 'is-top' if q_tone == 'top' }}">{{ a.sensory_score|decimal_br(1) if a.sensory_score is not none else '—' }}</span>
+                    <p><strong>{{ a.beverage or 'Classificado' }}</strong><small>{{ a.evaluator or 'Sem responsável' }} · {{ a.analysis_date.strftime('%d/%m') }}</small></p>
+                </div>
+                <dl class="lt-dl">
+                    <div><dt>Tipo</dt><dd>{{ a.coffee_type or '—' }}</dd></div>
+                    <div><dt>Peneira</dt><dd>{{ a.sieve or '—' }}</dd></div>
+                    <div><dt>Umidade</dt><dd>{{ (a.moisture|decimal_br(1) ~ '%') if a.moisture is not none else '—' }}</dd></div>
+                    <div><dt>Defeitos</dt><dd>{{ a.defects or '—' }}</dd></div>
+                </dl>
+                <ul class="lt-files">
+                    {% for analysis in lot_analyses %}
+                    {% if analysis.report_filename %}<li><a href="/producao/classificacao/{{ analysis.id }}/laudo">Laudo de <time datetime="{{ analysis.analysis_date.isoformat() }}">{{ analysis.analysis_date.strftime('%d/%m/%Y') }}</time></a></li>{% endif %}
+                    {% for att in analysis.attachments %}<li><a href="/producao/classificacao/{{ analysis.id }}/laudo?attachment_id={{ att.id }}">{{ att.filename }}</a> <time datetime="{{ analysis.analysis_date.isoformat() }}" class="sr-only">{{ analysis.analysis_date.strftime('%d/%m/%Y') }}</time></li>{% endfor %}
+                    {% endfor %}
+                </ul>
+                {% if lot_analyses|length > 1 %}<a class="lt-more" href="/producao/classificacao?harvest_id={{ lot.id }}&amp;origem=producao">Ver as {{ lot_analyses|length }} análises</a>{% endif %}
+                {% else %}
+                <p class="lt-muted">Sem classificação. Classificar é opcional, mas ajuda a negociar melhor preço.</p>
+                <a class="sf-btn sf-btn-secondary" href="/producao/classificacao?harvest_id={{ lot.id }}&amp;novo=1&amp;origem=producao">Classificar este lote</a>
+                {% endif %}
+            </section>
+
+            <section class="pd-card lt-sales">
+                <div class="lt-card-head"><h2>Vendas deste lote</h2>{% if lot_has_sales %}<a href="/producao/comercializacao?harvest_id={{ lot.id }}">Ver vendas</a>{% endif %}</div>
+                {% for sale in lot_sales %}
+                <article class="lt-sale">
+                    <div class="lt-sale-top"><strong>{{ sale.code }} · {{ sale.mine|decimal_br }} sc</strong><strong>R$ {{ (sale.mine * sale.unit_price)|decimal_br }}</strong></div>
+                    <p>{{ sale.buyer_name }} · R$ {{ sale.unit_price|decimal_br }}/sc{% if sale.lots|length > 1 %} · venda com {{ sale.lots|length }} lotes{% endif %}</p>
+                    <ol class="sl-steps" aria-label="Andamento da venda">
+                        <li class="is-on">Negociada</li><li class="{{ 'is-on' if sale.step >= 1 }}">Entregue</li><li class="{{ 'is-on' if sale.step >= 2 }}">Recebida</li>
+                    </ol>
+                    {% if sale.step < 2 %}
+                    <form method="post" action="/producao/vendas/{{ sale.code }}/situacao">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                        <input type="hidden" name="status" value="{{ 'entregue' if sale.step == 0 else 'recebido' }}">
+                        <input type="hidden" name="voltar" value="/producao/lotes/{{ lot.id }}">
+                        <button class="sf-btn sf-btn-secondary" type="submit">{{ 'Registrar entrega' if sale.step == 0 else 'Registrar recebimento' }}</button>
+                    </form>
+                    {% endif %}
+                </article>
+                {% else %}
+                <p class="lt-muted">Nenhuma venda deste lote ainda.</p>
+                {% endfor %}
+            </section>
+        </aside>
+    </div>
+</div>
+<script>
+document.querySelectorAll('[data-stage-form]').forEach((form) => {
+    const box = form.querySelector('[data-stage-armazem]');
+    form.addEventListener('change', () => { box.hidden = form.querySelector('[name=stage]:checked')?.value !== 'armazem'; });
+});
+</script>
+{% endblock %}

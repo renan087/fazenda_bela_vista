@@ -1,0 +1,135 @@
+{% extends "base.html" %}
+{% block content %}
+{% set unit = (hv.measure_unit if hv and hv.measure_unit else ('sc_60' if hv else 'litros')) %}
+{% set qty = (hv.measured_quantity if hv and hv.measured_quantity else (hv.sacks_produced if hv else '')) %}
+<div class="sf-page pd-page vw-page hf-page">
+    <nav class="pd-crumbs" aria-label="Caminho">
+        <a href="/producao">Produção</a><span aria-hidden="true">›</span>
+        {% if hv %}<a href="/producao/lotes/{{ hv.id }}">Lote {{ hv.lot_code }}</a><span aria-hidden="true">›</span><span>Colheita</span>{% else %}<span>Registrar colheita</span>{% endif %}
+    </nav>
+    <header class="pd-head">
+        <h1 class="sf-page-title">{{ ('Colheita do lote ' ~ hv.lot_code) if hv else 'Registrar colheita' }}</h1>
+        <ol class="vw-steps" aria-label="Passos">
+            <li data-vw-step-tab="1" aria-current="step"><span>1</span>Origem</li>
+            <li data-vw-step-tab="2"><span>2</span>Quantidade</li>
+            <li data-vw-step-tab="3"><span>3</span>Conferir</li>
+        </ol>
+    </header>
+    {% if hv_locked %}
+    <div class="pd-alert is-warn" role="status">Este lote já tem venda, por isso os dados da colheita ficam travados. Na ficha do lote você ainda pode atualizar a etapa e informar o benefício.</div>
+    {% endif %}
+
+    <form method="post" action="{{ ('/producao/' ~ hv.id ~ '/editar') if hv else '/producao' }}" class="vw-layout" data-harvest-wizard novalidate
+          data-total="{{ hv_totals.produced }}" data-current="{{ hv.sacks_produced if hv else 0 }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        {% if hv %}<input type="hidden" name="lot_code" value="{{ hv.lot_code or '' }}">{% endif %}
+        <fieldset class="pd-card vw-main hf-fields" {% if hv_locked %}disabled{% endif %}>
+            <legend class="sr-only">Dados da colheita</legend>
+            <div class="vw-step" data-vw-step="1">
+                <h2>De qual talhão?</h2>
+                {% if hv_plots %}
+                <div class="hf-plots">
+                    {% for plot in hv_plots %}
+                    {% set last = hv_last_by_plot.get(plot.id) %}
+                    <label class="hf-plot">
+                        <input type="radio" name="plot_id" value="{{ plot.id }}" data-area="{{ plot.area_hectares or 0 }}" data-name="{{ plot.name }}"
+                               {% if (hv and hv.plot_id == plot.id) or (not hv and hv_preselect_plot == plot.id) %}checked{% endif %} required>
+                        <span><strong>{{ plot.name }}</strong><small>{{ plot.variety.name ~ ' · ' if plot.variety }}{{ (plot.area_hectares or 0)|decimal_br(1) }} ha</small>
+                        <em>{{ ('Colhido em ' ~ last.strftime('%d/%m')) if last else 'Ainda não colhido' }}</em></span>
+                    </label>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <div class="pd-empty"><strong>Nenhum talhão ligado à safra ativa.</strong><span>Vincule os talhões à safra em Safras para registrar colheitas.</span><a class="sf-btn sf-btn-secondary" href="/safras">Ir para Safras</a></div>
+                {% endif %}
+                <div class="vw-grid">
+                    <label class="vw-f">Data da colheita
+                        <input type="date" name="harvest_date" value="{{ hv.harvest_date.isoformat() if hv else hv_today.isoformat() }}" required
+                               {% if hv_season %}min="{{ hv_season.start_date.isoformat() }}" max="{{ hv_season.end_date.isoformat() }}"{% endif %}>
+                        {% if hv_season %}<small>Dentro da {{ hv_season.name }} ({{ hv_season.start_date.strftime('%d/%m/%Y') }} a {{ hv_season.end_date.strftime('%d/%m/%Y') }})</small>{% endif %}
+                    </label>
+                    <fieldset class="vw-f vw-seg-field">
+                        <legend>Tipo de colheita</legend>
+                        <div class="vw-seg">
+                            {% for value, label in hv_types %}
+                            <label><input type="radio" name="harvest_type" value="{{ value }}" {% if (hv.harvest_type if hv else 'Manual') == value %}checked{% endif %}><span>{{ label }}</span></label>
+                            {% endfor %}
+                        </div>
+                    </fieldset>
+                </div>
+            </div>
+
+            <div class="vw-step" data-vw-step="2" hidden>
+                <fieldset class="vw-f vw-seg-field">
+                    <legend>Como você mediu?</legend>
+                    <div class="vw-seg hf-units">
+                        {% for value, info in hv_units.items() %}
+                        <label><input type="radio" name="measure_unit" value="{{ value }}" data-short="{{ info[1] }}" data-yield="{{ hv_yields.get(value, 1) }}" data-yield-label="{{ info[3] }}" {% if unit == value %}checked{% endif %}>
+                            <span><strong>{{ info[0] }}</strong><small>{{ hv_unit_hints[value] }}</small></span></label>
+                        {% endfor %}
+                    </div>
+                </fieldset>
+                <div class="vw-grid">
+                    <label class="vw-f">Quantidade colhida
+                        <span class="vw-affix is-end hf-qty"><input name="measured_quantity" inputmode="decimal" value="{{ qty|decimal_br(0) if qty else '' }}" placeholder="0" required data-hf-qty><span data-hf-unit>L</span></span>
+                    </label>
+                    <label class="vw-f" data-hf-yield-box>Rendimento esperado
+                        <span class="vw-affix is-end"><input name="yield_factor" inputmode="decimal" value="{{ (hv.yield_factor|decimal_br(0)) if hv and hv.yield_factor else '' }}" data-hf-yield><span data-hf-yield-label>litros por saca</span></span>
+                        <small data-hf-yield-help>Média da fazenda. Ajusta sozinho quando o lote for beneficiado.</small>
+                    </label>
+                </div>
+                <p class="hf-estimate" data-hf-estimate aria-live="polite"></p>
+                <fieldset class="vw-f vw-seg-field">
+                    <legend>Para onde foi o café?</legend>
+                    <div class="vw-seg hf-dest">
+                        {% for value, label in hv_destinations %}
+                        <label><input type="radio" name="initial_destination" value="{{ value }}" {% if (hv.initial_destination if hv and hv.initial_destination else 'Terreiro') == value %}checked{% endif %}><span>{{ label }}</span></label>
+                        {% endfor %}
+                    </div>
+                </fieldset>
+                <details class="hf-more" {% if hv and (hv.maturation_percentage is not none or hv.responsible_name or hv.notes) %}open{% endif %}>
+                    <summary>Qualidade na entrada e equipe <small>opcional</small></summary>
+                    <div class="vw-grid hf-more-grid">
+                        <label class="vw-f">Café colhido
+                            <select name="coffee_stage"><option value="">Não informar</option>{% for value, label in hv_coffee_stages %}<option value="{{ value }}" {% if hv and hv.coffee_stage == value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select>
+                        </label>
+                        <label class="vw-f">Cereja / maduro<span class="vw-affix is-end"><input name="maturation_percentage" inputmode="decimal" value="{{ hv.maturation_percentage|decimal_br(0) if hv and hv.maturation_percentage is not none else '' }}" placeholder="Ex.: 70"><span>%</span></span></label>
+                        <label class="vw-f">Impurezas<span class="vw-affix is-end"><input name="impurity_percentage" inputmode="decimal" value="{{ hv.impurity_percentage|decimal_br(0) if hv and hv.impurity_percentage is not none else '' }}" placeholder="Ex.: 3"><span>%</span></span></label>
+                        <label class="vw-f">Umidade na entrada<span class="vw-affix is-end"><input name="input_moisture_percentage" inputmode="decimal" value="{{ hv.input_moisture_percentage|decimal_br(0) if hv and hv.input_moisture_percentage is not none else '' }}" placeholder="Ex.: 60"><span>%</span></span></label>
+                        <label class="vw-f">Responsável<input name="responsible_name" maxlength="160" value="{{ hv.responsible_name or '' if hv else '' }}"></label>
+                        <label class="vw-f hf-wide">Observações<textarea name="notes" rows="2">{{ hv.notes or '' if hv else '' }}</textarea></label>
+                    </div>
+                </details>
+            </div>
+
+            <div class="vw-step" data-vw-step="3" hidden>
+                <h2 class="vw-review-title">Confira antes de salvar</h2>
+                <div data-hf-review></div>
+            </div>
+
+            <div class="pd-alert is-error" data-vw-error role="alert" hidden></div>
+            <footer class="vw-foot">
+                <a class="sf-btn sf-btn-secondary" href="{{ ('/producao/lotes/' ~ hv.id) if hv else '/producao' }}" data-vw-cancel>Cancelar</a>
+                <button type="button" class="sf-btn sf-btn-secondary" data-vw-back hidden>Voltar</button>
+                <button type="button" class="sf-btn sf-btn-primary" data-vw-next>Continuar</button>
+                {% if not hv_locked %}<button type="submit" class="sf-btn sf-btn-primary" data-vw-submit hidden>{{ 'Salvar alterações' if hv else 'Confirmar colheita' }}</button>{% endif %}
+            </footer>
+        </fieldset>
+
+        <aside class="pd-card vw-summary hf-summary" aria-label="Rascunho do lote">
+            <p class="pd-eyebrow">{{ 'Lote' if hv else 'Rascunho do lote' }}</p>
+            <div class="hf-lot"><span aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M12 3c4 3 6 6 6 10a6 6 0 0 1-12 0c0-4 2-7 6-10Z"/><path d="M12 7c-1.5 3-1.5 7 0 12"/></svg></span>
+                <p><strong>{{ hv_next_code }}</strong><small>{{ 'código do lote' if hv else 'código criado automaticamente' }}</small></p></div>
+            <dl class="vw-sum-rows">
+                <div><dt>Talhão</dt><dd data-hf-sum="plot">—</dd></div>
+                <div><dt>Colheita</dt><dd data-hf-sum="type">—</dd></div>
+                <div><dt>Volume</dt><dd data-hf-sum="qty">—</dd></div>
+                <div><dt>Estimativa</dt><dd data-hf-sum="sacks">—</dd></div>
+                <div><dt>Destino</dt><dd data-hf-sum="dest">—</dd></div>
+            </dl>
+            <p class="pd-note">Nada é salvo até você confirmar no passo 3.</p>
+        </aside>
+    </form>
+</div>
+<script src="{{ url_for('static', path='js/harvest_form.js') }}?v=1" defer></script>
+{% endblock %}

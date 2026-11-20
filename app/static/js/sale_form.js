@@ -8,6 +8,7 @@
     const parse = (v) => {
         let t = String(v ?? '').replace(/[R$%\s]/g, '');
         if (t.includes(',')) t = t.replace(/\./g, '').replace(',', '.');
+        else if (/^-?\d{1,3}(\.\d{3})+$/.test(t)) t = t.replace(/\./g, '');
         const n = parseFloat(t);
         return Number.isFinite(n) ? n : 0;
     };

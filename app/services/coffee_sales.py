@@ -38,6 +38,8 @@ def parse_decimal(value) -> float | None:
         return None
     if "," in text:
         text = text.replace(".", "").replace(",", ".")
+    elif re.fullmatch(r"-?\d{1,3}(\.\d{3})+", text):
+        text = text.replace(".", "")
     try:
         return float(text)
     except ValueError:

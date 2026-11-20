@@ -58,6 +58,8 @@ def test_lot_journey_from_harvest_through_classification_and_partial_sales(monke
             )
         elif req.url.path == "/producao/vendas/nova":
             response = routes.sale_new_page(req, db=db, user=user, csrf_token="x")
+        elif req.url.path.startswith("/producao/lotes/"):
+            response = routes.lot_detail_page(int(req.url.path.rsplit("/", 1)[1]), req, db=db, user=user, csrf_token="x")
         else:
             response = routes.production_page(req, db=db, user=user, csrf_token="x")
         if response.status_code in (302, 303, 307):
@@ -65,13 +67,13 @@ def test_lot_journey_from_harvest_through_classification_and_partial_sales(monke
         return response.body.decode()
 
     def sell(quantity):
-        return routes.create_commercialization_action(
-            request("/producao/comercializacao"), csrf_token="x", harvest_id=lot_id, sale_date="2026-11-05",
-            buyer_name="Comprador", quantity_sold=quantity, sale_unit="sc_60", unit_price=100,
-            status="negociado", coffee_type=None, finance_account_id=None, payment_method=None,
-            payment_condition="a_vista", installment_count=None, installment_frequency=None,
-            first_installment_date=None, notes=None, db=db, user=user, origem="producao",
-        )
+        async def form():
+            return FormData([("csrf_token", "x"), ("lot_id", str(lot_id)), (f"lot_sacks_{lot_id}", str(quantity)),
+                             ("origem_lote", str(lot_id)), ("buyer_name", "Comprador"), ("sale_date", "2026-11-05"),
+                             ("unit_price", "100"), ("status", "negociado"), ("payment_condition", "a_vista")])
+        req = request("/producao/vendas")
+        req.form = form
+        return asyncio.run(routes.sale_create_action(req, db=db, user=user))
 
     response = routes.create_harvest_action(
         request("/producao"), csrf_token="x", plot_id=plot.id, harvest_date="2026-11-01", lot_code=None,
@@ -84,7 +86,7 @@ def test_lot_journey_from_harvest_through_classification_and_partial_sales(monke
                               harvest_date=date(2026, 11, 1), lot_code="Outro lote", sacks_produced=5)
     db.add(other_lot)
     db.commit()
-    lot_url = f"/producao?lote={lot_id}"
+    lot_url = f"/producao/lotes/{lot_id}"
     assert response.headers["location"] == lot_url
     page = get(lot_url)
     assert 'data-production-focused-lot' in page
@@ -117,7 +119,8 @@ def test_lot_journey_from_harvest_through_classification_and_partial_sales(monke
     page = get(lot_url)
     assert 'Classificado' in page and 'Mole' in page
     newest_analysis = db.query(CoffeeClassification).order_by(CoffeeClassification.id.desc()).first()
-    assert page.index('datetime="2026-11-02"') < page.index('datetime="2026-11-01"')
+    quality = page[page.index('lt-quality'):]
+    assert quality.index('datetime="2026-11-02"') < quality.index('datetime="2026-11-01"')
     assert f'/producao/classificacao/{legacy_analysis.id}/laudo"' in page
     for attachment in newest_analysis.attachments:
         assert f'/producao/classificacao/{newest_analysis.id}/laudo?attachment_id={attachment.id}' in page
@@ -126,32 +129,27 @@ def test_lot_journey_from_harvest_through_classification_and_partial_sales(monke
     assert open_analysis in detail
     assert open_analysis not in get(f"/producao/classificacao?harvest_id={other_lot.id}&origem=producao&analise={newest_analysis.id}")
 
-    sale_url = f"/producao/comercializacao?harvest_id={lot_id}&origem=producao&launch=1"
-    assert f'href="{sale_url.replace("&", "&amp;")}"' in page
-    sale = get(sale_url)
+    sale_url = f"/producao/vendas/nova?lote={lot_id}"
+    assert f'href="{sale_url}"' in page
+    sale = get(f"/producao/comercializacao?harvest_id={lot_id}&origem=producao&launch=1")
     assert f'name="lot_id" value="{lot_id}" id="vw-lot-{lot_id}" checked' in sale
     assert f'name="origem_lote" value="{lot_id}"' in sale
 
     assert sell(4).headers["location"] == lot_url
     page = get(lot_url)
-    assert 'Parcialmente vendido' in page and '<strong>6,00 sc</strong> de saldo estimado' in page
-    assert 'Comprador' in page and '4,00 sc · R$ 400,00 · Negociado' in page
-    sale_id = db.query(CoffeeCommercializationRecord).one().id
-    assert f'&amp;venda={sale_id}' in page
-    sale_details = get(f"/producao/comercializacao?harvest_id={lot_id}&origem=producao&venda={sale_id}")
+    assert '6,00 sc <small>disponíveis de 10,00</small>' in page
+    assert 'Comprador' in page and 'V-0001 · 4,00 sc' in page and 'Venda V-0001 negociada' in page
+    sale_details = get("/producao/comercializacao?venda=V-0001")
     assert 'id="venda-V-0001"' in sale_details and 'is-focus' in sale_details
     assert f'href="/producao?lote={lot_id}"' in sale_details
-    other_sales = get(f"/producao/comercializacao?harvest_id={other_lot.id}&origem=producao&venda={sale_id}")
+    other_sales = get(f"/producao/comercializacao?harvest_id={other_lot.id}")
     assert 'id="venda-V-0001"' not in other_sales
 
-    response = sell(7)
-    assert "ultrapassa o saldo disponível do lote" in session["flash"]["message"]
-    retry = get(response.headers["location"])
-    assert f'name="origem_lote" value="{lot_id}"' in retry
+    retry = sell(7)
+    assert retry.status_code == 422 and "ultrapassa o saldo" in retry.body.decode()
 
     assert sell(6).headers["location"] == lot_url
     page = get(lot_url)
     assert 'Sem saldo para venda' in page and 'Ver vendas' in page
-    lot_card = page[page.index(f'id="harvest-view-{lot_id}"'):].split('</article>', 1)[0]
-    assert 'Registrar venda' not in lot_card
+    assert 'Vender deste lote' not in page
     assert 'O lote escolhido está indisponível para uma nova venda' in get(sale_url)

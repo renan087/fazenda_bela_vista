@@ -25,6 +25,7 @@ from xml.sax.saxutils import escape as xml_escape
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, HTTPException, Query, Request, Response, UploadFile, status
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
+from pydantic.fields import FieldInfo
 from openpyxl import Workbook
 from openpyxl.utils import get_column_letter
 from reportlab.lib import colors
@@ -19957,117 +19958,338 @@ def production_page(
     user: User = Depends(get_current_user_web),
     csrf_token: str = Depends(get_csrf_token),
 ):
+    from app.services.coffee_sales import group_sales
+    from app.services.harvest_lots import stage_of
+
+    lote = _optional_query_int(request.query_params.get("lote"))
+    if not lote and request.query_params.get("assistant_kind") == "colheita":
+        lote = _optional_query_int(request.query_params.get("assistant_view"))
+    if lote:
+        return _redirect(f"/producao/lotes/{lote}")
+    if edit_id:
+        return _redirect(f"/producao/colheitas/{edit_id}/editar")
     repo = _repository(db)
     scope = _global_scope_context(request, repo)
-    farm_ids, variety_ids = _scoped_plot_filters(request, scope["active_season"])
-    start_date, end_date = _scoped_dates(scope["active_season"])
-    plots = repo.list_plots(farm_ids=farm_ids, variety_ids=variety_ids)
-    plots = list({plot.id: plot for plot in [*plots, *_season_launch_plots(plots, scope)]}.values())
-    plot_ids = {plot.id for plot in plots}
-    edit_harvest = repo.get_harvest(edit_id) if edit_id else None
-    if edit_harvest and (not _plot_matches_scope(edit_harvest.plot, scope) or edit_harvest.plot_id not in plot_ids):
-        edit_harvest = None
-    if edit_harvest and scope.get("active_season_id") and edit_harvest.season_id is not None and edit_harvest.season_id != scope["active_season_id"]:
-        edit_harvest = None
-    launch_plots = _season_launch_plots(plots, scope)
-    if edit_harvest and edit_harvest.plot and edit_harvest.plot not in launch_plots:
-        launch_plots = [*launch_plots, edit_harvest.plot]
-    harvests = [
-        harvest
-        for harvest in repo.list_harvests()
-        if harvest.plot_id in plot_ids and harvest_matches_season(harvest, scope.get("active_season"))
-    ]
-    harvests = _sort_collection_desc(
-        harvests,
-        lambda item: item.harvest_date,
-        lambda item: item.id,
-    )
-    harvests_pagination = _paginate_collection(request, harvests, "harvests_page", focus_param="lote")
-    displayed_harvests = harvests_pagination["items"]
-    lot_ids = [item.id for item in displayed_harvests]
-    lot_analyses = {lot_id: [] for lot_id in lot_ids}
-    lot_sales = {lot_id: [] for lot_id in lot_ids}
-    if lot_ids:
-        analyses = (
-            db.query(CoffeeClassification)
-            .options(
-                load_only(CoffeeClassification.harvest_id, CoffeeClassification.analysis_date,
-                          CoffeeClassification.beverage, CoffeeClassification.sensory_score,
-                          CoffeeClassification.evaluator, CoffeeClassification.report_filename),
-                selectinload(CoffeeClassification.attachments).load_only(CoffeeClassificationAttachment.filename),
-            )
-            .filter(CoffeeClassification.harvest_id.in_(lot_ids))
-            .order_by(CoffeeClassification.analysis_date.desc(), CoffeeClassification.id.desc())
-        )
-        for analysis in analyses:
-            lot_analyses[analysis.harvest_id].append(analysis)
-        sales = (
-            db.query(CoffeeCommercializationRecord.id, CoffeeCommercializationRecord.harvest_id,
-                     CoffeeCommercializationRecord.equivalent_sacks, CoffeeCommercializationRecord.sale_date,
-                     CoffeeCommercializationRecord.buyer_name, CoffeeCommercializationRecord.quantity_sold,
-                     CoffeeCommercializationRecord.sale_unit, CoffeeCommercializationRecord.total_value,
-                     CoffeeCommercializationRecord.status)
-            .filter(CoffeeCommercializationRecord.harvest_id.in_(lot_ids))
-            .order_by(CoffeeCommercializationRecord.sale_date.desc(), CoffeeCommercializationRecord.id.desc())
-        )
-        for sale in sales:
-            lot_sales[sale.harvest_id].append(sale)
-    available_sacks = {item.id: _commercialization_available_sacks(item, lot_sales[item.id]) for item in displayed_harvests}
-    sale_eligible_ids = {
-        item.id for item in displayed_harvests
-        if scope.get("active_farm_id") and scope.get("active_season") and available_sacks[item.id] > 0
-        and _plot_allowed_for_season_launch(item.plot, scope)
+    lots, sales = _production_lots(request, repo, db, scope) if scope.get("active_farm_id") else ([], [])
+    groups = group_sales(_sort_collection_desc(sales, lambda item: item.sale_date, lambda item: item.id))
+    today = today_in_app_timezone()
+    for lot in lots:
+        lot["stage_code"], lot["stage_label"] = stage_of(lot["harvest"], lot["available"])
+        lot["estimated"] = bool(lot["harvest"].sacks_estimated)
+    filters = {
+        "todos": lambda lot: True,
+        "saldo": lambda lot: lot["available"] > 0,
+        "semclass": lambda lot: lot["classification"] is None,
+        "vendidos": lambda lot: lot["available"] <= 0,
     }
-    harvest_type_options = [
-        ("Manual", "Manual"),
-        ("Semimecanizada", "Semimecanizada"),
-        ("Mecanizada", "Mecanizada"),
-    ]
-    coffee_stage_options = [
-        ("Cereja", "Cereja"),
-        ("Verde", "Verde"),
-        ("Boia", "Boia"),
-        ("Mistura", "Mistura"),
-    ]
-    destination_options = [
-        ("Terreiro", "Terreiro"),
-        ("Lavador", "Lavador"),
-        ("Secador", "Secador"),
-        ("Tulha", "Tulha"),
-    ]
-    shift_options = [
-        ("Manhã", "Manhã"),
-        ("Tarde", "Tarde"),
-        ("Integral", "Integral"),
-        ("Noturno", "Noturno"),
-    ]
+    selected = request.query_params.get("filtro") if request.query_params.get("filtro") in filters else "todos"
+    search = _normalize_search_value((request.query_params.get("busca") or "").strip())
+    shown = [lot for lot in lots if filters[selected](lot)]
+    if search:
+        shown = [lot for lot in shown if search in _normalize_search_value(f"{lot['code']} {lot['plot']} {lot['variety']}")]
+    produced = sum(lot["produced"] for lot in lots)
+    harvested_plots = {lot["harvest"].plot_id: lot["harvest"].plot for lot in lots if lot["harvest"].plot}
+    area = sum(float(plot.area_hectares or 0) for plot in harvested_plots.values())
+    classified = [lot for lot in lots if lot["classification"] is not None]
+    unclassified = [lot for lot in lots if lot["classification"] is None and lot["produced"] > 0]
+    estimated = [lot for lot in lots if lot["estimated"]]
+    gross = sum(g["gross"] for g in groups)
+    sold = sum(g["sacks"] for g in groups)
+    attention = []
+    for g in sorted((g for g in groups if g["status"] == "negociado"), key=lambda g: g["delivery_due_date"] or date.max)[:2]:
+        due = g["delivery_due_date"]
+        attention.append({"tone": "error" if due and due < today else "info", "icon": "truck", "href": f"/producao/comercializacao?venda={g['code']}",
+                          "title": (f"Entrega atrasada: {_format_decimal_br(g['sacks'])} sc" if due and due < today else
+                                    f"Entregar {_format_decimal_br(g['sacks'])} sc" + (f" até {due.strftime('%d/%m')}" if due else "")),
+                          "detail": f"Venda {g['code']} · {g['buyer_name']}"})
+    for g in [g for g in groups if g["status"] in {"entregue", "faturado"}][:2]:
+        attention.append({"tone": "done", "icon": "money", "href": f"/producao/comercializacao?venda={g['code']}",
+                          "title": f"Receber R$ {_format_decimal_br(g['net'])}", "detail": f"Venda {g['code']} · {g['buyer_name']}"})
+    if unclassified:
+        codes = ", ".join(lot["code"] for lot in unclassified[:3]) + ("…" if len(unclassified) > 3 else "")
+        attention.append({"tone": "warn", "icon": "check", "href": "/producao/classificacao",
+                          "title": f"Classificar {len(unclassified)} lote{'s' if len(unclassified) > 1 else ''}",
+                          "detail": f"{codes} · saber a qualidade ajuda a negociar melhor"})
+    for lot in [lot for lot in estimated if (today - lot["harvest"].harvest_date).days > 30][:1]:
+        attention.append({"tone": "info", "icon": "scale", "href": f"/producao/lotes/{lot['id']}",
+                          "title": f"Informar o benefício do {lot['code']}",
+                          "detail": "O volume ainda é estimado. Registre as sacas reais."})
     return templates.TemplateResponse(
         "production.html",
         _base_context(
-            request,
-            user,
-            csrf_token,
-            "harvest",
-            _repo=repo,
-            plots=launch_plots,
-            harvests=displayed_harvests,
-            harvests_pagination=harvests_pagination,
-            focused_lot_id=_optional_query_int(request.query_params.get("lote")),
-            lot_analyses=lot_analyses,
-            lot_sales=lot_sales,
-            lot_available_sacks=available_sacks,
-            sale_eligible_ids=sale_eligible_ids,
-            sale_status_labels=dict(COMMERCIALIZATION_STATUS_OPTIONS),
-            edit_harvest=edit_harvest,
-            harvest_active_season=scope.get("active_season"),
-            harvest_ids_with_commercialization=repo.harvest_ids_linked_to_commercializations(),
-            new_harvest_lot_code=_suggest_next_harvest_lot_code(repo),
-            harvest_type_options=harvest_type_options,
-            coffee_stage_options=coffee_stage_options,
-            destination_options=destination_options,
-            shift_options=shift_options,
+            request, user, csrf_token, "harvest", _repo=repo,
+            pd_lots=shown, pd_lot_total=len(lots), pd_filter=selected, pd_search=request.query_params.get("busca") or "",
+            pd_filter_counts={key: sum(1 for lot in lots if test(lot)) for key, test in filters.items()},
+            pd_attention=attention[:4], pd_today=today,
+            pd_kpi={
+                "produced": produced, "lots": len(lots), "area": area, "per_ha": produced / area if area else None,
+                "last_harvest": max((lot["harvest"].harvest_date for lot in lots), default=None),
+                "estimated_codes": [lot["code"] for lot in estimated],
+                "classified": len(classified), "classified_sacks": sum(lot["produced"] for lot in classified),
+                "unclassified_codes": [lot["code"] for lot in unclassified],
+                "unclassified_sacks": sum(lot["produced"] for lot in unclassified),
+                "gross": gross, "sold": sold, "sales": len(groups), "avg_price": gross / sold if sold else None,
+                "received": sum(g["net"] for g in groups if g["status"] == "recebido"),
+                "to_receive": sum(g["net"] for g in groups if g["status"] != "recebido"),
+                "delivered": sum(lot["delivered"] for lot in lots), "negotiated": sum(lot["negotiated"] for lot in lots),
+                "available": sum(lot["available"] for lot in lots),
+            },
         ),
     )
+
+
+def _lot_in_scope(request: Request, repo: FarmRepository, lot_id: int, scope: dict) -> HarvestRecord | None:
+    harvest = repo.get_harvest(lot_id)
+    if not harvest or not _plot_matches_scope(harvest.plot, scope):
+        return None
+    return harvest
+
+
+@router.get("/producao/lotes/{lot_id}")
+def lot_detail_page(
+    lot_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+    csrf_token: str = Depends(get_csrf_token),
+):
+    from app.services.coffee_sales import group_sales
+    from app.services.harvest_lots import LOT_STAGES, STAGE_HINTS, stage_of, timeline
+
+    repo = _repository(db)
+    scope = _global_scope_context(request, repo)
+    harvest = _lot_in_scope(request, repo, lot_id, scope)
+    if not harvest:
+        _flash(request, "error", "Lote não encontrado na fazenda ativa.")
+        return _redirect("/producao")
+    analyses = (db.query(CoffeeClassification).options(defer(CoffeeClassification.report_data),
+                                                       selectinload(CoffeeClassification.attachments).load_only(CoffeeClassificationAttachment.filename))
+                .filter(CoffeeClassification.harvest_id == harvest.id)
+                .order_by(CoffeeClassification.analysis_date.desc(), CoffeeClassification.id.desc()).all())
+    own_sales = (db.query(CoffeeCommercializationRecord).filter(CoffeeCommercializationRecord.harvest_id == harvest.id).all())
+    codes = {s.sale_code for s in own_sales if s.sale_code}
+    group_records = (db.query(CoffeeCommercializationRecord).filter(CoffeeCommercializationRecord.sale_code.in_(codes),
+                                                                    CoffeeCommercializationRecord.farm_id == harvest.plot.farm_id)
+                     .order_by(CoffeeCommercializationRecord.sale_date.desc(), CoffeeCommercializationRecord.id.desc()).all()) if codes else []
+    group_records += [s for s in own_sales if not s.sale_code]
+    groups = group_sales(group_records)
+    produced = float(harvest.sacks_produced or 0)
+    sold = sum(float(s.equivalent_sacks or 0) for s in own_sales)
+    negotiated = sum(float(s.equivalent_sacks or 0) for s in own_sales if (s.status or "negociado") == "negociado")
+    available = max(produced - sold, 0)
+    priced = [s for s in own_sales if float(s.equivalent_sacks or 0) > 0]
+    ref_price = (sum(float(s.unit_price or 0) for s in priced) / len(priced)) if priced else None
+    stage_code, stage_label = stage_of(harvest, available)
+    today = today_in_app_timezone()
+    can_sell = bool(scope.get("active_season") and available > 0 and _plot_allowed_for_season_launch(harvest.plot, scope)
+                    and harvest_matches_season(harvest, scope.get("active_season")))
+    lot_groups = []
+    for g in groups:
+        mine = sum(lot["sacks"] for lot in g["lots"] if lot["harvest_id"] == harvest.id)
+        lot_groups.append({**g, "mine": mine})
+    return templates.TemplateResponse(
+        "lot_detail.html",
+        _base_context(
+            request, user, csrf_token, "harvest", _repo=repo,
+            lot=harvest, lot_code=_lot_display_code(harvest), lot_analyses=analyses, lot_latest=analyses[0] if analyses else None,
+            lot_sales=lot_groups, lot_timeline=timeline(harvest, analyses, groups, today),
+            lot_produced=produced, lot_sold=sold, lot_negotiated=negotiated, lot_delivered=sold - negotiated,
+            lot_available=available, lot_value_estimate=available * ref_price if ref_price else None,
+            lot_stage_code=stage_code, lot_stage_label=stage_label, lot_stages=LOT_STAGES, lot_stage_hints=STAGE_HINTS,
+            lot_can_sell=can_sell, lot_has_sales=bool(own_sales), lot_today=today,
+            lot_quality=_classification_label(analyses[0] if analyses else None),
+            lot_legacy=harvest.season_id is None and bool(scope.get("active_season_id")),
+            lot_per_ha=produced / float(harvest.plot.area_hectares) if harvest.plot and harvest.plot.area_hectares else None,
+        ),
+    )
+
+
+@router.get("/producao/colheitas/nova")
+@router.get("/producao/colheitas/{lot_id}/editar")
+def harvest_form_page(
+    request: Request,
+    lot_id: int | None = None,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+    csrf_token: str = Depends(get_csrf_token),
+):
+    from app.services.harvest_lots import (COFFEE_STAGES, DESTINATIONS, HARVEST_TYPES, MEASURE_HINTS, MEASURE_UNITS,
+                                           farm_yield_average)
+
+    repo = _repository(db)
+    scope, denied = _launch_scope_or_redirect(request, repo, "/producao")
+    if denied:
+        return denied
+    farm_ids, variety_ids = _scoped_plot_filters(request, scope["active_season"])
+    plots = repo.list_plots(farm_ids=farm_ids, variety_ids=variety_ids)
+    launch_plots = _season_launch_plots(plots, scope)
+    harvest = None
+    if lot_id:
+        harvest = _lot_in_scope(request, repo, lot_id, scope)
+        if not harvest:
+            _flash(request, "error", "Lote não encontrado na fazenda ativa.")
+            return _redirect("/producao")
+        if harvest.plot and harvest.plot not in launch_plots:
+            launch_plots = [*launch_plots, harvest.plot]
+    last_by_plot = {}
+    for item in repo.list_harvests():
+        if item.plot_id in {p.id for p in launch_plots} and harvest_matches_season(item, scope.get("active_season")):
+            if item.plot_id not in last_by_plot or item.harvest_date > last_by_plot[item.plot_id]:
+                last_by_plot[item.plot_id] = item.harvest_date
+    plot_ids = [p.id for p in launch_plots]
+    yields = {unit: farm_yield_average(db, plot_ids, unit) or MEASURE_UNITS[unit][2] for unit in ("litros", "sacos_roca")}
+    yields_learned = {unit: farm_yield_average(db, plot_ids, unit) is not None for unit in ("litros", "sacos_roca")}
+    season = scope.get("active_season")
+    locked = bool(harvest and repo.harvest_has_commercializations(harvest.id))
+    return templates.TemplateResponse(
+        "harvest_form.html",
+        _base_context(
+            request, user, csrf_token, "harvest", _repo=repo,
+            hv=harvest, hv_locked=locked, hv_plots=sorted(launch_plots, key=lambda p: p.name or ""),
+            hv_last_by_plot=last_by_plot, hv_units=MEASURE_UNITS, hv_unit_hints=MEASURE_HINTS, hv_yields=yields,
+            hv_yields_learned=yields_learned, hv_types=HARVEST_TYPES, hv_destinations=DESTINATIONS,
+            hv_coffee_stages=COFFEE_STAGES, hv_season=season,
+            hv_next_code=harvest.lot_code if harvest else _suggest_next_harvest_lot_code(repo),
+            hv_today=today_in_app_timezone(),
+            hv_totals={"produced": sum(float(h.sacks_produced or 0) for h in repo.list_harvests()
+                                       if h.plot_id in plot_ids and harvest_matches_season(h, season))},
+            hv_preselect_plot=_optional_query_int(request.query_params.get("talhao")),
+        ),
+    )
+
+
+@router.post("/producao/lotes/{lot_id}/etapa")
+def lot_stage_action(
+    lot_id: int,
+    request: Request,
+    csrf_token: str = Form(...),
+    stage: str = Form(...),
+    event_date: str | None = Form(None),
+    storage_location: str | None = Form(None),
+    warehouse_receipt: str | None = Form(None),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    from app.services.harvest_lots import LOT_STAGE_LABELS, add_event
+
+    del user
+    validate_csrf(request, csrf_token)
+    repo = _repository(db)
+    scope = _global_scope_context(request, repo)
+    harvest = _lot_in_scope(request, repo, lot_id, scope)
+    if not harvest:
+        _flash(request, "error", "Lote não encontrado na fazenda ativa.")
+        return _redirect("/producao")
+    stage = (stage or "").strip()
+    if stage not in LOT_STAGE_LABELS:
+        _flash(request, "error", "Escolha uma etapa válida.")
+        return _redirect(f"/producao/lotes/{lot_id}")
+    if stage == "beneficiado" and harvest.sacks_estimated:
+        _flash(request, "error", "Para marcar como beneficiado, informe as sacas reais em “Informar benefício”.")
+        return _redirect(f"/producao/lotes/{lot_id}")
+    when = _date_or_none(event_date) or today_in_app_timezone()
+    location = _clean_text(storage_location) if stage == "armazem" else None
+    receipt = _clean_text(warehouse_receipt) if stage == "armazem" else None
+    if stage == "armazem" and not location:
+        _flash(request, "error", "Informe o nome do armazém.")
+        return _redirect(f"/producao/lotes/{lot_id}")
+    if stage == harvest.lot_stage and location == harvest.storage_location and receipt == harvest.warehouse_receipt:
+        return _redirect(f"/producao/lotes/{lot_id}")
+    titles = {"secagem": "Em secagem", "tulha": "Entrou na tulha", "beneficiado": "Pronto para vender",
+              "armazem": f"Levado para {location}"}
+    detail = f"Recibo de depósito nº {receipt}" if receipt else None
+    harvest.lot_stage = stage
+    harvest.storage_location = location
+    harvest.warehouse_receipt = receipt
+    add_event(db, harvest, event_date=when, kind="etapa", stage=stage, title=titles[stage], detail=detail)
+    db.commit()
+    _flash(request, "success", f"Etapa do lote atualizada: {LOT_STAGE_LABELS[stage].lower()}.")
+    return _redirect(f"/producao/lotes/{lot_id}")
+
+
+@router.post("/producao/lotes/{lot_id}/beneficio")
+def lot_processing_action(
+    lot_id: int,
+    request: Request,
+    csrf_token: str = Form(...),
+    real_sacks: str = Form(...),
+    processed_on: str | None = Form(None),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    from app.services.coffee_sales import parse_decimal
+    from app.services.harvest_lots import MEASURE_UNITS, _fmt, add_event
+
+    del user
+    validate_csrf(request, csrf_token)
+    repo = _repository(db)
+    scope = _global_scope_context(request, repo)
+    harvest = _lot_in_scope(request, repo, lot_id, scope)
+    if not harvest:
+        _flash(request, "error", "Lote não encontrado na fazenda ativa.")
+        return _redirect("/producao")
+    sacks = parse_decimal(real_sacks)
+    if not sacks or sacks <= 0:
+        _flash(request, "error", "Informe quantas sacas de 60 kg o lote rendeu.")
+        return _redirect(f"/producao/lotes/{lot_id}")
+    sold = sum(float(s.equivalent_sacks or 0) for s in
+               db.query(CoffeeCommercializationRecord).filter(CoffeeCommercializationRecord.harvest_id == harvest.id).all())
+    if sacks + 0.0001 < sold:
+        _flash(request, "error", f"O lote já tem {_format_decimal_br(sold)} sc vendidas. Confira as sacas reais ou ajuste as vendas.")
+        return _redirect(f"/producao/lotes/{lot_id}")
+    when = _date_or_none(processed_on) or today_in_app_timezone()
+    before = float(harvest.sacks_produced or 0)
+    detail = f"{_fmt(sacks, 2)} sacas de 60 kg"
+    if harvest.sacks_estimated:
+        detail += f" (estimado era ≈ {_fmt(before, 0)})"
+    if harvest.measured_quantity and harvest.measure_unit in {"litros", "sacos_roca"}:
+        real_yield = float(harvest.measured_quantity) / sacks
+        harvest.yield_factor = round(real_yield, 3)
+        detail += f" · rendimento {_fmt(real_yield, 0)} {MEASURE_UNITS[harvest.measure_unit][3]}"
+    harvest.sacks_produced = round(sacks, 2)
+    harvest.sacks_estimated = False
+    harvest.processed_on = when
+    if harvest.lot_stage in (None, "secagem", "tulha"):
+        harvest.lot_stage = "beneficiado"
+    area = float(harvest.plot.area_hectares or 0) if harvest.plot else 0
+    harvest.productivity_per_hectare = round(sacks / area, 2) if area else 0
+    add_event(db, harvest, event_date=when, kind="beneficio", stage="beneficiado", title="Beneficiado", detail=detail)
+    db.commit()
+    _flash(request, "success", f"Benefício registrado: {_format_decimal_br(sacks)} sc reais no lote.")
+    return _redirect(f"/producao/lotes/{lot_id}")
+
+def _harvest_measure(measure_unit, measured_quantity, yield_factor, sacks_produced, destination, current=None):
+    """Converte a medida da roça em sacas de 60 kg. Devolve (sacas, campos extras do lote)."""
+    from app.services.coffee_sales import parse_decimal
+    from app.services.harvest_lots import MEASURE_UNITS, estimate_sacks, initial_stage
+
+    unit = (measure_unit or "").strip() if isinstance(measure_unit, str) else ""
+    if unit not in MEASURE_UNITS:
+        if sacks_produced is None or isinstance(sacks_produced, FieldInfo):
+            raise ValueError("Informe quanto foi colhido.")
+        sacks = float(sacks_produced)
+        if sacks <= 0:
+            raise ValueError("Informe quanto foi colhido.")
+        return sacks, {}
+    quantity = parse_decimal(measured_quantity) if isinstance(measured_quantity, str) else None
+    if not quantity or quantity <= 0:
+        raise ValueError("Informe quanto foi colhido.")
+    factor = parse_decimal(yield_factor) if isinstance(yield_factor, str) else None
+    if unit != "sc_60" and (not factor or factor <= 0):
+        factor = MEASURE_UNITS[unit][2]
+    sacks = estimate_sacks(unit, quantity, factor)
+    if sacks <= 0:
+        raise ValueError("A quantidade colhida resultou em zero sacas. Confira o rendimento.")
+    extra = {"measure_unit": unit, "measured_quantity": quantity, "yield_factor": factor if unit != "sc_60" else None}
+    if current is not None and not current.sacks_estimated and current.measure_unit and current.measure_unit != "sc_60":
+        # lote já beneficiado: a medida da roça muda, mas as sacas reais continuam
+        return float(current.sacks_produced or 0), extra
+    extra["sacks_estimated"] = unit != "sc_60"
+    if current is None:
+        extra["lot_stage"] = initial_stage(unit, destination if isinstance(destination, str) else None)
+    elif unit == "sc_60":
+        extra["lot_stage"] = current.lot_stage or "beneficiado"
+    return sacks, extra
 
 
 def _validate_harvest_percentage(value: str | None, label: str) -> float | None:
@@ -20119,10 +20341,10 @@ def create_harvest_action(
     plot_id: int = Form(...),
     harvest_date: str = Form(...),
     lot_code: str | None = Form(None),
-    sacks_produced: float = Form(...),
-    harvest_type: str = Form(...),
-    coffee_stage: str = Form(...),
-    initial_destination: str = Form(...),
+    sacks_produced: float | None = Form(None),
+    harvest_type: str | None = Form(None),
+    coffee_stage: str | None = Form(None),
+    initial_destination: str | None = Form(None),
     responsible_name: str | None = Form(None),
     work_shift: str | None = Form(None),
     maturation_percentage: str | None = Form(None),
@@ -20130,6 +20352,9 @@ def create_harvest_action(
     input_moisture_percentage: str | None = Form(None),
     volume_count: str | None = Form(None),
     notes: str | None = Form(None),
+    measure_unit: str | None = Form(None),
+    measured_quantity: str | None = Form(None),
+    yield_factor: str | None = Form(None),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user_web),
 ):
@@ -20149,7 +20374,13 @@ def create_harvest_action(
         moisture_value = _validate_harvest_percentage(input_moisture_percentage, "Umidade na entrada")
     except ValueError as exc:
         _flash(request, "error", str(exc))
-        return _redirect("/producao")
+        return _redirect("/producao/colheitas/nova")
+    try:
+        sacks_value, measure_extra = _harvest_measure(measure_unit, measured_quantity, yield_factor, sacks_produced,
+                                                      initial_destination, harvest if False else None)
+    except ValueError as exc:
+        _flash(request, "error", str(exc))
+        return _redirect("/producao/colheitas/nova")
     area = float(plot.area_hectares) if plot else 0
     harvest = create_harvest(
         repo,
@@ -20158,10 +20389,11 @@ def create_harvest_action(
             "season_id": scope["active_season_id"],
             "harvest_date": harvest_date,
             "lot_code": lot_code,
-            "sacks_produced": sacks_produced,
-            "harvest_type": (harvest_type or "").strip(),
-            "coffee_stage": (coffee_stage or "").strip(),
-            "initial_destination": (initial_destination or "").strip(),
+            "sacks_produced": sacks_value,
+                **measure_extra,
+            "harvest_type": (harvest_type or "").strip() or None,
+            "coffee_stage": (coffee_stage or "").strip() or None,
+            "initial_destination": (initial_destination or "").strip() or None,
             "responsible_name": (responsible_name or "").strip() or None,
             "work_shift": (work_shift or "").strip() or None,
             "maturation_percentage": maturation_value,
@@ -20172,8 +20404,8 @@ def create_harvest_action(
         },
         area,
     )
-    _flash(request, "success", "Colheita registrada com sucesso.")
-    return _redirect_with_query("/producao", lote=harvest.id)
+    _flash(request, "success", f"Colheita registrada. Lote {harvest.lot_code} criado.")
+    return _redirect(f"/producao/lotes/{harvest.id}")
 
 
 @router.post("/producao/{record_id}/vincular-safra")
@@ -20216,10 +20448,10 @@ def update_harvest_action(
     plot_id: int = Form(...),
     harvest_date: str = Form(...),
     lot_code: str | None = Form(None),
-    sacks_produced: float = Form(...),
-    harvest_type: str = Form(...),
-    coffee_stage: str = Form(...),
-    initial_destination: str = Form(...),
+    sacks_produced: float | None = Form(None),
+    harvest_type: str | None = Form(None),
+    coffee_stage: str | None = Form(None),
+    initial_destination: str | None = Form(None),
     responsible_name: str | None = Form(None),
     work_shift: str | None = Form(None),
     maturation_percentage: str | None = Form(None),
@@ -20227,6 +20459,9 @@ def update_harvest_action(
     input_moisture_percentage: str | None = Form(None),
     volume_count: str | None = Form(None),
     notes: str | None = Form(None),
+    measure_unit: str | None = Form(None),
+    measured_quantity: str | None = Form(None),
+    yield_factor: str | None = Form(None),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user_web),
 ):
@@ -20248,17 +20483,17 @@ def update_harvest_action(
         return _redirect_for_request(request, "/producao")
     if plot.id != harvest.plot_id and not _plot_allowed_for_season_launch(plot, scope):
         _flash(request, "error", "O setor selecionado não está vinculado à safra ativa.")
-        return _redirect_for_request(request, f"/producao?edit_id={record_id}")
+        return _redirect_for_request(request, f"/producao/colheitas/{record_id}/editar")
     earliest_analysis = (db.query(func.min(CoffeeClassification.analysis_date))
                          .filter(CoffeeClassification.harvest_id == harvest.id).scalar())
     if earliest_analysis:
         if plot.id != harvest.plot_id or (lot_code or "").strip() != (harvest.lot_code or "").strip():
             _flash(request, "error", "Não é possível alterar o lote ou o setor enquanto houver análises de classificação vinculadas.")
-            return _redirect_for_request(request, f"/producao?edit_id={record_id}")
+            return _redirect_for_request(request, f"/producao/colheitas/{record_id}/editar")
         try:
             if date.fromisoformat(harvest_date) > earliest_analysis:
                 _flash(request, "error", "A data da colheita não pode ser posterior às análises já registradas.")
-                return _redirect_for_request(request, f"/producao?edit_id={record_id}")
+                return _redirect_for_request(request, f"/producao/colheitas/{record_id}/editar")
         except ValueError:
             pass
     try:
@@ -20268,7 +20503,13 @@ def update_harvest_action(
         moisture_value = _validate_harvest_percentage(input_moisture_percentage, "Umidade na entrada")
     except ValueError as exc:
         _flash(request, "error", str(exc))
-        return _redirect_for_request(request, f"/producao?edit_id={record_id}")
+        return _redirect_for_request(request, f"/producao/colheitas/{record_id}/editar")
+    try:
+        sacks_value, measure_extra = _harvest_measure(measure_unit, measured_quantity, yield_factor, sacks_produced,
+                                                      initial_destination, harvest if True else None)
+    except ValueError as exc:
+        _flash(request, "error", str(exc))
+        return _redirect(f"/producao/colheitas/{record_id}/editar")
     area = float(plot.area_hectares) if plot else 0
     try:
         update_harvest(
@@ -20278,10 +20519,11 @@ def update_harvest_action(
                 "plot_id": plot.id,
                 "harvest_date": harvest_date,
                 "lot_code": lot_code,
-                "sacks_produced": sacks_produced,
-                "harvest_type": (harvest_type or "").strip(),
-                "coffee_stage": (coffee_stage or "").strip(),
-                "initial_destination": (initial_destination or "").strip(),
+                "sacks_produced": sacks_value,
+                **measure_extra,
+                "harvest_type": (harvest_type or "").strip() or None,
+                "coffee_stage": (coffee_stage or "").strip() or None,
+                "initial_destination": (initial_destination or "").strip() or None,
                 "responsible_name": (responsible_name or "").strip() or None,
                 "work_shift": (work_shift or "").strip() or None,
                 "maturation_percentage": maturation_value,
@@ -20294,9 +20536,9 @@ def update_harvest_action(
         )
     except ValueError as exc:
         _flash(request, "error", str(exc))
-        return _redirect_for_request(request, f"/producao?edit_id={record_id}")
+        return _redirect_for_request(request, f"/producao/colheitas/{record_id}/editar")
     _flash(request, "success", "Colheita atualizada com sucesso.")
-    return _redirect_for_request(request, "/producao")
+    return _redirect_for_request(request, f"/producao/lotes/{record_id}")
 
 
 @router.post("/producao/{record_id}/excluir")
@@ -20434,7 +20676,7 @@ async def create_coffee_classification(request: Request, db: Session = Depends(g
                                     origem="producao" if production_origin else None)
     _flash(request, "success", "Análise registrada no histórico do lote.")
     if production_origin:
-        return _redirect_with_query("/producao", lote=harvest.id)
+        return _redirect(f"/producao/lotes/{harvest.id}")
     return _redirect_with_query("/producao/classificacao", harvest_id=harvest.id)
 
 
@@ -20769,7 +21011,7 @@ def create_commercialization_action(
         return _redirect_with_query("/producao/comercializacao", **retry)
     _flash(request, "success", "Comercialização registrada com sucesso.")
     if origem == "producao":
-        return _redirect_with_query("/producao", lote=harvest.id)
+        return _redirect(f"/producao/lotes/{harvest.id}")
     return _redirect("/producao/comercializacao")
 
 
@@ -21109,7 +21351,7 @@ async def _sale_save(request: Request, db: Session, user: User, csrf_token: str,
     _flash(request, "success", f"Venda {code} {'atualizada' if sale_code else 'registrada'} com sucesso.")
     origin_lot = _int_or_none(form.get("origem_lote"))
     if origin_lot and origin_lot in raw_lines:
-        return _redirect_with_query("/producao", lote=origin_lot)
+        return _redirect(f"/producao/lotes/{origin_lot}")
     return _redirect_with_query("/producao/comercializacao", venda=code)
 
 
@@ -21139,6 +21381,7 @@ def sale_status_action(
     csrf_token: str = Form(...),
     status: str = Form(...),
     status_date: str | None = Form(None),
+    voltar: str | None = Form(None),
     db: Session = Depends(get_db),
     user: User = Depends(get_current_user_web),
 ):
@@ -21160,6 +21403,8 @@ def sale_status_action(
         _flash(request, "error", str(exc))
         return _redirect_with_query("/producao/comercializacao", venda=sale_code)
     _flash(request, "success", f"Venda {sale_code}: {SALE_STATUS_LABELS[status.strip().lower()].lower()}.")
+    if isinstance(voltar, str) and re.fullmatch(r"/producao/lotes/\d+", voltar):
+        return _redirect(voltar)
     return _redirect_with_query("/producao/comercializacao", venda=sale_code)
 
 
