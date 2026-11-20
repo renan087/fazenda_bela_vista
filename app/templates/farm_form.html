@@ -139,10 +139,25 @@
                         </div>
                     </div>
 
-                    <label class="vw-f">
-                        <span>Importar arquivo GeoJSON (.json, .geojson) <small>opcional</small></span>
-                        <input type="file" name="boundary_geojson_file" accept=".json,.geojson,application/json" style="padding:8px 12px; height:auto;" data-fm-geo-file>
-                    </label>
+                    <div class="fm-geo-dropzone" data-fm-geo-dropzone>
+                        <span class="fm-geo-drop-icon" aria-hidden="true">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                        </span>
+                        <div class="fm-geo-drop-copy">
+                            <strong>Importar perímetro do arquivo</strong>
+                            <small>Arraste e solte aqui ou procure no aparelho · aceita <b>.kml</b>, <b>.geojson</b> e <b>.json</b></small>
+                        </div>
+                        <label class="sf-btn sf-btn-secondary fm-geo-browse">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+                            Procurar arquivo
+                            <input type="file"
+                                   name="boundary_geojson_file"
+                                   accept=".kml,.json,.geojson,application/vnd.google-earth.kml+xml,application/json,text/xml"
+                                   class="sr-only"
+                                   data-fm-geo-file>
+                        </label>
+                    </div>
+                    <div class="pd-alert is-info" data-fm-geo-status role="status" aria-live="polite" hidden></div>
                     {% if edit_farm and edit_farm.boundary_geojson %}
                     <p class="pd-note">Esta fazenda já possui perímetro salvo. Um novo desenho ou arquivo substitui o perímetro atual ao salvar.</p>
                     {% endif %}
@@ -214,7 +229,7 @@
                             </div>
                         </details>
 
-                        <details class="fm-opt-card" {% if edit_farm and edit_farm.attachments %}open{% endif %}>
+                        <details class="fm-opt-card">
                             <summary>
                                 <div class="fm-opt-left">
                                     <span class="fm-opt-icon" aria-hidden="true">
@@ -323,5 +338,5 @@
 <script>window.__GOOGLE_MAPS_API_KEY = {{ google_maps_web_key | tojson }};</script>
 <script src="{{ url_for('static', path='js/farm_boundary_editor.js') }}?v=20261120fm3"></script>
 {% include "partials/attachment_manager_script.html" %}
-<script src="{{ url_for('static', path='js/farms.js') }}?v=20261120fm3"></script>
+<script src="{{ url_for('static', path='js/farms.js') }}?v=20261120fm5"></script>
 {% endblock %}

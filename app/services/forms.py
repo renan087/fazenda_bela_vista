@@ -1,6 +1,7 @@
 import json
 import math
 import unicodedata
+import xml.etree.ElementTree as ET
 from datetime import date
 from decimal import Decimal
 
@@ -2619,6 +2620,59 @@ def normalize_geojson(raw_text: str | None) -> str | None:
     return json.dumps(parsed)
 
 
+def normalize_kml_to_geojson(raw_text: str | None) -> str | None:
+    """Converte um polígono KML (<coordinates>) em GeoJSON Polygon normalizado."""
+    if not raw_text:
+        return None
+    text = raw_text.lstrip("\ufeff").strip()
+    if not text or "<" not in text:
+        return None
+    upper = text.upper()
+    if "<!DOCTYPE" in upper or "<!ENTITY" in upper:
+        return None
+    try:
+        root = ET.fromstring(text)
+    except ET.ParseError:
+        return None
+
+    def _parse_coord_blob(blob: str) -> list[list[float]]:
+        pts: list[list[float]] = []
+        for token in (blob or "").replace("\n", " ").replace("\t", " ").split():
+            parts = token.split(",")
+            if len(parts) < 2:
+                continue
+            try:
+                lng = float(parts[0])
+                lat = float(parts[1])
+            except ValueError:
+                continue
+            if -180.0 <= lng <= 180.0 and -90.0 <= lat <= 90.0:
+                pts.append([lng, lat])
+        return pts
+
+    # Prioriza Polygon -> outerBoundaryIs -> LinearRing -> coordinates; fallback para qualquer <coordinates>
+    coord_texts: list[str] = []
+    for elem in root.iter():
+        tag = elem.tag.split("}")[-1].lower()
+        if tag == "outerboundaryis":
+            for child in elem.iter():
+                if child.tag.split("}")[-1].lower() == "coordinates" and (child.text or "").strip():
+                    coord_texts.append(child.text)
+    if not coord_texts:
+        for elem in root.iter():
+            if elem.tag.split("}")[-1].lower() == "coordinates" and (elem.text or "").strip():
+                coord_texts.append(elem.text)
+
+    for blob in coord_texts:
+        pts = _parse_coord_blob(blob)
+        if len(pts) >= 3:
+            if pts[0] != pts[-1]:
+                pts.append(pts[0])
+            if len(pts) >= 4:
+                return json.dumps({"type": "Polygon", "coordinates": [pts]})
+    return None
+
+
 def extract_geojson_file(raw_bytes: bytes | None) -> str | None:
     if not raw_bytes:
         return None
@@ -2626,7 +2680,10 @@ def extract_geojson_file(raw_bytes: bytes | None) -> str | None:
         decoded = raw_bytes.decode("utf-8")
     except UnicodeDecodeError:
         decoded = raw_bytes.decode("latin-1")
-    return normalize_geojson(decoded)
+    parsed = normalize_geojson(decoded)
+    if parsed is not None:
+        return parsed
+    return normalize_kml_to_geojson(decoded)
 
 
 def estimate_geojson_centroid(geojson_text: str | None) -> tuple[float | None, float | None]:

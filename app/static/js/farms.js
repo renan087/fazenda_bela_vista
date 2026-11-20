@@ -283,6 +283,8 @@
         const removeMapBtn = wizard.querySelector('[data-fm-wiz-remove]');
         const clearMapBtn = wizard.querySelector('[data-fm-wiz-clear]');
         const resetMapBtn = wizard.querySelector('[data-fm-wiz-reset]');
+        const geoDropzone = wizard.querySelector('[data-fm-geo-dropzone]');
+        const geoStatusEl = wizard.querySelector('[data-fm-geo-status]');
         const wizVerticesEl = wizard.querySelector('[data-fm-wiz-vertices]');
         const wizPolyAreaEl = wizard.querySelector('[data-fm-wiz-poly-area]');
         const wizPolyBadge = wizard.querySelector('[data-fm-poly-badge]');
@@ -505,6 +507,124 @@
         resetMapBtn?.addEventListener('click', () => {
             if (formEditor?.resetToInitial) formEditor.resetToInitial();
         });
+
+        /* Parse de arquivos geodésicos (.kml, .geojson, .json) + Drag & Drop com preview imediato no mapa */
+        const parseKmlToGeoJson = (xmlText) => {
+            const doc = new DOMParser().parseFromString(xmlText, 'application/xml');
+            if (doc.querySelector('parsererror')) return null;
+            const byLocalName = (root, name) =>
+                [...root.getElementsByTagName('*')].filter((el) => (el.localName || el.tagName.split(':').pop()).toLowerCase() === name);
+            const blobs = [];
+            byLocalName(doc, 'outerboundaryis').forEach((ob) => {
+                byLocalName(ob, 'coordinates').forEach((c) => {
+                    if (c.textContent && c.textContent.trim()) blobs.push(c.textContent.trim());
+                });
+            });
+            if (!blobs.length) {
+                byLocalName(doc, 'coordinates').forEach((c) => {
+                    if (c.textContent && c.textContent.trim()) blobs.push(c.textContent.trim());
+                });
+            }
+            for (const blob of blobs) {
+                const pts = [];
+                blob.split(/\s+/).forEach((tok) => {
+                    const parts = tok.split(',');
+                    if (parts.length < 2) return;
+                    const lng = parseFloat(parts[0]);
+                    const lat = parseFloat(parts[1]);
+                    if (!Number.isNaN(lng) && !Number.isNaN(lat) && lng >= -180 && lng <= 180 && lat >= -90 && lat <= 90) {
+                        pts.push([lng, lat]);
+                    }
+                });
+                if (pts.length >= 3) {
+                    const first = pts[0];
+                    const last = pts[pts.length - 1];
+                    if (first[0] !== last[0] || first[1] !== last[1]) pts.push([first[0], first[1]]);
+                    if (pts.length >= 4) return { type: 'Polygon', coordinates: [pts] };
+                }
+            }
+            return null;
+        };
+
+        const parseGeodesicFileText = (rawText) => {
+            const text = String(rawText || '').replace(/^\uFEFF/, '').trim();
+            if (!text) return null;
+            if (text.startsWith('{') || text.startsWith('[')) {
+                try {
+                    const obj = JSON.parse(text);
+                    const pts = window.extractFarmBoundaryPoints?.(obj) || [];
+                    if (pts.length >= 3) {
+                        const closed = [...pts.map((p) => [p.lng, p.lat]), [pts[0].lng, pts[0].lat]];
+                        return { type: 'Polygon', coordinates: [closed] };
+                    }
+                } catch (e) { /* tenta KML abaixo */ }
+            }
+            if (text.includes('<')) {
+                return parseKmlToGeoJson(text);
+            }
+            return null;
+        };
+
+        const showGeoStatus = (msg, kind) => {
+            if (!geoStatusEl) return;
+            geoStatusEl.textContent = msg;
+            geoStatusEl.className = `pd-alert ${kind === 'error' ? 'is-error' : 'is-info'}`;
+            geoStatusEl.hidden = false;
+        };
+
+        const handleGeodesicFile = async (file) => {
+            if (!file) return;
+            const lower = (file.name || '').toLowerCase();
+            if (!lower.endsWith('.kml') && !lower.endsWith('.geojson') && !lower.endsWith('.json')) {
+                showGeoStatus('Formato não suportado. Envie um arquivo .kml, .geojson ou .json.', 'error');
+                return;
+            }
+            try {
+                const text = await file.text();
+                const parsed = parseGeodesicFileText(text);
+                if (!parsed) {
+                    showGeoStatus(`Não foi possível encontrar um polígono válido em "${file.name}".`, 'error');
+                    return;
+                }
+                currentGeom = parsed;
+                const pts = window.extractFarmBoundaryPoints?.(parsed) || [];
+                currentVertexCount = pts.length;
+                if (geoInput) geoInput.value = JSON.stringify(parsed);
+                if (geoFileInput) geoFileInput.value = '';
+                await mountWizardMap(parsed);
+                showGeoStatus(`"${file.name}" carregado no mapa (${pts.length} vértices). Você pode ajustar os pontos antes de salvar.`, 'info');
+                syncSummary();
+            } catch (err) {
+                showGeoStatus('Erro ao ler o arquivo selecionado. Tente novamente.', 'error');
+            }
+        };
+
+        geoFileInput?.addEventListener('change', () => {
+            const file = geoFileInput.files && geoFileInput.files[0];
+            if (file) handleGeodesicFile(file);
+        });
+
+        if (geoDropzone) {
+            ['dragenter', 'dragover'].forEach((evt) => {
+                geoDropzone.addEventListener(evt, (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    geoDropzone.classList.add('is-dragover');
+                });
+            });
+            ['dragleave', 'dragend'].forEach((evt) => {
+                geoDropzone.addEventListener(evt, () => {
+                    geoDropzone.classList.remove('is-dragover');
+                });
+            });
+            geoDropzone.addEventListener('drop', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                geoDropzone.classList.remove('is-dragover');
+                const file = e.dataTransfer?.files && e.dataTransfer.files[0];
+                if (file) handleGeodesicFile(file);
+            });
+        }
 
         carLookupBtn?.addEventListener('click', async () => {
             const raw = (carInput?.value || '').trim();

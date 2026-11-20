@@ -307,3 +307,45 @@ def test_farm_detail_rain_settings_save(env, monkeypatch):
     assert float(row.rainy_day_mm) == 2.0
     assert row.alert_registered is True
     assert row.alert_forecast is False
+
+
+def test_kml_file_parsing_and_collapsed_attachments_on_edit(env):
+    from app.services.forms import extract_geojson_file
+
+    kml = b"""<?xml version="1.0" encoding="UTF-8"?>
+    <kml xmlns="http://www.opengis.net/kml/2.2">
+      <Document><Placemark><Polygon><outerBoundaryIs><LinearRing>
+        <coordinates>-40.84,-14.86,0 -40.83,-14.86,0 -40.83,-14.85,0</coordinates>
+      </LinearRing></outerBoundaryIs></Polygon></Placemark></Document>
+    </kml>"""
+    parsed = extract_geojson_file(kml)
+    assert parsed is not None
+    geom = json.loads(parsed)
+    assert geom["type"] == "Polygon"
+    assert len(geom["coordinates"][0]) == 4
+    assert geom["coordinates"][0][0] == geom["coordinates"][0][-1]
+
+    # Rejeita XML com DOCTYPE (proteção XXE)
+    assert extract_geojson_file(b"<!DOCTYPE foo><kml><coordinates>0,0 1,0 1,1</coordinates></kml>") is None
+
+    # No passo 3 em modo edição, Anexos da propriedade deve começar sempre recolhido mesmo havendo anexos
+    farm = env.db.query(Farm).one()
+    env.db.add(FarmAttachment(farm_id=farm.id, filename="doc.pdf", content_type="application/pdf", file_data=b"%PDF"))
+    env.db.commit()
+    resp = env.routes.edit_farm_page(
+        farm.id,
+        env.request(f"/fazendas/{farm.id}/editar?passo=3"),
+        BackgroundTasks(),
+        passo=3,
+        db=env.db,
+        user=env.user,
+        csrf_token="x",
+    )
+    html = resp.body.decode("utf-8")
+    assert "data-fm-geo-dropzone" in html
+    assert ".kml" in html
+    assert "Procurar arquivo" in html
+    # Garante que o bloco de anexos não tem atributo open
+    idx = html.index("Anexos da propriedade")
+    snippet = html[max(0, idx - 400):idx]
+    assert '<details class="fm-opt-card" open>' not in snippet
