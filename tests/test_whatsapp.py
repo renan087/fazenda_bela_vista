@@ -645,3 +645,59 @@ def test_exact_user_example_requests_buttons(monkeypatch):
     assert _receive(db, client, _payload('5535999', 'user-example', 'finaliza essa conversa')) == ['close_pending']
     assert client.sent[-1][0] == 'buttons'
     db.close()
+
+
+@pytest.mark.parametrize('command', ['novo atendimento', 'nova conversa', '/novo', 'reiniciar'])
+def test_new_conversation_requests_closure_before_reset(monkeypatch, command):
+    from datetime import datetime, timezone
+    from uuid import uuid4
+    from app.models.whatsapp import WhatsAppClosingRequest
+    _settings(monkeypatch)
+    routes, db, user, scope, *_ = _route_env(monkeypatch, [])
+    client = FakeClient()
+    code = whatsapp_bot.start_link(db, user, scope['active_farm'], scope['active_season'])
+    _receive(db, client, _payload('5535999', 'link-new-conversation', f'SISFARM {code}'))
+    now = datetime.now(timezone.utc)
+    thread = routes.AssistantThread(id=uuid4().hex, user_id=user.id, organization_id=user.organization_id,
+                                    farm_id=scope['active_farm_id'], season_id=scope['active_season_id'],
+                                    channel='whatsapp', title='Anterior', created_at=now, updated_at=now)
+    routes._save_thread(db, thread, [{'role': 'user', 'content': 'Contexto anterior'}])
+    link = db.query(WhatsAppLink).one()
+    link.thread_id = thread.id
+    db.commit()
+    assert _receive(db, client, _payload('5535999', 'new-conversation-request', command)) == ['close_pending']
+    assert link.thread_id == thread.id and db.query(WhatsAppClosingRequest).one().status == 'pending'
+    button = client.sent[-1][3][1][0]
+    assert _receive(db, client, _payload('5535999', 'new-conversation-confirm', button=button)) == ['closed']
+    assert link.thread_id is None and db.get(routes.AssistantThread, thread.id) is not None
+    db.close()
+
+
+def test_ai_new_conversation_intent_opens_confirmation(monkeypatch):
+    _settings(monkeypatch)
+    routes, db, user, scope, *_ = _route_env(monkeypatch, [])
+    client = FakeClient()
+    code = whatsapp_bot.start_link(db, user, scope['active_farm'], scope['active_season'])
+    _receive(db, client, _payload('5535999', 'link-new-ai', f'SISFARM {code}'))
+    def ai_requests_restart(history, assistant, **kwargs):
+        description = next(schema['function']['description'] for schema in assistant.tools
+                           if schema['function']['name'] == 'solicitar_encerramento_conversa')
+        assert 'novo chat' in description
+        assistant.call_tool('solicitar_encerramento_conversa', '{}')
+        return {'resposta': 'Aguardando confirmação.'}
+    monkeypatch.setattr(routes, 'run_farm_assistant', ai_requests_restart)
+    assert _receive(db, client, _payload('5535999', 'new-ai', 'quero começar outro assunto do zero')) == ['close_pending']
+    assert client.sent[-1][0] == 'buttons'
+    db.close()
+
+
+def test_false_new_chat_claim_is_replaced_by_confirmation(monkeypatch):
+    _settings(monkeypatch)
+    routes, db, user, scope, *_ = _route_env(monkeypatch, [])
+    client = FakeClient()
+    code = whatsapp_bot.start_link(db, user, scope['active_farm'], scope['active_season'])
+    _receive(db, client, _payload('5535999', 'link-false-new', f'SISFARM {code}'))
+    monkeypatch.setattr(routes, 'run_farm_assistant', lambda *args, **kwargs: {'resposta': 'Um novo atendimento foi aberto.'})
+    assert _receive(db, client, _payload('5535999', 'false-new', 'quero outro atendimento')) == ['close_pending']
+    assert client.sent[-1][0] == 'buttons'
+    db.close()

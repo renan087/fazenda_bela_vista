@@ -22751,7 +22751,7 @@ def _assistant_turn(db, user, repo, scope, thread, message, *, image=None, attac
         def request_chat_closure():
             return {"aguardando_confirmacao": True}
         module_tools.append((_tool("solicitar_encerramento_conversa",
-            "Use quando o usuário pedir para encerrar, finalizar ou fechar esta conversa ou atendimento, mesmo com palavras informais. Não use para encerrar cadastros, safras, lançamentos ou perguntas sobre como encerrar. O sistema pedirá confirmação; jamais diga que a conversa já foi encerrada.", {}), request_chat_closure))
+            "Use quando o usuário pedir para encerrar, finalizar ou fechar esta conversa ou atendimento, ou para começar uma nova conversa, novo chat, outro atendimento ou recomeçar, mesmo com palavras informais. Não use para encerrar cadastros, safras, lançamentos ou perguntas sobre como encerrar. O sistema pedirá confirmação; jamais diga que a conversa já foi encerrada.", {}), request_chat_closure))
     assistant = FarmAssistant(farm_name=farm.name, season=season, items=products, balances=balances,
                               plots=plots, today=today_in_app_timezone(), prepare_draft=prepare_draft,
                               extra_tools=queries.tools() + reminders.tools() + module_tools, prepare_purchase=prepare_purchase,
@@ -22828,7 +22828,8 @@ def _assistant_turn(db, user, repo, scope, thread, message, *, image=None, attac
         db.rollback()
         return reply(str(exc), error=True)
     text = (result.get("resposta") or "").strip() or "Pode me contar um pouco mais?"
-    if assistant.closing_requested:
+    claims_new_chat = re.search(r"\b(?:novo|nova)\s+(?:chat|atendimento|conversa)\b.{0,35}\b(?:iniciad[oa]|abert[oa]|criad[oa])\b|\b(?:inici(?:ei|amos)|abr(?:i|imos)|come(?:cei|camos))\b.{0,45}\b(?:nova?\s+)?(?:conversa|atendimento|chat)\b", normalized(text))
+    if assistant.closing_requested or (_assistant_thread_channel(thread) == "whatsapp" and claims_new_chat):
         thread, item = reply("Antes de encerrarmos, posso ajudar em mais alguma coisa?")
         item["request_chat_closure"] = True
         return thread, item

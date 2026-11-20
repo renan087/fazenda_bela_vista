@@ -37,7 +37,7 @@ MAX_ATTEMPTS = 3
 UNKNOWN_REPLY_INTERVAL = timedelta(hours=1)  # a instrucao de vinculo pode ter falhado na entrega; nao silenciar por 24 h
 UNKNOWN_TEXT = ("Olá! Este número ainda não está vinculado a uma conta SiSFarm. Para usar o assistente pelo WhatsApp, "
                 "entre no SiSFarm, abra Assistente > WhatsApp e gere o seu código de vínculo.")
-NEW_THREAD_WORDS = {"novo", "nova conversa", "/novo", "reiniciar"}
+NEW_THREAD_WORDS = {"novo", "nova conversa", "novo atendimento", "novo chat", "iniciar nova conversa", "iniciar novo atendimento", "/novo", "reiniciar"}
 CLOSE_WORDS = {"encerrar", "encerrar conversa", "encerrar atendimento", "finalizar", "finalizar conversa", "finalizar atendimento", "terminar conversa", "terminar atendimento", "finaliza essa conversa", "finalize esta conversa", "/encerrar"}
 CONFIRM_WORDS = {"confirmar", "confirmo", "confirma"}
 DISCARD_WORDS = {"descartar", "descarta", "cancelar"}
@@ -429,7 +429,7 @@ def _handle(db, row, client) -> str | None:
             # Uma nova dúvida mantém a conversa e segue o processamento normal.
             pending_close.status, pending_close.resolved_at = "continued", _now()
             db.commit()
-    if row.msg_type == "text" and key in CLOSE_WORDS:
+    if row.msg_type == "text" and key in CLOSE_WORDS | NEW_THREAD_WORDS:
         request = WhatsAppClosingRequest(id=secrets.token_hex(16), link_id=link.id, thread_id=link.thread_id,
                                          status="pending", created_at=_now())
         db.add(request)
@@ -455,12 +455,6 @@ def _handle(db, row, client) -> str | None:
             client.send_text(row.wa_id, "Essa confirmação não está mais disponível. Peça novamente a alteração do lembrete.")
             return None
         text = key = reminder_button.group(1)
-
-    if key in NEW_THREAD_WORDS:
-        link.thread_id = None
-        db.commit()
-        client.send_text(row.wa_id, "Certo, começamos uma conversa nova. Em que posso ajudar?")
-        return None
 
     action = _button_action(message)
     recent = routes._thread_messages(thread) if thread is not None else []
