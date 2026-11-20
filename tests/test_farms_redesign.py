@@ -345,11 +345,13 @@ def test_kml_file_parsing_and_collapsed_attachments_on_edit(env):
     assert "data-fm-geo-dropzone" in html
     assert ".kml" in html
     assert "Procurar arquivo" in html
-    # Garante que o bloco de anexos não tem atributo open
+    # Garante que o bloco de anexos não tem atributo open e que a confirmação de área usa modal elegante sem mencionar "5%"
     idx = html.index("Anexos da propriedade")
     snippet = html[max(0, idx - 400):idx]
     assert '<details class="fm-opt-card" open>' not in snippet
-    assert "data-fm-area-diff" in html
+    assert "data-fm-area-modal" in html
+    assert "Qual área você quer usar nesta fazenda?" in html
+    assert "tolerância de 5%" not in html
     assert 'data-fm-area-choice="keep"' in html
     assert 'data-fm-area-choice="map"' in html
 

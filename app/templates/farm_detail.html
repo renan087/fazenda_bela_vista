@@ -325,24 +325,6 @@
                     <button type="button" class="sf-btn sf-btn-secondary" data-fm-map-undo>Desfazer</button>
                     <button type="button" class="sf-btn sf-btn-secondary" data-fm-map-remove>Remover ponto</button>
                 </div>
-                <div class="fm-area-diff" data-fm-map-area-diff role="alert" hidden>
-                    <div class="fm-area-diff-head">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9 1.8 18.4A2 2 0 0 0 3.5 21h17a2 2 0 0 0 1.7-2.6L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
-                        <div>
-                            <strong data-fm-map-diff-title>Diferença acima de 5% entre a área declarada e o polígono</strong>
-                            <p data-fm-map-diff-desc>Escolha qual área deseja salvar. O polígono desenhado será preservado em qualquer opção.</p>
-                        </div>
-                    </div>
-                    <div class="fm-area-diff-vals">
-                        <div><span>Área declarada</span><strong data-fm-map-declared>—</strong></div>
-                        <div><span>Área no mapa</span><strong data-fm-map-calculated>—</strong></div>
-                        <div><span>Diferença</span><strong data-fm-map-pct>—</strong></div>
-                    </div>
-                    <div class="fm-area-diff-actions">
-                        <button type="button" class="sf-btn sf-btn-secondary" data-fm-map-area-choice="keep">Manter área declarada</button>
-                        <button type="button" class="sf-btn sf-btn-primary" data-fm-map-area-choice="map">Usar área do mapa</button>
-                    </div>
-                </div>
             </div>
         </div>
         <div class="fm-sheet-foot">
@@ -405,9 +387,45 @@
 </dialog>
 {% endif %}
 
+{# Modal elegante de confirmação de área ao salvar edição rápida no mapa #}
+<dialog class="fm-dialog is-sm" data-fm-map-area-modal aria-labelledby="fm-map-area-modal-title">
+    <div class="fm-sheet">
+        <div class="fm-sheet-head">
+            <div>
+                <p class="pd-eyebrow">Conferência de área</p>
+                <h3 id="fm-map-area-modal-title">Qual área você quer usar nesta fazenda?</h3>
+            </div>
+            <button type="button" class="sf-icon-btn" aria-label="Fechar" data-fm-map-area-close>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>
+            </button>
+        </div>
+        <div class="fm-sheet-body">
+            <p class="fm-area-modal-lead">A área medida no mapa ficou diferente da área cadastrada. Escolha qual valor prefere manter — o desenho do mapa continua salvo nas duas opções.</p>
+            <div class="fm-area-choice-grid">
+                <button type="button" class="fm-area-option" data-fm-map-area-choice="keep">
+                    <span class="fm-area-option-tag">Área cadastrada</span>
+                    <strong class="fm-area-option-val" data-fm-map-declared>—</strong>
+                    <small>Manter a área atual da fazenda</small>
+                    <span class="sf-btn sf-btn-secondary fm-area-option-cta">Manter esta área</span>
+                </button>
+                <button type="button" class="fm-area-option is-map" data-fm-map-area-choice="map">
+                    <span class="fm-area-option-tag">Calculada no mapa</span>
+                    <strong class="fm-area-option-val" data-fm-map-calculated>—</strong>
+                    <small>Atualizar com a medida do desenho</small>
+                    <span class="sf-btn sf-btn-primary fm-area-option-cta">Usar área do mapa</span>
+                </button>
+            </div>
+        </div>
+        <div class="fm-sheet-foot">
+            <span style="font-size:12px; color:var(--pd-muted);">O perímetro desenhado não será alterado.</span>
+            <button type="button" class="sf-btn sf-btn-secondary" data-fm-map-area-close>Voltar e ajustar mapa</button>
+        </div>
+    </div>
+</dialog>
+
 <script type="application/json" id="fm-boundary-geometries-data">{{ farm_boundary_geometries_json|safe }}</script>
 <script type="application/json" id="fm-plot-geometries-data">{{ plot_geometries_json|safe }}</script>
 <script>window.__GOOGLE_MAPS_API_KEY = {{ google_maps_web_key | tojson }};</script>
 <script src="{{ url_for('static', path='js/farm_boundary_editor.js') }}?v=20261120fm3"></script>
-<script src="{{ url_for('static', path='js/farms.js') }}?v=20261120fm6"></script>
+<script src="{{ url_for('static', path='js/farms.js') }}?v=20261120fm7"></script>
 {% endblock %}
