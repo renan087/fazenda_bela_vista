@@ -510,3 +510,102 @@ def test_failed_closure_prompt_does_not_leave_pending_confirmation(monkeypatch):
     assert _receive(db, client, _payload("5535999", "close-fail", "encerrar")) == ["failed"]
     assert db.query(WhatsAppClosingRequest).count() == 0
     db.close()
+
+
+def test_idle_closure_and_survey(monkeypatch):
+    from datetime import datetime, timedelta, timezone
+    from uuid import uuid4
+    from app.models.whatsapp import WhatsAppClosingRequest, WhatsAppSurvey
+    from app.services.whatsapp_lifecycle import process_lifecycle
+    _settings(monkeypatch)
+    routes, db, user, scope, *_ = _route_env(monkeypatch, [])
+    client = FakeClient()
+    code = whatsapp_bot.start_link(db, user, scope["active_farm"], scope["active_season"])
+    _receive(db, client, _payload("5535999", "link-idle", f"SISFARM {code}"))
+    now = datetime.now(timezone.utc)
+    thread = routes.AssistantThread(id=uuid4().hex, user_id=user.id, organization_id=user.organization_id,
+                                    farm_id=scope["active_farm_id"], season_id=scope["active_season_id"],
+                                    channel="whatsapp", title="WhatsApp", created_at=now, updated_at=now)
+    routes._save_thread(db, thread, [{"role": "assistant", "content": "Olá"}])
+    link = db.query(WhatsAppLink).one()
+    link.thread_id, link.last_inbound_at = thread.id, now - timedelta(minutes=31)
+    db.commit()
+    process_lifecycle(db, client, now)
+    request = db.query(WhatsAppClosingRequest).one()
+    assert request.status == "pending" and link.thread_id == thread.id
+    process_lifecycle(db, client, now + timedelta(minutes=11))
+    survey = db.query(WhatsAppSurvey).one()
+    assert request.status == "closed" and link.thread_id is None and survey.status == "pending"
+    assert db.get(routes.AssistantThread, thread.id) is not None
+    process_lifecycle(db, client, now + timedelta(minutes=42))
+    assert db.get(WhatsAppSurvey, survey.id).status == "unrated"
+    db.close()
+
+
+def test_survey_button_is_separate_from_new_conversation(monkeypatch):
+    from datetime import datetime, timezone
+    from app.models.whatsapp import WhatsAppClosingRequest, WhatsAppSurvey
+    _settings(monkeypatch)
+    routes, db, user, scope, *_ = _route_env(monkeypatch, [])
+    client = FakeClient()
+    code = whatsapp_bot.start_link(db, user, scope["active_farm"], scope["active_season"])
+    _receive(db, client, _payload("5535999", "link-survey", f"SISFARM {code}"))
+    link = db.query(WhatsAppLink).one()
+    now = datetime.now(timezone.utc)
+    request = WhatsAppClosingRequest(id="a" * 32, link_id=link.id, status="closed", created_at=now, resolved_at=now)
+    survey = WhatsAppSurvey(id="b" * 32, closing_id=request.id, link_id=link.id, status="pending", created_at=now)
+    db.add(request)
+    db.flush()
+    db.add(survey)
+    db.commit()
+    assert _receive(db, client, _payload("5535999", "survey-good", button=f"survey:good:{survey.id}")) == ["survey_answered"]
+    assert survey.rating == "good" and survey.status == "answered" and link.thread_id is None
+    assert _receive(db, client, _payload("5535999", "survey-again", button=f"survey:bad:{survey.id}")) == ["survey_stale"]
+    db.close()
+
+
+def test_idle_worker_respects_queued_message_and_expired_window(monkeypatch):
+    from datetime import datetime, timedelta, timezone
+    from uuid import uuid4
+    from app.services.whatsapp_lifecycle import process_lifecycle
+    _settings(monkeypatch)
+    routes, db, user, scope, *_ = _route_env(monkeypatch, [])
+    client = FakeClient()
+    code = whatsapp_bot.start_link(db, user, scope["active_farm"], scope["active_season"])
+    _receive(db, client, _payload("5535999", "link-idle-queued", f"SISFARM {code}"))
+    now = datetime.now(timezone.utc)
+    thread = routes.AssistantThread(id=uuid4().hex, user_id=user.id, organization_id=user.organization_id,
+                                    farm_id=scope["active_farm_id"], season_id=scope["active_season_id"],
+                                    channel="whatsapp", title="WhatsApp", created_at=now, updated_at=now)
+    routes._save_thread(db, thread, [{"role": "assistant", "content": "Olá"}])
+    link = db.query(WhatsAppLink).one()
+    link.thread_id, link.last_inbound_at = thread.id, now - timedelta(minutes=31)
+    db.commit()
+    ids = whatsapp_bot.store_inbound(db, whatsapp.extract_messages(_payload("5535999", "queued-idle", "nova dúvida")))
+    sent = len(client.sent)
+    process_lifecycle(db, client, now)
+    assert len(client.sent) == sent and link.thread_id == thread.id
+    db.get(WhatsAppInboundMessage, ids[0]).status = "done"
+    link.last_inbound_at = now - timedelta(hours=25)
+    db.commit()
+    process_lifecycle(db, client, now)
+    assert len(client.sent) == sent and link.thread_id == thread.id
+    db.close()
+
+
+def test_explicit_close_sends_one_survey(monkeypatch):
+    from app.models.whatsapp import WhatsAppSurvey
+    from app.services.whatsapp_lifecycle import process_lifecycle
+    _settings(monkeypatch)
+    routes, db, user, scope, *_ = _route_env(monkeypatch, [])
+    client = FakeClient()
+    code = whatsapp_bot.start_link(db, user, scope["active_farm"], scope["active_season"])
+    _receive(db, client, _payload("5535999", "link-explicit-survey", f"SISFARM {code}"))
+    _receive(db, client, _payload("5535999", "explicit-request", "encerrar"))
+    button = client.sent[-1][3][1][0]
+    _receive(db, client, _payload("5535999", "explicit-confirm", button=button))
+    process_lifecycle(db, client)
+    count = len(client.sent)
+    process_lifecycle(db, client)
+    assert db.query(WhatsAppSurvey).one().status == "pending" and len(client.sent) == count
+    db.close()

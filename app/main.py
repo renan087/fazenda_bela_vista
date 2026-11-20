@@ -38,6 +38,7 @@ from app.services.coffee_quote_sync_service import run_coffee_quote_sync_loop
 from app.services.asaas_card_migration_worker import run_card_migration_loop
 from app.services.subscription_reconciliation import run_subscription_reconciliation_loop
 from app.services.billing_notices import run_billing_notice_loop
+from app.services.whatsapp_lifecycle import run_whatsapp_lifecycle_loop
 from app.services.data_change_audit import (
     install_data_change_audit_listeners,
     reset_data_change_audit_context,
@@ -94,6 +95,7 @@ async def lifespan(app: FastAPI):
         asyncio.create_task(run_card_migration_loop()),
         asyncio.create_task(run_subscription_reconciliation_loop()),
         asyncio.create_task(run_billing_notice_loop()),
+        asyncio.create_task(run_whatsapp_lifecycle_loop()),
     ]
     if settings.coffee_quote_sync_enabled:
         background_tasks.append(asyncio.create_task(run_coffee_quote_sync_loop()))

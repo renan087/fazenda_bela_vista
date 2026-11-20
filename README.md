@@ -139,3 +139,7 @@ No painel web (super administrador): **Configuração → Testes automatizados**
 ## Publicacao
 
 O projeto permanece preparado para deploy no Render com `render.yaml`.
+
+### Encerramento do atendimento pelo WhatsApp
+
+A rotina verifica os prazos aproximadamente a cada minuto enquanto a aplicação está em execução. Os valores são configuráveis por variáveis de ambiente: `WHATSAPP_IDLE_MINUTES` (padrão 30), `WHATSAPP_CLOSING_MINUTES` (10) e `WHATSAPP_SURVEY_MINUTES` (30). A rotina respeita a janela de mensagens do WhatsApp; pesquisas que não puderem ser enviadas ficam registradas como indisponíveis. Em falhas de envio com resultado incerto, não repete automaticamente a mensagem para evitar duplicação. O histórico das conversas é preservado.

@@ -73,3 +73,16 @@ class WhatsAppClosingRequest(Base):
     status: Mapped[str] = mapped_column(String(20), index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
+class WhatsAppSurvey(Base):
+    """Pesquisa vinculada a um encerramento, independente da conversa seguinte."""
+    __tablename__ = "whatsapp_surveys"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    closing_id: Mapped[str] = mapped_column(ForeignKey("whatsapp_closing_requests.id", ondelete="CASCADE"), unique=True)
+    link_id: Mapped[int] = mapped_column(ForeignKey("whatsapp_links.id", ondelete="CASCADE"), index=True)
+    status: Mapped[str] = mapped_column(String(20), index=True)
+    rating: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

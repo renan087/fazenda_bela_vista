@@ -31,6 +31,9 @@ class Settings(BaseSettings):
     whatsapp_app_secret: str | None = None
     whatsapp_graph_version: str = "v23.0"
     whatsapp_display_number: str | None = None
+    whatsapp_idle_minutes: int = 30
+    whatsapp_closing_minutes: int = 10
+    whatsapp_survey_minutes: int = 30
     smtp_host: str | None = None
     smtp_port: int = 587
     smtp_username: str | None = None

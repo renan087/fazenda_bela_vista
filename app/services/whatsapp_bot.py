@@ -20,7 +20,7 @@ from sqlalchemy.exc import IntegrityError
 
 from app.models import Farm, User
 from app.models.crop_season import CropSeason
-from app.models.whatsapp import WhatsAppClosingRequest, WhatsAppInboundMessage, WhatsAppLink
+from app.models.whatsapp import WhatsAppClosingRequest, WhatsAppInboundMessage, WhatsAppLink, WhatsAppSurvey
 from app.services.chat_format import to_whatsapp
 from app.services.stock_assistant import normalized
 from app.services.farm_plan_guard import FarmPlanRestriction, bind_farm_plan_actor
@@ -85,7 +85,10 @@ def store_inbound(db, messages: list[InboundMessage]) -> list[int]:
     """Grava as mensagens novas. O wamid e unico: reentregas da Meta sao ignoradas."""
     ids = []
     for message in messages:
+        # Serializa a entrada com o trabalhador de prazos antes de registrar a mensagem.
+        db.query(WhatsAppLink.id).filter(WhatsAppLink.wa_id.in_(wa_id_variants(message.wa_id))).with_for_update().all()
         if db.query(WhatsAppInboundMessage.id).filter_by(wamid=message.wamid).first():
+            db.rollback()
             continue
         row = WhatsAppInboundMessage(wamid=message.wamid, wa_id=message.wa_id, msg_type=message.msg_type,
                                      payload_json=json.dumps(message.raw, ensure_ascii=False)[:20000],
@@ -383,6 +386,22 @@ def _handle(db, row, client) -> str | None:
     key = normalized(text)
 
     button_reply = (message.get("interactive") or {}).get("button_reply") or {}
+    survey_button = re.fullmatch(r"survey:(good|fair|bad):([0-9a-f]{32})", str(button_reply.get("id") or ""))
+    if survey_button:
+        survey = db.get(WhatsAppSurvey, survey_button.group(2))
+        from app.core.config import get_settings
+        minutes = max(1, get_settings().whatsapp_survey_minutes)
+        if (survey is None or survey.link_id != link.id or survey.status != "pending"
+                or _aware(survey.created_at) + timedelta(minutes=minutes) <= _aware(row.received_at)):
+            if survey and survey.link_id == link.id and survey.status == "pending":
+                survey.status, survey.resolved_at = "unrated", _now()
+                db.commit()
+            client.send_text(row.wa_id, "Essa pesquisa não está mais disponível. Se precisar de ajuda, envie uma nova mensagem.")
+            return "survey_stale"
+        survey.status, survey.rating, survey.resolved_at = "answered", survey_button.group(1), _now()
+        db.commit()
+        client.send_text(row.wa_id, "Obrigado pela avaliação! Sua opinião nos ajuda a melhorar.")
+        return "survey_answered"
     closing_button = re.fullmatch(r"close:(yes|no):([0-9a-f]{32})", str(button_reply.get("id") or ""))
     pending_close = (db.query(WhatsAppClosingRequest).filter_by(link_id=link.id, status="pending")
                      .order_by(WhatsAppClosingRequest.created_at.desc()).first())
