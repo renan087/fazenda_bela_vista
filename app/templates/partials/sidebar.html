@@ -1,0 +1,332 @@
+{#- Menu lateral (desktop) + barra inferior e gavetas (celular). JS: static/js/sidebar.js · CSS: prefixo sf- em styles.css -#}
+{%- set mv = menu_visibility or {} -%}
+{%- set sf_top = [
+    {'id': 'inicio', 'label': 'Início', 'short': 'Início', 'raw': '/dashboard', 'plain': True, 'page': 'dashboard', 'icon': 'home', 'show': mv.get('dashboard', True)},
+    {'id': 'agenda', 'label': 'Agenda', 'short': 'Agenda', 'raw': '/fertilizacao/agendamentos', 'page': 'fertilization_schedules', 'icon': 'cal', 'show': mv.get('agenda')},
+    {'id': 'mapa', 'label': 'Mapa da fazenda', 'short': 'Mapa', 'raw': '/mapa', 'page': 'map', 'icon': 'map', 'show': mv.get('nav_map')},
+] -%}
+{%- set sf_groups = [
+    {'id': 'propriedade', 'label': 'Propriedade', 'short': 'Propriedade', 'icon': 'farm', 'items': [
+        {'id': 'fazendas', 'label': 'Fazendas', 'raw': '/fazendas', 'page': 'farms', 'show': mv.get('productive_unit')},
+        {'id': 'safras', 'label': 'Safras', 'raw': '/safras', 'page': 'seasons', 'show': mv.get('productive_unit')},
+        {'id': 'setores', 'label': 'Setores e talhões', 'raw': '/setores', 'page': 'plots', 'show': mv.get('productive_unit')},
+        {'id': 'variedades', 'label': 'Variedades', 'raw': '/variedades', 'page': 'varieties', 'show': mv.get('nav_varieties')},
+        {'id': 'equipe', 'label': 'Equipe e diárias', 'soon': True, 'show': True},
+    ]},
+    {'id': 'lavoura', 'label': 'Lavoura', 'short': 'Lavoura', 'icon': 'leaf', 'items': [
+        {'id': 'operacoes', 'label': 'Operações agrícolas', 'raw': '/operacoes', 'page': 'agricultural_operations', 'show': mv.get('operations')},
+        {'id': 'adubacao', 'label': 'Adubação', 'raw': '/fertilizacao', 'page': 'fertilization', 'show': mv.get('operations')},
+        {'id': 'recomendacao', 'label': 'Recomendação de adubo', 'raw': '/insumos/recomendacao', 'page': 'input_recommendations', 'show': mv.get('operations')},
+        {'id': 'solo', 'label': 'Análise de solo', 'raw': '/analise-solo', 'page': 'soil_analyses', 'show': mv.get('nav_soil')},
+        {'id': 'perfil', 'label': 'Perfil agronômico', 'raw': '/perfil-agronomico', 'page': 'agronomic_profiles', 'show': mv.get('nav_agronomic')},
+        {'id': 'irrigacao', 'label': 'Irrigação', 'raw': '/irrigacao', 'page': 'irrigation', 'show': mv.get('nav_irrigation')},
+        {'id': 'chuva', 'label': 'Chuva', 'raw': '/pluviometria', 'page': 'rainfall', 'show': mv.get('nav_rainfall')},
+        {'id': 'pragas', 'label': 'Pragas e doenças', 'raw': '/pragas', 'page': 'pests', 'show': mv.get('nav_pests')},
+        {'id': 'campo', 'label': 'Campo Mobile', 'raw': '/mobile', 'page': 'mobile', 'show': mv.get('nav_mobile')},
+    ]},
+    {'id': 'colheita', 'label': 'Colheita e venda', 'short': 'Colheita', 'icon': 'bean', 'items': [
+        {'id': 'lotes', 'label': 'Lotes e colheitas', 'raw': '/producao', 'page': 'harvest', 'show': mv.get('production')},
+        {'id': 'classificacao', 'label': 'Classificação do café', 'raw': '/producao/classificacao', 'page': 'coffee_classification', 'show': mv.get('production')},
+        {'id': 'venda', 'label': 'Comercialização', 'raw': '/producao/comercializacao', 'page': 'commercialization', 'show': mv.get('production')},
+        {'id': 'relatorio', 'label': 'Relatório da safra', 'soon': True, 'show': True},
+    ]},
+    {'id': 'insumos', 'label': 'Insumos e máquinas', 'short': 'Insumos', 'icon': 'box', 'items': [
+        {'id': 'compras', 'label': 'Compras', 'raw': '/insumos/comprados', 'page': 'purchased_inputs', 'show': mv.get('inputs')},
+        {'id': 'estoque', 'label': 'Estoque', 'raw': '/insumos/estoque', 'page': 'stock', 'show': mv.get('inputs')},
+        {'id': 'suprimentos', 'label': 'Suprimentos', 'raw': '/insumos/suprimentos', 'page': 'supplies', 'show': mv.get('inputs')},
+        {'id': 'patrimonio', 'label': 'Máquinas e bens', 'raw': '/insumos/patrimonio', 'page': 'assets', 'show': mv.get('assets')},
+        {'id': 'manutencoes', 'label': 'Manutenções', 'raw': '/insumos/patrimonio/manutencoes', 'page': 'asset_maintenance', 'show': mv.get('assets')},
+    ]},
+    {'id': 'financeiro', 'label': 'Financeiro', 'short': 'Financeiro', 'icon': 'coin', 'items': [
+        {'id': 'extrato', 'label': 'Extrato', 'raw': '/gestao-financeira', 'page': 'finance_management', 'show': mv.get('finance')},
+        {'id': 'contas', 'label': 'Contas a pagar e receber', 'raw': '/gestao-financeira/contas', 'page': 'finance_accounts', 'show': mv.get('finance')},
+        {'id': 'custos', 'label': 'Custos por setor', 'raw': '/custos-por-setor', 'page': 'sector_costs', 'show': mv.get('finance')},
+    ]},
+    {'id': 'admin', 'label': 'Administração', 'short': 'Admin', 'icon': 'cog', 'admin': True, 'items': [
+        {'id': 'usuarios', 'label': 'Usuários', 'raw': '/usuarios', 'page': 'users', 'show': mv.get('users')},
+        {'id': 'organizacoes', 'label': 'Organizações', 'raw': '/organizacoes', 'page': 'organizations', 'show': mv.get('organizations')},
+        {'id': 'avaliacoes', 'label': 'Avaliações do Pezinho', 'raw': '/organizacoes/avaliacoes-pezinho', 'plain': True, 'page': 'whatsapp_surveys', 'show': mv.get('organizations')},
+        {'id': 'assinaturas', 'label': 'Assinaturas', 'raw': '/assinaturas', 'page': 'subscriptions', 'show': mv.get('organizations')},
+        {'id': 'planos', 'label': 'Planos', 'raw': '/planos', 'page': 'subscription_plans', 'show': mv.get('organizations')},
+        {'id': 'manutencao', 'label': 'Manutenção do sistema', 'raw': '/manutencao', 'plain': True, 'page': 'maintenance', 'show': mv.get('organizations')},
+        {'id': 'auditoria', 'label': 'Auditoria', 'raw': '/auditoria', 'page': 'audit_logs', 'show': mv.get('audit_logs')},
+        {'id': 'testes', 'label': 'Testes automatizados', 'raw': '/qualidade/testes-automatizados', 'page': 'automated_tests', 'show': mv.get('automated_tests')},
+        {'id': 'backups', 'label': 'Backups', 'raw': '/backups', 'page': 'backups', 'show': mv.get('backups')},
+        {'id': 'api', 'label': 'API e documentação', 'raw': '/docs', 'page': 'docs', 'target': '_blank', 'show': mv.get('docs')},
+    ]},
+] -%}
+{%- set sf_actions = [
+    {'label': 'Chuva', 'hint': 'Quantos milímetros choveu', 'href': '/pluviometria', 'icon': 'rain', 'tone': 'blue'},
+    {'label': 'Consumo de insumo', 'hint': 'Dá baixa no estoque', 'href': '/mobile/assistente?q=Usei%20', 'icon': 'box', 'tone': 'amber'},
+    {'label': 'Aplicação ou adubação', 'hint': 'O que foi feito em qual talhão', 'href': module_href('/fertilizacao'), 'icon': 'leaf', 'tone': 'green'},
+    {'label': 'Colheita do dia', 'hint': 'Entra num lote de produção', 'href': module_href('/producao'), 'icon': 'bean', 'tone': 'green'},
+    {'label': 'Compra de insumo', 'hint': 'Entrada no estoque', 'href': module_href('/insumos/comprados'), 'icon': 'cart', 'tone': 'green'},
+    {'label': 'Conta a pagar', 'hint': 'Vai para o financeiro', 'href': module_href('/gestao-financeira/contas'), 'icon': 'coin', 'tone': 'amber'},
+] -%}
+{%- set sf_user_name = session_display_name if session_display_name is defined else (user.name or user.email) -%}
+{%- set sf_initial = (user.display_name or user.name or user.email or 'U')[:1]|upper -%}
+
+{%- macro sf_icon(name, cls='sf-ic') -%}<svg class="{{ cls }}" aria-hidden="true"><use href="#sf-{{ name }}"></use></svg>{%- endmacro -%}
+{%- macro sf_href(it) -%}{{ it.raw if it.plain else module_href(it.raw) }}{%- endmacro -%}
+{%- macro sf_avatar(cls='sf-av') -%}{% if user.avatar_data %}<img src="/meu-perfil/avatar" alt="" class="{{ cls }}" width="32" height="32" decoding="async">{% else %}<span class="{{ cls }}" aria-hidden="true">{{ sf_initial }}</span>{% endif %}{%- endmacro -%}
+{%- macro sf_tree(g) -%}
+<div class="sf-tree">
+    {%- for it in g['items'] if it.show %}
+    <div class="sf-sub-row">
+        {%- if it.soon %}
+        <span class="sf-soon" aria-disabled="true">{{ it.label }} <em>Em breve</em></span>
+        {%- else %}
+        <a href="{{ sf_href(it) }}" class="sf-link{% if page == it.page %} is-active{% endif %}" data-sf-id="{{ it.id }}" data-sf-icon="{{ g.icon }}" data-sf-group-label="{{ g.label }}"{% if page == it.page %} aria-current="page"{% endif %}{% if it.target %} target="{{ it.target }}" rel="noopener"{% endif %}><span>{{ it.label }}</span>{% if not it.plain %}{{ module_lock(it.raw) }}{% endif %}</a>
+        <button type="button" class="sf-pin" data-sf-pin="{{ it.id }}" aria-pressed="false" aria-label="Fixar nos favoritos: {{ it.label }}">{{ sf_icon('star', 'sf-ic sf-ic-s') }}</button>
+        {%- endif %}
+    </div>
+    {%- endfor %}
+</div>
+{%- endmacro -%}
+
+<svg width="0" height="0" class="sf-sprite" aria-hidden="true" focusable="false">
+    <symbol id="sf-home" viewBox="0 0 24 24"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/><path d="M10 21v-6h4v6"/></symbol>
+    <symbol id="sf-cal" viewBox="0 0 24 24"><rect x="3" y="4.5" width="18" height="16.5" rx="2.5"/><path d="M3 9.5h18M8 2.5v4M16 2.5v4"/></symbol>
+    <symbol id="sf-map" viewBox="0 0 24 24"><path d="M9 4 3 6.5v13.5L9 17.5l6 2.5 6-2.5V4l-6 2.5L9 4z"/><path d="M9 4v13.5M15 6.5V20"/></symbol>
+    <symbol id="sf-farm" viewBox="0 0 24 24"><path d="M3 21V10l9-6 9 6v11"/><path d="M8 21v-7h8v7"/><path d="M8 14l8 7M16 14l-8 7"/></symbol>
+    <symbol id="sf-leaf" viewBox="0 0 24 24"><path d="M5 19c0-8 5-14 15-15-1 10-7 15-15 15z"/><path d="M5 19 13 11"/></symbol>
+    <symbol id="sf-bean" viewBox="0 0 24 24"><ellipse cx="12" cy="12" rx="6.5" ry="9" transform="rotate(35 12 12)"/><path d="M8.5 17.5c2-2 1-5 3.5-7.5s3-2 3.5-4.5"/></symbol>
+    <symbol id="sf-box" viewBox="0 0 24 24"><path d="M3 7.5 12 3l9 4.5v9L12 21l-9-4.5v-9z"/><path d="M3 7.5 12 12l9-4.5M12 12v9"/></symbol>
+    <symbol id="sf-coin" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M15 9.2c-.6-1-1.7-1.6-3-1.6-1.8 0-3 .9-3 2.2 0 3 6 1.6 6 4.6 0 1.3-1.3 2.2-3 2.2-1.4 0-2.6-.6-3.2-1.7M12 6v1.6M12 16.6V18"/></symbol>
+    <symbol id="sf-cog" viewBox="0 0 24 24"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></symbol>
+    <symbol id="sf-chev" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></symbol>
+    <symbol id="sf-back" viewBox="0 0 24 24"><path d="m15 6-6 6 6 6"/></symbol>
+    <symbol id="sf-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+    <symbol id="sf-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></symbol>
+    <symbol id="sf-star" viewBox="0 0 24 24"><path d="m12 3 2.8 5.7 6.2.9-4.5 4.4 1.1 6.2L12 17.3 6.4 20.2l1.1-6.2L3 9.6l6.2-.9L12 3z"/></symbol>
+    <symbol id="sf-rain" viewBox="0 0 24 24"><path d="M7 15a4.5 4.5 0 0 1-.6-9 6 6 0 0 1 11.3 1.5A3.8 3.8 0 0 1 17 15H7z"/><path d="M8 18.5 7 21M12.5 18.5l-1 2.5M17 18.5 16 21"/></symbol>
+    <symbol id="sf-cart" viewBox="0 0 24 24"><circle cx="9" cy="20" r="1.5"/><circle cx="18" cy="20" r="1.5"/><path d="M2.5 3.5h3l2.4 11.2a1.5 1.5 0 0 0 1.5 1.2h8.4a1.5 1.5 0 0 0 1.5-1.1L21 7.5H6.5"/></symbol>
+    <symbol id="sf-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></symbol>
+    <symbol id="sf-user" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></symbol>
+    <symbol id="sf-card" viewBox="0 0 24 24"><rect x="2.5" y="5" width="19" height="14" rx="2.5"/><path d="M2.5 10h19"/></symbol>
+    <symbol id="sf-sliders" viewBox="0 0 24 24"><path d="M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1"/><circle cx="15" cy="6" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="17" cy="18" r="2"/></symbol>
+    <symbol id="sf-logout" viewBox="0 0 24 24"><path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3M10 17l5-5-5-5M15 12H4"/></symbol>
+    <symbol id="sf-menu" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h10"/></symbol>
+    <symbol id="sf-mic" viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21"/></symbol>
+</svg>
+
+{# ======================= DESKTOP ======================= #}
+<aside class="sf-sb" data-sf-sidebar data-sf-user="{{ user.id }}" aria-label="Menu lateral">
+    {# ---------- menu aberto ---------- #}
+    <div class="sf-full">
+        <div class="sf-top">
+            <a href="/dashboard" class="sf-brand" aria-label="SiSFarm — ir para o Início">
+                <img src="{{ url_for('static', path='images/logo-icon.png') }}" alt="" class="sf-brand-ic" width="46" height="42">
+                <svg class="sf-word" viewBox="0 0 112 32" role="img" aria-label="SiSFarm"><path d="M1.0919999999999999 20.54H5.824Q5.928 21.554000000000002 6.526 22.087000000000003Q7.124 22.62 8.086 22.62Q9.074 22.62 9.646 22.165Q10.218 21.71 10.218 20.904Q10.218 20.228 9.763 19.786Q9.308 19.344 8.645 19.058Q7.981999999999999 18.772 6.76 18.408Q4.992 17.862000000000002 3.8739999999999997 17.316000000000003Q2.756 16.77 1.9499999999999997 15.704Q1.144 14.638 1.144 12.922Q1.144 10.374 2.9899999999999998 8.931000000000001Q4.835999999999999 7.4879999999999995 7.8 7.4879999999999995Q10.815999999999999 7.4879999999999995 12.661999999999999 8.931000000000001Q14.508 10.374 14.638 12.948H9.828Q9.776 12.064 9.178 11.557Q8.58 11.05 7.643999999999999 11.05Q6.838 11.05 6.343999999999999 11.479000000000001Q5.85 11.908000000000001 5.85 12.714Q5.85 13.598 6.6819999999999995 14.092Q7.513999999999999 14.586 9.282 15.158000000000001Q11.049999999999999 15.756 12.155 16.302Q13.26 16.848 14.065999999999999 17.887999999999998Q14.872 18.928 14.872 20.566Q14.872 22.126 14.079 23.4Q13.286 24.674 11.777999999999999 25.427999999999997Q10.27 26.182 8.216 26.182Q6.2139999999999995 26.182 4.628 25.532Q3.042 24.882 2.093 23.608Q1.144 22.334 1.0919999999999999 20.54ZM22.386 11.492V26.0H17.939999999999998V11.492ZM25.427999999999997 20.54H30.159999999999997Q30.264 21.554000000000002 30.862 22.087000000000003Q31.459999999999997 22.62 32.422 22.62Q33.41 22.62 33.982 22.165Q34.554 21.71 34.554 20.904Q34.554 20.228 34.099000000000004 19.786Q33.644 19.344 32.980999999999995 19.058Q32.318 18.772 31.095999999999997 18.408Q29.328 17.862000000000002 28.21 17.316000000000003Q27.092 16.77 26.285999999999998 15.704Q25.479999999999997 14.638 25.479999999999997 12.922Q25.479999999999997 10.374 27.325999999999997 8.931000000000001Q29.171999999999997 7.4879999999999995 32.135999999999996 7.4879999999999995Q35.152 7.4879999999999995 36.998 8.931000000000001Q38.843999999999994 10.374 38.974 12.948H34.164Q34.111999999999995 12.064 33.513999999999996 11.557Q32.916 11.05 31.979999999999997 11.05Q31.174 11.05 30.68 11.479000000000001Q30.186 11.908000000000001 30.186 12.714Q30.186 13.598 31.018 14.092Q31.849999999999998 14.586 33.617999999999995 15.158000000000001Q35.385999999999996 15.756 36.491 16.302Q37.596 16.848 38.402 17.887999999999998Q39.208 18.928 39.208 20.566Q39.208 22.126 38.415 23.4Q37.622 24.674 36.114 25.427999999999997Q34.605999999999995 26.182 32.552 26.182Q30.549999999999997 26.182 28.964 25.532Q27.378 24.882 26.429 23.608Q25.479999999999997 22.334 25.427999999999997 20.54Z" fill="#5DB33F"/><path d="M54.419999999999995 7.748000000000001V11.31H46.983999999999995V15.158000000000001H52.547999999999995V18.616H46.983999999999995V26.0H42.538V7.748000000000001ZM62.272 11.284Q63.806 11.284 64.963 11.908000000000001Q66.11999999999999 12.532 66.744 13.546000000000001V11.492H71.19V26.0H66.744V23.946Q66.094 24.96 64.937 25.584Q63.779999999999994 26.208 62.245999999999995 26.208Q60.477999999999994 26.208 59.02199999999999 25.285Q57.565999999999995 24.362000000000002 56.721 22.659Q55.876 20.956 55.876 18.72Q55.876 16.484 56.721 14.794Q57.565999999999995 13.104000000000001 59.02199999999999 12.194Q60.477999999999994 11.284 62.272 11.284ZM63.571999999999996 15.158000000000001Q62.245999999999995 15.158000000000001 61.32299999999999 16.107Q60.4 17.056 60.4 18.72Q60.4 20.384 61.32299999999999 21.359Q62.245999999999995 22.334 63.571999999999996 22.334Q64.898 22.334 65.821 21.372Q66.744 20.41 66.744 18.746000000000002Q66.744 17.082 65.821 16.12Q64.898 15.158000000000001 63.571999999999996 15.158000000000001ZM83.41 11.336V16.042H82.18799999999999Q80.52399999999999 16.042 79.69199999999998 16.757Q78.85999999999999 17.472 78.85999999999999 19.266V26.0H74.41399999999999V11.492H78.85999999999999V13.91Q79.63999999999999 12.714 80.80999999999999 12.025Q81.97999999999999 11.336 83.41 11.336ZM109.95599999999999 17.524V26.0H105.53599999999999V18.122Q105.53599999999999 16.718 104.79499999999999 15.951Q104.05399999999999 15.184000000000001 102.75399999999999 15.184000000000001Q101.454 15.184000000000001 100.713 15.951Q99.972 16.718 99.972 18.122V26.0H95.55199999999999V18.122Q95.55199999999999 16.718 94.81099999999999 15.951Q94.07 15.184000000000001 92.77 15.184000000000001Q91.47 15.184000000000001 90.729 15.951Q89.988 16.718 89.988 18.122V26.0H85.54199999999999V11.492H89.988V13.312000000000001Q90.66399999999999 12.402000000000001 91.75599999999999 11.869Q92.84799999999998 11.336 94.226 11.336Q95.86399999999999 11.336 97.15099999999998 12.038Q98.43799999999999 12.74 99.166 14.040000000000001Q99.91999999999999 12.844000000000001 101.22 12.09Q102.52 11.336 104.05399999999999 11.336Q106.758 11.336 108.357 12.974Q109.95599999999999 14.612 109.95599999999999 17.524Z" fill="#FFFFFF"/><g transform="translate(0.16 0)"><path class="sf-leaf sf-leaf-l" d="M20 11.6C15.7 11.6 13.7 8.6 13.4 4.6 17.5 4.6 20 7.4 20 11.6Z" fill="#5DB33F"/><path class="sf-leaf sf-leaf-r" d="M20 11.6C20 6.4 22.5 2.6 26.7 1.8 26.9 7.2 24.3 11.2 20 11.6Z" fill="#7CC254"/></g></svg>
+            </a>
+            <button type="button" class="sf-find" data-hd-search-open aria-label="Buscar ou ir para uma página">
+                {{ sf_icon('search') }}<span class="sf-lbl">Buscar ou ir para…</span><kbd>⌘K</kbd>
+            </button>
+            <button type="button" class="sf-new" data-sf-pop-open="sf-quick" aria-expanded="false" aria-controls="sf-quick">
+                {{ sf_icon('plus') }}<span class="sf-lbl">Registrar</span>
+            </button>
+        </div>
+
+        <nav class="sf-nav" aria-label="Menu principal">
+            <div class="sf-sec">Favoritos <em data-sf-fav-count></em></div>
+            <p class="sf-hint" data-sf-fav-empty>Passe o mouse numa página e toque na estrela para fixá-la aqui.</p>
+            <div class="sf-favs" data-sf-favs></div>
+            <div class="sf-divider"></div>
+
+            {%- for it in sf_top if it.show %}
+            <div class="sf-item{% if page == it.page %} is-active{% endif %}">
+                <span class="sf-mark" aria-hidden="true"></span>
+                <a href="{{ sf_href(it) }}" class="sf-row{% if page == it.page %} is-active{% endif %}"{% if page == it.page %} aria-current="page"{% endif %}>
+                    {{ sf_icon(it.icon) }}<span class="sf-lbl">{{ it.label }}{% if not it.plain %}{{ module_lock(it.raw) }}{% endif %}</span>
+                </a>
+            </div>
+            {%- endfor %}
+
+            <div class="sf-sec">Módulos</div>
+            {%- for g in sf_groups %}
+            {%- set live = g['items']|selectattr('show')|rejectattr('soon')|list %}
+            {%- if live %}
+            {%- set active = live|selectattr('page', 'equalto', page)|list|length > 0 %}
+            {%- if g.admin %}<div class="sf-divider"></div>{% endif %}
+            <div class="sf-group{% if active %} has-active{% endif %}" data-sf-group="{{ g.id }}" data-sf-label="{{ g.label }}" data-sf-icon="{{ g.icon }}">
+                <button type="button" class="sf-row sf-parent{% if active %} has-active is-open{% endif %}" data-sf-toggle aria-expanded="{{ 'true' if active else 'false' }}" aria-controls="sf-sub-{{ g.id }}">
+                    {{ sf_icon(g.icon) }}<span class="sf-lbl">{{ g.label }}</span>{{ sf_icon('chev', 'sf-ic sf-chev') }}
+                </button>
+                <div class="sf-sub{% if active %} is-open{% endif %}" id="sf-sub-{{ g.id }}">
+                    <div class="sf-sub-in">{{ sf_tree(g) }}</div>
+                </div>
+            </div>
+            {%- endif %}
+            {%- endfor %}
+        </nav>
+
+        <div class="sf-foot">
+            <a href="/mobile/assistente" class="sf-pz">
+                <img src="{{ url_for('static', path='img/pezinho/icone-cabecalho.png') }}" alt="" width="32" height="32">
+                <span class="sf-pz-txt"><strong>Pergunte ao Pezinho</strong><span>Dúvidas e lançamentos por voz</span></span>
+            </a>
+            <button type="button" class="sf-user" data-sf-pop-open="sf-user-pop" aria-expanded="false" aria-controls="sf-user-pop">
+                {{ sf_avatar() }}
+                <span class="sf-user-txt"><strong>{{ sf_user_name }}</strong><span>{{ user.email }}</span></span>
+            </button>
+        </div>
+    </div>
+
+    {# ---------- menu recolhido (trilho) ---------- #}
+    <div class="sf-rail">
+        <a href="/dashboard" class="sf-r-brand" data-sf-tip="SiSFarm · Início" aria-label="SiSFarm — ir para o Início">
+            <img src="{{ url_for('static', path='images/logo-icon.png') }}" alt="" width="48" height="44">
+        </a>
+        <div class="sf-r-tools">
+            <button type="button" class="sf-r-tool" data-hd-search-open data-sf-tip="Buscar · ⌘K" aria-label="Buscar ou ir para uma página">{{ sf_icon('search') }}</button>
+            <button type="button" class="sf-r-new" data-sf-pop-open="sf-quick" data-sf-tip="Registrar" aria-expanded="false" aria-controls="sf-quick" aria-label="Registrar algo novo">{{ sf_icon('plus') }}</button>
+        </div>
+        <nav class="sf-r-nav" aria-label="Menu principal (recolhido)">
+            <button type="button" class="sf-r-item" data-sf-fly="favs" aria-expanded="false" aria-label="Favoritos">
+                <span class="sf-r-ic">{{ sf_icon('star') }}<span class="sf-r-badge" data-sf-fav-badge hidden></span></span><span class="sf-r-lbl" aria-hidden="true">Favoritos</span>
+            </button>
+            <span class="sf-r-sep" aria-hidden="true"></span>
+            {%- for it in sf_top if it.show %}
+            <div class="sf-r-w{% if page == it.page %} is-active{% endif %}">
+                <span class="sf-mark" aria-hidden="true"></span>
+                <a href="{{ sf_href(it) }}" class="sf-r-item{% if page == it.page %} is-active{% endif %}" aria-label="{{ it.label }}"{% if page == it.page %} aria-current="page"{% endif %}>
+                    <span class="sf-r-ic">{{ sf_icon(it.icon) }}</span><span class="sf-r-lbl" aria-hidden="true">{{ it.short }}</span>
+                </a>
+            </div>
+            {%- endfor %}
+            <span class="sf-r-sep" aria-hidden="true"></span>
+            {%- for g in sf_groups %}
+            {%- set live = g['items']|selectattr('show')|rejectattr('soon')|list %}
+            {%- if live %}
+            {%- set active = live|selectattr('page', 'equalto', page)|list|length > 0 %}
+            {%- if g.admin %}<span class="sf-r-sep" aria-hidden="true"></span>{% endif %}
+            <div class="sf-r-w{% if active %} is-active{% endif %}">
+                <span class="sf-mark" aria-hidden="true"></span>
+                <button type="button" class="sf-r-item{% if active %} is-active{% endif %}" data-sf-fly="{{ g.id }}"{% if g.short != g.label %} data-sf-tip="{{ g.label }}"{% endif %} aria-expanded="false" aria-label="{{ g.label }}">
+                    <span class="sf-r-ic">{{ sf_icon(g.icon) }}</span><span class="sf-r-lbl" aria-hidden="true">{{ g.short }}</span>
+                </button>
+            </div>
+            {%- endif %}
+            {%- endfor %}
+        </nav>
+        <div class="sf-r-foot">
+            <a href="/mobile/assistente" class="sf-r-pz" data-sf-tip="Pergunte ao Pezinho" aria-label="Perguntar ao Pezinho"><img src="{{ url_for('static', path='img/pezinho/icone-cabecalho.png') }}" alt="" width="34" height="34"></a>
+            <button type="button" class="sf-r-av" data-sf-pop-open="sf-user-pop" data-sf-tip="Minha conta" aria-expanded="false" aria-controls="sf-user-pop" aria-label="Menu da conta">{{ sf_avatar() }}</button>
+        </div>
+    </div>
+
+    <button type="button" class="sf-toggle" data-sf-rail-toggle aria-label="Recolher menu" aria-expanded="true">{{ sf_icon('chev', 'sf-ic') }}</button>
+</aside>
+
+{# Painéis flutuantes (posicionados pelo JS) #}
+<div class="sf-pop" id="sf-quick" role="dialog" aria-label="Registrar" hidden>
+    <p class="sf-pop-h">O que você quer registrar?</p>
+    {%- for a in sf_actions %}
+    <a href="{{ a.href }}" class="sf-pop-i"><span class="sf-pop-ic is-{{ a.tone }}">{{ sf_icon(a.icon) }}</span><span class="sf-grow">{{ a.label }}<small>{{ a.hint }}</small></span></a>
+    {%- endfor %}
+    <div class="sf-pop-sep"></div>
+    <a href="/mobile/assistente" class="sf-pop-i"><img src="{{ url_for('static', path='img/pezinho/icone-cabecalho.png') }}" alt="" width="34" height="34"><span class="sf-grow">Falar com o Pezinho<small>Diga em voz alta o que aconteceu</small></span></a>
+</div>
+<div class="sf-pop" id="sf-user-pop" role="dialog" aria-label="Conta" hidden>
+    <p class="sf-pop-who"><strong>{{ sf_user_name }}</strong><span>{{ user.email }}</span></p>
+    <a href="/meu-perfil" class="sf-pop-i{% if page == 'profile' %} is-current{% endif %}">{{ sf_icon('user') }}<span class="sf-grow">Meu perfil</span></a>
+    {%- if mv.get('finance') %}
+    <a href="{{ module_href('/minha-assinatura') }}" class="sf-pop-i{% if page == 'my_subscription' %} is-current{% endif %}">{{ sf_icon('card') }}<span class="sf-grow">Minha assinatura{{ module_lock('/minha-assinatura') }}</span></a>
+    {%- endif %}
+    <span class="sf-pop-soon" aria-disabled="true">{{ sf_icon('sliders') }}<span class="sf-grow">Preferências</span><em>Em breve</em></span>
+    <div class="sf-pop-sep"></div>
+    <a href="/logout" class="sf-pop-i is-danger">{{ sf_icon('logout') }}<span class="sf-grow">Sair</span></a>
+</div>
+<div class="sf-fly" data-sf-fly-panel role="dialog" hidden>
+    <div class="sf-fly-t"><svg class="sf-ic sf-ic-s" aria-hidden="true"><use href="#sf-star" data-sf-fly-icon></use></svg><span data-sf-fly-title></span></div>
+    <div data-sf-fly-body></div>
+</div>
+<div class="sf-tip" data-sf-tip-el role="tooltip" hidden></div>
+
+{# ======================= CELULAR ======================= #}
+{%- set sf_m_second = (sf_top|selectattr('id', 'equalto', 'agenda')|selectattr('show')|list or sf_top|selectattr('id', 'equalto', 'mapa')|selectattr('show')|list) -%}
+<nav class="sf-bn" aria-label="Navegação principal">
+    <a href="/dashboard" class="sf-bn-i{% if page == 'dashboard' %} is-active{% endif %}"{% if page == 'dashboard' %} aria-current="page"{% endif %}><span class="sf-bn-pill">{{ sf_icon('home') }}</span>Início</a>
+    {%- if sf_m_second %}{% set s2 = sf_m_second[0] %}
+    <a href="{{ sf_href(s2) }}" class="sf-bn-i{% if page == s2.page %} is-active{% endif %}"{% if page == s2.page %} aria-current="page"{% endif %}><span class="sf-bn-pill">{{ sf_icon(s2.icon) }}</span>{{ s2.short }}</a>
+    {%- else %}<span></span>{% endif %}
+    <div class="sf-bn-fab-w"><button type="button" class="sf-bn-fab" data-sf-sheet-open="reg" aria-expanded="false" aria-controls="sf-sheet-reg" aria-label="Registrar">{{ sf_icon('plus') }}</button><span aria-hidden="true">Registrar</span></div>
+    <a href="/mobile/assistente" class="sf-bn-i sf-bn-pz"><span class="sf-bn-pill"><img src="{{ url_for('static', path='img/pezinho/icone-cabecalho.png') }}" alt="" width="30" height="30"></span>Pezinho</a>
+    <button type="button" class="sf-bn-i" data-sf-sheet-open="menu" aria-expanded="false" aria-controls="sf-sheet-menu"><span class="sf-bn-pill">{{ sf_icon('menu') }}</span>Menu</button>
+</nav>
+<div class="sf-m-back" data-sf-sheet-close aria-hidden="true"></div>
+
+<div class="sf-sheet sf-sheet-menu" id="sf-sheet-menu" role="dialog" aria-modal="true" aria-label="Menu" inert>
+    <div class="sf-grab" aria-hidden="true"></div>
+    <div class="sf-sh-h"><h2>Menu</h2><button type="button" class="sf-icb" data-sf-sheet-close aria-label="Fechar menu">{{ sf_icon('x') }}</button></div>
+    <label class="sf-m-search">{{ sf_icon('search', 'sf-ic sf-ic-s') }}<input type="search" placeholder="Buscar página…" autocomplete="off" aria-label="Buscar página" data-sf-m-q></label>
+    <div class="sf-trk-w">
+        <div class="sf-trk" data-sf-trk>
+            <div class="sf-pnl">
+                <div data-sf-m-results hidden></div>
+                <div data-sf-m-browse>
+                    <p class="sf-m-lbl">Favoritos</p>
+                    <div class="sf-m-favs" data-sf-m-favs></div>
+                    <p class="sf-m-empty" data-sf-m-favs-empty>Abra um grupo e toque na estrela de uma página para ela aparecer aqui.</p>
+                    <p class="sf-m-lbl">Módulos</p>
+                    <div class="sf-tiles">
+                        {%- for it in sf_top if it.show and it.id == 'mapa' %}
+                        <a href="{{ sf_href(it) }}" class="sf-tile{% if page == it.page %} has-active{% endif %}"><span class="sf-tile-ic">{{ sf_icon('map') }}</span><span><strong>Mapa da fazenda</strong><small>Talhões e camadas</small></span></a>
+                        {%- endfor %}
+                        {%- for g in sf_groups if not g.admin %}
+                        {%- set live = g['items']|selectattr('show')|rejectattr('soon')|list %}
+                        {%- if live %}
+                        <button type="button" class="sf-tile{% if live|selectattr('page', 'equalto', page)|list %} has-active{% endif %}" data-sf-m-open="{{ g.id }}"><span class="sf-tile-ic">{{ sf_icon(g.icon) }}</span><span><strong>{{ g.label }}</strong><small>{{ live|length }} página{{ 's' if live|length > 1 }}</small></span></button>
+                        {%- endif %}
+                        {%- endfor %}
+                    </div>
+                    {%- for g in sf_groups if g.admin %}
+                    {%- if g['items']|selectattr('show')|list %}
+                    <button type="button" class="sf-m-row sf-m-adm" data-sf-m-open="admin">{{ sf_icon('cog') }}<span class="sf-grow">Administração<small>Usuários, planos, backups e mais</small></span>{{ sf_icon('chev', 'sf-ic sf-m-chev') }}</button>
+                    {%- endif %}
+                    {%- endfor %}
+                    <div class="sf-m-acct">
+                        <a href="/meu-perfil" class="sf-m-row">{{ sf_avatar('sf-av sf-av-l') }}<span class="sf-grow">{{ sf_user_name }}<small>Meu perfil{% if mv.get('finance') %} e assinatura{% endif %}</small></span>{{ sf_icon('chev', 'sf-ic sf-m-chev') }}</a>
+                        <a href="/logout" class="sf-m-row is-danger">{{ sf_icon('logout') }}<span class="sf-grow">Sair</span></a>
+                    </div>
+                </div>
+            </div>
+            <div class="sf-pnl">
+                {%- for g in sf_groups %}
+                {%- if g['items']|selectattr('show')|rejectattr('soon')|list %}
+                <div class="sf-m-sub" data-sf-m-sub="{{ g.id }}" hidden>
+                    <div class="sf-m-sub-h">
+                        <button type="button" class="sf-icb" data-sf-m-back aria-label="Voltar para o menu">{{ sf_icon('back') }}</button>
+                        <span class="sf-tile-ic">{{ sf_icon(g.icon) }}</span><h3>{{ g.label }}</h3>
+                    </div>
+                    {%- for it in g['items'] if it.show %}
+                    <div class="sf-m-li">
+                        {%- if it.soon %}
+                        <span class="sf-m-soon" aria-disabled="true">{{ it.label }} <em>Em breve</em></span>
+                        {%- else %}
+                        <a href="{{ sf_href(it) }}" class="sf-m-a{% if page == it.page %} is-active{% endif %}"{% if page == it.page %} aria-current="page"{% endif %}{% if it.target %} target="{{ it.target }}" rel="noopener"{% endif %}>{{ it.label }}{% if not it.plain %}{{ module_lock(it.raw) }}{% endif %}</a>
+                        <button type="button" class="sf-m-star" data-sf-pin="{{ it.id }}" aria-pressed="false" aria-label="Fixar nos favoritos: {{ it.label }}">{{ sf_icon('star') }}</button>
+                        {%- endif %}
+                    </div>
+                    {%- endfor %}
+                </div>
+                {%- endif %}
+                {%- endfor %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="sf-sheet sf-sheet-reg" id="sf-sheet-reg" role="dialog" aria-modal="true" aria-label="Registrar" inert>
+    <div class="sf-grab" aria-hidden="true"></div>
+    <div class="sf-sh-h"><h2>O que aconteceu hoje?</h2><button type="button" class="sf-icb" data-sf-sheet-close aria-label="Fechar">{{ sf_icon('x') }}</button></div>
+    <div class="sf-reg">
+        <div class="sf-reg-g">
+            {%- for a in sf_actions %}
+            <a href="{{ a.href }}" class="sf-rt"><span class="sf-rt-ic is-{{ a.tone }}">{{ sf_icon(a.icon) }}</span>{{ a.label }}</a>
+            {%- endfor %}
+        </div>
+        <a href="/mobile/assistente" class="sf-voice"><img src="{{ url_for('static', path='img/pezinho/icone-cabecalho.png') }}" alt="" width="40" height="40"><span class="sf-grow"><strong>Falar com o Pezinho</strong><small>“Choveu 18 mm no talhão 3”</small></span><span class="sf-mic" aria-hidden="true">{{ sf_icon('mic') }}</span></a>
+        <p class="sf-reg-note">Nada é salvo direto: você confere tudo antes de confirmar.</p>
+    </div>
+</div>
