@@ -20613,175 +20613,66 @@ def commercialization_page(
     user: User = Depends(get_current_user_web),
     csrf_token: str = Depends(get_csrf_token),
 ):
+    from app.services.coffee_sales import SALE_STATUS_OPTIONS, group_sales
+
     edit_id = _optional_query_int(edit_id)
     harvest_id = _optional_query_int(harvest_id)
     repo = _repository(db)
     scope = _global_scope_context(request, repo)
-    active_farm_id = scope.get("active_farm_id")
-    active_season = scope.get("active_season")
-    farm_ids, variety_ids = _scoped_plot_filters(request, active_season)
-    scope_start, scope_end = _scoped_dates(active_season)
-    filter_start_date, filter_end_date, filter_start_str, filter_end_str = _finance_extract_period_bounds(request, flash_invalid=True)
-    selected_range = (
-        _fertilization_filter_range_preset(
-            request.query_params.get("schedule_range"),
-            filter_start_str,
-            filter_end_str,
-        )
-        if _period_filter_explicit_in_query(request)
-        else ""
-    )
+    if edit_id:
+        record = repo.get_coffee_commercialization(edit_id)
+        if record and _commercialization_record_matches_scope(record, scope) and record.sale_code:
+            return _redirect(f"/producao/vendas/{record.sale_code}/editar")
+    if harvest_id and request.query_params.get("launch") == "1":
+        return _redirect_with_query("/producao/vendas/nova", lote=harvest_id)
 
-    plots = repo.list_plots(farm_ids=farm_ids, variety_ids=variety_ids)
-    plots = list({plot.id: plot for plot in [*plots, *_season_launch_plots(plots, scope)]}.values())
-    plot_ids = {plot.id for plot in plots}
-    harvests = [
-        item
-        for item in repo.list_harvests()
-        if item.plot_id in plot_ids and harvest_matches_season(item, active_season)
-    ]
-    harvests = _sort_collection_desc(harvests, lambda item: item.harvest_date, lambda item: item.id)
-
-    all_commercializations = [
-        item
-        for item in repo.list_coffee_commercializations(farm_id=active_farm_id)
-        if _commercialization_record_matches_scope(item, scope)
-    ] if active_farm_id else []
-    harvest_ids = [item.id for item in harvests]
-    latest_classifications = {}
-    if harvest_ids:
-        analyses = (db.query(CoffeeClassification).options(defer(CoffeeClassification.report_data))
-                    .filter(CoffeeClassification.harvest_id.in_(harvest_ids))
-                    .order_by(CoffeeClassification.analysis_date.desc(), CoffeeClassification.id.desc()).all())
-        for analysis in analyses:
-            latest_classifications.setdefault(analysis.harvest_id, analysis)
-
-    edit_commercialization = repo.get_coffee_commercialization(edit_id) if edit_id else None
-    if edit_commercialization and not _commercialization_record_matches_scope(edit_commercialization, scope):
-        edit_commercialization = None
-    if edit_commercialization and edit_commercialization.harvest and all(item.id != edit_commercialization.harvest_id for item in harvests):
-        harvests.append(edit_commercialization.harvest)
-
-    harvest_options = []
-    inventory_lots = []
-    total_available_sacks = 0.0
-    available_lot_count = 0
-    for harvest in harvests:
-        is_current_edit = bool(edit_commercialization and edit_commercialization.harvest_id == harvest.id)
-        if not is_current_edit and not _plot_allowed_for_season_launch(harvest.plot, scope):
-            continue
-        actual_available = _commercialization_available_sacks(harvest, all_commercializations)
-        produced = float(harvest.sacks_produced or 0)
-        allocated = sum(float(item.equivalent_sacks or 0) for item in all_commercializations if item.harvest_id == harvest.id)
-        inventory_lots.append({"harvest": harvest, "lot_label": _commercialization_lot_label(harvest),
-                               "produced": produced, "allocated": allocated, "available": actual_available,
-                               "overallocated": allocated > produced + 0.00005,
-                               "classification": latest_classifications.get(harvest.id)})
-        available_sacks = _commercialization_available_sacks(
-            harvest,
-            all_commercializations,
-            exclude_id=edit_commercialization.id if edit_commercialization and edit_commercialization.harvest_id == harvest.id else None,
-        )
-        total_available_sacks += max(actual_available, 0)
-        include = available_sacks > 0 or (edit_commercialization and edit_commercialization.harvest_id == harvest.id)
-        if actual_available > 0:
-            available_lot_count += 1
-        if include:
-            harvest_options.append(
-                {
-                    "harvest": harvest,
-                    "lot_label": _commercialization_lot_label(harvest),
-                    "available_sacks": round(available_sacks, 4),
-                    "available_kg": round(available_sacks * 60, 2),
-                }
-            )
-
-    filtered = list(all_commercializations)
+    lots, sales = _production_lots(request, repo, db, scope) if scope.get("active_farm_id") else ([], [])
+    groups = group_sales(_sort_collection_desc(sales, lambda item: item.sale_date, lambda item: item.id))
+    all_groups = list(groups)
     if harvest_id:
-        filtered = [item for item in filtered if item.harvest_id == harvest_id]
+        groups = [g for g in groups if any(lot["harvest_id"] == harvest_id for lot in g["lots"])]
     normalized_status = (status or "").strip().lower()
     if normalized_status:
-        filtered = [item for item in filtered if (item.status or "").strip().lower() == normalized_status]
-    if filter_start_date or filter_end_date:
-        filtered = [item for item in filtered if _in_extract_period(item.sale_date, filter_start_date, filter_end_date)]
+        groups = [g for g in groups if g["status"] == normalized_status]
     search_term = _normalize_search_value((search or "").strip())
     if search_term:
-        filtered = [
-            item
-            for item in filtered
-            if search_term in _normalize_search_value(
-                f"{item.lot_label or ''} {item.plot_name or ''} {item.variety_name or ''} "
-                f"{item.buyer_name or ''} {item.status or ''} {item.coffee_type or ''} {item.notes or ''}"
-            )
-        ]
-    filtered = _sort_collection_desc(filtered, lambda item: item.sale_date, lambda item: item.id)
-    commercialization_pagination = _paginate_collection(request, filtered, "commercialization_page", focus_param="venda")
-
-    filtered_total_value = round(sum(float(item.total_value or 0) for item in filtered), 2)
-    filtered_total_sacks = round(sum(float(item.equivalent_sacks or 0) for item in filtered), 4)
-    finance_accounts = repo.list_finance_accounts(farm_id=active_farm_id) if active_farm_id else []
-    default_finance_account_id = next((account.id for account in finance_accounts if account.is_default), None)
-    commercialization_filters_active = bool(harvest_id or normalized_status or search_term or _period_filter_explicit_in_query(request))
-    production_origin = not edit_id and request.query_params.get("origem") == "producao" and any(
-        item.id == harvest_id for item in harvests
-    )
-    launch_from_lot = production_origin and request.query_params.get("launch") == "1"
-    launch_harvest = next((option for option in harvest_options if option["harvest"].id == harvest_id), None) if launch_from_lot else None
-    detail_sale_id = _optional_query_int(request.query_params.get("venda"))
-    commercialization_clear_url = _url_with_query(
-        request,
-        harvest_id=None,
-        origem=None,
-        launch=None,
-        venda=None,
-        status=None,
-        search=None,
-        start_date=None,
-        end_date=None,
-        schedule_range=None,
-        commercialization_page=None,
-    )
-
+        groups = [g for g in groups if search_term in _normalize_search_value(
+            f"{g['code']} {g['buyer_name'] or ''} {' '.join(l['label'] or '' for l in g['lots'])} {g['contract_number'] or ''}")]
+    focus = (request.query_params.get("venda") or "").strip()
+    if focus.isdigit():
+        legacy = next((item for item in sales if item.id == int(focus)), None)
+        focus = legacy.sale_code if legacy and legacy.sale_code else focus
+    per_page = 20
+    total_pages = max(1, (len(groups) + per_page - 1) // per_page)
+    page = min(_positive_int(request.query_params.get("commercialization_page"), 1), total_pages)
+    focus_index = next((i for i, g in enumerate(groups) if g["code"] == focus), None)
+    if focus_index is not None:
+        page = focus_index // per_page + 1
+    page_groups = groups[(page - 1) * per_page: page * per_page]
+    pagination = {
+        "page": page, "total_pages": total_pages, "has_prev": page > 1, "has_next": page < total_pages,
+        "prev_url": _url_with_query(request, commercialization_page=page - 1 if page > 2 else None, venda=None),
+        "next_url": _url_with_query(request, commercialization_page=page + 1, venda=None),
+    }
+    sold_sacks = sum(g["sacks"] for g in all_groups)
+    gross = sum(g["gross"] for g in all_groups)
+    received = sum(g["net"] for g in all_groups if g["status"] == "recebido")
+    to_receive = sum(g["net"] for g in all_groups if g["status"] != "recebido")
+    status_counts = {value: sum(1 for g in all_groups if g["status"] == value) for value, _ in SALE_STATUS_OPTIONS}
+    lots_with_balance = [lot for lot in lots if lot["available"] > 0]
     return templates.TemplateResponse(
         "commercialization.html",
         _base_context(
-            request,
-            user,
-            csrf_token,
-            "commercialization",
-            _repo=repo,
-            harvest_options=harvest_options,
-            commercialization_inventory_lots=inventory_lots,
-            commercializations=commercialization_pagination["items"],
-            commercialization_pagination=commercialization_pagination,
-            commercialization_status_options=COMMERCIALIZATION_STATUS_OPTIONS,
-            commercialization_unit_options=COMMERCIALIZATION_UNIT_OPTIONS,
-            commercialization_coffee_type_options=COMMERCIALIZATION_COFFEE_TYPE_OPTIONS,
-            commercialization_edit=edit_commercialization,
-            commercialization_buyer=_buyer_json(db, edit_commercialization.buyer) if edit_commercialization and edit_commercialization.buyer and edit_commercialization.buyer.active else None,
-            commercialization_total_available_sacks=round(total_available_sacks, 2),
-            commercialization_total_available_kg=round(total_available_sacks * 60, 2),
-            commercialization_available_lot_count=available_lot_count,
-            commercialization_filtered_total_sacks=filtered_total_sacks,
-            commercialization_filtered_total_kg=round(filtered_total_sacks * 60, 2),
-            commercialization_filtered_total_value=filtered_total_value,
-            commercialization_selected_harvest_id=harvest_id,
-            commercialization_production_origin=production_origin,
-            commercialization_launch_harvest=launch_harvest,
-            commercialization_detail_id=detail_sale_id if production_origin and any(
-                sale.id == detail_sale_id for sale in commercialization_pagination["items"]
-            ) else None,
-            commercialization_selected_status=normalized_status,
-            commercialization_search=search or "",
-            commercialization_filter_start_date=filter_start_str,
-            commercialization_filter_end_date=filter_end_str,
-            commercialization_selected_range=selected_range,
-            commercialization_filters_active=commercialization_filters_active,
-            commercialization_clear_url=commercialization_clear_url,
-            finance_accounts=finance_accounts,
-            finance_transaction_payment_methods=FINANCE_TRANSACTION_PAYMENT_METHODS,
-            commercialization_default_finance_account_id=default_finance_account_id,
-            today=today_in_app_timezone(),
+            request, user, csrf_token, "commercialization", _repo=repo,
+            sale_groups=page_groups, sale_pagination=pagination, sale_focus=focus,
+            sale_status_options=SALE_STATUS_OPTIONS, sale_status_counts=status_counts, sale_total_count=len(all_groups),
+            sale_selected_status=normalized_status, sale_search=search or "", sale_harvest_id=harvest_id,
+            sale_filters_active=bool(normalized_status or search_term or harvest_id),
+            sale_kpis={"sacks": sold_sacks, "gross": gross, "received": received, "to_receive": to_receive,
+                       "avg_price": gross / sold_sacks if sold_sacks else None,
+                       "available": sum(lot["available"] for lot in lots_with_balance),
+                       "available_lots": len(lots_with_balance)},
+            sale_lots=lots_with_balance, today=today_in_app_timezone(),
         ),
     )
 
@@ -20996,6 +20887,311 @@ def delete_commercialization_action(
             repo.db.commit()
     repo.delete(commercialization)
     _flash(request, "success", "Comercialização excluída com sucesso.")
+    return _redirect("/producao/comercializacao")
+
+
+# ---------------------------------------------------------------------------
+# Produção: lotes da safra e vendas (uma venda pode sair de vários lotes)
+# ---------------------------------------------------------------------------
+
+def _lot_display_code(harvest: HarvestRecord) -> str:
+    return (harvest.lot_code or "").strip() or f"{harvest.harvest_date.year if harvest.harvest_date else '----'}-L{harvest.id:03d}"
+
+
+def _classification_label(analysis) -> tuple[str, str]:
+    """(texto, tom) da qualidade do lote: tom 'top' (especial 84+), 'ok' ou 'none'."""
+    if not analysis:
+        return "Sem classificação", "none"
+    score = float(analysis.sensory_score) if analysis.sensory_score is not None else None
+    parts = [analysis.beverage or (f"Tipo {analysis.coffee_type}" if analysis.coffee_type else "Classificado")]
+    if score is not None:
+        parts.append(f"{_format_decimal_br(score, 1).replace(',0', '')} pts")
+    return " · ".join(parts), "top" if score is not None and score >= 84 else "ok"
+
+
+def _production_lots(request: Request, repo: FarmRepository, db: Session, scope: dict, *, exclude_sale_code: str | None = None):
+    """Lotes da safra ativa com produzido, vendido, negociado e saldo. Devolve (linhas, vendas)."""
+    active_season = scope.get("active_season")
+    farm_ids, variety_ids = _scoped_plot_filters(request, active_season)
+    plots = repo.list_plots(farm_ids=farm_ids, variety_ids=variety_ids)
+    plots = list({plot.id: plot for plot in [*plots, *_season_launch_plots(plots, scope)]}.values())
+    plot_ids = {plot.id for plot in plots}
+    harvests = [item for item in repo.list_harvests() if item.plot_id in plot_ids and harvest_matches_season(item, active_season)]
+    harvests = _sort_collection_desc(harvests, lambda item: item.harvest_date, lambda item: item.id)
+    sales = [item for item in repo.list_coffee_commercializations(farm_id=scope.get("active_farm_id"))
+             if _commercialization_record_matches_scope(item, scope)] if scope.get("active_farm_id") else []
+    latest = {}
+    if harvests:
+        analyses = (db.query(CoffeeClassification).options(defer(CoffeeClassification.report_data))
+                    .filter(CoffeeClassification.harvest_id.in_([h.id for h in harvests]))
+                    .order_by(CoffeeClassification.analysis_date.desc(), CoffeeClassification.id.desc()).all())
+        for analysis in analyses:
+            latest.setdefault(analysis.harvest_id, analysis)
+    rows = []
+    for harvest in harvests:
+        own = [s for s in sales if s.harvest_id == harvest.id]
+        produced = float(harvest.sacks_produced or 0)
+        sold = sum(float(s.equivalent_sacks or 0) for s in own)
+        negotiated = sum(float(s.equivalent_sacks or 0) for s in own if (s.status or "negociado") == "negociado")
+        other = sum(float(s.equivalent_sacks or 0) for s in own if not exclude_sale_code or s.sale_code != exclude_sale_code)
+        quality, tone = _classification_label(latest.get(harvest.id))
+        rows.append({
+            "harvest": harvest, "id": harvest.id, "code": _lot_display_code(harvest), "label": _commercialization_lot_label(harvest),
+            "plot": harvest.plot.name if harvest.plot else "Setor removido",
+            "variety": harvest.plot.variety.name if harvest.plot and harvest.plot.variety else "",
+            "produced": round(produced, 4), "sold": round(sold, 4), "negotiated": round(negotiated, 4),
+            "delivered": round(sold - negotiated, 4), "available": round(max(produced - sold, 0), 4),
+            "available_for_sale": round(max(produced - other, 0), 4), "overallocated": sold > produced + 0.00005,
+            "classification": latest.get(harvest.id), "quality": quality, "quality_tone": tone,
+            "sales": own,
+        })
+    return rows, sales
+
+
+def _sale_form_render(request: Request, db: Session, user: User, csrf_token: str, repo: FarmRepository, scope: dict, *,
+                      sale_code: str | None = None, prefill: dict | None = None, error: str | None = None,
+                      status_code: int = 200):
+    from app.services.coffee_buyers import serialize
+    from app.services.coffee_sales import SALE_STATUS_OPTIONS, group_sales, sale_records
+
+    existing = sale_records(db, scope["active_farm_id"], sale_code) if sale_code else []
+    lots, sales = _production_lots(request, repo, db, scope, exclude_sale_code=sale_code)
+    in_sale = {r.harvest_id: float(r.equivalent_sacks or 0) for r in existing}
+    prefill = dict(prefill or {})
+    if existing and "lines" not in prefill:
+        group = group_sales(existing)[0]
+        first = group["first"]
+        prefill.update({
+            "lines": in_sale, "sale_date": first.sale_date.isoformat(), "unit_price": _format_decimal_br(first.unit_price),
+            "delivery_due_date": first.delivery_due_date.isoformat() if first.delivery_due_date else "",
+            "contract_number": first.contract_number or "", "coffee_type": first.coffee_type or "beneficiado",
+            "funrural_percent": _format_decimal_br(first.funrural_percent or 0, 1),
+            "brokerage_percent": _format_decimal_br(first.brokerage_percent or 0, 1),
+            "freight_value": _format_decimal_br(first.freight_value or 0), "status": first.status or "negociado",
+            "payment_condition": first.payment_condition or "a_vista", "finance_account_id": first.finance_account_id or "",
+            "payment_method": first.payment_method or "", "installment_count": first.installment_count or 1,
+            "installment_frequency": first.installment_frequency or "mensal",
+            "first_installment_date": first.first_installment_date.isoformat() if first.first_installment_date else "",
+            "notes": first.notes or "", "buyer_id": first.buyer_id, "buyer_name": first.buyer_name,
+        })
+    lote = _optional_query_int(request.query_params.get("lote"))
+    if not existing and "lines" not in prefill and lote:
+        row = next((r for r in lots if r["id"] == lote and r["available_for_sale"] > 0), None)
+        prefill["lines"] = {lote: row["available_for_sale"]} if row else {}
+        if not row:
+            error = error or "O lote escolhido está indisponível para uma nova venda: não tem saldo nesta safra."
+    lines = {int(k): float(v) for k, v in (prefill.get("lines") or {}).items()}
+    offered = [r for r in lots if r["available_for_sale"] > 0 or r["id"] in lines]
+    buyer = db.get(CoffeeBuyer, prefill["buyer_id"]) if prefill.get("buyer_id") else None
+    finance_accounts = repo.list_finance_accounts(farm_id=scope["active_farm_id"])
+    priced = [s for s in sales if float(s.equivalent_sacks or 0) > 0]
+    avg_price = (sum(float(s.total_value or 0) for s in priced) / sum(float(s.equivalent_sacks or 0) for s in priced)) if priced else None
+    lots_json = [{
+        "id": r["id"], "code": r["code"], "plot": r["plot"], "variety": r["variety"], "quality": r["quality"],
+        "tone": r["quality_tone"], "available": r["available_for_sale"], "label": r["label"],
+    } for r in offered]
+    response = templates.TemplateResponse(
+        "sale_form.html",
+        _base_context(
+            request, user, csrf_token, "commercialization", _repo=repo,
+            sale_code=sale_code, sale_exists=bool(existing), sale_lots=offered, sale_lots_json=lots_json,
+            sale_lines=lines, sale_prefill=prefill, sale_error=error,
+            sale_buyer=serialize(buyer) if buyer and buyer.active and buyer.organization_id == user.organization_id else None,
+            sale_buyer_fallback=prefill.get("buyer_name") or "",
+            sale_status_options=SALE_STATUS_OPTIONS, commercialization_coffee_type_options=COMMERCIALIZATION_COFFEE_TYPE_OPTIONS,
+            finance_accounts=finance_accounts, finance_transaction_payment_methods=FINANCE_TRANSACTION_REVENUE_PAYMENT_METHODS,
+            sale_default_account_id=next((a.id for a in finance_accounts if a.is_default), None),
+            sale_avg_price=avg_price, sale_origin_lot=lote, today=today_in_app_timezone(),
+        ),
+    )
+    response.status_code = status_code
+    return response
+
+
+@router.get("/producao/vendas/nova")
+def sale_new_page(
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+    csrf_token: str = Depends(get_csrf_token),
+):
+    repo = _repository(db)
+    scope, denied = _launch_scope_or_redirect(request, repo, "/producao/comercializacao")
+    if denied:
+        return denied
+    return _sale_form_render(request, db, user, csrf_token, repo, scope)
+
+
+@router.get("/producao/vendas/{sale_code}/editar")
+def sale_edit_page(
+    sale_code: str,
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+    csrf_token: str = Depends(get_csrf_token),
+):
+    from app.services.coffee_sales import sale_records
+
+    repo = _repository(db)
+    scope, denied = _launch_scope_or_redirect(request, repo, "/producao/comercializacao")
+    if denied:
+        return denied
+    records = sale_records(db, scope["active_farm_id"], sale_code)
+    if not records or not all(_commercialization_record_matches_scope(r, scope) for r in records):
+        _flash(request, "error", "Venda não encontrada na fazenda ativa.")
+        return _redirect("/producao/comercializacao")
+    return _sale_form_render(request, db, user, csrf_token, repo, scope, sale_code=sale_code)
+
+
+async def _sale_save(request: Request, db: Session, user: User, csrf_token: str, sale_code: str | None):
+    from app.services.coffee_sales import parse_decimal, sale_records, save_sale
+
+    form = await request.form()
+    validate_csrf(request, form.get("csrf_token"))
+    repo = _repository(db)
+    scope, denied = _launch_scope_or_redirect(request, repo, "/producao/comercializacao")
+    if denied:
+        return denied
+    existing = sale_records(db, scope["active_farm_id"], sale_code) if sale_code else []
+    if sale_code and (not existing or not all(_commercialization_record_matches_scope(r, scope) for r in existing)):
+        _flash(request, "error", "Venda não encontrada na fazenda ativa.")
+        return _redirect("/producao/comercializacao")
+    text = lambda key: (form.get(key) or "").strip()
+    raw_lines = {}
+    for value in form.getlist("lot_id"):
+        harvest_id = _int_or_none(value)
+        if harvest_id:
+            raw_lines[harvest_id] = parse_decimal(form.get(f"lot_sacks_{harvest_id}")) or 0
+    prefill = {key: text(key) for key in (
+        "sale_date", "unit_price", "delivery_due_date", "contract_number", "coffee_type", "funrural_percent",
+        "brokerage_percent", "freight_value", "status", "payment_condition", "finance_account_id", "payment_method",
+        "installment_count", "installment_frequency", "first_installment_date", "notes", "buyer_name")}
+    prefill["lines"] = raw_lines
+    prefill["buyer_id"] = _int_or_none(text("buyer_id"))
+
+    def fail(message):
+        return _sale_form_render(request, db, user, form.get("csrf_token"), repo, scope, sale_code=sale_code,
+                                 prefill=prefill, error=message, status_code=422)
+
+    lots, _ = _production_lots(request, repo, db, scope, exclude_sale_code=sale_code)
+    by_id = {row["id"]: row for row in lots}
+    lines = []
+    for harvest_id, sacks in raw_lines.items():
+        row = by_id.get(harvest_id)
+        if not row:
+            return fail("Um dos lotes escolhidos não pertence à safra ativa.")
+        lines.append({"harvest": row["harvest"], "sacks": round(sacks, 4), "available": row["available_for_sale"], "label": row["label"]})
+    buyer_ref, buyer_label = _resolve_coffee_buyer(db, user, prefill["buyer_id"], prefill["buyer_name"])
+    account_id = _int_or_none(prefill["finance_account_id"])
+    if account_id:
+        account = repo.get_finance_account(account_id)
+        if not account or account.farm_id != scope.get("active_farm_id"):
+            return fail("Selecione uma conta válida para a fazenda ativa.")
+    payment_condition = "a_prazo" if prefill["payment_condition"] in {"a_prazo", "parcelado"} else "a_vista"
+    data = {
+        **prefill, "buyer_id": buyer_ref, "buyer_name": buyer_label, "finance_account_id": account_id,
+        "payment_condition": payment_condition,
+        "sale_date": _date_or_none(prefill["sale_date"]) or today_in_app_timezone(),
+        "delivery_due_date": _date_or_none(prefill["delivery_due_date"]),
+        "first_installment_date": prefill["first_installment_date"] or None,
+        "delivered_on": existing[0].delivered_on if existing else None,
+        "received_on": existing[0].received_on if existing else None,
+    }
+    if data["status"] in {"entregue", "recebido"}:
+        data["delivered_on"] = data["delivered_on"] or data["sale_date"]
+    if data["status"] == "recebido":
+        data["received_on"] = data["received_on"] or data["sale_date"]
+    try:
+        code = save_sale(repo, farm_id=scope["active_farm_id"], lines=lines, data=data, existing=existing)
+    except ValueError as exc:
+        db.rollback()
+        return fail(str(exc))
+    _flash(request, "success", f"Venda {code} {'atualizada' if sale_code else 'registrada'} com sucesso.")
+    origin_lot = _int_or_none(form.get("origem_lote"))
+    if origin_lot and origin_lot in raw_lines:
+        return _redirect_with_query("/producao", lote=origin_lot)
+    return _redirect_with_query("/producao/comercializacao", venda=code)
+
+
+@router.post("/producao/vendas")
+async def sale_create_action(
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    return await _sale_save(request, db, user, "", None)
+
+
+@router.post("/producao/vendas/{sale_code}/editar")
+async def sale_update_action(
+    sale_code: str,
+    request: Request,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    return await _sale_save(request, db, user, "", sale_code)
+
+
+@router.post("/producao/vendas/{sale_code}/situacao")
+def sale_status_action(
+    sale_code: str,
+    request: Request,
+    csrf_token: str = Form(...),
+    status: str = Form(...),
+    status_date: str | None = Form(None),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    from app.services.coffee_sales import SALE_STATUS_LABELS, sale_records, set_status
+
+    del user
+    validate_csrf(request, csrf_token)
+    repo = _repository(db)
+    scope, denied = _launch_scope_or_redirect(request, repo, "/producao/comercializacao")
+    if denied:
+        return denied
+    records = sale_records(db, scope["active_farm_id"], sale_code)
+    if not records or not all(_commercialization_record_matches_scope(r, scope) for r in records):
+        _flash(request, "error", "Venda não encontrada na fazenda ativa.")
+        return _redirect("/producao/comercializacao")
+    try:
+        set_status(db, records, (status or "").strip().lower(), _date_or_none(status_date))
+    except ValueError as exc:
+        _flash(request, "error", str(exc))
+        return _redirect_with_query("/producao/comercializacao", venda=sale_code)
+    _flash(request, "success", f"Venda {sale_code}: {SALE_STATUS_LABELS[status.strip().lower()].lower()}.")
+    return _redirect_with_query("/producao/comercializacao", venda=sale_code)
+
+
+@router.post("/producao/vendas/{sale_code}/excluir")
+def sale_delete_action(
+    sale_code: str,
+    request: Request,
+    csrf_token: str = Form(...),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user_web),
+):
+    from app.services.coffee_sales import sale_records
+
+    del user
+    validate_csrf(request, csrf_token)
+    repo = _repository(db)
+    scope, denied = _launch_scope_or_redirect(request, repo, "/producao/comercializacao")
+    if denied:
+        return denied
+    records = sale_records(db, scope["active_farm_id"], sale_code)
+    if not records or not all(_commercialization_record_matches_scope(r, scope) for r in records):
+        _flash(request, "error", "Venda não encontrada na fazenda ativa.")
+        return _redirect("/producao/comercializacao")
+    tx_ids = {r.finance_transaction_id for r in records if r.finance_transaction_id}
+    for record in records:
+        db.delete(record)
+    for tx_id in tx_ids:
+        tx = repo.get_finance_transaction(tx_id)
+        if tx:
+            db.delete(tx)
+    db.commit()
+    _flash(request, "success", f"Venda {sale_code} excluída. O saldo voltou para os lotes.")
     return _redirect("/producao/comercializacao")
 
 

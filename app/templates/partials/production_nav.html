@@ -1,0 +1,10 @@
+{# Abas internas do módulo Produção. active: 'overview' | 'classification' | 'sales' #}
+{% macro production_tabs(active) %}
+<nav class="pd-tabs" aria-label="Seções de Produção">
+    <a href="/producao" {% if active == 'overview' %}aria-current="page"{% endif %}>Visão geral</a>
+    <a href="/producao/classificacao" {% if active == 'classification' %}aria-current="page"{% endif %}>Classificação</a>
+    <a href="/producao/comercializacao" {% if active == 'sales' %}aria-current="page"{% endif %}>Vendas</a>
+</nav>
+{% endmacro %}
+
+{% macro quality_chip(text, tone) %}<span class="pd-chip {{ 'is-top' if tone == 'top' else ('is-ok' if tone == 'ok' else 'is-warn') }}">{{ text }}</span>{% endmacro %}

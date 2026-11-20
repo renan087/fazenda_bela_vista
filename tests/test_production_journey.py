@@ -50,12 +50,19 @@ def test_lot_journey_from_harvest_through_classification_and_partial_sales(monke
     def get(url):
         req = request(url)
         if req.url.path.endswith("/classificacao"):
-            return routes.coffee_classification_page(req, db=db, user=user, csrf_token="x").body.decode()
-        if req.url.path.endswith("/comercializacao"):
-            return routes.commercialization_page(
-                req, harvest_id=req.query_params.get("harvest_id"), db=db, user=user, csrf_token="x",
-            ).body.decode()
-        return routes.production_page(req, db=db, user=user, csrf_token="x").body.decode()
+            response = routes.coffee_classification_page(req, db=db, user=user, csrf_token="x")
+        elif req.url.path.endswith("/comercializacao"):
+            response = routes.commercialization_page(
+                req, harvest_id=req.query_params.get("harvest_id"), status=req.query_params.get("status"),
+                search=req.query_params.get("search"), db=db, user=user, csrf_token="x",
+            )
+        elif req.url.path == "/producao/vendas/nova":
+            response = routes.sale_new_page(req, db=db, user=user, csrf_token="x")
+        else:
+            response = routes.production_page(req, db=db, user=user, csrf_token="x")
+        if response.status_code in (302, 303, 307):
+            return get(response.headers["location"])
+        return response.body.decode()
 
     def sell(quantity):
         return routes.create_commercialization_action(
@@ -122,8 +129,8 @@ def test_lot_journey_from_harvest_through_classification_and_partial_sales(monke
     sale_url = f"/producao/comercializacao?harvest_id={lot_id}&origem=producao&launch=1"
     assert f'href="{sale_url.replace("&", "&amp;")}"' in page
     sale = get(sale_url)
-    assert re.search(rf'<option value="{lot_id}" data-available-sacks="10\.0"[^>]+ selected>', sale)
-    assert 'name="origem" value="producao"' in sale
+    assert f'name="lot_id" value="{lot_id}" id="vw-lot-{lot_id}" checked' in sale
+    assert f'name="origem_lote" value="{lot_id}"' in sale
 
     assert sell(4).headers["location"] == lot_url
     page = get(lot_url)
@@ -132,19 +139,19 @@ def test_lot_journey_from_harvest_through_classification_and_partial_sales(monke
     sale_id = db.query(CoffeeCommercializationRecord).one().id
     assert f'&amp;venda={sale_id}' in page
     sale_details = get(f"/producao/comercializacao?harvest_id={lot_id}&origem=producao&venda={sale_id}")
-    open_sale = f"""document.querySelector('[data-history-view-source="commercialization-view-{sale_id}"]')?.click()"""
-    assert open_sale in sale_details
-    assert f'href="{lot_url}"' in sale_details
-    assert open_sale not in get(f"/producao/comercializacao?harvest_id={other_lot.id}&origem=producao&venda={sale_id}")
+    assert 'id="venda-V-0001"' in sale_details and 'is-focus' in sale_details
+    assert f'href="/producao?lote={lot_id}"' in sale_details
+    other_sales = get(f"/producao/comercializacao?harvest_id={other_lot.id}&origem=producao&venda={sale_id}")
+    assert 'id="venda-V-0001"' not in other_sales
 
     response = sell(7)
+    assert "ultrapassa o saldo disponível do lote" in session["flash"]["message"]
     retry = get(response.headers["location"])
-    assert 'ultrapassa o saldo disponível do lote' in retry
-    assert 'name="origem" value="producao"' in retry
+    assert f'name="origem_lote" value="{lot_id}"' in retry
 
     assert sell(6).headers["location"] == lot_url
     page = get(lot_url)
     assert 'Sem saldo para venda' in page and 'Ver vendas' in page
     lot_card = page[page.index(f'id="harvest-view-{lot_id}"'):].split('</article>', 1)[0]
     assert 'Registrar venda' not in lot_card
-    assert 'O lote está indisponível para uma nova venda' in get(sale_url)
+    assert 'O lote escolhido está indisponível para uma nova venda' in get(sale_url)

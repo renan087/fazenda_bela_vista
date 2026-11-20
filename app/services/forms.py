@@ -1183,7 +1183,12 @@ def create_coffee_commercialization(
     variety_name = plot.variety.name if plot and plot.variety else None
     plot_name = plot.name if plot else None
     lot_label = form.get("lot_label") or f"{plot_name or 'Setor removido'} • {harvest.harvest_date.strftime('%d/%m/%Y') if harvest.harvest_date else '-'}"
+    from app.services.coffee_sales import next_sale_code
+
     record = CoffeeCommercializationRecord(
+        sale_code=form.get("sale_code") or next_sale_code(repository.db, form["farm_id"]),
+        discount_value=0,
+        net_value=total_value,
         farm_id=form["farm_id"],
         harvest_id=harvest.id,
         finance_account_id=form.get("finance_account_id"),
@@ -1286,6 +1291,8 @@ def update_coffee_commercialization(
             "equivalent_sacks": equivalent_sacks,
             "unit_price": unit_price,
             "total_value": total_value,
+            "discount_value": 0,
+            "net_value": total_value,
             "status": form.get("status") or "negociado",
             "payment_method": payment_method,
             "payment_condition": payment_condition,

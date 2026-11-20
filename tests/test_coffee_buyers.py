@@ -105,9 +105,9 @@ def test_resolve_buyer_prefers_registered_buyer(monkeypatch):
 
 
 def test_sale_form_uses_buyer_picker_and_modal():
-    template = (ROOT / "app/templates/commercialization.html").read_text()
+    template = (ROOT / "app/templates/sale_form.html").read_text()
     partial = (ROOT / "app/templates/partials/buyer_picker.html").read_text()
-    assert "buyer_field(commercialization_buyer" in template and "buyer_modal(csrf_token)" in template
+    assert "buyer_field(sale_buyer" in template and "buyer_modal(csrf_token)" in template
     assert "js/buyer_picker.js" in template
     for text in ["Vou emitir nota fiscal", "Buscar dados", "Isento / não contribuinte de ICMS", "É produtor rural com inscrição estadual",
                  "E-mail para receber a nota", 'aria-label="Fechar"']:

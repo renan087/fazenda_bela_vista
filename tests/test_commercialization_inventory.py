@@ -19,20 +19,11 @@ def test_lot_balance_does_not_claim_negative_stock():
     assert _commercialization_available_sacks(harvest, sales) == 0
 
 
-def test_inventory_explains_estimate_without_implying_physical_classification():
-    template = (Path(__file__).resolve().parents[1] / "app/templates/commercialization.html").read_text()
-    assert "saldo é uma estimativa" in template
-    assert "não calcula rendimento de beneficiamento" in template
-    assert "Não informada" in template
-    assert "Negociado acima do registrado" in template
-
-
-def test_commercialization_header_and_receipt_label():
+def test_sales_page_groups_sales_and_shows_progress():
     root = Path(__file__).resolve().parents[1]
     template = (root / "app/templates/commercialization.html").read_text()
-    css = (root / "app/static/css/styles.css").read_text()
-    assert "stock-page-shell sf-page commercialization-page" in template
-    assert "body:has(.commercialization-page) .hd { background: #fff; }" in css
-    assert "body .commercialization-page .stock-page-header { top: 69px; background: #f1f5f9; }" in css
-    assert template.count("Forma de recebimento") == 2
-    assert "Forma de pagamento" not in template
+    assert "production_tabs('sales')" in template
+    assert "/producao/vendas/nova" in template and "Disponível para vender" in template
+    assert "Registrar entrega" in template and "Registrar recebimento" in template
+    assert 'aria-label="Andamento da venda"' in template
+    assert "sf-page pd-page sl-page" in template
