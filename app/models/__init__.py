@@ -19,6 +19,7 @@ from app.models.equipment_maintenance_attachment import EquipmentMaintenanceAtta
 from app.models.equipment_maintenance_plan import EquipmentMaintenancePlan
 from app.models.farm import Farm
 from app.models.farm_attachment import FarmAttachment
+from app.models.farm_preview_cache import FarmPreviewCache
 from app.models.finance_account import FinanceAccount
 from app.models.finance_credit_card import FinanceCreditCard
 from app.models.finance_custom_bank import FinanceCustomBank
@@ -108,6 +109,7 @@ __all__ = [
     "EquipmentMaintenancePlan",
     "Farm",
     "FarmAttachment",
+    "FarmPreviewCache",
     "FinanceAccount",
     "FinanceCreditCard",
     "FinanceCustomBank",

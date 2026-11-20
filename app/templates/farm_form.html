@@ -96,14 +96,15 @@
                 </div>
 
                 {# ==================== PASSO 2 ==================== #}
+                {% set has_existing_map = edit_farm and edit_farm.boundary_geojson %}
                 <div class="vw-step" data-fm-step-panel="2" hidden>
                     <div class="vw-step-head">
                         <div>
                             <h2>2. Perímetro no mapa</h2>
                             <p>Desenhe o contorno clicando no mapa, arraste os cantos ou toque no (+) nas bordas para refinar.</p>
                         </div>
-                        <span class="pd-chip {{ 'is-done' if edit_farm and edit_farm.boundary_geojson else 'is-warn' }}" data-fm-poly-badge>
-                            {{ 'Perímetro pronto' if edit_farm and edit_farm.boundary_geojson else 'Sem perímetro' }}
+                        <span class="pd-chip {{ 'is-done' if has_existing_map else 'is-warn' }}" data-fm-poly-badge>
+                            {{ 'Perímetro pronto' if has_existing_map else 'Sem perímetro' }}
                         </span>
                     </div>
 
@@ -117,14 +118,16 @@
                             {% endif %}
                         </div>
 
+                        {% if not has_existing_map %}
                         <div data-fm-map-prompt style="padding:28px 16px; text-align:center; display:flex; flex-direction:column; align-items:center; gap:10px;">
                             <strong style="font-size:15px;">Carregar mapa da região</strong>
                             <span style="font-size:13px; color:var(--pd-muted); max-width:360px;">Centralizamos o mapa na localização informada no passo 1 para você marcar os cantos da propriedade.</span>
                             <button type="button" class="sf-btn sf-btn-primary" data-fm-load-map>Iniciar desenho no mapa</button>
                         </div>
+                        {% endif %}
 
-                        <div data-fm-map-wrap hidden>
-                            <div id="fm-wizard-boundary-map" class="fm-map-canvas"></div>
+                        <div data-fm-map-wrap {% if not has_existing_map %}hidden{% endif %}>
+                            <div id="fm-wizard-boundary-map" class="fm-map-canvas{% if has_existing_map %} is-expanded{% endif %}"></div>
                             <div class="fm-map-tools">
                                 <div style="display:flex; flex-wrap:wrap; gap:8px;">
                                     <button type="button" class="sf-btn sf-btn-secondary" data-fm-wiz-undo>Desfazer</button>
@@ -320,5 +323,5 @@
 <script>window.__GOOGLE_MAPS_API_KEY = {{ google_maps_web_key | tojson }};</script>
 <script src="{{ url_for('static', path='js/farm_boundary_editor.js') }}?v=20261120fm1"></script>
 {% include "partials/attachment_manager_script.html" %}
-<script src="{{ url_for('static', path='js/farms.js') }}?v=20261120fm1"></script>
+<script src="{{ url_for('static', path='js/farms.js') }}?v=20261120fm2"></script>
 {% endblock %}

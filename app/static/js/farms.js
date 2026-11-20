@@ -392,6 +392,8 @@
             }
             if (mapPrompt) mapPrompt.hidden = true;
             if (mapWrap) mapWrap.hidden = false;
+            const mapEl = document.getElementById('fm-wizard-boundary-map');
+            if (mapEl) mapEl.classList.add('is-expanded');
             formEditor = await window.initFarmBoundaryEditor({
                 containerId: 'fm-wizard-boundary-map',
                 hiddenInput: geoInput,

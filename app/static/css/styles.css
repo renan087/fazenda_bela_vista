@@ -8166,6 +8166,11 @@ a.pf-logout:hover { background: #fdecea; color: #b42318; }
 .fm-kv { border-radius:12px; background:var(--pd-soft); padding:12px; }
 .fm-kv dt { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; color:var(--pd-muted); margin:0 0 4px; }
 .fm-kv dd { margin:0; font-size:14px; font-weight:600; color:var(--pd-ink); word-break:break-word; }
+.fm-summary-rows { margin:0; display:flex; flex-direction:column; gap:10px; font-size:14px; }
+.fm-summary-rows > div { display:flex; flex-wrap:wrap; align-items:baseline; justify-content:space-between; gap:4px 12px; min-width:0; }
+.fm-summary-rows dt { color:var(--pd-muted); flex:none; }
+.fm-summary-rows dd { margin:0; font-weight:600; color:var(--pd-ink); text-align:right; min-width:0; max-width:100%; overflow-wrap:anywhere; word-break:break-word; }
+.fm-break-code { font-size:13px; letter-spacing:.01em; }
 
 /* Wizard de Fazendas (passos em linha única + Informações adicionais retráteis) */
 .fm-steps { list-style:none; margin:0; padding:0; display:flex; flex-wrap:nowrap; gap:8px; overflow-x:auto; scrollbar-width:none; max-width:100%; }
@@ -8184,6 +8189,7 @@ a.pf-logout:hover { background: #fdecea; color: #b42318; }
 .fm-map-shell { border:1px solid var(--pd-line); border-radius:16px; overflow:hidden; background:#fff; }
 .fm-map-bar { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:8px; padding:10px 14px; background:var(--pd-soft); border-bottom:1px solid var(--pd-line2); font-size:13px; }
 .fm-map-canvas { width:100%; height:320px; position:relative; z-index:0; }
+.fm-map-canvas.is-expanded { height:440px; }
 .fm-map-tools { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:8px; padding:10px 14px; border-top:1px solid var(--pd-line2); background:#fff; }
 
 .fm-opt-group { display:flex; flex-direction:column; gap:10px; }
@@ -8227,6 +8233,7 @@ a.pf-logout:hover { background: #fdecea; color: #b42318; }
   .fm-card-actions .sf-btn { flex:1; justify-content:center; }
   .fm-occ-stats { grid-template-columns:1fr; }
   .fm-steps { width:100%; gap:4px; }
+  .fm-map-canvas.is-expanded { height:360px; }
   .fm-step-btn { padding:4px 8px 4px 4px; gap:5px; font-size:11px; }
   .fm-step-btn span { width:20px; height:20px; font-size:10px; }
   .fm-dialog { width:100%; max-width:none; margin:auto 0 0; max-height:92dvh; }

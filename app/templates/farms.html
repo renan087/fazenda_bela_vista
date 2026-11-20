@@ -87,8 +87,8 @@
             {% for farm in farms %}
             {% set m = farm_metrics[farm.id] %}
             {% set is_current = (active_farm_id == farm.id) %}
-            {% set thumb_src = url_for('static', path='generated/farm_previews/' ~ farm.id ~ '_thumb.jpg') ~ '?v=' ~ farm_preview_fingerprint.get(farm.id, '') %}
-            {% set full_src = url_for('static', path='generated/farm_previews/' ~ farm.id ~ '.png') ~ '?v=' ~ farm_preview_fingerprint.get(farm.id, '') %}
+            {% set thumb_src = '/fazendas/' ~ farm.id ~ '/preview-thumb.jpg?v=' ~ farm_preview_fingerprint.get(farm.id, '') %}
+            {% set full_src = '/fazendas/' ~ farm.id ~ '/preview.png?v=' ~ farm_preview_fingerprint.get(farm.id, '') %}
             <article class="pd-card fm-card{% if is_current %} is-active{% endif %}"
                      data-fm-row
                      data-fm-geo="{{ '1' if farm.boundary_geojson else '0' }}"

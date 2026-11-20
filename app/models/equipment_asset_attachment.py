@@ -13,7 +13,7 @@ class EquipmentAssetAttachment(Base):
     equipment_asset_id: Mapped[int] = mapped_column(ForeignKey("equipment_assets.id", ondelete="CASCADE"), nullable=False, index=True)
     filename: Mapped[str] = mapped_column(String(255), nullable=False)
     content_type: Mapped[str] = mapped_column(String(120), nullable=False)
-    file_data: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+    file_data: Mapped[bytes] = mapped_column(LargeBinary, nullable=False, deferred=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
     equipment_asset = relationship("EquipmentAsset", back_populates="attachments")

@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import gc
+import hashlib
 import json
 import logging
 import math
 import tempfile
+import threading
 from io import BytesIO
 from pathlib import Path
 from urllib.parse import urlencode
@@ -16,6 +19,12 @@ from PIL import Image, ImageDraw
 from app.core.config import get_settings
 
 logger = logging.getLogger(__name__)
+
+# Controle estrito de concorrência: no máximo 1 geração de preview Pillow por vez na instância
+# (evita picos simultâneos de RAM no container de 512 MB do Render).
+_PREVIEW_SEM = threading.Semaphore(1)
+_IN_FLIGHT_LOCK = threading.Lock()
+_IN_FLIGHT_KEYS: set[tuple[int, str]] = set()
 
 TILE_SIZE = 256
 MAX_TILES = 40
@@ -53,12 +62,114 @@ def farm_preview_thumb_fs_path(farm_id: int) -> Path:
     return PREVIEW_DIR / f"{farm_id}_thumb.jpg"
 
 
+def farm_geojson_hash(boundary_geojson: str | None) -> str:
+    text = (boundary_geojson or "").strip()
+    if not text:
+        return ""
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()[:14]
+
+
+def _delete_preview_cache_db(farm_id: int) -> None:
+    try:
+        from app.db.session import SessionLocal
+        from app.models.farm_preview_cache import FarmPreviewCache
+
+        with SessionLocal() as db:
+            db.query(FarmPreviewCache).filter(FarmPreviewCache.farm_id == farm_id).delete()
+            db.commit()
+    except Exception:
+        logger.debug("Nao foi possivel limpar farm_preview_cache da fazenda %s", farm_id, exc_info=True)
+
+
+def _save_preview_cache_db(farm_id: int, geojson_hash: str, png_bytes: bytes | None, jpg_bytes: bytes | None) -> None:
+    if not geojson_hash or (not png_bytes and not jpg_bytes):
+        return
+    try:
+        from app.db.session import SessionLocal
+        from app.models.farm_preview_cache import FarmPreviewCache
+
+        with SessionLocal() as db:
+            row = db.query(FarmPreviewCache).filter(FarmPreviewCache.farm_id == farm_id).first()
+            if not row:
+                row = FarmPreviewCache(farm_id=farm_id, geojson_hash=geojson_hash)
+                db.add(row)
+            row.geojson_hash = geojson_hash
+            if png_bytes is not None:
+                row.preview_png = png_bytes
+            if jpg_bytes is not None:
+                row.thumb_jpg = jpg_bytes
+            db.commit()
+    except Exception:
+        logger.warning("Nao foi possivel persistir preview da fazenda %s no banco", farm_id, exc_info=True)
+
+
+def cached_preview_hashes(db, farm_ids: list[int]) -> dict[int, str]:
+    """Consulta apenas (farm_id, geojson_hash) sem carregar nenhum byte binário."""
+    if not farm_ids:
+        return {}
+    from app.models.farm_preview_cache import FarmPreviewCache
+
+    rows = (
+        db.query(FarmPreviewCache.farm_id, FarmPreviewCache.geojson_hash)
+        .filter(FarmPreviewCache.farm_id.in_(farm_ids))
+        .all()
+    )
+    return {int(fid): str(h or "") for fid, h in rows}
+
+
+def read_or_restore_farm_preview(
+    db,
+    farm_id: int,
+    *,
+    kind: str = "thumb",
+    expected_hash: str | None = None,
+) -> bytes | None:
+    """Lê preview do disco local; se ausente (ex.: após deploy no Render), restaura do PostgreSQL."""
+    disk_path = farm_preview_thumb_fs_path(farm_id) if kind == "thumb" else farm_preview_fs_path(farm_id)
+    if disk_path.is_file() and disk_path.stat().st_size > 0:
+        try:
+            return disk_path.read_bytes()
+        except OSError:
+            pass
+
+    from app.models.farm_preview_cache import FarmPreviewCache
+
+    col = FarmPreviewCache.thumb_jpg if kind == "thumb" else FarmPreviewCache.preview_png
+    query = db.query(FarmPreviewCache.geojson_hash, col).filter(FarmPreviewCache.farm_id == farm_id)
+    row = query.first()
+    if not row:
+        return None
+    stored_hash, payload = row
+    if expected_hash and stored_hash != expected_hash:
+        return None
+    if not payload:
+        return None
+    data = bytes(payload)
+    # Reidrata o cache em disco de forma atômica para próximas requisições
+    tmp_path: Path | None = None
+    try:
+        disk_path.parent.mkdir(parents=True, exist_ok=True)
+        suffix = ".jpg" if kind == "thumb" else ".png"
+        with tempfile.NamedTemporaryFile(suffix=suffix, delete=False, dir=disk_path.parent) as tmp:
+            tmp_path = Path(tmp.name)
+            tmp.write(data)
+        tmp_path.replace(disk_path)
+    except OSError:
+        if tmp_path is not None:
+            try:
+                tmp_path.unlink(missing_ok=True)
+            except OSError:
+                pass
+    return data
+
+
 def remove_farm_preview_image(farm_id: int) -> None:
     for path in (farm_preview_fs_path(farm_id), farm_preview_thumb_fs_path(farm_id)):
         try:
             path.unlink(missing_ok=True)
         except OSError as exc:
             logger.warning("Nao foi possivel remover preview da fazenda %s (%s): %s", farm_id, path.name, exc)
+    _delete_preview_cache_db(farm_id)
 
 
 def _resample_lanczos():
@@ -69,11 +180,11 @@ def _resample_lanczos():
 
 
 def save_preview_thumbnail_at(full_rgb: Image.Image, thumb_path: Path) -> bool:
-    """Redimensiona e grava JPEG para uso nos cards (arquivo pequeno)."""
+    """Redimensiona e grava JPEG para uso nos cards (arquivo pequeno), fechando o buffer."""
     thumb = full_rgb.copy()
-    thumb.thumbnail((THUMB_MAX_WIDTH, THUMB_MAX_HEIGHT), _resample_lanczos())
     tmp_path: Path | None = None
     try:
+        thumb.thumbnail((THUMB_MAX_WIDTH, THUMB_MAX_HEIGHT), _resample_lanczos())
         thumb_path.parent.mkdir(parents=True, exist_ok=True)
         with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False, dir=thumb_path.parent) as tmp:
             tmp_path = Path(tmp.name)
@@ -94,6 +205,11 @@ def save_preview_thumbnail_at(full_rgb: Image.Image, thumb_path: Path) -> bool:
             except OSError:
                 pass
         return False
+    finally:
+        try:
+            thumb.close()
+        except Exception:
+            pass
 
 
 def ensure_farm_preview_thumb(farm_id: int) -> bool:
@@ -101,13 +217,20 @@ def ensure_farm_preview_thumb(farm_id: int) -> bool:
     png_path = farm_preview_fs_path(farm_id)
     if not png_path.is_file() or png_path.stat().st_size <= 0:
         return False
+    rgb: Image.Image | None = None
     try:
         with Image.open(png_path) as im:
             rgb = im.convert("RGB")
-            return save_preview_thumbnail_at(rgb, farm_preview_thumb_fs_path(farm_id))
+        return save_preview_thumbnail_at(rgb, farm_preview_thumb_fs_path(farm_id))
     except OSError as exc:
         logger.warning("Nao foi possivel abrir PNG do preview da fazenda %s: %s", farm_id, exc)
         return False
+    finally:
+        if rgb is not None:
+            try:
+                rgb.close()
+            except Exception:
+                pass
 
 
 def _lonlat_to_world_px(lon: float, lat: float, z: int) -> tuple[float, float]:
@@ -377,9 +500,16 @@ def _try_esri_tile_preview(
                         continue
                     ox = (tx - tx0) * TILE_SIZE
                     oy = (ty - ty0) * TILE_SIZE
-                    mosaic.paste(tile, (ox, oy))
+                    try:
+                        mosaic.paste(tile, (ox, oy))
+                    finally:
+                        try:
+                            tile.close()
+                        except Exception:
+                            pass
     except Exception as exc:
         logger.exception("Falha ao montar mosaic Esri para preview id=%s: %s", log_entity_id, exc)
+        mosaic.close()
         return None
 
     crop_x0 = int(wx0 - tx0 * TILE_SIZE)
@@ -391,61 +521,78 @@ def _try_esri_tile_preview(
     crop_x1 = max(crop_x0 + 1, min(crop_x1, mosaic_w))
     crop_y1 = max(crop_y0 + 1, min(crop_y1, mosaic_h))
 
-    cropped = mosaic.crop((crop_x0, crop_y0, crop_x1, crop_y1))
+    raw_crop: Image.Image | None = None
+    cropped: Image.Image | None = None
+    overlay: Image.Image | None = None
+    base: Image.Image | None = None
+    composed: Image.Image | None = None
     try:
-        resample = Image.Resampling.LANCZOS
-    except AttributeError:
-        resample = Image.LANCZOS
-    cropped = cropped.resize((OUTPUT_WIDTH, OUTPUT_HEIGHT), resample)
+        raw_crop = mosaic.crop((crop_x0, crop_y0, crop_x1, crop_y1))
+        mosaic.close()
+        try:
+            resample = Image.Resampling.LANCZOS
+        except AttributeError:
+            resample = Image.LANCZOS
+        cropped = raw_crop.resize((OUTPUT_WIDTH, OUTPUT_HEIGHT), resample)
+        raw_crop.close()
+        raw_crop = None
 
-    crop_w = crop_x1 - crop_x0
-    crop_h = crop_y1 - crop_y0
+        crop_w = crop_x1 - crop_x0
+        crop_h = crop_y1 - crop_y0
 
-    overlay = Image.new("RGBA", (OUTPUT_WIDTH, OUTPUT_HEIGHT), (0, 0, 0, 0))
-    draw = ImageDraw.Draw(overlay)
-    rings_reference = rings_reference or []
+        overlay = Image.new("RGBA", (OUTPUT_WIDTH, OUTPUT_HEIGHT), (0, 0, 0, 0))
+        draw = ImageDraw.Draw(overlay)
+        rings_reference = rings_reference or []
 
-    def _project_ring(ring: list[tuple[float, float]]) -> list[tuple[float, float]]:
-        flat: list[tuple[float, float]] = []
-        for lon, lat in ring:
-            wx, wy = _lonlat_to_world_px(lon, lat, z)
-            px = (wx - wx0) / crop_w * OUTPUT_WIDTH
-            py = (wy - wy0) / crop_h * OUTPUT_HEIGHT
-            flat.append((px, py))
-        return flat
+        def _project_ring(ring: list[tuple[float, float]]) -> list[tuple[float, float]]:
+            flat: list[tuple[float, float]] = []
+            for lon, lat in ring:
+                wx, wy = _lonlat_to_world_px(lon, lat, z)
+                px = (wx - wx0) / crop_w * OUTPUT_WIDTH
+                py = (wy - wy0) / crop_h * OUTPUT_HEIGHT
+                flat.append((px, py))
+            return flat
 
-    for ring in rings_reference:
-        flat = _project_ring(ring)
-        if len(flat) < 3:
-            continue
-        draw.polygon(
-            flat,
-            fill=(91, 179, 74, 55),
-            outline=(65, 132, 54, 220),
-            width=2,
-        )
-
-    for ring in rings_plot:
-        flat = _project_ring(ring)
-        if len(flat) < 3:
-            continue
-        if rings_reference:
+        for ring in rings_reference:
+            flat = _project_ring(ring)
+            if len(flat) < 3:
+                continue
             draw.polygon(
                 flat,
-                fill=(249, 115, 22, 120),
-                outline=(234, 88, 12, 255),
-                width=3,
-            )
-        else:
-            draw.polygon(
-                flat,
-                fill=(91, 179, 74, 95),
-                outline=(65, 132, 54, 255),
-                width=3,
+                fill=(91, 179, 74, 55),
+                outline=(65, 132, 54, 220),
+                width=2,
             )
 
-    base = cropped.convert("RGBA")
-    return Image.alpha_composite(base, overlay).convert("RGB")
+        for ring in rings_plot:
+            flat = _project_ring(ring)
+            if len(flat) < 3:
+                continue
+            if rings_reference:
+                draw.polygon(
+                    flat,
+                    fill=(249, 115, 22, 120),
+                    outline=(234, 88, 12, 255),
+                    width=3,
+                )
+            else:
+                draw.polygon(
+                    flat,
+                    fill=(91, 179, 74, 95),
+                    outline=(65, 132, 54, 255),
+                    width=3,
+                )
+
+        base = cropped.convert("RGBA")
+        composed = Image.alpha_composite(base, overlay)
+        return composed.convert("RGB")
+    finally:
+        for img in (raw_crop, cropped, overlay, base, composed):
+            if img is not None:
+                try:
+                    img.close()
+                except Exception:
+                    pass
 
 
 def build_satellite_preview_from_geojson(
@@ -502,35 +649,74 @@ def build_satellite_preview_from_geojson(
 
 def generate_farm_preview_image(farm_id: int, boundary_geojson: str | None) -> bool:
     """
-    Gera PNG em disco. Prefere Google Maps Static API (satélite + path) se
-    GOOGLE_MAPS_API_KEY estiver definida; caso contrário usa tiles Esri + desenho local.
+    Gera PNG e miniatura JPEG em disco e persiste no banco (farm_preview_cache).
+    Executa sob semáforo global (1 geração por vez) e fecha todos os buffers Pillow.
     """
-    if not boundary_geojson or not boundary_geojson.strip():
+    text = (boundary_geojson or "").strip()
+    if not text:
         remove_farm_preview_image(farm_id)
         return False
 
-    final_img = build_satellite_preview_from_geojson(boundary_geojson.strip(), log_entity_id=farm_id)
-    if final_img is None:
-        return False
+    geo_hash = farm_geojson_hash(text)
+    with _PREVIEW_SEM:
+        final_img = build_satellite_preview_from_geojson(text, log_entity_id=farm_id)
+        if final_img is None:
+            return False
 
-    PREVIEW_DIR.mkdir(parents=True, exist_ok=True)
-    final_path = farm_preview_fs_path(farm_id)
-    tmp_path: Path | None = None
-    try:
-        with tempfile.NamedTemporaryFile(suffix=".png", delete=False, dir=PREVIEW_DIR) as tmp:
-            tmp_path = Path(tmp.name)
-        final_img.save(tmp_path, format="PNG", optimize=True)
-        tmp_path.replace(final_path)
-    except OSError as exc:
-        logger.exception("Falha ao salvar preview da fazenda %s: %s", farm_id, exc)
-        if tmp_path is not None:
+        PREVIEW_DIR.mkdir(parents=True, exist_ok=True)
+        final_path = farm_preview_fs_path(farm_id)
+        thumb_path = farm_preview_thumb_fs_path(farm_id)
+        tmp_path: Path | None = None
+        png_bytes: bytes | None = None
+        jpg_bytes: bytes | None = None
+        try:
+            with tempfile.NamedTemporaryFile(suffix=".png", delete=False, dir=PREVIEW_DIR) as tmp:
+                tmp_path = Path(tmp.name)
+            final_img.save(tmp_path, format="PNG", optimize=True)
+            tmp_path.replace(final_path)
+            png_bytes = final_path.read_bytes()
+
+            if save_preview_thumbnail_at(final_img, thumb_path) and thumb_path.is_file():
+                jpg_bytes = thumb_path.read_bytes()
+            else:
+                logger.warning("Preview PNG salvo mas miniatura JPEG falhou para fazenda %s", farm_id)
+        except OSError as exc:
+            logger.exception("Falha ao salvar preview da fazenda %s: %s", farm_id, exc)
+            if tmp_path is not None:
+                try:
+                    tmp_path.unlink(missing_ok=True)
+                except OSError:
+                    pass
+            return False
+        finally:
             try:
-                tmp_path.unlink(missing_ok=True)
-            except OSError:
+                final_img.close()
+            except Exception:
                 pass
+            del final_img
+            gc.collect()
+
+        _save_preview_cache_db(farm_id, geo_hash, png_bytes, jpg_bytes)
+        del png_bytes, jpg_bytes
+        return True
+
+
+def schedule_farm_preview_generation(farm_id: int, boundary_geojson: str | None) -> bool:
+    """
+    Entrada segura para BackgroundTasks (roda no threadpool fora do event loop):
+    deduplica tarefas em andamento por (farm_id, hash) e limita concorrência via _PREVIEW_SEM.
+    """
+    text = (boundary_geojson or "").strip()
+    if not text:
+        remove_farm_preview_image(farm_id)
         return False
-
-    if not save_preview_thumbnail_at(final_img.copy(), farm_preview_thumb_fs_path(farm_id)):
-        logger.warning("Preview PNG salvo mas miniatura JPEG falhou para fazenda %s", farm_id)
-
-    return True
+    key = (int(farm_id), farm_geojson_hash(text))
+    with _IN_FLIGHT_LOCK:
+        if key in _IN_FLIGHT_KEYS:
+            return False
+        _IN_FLIGHT_KEYS.add(key)
+    try:
+        return generate_farm_preview_image(farm_id, text)
+    finally:
+        with _IN_FLIGHT_LOCK:
+            _IN_FLIGHT_KEYS.discard(key)

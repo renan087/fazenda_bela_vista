@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block content %}
 {% set is_current = (active_farm_id == farm.id) %}
-{% set full_src = (url_for('static', path='generated/farm_previews/' ~ farm.id ~ '.png') ~ '?v=' ~ farm_preview_fingerprint.get(farm.id, '')) if farm.boundary_geojson and farm_preview_ready.get(farm.id) else '' %}
+{% set full_src = ('/fazendas/' ~ farm.id ~ '/preview.png?v=' ~ farm_preview_fingerprint.get(farm.id, '')) if farm.boundary_geojson and farm_preview_ready.get(farm.id) else '' %}
 <div class="sf-page pd-page fm-page" data-fm-detail-page>
     <nav class="pd-crumbs" aria-label="Caminho">
         <a href="/fazendas">Fazendas</a><span aria-hidden="true">›</span>
@@ -143,8 +143,8 @@
                     <h2>Resumo cadastral</h2>
                     <a class="fm-hcard-link" href="/fazendas/{{ farm.id }}?aba=documentos">Ver tudo</a>
                 </div>
-                <dl class="cd-rows">
-                    <div><dt>CAR</dt><dd>{{ farm.car_registration_number or 'Não informado' }}</dd></div>
+                <dl class="fm-summary-rows">
+                    <div><dt>CAR</dt><dd class="fm-break-code">{{ farm.car_registration_number or 'Não informado' }}</dd></div>
                     <div><dt>CCIR</dt><dd>{{ farm.ccir_number or '—' }}</dd></div>
                     <div><dt>ITR / NIRF / CIB</dt><dd>{{ farm.itr_registration_number or '—' }}</dd></div>
                     <div><dt>Anexos</dt><dd>{{ metrics.attachments_count }} arquivo{{ 's' if metrics.attachments_count != 1 }}</dd></div>
@@ -208,7 +208,7 @@
                         {% if s.start_date %}{{ s.start_date.strftime('%d/%m/%Y') }}{% endif %}{% if s.end_date %} → {{ s.end_date.strftime('%d/%m/%Y') }}{% endif %}
                     </p>
                 </div>
-                {% if s.variety_name %}<span class="pd-chip is-muted">{{ s.variety_name }}</span>{% endif %}
+                {% if s.variety %}<span class="pd-chip is-muted">{{ s.variety.name }}</span>{% endif %}
             </div>
             {% endfor %}
         </div>

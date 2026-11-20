@@ -96,14 +96,17 @@ def _should_skip_object(obj: Any) -> bool:
     except Exception:
         return True
     table_name = getattr(mapper.local_table, "name", "")
-    return table_name == AuditLog.__tablename__
+    return table_name in {AuditLog.__tablename__, "farm_preview_cache"}
 
 
 def _snapshot_object(obj: Any) -> dict[str, Any]:
     state = inspect(obj)
     values: dict[str, Any] = {}
+    unloaded = state.unloaded
     for attr in state.mapper.column_attrs:
         key = attr.key
+        if key in unloaded:
+            continue
         values[key] = _safe_value(key, getattr(obj, key, None))
     return values
 
@@ -112,8 +115,11 @@ def _changed_values(obj: Any) -> tuple[dict[str, Any], dict[str, Any]]:
     state = inspect(obj)
     before: dict[str, Any] = {}
     after: dict[str, Any] = {}
+    unloaded = state.unloaded
     for attr in state.mapper.column_attrs:
         key = attr.key
+        if key in unloaded:
+            continue
         history = state.attrs[key].history
         if not history.has_changes():
             continue
