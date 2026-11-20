@@ -245,19 +245,20 @@
 
 {# ======================= CELULAR ======================= #}
 {%- set sf_m_second = (sf_top|selectattr('id', 'equalto', 'agenda')|selectattr('show')|list or sf_top|selectattr('id', 'equalto', 'mapa')|selectattr('show')|list) -%}
-<nav class="sf-bn" aria-label="Navegação principal">
+<nav class="sf-bn{% if request.url.path.startswith('/mobile/assistente') %} is-off{% endif %}" data-sf-bn aria-label="Navegação principal">
     <a href="/dashboard" class="sf-bn-i{% if page == 'dashboard' %} is-active{% endif %}"{% if page == 'dashboard' %} aria-current="page"{% endif %}><span class="sf-bn-pill">{{ sf_icon('home') }}</span>Início</a>
     {%- if sf_m_second %}{% set s2 = sf_m_second[0] %}
     <a href="{{ sf_href(s2) }}" class="sf-bn-i{% if page == s2.page %} is-active{% endif %}"{% if page == s2.page %} aria-current="page"{% endif %}><span class="sf-bn-pill">{{ sf_icon(s2.icon) }}</span>{{ s2.short }}</a>
     {%- else %}<span></span>{% endif %}
-    <div class="sf-bn-fab-w"><button type="button" class="sf-bn-fab" data-sf-sheet-open="reg" aria-expanded="false" aria-controls="sf-sheet-reg" aria-label="Registrar">{{ sf_icon('plus') }}</button><span aria-hidden="true">Registrar</span></div>
+    <button type="button" class="sf-bn-i sf-bn-reg" data-sf-sheet-open="reg" aria-expanded="false" aria-controls="sf-sheet-reg"><span class="sf-bn-pill">{{ sf_icon('plus') }}</span><span class="sf-when-off">Registrar</span><span class="sf-when-on">Fechar</span></button>
     <a href="/mobile/assistente" class="sf-bn-i sf-bn-pz"><span class="sf-bn-pill"><img src="{{ url_for('static', path='img/pezinho/icone-cabecalho.png') }}" alt="" width="30" height="30"></span>Pezinho</a>
-    <button type="button" class="sf-bn-i" data-sf-sheet-open="menu" aria-expanded="false" aria-controls="sf-sheet-menu"><span class="sf-bn-pill">{{ sf_icon('menu') }}</span>Menu</button>
+    <button type="button" class="sf-bn-i" data-sf-sheet-open="menu" aria-expanded="false" aria-controls="sf-sheet-menu"><span class="sf-bn-pill">{{ sf_icon('menu', 'sf-ic sf-when-off') }}{{ sf_icon('x', 'sf-ic sf-when-on') }}</span><span class="sf-when-off">Menu</span><span class="sf-when-on">Fechar</span></button>
 </nav>
+<button type="button" class="sf-bn-peek" data-sf-bn-peek aria-label="Mostrar menu" tabindex="-1"></button>
 <div class="sf-m-back" data-sf-sheet-close aria-hidden="true"></div>
 
 <div class="sf-sheet sf-sheet-menu" id="sf-sheet-menu" role="dialog" aria-modal="true" aria-label="Menu" inert>
-    <div class="sf-grab" aria-hidden="true"></div>
+    <button type="button" class="sf-grab" data-sf-sheet-close aria-label="Fechar"></button>
     <div class="sf-sh-h"><h2>Menu</h2><button type="button" class="sf-icb" data-sf-sheet-close aria-label="Fechar menu">{{ sf_icon('x') }}</button></div>
     <label class="sf-m-search">{{ sf_icon('search', 'sf-ic sf-ic-s') }}<input type="search" placeholder="Buscar página…" autocomplete="off" aria-label="Buscar página" data-sf-m-q></label>
     <div class="sf-trk-w">
@@ -318,7 +319,7 @@
 </div>
 
 <div class="sf-sheet sf-sheet-reg" id="sf-sheet-reg" role="dialog" aria-modal="true" aria-label="Registrar" inert>
-    <div class="sf-grab" aria-hidden="true"></div>
+    <button type="button" class="sf-grab" data-sf-sheet-close aria-label="Fechar"></button>
     <div class="sf-sh-h"><h2>O que aconteceu hoje?</h2><button type="button" class="sf-icb" data-sf-sheet-close aria-label="Fechar">{{ sf_icon('x') }}</button></div>
     <div class="sf-reg">
         <div class="sf-reg-g">

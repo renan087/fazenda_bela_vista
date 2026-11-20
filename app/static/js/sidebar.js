@@ -370,6 +370,31 @@
     };
     mq?.addEventListener('input', renderMobileSearch);
 
+    /* ---------------- celular: barra some ao avançar na página e volta ao voltar ---------------- */
+    const bn = $('[data-sf-bn]');
+    const peek = $('[data-sf-bn-peek]');
+    let lastY = window.scrollY;
+    let ticking = false;
+    const setBar = (hidden) => {
+        if (!bn) return;
+        bn.classList.toggle('is-hidden', hidden);
+        peek?.classList.toggle('is-on', hidden);
+        if (peek) peek.tabIndex = hidden ? 0 : -1;
+    };
+    const onScroll = () => {
+        ticking = false;
+        if (!bn || desktopMq.matches || sheet) { lastY = window.scrollY; return; }
+        const y = window.scrollY;
+        const d = y - lastY;
+        const atEnd = y + window.innerHeight >= document.documentElement.scrollHeight - 4;
+        if (d > 6 && y > 40 && !atEnd) setBar(true);
+        else if (d < -6 || y < 10 || atEnd) setBar(false);
+        if (Math.abs(d) > 6) lastY = y;
+    };
+    window.addEventListener('scroll', () => { if (!ticking) { ticking = true; requestAnimationFrame(onScroll); } }, { passive: true });
+    peek?.addEventListener('click', () => setBar(false));
+    $$('[data-sf-sheet-open]').forEach((b) => b.addEventListener('click', () => setBar(false)));
+
     /* ---------------- fechar ao clicar fora / Esc / mudar tamanho ---------------- */
     document.addEventListener('click', (e) => {
         if (openPanel && !openPanel.contains(e.target) && !(openAnchor && openAnchor.contains(e.target))) closePanel();
