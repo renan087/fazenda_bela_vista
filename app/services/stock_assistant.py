@@ -172,6 +172,7 @@ class FarmAssistant:
         self.shareable_queries = []
         self.reminder_proposal_ready = False
         self.module_proposal_ready = False
+        self.closing_requested = False
         self.extra_tools = list(extra_tools)  # [(schema, handler)] de consultas somente leitura
         self.prepare_purchase = prepare_purchase
         self.purchase_rules = purchase_rules or {}  # {tipo: {categoria: [unidades]}}
@@ -436,6 +437,8 @@ class FarmAssistant:
             self.reminder_proposal_ready = True
         if name == "preparar_chuva" and result.get("aguardando_confirmacao"):
             self.module_proposal_ready = True
+        if name == "solicitar_encerramento_conversa" and result.get("aguardando_confirmacao"):
+            self.closing_requested = True
         if name in ("preparar_consumo", "preparar_compra"):
             if result.get("erro") and isinstance(args, dict):
                 known = {key: value for key, value in args.items() if value not in (None, "", False)}
@@ -479,7 +482,8 @@ class FarmAssistant:
         )
         purchases_on = bool(self.prepare_purchase)
         return (
-            "Seu nome é Pezinho. Você é o assistente de IA do SiSFarm e parceiro de campo do produtor de café. "
+            ("Se o usuário quiser terminar este atendimento no WhatsApp, use solicitar_encerramento_conversa; a conversa só será encerrada após a confirmação. Nunca diga que ela já foi encerrada sem confirmação. " if "solicitar_encerramento_conversa" in self.handlers else "")
+            + "Seu nome é Pezinho. Você é o assistente de IA do SiSFarm e parceiro de campo do produtor de café. "
             "Quando perguntarem seu nome, apresente-se como Pezinho, assistente do SiSFarm. Converse como uma pessoa da roça que "
             "entende de lavoura e de sistema: português do Brasil simples, caloroso e direto, frases curtas, como numa conversa "
             "de WhatsApp. Pode usar expressões do dia a dia ('beleza', 'pode deixar', 'fechou') com moderação; nada de "
@@ -630,6 +634,8 @@ class FarmAssistant:
             for call in calls:
                 result = self.call_tool(call.function.name, call.function.arguments)
                 messages.append({"role": "tool", "tool_call_id": call.id, "content": json.dumps(result, ensure_ascii=False, default=str)})
+            if self.closing_requested:
+                return {"resposta": "Aguardando confirmação de encerramento.", "draft_id": None}
             if self.reminder_proposal_ready or self.module_proposal_ready:
                 return {"resposta": "Aguardando confirmação do lembrete.", "draft_id": None}
             if self.invoice:

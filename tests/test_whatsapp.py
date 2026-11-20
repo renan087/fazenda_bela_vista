@@ -609,3 +609,39 @@ def test_explicit_close_sends_one_survey(monkeypatch):
     process_lifecycle(db, client)
     assert db.query(WhatsAppSurvey).one().status == "pending" and len(client.sent) == count
     db.close()
+
+
+def test_ai_requests_closure_with_natural_language(monkeypatch):
+    from app.models.whatsapp import WhatsAppClosingRequest
+    _settings(monkeypatch)
+    routes, db, user, scope, *_ = _route_env(monkeypatch, [])
+    client = FakeClient()
+    code = whatsapp_bot.start_link(db, user, scope['active_farm'], scope['active_season'])
+    _receive(db, client, _payload('5535999', 'link-natural-close', f'SISFARM {code}'))
+
+    def ai_requests_close(history, assistant, **kwargs):
+        assert 'solicitar_encerramento_conversa' in assistant.handlers
+        assistant.call_tool('solicitar_encerramento_conversa', '{}')
+        return {'resposta': 'Aguardando confirmação de encerramento.', 'draft_id': None}
+
+    monkeypatch.setattr(routes, 'run_farm_assistant', ai_requests_close)
+    assert _receive(db, client, _payload('5535999', 'natural-close', 'pode parar nosso papo por aqui')) == ['close_pending']
+    link = db.query(WhatsAppLink).one()
+    request = db.query(WhatsAppClosingRequest).one()
+    assert request.status == 'pending' and request.thread_id == link.thread_id
+    assert client.sent[-1][0] == 'buttons'
+    close_button = client.sent[-1][3][1][0]
+    assert _receive(db, client, _payload('5535999', 'natural-close-confirm', button=close_button)) == ['closed']
+    assert link.thread_id is None
+    db.close()
+
+
+def test_exact_user_example_requests_buttons(monkeypatch):
+    _settings(monkeypatch)
+    _, db, user, scope, *_ = _route_env(monkeypatch, [])
+    client = FakeClient()
+    code = whatsapp_bot.start_link(db, user, scope['active_farm'], scope['active_season'])
+    _receive(db, client, _payload('5535999', 'link-user-example', f'SISFARM {code}'))
+    assert _receive(db, client, _payload('5535999', 'user-example', 'finaliza essa conversa')) == ['close_pending']
+    assert client.sent[-1][0] == 'buttons'
+    db.close()

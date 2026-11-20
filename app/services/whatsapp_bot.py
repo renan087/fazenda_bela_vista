@@ -38,7 +38,7 @@ UNKNOWN_REPLY_INTERVAL = timedelta(hours=1)  # a instrucao de vinculo pode ter f
 UNKNOWN_TEXT = ("Olá! Este número ainda não está vinculado a uma conta SiSFarm. Para usar o assistente pelo WhatsApp, "
                 "entre no SiSFarm, abra Assistente > WhatsApp e gere o seu código de vínculo.")
 NEW_THREAD_WORDS = {"novo", "nova conversa", "/novo", "reiniciar"}
-CLOSE_WORDS = {"encerrar", "encerrar conversa", "encerrar atendimento", "finalizar", "finalizar conversa", "finalizar atendimento", "terminar conversa", "terminar atendimento", "/encerrar"}
+CLOSE_WORDS = {"encerrar", "encerrar conversa", "encerrar atendimento", "finalizar", "finalizar conversa", "finalizar atendimento", "terminar conversa", "terminar atendimento", "finaliza essa conversa", "finalize esta conversa", "/encerrar"}
 CONFIRM_WORDS = {"confirmar", "confirmo", "confirma"}
 DISCARD_WORDS = {"descartar", "descarta", "cancelar"}
 
@@ -556,6 +556,16 @@ def _handle(db, row, client) -> str | None:
     link = db.get(WhatsAppLink, link.id)
     link.thread_id = thread.id
     db.commit()
+    if item.get("request_chat_closure"):
+        request = WhatsAppClosingRequest(id=secrets.token_hex(16), link_id=link.id, thread_id=thread.id,
+                                         status="pending", created_at=_now())
+        db.add(request)
+        db.flush()
+        client.send_buttons(row.wa_id,
+            "Antes de encerrarmos, posso ajudar em mais alguma coisa? Lançamentos ainda não confirmados não serão realizados.",
+            [(f"close:yes:{request.id}", "Sim, continuar"), (f"close:no:{request.id}", "Não, encerrar")])
+        db.commit()
+        return "close_pending"
     response_item = dict(item)
     references = item.get("record_references") or []
     if item.get("_shared_url"):

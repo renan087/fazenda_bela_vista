@@ -22747,6 +22747,11 @@ def _assistant_turn(db, user, repo, scope, thread, message, *, image=None, attac
         module_tools.append((_tool("preparar_chuva", "Prepara registro de chuva para confirmação; nunca registra sem confirmação.",
                                   {"data": {"type": "string", "description": "Data AAAA-MM-DD"},
                                    "milimetros": {"type": "number"}}), prepare_rainfall))
+    if _assistant_thread_channel(thread) == "whatsapp":
+        def request_chat_closure():
+            return {"aguardando_confirmacao": True}
+        module_tools.append((_tool("solicitar_encerramento_conversa",
+            "Use quando o usuário pedir para encerrar, finalizar ou fechar esta conversa ou atendimento, mesmo com palavras informais. Não use para encerrar cadastros, safras, lançamentos ou perguntas sobre como encerrar. O sistema pedirá confirmação; jamais diga que a conversa já foi encerrada.", {}), request_chat_closure))
     assistant = FarmAssistant(farm_name=farm.name, season=season, items=products, balances=balances,
                               plots=plots, today=today_in_app_timezone(), prepare_draft=prepare_draft,
                               extra_tools=queries.tools() + reminders.tools() + module_tools, prepare_purchase=prepare_purchase,
@@ -22823,6 +22828,12 @@ def _assistant_turn(db, user, repo, scope, thread, message, *, image=None, attac
         db.rollback()
         return reply(str(exc), error=True)
     text = (result.get("resposta") or "").strip() or "Pode me contar um pouco mais?"
+    if assistant.closing_requested:
+        thread, item = reply("Antes de encerrarmos, posso ajudar em mais alguma coisa?")
+        item["request_chat_closure"] = True
+        return thread, item
+    if _assistant_thread_channel(thread) == "whatsapp" and re.search(r"\b(encerr(?:ei|ada|ado|amos|ando)|finaliz(?:ei|ada|ado|amos|ando)|fech(?:ei|ada|ado|amos|ando))\b.{0,35}\b(conversa|atendimento|chat)\b|\b(conversa|atendimento|chat)\b.{0,35}\b(encerrad[ao]|finalizad[ao]|fechad[ao])\b", normalized(text)):
+        return reply("Ainda não encerrei a conversa. Se quiser encerrá-la, peça para finalizar o atendimento.")
     if module_drafts:
         draft, day, amount = module_drafts[-1]
         instruction = "Use os botões abaixo para confirmar ou cancelar." if _assistant_thread_channel(thread) == "whatsapp" else "Responda sim para confirmar ou não para cancelar."
