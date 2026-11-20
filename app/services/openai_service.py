@@ -17,7 +17,8 @@ from app.models import SoilAnalysis
 from app.services.soil_ai_context import _normalized, build_soil_ai_context
 
 logger = logging.getLogger(__name__)
-DOSE_UNIT_FACTORS = {"kg/ha": ("massa", 1), "t/ha": ("massa", 1000), "L/ha": ("volume", 1)}
+DOSE_UNIT_FACTORS = {"kg/ha": ("massa", 1), "t/ha": ("massa", 1000), "L/ha": ("volume", 1),
+                     "g/cova": ("massa_por_cova", 1)}
 STOCK_UNIT_FACTORS = {"kg": ("massa", 1), "t": ("massa", 1000), "g": ("massa", .001),
                       "L": ("volume", 1), "ml": ("volume", .001)}
 DOSE_IN_TEXT = re.compile(
@@ -41,6 +42,12 @@ REFERENCES = {
         "url": "https://www.infoteca.cnptia.embrapa.br/handle/doc/1148365",
         "escopo": "Café arábica em Minas Gerais, especialmente Matas de Minas. Use o capítulo de fertilidade e adubação.",
         "regiao": r"\b(?:mg|minas|cerrado mineiro)\b", "especie": "arabica",
+    },
+    "bahia_manual": {
+        "titulo": "Embrapa e entidades estaduais — Manual de adubação e calagem para o Estado da Bahia (1989)",
+        "url": "https://www.infoteca.cnptia.embrapa.br/handle/doc/145390",
+        "escopo": "Manual regional com capítulo de café. Confira os valores das tabelas diretamente na publicação.",
+        "regiao": r"\b(?:ba|bahia|baiano|baiana)\b", "especie": "arabica",
     },
     "iac_sp": {
         "titulo": "IAC — Instruções agrícolas para as principais culturas econômicas, Boletim 200",
@@ -69,7 +76,7 @@ class RecommendationModel(BaseModel):
 
 class SoilDose(RecommendationModel):
     valor: FiniteFloat
-    unidade: Literal["kg/ha", "L/ha", "t/ha"]
+    unidade: Literal["kg/ha", "L/ha", "t/ha", "g/cova"]
     base: Literal["produto", "N", "P2O5", "K2O"]
     periodo: Literal["meta_ciclo", "saldo_ciclo"]
     indicadores: list[str]
@@ -131,6 +138,10 @@ potássio só para preencher indicadores. Quando a referência exigir dados foli
 específico, use apenas dados de fato cadastrados. Se uma medição decisiva estiver ausente ou contraditória,
 apresente a fonte indicada, a orientação possível e o dado exato a confirmar, com dose nula só para essa ação.
 Liste premissas, pendências e alertas separadamente. Toda dose é para planejamento e exige revisão técnica.
+Na formação do cafeeiro, não use produtividade esperada como requisito para nitrogênio e potássio. O sistema
+apresenta separadamente a tabela verificada de Minas Gerais por cova quando aplicável. Não invente dose por cova
+e não multiplique por plantas sem conhecer as covas.
+Quando a referência não tiver tabelas disponíveis no contexto, não atribua valores a ela.
 """.strip()
 
 def _clean_narrative(value: str) -> str:
@@ -139,12 +150,19 @@ def _clean_narrative(value: str) -> str:
                     if part.strip() and not DOSE_IN_TEXT.search(part))
 
 
+def _reference_region(scope: dict, profile: dict) -> str:
+    region = _normalized(profile.get("region"))
+    if any(re.search(ref["regiao"], region) for ref in REFERENCES.values()):
+        return region
+    return _normalized(" ".join(filter(None, (profile.get("region"), scope.get("localidade")))))
+
+
 def _technical_references(context: dict) -> dict:
     scope, profile = context["escopo"], context["perfil"]
     culture = _normalized(scope["cultura_do_setor"])
     if culture == "cafe":
         culture = _normalized(profile.get("culture")) or culture
-    region = _normalized(profile.get("region") or scope.get("localidade"))
+    region = _reference_region(scope, profile)
     if "cafe" not in culture and not any(word in culture for word in ("arabica", "conilon", "robusta", "canephora")):
         return {}
     canephora = any(word in culture for word in ("conilon", "robusta", "canephora"))
@@ -185,6 +203,10 @@ def _dose_problem(row: SoilAction, context: dict, today: date, entry: dict | Non
     methods = metadata.get("methods", {})
     if row.referencia_id not in context["referencias_tecnicas"] or not row.criterio_referencia.strip():
         return "Confirme a seção da referência técnica aplicável à cultura e à região."
+    if row.referencia_id == "bahia_manual":
+        return "Confirme a tabela e os critérios da referência regional antes de aplicar uma dose."
+    if dose.unidade == "g/cova":
+        return "Confira a dose por cova com a tabela para a idade e o manejo desta lavoura."
     if not _clean_narrative(row.fundamentacao):
         return "Indique a classe ou o cálculo que fundamenta a dose."
     if not profile.get("crop_stage"):
@@ -219,9 +241,12 @@ def _dose_problem(row: SoilAction, context: dict, today: date, entry: dict | Non
     ):
         return "Confirme as unidades do laudo e o extrator, quando aplicável."
     expected_yield = profile.get("target_productivity_sacks_per_ha") or scope.get("estimativa_setor_sacas_ha")
+    formation = "formac" in _normalized(profile.get("crop_stage"))
+    if row.tipo == "Adubação" and formation:
+        return "Na formação, consulte os valores por cova apresentados na tabela de referência."
     if row.tipo == "Adubação" and not (expected_yield or 0) > 0:
         return "Informe a meta de produtividade para fundamentar a dose."
-    if row.referencia_id == "iac_sp" and "N" in nutrients and not re.search(
+    if row.referencia_id == "iac_sp" and "N" in nutrients and not formation and not re.search(
         r"\b(?:n|nitrogenio)\s+foliar\b[^.\n]*\d+(?:[,.]\d+)?\s*(?:g\s*/\s*kg|%)", _normalized(notes)
     ):
         return "Informe o resultado de nitrogênio foliar exigido por essa referência."
@@ -333,8 +358,68 @@ def _prepare_recommendation(draft: SoilRecommendation, context: dict, today: dat
             result["estoque"].append(_stock_status(entry, record["dose"], context["escopo"]["area_ha"]))
         result["plano"].append(record)
 
+    _add_formation_reference(result, context, dosed_nutrients)
     result["alertas"] = list(dict.fromkeys([*warnings, *result["alertas"]]))
     return result
+
+
+def _add_formation_reference(result: dict, context: dict, dosed_nutrients: set) -> None:
+    scope, profile, soil = context["escopo"], context["perfil"], context["solo"]
+    culture = _normalized(scope.get("cultura_do_setor"))
+    if culture == "cafe":
+        culture = _normalized(profile.get("culture")) or culture
+    region = _reference_region(scope, profile)
+    if "formac" not in _normalized(profile.get("crop_stage")) or "cafe" not in culture:
+        return
+    if any(word in culture for word in ("conilon", "canephora", "robusta")):
+        return
+    if not re.search(r"\b(?:mg|minas|ba|bahia|baiano|baiana)\b", region):
+        return
+    # This table is for a different state when used in Bahia. Its numbers are a
+    # comparison to review locally, not a calculated prescription for the farm.
+    reference = REFERENCES["embrapa_mg"]
+    comparative = not bool(re.search(reference["regiao"], region))
+    metadata = soil.get("metadados_laboratoriais") or {}
+    potassium = soil["resultados"].get("potássio")
+    known_unit = (metadata.get("units") or {}).get("potassium")
+    if not known_unit and not NUTRIENT_UNITS["potássio"].search(_normalized(soil.get("observacoes") or "")):
+        potassium = None
+    # The agricultural year cannot be inferred reliably from planting date alone.
+    years = (1, 2)
+    notes = ["Valor de referência para o ano indicado. Desconte o manejo já realizado e confirme o período com o responsável técnico."]
+    if not date.fromisoformat(scope["historico_desde"]) <= date.fromisoformat(soil["data"]) <= date.fromisoformat(scope["dados_em"]):
+        notes.append("A amostra está fora do período de manejo considerado. Confirme se continua representativa.")
+    if comparative:
+        notes.append("Tabela para Minas Gerais usada como comparação. Confirme a adequação à Bahia e à recomendação regional.")
+    if "arabica" not in culture:
+        notes.append("Confirme que o café é arábica antes de utilizar a tabela.")
+    # The source gives potassium per pit per year; its nitrogen column does not
+    # explicitly state the interval, so keep that interval for technical review.
+    reference_rows = []
+    for nutrient in ("N", "K2O"):
+        if nutrient in dosed_nutrients or (nutrient == "K2O" and (potassium is None or potassium < 0)):
+            continue
+        for year in years:
+            if nutrient == "N":
+                amount = 10 if year == 1 else 20
+                label = "N"
+                frequency = "Confirme o intervalo de aplicação na referência."
+            else:
+                column = 0 if potassium < 60 else 1 if potassium < 120 else 2 if potassium <= 200 else 3
+                amount = ((40, 20, 10, 0) if year == 1 else (60, 40, 20, 0))[column]
+                label = "K₂O"
+                frequency = "Referência anual por cova."
+            reference_rows.append({
+                "tipo": "Adubação", "objetivo": f"Referência de {label} para o {year}º ano de formação",
+                "produto": "", "nutrientes": [label], "epoca": f"Se a lavoura estiver no {year}º ano de formação",
+                "frequencia": frequency, "forma_aplicacao": "Uso como referência para planejamento por cova.",
+                "fundamentacao": "Tabela 2 de formação do cafeeiro arábica. O valor é de nutriente, não de produto comercial.",
+                "referencia": {key: reference[key] for key in ("titulo", "url", "escopo")},
+                "criterio_referencia": "Tabela 2 · adubação de formação", "premissas": [],
+                "confirmar": list(notes),
+                "dose": {"valor": amount, "unidade": "g/cova", "base": label, "periodo": "Referência condicionada"},
+            })
+    result["plano"][:0] = reference_rows
 
 
 def _narratives(items: list[str]) -> list[str]:

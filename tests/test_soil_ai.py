@@ -295,3 +295,42 @@ def test_failed_manual_generation_keeps_outdated_warning(soil_context, monkeypat
     updated = routes._apply_soil_ai_recommendation(routes._repository(db), analysis, user)
     assert updated.ai_status == "outdated" and updated.ai_recommendation == "Recomendação anterior"
     assert updated.ai_error == "Falha simulada"
+
+
+def test_formation_reference_uses_pit_units_without_productivity(soil_context):
+    _, db, _, analysis, _ = soil_context
+    profile = analysis.farm.agronomic_profile
+    profile.region = "Bahia"
+    profile.crop_stage = "Café arábica em formação"
+    profile.culture = "Café arábica"
+    profile.target_productivity_sacks_per_ha = None
+    analysis.potassium = 0.09
+    analysis.laboratory_metadata = json.dumps({"units": {"potassium": "cmolc/dm³"}})
+    db.commit()
+    context = _draft_context(db, analysis)
+    context["estoque_atual"] = []
+    draft = _recommendation()
+    draft.plano[0].dose = None
+    result = service._prepare_recommendation(draft, context, TODAY)
+    rows = [row for row in result["plano"] if row.get("dose") and row["dose"]["unidade"] == "g/cova"]
+    assert [(row["dose"]["base"], row["dose"]["valor"]) for row in rows] == [
+        ("N", 10), ("N", 20), ("K₂O", 40), ("K₂O", 60),
+    ]
+    assert all("Se a lavoura estiver" in row["epoca"] for row in rows)
+    assert all(any("Minas Gerais" in note for note in row["confirmar"]) for row in rows)
+    assert all(row["dose"]["periodo"] == "Referência condicionada" for row in rows)
+
+    # Legacy result without a known unit must not be used to select a K class.
+    analysis.laboratory_metadata = None
+    analysis.observations = None
+    db.commit()
+    context = _draft_context(db, analysis)
+    result = service._prepare_recommendation(draft, context, TODAY)
+    assert not any(row.get("dose") and row["dose"]["base"] == "K₂O" for row in result["plano"])
+
+    # The arábica table cannot be used for conilon.
+    profile.culture = "Café conilon"
+    db.commit()
+    context = _draft_context(db, analysis)
+    result = service._prepare_recommendation(draft, context, TODAY)
+    assert not any(row.get("dose") and row["dose"]["unidade"] == "g/cova" for row in result["plano"])
