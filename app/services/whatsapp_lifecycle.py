@@ -114,7 +114,7 @@ def process_lifecycle(db, client, now=None):
         if not available:
             continue
         try:
-            client.send_buttons(link.wa_id, "Atendimento encerrado. Como foi sua experiência?",
+            client.send_buttons(link.wa_id, "Como foi sua experiência?",
                                 [(f"survey:good:{survey.id}", "Bom"), (f"survey:fair:{survey.id}", "Regular"), (f"survey:bad:{survey.id}", "Ruim")])
             survey.status = "pending"
         except Exception:
